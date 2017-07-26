@@ -1,0 +1,7 @@
+numpy
+scipy
+astropy
+matplotlib
+tractor
+astrometry.net
+legacypipe
