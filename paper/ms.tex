@@ -1,6 +1,24 @@
-\documentclass[preprint]{aastex6}
+\documentclass[preprint]{aastex61}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{natbib}
+\usepackage{multirow}
 
-\slugcomment{Submitted to the Astronomical Journal (AJ)}
+\pdfoutput=1
+\bibliographystyle{aasjournal}
+
+\include{vc}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Useful aliases
+\newcommand{\project}[1]{\textsf{#1}}
+\newcommand{\tnote}{\emph{TechNote}}
+\newcommand{\TODO}[1]{{\it \color{red} (#1)}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\slugcomment{Submitted to the Astronomical Journal (AJ)}
 \shorttitle{Legacy Survey Large Galaxy Atlas}
 \shortauthors{Moustakas, Lang, et al.}
 
@@ -21,16 +39,20 @@
 I like cheese.
 \end{abstract}
 
-\section{Introduction}
-I like cheese.
+\input{intro}
 
-\section{Sample Selection}
-Select the sample.
+\input{sample}
 
-\section{Discussion}
-Discuss. 
+\input{modeling}
 
-\section{Summary \& Conclusions}
-Profound!
+\input{discussion}
+
+\input{summary}
+
+%\bibliographystyle{apj}
+%\bibliography{/Users/ioannis/bibdesk/ioannis}
+%\input{target-truth.bbl}
 
 \end{document}
+
+

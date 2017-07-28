@@ -1,0 +1,50 @@
+\section{Conclusions \& Next Steps}\label{sec:summary}
+
+This \tnote{} reports on our ongoing effort to develop a modified version of the
+{\tt legacypipe} photometric pipeline which is optimized for large galaxies,
+with the ultimate goal of producing a Legacy Survey Large Galaxy Atlas (LSLGA).
+In addition to enabling detailing multi-wavelength analyses of large, spatially
+well-resolved galaxies, this effort will also significantly improve DESI target
+selection for the Bright Galaxy Survey and in pointings containing large
+galaxies.
+
+In addition to addressing the outstanding issues discussed above, in the near
+future we intend to work on the following additional threads, in no particular
+order of importance:
+\begin{itemize}
+\item{We will revisit the parent galaxy sample selection to ensure that low
+  surface brightness galaxies are not being excluded (e.g., by incorporating
+  H~{\sc i}-selected galaxies).}
+\item{We will run the large-galaxy pipeline on the full sample of $10,654$
+  galaxies, in order to identify the most common problems and failure modes.}
+\item{We will build a web-based interface on the {\tt legacysurvey.org}
+  web-server (work that we have already begun), in order to make it easy to
+  inspect the data and model outputs for the large-galaxy sample.}
+\item{Using existing code, we will use image simulations---whereby we insert
+  simulated large galaxies into the CCD-level data---to test the performance of
+  the large-galaxy pipeline under different initial conditions and in different
+  regimes.}
+\item{We will incorporate more sophisticated galaxy models, including
+  multi-component S\'{e}rsic profiles, into the library of possible
+  two-dimensional galaxy models.}
+\item{We will investigate ways of accounting for second-order variations in the
+  galaxy models, such as radial color gradients or azimuthal asymmetries.}
+\item{And finally we will engage with the Data Systems and Target Selection
+  Working Group to incorporate the catalogs constructed using the large-galaxy
+  pipeline into DESI target selection and fiber assignment.}
+\end{itemize}
+
+%Planar sky.
+
+%We zoom in on the object of interest and define a custom ``brick'' centered on
+%that galaxy -- no edge issues to worry about!
+
+%\begin{figure}
+%\centering
+%\includegraphics[width=0.3\textwidth]{figures/ugc04203-image-custom-annot.jpg}
+%\includegraphics[width=0.3\textwidth]{figures/ugc04203-model-custom-annot.jpg}
+%\includegraphics[width=0.3\textwidth]{figures/ugc04203-resid-custom-annot.jpg}
+%\caption{Modeling of UGC04203 using the customized, large-galaxy optimized
+%  version of the pipeline.  See Section~\ref{sec:largepipeline} for details.
+%\label{fig:custom}}  
+%\end{figure}
