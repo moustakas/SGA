@@ -16,7 +16,7 @@ then
 
   # Build the paper using tectonic
   cd paper
-  tectonic ms.tex --print
+  make
 
   # Force push the paper to GitHub
   cd $TRAVIS_BUILD_DIR
