@@ -20,3 +20,4 @@ ${NAME}.pdf: ${NAME}.tex vc.tex
 clean:
 	${RM} $(foreach suff, ${TMP_SUFFS}, ${NAME}.${suff})
 	${RM} msNotes.bib
+	${RM} vc.aux
