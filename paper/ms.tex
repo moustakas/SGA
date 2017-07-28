@@ -1,5 +1,13 @@
 \documentclass[preprint]{aastex6}
 
+\newcommand{\aap}{A\&A}
+\newcommand{\apj}{ApJ}
+\newcommand{\pasp}{PASP}
+\newcommand{\araa}{ARA\&A}
+\newcommand{\apjs}{ApJS}
+\newcommand{\tnote}{\emph{TechNote}}
+\newcommand{\TODO}[1]{{\it \color{red} (#1)}}
+
 \slugcomment{Submitted to the Astronomical Journal (AJ)}
 \shorttitle{Legacy Survey Large Galaxy Atlas}
 \shortauthors{Moustakas, Lang, et al.}
@@ -21,16 +29,20 @@
 I like cheese.
 \end{abstract}
 
-\section{Introduction}
-I like cheese.
+\input{intro}
 
-\section{Sample Selection}
-Select the sample.
+\input{sample}
 
-\section{Discussion}
-Discuss. 
+\input{modeling}
 
-\section{Summary \& Conclusions}
-Profound!
+\input{discussion}
+
+\input{summary}
+
+%\bibliographystyle{apj}
+%\bibliography{/Users/ioannis/bibdesk/ioannis}
+%\input{target-truth.bbl}
 
 \end{document}
+
+
