@@ -6,19 +6,15 @@ model fits for a diameter-limited sample of "large" galaxies in `Legacy Survey`_
 imaging, which consists of deep *grz* optical imaging and unWISE *W1* and *W2*
 mid-infrared imaging.
 
-Python Dependencies
--------------------
+Conda Environment Setup
+-----------------------
 
+```bash
+conda create --name LSLGA python=3
+source activate LSLGA
+conda install ipython numpy scipy matplotlib astropy jupyter pillow
+conda install -c bccp nbodykit
 ```
-numpy
-scipy
-matplotlib
-astropy
-PIL
-legacypipe
-nbodykit
-```
-
 
 .. image:: https://img.shields.io/badge/PDF-latest-orange.svg?style=flat
     :target: https://github.com/moustakas/LSLGA/blob/master-pdf/paper/ms.pdf
