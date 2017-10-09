@@ -1,4 +1,5 @@
-===Setup to run at NERSC===
+Setup to run at NERSC
+=====================
 
 NERSC provides a `Jupyter notebook interface`_ which is extraordinarily useful
 for running the code pertaining to this project with full access to the data at

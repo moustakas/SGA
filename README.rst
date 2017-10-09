@@ -9,11 +9,11 @@ mid-infrared imaging.
 Conda Environment Setup
 -----------------------
 
-```bash
+```
 conda create --name LSLGA python=3
 source activate LSLGA
-conda install ipython numpy scipy matplotlib astropy jupyter pillow
-conda install -c bccp nbodykit
+conda install ipython numpy scipy matplotlib astropy jupyter pillow graphviz
+conda install -c bccp nbodykit pydl
 ```
 
 .. image:: https://img.shields.io/badge/PDF-latest-orange.svg?style=flat
