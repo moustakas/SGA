@@ -1,0 +1,174 @@
+#!/usr/bin/env python
+
+from __future__ import absolute_import, division, print_function
+
+import os, time
+import warnings
+import numpy as np
+import numpy.ma as ma
+import pandas as pd
+
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+
+def get_d25(data):
+    """Consolidate the angular diameter estimates into a single value.  Priority
+    ranking: SDSS, 2MASS, RC3, ESO.
+
+    """
+    nobj = len(data)
+    d25 = np.empty(nobj) * np.nan
+    band = np.repeat('', nobj).astype('U5')
+    for source, filt in zip( ('sdss_d25', 'twomass_d25', 'rc3_d25', 'eso_d25'),
+                             ('r', 'Ks', 'B_RC3', 'B_ESO') ):
+        indx = data[source].notnull() & np.isnan(d25)
+        if np.count_nonzero(indx) > 0:
+            d25[indx] = data[source][indx].astype('f4') # [arcsec]
+            band[indx] = filt
+    return d25, band
+
+def get_ba25(data):
+    """Consolidate the minor-to-major axis estimates into a single value.  Priority
+    ranking: SDSS, 2MASS, RC3, ESO.
+
+    """
+    nobj = len(data)
+    ba25 = np.empty(nobj) * np.nan
+    band = np.repeat('', nobj).astype('U5')
+    for source, filt in zip( ('sdss_ba25', 'twomass_ba25', 'rc3_ba25', 'eso_ba25'),
+                             ('r', 'Ks', 'B_RC3', 'B_ESO') ):
+        indx = data[source].notnull() & np.isnan(ba25)
+        if np.count_nonzero(indx) > 0:
+            ba25[indx] = data[source][indx].astype('f4')
+            band[indx] = filt
+            
+    return ba25, band
+
+def get_pa(data):
+    """Consolidate the position angle estimates into a single value.  Priority
+    ranking: SDSS, 2MASS, RC3, ESO.
+
+    """
+    nobj = len(data)
+    pa = np.empty(nobj) * np.nan
+    band = np.repeat('', nobj).astype('U5')
+    for source, filt in zip( ('sdss_pa', 'twomass_pa', 'rc3_pa', 'eso_pa'),
+                             ('r', 'Ks', 'B_RC3', 'B_ESO') ):
+        indx = data[source].notnull() & np.isnan(pa)
+        if np.count_nonzero(indx) > 0:
+            pa[indx] = data[source][indx].astype('f4') # [arcsec]
+            band[indx] = filt
+            
+    return pa, band
+
+def get_mag(data):
+    """Get the approximate galaxy magnitude.  Priority ranking: SDSS, 2MASS, RC3,
+    APM.
+
+    """
+    nobj = len(data)
+    mag = np.empty(nobj) * np.nan
+    magerr = np.empty(nobj) * np.nan
+    band = np.repeat('', nobj).astype('U5')
+
+    with warnings.catch_warnings(): # some negative fluxes
+        warnings.simplefilter("ignore")
+
+        for source, filt in zip( ('sdss_r', 'twomass_K', 'rc3_B', 'apm_b'),
+                                 ('r', 'Ks', 'B_RC3', 'bJ') ):
+            indx = data[source].notnull() & np.isnan(mag)
+            if np.count_nonzero(indx) > 0:
+                flux = data[source][indx].astype('f4')
+                mag[indx] = -2.5 * np.log10( flux * 1e3 ) - 48.6
+                band[indx] = filt
+
+            indx = data['{}_err'.format(source)].notnull() & data[source].notnull() & np.isnan(magerr)
+            if np.count_nonzero(indx) > 0:
+                ferr = data['{}_err'.format(source)][indx].astype('f4')
+                flux = data[source][indx].astype('f4')
+                magerr[indx] = 2.5 * ferr / flux / np.log(10)
+                
+    return mag, magerr, band
+
+def read_ned(nedtxtfile, zcut=False, nrows=None):
+    """Read the raw NED catalog."""
+    
+    names = ('notes', 'name', 'ra_hms', 'dec_hms', 'objtype', 'z', 'zqual', 
+             'morph', 'sdss_r', 'sdss_r_err', 'rc3_B', 'rc3_B_err', 
+             'apm_b', 'apm_b_err', 'twomass_K', 'twomass_K_err', 
+             'sdss_d25', 'sdss_ba25', 'sdss_pa', 'twomass_d25', 
+             'twomass_ba25', 'twomass_pa', 'rc3_d25', 'rc3_ba25', 
+             'rc3_pa', 'eso_d25', 'eso_ba25', 'eso_pa')
+
+    t0 = time.time()
+    data = pd.read_csv(nedtxtfile, delimiter='|', skiprows=5, names=names, nrows=nrows)
+    print('Read {} objects from {} in {:.3f} min.'.format(len(data), nedtxtfile,
+                                                          (time.time() - t0) / 60 ) )
+
+    data = data.loc[data['objtype'].str.contains(r'G')] # filter just on galaxies
+    data = data.replace(r'^\s*$', np.nan, regex=True)  # replace blank entries with NaN
+    print('Keeping just galaxies leaves {} objects.'.format(len(data)))
+    
+    if zcut:
+        data = data.loc[data['z'].notnull()]
+
+    out = pd.DataFrame()
+    out['galaxy'] = data['name'].str.strip()
+    out['objtype'] = data['objtype'].str.strip()
+
+    t0 = time.time()
+    coord = SkyCoord(ra=data['ra_hms'], dec=data['dec_hms'], unit=(u.hourangle, u.deg))
+    out['ra'] = coord.ra.value
+    out['dec'] = coord.dec.value
+    del coord
+    print('Total time to get coordinates = {:.3f} min'.format( (time.time() - t0) / 60 ))
+    
+    out['z'] = data['z'].astype('f4')
+    out['zqual'] = data['zqual']
+    out['morph'] = data['morph'].str.strip()
+    
+    # get magnitudes
+    t0 = time.time()
+    mag, magerr, band = get_mag(data)
+    out['mag'] = mag
+    out['mag_err'] = magerr
+#   import pdb ; pdb.set_trace()
+    out['mag_band'] = band
+    print('Total time to get magnitudes = {:.3f} min'.format( (time.time() - t0) / 60 ))
+
+    # get D(25)
+    t0 = time.time()
+    d25, band = get_d25(data)
+    out['d25'] = d25
+    out['d25_band'] = band
+    print('Total time to get D(25) = {:.3f} min'.format( (time.time() - t0) / 60 ))
+    
+    # get b/a
+    t0 = time.time()
+    ba25, band = get_ba25(data)
+    out['ba25'] = ba25
+    out['ba25_band'] = band
+    print('Total time to get b/a = {:.3f} min'.format( (time.time() - t0) / 60 ))
+    
+    # get position angle
+    t0 = time.time()
+    pa, band = get_pa(data)
+    out['pa'] = pa
+    out['pa_band'] = band
+    print('Total time to get PA = {:.3f} min'.format( (time.time() - t0) / 60 ))
+
+    out['notes'] = data['notes'].str.strip()
+
+    return data, out
+
+if __name__ == '__main__':
+    
+    NLSGAdir = os.getenv('LSLGA_DIR')
+    nedtxtfile = os.path.join(NLSGAdir, 'sample', 'ned-d25min10.txt')
+    
+    data, out = read_ned(nedtxtfile, nrows=None, zcut=False)
+
+    nedfitsfile = os.path.join(NLSGAdir, 'sample', 'ned-d25min10.fits')
+    print('Writing {}'.format(nedfitsfile))
+    Table.from_pandas(out).write(nedfitsfile, overwrite=True)
