@@ -5,7 +5,6 @@ from __future__ import absolute_import, division, print_function
 import os, time
 import warnings
 import numpy as np
-import numpy.ma as ma
 import pandas as pd
 
 import astropy.units as u
@@ -102,7 +101,7 @@ def read_ned(nedtxtfile, zcut=False, nrows=None):
              'rc3_pa', 'eso_d25', 'eso_ba25', 'eso_pa')
 
     t0 = time.time()
-    data = pd.read_csv(nedtxtfile, delimiter='|', skiprows=5, names=names, nrows=nrows)
+    data = pd.read_csv(nedtxtfile, delimiter='|', skiprows=5, names=names, nrows=500) #nrows)
     print('Read {} objects from {} in {:.3f} min.'.format(len(data), nedtxtfile,
                                                           (time.time() - t0) / 60 ) )
 
@@ -116,6 +115,9 @@ def read_ned(nedtxtfile, zcut=False, nrows=None):
     out = pd.DataFrame()
     out['galaxy'] = data['name'].str.strip()
     out['objtype'] = data['objtype'].str.strip()
+
+    #from astrometry.util.starutil_numpy import hmsstring2ra
+    #import pdb ; pdb.set_trace()
 
     t0 = time.time()
     coord = SkyCoord(ra=data['ra_hms'], dec=data['dec_hms'], unit=(u.hourangle, u.deg))

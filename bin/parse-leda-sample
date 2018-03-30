@@ -1,0 +1,87 @@
+#!/usr/bin/env python
+
+from __future__ import absolute_import, division, print_function
+
+import os, time
+import warnings
+import numpy as np
+import pandas as pd
+
+def _catalog_template(nobj=1):
+    cols = [
+        ('GALAXY', 'S28'), 
+        ('PGC', 'S10'), 
+        ('RA', 'f8'), 
+        ('DEC', 'f8'),
+        ('TYPE', 'S8'),
+        ('MULTIPLE', 'S1'),
+        ('RADIUS', 'f4'),
+        ('BA', 'f4'),
+        ('PA', 'f4'),
+        ('BMAG', 'f4'),
+        ('IMAG', 'f4'),
+        ('VHELIO', 'f4'),
+        ('BRICKNAME', 'S17', (4,))
+        ]
+    catalog = Table(np.zeros(nobj, dtype=cols))
+    catalog['RADIUS'].unit = 'arcsec'
+    catalog['VHELIO'].unit = 'km/s'
+
+    return catalog
+
+def read_leda(largedir='.', d25min=0.0, d25max=1000.0, decmin=-90.0, 
+              decmax=+90.0, ramin=0.0, ramax=360.0):
+    """Read the parent LEDA catalog and put it in a standard format.
+    
+    """
+    cat = fits.getdata(os.path.join(largedir, 'sample', 'leda-logd25-0.05.fits.gz'), 1)
+
+    outcat = _catalog_template(len(cat))
+    outcat['GALAXY'] = cat['GALAXY']
+    outcat['PGC'] = cat['PGC']
+    outcat['RA'] = cat['RA']
+    outcat['DEC'] = cat['DEC']
+    outcat['TYPE'] = cat['TYPE']
+    outcat['MULTIPLE'] = cat['MULTIPLE']
+    outcat['RADIUS'] = cat['D25']/2.0 # semi-major axis radius [arcsec]
+    outcat['BA'] = cat['BA']
+    outcat['PA'] = cat['PA']
+    outcat['BMAG'] = cat['BMAG']
+    outcat['IMAG'] = cat['IMAG']
+    outcat['VHELIO'] = cat['VHELIO']
+
+    these = np.where((outcat['RADIUS']*2/60.0 <= d25max) *
+                     (outcat['RADIUS']*2/60.0 >= d25min) *
+                     (outcat['DEC'] <= decmax) *
+                     (outcat['DEC'] >= decmin) *
+                     (outcat['RA'] <= ramax) *
+                     (outcat['RA'] >= ramin)
+                     )[0]
+    outcat = outcat[these] 
+
+    return outcat
+
+survey = LegacySurveyData()
+
+bricks = survey.get_bricks()
+allccds = survey.get_annotated_ccds()
+cut = survey.photometric_ccds(allccds)
+if cut is not None:
+    allccds.cut(cut)
+cut = survey.ccd_cuts(allccds)
+allccds.cut(cut == 0)
+print('Read {} CCDs.'.format(len(allccds)))
+
+        # Read the parent super-sample.
+        if False:
+            print('Testing with smaller sample cuts!')
+            d25min, d25max = 1.0, 5.0
+            ramin, ramax = 175, 185
+        else:
+            d25min, d25max = 0.5, 10.0
+            ramin, ramax = 0, 360
+
+        cat = read_leda(largedir=largedir, d25min=d25min, d25max=d25max,
+                        decmax=np.max(allccds.dec)+0.3,
+                        decmin=np.min(allccds.dec)-0.3,
+
