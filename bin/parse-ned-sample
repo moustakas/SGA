@@ -91,7 +91,23 @@ def get_mag(data):
     return mag, magerr, band
 
 def read_ned(nedtxtfile, zcut=False, nrows=None):
-    """Read the raw NED catalog."""
+    """Read and parse the raw NED catalog.
+
+    Read 8131378 objects from /Users/ioannis/research/projects/LSLGA/sample/ned-d25min10.txt in 1.550 min.
+    Keeping just galaxies leaves 4755411 objects.
+    Total time to get coordinates = 0.494 min
+    Total time to get magnitudes = 0.100 min
+    Total time to get D(25) = 0.030 min
+    Total time to get b/a = 0.028 min
+    Total time to get PA = 0.029 min
+    Writing /Users/ioannis/research/projects/LSLGA/sample/ned-d25min10.fits
+
+    real    5m43.847s
+    user    5m17.496s
+    sys     1m10.635s
+
+    """
+    from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
     
     names = ('notes', 'name', 'ra_hms', 'dec_hms', 'objtype', 'z', 'zqual', 
              'morph', 'sdss_r', 'sdss_r_err', 'rc3_B', 'rc3_B_err', 
@@ -101,7 +117,7 @@ def read_ned(nedtxtfile, zcut=False, nrows=None):
              'rc3_pa', 'eso_d25', 'eso_ba25', 'eso_pa')
 
     t0 = time.time()
-    data = pd.read_csv(nedtxtfile, delimiter='|', skiprows=5, names=names, nrows=500) #nrows)
+    data = pd.read_csv(nedtxtfile, delimiter='|', skiprows=5, names=names)#, nrows=500) #nrows)
     print('Read {} objects from {} in {:.3f} min.'.format(len(data), nedtxtfile,
                                                           (time.time() - t0) / 60 ) )
 
@@ -116,14 +132,18 @@ def read_ned(nedtxtfile, zcut=False, nrows=None):
     out['galaxy'] = data['name'].str.strip()
     out['objtype'] = data['objtype'].str.strip()
 
-    #from astrometry.util.starutil_numpy import hmsstring2ra
-    #import pdb ; pdb.set_trace()
-
     t0 = time.time()
-    coord = SkyCoord(ra=data['ra_hms'], dec=data['dec_hms'], unit=(u.hourangle, u.deg))
-    out['ra'] = coord.ra.value
-    out['dec'] = coord.dec.value
-    del coord
+    ra, dec = [], []
+    for _ra, _dec in zip(data['ra_hms'].values, data['dec_hms'].values):
+        ra.append(hmsstring2ra(_ra.replace('h', ':').replace('m', ':').replace('s','')))
+        dec.append(dmsstring2dec(_dec.replace('d', ':').replace('m', ':').replace('s','')))
+    out['ra'] = ra
+    out['dec'] = dec
+    
+    #coord = SkyCoord(ra=data['ra_hms'], dec=data['dec_hms'], unit=(u.hourangle, u.deg))
+    #out['ra'] = coord.ra.value
+    #out['dec'] = coord.dec.value
+    #del coord
     print('Total time to get coordinates = {:.3f} min'.format( (time.time() - t0) / 60 ))
     
     out['z'] = data['z'].astype('f4')
