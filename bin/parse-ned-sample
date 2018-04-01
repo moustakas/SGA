@@ -124,7 +124,7 @@ def read_ned(nedtxtfile, zcut=False, nrows=None):
     data = data.loc[data['objtype'].str.contains(r'G')] # filter just on galaxies
     data = data.replace(r'^\s*$', np.nan, regex=True)  # replace blank entries with NaN
     print('Keeping just galaxies leaves {} objects.'.format(len(data)))
-    
+
     if zcut:
         data = data.loc[data['z'].notnull()]
 
@@ -155,7 +155,6 @@ def read_ned(nedtxtfile, zcut=False, nrows=None):
     mag, magerr, band = get_mag(data)
     out['mag'] = mag
     out['mag_err'] = magerr
-#   import pdb ; pdb.set_trace()
     out['mag_band'] = band
     print('Total time to get magnitudes = {:.3f} min'.format( (time.time() - t0) / 60 ))
 
