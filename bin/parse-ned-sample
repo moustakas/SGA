@@ -23,7 +23,7 @@ def get_d25(data):
                              ('r', 'Ks', 'B_RC3', 'B_ESO') ):
         indx = data[source].notnull() & np.isnan(d25)
         if np.count_nonzero(indx) > 0:
-            d25[indx] = data[source][indx].astype('f4') # [arcsec]
+            d25[indx] = data[source][indx].astype('f4') / 60 # [arcmin]
             band[indx] = filt
     return d25, band
 
