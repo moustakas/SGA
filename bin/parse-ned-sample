@@ -6,6 +6,7 @@ import os, time, warnings
 from pkg_resources import resource_filename
 
 import numpy as np
+import numpy.ma as ma
 import pandas as pd
 import healpy as hp
 
@@ -189,8 +190,10 @@ def read_ned(nedtxtfile, zcut=False, nrows=None, nside=64):
     out = Table.from_pandas(out)
     print('Total time to convert to an astropy Table = {:.3f} min'.format( (time.time() - t0) / 60 ))
 
-    keep = np.where( np.isfinite(out['d25']) * np.isfinite(out['mag']) )[0]
+    keep = np.where( np.isfinite(ma.getdata(out['d25'])) *
+                     np.isfinite(ma.getdata(out['mag'])) )[0]
     print('Requiring a magnitude and D(25) leaves {} objects.'.format(len(keep)))
+    out = out[keep]
 
     # Finally, assign the sample to nside=32 healpixels and restrict to the DESI
     # footprint.
