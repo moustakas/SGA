@@ -1,10 +1,10 @@
-numpy
-scipy
-astropy
-matplotlib
-tractor
 astrometry.net
+astropy
+healpy
 legacypipe
+matplotlib
+numpy
 pillow
 pydl
-
+scipy
+tractor
