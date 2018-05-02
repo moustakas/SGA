@@ -92,7 +92,7 @@ def get_mag(data):
                 
     return mag, magerr, band
 
-def read_ned(nedtxtfile, zcut=False, nrows=None, nside=64):
+def read_ned(txtfile, zcut=False, nrows=None, nside=64):
     """Read and parse the raw NED catalog.
 
     Read 8131378 objects from /Users/ioannis/research/projects/LSLGA/sample/ned-d25min10.txt in 1.550 min.
@@ -119,8 +119,8 @@ def read_ned(nedtxtfile, zcut=False, nrows=None, nside=64):
              'rc3_pa', 'eso_d25', 'eso_ba25', 'eso_pa')
 
     t0 = time.time()
-    data = pd.read_csv(nedtxtfile, delimiter='|', skiprows=5, names=names, nrows=nrows)
-    print('Read {} objects from {} in {:.3f} min.'.format(len(data), nedtxtfile,
+    data = pd.read_csv(txtfile, delimiter='|', skiprows=5, names=names, nrows=nrows)
+    print('Read {} objects from {} in {:.3f} min.'.format(len(data), txtfile,
                                                           (time.time() - t0) / 60 ) )
 
     data = data.loc[data['objtype'].str.contains(r'G')] # filter just on galaxies
@@ -228,11 +228,10 @@ def read_ned(nedtxtfile, zcut=False, nrows=None, nside=64):
 if __name__ == '__main__':
     
     NLSGAdir = os.getenv('LSLGA_DIR')
-    nedtxtfile = os.path.join(NLSGAdir, 'sample', 'ned-d25min10.txt')
+    txtfile = os.path.join(NLSGAdir, 'sample', 'ned-d25min10.txt')
     
-    data, out = read_ned(nedtxtfile, zcut=False, nrows=None) # 1000)
+    data, out = read_ned(txtfile, zcut=False, nrows=None) # 1000)
 
-    nedfitsfile = os.path.join(NLSGAdir, 'sample', 'large-galaxies-parent.fits')
-    #nedfitsfile = os.path.join(NLSGAdir, 'sample', 'ned-d25min10.fits')
-    print('Writing {}'.format(nedfitsfile))
-    out.write(nedfitsfile, overwrite=True)
+    fitsfile = os.path.join(NLSGAdir, 'sample', 'large-galaxies-parent.fits')
+    print('Writing {}'.format(fitsfile))
+    out.write(fitsfile, overwrite=True)
