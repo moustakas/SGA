@@ -9,28 +9,6 @@ import pandas as pd
 
 from astropy.table import Table
 
-def _catalog_template(nobj=1):
-    cols = [
-        ('GALAXY', 'S28'), 
-        ('PGC', 'S10'), 
-        ('RA', 'f8'), 
-        ('DEC', 'f8'),
-        ('TYPE', 'S8'),
-        ('MULTIPLE', 'S1'),
-        ('RADIUS', 'f4'),
-        ('BA', 'f4'),
-        ('PA', 'f4'),
-        ('BMAG', 'f4'),
-        ('IMAG', 'f4'),
-        ('VHELIO', 'f4'),
-        ('BRICKNAME', 'S17', (4,))
-        ]
-    catalog = Table(np.zeros(nobj, dtype=cols))
-    catalog['RADIUS'].unit = 'arcsec'
-    catalog['VHELIO'].unit = 'km/s'
-
-    return catalog
-
 def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     """Read and parse the raw HyperLeda catalog.
 
