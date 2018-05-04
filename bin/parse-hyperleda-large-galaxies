@@ -43,7 +43,7 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['galaxy'] = data['objname'].str.strip()
     out['pgc'] = data['pgc']
     out['objtype'] = data['objtype'].astype(str).str.strip()
-    out['ra'] = data['ra']
+    out['ra'] = (data['ra'] * 15).astype('f8')
     out['dec'] = data['dec']
     out['type'] = data['type'].astype(str).str.strip()
     out['bar'] = data['bar'].astype(str).str.strip()
