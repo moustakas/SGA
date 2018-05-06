@@ -26,13 +26,30 @@ def main():
 
     allwise_files = list_allwise_files(ns)
 
+    # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec1_4.html
+    # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec2_1a.html
+    allwise_cols = ['DESIGNATION', 'RA', 'DEC', 'CNTR', 'NB', 'NA',
+                    'CC_FLAGS', 'EXT_FLG', 'PH_QUAL',
+                    #'W1FLUX', 'W1SIGFLUX', 'W2FLUX', 'W2SIGFLUX',
+                    #'W3FLUX', 'W3SIGFLUX', 'W4FLUX', 'W4SIGFLUX',
+                    'W1MPRO', 'W1SIGMPRO', 'W2MPRO', 'W2SIGMPRO',
+                    'W3MPRO', 'W3SIGMPRO', 'W4MPRO', 'W4SIGMPRO',
+                    'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
+                    'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
+                    #'W1MAG_1', 'W1SIGM_1', 'W2MAG_1', 'W2SIGM_1',
+                    #'W3MAG_1', 'W3SIGM_1', 'W4MAG_1', 'W4SIGM_1',
+                    'TMASS_KEY',
+                    'J_M_2MASS', 'J_MSIG_2MASS', 
+                    'H_M_2MASS', 'H_MSIG_2MASS', 
+                    'K_M_2MASS', 'K_MSIG_2MASS']
+
     tree, nobj, morecols = read_external(ns.external, ns)
 
     # get the data type of the match
     part, path = allwise_files[0]
 
     print('Initializing output catalog.')
-    peek = fitsio.read(path, 1, upper=True, rows=0)
+    peek = fitsio.read(path, 1, upper=True, rows=0, columns=allwise_cols)
     matched_catalog = sharedmem.empty(nobj, dtype=peek.dtype)
     matched_catalog['DESIGNATION'] = 'NULL'
 
@@ -52,7 +69,7 @@ def main():
         def work(part, path):
             try:
                 print('Reading {}'.format(path))
-                objects = fitsio.read(path, 1, upper=True)
+                objects = fitsio.read(path, 1, upper=True, columns=allwise_cols)
             except:
                 if ns.ignore_errors:
                     print ("IO Error on %s" %path)
@@ -148,7 +165,7 @@ def radec2pos(ra, dec):
 
 def read_external(filename, ns):
     t0 = time()
-    cat = fitsio.FITS(filename, upper=True)[1][:]
+    cat = fitsio.FITS(filename, upper=True, columns=['RA', 'DEC'])[1][:]
 
     if ns.verbose:
         print("Reading external catalog took %g seconds." % (time() - t0))
