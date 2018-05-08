@@ -62,9 +62,11 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['d25'] = (0.1 * 10**data['logd25'].astype('f4')).astype('f4') # [arcmin]
     out['r25'] = (0.1 * 10**data['logr25'].astype('f4')).astype('f4') # [arcmin]
     out['pa'] = data['pa'].astype('f4')
+
     out['bt'] = data['bt'].astype('f4')
     out['it'] = data['it'].astype('f4')
     out['kt'] = data['kt'].astype('f4')
+
     out['modbest'] = data['modbest'].astype('f4')
 
     # Convert to an astropy Table
@@ -86,15 +88,17 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     median_bi = 1.52
     
     out.add_column(Column(name='mag', dtype='f4', length=ngal))
-    out['mag'] = out['bt']
+    out['mag'] = ma.getdata(out['bt'])
     
-    need = np.isnan(out['mag']) * np.isfinite(out['kt'])
+    need = np.isnan(ma.getdata(out['mag'])) * np.isfinite(ma.getdata(out['kt']))
     if np.sum(need) > 0:
-        out['mag'][need] = out['kt'] + median_bk
+        out['mag'][need] = ma.getdata(out['kt'][need]) + median_bk
     
-    need = np.isnan(out['mag']) * np.isfinite(out['it'])
+    need = np.isnan(ma.getdata(out['mag'])) * np.isfinite(ma.getdata(out['it']))
     if np.sum(need) > 0:
-        out['mag'][need] = out['it'] + median_bi
+        out['mag'][need] = ma.getdata(out['it'][need]) + median_bi
+
+    #out[np.isnan(ma.getdata(out['mag']))]
 
     # To get the mean surface brightness (in mag/arcsec2) within D25 do (where
     # D25 is in arcmin):
