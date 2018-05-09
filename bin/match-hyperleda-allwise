@@ -1,0 +1,268 @@
+#!/usr/bin/env python
+
+from __future__ import print_function, division
+
+import os, sys, re
+import numpy as np
+
+from legacypipe.internal import sharedmem
+
+import argparse
+import os, sys
+from time import time
+from scipy.spatial import cKDTree as KDTree
+
+import fitsio
+import platform
+
+print('Running from %s' % platform.node())
+
+def main():
+    ns = parse_args()
+        
+    if ns.ignore_errors:
+        print("Warning: *** Will ignore broken catalog files ***")
+        print("         *** Disable -I for final data product. ***")
+
+    allwise_files = list_allwise_files(ns)
+
+    # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec1_4.html
+    # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec2_1a.html
+    allwise_cols = ['DESIGNATION', 'RA', 'DEC', 'CNTR', 'NB', 'NA',
+                    'CC_FLAGS', 'EXT_FLG', 'PH_QUAL',
+                    #'W1FLUX', 'W1SIGFLUX', 'W2FLUX', 'W2SIGFLUX',
+                    #'W3FLUX', 'W3SIGFLUX', 'W4FLUX', 'W4SIGFLUX',
+                    'W1MPRO', 'W1SIGMPRO', 'W2MPRO', 'W2SIGMPRO',
+                    'W3MPRO', 'W3SIGMPRO', 'W4MPRO', 'W4SIGMPRO',
+                    'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
+                    'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
+                    #'W1MAG_1', 'W1SIGM_1', 'W2MAG_1', 'W2SIGM_1',
+                    #'W3MAG_1', 'W3SIGM_1', 'W4MAG_1', 'W4SIGM_1',
+                    'TMASS_KEY',
+                    'J_M_2MASS', 'J_MSIG_2MASS', 
+                    'H_M_2MASS', 'H_MSIG_2MASS', 
+                    'K_M_2MASS', 'K_MSIG_2MASS']
+
+    tree, nobj, morecols = read_external(ns.external, ns)
+
+    # get the data type of the match
+    part, path = allwise_files[0]
+
+    print('Initializing output catalog.')
+    peek = fitsio.read(path, 1, upper=True, rows=0, columns=allwise_cols)
+    matched_catalog = sharedmem.empty(nobj, dtype=peek.dtype)
+    matched_catalog['DESIGNATION'] = 'NULL'
+
+    matched_distance = sharedmem.empty(nobj, dtype='f4')
+
+    # convert to radian
+    tol = ns.tolerance / (60. * 60.)  * (np.pi / 180)
+
+    matched_distance[:] = tol
+    nprocessed = np.zeros((), dtype='i8')
+    nmatched = np.zeros((), dtype='i8')
+    ntotal = np.zeros((), dtype='i8')
+    t0 = time()
+
+    print('Starting multiprocessing with {} cores.'.format(ns.numproc))
+    with sharedmem.MapReduce(np=ns.numproc) as pool:
+        def work(part, path):
+            try:
+                print('Reading {}'.format(path))
+                objects = fitsio.read(path, 1, upper=True, columns=allwise_cols)
+            except:
+                if ns.ignore_errors:
+                    print ("IO Error on %s" %path)
+                    return None, None, None
+                else:
+                    raise
+        
+            pos = radec2pos(objects['RA'], objects['DEC'])
+            print('Querying KD tree')
+            d, i = tree.query(pos, 1)
+            assert (objects['DESIGNATION'] != b'NULL').all()
+            with pool.critical:
+                mask = d < matched_distance[i]
+                i = i[mask]
+                matched_catalog[i] = objects[mask]
+                matched_distance[i] = d[mask]
+            matched = mask.sum()
+
+            return part, matched, len(objects)
+
+        def reduce(part, matched, total):
+            if part is None:
+                return
+            nprocessed[...] += 1
+            nmatched[...] += matched
+            ntotal[...] += total
+            if ns.verbose:
+                print("Processed %d files, %g / second, matched %d / %d objects."
+                      % (nprocessed, nprocessed / (time() - t0), nmatched, ntotal)
+                      )
+
+        pool.map(work, allwise_files, star=True, reduce=reduce)
+
+        nrealmatched = (matched_catalog['DESIGNATION'] != b'NULL').sum()
+        if ns.verbose:
+            print("Processed %d files, %g / second, matched %d / %d objects into %d slots."
+                  % (nprocessed, nprocessed / (time() - t0), nmatched, ntotal, nrealmatched))
+
+        try:
+            os.makedirs(os.path.dirname(ns.dest))
+        except OSError:
+            pass
+        header = {}
+
+        header['NMATCHED'] = nrealmatched
+        header['NCOLLISION'] = nmatched - nrealmatched
+        header['TOL_ARCSEC'] = ns.tolerance
+
+        # Optionally add the new columns
+        if len(morecols) > 0:
+            newdtype = matched_catalog.dtype.descr
+    
+            for coldata, col in zip( morecols, ns.copycols ):
+                newdtype = newdtype + [(col, coldata.dtype)]
+            newdtype = np.dtype(newdtype)
+        
+            _matched_catalog = np.empty(matched_catalog.shape, dtype=newdtype)
+            for field in matched_catalog.dtype.fields:
+                _matched_catalog[field] = matched_catalog[field]
+            for coldata, col in zip( morecols, ns.copycols ):
+                _matched_catalog[col] = coldata
+                
+            matched_catalog = _matched_catalog.copy()
+            del _matched_catalog
+
+        for format in ns.format:
+            save_file(ns.dest, matched_catalog, header, format)
+
+def save_file(filename, data, header, format):
+    basename = os.path.splitext(filename)[0]
+    if format == 'fits':
+        filename = basename + '.fits'
+        print('Writing {}'.format(filename))
+        fitsio.write(filename, data, extname='MATCHED', header=header, clobber=True)
+    elif format == 'hdf5':
+        filename = basename + '.hdf5'
+        import h5py
+        with h5py.File(filename, 'w') as ff:
+            dset = ff.create_dataset('MATCHED', data=data)
+            for key in header:
+                dset.attrs[key] = header[key]
+    else:
+        raise ValueError("Unknown format")
+
+def radec2pos(ra, dec):
+    pos = np.empty(len(ra), ('f4', 3))
+    pos[:, 2] = np.sin(dec / 180. * np.pi)
+    pos[:, 1] = np.cos(dec / 180. * np.pi)
+    pos[:, 0] = pos[:, 1]
+    pos[:, 0] *= np.sin(ra / 180. * np.pi)
+    pos[:, 1] *= np.cos(ra / 180. * np.pi)
+    return pos
+
+def read_external(filename, ns):
+    t0 = time()
+    cat = fitsio.FITS(filename, upper=True, columns=['RA', 'DEC'])[1][:]
+
+    if ns.verbose:
+        print("Reading external catalog took %g seconds." % (time() - t0))
+        print("Found %d objects." % len(cat))
+
+    t0 = time()
+    for raname, decname in [
+            ('RA', 'DEC'), 
+            ('PLUG_RA', 'PLUG_DEC')
+            ]:
+        if raname in cat.dtype.names \
+        and decname in cat.dtype.names: 
+            ra = cat[raname]
+            dec = cat[decname]
+            if ns.verbose:
+                print('Using %s/%s for positions.' % (raname, decname))
+            break
+    else:
+        raise KeyError("No RA/DEC or PLUG_RA/PLUG_DEC in the external catalog")
+
+    pos = radec2pos(ra, dec)
+    # work around NERSC overcommit issue.
+    pos = sharedmem.copy(pos)
+
+    tree = KDTree(pos)
+    if ns.verbose:
+        print("Building KD-Tree took %g seconds." % (time() - t0))
+
+    morecols = []
+    if ns.copycols is not None:
+        for col in np.atleast_1d(ns.copycols):
+            if col not in cat.dtype.names:
+                print('Column {} does not exist in external catalog!'.format(col))
+                raise IOError
+            morecols.append(cat[col])
+
+    return tree, len(cat), morecols
+
+def list_allwise_files(ns):
+    t0 = time()
+
+    if ns.filelist is not None:
+        def _parse_filename(filename):
+            match = re.search('wise-allwise-cat-(part\d{2})\.fits',
+                              os.path.basename(filename))
+            if not match: raise ValueError
+            part = match.group(1)
+            return part
+        
+        d = dict([(_parse_filename(fn.strip()), fn.strip()) 
+            for fn in open(ns.filelist, 'r').readlines()])
+    else:
+        d = dict(iter_tractor(ns.src))
+
+    if ns.verbose:
+        print('Enumerated %d files in %g seconds' % (
+            len(d), time() - t0))
+
+    allwise_files = sorted(d.items())
+
+    return allwise_files
+    
+def parse_args():
+    ap = argparse.ArgumentParser(
+    description="""Match to an external catalogs.
+        """
+        )
+
+    ap.add_argument("external", help="External catalog. e.g. /global/project/projectdirs/cosmo/work/sdss/cats/specObj-dr12.fits")
+    ap.add_argument("src", help="Path to the root directory of all tractor files")
+    ap.add_argument("dest", help="Path to the output file")
+
+    ap.add_argument('-f', "--format", choices=['fits', 'hdf5'], nargs='+', default=["fits"],
+        help="Format of the output file")
+
+    ap.add_argument('-t', "--tolerance", default=1.0, type=float,
+        help="Tolerance of the angular distance for a match, in arcseconds")
+
+    ap.add_argument('-F', "--filelist", default=None,
+        help="list of tractor brickfiles to use; this will avoid expensive walking of the path.")
+
+    ap.add_argument('-b', "--bricklist", 
+        help="""Filename with list of bricknames to include. 
+                If not set, all bricks in src are included, sorted by brickname.
+            """)
+
+    ap.add_argument('-v', "--verbose", action='store_true')
+
+    ap.add_argument('-I', "--ignore-errors", action='store_true')
+
+    ap.add_argument("--numproc", type=int, default=None,
+        help="""Number of concurrent processes to use. 0 for sequential execution. 
+            Default is to use OMP_NUM_THREADS, or the number of cores on the node.""")
+
+    ap.add_argument("--copycols", nargs='*', help="List of columns to copy from external to matched output catalog (e.g., MJD, FIBER, PLATE)", default=None)
+
+    return ap.parse_args()
+
+if __name__ == '__main__':
+    main() 
