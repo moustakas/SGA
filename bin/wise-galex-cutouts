@@ -93,12 +93,12 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
 
     #tt = dict(image='Image', model='Model', resid='Resid')
     for img, tag in zip(coimgs, tags):
-        outfn = '{}-grz-{}'.format(prefix, tag)
-        fitsio.write('{}.fits'.format(outfn), img, clobber=True)
+        #outfn = '{}-grz-{}'.format(prefix, tag)
+        #fitsio.write('{}.fits'.format(outfn), img, clobber=True)
         
         fig, ax = plt.subplots(figsize=(8, 8))
         dimshow(img, ticks=False)
-        fig.savefig('{}.png'.format(outfn))
+        fig.savefig('{}-grz-{}.png'.format(prefix, tag))
 
     # Find unWISE tiles overlapping
     tiles = unwise_tiles_touching_wcs(wcs)
@@ -196,21 +196,21 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
         fitsio.write('{}-{}.fits'.format(outfn, 'image'), img, clobber=True)
         
         lo, hi = np.percentile(img, [25,99])
-
-        fig, ax = plt.subplots(figsize=(8, 8))
-        dimshow(img, vmin=lo, vmax=hi, ticks=False)
-        fig.savefig('{}-{}.png'.format(outfn, 'image'))
-
-        fig, ax = plt.subplots(figsize=(8, 8))
-        dimshow(mod, vmin=lo, vmax=hi, ticks=False)
-        fig.savefig('{}-{}.png'.format(outfn, 'model'))
-
         resid = img - mod
         mx = np.abs(resid).max()
 
-        fig, ax = plt.subplots(figsize=(8, 8))
-        dimshow(resid, vmin=-mx, vmax=mx, ticks=False)
-        fig.savefig('{}-{}.png'.format(outfn, 'resid'))
+        if False:
+            fig, ax = plt.subplots(figsize=(8, 8))
+            dimshow(img, vmin=lo, vmax=hi, ticks=False)
+            fig.savefig('{}-{}.png'.format(outfn, 'image'))
+
+            fig, ax = plt.subplots(figsize=(8, 8))
+            dimshow(mod, vmin=lo, vmax=hi, ticks=False)
+            fig.savefig('{}-{}.png'.format(outfn, 'model'))
+
+            fig, ax = plt.subplots(figsize=(8, 8))
+            dimshow(resid, vmin=-mx, vmax=mx, ticks=False)
+            fig.savefig('{}-{}.png'.format(outfn, 'resid'))
 
     # Color WISE images --
 
