@@ -100,8 +100,6 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
         dimshow(img, ticks=False)
         fig.savefig('{}.png'.format(outfn))
 
-    import pdb ; pdb.set_trace()
-
     # Find unWISE tiles overlapping
     tiles = unwise_tiles_touching_wcs(wcs)
     print('Cut to', len(tiles), 'unWISE tiles')
@@ -189,14 +187,12 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
             comods[iband][Yo,Xo] += mod[Yi,Xi]
             con   [iband][Yo,Xo] += 1
 
-    import pdb ; pdb.set_trace()
-
     for img,mod,n in zip(coimgs, comods, con):
         img /= np.maximum(n, 1)
         mod /= np.maximum(n, 1)
 
     for band,img,mod in zip(wbands, coimgs, comods):
-        outfn = '{}-{}'.format(prefix, band)
+        outfn = '{}-W{}'.format(prefix, band)
         fitsio.write('{}-{}.fits'.format(outfn, 'image'), img, clobber=True)
         
         lo, hi = np.percentile(img, [25,99])
@@ -357,8 +353,6 @@ if __name__ == '__main__':
                                        wise_pixscale=opt.wise_pixscale, survey_dir=opt.survey_dir,
                                        unwise_dir=unwise_dir)
 
-
-    import pdb ; pdb.set_trace()
 
     H, W = wcs.shape
     ralo,declo = wcs.pixelxy2radec(W,1)
