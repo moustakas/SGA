@@ -41,7 +41,7 @@ def qa_binned_radec(cat, nside=64, png=None):
                         verbose=False, clip_lo='!1', cmap='viridis',
                         plot_type='healpix', basemap=basemap,
                         label=r'$N$(Large Galaxies) / deg$^2$')
-        plt.suptitle('Parent Sample')
+        #plt.suptitle('Parent Sample')
     
     if png:
         fig.savefig(png)

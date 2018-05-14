@@ -2,7 +2,7 @@
 
 from __future__ import print_function, division
 
-import os
+import os, argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import fitsio
@@ -23,21 +23,22 @@ from tractor import (Tractor, NanoMaggies, LinearPhotoCal, ConstantFitsWcs,
 # UGH, copy-n-pasted below...
 #from decals_web.map.views import _unwise_to_rgb
 
-def wise_cutouts(ra, dec, radius, ps, pixscale=2.75, survey_dir=None,
-                 unwise_dir=None):
-    '''
+def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
+                              prefix='cutouts', survey_dir=None,
+                              unwise_dir=None):
+    '''Generate Legacy Survey and WISE cutouts.
+    
     radius in arcsec.
-    pixscale: WISE pixel scale in arcsec/pixel;
-        make this smaller than 2.75 to oversample.
+    
+    wise_pixscale: WISE pixel scale in arcsec/pixel; make this smaller than 2.75
+    to oversample.
+
     '''
 
-    if unwise_dir is None:
-        unwise_dir = os.environ.get('UNWISE_COADDS_DIR')
-
-    npix = int(np.ceil(radius / pixscale))
+    npix = int(np.ceil(radius / wise_pixscale))
     print('Image size:', npix)
     W = H = npix
-    pix = pixscale / 3600.
+    pix = wise_pixscale / 3600.
     wcs = Tan(ra, dec, (W+1)/2., (H+1)/2., -pix, 0., 0., pix,float(W),float(H))
     # Find DECaLS bricks overlapping
     survey = LegacySurveyData(survey_dir=survey_dir)
@@ -65,7 +66,7 @@ def wise_cutouts(ra, dec, radius, ps, pixscale=2.75, survey_dir=None,
     #return wcs,T
 
     # Pull out DECaLS coadds (image, model, resid).
-    dwcs = wcs.scale(2. * pixscale / 0.262)
+    dwcs = wcs.scale(2. * wise_pixscale / 0.262)
     dh,dw = dwcs.shape
     print('DECaLS resampled shape:', dh,dw)
     tags = ['image', 'model', 'resid']
@@ -82,7 +83,7 @@ def wise_cutouts(ra, dec, radius, ps, pixscale=2.75, survey_dir=None,
             continue
         print('Resampling', len(Yo), 'pixels from', b)
         xl,xh,yl,yh = Xi.min(), Xi.max(), Yi.min(), Yi.max()
-        #print('python legacypipe/runbrick.py -b %s --zoom %i %i %i %i --outdir cluster --pixpsf --splinesky --pipe --no-early-coadds' %
+        #print('python legacypipe/runbrick.py -b %s --zoom %i %i %i %i --outdir cluster --pixpsf --splinesky --pipe --no-early-coadds' % 
         #      (b, xl-5, xh+5, yl-5, yh+5) + ' -P \'pickles/cluster-%(brick)s-%%(stage)s.pickle\'')
         for i,tag in enumerate(tags):
             fn = survey.find_file(tag+'-jpeg', brick=b)
@@ -91,11 +92,13 @@ def wise_cutouts(ra, dec, radius, ps, pixscale=2.75, survey_dir=None,
             coimgs[i][Yo,Xo,:] = img[Yi,Xi,:]
 
     tt = dict(image='Image', model='Model', resid='Resid')
-    for img,tag in zip(coimgs, tags):
-        plt.clf()
+    for img, tag in zip(coimgs, tags):
+        fig, ax = plt.subplots(figsize=(8, 8))
         dimshow(img, ticks=False)
-        plt.title('DECaLS grz %s' % tt[tag])
-        ps.savefig()
+        #plt.title('DECaLS grz %s' % tt[tag])
+        fig.savefig('{}-LS-{}.png'.format(prefix, tag))
+
+    import pdb ; pdb.set_trace()
 
     # Find unWISE tiles overlapping
     tiles = unwise_tiles_touching_wcs(wcs)
@@ -321,14 +324,14 @@ def galex_rgb(imgs, bands, **kwargs):
 
 if __name__ == '__main__':
 
-    import argparse
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-r', '--ra', type=float,  default=329.0358)
     parser.add_argument('-d', '--dec', type=float, default=  1.3909)
     parser.add_argument('--radius', type=float, default=90., help='Cutout radius (arcsec)')
-    parser.add_argument('--survey-dir', help='Legacy Survey base directory')
-    parser.add_argument('--base', help='Base filename for output plots', default='cutouts')
+    parser.add_argument('--wise-pixscale', type=float, default=2.75 / 2, help='WISE pixel scale.')
+    parser.add_argument('--survey-dir', help='Legacy Survey directory.')
+    parser.add_argument('--prefix', help='Prefix to prepend to all the output files.', default='cutouts')
     parser.add_argument('--galex-dir', help='Try making GALEX cutouts too?')
     parser.add_argument('--unwise-dir', help='Path to unWISE coadds.')
 
@@ -338,21 +341,24 @@ if __name__ == '__main__':
     #ra,dec = 329.0358,1.3909  # horrible fit
     #ra,dec = 244.0424,6.9179
 
-    # arcsec
-    radius = opt.radius
+    if unwise_dir is None:
+        unwise_dir = os.environ.get('UNWISE_COADDS_DIR')
+    else:
+        unwise_dir = opt.unwise_dir
 
-    ps = PlotSequence(opt.base)
+    #ps = PlotSequence(opt.base)
 
-    plt.figure(figsize=(4,4))
-    plt.subplots_adjust(left=0.005, right=0.995, bottom=0.005, top=0.995)
+    #plt.figure(figsize=(4,4))
+    #plt.subplots_adjust(left=0.005, right=0.995, bottom=0.005, top=0.995)
 
-    wcs, T = wise_cutouts(opt.ra, opt.dec, radius, ps,
-                         pixscale=2.75 / 2.,
-                         survey_dir=opt.survey_dir,
-                         unwise_dir=opt.unwise_dir)
+    wcs, T = legacysurvey_wise_cutouts(opt.ra, opt.dec, opt.radius, prefix=opt.prefix,
+                                       wise_pixscale=wise_pixcale, survey_dir=opt.survey_dir,
+                                       unwise_dir=unwise_dir)
 
 
-    H,W = wcs.shape
+    import pdb ; pdb.set_trace()
+
+    H, W = wcs.shape
     ralo,declo = wcs.pixelxy2radec(W,1)
     rahi,dechi = wcs.pixelxy2radec(1,H)
     print('RA',  ralo,rahi)

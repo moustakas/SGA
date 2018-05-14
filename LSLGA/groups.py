@@ -23,7 +23,7 @@ def fof_groups(cat, linking_length=2, verbose=True):
     """
     from pydl.pydlutils.spheregroup import spheregroup
 
-    grp, mult, frst, nxt = spheregroup(cat['ra'], cat['dec'], link / 60.0)
+    grp, mult, frst, nxt = spheregroup(cat['ra'], cat['dec'], linking_length / 60.0)
     ngrp = max(grp) + 1
 
     if verbose:
