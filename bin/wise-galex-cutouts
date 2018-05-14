@@ -333,7 +333,7 @@ if __name__ == '__main__':
     parser.add_argument('--survey-dir', help='Legacy Survey directory.')
     parser.add_argument('--prefix', help='Prefix to prepend to all the output files.', default='cutouts')
     parser.add_argument('--galex-dir', help='Try making GALEX cutouts too?')
-    parser.add_argument('--unwise-dir', help='Path to unWISE coadds.')
+    parser.add_argument('--unwise-dir', default=None, help='Path to unWISE coadds.')
 
     opt = parser.parse_args()
 
@@ -341,7 +341,7 @@ if __name__ == '__main__':
     #ra,dec = 329.0358,1.3909  # horrible fit
     #ra,dec = 244.0424,6.9179
 
-    if unwise_dir is None:
+    if opt.unwise_dir is None:
         unwise_dir = os.environ.get('UNWISE_COADDS_DIR')
     else:
         unwise_dir = opt.unwise_dir
