@@ -352,7 +352,7 @@ if __name__ == '__main__':
     #plt.subplots_adjust(left=0.005, right=0.995, bottom=0.005, top=0.995)
 
     wcs, T = legacysurvey_wise_cutouts(opt.ra, opt.dec, opt.radius, prefix=opt.prefix,
-                                       wise_pixscale=opt.wise_pixcale, survey_dir=opt.survey_dir,
+                                       wise_pixscale=opt.wise_pixscale, survey_dir=opt.survey_dir,
                                        unwise_dir=unwise_dir)
 
 
