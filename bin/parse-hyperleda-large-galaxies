@@ -20,9 +20,10 @@ from astrometry.libkd.spherematch import (match_radec, tree_open, tree_search_ra
 def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     """Read and parse the raw HyperLeda catalog.
 
-    Read 2118186 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10.txt in 0.171 min.
-    Total time to convert to an astropy Table = 0.174 min
-    Writing /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10.fits
+    Read 1376864 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13.txt in 6.300 sec. 
+    Total time to convert to an astropy Table = 6.730 sec
+
+    Writing /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13.fits
 
     real    1m4.687s
     user    1m20.565s
@@ -40,8 +41,9 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     t0 = time.time()
     data = pd.read_csv(txtfile, delimiter='|', comment='#', na_values='--',
                        names=names, nrows=nrows, dtype=dtype)
-    print('Read {} objects from {} in {:.3f} min.'.format(len(data), txtfile,
-                                                          (time.time() - t0) / 60 ) )
+    
+    print('Read {} objects from {} in {:.3f} sec.'.format(len(data), txtfile,
+                                                          time.time() - t0 ) )
     data = data.replace(r'^\s*$', np.nan, regex=True)  # replace blank entries with NaN
 
     if zcut:
@@ -76,8 +78,11 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     print('Total time to convert to an astropy Table = {:.3f} sec'.format( time.time() - t0 ))
 
     # Add a couple more columns
-    out.add_column(Column(name='z', dtype='f4', length=ngal))
-    out['z'] = data['v'].astype('f4') / 299792.458
+    out.add_column(Column(name='z', dtype='f4', data=np.empty(ngal)*np.nan))
+    out.add_column(Column(name='sb_d25', dtype='f4', length=ngal)) # surface brightness within D(25)
+
+    goodz = data['v'].notnull().values
+    out['z'][goodz] = (data['v'][goodz].values.astype('f4') / 299792.458).astype('f4')
 
     # Merge all the various magnitudes into a single magnitude.  Here's a little
     # snippet of code for getting the mean Bt-K and Bt-I magnitudes:
@@ -98,140 +103,26 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     if np.sum(need) > 0:
         out['mag'][need] = ma.getdata(out['it'][need]) + median_bi
 
+    # Vega --> AB!
+    goodphot = np.isfinite(ma.getdata(out['mag']))
+    out['mag'][goodphot] + 0.09
+
     #out[np.isnan(ma.getdata(out['mag']))]
 
     # To get the mean surface brightness (in mag/arcsec2) within D25 do (where
     # D25 is in arcmin):
-    #    mu = m + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(D25)
-
-    ## Match to AllWISE
-    #rad = 1.0 / 3600.0 # [deg]
-    #
-    #t0 = time.time()
-    #leda_kd = tree_build_radec(out['ra'], out['dec'])
-    #print('Total time to build a KD tree = {:.3f} sec'.format( time.time() - t0 ))
-    #
-    #t0 = time.time()
-    #allwise_catalog_dec_range = [
-    #    (-90., -74.240000),
-    #    (-74.240000, -67.927300),
-    #    (-67.927300, -62.944400),
-    #    (-62.944400, -58.612800),
-    #    (-58.612800, -54.775900),
-    #    (-54.775900, -51.267600),
-    #    (-51.267600, -47.958100),
-    #    (-47.958100, -44.807200),
-    #    (-44.807200, -41.784400),
-    #    (-41.784400, -38.860700),
-    #    (-38.860700, -36.029800),
-    #    (-36.029800, -33.257200),
-    #    (-33.257200, -30.551400),
-    #    (-30.551400, -27.896500),
-    #    (-27.896500, -25.250300),
-    #    (-25.250300, -22.629900),
-    #    (-22.629900, -20.043100),
-    #    (-20.043100, -17.452900),
-    #    (-17.452900, -14.862900),
-    #    (-14.862900, -12.277900),
-    #    (-12.277900, -9.684500),
-    #    (-9.684500, -7.083500),
-    #    (-7.083500, -4.476500),
-    #    (-4.476500, -1.861900),
-    #    (-1.861900, 0.746200),
-    #    (0.746200, 3.357000),
-    #    (3.357000, 5.987600),
-    #    (5.987600, 8.619900),
-    #    (8.619900, 11.275200),
-    #    (11.275200, 13.943800),
-    #    (13.943800, 16.641700),
-    #    (16.641700, 19.362100),
-    #    (19.362100, 22.111600),
-    #    (22.111600, 24.906400),
-    #    (24.906400, 27.733200),
-    #    (27.733200, 30.605700),
-    #    (30.605700, 33.546100),
-    #    (33.546100, 36.548700),
-    #    (36.548700, 39.645300),
-    #    (39.645300, 42.841900),
-    #    (42.841900, 46.153000),
-    #    (46.153000, 49.606100),
-    #    (49.606100, 53.260800),
-    #    (53.260800, 57.180600),
-    #    (57.180600, 61.619500),
-    #    (61.619500, 66.823700),
-    #    (66.823700, 73.620200),
-    #    (73.620200, 90.),
-    #]
-    #allwise_catalog_dec_range = allwise_catalog_dec_range[:1]
-    #
-    #allwisedir = '/global/project/projectdirs/cosmo/data/wise/allwise-catalog/'
-    #
-    #
-    #
-    #if False:
-    #    allwise = list()
-    #    for ii, decrange in enumerate(allwise_catalog_dec_range):
-    #        catfn = os.path.join(allwisedir, 'wise-allwise-cat-part{:02d}.fits'.format(ii+1))
-    #        print('Reading {}'.format(catfn))
-    #        allwise.append(Table(fitsio.read(catfn, columns=('RA', 'DEC'), ext=1)))
-    #    allwise = vstack(allwise)
-    #    print('Total time to read AllWISE = {:.3f} min'.format( (time.time() - t0) / 60 ))
-    #
-    #    t0 = time.time()
-    #    I, J, d = match_radec(allwise['RA'].data, allwise['DEC'].data,
-    #                          ma.getdata(out['ra']), ma.getdata(out['dec']),
-    #                          rad, nearest=True)
-    #    print('Total time to match to AllWISE = {:.3f} min'.format( (time.time() - t0) / 60 ))
-    #
-    #    peek = fitsio.read(catfn, 1, upper=True, rows=0)
-    #    allwise_out = Table(sharedmem.empty(ngal, dtype=peek.dtype))
-    #    allwise_out['RA'] = -1
-    #    allwise_out['DEC'] = -1
-    #
-    #    allwise_out[J] = allwise[I]
-    #
-    #for ii, decrange in enumerate(allwise_catalog_dec_range):
-    #    kdfn = os.path.join(allwisedir, 'wise-allwise-cat-part{:02d}-radec.kd'.format(ii+1))
-    #    catfn = kdfn.replace('-radec.kd', '.fits')
-    #
-    #    if ii == 0:
-    #        peek = fitsio.read(catfn, 1, upper=True, rows=0)
-    #        allwise_out = Table(sharedmem.empty(ngal, dtype=peek.dtype))
-    #        allwise_out['RA'] = -1
-    #        allwise_out['DEC'] = -1
-    #        
-    #    kd = tree_open(kdfn)
-    #
-    #    these = np.where( (out['dec'] >= decrange[0]) * (out['dec'] <= decrange[1]) )[0]
-    #    T = list()
-    #    if len(these) > 0:
-    #        ra, dec = out['ra'][these].data, out['dec'][these].data
-    #
-    #        I = [tree_search_radec(kd, rr, dd, 1.0 / 3600.0) for (rr, dd) in zip(ra, dec)]
-    #        if len(I) > 0:
-    #            import pdb ; pdb.set_trace()
-    #            I = np.hstack(I)
-    #            allwise_out[these] = fitsio.read(catfn, 1, rows=I)
-    #
-    #            import pdb ; pdb.set_trace()
-    #return data, out, allwise
+    out['sb_d25'] = out['mag'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(out['d25'])
 
     return data, out
 
 if __name__ == '__main__':
     
     NLSGAdir = os.getenv('LSLGA_DIR')
-    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10.txt')
+    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18may13.txt')
     
     data, out = read_leda(txtfile, zcut=False, nrows=None)
 
     fitsfile = txtfile.replace('.txt', '.fits')
     print('Writing {}'.format(fitsfile))
     out.write(fitsfile, overwrite=True)
-
-    #fitsfile = txtfile.replace('.txt', '-allwise.fits')
-    #print('Writing {}'.format(fitsfile))
-    #allwise.write(fitsfile, overwrite=True)
-
-
 

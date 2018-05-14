@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<script>
+      var openFile = function(event) {
+        var input = event.target;
+
+        var reader = new FileReader();
+        reader.onload = function(){
+          var text = reader.result;
+          var node = document.getElementById('output');
+          node.innerText = text;
+          console.log(reader.result.substring(0, 200));
+        };
+        reader.readAsText(input.files[0]);
+      };
+    </script>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>DECaLS Image List Tool</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/pure/0.6.2/pure-min.css">
+  <style>
+  #main{
+    padding: 0.5em;
+    max-width: 1000px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 200px;
+  }
+  #form{
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  #input{
+    width:100%;
+    height: 100px;
+  }
+  #scale_unit, #layer{
+    height: 2.5em;
+  }
+  #scale{
+    width: 4em;
+  }
+  #list{
+    width: 100%;
+  }
+  .optiongroup{
+    margin-right: 25px;
+  }
+  #list img{
+    margin: 4px;
+    width:180px;
+    height:180px;
+  }
+  .credit{
+    font-size: 80%;
+  }
+  .picture{
+    margin: 3px;
+    border: solid 6px #FFF;
+    width:180px;
+    height:180px;
+    display: inline-block;
+  }
+  .marked{
+    border: solid 6px #0078e7;
+  }
+  </style>
+</head>
+<body>
+<div id="main">
+<div id="form">
+<center>
+<form class="pure-form">
+  <fieldset>
+    <p>
+<script type="text/javascript">
+		
+	function init(){
+
+		var extText = window.frames.messageTxt.document.body.lastChild.lastChild.data;
+		extText = extText.replace(/[\r]/g," ");
+		document.forms[0].nMessage.value = extText;
+	}
+
+	window.onload=init;
+
+</script>
+<iframe name='messageTxt' src='overlap.txt' style='display:none'></iframe>
+<form>
+  <p><textarea id="input" placeholder="a list of RA ad Dec">name     ra     dec
+</textarea> <p>
+    
+<select id="layer" class="optiongroup">
+      <option disabled selected value style="display: none;"> -- Select a layer -- </option>
+      <option value="decals-dr5" id="default-layer">DECaLS DR5</option>
+      <option value="decals-dr5-model">DECaLS DR5 Model</option>
+      <option value="decals-dr5-resid">DECaLS DR5 Residual</option>
+      <option value="mzls+bass-dr6">MzLS+BASS DR6</option>
+      <option value="mzls+bass-dr6-model">MzLS+BASS DR6 Model</option>
+      <option value="mzls+bass-dr6-resid">MzLS+BASS DR6 Residual</option>
+      <option value="sdssco">SDSS</option>
+      <option value="unwise-neo2">unWISE NEO2</option>
+      <option value="unwise-neo3">unWISE NEO3</option>
+      <option value="unwise-w1w2">unWISE</option>
+      <option value="decaps">DECaPS</option>
+      <option value="sfd">SFD Dust</option>
+      <option value="halpha">Halpha</option>
+    </select>
+    <span class="optiongroup">
+      <input type="text" id="scale" value="0.25">
+      <select id="scale_unit">
+        <option value="pixscale" selected>"/pix</option>
+        <option value="zoom">zoom</option>
+      </select>
+    </span>
+    <span class="optiongroup">
+      <input type="checkbox" id="enable_marking"/>Enable marking
+    </span>
+    <button id="generate_output" class="pure-button" disabled>Record marks</button>
+    </p>
+    <p class="credit">Cutout images are from the <a href="http://legacysurvey.org/">Dark Energy Camera Legacy Survey</a>. <a href="https://github.com/yymao/decals-image-list-tool">Web interface</a> by <a href="https://yymao.github.io">Yao-Yuan Mao and Kevin Napier</a>.</p>
+  </fieldset>
+
+</form>
+</center>
+</div>
+<div id="list"></div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+<script>
+var _cols, _i_ra, _i_dec, _has_mark, _delimiter, _scale, _scale_unit, _layer;
+var _output_img_temp = "<img class='picture ${marked}' title='${title}' src='http://legacysurvey.org/viewer/jpeg-cutout/?ra=${ra}&dec=${dec}&${scale_unit}=${scale}&layer=${layer}&size=180'>";
+//var _output_img_temp = "<span title='${title}' class='picture ${marked}'>${ra}<br>${dec}<br>layer=${layer}<br>${scale_unit}=${scale}</span>";
+var _output_link_temp = "<a href='http://skyserver.sdss.org/dr13/en/tools/chart/navi.aspx?ra=${ra}&dec=${dec}'>${img}</a>";
+function parseHeader(line){
+  var line = line.trim().toLowerCase();
+  var has_header = true;
+  _delimiter = /\s+/;
+  if (line.search(",") > -1) _delimiter = ",";
+  _cols = line.split(_delimiter);
+  _i_ra = _cols.indexOf("ra");
+  _i_dec = _cols.indexOf("dec");
+  if (_i_ra == -1 || _i_dec == -1){ // no header
+    if (_cols[_cols.length-1] == "true" || _cols[_cols.length-1] == "false"){
+      _has_mark = true;
+      _cols.pop();
+    }
+    if (_cols.length == 2){
+      _i_ra = 0;
+      _i_dec = 1;
+    }
+    else if (_cols.length > 2){
+      _i_ra = 1;
+      _i_dec = 2;
+    }
+    else{
+      _has_mark = false;
+      $("#list").html("<p>Error! \nPlease make sure the first line is header, and it contains at least \"ra\" and \"dec\". \nOnly supports space/tab/comma-separated tables.</p>");
+      return -1;
+    }
+    _cols = _cols.fill("");
+    has_header = false;
+  }
+  else{ // has header
+    if (_cols[_cols.length-1] == "marked"){
+      _has_mark = true;
+      _cols.pop();
+    }
+  }
+  return has_header;
+}
+function addImage(line) {
+  var items, output, mark;
+  items = line.trim().split(_delimiter);
+  if (_has_mark) mark = (items.pop()=='true');
+  output = _output_img_temp;
+  if (!$("#enable_marking").prop("checked")){
+    output = _output_link_temp.replace(/\${img}/g, _output_img_temp);
+  }
+  output = output.replace(/\${ra}/g, items[_i_ra]);
+  output = output.replace(/\${dec}/g, items[_i_dec]);
+  output = output.replace("${scale_unit}", _scale_unit);
+  output = output.replace("${scale}", _scale);
+  output = output.replace("${layer}", _layer);
+  output = output.replace("${title}", items.map(function(item, i, arr){return _cols[i] + ' = ' + item;}).join('\n'));
+  output = output.replace("${marked}", (mark?"marked":""));
+  $("#list").append(output);
+}
+function run(){
+  var new_layer = $("#layer").val();
+  var new_scale = $("#scale").val();
+  var new_scale_unit = $("#scale_unit").val();
+  
+  if (!_layer){
+    if (!new_layer){
+      new_layer = $("#default-layer").attr("value");
+      $("#default-layer").prop("selected", true);
+    }
+    _layer = new_layer;
+  }
+  if (!_scale) _scale = new_scale;
+  if (!_scale_unit) _scale_unit = new_scale_unit;
+  
+  if (new_layer != _layer && _scale_unit == "zoom"){
+    if (_layer != "sdssco" && new_layer == "sdssco"){
+      new_scale = (parseInt(_scale) - 1).toString();
+    }
+    else if (_layer == "sdssco" && new_layer != "sdssco"){
+      new_scale = (parseInt(_scale) + 1).toString();
+    }
+  }
+  if (new_scale_unit != _scale_unit){
+    if (new_scale_unit == 'zoom'){
+      new_scale = '14';
+    }
+    else {
+      new_scale = '0.25';
+    }
+  }
+  if ($("#list").html()){
+    $(".picture").each(function(){
+      var url = $(this).attr("src");
+      //var url = $(this).html();
+      if (_layer != new_layer) url = url.replace("layer="+_layer, "layer="+new_layer);
+      if (_scale_unit != new_scale_unit || _scale != new_scale) url = url.replace(_scale_unit+"="+_scale, new_scale_unit+"="+new_scale);
+      $(this).attr("src", url);
+      //$(this).html(url);
+    });
+  }
+  else{
+    var lines = $("#input").val().split(/\n/);
+    var has_header = parseHeader(lines[0]);
+    if (has_header == -1) return;
+    if (has_header) lines.shift();
+    lines.forEach(addImage);
+    if ($("#enable_marking").prop("checked")){
+      $(".picture").click(function(){
+        $(this).toggleClass("marked");
+        $("#generate_output").prop("disabled", false);
+      });
+      $("#input").prop("readonly", true);
+      $("#generate_output").addClass("pure-button-primary");
+    }
+    else{
+      $("#input").prop("readonly", false);
+      $("#generate_output").removeClass("pure-button-primary");
+      $("#generate_output").prop("disabled", true);
+    }
+  }
+  if (new_scale != _scale) $("#scale").val(new_scale);
+  _layer = new_layer;
+  _scale = new_scale;
+  _scale_unit = new_scale_unit;
+}
+function new_run(){
+  if (!$("#generate_output").prop("disabled") && 
+      !window.confirm('Are you sure you want to reload the images? You cannot recover the marks you made!')){
+    $("#enable_marking").prop("checked", !$("#enable_marking").prop("checked"));
+    return;
+  }
+  $("#list").empty();
+  run();
+}
+function output(){
+  var out = "";
+  out += _cols.join("\t");
+  out += "\tmarked\n";
+  if (out.trim() == "marked") out = "";
+  out += $(".picture").map(function(){
+    return $(this).attr("title").split(/\n/).map(function(item){
+      return item.substring(item.indexOf(' = ')+3);
+    }).join("\t") + "\t" + $(this).hasClass("marked");
+  }).get().join("\n");
+  $("#input").val(out);
+  $("#generate_output").prop("disabled", true);
+}
+$("form").submit(function(event){event.preventDefault();});
+$("#generate_output").click(output);
+$("#layer").change(run);
+$("#scale").change(run);
+$("#scale_unit").change(run);
+$("#input").change(function(){
+  $("#list").empty();
+  run();
+});
+$("#enable_marking").change(function(){
+  if (!$("#generate_output").prop("disabled") && 
+      !window.confirm("Are you sure you want to reload the images? You cannot recover the marks you made!")){
+    $("#enable_marking").prop("checked", !$("#enable_marking").prop("checked"));
+    return;
+  }
+  $("#list").empty();
+  run();
+});
+$(window).on('beforeunload', function () {
+  if (!$("#generate_output").prop("disabled")){
+    return 'Are you sure you want to close this page? You cannot recover the marks you made!';
+  }
+});
+</script>
+</body>
+</html>
