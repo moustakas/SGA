@@ -91,12 +91,14 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
             img = np.flipud(img)
             coimgs[i][Yo,Xo,:] = img[Yi,Xi,:]
 
-    tt = dict(image='Image', model='Model', resid='Resid')
+    #tt = dict(image='Image', model='Model', resid='Resid')
     for img, tag in zip(coimgs, tags):
+        outfn = '{}-grz-{}'.format(prefix, tag)
+        fitsio.write('{}.fits'.format(outfn), img, clobber=True)
+        
         fig, ax = plt.subplots(figsize=(8, 8))
         dimshow(img, ticks=False)
-        #plt.title('DECaLS grz %s' % tt[tag])
-        fig.savefig('{}-LS-{}.png'.format(prefix, tag))
+        fig.savefig('{}.png'.format(outfn))
 
     import pdb ; pdb.set_trace()
 
@@ -194,48 +196,48 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
         mod /= np.maximum(n, 1)
 
     for band,img,mod in zip(wbands, coimgs, comods):
-        lo,hi = np.percentile(img, [25,99])
-        plt.clf()
-        dimshow(img, vmin=lo, vmax=hi, ticks=False)
-        plt.title('WISE W%i Data' % band)
-        ps.savefig()
+        outfn = '{}-{}'.format(prefix, band)
+        fitsio.write('{}-{}.fits'.format(outfn, 'image'), img, clobber=True)
+        
+        lo, hi = np.percentile(img, [25,99])
 
-        plt.clf()
+        fig, ax = plt.subplots(figsize=(8, 8))
+        dimshow(img, vmin=lo, vmax=hi, ticks=False)
+        fig.savefig('{}-{}.png'.format(outfn, 'image'))
+
+        fig, ax = plt.subplots(figsize=(8, 8))
         dimshow(mod, vmin=lo, vmax=hi, ticks=False)
-        plt.title('WISE W%i Model' % band)
-        ps.savefig()
+        fig.savefig('{}-{}.png'.format(outfn, 'model'))
 
         resid = img - mod
         mx = np.abs(resid).max()
-        plt.clf()
-        dimshow(resid, vmin=-mx, vmax=mx, ticks=False)
-        plt.title('WISE W%i Resid' % band)
-        ps.savefig()
 
+        fig, ax = plt.subplots(figsize=(8, 8))
+        dimshow(resid, vmin=-mx, vmax=mx, ticks=False)
+        fig.savefig('{}-{}.png'.format(outfn, 'resid'))
+
+    # Color WISE images --
 
     #kwa = dict(mn=-0.1, mx=2., arcsinh = 1.)
     kwa = dict(mn=-0.1, mx=2., arcsinh=None)
     rgb = _unwise_to_rgb(coimgs[:2], **kwa)
-    plt.clf()
+    fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
-    plt.title('WISE W1/W2 Data')
-    ps.savefig()
+    fig.savefig('{}-W1W2-image.png'.format(prefix))
+
 
     rgb = _unwise_to_rgb(comods[:2], **kwa)
-    plt.clf()
+    fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
-    plt.title('WISE W1/W2 Model')
-    ps.savefig()
+    fig.savefig('{}-W1W2-model.png'.format(prefix))
 
     kwa = dict(mn=-1, mx=1, arcsinh=None)
     rgb = _unwise_to_rgb([img-mod for img,mod in list(zip(coimgs,comods))[:2]], **kwa)
-    plt.clf()
+    fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
-    plt.title('WISE W1/W2 Resid')
-    ps.savefig()
+    fig.savefig('{}-W1W2-resid.png'.format(prefix))
 
     return wcs, T
-
 
 def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.):
     import numpy as np
