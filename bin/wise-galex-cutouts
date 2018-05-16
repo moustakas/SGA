@@ -63,6 +63,11 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
     T.cut(I)
     print(len(T), 'within ROI')
 
+    # Get the central source.
+    #from astrometry.libkd.spherematch import match_radec
+    #m1, m2, d12 = match_radec(ra, dec, T.ra, T.dec, 1/3600)
+    #print('Half-light radius', T[m2].shapedev_r/60.)
+
     #return wcs,T
 
     # Pull out DECaLS coadds (image, model, resid).
@@ -95,10 +100,10 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
     for img, tag in zip(coimgs, tags):
         #outfn = '{}-grz-{}'.format(prefix, tag)
         #fitsio.write('{}.fits'.format(outfn), img, clobber=True)
-        
+
         fig, ax = plt.subplots(figsize=(8, 8))
         dimshow(img, ticks=False)
-        fig.savefig('{}-grz-{}.png'.format(prefix, tag))
+        fig.savefig('{}-grz-{}.png'.format(prefix, tag), bbox_inches='tight', pad_inches=0)
 
     # Find unWISE tiles overlapping
     tiles = unwise_tiles_touching_wcs(wcs)
@@ -202,15 +207,15 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
         if False:
             fig, ax = plt.subplots(figsize=(8, 8))
             dimshow(img, vmin=lo, vmax=hi, ticks=False)
-            fig.savefig('{}-{}.png'.format(outfn, 'image'))
+            fig.savefig('{}-{}.png'.format(outfn, 'image'), bbox_inches='tight', pad_inches=0)
 
             fig, ax = plt.subplots(figsize=(8, 8))
             dimshow(mod, vmin=lo, vmax=hi, ticks=False)
-            fig.savefig('{}-{}.png'.format(outfn, 'model'))
+            fig.savefig('{}-{}.png'.format(outfn, 'model'), bbox_inches='tight', pad_inches=0)
 
             fig, ax = plt.subplots(figsize=(8, 8))
             dimshow(resid, vmin=-mx, vmax=mx, ticks=False)
-            fig.savefig('{}-{}.png'.format(outfn, 'resid'))
+            fig.savefig('{}-{}.png'.format(outfn, 'resid'), bbox_inches='tight', pad_inches=0)
 
     # Color WISE images --
 
@@ -219,19 +224,19 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
     rgb = _unwise_to_rgb(coimgs[:2], **kwa)
     fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
-    fig.savefig('{}-W1W2-image.png'.format(prefix))
+    fig.savefig('{}-W1W2-image.png'.format(prefix), bbox_inches='tight', pad_inches=0)
 
 
     rgb = _unwise_to_rgb(comods[:2], **kwa)
     fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
-    fig.savefig('{}-W1W2-model.png'.format(prefix))
+    fig.savefig('{}-W1W2-model.png'.format(prefix), bbox_inches='tight', pad_inches=0)
 
     kwa = dict(mn=-1, mx=1, arcsinh=None)
     rgb = _unwise_to_rgb([img-mod for img,mod in list(zip(coimgs,comods))[:2]], **kwa)
     fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
-    fig.savefig('{}-W1W2-resid.png'.format(prefix))
+    fig.savefig('{}-W1W2-resid.png'.format(prefix), bbox_inches='tight', pad_inches=0)
 
     return wcs, T
 
@@ -330,7 +335,7 @@ if __name__ == '__main__':
     parser.add_argument('--wise-pixscale', type=float, default=2.75 / 2, help='WISE pixel scale.')
     parser.add_argument('--survey-dir', help='Legacy Survey directory.')
     parser.add_argument('--prefix', help='Prefix to prepend to all the output files.', default='cutouts')
-    parser.add_argument('--galex-dir', help='Try making GALEX cutouts too?')
+    parser.add_argument('--galex-dir', default=None, help='Path to GALEX coadds.')
     parser.add_argument('--unwise-dir', default=None, help='Path to unWISE coadds.')
 
     opt = parser.parse_args()
@@ -344,10 +349,10 @@ if __name__ == '__main__':
     else:
         unwise_dir = opt.unwise_dir
 
-    #ps = PlotSequence(opt.base)
-
-    #plt.figure(figsize=(4,4))
-    #plt.subplots_adjust(left=0.005, right=0.995, bottom=0.005, top=0.995)
+    if opt.galex_dir is None:
+        galex_dir = os.environ.get('GALEX_DIR')
+    else:
+        galex_dir = opt.galex_dir
 
     wcs, T = legacysurvey_wise_cutouts(opt.ra, opt.dec, opt.radius, prefix=opt.prefix,
                                        wise_pixscale=opt.wise_pixscale, survey_dir=opt.survey_dir,
@@ -360,8 +365,8 @@ if __name__ == '__main__':
     print('RA',  ralo,rahi)
     print('Dec', declo,dechi)
 
-    if opt.galex_dir:
-        fn = os.path.join(opt.galex_dir, 'galex-images.fits')
+    if galex_dir:
+        fn = os.path.join(galex_dir, 'galex-images.fits')
         print('Reading', fn)
         # galex "bricks" (actually just GALEX tiles)
         galex = fits_table(fn)
@@ -391,15 +396,17 @@ if __name__ == '__main__':
         print('-> bricks', galex.brickname)
 
         gbands = ['n','f']
+        nicegbands = ['NUV', 'FUV']
         coimgs = []
         comods = []
+        coresids = []
 
         srcs = read_fits_catalog(T)
         for src in srcs:
             src.freezeAllBut('brightness')
 
 
-        for band in gbands:
+        for niceband, band in zip(nicegbands, gbands):
             J = np.flatnonzero(galex.get('has_'+band))
             print(len(J), 'GALEX tiles have coverage in band', band)
 
@@ -412,7 +419,7 @@ if __name__ == '__main__':
 
             for j in J:
                 brick = galex[j]
-                fn = os.path.join(opt.galex_dir, brick.tilename.strip(),
+                fn = os.path.join(galex_dir, brick.tilename.strip(),
                                   '%s-%sd-intbgsub.fits.gz' % (brick.brickname, band))
                 print(fn)
 
@@ -438,14 +445,13 @@ if __name__ == '__main__':
                 rimg = np.zeros((H,W), np.float32)
                 rimg[Yo,Xo] = img[Yi,Xi]
 
-                plt.clf()
-                plt.imshow(rimg, interpolation='nearest', origin='lower')
-                ps.savefig()
+                #plt.clf()
+                #plt.imshow(rimg, interpolation='nearest', origin='lower')
+                #ps.savefig()
 
                 wt = brick.get(band + 'exptime')
                 coimg[Yo,Xo] += wt * img[Yi,Xi]
                 cowt [Yo,Xo] += wt
-
 
                 x0 = min(Xi)
                 x1 = max(Xi)
@@ -477,15 +483,17 @@ if __name__ == '__main__':
                 tractor = Tractor([tim], srcs)
                 mod = tractor.getModelImage(0)
 
-                print('Tractor image', tim.name)
-                plt.clf()
-                plt.imshow(timg, interpolation='nearest', origin='lower')
-                ps.savefig()
+                #print('Tractor image', tim.name)
+                #fig, ax = plt.subplots(figsize=(8, 8))
+                #dimshow(timg, ticks=False)
+                ##plt.imshow(timg, interpolation='nearest', origin='lower')
+                #fig.savefig('{}-{}-image.png'.format(prefix, niceband))
 
-                print('Tractor model', tim.name)
-                plt.clf()
-                plt.imshow(mod, interpolation='nearest', origin='lower')
-                ps.savefig()
+                #print('Tractor model', tim.name)
+                #fig, ax = plt.subplots(figsize=(8, 8))
+                ##plt.imshow(mod, interpolation='nearest', origin='lower')
+                #dimshow(mod, ticks=False)
+                #fig.savefig('{}-{}-model.png'.format(prefix, niceband))
 
                 tractor.freezeParam('images')
 
@@ -496,37 +504,52 @@ if __name__ == '__main__':
 
                 mod = tractor.getModelImage(0)
 
-                print('Tractor model (forced phot)', tim.name)
-                plt.clf()
-                plt.imshow(mod, interpolation='nearest', origin='lower')
-                ps.savefig()
+                #print('Tractor model (forced phot)', tim.name)
+                #plt.clf()
+                #plt.imshow(mod, interpolation='nearest', origin='lower')
+                #ps.savefig()
 
                 comod[Yo,Xo] += wt * mod[Yi-y0,Xi-x0]
 
-
             coimg /= np.maximum(cowt, 1e-18)
             comod /= np.maximum(cowt, 1e-18)
+            coresid = coimg - comod
             coimgs.append(coimg)
             comods.append(comod)
+            coresids.append(coresid)
 
             print('Coadded image')
-            plt.clf()
-            plt.imshow(coimg, interpolation='nearest', origin='lower')
-            ps.savefig()
+            fig, ax = plt.subplots(figsize=(8, 8))
+            dimshow(coimg, ticks=False)
+            #plt.imshow(coimg, interpolation='nearest', origin='lower')
+            fig.savefig('{}-{}-image.png'.format(opt.prefix, niceband), bbox_inches='tight', pad_inches=0)
 
             print('Coadded model')
-            plt.clf()
-            plt.imshow(comod, interpolation='nearest', origin='lower')
-            ps.savefig()
+            fig, ax = plt.subplots(figsize=(8, 8))
+            dimshow(comod, ticks=False)
+            #plt.imshow(comod, interpolation='nearest', origin='lower')
+            fig.savefig('{}-{}-model.png'.format(opt.prefix, niceband), bbox_inches='tight', pad_inches=0)
+
+            print('Coadded residual')
+            fig, ax = plt.subplots(figsize=(8, 8))
+            dimshow(coresid, ticks=False)
+            #plt.imshow(comod, interpolation='nearest', origin='lower')
+            fig.savefig('{}-{}-resid.png'.format(opt.prefix, niceband), bbox_inches='tight', pad_inches=0)
 
         rgb = galex_rgb(coimgs, gbands)
-        plt.clf()
-        plt.imshow(rgb, interpolation='nearest', origin='lower')
-        ps.savefig()
+        fig, ax = plt.subplots(figsize=(8, 8))
+        dimshow(rgb, ticks=False)
+        #plt.imshow(rgb, interpolation='nearest', origin='lower')
+        fig.savefig('{}-FUVNUV-image.png'.format(opt.prefix), bbox_inches='tight', pad_inches=0)
 
-        print('Model RGB')
         rgb = galex_rgb(comods, gbands)
-        plt.clf()
-        plt.imshow(rgb, interpolation='nearest', origin='lower')
-        ps.savefig()
+        fig, ax = plt.subplots(figsize=(8, 8))
+        dimshow(rgb, ticks=False)
+        #plt.imshow(rgb, interpolation='nearest', origin='lower')
+        fig.savefig('{}-FUVNUV-model.png'.format(opt.prefix), bbox_inches='tight', pad_inches=0)
 
+        rgb = galex_rgb(coresids, gbands)
+        fig, ax = plt.subplots(figsize=(8, 8))
+        dimshow(rgb, ticks=False)
+        #plt.imshow(rgb, interpolation='nearest', origin='lower')
+        fig.savefig('{}-FUVNUV-resid.png'.format(opt.prefix), bbox_inches='tight', pad_inches=0)
