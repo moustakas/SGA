@@ -461,9 +461,8 @@ if __name__ == '__main__':
                 Yi = Yi[K]
                 Xi = Xi[K]
 
-                rimg = np.zeros((H,W), np.float32)
-                rimg[Yo,Xo] = img[Yi,Xi]
-
+                #rimg = np.zeros((H,W), np.float32)
+                #rimg[Yo,Xo] = img[Yi,Xi]
                 #plt.clf()
                 #plt.imshow(rimg, interpolation='nearest', origin='lower')
                 #ps.savefig()
@@ -516,9 +515,9 @@ if __name__ == '__main__':
 
                 tractor.freezeParam('images')
 
-                print('Params:')
-                tractor.printThawedParams()
-            
+                #print('Params:')
+                #tractor.printThawedParams()
+
                 tractor.optimize_forced_photometry(priors=False, shared_params=False)
 
                 mod = tractor.getModelImage(0)
@@ -554,6 +553,9 @@ if __name__ == '__main__':
             dimshow(coresid, ticks=False)
             #plt.imshow(comod, interpolation='nearest', origin='lower')
             fig.savefig('{}-{}-resid.png'.format(opt.prefix, niceband), bbox_inches='tight', pad_inches=0)
+
+            fitsio.write('{}-{}-image.fits'.format(opt.prefix, niceband), coimg, clobber=True)
+            fitsio.write('{}-{}-model.fits'.format(opt.prefix, niceband), comod, clobber=True)
 
         rgb = galex_rgb(coimgs, gbands)
         fig, ax = plt.subplots(figsize=(8, 8))
