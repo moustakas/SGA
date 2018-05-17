@@ -315,7 +315,7 @@ def ra_ranges_overlap(ralo, rahi, ra1, ra2):
     cw41 = x1*y4 - x4*y1
     return np.logical_and(cw32 <= 0, cw41 >= 0)
 
-def galex_rgb(imgs, bands, **kwargs):
+def galex_rgb_official(imgs, bands, **kwargs):
     import numpy as np
     from scipy.ndimage.filters import uniform_filter, gaussian_filter
     nuv,fuv = imgs
@@ -343,6 +343,17 @@ def galex_rgb(imgs, bands, **kwargs):
     blue  /= mx
     rgb = np.clip(np.dstack((red, green, blue)), 0., 1.)
     return rgb
+
+def galex_rgb_dstn(imgs, bands, **kwargs):
+    nuv,fuv = imgs
+    h,w = nuv.shape
+    myrgb = np.zeros((h,w,3), np.float32)
+    lo,hi = -0.0005, 0.01
+    myrgb[:,:,0] = myrgb[:,:,1] = np.clip((nuv - lo) / (hi - lo), 0., 1.)
+    lo,hi = -0.00015, 0.003
+    myrgb[:,:,2] = np.clip((fuv - lo) / (hi - lo), 0., 1.)
+    myrgb[:,:,1] = np.clip((myrgb[:,:,0] + myrgb[:,:,2]*0.2), 0., 1.)
+    return myrgb
 
 if __name__ == '__main__':
 
@@ -557,7 +568,10 @@ if __name__ == '__main__':
             fitsio.write('{}-{}-image.fits'.format(opt.prefix, niceband), coimg, clobber=True)
             fitsio.write('{}-{}-model.fits'.format(opt.prefix, niceband), comod, clobber=True)
 
+        #galex_rgb = galex_rgb_official
+        galex_rgb = galex_rgb_dstn
         rgb = galex_rgb(coimgs, gbands)
+
         fig, ax = plt.subplots(figsize=(8, 8))
         dimshow(rgb, ticks=False)
         #plt.imshow(rgb, interpolation='nearest', origin='lower')
