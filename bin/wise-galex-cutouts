@@ -77,6 +77,8 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
     tags = ['image', 'model', 'resid']
     coimgs = [np.zeros((dh,dw,3), np.uint8) for t in tags]
 
+    fitscoimgs = [np.zeros((dh,dw,3), np.float32) for t in tags]
+
     for b in B.brickname:
         fn = survey.find_file('image', brick=b, band='r')
         bwcs = Tan(fn, 1) # ext 1: .fz
@@ -96,6 +98,16 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
             img = np.flipud(img)
             coimgs[i][Yo,Xo,:] = img[Yi,Xi,:]
 
+        # Read FITS images too
+        for i,tag in enumerate(tags):
+            if tag == 'resid':
+                continue
+            for iband,band in enumerate('grz'):
+                fn = survey.find_file(tag, brick=b, band=band)
+                fitsimg = fitsio.read(fn)
+                fitscoimgs[i][Yo,Xo,iband] = fitsimg[Yi,Xi]
+
+
     #tt = dict(image='Image', model='Model', resid='Resid')
     for img, tag in zip(coimgs, tags):
         #outfn = '{}-grz-{}'.format(prefix, tag)
@@ -104,6 +116,13 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
         fig, ax = plt.subplots(figsize=(8, 8))
         dimshow(img, ticks=False)
         fig.savefig('{}-grz-{}.png'.format(prefix, tag), bbox_inches='tight', pad_inches=0)
+
+    for img, tag in zip(fitscoimgs, tags):
+        # Write FITS coadds
+        if tag == 'resid':
+            continue
+        for iband,band in enumerate('grz'):
+            fitsio.write('{}-{}-{}.fits'.format(prefix, tag, band), img[:,:,iband], clobber=True)
 
     # Find unWISE tiles overlapping
     tiles = unwise_tiles_touching_wcs(wcs)
