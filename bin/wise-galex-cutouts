@@ -238,8 +238,8 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
 
     # Color WISE images --
 
-    #kwa = dict(mn=-0.1, mx=2., arcsinh = 1.)
-    kwa = dict(mn=-0.1, mx=2., arcsinh=None)
+    kwa = dict(mn=-0.1, mx=2., arcsinh = 1.)
+    #kwa = dict(mn=-0.1, mx=2., arcsinh=None)
     rgb = _unwise_to_rgb(coimgs[:2], **kwa)
     fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
@@ -251,7 +251,8 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
     dimshow(rgb, ticks=False)
     fig.savefig('{}-W1W2-model.png'.format(prefix), bbox_inches='tight', pad_inches=0)
 
-    kwa = dict(mn=-1, mx=1, arcsinh=None)
+    kwa = dict(mn=-1, mx=1, arcsinh=1)
+    #kwa = dict(mn=-1, mx=1, arcsinh=None)
     rgb = _unwise_to_rgb([img-mod for img,mod in list(zip(coimgs,comods))[:2]], **kwa)
     fig, ax = plt.subplots(figsize=(8, 8))
     dimshow(rgb, ticks=False)
