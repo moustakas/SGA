@@ -122,7 +122,7 @@ def legacysurvey_wise_cutouts(ra, dec, radius, wise_pixscale=2.75,
         if tag == 'resid':
             continue
         for iband,band in enumerate('grz'):
-            fitsio.write('{}-{}-{}.fits'.format(prefix, tag, band), img[:,:,iband], clobber=True)
+            fitsio.write('{}-{}-{}.fits'.format(prefix, band, tag), img[:,:,iband], clobber=True)
 
     # Find unWISE tiles overlapping
     tiles = unwise_tiles_touching_wcs(wcs)
