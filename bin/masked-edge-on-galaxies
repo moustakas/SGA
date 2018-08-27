@@ -5,7 +5,6 @@ from __future__ import absolute_import, division, print_function
 import os, time, warnings
 import numpy as np
 import numpy.ma as ma
-import pandas as pd
 
 from astropy.table import Table, Column, vstack
 
@@ -62,7 +61,7 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['compactness'] = data['compactness'].astype(str).str.strip()
     out['t'] = data['t'].astype('f4')
     out['d25'] = (0.1 * 10**data['logd25'].astype('f4')).astype('f4') # [arcmin]
-    out['ba'] = (10**(-data['logr25'].astype('f4'))).astype('f4') # major-to-minor axis ratio
+    out['r25'] = (0.1 * 10**data['logr25'].astype('f4')).astype('f4') # [arcmin]
     out['pa'] = data['pa'].astype('f4')
 
     out['bt'] = data['bt'].astype('f4')
@@ -118,9 +117,12 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
 if __name__ == '__main__':
     
     NLSGAdir = os.getenv('LSLGA_DIR')
-    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18may13.txt')
+    samplefile = os.path.join(NLSGAdir, 'sample', 'large-galaxies-dr6-dr7.fits')
+    sample = Table(fitsio.read(samplefile))
+
+    import pdb ; pdb.set_trace()
     
-    data, out = read_leda(txtfile, zcut=False, nrows=None)
+
 
     fitsfile = txtfile.replace('.txt', '.fits')
     print('Writing {}'.format(fitsfile))
