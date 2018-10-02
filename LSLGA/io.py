@@ -12,7 +12,7 @@ import numpy.ma as ma
 from glob import glob
 
 import fitsio
-from astropy.table import Table, hstack
+from astropy.table import Table, Column, hstack
 from astropy.io import fits
 
 def LSLGA_dir():
@@ -165,7 +165,7 @@ def read_hyperleda(verbose=True):
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
     leda = Table(fitsio.read(hyperledafile, ext=1))
-    leda.add_column(astropy.table.Column(name='groupid', dtype='i4', length=len(leda)))
+    leda.add_column(Column(name='groupid', dtype='i8', length=len(leda)))
     if verbose:
         print('Read {} objects from {}'.format(len(leda), hyperledafile), flush=True)
 
