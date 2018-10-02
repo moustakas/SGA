@@ -147,7 +147,7 @@ def read_tycho(magcut=12, verbose=True):
     
     """
     tycho2 = os.path.join(sample_dir(), 'tycho2.kd.fits')
-    tycho = astropy.table.Table(fitsio.read(tycho2, ext=1, lower=True))
+    tycho = Table(fitsio.read(tycho2, ext=1, lower=True))
     tycho = tycho[np.logical_and(tycho['isgalaxy'] == 0, tycho['mag_bt'] <= magcut)]
     if verbose:
         print('Read {} Tycho-2 stars with B<{:.1f}.'.format(len(tycho), magcut), flush=True)
