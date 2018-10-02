@@ -161,7 +161,7 @@ def read_hyperleda(verbose=True):
     """Read the Hyperleda catalog.
     
     """
-    hyperledafile = os.path.join(sample_dir(), 'sample', 'hyperleda-d25min10-18may13.fits')
+    hyperledafile = os.path.join(sample_dir(), 'hyperleda-d25min10-18may13.fits')
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
     leda = Table(fitsio.read(hyperledafile, ext=1))
