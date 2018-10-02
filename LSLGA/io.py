@@ -12,7 +12,7 @@ import numpy.ma as ma
 from glob import glob
 
 import fitsio
-from astropy.table import Table
+from astropy.table import Table, hstack
 from astropy.io import fits
 
 def LSLGA_dir():
@@ -49,24 +49,41 @@ def html_dir():
         os.makedirs(htmldir, exist_ok=True)
     return htmldir
 
-def read_parent(extname='LSPHOT', upenn=True, isedfit=False, columns=None, verbose=False):
-    """Read the various parent catalogs.
+def parent_version():
+    """Version of the parent catalog."""
+    version = 'v1.0'
+    return version
+
+def get_parentfile(dr=None, kd=False):
+
+    if kd:
+        suffix = 'kd.fits'
+    else:
+        suffix = 'fits'
+
+    if dr is not None:
+        parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}.{}'.format(parent_version(), dr, suffix))
+    else:
+        parentfile = os.path.join(sample_dir(), 'LSLGA-{}.{}'.format(parent_version(), suffix))
+
+    return parentfile
+
+def read_parent(columns=None, dr=None, kd=False, verbose=False):
+    """Read the LSLGA parent catalog.
 
     """
-    suffix = ''
-    if isedfit:
-        suffix = '-isedfit'
-    elif upenn:
-        suffix = '-upenn'
-
-    lsdir = LSLGA_dir()
-    catfile = os.path.join(lsdir, 'LSLGA-parent{}.fits'.format(suffix))
-    
-    cat = Table(fitsio.read(catfile, ext=extname, columns=columns, lower=True))
+    parentfile = get_parentfile(dr=dr, kd=kd)
+    if kd:
+        from astrometry.libkd.spherematch import tree_open
+        parent = tree_open(parentfile, 'largegals')
+        
+    else:
+        parent = Table(fitsio.read(parentfile, ext=extname, columns=columns, lower=True))
+        
     if verbose:
-        print('Read {} objects from {} [{}]'.format(len(cat), catfile, extname))
+        print('Read {} objects from {} [{}]'.format(len(parent), parentfile))
 
-    return cat
+    return parent
 
 def read_sample(first=None, last=None, dr='dr6-dr7', sfhgrid=1,
                 isedfit_lsphot=False, isedfit_sdssphot=False,
@@ -124,3 +141,46 @@ def read_sample(first=None, last=None, dr='dr6-dr7', sfhgrid=1,
                 first, last-1, len(sample), samplefile))
             
     return sample
+
+def read_tycho(magcut=12, verbose=True):
+    """Read the Tycho 2 catalog.
+    
+    """
+    tycho2 = os.path.join(sample_dir(), 'tycho2.kd.fits')
+    tycho = astropy.table.Table(fitsio.read(tycho2, ext=1, lower=True))
+    tycho = tycho[np.logical_and(tycho['isgalaxy'] == 0, tycho['mag_bt'] <= magcut)]
+    if verbose:
+        print('Read {} Tycho-2 stars with B<{:.1f}.'.format(len(tycho), magcut), flush=True)
+    
+    # Radius of influence; see eq. 9 of https://arxiv.org/pdf/1203.6594.pdf
+    tycho['radius'] = (0.0802*(tycho['mag_bt'])**2 - 1.860*tycho['mag_bt'] + 11.625) / 60 # [degree]
+    
+    return tycho    
+
+def read_hyperleda(verbose=True):
+    """Read the Hyperleda catalog.
+    
+    """
+    hyperledafile = os.path.join(sample_dir(), 'sample', 'hyperleda-d25min10-18may13.fits')
+    allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
+
+    leda = Table(fitsio.read(hyperledafile, ext=1))
+    leda.add_column(astropy.table.Column(name='groupid', dtype='i4', length=len(leda)))
+    if verbose:
+        print('Read {} objects from {}'.format(len(leda), hyperledafile), flush=True)
+
+    allwise = Table(fitsio.read(allwisefile, ext=1, lower=True))
+    if verbose:
+        print('Read {} objects from {}'.format(len(allwise), allwisefile), flush=True)
+
+    # Merge the tables
+    allwise.rename_column('ra', 'wise_ra')
+    allwise.rename_column('dec', 'wise_dec')
+    
+    leda = hstack( (leda, allwise) )
+    leda['inwise'] = (np.array(['NULL' not in dd for dd in allwise['designation']]) * 
+                      np.isfinite(allwise['w1sigm']) * np.isfinite(allwise['w2sigm']) )
+    
+    #print('  Identified {} objects with WISE photometry.'.format(np.sum(leda['inwise'])))
+    
+    return leda
