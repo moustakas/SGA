@@ -65,46 +65,52 @@ def _build_drsample_one(args):
     """Wrapper function for the multiprocessing."""
     return build_drsample_one(*args)
 
-def build_drsample_one(onegal, survey_dr6, survey_dr7, verbose=False):
+def build_drsample_one(onegal, survey_dr6, survey_dr7, dr6_dec, dr7_dec, verbose=False):
     """Wrapper function to find overlapping grz CCDs for a single galaxy.
     
     """
-    diam = 1.0 * onegal['D25'] # [arcmin]
-    wcs = simple_wcs(onegal, diam)
-    
-    ccds = survey_dr7.ccds_touching_wcs(wcs, ccdrad=None)
-    if ccds is not None:
+    idr6 = (onegal['DEC'] >= dr6_dec[0]) * (onegal['DEC'] <= dr6_dec[1])
+    idr7 = (onegal['DEC'] >= dr7_dec[0]) * (onegal['DEC'] <= dr7_dec[1])
+
+    if idr6 or idr7:
+        diam = 1.0 * onegal['D25'] # [arcmin]
+        wcs = simple_wcs(onegal, diam)
+
+    # Choose DR7 over DR6
+    ccds = None
+    if idr7:
         dr = 'dr7'
         survey = survey_dr7
-    else:
+        ccds = survey_dr7.ccds_touching_wcs(wcs, ccdrad=None)
+        
+    if idr6 and not idr7:
+        dr = 'dr6'
+        survey = survey_dr6
         ccds = survey_dr6.ccds_touching_wcs(wcs, ccdrad=None)
-        if ccds is not None:
-            dr = 'dr6'
-            survey = survey_dr6
-        else:
-            return [None, None]
-        
-    if ccds is not None:
-        if 'g' in ccds.filter and 'r' in ccds.filter and 'z' in ccds.filter:
-            nccd = len(ccds)
 
-            ccds.galaxy_npix = np.zeros(nccd).astype('int') # number of pixels in cutout
-            ccds.galaxy_fracsatur = np.zeros(nccd).astype('f4')
-            ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
-            ccds.lslga_id = np.zeros(nccd).astype('i8') + onegal['LSLGA_ID']
+    if ccds is None or (not idr6 and not idr7):
+        return [None, None]
 
-            onegal['DR'] = dr.upper()
-            
-            if diam > 1.0:
-                ccds = get_masked_pixels(ccds, survey, wcs)
-                
-            if verbose:
-                print('Galaxy {}: {} CCDs, RA = {:.5f}, Dec = {:.5f}, Diameter={:.4f} arcmin'.format(
-                        onegal['GALAXY'], len(ccds), onegal['RA'], onegal['DEC'], diam))
-                sys.stdout.flush()
-            return [onegal, ccds]
-        
-    return [None, None]
+    if 'g' in ccds.filter and 'r' in ccds.filter and 'z' in ccds.filter:
+        nccd = len(ccds)
+
+        ccds.galaxy_npix = np.zeros(nccd).astype('int') # number of pixels in cutout
+        ccds.galaxy_fracsatur = np.zeros(nccd).astype('f4')
+        ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
+        ccds.lslga_id = np.zeros(nccd).astype('i8') + onegal['LSLGA_ID']
+
+        onegal['DR'] = dr.upper()
+
+        if diam > 1.0:
+            ccds = get_masked_pixels(ccds, survey, wcs)
+
+        if verbose:
+            print('{}: {} CCDs, RA = {:.5f}, Dec = {:.5f}, Diameter={:.4f} arcmin'.format(
+                    onegal['GALAXY'], len(ccds), onegal['RA'], onegal['DEC'], diam))
+            sys.stdout.flush()
+        return [onegal, ccds]
+    else:
+        return [None, None]
 
 def build_drsample(cat, nproc=1, verbose=False):
     """Build the full sample of galaxies with grz coverage in DR6+DR7.
@@ -113,14 +119,20 @@ def build_drsample(cat, nproc=1, verbose=False):
     from astropy.table import vstack, Column
     from astrometry.util.fits import merge_tables
     
-    cat.add_column(Column(name='dr', length=len(cat), dtype='S3'))
+    cat.add_column(Column(name='DR', length=len(cat), dtype='S3'))
 
-    survey_dr6 = LegacySurveyData(survey_dir='/global/cscratch1/sd/dstn/dr6plus')
-    survey_dr7 = LegacySurveyData(survey_dir='/global/cscratch1/sd/desiproc/dr7')
+    survey_dr6 = LegacySurveyData(survey_dir='/global/cscratch1/sd/dstn/dr6plus', verbose=False)
+    survey_dr7 = LegacySurveyData(survey_dir='/global/cscratch1/sd/desiproc/dr7', verbose=False)
+
+    # Read the CCDs files here to get the declination boundaries of each DR.
+    dr6_ccds = survey_dr6.get_ccds()
+    dr7_ccds = survey_dr7.get_ccds()
+    dr6_dec = (dr6_ccds.dec.min(), dr6_ccds.dec.max())
+    dr7_dec = (dr7_ccds.dec.min(), dr7_ccds.dec.max())
     
     sampleargs = list()
     for gg in cat:
-        sampleargs.append( (gg, verbose, survey_dr6, survey_dr7) )
+        sampleargs.append( (gg, survey_dr6, survey_dr7, dr6_dec, dr7_dec, verbose) )
 
     if nproc > 1:
         p = multiprocessing.Pool(nproc)
@@ -134,8 +146,7 @@ def build_drsample(cat, nproc=1, verbose=False):
     # Remove non-matching objects and write out the sample
     rr = list(zip(*result))    
     outcat = vstack(list(filter(None, rr[0])))
-    outccds = merge_tables(list(filter(None, rr[1])))
-
+    outccds = merge_tables( list(filter(None, rr[1])), columns='minimal')
     if verbose:
         print('Found {}/{} objects in the DR6/DR7 footprint.'.format(
             len(outcat), len(cat)))
@@ -152,12 +163,14 @@ def main():
 
     drsamplefile = LSLGA.io.get_parentfile(dr=args.dr)
     drccdsfile = LSLGA.io.get_parentfile(dr=args.dr, ccds=True)
-    if os.path.isfile(drsamplefile) and not clobber:
+    if os.path.isfile(drsamplefile) and not args.clobber:
         print('Output file {} exists; use clobber.'.format(drsamplefile))
         sys.exit(1)
         
     parent = LSLGA.io.read_parent(verbose=args.verbose)
-    parent = parent[:10000]
+
+    rand = np.random.RandomState(seed=1)
+    parent = parent[rand.choice(len(parent), size=10000)]
 
     if args.nproc > maxnproc:
         print('Number of requested cores {} exceeds the maximum available {}.'.format(
@@ -165,8 +178,7 @@ def main():
         sys.exit(1)
 
     t0 = time.time()
-    drsample, drccds = build_drsample(parent, nproc=args.nproc)
-
+    drsample, drccds = build_drsample(parent, nproc=args.nproc, verbose=args.verbose)
     if args.verbose:
         print('Found {}/ {} galaxies in the LS footprint.'.format(len(drsample), len(parent)))
         print('Total time = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
@@ -177,9 +189,7 @@ def main():
 
     if args.verbose:
         print('Writing {} CCDs to {}'.format(len(drccds), drccdsfile))
-    drccds.write(drccdsfile, overwrite=True)
-
-    import pdb ; pdb.set_trace()
+    drccds.writeto(drccdsfile, overwrite=True)
 
 if __name__ == '__main__':
     main()
