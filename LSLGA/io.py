@@ -79,50 +79,63 @@ def read_parent(columns=None, dr=None, kd=False, verbose=False):
         if verbose:
             print('Read {} galaxies from KD catalog {}'.format(parent.n, parentfile))
     else:
-        parent = Table(fitsio.read(parentfile, ext=extname, columns=columns, lower=True))
+        parent = Table(fitsio.read(parentfile, ext=extname, columns=columns, upper=True))
         if verbose:
             print('Read {} galaxies from {}'.format(len(parent), parentfile))
 
     return parent
 
-def read_tycho(magcut=12, verbose=True):
+def read_desi_tiles(verbose=False):
+    """Read the latest DESI tile file.
+    
+    """
+    tilefile = os.path.join(sample_dir(), 'desi-tiles.fits')
+    tiles = Table(fitsio.read(tilefile, ext=1, upper=True))
+    tiles = tiles[tiles['IN_DESI'] > 0]
+    
+    if verbose:
+        print('Read {} DESI tiles from {}'.format(len(tiles), tilefile))
+    
+    return tiles
+
+def read_tycho(magcut=12, verbose=False):
     """Read the Tycho 2 catalog.
     
     """
     tycho2 = os.path.join(sample_dir(), 'tycho2.kd.fits')
-    tycho = Table(fitsio.read(tycho2, ext=1, lower=True))
-    tycho = tycho[np.logical_and(tycho['isgalaxy'] == 0, tycho['mag_bt'] <= magcut)]
+    tycho = Table(fitsio.read(tycho2, ext=1, upper=True))
+    tycho = tycho[np.logical_and(tycho['ISGALAXY'] == 0, tycho['MAG_BT'] <= magcut)]
     if verbose:
         print('Read {} Tycho-2 stars with B<{:.1f}.'.format(len(tycho), magcut), flush=True)
     
     # Radius of influence; see eq. 9 of https://arxiv.org/pdf/1203.6594.pdf
-    tycho['radius'] = (0.0802*(tycho['mag_bt'])**2 - 1.860*tycho['mag_bt'] + 11.625) / 60 # [degree]
+    tycho['RADIUS'] = (0.0802*(tycho['MAG_BT'])**2 - 1.860*tycho['MAG_BT'] + 11.625) / 60 # [degree]
     
     return tycho
 
-def read_hyperleda(verbose=True):
+def read_hyperleda(verbose=False):
     """Read the Hyperleda catalog.
     
     """
     hyperledafile = os.path.join(sample_dir(), 'hyperleda-d25min10-18may13.fits')
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
-    leda = Table(fitsio.read(hyperledafile, ext=1))
+    leda = Table(fitsio.read(hyperledafile, ext=1, upper=True))
     leda.add_column(Column(name='groupid', dtype='i8', length=len(leda)))
     if verbose:
         print('Read {} objects from {}'.format(len(leda), hyperledafile), flush=True)
 
-    allwise = Table(fitsio.read(allwisefile, ext=1, lower=True))
+    allwise = Table(fitsio.read(allwisefile, ext=1, upper=True))
     if verbose:
         print('Read {} objects from {}'.format(len(allwise), allwisefile), flush=True)
 
     # Merge the tables
-    allwise.rename_column('ra', 'wise_ra')
-    allwise.rename_column('dec', 'wise_dec')
+    allwise.rename_column('RA', 'WISE_RA')
+    allwise.rename_column('DEC', 'WISE_DEC')
     
     leda = hstack( (leda, allwise) )
-    leda['inwise'] = (np.array(['NULL' not in dd for dd in allwise['designation']]) * 
-                      np.isfinite(allwise['w1sigm']) * np.isfinite(allwise['w2sigm']) )
+    leda['INWISE'] = (np.array(['NULL' not in dd for dd in allwise['DESIGNATION']]) * 
+                      np.isfinite(allwise['W1SIGM']) * np.isfinite(allwise['W2SIGM']) )
     
     #print('  Identified {} objects with WISE photometry.'.format(np.sum(leda['inwise'])))
     
