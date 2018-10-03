@@ -62,7 +62,7 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['compactness'] = data['compactness'].astype(str).str.strip()
     out['t'] = data['t'].astype('f4')
     out['d25'] = (0.1 * 10**data['logd25'].astype('f4')).astype('f4') # [arcmin]
-    out['r25'] = (0.1 * 10**data['logr25'].astype('f4')).astype('f4') # [arcmin]
+    out['ba'] = (10**(-data['logr25'].astype('f4'))).astype('f4') # major-to-minor axis ratio
     out['pa'] = data['pa'].astype('f4')
 
     out['bt'] = data['bt'].astype('f4')
