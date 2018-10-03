@@ -1,12 +1,12 @@
 #! /bin/bash
 
 #SBATCH -A cosmo
-#SBATCH -p debug
+#SBATCH -p regular
 #SBATCH -N 1
 #SBATCH -n 32
 #SBATCH -C haswell
 #SBATCH -L SCRATCH,project
-#SBATCH -t 00:30:00
+#SBATCH -t 05:00:00
 #SBATCH -o build-drsample-v1.0.log.%j
 #SBATCH --mail-user=jmoustakas@siena.edu
 #SBATCH --mail-type=ALL
