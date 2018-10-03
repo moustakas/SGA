@@ -88,7 +88,7 @@ def main():
     parent, kdparent = build_parent(verbose=args.verbose)
 
     if args.verbose:
-        print('Writing {} objects to {}'.format(len(parent), parentfile))
+        print('Writing {} galaxies to {}'.format(len(parent), parentfile))
     parent.write(parentfile, overwrite=True)
 
     if args.verbose:

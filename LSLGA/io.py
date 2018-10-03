@@ -55,7 +55,6 @@ def parent_version():
     return version
 
 def get_parentfile(dr=None, kd=False):
-
     if kd:
         suffix = 'kd.fits'
     else:
@@ -79,7 +78,7 @@ def read_parent(columns=None, dr=None, kd=False, verbose=False):
         if verbose:
             print('Read {} galaxies from KD catalog {}'.format(parent.n, parentfile))
     else:
-        parent = Table(fitsio.read(parentfile, ext=extname, columns=columns, upper=True))
+        parent = Table(fitsio.read(parentfile, columns=columns, upper=True))
         if verbose:
             print('Read {} galaxies from {}'.format(len(parent), parentfile))
 

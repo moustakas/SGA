@@ -13,7 +13,7 @@ Input Data and Sample Selection
    May 13) with isophotal D(25) angular diameters greater than 10 arcsec by
    executing the following SQL query using `Hyperleda`_:
    
-   '''
+   ```
     SELECT
      pgc, objname, objtype, al2000, de2000, type, bar, ring,  
      multiple, compactness, t, logd25, logr25, pa, bt, it,  
@@ -24,7 +24,7 @@ Input Data and Sample Selection
                            objtype='M3' or objtype='MG' or objtype='MC')
     ORDER BY
      al2000
-   '''
+   ```
 
    resulting in the catalog *hyperleda-d25min10-18may13.txt*.
 
@@ -69,7 +69,7 @@ Input Data and Sample Selection
 
 .. _`LSLGA-build-parent`: https://github.com/moustakas/LSLGA/blob/master/bin/LSLGA-build-parent
 
-.. _`IC2204`_: http://legacysurvey.org/viewer?ra=115.3331&dec=34.2240&zoom=12&layer=mzls+bass-dr6
+.. _`IC2204`: http://legacysurvey.org/viewer?ra=115.3331&dec=34.2240&zoom=12&layer=mzls+bass-dr6
 
 Analysis for Paper 1
 --------------------
