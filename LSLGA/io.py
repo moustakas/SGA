@@ -54,24 +54,29 @@ def parent_version():
     version = 'v1.0'
     return version
 
-def get_parentfile(dr=None, kd=False):
+def get_parentfile(dr=None, kd=False, ccds=False):
     if kd:
         suffix = 'kd.fits'
     else:
         suffix = 'fits'
 
     if dr is not None:
-        parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}.{}'.format(parent_version(), dr, suffix))
+        if ccds:
+            parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}-ccds.{}'.format(
+                parent_version(), dr, suffix))
+        else:
+            parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}.{}'.format(
+                parent_version(), dr, suffix))
     else:
         parentfile = os.path.join(sample_dir(), 'LSLGA-{}.{}'.format(parent_version(), suffix))
 
     return parentfile
 
-def read_parent(columns=None, dr=None, kd=False, verbose=False):
+def read_parent(columns=None, dr=None, kd=False, ccds=False, verbose=False):
     """Read the LSLGA parent catalog.
 
     """
-    parentfile = get_parentfile(dr=dr, kd=kd)
+    parentfile = get_parentfile(dr=dr, kd=kd, ccds=ccds)
     if kd:
         from astrometry.libkd.spherematch import tree_open
         parent = tree_open(parentfile, 'largegals')

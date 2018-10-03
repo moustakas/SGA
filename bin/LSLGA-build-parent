@@ -26,6 +26,7 @@ def build_parent(mindiameter=10/60, maxdiameter=1e4, verbose=False):
     
     """
     import numpy.ma as ma
+    from astropy.table import Column
     from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec
 
     # Read the Hyperleda catalog.
@@ -53,6 +54,9 @@ def build_parent(mindiameter=10/60, maxdiameter=1e4, verbose=False):
     keep = np.where( diamcut )[0]
     #keep = np.where( indesi * diamcut )[0]
     parent = leda[keep]
+    parent.add_column(Column(name='LSLGA_ID', length=len(parent), dtype='i8'), index=0)
+    parent['LSLGA_ID'] = np.arange(len(parent))
+    
     parent['IN_DESI'] = indesi.astype(bool)
     
     # Flag galaxies near bright stars.
@@ -66,6 +70,7 @@ def build_parent(mindiameter=10/60, maxdiameter=1e4, verbose=False):
             nearstar[I] = True
     print('  Found {}/{} ({:.2f}%) galaxies near a Tycho-2 star.'.format(
         np.sum(nearstar), len(leda), 100*np.sum(nearstar)/len(leda)))
+    
     parent['NEAR_BRIGHTSTAR'] = nearstar.astype(bool)
 
     return parent, kdparent
@@ -81,7 +86,7 @@ def main():
     parentfile = LSLGA.io.get_parentfile()
     kdparentfile = LSLGA.io.get_parentfile(kd=True)
     
-    if os.path.isfile(parentfile) and not clobber:
+    if os.path.isfile(parentfile) and not args.clobber:
         print('Output file {} exists; use clobber.'.format(parentfile))
         sys.exit(1)
 

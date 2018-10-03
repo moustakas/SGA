@@ -38,6 +38,7 @@ def get_masked_pixels(ccds, survey, wcs, debug=False):
         im = survey.get_image_object(ccd)
         x0, x1, y0, y1, slc = im.get_image_extent(wcs=im.get_wcs(), radecpoly=radecpoly)
         dq = im.read_dq(slice=slc)
+
         ccds.galaxy_npix[ii] = dq.size
         ccds.galaxy_fracsatur[ii] = np.sum(dq == 4) / dq.size  # saturated
         ccds.galaxy_fracinterp[ii] = np.sum(dq == 8) / dq.size # interpolated
@@ -86,9 +87,11 @@ def build_drsample_one(onegal, survey_dr6, survey_dr7, verbose=False):
     if ccds is not None:
         if 'g' in ccds.filter and 'r' in ccds.filter and 'z' in ccds.filter:
             nccd = len(ccds)
+
             ccds.galaxy_npix = np.zeros(nccd).astype('int') # number of pixels in cutout
             ccds.galaxy_fracsatur = np.zeros(nccd).astype('f4')
             ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
+            ccds.lslga_id = np.zeros(nccd).astype('i8') + onegal['LSLGA_ID']
 
             onegal['DR'] = dr.upper()
             
@@ -148,6 +151,7 @@ def main():
     args = parser.parse_args()
 
     drsamplefile = LSLGA.io.get_parentfile(dr=args.dr)
+    drccdsfile = LSLGA.io.get_parentfile(dr=args.dr, ccds=True)
     if os.path.isfile(drsamplefile) and not clobber:
         print('Output file {} exists; use clobber.'.format(drsamplefile))
         sys.exit(1)
@@ -163,13 +167,19 @@ def main():
     t0 = time.time()
     drsample, drccds = build_drsample(parent, nproc=args.nproc)
 
-    import pdb ; pdb.set_trace()
-
     if args.verbose:
         print('Found {}/ {} galaxies in the LS footprint.'.format(len(drsample), len(parent)))
         print('Total time = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
+
+    if args.verbose:
         print('Writing {} galaxies to {}'.format(len(drsample), drsamplefile))
-    drsample.write(samplefile, overwrite=True)
+    drsample.write(drsamplefile, overwrite=True)
+
+    if args.verbose:
+        print('Writing {} CCDs to {}'.format(len(drccds), drccdsfile))
+    drccds.write(drccdsfile, overwrite=True)
+
+    import pdb ; pdb.set_trace()
 
 if __name__ == '__main__':
     main()
