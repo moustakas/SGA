@@ -6,6 +6,8 @@ Code to match to various external catalogs, including the Legacy Surveys imaging
 
 """
 
+import numpy as np
+
 def get_masked_pixels(ccds, survey, wcs, debug=False):
     """Given an (input) set of CCDS (restricted, one supposes, to a large-galaxy
     cutout), compute the fraction of interpolated and saturated pixels.
@@ -15,9 +17,6 @@ def get_masked_pixels(ccds, survey, wcs, debug=False):
     W, H = wcs.get_width(), wcs.get_height()
     radecpoly = np.array([wcs.pixelxy2radec(x,y) for 
                           x, y in [(1, 1), (W, 1), (W, H), (1, H), (1, 1)]])
-    ccds.galaxy_npix = np.zeros(nccd).astype('int') # number of pixels in cutout
-    ccds.galaxy_fracsatur = np.zeros(nccd).astype('f4')
-    ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
     for ii, ccd in enumerate(ccds):
         im = survey.get_image_object(ccd)
         x0, x1, y0, y1, slc = im.get_image_extent(wcs=im.get_wcs(), radecpoly=radecpoly)
