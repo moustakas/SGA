@@ -58,6 +58,13 @@ Input Data and Sample Selection
 
    Finally, we 
 
+5. *Create a webpage.*
+
+   rsync -auvP index.html sos:"public_html/research/LSLGA/"
+   rsync -auvPz --delete cutouts/png sos:"public_html/research/LSLGA/"
+   rsync -auvP index.html cori:"/global/project/projectdirs/cosmo/www/temp/ioannis/LSLGA/"
+   rsync -auvPz --delete cutouts/png cori:"/global/project/projectdirs/cosmo/www/temp/ioannis/LSLGA/cutouts/"
+   
 
 .. _`Hyperleda`: http://leda.univ-lyon1.fr/fullsql.html
 
