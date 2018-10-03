@@ -12,16 +12,17 @@ Input Data and Sample Selection
    First, construct a super-sample of all known galaxies (N=1,376,864 as of 2018
    May 13) with isophotal D(25) angular diameters greater than 10 arcsec by
    executing the following SQL query using `Hyperleda`_:
+   
    ```
-   SELECT
+    SELECT
     pgc, objname, objtype, al2000, de2000, type, bar, ring,  
     multiple, compactness, t, logd25, logr25, pa, bt, it,  
     kt, v, modbest
-   WHERE
-   logd25 > 0.2218487 and (objtype='G' or objtype='M' or objtype='M2' or  
+    WHERE
+    logd25 > 0.2218487 and (objtype='G' or objtype='M' or objtype='M2' or  
                            objtype='M3' or objtype='MG' or objtype='MC')
-   ORDER BY
-     al2000
+    ORDER BY
+    al2000
    ```
 
    resulting in the catalog *hyperleda-d25min10-18may13.txt*.
@@ -45,10 +46,9 @@ Input Data and Sample Selection
    cuts, but in detail we do not apply any.
 
    In addition, to flag galaxies near bright stars; a particularly nice example
-   (that we do not want to throw out!) is [IC
-   2204](http://legacysurvey.org/viewer?ra=115.3331&dec=34.2240&zoom=12&layer=mzls+bass-dr6),
-   a beautiful r=13.4 disk galaxy at a redshift of z=0.0155 with an angular
-   diameter of approximately 1.1 arcmin.
+   (that we do not want to throw out!) is `IC2204`_, a beautiful r=13.4 disk
+   galaxy at a redshift of z=0.0155 with an angular diameter of approximately
+   1.1 arcmin.
 
    Finally, we identify galaxies within the (current) DESI footprint, but do not
    explicitly restrict the sample to be within this footprint.
@@ -68,6 +68,7 @@ Input Data and Sample Selection
 
 .. _`LSLGA-build-parent`: https://github.com/moustakas/LSLGA/blob/master/bin/LSLGA-build-parent
 
+.. _`IC2204`_: http://legacysurvey.org/viewer?ra=115.3331&dec=34.2240&zoom=12&layer=mzls+bass-dr6
 
 Analysis for Paper 1
 --------------------
