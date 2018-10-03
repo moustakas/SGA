@@ -101,7 +101,7 @@ def build_drsample_one(onegal, survey_dr6, survey_dr7, dr6_dec, dr7_dec, verbose
 
         onegal['DR'] = dr.upper()
 
-        if diam > 1.0:
+        if diam >= 1.0:
             ccds = get_masked_pixels(ccds, survey, wcs)
 
         if verbose:
@@ -147,9 +147,6 @@ def build_drsample(cat, nproc=1, verbose=False):
     rr = list(zip(*result))    
     outcat = vstack(list(filter(None, rr[0])))
     outccds = merge_tables( list(filter(None, rr[1])), columns='minimal')
-    if verbose:
-        print('Found {}/{} objects in the DR6/DR7 footprint.'.format(
-            len(outcat), len(cat)))
     
     return outcat, outccds
 
@@ -157,6 +154,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dr', type=str, default='dr6-dr7', help='Data release.')
     parser.add_argument('--nproc', type=int, default=1, help='Number of processors to use.')
+    parser.add_argument('--mindiameter', type=float, default=None, help='Minimum diameter [arcmin].')
+    parser.add_argument('--maxdiameter', type=float, default=None, help='Maximum diameter [arcmin].')
     parser.add_argument('--verbose', action='store_true', help='Be verbose!')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
@@ -168,9 +167,23 @@ def main():
         sys.exit(1)
         
     parent = LSLGA.io.read_parent(verbose=args.verbose)
-
-    rand = np.random.RandomState(seed=1)
-    parent = parent[rand.choice(len(parent), size=10000)]
+    if args.mindiameter is not None:
+        parent = parent[parent['D25'] >= args.mindiameter]
+        drsamplefile = drsamplefile.replace('.fits', '-{:.2f}.fits'.format(args.mindiameter))
+        drccdsfile = drccdsfile.replace('.fits', '-{:.2f}.fits'.format(args.mindiameter))
+        if args.verbose:
+            print('Cutting sample to {} galaxies with D(25) >= {:.2f} arcmin'.format(
+                len(parent), args.mindiameter))
+    if args.maxdiameter is not None:
+        parent = parent[parent['D25'] <= args.maxdiameter]
+        drsamplefile = drsamplefile.replace('.fits', '-{:.2f}.fits'.format(args.maxdiameter))
+        drccdsfile = drccdsfile.replace('.fits', '-{:.2f}.fits'.format(args.maxdiameter))
+        if args.verbose:
+            print('Cutting sample to {} galaxies with D(25) <= {:.2f} arcmin'.format(
+                len(parent), args.maxdiameter))
+        
+    #rand = np.random.RandomState(seed=1)
+    #parent = parent[rand.choice(len(parent), size=10000)]
 
     if args.nproc > maxnproc:
         print('Number of requested cores {} exceeds the maximum available {}.'.format(
@@ -180,7 +193,7 @@ def main():
     t0 = time.time()
     drsample, drccds = build_drsample(parent, nproc=args.nproc, verbose=args.verbose)
     if args.verbose:
-        print('Found {}/ {} galaxies in the LS footprint.'.format(len(drsample), len(parent)))
+        print('Found {}/{} galaxies in the DR6+DR7 footprint.'.format(len(drsample), len(parent)))
         print('Total time = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
 
     if args.verbose:
