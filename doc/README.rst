@@ -13,17 +13,18 @@ Input Data and Sample Selection
    May 13) with isophotal D(25) angular diameters greater than 10 arcsec by
    executing the following SQL query using `Hyperleda`_:
    
-   ```
+   '''
     SELECT
-    pgc, objname, objtype, al2000, de2000, type, bar, ring,  
-    multiple, compactness, t, logd25, logr25, pa, bt, it,  
-    kt, v, modbest
+     pgc, objname, objtype, al2000, de2000, type, bar, ring,  
+     multiple, compactness, t, logd25, logr25, pa, bt, it,  
+     kt, v, modbest
+      
     WHERE
-    logd25 > 0.2218487 and (objtype='G' or objtype='M' or objtype='M2' or  
+     logd25 > 0.2218487 and (objtype='G' or objtype='M' or objtype='M2' or  
                            objtype='M3' or objtype='MG' or objtype='MC')
     ORDER BY
-    al2000
-   ```
+     al2000
+   '''
 
    resulting in the catalog *hyperleda-d25min10-18may13.txt*.
 
