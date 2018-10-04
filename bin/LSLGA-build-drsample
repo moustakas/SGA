@@ -56,7 +56,7 @@ def _build_drsample_one(args):
     """Wrapper function for the multiprocessing."""
     return build_drsample_one(*args)
 
-def build_drsample_one(onegal, survey_dr6, survey_dr7, dr6_dec, dr7_dec, verbose=False):
+def build_drsample_one(onegal, survey, verbose=False):
     """Wrapper function to find overlapping grz CCDs for a single galaxy.
     
     """
@@ -103,7 +103,7 @@ def build_drsample_one(onegal, survey_dr6, survey_dr7, dr6_dec, dr7_dec, verbose
     else:
         return [None, None]
 
-def build_drsample(cat, kdcat, nproc=1, verbose=False):
+def build_drsample(cat, dr, nproc=1, nside=256, verbose=False):
     """Build the full sample of galaxies with grz coverage in DR6+DR7.
     
     """
@@ -111,93 +111,62 @@ def build_drsample(cat, kdcat, nproc=1, verbose=False):
     import healpy as hp
     from astropy.table import vstack, Column
     from astrometry.util.fits import fits_table, merge_tables
-    #from astrometry.libkd.spherematch import trees_match
-    
-    cat.add_column(Column(name='DR', length=len(cat), dtype='S3'))
 
-    sampledir = LSLGA.io.sample_dir()
-    dr6_ccdsfile = glob(os.path.join(sampledir, 'survey-ccds-dr6*.fits'))[0]
-    dr7_ccdsfile = glob(os.path.join(sampledir, 'survey-ccds-dr7*.fits'))[0]
+    drdir = os.path.join(LSLGA.io.sample_dir(), dr)
+    
+    cat.add_column(Column(name='DR', data=np.repeat(dr.upper(), len(cat))))
 
     # To speed up the matching, assign the input catalog and CCDs file to
     # nside=256 healpixels (0.0525 deg^2 or 0.23 deg per side) and only keep the
     # matching objects.
-    nside = 256
-
-    t0 = time()
-    dr6_ccds = fits_table(dr6_ccdsfile)
-    print('Read {} CCDs from {} in {:.1f} s'.format(len(dr6_ccds), dr6_ccdsfile, time()-t0))
+    
+    ccdsfile = glob(os.path.join(drdir, 'survey-ccds-{}*.fits'.format(dr)))[0]
+    ccds = fits_table(ccdsfile)
+    print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
 
     cat_allpix = LSLGA.misc.radec2pix(nside, cat['RA'].data, cat['DEC'].data)
 
-    def get_galaxy_ccds(ccds):
-        allpix = LSLGA.misc.radec2pix(nside, ccds.ra, ccds.dec)
-        pix = np.unique(allpix) # add the neighboring healpixels
-        pix = np.unique( np.hstack( (pix, hp.pixelfunc.get_all_neighbours(nside, pix, nest=True).flatten()) ) )
-        if np.sum(pix == -1) > 0: # remove "no neighbors" healpixel
-            pix = np.delete(pix, np.where(pix == -1)[0])
-        indx = np.where( np.isin(cat_allpix, pix) )[0]
-        return indx
+    def galaxies_and_ccds(ccds):
+        """Get the indices of objects in the input galaxy catalog located in a healpixel
+        occupied by an input CCD.
 
-    #dr6_pix = get_ccds_pix(dr6_ccds)
-    #dr6_keep = np.where( np.isin(cat_allpix, dr6_pix) )[0]
-    #cat_allpix = LSLGA.misc.radec2pix(nside, cat['RA'][dr6_keep].data, cat['DEC'][dr6_keep].data)
+        """
+        ccdpix = np.unique( LSLGA.misc.radec2pix(nside, ccds.ra, ccds.dec) )
+        # add the neighboring healpixels to protect against edge effects
+        ccdpix = np.unique( np.hstack( (ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()) ) )
+        if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
+            ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
+        catindx = np.where( np.isin(cat_allpix, ccdpix) )[0]
+        return catindx
 
-    # Which galaxies have grz coverage?
-    dr6_keep = None
+    # Only keep galaxies that have at least one band of grz coverage.
+    keep = None
     for band in ('g', 'r', 'z'):
-        indx = get_galaxy_ccds(dr6_ccds[dr6_ccds.filter == band])
-        if dr6_keep is None:
-            dr6_keep = indx
+        indx = galaxies_and_ccds(ccds[ccds.filter == band])
+        if keep is None:
+            keep = indx
         else:
-            dr6_keep = np.intersect1d(dr6_keep, indx)
-        print(band, len(indx), len(dr6_keep))
-
-    test = get_galaxy_ccds(dr6_ccds)
-    print(len(test))
+            keep = np.intersect1d(keep, indx)
             
-    import matplotlib.pyplot as plt
-    #plt.scatter(dr6_ccds.ra, dr6_ccds.dec, s=1, label='All CCDs')
-    plt.scatter(cat['RA'][test], cat['DEC'][test], s=5, marker='s', label='Any band')
-    plt.scatter(cat['RA'][dr6_keep], cat['DEC'][dr6_keep], s=1, alpha=0.5, label='grz')
-    plt.legend()
-    plt.show()
+    print('Initial selection: found {}/{} galaxies with grz coverage in {}'.format(
+        len(keep), len(cat), dr.upper()))
 
+    #import matplotlib.pyplot as plt
+    ##plt.scatter(ccds.ra, ccds.dec, s=1, label='All CCDs')
+    #plt.scatter(cat['RA'][test], cat['DEC'][test], s=5, marker='s', label='Any band')
+    #plt.scatter(cat['RA'][keep], cat['DEC'][keep], s=1, alpha=0.5, label='grz')
+    #plt.legend()
+    #plt.show()
     #rr, dd = LSLGA.misc.pix2radec(nside, dr6_pix)
     #plt.scatter(rr, dd, s=1, alpha=0.5)
 
-    import pdb ; pdb.set_trace()
-    
+    # Now do a more refined (parallelized) search using ccds_touching_wcs for
+    # each individual galaxy.
+    survey = LegacySurveyData(survey_dir=drdir, verbose=False)
 
-
-    t0 = time()
-    dr7_ccds = fits_table(dr7_ccdsfile)
-    print('Read {} CCDs from {} in {:.1f} s'.format(len(dr7_ccds), dr7_ccdsfile, time()-t0))
-    
-    #dr6_ccds = survey_dr6.get_ccds()
-    #dr7_ccds = survey_dr7.get_ccds()
-
-    import pdb ; pdb.set_trace()
-
-    # Speed things up by restricting the sample to the set of galaxies within 1
-    # arcmin of any CCD.
-    kddr7 = survey_dr7.get_ccd_kdtrees()[0][1]
-    I, J, d = trees_match(kdcat, kddr7, np.radians(1/60))
-
-    # Read the CCDs files here to get the declination boundaries of each DR.
-    import pdb ; pdb.set_trace()
-
-    survey_dr6 = LegacySurveyData(survey_dir=sampledir, verbose=False)
-    survey_dr7 = LegacySurveyData(survey_dir=sampledir, verbose=False)
-
-    dr6_ccds = survey_dr6.get_ccds()
-    dr7_ccds = survey_dr7.get_ccds()
-    dr6_dec = (dr6_ccds.dec.min(), dr6_ccds.dec.max())
-    dr7_dec = (dr7_ccds.dec.min(), dr7_ccds.dec.max())
-    
     sampleargs = list()
     for gg in cat:
-        sampleargs.append( (gg, survey_dr6, survey_dr7, dr6_dec, dr7_dec, verbose) )
+        sampleargs.append( (gg, survey, verbose) )
 
     if nproc > 1:
         p = multiprocessing.Pool(nproc)
@@ -213,6 +182,8 @@ def build_drsample(cat, kdcat, nproc=1, verbose=False):
     outcat = vstack(list(filter(None, rr[0])))
     outccds = merge_tables( list(filter(None, rr[1])), columns='minimal')
     
+    import pdb ; pdb.set_trace()
+
     return outcat, outccds
 
 def main():
@@ -225,12 +196,6 @@ def main():
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
 
-    drsamplefile = LSLGA.io.get_parentfile(dr=args.dr, d25min=args.d25min, d25max=args.d25max)
-    drccdsfile = LSLGA.io.get_parentfile(dr=args.dr, ccds=True, d25min=args.d25min, d25max=args.d25max)
-    if os.path.isfile(drsamplefile) and not args.clobber:
-        print('Output file {} exists; use clobber.'.format(drsamplefile))
-        sys.exit(1)
-        
     parent = LSLGA.io.read_parent(verbose=args.verbose)
     if args.d25min is not None:
         parent = parent[parent['D25'] >= args.d25min]
@@ -244,28 +209,63 @@ def main():
                 len(parent), args.d25max))
 
     #kdparent = LSLGA.io.read_parent(verbose=args.verbose, kd=True)
-    #rand = np.random.RandomState(seed=1)
-    #parent = parent[rand.choice(len(parent), size=10000)]
+    rand = np.random.RandomState(seed=1)
+    parent = parent[rand.choice(len(parent), size=10000)]
 
     if args.nproc > maxnproc:
         print('Number of requested cores {} exceeds the maximum available {}.'.format(
             args.nproc, maxnproc))
         sys.exit(1)
 
-    t0 = time()
-    drsample, drccds = build_drsample(parent, nproc=args.nproc, verbose=args.verbose)
+    # Build the sample for each DR (and the union, below).
+    if args.dr == 'dr6-dr7':
+        drlist = ('dr6', 'dr7')
+    else:
+        drlist = args.dr
     
-    if args.verbose:
-        print('Found {}/{} galaxies in the DR6+DR7 footprint.'.format(len(drsample), len(parent)))
-        print('Total time = {:.3f} minutes.'.format( (time() - t0) / 60 ) )
+    tall = time()
+    for dr in np.atleast_1d(drlist):
 
-    if args.verbose:
-        print('Writing {} galaxies to {}'.format(len(drsample), drsamplefile))
-    drsample.write(drsamplefile, overwrite=True)
+        drsamplefile = LSLGA.io.get_parentfile(dr=dr, d25min=args.d25min, d25max=args.d25max)
+        drccdsfile = LSLGA.io.get_parentfile(dr=dr, ccds=True, d25min=args.d25min, d25max=args.d25max)
+        if os.path.isfile(drsamplefile) and not args.clobber:
+            print('Output file {} exists; use clobber.'.format(drsamplefile))
+            continue
 
-    if args.verbose:
-        print('Writing {} CCDs to {}'.format(len(drccds), drccdsfile))
-    drccds.writeto(drccdsfile, overwrite=True)
+        t0 = time()
+        drsample, drccds = build_drsample(parent, dr=dr, nproc=args.nproc, verbose=args.verbose)
+    
+        if args.verbose:
+            print('Found {}/{} galaxies in the {} footprint.'.format(len(drsample), len(parent), dr.upper()))
+            print('Total time = {:.3f} minutes.'.format( (time() - t0) / 60 ) )
+
+            if args.verbose:
+                print('Writing {} galaxies to {}'.format(len(drsample), drsamplefile))
+            drsample.write(drsamplefile, overwrite=True)
+
+            if args.verbose:
+                print('Writing {} CCDs to {}'.format(len(drccds), drccdsfile))
+            drccds.writeto(drccdsfile, overwrite=True)
+
+        pdb.set_trace()
+
+    # Optionally combine the individual samples, resolving duplicates in favor
+    # of DR7.
+    if args.dr == 'dr6-dr7':
+
+        dr6 = LSLGA.io.read_parent(verbose=args.verbose, dr='dr6')
+        dr7 = LSLGA.io.read_parent(verbose=args.verbose, dr='dr7')
+
+        pdb.set_trace()
+
+        if args.verbose:
+            print('Writing {} galaxies to {}'.format(len(drsample), drsamplefile))
+        drsample.write(drsamplefile, overwrite=True)
+
+        if args.verbose:
+            print('Writing {} CCDs to {}'.format(len(drccds), drccdsfile))
+        drccds.writeto(drccdsfile, overwrite=True)
+
 
 if __name__ == '__main__':
     main()
