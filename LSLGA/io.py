@@ -130,7 +130,7 @@ def read_hyperleda(verbose=False):
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
     leda = Table(fitsio.read(hyperledafile, ext=1, upper=True))
-    leda.add_column(Column(name='groupid', dtype='i8', length=len(leda)))
+    leda.add_column(Column(name='GROUPID', dtype='i8', length=len(leda)))
     if verbose:
         print('Read {} objects from {}'.format(len(leda), hyperledafile), flush=True)
 

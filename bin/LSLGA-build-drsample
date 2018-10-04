@@ -96,7 +96,8 @@ def build_drsample_one(onegal, survey, verbose=False, interp=False):
     else:
         return [None, None]
 
-def build_drsample(cat, dr, nproc=1, nside=256, verbose=False, interp=False):
+def build_drsample(cat, dr, nproc=1, nside=128, verbose=False,
+                   use_wcs=True, interp=False):
     """Build the full sample of galaxies with grz coverage in DR6+DR7.
     
     """
@@ -131,58 +132,65 @@ def build_drsample(cat, dr, nproc=1, nside=256, verbose=False, interp=False):
         return catindx
 
     # Only keep galaxies that have at least one band of grz coverage.
-    keep = None
+    galkeep = None
     for band in ('g', 'r', 'z'):
         indx = galaxies_and_ccds(ccds[ccds.filter == band])
-        if keep is None:
-            keep = indx
+        if galkeep is None:
+            galkeep = indx
         else:
-            keep = np.intersect1d(keep, indx)
-            
-    print('  Initial selection  in {:.3f} sec: found {}/{} galaxies with grz coverage in {}.'.format(
-        time() - t0, len(keep), len(cat), dr.upper()))
+            galkeep = np.intersect1d(galkeep, indx)
+
+    chipkeep = np.where( np.isin(LSLGA.misc.radec2pix(nside, ccds.ra, ccds.dec), np.unique(cat_allpix[galkeep])) )[0]
+
+    cat_keep = cat[galkeep]
+    ccds_keep = ccds[chipkeep]
 
     #import matplotlib.pyplot as plt
-    ##plt.scatter(ccds.ra, ccds.dec, s=1, label='All CCDs')
-    #plt.scatter(cat['RA'][test], cat['DEC'][test], s=5, marker='s', label='Any band')
-    #plt.scatter(cat['RA'][keep], cat['DEC'][keep], s=1, alpha=0.5, label='grz')
-    #plt.legend()
+    #plt.scatter(cat['RA'], cat['DEC'], s=1)
+    #plt.scatter(cat_keep['RA'], cat_keep['DEC'], s=1)
+    #plt.scatter(ccds_keep.ra, ccds_keep.dec, s=1)
     #plt.show()
-    #rr, dd = LSLGA.misc.pix2radec(nside, dr6_pix)
-    #plt.scatter(rr, dd, s=1, alpha=0.5)
+    #import pdb ; pdb.set_trace()    
 
-    # Now do a more refined (parallelized) search using ccds_touching_wcs for
-    # each individual galaxy.
-    t0 = time()
-    survey = LegacySurveyData(survey_dir=drdir, verbose=False)
+    print('  Healpix selection  in {:.3f} sec: found {}/{} galaxies with grz coverage in {}.'.format(
+        time() - t0, len(cat_keep), len(cat), dr.upper()))
 
-    sampleargs = list()
-    for gg in cat:
-        sampleargs.append( (gg, survey, verbose, interp) )
+    # Now (optionally) do a more refined (parallelized) search using
+    # ccds_touching_wcs for each individual galaxy.
+    if use_wcs or interp:
+        t0 = time()
+        survey = LegacySurveyData(survey_dir=drdir, verbose=False)
 
-    if nproc > 1:
-        p = multiprocessing.Pool(nproc)
-        result = p.map(_build_drsample_one, sampleargs)
-        p.close()
+        sampleargs = list()
+        for gg in cat_keep:
+            sampleargs.append( (gg, survey, verbose, interp) )
+
+        if nproc > 1:
+            p = multiprocessing.Pool(nproc)
+            result = p.map(_build_drsample_one, sampleargs)
+            p.close()
+        else:
+            result = list()
+            for args in sampleargs:
+                result.append(_build_drsample_one(args))
+
+        # Remove non-matching objects and write out the sample
+        rr = list(zip(*result))    
+        outcat = vstack(list(filter(None, rr[0])))
+        outccds = merge_tables( list(filter(None, rr[1])), columns='fillzero')
+
+        outcat = outcat[np.argsort(outcat['RA'])]
+        outccds = outccds[np.argsort(outccds.ra)]
+
+        # Add the DR for convenience.
+        outcat.add_column(Column(name='DR', data=np.repeat(dr.upper(), len(outcat))))
+        outccds.dr = np.repeat(dr.upper(), len(outccds))
+
+        print('WCS selection in {:.3f} min: found {}/{} galaxies with grz coverage in {}.'.format(
+            (time() - t0) / 60, len(outcat), len(cat), dr.upper()))
+
     else:
-        result = list()
-        for args in sampleargs:
-            result.append(_build_drsample_one(args))
-    
-    # Remove non-matching objects and write out the sample
-    rr = list(zip(*result))    
-    outcat = vstack(list(filter(None, rr[0])))
-    outccds = merge_tables( list(filter(None, rr[1])), columns='fillzero')
-
-    outcat = outcat[np.argsort(outcat['RA'])]
-    outccds = outccds[np.argsort(outccds.ra)]
-
-    # Add the DR for convenience.
-    outcat.add_column(Column(name='DR', data=np.repeat(dr.upper(), len(outcat))))
-    outccds.dr = np.repeat(dr.upper(), len(outccds))
-
-    print('Final selection in {:.3f} min: found {}/{} galaxies with grz coverage in {}.'.format(
-        (time() - t0) / 60, len(outcat), len(cat), dr.upper()))
+        print('Not yet implemented.')
     
     return outcat, outccds
 
@@ -209,7 +217,7 @@ def main():
 
     #kdparent = LSLGA.io.read_parent(verbose=args.verbose, kd=True)
     #rand = np.random.RandomState(seed=1)
-    #parent = parent[rand.choice(len(parent), size=20000)]
+    #parent = parent[rand.choice(len(parent), size=10000)]
 
     if args.nproc > maxnproc:
         print('Number of requested cores {} exceeds the maximum available {}.'.format(
