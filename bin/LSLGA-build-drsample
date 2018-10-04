@@ -3,16 +3,6 @@
 """Generate the sample of large galaxies in DR6+DR7.
 
 % LSLGA-build-drsample --clobber --verbose
-Read 1376864 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13.fits
-Read 1376864 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13-allwise.fits
-  Removed 13116/1363748 (0.96%) objects with no magnitude estimate.
-Read 20070 DESI tiles from /Users/ioannis/research/projects/LSLGA/sample/desi-tiles.fits
-  Identified 866889 (496859) objects inside (outside) the DESI footprint.
-  Removed 0/1363748 (0.00%) objects with D(25) < 0.167 and D(25) > 10000.000 arcmin.
-Read 1092055 Tycho-2 stars with B<12.0.
-  Found 23360/1363748 (1.71%) galaxies near a Tycho-2 star.
-Writing 1363748 objects to /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0.fits
-Writing /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0.kd.fits
 
 """
 import os, sys, argparse, time
@@ -112,12 +102,14 @@ def build_drsample_one(onegal, survey_dr6, survey_dr7, dr6_dec, dr7_dec, verbose
     else:
         return [None, None]
 
-def build_drsample(cat, nproc=1, verbose=False):
+def build_drsample(cat, kdcat, nproc=1, verbose=False):
     """Build the full sample of galaxies with grz coverage in DR6+DR7.
     
     """
+    import healpy as hp
     from astropy.table import vstack, Column
     from astrometry.util.fits import merge_tables
+    from astrometry.libkd.spherematch import trees_match
     
     cat.add_column(Column(name='DR', length=len(cat), dtype='S3'))
 
@@ -125,7 +117,16 @@ def build_drsample(cat, nproc=1, verbose=False):
     survey_dr6 = LegacySurveyData(survey_dir=sampledir, verbose=False)
     survey_dr7 = LegacySurveyData(survey_dir=sampledir, verbose=False)
 
+    # Speed things up by restricting the sample to the set of galaxies within 1
+    # arcmin of any CCD.
+    kddr7 = survey_dr7.get_ccd_kdtrees()[0][1]
+    I, J, d = trees_match(kdcat, kddr7, np.radians(1/60))
+    
+    
+
     # Read the CCDs files here to get the declination boundaries of each DR.
+    import pdb ; pdb.set_trace()
+
     dr6_ccds = survey_dr6.get_ccds()
     dr7_ccds = survey_dr7.get_ccds()
     dr6_dec = (dr6_ccds.dec.min(), dr6_ccds.dec.max())
@@ -179,6 +180,7 @@ def main():
             print('Cutting sample to {} galaxies with D(25) <= {:.2f} arcmin'.format(
                 len(parent), args.d25max))
 
+    kdparent = LSLGA.io.read_parent(verbose=args.verbose, kd=True)
     #rand = np.random.RandomState(seed=1)
     #parent = parent[rand.choice(len(parent), size=10000)]
 
@@ -188,7 +190,7 @@ def main():
         sys.exit(1)
 
     t0 = time.time()
-    drsample, drccds = build_drsample(parent, nproc=args.nproc, verbose=args.verbose)
+    drsample, drccds = build_drsample(parent, kdparent, nproc=args.nproc, verbose=args.verbose)
     if args.verbose:
         print('Found {}/{} galaxies in the DR6+DR7 footprint.'.format(len(drsample), len(parent)))
         print('Total time = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
