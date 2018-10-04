@@ -115,14 +115,53 @@ def add_labels(groupsample, sample, clobber=False):
         for args in labelargs:
             res = _add_labels_one(args)
 
+def html_rows(_groupkeep, sample, nperrow=4):
+    
+    # Not all objects may have been analyzed.
+    these = [os.path.isfile(os.path.join(LSLGAdir, 'cutouts', 'png', '{}.png'.format(
+        get_groupname(gg)))) for gg in _groupkeep]
+    groupkeep = _groupkeep[these]
+    
+    nrow = np.ceil(len(groupkeep) / nperrow).astype('int')
+    groupsplit = list()
+    for ii in range(nrow):
+        i1 = nperrow*ii
+        i2 = nperrow*(ii+1)
+        if i2 > len(groupkeep):
+            i2 = len(groupkeep)
+        groupsplit.append(groupkeep[i1:i2])
+    print('Splitting the sample into {} rows with {} mosaics per row.'.format(nrow, nperrow))
+
+    html.write('<table class="ls-gallery">\n')
+    html.write('<tbody>\n')
+    for grouprow in groupsplit:
+        html.write('<tr>\n')
+        for group in grouprow:
+            groupname = get_groupname(group)
+            galaxy = get_galaxy(group, sample, html=True)
+
+            pngfile = os.path.join('cutouts', 'png', '{}.png'.format(groupname))
+            thumbfile = os.path.join('cutouts', 'png', 'thumb-{}.png'.format(groupname))
+            img = 'src="{}" alt="{}"'.format(thumbfile, galaxy)
+            #img = 'class="ls-gallery" src="{}" alt="{}"'.format(thumbfile, nicename)
+            html.write('<td><a href="{}"><img {}></a></td>\n'.format(pngfile, img))
+        html.write('</tr>\n')
+        html.write('<tr>\n')
+        for group in grouprow:
+            groupname = get_groupname(group)
+            galaxy = '{}: {}'.format(groupname.upper(), get_galaxy(group, sample, html=True))
+            layer = get_layer(group)
+            href = '{}/?layer={}&ra={:.8f}&dec={:.8f}&zoom=12'.format(viewerurl, layer, group['ra'], group['dec'])
+            html.write('<td><a href="{}" target="_blank">{}</a></td>\n'.format(href, galaxy))
+        html.write('</tr>\n')
+    html.write('</tbody>\n')            
+    html.write('</table>\n')
+
 def make_plots(sample, analysisdir=None, htmldir='.', refband='r',
                band=('g', 'r', 'z'), clobber=False, verbose=True):
     """Make QA plots.
 
     """
-    from legacyhalos.io import get_objid
-    from legacyhalos.qa import sample_trends
-
     sample_trends(sample, htmldir, analysisdir=analysisdir, verbose=verbose)
 
     for gal in sample:
@@ -177,20 +216,32 @@ def _javastring():
 
     return js
         
-def make_html(analysisdir=None, htmldir=None, band=('g', 'r', 'z'), refband='r', 
-              dr='dr5', first=None, last=None, makeplots=True, clobber=False,
+def make_html(sample=None, htmldir=None, dr='dr6-dr7', makeplots=True, clobber=False,
               verbose=True):
     """Make the HTML pages.
 
     """
-    import legacyhalos.io
-    from legacyhalos.misc import cutout_radius_150kpc
+    import LSLGA.io
 
     if htmldir is None:
-        htmldir = legacyhalos.io.html_dir()
+        htmldir = LSLGA.io.html_dir()
 
-    sample = legacyhalos.io.read_sample(first=first, last=last)
+    sample = LSLGA.io.read_parent(dr=dr)
     objid, objdir = legacyhalos.io.get_objid(sample)
+
+    reject = []
+    toss = np.zeros(len(groupsample), dtype=bool)
+    for ii, gg in enumerate(groupsample['groupid']):
+        for rej in np.atleast_1d(reject):
+            toss[ii] = rej in gg.lower()
+            if toss[ii]:
+                break
+    print('Rejecting {} groups.'.format(np.sum(toss)))
+    groupkeep = groupsample[~toss]
+    if np.sum(toss) > 0:
+        grouprej = groupsample[toss]
+    else:
+        grouprej = []
 
     # Write the last-updated date to a webpage.
     js = _javastring()       
@@ -207,10 +258,6 @@ def make_html(analysisdir=None, htmldir=None, band=('g', 'r', 'z'), refband='r',
             baseurl, gal['ra'], gal['dec'], zoom, dr)
         return viewer
 
-    def _skyserver_link(gal):
-        return 'http://skyserver.sdss.org/dr14/en/tools/explore/summary.aspx?id={:d}'.format(gal['sdss_objid'])
-
-    trendshtml = 'trends.html'
     homehtml = 'index.html'
 
     # Build the home (index.html) page--
@@ -219,219 +266,21 @@ def make_html(analysisdir=None, htmldir=None, band=('g', 'r', 'z'), refband='r',
     htmlfile = os.path.join(htmldir, homehtml)
 
     with open(htmlfile, 'w') as html:
-        html.write('<html><body>\n')
+        html.write('<html><head>\n')
         html.write('<style type="text/css">\n')
-        html.write('table, td, th {padding: 5px; text-align: left; border: 1px solid black;}\n')
+        html.write('table.ls-gallery {width: 90%;}\n')
+        html.write('p.ls-gallery {width: 80%;}\n')
         html.write('</style>\n')
-
-        html.write('<h1>LegacyHalos: Central Galaxies</h1>\n')
-        html.write('<p>\n')
-        html.write('<a href="{}">Sample Trends</a><br />\n'.format(trendshtml))
-        html.write('<a href="https://github.com/moustakas/legacyhalos">Code and documentation</a>\n')
-        html.write('</p>\n')
-
-        html.write('<table>\n')
-        html.write('<tr>\n')
-        html.write('<th>Number</th>\n')
-        html.write('<th>redMaPPer ID</th>\n')
-        html.write('<th>RA</th>\n')
-        html.write('<th>Dec</th>\n')
-        html.write('<th>Redshift</th>\n')
-        html.write('<th>Richness</th>\n')
-        html.write('<th>Pcen</th>\n')
-        html.write('<th>Viewer</th>\n')
-        html.write('<th>SkyServer</th>\n')
-        html.write('</tr>\n')
-        for ii, (gal, objid1) in enumerate(zip( sample, np.atleast_1d(objid) )):
-            htmlfile = os.path.join('{}'.format(objid1), '{}.html'.format(objid1))
-
-            html.write('<tr>\n')
-            html.write('<td>{:g}</td>\n'.format(ii))
-            html.write('<td><a href="{}">{}</a></td>\n'.format(htmlfile, objid1))
-            html.write('<td>{:.7f}</td>\n'.format(gal['ra']))
-            html.write('<td>{:.7f}</td>\n'.format(gal['dec']))
-            html.write('<td>{:.5f}</td>\n'.format(gal['z']))
-            html.write('<td>{:.4f}</td>\n'.format(gal['lambda_chisq']))
-            html.write('<td>{:.3f}</td>\n'.format(gal['p_cen'][0]))
-            html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(_viewer_link(gal, dr)))
-            html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(_skyserver_link(gal)))
-            html.write('</tr>\n')
-        html.write('</table>\n')
-        
+        html.write('</head><body>\n')
+        html.write('<h1>Legacy Surveys Large Galaxy Atlas (LSLGA)</h1>\n')
+        html.write("""<p class="ls-gallery">Each thumbnail links to a larger image while the galaxy 
+        name below each thumbnail links to the <a href="http://legacysurvey.org/viewer">Sky Viewer</a>.  
+        For reference, the horizontal white bar in the lower-right corner of each image represents 
+        one arcminute.</p>\n""")
+        html_rows(groupkeep, sample)
         html.write('<br /><br />\n')
         html.write('<b><i>Last updated {}</b></i>\n'.format(js))
-        html.write('</html></body>\n')
-        html.close()
-
-    # Build the trends (trends.html) page--
-    htmlfile = os.path.join(htmldir, trendshtml)
-    with open(htmlfile, 'w') as html:
-        html.write('<html><body>\n')
-        html.write('<style type="text/css">\n')
-        html.write('table, td, th {padding: 5px; text-align: left; border: 1px solid black;}\n')
-        html.write('</style>\n')
-
-        html.write('<h1>LegacyHalos: Sample Trends</h1>\n')
-        html.write('<p><a href="https://github.com/moustakas/legacyhalos">Code and documentation</a></p>\n')
-        html.write('<a href="trends/ellipticity_vs_sma.png"><img src="trends/ellipticity_vs_sma.png" alt="Missing file ellipticity_vs_sma.png" height="auto" width="50%"></a>')
-        html.write('<a href="trends/gr_vs_sma.png"><img src="trends/gr_vs_sma.png" alt="Missing file gr_vs_sma.png" height="auto" width="50%"></a>')
-        html.write('<a href="trends/rz_vs_sma.png"><img src="trends/rz_vs_sma.png" alt="Missing file rz_vs_sma.png" height="auto" width="50%"></a>')
-
-        html.write('<br /><br />\n')
-        html.write('<b><i>Last updated {}</b></i>\n'.format(js))
-        html.write('</html></body>\n')
-        html.close()
-
-    # Set up the object iterators
-    iterobjid = iter(objid)
-    if len(objid) > 1:
-        next(iterobjid)
-        nextobjid = next(iterobjid) # advance by one
-    else:
-        nextobjid = objid[0]
-    prevobjid = objid[-1]
-
-    # Make a separate HTML page for each object.
-    for ii, (gal, objid1, objdir1) in enumerate( zip(sample, np.atleast_1d(objid),
-                                                     np.atleast_1d(objdir)) ):
-        htmlobjdir = os.path.join(htmldir, '{}'.format(objid1))
-        if not os.path.exists(htmlobjdir):
-            os.makedirs(htmlobjdir)
-
-        nexthtmlobjdir = os.path.join('../', '{}'.format(nextobjid), '{}.html'.format(nextobjid))
-        prevhtmlobjdir = os.path.join('../', '{}'.format(prevobjid), '{}.html'.format(prevobjid))
-
-        htmlfile = os.path.join(htmlobjdir, '{}.html'.format(objid1))
-        with open(htmlfile, 'w') as html:
-            html.write('<html><body>\n')
-            html.write('<style type="text/css">\n')
-            html.write('table, td, th {padding: 5px; text-align: left; border: 1px solid black;}\n')
-            html.write('</style>\n')
-
-            html.write('<h1>Central Galaxy {}</h1>\n'.format(objid1))
-
-            html.write('<a href="../{}">Home</a>\n'.format(homehtml))
-            html.write('<br />\n')
-            html.write('<a href="{}">Next Central Galaxy ({})</a>\n'.format(nexthtmlobjdir, nextobjid))
-            html.write('<br />\n')
-            html.write('<a href="{}">Previous Central Galaxy ({})</a>\n'.format(prevhtmlobjdir, prevobjid))
-            html.write('<br />\n')
-            html.write('<br />\n')
-
-            # Table of properties
-            html.write('<table>\n')
-            html.write('<tr>\n')
-            html.write('<th>Number</th>\n')
-            html.write('<th>redMaPPer ID</th>\n')
-            html.write('<th>RA</th>\n')
-            html.write('<th>Dec</th>\n')
-            html.write('<th>Redshift</th>\n')
-            html.write('<th>Richness</th>\n')
-            html.write('<th>Pcen</th>\n')
-            html.write('<th>Viewer</th>\n')
-            html.write('<th>SkyServer</th>\n')
-            html.write('</tr>\n')
-
-            html.write('<tr>\n')
-            html.write('<td>{:g}</td>\n'.format(ii))
-            html.write('<td>{}</td>\n'.format(objid1))
-            html.write('<td>{:.7f}</td>\n'.format(gal['ra']))
-            html.write('<td>{:.7f}</td>\n'.format(gal['dec']))
-            html.write('<td>{:.5f}</td>\n'.format(gal['z']))
-            html.write('<td>{:.4f}</td>\n'.format(gal['lambda_chisq']))
-            html.write('<td>{:.3f}</td>\n'.format(gal['p_cen'][0]))
-            html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(_viewer_link(gal, dr)))
-            html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(_skyserver_link(gal)))
-            html.write('</tr>\n')
-            html.write('</table>\n')
-
-            html.write('<h2>Image mosaics</h2>\n')
-            html.write('<p>Each mosaic (left to right: data, model of all but the central galaxy, residual image containing just the central galaxy) is 300 kpc by 300 kpc.</p>\n')
-            html.write('<table width="90%">\n')
-            html.write('<tr><td><a href="{}-coadd-montage.png"><img src="{}-coadd-montage.png" alt="Missing file {}-coadd-montage.png" height="auto" width="100%"></a></td></tr>\n'.format(objid1, objid1, objid1))
-            #html.write('<tr><td>Data, Model, Residuals</td></tr>\n')
-            html.write('</table>\n')
-            #html.write('<br />\n')
-            
-            html.write('<h2>Elliptical Isophote Analysis</h2>\n')
-            html.write('<table width="90%">\n')
-            html.write('<tr>\n')
-            html.write('<td><a href="{}-ellipse-multiband.png"><img src="{}-ellipse-multiband.png" alt="Missing file {}-ellipse-multiband.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('</tr>\n')
-            html.write('</table>\n')
-
-            html.write('<table width="90%">\n')
-            html.write('<tr>\n')
-            #html.write('<td><a href="{}-ellipse-ellipsefit.png"><img src="{}-ellipse-ellipsefit.png" alt="Missing file {}-ellipse-ellipsefit.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('<td width="50%"><a href="{}-ellipse-sbprofile.png"><img src="{}-ellipse-sbprofile.png" alt="Missing file {}-ellipse-sbprofile.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('<td></td>\n')
-            html.write('</tr>\n')
-            html.write('</table>\n')
-            
-            html.write('<h2>Surface Brightness Profile Modeling</h2>\n')
-            html.write('<table width="90%">\n')
-
-            # single-sersic
-            html.write('<tr>\n')
-            html.write('<th>Single Sersic (No Wavelength Dependence)</th><th>Single Sersic</th>\n')
-            html.write('</tr>\n')
-            html.write('<tr>\n')
-            html.write('<td><a href="{}-sersic-single-nowavepower.png"><img src="{}-sersic-single-nowavepower.png" alt="Missing file {}-sersic-single-nowavepower.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('<td><a href="{}-sersic-single.png"><img src="{}-sersic-single.png" alt="Missing file {}-sersic-single.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('</tr>\n')
-
-            # Sersic+exponential
-            html.write('<tr>\n')
-            html.write('<th>Sersic+Exponential (No Wavelength Dependence)</th><th>Sersic+Exponential</th>\n')
-            html.write('</tr>\n')
-            html.write('<tr>\n')
-            html.write('<td><a href="{}-sersic-exponential-nowavepower.png"><img src="{}-sersic-exponential-nowavepower.png" alt="Missing file {}-sersic-exponential-nowavepower.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('<td><a href="{}-sersic-exponential.png"><img src="{}-sersic-exponential.png" alt="Missing file {}-sersic-exponential.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('</tr>\n')
-
-            # double-sersic
-            html.write('<tr>\n')
-            html.write('<th>Double Sersic (No Wavelength Dependence)</th><th>Double Sersic</th>\n')
-            html.write('</tr>\n')
-            html.write('<tr>\n')
-            html.write('<td><a href="{}-sersic-double-nowavepower.png"><img src="{}-sersic-double-nowavepower.png" alt="Missing file {}-sersic-double-nowavepower.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('<td><a href="{}-sersic-double.png"><img src="{}-sersic-double.png" alt="Missing file {}-sersic-double.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-            html.write('</tr>\n')
-
-            html.write('</table>\n')
-
-            html.write('<br />\n')
-
-            if False:
-                html.write('<h2>Multi-Gaussian Expansion Fitting</h2>\n')
-                html.write('<p>The figures below are a work in progress.</p>\n')
-                html.write('<table width="90%">\n')
-                html.write('<tr>\n')
-                html.write('<td><a href="{}-mge-multiband.png"><img src="{}-mge-multiband.png" alt="Missing file {}-mge-multiband.png" height="auto" width="100%"></a></td>\n'.format(objid1, objid1, objid1))
-                html.write('</tr>\n')
-                html.write('<tr>\n')
-                html.write('<td><a href="{}-mge-sbprofile.png"><img src="{}-mge-sbprofile.png" alt="Missing file {}-mge-sbprofile.png" height="auto" width="50%"></a></td>\n'.format(objid1, objid1, objid1))
-                html.write('</tr>\n')
-                html.write('</table>\n')
-
-            html.write('<a href="../{}">Home</a>\n'.format(homehtml))
-            html.write('<br />\n')
-            html.write('<a href="{}">Next Central Galaxy ({})</a>\n'.format(nexthtmlobjdir, nextobjid))
-            html.write('<br />\n')
-            html.write('<a href="{}">Previous Central Galaxy ({})</a>\n'.format(prevhtmlobjdir, prevobjid))
-            html.write('<br />\n')
-
-            html.write('<br /><b><i>Last updated {}</b></i>\n'.format(js))
-            html.write('<br />\n')
-            html.write('</html></body>\n')
-            html.close()
-
-        # Update the iterator.
-        prevobjid = objid1
-        try:
-            nextobjid = next(iterobjid)
-        except:
-            nextobjid = objid[0] # wrap around
+        html.write('</body></html>\n')
 
     if makeplots:
         make_plots(sample, analysisdir=analysisdir, htmldir=htmldir, refband=refband,

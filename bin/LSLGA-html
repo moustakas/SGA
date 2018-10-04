@@ -5,15 +5,13 @@ LSLGA-html --clobber
 
 """
 import os, argparse
+import LSLGA.io
 from LSLGA.html import make_html
 
 def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--htmldir', type=str, default=None)
-
-    parser.add_argument('--first', type=int, help='Index of first object to process.')
-    parser.add_argument('--last', type=int, help='Index of last object to process.')
 
     parser.add_argument('--nomakeplots', action='store_true', help='Do not remake the plots.')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
@@ -22,8 +20,7 @@ def main():
     args = parser.parse_args()
 
     if args.htmldir is None:
-        from LSLGA.io import html_dir
-        args.htmldir = html_dir()
+        args.htmldir = LSLGA.io.html_dir()
 
     make_html(htmldir=args.htmldir, clobber=args.clobber, makeplots=not args.nomakeplots,
               first=args.first, last=args.last, verbose=not args.quiet)

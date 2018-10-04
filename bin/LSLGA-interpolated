@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+
+"""LSLGA-interpolated
+
+Special-case script to identify all the large galaxies that have been
+interpolated in the CP processing and to make a webpage.
+
+"""
+import os, time, pdb
+import numpy as np
+import matplotlib.pyplot as plt
+
+import LSLGA.io
+
+def html_rows(html, cat, pngdir, nperrow=4):
+
+    viewerurl = 'http://legacysurvey.org/viewer'
+    
+    nrow = np.ceil(len(cat) / nperrow).astype('int')
+    catsplit = list()
+    for ii in range(nrow):
+        i1 = nperrow*ii
+        i2 = nperrow*(ii+1)
+        if i2 > len(cat):
+            i2 = len(cat)
+        catsplit.append(cat[i1:i2])
+    print('Splitting the sample into {} rows with {} mosaics per row.'.format(nrow, nperrow))
+
+    html.write('<table class="ls-gallery">\n')
+    html.write('<tbody>\n')
+    for catrow in catsplit:
+        html.write('<tr>\n')
+        for row in catrow:
+            galaxy = row['GALAXY'].replace(' ', '')
+            pngfile = 'png/{}-grz.png'.format(galaxy.lower())
+            img = 'src="{}" alt="{}"'.format(pngfile, galaxy)
+            html.write('<td><a href="{}"><img {} width="100%"></a></td>\n'.format(pngfile, img))
+        html.write('</tr>\n')
+        html.write('<tr>\n')
+        for row in catrow:
+            if row['DR'] == 'DR6':
+                layer = 'mzls+bass-dr6'
+            else:
+                layer = 'decals-dr7'
+            galaxy, ra, dec, d25 = row['GALAXY'].replace(' ', ''), row['RA'], row['DEC'], row['D25']
+            href = '{}/?layer={}&ra={:.8f}&dec={:.8f}&zoom=12'.format(viewerurl, layer, ra, dec)
+            html.write('<td><a href="{}" target="_blank">{} ({:.1f} arcmin)</a></td>\n'.format(href, galaxy, d25))
+        html.write('</tr>\n')
+    html.write('</tbody>\n')          
+    html.write('</table>\n')
+
+def main():
+
+    pixscale = 1.0 # 0.262
+    outdir = os.path.join( LSLGA.io.html_dir(), 'interp' )
+    pngdir = os.path.join( outdir, 'png')
+    for ddir in (outdir, pngdir):
+        if not os.path.isdir(ddir):
+            os.makedirs(ddir, exist_ok=True)
+    
+    allcat = LSLGA.io.read_parent(dr='dr6-dr7', d25min=1.0, verbose=True)
+    allccds = LSLGA.io.read_parent(dr='dr6-dr7', d25min=1.0, ccds=True, verbose=True)
+
+    cut = np.where( allccds['GALAXY_FRACINTERP'] > 0.3 )[0]
+    
+    ccds = allccds[cut]
+    lslga_id = np.unique(ccds['LSLGA_ID'])
+    
+    these = np.where( np.in1d(allcat['LSLGA_ID'], lslga_id) )[0]
+    cat = allcat[these]
+    cat = cat[cat['DR'] == 'DR7']
+    print('Found {} interpolated galaxies.'.format(len(cat)))
+
+    txtfile = os.path.join(outdir, 'large_and_interpolated.txt')
+    ccds['LSLGA_ID', 'IMAGE_FILENAME', 'IMAGE_HDU', 'EXPNUM', 'FILTER', 'GALAXY_FRACINTERP'].write(
+        txtfile, overwrite=True, format='csv')
+
+    galaxy, ra, dec, d25 = cat['GALAXY'].data, cat['RA'].data, cat['DEC'].data, cat['D25'].data
+    size = np.ceil(1.3 * d25 * 60 / pixscale).astype(np.int) # [pixels]
+
+    for ii in range(len(cat)):
+        if cat['DR'][ii] == 'DR6':
+            layer = 'mzls+bass-dr6'
+        else:
+            layer = 'decals-dr7'
+            
+        url = '"http://legacysurvey.org/viewer-dev/jpeg-cutout/?layer={}&ra={:.4f}&dec={:.4f}&pixscale={:.3f}&size={:d}"'.format(
+            layer, ra[ii], dec[ii], pixscale, size[ii])
+        pngfile = '{}/{}-grz.png'.format(pngdir, galaxy[ii].decode('utf-8').replace(' ', '').lower())
+        
+        #urls.append( (url.replace('viewer-dev/jpeg-cutout', 'viewer'), pngfile) )
+        if not os.path.exists(pngfile):
+            cmd = 'wget --continue -O {} {}'.format(pngfile, url)
+            print(cmd)
+            os.system(cmd)
+            time.sleep(1)
+
+        #if ii == 3:
+        #    break
+
+    with open('{}/index.html'.format(outdir), 'w') as html:
+        html.write('<html><head>\n')
+        html.write('<style type="text/css">\n')
+        html.write('table.ls-gallery {width: 90%;}\n')
+        html.write('p.ls-gallery {width: 80%;}\n')
+        html.write('</style>\n')
+        html.write('</head><body>\n')
+        html.write('<h1>Large Interpolated Galaxies</h1>\n')
+        #html.write('<p class="ls-gallery">...</p>')
+        html_rows(html, cat, pngdir)
+        html.write('</body></html>\n')
+        
+if __name__ == '__main__':
+    main()

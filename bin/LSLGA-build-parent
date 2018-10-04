@@ -21,7 +21,7 @@ import numpy as np
 import LSLGA.io
 import LSLGA.misc
 
-def build_parent(mindiameter=10/60, maxdiameter=1e4, verbose=False):
+def build_parent(d25min=10/60, d25max=1e4, verbose=False):
     """Build the parent catalog.
     
     """
@@ -43,9 +43,9 @@ def build_parent(mindiameter=10/60, maxdiameter=1e4, verbose=False):
     print('  Identified {} ({}) objects inside (outside) the DESI footprint.'.format(
         np.sum(indesi), np.sum(~indesi)))
 
-    diamcut = (leda['D25'] >= mindiameter) * (leda['D25'] <= maxdiameter)
+    diamcut = (leda['D25'] >= d25min) * (leda['D25'] <= d25max)
     print('  Removed {}/{} ({:.2f}%) objects with D(25) < {:.3f} and D(25) > {:.3f} arcmin.'.format(
-        np.sum(~diamcut), len(leda), 100*np.sum(~diamcut)/len(leda), mindiameter, maxdiameter))
+        np.sum(~diamcut), len(leda), 100*np.sum(~diamcut)/len(leda), d25min, d25max))
 
     # Reject objects classified as "g"
     # objnotg = np.hstack([np.char.strip(obj) != 'g' for obj in leda['objtype']])
@@ -77,8 +77,8 @@ def build_parent(mindiameter=10/60, maxdiameter=1e4, verbose=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mindiameter', type=float, default=10/60, help='Minimum diameter [arcmin].')
-    parser.add_argument('--maxdiameter', type=float, default=1e4, help='Maximum diameter [arcmin].')
+    parser.add_argument('--d25min', type=float, default=10/60, help='Minimum diameter [arcmin].')
+    parser.add_argument('--d25max', type=float, default=1e4, help='Maximum diameter [arcmin].')
     parser.add_argument('--verbose', action='store_true', help='Be verbose!')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()

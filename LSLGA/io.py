@@ -44,7 +44,6 @@ def html_dir():
     #    htmldir = os.path.join(LSLGA_dir(), 'html')
 
     htmldir = os.path.join(LSLGA_dir(), 'html')
-
     if not os.path.isdir(htmldir):
         os.makedirs(htmldir, exist_ok=True)
     return htmldir
@@ -54,7 +53,7 @@ def parent_version():
     version = 'v1.0'
     return version
 
-def get_parentfile(dr=None, kd=False, ccds=False):
+def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
     if kd:
         suffix = 'kd.fits'
     else:
@@ -70,13 +69,19 @@ def get_parentfile(dr=None, kd=False, ccds=False):
     else:
         parentfile = os.path.join(sample_dir(), 'LSLGA-{}.{}'.format(parent_version(), suffix))
 
+    if d25min is not None:
+        parentfile = parentfile.replace('.fits', '-d25min{:.2f}.fits'.format(d25min))
+    if d25max is not None:
+        parentfile = parentfile.replace('.fits', '-d25max{:.2f}.fits'.format(d25max))
+        
     return parentfile
 
-def read_parent(columns=None, dr=None, kd=False, ccds=False, verbose=False):
+def read_parent(columns=None, dr=None, kd=False, ccds=False, d25min=None,
+                d25max=None, verbose=False):
     """Read the LSLGA parent catalog.
 
     """
-    parentfile = get_parentfile(dr=dr, kd=kd, ccds=ccds)
+    parentfile = get_parentfile(dr=dr, kd=kd, ccds=ccds, d25min=d25min, d25max=d25max)
     if kd:
         from astrometry.libkd.spherematch import tree_open
         parent = tree_open(parentfile, 'largegals')

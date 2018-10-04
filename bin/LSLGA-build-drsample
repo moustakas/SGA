@@ -154,34 +154,30 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dr', type=str, default='dr6-dr7', help='Data release.')
     parser.add_argument('--nproc', type=int, default=1, help='Number of processors to use.')
-    parser.add_argument('--mindiameter', type=float, default=None, help='Minimum diameter [arcmin].')
-    parser.add_argument('--maxdiameter', type=float, default=None, help='Maximum diameter [arcmin].')
+    parser.add_argument('--d25min', type=float, default=None, help='Minimum diameter [arcmin].')
+    parser.add_argument('--d25max', type=float, default=None, help='Maximum diameter [arcmin].')
     parser.add_argument('--verbose', action='store_true', help='Be verbose!')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
 
-    drsamplefile = LSLGA.io.get_parentfile(dr=args.dr)
-    drccdsfile = LSLGA.io.get_parentfile(dr=args.dr, ccds=True)
+    drsamplefile = LSLGA.io.get_parentfile(dr=args.dr, d25min=args.d25min, d25max=args.d25max)
+    drccdsfile = LSLGA.io.get_parentfile(dr=args.dr, ccds=True, d25min=args.d25min, d25max=args.d25max)
     if os.path.isfile(drsamplefile) and not args.clobber:
         print('Output file {} exists; use clobber.'.format(drsamplefile))
         sys.exit(1)
         
     parent = LSLGA.io.read_parent(verbose=args.verbose)
-    if args.mindiameter is not None:
-        parent = parent[parent['D25'] >= args.mindiameter]
-        drsamplefile = drsamplefile.replace('.fits', '-{:.2f}.fits'.format(args.mindiameter))
-        drccdsfile = drccdsfile.replace('.fits', '-{:.2f}.fits'.format(args.mindiameter))
+    if args.d25min is not None:
+        parent = parent[parent['D25'] >= args.d25min]
         if args.verbose:
             print('Cutting sample to {} galaxies with D(25) >= {:.2f} arcmin'.format(
-                len(parent), args.mindiameter))
-    if args.maxdiameter is not None:
-        parent = parent[parent['D25'] <= args.maxdiameter]
-        drsamplefile = drsamplefile.replace('.fits', '-{:.2f}.fits'.format(args.maxdiameter))
-        drccdsfile = drccdsfile.replace('.fits', '-{:.2f}.fits'.format(args.maxdiameter))
+                len(parent), args.d25min))
+    if args.d25max is not None:
+        parent = parent[parent['D25'] <= args.d25max]
         if args.verbose:
             print('Cutting sample to {} galaxies with D(25) <= {:.2f} arcmin'.format(
-                len(parent), args.maxdiameter))
-        
+                len(parent), args.d25max))
+
     #rand = np.random.RandomState(seed=1)
     #parent = parent[rand.choice(len(parent), size=10000)]
 
