@@ -6,6 +6,7 @@
 
 """
 import os, sys, argparse, time
+from time import time
 import numpy as np
 
 import LSLGA.io
@@ -106,26 +107,88 @@ def build_drsample(cat, kdcat, nproc=1, verbose=False):
     """Build the full sample of galaxies with grz coverage in DR6+DR7.
     
     """
+    from glob import glob
     import healpy as hp
     from astropy.table import vstack, Column
-    from astrometry.util.fits import merge_tables
-    from astrometry.libkd.spherematch import trees_match
+    from astrometry.util.fits import fits_table, merge_tables
+    #from astrometry.libkd.spherematch import trees_match
     
     cat.add_column(Column(name='DR', length=len(cat), dtype='S3'))
 
     sampledir = LSLGA.io.sample_dir()
-    survey_dr6 = LegacySurveyData(survey_dir=sampledir, verbose=False)
-    survey_dr7 = LegacySurveyData(survey_dir=sampledir, verbose=False)
+    dr6_ccdsfile = glob(os.path.join(sampledir, 'survey-ccds-dr6*.fits'))[0]
+    dr7_ccdsfile = glob(os.path.join(sampledir, 'survey-ccds-dr7*.fits'))[0]
+
+    # To speed up the matching, assign the input catalog and CCDs file to
+    # nside=256 healpixels (0.0525 deg^2 or 0.23 deg per side) and only keep the
+    # matching objects.
+    nside = 256
+
+    t0 = time()
+    dr6_ccds = fits_table(dr6_ccdsfile)
+    print('Read {} CCDs from {} in {:.1f} s'.format(len(dr6_ccds), dr6_ccdsfile, time()-t0))
+
+    cat_allpix = LSLGA.misc.radec2pix(nside, cat['RA'].data, cat['DEC'].data)
+
+    def get_galaxy_ccds(ccds):
+        allpix = LSLGA.misc.radec2pix(nside, ccds.ra, ccds.dec)
+        pix = np.unique(allpix) # add the neighboring healpixels
+        pix = np.unique( np.hstack( (pix, hp.pixelfunc.get_all_neighbours(nside, pix, nest=True).flatten()) ) )
+        if np.sum(pix == -1) > 0: # remove "no neighbors" healpixel
+            pix = np.delete(pix, np.where(pix == -1)[0])
+        indx = np.where( np.isin(cat_allpix, pix) )[0]
+        return indx
+
+    #dr6_pix = get_ccds_pix(dr6_ccds)
+    #dr6_keep = np.where( np.isin(cat_allpix, dr6_pix) )[0]
+    #cat_allpix = LSLGA.misc.radec2pix(nside, cat['RA'][dr6_keep].data, cat['DEC'][dr6_keep].data)
+
+    # Which galaxies have grz coverage?
+    dr6_keep = None
+    for band in ('g', 'r', 'z'):
+        indx = get_galaxy_ccds(dr6_ccds[dr6_ccds.filter == band])
+        if dr6_keep is None:
+            dr6_keep = indx
+        else:
+            dr6_keep = np.intersect1d(dr6_keep, indx)
+        print(band, len(indx), len(dr6_keep))
+
+    test = get_galaxy_ccds(dr6_ccds)
+    print(len(test))
+            
+    import matplotlib.pyplot as plt
+    #plt.scatter(dr6_ccds.ra, dr6_ccds.dec, s=1, label='All CCDs')
+    plt.scatter(cat['RA'][test], cat['DEC'][test], s=5, marker='s', label='Any band')
+    plt.scatter(cat['RA'][dr6_keep], cat['DEC'][dr6_keep], s=1, alpha=0.5, label='grz')
+    plt.legend()
+    plt.show()
+
+    #rr, dd = LSLGA.misc.pix2radec(nside, dr6_pix)
+    #plt.scatter(rr, dd, s=1, alpha=0.5)
+
+    import pdb ; pdb.set_trace()
+    
+
+
+    t0 = time()
+    dr7_ccds = fits_table(dr7_ccdsfile)
+    print('Read {} CCDs from {} in {:.1f} s'.format(len(dr7_ccds), dr7_ccdsfile, time()-t0))
+    
+    #dr6_ccds = survey_dr6.get_ccds()
+    #dr7_ccds = survey_dr7.get_ccds()
+
+    import pdb ; pdb.set_trace()
 
     # Speed things up by restricting the sample to the set of galaxies within 1
     # arcmin of any CCD.
     kddr7 = survey_dr7.get_ccd_kdtrees()[0][1]
     I, J, d = trees_match(kdcat, kddr7, np.radians(1/60))
-    
-    
 
     # Read the CCDs files here to get the declination boundaries of each DR.
     import pdb ; pdb.set_trace()
+
+    survey_dr6 = LegacySurveyData(survey_dir=sampledir, verbose=False)
+    survey_dr7 = LegacySurveyData(survey_dir=sampledir, verbose=False)
 
     dr6_ccds = survey_dr6.get_ccds()
     dr7_ccds = survey_dr7.get_ccds()
@@ -180,7 +243,7 @@ def main():
             print('Cutting sample to {} galaxies with D(25) <= {:.2f} arcmin'.format(
                 len(parent), args.d25max))
 
-    kdparent = LSLGA.io.read_parent(verbose=args.verbose, kd=True)
+    #kdparent = LSLGA.io.read_parent(verbose=args.verbose, kd=True)
     #rand = np.random.RandomState(seed=1)
     #parent = parent[rand.choice(len(parent), size=10000)]
 
@@ -189,11 +252,12 @@ def main():
             args.nproc, maxnproc))
         sys.exit(1)
 
-    t0 = time.time()
-    drsample, drccds = build_drsample(parent, kdparent, nproc=args.nproc, verbose=args.verbose)
+    t0 = time()
+    drsample, drccds = build_drsample(parent, nproc=args.nproc, verbose=args.verbose)
+    
     if args.verbose:
         print('Found {}/{} galaxies in the DR6+DR7 footprint.'.format(len(drsample), len(parent)))
-        print('Total time = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
+        print('Total time = {:.3f} minutes.'.format( (time() - t0) / 60 ) )
 
     if args.verbose:
         print('Writing {} galaxies to {}'.format(len(drsample), drsamplefile))

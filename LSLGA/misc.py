@@ -57,3 +57,56 @@ def is_point_in_desi(tiles, ra, dec, radius=None, return_tile_index=False):
         return indesi, i
     else:
         return indesi
+
+
+def radec2pix(nside, ra, dec):
+    '''Convert `ra`, `dec` to nested pixel number.
+
+    Args:
+        nside (int): HEALPix `nside`, ``2**k`` where 0 < k < 30.
+        ra (float or array): Right Accention in degrees.
+        dec (float or array): Declination in degrees.
+
+    Returns:
+        Array of integer pixel numbers using nested numbering scheme.
+
+    Notes:
+        This is syntactic sugar around::
+
+            hp.ang2pix(nside, ra, dec, lonlat=True, nest=True)
+
+        but also works with older versions of healpy that didn't have
+        `lonlat` yet.
+    '''
+    import healpy as hp
+    theta, phi = np.radians(90-dec), np.radians(ra)
+    if np.isnan(np.sum(theta)) :
+        raise ValueError("some NaN theta values")
+
+    if np.sum((theta < 0)|(theta > np.pi))>0 :
+        raise ValueError("some theta values are outside [0,pi]: {}".format(theta[(theta < 0)|(theta > np.pi)]))
+
+    return hp.ang2pix(nside, theta, phi, nest=True)
+
+def pix2radec(nside, pix):
+    '''Convert nested pixel number to `ra`, `dec`.
+
+    Args:
+        nside (int): HEALPix `nside`, ``2**k`` where 0 < k < 30.
+        ra (float or array): Right Accention in degrees.
+        dec (float or array): Declination in degrees.
+
+    Returns:
+        Array of RA, Dec coorindates using nested numbering scheme. 
+
+    Notes:
+        This is syntactic sugar around::
+            hp.pixelfunc.pix2ang(nside, pix, nest=True)
+    
+    '''
+    import healpy as hp
+
+    theta, phi = hp.pixelfunc.pix2ang(nside, pix, nest=True)
+    ra, dec = np.degrees(phi), 90-np.degrees(theta)
+    
+    return ra, dec
