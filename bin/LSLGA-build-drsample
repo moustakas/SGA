@@ -181,8 +181,8 @@ def build_drsample(cat, dr, nproc=1, nside=256, verbose=False, interp=False):
     outcat.add_column(Column(name='DR', data=np.repeat(dr.upper(), len(outcat))))
     outccds.dr = np.repeat(dr.upper(), len(outccds))
 
-    print('Final selection in {:.3f} sec: found {}/{} galaxies with grz coverage in {}.'.format(
-        time() - t0, len(outcat), len(cat), dr.upper()))
+    print('Final selection in {:.3f} min: found {}/{} galaxies with grz coverage in {}.'.format(
+        (time() - t0) / 60, len(outcat), len(cat), dr.upper()))
     
     return outcat, outccds
 
