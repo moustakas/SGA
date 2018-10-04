@@ -121,8 +121,9 @@ def build_drsample(cat, nproc=1, verbose=False):
     
     cat.add_column(Column(name='DR', length=len(cat), dtype='S3'))
 
-    survey_dr6 = LegacySurveyData(survey_dir='/global/cscratch1/sd/dstn/dr6plus', verbose=False)
-    survey_dr7 = LegacySurveyData(survey_dir='/global/cscratch1/sd/desiproc/dr7', verbose=False)
+    sampledir = LSLGA.io.sample_dir()
+    survey_dr6 = LegacySurveyData(survey_dir=sampledir, verbose=False)
+    survey_dr7 = LegacySurveyData(survey_dir=sampledir, verbose=False)
 
     # Read the CCDs files here to get the declination boundaries of each DR.
     dr6_ccds = survey_dr6.get_ccds()
