@@ -4,7 +4,29 @@
 
 % LSLGA-build-drsample --clobber --nproc 4
 
+Read 1363748 galaxies from /global/cscratch1/sd/ioannis/LSLGA/sample/LSLGA-v1.0.fits
+Read 280002 CCDs from /global/cscratch1/sd/ioannis/LSLGA/sample/dr6/survey-ccds-dr6plus.kd.fits
+  Healpix selection  in 1.875 sec: found 266499/1363748 galaxies with grz coverage in DR6.
+WCS selection in 70.358 min: found 248345/1363748 galaxies with grz coverage in DR6.
+Writing 248345 galaxies to /global/cscratch1/sd/ioannis/LSLGA/sample/LSLGA-v1.0-dr6.fits
+Writing 2375187 CCDs to /global/cscratch1/sd/ioannis/LSLGA/sample/LSLGA-v1.0-dr6-ccds.fits
 
+Read 1363748 galaxies from /global/cscratch1/sd/ioannis/LSLGA/sample/LSLGA-v1.0.fits
+Read 2307125 CCDs from /global/cscratch1/sd/ioannis/LSLGA/sample/dr7/survey-ccds-dr7.kd.fits
+  Healpix selection  in 12.152 sec: found 614617/1363748 galaxies with grz coverage in DR7.
+WCS selection in 224.093 min: found 574712/1363748 galaxies with grz coverage in DR7.
+Writing 574712 galaxies to /global/cscratch1/sd/ioannis/LSLGA/sample/LSLGA-v1.0-dr7.fits
+Writing 6924419 CCDs to /global/cscratch1/sd/ioannis/LSLGA/sample/LSLGA-v1.0-dr7-ccds.fits
+
+Building the joint DR6 + DR7 sample.
+Read 248345 galaxies from /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0-dr6.fits
+Read 2375187 galaxies from /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0-dr6-ccds.fits
+Read 574712 galaxies from /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0-dr7.fits
+Read 6924419 galaxies from /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0-dr7-ccds.fits
+  Resolving 14280 duplicates among 823057 galaxies in favor of DR7.
+Writing 823057 galaxies to /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0-dr6-dr7.fits
+Writing 9175880 CCDs to /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0-dr6-dr7-ccds.fits
+Total time for DR6 + DR7 = 15.962 min.
 
 """
 import os, sys, argparse
