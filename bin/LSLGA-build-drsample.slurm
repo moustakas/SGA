@@ -3,7 +3,7 @@
 #SBATCH -A cosmo
 #SBATCH -p regular
 #SBATCH -N 1
-#SBATCH -n 4
+#SBATCH -n 2
 #SBATCH -C haswell
 #SBATCH -L SCRATCH,project
 #SBATCH -t 04:00:00
@@ -16,4 +16,4 @@
 export IMPY_DIR=$HOME/repos/git/impy
 source $IMPY_DIR/bin/LSLGA-env-nersc
 
-time python $LSLGA_CODE_DIR/bin/LSLGA-build-drsample --verbose --clobber --nproc 4
+time python $LSLGA_CODE_DIR/bin/LSLGA-build-drsample --verbose --clobber --nproc 2 --dr dr7
