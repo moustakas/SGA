@@ -1,21 +1,11 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import, division, print_function
-
-import os, time, warnings
+import os, time
 import numpy as np
 import numpy.ma as ma
 import pandas as pd
 
-from astropy.table import Table, Column, vstack
-
-from legacypipe.internal import sharedmem
-
-import fitsio
-from astrometry.util.fits import fits_table
-from astrometry.util.starutil_numpy import deg2dist
-from astrometry.libkd.spherematch import (match_radec, tree_open, tree_search_radec,
-                                          tree_build_radec)
+from astropy.table import Table, Column
 
 def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     """Read and parse the raw HyperLeda catalog.
@@ -32,16 +22,19 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     """
     names = ('pgc', 'objname', 'objtype', 'ra', 'dec', 'type', 'bar', 'ring', 
              'multiple', 'compactness', 't', 'logd25', 'logr25', 
-             'pa', 'bt', 'it', 'kt', 'v', 'modbest')
-    dtype = {'pgc': np.int64, 'objname': str, 'objtype': str, 'ra': np.float64, 'dec': np.float64,
+             'pa', 'bt', 'it', 'kt', 'v', 'modbest',
+             'lax_opt', 'sax_opt', 'lax_ir', 'sax_ir', 'celposj')
+    dtype = {'pgc': np.int64,
+             'objname': str, 'objtype': str, 'ra': np.float64, 'dec': np.float64,
              'type': str, 'bar': str, 'ring': str, 'multiple': str, 'compactness': str,
              't': str, 'logd25': str, 'logr25': str, 'pa': str,
-             'bt': str, 'it': str, 'kt': str, 'v': str, 'modbest': str}
+             'bt': str, 'it': str, 'kt': str, 'v': str, 'modbest': str,
+             'lax_opt': str, 'sax_opt': str, 'lax_ir': str, 'sax_ir': str, 'celposj': str}
 
     t0 = time.time()
-    data = pd.read_csv(txtfile, delimiter='|', comment='#', na_values='--',
-                       names=names, nrows=nrows, dtype=dtype)
-    
+    data = pd.read_csv(txtfile, delimiter='|', comment='#', na_values='--', skiprows=2, 
+                       names=names, nrows=nrows, dtype=dtype, skip_blank_lines=True,
+                       warn_bad_lines=True, error_bad_lines=False)
     print('Read {} objects from {} in {:.3f} sec.'.format(len(data), txtfile,
                                                           time.time() - t0 ) )
     data = data.replace(r'^\s*$', np.nan, regex=True)  # replace blank entries with NaN
@@ -61,8 +54,6 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['multiple'] = data['multiple'].astype(str).str.strip()
     out['compactness'] = data['compactness'].astype(str).str.strip()
     out['t'] = data['t'].astype('f4')
-    out['d25'] = (0.1 * 10**data['logd25'].astype('f4')).astype('f4') # [arcmin]
-    out['ba'] = (10**(-data['logr25'].astype('f4'))).astype('f4') # major-to-minor axis ratio
     out['pa'] = data['pa'].astype('f4')
 
     out['bt'] = data['bt'].astype('f4')
@@ -71,11 +62,42 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
 
     out['modbest'] = data['modbest'].astype('f4')
 
+    out['diam_iso'] = (0.1 * 10**data['logd25'].astype('f4')).astype('f4') # [arcmin]
+    out['diam_opt'] = (0.1 * 10**data['lax_opt'].astype('f4')).astype('f4') # [arcmin]
+    out['diam_ir'] = (0.1 * 10**data['lax_ir'].astype('f4')).astype('f4') # [arcmin]
+
+    out['ba_iso'] = (10**(-data['logr25'].astype('f4'))).astype('f4') # major-to-minor axis ratio
+    out['ba_opt'] = (10**(-data['sax_opt'].astype('f4'))).astype('f4')
+    out['ba_ir'] = (10**(-data['sax_ir'].astype('f4'))).astype('f4')
+
+    out['d25'] = out['diam_iso'] # default
+    out['ba'] = out['ba_iso']    # default
+    diam_ref = np.repeat('iso', len(data))
+
+    # Turn off the "chained assignment" warning:
+    # https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+    pd.options.mode.chained_assignment = None 
+
+    need = np.isnan(out['d25'].values) & np.isfinite(out['diam_ir'].values)
+    if np.sum(need) > 0:
+        out['d25'][need] = out['diam_ir'].values[need]
+        out['ba'][need] = out['ba_ir'].values[need]
+        diam_ref[need] = 'ir'
+
+    need = np.isnan(out['d25'].values) & np.isfinite(out['diam_opt'].values)
+    if np.sum(need) > 0:
+        out['d25'][need] = out['diam_opt'].values[need]
+        out['ba'][need] = out['ba_opt'].values[need]
+        diam_ref[need] = 'opt'
+
     # Convert to an astropy Table
     t0 = time.time()
     out = Table.from_pandas(out)
     ngal = len(out)
     print('Total time to convert to an astropy Table = {:.3f} sec'.format( time.time() - t0 ))
+
+    #out.add_column(Column(name='diam_ref', dtype='U3', data=np.empty(ngal)*np.nan))
+    out['diam_ref'] = diam_ref
 
     # Add a couple more columns
     out.add_column(Column(name='z', dtype='f4', data=np.empty(ngal)*np.nan))
@@ -91,17 +113,27 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
 
     median_bk = 4.21
     median_bi = 1.52
-    
+
     out.add_column(Column(name='mag', dtype='f4', length=ngal))
+    out.add_column(Column(name='mag_ref', dtype='U1', data=np.repeat('-', ngal)))
+
+    #need = np.isfinite(ma.getdata(out['bt']))
+    #out['mag'][need] = ma.getdata(out['bt'][need])
+    #out['mag_ref'][need] = 'B'
     out['mag'] = ma.getdata(out['bt'])
+    out['mag_ref'] = 'B'
     
     need = np.isnan(ma.getdata(out['mag'])) * np.isfinite(ma.getdata(out['kt']))
     if np.sum(need) > 0:
+        print(np.sum(need))
         out['mag'][need] = ma.getdata(out['kt'][need]) + median_bk
+        out['mag_ref'][need] = 'K'
     
     need = np.isnan(ma.getdata(out['mag'])) * np.isfinite(ma.getdata(out['it']))
     if np.sum(need) > 0:
+        print(np.sum(need))
         out['mag'][need] = ma.getdata(out['it'][need]) + median_bi
+        out['mag_ref'][need] = 'I'
 
     # Vega --> AB!
     goodphot = np.isfinite(ma.getdata(out['mag']))
@@ -118,9 +150,11 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
 if __name__ == '__main__':
     
     NLSGAdir = os.getenv('LSLGA_DIR')
-    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18may13.txt')
+    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18oct31.txt')
+    #txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18may13.txt')
     
     data, out = read_leda(txtfile, zcut=False, nrows=None)
+    #data, out = read_leda(txtfile, zcut=False, nrows=50000)
 
     fitsfile = txtfile.replace('.txt', '.fits')
     print('Writing {}'.format(fitsfile))
