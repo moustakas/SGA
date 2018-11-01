@@ -48,9 +48,11 @@ def html_dir():
         os.makedirs(htmldir, exist_ok=True)
     return htmldir
 
-def parent_version():
+def parent_version(version=None):
     """Version of the parent catalog."""
-    version = 'v1.0'
+    if version is None:
+        #version = 'v1.0' # 18may13
+        version = 'v2.0'  # 18oct31
     return version
 
 def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
@@ -126,7 +128,16 @@ def read_hyperleda(verbose=False):
     """Read the Hyperleda catalog.
     
     """
-    hyperledafile = os.path.join(sample_dir(), 'hyperleda-d25min10-18may13.fits')
+    version = parent_version()
+    if version == 'v1.0':
+        hyperfile = 'hyperleda-d25min10-18may13.fits'
+    elif version == 'v2.0':
+        hyperfile = 'hyperleda-d25min10-18oct31.fits'
+    else:
+        print('Unknown version!')
+        raise ValueError
+    
+    hyperledafile = os.path.join(sample_dir(), hyperfile)
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
     leda = Table(fitsio.read(hyperledafile, ext=1, upper=True))
