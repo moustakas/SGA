@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function, division
-
 import os, sys, re
 import numpy as np
 
@@ -28,17 +26,21 @@ def main():
 
     # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec1_4.html
     # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec2_1a.html
+    # http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc    
     allwise_cols = ['DESIGNATION', 'RA', 'DEC', 'CNTR', 'NB', 'NA',
                     'CC_FLAGS', 'EXT_FLG', 'PH_QUAL',
+                    'MOON_LEV', 'RCHI2', 
                     #'W1FLUX', 'W1SIGFLUX', 'W2FLUX', 'W2SIGFLUX',
                     #'W3FLUX', 'W3SIGFLUX', 'W4FLUX', 'W4SIGFLUX',
                     'W1MPRO', 'W1SIGMPRO', 'W2MPRO', 'W2SIGMPRO',
                     'W3MPRO', 'W3SIGMPRO', 'W4MPRO', 'W4SIGMPRO',
                     'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
                     'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
+                    'W1GMAG', 'W1GERR', 'W2MAG', 'W2GERR',
+                    'W3GMAG', 'W3GERR', 'W4GMAG', 'W4GERR',
                     #'W1MAG_1', 'W1SIGM_1', 'W2MAG_1', 'W2SIGM_1',
                     #'W3MAG_1', 'W3SIGM_1', 'W4MAG_1', 'W4SIGM_1',
-                    'TMASS_KEY',
+                    'TMASS_KEY', 'XSCPROX', #
                     'J_M_2MASS', 'J_MSIG_2MASS', 
                     'H_M_2MASS', 'H_MSIG_2MASS', 
                     'K_M_2MASS', 'K_MSIG_2MASS']
@@ -78,7 +80,7 @@ def main():
                     raise
         
             pos = radec2pos(objects['RA'], objects['DEC'])
-            print('Querying KD tree')
+            #print('Querying KD tree')
             d, i = tree.query(pos, 1)
             assert (objects['DESIGNATION'] != b'NULL').all()
             with pool.critical:
@@ -241,7 +243,7 @@ def parse_args():
     ap.add_argument('-f', "--format", choices=['fits', 'hdf5'], nargs='+', default=["fits"],
         help="Format of the output file")
 
-    ap.add_argument('-t', "--tolerance", default=1.0, type=float,
+    ap.add_argument('-t', "--tolerance", default=3.0, type=float,
         help="Tolerance of the angular distance for a match, in arcseconds")
 
     ap.add_argument('-F', "--filelist", default=None,
