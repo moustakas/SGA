@@ -7,6 +7,12 @@ Miscellaneous code.
 """
 import numpy as np
 
+def custom_brickname(ra, dec):
+    brickname = '{:06d}{}{:05d}'.format(
+        int(1000*ra), 'm' if dec < 0 else 'p',
+        int(1000*np.abs(dec)))
+    return brickname
+
 def is_point_in_desi(tiles, ra, dec, radius=None, return_tile_index=False):
     """If a point (`ra`, `dec`) is within `radius` distance from center of any
     tile, it is in DESI.

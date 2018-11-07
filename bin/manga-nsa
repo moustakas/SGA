@@ -48,7 +48,7 @@ def missing_files(sample, filedir='.', filetype='coadds',
     todo = np.ones(ngal, dtype=bool)
 
     for ii, onegal in enumerate(np.atleast_1d(sample)):
-        galaxy = onegal['GALAXY'].decode('utf-8').lower()
+        galaxy = onegal['PLATEIFU'].decode('utf-8')
         checkfile = os.path.join(filedir, galaxy, '{}-{}'.format(galaxy, filesuffix))
         if os.path.exists(checkfile) and clobber is False:
             todo[ii] = False
@@ -136,16 +136,16 @@ def main():
     groups, suffix = [], ''
     if args.coadds:
         suffix = 'coadds'
-        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
     elif args.custom_coadds:
         suffix = 'custom_coadds'
-        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
     elif args.ellipse:
         suffix = 'ellipse'
-        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
     elif args.html:
         suffix = 'html'
-        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
     else:
         groups = []
 
@@ -166,19 +166,17 @@ def main():
     
     # Generate the pipeline coadds.
     if args.coadds:
-        from legacyhalos.coadds import pipeline_coadds
+        from LSLGA.coadds import pipeline_coadds
         survey = LegacySurveyData()
 
         for ii in groups:
             t0 = time.time()
 
             onegal = sample[ii][0]
-            galaxy = onegal['GALAXY'].lower()
-            survey.output_dir = os.path.join(analysisdir, galaxy)
+            galaxy = onegal['PLATEIFU']
+            survey.output_dir = os.path.join(mangadirdir, galaxy)
             
-            radius = legacyhalos.misc.cutout_radius_150kpc( 
-                redshift=onegal['Z'], pixscale=args.pixscale) # [pixels]
-            
+            radius = np.round(40 / args.pixscale).astype('int') # [pixels]
             err = pipeline_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
                                   pixscale=args.pixscale, nproc=args.nproc, force=args.force)
             if err == 0:
