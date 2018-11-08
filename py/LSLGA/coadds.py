@@ -45,7 +45,8 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
 
     cmd = 'python {legacypipe_dir}/py/legacypipe/runbrick.py '
     cmd += '--radec {ra} {dec} --width {width} --height {width} --pixscale {pixscale} '
-    cmd += '--threads {threads} --outdir {outdir} --unwise-coadds '
+    cmd += '--threads {threads} --outdir {outdir} '
+    #cmd += '--unwise-coadds '
     #cmd += '--force-stage coadds '
     cmd += '--write-stage srcs --no-write --skip --no-wise-ceres '
     cmd += '--checkpoint {archivedir}/{galaxy}-runbrick-checkpoint.p --checkpoint-period 600 '
@@ -133,12 +134,13 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
                     return ok
 
         # JPG images
-        for imtype in ('wise', 'wisemodel'):
-            ok = _copyfile(
-                os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
-                             'legacysurvey-{}-{}.jpg'.format(brickname, imtype)),
-                os.path.join(survey.output_dir, '{}-{}.jpg'.format(galaxy, imtype)) )
-            if not ok:
+        if False:
+            for imtype in ('wise', 'wisemodel'):
+                ok = _copyfile(
+                    os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
+                                 'legacysurvey-{}-{}.jpg'.format(brickname, imtype)),
+                    os.path.join(survey.output_dir, '{}-{}.jpg'.format(galaxy, imtype)) )
+                if not ok:
                 return ok
 
         for imtype in ('image', 'model', 'resid'):
@@ -172,9 +174,10 @@ def _custom_sky(skyargs):
           'seeing {:.2f}'.format(ccd.fwhm * im.pixscale), 
           'object', getattr(ccd, 'object', None))
 
-    radius = legacyhalos.misc.cutout_radius_150kpc(
-        redshift=onegal['Z'], pixscale=im.pixscale) # [pixels]
-    
+    print('Hack--fixed radius!')
+    rad_arcsec = 40
+    radius = np.round(rad_arcsec / im.pixscale).astype('int') # [pixels]
+
     tim = im.get_tractor_image(splinesky=True, subsky=False,
                                hybridPsf=True, normalizePsf=True)
 
@@ -256,7 +259,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
 
     mp = multiproc(nthreads=nproc)
 
-    unwise_dir = os.environ.get('UNWISE_COADDS_DIR', None)    
+    #unwise_dir = os.environ.get('UNWISE_COADDS_DIR', None)    
 
     # [1] Initialize the "tims" stage of the pipeline, returning a
     # dictionary with the following keys:
