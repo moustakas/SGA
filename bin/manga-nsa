@@ -20,6 +20,8 @@ mangadir = os.path.join(os.getenv('SCRATCH'), 'manga-nsa')
 #mangadir = os.path.join(os.getenv('IM_PROJECTS_DIR'), 'manga-nsa')
 samplefile = os.path.join(mangadir, 'manga-nsa.fits')
 
+RADIUSFACTOR = 10
+
 def missing_files(sample, filedir='.', filetype='coadds',
                   size=1, clobber=False):
     """Find missing data of a given filetype."""    
@@ -105,7 +107,8 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--nproc', default=4, type=int, help='number of multiprocessing processes.')
-    parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
+    parser.add_argument('--pixscale', default=0.262, type=float, help='optical pixel scale (arcsec/pix).')
+    parser.add_argument('--unwise-pixscale', default=2.75, type=float, help='unWISE pixel scale (arcsec/pix).')
 
     parser.add_argument('--build-sample', action='store_true', help='Build and write out the sample.')
     parser.add_argument('--coadds', action='store_true', help='Build the pipeline coadds.')
@@ -173,7 +176,7 @@ def main():
     print('Starting {} {} at {}'.format(ntodo, suffix.upper(), time.asctime()), flush=True)
 
     print('Hack--fixed radius!')
-    rad_arcsec = 40
+    rad_arcsec = 120
     
     # Generate the pipeline coadds.
     if args.coadds:
@@ -187,7 +190,7 @@ def main():
             galaxy = onegal['PLATEIFU']
             survey.output_dir = os.path.join(mangadir, galaxy)
             
-            radius = np.round(rad_arcsec / args.pixscale).astype('int') # [pixels]
+            radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
             err = pipeline_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
                                   pixscale=args.pixscale, nproc=args.nproc, force=args.force)
             if err == 0:
@@ -218,7 +221,7 @@ def main():
                 galaxy, (time.time() - t0) / 60), flush=True)
 
     if args.unwise:
-        from LSLGA.wise import un
+        from LSLGA.unwise import unwise_coadds
         survey = LegacySurveyData()
 
         for ii in groups:
@@ -230,10 +233,9 @@ def main():
             survey.output_dir = os.path.join(mangadir, galaxy)
             survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
 
-            radius = np.round(rad_arcsec / args.pixscale).astype('int') # [pixels]
-            
-            err = custom_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
-                                pixscale=args.pixscale, nproc=args.nproc, verbose=args.verbose)
+            radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
+            err = unwise_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
+                                pixscale=args.unwise_pixscale, verbose=args.verbose)
             if err == 0:
                 print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
             print('Finished galaxy {} in {:.3f} minutes.'.format(

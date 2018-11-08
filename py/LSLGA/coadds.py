@@ -25,10 +25,12 @@ def _copyfile(infile, outfile):
         print('Missing file {}; please check the logfile.'.format(infile))
         return 0
 
-def pipeline_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
+def pipeline_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
                     pixscale=0.262, splinesky=True, log=None, force=False,
                     archivedir=None, cleanup=True):
     """Run legacypipe.runbrick on a custom "brick" centered on the galaxy.
+
+    radius in arcsec
 
     """
     import subprocess
@@ -55,9 +57,11 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
         cmd += '--force-all '
     if not splinesky:
         cmd += '--no-splinesky '
-    
+
+    width = np.ceil(radius / pixscale).astype('int') # [pixels]
+
     cmd = cmd.format(legacypipe_dir=os.getenv('LEGACYPIPE_DIR'), galaxy=galaxy,
-                     ra=onegal['RA'], dec=onegal['DEC'], width=2*radius,
+                     ra=onegal['RA'], dec=onegal['DEC'], width=2*width,
                      pixscale=pixscale, threads=nproc, outdir=survey.output_dir,
                      archivedir=archivedir)
     
@@ -124,24 +128,22 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
             if not ok:
                 return ok
 
-        for band in ('W1', 'W2'):
-            for imtype in ('image', 'model'):
-                ok = _copyfile(
-                    os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
-                                 'legacysurvey-{}-{}-{}.fits.fz'.format(brickname, imtype, band)),
-                    os.path.join(survey.output_dir, '{}-{}-{}.fits.fz'.format(galaxy, imtype, band)) )
-                if not ok:
-                    return ok
-
-        # JPG images
-        if False:
+        if False: # WISE stuff was moved to the unwise.py module
+            for band in ('W1', 'W2'):
+                for imtype in ('image', 'model'):
+                    ok = _copyfile(
+                        os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
+                                     'legacysurvey-{}-{}-{}.fits.fz'.format(brickname, imtype, band)),
+                        os.path.join(survey.output_dir, '{}-{}-{}.fits.fz'.format(galaxy, imtype, band)) )
+                    if not ok:
+                        return ok
             for imtype in ('wise', 'wisemodel'):
                 ok = _copyfile(
                     os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
                                  'legacysurvey-{}-{}.jpg'.format(brickname, imtype)),
                     os.path.join(survey.output_dir, '{}-{}.jpg'.format(galaxy, imtype)) )
                 if not ok:
-                return ok
+                    return ok
 
         for imtype in ('image', 'model', 'resid'):
             ok = _copyfile(
@@ -176,6 +178,7 @@ def _custom_sky(skyargs):
 
     print('Hack--fixed radius!')
     rad_arcsec = 40
+    pdb.set_trace()
     radius = np.round(rad_arcsec / im.pixscale).astype('int') # [pixels]
 
     tim = im.get_tractor_image(splinesky=True, subsky=False,
