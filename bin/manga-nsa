@@ -109,6 +109,7 @@ def main():
     parser.add_argument('--nproc', default=4, type=int, help='number of multiprocessing processes.')
     parser.add_argument('--pixscale', default=0.262, type=float, help='optical pixel scale (arcsec/pix).')
     parser.add_argument('--unwise-pixscale', default=2.75, type=float, help='unWISE pixel scale (arcsec/pix).')
+    parser.add_argument('--galex-pixscale', default=1.5, type=float, help='unWISE pixel scale (arcsec/pix).')
 
     parser.add_argument('--build-sample', action='store_true', help='Build and write out the sample.')
     parser.add_argument('--coadds', action='store_true', help='Build the pipeline coadds.')
@@ -236,6 +237,27 @@ def main():
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
             err = unwise_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
                                 pixscale=args.unwise_pixscale, verbose=args.verbose)
+            if err == 0:
+                print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
+            print('Finished galaxy {} in {:.3f} minutes.'.format(
+                galaxy, (time.time() - t0) / 60), flush=True)
+
+    if args.galex:
+        from LSLGA.galex import galex_coadds
+        survey = LegacySurveyData()
+
+        for ii in groups:
+            t0 = time.time()
+
+            onegal = sample[ii][0]
+            galaxy = onegal['PLATEIFU']
+
+            survey.output_dir = os.path.join(mangadir, galaxy)
+            survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
+
+            radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
+            err = galex_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
+                               pixscale=args.galex_pixscale, verbose=args.verbose)
             if err == 0:
                 print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
             print('Finished galaxy {} in {:.3f} minutes.'.format(

@@ -13,7 +13,7 @@ def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
 
     """
     img = imgs[0]
-    H,W = img.shape
+    H, W = img.shape
 
     ## FIXME
     w1,w2 = imgs
@@ -48,13 +48,13 @@ def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
 
     rgb[:,:,2] = (np.clip(img1, 0., 1.) * 255).astype(np.uint8)
     rgb[:,:,0] = (np.clip(img2, 0., 1.) * 255).astype(np.uint8)
-    rgb[:,:,1] = rgb[:,:,0]/2 + rgb[:,:,2]/2
+    rgb[:,:,1] = rgb[:, :, 0] / 2 + rgb[:, :, 2] / 2
 
     return rgb
 
 def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75, 
                 survey=None, unwise_dir=None, verbose=False):
-    '''Generate Legacy Survey and WISE cutouts.
+    '''Generate custom unWISE cutouts.
     
     radius in arcsec
     
@@ -66,8 +66,7 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     import matplotlib.pyplot as plt
     
     from astrometry.util.util import Tan
-    from astrometry.util.plotutils import dimshow
-    from astrometry.util.fits import fits_table, merge_tables
+    from astrometry.util.fits import fits_table
     from astrometry.util.resample import resample_with_wcs, ResampleError
     from wise.forcedphot import unwise_tiles_touching_wcs
     from wise.unwise import get_unwise_tractor_image
@@ -86,15 +85,12 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     if unwise_dir is None:
         unwise_dir = os.environ.get('UNWISE_COADDS_DIR')
 
-    npix = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
-    W = H = npix
+    W = H = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
     pix = pixscale / 3600.0
     wcs = Tan(onegal['RA'], onegal['DEC'],
               (W+1) / 2.0, (H+1) / 2.0,
               -pix, 0.0, 0.0, pix,
               float(W), float(H))
-    if verbose:
-        print('Image size: {}'.format(npix))
 
     # Read the custom Tractor catalog
     tractorfile = os.path.join(survey.output_dir, '{}-tractor.fits'.format(galaxy))
@@ -201,34 +197,30 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
         if verbose:
             print('Writing {}'.format(fitsfile))
         fitsio.write(fitsfile, img, clobber=True)
-        
+
     # Color WISE images --
     kwa = dict(mn=-1, mx=100, arcsinh=1)
     #kwa = dict(mn=-0.1, mx=2., arcsinh=1)
     #kwa = dict(mn=-0.1, mx=2., arcsinh=None)
 
     rgb = _unwise_to_rgb(coimgs[:2], **kwa)
-    pngfile = os.path.join(survey.output_dir, '{}-unwise-image.png'.format(galaxy))
+    jpgfile = os.path.join(survey.output_dir, '{}-unwise-image.jpg'.format(galaxy))
     if verbose:
-        print('Writing {}'.format(pngfile))
-    imsave_jpeg(pngfile, rgb, origin='lower')
+        print('Writing {}'.format(jpgfile))
+    imsave_jpeg(jpgfile, rgb, origin='lower')
     
-    fig, ax = plt.subplots(figsize=(8, 8))
-    dimshow(rgb, ticks=False)
-    fig.savefig(pngfile, bbox_inches='tight', pad_inches=0)
-
     rgb = _unwise_to_rgb(comods[:2], **kwa)
-    pngfile = os.path.join(survey.output_dir, '{}-unwise-model.png'.format(galaxy))
+    jpgfile = os.path.join(survey.output_dir, '{}-unwise-model.jpg'.format(galaxy))
     if verbose:
-        print('Writing {}'.format(pngfile))
-    imsave_jpeg(pngfile, rgb, origin='lower')
+        print('Writing {}'.format(jpgfile))
+    imsave_jpeg(jpgfile, rgb, origin='lower')
 
     #kwa = dict(mn=-1, mx=1, arcsinh=1)
     #kwa = dict(mn=-1, mx=1, arcsinh=None)
     rgb = _unwise_to_rgb([img-mod for img, mod in list(zip(coimgs, comods))[:2]], **kwa)
-    pngfile = os.path.join(survey.output_dir, '{}-unwise-resid.png'.format(galaxy))
+    jpgfile = os.path.join(survey.output_dir, '{}-unwise-resid.jpg'.format(galaxy))
     if verbose:
-        print('Writing {}'.format(pngfile))
-    imsave_jpeg(pngfile, rgb, origin='lower')
+        print('Writing {}'.format(jpgfile))
+    imsave_jpeg(jpgfile, rgb, origin='lower')
 
     return 1
