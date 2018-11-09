@@ -22,6 +22,16 @@ samplefile = os.path.join(mangadir, 'manga-nsa.fits')
 
 RADIUSFACTOR = 10
 
+def get_survey_dir(onegal):
+    if onegal['DR'] == 'DR6':
+        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr6'
+    elif onegal['DR'] == 'DR7':
+        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr7'
+    else:
+        print('Unrecognized DR!')
+        raise ValueError
+    return
+
 def missing_files(sample, filedir='.', filetype='coadds',
                   size=1, clobber=False):
     """Find missing data of a given filetype."""    
@@ -56,8 +66,11 @@ def missing_files(sample, filedir='.', filetype='coadds',
         return list()
     else:
         indices = indices[todo]
-        
-    return np.array_split(indices, size)
+
+    if size == 1:
+        return indices
+    else:
+        return np.array_split(indices, size)
 
 def build_sample(clobber=False):
     """Build the parent sample for this project.
@@ -66,12 +79,12 @@ def build_sample(clobber=False):
     7815-6104 319.193098655 11.0437407875
     http://legacysurvey.org/viewer?ra=319.1930&dec=11.0436&zoom=14&layer=decals-dr7
     
-    8256-12704 166.129407835 42.6245544187
-    http://legacysurvey.org/viewer?ra=166.1354&dec=42.6264&zoom=14&layer=mzls+bass-dr6
-    
     8939-9101 125.227739446 23.7292001251
     http://legacysurvey.org/viewer?ra=125.2275&dec=23.7291&zoom=14&layer=decals-dr7
 
+    8256-12704 166.129407835 42.6245544187
+    http://legacysurvey.org/viewer?ra=166.1354&dec=42.6264&zoom=14&layer=mzls+bass-dr6
+    
     LSLGA-wise-galex -r 319.193098655 -d 11.0437407875 --radius 40 --prefix 7815-6104
     
 
@@ -95,6 +108,7 @@ def build_sample(clobber=False):
     manga = manga[srt]
     nsa = Table(fitsio.read(nsafile, rows=rows[srt], upper=True))
     nsa.rename_column('PLATE', 'PLATE_NSA')
+    nsa['DR'] = ['DR7', 'DR7', 'DR6']
 
     sample = hstack( (manga, nsa) )
     
@@ -176,9 +190,6 @@ def main():
 
     print('Starting {} {} at {}'.format(ntodo, suffix.upper(), time.asctime()), flush=True)
 
-    print('Hack--fixed radius!')
-    rad_arcsec = 120
-    
     # Generate the pipeline coadds.
     if args.coadds:
         from LSLGA.coadds import pipeline_coadds
@@ -187,11 +198,13 @@ def main():
         for ii in groups:
             t0 = time.time()
 
-            onegal = sample[ii][0]
+            onegal = sample[ii]
             galaxy = onegal['PLATEIFU']
-            survey.output_dir = os.path.join(mangadir, galaxy)
-            
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
+
+            survey.survey_dir = get_survey_dir(onegal)
+            survey.output_dir = os.path.join(mangadir, galaxy)
+
             err = pipeline_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
                                   pixscale=args.pixscale, nproc=args.nproc, force=args.force)
             if err == 0:
@@ -206,16 +219,22 @@ def main():
         for ii in groups:
             t0 = time.time()
 
-            onegal = sample[ii][0]
+            onegal = sample[ii]
             galaxy = onegal['PLATEIFU']
+            radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
 
+            survey.survey_dir = get_survey_dir(onegal)
             survey.output_dir = os.path.join(mangadir, galaxy)
-            survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
 
-            radius = np.round(rad_arcsec / args.pixscale).astype('int') # [pixels]
-            
-            err = custom_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
-                                pixscale=args.pixscale, nproc=args.nproc, verbose=args.verbose)
+            ccdsfile = os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy))
+            if os.path.isfile(ccdsfile):
+                survey.ccds = survey.cleanup_ccds_table( fits_table(ccdsfile) )
+                err = custom_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
+                                    pixscale=args.pixscale, nproc=args.nproc, verbose=args.verbose)
+            else:
+                print('CCDs file {} not found.'.format(ccdsfile))
+                err = 0
+                
             if err == 0:
                 print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
             print('Finished galaxy {} in {:.3f} minutes.'.format(
@@ -228,15 +247,22 @@ def main():
         for ii in groups:
             t0 = time.time()
 
-            onegal = sample[ii][0]
+            onegal = sample[ii]
             galaxy = onegal['PLATEIFU']
-
-            survey.output_dir = os.path.join(mangadir, galaxy)
-            survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
-
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
-            err = unwise_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
-                                pixscale=args.unwise_pixscale, verbose=args.verbose)
+
+            survey.survey_dir = get_survey_dir(onegal)
+            survey.output_dir = os.path.join(mangadir, galaxy)
+
+            ccdsfile = os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy))
+            if os.path.isfile(ccdsfile):
+                survey.ccds = survey.cleanup_ccds_table( fits_table(ccdsfile) )
+                err = unwise_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
+                                    pixscale=args.unwise_pixscale, verbose=args.verbose)
+            else:
+                print('CCDs file {} not found.'.format(ccdsfile))
+                err = 0
+                
             if err == 0:
                 print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
             print('Finished galaxy {} in {:.3f} minutes.'.format(
@@ -249,27 +275,34 @@ def main():
         for ii in groups:
             t0 = time.time()
 
-            onegal = sample[ii][0]
+            onegal = sample[ii]
             galaxy = onegal['PLATEIFU']
-
-            survey.output_dir = os.path.join(mangadir, galaxy)
-            survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
-
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
-            err = galex_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
-                               pixscale=args.galex_pixscale, verbose=args.verbose)
+
+            survey.survey_dir = get_survey_dir(onegal)
+            survey.output_dir = os.path.join(mangadir, galaxy)
+
+            ccdsfile = os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy))
+            if os.path.isfile(ccdsfile):
+                survey.ccds = survey.cleanup_ccds_table( fits_table(ccdsfile) )
+                err = galex_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
+                                   pixscale=args.galex_pixscale, verbose=args.verbose)
+            else:
+                print('CCDs file {} not found.'.format(ccdsfile))
+                err = 0
+                
             if err == 0:
                 print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
             print('Finished galaxy {} in {:.3f} minutes.'.format(
                 galaxy, (time.time() - t0) / 60), flush=True)
 
     if args.ellipse:
-        from legacyhalos.ellipse import legacyhalos_ellipse
+        from LSLGA.ellipse import LSLGA_ellipse
 
         for ii in groups:
             t0 = time.time()
 
-            onegal = sample[ii][0]
+            onegal = sample[ii]
             galaxy = onegal['GALAXY'].lower()
             galaxydir = os.path.join(analysisdir, galaxy)
 
@@ -281,7 +314,7 @@ def main():
                 galaxy, (time.time() - t0) / 60), flush=True)
 
     if args.html:
-        from legacyhalos.hsc import make_html
+        from LSLGA.html import make_html
 
         survey = LegacySurveyData()
 

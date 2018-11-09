@@ -48,22 +48,23 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
     cmd = 'python {legacypipe_dir}/py/legacypipe/runbrick.py '
     cmd += '--radec {ra} {dec} --width {width} --height {width} --pixscale {pixscale} '
     cmd += '--threads {threads} --outdir {outdir} '
+    cmd += '--survey-dir {survey_dir} '
     #cmd += '--unwise-coadds '
     #cmd += '--force-stage coadds '
     cmd += '--write-stage srcs --no-write --skip --no-wise-ceres '
-    cmd += '--checkpoint {archivedir}/{galaxy}-runbrick-checkpoint.p --checkpoint-period 600 '
+    cmd += '--checkpoint {archivedir}/{galaxy}-runbrick-checkpoint.p --checkpoint-period 300 '
     cmd += '--pickle {archivedir}/{galaxy}-runbrick-%%(stage)s.p ' 
     if force:
         cmd += '--force-all '
     if not splinesky:
         cmd += '--no-splinesky '
 
-    width = np.ceil(radius / pixscale).astype('int') # [pixels]
+    width = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
 
     cmd = cmd.format(legacypipe_dir=os.getenv('LEGACYPIPE_DIR'), galaxy=galaxy,
-                     ra=onegal['RA'], dec=onegal['DEC'], width=2*width,
+                     ra=onegal['RA'], dec=onegal['DEC'], width=width,
                      pixscale=pixscale, threads=nproc, outdir=survey.output_dir,
-                     archivedir=archivedir)
+                     archivedir=archivedir, survey_dir=survey.survey_dir)
     
     print(cmd, flush=True, file=log)
     err = subprocess.call(cmd.split(), stdout=log, stderr=log)
@@ -169,17 +170,17 @@ def _custom_sky(skyargs):
     from scipy.ndimage.morphology import binary_dilation
     from legacypipe.runbrick import stage_srcs
 
-    survey, onegal, ccd = skyargs
+    survey, onegal, radius_arcsec, ccd = skyargs
 
+    #print(ccd.image_filename, ccd.camera)
+    #if ccd.image_filename == 'mosaic/CP20160313v2/k4m_160314_074016_ooi_zd_v2.fits.fz':
+    #    pdb.set_trace()
     im = survey.get_image_object(ccd)
     print(im, im.band, 'exptime', im.exptime, 'propid', ccd.propid,
           'seeing {:.2f}'.format(ccd.fwhm * im.pixscale), 
           'object', getattr(ccd, 'object', None))
 
-    print('Hack--fixed radius!')
-    rad_arcsec = 40
-    pdb.set_trace()
-    radius = np.round(rad_arcsec / im.pixscale).astype('int') # [pixels]
+    radius = np.round(radius_arcsec / im.pixscale).astype('int') # [pixels]
 
     tim = im.get_tractor_image(splinesky=True, subsky=False,
                                hybridPsf=True, normalizePsf=True)
@@ -232,6 +233,8 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
     """Build a custom set of coadds for a single galaxy, with a custom mask and sky
     model.
 
+    radius in arcsec
+
     """
     from astropy.io import fits
 
@@ -262,7 +265,9 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
 
     mp = multiproc(nthreads=nproc)
 
-    #unwise_dir = os.environ.get('UNWISE_COADDS_DIR', None)    
+    width = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
+
+    unwise_dir = os.environ.get('UNWISE_COADDS_DIR', None)    
 
     # [1] Initialize the "tims" stage of the pipeline, returning a
     # dictionary with the following keys:
@@ -277,7 +282,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
 
         """
         return stage_tims(ra=onegal['RA'], dec=onegal['DEC'], brickname=brickname,
-                          survey=survey, W=2*radius, H=2*radius, pixscale=pixscale,
+                          survey=survey, W=width, H=width, pixscale=pixscale,
                           mp=mp, normalizePsf=True, pixPsf=True, hybridPsf=True,
                           splinesky=True, subsky=False, # note!
                           depth_cut=False, apodize=False, do_calibs=False, rex=True, 
@@ -293,7 +298,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
 
     # [2] Derive the custom mask and sky background for each (full) CCD and
     # write out a MEF -custom-mask.fits.gz file.
-    skyargs = [(survey, onegal, _ccd) for _ccd in survey.ccds]
+    skyargs = [(survey, onegal, radius, _ccd) for _ccd in survey.ccds]
     result = mp.map(_custom_sky, skyargs)
     #result = list( zip( *mp.map(_custom_sky, args) ) )
     sky = dict()
