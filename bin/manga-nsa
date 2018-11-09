@@ -2,6 +2,9 @@
 
 """Run the LSLGA pipeline on the MaNGA-NSA sample.
 
+manga-nsa --ellipse --first 2487 --last 2487
+manga-nsa --html --first 2487 --last 2487
+
 """
 import os, argparse, sys, time
 import pdb
@@ -14,6 +17,7 @@ from astrometry.util.fits import fits_table
 from legacypipe.survey import LegacySurveyData
 
 import LSLGA.manga
+from LSLGA.manga import RADIUSFACTOR
 
 def get_survey_dir(onegal):
     if onegal['DR'] == 'DR6':
@@ -50,7 +54,7 @@ def missing_files(sample, filedir='.', filetype='coadds',
     todo = np.ones(ngal, dtype=bool)
 
     for ii, onegal in enumerate(np.atleast_1d(sample)):
-        galaxy = onegal['PLATEIFU']
+        galaxy = onegal['MANGAID']
         if type(galaxy) is np.bytes_:
             galaxy = galaxy.decode('utf-8')
         checkfile = os.path.join(filedir, galaxy, '{}-{}'.format(galaxy, filesuffix))
@@ -143,7 +147,7 @@ def main():
             t0 = time.time()
 
             onegal = sample[ii]
-            galaxy = onegal['PLATEIFU']
+            galaxy = onegal['MANGAID']
             if type(galaxy) is np.bytes_:
                 galaxy = galaxy.decode('utf-8')
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
@@ -170,13 +174,14 @@ def main():
                 galaxy, (time.time() - t0) / 60), flush=True)
 
     if args.unwise or args.galex:
-        from LSLGA.unwise import unwise_coadds, galex_coadds
+        from LSLGA.galex import galex_coadds
+        from LSLGA.unwise import unwise_coadds
 
         for ii in groups:
             t0 = time.time()
 
             onegal = sample[ii]
-            galaxy = onegal['PLATEIFU']
+            galaxy = onegal['MANGAID']
             if type(galaxy) is np.bytes_:
                 galaxy = galaxy.decode('utf-8')
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
@@ -202,33 +207,35 @@ def main():
             t0 = time.time()
 
             onegal = sample[ii]
-            galaxy = onegal['PLATEIFU']
+            galaxy = onegal['MANGAID']
             if type(galaxy) is np.bytes_:
                 galaxy = galaxy.decode('utf-8')
             galaxydir = os.path.join(analysisdir, galaxy)
 
-            err = legacyhalos_ellipse(onegal, galaxydir=galaxydir, pixscale=args.pixscale, 
-                                      verbose=args.verbose)
+            maxsma = onegal['NSA_PETRO_TH50'] # [arcsec]
+
+            err = legacyhalos_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
+                                      pixscale=args.pixscale, verbose=args.verbose,
+                                      integrmode='bilinear', nclip=0, 
+                                      nofit=True, maxsma=maxsma)
             if err == 0:
                 print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
             print('Finished galaxy {} in {:.3f} minutes.'.format(
                 galaxy, (time.time() - t0) / 60), flush=True)
 
     if args.html:
-        from LSLGA.html import make_html
+        from LSLGA.manga import make_html
 
         survey = LegacySurveyData()
 
-        htmldir = os.path.join(analysisdir, 'html')
-        make_html(sample, analysisdir=analysisdir, htmldir=htmldir, clobber=args.clobber,
-                  verbose=args.verbose, pixscale=args.pixscale, nproc=args.nproc,
+        make_html(sample, clobber=args.clobber, verbose=args.verbose,
+                  pixscale=args.pixscale, nproc=args.nproc,
                   survey=survey, makeplots=not args.nomakeplots)
-        print('HTML pages written to {}'.format(htmldir))
 
         if 'NERSC_HOST' in os.environ:
             print('Execute the following command to publish the webpage.')
-            print('rsync -auvP --delete {}/* /project/projectdirs/cosmo/www/temp/ioannis/hsc-vs-decals/'.format(
-                htmldir))
+            print('rsync -auvP --delete {}/* /project/projectdirs/cosmo/www/temp/ioannis/manga-nsa/'.format(
+                LSLGA.manga.html_dir()))
 
 if __name__ == '__main__':
     main()

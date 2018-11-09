@@ -4,14 +4,14 @@
 
 % manga-nsa-build-drsample --dr dr6 dr7 --drmerge --nproc 8 --verbose
 
-plate-ifu ra dec
-7815-6104 319.193098655 11.0437407875
+mangaid plate-ifu ra dec index
+1-113712 7815-6104 319.193098655 11.0437407875 2487
 http://legacysurvey.org/viewer?ra=319.1930&dec=11.0436&zoom=14&layer=decals-dr7
 
-8939-9101 125.227739446 23.7292001251
+1-556714 8939-9101 125.227739446 23.7292001251 596
 http://legacysurvey.org/viewer?ra=125.2275&dec=23.7291&zoom=14&layer=decals-dr7
 
-8256-12704 166.129407835 42.6245544187
+1-558912 8256-12704 166.129407835 42.6245544187 1094
 http://legacysurvey.org/viewer?ra=166.1354&dec=42.6264&zoom=14&layer=mzls+bass-dr6
 
 """

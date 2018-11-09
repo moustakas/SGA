@@ -5,10 +5,8 @@ LSLGA.qa
 Code to do produce various QA (quality assurance) plots. 
 
 """
-from __future__ import absolute_import, division, print_function
-
-import os
-import time
+import os, pdb
+import time, subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -46,4 +44,28 @@ def qa_binned_radec(cat, nside=64, png=None):
     if png:
         fig.savefig(png)
 
+def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
+                              verbose=True):
+    """Montage the multiwavelength coadds into a nice QAplot."""
 
+    montagefile = os.path.join(htmlgalaxydir, '{}-multiwavelength-montage.png'.format(galaxy))
+
+    if not os.path.isfile(montagefile) or clobber:
+        # Make sure all the files exist.
+        check = True
+        jpgfile = []
+        for suffix in ('galex-image', 'custom-image', 'unwise-image'):
+            _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
+            jpgfile.append(_jpgfile)
+            if not os.path.isfile(_jpgfile):
+                print('File {} not found!'.format(_jpgfile))
+                check = False
+                
+        if check:        
+            cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -geometry +0+0 -resize 512 '
+            cmd = cmd+' '.join(ff for ff in jpgfile)
+            cmd = cmd+' {}'.format(montagefile)
+
+            if verbose:
+                print('Writing {}'.format(montagefile))
+            subprocess.call(cmd.split())
