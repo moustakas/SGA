@@ -15,10 +15,6 @@ from legacypipe.survey import LegacySurveyData
 
 import LSLGA.manga
 
-#mangadir = os.path.join(os.getenv('SCRATCH'), 'manga-nsa')
-##mangadir = os.path.join(os.getenv('IM_PROJECTS_DIR'), 'manga-nsa')
-#samplefile = os.path.join(mangadir, 'manga-nsa.fits')
-
 def get_survey_dir(onegal):
     if onegal['DR'] == 'DR6':
         return '/global/project/projectdirs/cosmo/work/legacysurvey/dr6'
@@ -71,39 +67,6 @@ def missing_files(sample, filedir='.', filetype='coadds',
     else:
         return np.array_split(indices, size)
 
-def build_sample(clobber=False):
-    """Build the parent sample for this project.
-
-    
-    """
-    from astropy.table import hstack
-    
-    mangafile = os.path.join(mangadir, 'drpall-v2_1_2.fits')
-    nsafile = os.path.join(mangadir, 'nsa_v1_0_1.fits')
-
-    if os.path.exists(samplefile) and clobber is False:
-        print('Sample file {} exists; clobber?'.format(samplefile))
-        return
-
-    allmanga = Table(fitsio.read(mangafile, upper=True))
-    allplateifu = [pfu.strip() for pfu in allmanga['PLATEIFU']]
-    these = np.where( np.isin(allplateifu, ['7815-6104', '8256-12704', '8939-9101']) )[0]
-    manga = allmanga[these]
-
-    rows = np.array([mid[2:] for mid in manga['MANGAID']])
-    srt = np.argsort(rows)
-    manga = manga[srt]
-    nsa = Table(fitsio.read(nsafile, rows=rows[srt], upper=True))
-    nsa.rename_column('PLATE', 'PLATE_NSA')
-    nsa['DR'] = ['DR7', 'DR7', 'DR6']
-
-    sample = hstack( (manga, nsa) )
-    
-    print('Writing {}'.format(samplefile))
-    sample.write(samplefile, overwrite=clobber)
-
-    return sample
-
 def main():
 
     parser = argparse.ArgumentParser()
@@ -112,7 +75,6 @@ def main():
     parser.add_argument('--unwise-pixscale', default=2.75, type=float, help='unWISE pixel scale (arcsec/pix).')
     parser.add_argument('--galex-pixscale', default=1.5, type=float, help='unWISE pixel scale (arcsec/pix).')
 
-    parser.add_argument('--build-sample', action='store_true', help='Build and write out the sample.')
     parser.add_argument('--coadds', action='store_true', help='Build the pipeline coadds.')
     parser.add_argument('--custom-coadds', action='store_true', help='Build the custom coadds.')
     parser.add_argument('--unwise', action='store_true', help='Build the unWISE coadds.')
@@ -130,51 +92,30 @@ def main():
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
     args = parser.parse_args()
 
-    analysisdir = legacyhalos.io.hsc_vs_decals_dir()
-
-    # Write out the sample.
-    if args.build_sample:
-        sample = build_sample(clobber=args.clobber)
-        sys.exit(1)
+    analysisdir = LSLGA.manga.analysis_dir()
 
     # Figure out what's left to do.
-    info = fitsio.FITS(samplefile)
-    nrows = info[1].get_nrows()
-    if args.first is None:
-        first = 0
-    else:
-        first = args.first
-    if args.last is None:
-        last = nrows
-    else:
-        last = args.last
-        if first == last:
-            last = last + 1
-    rows = np.arange(first, last)
-    #sample = legacyhalos.io.read_hsc_vs_decals(verbose=args.verbose)
-    sample = Table(info[1].read(rows=rows))
-    print('Read galaxy indices {} through {} (N={}) from {}'.format(
-        first, last-1, len(sample), samplefile))
+    sample = LSLGA.manga.read_sample(first=args.first, last=args.last)
     
     groups, suffix = [], ''
     if args.coadds:
         suffix = 'coadds'
-        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
     elif args.custom_coadds:
         suffix = 'custom_coadds'
-        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
     elif args.unwise:
         suffix = 'unwise'
-        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
     elif args.galex:
         suffix = 'galex'
-        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
     elif args.ellipse:
         suffix = 'ellipse'
-        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
     elif args.html:
         suffix = 'html'
-        groups = missing_files(sample, filedir=mangadir, filetype=suffix, clobber=args.clobber)
+        groups = missing_files(sample, filedir=analysisdir, filetype=suffix, clobber=args.clobber)
     else:
         groups = []
 
@@ -208,7 +149,7 @@ def main():
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
 
             survey.survey_dir = get_survey_dir(onegal)
-            survey.output_dir = os.path.join(mangadir, galaxy)
+            survey.output_dir = os.path.join(analysisdir, galaxy)
 
             if args.coadds:
                 err = pipeline_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
@@ -240,7 +181,7 @@ def main():
                 galaxy = galaxy.decode('utf-8')
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
 
-            output_dir = os.path.join(mangadir, galaxy)
+            output_dir = os.path.join(analysisdir, galaxy)
 
             if args.unwise:
                 err = unwise_coadds(onegal, galaxy=galaxy, radius=radius, output_dir=output_dir,
@@ -264,7 +205,7 @@ def main():
             galaxy = onegal['PLATEIFU']
             if type(galaxy) is np.bytes_:
                 galaxy = galaxy.decode('utf-8')
-            galaxydir = os.path.join(mangadir, galaxy)
+            galaxydir = os.path.join(analysisdir, galaxy)
 
             err = legacyhalos_ellipse(onegal, galaxydir=galaxydir, pixscale=args.pixscale, 
                                       verbose=args.verbose)

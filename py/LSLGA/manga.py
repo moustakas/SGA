@@ -29,6 +29,12 @@ def sample_dir():
         os.makedirs(sdir, exist_ok=True)
     return sdir
 
+def analysis_dir():
+    adir = os.path.join(manga_dir(), 'analysis')
+    if not os.path.isdir(adir):
+        os.makedirs(adir, exist_ok=True)
+    return adir
+
 def html_dir():
     #if 'NERSC_HOST' in os.environ:
     #    htmldir = '/global/project/projectdirs/cosmo/www/temp/ioannis/LSLGA'
@@ -89,7 +95,7 @@ def get_samplefile(dr=None, ccds=False):
         
     return samplefile
 
-def read_sample(columns=None, dr=None, ccds=False, verbose=False,
+def read_sample(columns=None, dr='dr67', ccds=False, verbose=False,
                 first=None, last=None):
     """Read the sample."""
     samplefile = get_samplefile(dr=dr, ccds=ccds)

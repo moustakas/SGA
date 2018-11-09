@@ -93,6 +93,18 @@ def build_drsample_one(onegal, survey, verbose=False, interp=False):
             ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
             ccds = get_masked_pixels(ccds, survey, wcs)
 
+        # Derive the mean PSF width.
+        fwhm = []
+        for ccd in ccds:
+            pixscale = np.sqrt( np.abs( np.linalg.det( np.array([[ccd.cd1_1, ccd.cd1_2],
+                                                                 [ccd.cd2_1, ccd.cd2_2]]) ) ) ) * 3600 # [arcsec/pixel]
+            fwhm.append(ccd.fwhm * pixscale) # [arcsec]
+        fwhm = np.array(fwhm)
+
+        for band in ('g', 'r', 'z'):
+            these = ccds.filter == band
+            onegal['PSFSIZE_{}'.format(band.upper())] = np.mean(fwhm[these])
+
         if verbose:
             print('{:12s}: {:04d} CCDs, RA = {:.5f}, Dec = {:.5f}, Diameter={:.4f} arcmin'.format(
                     onegal['MANGAID'], len(ccds), onegal['RA'], onegal['DEC'], diam))
@@ -160,6 +172,12 @@ def build_drsample(cat, dr, nproc=1, nside=128, verbose=False,
     print('  Healpix selection  in {:.3f} sec: found {}/{} galaxies with grz coverage in {}.'.format(
         time() - t0, len(cat_keep), len(cat), dr.upper()))
 
+    # Add PSFSIZE_G,R,Z, NUV/FUV, and W1-W4 (FWHM)
+    for band in ('G', 'R', 'Z'):
+        cat_keep.add_column(Column(name='PSFSIZE_{}'.format(band), dtype='f4', length=len(cat_keep)))
+    for band, sigma in zip( ('FUV', 'NUV', 'W1', 'W2', 'W3', 'W4'), (5, 5, 6, 6, 6, 12) ):
+        cat_keep.add_column(Column(name='PSFSIZE_{}'.format(band), data=np.repeat(sigma, len(cat_keep)).astype('f4')))
+        
     # Now (optionally) do a more refined (parallelized) search using
     # ccds_touching_wcs for each individual galaxy.
     if use_wcs or interp:
