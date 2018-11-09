@@ -227,7 +227,7 @@ def _custom_sky(skyargs):
     
     return out
 
-def custom_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
+def custom_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
                   pixscale=0.262, log=None, plots=False, verbose=False,
                   cleanup=True):
     """Build a custom set of coadds for a single galaxy, with a custom mask and sky
@@ -342,20 +342,17 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=100, nproc=1,
     cat = fits_table(tractorfile)
     print('Read {} sources from {}'.format(len(cat), tractorfile), flush=True, file=log)
 
-    # Find and remove the central.  For some reason, match_radec
-    # occassionally returns two matches, even though nearest=True.
-    m1, m2, d12 = match_radec(cat.ra, cat.dec, onegal['RA'], onegal['DEC'],
-                              1/3600.0, nearest=True)
+    # Find and all the objects within XX arcsec of the target coordinates.
+    m1, m2, d12 = match_radec(cat.ra, cat.dec, onegal['RA'], onegal['DEC'], 3/3600.0, nearest=False)
     if len(d12) == 0:
-        print('No matching central found -- definitely a problem.')
+        print('No matching galaxies found -- definitely a problem.')
         raise ValueError
-    elif len(d12) > 1:
-        m1 = m1[np.argmin(d12)]
+    #elif len(d12) > 1:
+    #    m1 = m1[np.argmin(d12)]
+    #print('Removing central galaxy with index = {}, objid = {}'.format(
+    #    m1, cat[m1].objid), flush=True, file=log)
 
-    print('Removing central galaxy with index = {}, objid = {}'.format(
-        m1, cat[m1].objid), flush=True, file=log)
-
-    keep = ~np.in1d(cat.objid, cat[m1].objid)
+    keep = ~np.isin(cat.objid, cat[m1].objid)
 
     print('Creating tractor sources...', flush=True, file=log)
     srcs = read_fits_catalog(cat, fluxPrefix='')

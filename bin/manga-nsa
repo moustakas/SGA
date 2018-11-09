@@ -9,18 +9,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import fitsio
-from astropy.table import Table, hstack
+from astropy.table import Table
 from astrometry.util.fits import fits_table
 from legacypipe.survey import LegacySurveyData
 
-import LSLGA.io
-import LSLGA.misc
+import LSLGA.manga
 
-mangadir = os.path.join(os.getenv('SCRATCH'), 'manga-nsa')
-#mangadir = os.path.join(os.getenv('IM_PROJECTS_DIR'), 'manga-nsa')
-samplefile = os.path.join(mangadir, 'manga-nsa.fits')
-
-RADIUSFACTOR = 10
+#mangadir = os.path.join(os.getenv('SCRATCH'), 'manga-nsa')
+##mangadir = os.path.join(os.getenv('IM_PROJECTS_DIR'), 'manga-nsa')
+#samplefile = os.path.join(mangadir, 'manga-nsa.fits')
 
 def get_survey_dir(onegal):
     if onegal['DR'] == 'DR6':
@@ -57,7 +54,9 @@ def missing_files(sample, filedir='.', filetype='coadds',
     todo = np.ones(ngal, dtype=bool)
 
     for ii, onegal in enumerate(np.atleast_1d(sample)):
-        galaxy = onegal['PLATEIFU']#.decode('utf-8')
+        galaxy = onegal['PLATEIFU']
+        if type(galaxy) is np.bytes_:
+            galaxy = galaxy.decode('utf-8')
         checkfile = os.path.join(filedir, galaxy, '{}-{}'.format(galaxy, filesuffix))
         if os.path.exists(checkfile) and clobber is False:
             todo[ii] = False
@@ -75,19 +74,10 @@ def missing_files(sample, filedir='.', filetype='coadds',
 def build_sample(clobber=False):
     """Build the parent sample for this project.
 
-    plate-ifu ra dec
-    7815-6104 319.193098655 11.0437407875
-    http://legacysurvey.org/viewer?ra=319.1930&dec=11.0436&zoom=14&layer=decals-dr7
-    
-    8939-9101 125.227739446 23.7292001251
-    http://legacysurvey.org/viewer?ra=125.2275&dec=23.7291&zoom=14&layer=decals-dr7
-
-    8256-12704 166.129407835 42.6245544187
-    http://legacysurvey.org/viewer?ra=166.1354&dec=42.6264&zoom=14&layer=mzls+bass-dr6
     
     """
-    import fitsio
-
+    from astropy.table import hstack
+    
     mangafile = os.path.join(mangadir, 'drpall-v2_1_2.fits')
     nsafile = os.path.join(mangadir, 'nsa_v1_0_1.fits')
 
@@ -130,6 +120,8 @@ def main():
     parser.add_argument('--ellipse', action='store_true', help='Do the ellipse fitting.')
     parser.add_argument('--html', action='store_true', help='Make plots for the webpage!')
 
+    parser.add_argument('--first', default=None, type=int, help='First galaxy to process.')
+    parser.add_argument('--last', default=None, type=int, help='Last galaxy to process.')
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--nomakeplots', action='store_true', help='Do not remake the QA plots.')
@@ -138,7 +130,7 @@ def main():
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
     args = parser.parse_args()
 
-    #analysisdir = legacyhalos.io.hsc_vs_decals_dir()
+    analysisdir = legacyhalos.io.hsc_vs_decals_dir()
 
     # Write out the sample.
     if args.build_sample:
@@ -146,9 +138,23 @@ def main():
         sys.exit(1)
 
     # Figure out what's left to do.
-    print('Reading {}'.format(samplefile))
+    info = fitsio.FITS(samplefile)
+    nrows = info[1].get_nrows()
+    if args.first is None:
+        first = 0
+    else:
+        first = args.first
+    if args.last is None:
+        last = nrows
+    else:
+        last = args.last
+        if first == last:
+            last = last + 1
+    rows = np.arange(first, last)
     #sample = legacyhalos.io.read_hsc_vs_decals(verbose=args.verbose)
-    sample = Table.read(samplefile)
+    sample = Table(info[1].read(rows=rows))
+    print('Read galaxy indices {} through {} (N={}) from {}'.format(
+        first, last-1, len(sample), samplefile))
     
     groups, suffix = [], ''
     if args.coadds:
@@ -197,12 +203,14 @@ def main():
 
             onegal = sample[ii]
             galaxy = onegal['PLATEIFU']
+            if type(galaxy) is np.bytes_:
+                galaxy = galaxy.decode('utf-8')
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
 
             survey.survey_dir = get_survey_dir(onegal)
             survey.output_dir = os.path.join(mangadir, galaxy)
 
-            if args.coadds
+            if args.coadds:
                 err = pipeline_coadds(onegal, galaxy=galaxy, radius=radius, survey=survey,
                                       pixscale=args.pixscale, nproc=args.nproc, force=args.force)
             if args.custom_coadds:
@@ -228,6 +236,8 @@ def main():
 
             onegal = sample[ii]
             galaxy = onegal['PLATEIFU']
+            if type(galaxy) is np.bytes_:
+                galaxy = galaxy.decode('utf-8')
             radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
 
             output_dir = os.path.join(mangadir, galaxy)
@@ -245,14 +255,16 @@ def main():
                 galaxy, (time.time() - t0) / 60), flush=True)
 
     if args.ellipse:
-        from LSLGA.ellipse import LSLGA_ellipse
+        from legacyhalos.ellipse import legacyhalos_ellipse
 
         for ii in groups:
             t0 = time.time()
 
             onegal = sample[ii]
-            galaxy = onegal['GALAXY'].lower()
-            galaxydir = os.path.join(analysisdir, galaxy)
+            galaxy = onegal['PLATEIFU']
+            if type(galaxy) is np.bytes_:
+                galaxy = galaxy.decode('utf-8')
+            galaxydir = os.path.join(mangadir, galaxy)
 
             err = legacyhalos_ellipse(onegal, galaxydir=galaxydir, pixscale=args.pixscale, 
                                       verbose=args.verbose)
