@@ -53,7 +53,7 @@ def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
     return rgb
 
 def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75, 
-                survey=None, unwise_dir=None, verbose=False):
+                output_dir=None, unwise_dir=None, verbose=False):
     '''Generate custom unWISE cutouts.
     
     radius in arcsec
@@ -78,9 +78,8 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     if galaxy is None:
         galaxy = 'galaxy'
 
-    if survey is None:
-        from legacypipe.survey import LegacySurveyData
-        survey = LegacySurveyData()
+    if output_dir is None:
+        output_dir = '.'
 
     if unwise_dir is None:
         unwise_dir = os.environ.get('UNWISE_COADDS_DIR')
@@ -93,7 +92,7 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
               float(W), float(H))
 
     # Read the custom Tractor catalog
-    tractorfile = os.path.join(survey.output_dir, '{}-tractor.fits'.format(galaxy))
+    tractorfile = os.path.join(output_dir, '{}-tractor.fits'.format(galaxy))
     if not os.path.isfile(tractorfile):
         print('Missing Tractor catalog {}'.format(tractorfile))
         return 0
@@ -193,7 +192,7 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
         mod /= np.maximum(n, 1)
 
     for band, img, mod in zip(wbands, coimgs, comods):
-        fitsfile = os.path.join(survey.output_dir, '{}-W{}-image.fits'.format(galaxy, band))
+        fitsfile = os.path.join(output_dir, '{}-W{}-image.fits'.format(galaxy, band))
         if verbose:
             print('Writing {}'.format(fitsfile))
         fitsio.write(fitsfile, img, clobber=True)
@@ -204,13 +203,13 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     #kwa = dict(mn=-0.1, mx=2., arcsinh=None)
 
     rgb = _unwise_to_rgb(coimgs[:2], **kwa)
-    jpgfile = os.path.join(survey.output_dir, '{}-unwise-image.jpg'.format(galaxy))
+    jpgfile = os.path.join(output_dir, '{}-unwise-image.jpg'.format(galaxy))
     if verbose:
         print('Writing {}'.format(jpgfile))
     imsave_jpeg(jpgfile, rgb, origin='lower')
     
     rgb = _unwise_to_rgb(comods[:2], **kwa)
-    jpgfile = os.path.join(survey.output_dir, '{}-unwise-model.jpg'.format(galaxy))
+    jpgfile = os.path.join(output_dir, '{}-unwise-model.jpg'.format(galaxy))
     if verbose:
         print('Writing {}'.format(jpgfile))
     imsave_jpeg(jpgfile, rgb, origin='lower')
@@ -218,7 +217,7 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     #kwa = dict(mn=-1, mx=1, arcsinh=1)
     #kwa = dict(mn=-1, mx=1, arcsinh=None)
     rgb = _unwise_to_rgb([img-mod for img, mod in list(zip(coimgs, comods))[:2]], **kwa)
-    jpgfile = os.path.join(survey.output_dir, '{}-unwise-resid.jpg'.format(galaxy))
+    jpgfile = os.path.join(output_dir, '{}-unwise-resid.jpg'.format(galaxy))
     if verbose:
         print('Writing {}'.format(jpgfile))
     imsave_jpeg(jpgfile, rgb, origin='lower')
