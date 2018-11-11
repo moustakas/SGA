@@ -184,7 +184,6 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     for src in srcs:
         src.freezeAllBut('brightness')
 
-
     for niceband, band in zip(nicegbands, gbands):
         J = np.flatnonzero(galex.get('has_'+band))
         print(len(J), 'GALEX tiles have coverage in band', band)
@@ -255,9 +254,8 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
             sig = 6.0 / 2.35 / twcs.pixel_scale()
             tpsf = NCircularGaussianPSF([sig], [1.])
 
-            tim = Image(data=timg, inverr=tie, psf=tpsf, wcs=twcs,
-                        sky=tsky, photocal=photocal,
-                        name='GALEX ' + band + brick.brickname)
+            tim = Image(data=timg, inverr=tie, psf=tpsf, wcs=twcs, sky=tsky,
+                        photocal=photocal, name='GALEX ' + band + brick.brickname)
             tractor = Tractor([tim], srcs)
             mod = tractor.getModelImage(0)
 

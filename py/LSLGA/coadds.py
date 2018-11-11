@@ -129,28 +129,28 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
             if not ok:
                 return ok
 
-        if False: # WISE stuff was moved to the unwise.py module
-            for band in ('W1', 'W2'):
-                for imtype in ('image', 'model'):
-                    ok = _copyfile(
-                        os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
-                                     'legacysurvey-{}-{}-{}.fits.fz'.format(brickname, imtype, band)),
-                        os.path.join(survey.output_dir, '{}-{}-{}.fits.fz'.format(galaxy, imtype, band)) )
-                    if not ok:
-                        return ok
-            for imtype in ('wise', 'wisemodel'):
-                ok = _copyfile(
-                    os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
-                                 'legacysurvey-{}-{}.jpg'.format(brickname, imtype)),
-                    os.path.join(survey.output_dir, '{}-{}.jpg'.format(galaxy, imtype)) )
-                if not ok:
-                    return ok
+        #if False: # WISE stuff was moved to the unwise.py module
+        #    for band in ('W1', 'W2'):
+        #        for imtype in ('image', 'model'):
+        #            ok = _copyfile(
+        #                os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
+        #                             'legacysurvey-{}-{}-{}.fits.fz'.format(brickname, imtype, band)),
+        #                os.path.join(survey.output_dir, '{}-{}-{}.fits.fz'.format(galaxy, imtype, band)) )
+        #            if not ok:
+        #                return ok
+        #    for imtype in ('wise', 'wisemodel'):
+        #        ok = _copyfile(
+        #            os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
+        #                         'legacysurvey-{}-{}.jpg'.format(brickname, imtype)),
+        #            os.path.join(survey.output_dir, '{}-{}.jpg'.format(galaxy, imtype)) )
+        #        if not ok:
+        #            return ok
 
         for imtype in ('image', 'model', 'resid'):
             ok = _copyfile(
                 os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
                              'legacysurvey-{}-{}.jpg'.format(brickname, imtype)),
-                os.path.join(survey.output_dir, '{}-pipeline-{}.jpg'.format(galaxy, imtype)) )
+                os.path.join(survey.output_dir, '{}-pipeline-{}-grz.jpg'.format(galaxy, imtype)) )
             if not ok:
                 return ok
 
@@ -432,7 +432,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
         for suffix, ims, rgbkw in coadd_list:
             rgb = get_rgb(ims, P['bands'], **rgbkw)
             kwa = {}
-            outfn = os.path.join(survey.output_dir, '{}-{}.jpg'.format(galaxy, suffix))
+            outfn = os.path.join(survey.output_dir, '{}-{}-grz.jpg'.format(galaxy, suffix))
             print('Writing {}'.format(outfn), flush=True, file=log)
             imsave_jpeg(outfn, rgb, origin='lower', **kwa)
             del rgb

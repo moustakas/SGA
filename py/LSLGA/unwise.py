@@ -52,8 +52,62 @@ def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
 
     return rgb
 
+def _unwise_images_models(T, srcs, targetwcs, unwise_tims, margin=10):
+    """Create the unWISE images and models given a Tractor and sources catalog.
+
+    """
+    from astrometry.util.resample import resample_with_wcs, ResampleError
+    from tractor import Tractor, Image
+
+    wbands = [1, 2, 3, 4]
+    H, W = targetwcs.shape
+
+    coimgs = [np.zeros((H, W), np.float32) for b in wbands]
+    comods = [np.zeros((H, W), np.float32) for b in wbands]
+    con    = [np.zeros((H, W), np.uint8) for b in wbands]
+
+    for iband, band in enumerate(wbands):
+        tims = unwise_tims['w{}'.format(band)]
+
+        # The tiles have some overlap, so for each source, keep the
+        # fit in the tile whose center is closest to the source.
+        for tim in tims:
+            # Select sources in play.
+            wisewcs = tim.wcs.wcs
+            timH, timW = tim.shape
+            ok, x, y = wisewcs.radec2pixelxy(T.ra, T.dec)
+            x = (x - 1.).astype(np.float32)
+            y = (y - 1.).astype(np.float32)
+            I = np.flatnonzero((x >= -margin) * (x < timW + margin) *
+                               (y >= -margin) * (y < timH + margin))
+            #print('Found {} sources within the image + margin = {} pixels'.format(len(I), margin))
+
+            subcat = [srcs[i] for i in I]
+            tractor = Tractor([tim], subcat)
+            mod = tractor.getModelImage(0)
+
+            try:
+                Yo, Xo, Yi, Xi, nil = resample_with_wcs(targetwcs, tim.wcs.wcs)
+            except ResampleError:
+                continue
+            if len(Yo) == 0:
+                continue
+
+            coimgs[iband][Yo, Xo] += tim.getImage()[Yi, Xi]
+            comods[iband][Yo, Xo] += mod[Yi, Xi]
+            con   [iband][Yo, Xo] += 1
+
+    for img, mod, n in zip(coimgs, comods, con):
+        img /= np.maximum(n, 1)
+        mod /= np.maximum(n, 1)
+
+    coresids = [img-mod for img, mod in list(zip(coimgs, comods))]
+
+    return coimgs, comods, coresids
+
 def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75, 
-                output_dir=None, unwise_dir=None, verbose=False):
+                  output_dir=None, unwise_dir=None, verbose=False,
+                  log=None):
     '''Generate custom unWISE cutouts.
     
     radius in arcsec
@@ -67,10 +121,10 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     
     from astrometry.util.util import Tan
     from astrometry.util.fits import fits_table
-    from astrometry.util.resample import resample_with_wcs, ResampleError
+    from astrometry.libkd.spherematch import match_radec
     from wise.forcedphot import unwise_tiles_touching_wcs
     from wise.unwise import get_unwise_tractor_image
-    from tractor import Tractor, NanoMaggies, Image
+    from tractor import NanoMaggies
 
     from legacypipe.survey import imsave_jpeg
     from legacypipe.catalog import read_fits_catalog
@@ -84,130 +138,82 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     if unwise_dir is None:
         unwise_dir = os.environ.get('UNWISE_COADDS_DIR')
 
+    # Initialize the WCS object.
     W = H = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
-    pix = pixscale / 3600.0
-    wcs = Tan(onegal['RA'], onegal['DEC'],
-              (W+1) / 2.0, (H+1) / 2.0,
-              -pix, 0.0, 0.0, pix,
-              float(W), float(H))
+    targetwcs = Tan(onegal['RA'], onegal['DEC'], (W + 1) / 2.0, (H + 1) / 2.0,
+                    -pixscale / 3600.0, 0.0, 0.0, pixscale / 3600.0, float(W), float(H))
 
-    # Read the custom Tractor catalog
+    # Read the custom Tractor catalog.
     tractorfile = os.path.join(output_dir, '{}-tractor.fits'.format(galaxy))
     if not os.path.isfile(tractorfile):
-        print('Missing Tractor catalog {}'.format(tractorfile))
+        print('Missing Tractor catalog {}'.format(tractorfile), flush=True, file=log)
         return 0
-    T = fits_table(tractorfile)
     primhdr = fitsio.read_header(tractorfile)
 
-    if verbose:
-        print('Total of {} sources'.format(len(T)))
-        
-    # Find unWISE tiles overlapping
-    tiles = unwise_tiles_touching_wcs(wcs)
-    print('Cut to', len(tiles), 'unWISE tiles')
-
-    # Assume the targetwcs is axis-aligned and that the edge midpoints yield the
-    # RA, Dec limits (true for TAN).
-    r, d = wcs.pixelxy2radec(np.array([1,   W,   W/2, W/2]),
-                             np.array([H/2, H/2, 1,   H  ]))
-    
-    # Note: the way the roiradec box is used, the min/max order doesn't matter.
-    roiradec = [r[0], r[1], d[2], d[3]]
-
-    ra, dec = T.ra, T.dec
+    T = fits_table(tractorfile)
     srcs = read_fits_catalog(T)
 
+    print('Read {} sources from {}'.format(len(T), tractorfile), flush=True, file=log)
+
+    # Find and read the overlapping unWISE tiles.  Assume the targetwcs is
+    # axis-aligned and that the edge midpoints yield the RA, Dec limits (true
+    # for TAN).  Note: the way the roiradec box is used, the min/max order
+    # doesn't matter.
+    r, d = targetwcs.pixelxy2radec(np.array([1,   W,   W/2, W/2]),
+                                   np.array([H/2, H/2, 1,   H  ]))
+    roiradec = [r[0], r[1], d[2], d[3]]
+
+    tiles = unwise_tiles_touching_wcs(targetwcs)
+
     wbands = [1, 2, 3, 4]
-    wanyband = 'w'
-
+    unwise_tims = {'w1': [], 'w2': [], 'w3': [], 'w4': []}
     for band in wbands:
-        f = T.get('flux_w%i' % band)
-        f *= 10.**(primhdr['WISEAB%i' % band] / 2.5)
+        for tile in tiles:
+            #print('Reading tile {}'.format(tile.coadd_id))
+            tim = get_unwise_tractor_image(unwise_dir, tile.coadd_id, band,
+                                           bandname='w', roiradecbox=roiradec)
+            if tim is None:
+                print('Actually, no overlap with tile {}'.format(tile.coadd_id))
+                continue
+            print('Read image {} with shape {}'.format(tile.coadd_id, tim.shape))
+            unwise_tims['w{}'.format(band)].append(tim)
 
-    coimgs = [np.zeros((H,W), np.float32) for b in wbands]
-    comods = [np.zeros((H,W), np.float32) for b in wbands]
-    con    = [np.zeros((H,W), np.uint8) for b in wbands]
-
-    for iband, band in enumerate(wbands):
-        print('Photometering WISE band', band)
-        wband = 'w%i' % band
-
-        for i, src in enumerate(srcs):
+        for ii, src in enumerate(srcs):
             #print('Source', src, 'brightness', src.getBrightness(), 'params', src.getBrightness().getParams())
             #src.getBrightness().setParams([T.wise_flux[i, band-1]])
-            src.setBrightness(NanoMaggies(**{wanyband: T.get('flux_w%i'%band)[i]}))
+            src.setBrightness( NanoMaggies(**{'w': T.get('flux_w{}'.format(band) )[ii]}) )
             # print('Set source brightness:', src.getBrightness())
 
-        # The tiles have some overlap, so for each source, keep the
-        # fit in the tile whose center is closest to the source.
-        for tile in tiles:
-            print('Reading tile', tile.coadd_id)
-            tim = get_unwise_tractor_image(unwise_dir, tile.coadd_id, band,
-                                           bandname=wanyband, roiradecbox=roiradec)
-            if tim is None:
-                print('Actually, no overlap with tile', tile.coadd_id)
-                continue
-            print('Read image with shape', tim.shape)
+    #for band in wbands:
+    #    f = T.get('flux_w{}'.format(band))
+    #    f *= 10**(0.4 * primhdr['WISEAB{}'.format(band)])
 
-            # Select sources in play.
-            wisewcs = tim.wcs.wcs
-            H, W = tim.shape
-            ok, x, y = wisewcs.radec2pixelxy(ra, dec)
-            x = (x - 1.).astype(np.float32)
-            y = (y - 1.).astype(np.float32)
-            margin = 10.
-            I = np.flatnonzero((x >= -margin) * (x < W+margin) *
-                               (y >= -margin) * (y < H+margin))
-            print(len(I), 'within the image + margin')
+    # Find and remove all the objects within XX arcsec of the target
+    # coordinates.
+    m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 3/3600.0, nearest=False)
+    if len(d12) == 0:
+        print('No matching galaxies found -- definitely a problem.')
+        raise ValueError
+    keep = ~np.isin(T.objid, T[m1].objid)
+        
+    srcs_nocentral = np.array(srcs)[keep].tolist()
+    T_nocentral = T[keep]
 
-            subcat = [srcs[i] for i in I]
-            tractor = Tractor([tim], subcat)
-            mod = tractor.getModelImage(0)
+    # Build the data and model images with and without the central.
+    coimgs, comods, coresids = _unwise_images_models(T, srcs, targetwcs, unwise_tims)
+    coimgs_nocentral, comods_nocentral, coresids_nocentral = _unwise_images_models(
+        T_nocentral, srcs_nocentral, targetwcs, unwise_tims)
+    del unwise_tims
 
-            # plt.clf()
-            # dimshow(tim.getImage(), ticks=False)
-            # plt.title('WISE %s %s' % (tile.coadd_id, wband))
-            # ps.savefig()
-
-            # plt.clf()
-            # dimshow(mod, ticks=False)
-            # plt.title('WISE %s %s' % (tile.coadd_id, wband))
-            # ps.savefig()
-
-            try:
-                Yo, Xo, Yi, Xi, nil = resample_with_wcs(wcs, tim.wcs.wcs)
-            except ResampleError:
-                continue
-            if len(Yo) == 0:
-                continue
-            print('Resampling', len(Yo), 'pixels from WISE', tile.coadd_id,
-                  band)
-
-            coimgs[iband][Yo,Xo] += tim.getImage()[Yi, Xi]
-            comods[iband][Yo,Xo] += mod[Yi, Xi]
-            con   [iband][Yo,Xo] += 1
-
-    for img, mod, n in zip(coimgs, comods, con):
-        img /= np.maximum(n, 1)
-        mod /= np.maximum(n, 1)
-
-    coresids = [img-mod for img, mod in list(zip(coimgs, comods))]
-    for band in wbands:
-        for img in coimgs:
-            fitsfile = os.path.join(output_dir, '{}-image-W{}.fits'.format(galaxy, band))
+    # Write out the final images with and without the central.
+    for coadd, imtype in zip( (coimgs, comods, coresids), ('image', 'model', 'resid') ):
+        for img, band in zip(coadd, wbands):
+            fitsfile = os.path.join(output_dir, '{}-{}-W{}.fits'.format(galaxy, imtype, band))
             if verbose:
                 print('Writing {}'.format(fitsfile))
             fitsio.write(fitsfile, img, clobber=True)
-        for img in comods:
-            fitsfile = os.path.join(output_dir, '{}-model-W{}.fits'.format(galaxy, band))
-            if verbose:
-                print('Writing {}'.format(fitsfile))
-            fitsio.write(fitsfile, img, clobber=True)
-        for img in coresids:
-            fitsfile = os.path.join(output_dir, '{}-resid-W{}.fits'.format(galaxy, band))
-            if verbose:
-                print('Writing {}'.format(fitsfile))
-            fitsio.write(fitsfile, img, clobber=True)
+
+    pdb.set_trace()
 
     # Color WISE images --
     kwa = dict(mn=-1, mx=100, arcsinh=1)
