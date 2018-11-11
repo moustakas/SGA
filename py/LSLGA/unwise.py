@@ -191,11 +191,23 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
         img /= np.maximum(n, 1)
         mod /= np.maximum(n, 1)
 
-    for band, img, mod in zip(wbands, coimgs, comods):
-        fitsfile = os.path.join(output_dir, '{}-W{}-image.fits'.format(galaxy, band))
-        if verbose:
-            print('Writing {}'.format(fitsfile))
-        fitsio.write(fitsfile, img, clobber=True)
+    coresids = [img-mod for img, mod in list(zip(coimgs, comods))]
+    for band in wbands:
+        for img in coimgs:
+            fitsfile = os.path.join(output_dir, '{}-image-W{}.fits'.format(galaxy, band))
+            if verbose:
+                print('Writing {}'.format(fitsfile))
+            fitsio.write(fitsfile, img, clobber=True)
+        for img in comods:
+            fitsfile = os.path.join(output_dir, '{}-model-W{}.fits'.format(galaxy, band))
+            if verbose:
+                print('Writing {}'.format(fitsfile))
+            fitsio.write(fitsfile, img, clobber=True)
+        for img in coresids:
+            fitsfile = os.path.join(output_dir, '{}-resid-W{}.fits'.format(galaxy, band))
+            if verbose:
+                print('Writing {}'.format(fitsfile))
+            fitsio.write(fitsfile, img, clobber=True)
 
     # Color WISE images --
     kwa = dict(mn=-1, mx=100, arcsinh=1)
@@ -216,7 +228,7 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
 
     #kwa = dict(mn=-1, mx=1, arcsinh=1)
     #kwa = dict(mn=-1, mx=1, arcsinh=None)
-    rgb = _unwise_to_rgb([img-mod for img, mod in list(zip(coimgs, comods))[:2]], **kwa)
+    rgb = _unwise_to_rgb( [img-mod for img, mod in list(zip(coimgs, comods))[:2]], **kwa)
     jpgfile = os.path.join(output_dir, '{}-unwise-resid.jpg'.format(galaxy))
     if verbose:
         print('Writing {}'.format(jpgfile))

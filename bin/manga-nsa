@@ -86,8 +86,8 @@ def main():
     parser.add_argument('--ellipse', action='store_true', help='Do the ellipse fitting.')
     parser.add_argument('--html', action='store_true', help='Make plots for the webpage!')
 
-    parser.add_argument('--first', default=None, type=int, help='First galaxy to process.')
-    parser.add_argument('--last', default=None, type=int, help='Last galaxy to process.')
+    parser.add_argument('--first', type=int, help='First galaxy to process.', default=2487)#None)
+    parser.add_argument('--last', type=int, help='Last galaxy to process.', default=2487)#None)
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--nomakeplots', action='store_true', help='Do not remake the QA plots.')
@@ -212,12 +212,16 @@ def main():
                 galaxy = galaxy.decode('utf-8')
             galaxydir = os.path.join(analysisdir, galaxy)
 
-            maxsma = onegal['NSA_PETRO_TH50'] # [arcsec]
+            maxsma = 7 * onegal['NSA_PETRO_TH50'] / args.pixscale # [pixels]
 
             err = legacyhalos_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
                                       pixscale=args.pixscale, verbose=args.verbose,
-                                      integrmode='bilinear', nclip=0, 
-                                      nofit=True, maxsma=maxsma)
+                                      #band=('g', 'r', 'z'),
+                                      band=('FUV', 'NUV', 'g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'),
+                                      galex_pixscale=args.galex_pixscale,
+                                      unwise_pixscale=args.unwise_pixscale,
+                                      #integrmode='bilinear', nclip=0, 
+                                      noellipsefit=True, maxsma=maxsma)
             if err == 0:
                 print('ERROR: {}; please check the logfile.'.format(galaxy), flush=True)
             print('Finished galaxy {} in {:.3f} minutes.'.format(

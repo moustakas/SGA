@@ -22,7 +22,7 @@ def _ra_ranges_overlap(ralo, rahi, ra1, ra2):
     cw41 = x1*y4 - x4*y1
     return np.logical_and(cw32 <= 0, cw41 >= 0)
 
-def _galex_rgb(imgs, **kwargs):
+def _galex_rgb_dstn(imgs, **kwargs):
     nuv,fuv = imgs
     h,w = nuv.shape
     myrgb = np.zeros((h,w,3), np.float32)
@@ -33,7 +33,7 @@ def _galex_rgb(imgs, **kwargs):
     myrgb[:,:,1] = np.clip((myrgb[:,:,0] + myrgb[:,:,2]*0.2), 0., 1.)
     return myrgb
 
-def _galex_rgb_official(imgs, bands, **kwargs):
+def _galex_rgb_official(imgs, **kwargs):
     from scipy.ndimage.filters import uniform_filter, gaussian_filter
     nuv,fuv = imgs
     h,w = nuv.shape
@@ -58,6 +58,40 @@ def _galex_rgb_official(imgs, bands, **kwargs):
     red   /= mx
     green /= mx
     blue  /= mx
+    rgb = np.clip(np.dstack((red, green, blue)), 0., 1.)
+    return rgb
+
+def _galex_rgb_moustakas(imgs, **kwargs):
+    #from scipy.ndimage.filters import uniform_filter, gaussian_filter
+    nuv,fuv = imgs
+    h,w = nuv.shape
+    red = nuv * 0.206 * 2297
+    blue = fuv * 1.4 * 1525
+    #blue = uniform_filter(blue, 3)
+    #blue = gaussian_filter(blue, 1.)
+    green = (0.2*blue + 0.8*red)
+
+    red   *= 0.085
+    green *= 0.095
+    blue  *= 0.08
+    nonlinearity = 0.5 #1.0 # 2.5
+    radius = red + green + blue
+    val = np.arcsinh(radius * nonlinearity) / nonlinearity
+    with np.errstate(divide='ignore', invalid='ignore'):
+        red   = red   * val / radius
+        green = green * val / radius
+        blue  = blue  * val / radius
+    mx = np.maximum(red, np.maximum(green, blue))
+    mx = np.maximum(1., mx)
+
+    lo = -0.1
+    red   = (red - lo) / (mx - lo)
+    green = (green - lo) / (mx - lo)
+    blue  = (blue - lo) / (mx - lo)
+    #red   /= mx
+    #green /= mx
+    #blue  /= mx
+    
     rgb = np.clip(np.dstack((red, green, blue)), 0., 1.)
     return rgb
 
@@ -262,20 +296,24 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
         comods.append(comod)
         coresids.append(coresid)
 
-        fitsfile = os.path.join(output_dir, '{}-{}-image.fits'.format(galaxy, niceband))
+        fitsfile = os.path.join(output_dir, '{}-image-{}.fits'.format(galaxy, niceband))
         if verbose:
             print('Writing {}'.format(fitsfile))
         fitsio.write(fitsfile, coimg, clobber=True)
 
-        fitsfile = os.path.join(output_dir, '{}-{}-model.fits'.format(galaxy, niceband))
+        fitsfile = os.path.join(output_dir, '{}-model-{}.fits'.format(galaxy, niceband))
         if verbose:
             print('Writing {}'.format(fitsfile))
         fitsio.write(fitsfile, comod, clobber=True)
 
-        fitsfile = os.path.join(output_dir, '{}-{}-resid.fits'.format(galaxy, niceband))
+        fitsfile = os.path.join(output_dir, '{}-resid-{}.fits'.format(galaxy, niceband))
         if verbose:
             print('Writing {}'.format(fitsfile))
         fitsio.write(fitsfile, coresid, clobber=True)
+
+    _galex_rgb = _galex_rgb_moustakas
+    #_galex_rgb = _galex_rgb_dstn
+    #_galex_rgb = _galex_rgb_official
 
     jpgfile = os.path.join(output_dir, '{}-galex-image.jpg'.format(galaxy))
     if verbose:
