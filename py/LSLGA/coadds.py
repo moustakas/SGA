@@ -390,6 +390,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
                 os.path.join(survey.output_dir, 'coadd', brickname[:3], 
                                    brickname, 'legacysurvey-{}-{}-{}.fits.fz'.format(
                     brickname, suffix, band)),
+                #os.path.join(survey.output_dir, '{}-{}-{}.fits.fz'.format(galaxy, suffix, band)) )
                 os.path.join(survey.output_dir, '{}-custom-{}-{}.fits.fz'.format(galaxy, suffix, band)) )
             if not ok:
                 return ok
@@ -402,12 +403,14 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
         C_nocentral = call_make_coadds(mods_nocentral)
 
     # Move (rename) the coadds into the desired output directory - no central.
-    for suffix in ('image', 'model'):
+    #for suffix in ('image', 'model'):
+    for suffix in np.atleast_1d('model'):
         for band in P['bands']:
             ok = _copyfile(
                 os.path.join(survey.output_dir, 'coadd', brickname[:3], 
                                    brickname, 'legacysurvey-{}-{}-{}.fits.fz'.format(
                     brickname, suffix, band)),
+                #os.path.join(survey.output_dir, '{}-{}-nocentral-{}.fits.fz'.format(galaxy, suffix, band)) )
                 os.path.join(survey.output_dir, '{}-custom-{}-nocentral-{}.fits.fz'.format(galaxy, suffix, band)) )
             if not ok:
                 return ok

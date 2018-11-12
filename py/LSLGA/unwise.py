@@ -25,12 +25,11 @@ def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
 
     #mn,mx = -3.,30.
     #arcsinh = None
-
     img1 = w1 / scale1
     img2 = w2 / scale2
 
-    print('W1 99th', np.percentile(img1, 99))
-    print('W2 99th', np.percentile(img2, 99))
+    #print('W1 99th', np.percentile(img1, 99))
+    #print('W2 99th', np.percentile(img2, 99))
 
     if arcsinh is not None:
         def nlmap(x):
@@ -100,7 +99,7 @@ def _unwise_images_models(T, srcs, targetwcs, unwise_tims, margin=10):
     for img, mod, n in zip(coimgs, comods, con):
         img /= np.maximum(n, 1)
         mod /= np.maximum(n, 1)
-
+        
     coresids = [img-mod for img, mod in list(zip(coimgs, comods))]
 
     return coimgs, comods, coresids
@@ -152,7 +151,6 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
 
     T = fits_table(tractorfile)
     srcs = read_fits_catalog(T)
-
     print('Read {} sources from {}'.format(len(T), tractorfile), flush=True, file=log)
 
     # Find and read the overlapping unWISE tiles.  Assume the targetwcs is
@@ -184,60 +182,47 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
             src.setBrightness( NanoMaggies(**{'w': T.get('flux_w{}'.format(band) )[ii]}) )
             # print('Set source brightness:', src.getBrightness())
 
-    #for band in wbands:
-    #    f = T.get('flux_w{}'.format(band))
-    #    f *= 10**(0.4 * primhdr['WISEAB{}'.format(band)])
-
     # Find and remove all the objects within XX arcsec of the target
     # coordinates.
     m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 3/3600.0, nearest=False)
     if len(d12) == 0:
         print('No matching galaxies found -- definitely a problem.')
         raise ValueError
-    keep = ~np.isin(T.objid, T[m1].objid)
+    nocentral = ~np.isin(T.objid, T[m1].objid)
         
-    srcs_nocentral = np.array(srcs)[keep].tolist()
-    T_nocentral = T[keep]
+    srcs_nocentral = np.array(srcs)[nocentral].tolist()
+    T_nocentral = T[nocentral]
 
     # Build the data and model images with and without the central.
     coimgs, comods, coresids = _unwise_images_models(T, srcs, targetwcs, unwise_tims)
-    coimgs_nocentral, comods_nocentral, coresids_nocentral = _unwise_images_models(
-        T_nocentral, srcs_nocentral, targetwcs, unwise_tims)
+    _, comods_nocentral, _ = _unwise_images_models(T_nocentral, srcs_nocentral, targetwcs, unwise_tims)
     del unwise_tims
 
+    # Subtract the model image which excludes the central (comods_nocentral)
+    # from the data (coimgs) to isolate the light of the central
+    # (coimgs_central).
+    coimgs_central = [img-mod for img, mod in list(zip(coimgs, comods_nocentral))]
+
     # Write out the final images with and without the central.
-    for coadd, imtype in zip( (coimgs, comods, coresids), ('image', 'model', 'resid') ):
+    for coadd, imtype in zip( (coimgs, comods, comods_nocentral),
+                              ('image', 'model', 'model-nocentral') ):
         for img, band in zip(coadd, wbands):
             fitsfile = os.path.join(output_dir, '{}-{}-W{}.fits'.format(galaxy, imtype, band))
             if verbose:
                 print('Writing {}'.format(fitsfile))
             fitsio.write(fitsfile, img, clobber=True)
 
-    pdb.set_trace()
-
     # Color WISE images --
-    kwa = dict(mn=-1, mx=100, arcsinh=1)
+    kwa = dict(mn=-1, mx=100, arcsinh=0.5)
     #kwa = dict(mn=-0.1, mx=2., arcsinh=1)
     #kwa = dict(mn=-0.1, mx=2., arcsinh=None)
 
-    rgb = _unwise_to_rgb(coimgs[:2], **kwa)
-    jpgfile = os.path.join(output_dir, '{}-unwise-image.jpg'.format(galaxy))
-    if verbose:
-        print('Writing {}'.format(jpgfile))
-    imsave_jpeg(jpgfile, rgb, origin='lower')
-    
-    rgb = _unwise_to_rgb(comods[:2], **kwa)
-    jpgfile = os.path.join(output_dir, '{}-unwise-model.jpg'.format(galaxy))
-    if verbose:
-        print('Writing {}'.format(jpgfile))
-    imsave_jpeg(jpgfile, rgb, origin='lower')
-
-    #kwa = dict(mn=-1, mx=1, arcsinh=1)
-    #kwa = dict(mn=-1, mx=1, arcsinh=None)
-    rgb = _unwise_to_rgb( [img-mod for img, mod in list(zip(coimgs, comods))[:2]], **kwa)
-    jpgfile = os.path.join(output_dir, '{}-unwise-resid.jpg'.format(galaxy))
-    if verbose:
-        print('Writing {}'.format(jpgfile))
-    imsave_jpeg(jpgfile, rgb, origin='lower')
+    for imgs, imtype in zip( (coimgs, comods, coresids, comods_nocentral, coimgs_central),
+                             ('image', 'model', 'resid', 'model-nocentral', 'image-central') ):
+        rgb = _unwise_to_rgb(imgs[:2], **kwa) # W1, W2
+        jpgfile = os.path.join(output_dir, '{}-{}-W1W2.jpg'.format(galaxy, imtype))
+        if verbose:
+            print('Writing {}'.format(jpgfile))
+        imsave_jpeg(jpgfile, rgb, origin='lower')
 
     return 1
