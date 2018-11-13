@@ -54,7 +54,7 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
         # Make sure all the files exist.
         check = True
         jpgfile = []
-        for suffix in ('galex-image', 'custom-image', 'unwise-image'):
+        for suffix in ('image-FUVNUV', 'custom-image-grz', 'image-W1W2'):
             _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
             jpgfile.append(_jpgfile)
             if not os.path.isfile(_jpgfile):
@@ -69,3 +69,54 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
             if verbose:
                 print('Writing {}'.format(montagefile))
             subprocess.call(cmd.split())
+
+def qa_galex_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False, verbose=True):
+    """Montage the GALEX mosaics into a nice QAplot."""
+
+    montagefile = os.path.join(htmlgalaxydir, '{}-FUVNUV-montage.png'.format(galaxy))
+
+    if not os.path.isfile(montagefile) or clobber:
+        # Make sure all the files exist.
+        check = True
+        jpgfile = []
+        for suffix in ('image-FUVNUV', 'model-nocentral-FUVNUV', 'image-central-FUVNUV'):
+            _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
+            jpgfile.append(_jpgfile)
+            if not os.path.isfile(_jpgfile):
+                print('File {} not found!'.format(_jpgfile))
+                check = False
+                
+        if check:        
+            cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -geometry +0+0 '
+            cmd = cmd+' '.join(ff for ff in jpgfile)
+            cmd = cmd+' {}'.format(montagefile)
+
+            if verbose:
+                print('Writing {}'.format(montagefile))
+            subprocess.call(cmd.split())
+
+def qa_unwise_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False, verbose=True):
+    """Montage the unWISE mosaics into a nice QAplot."""
+
+    montagefile = os.path.join(htmlgalaxydir, '{}-W1W2-montage.png'.format(galaxy))
+
+    if not os.path.isfile(montagefile) or clobber:
+        # Make sure all the files exist.
+        check = True
+        jpgfile = []
+        for suffix in ('image-W1W2', 'model-nocentral-W1W2', 'image-central-W1W2'):
+            _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
+            jpgfile.append(_jpgfile)
+            if not os.path.isfile(_jpgfile):
+                print('File {} not found!'.format(_jpgfile))
+                check = False
+                
+        if check:        
+            cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -geometry +0+0 '
+            cmd = cmd+' '.join(ff for ff in jpgfile)
+            cmd = cmd+' {}'.format(montagefile)
+
+            if verbose:
+                print('Writing {}'.format(montagefile))
+            subprocess.call(cmd.split())
+

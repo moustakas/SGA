@@ -273,8 +273,8 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
                         photocal=photocal, name='GALEX ' + band + brick.brickname)
 
             # Build the model image with and without the central galaxy model.
-            def _galex_mod(tim, usesrcs):
-                tractor = Tractor([tim], usesrcs)
+            def _galex_mod(tim, use_srcs):
+                tractor = Tractor([tim], use_srcs)
                 mod = tractor.getModelImage(0)
                 tractor.freezeParam('images')
                 #print('Params:')

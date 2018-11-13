@@ -51,59 +51,6 @@ def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
 
     return rgb
 
-def _unwise_images_models(T, srcs, targetwcs, unwise_tims, margin=10):
-    """Create the unWISE images and models given a Tractor and sources catalog.
-
-    """
-    from astrometry.util.resample import resample_with_wcs, ResampleError
-    from tractor import Tractor, Image
-
-    wbands = [1, 2, 3, 4]
-    H, W = targetwcs.shape
-
-    coimgs = [np.zeros((H, W), np.float32) for b in wbands]
-    comods = [np.zeros((H, W), np.float32) for b in wbands]
-    con    = [np.zeros((H, W), np.uint8) for b in wbands]
-
-    for iband, band in enumerate(wbands):
-        tims = unwise_tims['w{}'.format(band)]
-
-        # The tiles have some overlap, so for each source, keep the
-        # fit in the tile whose center is closest to the source.
-        for tim in tims:
-            # Select sources in play.
-            wisewcs = tim.wcs.wcs
-            timH, timW = tim.shape
-            ok, x, y = wisewcs.radec2pixelxy(T.ra, T.dec)
-            x = (x - 1.).astype(np.float32)
-            y = (y - 1.).astype(np.float32)
-            I = np.flatnonzero((x >= -margin) * (x < timW + margin) *
-                               (y >= -margin) * (y < timH + margin))
-            #print('Found {} sources within the image + margin = {} pixels'.format(len(I), margin))
-
-            subcat = [srcs[i] for i in I]
-            tractor = Tractor([tim], subcat)
-            mod = tractor.getModelImage(0)
-
-            try:
-                Yo, Xo, Yi, Xi, nil = resample_with_wcs(targetwcs, tim.wcs.wcs)
-            except ResampleError:
-                continue
-            if len(Yo) == 0:
-                continue
-
-            coimgs[iband][Yo, Xo] += tim.getImage()[Yi, Xi]
-            comods[iband][Yo, Xo] += mod[Yi, Xi]
-            con   [iband][Yo, Xo] += 1
-
-    for img, mod, n in zip(coimgs, comods, con):
-        img /= np.maximum(n, 1)
-        mod /= np.maximum(n, 1)
-        
-    coresids = [img-mod for img, mod in list(zip(coimgs, comods))]
-
-    return coimgs, comods, coresids
-
 def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75, 
                   output_dir=None, unwise_dir=None, verbose=False,
                   log=None):
@@ -121,9 +68,10 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     from astrometry.util.util import Tan
     from astrometry.util.fits import fits_table
     from astrometry.libkd.spherematch import match_radec
+    from astrometry.util.resample import resample_with_wcs, ResampleError
     from wise.forcedphot import unwise_tiles_touching_wcs
     from wise.unwise import get_unwise_tractor_image
-    from tractor import NanoMaggies
+    from tractor import Tractor, Image, NanoMaggies
 
     from legacypipe.survey import imsave_jpeg
     from legacypipe.catalog import read_fits_catalog
@@ -153,6 +101,15 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     srcs = read_fits_catalog(T)
     print('Read {} sources from {}'.format(len(T), tractorfile), flush=True, file=log)
 
+    # Find and remove all the objects within XX arcsec of the target
+    # coordinates.
+    m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 3/3600.0, nearest=False)
+    if len(d12) == 0:
+        print('No matching galaxies found -- definitely a problem.')
+        raise ValueError
+    nocentral = ~np.isin(T.objid, T[m1].objid)
+    T_nocentral = T[nocentral]
+        
     # Find and read the overlapping unWISE tiles.  Assume the targetwcs is
     # axis-aligned and that the edge midpoints yield the RA, Dec limits (true
     # for TAN).  Note: the way the roiradec box is used, the min/max order
@@ -164,43 +121,76 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     tiles = unwise_tiles_touching_wcs(targetwcs)
 
     wbands = [1, 2, 3, 4]
-    unwise_tims = {'w1': [], 'w2': [], 'w3': [], 'w4': []}
+    wanyband = 'w'
+
     for band in wbands:
+        f = T.get('flux_w{}'.format(band))
+        f *= 10.**(0.4 * primhdr['WISEAB{}'.format(band)])
+
+    coimgs = [np.zeros((H, W), np.float32) for b in wbands]
+    comods = [np.zeros((H, W), np.float32) for b in wbands]
+    comods_nocentral = [np.zeros((H, W), np.float32) for b in wbands]
+    con    = [np.zeros((H, W), np.uint8) for b in wbands]
+
+    #unwise_tims = {'w1': [], 'w2': [], 'w3': [], 'w4': []}
+    for iband, band in enumerate(wbands):
+
+        for ii, src in enumerate(srcs):
+            src.setBrightness( NanoMaggies(**{wanyband: T.get('flux_w{}'.format(band) )[ii]}) )
+        srcs_nocentral = np.array(srcs)[nocentral].tolist()
+        
+        # The tiles have some overlap, so for each source, keep the fit in the
+        # tile whose center is closest to the source.
         for tile in tiles:
             #print('Reading tile {}'.format(tile.coadd_id))
             tim = get_unwise_tractor_image(unwise_dir, tile.coadd_id, band,
-                                           bandname='w', roiradecbox=roiradec)
+                                           bandname=wanyband, roiradecbox=roiradec)
             if tim is None:
                 print('Actually, no overlap with tile {}'.format(tile.coadd_id))
                 continue
             print('Read image {} with shape {}'.format(tile.coadd_id, tim.shape))
-            unwise_tims['w{}'.format(band)].append(tim)
 
-        for ii, src in enumerate(srcs):
-            #print('Source', src, 'brightness', src.getBrightness(), 'params', src.getBrightness().getParams())
-            #src.getBrightness().setParams([T.wise_flux[i, band-1]])
-            src.setBrightness( NanoMaggies(**{'w': T.get('flux_w{}'.format(band) )[ii]}) )
-            # print('Set source brightness:', src.getBrightness())
+            def _unwise_mod(tim, use_T, use_srcs, margin=10):
+                # Select sources in play.
+                wisewcs = tim.wcs.wcs
+                timH, timW = tim.shape
+                ok, x, y = wisewcs.radec2pixelxy(use_T.ra, use_T.dec)
+                x = (x - 1.).astype(np.float32)
+                y = (y - 1.).astype(np.float32)
+                I = np.flatnonzero((x >= -margin) * (x < timW + margin) *
+                                   (y >= -margin) * (y < timH + margin))
+                #print('Found {} sources within the image + margin = {} pixels'.format(len(I), margin))
 
-    # Find and remove all the objects within XX arcsec of the target
-    # coordinates.
-    m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 3/3600.0, nearest=False)
-    if len(d12) == 0:
-        print('No matching galaxies found -- definitely a problem.')
-        raise ValueError
-    nocentral = ~np.isin(T.objid, T[m1].objid)
+                subcat = [use_srcs[i] for i in I]
+                tractor = Tractor([tim], subcat)
+                mod = tractor.getModelImage(0)
+                return mod
+
+            mod = _unwise_mod(tim, T, srcs)
+            mod_nocentral = _unwise_mod(tim, T_nocentral, srcs_nocentral)
+
+            try:
+                Yo, Xo, Yi, Xi, nil = resample_with_wcs(targetwcs, tim.wcs.wcs)
+            except ResampleError:
+                continue
+            if len(Yo) == 0:
+                continue
+
+            coimgs[iband][Yo, Xo] += tim.getImage()[Yi, Xi]
+            comods[iband][Yo, Xo] += mod[Yi, Xi]
+            comods_nocentral[iband][Yo, Xo] += mod_nocentral[Yi, Xi]
+            con   [iband][Yo, Xo] += 1
+
+    for img, mod, mod_nocentral, n in zip(coimgs, comods, comods_nocentral, con):
+        img /= np.maximum(n, 1)
+        mod /= np.maximum(n, 1)
+        mod_nocentral /= np.maximum(n, 1)
         
-    srcs_nocentral = np.array(srcs)[nocentral].tolist()
-    T_nocentral = T[nocentral]
+    coresids = [img-mod for img, mod in list(zip(coimgs, comods))]
 
-    # Build the data and model images with and without the central.
-    coimgs, comods, coresids = _unwise_images_models(T, srcs, targetwcs, unwise_tims)
-    _, comods_nocentral, _ = _unwise_images_models(T_nocentral, srcs_nocentral, targetwcs, unwise_tims)
-    del unwise_tims
-
-    # Subtract the model image which excludes the central (comods_nocentral)
-    # from the data (coimgs) to isolate the light of the central
-    # (coimgs_central).
+    # Subtract the model image which excludes the central (comod_nocentral)
+    # from the data (coimg) to isolate the light of the central
+    # (coimg_central).
     coimgs_central = [img-mod for img, mod in list(zip(coimgs, comods_nocentral))]
 
     # Write out the final images with and without the central.

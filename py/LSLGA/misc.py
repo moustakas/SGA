@@ -116,3 +116,24 @@ def pix2radec(nside, pix):
     ra, dec = np.degrees(phi), 90-np.degrees(theta)
     
     return ra, dec
+
+def cosmology(WMAP=False, Planck=False):
+    """Establish the default cosmology for the project."""
+
+    if WMAP:
+        from astropy.cosmology import WMAP9 as cosmo
+    elif Planck:
+        from astropy.cosmology import Planck15 as cosmo
+    else:
+        from astropy.cosmology import FlatLambdaCDM
+        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)        
+
+    return cosmo
+
+def arcsec2kpc(redshift):
+    """Compute and return the scale factor to convert a physical axis in arcseconds
+    to kpc.
+
+    """
+    cosmo = cosmology()
+    return 1 / cosmo.arcsec_per_kpc_proper(redshift).value # [kpc/arcsec]

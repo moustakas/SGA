@@ -216,8 +216,8 @@ def main():
 
             err = legacyhalos_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
                                       pixscale=args.pixscale, verbose=args.verbose,
-                                      #band=('g', 'r', 'z'),
-                                      band=('FUV', 'NUV', 'g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'),
+                                      band=('g', 'r', 'z'),
+                                      #band=('FUV', 'NUV', 'g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'),
                                       galex_pixscale=args.galex_pixscale,
                                       unwise_pixscale=args.unwise_pixscale,
                                       #integrmode='bilinear', nclip=0, 

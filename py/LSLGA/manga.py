@@ -14,8 +14,11 @@ from astropy.table import Table, Column, hstack
 from astrometry.util.fits import fits_table
 
 import LSLGA.qa
+import LSLGA.misc
+
 from legacyhalos.html import make_plots, _javastring
 from legacyhalos.misc import plot_style
+
 sns = plot_style()
 
 RADIUSFACTOR = 10
@@ -259,8 +262,11 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
             html.write('</tr>\n')
             html.write('</table>\n')
 
+            width_kpc = 2 * RADIUSFACTOR * onegal['NSA_PETRO_TH50'] / LSLGA.misc.arcsec2kpc(onegal['Z'])
+            
             html.write('<h2>Multiwavelength mosaics</h2>\n')
-            html.write('<p>GALEX (FUV/NUV), DESI Legacy Surveys (grz), and unWISE (W1/W2), from left to right.</p>\n')
+            html.write("""<p>From left to right: GALEX (FUV/NUV), DESI Legacy Surveys (grz), and unWISE (W1/W2)
+            mosaic ({0:.0f} kpc on a side).</p>\n""".format(width_kpc))
             html.write('<table width="90%">\n')
             pngfile = '{}-multiwavelength-montage.png'.format(galaxy)
             html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
@@ -268,15 +274,34 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
             html.write('</table>\n')
             #html.write('<br />\n')
             
-            html.write('<h2>Optical image modeling</h2>\n')
+            ###########################################################################
+            html.write('<h2>Image modeling</h2>\n')
             #html.write('<p>Each mosaic (left to right: data, model of all but the central galaxy, residual image containing just the central galaxy) is 300 kpc by 300 kpc.</p>\n')
             html.write('<table width="90%">\n')
-            pngfile = '{}-coadd-montage.png'.format(galaxy)
+            pngfile = '{}-FUVNUV-montage.png'.format(galaxy)
             html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
                 pngfile))
             #html.write('<tr><td>Data, Model, Residuals</td></tr>\n')
             html.write('</table>\n')
-            #html.write('<br />\n')
+            html.write('<br />\n')
+
+            html.write('<table width="90%">\n')
+            pngfile = '{}-grz-montage.png'.format(galaxy)
+            html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
+                pngfile))
+            #html.write('<tr><td>Data, Model, Residuals</td></tr>\n')
+            html.write('</table>\n')
+            html.write('<br />\n')
+            
+            html.write('<table width="90%">\n')
+            pngfile = '{}-W1W2-montage.png'.format(galaxy)
+            html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
+                pngfile))
+            #html.write('<tr><td>Data, Model, Residuals</td></tr>\n')
+            html.write('</table>\n')
+            html.write('<br />\n')
+            
+            ###########################################################################
             
             html.write('<h2>Elliptical Isophote Analysis</h2>\n')
             html.write('<table width="90%">\n')
@@ -379,6 +404,10 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
             # Custom plots
             LSLGA.qa.qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir,
                                                clobber=clobber, verbose=verbose)
+            LSLGA.qa.qa_unwise_coadds(galaxy, galaxydir, htmlgalaxydir,
+                                      clobber=clobber, verbose=verbose)
+            LSLGA.qa.qa_galex_coadds(galaxy, galaxydir, htmlgalaxydir,
+                                     clobber=clobber, verbose=verbose)
             
             # Plots common to legacyhalos
             make_plots([onegal], galaxylist=[galaxy], analysisdir=analysisdir,
