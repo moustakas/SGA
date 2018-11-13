@@ -298,3 +298,53 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
         else:
             plt.show()
         
+
+def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
+    """Plot up the curve of growth versus semi-major axis.
+
+    """
+    fig, ax = plt.subplots(figsize=(9, 7))
+    band, refband, redshift = ellipsefit['band'], ellipsefit['refband'], ellipsefit['redshift']
+
+    maxsma = ellipsefit['apphot_sma_{}'.format(refband)].max()
+    smascale = LSLGA.misc.arcsec2kpc(redshift) # [kpc/arcsec]
+
+    yfaint, ybright = 0, 50
+    for filt in band:
+        flux = ellipsefit['apphot_mag_{}'.format(filt)]
+        good = np.where( np.isfinite(flux) * (flux > 0) )[0]
+        sma = ellipsefit['apphot_sma_{}'.format(filt)][good]
+        mag = 22.5-2.5*np.log10(flux[good])
+        ax.plot(sma, mag, label=filt)
+
+        print(filt, np.mean(mag[-5:]))
+        #print(filt, mag[-5:], np.mean(mag[-5:])
+        #print(filt, np.min(mag))
+
+        if mag.max() > yfaint:
+            yfaint = mag.max()
+        if mag.min() < ybright:
+            ybright = mag.min()
+
+    ax.set_xlabel(r'Semi-major Axis $a$ (arcsec)')
+    ax.set_ylabel('Cumulative Brightness (AB mag)')
+
+    ax.set_xlim(0, maxsma)
+    ax_twin = ax.twiny()
+    ax_twin.set_xlim( (0, maxsma * smascale) )
+    ax_twin.set_xlabel('Semi-major Axis $a$ (kpc)')
+
+    yfaint += 0.5
+    ybright += -0.5
+    
+    ax.set_ylim(yfaint, ybright)
+    ax_twin = ax.twinx()
+    ax_twin.set_ylim(yfaint, ybright)
+    ax_twin.set_ylabel('Cumulative Brightness (AB mag)')#, rotation=-90)
+
+    ax.legend(loc='lower right', fontsize=14, ncol=3)
+
+    fig.subplots_adjust(left=0.12, bottom=0.15, top=0.85, right=0.88)
+
+    if png:
+        fig.savefig(png)

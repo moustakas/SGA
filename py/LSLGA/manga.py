@@ -23,15 +23,15 @@ from legacyhalos.misc import plot_style
 sns = plot_style()
 
 RADIUSFACTOR = 10
-MANGA_RADIUS = 36.75 / 2 # [arcsec]
+MANGA_RADIUS = 36.75 # / 2 # [arcsec]
 
 def manga_dir():
     """Top-level MaNGA directory (should be an environment variable...)."""
+    print('Use an environment variable for MANGA_DIR!')
     if 'NERSC_HOST' in os.environ:
         mangadir = os.path.join(os.getenv('SCRATCH'), 'manga-nsa')
     else:
-        print('Where am I?')
-        raise IOError
+        mangadir = os.path.join(os.getenv('IM_PROJECTS_DIR'), 'manga-nsa')
     return mangadir
 
 def sample_dir():
@@ -51,7 +51,6 @@ def html_dir():
     #    htmldir = '/global/project/projectdirs/cosmo/www/temp/ioannis/LSLGA'
     #else:
     #    htmldir = os.path.join(LSLGA_dir(), 'html')
-
     htmldir = os.path.join(manga_dir(), 'html')
     if not os.path.isdir(htmldir):
         os.makedirs(htmldir, exist_ok=True)
@@ -177,9 +176,9 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
         html.write('table, td, th {padding: 5px; text-align: left; border: 1px solid black;}\n')
         html.write('</style>\n')
 
-        html.write('<h1>Central Galaxies: HSC vs DECaLS</h1>\n')
+        html.write('<h1>MaNGA-NSA</h1>\n')
         html.write('<p>\n')
-        html.write('<a href="https://github.com/moustakas/legacyhalos">Code and documentation</a>\n')
+        html.write('<a href="https://github.com/moustakas/LSLGA">Code and documentation</a>\n')
         html.write('</p>\n')
 
         html.write('<table>\n')
@@ -402,9 +401,16 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
             #survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
 
             # Custom plots
+            ellipsefit = read_ellipsefit(galaxy, galaxydir)
+            
+            cogfile = os.path.join(htmlgalaxydir, '{}-curve-of-growth.png'.format(galaxy))
+            if not os.path.isfile(cogfile) or clobber:
+                LSLGA.qa.qa_curveofgrowth(ellipsefit, png=cogfile, verbose=verbose)
+                
+            pdb.set_trace()
+                
             sbprofilefile = os.path.join(htmlgalaxydir, '{}-ellipse-sbprofile.png'.format(galaxy))
             if not os.path.isfile(sbprofilefile) or clobber:
-                ellipsefit = read_ellipsefit(galaxy, galaxydir)
                 LSLGA.qa.display_ellipse_sbprofile(ellipsefit, png=sbprofilefile,
                                                    verbose=verbose)
             

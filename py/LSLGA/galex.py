@@ -273,6 +273,7 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
 
             tim = Image(data=timg, inverr=tie, psf=tpsf, wcs=twcs, sky=tsky,
                         photocal=photocal, name='GALEX ' + band + brick.brickname)
+            pdb.set_trace()
 
             # Build the model image with and without the central galaxy model.
             def _galex_mod(tim, use_srcs):
