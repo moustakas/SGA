@@ -16,12 +16,14 @@ from astrometry.util.fits import fits_table
 import LSLGA.qa
 import LSLGA.misc
 
+from legacyhalos.io import read_ellipsefit
 from legacyhalos.html import make_plots, _javastring
 from legacyhalos.misc import plot_style
 
 sns = plot_style()
 
 RADIUSFACTOR = 10
+MANGA_RADIUS = 36.75 / 2 # [arcsec]
 
 def manga_dir():
     """Top-level MaNGA directory (should be an environment variable...)."""
@@ -219,6 +221,10 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
         if type(plateifu) is np.bytes_:
             plateifu = plateifu.decode('utf-8')
 
+        width_arcsec = 2 * MANGA_RADIUS
+        #width_arcsec = RADIUSFACTOR * onegal['NSA_PETRO_TH50']
+        width_kpc = width_arcsec / LSLGA.misc.arcsec2kpc(onegal['Z'])
+
         survey.output_dir = os.path.join(analysisdir, galaxy)
         survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
         
@@ -262,126 +268,120 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
             html.write('</tr>\n')
             html.write('</table>\n')
 
-            width_kpc = 2 * RADIUSFACTOR * onegal['NSA_PETRO_TH50'] / LSLGA.misc.arcsec2kpc(onegal['Z'])
-            
             html.write('<h2>Multiwavelength mosaics</h2>\n')
             html.write("""<p>From left to right: GALEX (FUV/NUV), DESI Legacy Surveys (grz), and unWISE (W1/W2)
-            mosaic ({0:.0f} kpc on a side).</p>\n""".format(width_kpc))
+            mosaics ({:.2f} arcsec or {:.0f} kpc on a side).</p>\n""".format(width_arcsec, width_kpc))
+            #html.write("""<p>From left to right: GALEX (FUV/NUV), DESI Legacy Surveys (grz), and unWISE (W1/W2)
+            #mosaic ({0:.0f} kpc on a side).</p>\n""".format(width_kpc))
             html.write('<table width="90%">\n')
-            pngfile = '{}-multiwavelength-montage.png'.format(galaxy)
+            pngfile = '{}-multiwavelength-data.png'.format(galaxy)
             html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
                 pngfile))
             html.write('</table>\n')
             #html.write('<br />\n')
             
             ###########################################################################
-            html.write('<h2>Image modeling</h2>\n')
-            #html.write('<p>Each mosaic (left to right: data, model of all but the central galaxy, residual image containing just the central galaxy) is 300 kpc by 300 kpc.</p>\n')
+            html.write('<h2>Multiwavelength image modeling</h2>\n')
+            html.write("""<p>From left to right: data; model image of all sources except the central, resolved galaxy;
+            residual image containing just the central galaxy.</p><p>From top to bottom: GALEX (FUV/NUV), DESI Legacy
+            Surveys (grz), and unWISE (W1/W2) mosaic ({:.2f} arcsec or {:.0f} kpc on a side).</p>\n""".format(
+                width_arcsec, width_kpc))
+
             html.write('<table width="90%">\n')
-            pngfile = '{}-FUVNUV-montage.png'.format(galaxy)
+            pngfile = '{}-multiwavelength-models.png'.format(galaxy)
             html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
                 pngfile))
             #html.write('<tr><td>Data, Model, Residuals</td></tr>\n')
             html.write('</table>\n')
             html.write('<br />\n')
 
-            html.write('<table width="90%">\n')
-            pngfile = '{}-grz-montage.png'.format(galaxy)
-            html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
-                pngfile))
-            #html.write('<tr><td>Data, Model, Residuals</td></tr>\n')
-            html.write('</table>\n')
-            html.write('<br />\n')
-            
-            html.write('<table width="90%">\n')
-            pngfile = '{}-W1W2-montage.png'.format(galaxy)
-            html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
-                pngfile))
-            #html.write('<tr><td>Data, Model, Residuals</td></tr>\n')
-            html.write('</table>\n')
-            html.write('<br />\n')
-            
             ###########################################################################
             
             html.write('<h2>Elliptical Isophote Analysis</h2>\n')
-            html.write('<table width="90%">\n')
-            html.write('<tr>\n')
-            pngfile = '{}-ellipse-multiband.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            html.write('</tr>\n')
-            html.write('</table>\n')
+
+            if False:
+                html.write('<table width="90%">\n')
+                html.write('<tr>\n')
+                pngfile = '{}-ellipse-multiband.png'.format(galaxy)
+                html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                    pngfile))
+                html.write('</tr>\n')
+                html.write('</table>\n')
 
             html.write('<table width="90%">\n')
             html.write('<tr>\n')
             pngfile = '{}-ellipse-sbprofile.png'.format(galaxy)
-            html.write('<td width="50%"><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+            html.write('<td width="100%"><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
                 pngfile))
             html.write('<td></td>\n')
             html.write('</tr>\n')
             html.write('</table>\n')
-            
-            html.write('<h2>Surface Brightness Profile Modeling</h2>\n')
-            html.write('<table width="90%">\n')
 
-            # single-sersic
-            html.write('<tr>\n')
-            html.write('<th>Single Sersic (No Wavelength Dependence)</th><th>Single Sersic</th>\n')
-            html.write('</tr>\n')
-            html.write('<tr>\n')
-            pngfile = '{}-sersic-single-nowavepower.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            pngfile = '{}-sersic-single.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            html.write('</tr>\n')
+            if False:
+                html.write('<h2>Surface Brightness Profile Modeling</h2>\n')
+                html.write('<table width="90%">\n')
 
-            # Sersic+exponential
-            html.write('<tr>\n')
-            html.write('<th>Sersic+Exponential (No Wavelength Dependence)</th><th>Sersic+Exponential</th>\n')
-            html.write('</tr>\n')
-            html.write('<tr>\n')
-            pngfile = '{}-sersic-exponential-nowavepower.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            pngfile = '{}-sersic-exponential.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            html.write('</tr>\n')
-
-            # double-sersic
-            html.write('<tr>\n')
-            html.write('<th>Double Sersic (No Wavelength Dependence)</th><th>Double Sersic</th>\n')
-            html.write('</tr>\n')
-            html.write('<tr>\n')
-            pngfile = '{}-sersic-double-nowavepower.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            pngfile = '{}-sersic-double.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            html.write('</tr>\n')
-            html.write('</table>\n')
-            html.write('<br />\n')
-
-            html.write('<h2>CCD Diagnostics</h2>\n')
-            html.write('<table width="90%">\n')
-            html.write('<tr>\n')
-            pngfile = '{}-ccdpos.png'.format(galaxy)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
-                pngfile))
-            html.write('</tr>\n')
-            
-            for iccd in range(len(survey.ccds)):
+                # single-sersic
                 html.write('<tr>\n')
-                pngfile = '{}-2d-ccd{:02d}.png'.format(galaxy, iccd)
+                html.write('<th>Single Sersic (No Wavelength Dependence)</th><th>Single Sersic</th>\n')
+                html.write('</tr>\n')
+                html.write('<tr>\n')
+                pngfile = '{}-sersic-single-nowavepower.png'.format(galaxy)
+                html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                    pngfile))
+                pngfile = '{}-sersic-single.png'.format(galaxy)
                 html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
                     pngfile))
                 html.write('</tr>\n')
-            html.write('</table>\n')
-            html.write('<br />\n')
+
+                # Sersic+exponential
+                html.write('<tr>\n')
+                html.write('<th>Sersic+Exponential (No Wavelength Dependence)</th><th>Sersic+Exponential</th>\n')
+                html.write('</tr>\n')
+                html.write('<tr>\n')
+                pngfile = '{}-sersic-exponential-nowavepower.png'.format(galaxy)
+                html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                    pngfile))
+                pngfile = '{}-sersic-exponential.png'.format(galaxy)
+                html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                    pngfile))
+                html.write('</tr>\n')
+
+                # double-sersic
+                html.write('<tr>\n')
+                html.write('<th>Double Sersic (No Wavelength Dependence)</th><th>Double Sersic</th>\n')
+                html.write('</tr>\n')
+                html.write('<tr>\n')
+                pngfile = '{}-sersic-double-nowavepower.png'.format(galaxy)
+                html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                    pngfile))
+                pngfile = '{}-sersic-double.png'.format(galaxy)
+                html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                    pngfile))
+                html.write('</tr>\n')
+                html.write('</table>\n')
+                html.write('<br />\n')
+
+            if False:
+                html.write('<h2>CCD Diagnostics</h2>\n')
+                html.write('<table width="90%">\n')
+                html.write('<tr>\n')
+                pngfile = '{}-ccdpos.png'.format(galaxy)
+                html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                    pngfile))
+                html.write('</tr>\n')
+
+                for iccd in range(len(survey.ccds)):
+                    html.write('<tr>\n')
+                    pngfile = '{}-2d-ccd{:02d}.png'.format(galaxy, iccd)
+                    html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(
+                        pngfile))
+                    html.write('</tr>\n')
+                html.write('</table>\n')
+                html.write('<br />\n')
             
+            html.write('<br />\n')
+            html.write('<br />\n')
             html.write('<a href="../{}">Home</a>\n'.format(homehtml))
             html.write('<br />\n')
 
@@ -399,20 +399,22 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
             htmlgalaxydir = os.path.join(htmldir, galaxy)
 
             survey.output_dir = os.path.join(analysisdir, galaxy)
-            survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
+            #survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
 
             # Custom plots
+            sbprofilefile = os.path.join(htmlgalaxydir, '{}-ellipse-sbprofile.png'.format(galaxy))
+            if not os.path.isfile(sbprofilefile) or clobber:
+                ellipsefit = read_ellipsefit(galaxy, galaxydir)
+                LSLGA.qa.display_ellipse_sbprofile(ellipsefit, png=sbprofilefile,
+                                                   verbose=verbose)
+            
             LSLGA.qa.qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir,
                                                clobber=clobber, verbose=verbose)
-            LSLGA.qa.qa_unwise_coadds(galaxy, galaxydir, htmlgalaxydir,
-                                      clobber=clobber, verbose=verbose)
-            LSLGA.qa.qa_galex_coadds(galaxy, galaxydir, htmlgalaxydir,
-                                     clobber=clobber, verbose=verbose)
-            
+
             # Plots common to legacyhalos
-            make_plots([onegal], galaxylist=[galaxy], analysisdir=analysisdir,
-                       htmldir=htmldir, clobber=clobber, verbose=verbose,
-                       survey=survey, refband=refband, pixscale=pixscale,
-                       band=band, nproc=nproc, ccdqa=ccdqa, trends=False)
+            #make_plots([onegal], galaxylist=[galaxy], analysisdir=analysisdir,
+            #           htmldir=htmldir, clobber=clobber, verbose=verbose,
+            #           survey=survey, refband=refband, pixscale=pixscale,
+            #           band=band, nproc=nproc, ccdqa=ccdqa, trends=False)
 
     print('HTML pages written to {}'.format(htmldir))

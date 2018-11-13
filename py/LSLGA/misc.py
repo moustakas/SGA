@@ -7,6 +7,29 @@ Miscellaneous code.
 """
 import numpy as np
 
+def plot_style(paper=False, talk=False):
+
+    import seaborn as sns
+    rc = {'font.family': 'serif'}#, 'text.usetex': True}
+    #rc = {'font.family': 'serif', 'text.usetex': True,
+    #       'text.latex.preamble': r'\boldmath'})
+    palette = 'Set2'
+    
+    if paper:
+        palette = 'deep'
+        rc.update({'text.usetex': False})
+    
+    if talk:
+        pass
+
+    sns.set(style='ticks', font_scale=1.6, rc=rc)
+    sns.set_palette(palette, 12)
+
+    colors = sns.color_palette()
+    #sns.reset_orig()
+
+    return sns, colors
+
 def custom_brickname(ra, dec):
     brickname = '{:06d}{}{:05d}'.format(
         int(1000*ra), 'm' if dec < 0 else 'p',

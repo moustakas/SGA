@@ -12,12 +12,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import fitsio
-from astropy.table import Table
+from astropy.table import Table, Column
 from astrometry.util.fits import fits_table
 from legacypipe.survey import LegacySurveyData
 
 import LSLGA.manga
-from LSLGA.manga import RADIUSFACTOR
+from LSLGA.manga import RADIUSFACTOR, MANGA_RADIUS
 
 def get_survey_dir(onegal):
     if onegal['DR'] == 'DR6':
@@ -99,8 +99,18 @@ def main():
     analysisdir = LSLGA.manga.analysis_dir()
 
     # Figure out what's left to do.
-    sample = LSLGA.manga.read_sample(first=args.first, last=args.last)
-    
+    #sample = LSLGA.manga.read_sample(first=args.first, last=args.last)
+
+    print('Hack the sample for the proposal!')
+    sample = Table(fitsio.read(os.path.join(LSLGA.manga.sample_dir(), 'nsa_v1_0_1.fits'), rows=604992))
+    sample.add_column(Column(name='MANGAID', data=['1-604992']), index=0)
+    sample.add_column(Column(name='PLATEIFU', data=['9183-12702']), index=1)
+    sample.add_column(Column(name='DR', data=['DR6']))
+    sample.rename_column('PETRO_TH50', 'NSA_PETRO_TH50')
+    for band, sigma in zip( ('FUV', 'NUV', 'W1', 'W2', 'W3', 'W4', 'G', 'R', 'Z'),
+                            (5, 5, 6, 6, 6, 12, 1, 1, 1) ):
+        sample.add_column(Column(name='PSFSIZE_{}'.format(band), data=[sigma], dtype='f4'))
+
     groups, suffix = [], ''
     if args.coadds:
         suffix = 'coadds'
@@ -150,7 +160,8 @@ def main():
             galaxy = onegal['MANGAID']
             if type(galaxy) is np.bytes_:
                 galaxy = galaxy.decode('utf-8')
-            radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
+            radius = MANGA_RADIUS # [arcsec]
+            #radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
 
             survey.survey_dir = get_survey_dir(onegal)
             survey.output_dir = os.path.join(analysisdir, galaxy)
@@ -184,7 +195,9 @@ def main():
             galaxy = onegal['MANGAID']
             if type(galaxy) is np.bytes_:
                 galaxy = galaxy.decode('utf-8')
-            radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
+                
+            radius = MANGA_RADIUS # [arcsec]
+            #radius = np.round(RADIUSFACTOR * onegal['NSA_PETRO_TH50']) # [arcsec]
 
             output_dir = os.path.join(analysisdir, galaxy)
 
@@ -212,12 +225,14 @@ def main():
                 galaxy = galaxy.decode('utf-8')
             galaxydir = os.path.join(analysisdir, galaxy)
 
-            maxsma = 7 * onegal['NSA_PETRO_TH50'] / args.pixscale # [pixels]
+            maxsma = MANGA_RADIUS / args.pixscale # [pixels]
+            #maxsma = 7 * onegal['NSA_PETRO_TH50'] / args.pixscale # [pixels]
 
             err = legacyhalos_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
                                       pixscale=args.pixscale, verbose=args.verbose,
-                                      band=('g', 'r', 'z'),
-                                      #band=('FUV', 'NUV', 'g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'),
+                                      #band=('g', 'r', 'z'),
+                                      band=('FUV', 'NUV', 'g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'),
+                                      #band=('NUV', 'g', 'r', 'z', 'W1'),
                                       galex_pixscale=args.galex_pixscale,
                                       unwise_pixscale=args.unwise_pixscale,
                                       #integrmode='bilinear', nclip=0, 

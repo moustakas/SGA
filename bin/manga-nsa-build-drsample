@@ -14,6 +14,9 @@ http://legacysurvey.org/viewer?ra=125.2275&dec=23.7291&zoom=14&layer=decals-dr7
 1-558912 8256-12704 166.129407835 42.6245544187 1094
 http://legacysurvey.org/viewer?ra=166.1354&dec=42.6264&zoom=14&layer=mzls+bass-dr6
 
+1-604992 
+http://legacysurvey.org/viewer?ra=121.3116&dec=37.4727&zoom=15&layer=mzls+bass-dr6
+
 """
 import os, sys, argparse, pdb
 from time import time

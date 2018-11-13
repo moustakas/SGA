@@ -103,11 +103,13 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
 
     # Find and remove all the objects within XX arcsec of the target
     # coordinates.
-    m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 3/3600.0, nearest=False)
+    m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 5/3600.0, nearest=False)
     if len(d12) == 0:
-        print('No matching galaxies found -- definitely a problem.')
-        raise ValueError
-    nocentral = ~np.isin(T.objid, T[m1].objid)
+        print('No matching galaxies found -- probably not what you wanted.')
+        #raise ValueError
+        nocentral = np.ones(len(T)).astype(bool)
+    else:
+        nocentral = ~np.isin(T.objid, T[m1].objid)
     T_nocentral = T[nocentral]
         
     # Find and read the overlapping unWISE tiles.  Assume the targetwcs is
