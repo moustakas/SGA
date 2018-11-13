@@ -140,7 +140,7 @@ def _read_galex_tiles(targetwcs, galex_dir, log=None, verbose=False):
 
     return galex_tiles
 
-def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75, 
+def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5, 
                  output_dir=None, galex_dir=None, log=None,
                  verbose=False):
     '''Generate custom GALEX cutouts.
@@ -223,7 +223,7 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
 
         for src in srcs:
             src.setBrightness(NanoMaggies(**{band: 1}))
-        srcs_nocentral = np.array(srcs)[nocentral].tolist()
+        #srcs_nocentral = np.array(srcs)[nocentral].tolist()
 
         for j in J:
             brick = galex_tiles[j]
@@ -273,21 +273,29 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
 
             tim = Image(data=timg, inverr=tie, psf=tpsf, wcs=twcs, sky=tsky,
                         photocal=photocal, name='GALEX ' + band + brick.brickname)
-            pdb.set_trace()
 
-            # Build the model image with and without the central galaxy model.
-            def _galex_mod(tim, use_srcs):
-                tractor = Tractor([tim], use_srcs)
-                mod = tractor.getModelImage(0)
-                tractor.freezeParam('images')
-                #print('Params:')
-                #tractor.printThawedParams()
-                tractor.optimize_forced_photometry(priors=False, shared_params=False)
-                mod = tractor.getModelImage(0)
-                return mod
+            tractor = Tractor([tim], srcs)
+            mod = tractor.getModelImage(0)
+            tractor.freezeParam('images')
+            tractor.optimize_forced_photometry(priors=False, shared_params=False)
+            mod = tractor.getModelImage(0)
 
-            mod = _galex_mod(tim, srcs)
-            mod_nocentral = _galex_mod(tim, srcs_nocentral)
+            srcs_nocentral = np.array(srcs)[nocentral].tolist()
+            tractor_nocentral = Tractor([tim], srcs_nocentral)
+            mod_nocentral = tractor_nocentral.getModelImage(0)
+
+            ## Build the model image with and without the central galaxy model.
+            #def _galex_mod(tim, use_srcs):
+            #    tractor = Tractor([tim], use_srcs)
+            #    mod = tractor.getModelImage(0)
+            #    tractor.freezeParam('images')
+            #    #print('Params:')
+            #    #tractor.printThawedParams()
+            #    tractor.optimize_forced_photometry(priors=False, shared_params=False)
+            #    mod = tractor.getModelImage(0)
+            #    return mod
+            #mod = _galex_mod(tim, srcs)
+            #mod_nocentral = _galex_mod(tim, srcs_nocentral)
 
             comod[Yo, Xo] += wt * mod[Yi-y0, Xi-x0]
             comod_nocentral[Yo, Xo] += wt * mod_nocentral[Yi-y0, Xi-x0]
