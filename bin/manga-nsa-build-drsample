@@ -1,0 +1,330 @@
+#!/usr/bin/env python
+
+"""Generate the sample of MaNGA/NSA galaxies in DR6+DR7.
+
+% manga-nsa-build-drsample --dr dr6 dr7 --drmerge --nproc 8 --verbose
+
+mangaid plate-ifu ra dec index
+1-113712 7815-6104 319.193098655 11.0437407875 2487
+http://legacysurvey.org/viewer?ra=319.1930&dec=11.0436&zoom=14&layer=decals-dr7
+
+1-556714 8939-9101 125.227739446 23.7292001251 596
+http://legacysurvey.org/viewer?ra=125.2275&dec=23.7291&zoom=14&layer=decals-dr7
+
+1-558912 8256-12704 166.129407835 42.6245544187 1094
+http://legacysurvey.org/viewer?ra=166.1354&dec=42.6264&zoom=14&layer=mzls+bass-dr6
+
+1-604992 
+http://legacysurvey.org/viewer?ra=121.3116&dec=37.4727&zoom=15&layer=mzls+bass-dr6
+
+"""
+import os, sys, argparse, pdb
+from time import time
+import numpy as np
+
+from astropy.table import vstack, Column
+
+import LSLGA.manga
+import LSLGA.misc
+from legacypipe.survey import LegacySurveyData
+
+import multiprocessing
+maxnproc = multiprocessing.cpu_count() // 2
+
+def get_masked_pixels(ccds, survey, wcs, debug=False):
+    """Given an (input) set of CCDS (restricted, one supposes, to a large-galaxy
+    cutout), compute the fraction of interpolated and saturated pixels.
+
+    """
+    nccd = len(ccds)
+    W, H = wcs.get_width(), wcs.get_height()
+    radecpoly = np.array([wcs.pixelxy2radec(x,y) for 
+                          x, y in [(1, 1), (W, 1), (W, H), (1, H), (1, 1)]])
+    for ii, ccd in enumerate(ccds):
+        im = survey.get_image_object(ccd)
+        x0, x1, y0, y1, slc = im.get_image_extent(wcs=im.get_wcs(), radecpoly=radecpoly)
+        dq = im.read_dq(slice=slc)
+
+        ccds.galaxy_npix[ii] = dq.size
+        ccds.galaxy_fracsatur[ii] = np.sum(dq == 4) / dq.size  # saturated
+        ccds.galaxy_fracinterp[ii] = np.sum(dq == 8) / dq.size # interpolated
+        if debug:
+            print(ii, ccd.filter, 100 * ccds.galaxy_fracsatur[ii], 100 * ccds.galaxy_fracinterp[ii])
+            plt.imshow( (dq & 8 != 0), origin='lower')
+            plt.show()
+            
+    return ccds
+
+def simple_wcs(onegal, diam, PIXSCALE=0.262):
+    """Build a simple WCS object for a single galaxy.
+
+    """
+    from astrometry.util.util import Tan
+    size = np.rint(diam * 60 / PIXSCALE).astype('int') # [pixels]
+    wcs = Tan(onegal['RA'], onegal['DEC'], size/2+0.5, size/2+0.5,
+                 -PIXSCALE/3600.0, 0.0, 0.0, PIXSCALE/3600.0, 
+                 float(size), float(size))
+    
+    return wcs
+
+def _build_drsample_one(args):
+    """Wrapper function for the multiprocessing."""
+    return build_drsample_one(*args)
+
+def build_drsample_one(onegal, survey, verbose=False, interp=False):
+    """Wrapper function to find overlapping grz CCDs for a single galaxy.
+    
+    """
+    from LSLGA.manga import RADIUSFACTOR
+    
+    diam = RADIUSFACTOR * onegal['NSA_PETRO_TH50'] / 60 # [arcmin]
+    wcs = simple_wcs(onegal, diam)
+
+    ccds = survey.ccds_touching_wcs(wcs, ccdrad=None)
+    if ccds is None:
+        return [None, None]
+
+    if 'g' in ccds.filter and 'r' in ccds.filter and 'z' in ccds.filter:
+
+        nccd = len(ccds)
+        ccds.mangaid = np.repeat(onegal['MANGAID'], len(ccds)) # for easy cross-referencing
+        
+        # Special use case to get the fraction of interpolated pixels.
+        if interp:
+            ccds.galaxy_npix = np.zeros(nccd).astype('int') # number of pixels in cutout
+            ccds.galaxy_fracsatur = np.zeros(nccd).astype('f4')
+            ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
+            ccds = get_masked_pixels(ccds, survey, wcs)
+
+        # Derive the mean PSF width.
+        fwhm = []
+        for ccd in ccds:
+            pixscale = np.sqrt( np.abs( np.linalg.det( np.array([[ccd.cd1_1, ccd.cd1_2],
+                                                                 [ccd.cd2_1, ccd.cd2_2]]) ) ) ) * 3600 # [arcsec/pixel]
+            fwhm.append(ccd.fwhm * pixscale) # [arcsec]
+        fwhm = np.array(fwhm)
+
+        for band in ('g', 'r', 'z'):
+            these = ccds.filter == band
+            onegal['PSFSIZE_{}'.format(band.upper())] = np.mean(fwhm[these])
+
+        if verbose:
+            print('{:12s}: {:04d} CCDs, RA = {:.5f}, Dec = {:.5f}, Diameter={:.4f} arcmin'.format(
+                    onegal['MANGAID'], len(ccds), onegal['RA'], onegal['DEC'], diam))
+            #sys.stdout.flush()
+        return [onegal, ccds]
+    else:
+        return [None, None]
+
+def build_drsample(cat, dr, nproc=1, nside=128, verbose=False,
+                   use_wcs=True, interp=False):
+    """Build the full sample of galaxies with grz coverage in DR6+DR7.
+    
+    """
+    from glob import glob
+    import healpy as hp
+    from astrometry.util.fits import fits_table, merge_tables
+
+    drdir = os.path.join(LSLGA.manga.sample_dir(), dr)
+    
+    # To speed up the matching, assign the input catalog and CCDs file to
+    # nside=256 healpixels (0.0525 deg^2 or 0.23 deg per side) and only keep the
+    # matching objects.
+    t0 = time()
+
+    ccdsfile = glob(os.path.join(drdir, 'survey-ccds-{}*.fits'.format(dr)))[0]
+    ccds = fits_table(ccdsfile)
+    print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
+
+    cat_allpix = LSLGA.misc.radec2pix(nside, cat['RA'].data, cat['DEC'].data)
+
+    def galaxies_and_ccds(ccds):
+        """Get the indices of objects in the input galaxy catalog located in a healpixel
+        occupied by an input CCD.
+
+        """
+        ccdpix = np.unique( LSLGA.misc.radec2pix(nside, ccds.ra, ccds.dec) )
+        # add the neighboring healpixels to protect against edge effects
+        ccdpix = np.unique( np.hstack( (ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()) ) )
+        if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
+            ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
+        catindx = np.where( np.isin(cat_allpix, ccdpix) )[0]
+        return catindx
+
+    # Only keep galaxies that have at least one band of grz coverage.
+    galkeep = None
+    for band in ('g', 'r', 'z'):
+        indx = galaxies_and_ccds(ccds[ccds.filter == band])
+        if galkeep is None:
+            galkeep = indx
+        else:
+            galkeep = np.intersect1d(galkeep, indx)
+
+    chipkeep = np.where( np.isin(LSLGA.misc.radec2pix(nside, ccds.ra, ccds.dec), np.unique(cat_allpix[galkeep])) )[0]
+
+    cat_keep = cat[galkeep]
+    ccds_keep = ccds[chipkeep]
+
+    #import matplotlib.pyplot as plt
+    #plt.scatter(cat['RA'], cat['DEC'], s=1)
+    #plt.scatter(cat_keep['RA'], cat_keep['DEC'], s=1)
+    #plt.scatter(ccds_keep.ra, ccds_keep.dec, s=1)
+    #plt.show()
+    #import pdb ; pdb.set_trace()    
+
+    print('  Healpix selection  in {:.3f} sec: found {}/{} galaxies with grz coverage in {}.'.format(
+        time() - t0, len(cat_keep), len(cat), dr.upper()))
+
+    # Add PSFSIZE_G,R,Z, NUV/FUV, and W1-W4 (FWHM)
+    for band in ('G', 'R', 'Z'):
+        cat_keep.add_column(Column(name='PSFSIZE_{}'.format(band), dtype='f4', length=len(cat_keep)))
+    for band, sigma in zip( ('FUV', 'NUV', 'W1', 'W2', 'W3', 'W4'), (5, 5, 6, 6, 6, 12) ):
+        cat_keep.add_column(Column(name='PSFSIZE_{}'.format(band), data=np.repeat(sigma, len(cat_keep)).astype('f4')))
+        
+    # Now (optionally) do a more refined (parallelized) search using
+    # ccds_touching_wcs for each individual galaxy.
+    if use_wcs or interp:
+        t0 = time()
+        survey = LegacySurveyData(survey_dir=drdir, verbose=False)
+
+        sampleargs = list()
+        for gg in cat_keep:
+            sampleargs.append( (gg, survey, verbose, interp) )
+
+        if nproc > 1:
+            p = multiprocessing.Pool(nproc)
+            result = p.map(_build_drsample_one, sampleargs)
+            p.close()
+        else:
+            result = list()
+            for args in sampleargs:
+                result.append(_build_drsample_one(args))
+
+        # Remove non-matching objects and write out the sample
+        rr = list(zip(*result))    
+        outcat = vstack(list(filter(None, rr[0])))
+        outccds = merge_tables( list(filter(None, rr[1])), columns='fillzero')
+
+        outcat = outcat[np.argsort(outcat['RA'])]
+        outccds = outccds[np.argsort(outccds.ra)]
+
+        # Add the DR for convenience.
+        outcat.add_column(Column(name='DR', data=np.repeat(dr.upper(), len(outcat))))
+        outccds.dr = np.repeat(dr.upper(), len(outccds))
+
+        print('WCS selection in {:.3f} min: found {}/{} galaxies with grz coverage in {}.'.format(
+            (time() - t0) / 60, len(outcat), len(cat), dr.upper()))
+
+    else:
+        print('Not yet implemented.')
+    
+    return outcat, outccds
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dr', type=str, default=None, nargs='+', help='Data release(s) to process (e.g., dr6 dr7).')
+    parser.add_argument('--nproc', type=int, default=4, help='Number of processors to use.')
+
+    parser.add_argument('--drmerge', action='store_true', help='Merge the DR6 + DR7 datafiles.')
+    parser.add_argument('--interp', action='store_true', help='Special use.')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose!')
+    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
+    args = parser.parse_args()
+
+    parent = LSLGA.manga.read_manga_parent(verbose=args.verbose)
+
+    if args.nproc > maxnproc:
+        print('Number of requested cores {} exceeds the maximum available {}.'.format(
+            args.nproc, maxnproc))
+        sys.exit(1)
+
+    # Build the sample for each DR (and the union, below).
+    if args.dr:
+        t0 = time()
+        drlist = args.dr
+        
+        for dr in np.atleast_1d(drlist):
+            drsamplefile = LSLGA.manga.get_samplefile(dr=dr)
+            drccdsfile = LSLGA.manga.get_samplefile(dr=dr, ccds=True)
+            if os.path.isfile(drsamplefile) and not args.clobber:
+                print('Output file {} exists; use clobber.'.format(drsamplefile))
+                continue
+
+            drsample, drccds = build_drsample(parent, dr=dr, verbose=args.verbose,
+                                              nproc=args.nproc, interp=args.interp)
+
+            print('Writing {} galaxies to {}'.format(len(drsample), drsamplefile))
+            drsample.write(drsamplefile, overwrite=True)
+
+            print('Writing {} CCDs to {}'.format(len(drccds), drccdsfile))
+            drccds.writeto(drccdsfile, overwrite=True)
+
+            print()
+            print('Total time for {} = {:.3f} min.'.format(dr, (time() - t0) / 60 ) )
+
+    # Combine the individual samples, resolving duplicates in favor of DR7.
+    if args.drmerge:
+        print('Building the joint DR6 + DR7 sample.')
+
+        t0 = time()
+        dr = 'dr6-dr7'
+
+        drsamplefile = LSLGA.manga.get_samplefile(dr='dr67')
+        drccdsfile = LSLGA.manga.get_samplefile(dr='dr67', ccds=True)
+        if os.path.isfile(drsamplefile) and not args.clobber:
+            print('Output file {} exists; use clobber.'.format(drsamplefile))
+            sys.exit(1)
+    
+        dr6 = LSLGA.manga.read_sample(verbose=args.verbose, dr='dr6')
+        dr6_ccds = LSLGA.manga.read_sample(verbose=args.verbose, dr='dr6', ccds=True)
+
+        dr7 = LSLGA.manga.read_sample(verbose=args.verbose, dr='dr7')
+        dr7_ccds = LSLGA.manga.read_sample(verbose=args.verbose, dr='dr7', ccds=True)
+
+        dr67 = vstack( (dr6, dr7) )
+        # https://stackoverflow.com/questions/30003068/get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
+        _, inverse, count = np.unique(dr67['MANGAID'], return_inverse=True, return_counts=True)
+        keep = np.arange(len(dr67))
+        
+        dupindx = np.where(count > 1)[0]
+        if len(dupindx) > 0:
+            rows, cols = np.where(inverse == dupindx[:, np.newaxis])
+            _, inverse_rows = np.unique(rows, return_index=True)
+            duplist = np.split(cols, inverse_rows[1:])
+        
+            print('  Resolving {} duplicates among {} galaxies in favor of DR7.'.format(
+                len(duplist), len(dr67)))
+            
+            keep = np.delete(keep, np.hstack(duplist))
+            ccdrem = []
+            for dupidx in duplist:
+                keep1 = dupidx[dr67['DR'][dupidx] == 'DR7']
+                keep = np.append(keep, keep1)
+                ccdrem.append( np.where( dr6_ccds['MANGAID'] == dr67['MANGAID'][keep1] )[0] )
+                
+            ccdkeep = np.delete(np.arange(len(dr6_ccds)), np.hstack(ccdrem) )
+            dr6_ccds = dr6_ccds[ccdkeep]
+            
+        drsample = dr67[keep]
+        drsample = drsample[np.argsort(drsample['RA'])]
+
+        print('Writing {} galaxies to {}'.format(len(drsample), drsamplefile))
+        drsample.write(drsamplefile, overwrite=True)
+
+        # Now do the CCDs.
+        drccds = vstack( (dr6_ccds, dr7_ccds) )
+        drccds['IMAGE_FILENAME'] = [ff.strip() for ff in drccds['IMAGE_FILENAME']]
+        drccds = drccds[np.argsort(drccds['RA'])]
+
+        print('Writing {} CCDs to {}'.format(len(drccds), drccdsfile))
+        drccds.write(drccdsfile, overwrite=True)
+
+        print('Total time to merge DR6 + DR7 = {:.3f} min.'.format( (time() - t0) / 60 ) )
+
+        # Check
+        #assert( np.sum(np.isin(drccds['MANGAID'], drsample['MANGAID'])) == len(drccds) )
+        #assert( np.sum(np.isin(drsample['MANGAID'], drccds['MANGAID'])) == len(drsample) )
+        
+if __name__ == '__main__':
+    main()
+
