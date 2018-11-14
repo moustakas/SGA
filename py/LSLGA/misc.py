@@ -7,6 +7,35 @@ Miscellaneous code.
 """
 import numpy as np
 
+def plot_style(paper=False, talk=False):
+
+    import seaborn as sns
+    rc = {'font.family': 'serif'}#, 'text.usetex': True}
+    #rc = {'font.family': 'serif', 'text.usetex': True,
+    #       'text.latex.preamble': r'\boldmath'})
+    palette = 'Set2'
+    
+    if paper:
+        palette = 'deep'
+        rc.update({'text.usetex': False})
+    
+    if talk:
+        pass
+
+    sns.set(style='ticks', font_scale=1.6, rc=rc)
+    sns.set_palette(palette, 12)
+
+    colors = sns.color_palette()
+    #sns.reset_orig()
+
+    return sns, colors
+
+def custom_brickname(ra, dec):
+    brickname = '{:06d}{}{:05d}'.format(
+        int(1000*ra), 'm' if dec < 0 else 'p',
+        int(1000*np.abs(dec)))
+    return brickname
+
 def is_point_in_desi(tiles, ra, dec, radius=None, return_tile_index=False):
     """If a point (`ra`, `dec`) is within `radius` distance from center of any
     tile, it is in DESI.
@@ -110,3 +139,24 @@ def pix2radec(nside, pix):
     ra, dec = np.degrees(phi), 90-np.degrees(theta)
     
     return ra, dec
+
+def cosmology(WMAP=False, Planck=False):
+    """Establish the default cosmology for the project."""
+
+    if WMAP:
+        from astropy.cosmology import WMAP9 as cosmo
+    elif Planck:
+        from astropy.cosmology import Planck15 as cosmo
+    else:
+        from astropy.cosmology import FlatLambdaCDM
+        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)        
+
+    return cosmo
+
+def arcsec2kpc(redshift):
+    """Compute and return the scale factor to convert a physical axis in arcseconds
+    to kpc.
+
+    """
+    cosmo = cosmology()
+    return 1 / cosmo.arcsec_per_kpc_proper(redshift).value # [kpc/arcsec]

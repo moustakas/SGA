@@ -9,8 +9,8 @@ import fitsio
 
 from astrometry.util.util import Tan
 from astrometry.util.fits import *
-from astrometry.util.resample import *
 from astrometry.util.plotutils import *
+from astrometry.util.resample import *
 from wise.forcedphot import unwise_tiles_touching_wcs
 from wise.unwise import get_unwise_tractor_image
 from legacypipe.survey import *
