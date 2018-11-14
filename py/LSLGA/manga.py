@@ -407,7 +407,7 @@ def make_html(sample, analysisdir=None, htmldir=None, band=('g', 'r', 'z'),
             if not os.path.isfile(cogfile) or clobber:
                 LSLGA.qa.qa_curveofgrowth(ellipsefit, png=cogfile, verbose=verbose)
                 
-            pdb.set_trace()
+            #pdb.set_trace()
                 
             sbprofilefile = os.path.join(htmlgalaxydir, '{}-ellipse-sbprofile.png'.format(galaxy))
             if not os.path.isfile(sbprofilefile) or clobber:

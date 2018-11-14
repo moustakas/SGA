@@ -11,6 +11,8 @@ import numpy as np
 def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
     """Support routine to generate color unWISE images.
 
+    Note that the input images need to be in *Vega* nanomaggies!
+
     """
     img = imgs[0]
     H, W = img.shape
@@ -124,17 +126,19 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
 
     wbands = [1, 2, 3, 4]
     wanyband = 'w'
+    vega_to_ab = dict(w1=2.699, w2=3.339, w3=5.174, w4=6.620)
 
+    # Convert the AB WISE fluxes in the Tractor catalog to Vega nanomaggies so
+    # they're consistent with the coadds, below.
     for band in wbands:
         f = T.get('flux_w{}'.format(band))
-        f *= 10.**(0.4 * primhdr['WISEAB{}'.format(band)])
+        f *= 10**(0.4 * vega_to_ab['w{}'.format(band)])
 
     coimgs = [np.zeros((H, W), np.float32) for b in wbands]
     comods = [np.zeros((H, W), np.float32) for b in wbands]
     comods_nocentral = [np.zeros((H, W), np.float32) for b in wbands]
     con    = [np.zeros((H, W), np.uint8) for b in wbands]
 
-    #unwise_tims = {'w1': [], 'w2': [], 'w3': [], 'w4': []}
     for iband, band in enumerate(wbands):
 
         for ii, src in enumerate(srcs):
@@ -178,10 +182,18 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
             if len(Yo) == 0:
                 continue
 
-            coimgs[iband][Yo, Xo] += tim.getImage()[Yi, Xi]
+            # The models are already in AB nanomaggies, but the tiles / tims are
+            # in Vega nanomaggies, so convert them here.
+            coimgs[iband][Yo, Xo] += tim.getImage()[Yi, Xi] 
             comods[iband][Yo, Xo] += mod[Yi, Xi]
             comods_nocentral[iband][Yo, Xo] += mod_nocentral[Yi, Xi]
             con   [iband][Yo, Xo] += 1
+
+        ## Convert back to nanomaggies.
+        #vega2ab = vega_to_ab['w{}'.format(band)]
+        #coimgs[iband] *= 10**(-0.4 * vega2ab)
+        #comods[iband] *= 10**(-0.4 * vega2ab)
+        #comods_nocentral[iband] *= 10**(-0.4 * vega2ab)
 
     for img, mod, mod_nocentral, n in zip(coimgs, comods, comods_nocentral, con):
         img /= np.maximum(n, 1)
@@ -195,18 +207,20 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     # (coimg_central).
     coimgs_central = [img-mod for img, mod in list(zip(coimgs, comods_nocentral))]
 
-    # Write out the final images with and without the central.
+    # Write out the final images with and without the central and converted into
+    # AB nanomaggies.
     for coadd, imtype in zip( (coimgs, comods, comods_nocentral),
                               ('image', 'model', 'model-nocentral') ):
         for img, band in zip(coadd, wbands):
+            vega2ab = vega_to_ab['w{}'.format(band)]
             fitsfile = os.path.join(output_dir, '{}-{}-W{}.fits'.format(galaxy, imtype, band))
             if verbose:
                 print('Writing {}'.format(fitsfile))
-            fitsio.write(fitsfile, img, clobber=True)
+            fitsio.write(fitsfile, img * 10**(-0.4 * vega2ab), clobber=True)
 
-    # Color WISE images --
+    # Generate color WISE images.
     kwa = dict(mn=-1, mx=100, arcsinh=0.5)
-    #kwa = dict(mn=-0.1, mx=2., arcsinh=1)
+    #kwa = dict(mn=-0.05, mx=1., arcsinh=0.5)
     #kwa = dict(mn=-0.1, mx=2., arcsinh=None)
 
     for imgs, imtype in zip( (coimgs, comods, coresids, comods_nocentral, coimgs_central),

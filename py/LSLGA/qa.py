@@ -317,7 +317,7 @@ def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
         mag = 22.5-2.5*np.log10(flux[good])
         ax.plot(sma, mag, label=filt)
 
-        print(filt, np.mean(mag[-5:]))
+        #print(filt, np.mean(mag[-5:]))
         #print(filt, mag[-5:], np.mean(mag[-5:])
         #print(filt, np.min(mag))
 

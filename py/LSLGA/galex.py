@@ -77,7 +77,7 @@ def _galex_rgb_moustakas(imgs, **kwargs):
     red   *= 0.085
     green *= 0.095
     blue  *= 0.08
-    nonlinearity = 0.5 #1.0 # 2.5
+    nonlinearity = 0.5 # 1.0 # 2.5
     radius = red + green + blue
     val = np.arcsinh(radius * nonlinearity) / nonlinearity
     with np.errstate(divide='ignore', invalid='ignore'):
@@ -171,10 +171,6 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
     if output_dir is None:
         output_dir = '.'
 
-    _galex_rgb = _galex_rgb_moustakas
-    #_galex_rgb = _galex_rgb_dstn
-    #_galex_rgb = _galex_rgb_official
-
     W = H = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
     targetwcs = Tan(onegal['RA'], onegal['DEC'], (W+1) / 2.0, (H+1) / 2.0,
                     -pixscale / 3600.0, 0.0, 0.0, pixscale / 3600.0, float(W), float(H))
@@ -223,7 +219,6 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
 
         for src in srcs:
             src.setBrightness(NanoMaggies(**{band: 1}))
-        #srcs_nocentral = np.array(srcs)[nocentral].tolist()
 
         for j in J:
             brick = galex_tiles[j]
@@ -258,7 +253,7 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
 
             tie = np.ones_like(timg)  ## HACK!
             #hdr = fitsio.read_header(fn)
-            #zp = hdr['
+            #zp = hdr['']
             zp = zps[band]
             photocal = LinearPhotoCal( NanoMaggies.zeropointToScale(zp), band=band)
             tsky = ConstantSky(0.0)
@@ -274,6 +269,7 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
             tim = Image(data=timg, inverr=tie, psf=tpsf, wcs=twcs, sky=tsky,
                         photocal=photocal, name='GALEX ' + band + brick.brickname)
 
+            ## Build the model image with and without the central galaxy model.
             tractor = Tractor([tim], srcs)
             mod = tractor.getModelImage(0)
             tractor.freezeParam('images')
@@ -283,19 +279,6 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
             srcs_nocentral = np.array(srcs)[nocentral].tolist()
             tractor_nocentral = Tractor([tim], srcs_nocentral)
             mod_nocentral = tractor_nocentral.getModelImage(0)
-
-            ## Build the model image with and without the central galaxy model.
-            #def _galex_mod(tim, use_srcs):
-            #    tractor = Tractor([tim], use_srcs)
-            #    mod = tractor.getModelImage(0)
-            #    tractor.freezeParam('images')
-            #    #print('Params:')
-            #    #tractor.printThawedParams()
-            #    tractor.optimize_forced_photometry(priors=False, shared_params=False)
-            #    mod = tractor.getModelImage(0)
-            #    return mod
-            #mod = _galex_mod(tim, srcs)
-            #mod_nocentral = _galex_mod(tim, srcs_nocentral)
 
             comod[Yo, Xo] += wt * mod[Yi-y0, Xi-x0]
             comod_nocentral[Yo, Xo] += wt * mod_nocentral[Yi-y0, Xi-x0]
@@ -318,13 +301,22 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
         comods_nocentral.append(comod_nocentral)
         coimgs_central.append(coimg_central)
 
-        # Write out the final images with and without the central.
+        # Write out the final images with and without the central, making sure
+        # to apply the zeropoint to go from counts/s to AB nanomaggies.
+        # https://asd.gsfc.nasa.gov/archive/galex/FAQ/counts_background.html
         for thisimg, imtype in zip( (coimg, comod, comod_nocentral),
                                 ('image', 'model', 'model-nocentral') ):
             fitsfile = os.path.join(output_dir, '{}-{}-{}.fits'.format(galaxy, imtype, niceband))
             if verbose:
                 print('Writing {}'.format(fitsfile))
-            fitsio.write(fitsfile, thisimg, clobber=True)
+            fitsio.write(fitsfile, thisimg * 10**(-0.4 * (zp - 22.5)), clobber=True)
+
+    # Build a color mosaic (but note that the images here are in units of
+    # background-subtracted counts/s).
+
+    _galex_rgb = _galex_rgb_moustakas
+    #_galex_rgb = _galex_rgb_dstn
+    #_galex_rgb = _galex_rgb_official
 
     for imgs, imtype in zip( (coimgs, comods, coresids, comods_nocentral, coimgs_central),
                              ('image', 'model', 'resid', 'model-nocentral', 'image-central') ):
