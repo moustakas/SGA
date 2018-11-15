@@ -52,7 +52,7 @@ def parent_version(version=None):
     """Version of the parent catalog."""
     if version is None:
         #version = 'v1.0' # 18may13
-        version = 'v2.0'  # 18oct31
+        version = 'v2.0'  # 18nov14
     return version
 
 def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
@@ -132,7 +132,7 @@ def read_hyperleda(verbose=False):
     if version == 'v1.0':
         hyperfile = 'hyperleda-d25min10-18may13.fits'
     elif version == 'v2.0':
-        hyperfile = 'hyperleda-d25min10-18oct31.fits'
+        hyperfile = 'hyperleda-d25min10-18nov14.fits'
     else:
         print('Unknown version!')
         raise ValueError
@@ -154,6 +154,9 @@ def read_hyperleda(verbose=False):
     allwise.rename_column('DEC', 'WISE_DEC')
     
     leda = hstack( (leda, allwise) )
+    print('Need to think this through a bit more; look at:')
+    print('  http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc')
+    pdb.set_trace()
     leda['INWISE'] = (np.array(['NULL' not in dd for dd in allwise['DESIGNATION']]) * 
                       np.isfinite(allwise['W1SIGM']) * np.isfinite(allwise['W2SIGM']) )
     

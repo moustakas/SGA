@@ -20,5 +20,5 @@ export ALLWISE_FILELIST=$SCRATCH/tmp/allwise_filelist
 time find $ALLWISE_INDIR -name 'wise-allwise-cat-part??.fits' > $ALLWISE_FILELIST
 
 time srun -u --cpu_bind=no python $LSLGA_CODE_DIR/bin/match-hyperleda-allwise -v --numproc 8 \
-    -f fits -F $ALLWISE_FILELIST $LSLGA_DIR/sample/hyperleda-d25min10-18oct31.fits \
-    $ALLWISE_INDIR $LSLGA_DIR/sample/hyperleda-d25min10-18oct31-allwise.fits 
+    -f fits -F $ALLWISE_FILELIST $LSLGA_DIR/sample/hyperleda-d25min10-18nov14.fits \
+    $ALLWISE_INDIR $LSLGA_DIR/sample/hyperleda-d25min10-18nov14-allwise.fits 
