@@ -27,23 +27,33 @@ def main():
     # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec1_4.html
     # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec2_1a.html
     # http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc    
-    allwise_cols = ['DESIGNATION', 'RA', 'DEC', 'CNTR', 'NB', 'NA',
-                    'CC_FLAGS', 'EXT_FLG', 'PH_QUAL',
-                    'MOON_LEV', 'RCHI2', 
-                    #'W1FLUX', 'W1SIGFLUX', 'W2FLUX', 'W2SIGFLUX',
-                    #'W3FLUX', 'W3SIGFLUX', 'W4FLUX', 'W4SIGFLUX',
+    allwise_cols = [#'DESIGNATION',
+                    'RA', 'DEC',
+                    'CNTR', # unique identification number
+                    # number of PSF components used in deblending
+                    #'NB', 'NA',
+                    'CC_FLAGS', # contamination and confusion flag
+                    'PH_QUAL',  # photometric quality flag
+                    #'MOON_LEV',# scattered moonlight contamination flag
+                    'RCHI2',    # combined, reduced chi2 in all bands
+                    # profile-fitted magnitudes and uncertainties
                     'W1MPRO', 'W1SIGMPRO', 'W2MPRO', 'W2SIGMPRO',
                     'W3MPRO', 'W3SIGMPRO', 'W4MPRO', 'W4SIGMPRO',
-                    'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
-                    'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
+                    # magnitude measured in a 8.25 arcsec radius aperture and corrected using the CoG
+                    #'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
+                    #'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
+                    # magnitudes measured from 2MASS-informed elliptical apertures
                     'W1GMAG', 'W1GERR', 'W2MAG', 'W2GERR',
                     'W3GMAG', 'W3GERR', 'W4GMAG', 'W4GERR',
-                    #'W1MAG_1', 'W1SIGM_1', 'W2MAG_1', 'W2SIGM_1',
-                    #'W3MAG_1', 'W3SIGM_1', 'W4MAG_1', 'W4SIGM_1',
-                    'TMASS_KEY', 'XSCPROX', #
-                    'J_M_2MASS', 'J_MSIG_2MASS', 
-                    'H_M_2MASS', 'H_MSIG_2MASS', 
-                    'K_M_2MASS', 'K_MSIG_2MASS']
+                    # 2MASS-informed elliptical aperture geometry (just for W1)
+                    'W1RSEMI', 'W1BA', 'W1PA',
+                    # use these with 2MASS
+                    'EXT_FLG',    # extended source flag (0-5)
+                    'XSCPROX']    # 2MASS/XSC proximity (arcsec)
+                    #'TMASS_KEY', # 2MASS point-source association
+                    #'J_M_2MASS', 'J_MSIG_2MASS', 
+                    #'H_M_2MASS', 'H_MSIG_2MASS', 
+                    #'K_M_2MASS', 'K_MSIG_2MASS']
 
     tree, nobj, morecols = read_external(ns.external, ns)
 

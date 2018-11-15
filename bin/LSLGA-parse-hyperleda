@@ -1,5 +1,21 @@
 #!/usr/bin/env python
 
+"""Read and parse the raw HyperLeda catalog.
+
+Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.txt in 13.597 sec.
+Diameter summary:
+  iso: 1388919 (96.71%)
+  r: 29912 (2.08%)
+  k: 0 (0.00%)
+Total time to convert to an astropy Table = 7.918 sec
+Magnitude summary:
+  B: 1412599 (98.36%)
+  K: 23061 (1.61%)
+  V: 4 (0.00%)
+  I: 512 (0.04%)
+Writing /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.fits
+
+"""
 import os, time
 import numpy as np
 import numpy.ma as ma
@@ -8,22 +24,6 @@ import pandas as pd
 from astropy.table import Table, Column
 
 def read_leda(txtfile, zcut=False, nrows=None, nside=64):
-    """Read and parse the raw HyperLeda catalog.
-
-    Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.txt in 13.597 sec.
-    Diameter summary:
-      iso: 1388919 (96.71%)
-      r: 29912 (2.08%)
-      k: 0 (0.00%)
-    Total time to convert to an astropy Table = 7.918 sec
-    Magnitude summary:
-      B: 1412599 (98.36%)
-      K: 23061 (1.61%)
-      V: 4 (0.00%)
-      I: 512 (0.04%)
-    Writing /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.fits
-    
-    """
     names = ('pgc', 'objname', 'objtype', 'ra', 'dec', 'type', 'bar', 'ring', 
              'multiple', 'compactness', 't', 'logd25', 'logr25', 
              'pa', 'bt', 'vt', 'it', 'kt', 'v', 'modbest',
