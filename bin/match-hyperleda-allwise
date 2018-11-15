@@ -63,7 +63,8 @@ def main():
     print('Initializing output catalog.')
     peek = fitsio.read(path, 1, upper=True, rows=0, columns=allwise_cols)
     matched_catalog = sharedmem.empty(nobj, dtype=peek.dtype)
-    matched_catalog['DESIGNATION'] = 'NULL'
+    #matched_catalog['DESIGNATION'] = 'NULL'
+    matched_catalog['CNTR'] = -1
 
     matched_distance = sharedmem.empty(nobj, dtype='f4')
 
@@ -92,7 +93,7 @@ def main():
             pos = radec2pos(objects['RA'], objects['DEC'])
             #print('Querying KD tree')
             d, i = tree.query(pos, 1)
-            assert (objects['DESIGNATION'] != b'NULL').all()
+            assert (objects['CNTR'] != -1).all()
             with pool.critical:
                 mask = d < matched_distance[i]
                 i = i[mask]
@@ -115,7 +116,7 @@ def main():
 
         pool.map(work, allwise_files, star=True, reduce=reduce)
 
-        nrealmatched = (matched_catalog['DESIGNATION'] != b'NULL').sum()
+        nrealmatched = (matched_catalog['CNTR'] != -1).sum()
         if ns.verbose:
             print("Processed %d files, %g / second, matched %d / %d objects into %d slots."
                   % (nprocessed, nprocessed / (time() - t0), nmatched, ntotal, nrealmatched))
