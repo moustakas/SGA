@@ -2,17 +2,14 @@
 
 """Generate the parent sample of large galaxies.
 
-% LSLGA-build-parent --clobber --verbose
-Read 1376864 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13.fits
-Read 1376864 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13-allwise.fits
-  Removed 13116/1363748 (0.96%) objects with no magnitude estimate.
-Read 20070 DESI tiles from /Users/ioannis/research/projects/LSLGA/sample/desi-tiles.fits
-  Identified 866889 (496859) objects inside (outside) the DESI footprint.
-  Removed 0/1363748 (0.00%) objects with D(25) < 0.167 and D(25) > 10000.000 arcmin.
-Read 1092055 Tycho-2 stars with B<12.0.
-  Found 23360/1363748 (1.71%) galaxies near a Tycho-2 star.
-Writing 1363748 objects to /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0.fits
-Writing /Users/ioannis/research/projects/LSLGA/sample/LSLGA-v1.0.kd.fits
+Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.fits
+Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14-allwise.fits
+  Identified 1436176/1436176 (100.00%) objects with AllWISE photometry.
+  Removed 13273/1436176 (0.92%) objects with no magnitude estimate.
+  Removed 0/1422903 (0.00%) objects with D(25) < 0.000 arcsec and D(25) > 10000.000 arcmin.
+  Identified 911206/1422903 (64.04%) galaxies inside and 511697/1422903 (35.96%) galaxies outside the DESI footprint.
+Read 2557319 Tycho-2 stars with B<99.0.
+  Found 13195/1422903 (0.93%) galaxies near a bright (Tycho-2) star.
 
 """
 import os, sys, argparse
@@ -21,7 +18,7 @@ import numpy as np
 import LSLGA.io
 import LSLGA.misc
 
-def build_parent(d25min=0/60, d25max=1e4, verbose=False):
+def build_parent(d25min=20/60, d25max=1e4, verbose=False):
     """Build the parent catalog.
     
     """
@@ -29,23 +26,37 @@ def build_parent(d25min=0/60, d25max=1e4, verbose=False):
     from astropy.table import Column
     from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec
 
-    # Read the Hyperleda catalog.
+    version = LSLGA.io.parent_version()
+    sandboxdir = os.path.join(LSLGA.io.sample_dir(), version, 'sandbox')
+    if not os.path.isdir(sandboxdir):
+        os.makedirs(sandboxdir, exist_ok=True)
+
+    # Read the full Hyperleda catalog and assign a unique ID.
     leda = LSLGA.io.read_hyperleda(verbose=True)
     parent = leda.copy()
     parent.add_column(Column(name='LSLGA_ID', length=len(parent), dtype='i8'), index=0)
     parent['LSLGA_ID'] = np.arange(len(parent))
 
-    # Enforce a magnitude estimate.
+    # Require a magnitude estimate.
     magcut = np.isfinite( parent['MAG'] )
     print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
         np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
+    parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
     parent = parent[magcut]
 
-    # Optional diameter cut(s).
+    # Apply a minimum diameter cut.
     diamcut = (parent['D25'] >= d25min) * (parent['D25'] <= d25max)
     print('  Removed {}/{} ({:.2f}%) objects with D(25) < {:.3f} arcsec and D(25) > {:.3f} arcmin.'.format(
         np.sum(~diamcut), len(parent), 100*np.sum(~diamcut)/len(parent), d25min*60, d25max))
+    parent[~diamcut].write(os.path.join(sandboxdir, 'LSLGA-{}-diamcut.fits'.format(version)), overwrite=True)
     parent = parent[diamcut]
+
+    # Apply a surface brightness cut.
+    lsbcut = (parent['SB_D25'] > 27) * (parent['D25'] > 0.95)
+    print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
+        np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
+    parent[lsbcut].write(os.path.join(sandboxdir, 'LSLGA-{}-lsb.fits'.format(version)), overwrite=True)
+    parent = parent[~lsbcut]
 
     # Reject objects classified as "g"
     # objnotg = np.hstack([np.char.strip(obj) != 'g' for obj in parent['objtype']])
@@ -55,10 +66,10 @@ def build_parent(d25min=0/60, d25max=1e4, verbose=False):
     #parent.add_column(Column(name='LSLGA_ID', length=len(parent), dtype='i8'), index=0)
     #parent['LSLGA_ID'] = np.arange(len(parent))
     
-    # Flag galaxies in the DESI footprint.
+    # Flag galaxies in and out of the DESI footprint.
     tiles = LSLGA.io.read_desi_tiles(verbose=verbose)
     indesi = LSLGA.misc.is_point_in_desi(tiles, ma.getdata(parent['RA']), ma.getdata(parent['DEC'])).astype(bool)
-    
+
     print('  Identified {}/{} ({:.2f}%) galaxies inside and {}/{} ({:.2f}%) galaxies outside the DESI footprint.'.format(
         np.sum(indesi), len(parent), 100*np.sum(indesi)/len(parent), np.sum(~indesi), len(parent),
         100*np.sum(~indesi)/len(parent)))
@@ -75,8 +86,9 @@ def build_parent(d25min=0/60, d25max=1e4, verbose=False):
             nearstar[I] = True
     print('  Found {}/{} ({:.2f}%) galaxies near a bright (Tycho-2) star.'.format(
         np.sum(nearstar), len(parent), 100*np.sum(nearstar)/len(parent)))
-
     parent['NEAR_BRIGHTSTAR'] = nearstar
+
+    print('Final sample size: {} galaxies.'.format(len(parent)))
 
     return parent, kdparent
 

@@ -61,15 +61,15 @@ def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
     else:
         suffix = 'fits'
 
+    version = parent_version()
+
     if dr is not None:
         if ccds:
-            parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}-ccds.{}'.format(
-                parent_version(), dr, suffix))
+            parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}-{}-ccds.{}'.format(version, dr, suffix))
         else:
-            parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}.{}'.format(
-                parent_version(), dr, suffix))
+            parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}-{}.{}'.format(version, dr, suffix))
     else:
-        parentfile = os.path.join(sample_dir(), 'LSLGA-{}.{}'.format(parent_version(), suffix))
+        parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}.{}'.format(version, suffix))
 
     if d25min is not None:
         parentfile = parentfile.replace('.fits', '-d25min{:.2f}.fits'.format(d25min))
@@ -146,7 +146,7 @@ def read_hyperleda(verbose=False):
         print('Unknown version!')
         raise ValueError
     
-    hyperledafile = os.path.join(sample_dir(), hyperfile)
+    hyperledafile = os.path.join(sample_dir(), version, hyperfile)
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
     leda = Table(fitsio.read(hyperledafile, ext=1, upper=True))
