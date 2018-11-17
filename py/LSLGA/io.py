@@ -133,11 +133,13 @@ def read_tycho(magcut=99, verbose=False):
     
     return tycho
 
-def read_hyperleda(verbose=False):
+def read_hyperleda(verbose=False, version=None):
     """Read the Hyperleda catalog.
     
     """
-    version = parent_version()
+    if version is None:
+        version = parent_version()
+        
     if version == 'v1.0':
         hyperfile = 'hyperleda-d25min10-18may13.fits'
     elif version == 'v2.0':
@@ -161,10 +163,11 @@ def read_hyperleda(verbose=False):
     # Merge the tables
     allwise.rename_column('RA', 'WISE_RA')
     allwise.rename_column('DEC', 'WISE_DEC')
-    leda.add_column(Column(name='IN_ALLWISE', data=np.zeros(len(leda)).astype(bool)))
     
     leda = hstack( (leda, allwise) )
-    haswise = np.where(allwise['CNTR'] != 0)[0]
+    leda.add_column(Column(name='IN_ALLWISE', data=np.zeros(len(leda)).astype(bool)))
+
+    haswise = np.where(allwise['CNTR'] != -1)[0]
     #nowise = np.where(allwise['CNTR'] == 0)[0]
     #print('unWISE match: {}/{} ({:.2f}%) galaxies.'.format(len(haswise), len(leda)))
     

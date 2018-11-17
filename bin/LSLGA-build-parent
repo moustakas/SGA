@@ -2,14 +2,16 @@
 
 """Generate the parent sample of large galaxies.
 
-Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.fits
-Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14-allwise.fits
-  Identified 1436176/1436176 (100.00%) objects with AllWISE photometry.
+Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/v2.0/hyperleda-d25min10-18nov14.fits
+Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/v2.0/hyperleda-d25min10-18nov14-allwise.fits
+  Identified 1379531/1436176 (96.06%) objects with AllWISE photometry.
   Removed 13273/1436176 (0.92%) objects with no magnitude estimate.
-  Removed 0/1422903 (0.00%) objects with D(25) < 0.000 arcsec and D(25) > 10000.000 arcmin.
-  Identified 911206/1422903 (64.04%) galaxies inside and 511697/1422903 (35.96%) galaxies outside the DESI footprint.
+  Removed 887102/1422903 (62.34%) objects with D(25) < 20.000 arcsec and D(25) > 10000.000 arcmin.
+  Removed 509/535801 (0.09%) low surface-brightness galaxies.
+  Identified 290431/535292 (54.26%) galaxies inside and 244861/535292 (45.74%) galaxies outside the DESI footprint.
 Read 2557319 Tycho-2 stars with B<99.0.
-  Found 13195/1422903 (0.93%) galaxies near a bright (Tycho-2) star.
+  Found 6083/535292 (1.14%) galaxies near a bright (Tycho-2) star.
+Final sample size: 535292 galaxies.
 
 """
 import os, sys, argparse
@@ -87,6 +89,11 @@ def build_parent(d25min=20/60, d25max=1e4, verbose=False):
     print('  Found {}/{} ({:.2f}%) galaxies near a bright (Tycho-2) star.'.format(
         np.sum(nearstar), len(parent), 100*np.sum(nearstar)/len(parent)))
     parent['NEAR_BRIGHTSTAR'] = nearstar
+
+    # Remove some unnecessary columns
+    parent.remove_columns(('OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
+                           'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
+                           'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K'))
 
     print('Final sample size: {} galaxies.'.format(len(parent)))
 

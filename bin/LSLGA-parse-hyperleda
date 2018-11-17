@@ -98,11 +98,29 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
         out['ba'][need] = out['ba_r'].values[need]
         diam_ref[need] = 'r'
 
+    #need = np.isnan(out['d25'].values) & np.isfinite(out['diam_i'].values)
+    #if np.sum(need) > 0:
+    #    out['d25'][need] = out['diam_i'].values[need]
+    #    out['ba'][need] = out['ba_i'].values[need]
+    #    diam_ref[need] = 'i'
+
     need = np.isnan(out['d25'].values) & np.isfinite(out['diam_k'].values)
     if np.sum(need) > 0:
         out['d25'][need] = out['diam_k'].values[need]
         out['ba'][need] = out['ba_k'].values[need]
         diam_ref[need] = 'ir'
+
+    #need = np.isnan(out['d25'].values) & np.isfinite(out['diam_b'].values)
+    #if np.sum(need) > 0:
+    #    out['d25'][need] = out['diam_b'].values[need]
+    #    out['ba'][need] = out['ba_b'].values[need]
+    #    diam_ref[need] = 'b'
+    #
+    #need = np.isnan(out['d25'].values) & np.isfinite(out['diam_v'].values)
+    #if np.sum(need) > 0:
+    #    out['d25'][need] = out['diam_v'].values[need]
+    #    out['ba'][need] = out['ba_v'].values[need]
+    #    diam_ref[need] = 'v'
 
     print('Diameter summary:')
     for src in ('iso', 'r', 'k'):
