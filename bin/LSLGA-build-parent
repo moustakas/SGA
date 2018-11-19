@@ -17,6 +17,8 @@ Final sample size: 535292 galaxies.
 import os, sys, argparse
 import numpy as np
 
+import astropy.table
+
 import LSLGA.io
 import LSLGA.misc
 
@@ -32,6 +34,26 @@ def build_parent(d25min=20/60, d25max=1e4, verbose=False):
     sandboxdir = os.path.join(LSLGA.io.sample_dir(), version, 'sandbox')
     if not os.path.isdir(sandboxdir):
         os.makedirs(sandboxdir, exist_ok=True)
+
+    parent = LSLGA.io.read_parent()
+    indx = np.where( (parent['D25'] > 1) * parent['IN_DESI'] )[0]
+    
+    out = parent['RA', 'DEC', 'GALAXY', 'PGC', 'D25', 'BA', 'PA'][indx]
+    srt = np.argsort(out['D25'])[:-10]
+    
+    out.rename_column('GALAXY', 'NAME')
+    out.add_column(astropy.table.Column(name='GOOD', data=np.ones(len(indx)).astype(np.uint)))
+    out.add_column(astropy.table.Column(name='COMMENTS', length=len(indx), dtype='S10'))
+    
+    import pdb ; pdb.set_trace()
+    out = out[np.argsort(out['D25'][::-1])]
+    out = out[:25]
+    
+    outfile = os.path.join(LSLGA.io.sample_dir(), version, 'sandbox', 'inspect.txt')
+    out.write(outfile, overwrite=True, format='csv')
+    out['RA', 'DEC', 'NAME'].write(outfile.replace('.txt', '.fits'), overwrite=True)
+    
+    import pdb ; pdb.set_trace()
 
     # Read the full Hyperleda catalog and assign a unique ID.
     leda = LSLGA.io.read_hyperleda(verbose=True)
