@@ -8,10 +8,14 @@ Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/v2.0/hyp
   Removed 13273/1436176 (0.92%) objects with no magnitude estimate.
   Removed 887102/1422903 (62.34%) objects with D(25) < 20.000 arcsec and D(25) > 10000.000 arcmin.
   Removed 509/535801 (0.09%) low surface-brightness galaxies.
-  Identified 290431/535292 (54.26%) galaxies inside and 244861/535292 (45.74%) galaxies outside the DESI footprint.
+  Removed 2585/535292 (0.48%) SDSS galaxies inside another large galaxy.
+Read 20070 DESI tiles from /Users/ioannis/research/projects/LSLGA/sample/desi-tiles.fits
+  Identified 287853/532707 (54.04%) galaxies inside and 244854/532707 (45.96%) galaxies outside the DESI footprint.
 Read 2557319 Tycho-2 stars with B<99.0.
-  Found 6083/535292 (1.14%) galaxies near a bright (Tycho-2) star.
-Final sample size: 535292 galaxies.
+  Found 6068/532707 (1.14%) galaxies near a bright (Tycho-2) star.
+Final sample size: 532707 galaxies.
+Writing 532707 galaxies to /Users/ioannis/research/projects/LSLGA/sample/v2.0/LSLGA-v2.0.fits
+Writing /Users/ioannis/research/projects/LSLGA/sample/v2.0/LSLGA-v2.0.kd.fits
 
 """
 import os, sys, argparse
