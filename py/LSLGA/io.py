@@ -48,9 +48,11 @@ def html_dir():
         os.makedirs(htmldir, exist_ok=True)
     return htmldir
 
-def parent_version():
+def parent_version(version=None):
     """Version of the parent catalog."""
-    version = 'v1.0'
+    if version is None:
+        #version = 'v1.0' # 18may13
+        version = 'v2.0'  # 18nov14
     return version
 
 def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
@@ -59,15 +61,15 @@ def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
     else:
         suffix = 'fits'
 
+    version = parent_version()
+
     if dr is not None:
         if ccds:
-            parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}-ccds.{}'.format(
-                parent_version(), dr, suffix))
+            parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}-{}-ccds.{}'.format(version, dr, suffix))
         else:
-            parentfile = os.path.join(sample_dir(), 'LSLGA-{}-{}.{}'.format(
-                parent_version(), dr, suffix))
+            parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}-{}.{}'.format(version, dr, suffix))
     else:
-        parentfile = os.path.join(sample_dir(), 'LSLGA-{}.{}'.format(parent_version(), suffix))
+        parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}.{}'.format(version, suffix))
 
     if d25min is not None:
         parentfile = parentfile.replace('.fits', '-d25min{:.2f}.fits'.format(d25min))
@@ -107,7 +109,7 @@ def read_desi_tiles(verbose=False):
     
     return tiles
 
-def read_tycho(magcut=12, verbose=False):
+def read_tycho(magcut=99, verbose=False):
     """Read the Tycho 2 catalog.
     
     """
@@ -118,19 +120,39 @@ def read_tycho(magcut=12, verbose=False):
         print('Read {} Tycho-2 stars with B<{:.1f}.'.format(len(tycho), magcut), flush=True)
     
     # Radius of influence; see eq. 9 of https://arxiv.org/pdf/1203.6594.pdf
-    tycho['RADIUS'] = (0.0802*(tycho['MAG_BT'])**2 - 1.860*tycho['MAG_BT'] + 11.625) / 60 # [degree]
+    #tycho['RADIUS'] = (0.0802*(tycho['MAG_BT'])**2 - 1.860*tycho['MAG_BT'] + 11.625) / 60 # [degree]
+
+    # From https://github.com/legacysurvey/legacypipe/blob/large-gals-only/py/legacypipe/runbrick.py#L1668
+    # Note that the factor of 0.262 has nothing to do with the DECam pixel scale!
+    tycho['RADIUS'] = np.minimum(1800., 150. * 2.5**((11. - tycho['MAG_BT']) / 4) ) * 0.262 / 3600
+
+    #import matplotlib.pyplot as plt
+    #oldrad = (0.0802*(tycho['MAG_BT'])**2 - 1.860*tycho['MAG_BT'] + 11.625) / 60 # [degree]
+    #plt.scatter(tycho['MAG_BT'], oldrad*60, s=1) ; plt.scatter(tycho['MAG_BT'], tycho['RADIUS']*60, s=1) ; plt.show()
+    #pdb.set_trace()
     
     return tycho
 
-def read_hyperleda(verbose=False):
+def read_hyperleda(verbose=False, version=None):
     """Read the Hyperleda catalog.
     
     """
-    hyperledafile = os.path.join(sample_dir(), 'hyperleda-d25min10-18may13.fits')
+    if version is None:
+        version = parent_version()
+        
+    if version == 'v1.0':
+        hyperfile = 'hyperleda-d25min10-18may13.fits'
+    elif version == 'v2.0':
+        hyperfile = 'hyperleda-d25min10-18nov14.fits'
+    else:
+        print('Unknown version!')
+        raise ValueError
+    
+    hyperledafile = os.path.join(sample_dir(), version, hyperfile)
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
     leda = Table(fitsio.read(hyperledafile, ext=1, upper=True))
-    leda.add_column(Column(name='GROUPID', dtype='i8', length=len(leda)))
+    #leda.add_column(Column(name='GROUPID', dtype='i8', length=len(leda)))
     if verbose:
         print('Read {} objects from {}'.format(len(leda), hyperledafile), flush=True)
 
@@ -143,9 +165,23 @@ def read_hyperleda(verbose=False):
     allwise.rename_column('DEC', 'WISE_DEC')
     
     leda = hstack( (leda, allwise) )
-    leda['INWISE'] = (np.array(['NULL' not in dd for dd in allwise['DESIGNATION']]) * 
-                      np.isfinite(allwise['W1SIGM']) * np.isfinite(allwise['W2SIGM']) )
+    leda.add_column(Column(name='IN_ALLWISE', data=np.zeros(len(leda)).astype(bool)))
+
+    haswise = np.where(allwise['CNTR'] != -1)[0]
+    #nowise = np.where(allwise['CNTR'] == 0)[0]
+    #print('unWISE match: {}/{} ({:.2f}%) galaxies.'.format(len(haswise), len(leda)))
     
-    #print('  Identified {} objects with WISE photometry.'.format(np.sum(leda['inwise'])))
+    #print('EXT_FLG summary:')
+    #for flg in sorted(set(leda['EXT_FLG'][haswise])):
+    #    nn = np.sum(flg == leda['EXT_FLG'][haswise])
+    #    print('  {}: {}/{} ({:.2f}%)'.format(flg, nn, len(haswise), 100*nn/len(haswise)))
+    #print('Need to think this through a bit more; look at:')
+    #print('  http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc')
+    #leda['INWISE'] = (np.array(['NULL' not in dd for dd in allwise['DESIGNATION']]) * 
+    #                  np.isfinite(allwise['W1SIGM']) * np.isfinite(allwise['W2SIGM']) )
+    leda['IN_ALLWISE'][haswise] = True
+    
+    print('  Identified {}/{} ({:.2f}%) objects with AllWISE photometry.'.format(
+        np.sum(leda['IN_ALLWISE']), len(leda), 100*np.sum(leda['IN_ALLWISE'])/len(leda) ))
     
     return leda

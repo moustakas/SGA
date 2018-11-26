@@ -1,47 +1,53 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import, division, print_function
+"""Read and parse the raw HyperLeda catalog.
 
-import os, time, warnings
+Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.txt in 13.597 sec.
+Diameter summary:
+  iso: 1388919 (96.71%)
+  r: 29912 (2.08%)
+  k: 0 (0.00%)
+Total time to convert to an astropy Table = 7.918 sec
+Magnitude summary:
+  B: 1412599 (98.36%)
+  K: 23061 (1.61%)
+  V: 4 (0.00%)
+  I: 512 (0.04%)
+Writing /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.fits
+
+"""
+import os, time
 import numpy as np
 import numpy.ma as ma
 import pandas as pd
 
-from astropy.table import Table, Column, vstack
-
-from legacypipe.internal import sharedmem
-
-import fitsio
-from astrometry.util.fits import fits_table
-from astrometry.util.starutil_numpy import deg2dist
-from astrometry.libkd.spherematch import (match_radec, tree_open, tree_search_radec,
-                                          tree_build_radec)
+from astropy.table import Table, Column
 
 def read_leda(txtfile, zcut=False, nrows=None, nside=64):
-    """Read and parse the raw HyperLeda catalog.
-
-    Read 1376864 objects from /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13.txt in 6.300 sec. 
-    Total time to convert to an astropy Table = 6.730 sec
-
-    Writing /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18may13.fits
-
-    real    1m4.687s
-    user    1m20.565s
-    sys     0m9.538s
-
-    """
     names = ('pgc', 'objname', 'objtype', 'ra', 'dec', 'type', 'bar', 'ring', 
              'multiple', 'compactness', 't', 'logd25', 'logr25', 
-             'pa', 'bt', 'it', 'kt', 'v', 'modbest')
-    dtype = {'pgc': np.int64, 'objname': str, 'objtype': str, 'ra': np.float64, 'dec': np.float64,
+             'pa', 'bt', 'vt', 'it', 'kt', 'v', 'modbest',
+             'lax_b', 'sax_b',
+             'lax_v', 'sax_v',
+             'lax_r', 'sax_r',
+             'lax_i', 'sax_i',
+             'lax_k', 'sax_k')
+        
+    dtype = {'pgc': np.int64,
+             'objname': str, 'objtype': str, 'ra': np.float64, 'dec': np.float64,
              'type': str, 'bar': str, 'ring': str, 'multiple': str, 'compactness': str,
              't': str, 'logd25': str, 'logr25': str, 'pa': str,
-             'bt': str, 'it': str, 'kt': str, 'v': str, 'modbest': str}
+             'bt': str, 'vt': str, 'it': str, 'kt': str, 'v': str, 'modbest': str,
+             'lax_b': str, 'sax_b': str,
+             'lax_v': str, 'sax_v': str,
+             'lax_r': str, 'sax_r': str,
+             'lax_i': str, 'sax_i': str,
+             'lax_k': str, 'sax_k': str}
 
     t0 = time.time()
-    data = pd.read_csv(txtfile, delimiter='|', comment='#', na_values='--',
-                       names=names, nrows=nrows, dtype=dtype)
-    
+    data = pd.read_csv(txtfile, delimiter='|', comment='#', na_values='--', skiprows=2, 
+                       names=names, nrows=nrows, dtype=dtype, skip_blank_lines=True,
+                       warn_bad_lines=True, error_bad_lines=False)
     print('Read {} objects from {} in {:.3f} sec.'.format(len(data), txtfile,
                                                           time.time() - t0 ) )
     data = data.replace(r'^\s*$', np.nan, regex=True)  # replace blank entries with NaN
@@ -61,21 +67,74 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['multiple'] = data['multiple'].astype(str).str.strip()
     out['compactness'] = data['compactness'].astype(str).str.strip()
     out['t'] = data['t'].astype('f4')
-    out['d25'] = (0.1 * 10**data['logd25'].astype('f4')).astype('f4') # [arcmin]
-    out['ba'] = (10**(-data['logr25'].astype('f4'))).astype('f4') # major-to-minor axis ratio
     out['pa'] = data['pa'].astype('f4')
 
     out['bt'] = data['bt'].astype('f4')
+    out['vt'] = data['vt'].astype('f4')
     out['it'] = data['it'].astype('f4')
     out['kt'] = data['kt'].astype('f4')
 
     out['modbest'] = data['modbest'].astype('f4')
+
+    # Isophotal values
+    out['diam_iso'] = (0.1 * 10**data['logd25'].astype('f4')).astype('f4') # [arcmin]
+    out['ba_iso'] = (10**(-data['logr25'].astype('f4'))).astype('f4') # major-to-minor axis ratio
+
+    for band in ('b', 'v', 'r', 'i', 'k'):
+        out['diam_{}'.format(band)] = (0.1 * 10**data['lax_{}'.format(band)].astype('f4')).astype('f4') # [arcmin]
+        out['ba_{}'.format(band)] = (10**(-data['sax_{}'.format(band)].astype('f4'))).astype('f4')
+
+    out['d25'] = out['diam_iso'] # default
+    out['ba'] = out['ba_iso']    # default
+    diam_ref = np.repeat('iso', len(data))
+
+    # Turn off the "chained assignment" warning:
+    # https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+    pd.options.mode.chained_assignment = None 
+
+    need = np.isnan(out['d25'].values) & np.isfinite(out['diam_r'].values)
+    if np.sum(need) > 0:
+        out['d25'][need] = out['diam_r'].values[need]
+        out['ba'][need] = out['ba_r'].values[need]
+        diam_ref[need] = 'r'
+
+    #need = np.isnan(out['d25'].values) & np.isfinite(out['diam_i'].values)
+    #if np.sum(need) > 0:
+    #    out['d25'][need] = out['diam_i'].values[need]
+    #    out['ba'][need] = out['ba_i'].values[need]
+    #    diam_ref[need] = 'i'
+
+    need = np.isnan(out['d25'].values) & np.isfinite(out['diam_k'].values)
+    if np.sum(need) > 0:
+        out['d25'][need] = out['diam_k'].values[need]
+        out['ba'][need] = out['ba_k'].values[need]
+        diam_ref[need] = 'ir'
+
+    #need = np.isnan(out['d25'].values) & np.isfinite(out['diam_b'].values)
+    #if np.sum(need) > 0:
+    #    out['d25'][need] = out['diam_b'].values[need]
+    #    out['ba'][need] = out['ba_b'].values[need]
+    #    diam_ref[need] = 'b'
+    #
+    #need = np.isnan(out['d25'].values) & np.isfinite(out['diam_v'].values)
+    #if np.sum(need) > 0:
+    #    out['d25'][need] = out['diam_v'].values[need]
+    #    out['ba'][need] = out['ba_v'].values[need]
+    #    diam_ref[need] = 'v'
+
+    print('Diameter summary:')
+    for src in ('iso', 'r', 'k'):
+        nn = np.sum(src == diam_ref)
+        print('  {}: {} ({:.2f}%)'.format(src, nn, 100*nn/len(data)))
 
     # Convert to an astropy Table
     t0 = time.time()
     out = Table.from_pandas(out)
     ngal = len(out)
     print('Total time to convert to an astropy Table = {:.3f} sec'.format( time.time() - t0 ))
+
+    #out.add_column(Column(name='diam_ref', dtype='U3', data=np.empty(ngal)*np.nan))
+    out['diam_ref'] = diam_ref
 
     # Add a couple more columns
     out.add_column(Column(name='z', dtype='f4', data=np.empty(ngal)*np.nan))
@@ -85,27 +144,46 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['z'][goodz] = (data['v'][goodz].values.astype('f4') / 299792.458).astype('f4')
 
     # Merge all the various magnitudes into a single magnitude.  Here's a little
-    # snippet of code for getting the mean Bt-K and Bt-I magnitudes:
-    #   ww = np.isfinite(tt['bt']) * np.isfinite(tt['kt'])
-    #   bk = ma.getdata(tt['bt'][ww] - tt['kt'][ww])
+    # snippet of code for getting the mean B-K, B-I, and B-V colors.
+    #  ww = (data['bt'].notnull() & data['vt'].notnull()).values
+    #  bv = data['bt'][ww].values.astype('f4') - data['vt'][ww].values.astype('f4')
 
     median_bk = 4.21
     median_bi = 1.52
-    
+    median_bv = 0.88
+
     out.add_column(Column(name='mag', dtype='f4', length=ngal))
+    out.add_column(Column(name='mag_ref', dtype='U1', data=np.repeat('-', ngal)))
+
+    #need = np.isfinite(ma.getdata(out['bt']))
+    #out['mag'][need] = ma.getdata(out['bt'][need])
+    #out['mag_ref'][need] = 'B'
     out['mag'] = ma.getdata(out['bt'])
+    out['mag_ref'] = 'B'
     
     need = np.isnan(ma.getdata(out['mag'])) * np.isfinite(ma.getdata(out['kt']))
     if np.sum(need) > 0:
         out['mag'][need] = ma.getdata(out['kt'][need]) + median_bk
+        out['mag_ref'][need] = 'K'
+    
+    need = np.isnan(ma.getdata(out['mag'])) * np.isfinite(ma.getdata(out['vt']))
+    if np.sum(need) > 0:
+        out['mag'][need] = ma.getdata(out['vt'][need]) + median_bv
+        out['mag_ref'][need] = 'V'
     
     need = np.isnan(ma.getdata(out['mag'])) * np.isfinite(ma.getdata(out['it']))
     if np.sum(need) > 0:
         out['mag'][need] = ma.getdata(out['it'][need]) + median_bi
+        out['mag_ref'][need] = 'I'
 
     # Vega --> AB!
     goodphot = np.isfinite(ma.getdata(out['mag']))
     out['mag'][goodphot] + 0.09
+
+    print('Magnitude summary:')
+    for src in ('B', 'K', 'V', 'I'):
+        nn = np.sum(src == out['mag_ref'])
+        print('  {}: {} ({:.2f}%)'.format(src, nn, 100*nn/len(data)))
 
     #out[np.isnan(ma.getdata(out['mag']))]
 
@@ -118,9 +196,11 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
 if __name__ == '__main__':
     
     NLSGAdir = os.getenv('LSLGA_DIR')
-    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18may13.txt')
+    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18nov14.txt')
+    #txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18may13.txt')
     
     data, out = read_leda(txtfile, zcut=False, nrows=None)
+    #data, out = read_leda(txtfile, zcut=False, nrows=10000)
 
     fitsfile = txtfile.replace('.txt', '.fits')
     print('Writing {}'.format(fitsfile))

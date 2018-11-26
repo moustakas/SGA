@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function, division
-
 import os, sys, re
 import numpy as np
 
@@ -28,20 +26,34 @@ def main():
 
     # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec1_4.html
     # http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec2_1a.html
-    allwise_cols = ['DESIGNATION', 'RA', 'DEC', 'CNTR', 'NB', 'NA',
-                    'CC_FLAGS', 'EXT_FLG', 'PH_QUAL',
-                    #'W1FLUX', 'W1SIGFLUX', 'W2FLUX', 'W2SIGFLUX',
-                    #'W3FLUX', 'W3SIGFLUX', 'W4FLUX', 'W4SIGFLUX',
+    # http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc    
+    allwise_cols = [#'DESIGNATION',
+                    'RA', 'DEC',
+                    'CNTR', # unique identification number
+                    # number of PSF components used in deblending
+                    #'NB', 'NA',
+                    'CC_FLAGS', # contamination and confusion flag
+                    'PH_QUAL',  # photometric quality flag
+                    #'MOON_LEV',# scattered moonlight contamination flag
+                    'RCHI2',    # combined, reduced chi2 in all bands
+                    # profile-fitted magnitudes and uncertainties
                     'W1MPRO', 'W1SIGMPRO', 'W2MPRO', 'W2SIGMPRO',
                     'W3MPRO', 'W3SIGMPRO', 'W4MPRO', 'W4SIGMPRO',
-                    'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
-                    'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
-                    #'W1MAG_1', 'W1SIGM_1', 'W2MAG_1', 'W2SIGM_1',
-                    #'W3MAG_1', 'W3SIGM_1', 'W4MAG_1', 'W4SIGM_1',
-                    'TMASS_KEY',
-                    'J_M_2MASS', 'J_MSIG_2MASS', 
-                    'H_M_2MASS', 'H_MSIG_2MASS', 
-                    'K_M_2MASS', 'K_MSIG_2MASS']
+                    # magnitude measured in a 8.25 arcsec radius aperture and corrected using the CoG
+                    #'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
+                    #'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
+                    # magnitudes measured from 2MASS-informed elliptical apertures
+                    'W1GMAG', 'W1GERR', 'W2MAG', 'W2GERR',
+                    'W3GMAG', 'W3GERR', 'W4GMAG', 'W4GERR',
+                    # 2MASS-informed elliptical aperture geometry (just for W1)
+                    'W1RSEMI', 'W1BA', 'W1PA',
+                    # use these with 2MASS
+                    'EXT_FLG',    # extended source flag (0-5)
+                    'XSCPROX']    # 2MASS/XSC proximity (arcsec)
+                    #'TMASS_KEY', # 2MASS point-source association
+                    #'J_M_2MASS', 'J_MSIG_2MASS', 
+                    #'H_M_2MASS', 'H_MSIG_2MASS', 
+                    #'K_M_2MASS', 'K_MSIG_2MASS']
 
     tree, nobj, morecols = read_external(ns.external, ns)
 
@@ -51,7 +63,8 @@ def main():
     print('Initializing output catalog.')
     peek = fitsio.read(path, 1, upper=True, rows=0, columns=allwise_cols)
     matched_catalog = sharedmem.empty(nobj, dtype=peek.dtype)
-    matched_catalog['DESIGNATION'] = 'NULL'
+    #matched_catalog['DESIGNATION'] = 'NULL'
+    matched_catalog['CNTR'] = -1
 
     matched_distance = sharedmem.empty(nobj, dtype='f4')
 
@@ -78,9 +91,9 @@ def main():
                     raise
         
             pos = radec2pos(objects['RA'], objects['DEC'])
-            print('Querying KD tree')
+            #print('Querying KD tree')
             d, i = tree.query(pos, 1)
-            assert (objects['DESIGNATION'] != b'NULL').all()
+            assert (objects['CNTR'] != -1).all()
             with pool.critical:
                 mask = d < matched_distance[i]
                 i = i[mask]
@@ -103,7 +116,7 @@ def main():
 
         pool.map(work, allwise_files, star=True, reduce=reduce)
 
-        nrealmatched = (matched_catalog['DESIGNATION'] != b'NULL').sum()
+        nrealmatched = (matched_catalog['CNTR'] != -1).sum()
         if ns.verbose:
             print("Processed %d files, %g / second, matched %d / %d objects into %d slots."
                   % (nprocessed, nprocessed / (time() - t0), nmatched, ntotal, nrealmatched))
@@ -241,7 +254,7 @@ def parse_args():
     ap.add_argument('-f', "--format", choices=['fits', 'hdf5'], nargs='+', default=["fits"],
         help="Format of the output file")
 
-    ap.add_argument('-t', "--tolerance", default=1.0, type=float,
+    ap.add_argument('-t', "--tolerance", default=3.0, type=float,
         help="Tolerance of the angular distance for a match, in arcseconds")
 
     ap.add_argument('-F', "--filelist", default=None,
