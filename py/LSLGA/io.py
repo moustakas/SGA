@@ -79,21 +79,50 @@ def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
     return parentfile
 
 def read_parent(columns=None, dr=None, kd=False, ccds=False, d25min=None,
-                d25max=None, verbose=False):
+                d25max=None, verbose=False, first=None, last=None, chaos=False):
     """Read the LSLGA parent catalog.
 
     """
     parentfile = get_parentfile(dr=dr, kd=kd, ccds=ccds, d25min=d25min, d25max=d25max)
+
     if kd:
         from astrometry.libkd.spherematch import tree_open
         parent = tree_open(parentfile, 'largegals')
         if verbose:
             print('Read {} galaxies from KD catalog {}'.format(parent.n, parentfile))
     else:
-        parent = Table(fitsio.read(parentfile, columns=columns, upper=True))
-        if verbose:
-            print('Read {} galaxies from {}'.format(len(parent), parentfile))
+        info = fitsio.FITS(parentfile)
 
+        # Read the CHAOS sample.
+        if chaos:
+            allgals = info[1].read(columns='GALAXY')
+            rows = np.hstack( [np.where(np.isin(allgals, chaosgal.encode('utf-8')))[0]
+                               for chaosgal in ('NGC0628', 'NGC5194', 'NGC5457', 'NGC3184')] )
+            rows = np.sort(rows)
+            nrows = len(rows)
+        else:
+            nrows = info[1].get_nrows()
+
+        if first is None:
+            first = 0
+        if last is None:
+            last = nrows
+        if first == last:
+            last = last + 1
+            
+        if chaos:
+            rows = rows[first:last]
+        else:
+            rows = np.arange(first, last)
+
+        parent = Table(info[1].read(rows=rows))
+        if verbose:
+            if len(rows) == 1:
+                print('Read galaxy index {} from {}'.format(first, parentfile))
+            else:
+                print('Read galaxy indices {} through {} (N={}) from {}'.format(
+                    first, last-1, len(parent), parentfile))
+        
     return parent
 
 def read_desi_tiles(verbose=False):
