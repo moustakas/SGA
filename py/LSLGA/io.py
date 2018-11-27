@@ -21,6 +21,12 @@ def LSLGA_dir():
         raise EnvironmentError
     return os.path.abspath(os.getenv('LSLGA_DIR'))
 
+def analysis_dir():
+    adir = os.path.join(LSLGA_dir(), 'analysis')
+    if not os.path.isdir(adir):
+        os.makedirs(adir, exist_ok=True)
+    return adir
+
 def sample_dir():
     sdir = os.path.join(LSLGA_dir(), 'sample')
     if not os.path.isdir(sdir):
@@ -47,6 +53,51 @@ def html_dir():
     if not os.path.isdir(htmldir):
         os.makedirs(htmldir, exist_ok=True)
     return htmldir
+
+def get_galaxy_galaxydir(cat, analysisdir=None, htmldir=None, html=False):
+    """Retrieve the galaxy name and the (nested) directory.
+
+    """
+    import astropy
+    import healpy as hp
+    from LSLGA.misc import radec2pix
+    
+    nside = 8 # keep hard-coded
+    
+    if analysisdir is None:
+        analysisdir = analysis_dir()
+    if htmldir is None:
+        htmldir = html_dir()
+
+    def get_healpix_subdir(nside, pixnum, analysisdir):
+        subdir = os.path.join(str(pixnum // 100), str(pixnum))
+        return os.path.abspath(os.path.join(analysisdir, str(nside), subdir))
+
+    if type(cat) is astropy.table.row.Row:
+        ngal = 1
+        galaxy = cat['GALAXY'][0]
+        pixnum = [radec2pix(nside, cat['RA'], cat['DEC'])]
+    else:
+        ngal = len(cat)
+        galaxy = cat['GALAXY']
+        pixnum = radec2pix(nside, cat['RA'], cat['DEC']).data
+
+    galaxydir = np.array([os.path.join(get_healpix_subdir(nside, pix, analysisdir), gal)
+                          for pix, gal in zip(pixnum, galaxy)])
+    if html:
+        htmlgalaxydir = np.array([os.path.join(get_healpix_subdir(nside, pix, htmldir), gal)
+                                  for pix, gal in zip(pixnum, galaxy)])
+
+    if ngal == 1:
+        galaxy = galaxy[0]
+        galaxydir = galaxydir[0]
+        if html:
+            htmlgalaxydir = htmlgalaxydir[0]
+
+    if html:
+        return galaxy, galaxydir, htmlgalaxydir
+    else:
+        return galaxy, galaxydir
 
 def parent_version(version=None):
     """Version of the parent catalog."""
@@ -122,6 +173,14 @@ def read_parent(columns=None, dr=None, kd=False, ccds=False, d25min=None,
             else:
                 print('Read galaxy indices {} through {} (N={}) from {}'.format(
                     first, last-1, len(parent), parentfile))
+
+        # Temporary hack to add the data release number:
+        if chaos:
+            parent.add_column(Column(name='DR', dtype='S3', length=len(parent)))
+            gal2dr = {'NGC0628': 'DR7', 'NGC5194': 'DR6', 'NGC5457': 'DR6', 'NGC3184': 'DR6'}
+            for ii, gal in enumerate(np.atleast_1d(parent['GALAXY'])):
+                if gal in gal2dr.keys():
+                    parent['DR'][ii] = gal2dr[gal]
         
     return parent
 

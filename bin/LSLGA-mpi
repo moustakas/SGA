@@ -197,7 +197,6 @@ def main():
         sample = LSLGA.io.read_parent(first=args.first, last=args.last, chaos=args.chaos)
     else:
         sample = None
-    pdb.set_trace()
 
     if comm:
         sample = comm.bcast(sample, root=0)
@@ -255,7 +254,8 @@ def main():
         if args.coadds or args.custom_coadds:
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
-            radius = LSLGA.misc.cutout_radius_150kpc(redshift=onegal['Z']) # [arcsec]
+            print('hack!')
+            radius = 500
             
         if args.coadds:
             _call_pipeline_coadds(onegal, galaxy, radius, survey, args.pixscale,
