@@ -43,7 +43,7 @@ def main():
                     #'W1MAG', 'W1SIGM', 'W2MAG', 'W2SIGM',
                     #'W3MAG', 'W3SIGM', 'W4MAG', 'W4SIGM',
                     # magnitudes measured from 2MASS-informed elliptical apertures
-                    'W1GMAG', 'W1GERR', 'W2MAG', 'W2GERR',
+                    'W1GMAG', 'W1GERR', 'W2GMAG', 'W2GERR',
                     'W3GMAG', 'W3GERR', 'W4GMAG', 'W4GERR',
                     # 2MASS-informed elliptical aperture geometry (just for W1)
                     'W1RSEMI', 'W1BA', 'W1PA',
