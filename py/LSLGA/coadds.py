@@ -227,7 +227,7 @@ def _custom_sky(skyargs):
     
     return out
 
-def custom_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
+def custom_coadds(onegal, galaxy=None, survey=None, radius=None, nproc=1,
                   pixscale=0.262, log=None, plots=False, verbose=False,
                   cleanup=True):
     """Build a custom set of coadds for a single galaxy, with a custom mask and sky
