@@ -23,7 +23,17 @@ from legacypipe.survey import LegacySurveyData
 
 import LSLGA.io
 import LSLGA.coadds
-#import LSLGA.ellipse
+import LSLGA.ellipse
+
+def get_survey_dir(onegal):
+    if onegal['DR'] == 'DR6':
+        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr6'
+    elif onegal['DR'] == 'DR7':
+        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr7'
+    else:
+        print('Unrecognized DR!')
+        raise ValueError
+    return
 
 def missing_files(sample, filetype='coadds', size=1, clobber=False):
     """Find missing data of a given filetype."""    
@@ -84,7 +94,7 @@ def _missing_files(args, sample, size):
     return suffix, groups
 
 def _call_pipeline_coadds(onegal, galaxy, radius, survey, pixscale,
-                          nproc, force, debug, logfile):
+                          nproc, force, debug, logfile, rank):
     """Wrapper script to build the pipeline coadds."""
     t0 = time.time()
     if debug:
@@ -102,14 +112,14 @@ def _call_pipeline_coadds(onegal, galaxy, radius, survey, pixscale,
                 rank, galaxy, time.asctime()), flush=True, file=log)
             err = LSLGA.coadds.pipeline_coadds(
                 onegal, galaxy=galaxy, radius=radius, survey=survey, 
-                pixscale=args.pixscale, nproc=args.nproc, force=args.force)
+                pixscale=pixscale, nproc=nproc, force=force)
             if err == 0:
                 print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
             print('Rank {} finished galaxy {} at {} in {:.3f} minutes.'.format(
                 rank, galaxy, time.asctime(), (time.time() - t0)/60), flush=True, file=log)
 
 def _call_custom_coadds(onegal, galaxy, radius, survey, pixscale,
-                        nproc, debug, logfile):
+                        nproc, debug, logfile, rank):
     """Wrapper script to build the pipeline coadds."""
     t0 = time.time()
     if debug:
@@ -127,17 +137,17 @@ def _call_custom_coadds(onegal, galaxy, radius, survey, pixscale,
                 rank, galaxy, time.asctime()), flush=True, file=log)
             err = LSLGA.coadds.custom_coadds(
                 onegal, galaxy=galaxy, radius=radius, survey=survey, 
-                pixscale=args.pixscale, nproc=args.nproc)
+                pixscale=pixscale, nproc=nproc)
             if err == 0:
                 print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
             print('Rank {} finished galaxy {} at {} in {:.3f} minutes.'.format(
                 rank, galaxy, time.asctime(), (time.time() - t0)/60), flush=True, file=log)
 
-def _call_ellipse(onegal, pixscale, verbose, debug, logfile):
+def _call_ellipse(onegal, pixscale, verbose, debug, logfile, rank):
     """Wrapper script to do ellipse-fitting."""
     if debug:
         err = LSLGA.ellipse.LSLGA_ellipse(onegal, pixscale=pixscale,
-                                                      verbose=verbose, debug=debug)
+                                          verbose=verbose, debug=debug)
         if err == 0:
             print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
         print('Finished galaxy {} in {:.3f} minutes.'.format(
@@ -148,7 +158,7 @@ def _call_ellipse(onegal, pixscale, verbose, debug, logfile):
                 print('Rank {} started working on galaxy {} at {}'.format(
                     rank, galaxy, time.asctime()), flush=True)
                 err = LSLGA.ellipse.LSLGA_ellipse(onegal, pixscale=pixscale,
-                                                              verbose=verbose, debug=debug)
+                                                  verbose=verbose, debug=debug)
                 if err == 0:
                     print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
                 print('Rank {} finished galaxy {} at {} in {:.3f} minutes.'.format(
@@ -160,7 +170,7 @@ def main():
     from contextlib import redirect_stdout, redirect_stderr
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--nproc', default=4, type=int, help='number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--nproc', default=32, type=int, help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
     parser.add_argument('--mpi', action='store_true', help='Use MPI parallelism')
 
@@ -243,6 +253,8 @@ def main():
 
         onegal = sample[ii]
         galaxy, galaxydir = LSLGA.io.get_galaxy_galaxydir(onegal)
+        if not os.path.isdir(galaxydir):
+            os.makedirs(galaxydir)
 
         if args.debug:
             logfile = None
@@ -253,22 +265,24 @@ def main():
         # Need the cluster "radius" to build the coadds.
         if args.coadds or args.custom_coadds:
             survey = LegacySurveyData()
+            survey.survey_dir = get_survey_dir(onegal)
             survey.output_dir = galaxydir
-            print('hack!')
-            radius = 500
-            
+            radius = 2 * onegal['D25'] * 60 / 2 # [arcsec]
+
         if args.coadds:
             _call_pipeline_coadds(onegal, galaxy, radius, survey, args.pixscale,
-                                  args.nproc, args.force, args.debug, logfile)
+                                  args.nproc, args.force, args.debug, logfile, rank)
                     
         if args.custom_coadds:
             survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
             _call_custom_coadds(onegal, galaxy, radius, survey, args.pixscale,
-                                args.nproc, args.debug, logfile)
+                                args.nproc, args.debug, logfile, rank)
                     
         if args.ellipse:
-            _call_ellipse(onegal, args.pixscale, args.verbose, args.debug, logfile)
-                        
+            _call_ellipse(onegal, args.pixscale, args.verbose,
+                          args.debug, logfile, rank)
+
+            
         if args.sersic:
             from LSLGA.sersic import LSLGA_sersic
             if args.debug:

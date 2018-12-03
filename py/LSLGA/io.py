@@ -75,11 +75,11 @@ def get_galaxy_galaxydir(cat, analysisdir=None, htmldir=None, html=False):
 
     if type(cat) is astropy.table.row.Row:
         ngal = 1
-        galaxy = cat['GALAXY'][0]
+        galaxy = [cat['GALAXY']]
         pixnum = [radec2pix(nside, cat['RA'], cat['DEC'])]
     else:
         ngal = len(cat)
-        galaxy = cat['GALAXY']
+        galaxy = np.array([gg.decode('utf-8') for gg in cat['GALAXY'].data])
         pixnum = radec2pix(nside, cat['RA'], cat['DEC']).data
 
     galaxydir = np.array([os.path.join(get_healpix_subdir(nside, pix, analysisdir), gal)

@@ -25,7 +25,7 @@ def _copyfile(infile, outfile):
         print('Missing file {}; please check the logfile.'.format(infile))
         return 0
 
-def pipeline_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
+def pipeline_coadds(onegal, galaxy=None, survey=None, radius=None, nproc=1,
                     pixscale=0.262, splinesky=True, log=None, force=False,
                     archivedir=None, cleanup=True):
     """Run legacypipe.runbrick on a custom "brick" centered on the galaxy.
@@ -49,9 +49,12 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius=30, nproc=1,
     cmd += '--radec {ra} {dec} --width {width} --height {width} --pixscale {pixscale} '
     cmd += '--threads {threads} --outdir {outdir} '
     cmd += '--survey-dir {survey_dir} '
+    cmd += '--large-galaxies --apodize '
     #cmd += '--unwise-coadds '
     #cmd += '--force-stage coadds '
-    cmd += '--write-stage srcs --no-write --skip --no-wise-ceres '
+    cmd += '--write-stage srcs '
+    #cmd += '--stage image_coadds --early-coadds '
+    cmd += '--no-write --skip --no-wise-ceres '
     cmd += '--checkpoint {archivedir}/{galaxy}-runbrick-checkpoint.p --checkpoint-period 300 '
     cmd += '--pickle {archivedir}/{galaxy}-runbrick-%%(stage)s.p ' 
     if force:
