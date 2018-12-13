@@ -19,3 +19,6 @@ wget -c -O NGC5457-SDSS.fits "http://legacysurvey.org/viewer/fits-cutout?ra=210.
 # http://legacysurvey.org/viewer-dev?ra=154.570590&dec=41.4243426&zoom=12&layer=mzls+bass-dr6&lslga
 wget -c -O NGC3184-SDSS.jpg "http://legacysurvey.org/viewer/jpeg-cutout?ra=154.570590&dec=41.4243426&pixscale=0.396&size=1500&layer=sdss"
 wget -c -O NGC3184-SDSS.fits "http://legacysurvey.org/viewer/fits-cutout?ra=154.570590&dec=41.4243426&pixscale=0.396&size=1500&layer=sdss"
+
+montage -bordercolor white -borderwidth 1 -tile 2x2 -geometry +0+0 -resize 1024 NGC0628-SDSS.jpg NGC3184-SDSS.jpg NGC5194-SDSS.jpg NGC5457-SDSS.jpg chaos.png
+

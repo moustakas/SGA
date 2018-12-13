@@ -149,10 +149,15 @@ def ellipse_sbprofile(ellipsefit, minerr=0.0):
             # Just for the plot use a minimum uncertainty
             #sbprofile['{}_err'.format(filt)][sbprofile['{}_err'.format(filt)] < minerr] = minerr
 
-    sbprofile['gr'] = sbprofile['mu_g'] - sbprofile['mu_r']
-    sbprofile['rz'] = sbprofile['mu_r'] - sbprofile['mu_z']
-    sbprofile['gr_err'] = np.sqrt(sbprofile['mu_g_err']**2 + sbprofile['mu_r_err']**2)
-    sbprofile['rz_err'] = np.sqrt(sbprofile['mu_r_err']**2 + sbprofile['mu_z_err']**2)
+    if 'mu_g' in sbprofile.keys() and 'mu_r' in sbprofile.keys():
+        sbprofile['gr'] = sbprofile['mu_g'] - sbprofile['mu_r']
+        sbprofile['gr_err'] = np.sqrt(sbprofile['mu_g_err']**2 + sbprofile['mu_r_err']**2)
+    if 'mu_r' in sbprofile.keys() and 'mu_z' in sbprofile.keys():
+        sbprofile['rz'] = sbprofile['mu_r'] - sbprofile['mu_z']
+        sbprofile['rz_err'] = np.sqrt(sbprofile['mu_r_err']**2 + sbprofile['mu_z_err']**2)
+    if 'mu_r' in sbprofile.keys() and 'mu_i' in sbprofile.keys():
+        sbprofile['ri'] = sbprofile['mu_r'] - sbprofile['mu_i']
+        sbprofile['ri_err'] = np.sqrt(sbprofile['mu_r_err']**2 + sbprofile['mu_i_err']**2)
 
     return sbprofile
 
@@ -264,11 +269,18 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
                          label=r'$g - r$', color=next(colors), alpha=0.75,
                          edgecolor='k', lw=2)
 
-        ax2.fill_between(sbprofile['sma'],
-                         sbprofile['rz'] - sbprofile['rz_err'],
-                         sbprofile['rz'] + sbprofile['rz_err'],
-                         label=r'$r - z$', color=next(colors), alpha=0.75,
-                         edgecolor='k', lw=2)
+        if 'rz' in sbprofile.keys():
+            ax2.fill_between(sbprofile['sma'],
+                             sbprofile['rz'] - sbprofile['rz_err'],
+                             sbprofile['rz'] + sbprofile['rz_err'],
+                             label=r'$r - z$', color=next(colors), alpha=0.75,
+                             edgecolor='k', lw=2)
+        elif 'ri' in sbprofile.keys():
+            ax2.fill_between(sbprofile['sma'],
+                             sbprofile['ri'] - sbprofile['ri_err'],
+                             sbprofile['ri'] + sbprofile['ri_err'],
+                             label=r'$r - i$', color=next(colors), alpha=0.75,
+                             edgecolor='k', lw=2)
 
         ax2.set_xlabel(r'Semi-major Axis $a$ (arcsec)')
         #ax2.set_xlabel(r'Galactocentric radius $r$ (arcsec)')
