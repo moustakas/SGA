@@ -162,7 +162,7 @@ def ellipse_sbprofile(ellipsefit, minerr=0.0):
     return sbprofile
 
 def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
-                              png=None, verbose=True):
+                              smascale=None, png=None, verbose=True):
     """Display the multiwavelength surface brightness profile.
 
     """
@@ -174,7 +174,8 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
 
         band, refband = ellipsefit['band'], ellipsefit['refband']
         redshift, pixscale = ellipsefit['redshift'], ellipsefit['pixscale']
-        smascale = LSLGA.misc.arcsec2kpc(redshift) # [kpc/arcsec]
+        if smascale is None:
+            smascale = LSLGA.misc.arcsec2kpc(redshift) # [kpc/arcsec]
 
         #if png:
         #    sbfile = png.replace('.png', '.txt')
@@ -309,8 +310,119 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
             plt.close(fig)
         else:
             plt.show()
-        
 
+def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
+    """Display the isophote fitting results."""
+
+    from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
+
+    colors = iter(sns.color_palette())
+
+    if ellipsefit['success']:
+        
+        band, refband = ellipsefit['band'], ellipsefit['refband']
+        pixscale, redshift = ellipsefit['pixscale'], ellipsefit['redshift']
+        smascale = legacyhalos.misc.arcsec2kpc(redshift) # [kpc/arcsec]
+
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 9), sharex=True)
+        
+        good = (ellipsefit[refband].stop_code < 4)
+        bad = ~good
+        ax1.fill_between(ellipsefit[refband].sma[good] * pixscale,
+                         ellipsefit[refband].eps[good]-ellipsefit[refband].ellip_err[good],
+                         ellipsefit[refband].eps[good]+ellipsefit[refband].ellip_err[good])#,
+                         #edgecolor='k', lw=2)
+        if np.count_nonzero(bad) > 0:
+            ax1.scatter(ellipsefit[refband].sma[bad] * pixscale, ellipsefit[refband].eps[bad],
+                        marker='s', s=40, edgecolor='k', lw=2, alpha=0.75)
+
+        #ax1.errorbar(ellipsefit[refband].sma[good] * smascale,
+        #             ellipsefit[refband].eps[good],
+        #             ellipsefit[refband].ellip_err[good], fmt='o',
+        #             markersize=4)#, color=color[refband])
+        #ax1.set_ylim(0, 0.5)
+        ax1.xaxis.set_major_formatter(ScalarFormatter())
+
+        ax2.fill_between(ellipsefit[refband].sma[good] * pixscale, 
+                         np.degrees(ellipsefit[refband].pa[good]-ellipsefit[refband].pa_err[good]),
+                         np.degrees(ellipsefit[refband].pa[good]+ellipsefit[refband].pa_err[good]))#,
+                         #edgecolor='k', lw=2)
+        if np.count_nonzero(bad) > 0:
+            ax2.scatter(ellipsefit[refband].sma[bad] * pixscale, np.degrees(ellipsefit[refband].pa[bad]),
+                        marker='s', s=40, edgecolor='k', lw=2, alpha=0.75)
+        #ax2.errorbar(ellipsefit[refband].sma[good] * smascale,
+        #             np.degrees(ellipsefit[refband].pa[good]),
+        #             np.degrees(ellipsefit[refband].pa_err[good]), fmt='o',
+        #             markersize=4)#, color=color[refband])
+        #ax2.set_ylim(0, 180)
+
+        ax3.fill_between(ellipsefit[refband].sma[good] * pixscale,
+                         ellipsefit[refband].x0[good]-ellipsefit[refband].x0_err[good],
+                         ellipsefit[refband].x0[good]+ellipsefit[refband].x0_err[good])#,
+                         #edgecolor='k', lw=2)
+        if np.count_nonzero(bad) > 0:
+            ax3.scatter(ellipsefit[refband].sma[bad] * pixscale, ellipsefit[refband].x0[bad],
+                        marker='s', s=40, edgecolor='k', lw=2, alpha=0.75)
+        #ax3.errorbar(ellipsefit[refband].sma[good] * smascale, ellipsefit[refband].x0[good],
+        #             ellipsefit[refband].x0_err[good], fmt='o',
+        #             markersize=4)#, color=color[refband])
+        ax3.xaxis.set_major_formatter(ScalarFormatter())
+        ax3.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+        ax4.fill_between(ellipsefit[refband].sma[good] * pixscale, 
+                         ellipsefit[refband].y0[good]-ellipsefit[refband].y0_err[good],
+                         ellipsefit[refband].y0[good]+ellipsefit[refband].y0_err[good])#,
+                         #edgecolor='k', lw=2)
+        if np.count_nonzero(bad) > 0:
+            ax4.scatter(ellipsefit[refband].sma[bad] * pixscale, ellipsefit[refband].y0[bad],
+                        marker='s', s=40, edgecolor='k', lw=2, alpha=0.75)
+        #ax4.errorbar(ellipsefit[refband].sma[good] * smascale, ellipsefit[refband].y0[good],
+        #             ellipsefit[refband].y0_err[good], fmt='o',
+        #             markersize=4)#, color=color[refband])
+            
+        ax2.yaxis.tick_right()
+        ax2.yaxis.set_label_position('right')
+        ax2.yaxis.set_major_formatter(ScalarFormatter())
+        ax4.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+        ax4.yaxis.tick_right()
+        ax4.yaxis.set_label_position('right')
+        ax4.xaxis.set_major_formatter(ScalarFormatter())
+        ax4.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+        for xx in (ax1, ax2, ax3, ax4):
+            xx.set_xlim(xmin=0)
+        
+        xlim = ax1.get_xlim()
+        ax1_twin = ax1.twiny()
+        ax1_twin.set_xlim( (xlim[0]*smascale, xlim[1]*smascale) )
+        ax1_twin.set_xlabel('Galactocentric radius (kpc)')
+
+        ax2_twin = ax2.twiny()
+        ax2_twin.set_xlim( (xlim[0]*smascale, xlim[1]*smascale) )
+        ax2_twin.set_xlabel('Galactocentric radius (kpc)')
+
+        ax1.set_ylabel(r'Ellipticity $\epsilon$')
+        ax2.set_ylabel('Position Angle (deg)')
+        ax3.set_xlabel(r'Galactocentric radius $r$ (arcsec)')
+        ax3.set_ylabel(r'$x$ Center')
+        ax4.set_xlabel(r'Galactocentric radius $r$ (arcsec)')
+        ax4.set_ylabel(r'$y$ Center')
+
+        if xlog:
+            for xx in (ax1, ax2, ax3, ax4):
+                xx.set_xscale('log')
+
+        fig.subplots_adjust(hspace=0.03, wspace=0.03, bottom=0.15, right=0.85, left=0.15)
+
+        if png:
+            if verbose:
+                print('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close(fig)
+        else:
+            plt.show()
+        
 def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
     """Plot up the curve of growth versus semi-major axis.
 
@@ -360,3 +472,116 @@ def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
 
     if png:
         fig.savefig(png)
+
+def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=None,
+                      magrange=10, inchperband=3, contours=False, png=None,
+                      verbose=True, vertical=False):
+    """Display the multi-band images and, optionally, the isophotal fits based on
+    either MGE and/or Ellipse.
+
+    vertical -- for talks...
+
+    """
+    from astropy.visualization import AsinhStretch as Stretch
+    from astropy.visualization import ImageNormalize
+
+    band = data['band']
+    nband = len(band)
+
+    #cmap = 'RdBu_r'
+    #from astropy.visualization import PercentileInterval as Interval
+    #interval = Interval(0.9)
+
+    cmap = 'viridis'
+    from astropy.visualization import ZScaleInterval as Interval
+    interval = Interval(contrast=0.9)
+
+    #cmap = {'g': 'winter_r', 'r': 'summer', 'z': 'autumn_r'}
+    #cmap = {'g': 'Blues', 'r': 'Greens', 'z': 'Reds'}
+
+    stretch = Stretch(a=0.95)
+
+    if vertical:
+        fig, ax = plt.subplots(3, 1, figsize=(nband, inchperband*nband))
+    else:
+        fig, ax = plt.subplots(1, 3, figsize=(inchperband*nband, nband))
+        
+    for filt, ax1 in zip(band, ax):
+
+        img = data['{}_masked'.format(filt)]
+        #img = data[filt]
+
+        norm = ImageNormalize(img, interval=interval, stretch=stretch)
+
+        im = ax1.imshow(img, origin='lower', norm=norm, cmap=cmap, #cmap=cmap[filt],
+                        interpolation='nearest')
+        plt.text(0.1, 0.9, filt, transform=ax1.transAxes, #fontweight='bold',
+                 ha='center', va='center', color='k', fontsize=16)
+
+        if mgefit:
+            from mge.mge_print_contours import _multi_gauss, _gauss2d_mge
+
+            sigmapsf = np.atleast_1d(0)
+            normpsf = np.atleast_1d(1)
+            _magrange = 10**(-0.4*np.arange(0, magrange, 1)[::-1]) # 0.5 mag/arcsec^2 steps
+            #_magrange = 10**(-0.4*np.arange(0, magrange, 0.5)[::-1]) # 0.5 mag/arcsec^2 steps
+
+            model = _multi_gauss(mgefit[filt].sol, img, sigmapsf, normpsf,
+                                 mgefit['xpeak'], mgefit['ypeak'],
+                                 mgefit['pa'])
+            
+            peak = data[filt][mgefit['xpeak'], mgefit['ypeak']]
+            levels = peak * _magrange
+            s = img.shape
+            extent = [0, s[1], 0, s[0]]
+
+            ax1.contour(model, levels, colors='k', linestyles='solid',
+                        extent=extent, alpha=0.5, lw=1)
+
+        if geometry:
+            from photutils import EllipticalAperture
+            
+            ellaper = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma,
+                                         geometry.sma*(1 - geometry.eps), geometry.pa)
+            ellaper.plot(color='k', lw=1, ax=ax1, alpha=0.75)
+
+        if ellipsefit:
+            if ellipsefit['success']:
+                if len(ellipsefit[filt]) > 0:
+                    if indx is None:
+                        indx = np.ones(len(ellipsefit[filt]), dtype=bool)
+
+                    nfit = len(indx) # len(ellipsefit[filt])
+                    nplot = np.rint(0.5*nfit).astype('int')
+
+                    smas = np.linspace(0, ellipsefit[filt].sma[indx].max(), nplot)
+                    for sma in smas:
+                        efit = ellipsefit[filt].get_closest(sma)
+                        x, y, = efit.sampled_coordinates()
+                        ax1.plot(x, y, color='k', lw=1, alpha=0.5)
+            else:
+                from photutils import EllipticalAperture
+                geometry = ellipsefit['geometry']
+                ellaper = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma,
+                                             geometry.sma*(1 - geometry.eps), geometry.pa)
+                ellaper.plot(color='k', lw=1, ax=ax1, alpha=0.5)
+
+        ax1.get_xaxis().set_visible(False)
+        ax1.get_yaxis().set_visible(False)
+        ax1.axis('off')
+        #ax1.set_adjustable('box-forced')
+        ax1.autoscale(False)
+
+    if vertical:
+        fig.subplots_adjust(hspace=0.02, top=0.98, bottom=0.02, left=0.02, right=0.98)
+    else:
+        fig.subplots_adjust(wspace=0.02, top=0.98, bottom=0.02, left=0.02, right=0.98)
+        
+    if png:
+        if verbose:
+            print('Writing {}'.format(png))
+        fig.savefig(png, bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+    else:
+        plt.show()
+
