@@ -1,0 +1,322 @@
+#!/usr/bin/env python
+"""MPI wrapper for the various computationally intensive LSLGA analysis
+steps.
+
+python -u legacyanalysis/extract-calibs.py --drdir /project/projectdirs/cosmo/data/legacysurvey/dr5 --radec 342.4942 -0.6706 --width 300 --height 300
+
+time LSLGA-mpi --first 0 --last 0 --custom-coadds --nproc 4 --dry-run --debug
+
+To get 24 MPI tasks and 8 cores per MPI task for multiprocessing, on cori I do 
+  srun -N 6 -n 24 -c 8
+and on edison
+  srun -N 8 -n 24 -c 8
+
+where N = 8 * 24 / 32 (e.g., on cori).
+
+"""
+import os, sys, time, pdb
+import argparse
+import numpy as np
+
+from astrometry.util.fits import fits_table
+from legacypipe.survey import LegacySurveyData
+
+import LSLGA.io
+import LSLGA.coadds
+import LSLGA.ellipse
+
+def get_survey_dir(onegal):
+    if onegal['DR'] == 'DR6':
+        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr6'
+    elif onegal['DR'] == 'DR7':
+        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr7'
+    else:
+        print('Unrecognized DR!')
+        raise ValueError
+    return
+
+def missing_files(sample, filetype='coadds', size=1, clobber=False):
+    """Find missing data of a given filetype."""    
+
+    if filetype == 'coadds':
+        filesuffix = 'pipeline-resid.jpg'
+    elif filetype == 'custom_coadds':
+        filesuffix = 'custom-resid.jpg'
+    elif filetype == 'ellipse':
+        filesuffix = 'ellipsefit.p'
+    elif filetype == 'html':
+        filesuffix = '??'
+    else:
+        print('Unrecognized file type!')
+        raise ValueError
+
+    ngal = len(sample)
+    indices = np.arange(ngal)
+    todo = np.ones(ngal, dtype=bool)
+
+    if filetype == 'html':
+        galaxy, _, galaxydir = LSLGA.io.get_galaxy_galaxydir(sample, html=True)
+    else:
+        galaxy, galaxydir = LSLGA.io.get_galaxy_galaxydir(sample)
+
+    for ii, (gal, gdir) in enumerate( zip(galaxy, galaxydir) ):
+        checkfile = os.path.join(gdir, '{}-{}'.format(gal, filesuffix))
+        if os.path.exists(checkfile) and clobber is False:
+            todo[ii] = False
+
+    if np.sum(todo) == 0:
+        return list()
+    else:
+        indices = indices[todo]
+        
+    return np.array_split(indices, size)
+
+def _missing_files(args, sample, size):
+    """Simple task-specific wrapper on missing_files."""
+    if args.coadds:
+        suffix = 'coadds'
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
+    elif args.custom_coadds:
+        suffix = 'custom_coadds'
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
+    elif args.ellipse:
+        suffix = 'ellipse'
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
+    elif args.sersic:
+        suffix = 'sersic'
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
+    elif args.html:
+        suffix = 'html'
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
+    else:
+        groups = []
+
+    return suffix, groups
+
+def _call_pipeline_coadds(onegal, galaxy, radius, survey, pixscale,
+                          nproc, force, debug, logfile, rank):
+    """Wrapper script to build the pipeline coadds."""
+    t0 = time.time()
+    if debug:
+        err = LSLGA.coadds.pipeline_coadds(
+            onegal, galaxy=galaxy, radius=radius, survey=survey, 
+            pixscale=pixscale, nproc=nproc, force=force)
+        if err == 0:
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+        print('Finished galaxy {} in {:.3f} minutes.'.format(
+            galaxy, (time.time() - t0)/60), flush=True)
+    else:
+        with open(logfile, 'w') as log:
+            #with redirect_stdout(log), redirect_stderr(log):
+            print('Rank {} started working on galaxy {} at {}'.format(
+                rank, galaxy, time.asctime()), flush=True, file=log)
+            err = LSLGA.coadds.pipeline_coadds(
+                onegal, galaxy=galaxy, radius=radius, survey=survey, 
+                pixscale=pixscale, nproc=nproc, force=force)
+            if err == 0:
+                print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
+            print('Rank {} finished galaxy {} at {} in {:.3f} minutes.'.format(
+                rank, galaxy, time.asctime(), (time.time() - t0)/60), flush=True, file=log)
+
+def _call_custom_coadds(onegal, galaxy, radius, survey, pixscale,
+                        nproc, debug, logfile, rank):
+    """Wrapper script to build the pipeline coadds."""
+    t0 = time.time()
+    if debug:
+        err = LSLGA.coadds.custom_coadds(
+            onegal, galaxy=galaxy, radius=radius, survey=survey, 
+            pixscale=pixscale, nproc=nproc)
+        if err == 0:
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+        print('Finished galaxy {} in {:.3f} minutes.'.format(
+            galaxy, (time.time() - t0)/60), flush=True)
+    else:
+        with open(logfile, 'w') as log:
+            #with redirect_stdout(log), redirect_stderr(log):
+            print('Rank {} started working on galaxy {} at {}'.format(
+                rank, galaxy, time.asctime()), flush=True, file=log)
+            err = LSLGA.coadds.custom_coadds(
+                onegal, galaxy=galaxy, radius=radius, survey=survey, 
+                pixscale=pixscale, nproc=nproc)
+            if err == 0:
+                print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
+            print('Rank {} finished galaxy {} at {} in {:.3f} minutes.'.format(
+                rank, galaxy, time.asctime(), (time.time() - t0)/60), flush=True, file=log)
+
+def _call_ellipse(onegal, pixscale, verbose, debug, logfile, rank):
+    """Wrapper script to do ellipse-fitting."""
+    if debug:
+        err = LSLGA.ellipse.LSLGA_ellipse(onegal, pixscale=pixscale,
+                                          verbose=verbose, debug=debug)
+        if err == 0:
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+        print('Finished galaxy {} in {:.3f} minutes.'.format(
+            galaxy, (time.time() - t0)/60), flush=True)
+    else:
+        with open(logfile, 'w') as log:
+            with redirect_stdout(log), redirect_stderr(log):
+                print('Rank {} started working on galaxy {} at {}'.format(
+                    rank, galaxy, time.asctime()), flush=True)
+                err = LSLGA.ellipse.LSLGA_ellipse(onegal, pixscale=pixscale,
+                                                  verbose=verbose, debug=debug)
+                if err == 0:
+                    print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+                print('Rank {} finished galaxy {} at {} in {:.3f} minutes.'.format(
+                    rank, galaxy, time.asctime(), (time.time() - t0)/60), flush=True)
+        if err == 0:
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+
+def main():
+    from contextlib import redirect_stdout, redirect_stderr
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--nproc', default=32, type=int, help='number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
+    parser.add_argument('--mpi', action='store_true', help='Use MPI parallelism')
+
+    parser.add_argument('--first', type=int, help='Index of first object to process.')
+    parser.add_argument('--last', type=int, help='Index of last object to process.')
+    parser.add_argument('--seed', type=int, default=None, help='Random seed (used with --sky).')
+
+    parser.add_argument('--coadds', action='store_true', help='Build the pipeline coadds.')
+    parser.add_argument('--custom-coadds', action='store_true', help='Build the custom coadds.')
+    parser.add_argument('--ellipse', action='store_true', help='Do the ellipse fitting.')
+    parser.add_argument('--sersic', action='store_true', help='Perform Sersic fitting.')
+    parser.add_argument('--html', action='store_true', help='Build HTML output.')
+    
+    parser.add_argument('--chaos', action='store_true', help='Process the CHAOS galaxy sample.')
+    parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
+    parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
+    parser.add_argument('--nomakeplots', action='store_true', help='Do not remake the QA plots for the HTML pages.')
+
+    parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
+    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
+    args = parser.parse_args()
+
+    if args.mpi:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        rank, size = comm.rank, comm.size
+    else:
+        comm = None
+        rank, size = 0, 1
+
+    # Read and broadcast the sample.
+    if rank == 0:
+        sample = LSLGA.io.read_parent(first=args.first, last=args.last, chaos=args.chaos)
+    else:
+        sample = None
+
+    if comm:
+        sample = comm.bcast(sample, root=0)
+
+    # Determine how many more objects we need to analyze and divide them
+    # across ranks.
+    groups, suffix = [], ''
+    if rank == 0:
+        suffix, groups = _missing_files(args, sample, size)
+
+    if comm:
+        groups = comm.bcast(groups, root=0)
+        suffix = comm.bcast(suffix, root=0)
+
+    if len(groups) == 0:
+        ntodo = 0
+    else:
+        ntodo = len( np.hstack( np.atleast_1d(groups) ) )
+        
+    if rank == 0:
+        if ntodo == 0:
+            print('{} for all {} galaxies are complete!'.format(
+                suffix.upper(), len(sample)), flush=True)
+            return
+        else:
+            print('{} left to do: {} / {} divided across {} group(s) and {} rank(s).'.format(
+                suffix.upper(), ntodo, len(sample), len(groups), size), flush=True)
+
+    if len(groups[rank]) == 0 or args.count:
+        if len(groups[rank]) > 0 and args.debug:
+            galaxy, galaxydir = LSLGA.io.get_galaxy_galaxydir(sample[groups])
+            for ii, dd in zip(groups[rank], galaxydir):
+                print('  {} {}'.format(ii, dd))
+            #[print('  {}'.format(dd)) for dd in np.atleast_1d(galaxydir)]
+        return
+
+    # Loop on the remaining objects.
+    print('Starting {} {} at {}'.format(ntodo, suffix.upper(), time.asctime()), flush=True)
+    tall = time.time()
+    for count, ii in enumerate(groups[rank]):
+        if (count % 10) == 0:
+            print('Rank {}: Building {} {} / {}'.format(
+                rank, suffix.upper(), count+1, len(groups[rank])), flush=True)
+
+        onegal = sample[ii]
+        galaxy, galaxydir = LSLGA.io.get_galaxy_galaxydir(onegal)
+        if not os.path.isdir(galaxydir):
+            os.makedirs(galaxydir)
+
+        if args.debug:
+            logfile = None
+        else:
+            logfile = os.path.join(galaxydir, '{}-{}.log'.format(galaxy, suffix))
+            print('Logging to {} '.format(logfile), flush=True)
+
+        # Need the cluster "radius" to build the coadds.
+        if args.coadds or args.custom_coadds:
+            survey = LegacySurveyData()
+            survey.survey_dir = get_survey_dir(onegal)
+            survey.output_dir = galaxydir
+            radius = 2 * onegal['D25'] * 60 / 2 # [arcsec]
+
+        if args.coadds:
+            _call_pipeline_coadds(onegal, galaxy, radius, survey, args.pixscale,
+                                  args.nproc, args.force, args.debug, logfile, rank)
+                    
+        if args.custom_coadds:
+            survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
+            _call_custom_coadds(onegal, galaxy, radius, survey, args.pixscale,
+                                args.nproc, args.debug, logfile, rank)
+                    
+        if args.ellipse:
+            _call_ellipse(onegal, args.pixscale, args.verbose,
+                          args.debug, logfile, rank)
+
+            
+        if args.sersic:
+            from LSLGA.sersic import LSLGA_sersic
+            if args.debug:
+                err = LSLGA_sersic(sample[ii], galaxy=galaxy, objdir=objdir, 
+                                            debug=args.debug, verbose=args.verbose,
+                                            seed=args.seed)
+                if err == 0:
+                    print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+                print('Finished galaxy {} in {:.3f} minutes.'.format(
+                    galaxy, (time.time() - t0)/60), flush=True)
+            else:
+                with open(logfile, 'w') as log:
+                    with redirect_stdout(log), redirect_stderr(log):
+                        print('Rank {} started working on galaxy {} at {}'.format(
+                            rank, galaxy, time.asctime()), flush=True)
+                        err = LSLGA_sersic(sample[ii], galaxy=galaxy, objdir=objdir, 
+                                                    debug=args.debug, verbose=args.verbose,
+                                                    seed=args.seed)
+                        if err == 0:
+                            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+                        print('Rank {} finished galaxy {} at {} in {:.3f} minutes.'.format(
+                            rank, galaxy, time.asctime(), (time.time() - t0)/60), flush=True)
+                if err == 0:
+                    print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+                        
+    if rank == 0:
+        print('Finished {} {} at {} after {:.3f} minutes'.format(
+            ntodo, suffix.upper(), time.asctime(), (time.time() - tall) / 60 ), flush=True)
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
+        if len(groups) > 0:
+            stilltodo = len(np.hstack(np.atleast_1d(groups)))
+        else:
+            stilltodo = 0
+        print('{} left to do: {} / {}.'.format(suffix.upper(), stilltodo, ntodo), flush=True)
+
+if __name__ == '__main__':
+    main()
