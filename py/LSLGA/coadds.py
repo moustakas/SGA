@@ -345,7 +345,8 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius=None, nproc=1,
     cat = fits_table(tractorfile)
     print('Read {} sources from {}'.format(len(cat), tractorfile), flush=True, file=log)
 
-    # Find and all the objects within XX arcsec of the target coordinates.
+    # Find and remove all the objects within XX arcsec of the target
+    # coordinates.
     m1, m2, d12 = match_radec(cat.ra, cat.dec, onegal['RA'], onegal['DEC'], 5/3600.0, nearest=False)
     if len(d12) == 0:
         print('No matching galaxies found -- probably not what you wanted.')

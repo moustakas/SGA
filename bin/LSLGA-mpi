@@ -122,6 +122,17 @@ def _call_custom_coadds(onegal, galaxy, radius, survey, pixscale,
                         nproc, debug, logfile, rank):
     """Wrapper script to build the pipeline coadds."""
     t0 = time.time()
+
+    ccdsfile = os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy))
+    if not os.path.isfile(ccdsfile):
+        if debug:
+            print('CCDs file {} not found.'.format(ccdsfile), flush=True)
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+        else:
+            print('CCDs file {} not found.'.format(ccdsfile), flush=True, file=log)
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
+        return
+    
     if debug:
         err = LSLGA.coadds.custom_coadds(
             onegal, galaxy=galaxy, radius=radius, survey=survey, 
@@ -274,7 +285,6 @@ def main():
                                   args.nproc, args.force, args.debug, logfile, rank)
                     
         if args.custom_coadds:
-            survey.ccds = fits_table(os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)))
             _call_custom_coadds(onegal, galaxy, radius, survey, args.pixscale,
                                 args.nproc, args.debug, logfile, rank)
                     
