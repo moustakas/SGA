@@ -8,28 +8,18 @@ matplotlib.use('Agg')
 import os, sys, time, pdb
 import argparse
 import numpy as np
+import fitsio
+
 from astropy.table import Table, hstack
 from contextlib import redirect_stdout, redirect_stderr
 
 from astrometry.util.fits import fits_table
 from legacypipe.survey import LegacySurveyData
 
-#import legacyhalos.io
-#import legacyhalos.hsc
-#import legacyhalos.coadds
-#import legacyhalos.html
-#import legacyhalos.integrate
-#from legacyhalos.misc import RADIUS_CLUSTER_KPC
-
-def get_survey_dir(onegal):
-    if onegal['RELEASE'] == 6000:
-        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr6'
-    elif onegal['RELEASE'] == 7000 or onegal['RELEASE'] == 7001:
-        return '/global/project/projectdirs/cosmo/work/legacysurvey/dr7'
-    else:
-        print('Unrecognized DR!')
-        raise ValueError
-    return
+import LSLGA.NLSA
+import LSLGA.coadds
+import LSLGA.galex
+import LSLGA.unwise
 
 def missing_files(sample, filetype='coadds', size=1, htmldir=None,
                   clobber=False):
@@ -37,12 +27,14 @@ def missing_files(sample, filetype='coadds', size=1, htmldir=None,
 
     if filetype == 'coadds':
         filesuffix = '-pipeline-resid-grz.jpg'
+    elif filetype == 'unwise':
+        filesuffix = 'resid-W1W2.jpg'
+    elif filetype == 'galex':
+        filesuffix = 'resid-FUVNUV.jpg'
     elif filetype == 'custom_coadds':
         filesuffix = '-custom-resid-grz.jpg'
     elif filetype == 'ellipse':
         filesuffix = '-ellipsefit.p'
-    elif filetype == 'sersic':
-        filesuffix = '-sersic-single.p'
     elif filetype == 'html':
         filesuffix = '-ccdpos.png'
         #filesuffix = '-sersic-exponential-nowavepower.png'
@@ -55,9 +47,9 @@ def missing_files(sample, filetype='coadds', size=1, htmldir=None,
     todo = np.ones(ngal, dtype=bool)
 
     if filetype == 'html':
-        galaxy, _, galaxydir = legacyhalos.io.get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+        galaxy, _, galaxydir = LSLGA.NLSA.get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
     else:
-        galaxy, galaxydir = legacyhalos.io.get_galaxy_galaxydir(sample, htmldir=htmldir)
+        galaxy, galaxydir = LSLGA.NLSA.get_galaxy_galaxydir(sample, htmldir=htmldir)
 
     for ii, (gal, gdir) in enumerate( zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir)) ):
         checkfile = os.path.join(gdir, '{}{}'.format(gal, filesuffix))
@@ -71,7 +63,7 @@ def missing_files(sample, filetype='coadds', size=1, htmldir=None,
         
     return np.array_split(indices, size)
 
-def _missing_files(args, sample, size, htmldir=None):
+def _missing_files(args, sample, size, htmldir=None, sampledir=''):
     """Simple task-specific wrapper on missing_files.
 
     """
@@ -116,17 +108,17 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
     t0 = time.time()
     if debug:
         _start(galaxy)
-        err = legacyhalos.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
-                                                 survey=survey, pixscale=pixscale,
-                                                 nproc=nproc, force=force, cleanup=True)
+        err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
+                                           survey=survey, pixscale=pixscale,
+                                           nproc=nproc, force=force, cleanup=True)
         _done(galaxy, err, t0)
     else:
         with open(logfile, 'a') as log:
             with redirect_stdout(log), redirect_stderr(log):
                 _start(galaxy, log=log)
-                err = legacyhalos.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
-                                                         survey=survey, pixscale=pixscale,
-                                                         nproc=nproc, force=force, log=log, cleanup=True)
+                err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
+                                                   survey=survey, pixscale=pixscale,
+                                                   nproc=nproc, force=force, log=log, cleanup=True)
                 _done(galaxy, err, t0, log=log)
 
 def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
@@ -135,29 +127,29 @@ def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
     t0 = time.time()
     if debug:
         _start(galaxy)
-        err = legacyhalos.coadds.custom_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
-                                               survey=survey, pixscale=pixscale, nproc=nproc)
+        err = LSLGA.coadds.custom_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
+                                         survey=survey, pixscale=pixscale, nproc=nproc)
         _done(galaxy, err, t0)
     else:
         with open(logfile, 'a') as log:
             with redirect_stdout(log), redirect_stderr(log):
                 _start(galaxy, log=log)
-                err = legacyhalos.coadds.custom_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
-                                                       survey=survey, pixscale=pixscale,
-                                                       nproc=nproc, log=log)
+                err = LSLGA.coadds.custom_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
+                                                 survey=survey, pixscale=pixscale,
+                                                 nproc=nproc, log=log)
                 _done(galaxy, err, t0, log=log)
                 
 def _call_ellipse(onegal, galaxy, pixscale, nproc, verbose, debug, logfile):
     """Wrapper script to do ellipse-fitting.
 
     """
-    import legacyhalos.ellipse
+    import LSLGA.ellipse
     zcolumn = 'Z_LAMBDA'
     
     t0 = time.time()
     if debug:
         _start(galaxy)
-        err = legacyhalos.ellipse.legacyhalos_ellipse(onegal, pixscale=pixscale, nproc=nproc,
+        err = LSLGA.ellipse.LSLGA_ellipse(onegal, pixscale=pixscale, nproc=nproc,
                                                       zcolumn=zcolumn,
                                                       verbose=verbose, debug=debug,
                                                       noellipsefit=True)
@@ -166,7 +158,7 @@ def _call_ellipse(onegal, galaxy, pixscale, nproc, verbose, debug, logfile):
         with open(logfile, 'a') as log:
             with redirect_stdout(log), redirect_stderr(log):
                 _start(galaxy, log=log)
-                err = legacyhalos.ellipse.legacyhalos_ellipse(onegal, pixscale=pixscale, nproc=nproc,
+                err = LSLGA.ellipse.LSLGA_ellipse(onegal, pixscale=pixscale, nproc=nproc,
                                                               zcolumn=zcolumn,
                                                               verbose=verbose, debug=debug,
                                                               noellipsefit=True)
@@ -179,7 +171,7 @@ def _call_htmlplots(onegal, galaxy, survey, pixscale, nproc, debug, clobber,
 
     if debug:
         _start(galaxy)
-        err = legacyhalos.html.make_plots(onegal, datadir=None, htmldir=htmldir,
+        err = LSLGA.html.make_plots(onegal, datadir=None, htmldir=htmldir,
                                           pixscale=pixscale, survey=survey, clobber=clobber,
                                           verbose=verbose, nproc=nproc,
                                           ccdqa=ccdqa, maketrends=False)
@@ -188,7 +180,7 @@ def _call_htmlplots(onegal, galaxy, survey, pixscale, nproc, debug, clobber,
         with open(logfile, 'a') as log:
             with redirect_stdout(log), redirect_stderr(log):
                 _start(galaxy, log=log)
-                err = legacyhalos.html.make_plots(onegal, datadir=None, htmldir=htmldir,
+                err = LSLGA.html.make_plots(onegal, datadir=None, htmldir=htmldir,
                                                   pixscale=pixscale, survey=survey, clobber=clobber,
                                                   verbose=verbose, nproc=nproc,
                                                   ccdqa=ccdqa, maketrends=False)
@@ -235,13 +227,10 @@ def main():
         rank, size = 0, 1
 
     # Read and broadcast the sample.
+    sampledir = os.path.join(os.getenv('LSLGA_DIR'), 'NLSA')
     if rank == 0:
         print('Hack for the NASA/ADAP 2019 proposal.')
-        sample = 
-              
-        sample = legacyhalos.io.read_paper2_sample(first=args.first, last=args.last)
-        #sample = sample[[61, 74, 84]]
-        #sample = sample[[8, 11, 136, 156, 157, 188, 214, 390, 603, 670, 871, 940]]
+        sample = LSLGA.NLSA.read_nlsa_parent(verbose=args.verbose)
     else:
         sample = None
 
@@ -251,38 +240,9 @@ def main():
     # Build the web-page; integrate the ellipse-fitting results.
     if args.htmlindex:
         if rank == 0:
-            if args.hsc:
-                legacyhalos.hsc.make_html(sample, survey=None, pixscale=args.pixscale, zcolumn='Z',
-                                          nproc=args.nproc, clobber=args.clobber, makeplots=False,
-                                          verbose=args.verbose, htmldir=args.htmldir)
-            else:
-                legacyhalos.html.make_html(sample, survey=None, pixscale=args.pixscale, zcolumn='Z_LAMBDA',
-                                           nproc=args.nproc, clobber=args.clobber, makeplots=False,
-                                           verbose=args.verbose, htmldir=args.htmldir)
-        return
-
-    if args.integrate:
-        if rank == 0:
-            if args.hsc:
-                outfile = os.path.join(legacyhalos.hsc.hsc_dir(), 'profiles1d-flux.fits')
-            else:
-                # Temporary paper2 hack--
-                outfile = os.path.join(legacyhalos.io.paper2_dir(data=True), 'paper2-profiles1d-flux.fits')
-                
-            if os.path.exists(outfile) and args.clobber is False:
-                print('Output file {} exists; use --clobber.'.format(outfile))
-                return
-            
-            results = legacyhalos.integrate.legacyhalos_integrate(
-                sample, nproc=args.nproc, verbose=args.verbose, hsc=args.hsc)
-            if args.hsc:
-                cols = ['OBJECT_ID', 'RA', 'DEC', 'Z_SPEC']
-            else:
-                cols = ['MEM_MATCH_ID', 'RA', 'DEC', 'Z_LAMBDA', 'LAMBDA_CHISQ', 'ID_CENT',
-                        'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z']
-            out = hstack((sample[cols], results))
-            print('Writing {}'.format(outfile))
-            out.write(outfile, overwrite=True)
+            LSLGA.html.make_html(sample, survey=None, pixscale=args.pixscale, zcolumn='Z_LAMBDA',
+                                 nproc=args.nproc, clobber=args.clobber, makeplots=False,
+                                 verbose=args.verbose, htmldir=args.htmldir)
         return
 
     # Determine how many more objects we need to analyze and divide them
@@ -311,13 +271,9 @@ def main():
 
     if len(groups[rank]) == 0 or args.count:
         if len(groups[rank]) > 0 and args.debug:
-            if args.hsc:
-                galaxy, galaxydir = legacyhalos.hsc.get_galaxy_galaxydir(sample[groups], htmldir=args.htmldir)
-            else:
-                galaxy, galaxydir = legacyhalos.io.get_galaxy_galaxydir(sample[groups], htmldir=args.htmldir)
+            galaxy, galaxydir = LSLGA.NLSA.get_galaxy_galaxydir(sample[groups], htmldir=args.htmldir)
             for ii, dd in zip(groups[rank], galaxydir):
                 print('  {} {}'.format(ii, dd))
-            #[print('  {}'.format(dd)) for dd in np.atleast_1d(galaxydir)]
         return
 
     # Loop on the remaining objects.
@@ -326,10 +282,8 @@ def main():
     tall = time.time()
     for count, ii in enumerate(groups[rank]):
         onegal = sample[ii]
-        if args.hsc:
-            galaxy, galaxydir = legacyhalos.hsc.get_galaxy_galaxydir(onegal, htmldir=args.htmldir)
-        else:
-            galaxy, galaxydir = legacyhalos.io.get_galaxy_galaxydir(onegal, htmldir=args.htmldir)
+
+        galaxy, galaxydir = LSLGA.NLSA.get_galaxy_galaxydir(onegal, htmldir=args.htmldir)
         if not os.path.isdir(galaxydir):
             os.makedirs(galaxydir, exist_ok=True)
 
@@ -344,16 +298,13 @@ def main():
             #print('Logging to {} '.format(logfile), flush=True)
         
         # Need the cluster "radius" to build the coadds.
-        if args.coadds or args.custom_coadds or args.sky or args.htmlplots:
-            radius_mosaic_arcsec = legacyhalos.misc.cutout_radius_kpc(
-                redshift=onegal['Z'], radius_kpc=RADIUS_CLUSTER_KPC) # [arcsec]
+        if args.coadds or args.custom_coadds or args.htmlplots:
+            radius_mosaic_arcsec = onegal['REFF'] * 5
 
             survey = LegacySurveyData()
-            survey.survey_dir = get_survey_dir(onegal)
             survey.output_dir = galaxydir
 
         if args.coadds:
-            print('After DR8 do not use mjd-min and update OUTLIERS in coadds.py!')
             _call_pipeline_coadds(onegal, galaxy, radius_mosaic_arcsec, survey, args.pixscale,
                                   args.nproc, args.force, args.debug, logfile)
                     
