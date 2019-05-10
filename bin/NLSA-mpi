@@ -71,12 +71,12 @@ def _missing_files(args, sample, size, htmldir=None, sampledir=''):
         suffix = 'coadds'
     elif args.custom_coadds:
         suffix = 'custom_coadds'
+    elif args.unwise:
+        suffix = 'unwise'
+    elif args.galex:
+        suffix = 'galex'
     elif args.ellipse:
         suffix = 'ellipse'
-    elif args.sersic:
-        suffix = 'sersic'
-    elif args.sky:
-        suffix = 'sky'
     elif args.htmlplots:
         suffix = 'html'
     else:
@@ -104,13 +104,17 @@ def _done(galaxy, err, t0, log=None):
 
 def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                           nproc, force, debug, logfile):
-    """Wrapper script to build the pipeline coadds."""
+    """Wrapper script to build the pipeline coadds.
+
+    """
+    cleanup = True
+    
     t0 = time.time()
     if debug:
         _start(galaxy)
         err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                            survey=survey, pixscale=pixscale,
-                                           nproc=nproc, force=force, cleanup=True)
+                                           nproc=nproc, force=force, cleanup=cleanup)
         _done(galaxy, err, t0)
     else:
         with open(logfile, 'a') as log:
@@ -118,7 +122,7 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                 _start(galaxy, log=log)
                 err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                                    survey=survey, pixscale=pixscale,
-                                                   nproc=nproc, force=force, log=log, cleanup=True)
+                                                   nproc=nproc, force=force, log=log, cleanup=cleanup)
                 _done(galaxy, err, t0, log=log)
 
 def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
@@ -139,6 +143,42 @@ def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                                                  nproc=nproc, log=log)
                 _done(galaxy, err, t0, log=log)
                 
+def _call_galex_unwise(onegal, galaxy, galaxydir, radius_mosaic, unwise_pixscale,
+                       galex_pixscale, debug, verbose, dounwise, dogalex, logfile):
+    """Wrapper script to build the unWISE/GALEX coadds."""
+    t0 = time.time()
+    if dogalex:
+        if debug:
+            _start(galaxy)
+            err = LSLGA.galex.galex_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
+                                           output_dir=galaxydir, pixscale=galex_pixscale,
+                                           verbose=verbose)
+            _done(galaxy, err, t0)
+        else:
+            with open(logfile, 'a') as log:
+                with redirect_stdout(log), redirect_stderr(log):
+                    _start(galaxy, log=log)
+                    err = LSLGA.galex.galex_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
+                                                   output_dir=galaxydir, pixscale=galex_pixscale,
+                                                   verbose=verbose)
+                    _done(galaxy, err, t0, log=log)
+
+    if dounwise:
+        if debug:
+            _start(galaxy)
+            err = LSLGA.unwise.unwise_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
+                                             output_dir=galaxydir, pixscale=galex_pixscale,
+                                             verbose=verbose)
+            _done(galaxy, err, t0)
+        else:
+            with open(logfile, 'a') as log:
+                with redirect_stdout(log), redirect_stderr(log):
+                    _start(galaxy, log=log)
+                    err = LSLGA.unwise.unwise_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
+                                                     output_dir=galaxydir, pixscale=galex_pixscale,
+                                                     verbose=verbose)
+                    _done(galaxy, err, t0, log=log)
+                    
 def _call_ellipse(onegal, galaxy, pixscale, nproc, verbose, debug, logfile):
     """Wrapper script to do ellipse-fitting.
 
@@ -298,8 +338,8 @@ def main():
             #print('Logging to {} '.format(logfile), flush=True)
         
         # Need the cluster "radius" to build the coadds.
-        if args.coadds or args.custom_coadds or args.htmlplots:
-            radius_mosaic_arcsec = onegal['REFF'] * 5
+        if args.coadds or args.custom_coadds or args.galex or args.unwise or args.htmlplots:
+            radius_mosaic_arcsec = onegal['REFF'] * 10
 
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
@@ -337,27 +377,24 @@ def main():
             _call_custom_coadds(onegal, galaxy, radius_mosaic_arcsec, survey,
                                 args.pixscale, args.nproc, args.debug, logfile)
                     
+        if args.unwise or args.galex:
+            _call_galex_unwise(onegal, galaxy, galaxydir, radius_mosaic_arcsec, 
+                               args.unwise_pixscale, args.galex_pixscale, args.debug,
+                               args.verbose, args.unwise, args.galex, logfile)
+
         if args.ellipse:
             _call_ellipse(onegal, galaxy, args.pixscale, args.nproc, args.verbose,
-                          args.debug, logfile, args.hsc)
+                          args.debug, logfile)
                         
-        if args.sersic:
-            _call_sersic(onegal, galaxy, galaxydir, args.seed, args.verbose,
-                         args.debug, logfile, args.hsc)
-            
-        if args.sky:
-            _call_sky(onegal, galaxy, galaxydir, survey, args.seed, args.nproc,
-                      args.pixscale, args.verbose, args.debug, logfile)
-
         if args.htmlplots:
             _call_htmlplots(Table(onegal), galaxy, survey, args.pixscale, args.nproc,
                             args.debug, args.clobber, args.verbose, args.ccdqa, logfile,
-                            args.hsc, args.htmldir)
+                            args.htmldir)
 
     if rank == 0:
         print('Finished {} {} at {} after {:.3f} minutes'.format(
             ntodo, suffix.upper(), time.asctime(), (time.time() - tall) / 60 ), flush=True)
-        groups = missing_files(sample, filetype=suffix, size=size, hsc=args.hsc, clobber=args.clobber)
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
         if len(groups) > 0:
             stilltodo = len(np.hstack(np.atleast_1d(groups)))
         else:

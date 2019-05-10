@@ -93,8 +93,8 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic'):
     sampledir = sample_dir()
     samplefile = os.path.join(sampledir, 'NLSA-{}-v1.0.fits'.format(camera))
     sample = Table(fitsio.read(samplefile, upper=True))
-    #sample.add_column(Column(name='ID', dtype='i8', data=np.arange(len(sample))))
     #sample = sample[np.argsort(reff)]
+    sample = sample[sample['REFF'] > 30]
     sample = sample[:1]
     
     if verbose:
