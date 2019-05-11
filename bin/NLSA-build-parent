@@ -32,14 +32,15 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
         
     def get_outtable(ngal):
         out = Table()
-        out.add_column(Column(name='id', data=np.arange(ngal)))
+        #out.add_column(Column(name='id', data=np.arange(ngal)))
         out.add_column(Column(name='galaxy', length=ngal, dtype='S29'))
         out.add_column(Column(name='brickname', length=ngal, dtype='S8'))
+        out.add_column(Column(name='objid', length=ngal, dtype='>i4'))
         out.add_column(Column(name='ra', length=ngal, dtype='f8'))
         out.add_column(Column(name='dec', length=ngal, dtype='f8'))
         out.add_column(Column(name='ra_lslga', length=ngal, dtype='f8'))
         out.add_column(Column(name='dec_lslga', length=ngal, dtype='f8'))
-        out.add_column(Column(name='brightblob', length=ngal, dtype='>i2'))
+        #out.add_column(Column(name='brightblob', length=ngal, dtype='>i2'))
         out.add_column(Column(name='maskbits', length=ngal, dtype='>i2'))
         out.add_column(Column(name='fracdev', length=ngal, dtype='f4'))
         out.add_column(Column(name='rmag', length=ngal, dtype='f4'))
@@ -64,7 +65,8 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
                                columns=[#'BRICK_PRIMARY', 
                                         #'BRIGHTBLOB',
                                         'MASKBITS', 
-                                        'BRICKNAME', 'RA', 'DEC', 'REF_CAT', 'REF_ID', 'TYPE', 'FRACDEV',
+                                        'BRICKNAME', 'OBJID', 'RA', 'DEC', 'REF_CAT', 'REF_ID',
+                                        'TYPE', 'FRACDEV',
                                         'SHAPEEXP_R', 'SHAPEEXP_E1', 'SHAPEEXP_E2', 
                                         'SHAPEDEV_R', 'SHAPEDEV_E1', 'SHAPEDEV_E2',
                                         'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']))
@@ -78,6 +80,7 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
         allreff = np.max(np.vstack((allcat['SHAPEDEV_R'], allcat['SHAPEEXP_R'])), axis=0)
     
     indx = np.where(
+        (allcat['RA'] > 140) * (allcat['RA'] < 200) * (allcat['DEC'] > 40) * (allcat['DEC'] > 65) *
         #allcat['BRICK_PRIMARY'] * # primary
         #((allcat['BRIGHTBLOB'] & 0x1) == 0) * # not in bright star
         #((allcat['BRIGHTBLOB'] & 0x2) == 0) * # not in medium-bright star
@@ -116,6 +119,7 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
 
     out = get_outtable(len(cat))
     out['brickname'] = cat['BRICKNAME']
+    out['objid'] = cat['OBJID']
     out['ra'] = cat['RA']
     out['dec'] = cat['DEC']
     out['ref_cat'] = cat['REF_CAT']
