@@ -245,6 +245,7 @@ def main():
     parser.add_argument('--integrate', action='store_true', help='Integrate the surface brightness profiles.')
     parser.add_argument('--htmlplots', action='store_true', help='Build the HTML output.')
     parser.add_argument('--htmlindex', action='store_true', help='Build HTML index.html page.')
+    parser.add_argument('--proposal', action='store_true', help='Make some coadds for the proposal.')
 
     parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
     
@@ -270,7 +271,8 @@ def main():
     sampledir = os.path.join(os.getenv('LSLGA_DIR'), 'NLSA')
     if rank == 0:
         print('Hack for the NASA/ADAP 2019 proposal.')
-        sample = LSLGA.NLSA.read_nlsa_parent(verbose=args.verbose)
+        sample = LSLGA.NLSA.read_nlsa_parent(verbose=args.verbose, first=args.first,
+                                             last=args.last, proposal=args.proposal)
     else:
         sample = None
 

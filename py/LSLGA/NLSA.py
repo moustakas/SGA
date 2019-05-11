@@ -39,11 +39,22 @@ def get_galaxy_galaxydir(cat, datadir=None, htmldir=None, html=False):
 
     if type(cat) is astropy.table.row.Row:
         ngal = 1
-        galaxy = ['{:08d}'.format(cat['ID'])]
+        if cat['GALAXY'].strip() != '':
+            galaxy = [cat['GALAXY'].strip()]
+        else:
+            galaxy = ['{}-{}'.format(cat['BRICKNAME'], cat['OBJID'])]
+        #galaxy = ['{:08d}'.format(cat['ID'])]
         pixnum = [radec2pix(nside, cat['RA'], cat['DEC'])]
     else:
         ngal = len(cat)
-        galaxy = np.array(['{:08d}'.format(mid) for mid in cat['ID']])
+        galaxy = []
+        for gg, bb, oo in zip(cat['GALAXY'], cat['BRICKNAME'], cat['OBJID']):
+            if gg.strip() != '':
+                galaxy.append(gg.strip())
+            else:
+                galaxy.append('{}-{}'.format(bb, oo))
+        galaxy = np.array(galaxy)
+        #galaxy = np.array(['{:08d}'.format(mid) for mid in cat['ID']])
         pixnum = radec2pix(nside, cat['RA'], cat['DEC']).data
 
     galaxydir = np.array([os.path.join(get_healpix_subdir(nside, pix, datadir), gal)
@@ -86,17 +97,44 @@ def html_dir():
         os.makedirs(htmldir, exist_ok=True)
     return htmldir
 
-def read_nlsa_parent(verbose=False, camera='90prime-mosaic'):
+def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
+                     last=None, proposal=False):
     """Read the parent NLSA catalog.
     
     """
+    if proposal:
+        # Make some multiwavelength mosaics for the proposal.
+        sample = Table()
+        sample['GALAXY'] = np.array(['NGC3938', 'NGC5322', 'IC4182', 'NGC3719-GROUP'])
+        sample['BRICKNAME'] = np.array(['', '', '', ''])
+        sample['OBJID'] = np.array([0, 1, 2, 3])
+        sample['RA'] = np.array([178.205851, 207.313452, 196.455276, 173.05609]).astype('f8')
+        sample['DEC'] = np.array([44.120774, 60.190476, 37.604659, 0.819287]).astype('f8')
+        sample['REFF'] = np.array([78.6/2, 78.6/2, 78.6/2, 20.0]).astype('f4') # [arcsec]
+        return sample
+
     sampledir = sample_dir()
     samplefile = os.path.join(sampledir, 'NLSA-{}-v1.0.fits'.format(camera))
-    sample = Table(fitsio.read(samplefile, upper=True))
-    #sample = sample[np.argsort(reff)]
-    sample = sample[sample['REFF'] > 30]
-    sample = sample[:1]
+
+    info = fitsio.FITS(samplefile)
+    nrows = info[1].get_nrows()
+
+    if first is None:
+        first = 0
+    if last is None:
+        last = nrows
+        rows = np.arange(first, last)
+    else:
+        if last >= nrows:
+            print('Index last cannot be greater than the number of rows, {} >= {}'.format(last, nrows))
+            raise ValueError()
+        rows = np.arange(first, last + 1)
     
+    sample = Table(info[1].read(rows=rows, upper=True))
+    #sample = sample[np.argsort(reff)]
+    #sample = sample[sample['REFF'] > 30]
+    #sample = sample[:1]
+
     if verbose:
         print('Read {} galaxies from {}'.format(len(sample), samplefile), flush=True)
     
