@@ -80,7 +80,7 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
         allreff = np.max(np.vstack((allcat['SHAPEDEV_R'], allcat['SHAPEEXP_R'])), axis=0)
     
     indx = np.where(
-        (allcat['RA'] > 140) * (allcat['RA'] < 200) * (allcat['DEC'] > 40) * (allcat['DEC'] > 65) *
+        (allcat['RA'] > 140) * (allcat['RA'] < 200) * (allcat['DEC'] > 40) * (allcat['DEC'] < 65) *
         #allcat['BRICK_PRIMARY'] * # primary
         #((allcat['BRIGHTBLOB'] & 0x1) == 0) * # not in bright star
         #((allcat['BRIGHTBLOB'] & 0x2) == 0) * # not in medium-bright star

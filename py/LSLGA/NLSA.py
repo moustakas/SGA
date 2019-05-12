@@ -136,13 +136,14 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         rows = np.arange(first, last + 1)
     
     sample = Table(info[1].read(rows=rows, upper=True))
+
     #sample = sample[np.argsort(reff)]
     #sample = sample[sample['REFF'] > 30]
     #sample = sample[:1]
 
     # Pick 100 random galaxies, uniformly selected in surface brightness.
     if True:
-        print('Choosing 100 random galaxies!')
+        print('Choosing a random subset of galaxies!')
         seed = 1
         npilot = 64
         keep = np.where((sample['RMAG'] < 20) * (sample['SB'] > 18) * (sample['SB'] < 28))[0]

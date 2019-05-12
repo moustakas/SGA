@@ -345,13 +345,14 @@ def main():
             if args.proposal:
                 radius_mosaic_arcsec = onegal['REFF'] * 10
             else:
-                radius_mosaic_arcsec = onegal['REFF'] * 5
+                radius_mosaic_arcsec = np.max( (onegal['REFF'] * 5, 100 * args.pixscale) )
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
 
         if args.coadds:
             _call_pipeline_coadds(onegal, galaxy, radius_mosaic_arcsec, survey, args.pixscale,
                                   args.nproc, args.force, args.debug, logfile)
+            pdb.set_trace()
                     
         if args.custom_coadds or args.htmlplots:
             ccdsfile = os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy))

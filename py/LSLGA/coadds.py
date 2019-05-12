@@ -28,7 +28,7 @@ def _copyfile(infile, outfile):
 def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=1,
                     pixscale=0.262, splinesky=True, log=None, force=False,
                     no_large_galaxies=False, no_gaia=False, no_tycho=False,
-                    apodize=True, cleanup=True):
+                    apodize=False, cleanup=True):
     """Run legacypipe.runbrick on a custom "brick" centered on the galaxy.
 
     radius_mosaic in arcsec
