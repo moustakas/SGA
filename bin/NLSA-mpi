@@ -28,9 +28,9 @@ def missing_files(sample, filetype='coadds', size=1, htmldir=None,
     if filetype == 'coadds':
         filesuffix = '-pipeline-resid-grz.jpg'
     elif filetype == 'unwise':
-        filesuffix = 'resid-W1W2.jpg'
+        filesuffix = '-resid-W1W2.jpg'
     elif filetype == 'galex':
-        filesuffix = 'resid-FUVNUV.jpg'
+        filesuffix = '-resid-FUVNUV.jpg'
     elif filetype == 'custom_coadds':
         filesuffix = '-custom-resid-grz.jpg'
     elif filetype == 'ellipse':
@@ -143,40 +143,41 @@ def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                                                  nproc=nproc, log=log)
                 _done(galaxy, err, t0, log=log)
                 
-def _call_galex_unwise(onegal, galaxy, galaxydir, radius_mosaic, unwise_pixscale,
-                       galex_pixscale, debug, verbose, dounwise, dogalex, logfile):
+def _call_galex_unwise(onegal, galaxy, galaxydir, radius_mosaic, unwise_pixscale, 
+                       galex_pixscale, pixscale, debug, verbose, dounwise, dogalex,
+                       logfile):
     """Wrapper script to build the unWISE/GALEX coadds."""
     t0 = time.time()
     if dogalex:
         if debug:
             _start(galaxy)
-            err = LSLGA.galex.galex_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
+            err = LSLGA.galex.galex_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                            output_dir=galaxydir, pixscale=galex_pixscale,
-                                           verbose=verbose)
+                                           ref_pixscale=pixscale, verbose=verbose)
             _done(galaxy, err, t0)
         else:
             with open(logfile, 'a') as log:
                 with redirect_stdout(log), redirect_stderr(log):
                     _start(galaxy, log=log)
-                    err = LSLGA.galex.galex_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
+                    err = LSLGA.galex.galex_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                                    output_dir=galaxydir, pixscale=galex_pixscale,
-                                                   verbose=verbose)
+                                                   ref_pixscale=pixscale, verbose=verbose)
                     _done(galaxy, err, t0, log=log)
 
     if dounwise:
         if debug:
             _start(galaxy)
-            err = LSLGA.unwise.unwise_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
-                                             output_dir=galaxydir, pixscale=galex_pixscale,
-                                             verbose=verbose)
+            err = LSLGA.unwise.unwise_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
+                                             output_dir=galaxydir, pixscale=unwise_pixscale,
+                                             ref_pixscale=pixscale, verbose=verbose)
             _done(galaxy, err, t0)
         else:
             with open(logfile, 'a') as log:
                 with redirect_stdout(log), redirect_stderr(log):
                     _start(galaxy, log=log)
-                    err = LSLGA.unwise.unwise_coadds(onegal, galaxy=galaxy, radius=radius_mosaic,
-                                                     output_dir=galaxydir, pixscale=galex_pixscale,
-                                                     verbose=verbose)
+                    err = LSLGA.unwise.unwise_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
+                                                     output_dir=galaxydir, pixscale=unwise_pixscale,
+                                                     ref_pixscale=pixscale, verbose=verbose)
                     _done(galaxy, err, t0, log=log)
                     
 def _call_ellipse(onegal, galaxy, pixscale, nproc, verbose, debug, logfile):
@@ -381,8 +382,8 @@ def main():
                     
         if args.unwise or args.galex:
             _call_galex_unwise(onegal, galaxy, galaxydir, radius_mosaic_arcsec, 
-                               args.unwise_pixscale, args.galex_pixscale, args.debug,
-                               args.verbose, args.unwise, args.galex, logfile)
+                               args.unwise_pixscale, args.galex_pixscale, args.pixscale,
+                               args.debug, args.verbose, args.unwise, args.galex, logfile)
 
         if args.ellipse:
             _call_ellipse(onegal, galaxy, args.pixscale, args.nproc, args.verbose,

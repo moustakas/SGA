@@ -114,7 +114,8 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         # Move the center of the galaxy group over a bit
         sample['RA'][3] = 173.0722 # move the center over a bit
         sample['DEC'][3] = 0.8194
-        #sample = sample[3:4]
+        sample = sample[0:1]
+        #sample = sample[1:2]
         return sample
 
     sampledir = sample_dir()
@@ -138,6 +139,32 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
     #sample = sample[np.argsort(reff)]
     #sample = sample[sample['REFF'] > 30]
     #sample = sample[:1]
+
+    # Pick 100 random galaxies, uniformly selected in surface brightness.
+    if True:
+        print('Choosing 100 random galaxies!')
+        seed = 1
+        npilot = 100
+        sb = sample['SB'].data
+
+        nbin = 20
+        _xbin = np.linspace(sb.min(), sb.max(), nbin)
+        idx  = np.digitize(sb, _xbin)
+
+        prob = np.zeros_like(sb)
+        for kk in range(nbin):
+            ww = idx == kk
+            if np.sum(ww) > 1:
+                prob[ww] = 1 / np.sum(ww)
+        prob /= np.sum(prob)
+
+        rand = np.random.RandomState(seed=1)
+        these = rand.choice(len(sample), npilot, p=prob, replace=False)
+        srt = np.argsort(sb[these])
+        rows = rows[these[srt]]
+        sample = sample[srt]
+
+        pdb.set_trace()
 
     if verbose:
         print('Read {} galaxies from {}'.format(len(sample), samplefile), flush=True)
