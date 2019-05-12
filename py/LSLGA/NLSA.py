@@ -111,6 +111,10 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         sample['RA'] = np.array([178.205851, 207.313452, 196.455276, 173.05609]).astype('f8')
         sample['DEC'] = np.array([44.120774, 60.190476, 37.604659, 0.819287]).astype('f8')
         sample['REFF'] = np.array([78.6/2, 78.6/2, 78.6/2, 20.0]).astype('f4') # [arcsec]
+        # Move the center of the galaxy group over a bit
+        sample['RA'][3] = 173.0722 # move the center over a bit
+        sample['DEC'][3] = 0.8194
+        #sample = sample[3:4]
         return sample
 
     sampledir = sample_dir()
