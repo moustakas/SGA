@@ -214,3 +214,18 @@ def srcs2image(srcs, wcs, psf_sigma=1.0):
 
     return mod
 
+def ccdwcs(ccd):
+    '''Build a simple WCS object for a single CCD table.'''
+    W, H = ccd.width, ccd.height
+    ccdwcs = Tan(*[float(xx) for xx in [ccd.crval1, ccd.crval2, ccd.crpix1,
+                                        ccd.crpix2, ccd.cd1_1, ccd.cd1_2,
+                                        ccd.cd2_1, ccd.cd2_2, W, H]])
+    return W, H, ccdwcs
+
+def simple_wcs(onegal, radius=100, factor=1.0, pixscale=0.262):
+    '''Build a simple WCS object for a single galaxy.'''
+    diam = np.ceil(factor * radius).astype('int') # [pixels]
+    simplewcs = Tan(onegal['RA'], onegal['DEC'], diam/2+0.5, diam/2+0.5,
+                    -pixscale/3600.0, 0.0, 0.0, pixscale/3600.0, 
+                    float(diam), float(diam))
+    return simplewcs

@@ -585,3 +585,62 @@ def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=No
     else:
         plt.show()
 
+def display_ccdpos(onegal, ccds, radius=None, pixscale=0.262, 
+                   png=None, verbose=False):
+    """Visualize the position of all the CCDs contributing to the image stack of a
+    single galaxy.
+
+    """
+    if radius is None:
+        radius = 100 # [pixels]
+
+    wcs = LSLGA.misc.simple_wcs(onegal, radius=radius, pixscale=pixscale)
+    width, height = wcs.get_width() * pixscale / 3600, wcs.get_height() * pixscale / 3600 # [degrees]
+    bb, bbcc = wcs.radec_bounds(), wcs.radec_center() # [degrees]
+    pad = 0.2 # [degrees]
+
+    fig, allax = plt.subplots(1, 3, figsize=(12, 5), sharey=True, sharex=True)
+
+    for ax, band in zip(allax, ('g', 'r', 'z')):
+        ax.set_aspect('equal')
+        ax.set_xlim(bb[0]+width+pad, bb[0]-pad)
+        ax.set_ylim(bb[2]-pad, bb[2]+height+pad)
+        ax.set_xlabel('RA (deg)')
+        ax.text(0.9, 0.05, band, ha='center', va='bottom',
+                transform=ax.transAxes, fontsize=18)
+
+        if band == 'g':
+            ax.set_ylabel('Dec (deg)')
+        ax.get_xaxis().get_major_formatter().set_useOffset(False)
+        #ax.add_patch(patches.Rectangle((bb[0], bb[2]), bb[1]-bb[0], bb[3]-bb[2],
+        #                               fill=False, edgecolor='black', lw=3, ls='--'))
+        ax.add_patch(patches.Circle((bbcc[0], bbcc[1]), radius * pixscale / 3600,
+                                    fill=False, edgecolor='black', lw=2))
+        ax.add_patch(patches.Circle((bbcc[0], bbcc[1]), 2*radius * pixscale / 3600, # inner sky annulus
+                                    fill=False, edgecolor='black', lw=1))
+        ax.add_patch(patches.Circle((bbcc[0], bbcc[1]), 5*radius * pixscale / 3600, # outer sky annulus
+                                    fill=False, edgecolor='black', lw=1))
+
+        these = np.where(ccds.filter == band)[0]
+        col = plt.cm.Set1(np.linspace(0, 1, len(ccds)))
+        for ii, ccd in enumerate(ccds[these]):
+            #print(ccd.expnum, ccd.ccdname, ccd.filter)
+            W, H, ccdwcs = LSLGA.misc.ccdwcs(ccd)
+
+            cc = ccdwcs.radec_bounds()
+            ax.add_patch(patches.Rectangle((cc[0], cc[2]), cc[1]-cc[0],
+                                           cc[3]-cc[2], fill=False, lw=2, 
+                                           edgecolor=col[these[ii]],
+                                           label='ccd{:02d}'.format(these[ii])))
+            ax.legend(ncol=2, frameon=False, loc='upper left', fontsize=10)
+
+    plt.subplots_adjust(bottom=0.12, wspace=0.05, left=0.1, right=0.97, top=0.95)
+
+    if png:
+        if verbose:
+            print('Writing {}'.format(png))
+        fig.savefig(png)
+        plt.close(fig)
+    else:
+        plt.show()
+
