@@ -103,7 +103,7 @@ def _done(galaxy, err, t0, log=None):
           galaxy, (time.time() - t0)/60), flush=True, file=log)
 
 def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
-                          nproc, force, debug, logfile):
+                          nproc, force, debug, proposal, logfile):
     """Wrapper script to build the pipeline coadds.
 
     """
@@ -114,7 +114,8 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
         _start(galaxy)
         err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                            survey=survey, pixscale=pixscale,
-                                           nproc=nproc, force=force, cleanup=cleanup)
+                                           nproc=nproc, force=force, cleanup=cleanup,
+                                           proposal=proposal)
         _done(galaxy, err, t0)
     else:
         with open(logfile, 'a') as log:
@@ -122,7 +123,8 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                 _start(galaxy, log=log)
                 err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                                    survey=survey, pixscale=pixscale,
-                                                   nproc=nproc, force=force, log=log, cleanup=cleanup)
+                                                   nproc=nproc, force=force, log=log, cleanup=cleanup,
+                                                   proposal=proposal)
                 _done(galaxy, err, t0, log=log)
 
 def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
@@ -246,6 +248,7 @@ def main():
     parser.add_argument('--integrate', action='store_true', help='Integrate the surface brightness profiles.')
     parser.add_argument('--htmlplots', action='store_true', help='Build the HTML output.')
     parser.add_argument('--htmlindex', action='store_true', help='Build HTML index.html page.')
+    parser.add_argument('--montage', action='store_true', help='Make some coadds for the proposal.')
     parser.add_argument('--proposal', action='store_true', help='Make some coadds for the proposal.')
 
     parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
@@ -273,7 +276,8 @@ def main():
     if rank == 0:
         print('Hack for the NASA/ADAP 2019 proposal.')
         sample = LSLGA.NLSA.read_nlsa_parent(verbose=args.verbose, first=args.first,
-                                             last=args.last, proposal=args.proposal)
+                                             last=args.last, proposal=args.proposal,
+                                             montage=args.montage)
     else:
         sample = None
 
@@ -342,16 +346,16 @@ def main():
         
         # Need the cluster "radius" to build the coadds.
         if args.coadds or args.custom_coadds or args.galex or args.unwise or args.htmlplots:
-            if args.proposal:
+            if args.montage:
                 radius_mosaic_arcsec = onegal['REFF'] * 10
             else:
-                radius_mosaic_arcsec = np.max( (onegal['REFF'] * 5, 100 * args.pixscale) )
+                radius_mosaic_arcsec = np.max( (onegal['REFF'] * 5, 50 * args.pixscale) )
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
 
         if args.coadds:
             _call_pipeline_coadds(onegal, galaxy, radius_mosaic_arcsec, survey, args.pixscale,
-                                  args.nproc, args.force, args.debug, logfile)
+                                  args.nproc, args.force, args.debug, args.proposal, logfile)
             pdb.set_trace()
                     
         if args.custom_coadds or args.htmlplots:

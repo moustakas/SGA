@@ -98,11 +98,11 @@ def html_dir():
     return htmldir
 
 def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
-                     last=None, proposal=False):
+                     last=None, proposal=False, montage=False):
     """Read the parent NLSA catalog.
     
     """
-    if proposal:
+    if montage:
         # Make some multiwavelength mosaics for the proposal.
         sample = Table()
         sample['GALAXY'] = np.array(['NGC3938', 'NGC5322', 'IC4182', 'NGC3719-GROUP'])
@@ -142,11 +142,11 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
     #sample = sample[:1]
 
     # Pick 100 random galaxies, uniformly selected in surface brightness.
-    if True:
+    if proposal:
         print('Choosing a random subset of galaxies!')
         seed = 1
         npilot = 64
-        keep = np.where((sample['RMAG'] < 20) * (sample['SB'] > 18) * (sample['SB'] < 28))[0]
+        keep = np.where((sample['RMAG'] < 18) * (sample['SB'] > 18) * (sample['SB'] < 28))[0]
         sample = sample[keep]
         sb = sample['SB'].data
 

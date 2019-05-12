@@ -28,7 +28,7 @@ def _copyfile(infile, outfile):
 def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=1,
                     pixscale=0.262, splinesky=True, log=None, force=False,
                     no_large_galaxies=False, no_gaia=False, no_tycho=False,
-                    apodize=False, cleanup=True):
+                    apodize=False, cleanup=True, proposal=False):
     """Run legacypipe.runbrick on a custom "brick" centered on the galaxy.
 
     radius_mosaic in arcsec
@@ -49,7 +49,6 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
     cmd += '--radec {ra} {dec} --width {width} --height {width} --pixscale {pixscale} '
     cmd += '--threads {threads} --outdir {outdir} '
     cmd += '--survey-dir {survey_dir} '
-    #cmd += '--stage image_coadds --early-coadds '
     #cmd += '--write-stage tims '
     cmd += '--write-stage srcs '
     #cmd += '--force-stage wise_forced '
@@ -58,6 +57,8 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
     #cmd += '--no-wise --no-wise-ceres '
     cmd += '--checkpoint {galaxydir}/{galaxy}-runbrick-checkpoint.p '
     cmd += '--pickle {galaxydir}/{galaxy}-runbrick-%%(stage)s.p '
+    if proposal:
+        cmd += '--stage image_coadds --early-coadds '
     if apodize:
         cmd += '--apodize '
     if no_gaia:
@@ -91,6 +92,28 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
         # Move (rename) files into the desired output directory and clean up.
         brickname = 'custom-{}'.format(custom_brickname(onegal['RA'], onegal['DEC']))
 
+        if proposal:
+            for band in ('g', 'r', 'z'):
+                ok = _copyfile(
+                    os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
+                                 'legacysurvey-{}-image-{}.fits.fz'.format(brickname, band)),
+                    os.path.join(survey.output_dir, '{}-pipeline-image-{}.fits.fz'.format(galaxy, band)) )
+                if not ok:
+                    return ok
+
+            ok = _copyfile(
+                os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
+                             'legacysurvey-{}-ccds.fits'.format(brickname)),
+                os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)) )
+            if not ok:
+                return ok
+
+            if cleanup:
+                shutil.rmtree(os.path.join(survey.output_dir, 'coadd'))
+                shutil.rmtree(os.path.join(survey.output_dir, 'metrics'))
+
+            return 1
+
         ## (Re)package the outliers images into a single MEF -- temporary hack
         ## until we address legacypipe/#271
         #ccdsfile = os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
@@ -114,18 +137,17 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
         #            key = '{}-{:02d}-{}'.format(im.name, im.hdu, im.band)
         #            ff.write(mask, extname=key, header=hdr)
 
-        # tractor catalog
-        ok = _copyfile(
-            os.path.join(survey.output_dir, 'tractor', 'cus', 'tractor-{}.fits'.format(brickname)),
-            os.path.join(survey.output_dir, '{}-tractor.fits'.format(galaxy)) )
-        if not ok:
-            return ok
-
         # CCDs, maskbits, blob images, and depth images
         ok = _copyfile(
             os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
                          'legacysurvey-{}-ccds.fits'.format(brickname)),
             os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy)) )
+        if not ok:
+            return ok
+
+        ok = _copyfile(
+            os.path.join(survey.output_dir, 'tractor', 'cus', 'tractor-{}.fits'.format(brickname)),
+            os.path.join(survey.output_dir, '{}-tractor.fits'.format(galaxy)) )
         if not ok:
             return ok
 
