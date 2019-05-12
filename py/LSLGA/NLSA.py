@@ -146,7 +146,8 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         print('Choosing a random subset of galaxies!')
         seed = 1
         npilot = 64
-        keep = np.where((sample['RMAG'] < 18) * (sample['SB'] > 18) * (sample['SB'] < 28))[0]
+        keep = np.where((sample['SB'] > 18) * (sample['SB'] < 27) *
+                        (sample['RMAG'] < 18) * (sample['REFF'] > 5))[0]
         sample = sample[keep]
         sb = sample['SB'].data
 
@@ -157,12 +158,13 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         prob = np.zeros_like(sb)
         for kk in range(nbin):
             ww = idx == kk
-            if np.sum(ww) > 1:
+            if np.sum(ww) > 0:
                 prob[ww] = 1 / np.sum(ww)
         prob /= np.sum(prob)
 
-        rand = np.random.RandomState(seed=1)
+        rand = np.random.RandomState(seed=seed)
         these = rand.choice(len(sample), npilot, p=prob, replace=False)
+        
         srt = np.argsort(sb[these])
         sample = sample[these[srt]]
 

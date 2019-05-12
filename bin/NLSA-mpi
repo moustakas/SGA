@@ -22,11 +22,14 @@ import LSLGA.galex
 import LSLGA.unwise
 
 def missing_files(sample, filetype='coadds', size=1, htmldir=None,
-                  clobber=False):
+                  clobber=False, proposal=False):
     """Find missing data of a given filetype."""    
 
     if filetype == 'coadds':
-        filesuffix = '-pipeline-resid-grz.jpg'
+        if proposal:
+            filesuffix = '-pipeline-image-grz.jpg'
+        else:
+            filesuffix = '-pipeline-resid-grz.jpg'
     elif filetype == 'unwise':
         filesuffix = '-resid-W1W2.jpg'
     elif filetype == 'galex':
@@ -63,7 +66,7 @@ def missing_files(sample, filetype='coadds', size=1, htmldir=None,
         
     return np.array_split(indices, size)
 
-def _missing_files(args, sample, size, htmldir=None, sampledir=''):
+def _missing_files(args, sample, size, htmldir=None, sampledir='', proposal=False):
     """Simple task-specific wrapper on missing_files.
 
     """
@@ -84,7 +87,8 @@ def _missing_files(args, sample, size, htmldir=None, sampledir=''):
 
     if suffix != '':
         groups = missing_files(sample, filetype=suffix, size=size, 
-                               clobber=args.clobber, htmldir=htmldir)
+                               clobber=args.clobber, htmldir=htmldir,
+                               proposal=proposal)
     else:
         groups = []        
 
@@ -296,7 +300,7 @@ def main():
     # across ranks.
     groups, suffix = [], ''
     if rank == 0:
-        suffix, groups = _missing_files(args, sample, size, args.htmldir)
+        suffix, groups = _missing_files(args, sample, size, args.htmldir, proposal=args.proposal)
 
     if comm:
         groups = comm.bcast(groups, root=0)
@@ -349,14 +353,14 @@ def main():
             if args.montage:
                 radius_mosaic_arcsec = onegal['REFF'] * 10
             else:
-                radius_mosaic_arcsec = np.max( (onegal['REFF'] * 5, 50 * args.pixscale) )
+                radius_mosaic_arcsec = np.max( (onegal['REFF'] * 5, 20) )
+                radius_mosaic_arcsec = np.min( (onegal['REFF'] * 5, 240) )
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
 
         if args.coadds:
             _call_pipeline_coadds(onegal, galaxy, radius_mosaic_arcsec, survey, args.pixscale,
                                   args.nproc, args.force, args.debug, args.proposal, logfile)
-            pdb.set_trace()
                     
         if args.custom_coadds or args.htmlplots:
             ccdsfile = os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy))
@@ -404,7 +408,7 @@ def main():
     if rank == 0:
         print('Finished {} {} at {} after {:.3f} minutes'.format(
             ntodo, suffix.upper(), time.asctime(), (time.time() - tall) / 60 ), flush=True)
-        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber)
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber, proposal=args.proposal)
         if len(groups) > 0:
             stilltodo = len(np.hstack(np.atleast_1d(groups)))
         else:

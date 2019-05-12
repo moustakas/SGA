@@ -98,6 +98,10 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
                     os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
                                  'legacysurvey-{}-image-{}.fits.fz'.format(brickname, band)),
                     os.path.join(survey.output_dir, '{}-pipeline-image-{}.fits.fz'.format(galaxy, band)) )
+                ok = _copyfile(
+                    os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
+                                 'legacysurvey-{}-image.jpg'.format(brickname)),
+                    os.path.join(survey.output_dir, '{}-pipeline-image-grz.jpg'.format(galaxy)) )
                 if not ok:
                     return ok
 
