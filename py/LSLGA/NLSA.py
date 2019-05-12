@@ -144,7 +144,7 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
     if True:
         print('Choosing 100 random galaxies!')
         seed = 1
-        npilot = 100
+        npilot = 64
         keep = np.where((sample['RMAG'] < 20) * (sample['SB'] > 18) * (sample['SB'] < 28))[0]
         sample = sample[keep]
         sb = sample['SB'].data
@@ -163,8 +163,7 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         rand = np.random.RandomState(seed=1)
         these = rand.choice(len(sample), npilot, p=prob, replace=False)
         srt = np.argsort(sb[these])
-        rows = rows[these[srt]]
-        sample = sample[srt]
+        sample = sample[these[srt]]
 
     if verbose:
         print('Read {} galaxies from {}'.format(len(sample), samplefile), flush=True)

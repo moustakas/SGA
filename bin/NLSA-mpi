@@ -342,8 +342,10 @@ def main():
         
         # Need the cluster "radius" to build the coadds.
         if args.coadds or args.custom_coadds or args.galex or args.unwise or args.htmlplots:
-            radius_mosaic_arcsec = onegal['REFF'] * 10
-
+            if args.proposal:
+                radius_mosaic_arcsec = onegal['REFF'] * 10
+            else:
+                radius_mosaic_arcsec = onegal['REFF'] * 5
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
 
