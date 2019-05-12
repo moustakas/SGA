@@ -353,8 +353,9 @@ def main():
             if args.montage:
                 radius_mosaic_arcsec = onegal['REFF'] * 10
             else:
-                radius_mosaic_arcsec = np.max( (onegal['REFF'] * 5, 20) )
-                radius_mosaic_arcsec = np.min( (onegal['REFF'] * 5, 240) )
+                radius_mosaic_arcsec = np.max( (onegal['REFF'] * 2, 10) )
+                radius_mosaic_arcsec = np.min( (onegal['REFF'] * 5, 360) )
+            print(galaxy, onegal['REFF'], radius_mosaic_arcsec)
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
 

@@ -24,7 +24,7 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
     lslga = LSLGA.io.read_parent(verbose=True)
 
     outdir = LSLGA.NLSA.NLSA_dir()
-    outfile = os.path.join(outdir, 'NLSA-{}-v1.0.fits'.format(camera))
+    outfile = os.path.join(outdir, 'NLSA-{}-v1.1.fits'.format(camera))
     if os.path.isfile(outfile) and not clobber:
         cat = Table.read(outfile)
         print('Read {} galaxies from {}.'.format(len(cat), outfile))
@@ -42,6 +42,9 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
         out.add_column(Column(name='dec_lslga', length=ngal, dtype='f8'))
         #out.add_column(Column(name='brightblob', length=ngal, dtype='>i2'))
         out.add_column(Column(name='maskbits', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='allmask_g', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='allmask_r', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='allmask_z', length=ngal, dtype='>i2'))
         out.add_column(Column(name='fracdev', length=ngal, dtype='f4'))
         out.add_column(Column(name='rmag', length=ngal, dtype='f4'))
         out.add_column(Column(name='gr', length=ngal, dtype='f4'))
@@ -66,6 +69,7 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
                                         #'BRIGHTBLOB',
                                         'MASKBITS', 
                                         'BRICKNAME', 'OBJID', 'RA', 'DEC', 'REF_CAT', 'REF_ID',
+                                        'ALLMASK_G', 'ALLMASK_R', 'ALLMASK_Z', 
                                         'TYPE', 'FRACDEV',
                                         'SHAPEEXP_R', 'SHAPEEXP_E1', 'SHAPEEXP_E2', 
                                         'SHAPEDEV_R', 'SHAPEDEV_E1', 'SHAPEDEV_E2',
@@ -87,6 +91,9 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
         #((allcat['BRIGHTBLOB'] & 0x4) == 0) * # not in globular cluster
         ((allcat['MASKBITS'] & 0x1) == 0) *    # primary
         ((allcat['MASKBITS'] & 0x2) == 0) *    # not in bright star
+        ((allcat['MASKBITS'] & 0x20) == 0) *   # allmask_g not set
+        ((allcat['MASKBITS'] & 0x40) == 0) *   # allmask_r not set
+        ((allcat['MASKBITS'] & 0x80) == 0) *   # allmask_z not set
         ((allcat['MASKBITS'] & 0x800) == 0) *  # not in medium-bright star
         ((allcat['MASKBITS'] & 0x2000) == 0) * # not in globular cluster
         (allcat['TYPE'] != 'PSF ') * (allcat['TYPE'] != 'REX ') * (allreff > reffmin) *
@@ -125,6 +132,9 @@ def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=Fals
     out['ref_cat'] = cat['REF_CAT']
     #out['brightblob'] = cat['BRIGHTBLOB']
     out['maskbits'] = cat['MASKBITS']
+    out['allmask_g'] = cat['ALLMASK_G']
+    out['allmask_r'] = cat['ALLMASK_R']
+    out['allmask_z'] = cat['ALLMASK_Z']
     out['ref_id'] = cat['REF_ID']
     out['type'] = cat['TYPE']
     out['fracdev'] = cat['FRACDEV']

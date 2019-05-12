@@ -100,8 +100,34 @@ def html_dir():
 def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
                      last=None, proposal=False, montage=False):
     """Read the parent NLSA catalog.
-    
+
+    v1.0 - no allmask cut
+    v1.1 - allmask grz cuts (to try to get bleed trails)
+
     """
+    def get_rows(nrows, first, last):
+        if first is None:
+            first = 0
+        if last is None:
+            last = nrows
+            rows = np.arange(first, last)
+        else:
+            if last >= nrows:
+                print('Index last cannot be greater than the number of rows, {} >= {}'.format(last, nrows))
+                raise ValueError()
+            rows = np.arange(first, last + 1)
+        return rows
+    
+    sampledir = sample_dir()
+    samplefile = os.path.join(sampledir, 'NLSA-{}-v1.1.fits'.format(camera))
+
+    if not montage and not proposal:
+        info = fitsio.FITS(samplefile)
+        nrows = info[1].get_nrows()
+
+        rows = get_rows(nrows, first=first, last=last)
+        sample = Table(info[1].read(rows=rows, upper=True))
+
     if montage:
         # Make some multiwavelength mosaics for the proposal.
         sample = Table()
@@ -114,39 +140,18 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         # Move the center of the galaxy group over a bit
         sample['RA'][3] = 173.0722 # move the center over a bit
         sample['DEC'][3] = 0.8194
-        sample = sample[0:1]
-        #sample = sample[1:2]
+
+        rows = get_rows(len(sample), first=first, last=last)
+        sample = sample[rows]
         return sample
 
-    sampledir = sample_dir()
-    samplefile = os.path.join(sampledir, 'NLSA-{}-v1.0.fits'.format(camera))
-
-    info = fitsio.FITS(samplefile)
-    nrows = info[1].get_nrows()
-
-    if first is None:
-        first = 0
-    if last is None:
-        last = nrows
-        rows = np.arange(first, last)
-    else:
-        if last >= nrows:
-            print('Index last cannot be greater than the number of rows, {} >= {}'.format(last, nrows))
-            raise ValueError()
-        rows = np.arange(first, last + 1)
-    
-    sample = Table(info[1].read(rows=rows, upper=True))
-
-    #sample = sample[np.argsort(reff)]
-    #sample = sample[sample['REFF'] > 30]
-    #sample = sample[:1]
-
-    # Pick 100 random galaxies, uniformly selected in surface brightness.
+    # Pick XX random galaxies, uniformly selected in surface brightness.
     if proposal:
+        sample = Table(fitsio.read(samplefile, upper=True))
         print('Choosing a random subset of galaxies!')
         seed = 1
         npilot = 64
-        keep = np.where((sample['SB'] > 18) * (sample['SB'] < 27) *
+        keep = np.where((sample['SB'] > 18) * (sample['SB'] < 27.5) *
                         (sample['RMAG'] < 18) * (sample['REFF'] > 5))[0]
         sample = sample[keep]
         sb = sample['SB'].data
@@ -167,6 +172,9 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         
         srt = np.argsort(sb[these])
         sample = sample[these[srt]]
+
+        rows = get_rows(len(sample), first=first, last=last)
+        sample = sample[rows]
 
     if verbose:
         print('Read {} galaxies from {}'.format(len(sample), samplefile), flush=True)
