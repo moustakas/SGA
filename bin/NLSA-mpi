@@ -113,6 +113,7 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
 
     """
     cleanup = True
+    apodize = True
     
     t0 = time.time()
     if debug:
@@ -120,7 +121,7 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
         err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                            survey=survey, pixscale=pixscale,
                                            nproc=nproc, force=force, cleanup=cleanup,
-                                           proposal=proposal)
+                                           proposal=proposal, apodize=apodize)
         _done(galaxy, err, t0)
     else:
         with open(logfile, 'a') as log:
@@ -129,17 +130,21 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                 err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                                    survey=survey, pixscale=pixscale,
                                                    nproc=nproc, force=force, log=log, cleanup=cleanup,
-                                                   proposal=proposal)
+                                                   proposal=proposal, apodize=apodize)
                 _done(galaxy, err, t0, log=log)
 
 def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                         nproc, debug, logfile):
     """Wrapper script to build the pipeline coadds."""
+
+    apodize = True
+    
     t0 = time.time()
     if debug:
         _start(galaxy)
         err = LSLGA.coadds.custom_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
-                                         survey=survey, pixscale=pixscale, nproc=nproc)
+                                         survey=survey, pixscale=pixscale, nproc=nproc,
+                                         apodize=apodize)
         _done(galaxy, err, t0)
     else:
         with open(logfile, 'a') as log:
@@ -147,7 +152,7 @@ def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                 _start(galaxy, log=log)
                 err = LSLGA.coadds.custom_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                                  survey=survey, pixscale=pixscale,
-                                                 nproc=nproc, log=log)
+                                                 nproc=nproc, log=log, apodize=apodize)
                 _done(galaxy, err, t0, log=log)
                 
 def _call_galex_unwise(onegal, galaxy, galaxydir, radius_mosaic, unwise_pixscale, 

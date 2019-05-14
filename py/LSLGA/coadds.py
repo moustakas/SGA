@@ -120,29 +120,6 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
 
             return 1
 
-        ## (Re)package the outliers images into a single MEF -- temporary hack
-        ## until we address legacypipe/#271
-        #ccdsfile = os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
-        #                       'legacysurvey-{}-ccds.fits'.format(brickname))
-        #if not os.path.isfile(ccdsfile):
-        #    print('CCDs file {} not found!'.format(ccdsfile))
-        #    return 0
-        #ccds = survey.cleanup_ccds_table(fits_table(ccdsfile))
-        #
-        #outliersfile = os.path.join(survey.output_dir, '{}-outliers.fits.fz'.format(galaxy))
-        #if os.path.isfile(outliersfile):
-        #    os.remove(outliersfile)
-        #with fitsio.FITS(outliersfile, 'rw') as ff:
-        #    for ccd in ccds:
-        #        im = survey.get_image_object(ccd)
-        #        suffix = '{}-{}-{}'.format(im.camera, im.expnum, im.ccdname)
-        #        maskfile = os.path.join(survey.output_dir, 'metrics', 'cus', brickname,
-        #                                'outlier-mask-{}.fits.fz'.format(suffix))
-        #        if os.path.isfile(maskfile):
-        #            mask, hdr = fitsio.read(maskfile, header=True)
-        #            key = '{}-{:02d}-{}'.format(im.name, im.hdu, im.band)
-        #            ff.write(mask, extname=key, header=hdr)
-
         # CCDs, maskbits, blob images, and depth images
         ok = _copyfile(
             os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
@@ -167,6 +144,12 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
         ok = _copyfile(
             os.path.join(survey.output_dir, 'metrics', 'cus', 'blobs-{}.fits.gz'.format(brickname)),
             os.path.join(survey.output_dir, '{}-blobs.fits.gz'.format(galaxy)) )
+        if not ok:
+            return ok
+
+        ok = _copyfile(
+            os.path.join(survey.output_dir, 'metrics', 'cus', 'outlier-mask-{}.fits.fz'.format(brickname)),
+            os.path.join(survey.output_dir, '{}-outlier-mask.fits.fz'.format(galaxy)) )
         if not ok:
             return ok
 
@@ -606,7 +589,8 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
     from legacypipe.runbrick import _get_mod
     from legacypipe.coadds import make_coadds, write_coadd_images
     from legacypipe.survey import get_rgb, imsave_jpeg
-            
+    from legacypipe.bits import DQ_BITS
+    
     if survey is None:
         from legacypipe.survey import LegacySurveyData
         survey = LegacySurveyData()
@@ -661,6 +645,19 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
 
     tims, brickwcs, bands, version_header = P['tims'], P['targetwcs'], P['bands'], P['version_header']
     del P
+
+    # Read the outliers masks and apply them.
+    outliersfile = os.path.join(survey.output_dir, '{}-outlier-mask.fits.fz'.format(galaxy))
+    if not os.path.isfile(outliersfile):
+        print('Missing outliers masks {}'.format(outliersfile))
+        return 0
+
+    outliers = fitsio.FITS(outliersfile)
+    for tim in tims:
+        ext = '{}-{}-{}'.format(tim.imobj.camera, tim.imobj.expnum, tim.imobj.ccdname)
+        mask = outliers[ext].read()
+        tim.dq |= (mask > 0) * DQ_BITS['outlier']
+        tim.inverr[mask > 0] = 0.0
 
     # [2] Derive the custom mask and sky background for each (full) CCD and
     # write out a MEF -custom-mask.fits.gz file.
@@ -773,8 +770,11 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
                     ba, phi = LSLGA.misc.convert_tractor_e1e2(e1, e2)
                     these = LSLGA.misc.ellipse_mask(width / 2, width / 2, majoraxis, ba * majoraxis,
                                                     np.radians(phi), cat.bx, cat.by)
-                    if np.sum(these) > 0:
-                        keep[these] = False
+                    if np.sum(these) > 0 and False:
+                        #keep[these] = False
+                        pass
+                print('Hack!')
+                keep[mm] = False
 
             #srcs = read_fits_catalog(cat)
             #_srcs = np.array(srcs)[~keep].tolist()
