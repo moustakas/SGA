@@ -219,7 +219,10 @@ def galex_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
                     these = LSLGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
                                                     np.radians(phi), cat.bx*pixfactor, cat.by*pixfactor)
                     if np.sum(these) > 0:
-                        keep[these] = False
+                        #keep[these] = False
+                        pass
+                print('Hack!')
+                keep[mm] = False
 
             #srcs = read_fits_catalog(cat)
             #_srcs = np.array(srcs)[~keep].tolist()

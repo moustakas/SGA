@@ -138,7 +138,10 @@ def unwise_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
                     these = LSLGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
                                                     np.radians(phi), cat.bx*pixfactor, cat.by*pixfactor)
                     if np.sum(these) > 0:
-                        keep[these] = False
+                        #keep[these] = False
+                        pass
+                print('Hack!')
+                keep[mm] = False
 
             #srcs = read_fits_catalog(cat)
             #_srcs = np.array(srcs)[~keep].tolist()
@@ -183,6 +186,9 @@ def unwise_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
     # they're consistent with the coadds, below.
     for band in wbands:
         f = cat.get('flux_w{}'.format(band))
+        e = cat.get('flux_ivar_w{}'.format(band))
+        print('Setting negative fluxes equal to zero!')
+        f[f/e < 3] = 0
         f *= 10**(0.4 * vega_to_ab['w{}'.format(band)])
 
     coimgs = [np.zeros((H, W), np.float32) for b in wbands]

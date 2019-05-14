@@ -634,7 +634,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
                           survey=survey, W=width, H=width, pixscale=pixscale,
                           mp=mp, normalizePsf=True, pixPsf=True, hybridPsf=True,
                           splinesky=True, subsky=False, # note!
-                          depth_cut=False, apodize=False, do_calibs=False, rex=True, 
+                          depth_cut=False, apodize=apodize, do_calibs=False, rex=True, 
                           unwise_dir=unwise_dir, plots=plots, ps=ps)
 
     if log:
@@ -656,8 +656,10 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
     for tim in tims:
         ext = '{}-{}-{}'.format(tim.imobj.camera, tim.imobj.expnum, tim.imobj.ccdname)
         mask = outliers[ext].read()
+        maskhdr = outliers[ext].read_header()
         tim.dq |= (mask > 0) * DQ_BITS['outlier']
         tim.inverr[mask > 0] = 0.0
+        #print(ext, np.sum(tim.inverr == 0))
 
     # [2] Derive the custom mask and sky background for each (full) CCD and
     # write out a MEF -custom-mask.fits.gz file.
@@ -669,6 +671,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
     [sky.update(res) for res in result]
     del result
 
+    #print('Hack - write_ccddata!')
     if write_ccddata:
         # Write out the "coadd" mask.
         cokeys = [key for key in sky.keys() if 'comask' in key]
@@ -733,7 +736,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
         tim.sky = ConstantSky(0)
         newtims.append(tim)
     del sky, tims
-    
+
     # [4] Read the Tractor catalog and render the model image of each CCD, with
     # and without the central large galaxy.
     tractorfile = os.path.join(survey.output_dir, '{}-tractor.fits'.format(galaxy))
@@ -770,7 +773,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
                     ba, phi = LSLGA.misc.convert_tractor_e1e2(e1, e2)
                     these = LSLGA.misc.ellipse_mask(width / 2, width / 2, majoraxis, ba * majoraxis,
                                                     np.radians(phi), cat.bx, cat.by)
-                    if np.sum(these) > 0 and False:
+                    if np.sum(these) > 0:
                         #keep[these] = False
                         pass
                 print('Hack!')
@@ -855,7 +858,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
             if not ok:
                 return ok
             
-    if cleanup:
+    if cleanup and False:
         shutil.rmtree(os.path.join(survey.output_dir, 'coadd'))
 
     # [6] Finally, build png images.
