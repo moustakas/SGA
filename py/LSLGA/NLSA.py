@@ -134,6 +134,7 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         sample['GALAXY'] = np.array(['NGC3938', 'NGC5322', 'IC4182', 'NGC3719-GROUP'])
         sample['BRICKNAME'] = np.array(['', '', '', ''])
         sample['OBJID'] = np.array([0, 1, 2, 3])
+        sample['Z'] = np.array([0.0, 0.0060, 0.0, 0.0])
         sample['RA'] = np.array([178.205851, 207.313452, 196.455276, 173.05609]).astype('f8')
         sample['DEC'] = np.array([44.120774, 60.190476, 37.604659, 0.819287]).astype('f8')
         sample['REFF'] = np.array([78.6/2, 78.6/2, 78.6/2, 20.0]).astype('f4') # [arcsec]

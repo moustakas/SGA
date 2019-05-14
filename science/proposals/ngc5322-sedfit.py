@@ -257,20 +257,17 @@ def load_obs(seed=1, nproc=1, nmin=10, verbose=False, sps=None):
     import sedpy
     from prospect.utils.obsutils import fix_obs    
 
-    # photometry in nanomaggies
+    # photometry in maggies
     phot = dict(
-        FUV=(3.63e-4*1e3/maggies2mJy*1e9, 9.76e-6*1e3/maggies2mJy*1e9),
-        NUV=(1.87e-3*1e3/maggies2mJy*1e9, 1.02e-5*1e3/maggies2mJy*1e9),
-        g=(51032.92, 0.060252897),
-        r=(108675.04, 0.019527867),
-        z=(173005.16, 0.011034269),
-        W1=(126294.73, 0.1742277),
-        W2=(67562.625, 0.03782868),
-        W3=(34738.555, 0.000105459614),
-        W4=(32283.23, 2.8181848e-06))
-
-    # convert to maggies
-    [phot[key] *= 1e-9 for key in phot.keys()]
+        FUV=(3.63e-4*1e3/maggies2mJy, 1/(9.76e-6*1e3/maggies2mJy)**2),
+        NUV=(1.87e-3*1e3/maggies2mJy, 1/(1.02e-5*1e3/maggies2mJy)**2),
+        g=(51032.92*1e-9, 0.060252897*1e18),
+        r=(108675.04*1e-9, 0.019527867*1e18),
+        z=(173005.16*1e-9, 0.011034269*1e18),
+        W1=(126294.73*1e-9, 0.1742277*1e18),
+        W2=(67562.625*1e-9, 0.03782868*1e18),
+        W3=(34738.555*1e-9, 0.000105459614*1e18),
+        W4=(32283.23*1e-9, 2.8181848e-06*1e18))
 
     galex = ['galex_FUV', 'galex_NUV']
     ls = ['sdss_{}0'.format(b) for b in ['g', 'r', 'z']]
@@ -465,11 +462,13 @@ def main():
         obs, rp = load_obs(seed=args.seed, nproc=args.nproc, verbose=args.verbose, sps=sps)
         model = load_model(obs, args.priors, verbose=args.verbose)
         
-        with multiprocessing.Pool(args.nproc) as P:
-            output = prospect.fitting.fit_model(obs, model, sps, noise=(None, None),
-                                                optimize=False, dynesty=True, emcee=False,
-                                                #nested_posterior_thresh=0.05,
-                                                pool=P, **rp)
+        #with multiprocessing.Pool(args.nproc) as P:
+        P = None
+        output = prospect.fitting.fit_model(obs, model, sps, noise=(None, None),
+                                            optimize=True, dynesty=False, emcee=False,
+                                            #optimize=False, dynesty=True, emcee=False,
+                                            #nested_posterior_thresh=0.05,
+                                            pool=P, **rp)
 
         if os.path.isfile(hfile):
             os.remove(hfile)
@@ -492,7 +491,8 @@ def main():
         model = load_model(obs, args.priors, verbose=args.verbose)
 
         png = os.path.join(ngc5322dir, '{}-{}-sed.png'.format(args.prefix, args.priors))
-        bestfit_sed(obs, chain=result['chain'], lnprobability=result['lnprobability'], 
+        #bestfit_sed(obs, chain=result['chain'], lnprobability=result['lnprobability'], 
+        bestfit_sed(obs, chain=None, lnprobability=result['lnprobability'], 
                     sps=sps, model=model, seed=1, nrand=100, png=png)
 
         # Corner plot.

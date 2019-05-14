@@ -17,6 +17,11 @@ import matplotlib.pyplot as plt
 import LSLGA.io
 import LSLGA.misc
 
+from photutils.isophote import (EllipseGeometry, Ellipse, EllipseSample,
+                                Isophote, IsophoteList)
+from photutils.isophote.sample import CentralEllipseSample
+from photutils.isophote.fitter import CentralEllipseFitter
+
 def _apphot_one(args):
     """Wrapper function for the multiprocessing."""
     return apphot_one(*args)
@@ -273,7 +278,6 @@ def ellipsefit_multiband(galaxy, galaxydir, data, sample, maxsma=None, nproc=1,
             if len(iso0) > 0:
                 break
 
-    pdb.set_trace()
     if len(iso0) == 0:
         print('Initial ellipse-fitting failed!')
         return ellipsefit
@@ -769,7 +773,7 @@ def ellipse_sbprofile(ellipsefit, minerr=0.0):
 
     return sbprofile
 
-def LSLGA_ellipse(onegal, galaxy=None, galaxydir=None, pixscale=0.262,
+def LSLGA_ellipse(onegal, galaxy=None, galaxydir=None, pixscale=0.262, nproc=1,
                   refband='r', band=('g', 'r', 'z'), maxsma=None,
                   integrmode='median', nclip=2, sclip=3,
                   galex_pixscale=1.5, unwise_pixscale=2.75,
@@ -794,7 +798,8 @@ def LSLGA_ellipse(onegal, galaxy=None, galaxydir=None, pixscale=0.262,
 
         # Do ellipse-fitting.
         ellipsefit = ellipsefit_multiband(galaxy, galaxydir, data, onegal,
-                                          mgefit, maxsma=maxsma, integrmode=integrmode,
+                                          maxsma=maxsma, nproc=nproc,
+                                          integrmode=integrmode,
                                           nclip=nclip, sclip=sclip, verbose=verbose,
                                           noellipsefit=noellipsefit)
         if ellipsefit['success']:
