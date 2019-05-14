@@ -6,9 +6,11 @@ Code to do produce various QA (quality assurance) plots.
 
 """
 import os, pdb
+import warnings
 import time, subprocess
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 import LSLGA.misc
 
@@ -634,7 +636,7 @@ def display_ccdpos(onegal, ccds, radius=None, pixscale=0.262,
                                            label='ccd{:02d}'.format(these[ii])))
             ax.legend(ncol=2, frameon=False, loc='upper left', fontsize=10)
 
-    plt.subplots_adjust(bottom=0.12, wspace=0.05, left=0.1, right=0.97, top=0.95)
+    plt.subplots_adjust(bottom=0.15, wspace=0.05, left=0.1, right=0.97, top=0.95)
 
     if png:
         if verbose:

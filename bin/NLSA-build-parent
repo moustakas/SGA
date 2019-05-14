@@ -4,6 +4,10 @@ Build the parent NLSA sample for the NASA/ADAP 2019 proposal.
 
 time python /global/homes/i/ioannis/repos/git/legacypipe/py/legacypipe/runbrick.py --radec 178.205851 44.120774 --width 2500 --height 2500 --stage image_coadds --early-coadds --no-wise --threads 32 --force-all
 
+v1.0 - original sample (r<22)
+v1.1 - same as v1.0 but additional cut on allmask
+v1.2 - cut to r<20
+
 """
 import os, pdb
 from glob import glob
@@ -17,14 +21,14 @@ import LSLGA.NLSA
 
 dr8dir = '/global/cscratch1/sd/ioannis/dr8'
 
-def build_parent(camera='decam', snrcut=5, rmagcut=22, reffmin=0.1, clobber=False):
+def build_parent(camera='decam', snrcut=5, rmagcut=20, reffmin=0.1, clobber=False):
     """Read the Tractor catalogs and apply some sensible cuts.
     
     """
     lslga = LSLGA.io.read_parent(verbose=True)
 
     outdir = LSLGA.NLSA.NLSA_dir()
-    outfile = os.path.join(outdir, 'NLSA-{}-v1.1.fits'.format(camera))
+    outfile = os.path.join(outdir, 'NLSA-{}-v1.2.fits'.format(camera))
     if os.path.isfile(outfile) and not clobber:
         cat = Table.read(outfile)
         print('Read {} galaxies from {}.'.format(len(cat), outfile))

@@ -7,6 +7,8 @@ Miscellaneous code.
 """
 import numpy as np
 
+from astrometry.util.util import Tan
+
 def plot_style(paper=False, talk=False):
 
     import seaborn as sns
