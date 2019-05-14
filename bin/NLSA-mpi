@@ -364,7 +364,8 @@ def main():
             else:
                 radius_mosaic_arcsec = onegal['REFF'] * 10
                 
-            print(galaxy, onegal['RA'], onegal['DEC'], onegal['REFF'], radius_mosaic_arcsec)
+            print(galaxy, onegal['RA'], onegal['DEC'], onegal['SB'],
+                  onegal['REFF'], radius_mosaic_arcsec)
             survey = LegacySurveyData()
             survey.output_dir = galaxydir
 

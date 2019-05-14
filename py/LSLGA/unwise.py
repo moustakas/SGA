@@ -188,7 +188,8 @@ def unwise_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
         f = cat.get('flux_w{}'.format(band))
         e = cat.get('flux_ivar_w{}'.format(band))
         print('Setting negative fluxes equal to zero!')
-        f[f/e < 3] = 0
+        f[f < 0] = 0
+        #f[f/e < 3] = 0
         f *= 10**(0.4 * vega_to_ab['w{}'.format(band)])
 
     coimgs = [np.zeros((H, W), np.float32) for b in wbands]

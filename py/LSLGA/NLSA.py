@@ -76,7 +76,7 @@ def get_galaxy_galaxydir(cat, datadir=None, htmldir=None, html=False):
 
 def NLSA_dir():
     """Top-level NLSA directory (should be an environment variable...)."""
-    print('Use an environment variable for NLSA_DIR!')
+    #print('Use an environment variable for NLSA_DIR!')
     nlsadir = os.path.join(os.getenv('LSLGA_DIR'), 'NLSA')
     return nlsadir
 
@@ -151,9 +151,9 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         sample = Table(fitsio.read(samplefile, upper=True))
         print('Choosing a random subset of galaxies!')
         seed = 1
-        npilot = 64
-        keep = np.where((sample['SB'] > 18) * (sample['SB'] < 27.5) *
-                        (sample['RMAG'] < 18) * (sample['REFF'] > 5))[0]
+        npilot = 35
+        keep = np.where((sample['SB'] > 18) * (sample['SB'] < 27) *
+                        (sample['RMAG'] < 19) * (sample['REFF'] > 5))[0]
         sample = sample[keep]
         sb = sample['SB'].data
 
