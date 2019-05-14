@@ -150,7 +150,7 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         sample = Table(fitsio.read(samplefile, upper=True))
         print('Choosing a random subset of galaxies!')
         seed = 1
-        npilot = 32
+        npilot = 35
         keep = np.where((sample['SB'] > 18) * (sample['SB'] < 27) *
                         (sample['RMAG'] < 19) * (sample['REFF'] > 5))[0]
         sample = sample[keep]
