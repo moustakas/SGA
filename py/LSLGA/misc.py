@@ -7,6 +7,8 @@ Miscellaneous code.
 """
 import numpy as np
 
+from astrometry.util.util import Tan
+
 def plot_style(paper=False, talk=False):
 
     import seaborn as sns
@@ -160,3 +162,72 @@ def arcsec2kpc(redshift):
     """
     cosmo = cosmology()
     return 1 / cosmo.arcsec_per_kpc_proper(redshift).value # [kpc/arcsec]
+
+def convert_tractor_e1e2(e1, e2):
+    """Convert Tractor epsilon1, epsilon2 values to ellipticity and position angle.
+
+    Taken from tractor.ellipses.EllipseE
+
+    """
+    e = np.hypot(e1, e2)
+    ba = (1 - e) / (1 + e)
+    #e = (ba + 1) / (ba - 1)
+
+    phi = -np.rad2deg(np.arctan2(e2, e1) / 2)
+    #angle = np.deg2rad(-2 * phi)
+    #e1 = e * np.cos(angle)
+    #e2 = e * np.sin(angle)
+
+    return ba, phi
+
+def ellipse_mask(xcen, ycen, semia, semib, phi, x, y):
+    """Simple elliptical mask."""
+    xp = (x-xcen) * np.cos(phi) + (y-ycen) * np.sin(phi)
+    yp = -(x-xcen) * np.sin(phi) + (y-ycen) * np.cos(phi)
+    return (xp / semia)**2 + (yp/semib)**2 <= 1
+
+
+def srcs2image(srcs, wcs, psf_sigma=1.0):
+    """Build a model image from a Tractor catalog.
+
+    """
+    from tractor import Tractor
+    from tractor.image import Image
+    from tractor.sky import ConstantSky
+    from tractor.basics import LinearPhotoCal
+    from tractor import GaussianMixturePSF
+
+    try:
+        shape = wcs.wcs.shape
+    except:
+        shape = wcs.shape
+    model = np.zeros(shape)
+    invvar = np.ones(shape)
+    
+    vv = psf_sigma**2
+    psf = GaussianMixturePSF(1.0, 0., 0., vv, vv, 0.0)
+
+    tim = Image(model, invvar=invvar, wcs=wcs, psf=psf,
+                photocal=LinearPhotoCal(1.0, band='r'),
+                sky=ConstantSky(0.0))
+
+    tractor = Tractor([tim], srcs)
+    mod = tractor.getModelImage(0)
+
+    return mod
+
+def ccdwcs(ccd):
+    '''Build a simple WCS object for a single CCD table.'''
+    W, H = ccd.width, ccd.height
+    ccdwcs = Tan(*[float(xx) for xx in [ccd.crval1, ccd.crval2, ccd.crpix1,
+                                        ccd.crpix2, ccd.cd1_1, ccd.cd1_2,
+                                        ccd.cd2_1, ccd.cd2_2, W, H]])
+    return W, H, ccdwcs
+
+def simple_wcs(onegal, radius=100, factor=1.0, pixscale=0.262):
+    '''Build a simple WCS object for a single galaxy.'''
+    diam = np.ceil(factor * radius).astype('int') # [pixels]
+    simplewcs = Tan(onegal['RA'], onegal['DEC'], diam/2+0.5, diam/2+0.5,
+                    -pixscale/3600.0, 0.0, 0.0, pixscale/3600.0, 
+                    float(diam), float(diam))
+    return simplewcs

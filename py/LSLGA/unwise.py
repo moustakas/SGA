@@ -8,6 +8,8 @@ Code to generate unWISE custom coadds / mosaics.
 import os, pdb
 import numpy as np
 
+import LSLGA.misc
+
 def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
     """Support routine to generate color unWISE images.
 
@@ -53,12 +55,12 @@ def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
 
     return rgb
 
-def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75, 
-                  output_dir=None, unwise_dir=None, verbose=False,
-                  log=None):
+def unwise_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
+                  pixscale=2.75, ref_pixscale=0.262, output_dir=None,
+                  unwise_dir=None, verbose=False, log=None, centrals=True):
     '''Generate custom unWISE cutouts.
     
-    radius in arcsec
+    radius_mosaic and radius_mask in arcsec
     
     pixscale: WISE pixel scale in arcsec/pixel; make this smaller than 2.75
     to oversample.
@@ -87,8 +89,14 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     if unwise_dir is None:
         unwise_dir = os.environ.get('UNWISE_COADDS_DIR')
 
+    if radius_mask is None:
+        radius_mask = radius_mosaic
+        radius_search = 5.0 # [arcsec]
+    else:
+        radius_search = radius_mask
+
     # Initialize the WCS object.
-    W = H = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
+    W = H = np.ceil(2 * radius_mosaic / pixscale).astype('int') # [pixels]
     targetwcs = Tan(onegal['RA'], onegal['DEC'], (W + 1) / 2.0, (H + 1) / 2.0,
                     -pixscale / 3600.0, 0.0, 0.0, pixscale / 3600.0, float(W), float(H))
 
@@ -99,20 +107,66 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
         return 0
     primhdr = fitsio.read_header(tractorfile)
 
-    T = fits_table(tractorfile)
-    srcs = read_fits_catalog(T)
-    print('Read {} sources from {}'.format(len(T), tractorfile), flush=True, file=log)
+    cat = fits_table(tractorfile)
+    print('Read {} sources from {}'.format(len(cat), tractorfile), flush=True, file=log)
 
-    # Find and remove all the objects within XX arcsec of the target
-    # coordinates.
-    m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 5/3600.0, nearest=False)
-    if len(d12) == 0:
-        print('No matching galaxies found -- probably not what you wanted.')
-        #raise ValueError
-        nocentral = np.ones(len(T)).astype(bool)
-    else:
-        nocentral = ~np.isin(T.objid, T[m1].objid)
-    T_nocentral = T[nocentral]
+    keep = np.ones(len(cat)).astype(bool)
+    if centrals:
+        # Find the large central galaxy and mask out (ignore) all the models
+        # which are within its elliptical mask.
+
+        # This algorithm will have to change for mosaics not centered on large
+        # galaxies, e.g., in galaxy groups.
+        m1, m2, d12 = match_radec(cat.ra, cat.dec, onegal['RA'], onegal['DEC'],
+                                  radius_search/3600.0, nearest=False)
+        if len(m1) == 0:
+            print('No central galaxies found at the central coordinates!', flush=True, file=log)
+        else:
+            pixfactor = ref_pixscale / pixscale # shift the optical Tractor positions
+            for mm in m1:
+                morphtype = cat.type[mm].strip()
+                if morphtype == 'EXP' or morphtype == 'COMP':
+                    e1, e2, r50 = cat.shapeexp_e1[mm], cat.shapeexp_e2[mm], cat.shapeexp_r[mm] # [arcsec]
+                elif morphtype == 'DEV' or morphtype == 'COMP':
+                    e1, e2, r50 = cat.shapedev_e1[mm], cat.shapedev_e2[mm], cat.shapedev_r[mm] # [arcsec]
+                else:
+                    r50 = None
+
+                if r50:
+                    majoraxis =  r50 * 5 / pixscale # [pixels]
+                    ba, phi = LSLGA.misc.convert_tractor_e1e2(e1, e2)
+                    these = LSLGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
+                                                    np.radians(phi), cat.bx*pixfactor, cat.by*pixfactor)
+                    if np.sum(these) > 0:
+                        #keep[these] = False
+                        pass
+                print('Hack!')
+                keep[mm] = False
+
+            #srcs = read_fits_catalog(cat)
+            #_srcs = np.array(srcs)[~keep].tolist()
+            #mod = LSLGA.misc.srcs2image(_srcs, ConstantFitsWcs(targetwcs), psf_sigma=3.0)
+            #import matplotlib.pyplot as plt
+            ##plt.imshow(mod, origin='lower') ; plt.savefig('junk.png')
+            #plt.imshow(np.log10(mod), origin='lower') ; plt.savefig('junk.png')
+            #pdb.set_trace()
+
+    srcs = read_fits_catalog(cat)
+    for src in srcs:
+        src.freezeAllBut('brightness')
+    #srcs_nocentral = np.array(srcs)[keep].tolist()
+    cat_nocentral = cat[keep]
+    
+    ## Find and remove all the objects within XX arcsec of the target
+    ## coordinates.
+    #m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 5/3600.0, nearest=False)
+    #if len(d12) == 0:
+    #    print('No matching galaxies found -- probably not what you wanted.')
+    #    #raise ValueError
+    #    nocentral = np.ones(len(T)).astype(bool)
+    #else:
+    #    nocentral = ~np.isin(T.objid, T[m1].objid)
+    #T_nocentral = T[nocentral]
         
     # Find and read the overlapping unWISE tiles.  Assume the targetwcs is
     # axis-aligned and that the edge midpoints yield the RA, Dec limits (true
@@ -131,7 +185,11 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     # Convert the AB WISE fluxes in the Tractor catalog to Vega nanomaggies so
     # they're consistent with the coadds, below.
     for band in wbands:
-        f = T.get('flux_w{}'.format(band))
+        f = cat.get('flux_w{}'.format(band))
+        e = cat.get('flux_ivar_w{}'.format(band))
+        print('Setting negative fluxes equal to zero!')
+        f[f < 0] = 0
+        #f[f/e < 3] = 0
         f *= 10**(0.4 * vega_to_ab['w{}'.format(band)])
 
     coimgs = [np.zeros((H, W), np.float32) for b in wbands]
@@ -140,10 +198,10 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
     con    = [np.zeros((H, W), np.uint8) for b in wbands]
 
     for iband, band in enumerate(wbands):
-
         for ii, src in enumerate(srcs):
-            src.setBrightness( NanoMaggies(**{wanyband: T.get('flux_w{}'.format(band) )[ii]}) )
-        srcs_nocentral = np.array(srcs)[nocentral].tolist()
+            src.setBrightness( NanoMaggies(**{wanyband: cat.get('flux_w{}'.format(band) )[ii]}) )
+        srcs_nocentral = np.array(srcs)[keep].tolist()
+        #srcs_nocentral = np.array(srcs)[nocentral].tolist()
         
         # The tiles have some overlap, so for each source, keep the fit in the
         # tile whose center is closest to the source.
@@ -156,11 +214,11 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
                 continue
             print('Read image {} with shape {}'.format(tile.coadd_id, tim.shape))
 
-            def _unwise_mod(tim, use_T, use_srcs, margin=10):
+            def _unwise_mod(tim, use_cat, use_srcs, margin=10):
                 # Select sources in play.
                 wisewcs = tim.wcs.wcs
                 timH, timW = tim.shape
-                ok, x, y = wisewcs.radec2pixelxy(use_T.ra, use_T.dec)
+                ok, x, y = wisewcs.radec2pixelxy(use_cat.ra, use_cat.dec)
                 x = (x - 1.).astype(np.float32)
                 y = (y - 1.).astype(np.float32)
                 I = np.flatnonzero((x >= -margin) * (x < timW + margin) *
@@ -172,8 +230,8 @@ def unwise_coadds(onegal, galaxy=None, radius=30, pixscale=2.75,
                 mod = tractor.getModelImage(0)
                 return mod
 
-            mod = _unwise_mod(tim, T, srcs)
-            mod_nocentral = _unwise_mod(tim, T_nocentral, srcs_nocentral)
+            mod = _unwise_mod(tim, cat, srcs)
+            mod_nocentral = _unwise_mod(tim, cat_nocentral, srcs_nocentral)
 
             try:
                 Yo, Xo, Yi, Xi, nil = resample_with_wcs(targetwcs, tim.wcs.wcs)

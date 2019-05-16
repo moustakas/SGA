@@ -11,6 +11,8 @@ import numpy as np
 from astrometry.util.util import Tan
 from astrometry.util.fits import fits_table
 
+import LSLGA.misc
+
 def _ra_ranges_overlap(ralo, rahi, ra1, ra2):
     import numpy as np
     x1 = np.cos(np.deg2rad(ralo))
@@ -56,8 +58,8 @@ def _galex_rgb_official(imgs, **kwargs):
         red   = red   * val / radius
         green = green * val / radius
         blue  = blue  * val / radius
-    mx = np.maximum(red, np.maximum(green, blue))
-    mx = np.maximum(1., mx)
+        mx = np.maximum(red, np.maximum(green, blue))
+        mx = np.maximum(1., mx)
     red   /= mx
     green /= mx
     blue  /= mx
@@ -140,15 +142,14 @@ def _read_galex_tiles(targetwcs, galex_dir, log=None, verbose=False):
 
     return galex_tiles
 
-def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5, 
-                 output_dir=None, galex_dir=None, log=None,
-                 verbose=False):
+def galex_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
+                 pixscale=1.5, ref_pixscale=0.262, output_dir=None, galex_dir=None,
+                 log=None, centrals=True, verbose=False):
     '''Generate custom GALEX cutouts.
     
-    radius in arcsec
+    radius_mosaic and radius_mask in arcsec
     
-    pixscale: WISE pixel scale in arcsec/pixel; make this smaller than 2.75
-    to oversample.
+    pixscale: GALEX pixel scale in arcsec/pixel.
 
     '''
     import fitsio
@@ -171,7 +172,13 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
     if output_dir is None:
         output_dir = '.'
 
-    W = H = np.ceil(2 * radius / pixscale).astype('int') # [pixels]
+    if radius_mask is None:
+        radius_mask = radius_mosaic
+        radius_search = 5.0 # [arcsec]
+    else:
+        radius_search = radius_mask
+
+    W = H = np.ceil(2 * radius_mosaic / pixscale).astype('int') # [pixels]
     targetwcs = Tan(onegal['RA'], onegal['DEC'], (W+1) / 2.0, (H+1) / 2.0,
                     -pixscale / 3600.0, 0.0, 0.0, pixscale / 3600.0, float(W), float(H))
 
@@ -181,23 +188,55 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
         print('Missing Tractor catalog {}'.format(tractorfile))
         return 0
 
-    T = fits_table(tractorfile)
-    srcs = read_fits_catalog(T)
-    print('Read {} sources from {}'.format(len(T), tractorfile), flush=True, file=log)
+    cat = fits_table(tractorfile)
+    print('Read {} sources from {}'.format(len(cat), tractorfile), flush=True, file=log)
 
+    keep = np.ones(len(cat)).astype(bool)
+    if centrals:
+        # Find the large central galaxy and mask out (ignore) all the models
+        # which are within its elliptical mask.
+
+        # This algorithm will have to change for mosaics not centered on large
+        # galaxies, e.g., in galaxy groups.
+        m1, m2, d12 = match_radec(cat.ra, cat.dec, onegal['RA'], onegal['DEC'],
+                                  radius_search/3600.0, nearest=False)
+        if len(m1) == 0:
+            print('No central galaxies found at the central coordinates!', flush=True, file=log)
+        else:
+            pixfactor = ref_pixscale / pixscale # shift the optical Tractor positions
+            for mm in m1:
+                morphtype = cat.type[mm].strip()
+                if morphtype == 'EXP' or morphtype == 'COMP':
+                    e1, e2, r50 = cat.shapeexp_e1[mm], cat.shapeexp_e2[mm], cat.shapeexp_r[mm] # [arcsec]
+                elif morphtype == 'DEV' or morphtype == 'COMP':
+                    e1, e2, r50 = cat.shapedev_e1[mm], cat.shapedev_e2[mm], cat.shapedev_r[mm] # [arcsec]
+                else:
+                    r50 = None
+
+                if r50:
+                    majoraxis =  r50 * 5 / pixscale # [pixels]
+                    ba, phi = LSLGA.misc.convert_tractor_e1e2(e1, e2)
+                    these = LSLGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
+                                                    np.radians(phi), cat.bx*pixfactor, cat.by*pixfactor)
+                    if np.sum(these) > 0:
+                        #keep[these] = False
+                        pass
+                print('Hack!')
+                keep[mm] = False
+
+            #srcs = read_fits_catalog(cat)
+            #_srcs = np.array(srcs)[~keep].tolist()
+            #mod = LSLGA.misc.srcs2image(_srcs, ConstantFitsWcs(targetwcs), psf_sigma=3.0)
+            #import matplotlib.pyplot as plt
+            ##plt.imshow(mod, origin='lower') ; plt.savefig('junk.png')
+            #plt.imshow(np.log10(mod), origin='lower') ; plt.savefig('junk.png')
+            #pdb.set_trace()
+
+    srcs = read_fits_catalog(cat)
     for src in srcs:
         src.freezeAllBut('brightness')
-
-    # Find and remove all the objects within XX arcsec of the target
-    # coordinates.
-    m1, m2, d12 = match_radec(T.ra, T.dec, onegal['RA'], onegal['DEC'], 5/3600.0, nearest=False)
-    if len(d12) == 0:
-        print('No matching galaxies found -- probably not what you wanted.')
-        #raise ValueError
-        nocentral = np.ones(len(T)).astype(bool)
-    else:
-        nocentral = ~np.isin(T.objid, T[m1].objid)
-        
+    #srcs_nocentral = np.array(srcs)[keep].tolist()
+    
     # Find all overlapping GALEX tiles and then read the tims.
     galex_tiles = _read_galex_tiles(targetwcs, galex_dir, log=log, verbose=verbose)
 
@@ -276,7 +315,8 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
             tractor.optimize_forced_photometry(priors=False, shared_params=False)
             mod = tractor.getModelImage(0)
 
-            srcs_nocentral = np.array(srcs)[nocentral].tolist()
+            srcs_nocentral = np.array(srcs)[keep].tolist()
+            #srcs_nocentral = np.array(srcs)[nocentral].tolist()
             tractor_nocentral = Tractor([tim], srcs_nocentral)
             mod_nocentral = tractor_nocentral.getModelImage(0)
 
@@ -314,9 +354,9 @@ def galex_coadds(onegal, galaxy=None, radius=30, pixscale=1.5,
     # Build a color mosaic (but note that the images here are in units of
     # background-subtracted counts/s).
 
-    _galex_rgb = _galex_rgb_moustakas
+    #_galex_rgb = _galex_rgb_moustakas
     #_galex_rgb = _galex_rgb_dstn
-    #_galex_rgb = _galex_rgb_official
+    _galex_rgb = _galex_rgb_official
 
     for imgs, imtype in zip( (coimgs, comods, coresids, comods_nocentral, coimgs_central),
                              ('image', 'model', 'resid', 'model-nocentral', 'image-central') ):

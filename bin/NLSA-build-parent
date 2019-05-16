@@ -1,0 +1,177 @@
+#!/usr/bin/env python
+"""
+Build the parent NLSA sample for the NASA/ADAP 2019 proposal.
+
+time python /global/homes/i/ioannis/repos/git/legacypipe/py/legacypipe/runbrick.py --radec 178.205851 44.120774 --width 2500 --height 2500 --stage image_coadds --early-coadds --no-wise --threads 32 --force-all
+
+v1.0 - original sample (r<22)
+v1.1 - same as v1.0 but additional cut on allmask
+v1.2 - cut to r<20
+
+"""
+import os, pdb
+from glob import glob
+import numpy as np
+
+import fitsio
+from astropy.table import Table, Column, vstack
+
+import LSLGA.io
+import LSLGA.NLSA
+
+dr8dir = '/global/cscratch1/sd/ioannis/dr8'
+
+def build_parent(camera='decam', snrcut=5, rmagcut=20, reffmin=0.1, clobber=False):
+    """Read the Tractor catalogs and apply some sensible cuts.
+    
+    """
+    lslga = LSLGA.io.read_parent(verbose=True)
+
+    outdir = LSLGA.NLSA.NLSA_dir()
+    outfile = os.path.join(outdir, 'NLSA-{}-v1.2.fits'.format(camera))
+    if os.path.isfile(outfile) and not clobber:
+        cat = Table.read(outfile)
+        print('Read {} galaxies from {}.'.format(len(cat), outfile))
+        return cat
+        
+    def get_outtable(ngal):
+        out = Table()
+        #out.add_column(Column(name='id', data=np.arange(ngal)))
+        out.add_column(Column(name='galaxy', length=ngal, dtype='S29'))
+        out.add_column(Column(name='brickname', length=ngal, dtype='S8'))
+        out.add_column(Column(name='objid', length=ngal, dtype='>i4'))
+        out.add_column(Column(name='ra', length=ngal, dtype='f8'))
+        out.add_column(Column(name='dec', length=ngal, dtype='f8'))
+        out.add_column(Column(name='ra_lslga', length=ngal, dtype='f8'))
+        out.add_column(Column(name='dec_lslga', length=ngal, dtype='f8'))
+        #out.add_column(Column(name='brightblob', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='maskbits', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='allmask_g', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='allmask_r', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='allmask_z', length=ngal, dtype='>i2'))
+        out.add_column(Column(name='fracdev', length=ngal, dtype='f4'))
+        out.add_column(Column(name='rmag', length=ngal, dtype='f4'))
+        out.add_column(Column(name='gr', length=ngal, dtype='f4'))
+        out.add_column(Column(name='rz', length=ngal, dtype='f4'))
+        out.add_column(Column(name='sb', length=ngal, dtype='f4'))
+        out.add_column(Column(name='reff', length=ngal, dtype='f4'))
+        out.add_column(Column(name='ref_cat', length=ngal, dtype='S2'))
+        out.add_column(Column(name='type', length=ngal, dtype='S4'))
+        out.add_column(Column(name='morphtype', length=ngal, dtype='S4'))
+        return out
+    
+    allout = []
+    catfile = glob(os.path.join(dr8dir, camera, 'sweep', 'sweep*.fits'))
+    #catfile = glob(os.path.join(dr8dir, camera, 'tractor', '???', 'tractor*.fits'))
+    print('Found {} catalogs.'.format(len(catfile)))
+    allcat = []
+    for ii, ff in enumerate(catfile):
+        if ii % 100 == 0:
+            print('  {} / {}'.format(ii, len(catfile)))
+        cc = Table(fitsio.read(ff, upper=True,
+                               columns=[#'BRICK_PRIMARY', 
+                                        #'BRIGHTBLOB',
+                                        'MASKBITS', 
+                                        'BRICKNAME', 'OBJID', 'RA', 'DEC', 'REF_CAT', 'REF_ID',
+                                        'ALLMASK_G', 'ALLMASK_R', 'ALLMASK_Z', 
+                                        'TYPE', 'FRACDEV',
+                                        'SHAPEEXP_R', 'SHAPEEXP_E1', 'SHAPEEXP_E2', 
+                                        'SHAPEDEV_R', 'SHAPEDEV_E1', 'SHAPEDEV_E2',
+                                        'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']))
+        allcat.append(cc)
+    allcat = vstack(allcat)
+
+    # Apply S/N and morphology cuts.
+    if True:
+        allreff = (allcat['FRACDEV'] * allcat['SHAPEDEV_R'] + (1-allcat['FRACDEV']) * allcat['SHAPEEXP_R']) # [arcsec]
+    else:
+        allreff = np.max(np.vstack((allcat['SHAPEDEV_R'], allcat['SHAPEEXP_R'])), axis=0)
+    
+    indx = np.where(
+        (allcat['RA'] > 140) * (allcat['RA'] < 200) * (allcat['DEC'] > 40) * (allcat['DEC'] < 65) *
+        #allcat['BRICK_PRIMARY'] * # primary
+        #((allcat['BRIGHTBLOB'] & 0x1) == 0) * # not in bright star
+        #((allcat['BRIGHTBLOB'] & 0x2) == 0) * # not in medium-bright star
+        #((allcat['BRIGHTBLOB'] & 0x4) == 0) * # not in globular cluster
+        ((allcat['MASKBITS'] & 0x1) == 0) *    # primary
+        ((allcat['MASKBITS'] & 0x2) == 0) *    # not in bright star
+        ((allcat['MASKBITS'] & 0x20) == 0) *   # allmask_g not set
+        ((allcat['MASKBITS'] & 0x40) == 0) *   # allmask_r not set
+        ((allcat['MASKBITS'] & 0x80) == 0) *   # allmask_z not set
+        ((allcat['MASKBITS'] & 0x800) == 0) *  # not in medium-bright star
+        ((allcat['MASKBITS'] & 0x2000) == 0) * # not in globular cluster
+        (allcat['TYPE'] != 'PSF ') * (allcat['TYPE'] != 'REX ') * (allreff > reffmin) *
+        (allcat['FLUX_G'] > 0) * (allcat['FLUX_G']*allcat['FLUX_IVAR_G'] > snrcut) *
+        (allcat['FLUX_R'] > 0) * (allcat['FLUX_R']*allcat['FLUX_IVAR_R'] > snrcut) *
+        (allcat['FLUX_Z'] > 0) * (allcat['FLUX_Z']*allcat['FLUX_IVAR_Z'] > snrcut) *
+        (allcat['FLUX_R'] > 10**(0.4*(22.5-rmagcut)))
+        )[0]
+    print('S/N & morphology cuts: {}/{}'.format(len(indx), len(allcat)))
+    
+    cat = allcat[indx]
+
+    ilargegal = np.where(cat['REF_CAT'] == 'L2')[0] # LSLGA
+    ilargegal = ilargegal[np.argsort(cat['REF_ID'][ilargegal])] # sort
+    print('Found {}/{} large galaxies).'.format(len(ilargegal), len(cat)))
+
+    # magnitudes and colors
+    gmag = 22.5-2.5*np.log10(cat['FLUX_G'])
+    rmag = 22.5-2.5*np.log10(cat['FLUX_R'])
+    zmag = 22.5-2.5*np.log10(cat['FLUX_Z'])
+       
+    # mean galaxy size
+    if True:
+        reff = (cat['FRACDEV'] * cat['SHAPEDEV_R'] + (1-cat['FRACDEV']) * cat['SHAPEEXP_R'])
+    else:
+        reff = np.max(np.vstack((cat['SHAPEDEV_R'], cat['SHAPEEXP_R'])), axis=0)
+
+    # mean surface brightness (e.g., Strauss+02)
+    sb = rmag + 2.5 * np.log10(2 * np.pi * reff**2)
+
+    out = get_outtable(len(cat))
+    out['brickname'] = cat['BRICKNAME']
+    out['objid'] = cat['OBJID']
+    out['ra'] = cat['RA']
+    out['dec'] = cat['DEC']
+    out['ref_cat'] = cat['REF_CAT']
+    #out['brightblob'] = cat['BRIGHTBLOB']
+    out['maskbits'] = cat['MASKBITS']
+    out['allmask_g'] = cat['ALLMASK_G']
+    out['allmask_r'] = cat['ALLMASK_R']
+    out['allmask_z'] = cat['ALLMASK_Z']
+    out['ref_id'] = cat['REF_ID']
+    out['type'] = cat['TYPE']
+    out['fracdev'] = cat['FRACDEV']
+    out['rmag'] = rmag
+    out['gr'] = gmag - rmag
+    out['rz'] = rmag - zmag
+    out['reff'] = reff
+    out['sb'] = sb
+        
+    # Now match to the LSLGA
+    if len(ilargegal) > 0:
+        lkeep = np.where(np.isin(lslga['LSLGA_ID'], cat['REF_ID'][ilargegal]))[0]
+        if len(lkeep) != len(ilargegal):
+            # Can happen when large galaxies are on brick edges.
+            print('Found {}/{} duplicate large galaxies.'.format(len(ilargegal)-len(lkeep), len(ilargegal)))
+            _, uu = np.unique(cat['REF_ID'][ilargegal], return_index=True)
+            ww = np.delete(np.arange(len(ilargegal)), uu)
+            [print(ilargegal[w1], cat['RA'][ilargegal][w1], cat['RA'][ilargegal][w1]) for w1 in ww]
+            ilargegal = ilargegal[uu]
+            lkeep = np.where(np.isin(lslga['LSLGA_ID'], cat['REF_ID'][ilargegal]))[0]
+        if not np.all(lslga['LSLGA_ID'][lkeep] == cat['REF_ID'][ilargegal]):
+            pdb.set_trace()
+            
+        print(len(ilargegal), len(lkeep))
+        out['galaxy'][ilargegal] = lslga['GALAXY'][lkeep]
+        out['ra_lslga'][ilargegal] = lslga['RA'][lkeep]
+        out['dec_lslga'][ilargegal] = lslga['DEC'][lkeep]
+        out['morphtype'][ilargegal] = lslga['TYPE'][lkeep]
+
+    print('Writing {} galaxies to {}.'.format(len(out), outfile))
+    out.write(outfile, overwrite=True)
+        
+    return out
+
+if __name__ == '__main__':
+    cat = build_parent(clobber=True, camera='90prime-mosaic')

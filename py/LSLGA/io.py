@@ -5,7 +5,7 @@ LSLGA.io
 Code to read and write the various LSLGA files.
 
 """
-import os
+import os, warnings
 import pickle, pdb
 import numpy as np
 import numpy.ma as ma
