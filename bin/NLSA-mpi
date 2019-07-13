@@ -22,11 +22,11 @@ import LSLGA.galex
 import LSLGA.unwise
 
 def missing_files(sample, filetype='coadds', size=1, htmldir=None,
-                  clobber=False, proposal=False):
+                  clobber=False, early_coadds=False):
     """Find missing data of a given filetype."""    
 
     if filetype == 'coadds':
-        if proposal:
+        if early_coadds:
             #filesuffix = '-pipeline-image-grz.jpg'
             filesuffix = '-pipeline-resid-grz.jpg'
         else:
@@ -67,7 +67,7 @@ def missing_files(sample, filetype='coadds', size=1, htmldir=None,
         
     return np.array_split(indices, size)
 
-def _missing_files(args, sample, size, htmldir=None, sampledir='', proposal=False):
+def _missing_files(args, sample, size, htmldir=None, sampledir='', early_coadds=False):
     """Simple task-specific wrapper on missing_files.
 
     """
@@ -89,7 +89,7 @@ def _missing_files(args, sample, size, htmldir=None, sampledir='', proposal=Fals
     if suffix != '':
         groups = missing_files(sample, filetype=suffix, size=size, 
                                clobber=args.clobber, htmldir=htmldir,
-                               proposal=proposal)
+                               early_coadds=early_coadds)
     else:
         groups = []        
 
@@ -108,7 +108,7 @@ def _done(galaxy, err, t0, log=None):
           galaxy, (time.time() - t0)/60), flush=True, file=log)
 
 def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
-                          nproc, force, debug, proposal, logfile):
+                          nproc, force, debug, early_coadds, logfile):
     """Wrapper script to build the pipeline coadds.
 
     """
@@ -121,7 +121,7 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
         err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                            survey=survey, pixscale=pixscale,
                                            nproc=nproc, force=force, cleanup=cleanup,
-                                           proposal=proposal, apodize=apodize)
+                                           early_coadds=early_coadds, apodize=apodize)
         _done(galaxy, err, t0)
     else:
         with open(logfile, 'a') as log:
@@ -130,7 +130,7 @@ def _call_pipeline_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
                 err = LSLGA.coadds.pipeline_coadds(onegal, galaxy=galaxy, radius_mosaic=radius_mosaic,
                                                    survey=survey, pixscale=pixscale,
                                                    nproc=nproc, force=force, log=log, cleanup=cleanup,
-                                                   proposal=proposal, apodize=apodize)
+                                                   early_coadds=early_coadds, apodize=apodize)
                 _done(galaxy, err, t0, log=log)
 
 def _call_custom_coadds(onegal, galaxy, radius_mosaic, survey, pixscale,
@@ -259,7 +259,7 @@ def main():
     parser.add_argument('--htmlplots', action='store_true', help='Build the HTML output.')
     parser.add_argument('--htmlindex', action='store_true', help='Build HTML index.html page.')
     parser.add_argument('--montage', action='store_true', help='Make some coadds for the proposal.')
-    parser.add_argument('--proposal', action='store_true', help='Make some coadds for the proposal.')
+    parser.add_argument('--early_coadds', action='store_true', help='Make some coadds for the proposal.')
 
     parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
     
@@ -286,7 +286,7 @@ def main():
     if rank == 0:
         print('Hack for the NASA/ADAP 2019 proposal.')
         sample = LSLGA.NLSA.read_nlsa_parent(verbose=args.verbose, first=args.first,
-                                             last=args.last, proposal=args.proposal,
+                                             last=args.last, early_coadds=args.early_coadds,
                                              montage=args.montage)
     else:
         sample = None
@@ -306,7 +306,7 @@ def main():
     # across ranks.
     groups, suffix = [], ''
     if rank == 0:
-        suffix, groups = _missing_files(args, sample, size, args.htmldir, proposal=args.proposal)
+        suffix, groups = _missing_files(args, sample, size, args.htmldir, early_coadds=args.early_coadds)
 
     if comm:
         groups = comm.bcast(groups, root=0)
@@ -358,7 +358,7 @@ def main():
         if args.coadds or args.custom_coadds or args.galex or args.unwise or args.htmlplots:
             if args.montage:
                 radius_mosaic_arcsec = onegal['REFF'] * 10
-            elif args.proposal:
+            elif args.early_coadds:
                 radius_mosaic_arcsec = np.max( (onegal['REFF'] * 2, 10) )
                 radius_mosaic_arcsec = np.min( (onegal['REFF'] * 5, 360) )
             else:
@@ -371,7 +371,7 @@ def main():
 
         if args.coadds:
             _call_pipeline_coadds(onegal, galaxy, radius_mosaic_arcsec, survey, args.pixscale,
-                                  args.nproc, args.force, args.debug, args.proposal, logfile)
+                                  args.nproc, args.force, args.debug, args.early_coadds, logfile)
                     
         if args.custom_coadds or args.htmlplots:
             ccdsfile = os.path.join(survey.output_dir, '{}-ccds.fits'.format(galaxy))
@@ -419,7 +419,8 @@ def main():
     if rank == 0:
         print('Finished {} {} at {} after {:.3f} minutes'.format(
             ntodo, suffix.upper(), time.asctime(), (time.time() - tall) / 60 ), flush=True)
-        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber, proposal=args.proposal)
+        groups = missing_files(sample, filetype=suffix, size=size, clobber=args.clobber,
+                               early_coadds=args.early_coadds)
         if len(groups) > 0:
             stilltodo = len(np.hstack(np.atleast_1d(groups)))
         else:

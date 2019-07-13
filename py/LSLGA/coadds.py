@@ -30,7 +30,7 @@ def _copyfile(infile, outfile):
 def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=1,
                     pixscale=0.262, splinesky=True, log=None, force=False,
                     no_large_galaxies=False, no_gaia=False, no_tycho=False,
-                    apodize=False, cleanup=True, proposal=False):
+                    apodize=False, cleanup=True, early_coadds=False):
     """Run legacypipe.runbrick on a custom "brick" centered on the galaxy.
 
     radius_mosaic in arcsec
@@ -59,7 +59,7 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
     #cmd += '--no-wise --no-wise-ceres '
     cmd += '--checkpoint {galaxydir}/{galaxy}-runbrick-checkpoint.p '
     cmd += '--pickle {galaxydir}/{galaxy}-runbrick-%%(stage)s.p '
-    if proposal:
+    if early_coadds:
         cmd += '--stage image_coadds --early-coadds '
     if apodize:
         cmd += '--apodize '
@@ -94,7 +94,7 @@ def pipeline_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, nproc=
         # Move (rename) files into the desired output directory and clean up.
         brickname = 'custom-{}'.format(custom_brickname(onegal['RA'], onegal['DEC']))
 
-        if proposal:
+        if early_coadds:
             for band in ('g', 'r', 'z'):
                 ok = _copyfile(
                     os.path.join(survey.output_dir, 'coadd', 'cus', brickname,

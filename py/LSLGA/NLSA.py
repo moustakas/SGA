@@ -98,7 +98,7 @@ def html_dir():
     return htmldir
 
 def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
-                     last=None, proposal=False, montage=False):
+                     last=None, early_coadds=False, montage=False):
     """Read the parent NLSA catalog.
 
     v1.0 - no allmask cut
@@ -121,7 +121,7 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
     sampledir = sample_dir()
     samplefile = os.path.join(sampledir, 'NLSA-{}-v1.1.fits'.format(camera))
 
-    if not montage and not proposal:
+    if not montage and not early_coadds:
         info = fitsio.FITS(samplefile)
         nrows = info[1].get_nrows()
 
@@ -147,7 +147,7 @@ def read_nlsa_parent(verbose=False, camera='90prime-mosaic', first=None,
         return sample
 
     # Pick XX random galaxies, uniformly selected in surface brightness.
-    if proposal:
+    if early_coadds:
         sample = Table(fitsio.read(samplefile, upper=True))
         print('Choosing a random subset of galaxies!')
         seed = 1
