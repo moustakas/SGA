@@ -2,6 +2,18 @@
 
 """Generate the parent sample of large galaxies.
 
+####
+v3.0
+
+* Change d25min from 20/60 arcsec to 60 arcsec.
+* 
+
+
+
+
+####
+v2.0
+
 Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/v2.0/hyperleda-d25min10-18nov14.fits
 Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/v2.0/hyperleda-d25min10-18nov14-allwise.fits
   Identified 1379531/1436176 (96.06%) objects with AllWISE photometry.
@@ -26,7 +38,25 @@ import astropy.table
 import LSLGA.io
 import LSLGA.misc
 
-def build_parent(d25min=20/60, d25max=1e4, verbose=False):
+def remove_spurious(parent):
+
+    # https://github.com/moustakas/LSLGA/issues/14
+    spurgal = ('PGC051192', 
+               'UGC10822',
+               'PGC1944170',
+               'PGC5955876',
+               'SDSSJ021529.42+010322.6',
+               'SDSSJ083809.55+251926.4',
+               
+               
+
+    gal = [onegal.strip() for onegal in parent['GALAXY']]
+
+
+    
+    return spur
+
+def build_parent(d25min=1.0, d25max=1e4, verbose=False):
     """Build the parent catalog.
     
     """
@@ -50,6 +80,14 @@ def build_parent(d25min=20/60, d25max=1e4, verbose=False):
         np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
     parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
     parent = parent[magcut]
+
+    # Remove known spurious large galaxies (based on visual inspection).
+    notspuriouscut = remove_spurious(parent)
+    print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
+        np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
+    parent = parent[notspuriouscut]
+
+    import pdb ; pdb.set_trace()
 
     # Apply a minimum diameter cut.
     diamcut = (parent['D25'] >= d25min) * (parent['D25'] <= d25max)
@@ -114,7 +152,7 @@ def build_parent(d25min=20/60, d25max=1e4, verbose=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--d25min', type=float, default=10/60, help='Minimum diameter [arcmin].')
+    parser.add_argument('--d25min', type=float, default=1.0, help='Minimum diameter [arcmin].')
     parser.add_argument('--d25max', type=float, default=1e4, help='Maximum diameter [arcmin].')
     parser.add_argument('--verbose', action='store_true', help='Be verbose!')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
@@ -127,7 +165,8 @@ def main():
         print('Output file {} exists; use clobber.'.format(parentfile))
         sys.exit(1)
 
-    parent, kdparent = build_parent(verbose=args.verbose)
+    parent, kdparent = build_parent(verbose=args.verbose, d25min=args.d25min,
+                                    d25max=args.d25max)
 
     if args.verbose:
         print('Writing {} galaxies to {}'.format(len(parent), parentfile))

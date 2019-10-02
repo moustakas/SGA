@@ -103,7 +103,8 @@ def parent_version(version=None):
     """Version of the parent catalog."""
     if version is None:
         #version = 'v1.0' # 18may13
-        version = 'v2.0'  # 18nov14
+        #version = 'v2.0'  # 18nov14
+        version = 'v3.0'  # 19sep26
     return version
 
 def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
@@ -231,6 +232,8 @@ def read_hyperleda(verbose=False, version=None):
     if version == 'v1.0':
         hyperfile = 'hyperleda-d25min10-18may13.fits'
     elif version == 'v2.0':
+        hyperfile = 'hyperleda-d25min10-18nov14.fits'
+    elif version == 'v3.0':
         hyperfile = 'hyperleda-d25min10-18nov14.fits'
     else:
         print('Unknown version!')
