@@ -30,7 +30,7 @@ Writing 532707 galaxies to /Users/ioannis/research/projects/LSLGA/sample/v2.0/LS
 Writing /Users/ioannis/research/projects/LSLGA/sample/v2.0/LSLGA-v2.0.kd.fits
 
 """
-import os, sys, argparse
+import os, sys, argparse, pdb
 import numpy as np
 
 import astropy.table
@@ -40,21 +40,20 @@ import LSLGA.misc
 
 def remove_spurious(parent):
 
+    spurgal = np.array([
     # https://github.com/moustakas/LSLGA/issues/14
-    spurgal = ('PGC051192', 
-               'UGC10822',
-               'PGC1944170',
-               'PGC5955876',
-               'SDSSJ021529.42+010322.6',
-               'SDSSJ083809.55+251926.4',
-               
-               
+        'PGC051192', 
+        'UGC10822',
+        'PGC1944170',
+        'PGC5955876',
+        'SDSSJ021529.42+010322.6',
+    # visual inspection
+        'SDSSJ083809.55+251926.4'
+        ])
 
-    gal = [onegal.strip() for onegal in parent['GALAXY']]
+    gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
 
-
-    
-    return spur
+    return ~np.isin(gal, spurgal)
 
 def build_parent(d25min=1.0, d25max=1e4, verbose=False):
     """Build the parent catalog.
@@ -74,6 +73,22 @@ def build_parent(d25min=1.0, d25max=1e4, verbose=False):
     parent.add_column(Column(name='LSLGA_ID', length=len(parent), dtype='i8'), index=0)
     parent['LSLGA_ID'] = np.arange(len(parent))
 
+    # Repair some incorrect diameters in Hyperleda.
+
+    # Sculptor https://github.com/moustakas/LSLGA/issues/27
+    # use RC3 valuehttp://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
+    fix = np.where(parent['PGC'] == 3589)[0] 
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1 * 10**2.700 # [arcmin]
+
+    # NGC4395 https://github.com/moustakas/LSLGA/issues/28
+    fix = np.where(parent['PGC'] == 40596)[0] 
+    if len(fix) > 0:
+        parent['D25'][fix] = 12.8 # [arcmin]
+        parent['BA'][fix] = 0.833
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
     # Require a magnitude estimate.
     magcut = np.isfinite( parent['MAG'] )
     print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
@@ -81,13 +96,11 @@ def build_parent(d25min=1.0, d25max=1e4, verbose=False):
     parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
     parent = parent[magcut]
 
-    # Remove known spurious large galaxies (based on visual inspection).
+    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
     notspuriouscut = remove_spurious(parent)
     print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
         np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
     parent = parent[notspuriouscut]
-
-    import pdb ; pdb.set_trace()
 
     # Apply a minimum diameter cut.
     diamcut = (parent['D25'] >= d25min) * (parent['D25'] <= d25max)
