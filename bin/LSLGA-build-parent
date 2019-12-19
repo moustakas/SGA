@@ -8,9 +8,6 @@ v3.0
 * Change d25min from 20/60 arcsec to 60 arcsec.
 * 
 
-
-
-
 ####
 v2.0
 
@@ -48,7 +45,10 @@ def remove_spurious(parent):
         'PGC5955876',
         'SDSSJ021529.42+010322.6',
     # visual inspection
-        'SDSSJ083809.55+251926.4'
+        'SDSSJ083809.55+251926.4',
+    # added since making v3.0
+        '2MASXJ21412930+0053356',
+        'SDSSJ140511.30+060559.4',
         ])
 
     gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
