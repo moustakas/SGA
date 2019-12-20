@@ -54,6 +54,201 @@ def html_dir():
         os.makedirs(htmldir, exist_ok=True)
     return htmldir
 
+def missing_files_groups(args, sample, size, htmldir=None):
+    """Simple task-specific wrapper on missing_files.
+
+    """
+    if args.coadds:
+        if args.sdss:
+            suffix = 'sdss-coadds'
+        else:
+            suffix = 'coadds'
+    elif args.custom_coadds:
+        if args.sdss:
+            suffix = 'sdss-custom-coadds'
+        else:
+            suffix = 'custom-coadds'
+    elif args.ellipse:
+        if args.sdss:
+            suffix = 'sdss-ellipse'
+        else:
+            suffix = 'ellipse'
+    elif args.sersic:
+        suffix = 'sersic'
+    elif args.sky:
+        suffix = 'sky'
+    elif args.htmlplots:
+        suffix = 'html'
+    else:
+        suffix = ''        
+
+    if suffix != '':
+        groups = missing_files(sample, filetype=suffix, size=size, sdss=args.sdss,
+                               clobber=args.clobber, htmldir=htmldir)
+    else:
+        groups = []        
+
+    return suffix, groups
+
+def missing_files(sample, filetype='coadds', size=1, htmldir=None,
+                  sdss=False, clobber=False):
+    """Find missing data of a given filetype."""    
+
+    if filetype == 'coadds':
+        filesuffix = '-pipeline-resid-grz.jpg'
+    elif filetype == 'custom-coadds':
+        filesuffix = '-custom-resid-grz.jpg'
+    elif filetype == 'ellipse':
+        filesuffix = '-ellipsefit.p'
+    elif filetype == 'sersic':
+        filesuffix = '-sersic-single.p'
+    elif filetype == 'html':
+        filesuffix = '-ccdpos.png'
+        #filesuffix = '-sersic-exponential-nowavepower.png'
+    elif filetype == 'sdss-coadds':
+        filesuffix = '-sdss-image-gri.jpg'
+    elif filetype == 'sdss-custom-coadds':
+        filesuffix = '-sdss-resid-gri.jpg'
+    elif filetype == 'sdss-ellipse':
+        filesuffix = '-sdss-ellipsefit.p'
+    else:
+        print('Unrecognized file type!')
+        raise ValueError
+
+    if type(sample) is astropy.table.row.Row:
+        ngal = 1
+    else:
+        ngal = len(sample)
+    indices = np.arange(ngal)
+    todo = np.ones(ngal, dtype=bool)
+
+    if filetype == 'html':
+        galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+    else:
+        galaxy, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir)
+
+    for ii, (gal, gdir) in enumerate( zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir)) ):
+        checkfile = os.path.join(gdir, '{}{}'.format(gal, filesuffix))
+        if os.path.exists(checkfile) and clobber is False:
+            todo[ii] = False
+
+    if np.sum(todo) == 0:
+        return list()
+    else:
+        indices = indices[todo]
+        
+    return np.array_split(indices, size)
+
+def read_all_ccds(dr='dr8'):
+    """Read the CCDs files, treating DECaLS and BASS+MzLS separately.
+
+    """
+    from astrometry.libkd.spherematch import tree_open
+    #survey = LegacySurveyData()
+
+    drdir = os.path.join(sample_dir(), dr)
+
+    kdccds_north = []
+    for camera in ('90prime', 'mosaic'):
+        ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(camera, dr))
+        ccds = tree_open(ccdsfile, 'ccds')
+        print('Read {} CCDs from {}'.format(ccds.n, ccdsfile))
+        kdccds_north.append((ccdsfile, ccds))
+
+    ccdsfile = os.path.join(drdir, 'survey-ccds-decam-{}.kd.fits'.format(dr))
+    ccds = tree_open(ccdsfile, 'ccds')
+    print('Read {} CCDs from {}'.format(ccds.n, ccdsfile))
+    kdccds_south = (ccdsfile, ccds)
+
+    return kdccds_north, kdccds_south
+
+def get_run(onegal, radius_mosaic, pixscale, kdccds_north, kdccds_south, log=None):
+    """Determine the "run", i.e., determine whether we should use the BASS+MzLS CCDs
+    or the DECaLS CCDs file when running the pipeline.
+
+    """
+    from astrometry.util.util import Tan
+    from astrometry.libkd.spherematch import tree_search_radec
+    from legacypipe.survey import ccds_touching_wcs
+    
+    ra, dec = onegal['RA'], onegal['DEC']
+    if dec < 25:
+        run = 'decam'
+    elif dec > 40:
+        run = '90prime-mosaic'
+    else:
+        width = LSLGA.coadds._mosaic_width(radius_mosaic, pixscale)
+        wcs = Tan(ra, dec, width/2+0.5, width/2+0.5,
+                  -pixscale/3600.0, 0.0, 0.0, pixscale/3600.0, 
+                  float(width), float(width))
+
+        # BASS+MzLS
+        TT = []
+        for fn, kd in kdccds_north:
+            I = tree_search_radec(kd, ra, dec, 1.0)
+            if len(I) == 0:
+                continue
+            TT.append(fits_table(fn, rows=I))
+        if len(TT) == 0:
+            inorth = []
+        else:
+            ccds = merge_tables(TT, columns='fillzero')
+            inorth = ccds_touching_wcs(wcs, ccds)
+        
+        # DECaLS
+        fn, kd = kdccds_south
+        I = tree_search_radec(kd, ra, dec, 1.0)
+        if len(I) > 0:
+            ccds = fits_table(fn, rows=I)
+            isouth = ccds_touching_wcs(wcs, ccds)
+        else:
+            isouth = []
+
+        if len(inorth) > len(isouth):
+            run = '90prime-mosaic'
+        else:
+            run = 'decam'
+        print('Cluster RA, Dec={:.6f}, {:.6f}: run={} ({} north CCDs, {} south CCDs).'.format(
+            ra, dec, run, len(inorth), len(isouth)), flush=True, file=log)
+
+    return run
+
+def check_and_read_ccds(galaxy, survey, debug=False, logfile=None):
+    """Read the CCDs file generated by the pipeline coadds step.
+
+    """
+    ccdsfile_south = os.path.join(survey.output_dir, '{}-ccds-decam.fits'.format(galaxy))
+    ccdsfile_north = os.path.join(survey.output_dir, '{}-ccds-90prime-mosaic.fits'.format(galaxy))
+    if os.path.isfile(ccdsfile_south):
+        ccdsfile = ccdsfile_south
+    elif os.path.isfile(ccdsfile_north):
+        ccdsfile = ccdsfile_north
+    else:
+        if debug:
+            print('CCDs file {} not found.'.format(ccdsfile_south), flush=True)
+            print('CCDs file {} not found.'.format(ccdsfile_north), flush=True)
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+        else:
+            with open(logfile, 'w') as log:
+                print('CCDs file {} not found.'.format(ccdsfile_south), flush=True, file=log)
+                print('CCDs file {} not found.'.format(ccdsfile_north), flush=True, file=log)
+                print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
+        return False
+    survey.ccds = survey.cleanup_ccds_table(fits_table(ccdsfile))
+
+    # Check that coadds in all three grz bandpasses were generated in the
+    # previous step.
+    if ('g' not in survey.ccds.filter) or ('r' not in survey.ccds.filter) or ('z' not in survey.ccds.filter):
+        if debug:
+            print('Missing grz coadds...skipping.', flush=True)
+            print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True)
+        else:
+            with open(logfile, 'w') as log:
+                print('Missing grz coadds...skipping.', flush=True, file=log)
+                print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
+        return False
+    return True
+
 def get_galaxy_galaxydir(cat, analysisdir=None, htmldir=None, html=False):
     """Retrieve the galaxy name and the (nested) directory.
 
