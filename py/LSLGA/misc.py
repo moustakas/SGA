@@ -24,7 +24,7 @@ def plot_style(paper=False, talk=False):
     if talk:
         pass
 
-    sns.set(style='ticks', font_scale=1.6, rc=rc)
+    sns.set(style='ticks', font_scale=1.3, rc=rc)
     sns.set_palette(palette, 12)
 
     colors = sns.color_palette()
