@@ -30,6 +30,7 @@ Writing /Users/ioannis/research/projects/LSLGA/sample/v2.0/LSLGA-v2.0.kd.fits
 import os, sys, argparse, pdb
 import numpy as np
 
+import fitsio
 import astropy.table
 
 import LSLGA.io
@@ -73,7 +74,8 @@ def build_parent(d25min=0.75, d25max=1e4, verbose=False):
     parent.add_column(Column(name='LSLGA_ID', length=len(parent), dtype='i8'), index=0)
     parent['LSLGA_ID'] = np.arange(len(parent))
 
-    # Repair some incorrect diameters in Hyperleda.
+    # Repair some incorrect diameters and other properties in Hyperleda.  Use
+    # the WXSC (https://vislab.idia.ac.za/research)
 
     # Sculptor https://github.com/moustakas/LSLGA/issues/27
     # use RC3 valuehttp://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
@@ -86,6 +88,14 @@ def build_parent(d25min=0.75, d25max=1e4, verbose=False):
     if len(fix) > 0:
         parent['D25'][fix] = 12.8 # [arcmin]
         parent['BA'][fix] = 0.833
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC2366 https://github.com/moustakas/LSLGA/issues/29
+    fix = np.where(parent['PGC'] == 21102)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 8.8964 # [arcmin]
+        parent['BA'][fix] = 0.5263
         parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
           5 * np.log10(parent['D25'][fix])
 
@@ -140,7 +150,7 @@ def build_parent(d25min=0.75, d25max=1e4, verbose=False):
     #    parent = parent[~sdssingal]    
     sdss2massgal = np.array(['SDSS' in gg or '2MASS' in gg for gg in parent['GALAXY']])
     print('  Removed {}/{} ({:.2f}%) SDSS or 2MASS galaxies.'.format(
-        np.sum(sdss2massgal), len(parent), 100*np.sum(sdss2massgal)/len(parent)))    
+        np.sum(sdss2massgal), len(parent), 100*np.sum(sdss2massgal)/len(parent)))
     if np.sum(sdss2massgal) > 0:
         parent[sdss2massgal].write(os.path.join(sandboxdir, 'LSLGA-{}-sdss2mass.fits'.format(version)), overwrite=True)
         parent = parent[~sdss2massgal]
@@ -184,6 +194,7 @@ def main():
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
 
+    version = LSLGA.io.parent_version()
     parentfile = LSLGA.io.get_parentfile()
     kdparentfile = LSLGA.io.get_parentfile(kd=True)
     
@@ -196,12 +207,24 @@ def main():
 
     if args.verbose:
         print('Writing {} galaxies to {}'.format(len(parent), parentfile))
-    parent.write(parentfile, overwrite=True)
+    
+    #parent.write(parentfile, overwrite=True)
+    hdr = fitsio.FITSHDR()
+    hdrversion = 'L{}'.format(version[1:2]) # fragile!
+    hdr['LSLGAVER'] = hdrversion
+    fitsio.write(parentfile, parent.as_array(), header=hdr, clobber=True)
+
+    # Hack!
+    cmd = 'modhead {} LSLGAVER {}'.format(parentfile, hdrversion)
+    _ = os.system(cmd)
 
     if args.verbose:
         print('Writing {}'.format(kdparentfile))
     cmd = 'startree -i {} -o {} -T -P -k -n largegals'.format(parentfile, kdparentfile)
     #print(cmd)
+    _ = os.system(cmd)
+
+    cmd = 'modhead {} LSLGAVER {}'.format(kdparentfile, hdrversion)
     _ = os.system(cmd)
 
 if __name__ == '__main__':
