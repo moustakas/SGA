@@ -74,6 +74,103 @@ def remove_spurious(parent):
 
     return ~np.isin(gal, spurgal)
 
+def build_group_catalog(cat, mfac=1.5, dmax=10.0/60.0):
+    """dmax in arcmin
+
+    Group LSLGA galaxies together where their circular radii would overlap.  Use
+    the catalog D25 diameters (in arcmin) multiplied by a scaling factor MFAC.
+    The output catalog adds the column GROUP_ID which is unique for each group.
+    The column MULT_GROUP is the multiplicity of that galaxy's group.
+
+    """
+    from pydl.pydlutils.spheregroup import spheregroup
+    from astrometry.util.starutil_numpy import degrees_between
+    
+    # Initialize a unique group number for each galaxy
+    gnum = np.arange(len(cat))
+    mgrp = np.ones(len(cat))
+    
+    # First group galaxies within 10 arcmin, setting those to have the same
+    # group number
+    t0 = time.time()
+    ingroup, group_mult, firstgroup, nextgroup = spheregroup(cat['RA'], cat['DEC'], dmax)
+    print('Spheregrouping took {:.3f} min'.format((time.time() - t0)/60))
+
+    ngroup = np.count_nonzero(firstgroup != -1)
+    for ii in np.arange(ngroup):
+        #print(ii, ngroup)
+        nn = group_mult[ii] # number of galaxies in this group
+        if nn > 1:
+            # Build INDX as the indices of all objects in this grouping
+            indx = np.zeros(nn, dtype=int)
+            indx[0] = firstgroup[ii]
+            for jj in np.arange(nn-1):
+                indx[jj+1] = nextgroup[indx[jj]]
+            # Look at all pairs within this grouping to see if they should be connected.
+            for jj in np.arange(nn-1):
+                for kk in np.arange(jj, nn):
+                    dd = degrees_between(cat['RA'][indx[jj]], cat['DEC'][indx[jj]], cat['RA'][indx[kk]], cat['DEC'][indx[kk]])
+                    # If these two galaxies should be connected, make GNUM the
+                    # same for them...
+                    #print(dd, mfac * (cat['D25'][indx[jj]] / 60. + cat['D25'][indx[kk]] / 60.))
+                    if dd < (0.5 * mfac * (cat['D25'][indx[jj]] / 60. + cat['D25'][indx[kk]] / 60.)):
+                        jndx = np.where(np.logical_or(gnum[indx]==gnum[indx[jj]], gnum[indx]==gnum[indx[kk]]))[0]
+                        gnum[indx[jndx]] = gnum[indx[jndx[0]]]
+                        mgrp[indx[jndx]] = len(jndx)
+            #print(ii, ngroup, gnum[indx], mgrp[indx])
+
+    #print(np.sum(gnum == 5970))
+    #pdb.set_trace()
+            
+    # Special-case the largest galaxies, looking for neighbhors
+    ibig = np.where(cat['D25'] / 60. > dmax)[0]
+    if len(ibig) > 0:
+        for ii in np.arange(len(ibig)):
+           dd = degrees_between(cat['RA'][ibig[ii]], cat['DEC'][ibig[ii]], cat['RA'], cat['DEC'])
+           inear = np.where(dd < 0.5*(cat[ibig[ii]]['D25'] + cat['D25']) / 60.)[0]
+           if len(inear) > 0:
+               for jj in np.arange(len(inear)):
+                  indx = np.where(np.logical_or(gnum==gnum[ibig[ii]], gnum==gnum[inear[jj]]))[0]
+                  gnum[indx] = gnum[indx[0]]
+                  mgrp[indx] = len(indx)
+
+    npergrp, _ = np.histogram(gnum, bins=len(gnum), range=(0, len(gnum)))
+
+    print('Found {} total groups, including:'.format(len(set(gnum))))
+    print('  {} groups with 1 member'.format(np.sum( (npergrp == 1) ).astype('int')))
+    print('  {} groups with 2 members'.format(np.sum( (npergrp == 2) ).astype('int')))
+    print('  {} group(s) with 3-5 members'.format(np.sum( (npergrp >= 3)*(npergrp <= 5) ).astype('int')))
+    print('  {} group(s) with 6-10 members'.format(np.sum( (npergrp >= 6)*(npergrp <= 10) ).astype('int')))
+    print('  {} group(s) with >10 members'.format(np.sum( (npergrp > 10) ).astype('int')))
+
+    cat['GROUP_ID'] = gnum
+    cat['GROUP_MULT'] = mgrp
+
+    I = np.where(cat['GROUP_MULT'] == 1)[0]
+    if len(I) > 0:
+        cat['GROUP_RA'][I] = cat['RA'][I]
+        cat['GROUP_DEC'][I] = cat['DEC'][I]
+        cat['GROUP_DIAMETER'][I] = cat['D25'][I]
+
+    more = np.where(cat['GROUP_MULT'] > 1)[0]
+    for group in set(cat['GROUP_ID'][more]):
+        I = np.where(cat['GROUP_ID'] == group)[0]
+        # Compute the D25-weighted RA, Dec of the group:
+        weight = cat[I]['D25']
+        cat['GROUP_RA'][I] = np.sum(weight * cat[I]['RA']) / np.sum(weight)
+        cat['GROUP_DEC'][I] = np.sum(weight * cat[I]['DEC']) / np.sum(weight)
+        # Get the diameter of the group as the distance between the center of
+        # the group and the outermost galaxy (plus the diameter of that galaxy,
+        # in case it's a big one!).
+        dd = degrees_between(cat['RA'][I], cat['DEC'][I], cat['GROUP_RA'][I[0]], cat['GROUP_DEC'][I[0]])
+        pad = cat['D25'][I][np.argmax(dd)] / 60.0
+        if pad == 0:
+            print('Should not happen!')
+            pdb.set_trace()
+        cat['GROUP_DIAMETER'][I] = (np.max(dd) + pad) * 60 # [arcmin]
+
+    return cat
+    
 def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     """Build the parent catalog.
 
@@ -84,9 +181,7 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     from astropy.table import Table, Column
     from astropy.coordinates import SkyCoord
     
-    from astrometry.util.starutil import arcsec_between
-    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match, tree_open
-    from pydl.pydlutils.spheregroup import spheregroup
+    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match
 
     version = LSLGA.io.parent_version()
     sandboxdir = os.path.join(LSLGA.io.sample_dir(), version, 'sandbox')
@@ -107,14 +202,52 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
         parent[~diamcut].write(os.path.join(sandboxdir, 'LSLGA-{}-diamcut.fits'.format(version)), overwrite=True)
         parent = parent[diamcut]
 
+    # Require a magnitude estimate.
+    magcut = np.isfinite(parent['MAG'])
+    print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
+        np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
+    if np.sum(magcut) > 0:
+        parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
+        parent = parent[magcut]
+
+    # Apply a surface brightness cut but keep Draco=PGC060095 and
+    # Sextans=PGC088608 (see https://github.com/moustakas/LSLGA/issues/30) 
+    lsbcut = ( (parent['SB_D25'] > 27) * (parent['D25'] > 0.95) * (parent['PGC'] != 60095) * (parent['PGC'] != 88608) )
+    print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
+        np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
+    if np.sum(lsbcut) > 0:
+        parent[lsbcut].write(os.path.join(sandboxdir, 'LSLGA-{}-lsb.fits'.format(version)), overwrite=True)
+        parent = parent[~lsbcut]
+
+    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
+    notspuriouscut = remove_spurious(parent)
+    print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
+        np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
+    if np.sum(notspuriouscut) > 0:
+        parent = parent[notspuriouscut]
+
     # Repair some incorrect diameters and other properties in Hyperleda.  Use
     # the WXSC (https://vislab.idia.ac.za/research)
 
-    # Sculptor https://github.com/moustakas/LSLGA/issues/27
-    # use RC3 valuehttp://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
+    # Sculptor=ESO351-030 https://github.com/moustakas/LSLGA/issues/27
+    # use RC3 value http://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
     fix = np.where(parent['PGC'] == 3589)[0] 
     if len(fix) > 0:
         parent['D25'][fix] = 0.1 * 10**2.700 # [arcmin]
+
+    # Fornax=ESO356-004 https://github.com/moustakas/LSLGA/issues/30
+    # use NED value 4200 arcsec = 70 arcmin
+    # https://ned.ipac.caltech.edu/byname?objname=eso356-004&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 10074)[0] 
+    if len(fix) > 0:
+        parent['D25'][fix] = 4200.0 / 60 # [arcmin]
+
+    # Ursa Minor=PGC054074=UGC09749
+    # https://github.com/moustakas/LSLGA/issues/30
+    # http://legacysurvey.org/viewer-dev?ra=227.2956&dec=67.2137&layer=dr8&zoom=13&lslga
+    fix = np.where(parent['PGC'] == 54074)[0] 
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1 * 10**2.48 # [arcmin]
 
     # NGC4395 https://github.com/moustakas/LSLGA/issues/28
     fix = np.where(parent['PGC'] == 40596)[0] 
@@ -131,29 +264,6 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
         parent['BA'][fix] = 0.5263
         parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
           5 * np.log10(parent['D25'][fix])
-
-    # Require a magnitude estimate.
-    magcut = np.isfinite(parent['MAG'])
-    print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
-        np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
-    if np.sum(magcut) > 0:
-        parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
-        parent = parent[magcut]
-
-    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
-    notspuriouscut = remove_spurious(parent)
-    print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
-        np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
-    if np.sum(notspuriouscut) > 0:
-        parent = parent[notspuriouscut]
-
-    # Apply a surface brightness cut.
-    lsbcut = (parent['SB_D25'] > 27) * (parent['D25'] > 0.95)
-    print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
-        np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
-    if np.sum(lsbcut) > 0:
-        parent[lsbcut].write(os.path.join(sandboxdir, 'LSLGA-{}-lsb.fits'.format(version)), overwrite=True)
-        parent = parent[~lsbcut]
 
     # Toss out all SDSS galaxies "inside" another galaxy.  Most of these are
     # spurious and the ones that are not will hopefully be fixed by visual
@@ -194,7 +304,8 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     indesi = np.zeros(len(parent), dtype=bool)
     for camera, radius in zip(('90prime', 'mosaic', 'decam'), (0.44, 0.21, 0.17)):
         t0 = time.time()
-        if False:        
+        if False:
+            from astrometry.libkd.spherematch import trees_match, tree_open
             kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}-cut.kd.fits'.format(camera, dr)))
             I, J, dd = trees_match(kdparent, kdccds, np.radians(radius))#, nearest=True)
         else:
@@ -219,107 +330,28 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
         100*np.sum(~indesi)/len(parent)))
     parent['IN_DESI'] = indesi
 
-    # Group LSLGA galaxies together for any where their circular radii would
-    # overlap.  Use the catalog D25 diameters (in arcmin) multiplied by a
-    # scaling factor MFAC (default value 1.25).  The output catalog adds the
-    # column GROUPNUM that is -1 for any galaxies outside the footprint
-    # (IN_DESI='F'), otherwise has a unique value for each group.  The column
-    # MULTGROUP is the multiplicity of that galaxy's group.
-    mfac, dmax = 1.25, 10./60
+    # Build a group catalog.
+    parent.add_column(Column(name='GROUP_ID', data=np.zeros(len(parent), dtype=np.int)-1))
+    parent.add_column(Column(name='GROUP_MULT', data=np.zeros(len(parent), dtype=np.int16)))
+    parent.add_column(Column(name='GROUP_RA', length=len(parent), dtype='f8')) # diameter-weighted center
+    parent.add_column(Column(name='GROUP_DEC', length=len(parent), dtype='f8'))
+    parent.add_column(Column(name='GROUP_DIAMETER', length=len(parent), dtype='f4'))
 
-    parent.add_column(Column(name='GROUPNUM', data=np.zeros(len(parent), dtype=np.int16)-1))
-    parent.add_column(Column(name='MULTGROUP', data=np.zeros(len(parent), dtype=np.int16)))
-
-    print('Hack!')
-    ww = np.where(parent['IN_DESI'] * (cat['RA'] > 200) * (cat['RA'] < 240) * (cat['DEC'] > 20))[0]
-    cat = parent[ww]
-
-    # Initialize a unique group number for each galaxy
-    gnum = np.arange(len(cat))
-    mgrp = np.ones(len(cat))
+    #print('Hack!')
+    #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
+    #ww = np.where(parent['IN_DESI'])[0]
+    #ww = np.where(parent['IN_DESI'] * (parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
+    #ww = np.where((parent['RA'] > 193) * (parent['RA'] < 196) * (parent['DEC'] > 26) * (parent['DEC'] < 30))[0]
+    #cat = build_group_catalog(parent[ww], mfac=1.5, dmax=10.0/60.0)
+    #parent[ww] = cat
     
-    # First group galaxies within 10 arcmin, setting those to have the same
-    # group number
     t0 = time.time()
-    ingroup, multgroup, firstgroup, nextgroup = spheregroup(cat['RA'], cat['DEC'], dmax)
-    print('Spheregrouping took {:.3f} min'.format((time.time() - t0)/60))
-
-    ngroup = np.count_nonzero(firstgroup != -1)
-    for ii in np.arange(ngroup):
-        print(ii, ngroup)
-        nn = multgroup[ii] # number of galaxies in this group
-        if nn > 1:
-            # Build INDX as the indices of all objects in this grouping
-            indx = np.zeros(nn, dtype=int)
-            indx[0] = firstgroup[ii]
-            for jj in np.arange(nn-2):
-                indx[jj+1] = nextgroup[indx[jj]]
-            # Look at all pairs within this grouping to see if they should be connected.
-            for jj in np.arange(nn-2):
-                for kk in np.arange(jj, nn-1):
-                    dd = arcsec_between(cat['RA'][indx[jj]], cat['DEC'][indx[jj]],
-                                        cat['RA'][indx[kk]], cat['DEC'][indx[kk]])
-                    # If these two galaxies should be connected, make GNUM the
-                    # same for them...
-                    if dd < 0.5 * mfac * (cat['D25'][indx[jj]] / 60. + cat['D25'][indx[kk]] / 60.):
-                        jndx = np.where(gnum[indx]==gnum[indx[jj]] | gnum[indx]==gnum[indx[kk]])[0]
-                        gnum[indx[jndx]] = gnum[indx[jndx[0]]]
-                        mgrp[indx[jndx]] = len(jndx)
-                        
-    # Special-case the largest galaxies, looking for neighbhors
-    ibig = np.where(cat['D25'] / 60. > dmax)[0]
-    nbig = len(ibig)
-    for ii in np.arange(nbig):
-       print(ii, nbig)
-       dd = arcsec_between(cat['RA'][ibig[ii]], cat['DEC'][ibig[ii]], cat['RA'], cat['DEC'])
-       inear = np.where(dd < 0.5*(cat[ibig[ii]]['D25'] + cat['D25']) / 60.)[0]
-       for jj in np.arange(len(inear)):
-          indx = np.where(gnum==gnum[ibig[ii]] | gnum==gnum[inear[jj]])[0]
-          gnum[indx] = gnum[indx[0]]
-          mgrp[indx] = len(indx)
-          
-    print('Hack!')
-    parent[ww] = cat
-
-    pdb.set_trace()
-
-    #    # Build a group catalog using just the largest galaxies.
-    #    mindiam = 0.8
-    #    isbig = np.where(parent['D25'] > mindiam)[0]
-    #    isbig = isbig[np.argsort(parent['D25'][isbig])[::-1]]
-    #    print('Building a group catalog from {} galaxies bigger than {:.2f} arcmin'.format(len(isbig), mindiam))
-    #    t0 = time.time()
-    #    if False:
-    #        grp, mult, frst, nxt = spheregroup(parent['RA'][isbig], parent['DEC'][isbig], linking_length / 60.0)
-    #        print('Time = {:.3f} min'.format((time.time() - t0)/60))
-    #
-    #        npergrp, _ = np.histogram(grp, bins=len(grp), range=(0, len(grp)))
-    #        nbiggrp = np.sum(npergrp > 1).astype('int')
-    #        nsmallgrp = np.sum(npergrp == 1).astype('int')
-    #        ngrp = nbiggrp + nsmallgrp
-    #
-    #        print('Found {} total groups, including:'.format(ngrp))
-    #        print('  {} groups with 1 member'.format(nsmallgrp))
-    #        print('  {} groups with 2-5 members'.format(np.sum( (npergrp > 1)*(npergrp <= 5) ).astype('int')))
-    #        print('  {} groups with 5-10 members'.format(np.sum( (npergrp > 5)*(npergrp <= 10) ).astype('int')))
-    #        print('  {} groups with >10 members'.format(np.sum( (npergrp > 10) ).astype('int')))
-    #    else:
-    #        igrp = []
-    #        npergrp = []
-    #        grpra, grpdec, grpradius, grpname = [], [], [], []
-    #        for gal in parent[isbig]:
-    #            I = tree_search_radec(kdparent, gal['RA'], gal['DEC'], gal['D25'] * 1.5 / 60)
-    #            if len(I) == 1:
-    #                igrp.append(I)
-    #                npergrp.append(len(I))
-    #            else:
-    #                weight = parent[I]['D25']
-    #                ra = np.sum(weight * parent[I]['RA']) / np.sum(weight)
-#                dec =  np.sum(weight * parent[I]['DEC']) / np.sum(weight)
-
+    parent = build_group_catalog(parent, mfac=1.5, dmax=10.0/60.0)
+    print('Building a group catalog took {:.3f} min'.format((time.time() - t0)/60))
+    
     # Flag galaxies near bright stars.
     tycho = LSLGA.io.read_tycho(verbose=True)
-    kdparent = tree_build_radec( parent['RA'], parent['DEC'] )
+    kdparent = tree_build_radec(parent['RA'], parent['DEC'])
 
     nearstar = np.zeros( len(parent) ).astype(bool)
     for star in tycho:
