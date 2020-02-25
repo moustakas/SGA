@@ -16,7 +16,7 @@ Magnitude summary:
 Writing /Users/ioannis/research/projects/LSLGA/sample/hyperleda-d25min10-18nov14.fits
 
 """
-import os, time
+import os, time, pdb
 import numpy as np
 import numpy.ma as ma
 import pandas as pd
@@ -87,6 +87,11 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
     out['d25'] = out['diam_iso'] # default
     out['ba'] = out['ba_iso']    # default
     diam_ref = np.repeat('iso', len(data))
+
+    # About 200 galaxies have the identical logd25 value (0.904, e.g., IC3134),
+    # so reset those.  Actually maybe they're OK...
+    #if np.out['d25'].values == 0.801678) > 0:
+    #    pdb.set_trace()
 
     # Turn off the "chained assignment" warning:
     # https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
@@ -196,7 +201,7 @@ def read_leda(txtfile, zcut=False, nrows=None, nside=64):
 if __name__ == '__main__':
     
     NLSGAdir = os.getenv('LSLGA_DIR')
-    txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18nov14.txt')
+    txtfile = os.path.join(NLSGAdir, 'sample', 'v5.0', 'hyperleda-d25min10-18nov14.txt')
     #txtfile = os.path.join(NLSGAdir, 'sample', 'hyperleda-d25min10-18may13.txt')
     
     data, out = read_leda(txtfile, zcut=False, nrows=None)

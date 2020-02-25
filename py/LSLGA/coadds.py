@@ -19,6 +19,36 @@ from astrometry.util.multiproc import multiproc
 import LSLGA.misc
 from LSLGA.misc import custom_brickname
 
+def _forced_phot(args):
+    """Wrapper function for the multiprocessing."""
+    return forced_phot(*args)
+
+def forced_phot(newtims, custom_srcs, band):
+    """Perform forced photometry, returning the bandpass, the (newly optimized)
+    flux, and the (new) inverse variance flux (all in nanomaggies).
+
+    """
+    bandtims = [tim for tim in newtims if tim.band == band]
+    tr = tractor.Tractor(bandtims, custom_srcs)
+    tr.freezeParamsRecursive('*')
+    tr.thawPathsTo(band)
+    R = tr.optimize_forced_photometry(
+        minsb=0, mindlnp=1.0, sky=False, fitstats=True,
+        variance=True, shared_params=False, wantims=False)
+    return (band, np.array(tr.getParams()), R.IV)
+
+def _mosaic_width(radius_mosaic, pixscale):
+    """Ensure the mosaic is an odd number of pixels so the central can land on a
+    whole pixel (important for ellipse-fitting).
+
+    radius_mosaic in arcsec
+
+    """
+    #width = np.ceil(2 * radius_mosaic / pixscale).astype('int') # [pixels]
+    width = 2 * radius_mosaic / pixscale # [pixels]
+    width = (np.ceil(width) // 2 * 2 + 1).astype('int') # [pixels]
+    return width
+
 def _copyfile(infile, outfile):
     if os.path.isfile(infile):
         shutil.copy2(infile, outfile)
