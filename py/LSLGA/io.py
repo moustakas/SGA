@@ -301,7 +301,8 @@ def parent_version(version=None):
         #version = 'v2.0' # 18nov14
         #version = 'v3.0' # 19sep26
         #version = 'v4.0' # 19dec23
-        version = 'v5.0'  # 20jan30
+        #version = 'v5.0'  # 20jan30 (dr9e)
+        version = 'v6.0'  # 20feb25 (DR9)
     return version
 
 def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
@@ -436,11 +437,13 @@ def read_hyperleda(verbose=False, version=None):
         hyperfile = 'hyperleda-d25min10-18nov14.fits'
     elif version == 'v5.0':
         hyperfile = 'hyperleda-d25min10-18nov14.fits'
+    elif version == 'v6.0':
+        hyperfile = 'hyperleda-d25min10-18nov14.fits'
     else:
         print('Unknown version!')
         raise ValueError
     
-    hyperledafile = os.path.join(sample_dir(), version, hyperfile)
+    hyperledafile = os.path.join(sample_dir(), 'hyperleda', hyperfile)
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
     leda = Table(fitsio.read(hyperledafile, ext=1, upper=True))

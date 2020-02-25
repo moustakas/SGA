@@ -62,19 +62,38 @@ def remove_spurious(parent):
         'UGC10822',
         'PGC1944170',
         'PGC5955876',
+        'PGC3097827',# http://legacysurvey.org/viewer/?ra=146.196250&dec=67.438611&zoom=14&layer=dr8
         'SDSSJ021529.42+010322.6',
+        'PGC1039392', # http://legacysurvey.org/viewer/?ra=30.987555&dec=-5.874748&zoom=15&layer=dr8
         # visual inspection
         'SDSSJ083809.55+251926.4',
+        'CFRS14.0605', # nothing there!
+        'PGC1986840', # http://legacysurvey.org/viewer/?ra=142.010937&dec=32.228573&zoom=15&layer=dr8
         # added since making v3.0
         '2MASXJ21412930+0053356',
         'SDSSJ140511.30+060559.4',
+        # galaxies added since v4.0
+        # not spurious, but very low surface brightness
+        # http://legacysurvey.org/viewer/?ra=210.937500&dec=53.944167&zoom=15&layer=dr8
+        'M101DF1',
+        # galaxies removed for v6.0
+        # https://github.com/moustakas/LSLGA/issues/36
+        'PGC2800817', # no galaxy 
+        'PGC1147029', # very wrong diameter and/or no galaxy
+        'PGC1368563', # very wrong diameter and/or no galaxy
+        'PGC028759',  # no galaxy (M81 nebulosity?)
+        'PGC1123865', # wrong diameter (too big)
+        'PGC3291958', # wrong diameter (too big) and position angle
+        'PGC082411',  # interacting pair with missing companion; let's let Tractor go
+        'PGC1185302', # wrong diameter (in group)
+        'PGC1916888', # wrong diameter (in group)
         ])
 
     gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
 
     return ~np.isin(gal, spurgal)
 
-def build_group_catalog(cat, mfac=1.5, dmax=10.0/60.0):
+def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
     """dmax in arcmin
 
     Group LSLGA galaxies together where their circular radii would overlap.  Use
@@ -234,6 +253,11 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
 
     # Repair some incorrect diameters and other properties in Hyperleda.  Use
     # the WXSC (https://vislab.idia.ac.za/research)
+
+    # NGC0779, use value from Ho+11 http://leda.univ-lyon1.fr/ledacat.cgi?o=NGC0779
+    fix = np.where(parent['PGC'] == 7544)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1 * 10**1.67 # [arcmin]
 
     # Sculptor=ESO351-030 https://github.com/moustakas/LSLGA/issues/27
     # use RC3 value http://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
