@@ -54,6 +54,57 @@ import healpy as hp
 import LSLGA.io
 import LSLGA.misc
 
+def simple_wcs(onegal, diam, PIXSCALE=0.262):
+    """Build a simple WCS object for a single galaxy.
+
+    """
+    from astrometry.util.util import Tan
+    size = np.rint(diam * 60 / PIXSCALE).astype('int') # [pixels]
+    wcs = Tan(onegal['RA'], onegal['DEC'], size / 2 + 0.5, size / 2 + 0.5,
+                 -PIXSCALE / 3600.0, 0.0, 0.0, PIXSCALE / 3600.0, 
+                 float(size), float(size))
+    return wcs
+
+def _build_drsample_one(args):
+    """Wrapper function for the multiprocessing."""
+    return build_drsample_one(*args)
+
+def build_drsample_one(onegal, survey, verbose=False, interp=False):
+    """Wrapper function to find overlapping grz CCDs for a single galaxy.
+    
+    """
+    if interp:
+        factor = 1.0
+    else:
+        factor = 1.5
+        
+    diam = factor * onegal['D25'] # [arcmin]
+    wcs = simple_wcs(onegal, diam)
+
+    ccds = survey.ccds_touching_wcs(wcs, ccdrad=None)
+    if ccds is None:
+        return [None, None]
+
+    if 'g' in ccds.filter and 'r' in ccds.filter and 'z' in ccds.filter:
+
+        nccd = len(ccds)
+        ccds.lslga_id = np.zeros(nccd).astype('i8') + onegal['LSLGA_ID'] # for easy cross-referencing
+        
+        # Special use case to get the fraction of interpolated pixels.
+        if interp:
+            ccds.galaxy_npix = np.zeros(nccd).astype('int') # number of pixels in cutout
+            ccds.galaxy_fracsatur = np.zeros(nccd).astype('f4')
+            ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
+            ccds = get_masked_pixels(ccds, survey, wcs)
+
+        if verbose:
+            print('{:30s}: {:04d} CCDs, RA = {:.5f}, Dec = {:.5f}, Diameter={:.4f} arcmin'.format(
+                    onegal['GALAXY'], len(ccds), onegal['RA'], onegal['DEC'], diam))
+            #sys.stdout.flush()
+        return [onegal, ccds]
+    else:
+        return [None, None]
+
 def remove_spurious(parent):
 
     spurgal = np.array([
@@ -357,35 +408,67 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
 
     dr = 'dr9'
     drdir = os.path.join(LSLGA.io.sample_dir(), dr)
-    
-    indesi = np.zeros(len(parent), dtype=bool)
-    for camera, radius in zip(('90prime', 'mosaic', 'decam'), (0.44, 0.21, 0.17)):
-        t0 = time.time()
+
+    bands = ('g', 'r', 'z')
+    camera = ('90prime', 'mosaic', 'decam')
+
+    indesi = dict()
+    for cam in camera:
+        for band in bands:
+            indesi.update({'{}_{}'.format(cam, band): np.zeros(len(parent), dtype=bool)})
+
+    #indesi = np.zeros(len(parent), dtype=bool)
+    t0 = time.time()
+    for cam, radius in zip(camera, (0.44, 0.21, 0.17)):
         if False:
             from astrometry.libkd.spherematch import trees_match, tree_open
-            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}-cut.kd.fits'.format(camera, dr)))
+            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}-cut.kd.fits'.format(cam, dr)))
             I, J, dd = trees_match(kdparent, kdccds, np.radians(radius))#, nearest=True)
         else:
-            ccds = fitsio.read(os.path.join(drdir, 'survey-ccds-{}-{}-cut.kd.fits'.format(camera, dr)))
-            # add the neighboring healpixels to protect against edge effects
-            ccdpix = LSLGA.misc.radec2pix(nside, ccds['ra'], ccds['dec'])
-            ccdpix = np.hstack((ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()))
-            if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
-                ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
-            I = np.isin(parentpix, ccdpix)
-            
-        print('Found {} galaxies in {} footprint in {:.1f} sec'.format(np.sum(I), camera, time.time() - t0))
-        indesi[I] = True
+            ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}-cut.kd.fits'.format(cam, dr))
+            ccds = fitsio.read(ccdsfile)
+            print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
+
+            for band in bands:
+                ww = ccds['filter'] == band
+                if np.sum(ww) > 0:
+                    # add the neighboring healpixels to protect against edge effects
+                    ccdpix = LSLGA.misc.radec2pix(nside, ccds['ra'][ww], ccds['dec'][ww])
+                    ccdpix = np.hstack((ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()))
+                    if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
+                        ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
+                    I = np.isin(parentpix, ccdpix)
+                    indesi['{}_{}'.format(cam, band)][I] = True
+                else:
+                    I = [False]
+                #print('Found {} galaxies in {} {} footprint in {:.1f} sec'.format(np.sum(I), cam, time.time() - t0))
+                print('  Found {} galaxies in {} {} footprint.'.format(np.sum(I), cam, band))
+    print('Total time to find galaxies in footprint = {:.1f} sec'.format(time.time() - t0))
+    
+    parent['IN_DESI_NORTH'] = indesi['90prime_g'] | indesi['90prime_r'] | indesi['mosaic_z']
+    parent['IN_DESI_NORTH_GRZ'] = indesi['90prime_g'] & indesi['90prime_r'] & indesi['mosaic_z']
+
+    parent['IN_DESI_SOUTH'] = indesi['decam_g'] | indesi['decam_r'] | indesi['decam_z']
+    parent['IN_DESI_SOUTH_GRZ'] = indesi['decam_g'] & indesi['decam_r'] & indesi['decam_z']
+    
+    parent['IN_DESI'] = parent['IN_DESI_NORTH'] | parent['IN_DESI_SOUTH']
+    parent['IN_DESI_GRZ'] = parent['IN_DESI_NORTH_GRZ'] | parent['IN_DESI_SOUTH_GRZ']
 
     #plt.scatter(parent['RA'], parent['DEC'], s=1)
     #plt.scatter(parent['RA'][indesi], parent['DEC'][indesi], s=1)
     #plt.xlim(360, 0)
     #plt.show()
+
+    #bb = parent[parent['IN_DESI_NORTH_GRZ'] & parent['IN_DESI_SOUTH_GRZ']]
+    #plt.scatter(bb['RA'], bb['DEC'], s=1)
+    #plt.xlim(300, 90) ; plt.ylim(30, 36)
+    #plt.axhline(y=32.375, color='k')
+    #plt.xlabel('RA') ; plt.ylabel('Dec')
+    #plt.show()
     
     print('  Identified {}/{} ({:.2f}%) galaxies inside and {}/{} ({:.2f}%) galaxies outside the DESI footprint.'.format(
-        np.sum(indesi), len(parent), 100*np.sum(indesi)/len(parent), np.sum(~indesi), len(parent),
-        100*np.sum(~indesi)/len(parent)))
-    parent['IN_DESI'] = indesi
+        np.sum(parent['IN_DESI']), len(parent), 100*np.sum(parent['IN_DESI'])/len(parent), np.sum(~parent['IN_DESI']),
+        len(parent), 100*np.sum(~parent['IN_DESI'])/len(parent)))
 
     # Build a group catalog.
     nchar = np.max([len(gg) for gg in parent['GALAXY']])+6 # add six characters for "_GROUP"
@@ -399,6 +482,7 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     parent.add_column(Column(name='GROUP_DEC', length=len(parent), dtype='f8'))
     parent.add_column(Column(name='GROUP_DIAMETER', length=len(parent), dtype='f4'))
 
+    #print('HACK!!!!')
     if False:
         #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
         #ww = np.where((parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
