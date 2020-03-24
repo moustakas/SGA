@@ -107,6 +107,15 @@ def build_drsample_one(onegal, survey, verbose=False, interp=False):
 
 def remove_spurious(parent):
 
+    gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
+
+    # Read the file from Schlegel--
+    rejfile = os.path.join(LSLGA.io.sample_dir(), 'lslga-dr8-psf-reject.txt')
+    rejid, rejra, rejdec = np.loadtxt(rejfile, unpack=True)
+    print('Read {} galaxies to reject from {}'.format(len(rejid), rejfile))
+
+    rejgal = parent[np.isin(parent['LSLGA_ID'], rejid)]['GALAXY'].data
+
     spurgal = np.array([
         # https://github.com/moustakas/LSLGA/issues/14
         'PGC051192', 
@@ -135,14 +144,51 @@ def remove_spurious(parent):
         'PGC028759',  # no galaxy (M81 nebulosity?)
         'PGC1123865', # wrong diameter (too big)
         'PGC3291958', # wrong diameter (too big) and position angle
-        'PGC082411',  # interacting pair with missing companion; let's let Tractor go
+        #'PGC082411',  # interacting pair with missing companion; let's let Tractor go
         'PGC1185302', # wrong diameter (in group)
         'PGC1916888', # wrong diameter (in group)
+        # these were identified by just looking for galaxies with unusual names 
+        # and digging into them in Hyperleda and the viewer:
+        'GAMA230778',
+        'ESOLV0850141',
+        'HIPASSJ1247-77',
+        'HIPASSJ1348-37',
+        'EVCC0629',
+        '6dFJ0245426-081058', # wrong diameter
+        '6dFJ0342129-002116', # wrong diameter
+        'CENA-MM-DW1',
+        'CENA-MM-DW4',
+        'CENA-MM-DW9',
+        'CENTAURUSN',
+        'DONATIELLO1',
+        'EGISJ091056.5+642523', # nice galaxies, but geometry totally wrong
+        'EGISJ123018.9+163831', # nice galaxies, but geometry totally wrong
+        'EGISJ144026.7+273551', # nice galaxies, but geometry totally wrong
+        'EGISJ150155.8+090531', # nice galaxies, but geometry totally wrong
+        'KK242', # NGC6503 dwarf
+        'M101DWA', # very low surface brightness
+        #
+        # http://legacysurvey.org/viewer?ra=182.8788&dec=7.7151&layer=dr8&zoom=16&lslga
+        'PGC1329030' # three sources together; wrong diameter
+        # http://legacysurvey.org/viewer?ra=182.9115&dec=7.5775&layer=dr8&zoom=15&lslga
+        'PGC1325336', # two sources; wrong diameter
+        'PGC1291159', # two Gaia stars
+        'PGC1284510', # trio of stars
+        'PGC1167608', # trio
+        'PGC1249638', # double
+        'PGC1173832', # duplicate?
+        'PGC1231642', # stars
+        'PGC1280424', # two smaller galaxies
+        'PGC041509',  # wrong coordinates and diameter; let Tractor be Tractor
+        # these are real LSBs in Virgo, but their PAs are wrong;
+        # we know we're incomplete to these anyway, so just remove them:
+        'PGC042016',
+        'PGC038653',        
         ])
 
-    gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
+    rejgalfinal = np.unique(np.concatenate((spurgal, rejgal)))
 
-    return ~np.isin(gal, spurgal)
+    return ~np.isin(gal, rejgalfinal)
 
 def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
     """dmax in arcmin
@@ -220,7 +266,7 @@ def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
         cat['GROUP_DEC'][I] = cat['DEC'][I]
         cat['GROUP_DIAMETER'][I] = cat['D25'][I]
         cat['GROUP_NAME'][I] = cat['GALAXY'][I]
-        cat['GROUP_PRIMARY'][I] = 1
+        cat['GROUP_PRIMARY'][I] = True
 
     more = np.where(cat['GROUP_MULT'] > 1)[0]
     for group in set(cat['GROUP_ID'][more]):
@@ -233,17 +279,17 @@ def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
         # the group and the outermost galaxy (plus the diameter of that galaxy,
         # in case it's a big one!).
         dd = degrees_between(cat['RA'][I], cat['DEC'][I], cat['GROUP_RA'][I[0]], cat['GROUP_DEC'][I[0]])
-        pad = cat['D25'][I][np.argmax(dd)] / 60.0
-        if pad == 0:
+        pad = dd + cat['D25'][I] / 60.0
+        cat['GROUP_DIAMETER'][I] = np.max(pad) * 60 # [arcmin]
+        if cat['GROUP_DIAMETER'][I[0]] < np.max(cat['D25'][I]):
             print('Should not happen!')
             pdb.set_trace()
-        cat['GROUP_DIAMETER'][I] = (np.max(dd) + pad) * 60 # [arcmin]
 
         # Assign the group name based on its largest member and also make this
         # galaxy "primary".
         primary = np.argmax(cat['D25'][I])
         cat['GROUP_NAME'][I] = '{}_GROUP'.format(cat['GALAXY'][I][primary])
-        cat['GROUP_PRIMARY'][I[primary]] = 1
+        cat['GROUP_PRIMARY'][I[primary]] = True
 
     return cat
     
@@ -254,10 +300,10 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     
     """
     import astropy.units as u
-    from astropy.table import Table, Column
+    from astropy.table import Table, Column, hstack, vstack
     from astropy.coordinates import SkyCoord
     
-    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match
+    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match, match_radec
 
     version = LSLGA.io.parent_version()
     sandboxdir = os.path.join(LSLGA.io.sample_dir(), version, 'sandbox')
@@ -286,9 +332,20 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
         parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
         parent = parent[magcut]
 
-    # Apply a surface brightness cut but keep Draco=PGC060095 and
-    # Sextans=PGC088608 (see https://github.com/moustakas/LSLGA/issues/30) 
-    lsbcut = ( (parent['SB_D25'] > 27) * (parent['D25'] > 0.95) * (parent['PGC'] != 60095) * (parent['PGC'] != 88608) )
+    # Apply a surface brightness cut.  This will throw out some of the LG dwarfs
+    # like Draco=PGC060095, Sextans=PGC088608, Leo II=34176, Andromeda
+    # VI=Pegasus=PGC2807158, and KKR25=PGC2801026 (see
+    # https://github.com/moustakas/LSLGA/issues/30), but we will handle those as
+    # a special case, below.
+    lsbcut = (parent['SB_D25'] > 27) * (parent['D25'] > 0.95)
+    #lsbcut = ( (parent['SB_D25'] > 27) * (parent['D25'] > 0.95) *
+    #           (parent['PGC'] != 60095) * # = Draco
+    #           (parent['PGC'] != 88608) * # = Sextans
+    #           (parent['PGC'] != 34176) * # = Leo II
+    #           (parent['PGC'] != 2807158) * # = Andromeda VI
+    #           (parent['PGC'] != 2801026)   # = KKR25
+    #           )
+
     print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
         np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
     if np.sum(lsbcut) > 0:
@@ -305,30 +362,19 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     # Repair some incorrect diameters and other properties in Hyperleda.  Use
     # the WXSC (https://vislab.idia.ac.za/research)
 
-    # NGC0779, use value from Ho+11 http://leda.univ-lyon1.fr/ledacat.cgi?o=NGC0779
+    # NGC4526, use PA from NED
+    # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 41772)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 113.0
+        
+    # NGC0779, use value from RC3
+    # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
     fix = np.where(parent['PGC'] == 7544)[0]
     if len(fix) > 0:
-        parent['D25'][fix] = 0.1 * 10**1.67 # [arcmin]
-
-    # Sculptor=ESO351-030 https://github.com/moustakas/LSLGA/issues/27
-    # use RC3 value http://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
-    fix = np.where(parent['PGC'] == 3589)[0] 
-    if len(fix) > 0:
-        parent['D25'][fix] = 0.1 * 10**2.700 # [arcmin]
-
-    # Fornax=ESO356-004 https://github.com/moustakas/LSLGA/issues/30
-    # use NED value 4200 arcsec = 70 arcmin
-    # https://ned.ipac.caltech.edu/byname?objname=eso356-004&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
-    fix = np.where(parent['PGC'] == 10074)[0] 
-    if len(fix) > 0:
-        parent['D25'][fix] = 4200.0 / 60 # [arcmin]
-
-    # Ursa Minor=PGC054074=UGC09749
-    # https://github.com/moustakas/LSLGA/issues/30
-    # http://legacysurvey.org/viewer-dev?ra=227.2956&dec=67.2137&layer=dr8&zoom=13&lslga
-    fix = np.where(parent['PGC'] == 54074)[0] 
-    if len(fix) > 0:
-        parent['D25'][fix] = 0.1 * 10**2.48 # [arcmin]
+        parent['D25'][fix] = 0.1 * 10**1.6 # [arcmin]
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
 
     # NGC4395 https://github.com/moustakas/LSLGA/issues/28
     fix = np.where(parent['PGC'] == 40596)[0] 
@@ -391,12 +437,88 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     #    '[ISI96]2314-0046', '[CKT2009]D0957+70', '[CKT2009]D1014+68',
     #    '[RC2]A0113+33', '[GMG2015]G'], dtype='<U29')
     
-    sdss2massgal = np.array(['SDSS' in gg or '2MAS' in gg or '[' in gg for gg in parent['GALAXY']])
+    sdss2massgal = np.array(['SDSS' in gg or '2MAS' in gg or '[' in gg or 'WINGS' in gg for gg in parent['GALAXY']])
     print('  Removed {}/{} ({:.2f}%) SDSS/2MASS galaxies and galaxies with square brackets in their name!'.format(
         np.sum(sdss2massgal), len(parent), 100*np.sum(sdss2massgal)/len(parent)))
     if np.sum(sdss2massgal) > 0:
         parent[sdss2massgal].write(os.path.join(sandboxdir, 'LSLGA-{}-sdss2mass.fits'.format(version)), overwrite=True)
         parent = parent[~sdss2massgal]
+
+    # Add in (or fix) the MW dwarfs from McConnachie+12--
+    print('Supplementing the LSGLA with the LG dwarfs from McConnachie+12.')
+
+    # The sizes in McConnachie+12 are half-light radii, but the LSLGA sizes are
+    # down to the 25 mag/arcsec2 isophote. The ratio obviously depends on the
+    # surface-brightness profile. The sigma-clipped ratio of the radii is 1.3
+    # with a scatter of 0.8. Here, we conservatively use 1.5 times the
+    # half-light radius and call it a day.
+    
+    dwarfsfile = os.path.join(LSLGA.io.sample_dir(), 'LGdwarfs-12McConnachie.fits')
+    dwarfs = Table(fitsio.read(dwarfsfile, upper=True))
+    [dwarfs.rename_column(old, new) for old, new in zip(
+        ('_RAJ2000', '_DEJ2000', 'NAME', 'MTYPE', 'VMAG'), ('RA', 'DEC', 'GALAXY', 'TYPE', 'MAG'))]
+    dwarfs['GALAXY'] = [gg.strip().replace(' ','') for gg in dwarfs['GALAXY']]
+    dwarfs['D25'] = dwarfs['R1'] * 2 * 2 # radius --> diameter --> half-light radius to D(25)
+    dwarfs['BA'] = 1 - dwarfs['ELL']  # ell = 1-b/a
+    dwarfs['PA'] = dwarfs['PA'] % 180 # put in [0-180] range
+    dwarfs['OBJTYPE'] = 'G'
+    dwarfs['PGC'] = np.zeros(len(dwarfs), dtype=np.int64) - 1
+    
+    print('Read {} Local Group dwarfs from {}'.format(len(dwarfs), dwarfsfile))
+
+    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dwarfs['RA'], dwarfs['DEC'], 60/3600.0, nearest=True)
+    dwarfs['PGC'][m2] = parent['PGC'][m1]
+    
+    if False:
+        print(hstack((parent['GALAXY', 'RA', 'DEC', 'D25'][m1], dwarfs['NAME', 'ONAME', 'RA', 'DEC', 'D25', 'RECNO'][m2])))
+        from astropy.stats import sigma_clipped_stats
+        print(sigma_clipped_stats(parent['D25'][m1]/dwarfs['D25'][m2], sigma=3))
+        fig, ax = plt.subplots(1, 3)
+        ax[0].scatter(parent['D25'][m1], dwarfs['D25'][m2])
+        ax[1].scatter(parent['PA'][m1], dwarfs['PA'][m2]) ; ax[1].set_xlim(-5, 184) ; ax[1].set_ylim(-5, 184)
+        ax[2].scatter(parent['BA'][m1], dwarfs['BA'][m2]) ; ax[2].set_xlim(0, 1) ; ax[2].set_ylim(0, 1)
+        plt.show()
+
+    # Make the dwarfs catalog "look" like the parent Hyperleda catalog and assign IDs starting at 3000000.
+    parent_sup = Table()
+    for col in parent.colnames:
+        parent_sup[col] = np.zeros(len(dwarfs), dtype=parent[col].dtype)
+    for col in dwarfs.colnames:
+        if col in parent_sup.colnames:
+            parent_sup[col] = dwarfs[col]
+    parent_sup['LSLGA_ID'] = 3000000 + np.arange(len(dwarfs))
+    parent_sup['SB_D25'] = parent_sup['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(parent_sup['D25'])
+
+    parent = vstack((parent, parent_sup))
+    
+    if False:
+        ## DDO113=PGC039145 https://github.com/moustakas/LSLGA/issues/30
+        #fix = np.where(parent['PGC'] == 39145)[0] 
+        #if len(fix) > 0:
+        #    parent['D25'][fix] = 
+
+        # Sculptor=ESO351-030 https://github.com/moustakas/LSLGA/issues/27
+        # use RC3 value http://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
+        fix = np.where(parent['PGC'] == 3589)[0] 
+        if len(fix) > 0:
+            parent['D25'][fix] = 0.1 * 10**2.700 # [arcmin]
+
+        # Fornax=ESO356-004 https://github.com/moustakas/LSLGA/issues/30
+        # use NED value 4200 arcsec = 70 arcmin
+        # https://ned.ipac.caltech.edu/byname?objname=eso356-004&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+        fix = np.where(parent['PGC'] == 10074)[0] 
+        if len(fix) > 0:
+            parent['D25'][fix] = 4200.0 / 60 # [arcmin]
+
+        # Ursa Minor=PGC054074=UGC09749
+        # https://github.com/moustakas/LSLGA/issues/30
+        # http://legacysurvey.org/viewer-dev?ra=227.2956&dec=67.2137&layer=dr8&zoom=13&lslga
+        fix = np.where(parent['PGC'] == 54074)[0] 
+        if len(fix) > 0:
+            parent['D25'][fix] = 0.1 * 10**2.48 # [arcmin]
+
+    #with open('junk.xt', 'w') as ff:
+    #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]
 
     # Flag galaxies in and out of the DESI footprint.
     #tiles = LSLGA.io.read_desi_tiles(verbose=verbose)
@@ -477,7 +599,7 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     parent.add_column(Column(name='GROUP_ID', data=np.zeros(len(parent), dtype=np.int)-1))
     parent.add_column(Column(name='GROUP_NAME', length=len(parent), dtype='<U{}'.format(nchar)))
     parent.add_column(Column(name='GROUP_MULT', data=np.zeros(len(parent), dtype=np.int16)))
-    parent.add_column(Column(name='GROUP_PRIMARY', data=np.zeros(len(parent), dtype=np.int8)))
+    parent.add_column(Column(name='GROUP_PRIMARY', data=np.zeros(len(parent), dtype=bool)))
     parent.add_column(Column(name='GROUP_RA', length=len(parent), dtype='f8')) # diameter-weighted center
     parent.add_column(Column(name='GROUP_DEC', length=len(parent), dtype='f8'))
     parent.add_column(Column(name='GROUP_DIAMETER', length=len(parent), dtype='f4'))
@@ -519,7 +641,7 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--d25min', type=float, default=20/60., help='Minimum diameter [arcmin].')
-    parser.add_argument('--d25max', type=float, default=100, help='Maximum diameter [arcmin].')
+    parser.add_argument('--d25max', type=float, default=180.0, help='Maximum diameter [arcmin].')
     parser.add_argument('--verbose', action='store_true', help='Be verbose!')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
