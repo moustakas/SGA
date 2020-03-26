@@ -54,57 +54,6 @@ import healpy as hp
 import LSLGA.io
 import LSLGA.misc
 
-def simple_wcs(onegal, diam, PIXSCALE=0.262):
-    """Build a simple WCS object for a single galaxy.
-
-    """
-    from astrometry.util.util import Tan
-    size = np.rint(diam * 60 / PIXSCALE).astype('int') # [pixels]
-    wcs = Tan(onegal['RA'], onegal['DEC'], size / 2 + 0.5, size / 2 + 0.5,
-                 -PIXSCALE / 3600.0, 0.0, 0.0, PIXSCALE / 3600.0, 
-                 float(size), float(size))
-    return wcs
-
-def _build_drsample_one(args):
-    """Wrapper function for the multiprocessing."""
-    return build_drsample_one(*args)
-
-def build_drsample_one(onegal, survey, verbose=False, interp=False):
-    """Wrapper function to find overlapping grz CCDs for a single galaxy.
-    
-    """
-    if interp:
-        factor = 1.0
-    else:
-        factor = 1.5
-        
-    diam = factor * onegal['D25'] # [arcmin]
-    wcs = simple_wcs(onegal, diam)
-
-    ccds = survey.ccds_touching_wcs(wcs, ccdrad=None)
-    if ccds is None:
-        return [None, None]
-
-    if 'g' in ccds.filter and 'r' in ccds.filter and 'z' in ccds.filter:
-
-        nccd = len(ccds)
-        ccds.lslga_id = np.zeros(nccd).astype('i8') + onegal['LSLGA_ID'] # for easy cross-referencing
-        
-        # Special use case to get the fraction of interpolated pixels.
-        if interp:
-            ccds.galaxy_npix = np.zeros(nccd).astype('int') # number of pixels in cutout
-            ccds.galaxy_fracsatur = np.zeros(nccd).astype('f4')
-            ccds.galaxy_fracinterp = np.zeros(nccd).astype('f4')
-            ccds = get_masked_pixels(ccds, survey, wcs)
-
-        if verbose:
-            print('{:30s}: {:04d} CCDs, RA = {:.5f}, Dec = {:.5f}, Diameter={:.4f} arcmin'.format(
-                    onegal['GALAXY'], len(ccds), onegal['RA'], onegal['DEC'], diam))
-            #sys.stdout.flush()
-        return [onegal, ccds]
-    else:
-        return [None, None]
-
 def remove_spurious(parent):
 
     gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
@@ -183,7 +132,109 @@ def remove_spurious(parent):
         # these are real LSBs in Virgo, but their PAs are wrong;
         # we know we're incomplete to these anyway, so just remove them:
         'PGC042016',
-        'PGC038653',        
+        'PGC038653',
+        'PGC2435519', # could go either way...
+        'PGC2261157', # wrong diameter..
+        'PGC2233564', # close pair
+        'PGC3115525', # fooled by a star
+        'PGC2009340', # wrong diameter
+        'PGC2056698', # wrong diameter
+        'PGC2056652', # wrong diameter
+        'PGC3088043', # wrong PA...
+        'PGC2057873', # wrong diameter
+        'PGC2084575', # wrong diameter
+        'PGC2261353', # wrong diameter
+        'PGC2187231', # wrong diameter
+        'PGC2587453', # wrong diameter
+        'PGC2203059', # wrong diameter (close pair)
+        'PGC2494175', # wrong diameter
+        'PGC2235255', # wrong diameter
+        'PGC2670931', # wrong diameter
+        'PGC2159264', # wrong diameter (close pair)
+        'PGC2289033', # wrong diameter (trio of sources)
+        'PGC2077848', # (very) wrong ellipticity
+        'PGC2479495', # wrong diameter (trio of sources)
+        'AGC731526',  # b/a is > 1 !!
+        'PGC2552031', # wrong diameter (central galaxy!)
+        'PGC2416160', # wrong diameter (close pair)
+        'PGC2505437', # wrong diameter and b/a 
+        'PGC2640199', # wrong diameter
+        'PGC2610158', # wrong diameter
+        'PGC2175753', # wrong diameter
+        'PGC2222838', # wrong diameter (close pair)
+        'PGC2654865', # wrong diameter (close pair)
+        'PGC2398981', # wrong diameter
+        'PGC3121023', # wrong diameter (close pair)
+        'PGC2352703', # wrong diameter (close pair)
+        'PGC2424445', # wrong diameter (trio spheroidals)
+        'PGC2332492', # wrong diameter (trio of sources)
+        'PGC2606768', # wrong diameter
+        'PGC2154263', # wrong diameter
+        'PGC2152548', # wrong diameter
+        'PGC2049000', # wrong diameter
+        'PGC2048969', # wrong diameter
+        'PGC2706134', # wrong diameter
+        'PGC3097518', # wrong diameter
+        'PGC2479986', # wrong diameter
+        'PGC2590626', # wrong diameter
+        'PGC2151964', # wrong diameter
+        'PGC2178974', # wrong diameter (pair)
+        'PGC2611825', # wrong diameter
+        'PGC2306720', # wrong diameter
+        'PGC2168332', # wrong diameter
+        'PGC2044865', # wrong diameter (pair)
+        'PGC2419193', # wrong diameter (pair)
+        'PGC2042125', # wrong diameter
+        'PGC3119328', # wrong diameter
+        'PGC2398754', # wrong diameter (pair)
+        'PGC2056178', # wrong diameter (pair)
+        'PGC2012353', # wrong diameter
+        'PGC2684677', # wrong diameter
+        'PGC2089357', # wrong diameter (pair)
+        'PGC2089833', # wrong diameter (trio)
+        'PGC2182305', # wrong diameter (pair)
+        'PGC2081542', # wrong diameter (pair)
+        'PGC2278467', # wrong diameter (pair)
+        'PGC2256504', # wrong diameter
+        'PGC3111121', # wrong diameter
+        'PGC2108571', # wrong diameter
+        'PGC2190834', # wrong diameter
+        'PGC1304085', # wrong diameter
+        'PGC2001036', # totally spurious
+        'PGC2493663', # wrong diameter
+        'PGC3108432', # wrong diameter
+        'PGC2105860', # wrong diameter (trio)
+        'PGC2453178', # wrong diameter
+        'PGC2680531', # wrong diameter
+        'PGC3087279', # wrong diameter
+        'PGC2383941', # wrong diameter (pair)
+        'PGC2117136', # wrong diameter (pair)
+        'PGC3136790', # wrong diameter
+        'PGC025849',  # wrong diameter totally bogus!
+        'PGC2181878', # wrong diameter
+        'PGC2025268', # wrong diameter
+        #'AGC257907',  # totally wrong geometry, but let's keep it for the pre-burn.
+        'PGC3089803', # wrong diameter
+        'PGC2072045', # wrong diameter
+        'PGC2389953', # wrong diameter (pair)
+        'PGC2657910', # wrong diameter (trio)
+        'PGC2033221', # wrong diameter
+        'PGC2570250', # wrong diameter
+        'PGC2385658', # wrong diameter
+        'PGC2326799', # wrong diameter (pair)
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
+        #'', # wrong diameter
         ])
 
     rejgalfinal = np.unique(np.concatenate((spurgal, rejgal)))
@@ -316,6 +367,8 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     parent.add_column(Column(name='LSLGA_ID', length=len(parent), dtype='i8'), index=0)
     parent['LSLGA_ID'] = np.arange(len(parent))
 
+    check b/a > 1!!
+
     # Apply a minimum and maximum diameter cut.
     diamcut = (parent['D25'] >= d25min) * (parent['D25'] <= d25max)
     print('  Removed {}/{} ({:.2f}%) objects with D(25) < {:.3f} arcsec and D(25) > {:.3f} arcmin.'.format(
@@ -446,6 +499,12 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
 
     # Add in (or fix) the MW dwarfs from McConnachie+12--
     print('Supplementing the LSGLA with the LG dwarfs from McConnachie+12.')
+    dwarfs = LSLGA.io.read_localgroup_dwarfs(leda=leda)
+
+    pdb.set_trace()
+
+
+
 
     # The sizes in McConnachie+12 are half-light radii, but the LSLGA sizes are
     # down to the 25 mag/arcsec2 isophote. The ratio obviously depends on the
@@ -455,12 +514,15 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     
     dwarfsfile = os.path.join(LSLGA.io.sample_dir(), 'LGdwarfs-12McConnachie.fits')
     dwarfs = Table(fitsio.read(dwarfsfile, upper=True))
+    dwarfs = dwarfs[dwarfs['R1'] < 300] # remove the Sagittarius dSph
+    
     [dwarfs.rename_column(old, new) for old, new in zip(
         ('_RAJ2000', '_DEJ2000', 'NAME', 'MTYPE', 'VMAG'), ('RA', 'DEC', 'GALAXY', 'TYPE', 'MAG'))]
-    dwarfs['GALAXY'] = [gg.strip().replace(' ','') for gg in dwarfs['GALAXY']]
+    dwarfs['GALAXY'] = [gg.strip().replace(' ','').replace('(','').replace(')','') for gg in dwarfs['GALAXY']]
     dwarfs['D25'] = dwarfs['R1'] * 2 * 2 # radius --> diameter --> half-light radius to D(25)
     dwarfs['BA'] = 1 - dwarfs['ELL']  # ell = 1-b/a
     dwarfs['PA'] = dwarfs['PA'] % 180 # put in [0-180] range
+    dwarfs['Z'] = dwarfs['HRV'] / 2.99e5
     dwarfs['OBJTYPE'] = 'G'
     dwarfs['PGC'] = np.zeros(len(dwarfs), dtype=np.int64) - 1
     
@@ -489,7 +551,10 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     parent_sup['LSLGA_ID'] = 3000000 + np.arange(len(dwarfs))
     parent_sup['SB_D25'] = parent_sup['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(parent_sup['D25'])
 
-    parent = vstack((parent, parent_sup))
+    # Remove the duplicates and stack.
+    keep = np.delete(np.arange(len(parent)), m1)
+    parent = vstack((parent[keep], parent_sup))
+    parent = parent[np.argsort(parent['LSLGA_ID'])]
     
     if False:
         ## DDO113=PGC039145 https://github.com/moustakas/LSLGA/issues/30
@@ -516,6 +581,9 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
         fix = np.where(parent['PGC'] == 54074)[0] 
         if len(fix) > 0:
             parent['D25'][fix] = 0.1 * 10**2.48 # [arcmin]
+
+    stop here
+
 
     #with open('junk.xt', 'w') as ff:
     #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]

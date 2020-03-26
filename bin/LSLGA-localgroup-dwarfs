@@ -1,0 +1,311 @@
+#!/usr/bin/env python
+
+"""Build the catalog of Local Group dwarf galaxies based on McConnachie+12, but
+differentiate between galaxies that we need to preburn vs those that we need to
+treat like globular clusters.
+
+"""
+import os, sys, argparse, pdb
+import numpy as np
+
+import LSLGA.io
+
+def localgroup_dwarfs(leda=None, dwarfindx=3000000):
+    """Read and parse the catalog of LG galaxies from 
+
+    Cetus - eddie do nothing, arjun preburn
+    Tucana - eddie do nothing, arjun preburn
+    Leo T - eddie do nothing, arjun not sure
+
+    Sextans I - do nothing
+    Ursa Major II - do nothing
+    Bootes I - do nothing
+    Ursa Major I - do nothing
+    Canes Venatici I - do nothing
+    Hercules - do nothing
+    Ursa Minor - do nothing
+    Andromeda II - do nothing
+    Coma Bernices - do nothing
+    Leo IV - do nothing
+    Bootes II - do nothing
+    Segue II - do nothing
+    Leo V - do nothing
+    Wilman 1 - do nothing
+    Andromeda XXIX - do nothing
+    Andromeda XIV - do nothing
+    Canes Venatici III - do nothing
+    Pisces II - do nothing
+    Leo T - do nothing ? 
+    Andromeda XXII - do nothing
+    Andromeda XVI - do nothing
+    Andromeda XIII - do nothing 
+
+    Carina - outside field
+    WLM - outside field
+    Andromeda XIX - outside field
+    Segue I - outside field
+    NGC3109 - outside field
+    Andromeda XXI - outside field
+    Andromeda VII - outside field
+    NGC147 - outside field
+    Andromeda I - outside field
+    Andromeda XXV - outside field
+    NGC6822 - outside field
+    IC10 - outside field
+    NGC185 - outside field
+    Andromeda IX - outside field
+    NGC205 - outside field
+    Andromeda III - outside field
+    Andromeda XXIV - outside field
+    IC3104 - outside field
+    Andromeda XXVII - outside field
+    Aquarius - outside field
+    Andromeda V - outside field
+    Andromeda X - outside field
+    Andromeda XVII - outside field
+    Andromeda XV - outside field
+    Andromeda XII - outside field
+    Antlia - outside field
+    Andromeda XXVI - outside field
+    UGCA86 - outside field
+    Andromeda XVIII - outside field
+    Sagittarius dIrr - outside field
+    UKS2323-326 - outside field
+    Andromeda XI - outside field
+    KKH 98 - outside field
+    Andromeda XX - outside field
+    IC4662 - outside field
+    M32 - outside field
+    Andromeda XXIII - outside field
+
+    Leo II - use McC12 ellipse (not in LSLGA)
+    Andromeda VI - use Mc12 ellipse (not in LSLGA)
+    KKR25 - use ellipse that is 0.8 x McC12 ellipse (not in LSLGA)
+
+    Fornax - use larger ellipse (McC12)
+    Sculptor - use larger ellipse (McC12)
+    Draco - use larger ellipse (McC12)
+    NGC300 - use larger ellipse (McC12)
+    Leo I - use larger ellipse (McC12)
+    Pegasus dIrr - use larger ellipse (McC12)
+    Tucana - use larger ellipse (McC12) (LSLGA PA is totally wrong!)
+    UGC9128 - use larger ellipse (McC12)
+    DDO190 - use larger ellipse (McC12)
+    ESO294-G010 - use larger ellipse (McC12)
+
+    IC1613 - use smaller ellipse (LSLGA)
+    Cetus - use smaller ellipse (LSLGA)
+    Leo A - use smaller ellipse (LSLGA) (LeoA=UGC05364)
+    Sextans A - use smaller ellipse (LSLGA)
+    NGC 55 - use larger ellipse (LSLGA)
+    IC5152 - use larger ellipse (LSLGA)
+
+    Phoenix - use ellipse that is 1/2 the size of the McC12 ellipse
+    LGS3 - use ellipse that is 1/2 the size of the McC12 ellipse
+    Sextans B - use ellipse that is 1.3 x the size of the McC12 ellipse 
+    DDO 125 - use ellipse that is 1.2 x the size of the McC12 ellipse. PA should be inbetween the PAs from McC12 and LSLGA
+    DDO 99 - use ellipse that is 1.3 x the size of the McC12 ellipse (PA is not exactly right, but should work)
+    Andromeda XXVIII - use ellipse that is 3/4 the size of the McC12 ellipse 
+    DDO 113 - use an ellipse centered on LSLGA location, with PA = 45, major axis = 1.5 x LSLGA, and minor axis = LSLGA
+    ESO410-G005 - use larger ellipse (McC12) - PA should really be rotated by -5 deg
+    NGC4162 - use ellipse that is 1.3 x the McC12 ellipse
+    UGC8508 - use an elipse that is 1.3 x the McC12 ellipse 
+    UGC 4879 - use ellipse that is 2.2x larger than McC12 ellipse; recenter at 10” east and 5” north of current McC12 position
+    KKR3 - use larger ellipse (McC12) but make minor axis 1/2 x major axis
+    GR8 - use ellipse that is 2 x the smaller ellipse (LSLGA), but recenter at 5” N of current location
+    KKH86 - use larger ellipse (McC12) but recenter at LSLGA location
+
+    """
+    import fitsio
+    from astropy.table import Table
+    from astrometry.libkd.spherematch import match_radec
+
+    if leda is None:
+        leda = LSLGA.io.read_hyperleda(verbose=True)
+
+    dwarfsfile = os.path.join(LSLGA.io.sample_dir(), 'LGdwarfs-12McConnachie.fits')
+    dwarfs = Table(fitsio.read(dwarfsfile, upper=True))
+    print('Read {} Local Group dwarfs from {}'.format(len(dwarfs), dwarfsfile))
+
+    # Rename some columns and add some new columns that match the LSLGA data
+    # model.  Assign IDs starting at DWARFINDX.
+    [dwarfs.rename_column(old, new) for old, new in zip(
+        ('_RAJ2000', '_DEJ2000', 'NAME', 'MTYPE', 'VMAG'), ('RA', 'DEC', 'GALAXY', 'TYPE', 'MAG'))]
+    dwarfs['LSLGA_ID'] = dwarfindx + np.arange(len(dwarfs))
+    dwarfs['GALAXY'] = [gg.strip().replace(' ','').replace('(','').replace(')','') for gg in dwarfs['GALAXY']]
+    dwarfs['GALAXY'][dwarfs['GALAXY'] == 'LGS3LocalGroupSuspect3'] = 'LGS3'
+    dwarfs['GALAXY'][dwarfs['GALAXY'] == 'WLMWolf-Lundmark-Melotte'] = 'WLM'
+    
+    dwarfs['BA'] = 1 - dwarfs['ELL']  # ell = 1-b/a
+    dwarfs['PA'] = dwarfs['PA'] % 180 # put in [0-180] range
+    dwarfs['Z'] = dwarfs['HRV'] / 2.99e5
+    dwarfs['OBJTYPE'] = 'G'
+    dwarfs['PGC'] = np.zeros(len(dwarfs), dtype=np.int64) - 1
+
+    # Remove the Sagittarius dSph
+    dwarfs = dwarfs[dwarfs['R1'] < 300] 
+
+    # Add a flag indicating which galaxies are sufficiently "resolved" that we
+    # want to treat them like globular clusters--
+
+    dwarfs['RESOLVED'] = np.zeros(len(dwarfs), dtype=bool)
+    resgal = ('SextansI', 
+              'UrsaMajorII', 
+              'BootesI', 
+              'UrsaMajorI', 
+              'CanesVenaticiI', 
+              'Hercules', 
+              'UrsaMinor', 
+              'AndromedaII', 
+              'ComaBernices', 
+              'LeoIV', 
+              'BootesII', 
+              'SegueII', 
+              'LeoV', 
+              'Wilman1', 
+              'AndromedaXXIX', 
+              'AndromedaXIV', 
+              'CanesVenaticiIII', 
+              'PiscesII', 
+              'LeoT',  ? 
+              'AndromedaXXII', 
+              'AndromedaXVI', 
+              'AndromedaXIII',
+            )
+    I = np.where(np.isin(dwarfs['GALAXY'], resgal))[0]
+    dwarfs['RESOLVED'][I] = True
+
+    # The sizes in McConnachie+12 are half-light radii, but the LSLGA sizes are
+    # diameters to the 25 mag/arcsec2 isophote. The ratio obviously depends on
+    # the surface-brightness profile. The sigma-clipped ratio of the radii is
+    # 1.3 with a scatter of 0.8. Here, I will use two times the half-light
+    # radius but then make some object-specific adjustments below.
+    dwarfs['D25'] = dwarfs['R1'] * 2 * 2 # radius --> diameter --> half-light radius to D(25) # [arcmin]
+
+    # "Repair" the ellipse geometry from McC12 based on visual inspections.
+
+    # Use LSLGA geometry--
+    fixgal = ('IC1613', 'Cetus', 'LeoA', 'SextansA', 'NGC55', 'IC5152', 'GR8', 'DDO113')
+    I = np.where(np.isin(dwarfs['GALAXY'], fixgal))[0]
+    for ii in I:
+        m1, m2, d12 = match_radec(leda['RA'], leda['DEC'], dwarfs['RA'][ii], dwarfs['DEC'][ii], 60.0/3600.0, nearest=True)
+        if len(m1) != 1:
+            print('Problem matching {}!'.format(dwarfs['GALAXY'][ii]))
+        dwarfs['D25'][ii] = leda['D25'][m1]
+        dwarfs['BA'][ii] = leda['BA'][m1]
+        if np.isnan(leda['PA'][m1]):
+            dwarfs['PA'][ii] = 0.0
+        else:
+            dwarfs['PA'][ii] = leda['PA'][m1]
+
+        # DDO 113 - use an ellipse centered on LSLGA location, with PA = 45,
+        # major axis = 1.5 x LSLGA, and minor axis = LSLGA
+        if dwarfs['GALAXY'][ii] == 'DDO113':
+            dwarfs['RA'][ii] = leda['RA'][m1]
+            dwarfs['DEC'][ii] = leda['DEC'][m1]
+            dwarfs['D25'][ii] = 1.5 * leda['D25'][m1]
+            dwarfs['BA'][ii] = 1 / 1.5
+            dwarfs['PA'][ii] = 45.
+
+        # GR8 - use ellipse that is 2 x the smaller ellipse (LSLGA), but recenter at
+        # 5” N of current location
+        if dwarfs['GALAXY'][ii] == 'GR8':
+            dwarfs['D25'][ii] *= 2.0
+            dwarfs['DEC'][ii] += 5 / 3600.0
+            
+    # Individual fixes.
+
+    # Phoenix - use ellipse that is 1/2 the size of the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'Phoenix'
+    dwarfs['D25'][ii] *= 0.5 
+
+    # LGS3 - use ellipse that is 1/2 the size of the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'LGS3' 
+    dwarfs['D25'][ii] *= 0.5 
+
+    # Sextans B - use ellipse that is 1.3 x the size of the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'SextansB'
+    dwarfs['D25'][ii] *= 1.3 
+
+    # DDO 125 - use ellipse that is 1.2 x the size of the McC12 ellipse; PA
+    # should be in between the PAs from McC12 (112) and LSLGA (125.5)
+    ii = dwarfs['GALAXY'] == 'DDO125'
+    dwarfs['D25'][ii] *= 1.2 
+    dwarfs['PA'][ii] = 120 
+
+    # DDO 99 - use ellipse that is 1.3 x the size of the McC12 ellipse; use PA from RC3.
+    ii = dwarfs['GALAXY'] == 'DDO99'
+    dwarfs['D25'][ii] *= 1.3 
+    dwarfs['PA'][ii] = 65    
+
+    # KKH86 - use larger ellipse (McC12) but recenter at LSLGA location
+    ii = dwarfs['GALAXY'] == 'KKH86'
+    dwarfs['RA'][ii] = 208.639395
+    dwarfs['DEC'][ii] = 4.244438
+
+    # UGC 4879 - use ellipse that is 2.2x larger than McC12 ellipse; recenter at 10” east and 5” north of current McC12 position
+    ii = dwarfs['GALAXY'] == 'UGC4879'
+    dwarfs['D25'][ii] *= 2.2
+    dwarfs['RA'][ii] += 10.0 / 3600
+    dwarfs['DEC'][ii] += 5.0 / 3600
+    
+    # Andromeda XXVIII - use ellipse that is 3/4 the size of the McC12 ellipse 
+    ii = dwarfs['GALAXY'] == 'AndromedaXXVIII'
+    dwarfs['D25'][ii] *= 0.75 # use ellipse that is 3/4 the size of the McC12 ellipse 
+
+    # NGC4162 - use ellipse that is 1.3 x the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'NGC4162'
+    dwarfs['D25'][ii] *= 1.3
+
+    # UGC8508 - use an elipse that is 1.3 x the McC12 ellipse 
+    ii = dwarfs['GALAXY'] == 'UGC8508'
+    dwarfs['D25'][ii] *= 1.3
+
+    # KKR3 - use larger ellipse (McC12) but make minor axis 1/2 x major axis
+    ii = dwarfs['GALAXY'] == 'KKR3'
+    dwarfs['BA'][ii] = 0.5
+
+    # ESO410-G005 - use larger ellipse (McC12) - PA should really be rotated by -5 deg
+    ii = dwarfs['GALAXY'] == 'ESO410-G005'
+    dwarfs['PA'][ii] = 52
+
+    # Compute the surface brightness.
+    dwarfs['SB_D25'] = dwarfs['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(dwarfs['D25'])
+
+    ## Now match to the leda LSLGA sample.
+    #m1, m2, d12 = match_radec(leda['RA'], leda['DEC'], dwarfs['RA'], dwarfs['DEC'], 60.0/3600.0, nearest=True)
+    #dwarfs['PGC'][m2] = leda['PGC'][m1]
+    #
+    ### Make the dwarfs catalog "look" like the leda Hyperleda catalog and
+    ### 
+    ##outdwarfs = Table()
+    ##for col in leda.colnames:
+    ##    outdwarfs[col] = np.zeros(len(dwarfs), dtype=leda[col].dtype)
+    ##for col in dwarfs.colnames:
+    ##    if col in outdwarfs.colnames:
+    ##        outdwarfs[col] = dwarfs[col]
+    #
+    ### Remove the duplicates and stack.
+    ##keep = np.delete(np.arange(len(leda)), m1)
+    ##leda = vstack((leda[keep], outdwarfs))
+    ##leda = leda[np.argsort(leda['LSLGA_ID'])]
+
+    pdb.set_trace()
+    
+    return dwarfs
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
+    args = parser.parse_args()
+
+    outfile = os.path.join(LSLGA.io.sample_dir(), 'LSLGA-dwarfs.fits')
+    if os.path.isfile(outfile) and not args.clobber:
+        print('Output file {} exists; use clobber.'.format(outfile))
+        sys.exit(1)
+
+    dwarfs = localgroup_dwarfs()
+
+    print('Writing {} LG dwarfs to {}'.format(len(dwarfs), outfile))
+    dwarfs.write(dwarfs, overwrite=True)
