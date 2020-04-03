@@ -254,9 +254,9 @@ def remove_spurious(parent):
         'PGC2572659', # wrong diameter (trio)
         #'PGC2300992', # wrong diameter (too big) but keep
         'PGC2432804', # wrong diameter (pair)
-        #'', # wrong diameter
-        #'', # wrong diameter
-        #'', # wrong diameter
+        'PGC490323', # wrong diameter (on the edge of ESO235-057)
+        'PGC070787', # wrong diameter (D25=4.5 arcmin! // totally bogus giant galaxy!)
+        'PGC1097017', # wrong diameter (trio)
         #'', # wrong diameter
         ])
 
@@ -454,6 +454,16 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     fix = np.where(parent['PGC'] == 7544)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1 * 10**1.6 # [arcmin]
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4448, use values from RC3
+    # https://ned.ipac.caltech.edu/byname?objname=ngc4448&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 40988)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1 * 10**1.59 # [arcmin]
+        parent['BA'][fix] = 10**(-0.44)
+        parent['PA'][fix] = 94.0
         parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
           5 * np.log10(parent['D25'][fix])
 
