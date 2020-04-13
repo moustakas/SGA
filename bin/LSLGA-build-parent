@@ -54,6 +54,99 @@ import healpy as hp
 import LSLGA.io
 import LSLGA.misc
 
+def read_dr8_candidates(parent, startindx=5000000):
+    """Read the set of "large" galaxies identified by Stephanie Juneau from the DR8
+    catalogs.
+
+    """
+    from astropy.table import Table, Column, hstack, vstack
+    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match, match_radec
+
+    northfile = os.path.join(LSLGA.io.sample_dir(), 'dr8galaxies_gt14_north.fits')
+    north = astropy.table.Table(fitsio.read(northfile, upper=True))
+    print('Read {} galaxies from {}'.format(len(north), northfile))
+
+    southfile = os.path.join(LSLGA.io.sample_dir(), 'dr8galaxies_gt14_south.fits')
+    south = astropy.table.Table(fitsio.read(southfile, upper=True))
+    print('Read {} galaxies from {}'.format(len(south), southfile))
+
+    nkeep = np.where((north['DEC'] > 32.375) * (north['VI_FLAG'] == 'Y'))[0]
+    skeep = np.where((south['DEC'] < 32.375))[0]
+    #skeep = np.where((south['DEC'] < 32.375) * (south['VI_FLAG'] == 'Y'))[0]
+
+    if False:
+        plt.scatter(north['RA'], north['DEC'], label='North')
+        plt.scatter(south['RA'], south['DEC'], label='South')
+        plt.scatter(north['RA'][nkeep], north['DEC'][nkeep], label='North Keep')
+        plt.scatter(south['RA'][skeep], south['DEC'][skeep], label='South Keep') 
+        plt.legend() ; plt.axhline(y=32.375, color='k') ; plt.show()
+
+    # Resolve north & south
+    supp = vstack((north[nkeep], south[skeep]))
+
+    # Assign IDs starting at startindx.
+    supp.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(supp))), index=0)
+    supp.rename_column('TYPE', 'OBJTYPE')
+
+    # Make the supplemental catalog "look" like the parent Hyperleda catalog.
+    out = Table()
+    for col in parent.colnames:
+        out[col] = np.zeros(len(supp), dtype=parent[col].dtype)
+    for col in supp.colnames:
+        if col in out.colnames:
+            out[col] = supp[col]
+    #out['OBJTYPE'] = 'G'
+
+    # Get the geometry from the Tractor fit--
+    #print(set(supp['TYPE']))
+    for igal, gal in enumerate(supp):
+        out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKID'][igal], supp['OBJID'][igal])
+        #out['GALAXY'][igal] = 'DR8-{}'.format(supp['LS_ID'][igal])
+        out['MAG'][igal] = supp['MAG_R'][igal]
+
+        typ = gal['OBJTYPE'].strip()
+        if typ == 'DEV':
+            ee = np.hypot(gal['SHAPEDEV_E1'], gal['SHAPEDEV_E2'])
+            r50 = gal['SHAPEDEV_R'] # [arcsec]
+        elif typ == 'EXP':
+            ee = np.hypot(gal['SHAPEEXP_E1'], gal['SHAPEEXP_E2'])
+            r50 = gal['SHAPEEXP_R'] # [arcsec]
+        elif typ == 'COMP':
+            fracdev = gal['FRACDEV']
+            eeexp = np.hypot(gal['SHAPEEXP_E1'], gal['SHAPEEXP_E2'])
+            eedev = np.hypot(gal['SHAPEDEV_E1'], gal['SHAPEDEV_E2'])
+            paexp = 180 - (-np.rad2deg(np.arctan2(gal['SHAPEEXP_E2'], gal['SHAPEEXP_E1']) / 2))
+            padev = 180 - (-np.rad2deg(np.arctan2(gal['SHAPEDEV_E2'], gal['SHAPEDEV_E1']) / 2))
+            r50exp = gal['SHAPEEXP_R']
+            r50dev = gal['SHAPEDEV_R'] 
+
+            if False:
+                ee = fracdev * eedev + (1 - fracdev) * eeexp
+                pa = fracdev * padev + (1 - fracdev) * paexp            
+                r50 = fracdev * r50dev + (1 - fracdev) * r50exp # [arcsec]
+            else:
+                if r50dev >= r50exp:
+                    ee = eedev
+                    pa = padev
+                    r50 = r50dev
+                else:
+                    ee = eeexp
+                    pa = paexp
+                    r50 = r50exp
+                
+        ba = (1 - ee) / (1 + ee)
+        pa = pa % 180
+        theta = (270 - pa) % 180
+        d25 = 2 * 2 * r50 / 60.0 # radius-->diameter and then r50-->R(25) [arcmin]
+
+        out['BA'][igal] = ba.astype('f4')
+        out['PA'][igal] = pa.astype('f4')
+        out['D25'][igal] = d25.astype('f4')
+
+    out['SB_D25'] = (out['MAG'] + 2.5 * np.log10(np.pi * (60/2)**2) + 5 * np.log10(out['D25'])).astype('f4')
+
+    return out
+
 def remove_spurious(parent):
 
     gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
@@ -575,6 +668,16 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
                               dwarfs['DEC'][rem], 60/3600.0, nearest=True)
     keep = np.delete(np.arange(len(parent)), m1)
     parent = parent[keep]
+    del dwarfs, moredwarfs
+
+    # Add in the DR8-identified "large" galaxies--
+    print('Supplementing the LSGLA with the DR8 large galaxies.')
+    dr8 = read_dr8_candidates(parent)
+
+    # Double-check for duplicates--none!
+    #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dr8['RA'], dr8['DEC'], 3/3600.0, nearest=True)
+    parent = vstack((parent, dr8))
+    del dr8
 
     #with open('junk.xt', 'w') as ff:
     #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]
@@ -603,10 +706,10 @@ def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
     for cam, radius in zip(camera, (0.44, 0.21, 0.17)):
         if False:
             from astrometry.libkd.spherematch import trees_match, tree_open
-            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}-cut.kd.fits'.format(cam, dr)))
+            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr)))
             I, J, dd = trees_match(kdparent, kdccds, np.radians(radius))#, nearest=True)
         else:
-            ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}-cut.kd.fits'.format(cam, dr))
+            ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr))
             ccds = fitsio.read(ccdsfile)
             print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
 
