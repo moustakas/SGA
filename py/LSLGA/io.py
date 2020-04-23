@@ -301,8 +301,9 @@ def parent_version(version=None):
         #version = 'v2.0' # 18nov14
         #version = 'v3.0' # 19sep26
         #version = 'v4.0' # 19dec23
-        #version = 'v5.0'  # 20jan30 (dr9e)
-        version = 'v6.0'  # 20feb25 (DR9)
+        #version = 'v5.0' # 20jan30 (dr9e)
+        #version = 'v6.0' # 20feb25 (DR9-SV)
+        version = 'v7.0'  # 20apr18 (DR9)
     return version
 
 def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
@@ -439,6 +440,8 @@ def read_hyperleda(verbose=False, version=None):
         hyperfile = 'hyperleda-d25min10-18nov14.fits'
     elif version == 'v6.0':
         hyperfile = 'hyperleda-d25min10-18nov14.fits'
+    elif version == 'v7.0':
+        hyperfile = 'hyperleda-d25min10-18nov14.fits'
     else:
         print('Unknown version!')
         raise ValueError
@@ -478,6 +481,17 @@ def read_hyperleda(verbose=False, version=None):
     
     print('  Identified {}/{} ({:.2f}%) objects with AllWISE photometry.'.format(
         np.sum(leda['IN_ALLWISE']), len(leda), 100*np.sum(leda['IN_ALLWISE'])/len(leda) ))
+
+    # Assign a unique ID and also fix infinite PA and B/A.
+    leda.add_column(Column(name='LSLGA_ID', length=len(leda), dtype='i8'), index=0)
+    leda['LSLGA_ID'] = np.arange(len(leda))
+    
+    fix = np.isnan(leda['PA'])
+    if np.sum(fix) > 0:
+        leda['PA'][fix] = 0.0
+    fix = np.isnan(leda['BA'])
+    if np.sum(fix) > 0:
+        leda['BA'][fix] = 1.0
     
     return leda
 

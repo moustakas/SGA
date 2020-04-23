@@ -2,77 +2,331 @@
 
 """Generate the parent sample of large galaxies.
 
-Note that a D(25) maximum cut of 100 arcmin throws out LMC=ESO056-115,
-SMC=NGC0292, M31=NGC224, and the Sagittarius Dwarf.
-
-            GALAXY                    RA                 DEC            D25
-            str29                  float64             float64        float32
------------------------------ ------------------ ------------------- ----------
-ESO056-115                            80.8941495  -69.75610400000001   645.6542
-SAGITTARIUS_DWARF_SPHEROIDAL          283.762899         -30.4784401  449.77997
-NGC0292                               13.1583105  -72.80022659999999  299.91626
-NGC0224                               10.6846845          41.2689778  177.82794
-
-
-####
-v4.0
-
-* Change d25min from 20/60 arcsec to 45 arcsec.
-
-####
-v3.0
-
-* Change d25min from 20/60 arcsec to 60 arcsec.
-
-####
-v2.0
-
-Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/v2.0/hyperleda-d25min10-18nov14.fits
-Read 1436176 objects from /Users/ioannis/research/projects/LSLGA/sample/v2.0/hyperleda-d25min10-18nov14-allwise.fits
-  Identified 1379531/1436176 (96.06%) objects with AllWISE photometry.
-  Removed 13273/1436176 (0.92%) objects with no magnitude estimate.
-  Removed 887102/1422903 (62.34%) objects with D(25) < 20.000 arcsec and D(25) > 10000.000 arcmin.
-  Removed 509/535801 (0.09%) low surface-brightness galaxies.
-  Removed 2585/535292 (0.48%) SDSS galaxies inside another large galaxy.
-Read 20070 DESI tiles from /Users/ioannis/research/projects/LSLGA/sample/desi-tiles.fits
-  Identified 287853/532707 (54.04%) galaxies inside and 244854/532707 (45.96%) galaxies outside the DESI footprint.
-Read 2557319 Tycho-2 stars with B<99.0.
-  Found 6068/532707 (1.14%) galaxies near a bright (Tycho-2) star.
-Final sample size: 532707 galaxies.
-Writing 532707 galaxies to /Users/ioannis/research/projects/LSLGA/sample/v2.0/LSLGA-v2.0.fits
-Writing /Users/ioannis/research/projects/LSLGA/sample/v2.0/LSLGA-v2.0.kd.fits
-
 """
-import os, sys, argparse, time, pdb
+import os, sys, time, pdb
 import numpy as np
 import matplotlib.pyplot as plt
 
 import fitsio
-import astropy.table
-import healpy as hp
+from astropy.table import Table, Column, vstack
+from astrometry.libkd.spherematch import match_radec
 
 import LSLGA.io
-import LSLGA.misc
 
-def read_dr8_candidates(parent, startindx=5000000):
+sampledir = LSLGA.io.sample_dir()
+qadir = os.path.join(LSLGA.io.sample_dir(), 'qa')
+
+def _viewer_inspect(cat):
+    """Write a little catalog that can be uploaded to the viewer.
+
+    """
+    out = cat['GALAXY', 'RA', 'DEC']
+    out.rename_column('GALAXY', 'NAME')
+    outfile = os.path.join(os.getenv('HOME'), 'tmp', 'viewer.fits')
+    print('Writing {} objects to {}'.format(len(cat), outfile))
+    out.write(outfile, overwrite=True)
+
+def _imagetool_inspect(cat):
+    """Write a little catalog that can be uploaded to
+    https://yymao.github.io/decals-image-list-tool/
+
+    """
+    outfile = os.path.join(os.getenv('HOME'), 'tmp', 'inspect.txt')
+    print('Writing {} objects to {}'.format(len(cat), outfile))
+    with open(outfile, 'w') as ff:
+        ff.write('name ra dec\n')
+        for gal, ra, dec in zip(cat['GALAXY'], cat['RA'], cat['DEC']):
+            ff.write('{} {} {}\n'.format(gal, ra, dec))
+
+        
+def in_footprint(parent, nside=512):
+    """Find all galaxies in the DESI footprint.
+
+    """
+    import healpy as hp
+    import LSLGA.misc
+    
+    #tiles = LSLGA.io.read_desi_tiles(verbose=verbose)
+    #indesi = LSLGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
+
+    parentpix = LSLGA.misc.radec2pix(nside, parent['RA'], parent['DEC'])
+    #parentpix = np.hstack((parentpix, hp.pixelfunc.get_all_neighbours(nside, parentpix, nest=True).flatten()))
+
+    dr = 'dr9'
+    drdir = os.path.join(sampledir, dr)
+
+    bands = ('g', 'r', 'z')
+    camera = ('90prime', 'mosaic', 'decam')
+
+    indesi = dict()
+    for cam in camera:
+        for band in bands:
+            indesi.update({'{}_{}'.format(cam, band): np.zeros(len(parent), dtype=bool)})
+
+    #indesi = np.zeros(len(parent), dtype=bool)
+    t0 = time.time()
+    for cam, radius in zip(camera, (0.44, 0.21, 0.17)):
+        if False:
+            from astrometry.libkd.spherematch import trees_match, tree_open
+            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr)))
+            I, J, dd = trees_match(kdparent, kdccds, np.radians(radius))#, nearest=True)
+        else:
+            ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr))
+            ccds = fitsio.read(ccdsfile)
+            print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
+
+            for band in bands:
+                ww = ccds['filter'] == band
+                if np.sum(ww) > 0:
+                    # add the neighboring healpixels to protect against edge effects
+                    ccdpix = LSLGA.misc.radec2pix(nside, ccds['ra'][ww], ccds['dec'][ww])
+                    ccdpix = np.hstack((ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()))
+                    if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
+                        ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
+                    I = np.isin(parentpix, ccdpix)
+                    indesi['{}_{}'.format(cam, band)][I] = True
+                else:
+                    I = [False]
+                #print('Found {} galaxies in {} {} footprint in {:.1f} sec'.format(np.sum(I), cam, time.time() - t0))
+                print('  Found {} galaxies in {} {} footprint.'.format(np.sum(I), cam, band))
+    print('Total time to find galaxies in footprint = {:.1f} sec'.format(time.time() - t0))
+    
+    parent['IN_DESI_NORTH'] = indesi['90prime_g'] | indesi['90prime_r'] | indesi['mosaic_z']
+    parent['IN_DESI_NORTH_GRZ'] = indesi['90prime_g'] & indesi['90prime_r'] & indesi['mosaic_z']
+
+    parent['IN_DESI_SOUTH'] = indesi['decam_g'] | indesi['decam_r'] | indesi['decam_z']
+    parent['IN_DESI_SOUTH_GRZ'] = indesi['decam_g'] & indesi['decam_r'] & indesi['decam_z']
+    
+    parent['IN_DESI'] = parent['IN_DESI_NORTH'] | parent['IN_DESI_SOUTH']
+    parent['IN_DESI_GRZ'] = parent['IN_DESI_NORTH_GRZ'] | parent['IN_DESI_SOUTH_GRZ']
+
+    #plt.scatter(parent['RA'], parent['DEC'], s=1)
+    #plt.scatter(parent['RA'][indesi], parent['DEC'][indesi], s=1)
+    #plt.xlim(360, 0)
+    #plt.show()
+
+    #bb = parent[parent['IN_DESI_NORTH_GRZ'] & parent['IN_DESI_SOUTH_GRZ']]
+    #plt.scatter(bb['RA'], bb['DEC'], s=1)
+    #plt.xlim(300, 90) ; plt.ylim(30, 36)
+    #plt.axhline(y=32.375, color='k')
+    #plt.xlabel('RA') ; plt.ylabel('Dec')
+    #plt.show()
+    
+    print('  Identified {}/{} ({:.2f}%) galaxies inside and {}/{} ({:.2f}%) galaxies outside the DESI footprint.'.format(
+        np.sum(parent['IN_DESI']), len(parent), 100*np.sum(parent['IN_DESI'])/len(parent), np.sum(~parent['IN_DESI']),
+        len(parent), 100*np.sum(~parent['IN_DESI'])/len(parent)))
+
+    return parent
+
+def near_stars(parent):
+    """Flag galaxies near bright stars.
+
+    """
+    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec
+
+    tycho = LSLGA.io.read_tycho(verbose=True)
+    kdparent = tree_build_radec(parent['RA'], parent['DEC'])
+
+    nearstar = np.zeros( len(parent) ).astype(bool)
+    for star in tycho:
+        I = tree_search_radec(kdparent, star['RA'], star['DEC'], star['RADIUS'])
+        if len(I) > 0:
+            nearstar[I] = True
+    print('  Found {}/{} ({:.2f}%) galaxies near a bright (Tycho-2) star.'.format(
+        np.sum(nearstar), len(parent), 100*np.sum(nearstar)/len(parent)))
+    parent['NEAR_BRIGHTSTAR'] = nearstar
+
+    return parent, kdparent
+    
+def apply_diamcut(parent, d25min, d25max):
+    """Apply the diameter cuts.
+
+    Note that a D(25) maximum cut of 100 arcmin throws out LMC=ESO056-115,
+    SMC=NGC0292, M31=NGC224, and the Sagittarius Dwarf.
+
+                GALAXY                    RA                 DEC            D25
+                str29                  float64             float64        float32
+    ----------------------------- ------------------ ------------------- ----------
+    ESO056-115                            80.8941495  -69.75610400000001   645.6542
+    SAGITTARIUS_DWARF_SPHEROIDAL          283.762899         -30.4784401  449.77997
+    NGC0292                               13.1583105  -72.80022659999999  299.91626
+    NGC0224                               10.6846845          41.2689778  177.82794
+
+    """
+    diamcut = (parent['D25'] >= d25min) * (parent['D25'] <= d25max)
+    print('  Removed {}/{} ({:.2f}%) objects with D(25) < {:.3f} arcsec and D(25) > {:.3f} arcmin.'.format(
+        np.sum(~diamcut), len(parent), 100*np.sum(~diamcut)/len(parent), d25min*60, d25max))
+    if np.sum(diamcut) > 0:
+        #parent[~diamcut].write(os.path.join(qadir, 'LSLGA-{}-diamcut.fits'.format(version)), overwrite=True)
+        parent = parent[diamcut]
+
+    return parent
+
+def fix_byhand(parent):
+    """Repair incorrect diameters and other properties in Hyperleda "by hand".
+
+    See also WXSC - https://vislab.idia.ac.za/research
+    
+    """
+    print('Repairing some quantities by-hand.')
+    
+    # PGC1035237, Leda coordiantes are totally wrong!
+    fix = np.where(parent['PGC'] == 1035237)[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 31.8505
+        parent['DEC'][fix] = -6.2346
+
+    # PGC040184=VCC0619, use geometry from NED
+    # https://ned.ipac.caltech.edu/byname?objname=PGC40184&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 40184)[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 185.770708
+        parent['DEC'][fix] = 15.931667
+        parent['PA'][fix] = 70.0 # eye-balled
+        
+    # NGC5474, use D25, PA, and BA from NED
+    # https://ned.ipac.caltech.edu/byname?objname=ngc5474&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 50216)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.68
+        parent['PA'][fix] = 97.5
+        parent['BA'][fix] = 0.05
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC170137, fix the PA--not sure why it's not populated
+    # http://leda.univ-lyon1.fr/fG.cgi?n=a103&o=PGC170137
+    fix = np.where(parent['PGC'] == 170137)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 42.0
+
+    # NGC4526, use PA from NED
+    # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 41772)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 113.0
+
+    # PGC007900, use D25 from NED and visually determined PA
+    # https://ned.ipac.caltech.edu/byname?objname=PGC007900&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 7900)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 65.0
+        parent['D25'][fix] = 0.1 * 10**1.51 # [arcmin]
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+        
+    # NGC5364, use PA and D25 from RC3/NED
+    # https://ned.ipac.caltech.edu/byname?objname=ngc5364&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 49555)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 30.0
+        parent['BA'][fix] = 0.65
+        parent['D25'][fix] = 0.1 * 10**1.83 # [arcmin]
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC0779, use value from RC3
+    # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 7544)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1 * 10**1.6 # [arcmin]
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4448, use values from RC3
+    # https://ned.ipac.caltech.edu/byname?objname=ngc4448&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 40988)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1 * 10**1.59 # [arcmin]
+        parent['BA'][fix] = 10**(-0.44)
+        parent['PA'][fix] = 94.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4395 https://github.com/moustakas/LSLGA/issues/28
+    fix = np.where(parent['PGC'] == 40596)[0] 
+    if len(fix) > 0:
+        parent['D25'][fix] = 12.8 # [arcmin]
+        parent['BA'][fix] = 0.833
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC2366 https://github.com/moustakas/LSLGA/issues/29
+    fix = np.where(parent['PGC'] == 21102)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 8.8964 # [arcmin]
+        parent['BA'][fix] = 0.5263
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    return parent
+
+def add_localgroup_dwarfs(parent):
+    """LG dwarfs
+
+    """
+    from astropy.table import hstack
+    
+    print('Adding in the LG dwarfs.')
+    dwarfs = LSLGA.io.read_localgroup_dwarfs()
+    #dwarfs = dwarfs[(~dwarfs['IGNORE']) * (~dwarfs['RESOLVED'])] # remove these below
+
+    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dwarfs['RA'], dwarfs['DEC'], 60/3600.0, nearest=True)
+    dwarfs['PGC'][m2] = parent['PGC'][m1]
+   
+    if False:
+        print(hstack((parent['GALAXY', 'RA', 'DEC', 'D25'][m1], dwarfs['GALAXY', 'ONAME', 'RA', 'DEC', 'D25', 'RECNO'][m2])))
+        from astropy.stats import sigma_clipped_stats
+        print(sigma_clipped_stats(parent['D25'][m1]/dwarfs['D25'][m2], sigma=3))
+        fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+        ax[0].scatter(parent['D25'][m1], dwarfs['D25'][m2])
+        ax[1].scatter(parent['PA'][m1], dwarfs['PA'][m2]) ; ax[1].set_xlim(-5, 184) ; ax[1].set_ylim(-5, 184)
+        ax[2].scatter(parent['BA'][m1], dwarfs['BA'][m2]) ; ax[2].set_xlim(0, 1) ; ax[2].set_ylim(0, 1)
+        plt.show()
+
+    # Make the dwarfs catalog "look" like the parent Hyperleda catalog and assign IDs starting at 3000000.
+    moredwarfs = Table()
+    for col in parent.colnames:
+        moredwarfs[col] = np.zeros(len(dwarfs), dtype=parent[col].dtype)
+    for col in dwarfs.colnames:
+        if col in moredwarfs.colnames:
+            moredwarfs[col] = dwarfs[col]
+
+    # Remove the duplicates and stack.
+    keep = np.delete(np.arange(len(parent)), m1)
+    parent = vstack((parent[keep], moredwarfs))
+    #parent = parent[np.argsort(parent['LSLGA_ID'])]
+
+    # Finally, remove the dwarfs that are so sparse that we don't care about
+    # them and the dwarfs that are so resolved (Fornax & Sculptor) that we
+    # actually want to treat them as globular cluster (i.e., "force PSF").
+    rem = np.where(np.logical_or(dwarfs['IGNORE'], dwarfs['RESOLVED']))[0]
+    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dwarfs['RA'][rem],
+                              dwarfs['DEC'][rem], 60/3600.0, nearest=True)
+    keep = np.delete(np.arange(len(parent)), m1)
+    parent = parent[keep]
+
+    return parent
+
+def add_dr8_candidates(parent, startindx=5000000):
     """Read the set of "large" galaxies identified by Stephanie Juneau from the DR8
     catalogs.
 
     """
-    from astropy.table import Table, Column, hstack, vstack
-    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match, match_radec
+    print('Supplementing the LSGLA with the DR8 large galaxies.')
 
-    northfile = os.path.join(LSLGA.io.sample_dir(), 'dr8galaxies_gt14_north.fits')
-    north = astropy.table.Table(fitsio.read(northfile, upper=True))
+    northfile = os.path.join(sampledir, 'dr8galaxies_gt14_north.fits')
+    north = Table(fitsio.read(northfile, upper=True))
     print('Read {} galaxies from {}'.format(len(north), northfile))
 
-    southfile = os.path.join(LSLGA.io.sample_dir(), 'dr8galaxies_gt14_south.fits')
-    south = astropy.table.Table(fitsio.read(southfile, upper=True))
+    southfile = os.path.join(sampledir, 'dr8galaxies_gt14_south.fits')
+    south = Table(fitsio.read(southfile, upper=True))
     print('Read {} galaxies from {}'.format(len(south), southfile))
 
     nkeep = np.where((north['DEC'] > 32.375) * (north['VI_FLAG'] == 'Y'))[0]
-    skeep = np.where((south['DEC'] < 32.375))[0]
-    #skeep = np.where((south['DEC'] < 32.375) * (south['VI_FLAG'] == 'Y'))[0]
+    skeep = np.where((south['DEC'] < 32.375) * (south['VI_FLAG'] == 'Y'))[0]
+
+    print('Add in a minimum d25 for the sdss-supplemented galaxies!!!!!!!!!')
 
     if False:
         plt.scatter(north['RA'], north['DEC'], label='North')
@@ -108,9 +362,11 @@ def read_dr8_candidates(parent, startindx=5000000):
         if typ == 'DEV':
             ee = np.hypot(gal['SHAPEDEV_E1'], gal['SHAPEDEV_E2'])
             r50 = gal['SHAPEDEV_R'] # [arcsec]
+            pa = 180 - (-np.rad2deg(np.arctan2(gal['SHAPEDEV_E2'], gal['SHAPEDEV_E1']) / 2))
         elif typ == 'EXP':
             ee = np.hypot(gal['SHAPEEXP_E1'], gal['SHAPEEXP_E2'])
             r50 = gal['SHAPEEXP_R'] # [arcsec]
+            pa = 180 - (-np.rad2deg(np.arctan2(gal['SHAPEEXP_E2'], gal['SHAPEEXP_E1']) / 2))
         elif typ == 'COMP':
             fracdev = gal['FRACDEV']
             eeexp = np.hypot(gal['SHAPEEXP_E1'], gal['SHAPEEXP_E2'])
@@ -118,8 +374,7 @@ def read_dr8_candidates(parent, startindx=5000000):
             paexp = 180 - (-np.rad2deg(np.arctan2(gal['SHAPEEXP_E2'], gal['SHAPEEXP_E1']) / 2))
             padev = 180 - (-np.rad2deg(np.arctan2(gal['SHAPEDEV_E2'], gal['SHAPEDEV_E1']) / 2))
             r50exp = gal['SHAPEEXP_R']
-            r50dev = gal['SHAPEDEV_R'] 
-
+            r50dev = gal['SHAPEDEV_R']
             if False:
                 ee = fracdev * eedev + (1 - fracdev) * eeexp
                 pa = fracdev * padev + (1 - fracdev) * paexp            
@@ -133,11 +388,17 @@ def read_dr8_candidates(parent, startindx=5000000):
                     ee = eeexp
                     pa = paexp
                     r50 = r50exp
+        else:
+            print('Doom!')
+            pdb.set_trace()
                 
         ba = (1 - ee) / (1 + ee)
         pa = pa % 180
         theta = (270 - pa) % 180
-        d25 = 2 * 2 * r50 / 60.0 # radius-->diameter and then r50-->R(25) [arcmin]
+        d25 = 1.4 * 2 * r50 / 60.0 # radius-->diameter and then r50-->R(25) fudge factor [arcmin]
+
+        #if (supp['BRICKID'][igal] == 628872) * (supp['OBJID'][igal] == 3436):
+        #    pdb.set_trace()
 
         out['BA'][igal] = ba.astype('f4')
         out['PA'][igal] = pa.astype('f4')
@@ -145,217 +406,88 @@ def read_dr8_candidates(parent, startindx=5000000):
 
     out['SB_D25'] = (out['MAG'] + 2.5 * np.log10(np.pi * (60/2)**2) + 5 * np.log10(out['D25'])).astype('f4')
 
-    return out
+    # Double-check for duplicates
+    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], out['RA'], out['DEC'], 3/3600.0, nearest=True)
+    assert(len(m1) == 0)
+
+    parent = vstack((parent, out))
+
+    return parent
 
 def remove_spurious(parent):
+    """Remove spurious galaxies.
 
-    gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
-
+    """
     # Read the file from Schlegel--
-    rejfile = os.path.join(LSLGA.io.sample_dir(), 'lslga-dr8-psf-reject.txt')
+    rejfile = os.path.join(sampledir, 'lslga-dr8-psf-reject.txt')
     rejid, rejra, rejdec = np.loadtxt(rejfile, unpack=True)
-    print('Read {} galaxies to reject from {}'.format(len(rejid), rejfile))
-
+    print('Read {} spurious galaxies from {}'.format(len(rejid), rejfile))
     rejgal = parent[np.isin(parent['LSLGA_ID'], rejid)]['GALAXY'].data
 
-    spurgal = np.array([
-        # https://github.com/moustakas/LSLGA/issues/14
-        'PGC051192', 
-        'UGC10822',
-        'PGC1944170',
-        'PGC5955876',
-        'PGC3097827',# http://legacysurvey.org/viewer/?ra=146.196250&dec=67.438611&zoom=14&layer=dr8
-        'SDSSJ021529.42+010322.6',
-        'PGC1039392', # http://legacysurvey.org/viewer/?ra=30.987555&dec=-5.874748&zoom=15&layer=dr8
-        # visual inspection
-        'SDSSJ083809.55+251926.4',
-        'CFRS14.0605', # nothing there!
-        'PGC1986840', # http://legacysurvey.org/viewer/?ra=142.010937&dec=32.228573&zoom=15&layer=dr8
-        # added since making v3.0
-        '2MASXJ21412930+0053356',
-        'SDSSJ140511.30+060559.4',
-        # galaxies added since v4.0
-        # not spurious, but very low surface brightness
-        # http://legacysurvey.org/viewer/?ra=210.937500&dec=53.944167&zoom=15&layer=dr8
-        'M101DF1',
-        # galaxies removed for v6.0
-        # https://github.com/moustakas/LSLGA/issues/36
-        'PGC2800817', # no galaxy 
-        'PGC1147029', # very wrong diameter and/or no galaxy
-        'PGC1368563', # very wrong diameter and/or no galaxy
-        'PGC028759',  # no galaxy (M81 nebulosity?)
-        'PGC1123865', # wrong diameter (too big)
-        'PGC3291958', # wrong diameter (too big) and position angle
-        #'PGC082411',  # interacting pair with missing companion; let's let Tractor go
-        'PGC1185302', # wrong diameter (in group)
-        'PGC1916888', # wrong diameter (in group)
-        # these were identified by just looking for galaxies with unusual names 
-        # and digging into them in Hyperleda and the viewer:
-        'GAMA230778',
-        'ESOLV0850141',
-        'HIPASSJ1247-77',
-        'HIPASSJ1348-37',
-        'EVCC0629',
-        '6dFJ0245426-081058', # wrong diameter
-        '6dFJ0342129-002116', # wrong diameter
-        'CENA-MM-DW1',
-        'CENA-MM-DW4',
-        'CENA-MM-DW9',
-        'CENTAURUSN',
-        'DONATIELLO1',
-        'EGISJ091056.5+642523', # nice galaxies, but geometry totally wrong
-        'EGISJ123018.9+163831', # nice galaxies, but geometry totally wrong
-        'EGISJ144026.7+273551', # nice galaxies, but geometry totally wrong
-        'EGISJ150155.8+090531', # nice galaxies, but geometry totally wrong
-        'KK242', # NGC6503 dwarf
-        'M101DWA', # very low surface brightness
-        #
-        # http://legacysurvey.org/viewer?ra=182.8788&dec=7.7151&layer=dr8&zoom=16&lslga
-        'PGC1329030' # three sources together; wrong diameter
-        # http://legacysurvey.org/viewer?ra=182.9115&dec=7.5775&layer=dr8&zoom=15&lslga
-        'PGC1325336', # two sources; wrong diameter
-        'PGC1291159', # two Gaia stars
-        'PGC1284510', # trio of stars
-        'PGC1167608', # trio
-        'PGC1249638', # double
-        'PGC1173832', # duplicate?
-        'PGC1231642', # stars
-        'PGC1280424', # two smaller galaxies
-        'PGC041509',  # wrong coordinates and diameter; let Tractor be Tractor
-        # these are real LSBs in Virgo, but their PAs are wrong;
-        # we know we're incomplete to these anyway, so just remove them:
-        'PGC042016',
-        'PGC038653',
-        'PGC2435519', # could go either way...
-        'PGC2261157', # wrong diameter..
-        'PGC2233564', # close pair
-        'PGC3115525', # fooled by a star
-        'PGC2009340', # wrong diameter
-        'PGC2056698', # wrong diameter
-        'PGC2056652', # wrong diameter
-        'PGC3088043', # wrong PA...
-        'PGC2057873', # wrong diameter
-        'PGC2084575', # wrong diameter
-        'PGC2261353', # wrong diameter
-        'PGC2187231', # wrong diameter
-        'PGC2587453', # wrong diameter
-        'PGC2203059', # wrong diameter (close pair)
-        'PGC2494175', # wrong diameter
-        'PGC2235255', # wrong diameter
-        'PGC2670931', # wrong diameter
-        'PGC2159264', # wrong diameter (close pair)
-        'PGC2289033', # wrong diameter (trio of sources)
-        'PGC2077848', # (very) wrong ellipticity
-        'PGC2479495', # wrong diameter (trio of sources)
-        'AGC731526',  # b/a is > 1 !!
-        'PGC2552031', # wrong diameter (central galaxy!)
-        'PGC2416160', # wrong diameter (close pair)
-        'PGC2505437', # wrong diameter and b/a 
-        'PGC2640199', # wrong diameter
-        'PGC2610158', # wrong diameter
-        'PGC2175753', # wrong diameter
-        'PGC2222838', # wrong diameter (close pair)
-        'PGC2654865', # wrong diameter (close pair)
-        'PGC2398981', # wrong diameter
-        'PGC3121023', # wrong diameter (close pair)
-        'PGC2352703', # wrong diameter (close pair)
-        'PGC2424445', # wrong diameter (trio spheroidals)
-        'PGC2332492', # wrong diameter (trio of sources)
-        'PGC2606768', # wrong diameter
-        'PGC2154263', # wrong diameter
-        'PGC2152548', # wrong diameter
-        'PGC2049000', # wrong diameter
-        'PGC2048969', # wrong diameter
-        'PGC2706134', # wrong diameter
-        'PGC3097518', # wrong diameter
-        'PGC2479986', # wrong diameter
-        'PGC2590626', # wrong diameter
-        'PGC2151964', # wrong diameter
-        'PGC2178974', # wrong diameter (pair)
-        'PGC2611825', # wrong diameter
-        'PGC2306720', # wrong diameter
-        'PGC2168332', # wrong diameter
-        'PGC2044865', # wrong diameter (pair)
-        'PGC2419193', # wrong diameter (pair)
-        'PGC2042125', # wrong diameter
-        'PGC3119328', # wrong diameter
-        'PGC2398754', # wrong diameter (pair)
-        'PGC2056178', # wrong diameter (pair)
-        'PGC2012353', # wrong diameter
-        'PGC2684677', # wrong diameter
-        'PGC2089357', # wrong diameter (pair)
-        'PGC2089833', # wrong diameter (trio)
-        'PGC2182305', # wrong diameter (pair)
-        'PGC2081542', # wrong diameter (pair)
-        'PGC2278467', # wrong diameter (pair)
-        'PGC2256504', # wrong diameter
-        'PGC3111121', # wrong diameter
-        'PGC2108571', # wrong diameter
-        'PGC2190834', # wrong diameter
-        'PGC1304085', # wrong diameter
-        'PGC2001036', # totally spurious
-        'PGC2493663', # wrong diameter
-        'PGC3108432', # wrong diameter
-        'PGC2105860', # wrong diameter (trio)
-        'PGC2453178', # wrong diameter
-        'PGC2680531', # wrong diameter
-        'PGC3087279', # wrong diameter
-        'PGC2383941', # wrong diameter (pair)
-        'PGC2117136', # wrong diameter (pair)
-        'PGC3136790', # wrong diameter
-        'PGC025849',  # wrong diameter totally bogus!
-        'PGC2181878', # wrong diameter
-        'PGC2025268', # wrong diameter
-        #'AGC257907',  # totally wrong geometry, but let's keep it for the pre-burn.
-        'PGC3089803', # wrong diameter
-        'PGC2072045', # wrong diameter
-        'PGC2389953', # wrong diameter (pair)
-        'PGC2657910', # wrong diameter (trio)
-        'PGC2033221', # wrong diameter
-        'PGC2570250', # wrong diameter
-        'PGC2385658', # wrong diameter
-        'PGC2326799', # wrong diameter (pair)
-        'PGC2395370', # wrong diameter and b/a
-        'PGC2683673', # wrong diameter (pair)
-        'PGC2078229', # wrong diameter (pair)
-        'PGC2088999', # wrong diameter (trio)
-        'PGC3131645', # wrong diameter
-        'PGC2461546', # wrong aspect ratio
-        'PGC2053551', # wrong diameter (pair)
-        'PGC2077645', # wrong diameter
-        'PGC2009335', # wrong diameter (pair)
-        'PGC3084819', # wrong diameter (pair)
-        'PGC2033671', # wrong diameter
-        'PGC2628601', # wrong diameter (pair+star)
-        'PGC2046202', # wrong diameter (pair)
-        'PGC2176824', # wrong diameter (pair)
-        'PGC2609143', # wrong diameter (confused by star)
-        'PGC2056493', # wrong diameter (pair)
-        'PGC2513360', # wrong diameter (cluster)
-        'PGC2085225', # wrong diameter
-        'PGC3124894', # wrong diameter (pair)
-        'PGC2800621', # wrong diameter
-        'PGC2021436', # wrong diameter
-        'PGC2549629', # wrong diameter
-        'PGC2069735', # wrong diameter (pair)
-        'PGC2431089', # wrong diameter (pair)
-        'PGC2225271', # wrong diameter (trio)
-        'PGC2091824', # wrong diameter
-        'PGC2177453', # wrong diameter (trio)
-        'PGC2578596', # wrong diameter (pair)
-        'PGC2056325', # wrong diameter
-        'PGC2572659', # wrong diameter (trio)
-        #'PGC2300992', # wrong diameter (too big) but keep
-        'PGC2432804', # wrong diameter (pair)
-        'PGC490323', # wrong diameter (on the edge of ESO235-057)
-        'PGC070787', # wrong diameter (D25=4.5 arcmin! // totally bogus giant galaxy!)
-        'PGC1097017', # wrong diameter (trio)
-        #'', # wrong diameter
-        ])
+    rejfile = os.path.join(sampledir, 'lslga-spurious.txt')
+    spurgal = np.loadtxt(rejfile, dtype=str)
+    print('Read spurious {} galaxies from {}'.format(len(spurgal), rejfile))
 
     rejgalfinal = np.unique(np.concatenate((spurgal, rejgal)))
 
-    return ~np.isin(gal, rejgalfinal)
+    gal = np.array([onegal.strip() for onegal in parent['GALAXY']])
+    #rejgal = parent[~np.isin(parent['GALAXY'], rejgalaxies)]
+
+    notspuriouscut = ~np.isin(gal, rejgalfinal)
+
+    print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
+        np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
+    if np.sum(notspuriouscut) > 0:
+        parent = parent[notspuriouscut]
+
+    # Require a magnitude estimate. Unfortunately many of these are real
+    # galaxies, although either their positions or their geometry is totally
+    # unreliable.
+    #_viewer_inspect(parent[np.isnan(parent['MAG']) * parent['IN_DESI']])
+    magcut = np.isfinite(parent['MAG'])
+    print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
+        np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
+    if np.sum(magcut) > 0:
+        #parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
+        parent = parent[magcut]
+
+    # Visually inspect all the SDSS galaxies above a certain surface brightness;
+    # most of these are spurious, but there are many we want to keep.
+    #w1 = np.where(parent['IN_DESI'] * (parent['SB_D25'] > 26) * (parent['D25'] <= 0.9))[0]
+    #w2 = np.where(['SDSS' in gg for gg in parent['GALAXY'][w1]])[0]
+    #_imagetool_inspect(parent[w1][w2])
+
+    #ww = np.where(parent['IN_DESI'] * (parent['SB_D25'] > 27))[0]
+    #_imagetool_inspect(parent[ww])
+    
+    #ww = np.where(parent['IN_DESI'])[0]
+    #plt.clf() #; plt.scatter(parent['MAG'][ww], parent['SB_D25'][ww], s=1)
+    ##plt.scatter(parent['MAG'][ww][ii], parent['SB_D25'][ww][ii], s=1, color='orange', alpha=0.5)
+    #plt.clf() ; plt.scatter(parent['D25'][ww], parent['SB_D25'][ww], s=1)
+    ##plt.scatter(parent['D25'][ww][ii], parent['SB_D25'][ww][ii], s=1, color='orange', alpha=0.5)
+    ##plt.axhline(y=27, ls='-', color='k')
+    #plt.xscale('log')
+    #plt.savefig('junk3.png')
+    
+    # Check all the galaxies with b/a=1--they're OK!
+    #_viewer_inspect(parent[(parent['BA']==1) * parent['IN_DESI']])
+
+    #print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
+    #    np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
+    #if np.sum(lsbcut) > 0:
+    #    #parent[lsbcut].write(os.path.join(sandboxdir, 'LSLGA-{}-lsb.fits'.format(version)), overwrite=True)
+    #    parent = parent[~lsbcut]
+
+    #sdss2massgal = np.array(['SDSS' in gg or '2MAS' in gg or '[' in gg or 'WINGS' in gg for gg in parent['GALAXY']])
+    #print('  Removed {}/{} ({:.2f}%) SDSS/2MASS galaxies and galaxies with square brackets in their name!'.format(
+    #    np.sum(sdss2massgal), len(parent), 100*np.sum(sdss2massgal)/len(parent)))
+    #if np.sum(sdss2massgal) > 0:
+    #    if sandbox:
+    #        parent[sdss2massgal].write(os.path.join(sandboxdir, 'LSLGA-{}-sdss2mass.fits'.format(
+    #            version)), overwrite=True)
+    #    parent = parent[~sdss2massgal]
+
+    return parent
 
 def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
     """dmax in arcmin
@@ -368,6 +500,17 @@ def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
     """
     from pydl.pydlutils.spheregroup import spheregroup
     from astrometry.util.starutil_numpy import degrees_between
+
+    nchar = np.max([len(gg) for gg in cat['GALAXY']])+6 # add six characters for "_GROUP"
+    
+    t0 = time.time()
+    cat.add_column(Column(name='GROUP_ID', data=np.zeros(len(cat), dtype=np.int)-1))
+    cat.add_column(Column(name='GROUP_NAME', length=len(cat), dtype='<U{}'.format(nchar)))
+    cat.add_column(Column(name='GROUP_MULT', data=np.zeros(len(cat), dtype=np.int16)))
+    cat.add_column(Column(name='GROUP_PRIMARY', data=np.zeros(len(cat), dtype=bool)))
+    cat.add_column(Column(name='GROUP_RA', length=len(cat), dtype='f8')) # diameter-weighted center
+    cat.add_column(Column(name='GROUP_DEC', length=len(cat), dtype='f8'))
+    cat.add_column(Column(name='GROUP_DIAMETER', length=len(cat), dtype='f4'))
     
     # Initialize a unique group number for each galaxy
     gnum = np.arange(len(cat)).astype(np.int)
@@ -458,356 +601,69 @@ def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
         cat['GROUP_NAME'][I] = '{}_GROUP'.format(cat['GALAXY'][I][primary])
         cat['GROUP_PRIMARY'][I[primary]] = True
 
+    print('Building a group catalog took {:.3f} min'.format((time.time() - t0)/60))
+        
     return cat
     
-def build_parent(d25min=0.75, d25max=1e4, linking_length=2, verbose=False):
-    """Build the parent catalog.
-
-    linking_length, d25min, and d25max all in arcmin
-    
-    """
-    import astropy.units as u
-    from astropy.table import Table, Column, hstack, vstack
-    from astropy.coordinates import SkyCoord
-    
-    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match, match_radec
-
-    version = LSLGA.io.parent_version()
-    sandboxdir = os.path.join(LSLGA.io.sample_dir(), version, 'sandbox')
-    if not os.path.isdir(sandboxdir):
-        os.makedirs(sandboxdir, exist_ok=True)
-
-    # Read the full Hyperleda catalog and assign a unique ID.
-    leda = LSLGA.io.read_hyperleda(verbose=True)
-    parent = leda.copy()
-    parent.add_column(Column(name='LSLGA_ID', length=len(parent), dtype='i8'), index=0)
-    parent['LSLGA_ID'] = np.arange(len(parent))
-
-    # Fix PA and B/A.
-    fix = np.isnan(parent['PA'])
-    if np.sum(fix) > 0:
-        parent['PA'][fix] = 0.0
-    fix = np.isnan(parent['BA'])
-    if np.sum(fix) > 0:
-        parent['BA'][fix] = 1.0
-
-    # Apply a minimum and maximum diameter cut.
-    diamcut = (parent['D25'] >= d25min) * (parent['D25'] <= d25max)
-    print('  Removed {}/{} ({:.2f}%) objects with D(25) < {:.3f} arcsec and D(25) > {:.3f} arcmin.'.format(
-        np.sum(~diamcut), len(parent), 100*np.sum(~diamcut)/len(parent), d25min*60, d25max))
-    if np.sum(diamcut) > 0:
-        parent[~diamcut].write(os.path.join(sandboxdir, 'LSLGA-{}-diamcut.fits'.format(version)), overwrite=True)
-        parent = parent[diamcut]
-
-    # Require a magnitude estimate and b/a<1 (all of which are real galaxies but
-    # the geometry is crap...).
-    magcut = np.isfinite(parent['MAG']) * (parent['BA'] < 1)
-    print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
-        np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
-    if np.sum(magcut) > 0:
-        parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
-        parent = parent[magcut]
-
-    # Apply a surface brightness cut, which mostly removes junk. We handle the
-    # LG dwarfs below (see also https://github.com/moustakas/LSLGA/issues/30).
-    lsbcut = (parent['SB_D25'] > 27) * (parent['D25'] > 0.95)
-
-    print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
-        np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
-    if np.sum(lsbcut) > 0:
-        parent[lsbcut].write(os.path.join(sandboxdir, 'LSLGA-{}-lsb.fits'.format(version)), overwrite=True)
-        parent = parent[~lsbcut]
-
-    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
-    notspuriouscut = remove_spurious(parent)
-    print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
-        np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
-    if np.sum(notspuriouscut) > 0:
-        parent = parent[notspuriouscut]
-
-    # Repair some incorrect diameters and other properties in Hyperleda.  Use
-    # the WXSC (https://vislab.idia.ac.za/research)
-
-    # PGC040184=VCC0619, use geometry from NED
-    # https://ned.ipac.caltech.edu/byname?objname=PGC40184&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
-    fix = np.where(parent['PGC'] == 40184)[0]
-    if len(fix) > 0:
-        parent['RA'][fix] = 185.770708
-        parent['DEC'][fix] = 15.931667
-        parent['PA'][fix] = 70.0 # eye-balled
-        
-    # NGC4526, use PA from NED
-    # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
-    fix = np.where(parent['PGC'] == 41772)[0]
-    if len(fix) > 0:
-        parent['PA'][fix] = 113.0
-        
-    # NGC0779, use value from RC3
-    # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
-    fix = np.where(parent['PGC'] == 7544)[0]
-    if len(fix) > 0:
-        parent['D25'][fix] = 0.1 * 10**1.6 # [arcmin]
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
-
-    # NGC4448, use values from RC3
-    # https://ned.ipac.caltech.edu/byname?objname=ngc4448&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
-    fix = np.where(parent['PGC'] == 40988)[0]
-    if len(fix) > 0:
-        parent['D25'][fix] = 0.1 * 10**1.59 # [arcmin]
-        parent['BA'][fix] = 10**(-0.44)
-        parent['PA'][fix] = 94.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
-
-    # NGC4395 https://github.com/moustakas/LSLGA/issues/28
-    fix = np.where(parent['PGC'] == 40596)[0] 
-    if len(fix) > 0:
-        parent['D25'][fix] = 12.8 # [arcmin]
-        parent['BA'][fix] = 0.833
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
-
-    # NGC2366 https://github.com/moustakas/LSLGA/issues/29
-    fix = np.where(parent['PGC'] == 21102)[0]
-    if len(fix) > 0:
-        parent['D25'][fix] = 8.8964 # [arcmin]
-        parent['BA'][fix] = 0.5263
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
-
-    # Toss out all SDSS galaxies "inside" another galaxy.  Most of these are
-    # spurious and the ones that are not will hopefully be fixed by visual
-    # inspection and/or will be picked up by the standard pipeline.  Note: as of
-    # v4.0 we toss out *all* SDSS and 2MASS galaxies:
-    #kdparent = tree_build_radec(parent['RA'], parent['DEC'])
-    #sdssingal = np.zeros(len(parent), dtype=bool)
-    #for pp in parent:
-    #    I = tree_search_radec(kdparent, pp['RA'], pp['DEC'], pp['D25'] / 1.8 / 60) # 1.8 instead of 2...
-    #    if len(I) > 1:
-    #        isdss = np.array(['SDSS' in gg for gg in parent['GALAXY'][I]])
-    #        if np.sum(isdss) > 0:
-    #            sdssingal[I[isdss]] = True
-    #print('  Removed {}/{} ({:.2f}%) SDSS galaxies inside another large galaxy.'.format(
-    #    np.sum(sdssingal), len(parent), 100*np.sum(sdssingal)/len(parent)))    
-    #if np.sum(sdssingal) > 0:
-    #    parent[sdssingal].write(os.path.join(sandboxdir, 'LSLGA-{}-sdss-in-largegal.fits'.format(
-    #        version)), overwrite=True)
-    #    parent = parent[~sdssingal]
-
-    # Toss out galaxies with a square bracket in their primary name. Some of
-    # these are real but some aren't, but as far as I can tell many of them are
-    # low surface brightness or small, and their diameters do not seem to be
-    # very reliable.  Here's an incomplete list:
-    # 
-    # array(['[MSB2017]J1303+42', '[PT2011]53', '[MSB2017]J1408+56',
-    #    '[ISI96]0922+0233', '[ISI96]0326-0113', 'ABELL2219:[BGB2004]070',
-    #    '[ISI96]0118-0004', '[MSB2017]J1305+41', '[MSB2017]J1255+40',
-    #    '[ISI96]0316+0102', '[RGK2003]J130050.95+280248.7',
-    #    '[ISI96]1450+0230', '[HS98]117', '[CKT2009]D1048+70',
-    #    '[ISI96]0128+0036', '[RGK2003]J012616.22-002429.9',
-    #    '[IBG2003]J125816+275332', '[EKS2015]RS0510', '[CKT2009]D0926+70',
-    #    '[ISI96]2339-0122', '[PPK2014]J0713+2926', '[CKT2009]D0939+71',
-    #    '[ISI96]1042+0231', 'ABELL1684:[PBL2000]0009',
-    #    '[KKH2007]J1220+4649', '[EKS2015]RS0955', '[CKT2009]D0959+68',
-    #    '[MSB2017]J1308+40', '[GMG2015]K', '[CKT2009]D0934+70',
-    #    '[CKT2009]D1006+67', 'CL1313+073:[PBL2000]006',
-    #    '[CKT2009]D0955+70', '[KKH2011]S11', '[ISI96]0331-0032',
-    #    '[MSB2017]J1338+50', '[CKT2009]D1009+70', '[ISI96]2320-0118',
-    #    '[CKT2009]D1020+69', '[CKT2009]D1041+70',
-    #    'ABELL0160:[PBL2000]0226', '[ISI96]0019-0036', '[CKT2009]D1016+69',
-    #    '[CKT2009]D1028+70', '[OBC97]N07-1', '[ISI96]1401+0205',
-    #    '[CKT2009]D0944+71', '[GSB2009]J132618.53+001335.8',
-    #    '[ISI96]2314-0046', '[CKT2009]D0957+70', '[CKT2009]D1014+68',
-    #    '[RC2]A0113+33', '[GMG2015]G'], dtype='<U29')
-    
-    sdss2massgal = np.array(['SDSS' in gg or '2MAS' in gg or '[' in gg or 'WINGS' in gg for gg in parent['GALAXY']])
-    print('  Removed {}/{} ({:.2f}%) SDSS/2MASS galaxies and galaxies with square brackets in their name!'.format(
-        np.sum(sdss2massgal), len(parent), 100*np.sum(sdss2massgal)/len(parent)))
-    if np.sum(sdss2massgal) > 0:
-        parent[sdss2massgal].write(os.path.join(sandboxdir, 'LSLGA-{}-sdss2mass.fits'.format(version)), overwrite=True)
-        parent = parent[~sdss2massgal]
-
-    # Add in (or fix) the LG dwarfs--
-    print('Supplementing the LSGLA with the LG dwarfs.')
-    dwarfs = LSLGA.io.read_localgroup_dwarfs()
-    #dwarfs = dwarfs[(~dwarfs['IGNORE']) * (~dwarfs['RESOLVED'])] # remove these below
-
-    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dwarfs['RA'], dwarfs['DEC'], 60/3600.0, nearest=True)
-    dwarfs['PGC'][m2] = parent['PGC'][m1]
-   
-    if False:
-        print(hstack((parent['GALAXY', 'RA', 'DEC', 'D25'][m1], dwarfs['GALAXY', 'ONAME', 'RA', 'DEC', 'D25', 'RECNO'][m2])))
-        from astropy.stats import sigma_clipped_stats
-        print(sigma_clipped_stats(parent['D25'][m1]/dwarfs['D25'][m2], sigma=3))
-        fig, ax = plt.subplots(1, 3, figsize=(12, 4))
-        ax[0].scatter(parent['D25'][m1], dwarfs['D25'][m2])
-        ax[1].scatter(parent['PA'][m1], dwarfs['PA'][m2]) ; ax[1].set_xlim(-5, 184) ; ax[1].set_ylim(-5, 184)
-        ax[2].scatter(parent['BA'][m1], dwarfs['BA'][m2]) ; ax[2].set_xlim(0, 1) ; ax[2].set_ylim(0, 1)
-        plt.show()
-
-    # Make the dwarfs catalog "look" like the parent Hyperleda catalog and assign IDs starting at 3000000.
-    moredwarfs = Table()
-    for col in parent.colnames:
-        moredwarfs[col] = np.zeros(len(dwarfs), dtype=parent[col].dtype)
-    for col in dwarfs.colnames:
-        if col in moredwarfs.colnames:
-            moredwarfs[col] = dwarfs[col]
-    #pdb.set_trace()
-
-    # Remove the duplicates and stack.
-    keep = np.delete(np.arange(len(parent)), m1)
-    parent = vstack((parent[keep], moredwarfs))
-    #parent = parent[np.argsort(parent['LSLGA_ID'])]
-
-    # Finally, remove the dwarfs that are so sparse that we don't care about
-    # them and the dwarfs that are so resolved (Fornax & Sculptor) that we
-    # actually want to treat them as globular cluster (i.e., "force PSF").
-    rem = np.where(np.logical_or(dwarfs['IGNORE'], dwarfs['RESOLVED']))[0]
-    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dwarfs['RA'][rem],
-                              dwarfs['DEC'][rem], 60/3600.0, nearest=True)
-    keep = np.delete(np.arange(len(parent)), m1)
-    parent = parent[keep]
-    del dwarfs, moredwarfs
-
-    # Add in the DR8-identified "large" galaxies--
-    print('Supplementing the LSGLA with the DR8 large galaxies.')
-    dr8 = read_dr8_candidates(parent)
-
-    # Double-check for duplicates--none!
-    #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dr8['RA'], dr8['DEC'], 3/3600.0, nearest=True)
-    parent = vstack((parent, dr8))
-    del dr8
-
-    #with open('junk.xt', 'w') as ff:
-    #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]
-
-    # Flag galaxies in and out of the DESI footprint.
-    #tiles = LSLGA.io.read_desi_tiles(verbose=verbose)
-    #indesi = LSLGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
-
-    nside = 512
-    parentpix = LSLGA.misc.radec2pix(nside, parent['RA'], parent['DEC'])
-    #parentpix = np.hstack((parentpix, hp.pixelfunc.get_all_neighbours(nside, parentpix, nest=True).flatten()))
-
-    dr = 'dr9'
-    drdir = os.path.join(LSLGA.io.sample_dir(), dr)
-
-    bands = ('g', 'r', 'z')
-    camera = ('90prime', 'mosaic', 'decam')
-
-    indesi = dict()
-    for cam in camera:
-        for band in bands:
-            indesi.update({'{}_{}'.format(cam, band): np.zeros(len(parent), dtype=bool)})
-
-    #indesi = np.zeros(len(parent), dtype=bool)
-    t0 = time.time()
-    for cam, radius in zip(camera, (0.44, 0.21, 0.17)):
-        if False:
-            from astrometry.libkd.spherematch import trees_match, tree_open
-            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr)))
-            I, J, dd = trees_match(kdparent, kdccds, np.radians(radius))#, nearest=True)
-        else:
-            ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr))
-            ccds = fitsio.read(ccdsfile)
-            print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
-
-            for band in bands:
-                ww = ccds['filter'] == band
-                if np.sum(ww) > 0:
-                    # add the neighboring healpixels to protect against edge effects
-                    ccdpix = LSLGA.misc.radec2pix(nside, ccds['ra'][ww], ccds['dec'][ww])
-                    ccdpix = np.hstack((ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()))
-                    if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
-                        ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
-                    I = np.isin(parentpix, ccdpix)
-                    indesi['{}_{}'.format(cam, band)][I] = True
-                else:
-                    I = [False]
-                #print('Found {} galaxies in {} {} footprint in {:.1f} sec'.format(np.sum(I), cam, time.time() - t0))
-                print('  Found {} galaxies in {} {} footprint.'.format(np.sum(I), cam, band))
-    print('Total time to find galaxies in footprint = {:.1f} sec'.format(time.time() - t0))
-    
-    parent['IN_DESI_NORTH'] = indesi['90prime_g'] | indesi['90prime_r'] | indesi['mosaic_z']
-    parent['IN_DESI_NORTH_GRZ'] = indesi['90prime_g'] & indesi['90prime_r'] & indesi['mosaic_z']
-
-    parent['IN_DESI_SOUTH'] = indesi['decam_g'] | indesi['decam_r'] | indesi['decam_z']
-    parent['IN_DESI_SOUTH_GRZ'] = indesi['decam_g'] & indesi['decam_r'] & indesi['decam_z']
-    
-    parent['IN_DESI'] = parent['IN_DESI_NORTH'] | parent['IN_DESI_SOUTH']
-    parent['IN_DESI_GRZ'] = parent['IN_DESI_NORTH_GRZ'] | parent['IN_DESI_SOUTH_GRZ']
-
-    #plt.scatter(parent['RA'], parent['DEC'], s=1)
-    #plt.scatter(parent['RA'][indesi], parent['DEC'][indesi], s=1)
-    #plt.xlim(360, 0)
-    #plt.show()
-
-    #bb = parent[parent['IN_DESI_NORTH_GRZ'] & parent['IN_DESI_SOUTH_GRZ']]
-    #plt.scatter(bb['RA'], bb['DEC'], s=1)
-    #plt.xlim(300, 90) ; plt.ylim(30, 36)
-    #plt.axhline(y=32.375, color='k')
-    #plt.xlabel('RA') ; plt.ylabel('Dec')
-    #plt.show()
-    
-    print('  Identified {}/{} ({:.2f}%) galaxies inside and {}/{} ({:.2f}%) galaxies outside the DESI footprint.'.format(
-        np.sum(parent['IN_DESI']), len(parent), 100*np.sum(parent['IN_DESI'])/len(parent), np.sum(~parent['IN_DESI']),
-        len(parent), 100*np.sum(~parent['IN_DESI'])/len(parent)))
-
-    #parent[parent['IN_DESI']*(parent['LSLGA_ID']>3000000)]['GALAXY', 'RA', 'DEC', 'PA', 'BA', 'D25']
-    #pdb.set_trace()
-
-    # Build a group catalog.
-    nchar = np.max([len(gg) for gg in parent['GALAXY']])+6 # add six characters for "_GROUP"
-    
-    t0 = time.time()
-    parent.add_column(Column(name='GROUP_ID', data=np.zeros(len(parent), dtype=np.int)-1))
-    parent.add_column(Column(name='GROUP_NAME', length=len(parent), dtype='<U{}'.format(nchar)))
-    parent.add_column(Column(name='GROUP_MULT', data=np.zeros(len(parent), dtype=np.int16)))
-    parent.add_column(Column(name='GROUP_PRIMARY', data=np.zeros(len(parent), dtype=bool)))
-    parent.add_column(Column(name='GROUP_RA', length=len(parent), dtype='f8')) # diameter-weighted center
-    parent.add_column(Column(name='GROUP_DEC', length=len(parent), dtype='f8'))
-    parent.add_column(Column(name='GROUP_DIAMETER', length=len(parent), dtype='f4'))
-
-    #print('HACK!!!!')
-    if False:
-        #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
-        #ww = np.where((parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
-        ww = np.where((parent['RA'] > 193) * (parent['RA'] < 196) *
-                      (parent['DEC'] > 26) * (parent['DEC'] < 30))[0]
-        parent[ww] = build_group_catalog(parent[ww])
-        #print(parent[parent['GROUP_ID'] == 18])
-    else:
-        parent = build_group_catalog(parent)
-    print('Building a group catalog took {:.3f} min'.format((time.time() - t0)/60))
-
-    # Flag galaxies near bright stars.
-    tycho = LSLGA.io.read_tycho(verbose=True)
-    kdparent = tree_build_radec(parent['RA'], parent['DEC'])
-
-    nearstar = np.zeros( len(parent) ).astype(bool)
-    for star in tycho:
-        I = tree_search_radec(kdparent, star['RA'], star['DEC'], star['RADIUS'])
-        if len(I) > 0:
-            nearstar[I] = True
-    print('  Found {}/{} ({:.2f}%) galaxies near a bright (Tycho-2) star.'.format(
-        np.sum(nearstar), len(parent), 100*np.sum(nearstar)/len(parent)))
-    parent['NEAR_BRIGHTSTAR'] = nearstar
-
-    # Remove some unnecessary columns
-    parent.remove_columns(('OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
-                           'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
-                           'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K'))
-
-    print('Final sample size: {} galaxies.'.format(len(parent)))
-
-    return parent, kdparent
+#def build_parent(d25min=0.75, d25max=1e4, verbose=False):
+#    """Build the parent catalog.
+#
+#    d25min, and d25max all in arcmin
+#    
+#    """
+#    version = LSLGA.io.parent_version()
+#
+#    # Read the full Hyperleda catalog and immediately remove unwanted columns--
+#    parent = LSLGA.io.read_hyperleda(verbose=True)
+#    parent.remove_columns(('OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
+#                           'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
+#                           'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K'))
+#
+#    # Apply a minimum and maximum diameter cut.
+#    parent = apply_diamcut(parent, d25min, d25max, version)
+#
+#    # Find all galaxies in and out of the DESI footprint.
+#    parent = in_footprint(parent, nside=512)
+#
+#    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
+#    parent = remove_spurious(parent)
+#
+#    # Repair some quantities "by hand".
+#    parent = fix_byhand(parent)
+#
+#    # Add in the LG dwarfs--
+#    parent = add_localgroup_dwarfs(parent)
+#
+#    # Add in the DR8-identified "large" galaxies from Stephanie--
+#    parent = add_dr8_candidates(parent)
+#
+#    pdb.set_trace()
+#
+#    #with open('junk.xt', 'w') as ff:
+#    #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]
+#    #rr, dd = np.loadtxt('/Users/ioannis/Downloads/vi_not_in_lslga_g_less_17.txt', unpack=True)
+#    #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], rr, dd, 3/3600.0, nearest=True)    
+#
+#    # Build a group catalog--
+#    #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
+#    #ww = np.where((parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
+#    #ww = np.where((parent['RA'] > 193) * (parent['RA'] < 196) * (parent['DEC'] > 26) * (parent['DEC'] < 30))[0]
+#    parent = build_group_catalog(parent)
+#
+#    # Flag galaxies near bright stars--
+#    parent, kdparent = near_stars(parent)
+#    
+#    print('Final sample size: {} galaxies.'.format(len(parent)))
+#
+#    return parent, kdparent
 
 def main():
+    import argparse
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--d25min', type=float, default=20/60., help='Minimum diameter [arcmin].')
     parser.add_argument('--d25max', type=float, default=180.0, help='Maximum diameter [arcmin].')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose!')
+    parser.add_argument('--nside', type=int, default=512, help='Healpix size.')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
 
@@ -819,11 +675,46 @@ def main():
         print('Output file {} exists; use clobber.'.format(parentfile))
         sys.exit(1)
 
-    parent, kdparent = build_parent(verbose=args.verbose, d25min=args.d25min,
-                                    d25max=args.d25max)
+    print('Working on LSLGA {}'.format(version))
 
-    if args.verbose:
-        print('Writing {} galaxies to {}'.format(len(parent), parentfile))
+    # Read the full Hyperleda catalog and immediately remove unwanted columns--
+    parent = LSLGA.io.read_hyperleda(verbose=True)
+    parent.remove_columns(('OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
+                           'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
+                           'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K'))
+
+    # Apply a minimum and maximum diameter cut.
+    parent = apply_diamcut(parent, args.d25min, args.d25max)
+
+    # Find all galaxies in and out of the DESI footprint.
+    parent = in_footprint(parent, nside=args.nside)
+
+    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
+    parent = remove_spurious(parent)
+
+    # Repair some quantities "by hand".
+    parent = fix_byhand(parent)
+
+    # Add in the LG dwarfs and the DR8-identified "large" galaxies from
+    # Stephanie--
+    parent = add_localgroup_dwarfs(parent)
+    parent = add_dr8_candidates(parent)
+
+    #with open('junk.xt', 'w') as ff:
+    #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]
+    #rr, dd = np.loadtxt('/Users/ioannis/Downloads/vi_not_in_lslga_g_less_17.txt', unpack=True)
+    #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], rr, dd, 3/3600.0, nearest=True)    
+
+    # Build a group catalog--
+    #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
+    #ww = np.where((parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
+    #ww = np.where((parent['RA'] > 193) * (parent['RA'] < 196) * (parent['DEC'] > 26) * (parent['DEC'] < 30))[0]
+    parent = build_group_catalog(parent)
+
+    # Flag galaxies near bright stars--
+    parent, kdparent = near_stars(parent)
+    
+    print('Writing {} galaxies to {}'.format(len(parent), parentfile))
     
     #parent.write(parentfile, overwrite=True)
     hdr = fitsio.FITSHDR()
@@ -835,8 +726,7 @@ def main():
     cmd = 'modhead {} LSLGAVER {}'.format(parentfile, hdrversion)
     _ = os.system(cmd)
 
-    if args.verbose:
-        print('Writing {}'.format(kdparentfile))
+    print('Writing {}'.format(kdparentfile))
     cmd = 'startree -i {} -o {} -T -P -k -n largegals'.format(parentfile, kdparentfile)
     #print(cmd)
     _ = os.system(cmd)
