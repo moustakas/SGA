@@ -27,10 +27,14 @@ def analysis_dir():
         os.makedirs(adir, exist_ok=True)
     return adir
 
-def sample_dir():
+def sample_dir(version=None):
     sdir = os.path.join(LSLGA_dir(), 'sample')
     if not os.path.isdir(sdir):
         os.makedirs(sdir, exist_ok=True)
+    if version:
+        sdir = os.path.join(LSLGA_dir(), 'sample', version)
+        if not os.path.isdir(sdir):
+            os.makedirs(sdir, exist_ok=True)
     return sdir
 
 def paper1_dir(figures=True):
@@ -306,81 +310,68 @@ def parent_version(version=None):
         version = 'v7.0'  # 20apr18 (DR9)
     return version
 
-def get_parentfile(dr=None, kd=False, ccds=False, d25min=None, d25max=None):
-    if kd:
-        suffix = 'kd.fits'
-    else:
-        suffix = 'fits'
-
-    version = parent_version()
-
-    if dr is not None:
-        if ccds:
-            parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}-{}-ccds.{}'.format(version, dr, suffix))
-        else:
-            parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}-{}.{}'.format(version, dr, suffix))
-    else:
-        parentfile = os.path.join(sample_dir(), version, 'LSLGA-{}.{}'.format(version, suffix))
-
-    if d25min is not None:
-        parentfile = parentfile.replace('.fits', '-d25min{:.2f}.fits'.format(d25min))
-    if d25max is not None:
-        parentfile = parentfile.replace('.fits', '-d25max{:.2f}.fits'.format(d25max))
-        
-    return parentfile
-
-def read_parent(columns=None, dr=None, kd=False, ccds=False, d25min=None,
-                d25max=None, verbose=False, first=None, last=None, chaos=False):
+def read_parent(columns=None, verbose=False, first=None, last=None,
+                version=None, chaos=False):
     """Read the LSLGA parent catalog.
 
     """
-    parentfile = get_parentfile(dr=dr, kd=kd, ccds=ccds, d25min=d25min, d25max=d25max)
+    if version is None:
+        version = parent_version()
+    
+    parentfile = os.path.join(sample_dir(version=version), 'LSLGA-{}.fits'.format(version))
 
-    if kd:
-        from astrometry.libkd.spherematch import tree_open
-        parent = tree_open(parentfile, 'largegals')
-        if verbose:
-            print('Read {} galaxies from KD catalog {}'.format(parent.n, parentfile))
-    else:
-        info = fitsio.FITS(parentfile)
+    if first and last:
+        if first > last:
+            print('Index first cannot be greater than index last, {} > {}'.format(first, last))
+            raise ValueError()
+    ext = 1
+    info = fitsio.FITS(parentfile)
+    nrows = info[ext].get_nrows()
 
-        # Read the CHAOS sample.
-        if chaos:
-            allgals = info[1].read(columns='GALAXY')
-            rows = np.hstack( [np.where(np.isin(allgals, chaosgal.encode('utf-8')))[0]
-                               for chaosgal in ('NGC0628', 'NGC5194', 'NGC5457', 'NGC3184')] )
-            rows = np.sort(rows)
-            nrows = len(rows)
-        else:
-            nrows = info[1].get_nrows()
+    rows = None
+    
+    # Read the CHAOS sample.
+    if chaos:
+        allgals = info[1].read(columns='GALAXY')
+        rows = np.hstack( [np.where(np.isin(allgals, chaosgal.encode('utf-8')))[0]
+                           for chaosgal in ('NGC0628', 'NGC5194', 'NGC5457', 'NGC3184')] )
+        rows = np.sort(rows)
+        nrows = len(rows)
 
-        if first is None:
-            first = 0
-        if last is None:
-            last = nrows
-        if first == last:
-            last = last + 1
-            
-        if chaos:
-            rows = rows[first:last]
-        else:
+        nrows = info[1].get_nrows()
+
+    if first is None:
+        first = 0
+    if last is None:
+        last = nrows
+        if rows is None:
             rows = np.arange(first, last)
+        else:
+            rows = rows[np.arange(first, last)]
+    else:
+        if last >= nrows:
+            print('Index last cannot be greater than the number of rows, {} >= {}'.format(last, nrows))
+            raise ValueError()
+        if rows is None:
+            rows = np.arange(first, last+1)
+        else:
+            rows = rows[np.arange(first, last+1)]
 
-        parent = Table(info[1].read(rows=rows))
-        if verbose:
-            if len(rows) == 1:
-                print('Read galaxy index {} from {}'.format(first, parentfile))
-            else:
-                print('Read galaxy indices {} through {} (N={}) from {}'.format(
-                    first, last-1, len(parent), parentfile))
+    parent = Table(info[ext].read(rows=rows, upper=True, columns=columns))
+    if verbose:
+        if len(rows) == 1:
+            print('Read galaxy index {} from {}'.format(first, parentfile))
+        else:
+            print('Read galaxy indices {} through {} (N={}) from {}'.format(
+                first, last, len(parent), parentfile))
 
-        # Temporary hack to add the data release number, PSF size, and distance.
-        if chaos:
-            parent.add_column(Column(name='DR', dtype='S3', length=len(parent)))
-            gal2dr = {'NGC0628': 'DR7', 'NGC5194': 'DR6', 'NGC5457': 'DR6', 'NGC3184': 'DR6'}
-            for ii, gal in enumerate(np.atleast_1d(parent['GALAXY'])):
-                if gal in gal2dr.keys():
-                    parent['DR'][ii] = gal2dr[gal]
+    ## Temporary hack to add the data release number, PSF size, and distance.
+    #if chaos:
+    #    parent.add_column(Column(name='DR', dtype='S3', length=len(parent)))
+    #    gal2dr = {'NGC0628': 'DR7', 'NGC5194': 'DR6', 'NGC5457': 'DR6', 'NGC3184': 'DR6'}
+    #    for ii, gal in enumerate(np.atleast_1d(parent['GALAXY'])):
+    #        if gal in gal2dr.keys():
+    #            parent['DR'][ii] = gal2dr[gal]
         
     return parent
 
