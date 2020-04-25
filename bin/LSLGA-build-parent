@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 import fitsio
 from astropy.table import Table, Column, vstack
-from astrometry.libkd.spherematch import match_radec
+from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, match_radec
 
 import LSLGA.io
 
@@ -31,13 +31,300 @@ def _imagetool_inspect(cat):
     https://yymao.github.io/decals-image-list-tool/
 
     """
+    galcol = 'GALAXY'
+    if not galcol in cat.colnames:
+        galcol = 'NAME'
+    
     outfile = os.path.join(os.getenv('HOME'), 'tmp', 'inspect.txt')
     print('Writing {} objects to {}'.format(len(cat), outfile))
     with open(outfile, 'w') as ff:
         ff.write('name ra dec\n')
-        for gal, ra, dec in zip(cat['GALAXY'], cat['RA'], cat['DEC']):
-            ff.write('{} {} {}\n'.format(gal, ra, dec))
+        for ii, (gal, ra, dec) in enumerate(zip(cat[galcol], cat['RA'], cat['DEC'])):
+            if gal.strip() == '':
+                if 'ALTNAME' in cat.colnames:
+                    gal = cat['ALTNAME'][ii].strip().replace(' ', '')
+                    if gal == '':
+                        gal = 'galaxy'
+                else:
+                    gal = 'galaxy'
+            ff.write('{} {:.6f} {:.6f}\n'.format(gal, ra, dec))
 
+def add_ngc(parent, startindx=5000000):
+    """Add in missing NGC galaxies.
+
+    """
+    import numpy.ma as ma
+    from astropy.io import ascii
+    from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec    
+
+    # "Fix" the NGC and IC galaxy names in the parent catalog so we can match,
+    # below--
+    indx = np.where(['NGC' in gg for gg in parent['GALAXY']])[0]
+    for ii in indx:
+        gg = parent['GALAXY'][ii]
+        gg = gg.strip()
+        if len(gg) >= 7: # OK
+            if len(gg) > 7:
+                print(gg) # e.g., NGC1097A
+                #pass
+            continue
+        else:
+            newgg = 'NGC{:04d}'.format(np.int(gg[3:]))
+            print('{}-->{}'.format(gg, newgg))
+            parent['GALAXY'][ii] = newgg
+
+    indx = np.where(['IC' in gg for gg in parent['GALAXY']])[0]
+    for ii in indx:
+        gg = parent['GALAXY'][ii]
+        gg = gg.strip()
+        if len(gg) >= 6: # OK
+            if len(gg) > 6:
+                print(gg) # e.g., IC1097A
+                #pass
+            continue
+        else:
+            newgg = 'IC{:04d}'.format(np.int(gg[2:]))
+            print('{}-->{}'.format(gg, newgg))
+            parent['GALAXY'][ii] = newgg
+
+    # Now read the OpenNGC catalog--
+    names = ('name', 'type', 'ra_hms', 'dec_dms', 'const', 'majax', 'minax',
+             'pa', 'bmag', 'vmag', 'jmag', 'hmag', 'kmag', 'sbrightn', 'hubble',
+             'cstarumag', 'cstarbmag', 'cstarvmag', 'messier', 'ngc', 'ic',
+             'cstarnames', 'identifiers', 'commonnames', 'nednotes', 'ongcnotes')
+    NGCfile = os.path.join(sampledir, 'NGC.csv')
+    NGC = ascii.read(NGCfile, delimiter=';', names=names)
+    print('Read {} galaxies from {}'.format(len(NGC), NGCfile))
+
+    for col in NGC.colnames:
+        NGC.rename_column(col, col.upper())
+
+    NGC = NGC[(NGC['RA_HMS'] != 'N/A')]
+
+    ra, dec = [], []
+    for _ra, _dec in zip(ma.getdata(NGC['RA_HMS']), ma.getdata(NGC['DEC_DMS'])):
+        ra.append(hmsstring2ra(_ra.replace('h', ':').replace('m', ':').replace('s','')))
+        dec.append(dmsstring2dec(_dec.replace('d', ':').replace('m', ':').replace('s','')))
+    NGC['RA'] = ra
+    NGC['DEC'] = dec
+    objtype = np.char.strip(ma.getdata(NGC['TYPE']))
+    NGC = NGC[np.where(['G' in typ and typ != 'GCl' for typ in objtype])[0]]
+
+    keep = np.where([not 'NED' in nn for nn in NGC['NAME']])[0]
+    NGC = NGC[keep]
+
+    NGC['NAME'] = ['tmp-{}'.format(nn.strip().replace(' ', '_')) for nn in NGC['NAME']]
+    print('Cutting to {} NGC galaxies with good coordinates.'.format(len(NGC)))
+
+    pdb.set_trace()
+
+    if True:
+        NGC = in_footprint(NGC)
+        NGC = NGC[NGC['IN_DESI']]
+        print('Cutting to {} missing galaxies in the DESI footprint.'.format(len(NGC)))
+
+        # Match against parent--what's missing?
+        #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], NGC['RA'], NGC['DEC'], 5/3600.0, nearest=True)
+        missing = np.delete(np.arange(len(NGC)), m2)
+        _imagetool_inspect(NGC[missing])
+        pdb.set_trace()
+
+    # Make the supplemental catalog "look" like the parent Hyperleda catalog.
+    NGC.rename_column('NAME', 'GALAXY')
+    NGC.rename_column('MAJAX', 'D25') # [arcmin]
+    NGC.rename_column('BMAG', 'MAG')
+    NGC['BA'] = NGC['MINAX'] / NGC['D25']
+    
+    out = Table()
+    for col in parent.colnames:
+        out[col] = np.zeros(len(NGC), dtype=parent[col].dtype)
+    for col in NGC.colnames:
+        if col in out.colnames:
+            out[col] = NGC[col]
+            
+    out['OBJTYPE'] = 'G'
+    out['SB_D25'] = out['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(out['D25'])
+
+    parent = vstack((parent, out))
+
+    return parent
+    
+def add_rc3(parent, startindx=4000000):
+    """Add in missing RC3 galaxies.
+
+    """
+    print('Supplementing the LSGLA with missing RC3 galaxies.')
+
+    rc3file = os.path.join(os.getenv('CATALOGS_DIR'), 'rc3', 'rc3_parsed.fits.gz')
+    rc3 = Table.read(rc3file)
+    print('Read {} galaxies from {}'.format(len(rc3), rc3file))
+
+    rc3.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(rc3))), index=0)
+
+    # Code used for visual inspections--
+    if False:
+        gal = np.array([gg.strip().replace(' ', '') for gg in rc3['NAME']])
+
+        keep = np.where((rc3['D25_MAJ'] > 20/60.) *
+                        (gal != 'SMC') * (gal != 'LMC') *
+                        (gal != 'Fornax') *
+                        (gal != 'Sculptor') *
+                        (gal != 'UrsaMinor') *
+                        (gal != 'Draco') *
+                        (gal != 'Carina'))[0] 
+        print('Keeping {}/{} galaxies with D(25)>20 arcsec'.format(len(keep), len(rc3)))
+        rc3 = rc3[keep]
+
+        # match on PGC number
+        pgc = [np.int(pgc.replace('PGC', '').replace('a+b', '')) for pgc in rc3['PGC']]
+        missing = np.logical_not(np.isin(pgc, parent['PGC']))
+
+        rc3 = rc3[missing]
+        rc3 = in_footprint(rc3)
+        rc3 = rc3[rc3['IN_DESI']]
+        print('Cutting to {} missing galaxies in the DESI footprint.'.format(len(rc3)))
+
+        #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], rc3['RA'], rc3['DEC'], 10/3600.0, nearest=True)
+        #missing = np.delete(np.arange(len(rc3)), m2)
+        #rc3[missing]
+        #_imagetool_inspect(rc3)
+
+    # Add galaxies in by hand, based on visual inspection--
+    keepgals = np.array([
+        'ESO350-38',
+        #'UGC504', # Hyperleda diameter fixed in fix_byhand()
+        'ESO79-13', 'MCG-1-3-72', 'ESO296-11',
+        'NGC526', 'NGC596', 'UGCA20', 'NGC680', 'ESO298-39', 'NGC1097A',
+        'ESO356-14',
+        'ESO116-15',
+        'ESO248-6',
+        'NGC1382', 'ESO302-15',
+        'ESO201-10',
+        'ESO118-30',
+        #'ESO119-23', # Hyperleda diameter fixed in fix_byhand()
+        'ESO159-16',
+        #'ESO488-31', # Hyperleda diameter fixed in fix_byhand()
+        'UGC3694', 'UGC4528', 'MCG-1-25-6',
+        'UGC5162',
+        #'A0943+56', # Hyperleda diameter fixed in fix_byhand()
+        'UGC5482',
+        'MCG1-32-96',
+        'NGC4858',
+        #'MCG-1-33-83', # <<30 arcsec
+        #'IC4212', # Hyperleda diameter fixed in fix_byhand()
+        'NGC6050',
+        #'ESO286-52', # in Hyperleda as NGC7012?
+        'ESO288-40',
+        'NGC7592', 
+        'ESO192-11'])
+    gal = np.array([gg.strip().replace(' ', '') for gg in rc3['NAME']])
+    alt = np.array([gg.strip().replace(' ', '') for gg in rc3['ALTNAME']])
+
+    keep = []
+    for keepgal in keepgals:
+        ww = np.where(keepgal == gal)[0]
+        if len(ww) == 0:
+            ww = np.where(keepgal == alt)[0]
+        if len(ww) == 0:
+            pdb.set_trace()
+        keep.append(ww)
+    keep = np.hstack(keep)
+    
+    #keep = np.where( (gal == 'ESO350-38') or
+    #                 (gal == )
+    #                 )[0]
+    print('Keeping {} RC3 galaxies.'.format(len(keep)))
+    #_imagetool_inspect(rc3[keep])
+
+    rc3 = rc3[keep]
+
+    # Make the supplemental catalog "look" like the parent Hyperleda catalog.
+    rc3['GALAXY'] = keepgals
+    rc3['BA'] = rc3['D25_MIN'] / rc3['D25_MAJ']
+    rc3.rename_column('D25_MAJ', 'D25')
+    rc3.rename_column('BMAG', 'MAG')
+
+    pgc = [np.int(pgc.replace('PGC', '').replace('a+b', '')) for pgc in rc3['PGC']]
+    rc3.rename_column('PGC', 'BIGPGC')
+    rc3['PGC'] = pgc
+
+    fix = np.where(rc3['GALAXY'] == 'ESO350-38')[0]
+    rc3['RA'][fix], rc3['DEC'][fix] = 9.219583, -33.554722 # from NED
+
+    fix = np.where(rc3['GALAXY'] == 'MCG-1-3-72')[0]
+    rc3['PA'][fix] = 45 # by eye
+    rc3['MAG'][fix] = 17.55
+
+    fix = np.where(rc3['GALAXY'] == 'UGCA20')[0]
+    rc3['MAG'][fix] = 16.05
+
+    fix = np.where(rc3['GALAXY'] == 'UGC4258')[0]
+    rc3['MAG'][fix] = 16.14
+
+    fix = np.where(rc3['GALAXY'] == 'MCG-1-25-6')[0]
+    rc3['MAG'][fix] = 13.99
+
+    fix = np.where(rc3['GALAXY'] == 'UGC5162')[0]
+    rc3['MAG'][fix] = 15.94
+
+    fix = np.where(rc3['GALAXY'] == 'UGC5482')[0]
+    rc3['MAG'][fix] = 16.97
+
+    fix = np.where(rc3['GALAXY'] == 'UGC5482')[0]
+    rc3['MAG'][fix] = 16.97
+
+    fix = np.where(rc3['GALAXY'] == 'NGC6050')[0]
+    rc3['MAG'][fix] = 15.4
+
+    fix = np.where(rc3['GALAXY'] == 'ESO116-15')[0]
+    rc3['PA'][fix] = 95 # by eye
+
+    fix = np.where(rc3['GALAXY'] == 'MCG1-32-96')[0]
+    rc3['PA'][fix] = 45 # by eye
+
+    fix = np.where(rc3['GALAXY'] == 'ESO118-30')[0]
+    rc3['D25'][fix] = 0.1*10**1.25
+    rc3['BA'][fix] = 10**(-0.26)
+    rc3['PA'][fix] = 64.3
+    rc3['MAG'][fix] = 14.3
+
+    fix = np.where(rc3['GALAXY'] == 'ESO248-6')[0]
+    rc3['D25'][fix] = 0.1*10**1.21
+    rc3['BA'][fix] = 10**(-0.41)
+    rc3['PA'][fix] = 12.5
+    rc3['MAG'][fix] = 15.05
+
+    fix = np.where(rc3['GALAXY'] == 'ESO356-14')[0]
+    rc3['D25'][fix] = 0.1*10**0.94
+    rc3['BA'][fix] = 10**(-0.12)
+    rc3['PA'][fix] = 127.7
+    rc3['MAG'][fix] = 14.77
+
+    fix = np.where(rc3['GALAXY'] == 'NGC7592')[0]
+    rc3['D25'][fix] = 0.1*10**1.18
+    rc3['BA'][fix] = 10**(-0.12)
+    rc3['PA'][fix] = 85.0
+    rc3['MAG'][fix] = 14.5
+
+    #fix = rc3['MAG'] < 0
+    #rc3['MAG'][fix] = 15.0 # hack!
+
+    #fix = np.where(rc3['GALAXY'] == 'MCG-1-33-83')[0]
+    #rc3['D25'][fix] = 
+    
+    out = Table()
+    for col in parent.colnames:
+        out[col] = np.zeros(len(rc3), dtype=parent[col].dtype)
+    for col in rc3.colnames:
+        if col in out.colnames:
+            out[col] = rc3[col]
+            
+    out['OBJTYPE'] = 'G'
+    out['SB_D25'] = out['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(out['D25'])
+    
+    parent = vstack((parent, out))
+    
+    return parent
         
 def in_footprint(parent, nside=512):
     """Find all galaxies in the DESI footprint.
@@ -122,8 +409,6 @@ def near_stars(parent):
     """Flag galaxies near bright stars.
 
     """
-    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec
-
     tycho = LSLGA.io.read_tycho(verbose=True)
     kdparent = tree_build_radec(parent['RA'], parent['DEC'])
 
@@ -169,6 +454,57 @@ def fix_byhand(parent):
     
     """
     print('Repairing some quantities by-hand.')
+
+    # UGC504
+    # Use RC3 values
+    fix = np.where(parent['PGC'] == 2882)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 1.175
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # Maffei2
+    # Use https://github.com/moustakas/LSLGA/blob/master/doc/compare-wxsc-largest-galaxies.ipynb
+    fix = np.where(parent['PGC'] == 10217)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 2 * 8.50
+        parent['PA'][fix] = 27.7
+        parent['BA'][fix] = 0.44
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+        
+    # UGC05302
+    # https://ned.ipac.caltech.edu/byname?objname=UGC05302&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 28563)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.29
+        parent['PA'][fix] = 117
+        parent['BA'][fix] = 10**(-0.06)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+        
+    # PGC061191 - fix by eye
+    fix = np.where(parent['PGC'] == 61191)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.8
+        parent['BA'][fix] = 1.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # PGC008356 - use RC3 diameters but PA from SDSS
+    # https://ned.ipac.caltech.edu/byname?objname=PGC008356&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    fix = np.where(parent['PGC'] == 8356)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**0.74
+        parent['PA'][fix] = 105
+        parent['BA'][fix] = 10**(-0.38)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+        
+    # [PT2011]53, wrong PA
+    fix = np.where(parent['GALAXY'] == '[PT2011]53')[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 45.0
     
     # PGC1035237, Leda coordiantes are totally wrong!
     fix = np.where(parent['PGC'] == 1035237)[0]
@@ -190,7 +526,7 @@ def fix_byhand(parent):
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.68
         parent['PA'][fix] = 97.5
-        parent['BA'][fix] = 0.05
+        parent['BA'][fix] = 10**(-0.05)
         parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
           5 * np.log10(parent['D25'][fix])
 
@@ -259,6 +595,43 @@ def fix_byhand(parent):
         parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
           5 * np.log10(parent['D25'][fix])
 
+    # IC4212
+    fix = np.where(parent['PGC'] == 45845)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.49
+        parent['BA'][fix] = 10**(-0.11)
+        parent['PA'][fix] = 140
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC28111
+    fix = np.where(parent['PGC'] == 28111)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**0.62
+        parent['BA'][fix] = 10**(-0.11)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC075458=ESO488-31
+    fix = np.where(parent['PGC'] == 75458)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.977
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC16395=ESO119-23
+    fix = np.where(parent['PGC'] == 16395)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 1.445
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC011986 - coordinates are totally wrong!
+    fix = np.where(parent['PGC'] == 11986)[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 48.285686
+        parent['DEC'][fix] = -50.562612
+
     return parent
 
 def add_localgroup_dwarfs(parent):
@@ -284,7 +657,7 @@ def add_localgroup_dwarfs(parent):
         ax[2].scatter(parent['BA'][m1], dwarfs['BA'][m2]) ; ax[2].set_xlim(0, 1) ; ax[2].set_ylim(0, 1)
         plt.show()
 
-    # Make the dwarfs catalog "look" like the parent Hyperleda catalog and assign IDs starting at 3000000.
+    # Make the dwarfs catalog "look" like the parent Hyperleda catalog and assign IDs.
     moredwarfs = Table()
     for col in parent.colnames:
         moredwarfs[col] = np.zeros(len(dwarfs), dtype=parent[col].dtype)
@@ -308,7 +681,7 @@ def add_localgroup_dwarfs(parent):
 
     return parent
 
-def add_dr8_candidates(parent, startindx=5000000):
+def add_dr8_candidates(parent, startindx=6000000):
     """Read the set of "large" galaxies identified by Stephanie Juneau from the DR8
     catalogs.
 
@@ -326,7 +699,7 @@ def add_dr8_candidates(parent, startindx=5000000):
     nkeep = np.where((north['DEC'] > 32.375) * (north['VI_FLAG'] == 'Y'))[0]
     skeep = np.where((south['DEC'] < 32.375) * (south['VI_FLAG'] == 'Y'))[0]
 
-    print('Add in a minimum d25 for the sdss-supplemented galaxies!!!!!!!!!')
+    #print('Add in a minimum d25 for the sdss-supplemented galaxies!!!!!!!!!')
 
     if False:
         plt.scatter(north['RA'], north['DEC'], label='North')
@@ -418,6 +791,8 @@ def remove_spurious(parent):
     """Remove spurious galaxies.
 
     """
+    from legacyhalos.misc import is_in_ellipse
+
     # Read the file from Schlegel--
     rejfile = os.path.join(sampledir, 'lslga-dr8-psf-reject.txt')
     rejid, rejra, rejdec = np.loadtxt(rejfile, unpack=True)
@@ -451,6 +826,43 @@ def remove_spurious(parent):
         #parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
         parent = parent[magcut]
 
+    # Toss out all SDSS and 2MASS galaxies "near" another large galaxy.  Many of
+    # these are spurious and the ones that are not usually have compromised
+    # diameters. Hopefully the real galaxies we toss out will be fixed by visual
+    # inspection and/or will be picked up by the standard pipeline.
+    kdparent = tree_build_radec(parent['RA'], parent['DEC'])
+    
+    indx = ['SDSS' in gg or '2MAS' in gg for gg in parent['GALAXY']]
+    #indx = np.where(parent['IN_DESI'] * )[0]
+    host = np.where(parent['IN_DESI'] * (parent['D25'] > 0.5) * np.logical_not(indx))[0]
+    
+    sdssingal = np.zeros(len(parent), dtype=bool)
+    for pp in parent[host]:
+        I = tree_search_radec(kdparent, pp['RA'], pp['DEC'], pp['D25'] / 1.5 / 60) # 1.7 instead of 2...
+        if len(I) > 1: # don't count the host galaxy itself
+            these = np.array(['SDSS' in gg or '2MAS' in gg for gg in parent['GALAXY'][I]])
+            if np.sum(these) > 0:
+                sdssingal[I[these]] = True
+        
+        #phi = 180 - pp['PA']
+        #ab = 1. / pp['BA']
+        #e = (ab - 1) / (ab + 1)
+        #ee = -np.log(1 - e)
+        #angle = np.deg2rad(2. * (-phi))
+        #e1 = ee * np.cos(angle)
+        #e2 = ee * np.sin(angle)
+        #inell = is_in_ellipse(parent['RA'][indx], parent['DEC'][indx],
+        #                      pp['RA'], pp['DEC'], pp['D25'] / 2, e1, e2)
+        #if np.sum(inell) > 0:
+        #    pdb.set_trace()
+        
+    #_imagetool_inspect(parent[inspect])
+    
+    print('  Removed {}/{} ({:.2f}%) SDSS/2MASS galaxies inside another large galaxy.'.format(
+        np.sum(sdssingal), len(parent), 100*np.sum(sdssingal)/len(parent)))    
+    if np.sum(sdssingal) > 0:
+        parent = parent[~sdssingal]
+    
     # Visually inspect all the SDSS galaxies above a certain surface brightness;
     # most of these are spurious, but there are many we want to keep.
     #w1 = np.where(parent['IN_DESI'] * (parent['SB_D25'] > 26) * (parent['D25'] <= 0.9))[0]
@@ -511,6 +923,10 @@ def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
     cat.add_column(Column(name='GROUP_RA', length=len(cat), dtype='f8')) # diameter-weighted center
     cat.add_column(Column(name='GROUP_DEC', length=len(cat), dtype='f8'))
     cat.add_column(Column(name='GROUP_DIAMETER', length=len(cat), dtype='f4'))
+
+    #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
+    #ww = np.where((parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
+    #ww = np.where((parent['RA'] > 193) * (parent['RA'] < 196) * (parent['DEC'] > 26) * (parent['DEC'] < 30))[0]
     
     # Initialize a unique group number for each galaxy
     gnum = np.arange(len(cat)).astype(np.int)
@@ -605,58 +1021,6 @@ def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
         
     return cat
     
-#def build_parent(d25min=0.75, d25max=1e4, verbose=False):
-#    """Build the parent catalog.
-#
-#    d25min, and d25max all in arcmin
-#    
-#    """
-#    version = LSLGA.io.parent_version()
-#
-#    # Read the full Hyperleda catalog and immediately remove unwanted columns--
-#    parent = LSLGA.io.read_hyperleda(verbose=True)
-#    parent.remove_columns(('OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
-#                           'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
-#                           'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K'))
-#
-#    # Apply a minimum and maximum diameter cut.
-#    parent = apply_diamcut(parent, d25min, d25max, version)
-#
-#    # Find all galaxies in and out of the DESI footprint.
-#    parent = in_footprint(parent, nside=512)
-#
-#    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
-#    parent = remove_spurious(parent)
-#
-#    # Repair some quantities "by hand".
-#    parent = fix_byhand(parent)
-#
-#    # Add in the LG dwarfs--
-#    parent = add_localgroup_dwarfs(parent)
-#
-#    # Add in the DR8-identified "large" galaxies from Stephanie--
-#    parent = add_dr8_candidates(parent)
-#
-#    pdb.set_trace()
-#
-#    #with open('junk.xt', 'w') as ff:
-#    #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]
-#    #rr, dd = np.loadtxt('/Users/ioannis/Downloads/vi_not_in_lslga_g_less_17.txt', unpack=True)
-#    #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], rr, dd, 3/3600.0, nearest=True)    
-#
-#    # Build a group catalog--
-#    #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
-#    #ww = np.where((parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
-#    #ww = np.where((parent['RA'] > 193) * (parent['RA'] < 196) * (parent['DEC'] > 26) * (parent['DEC'] < 30))[0]
-#    parent = build_group_catalog(parent)
-#
-#    # Flag galaxies near bright stars--
-#    parent, kdparent = near_stars(parent)
-#    
-#    print('Final sample size: {} galaxies.'.format(len(parent)))
-#
-#    return parent, kdparent
-
 def main():
     import argparse
     
@@ -668,9 +1032,9 @@ def main():
     args = parser.parse_args()
 
     version = LSLGA.io.parent_version()
-    parentfile = LSLGA.io.get_parentfile()
-    kdparentfile = LSLGA.io.get_parentfile(kd=True)
-    
+    parentfile = LSLGA.io.get_parentfile(version=version)
+    kdparentfile = LSLGA.io.get_parentfile(version=version, kd=True)
+
     if os.path.isfile(parentfile) and not args.clobber:
         print('Output file {} exists; use clobber.'.format(parentfile))
         sys.exit(1)
@@ -683,33 +1047,31 @@ def main():
                            'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
                            'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K'))
 
+    # Repair some quantities "by hand". Do this first because some objects get
+    # bumped above our diameter cut (e.g., UGC504).
+    parent = fix_byhand(parent)
+
     # Apply a minimum and maximum diameter cut.
     parent = apply_diamcut(parent, args.d25min, args.d25max)
 
     # Find all galaxies in and out of the DESI footprint.
     parent = in_footprint(parent, nside=args.nside)
 
-    # Remove known *spurious* large galaxies (based on visual inspection, etc.).
-    parent = remove_spurious(parent)
-
-    # Repair some quantities "by hand".
-    parent = fix_byhand(parent)
-
     # Add in the LG dwarfs and the DR8-identified "large" galaxies from
     # Stephanie--
     parent = add_localgroup_dwarfs(parent)
+    parent = add_rc3(parent)
+    parent = add_ngc(parent)
     parent = add_dr8_candidates(parent)
 
-    #with open('junk.xt', 'w') as ff:
-    #    [ff.write('{}\n'.format(gal)) for gal in np.unique(parent['GALAXY'])]
-    #rr, dd = np.loadtxt('/Users/ioannis/Downloads/vi_not_in_lslga_g_less_17.txt', unpack=True)
-    #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], rr, dd, 3/3600.0, nearest=True)    
+    # Remove known *spurious* large galaxies (based on visual inspection,
+    # etc.). We do reject a handful of DR8-supplement galaxies, so be sure to do
+    # this step *after* we've added in the DR8 candidates.
+    parent = remove_spurious(parent)
 
     # Build a group catalog--
-    #ww = np.where((parent['RA'] > 177) * (parent['RA'] < 178) * (parent['DEC'] > -1.5) * (parent['DEC'] < -0.5))[0]
-    #ww = np.where((parent['RA'] > 200) * (parent['RA'] < 240) * (parent['DEC'] > 20))[0]
-    #ww = np.where((parent['RA'] > 193) * (parent['RA'] < 196) * (parent['DEC'] > 26) * (parent['DEC'] < 30))[0]
-    parent = build_group_catalog(parent)
+    print('Skipping group catalog-making!!!')
+    #parent = build_group_catalog(parent)
 
     # Flag galaxies near bright stars--
     parent, kdparent = near_stars(parent)

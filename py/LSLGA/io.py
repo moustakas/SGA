@@ -310,6 +310,17 @@ def parent_version(version=None):
         version = 'v7.0'  # 20apr18 (DR9)
     return version
 
+def get_parentfile(version=None, kd=False):
+
+    if kd:
+        suffix = 'kd.fits'
+    else:
+        suffix = 'fits'
+        
+    parentfile = os.path.join(sample_dir(version=version), 'LSLGA-{}.{}'.format(version, suffix))
+
+    return parentfile
+
 def read_parent(columns=None, verbose=False, first=None, last=None,
                 version=None, chaos=False):
     """Read the LSLGA parent catalog.
@@ -318,7 +329,7 @@ def read_parent(columns=None, verbose=False, first=None, last=None,
     if version is None:
         version = parent_version()
     
-    parentfile = os.path.join(sample_dir(version=version), 'LSLGA-{}.fits'.format(version))
+    parentfile = get_parentfile(version=version)
 
     if first and last:
         if first > last:
