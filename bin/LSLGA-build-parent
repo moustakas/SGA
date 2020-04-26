@@ -26,20 +26,24 @@ def _viewer_inspect(cat):
     print('Writing {} objects to {}'.format(len(cat), outfile))
     out.write(outfile, overwrite=True)
 
-def _imagetool_inspect(cat):
+def _imagetool_inspect(cat, group=False):
     """Write a little catalog that can be uploaded to
     https://yymao.github.io/decals-image-list-tool/
 
     """
-    galcol = 'GALAXY'
-    if not galcol in cat.colnames:
-        galcol = 'NAME'
-    
+    if group:
+        galcol, racol, deccol = 'GROUP_NAME', 'GROUP_RA', 'GROUP_DEC'
+    else:
+        racol, deccol = 'RA', 'DEC'
+        galcol = 'GALAXY'
+        if not galcol in cat.colnames:
+            galcol = 'NAME'
+        
     outfile = os.path.join(os.getenv('HOME'), 'tmp', 'inspect.txt')
     print('Writing {} objects to {}'.format(len(cat), outfile))
     with open(outfile, 'w') as ff:
         ff.write('name ra dec\n')
-        for ii, (gal, ra, dec) in enumerate(zip(cat[galcol], cat['RA'], cat['DEC'])):
+        for ii, (gal, ra, dec) in enumerate(zip(cat[galcol], cat[racol], cat[deccol])):
             if gal.strip() == '':
                 if 'ALTNAME' in cat.colnames:
                     gal = cat['ALTNAME'][ii].strip().replace(' ', '')
@@ -99,6 +103,7 @@ def add_ngc(parent, startindx=5000000):
     for col in NGC.colnames:
         NGC.rename_column(col, col.upper())
 
+    NGC.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(NGC))), index=0)
     NGC = NGC[(NGC['RA_HMS'] != 'N/A')]
 
     ra, dec = [], []
@@ -108,43 +113,120 @@ def add_ngc(parent, startindx=5000000):
     NGC['RA'] = ra
     NGC['DEC'] = dec
     objtype = np.char.strip(ma.getdata(NGC['TYPE']))
-    NGC = NGC[np.where(['G' in typ and typ != 'GCl' for typ in objtype])[0]]
+
+    # after a ton of visual inspections, I've decided to *not* match against
+    # galaxy pairs and triples: Hyperleda does seem to pick those up, albeit
+    # with funky/wrong geometry sometimes
+    NGC = NGC[np.where(['G' == typ for typ in objtype])[0]]
+    #NGC = NGC[np.where(['G' in typ and typ != 'GCl' for typ in objtype])[0]]
+    NGC.remove_column('TYPE') # to not conflict with parent, below
+    NGC.rename_column('HUBBLE', 'TYPE')
 
     keep = np.where([not 'NED' in nn for nn in NGC['NAME']])[0]
     NGC = NGC[keep]
 
-    NGC['NAME'] = ['tmp-{}'.format(nn.strip().replace(' ', '_')) for nn in NGC['NAME']]
     print('Cutting to {} NGC galaxies with good coordinates.'.format(len(NGC)))
 
-    pdb.set_trace()
+    # Match against parent--what's missing?
+    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], NGC['RA'], NGC['DEC'], 30/3600.0, nearest=True)
+    print('Need to also check the matching objects!')
 
-    if True:
-        NGC = in_footprint(NGC)
-        NGC = NGC[NGC['IN_DESI']]
-        print('Cutting to {} missing galaxies in the DESI footprint.'.format(len(NGC)))
+    # Remove objects for which we have better catalog parameters in the catalog
+    # at this point.
+    m2 = np.hstack([m2, np.hstack([np.where(NGC['NAME'] == 'IC0715SE')[0], # galaxy component
+                                   np.where(NGC['NAME'] == 'IC4212')[0],   # better coords in Hyperleda
+                                   np.where(NGC['NAME'] == 'NGC1484')[0],  # better coords in Hyperleda
+                                   np.where(NGC['NAME'] == 'IC1636')[0],   # better coords in Hyperleda
+                                   np.where(NGC['NAME'] == 'NGC2680')[0],  # duplicate with NGC2679?
+                                   np.where(NGC['NAME'] == 'NGC2458')[0],  # already in Hyperleda
+                                   np.where(NGC['NAME'] == 'NGC2363')[0],  # HII region
+                                   np.where(NGC['NAME'] == 'IC2789')[0],   # tiny, reject
+                                   np.where(NGC['NAME'] == 'IC3332')[0],   # star?
+                                   np.where(NGC['NAME'] == 'IC3738')[0],   # tiny, reject
+                                   np.where(NGC['NAME'] == 'NGC3387')[0],  # star?
+                                   np.where(NGC['NAME'] == 'IC0436')[0],   # reject, no size / not in footprint
+                                   np.where(NGC['NAME'] == 'NGC7556A')[0], # we already have NGC7556
+                                   np.where(NGC['NAME'] == 'NGC7592C')[0], # we already have NGC7592
+                                   np.where(NGC['NAME'] == 'NGC0554B')[0], # merged with NGC0554A?
+                                   np.where(NGC['NAME'] == 'NGC4657')[0]   # HII region
+                                   ])])
+    missing = np.delete(np.arange(len(NGC)), m2)
+    #_imagetool_inspect(NGC[missing])
+    print('Keeping {} missing NGC galaxies.'.format(len(missing)))
+    NGC = NGC[missing]
 
-        # Match against parent--what's missing?
-        #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], NGC['RA'], NGC['DEC'], 5/3600.0, nearest=True)
-        missing = np.delete(np.arange(len(NGC)), m2)
-        _imagetool_inspect(NGC[missing])
-        pdb.set_trace()
+    #print('Temporarily add a prefix to the name.')
+    #NGC['NAME'] = ['tmp-{}'.format(nn.strip().replace(' ', '_')) for nn in NGC['NAME']]
+
+    #NGC = in_footprint(NGC)
+    #NGC = NGC[NGC['IN_DESI']]
+    #print('Cutting to {} missing galaxies in the DESI footprint.'.format(len(NGC)))
+    
+    #_imagetool_inspect(NGC)
+    #pdb.set_trace()
 
     # Make the supplemental catalog "look" like the parent Hyperleda catalog.
     NGC.rename_column('NAME', 'GALAXY')
-    NGC.rename_column('MAJAX', 'D25') # [arcmin]
-    NGC.rename_column('BMAG', 'MAG')
-    NGC['BA'] = NGC['MINAX'] / NGC['D25']
+    NGC.rename_column('PA', 'PA_ORIG')
     
+    NGC['D25'] = ma.getdata(NGC['MAJAX']).astype('f4') # [arcmin]
+    NGC['MAG'] = ma.getdata(NGC['BMAG']).astype('f4')
+    NGC['BA'] = np.ones(len(NGC), dtype='f4')
+    NGC['PA'] = np.zeros(len(NGC), dtype='f4')
+
+    good = np.where(np.logical_not(ma.getmask(NGC['MINAX'])))[0]
+    NGC['BA'][good] = ma.getdata(NGC['MINAX'][good]) / NGC['D25'][good]
+
+    good = np.where(np.logical_not(ma.getmask(NGC['PA_ORIG'])))[0]
+    NGC['PA'][good] = ma.getdata(NGC['PA_ORIG'][good])
+
+    print('Increasing D(25) by 30%')
+    NGC['D25'] *= 1.3
+    
+    fix = np.where(NGC['GALAXY'] == 'IC2155')[0]
+    NGC['D25'][fix] = 0.4 # eyeballed
+    NGC['PA'][fix] = 10
+    NGC['BA'][fix] = 0.5
+    
+    fix = np.where(NGC['GALAXY'] == 'IC2946')[0]
+    NGC['D25'][fix] = 0.8
+    NGC['PA'][fix] = 0.0
+    NGC['BA'][fix] = 1.0
+    
+    fix = np.where(NGC['GALAXY'] == 'IC1249')[0]
+    NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+
+    fix = np.where(NGC['GALAXY'] == 'IC3872')[0]
+    NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+
+    fix = np.where(NGC['GALAXY'] == 'IC2676')[0]
+    NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+
+    fix = np.where(NGC['GALAXY'] == 'IC3396')[0]
+    NGC['PA'][fix] = 90
+    NGC['D25'][fix] = 0.4
+
+    fix = np.where(NGC['GALAXY'] == 'IC3655')[0]
+    NGC['PA'][fix] = 90
+    NGC['BA'][fix] = 1.0
+    NGC['D25'][fix] = 0.6
+
+    fix = np.where(NGC['GALAXY'] == 'IC4087')[0]
+    NGC['PA'][fix] = 90
+    NGC['BA'][fix] = 1.0
+    NGC['D25'][fix] = 0.45
+
     out = Table()
     for col in parent.colnames:
         out[col] = np.zeros(len(NGC), dtype=parent[col].dtype)
     for col in NGC.colnames:
         if col in out.colnames:
-            out[col] = NGC[col]
+            out[col] = NGC[col]          
             
     out['OBJTYPE'] = 'G'
     out['SB_D25'] = out['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(out['D25'])
 
+    assert(np.all(out['D25'] > 0))
     parent = vstack((parent, out))
 
     return parent
@@ -194,7 +276,8 @@ def add_rc3(parent, startindx=4000000):
         'ESO350-38',
         #'UGC504', # Hyperleda diameter fixed in fix_byhand()
         'ESO79-13', 'MCG-1-3-72', 'ESO296-11',
-        'NGC526', 'NGC596', 'UGCA20', 'NGC680', 'ESO298-39', 'NGC1097A',
+        'NGC526',
+        'NGC596', 'UGCA20', 'NGC680', 'ESO298-39', 'NGC1097A',
         'ESO356-14',
         'ESO116-15',
         'ESO248-6',
@@ -250,6 +333,9 @@ def add_rc3(parent, startindx=4000000):
 
     fix = np.where(rc3['GALAXY'] == 'ESO350-38')[0]
     rc3['RA'][fix], rc3['DEC'][fix] = 9.219583, -33.554722 # from NED
+
+    fix = np.where(rc3['GALAXY'] == 'NGC526')[0]
+    rc3['RA'][fix], rc3['DEC'][fix] = 20.993986, -35.122574 # from NED
 
     fix = np.where(rc3['GALAXY'] == 'MCG-1-3-72')[0]
     rc3['PA'][fix] = 45 # by eye
@@ -455,6 +541,13 @@ def fix_byhand(parent):
     """
     print('Repairing some quantities by-hand.')
 
+    # IC5324
+    # Coordinates are totally wrong!
+    fix = np.where(parent['PGC'] == 71526)[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 352.07395833333334,
+        parent['DEC'][fix] = -67.82136111111112
+          
     # UGC504
     # Use RC3 values
     fix = np.where(parent['PGC'] == 2882)[0]
@@ -631,6 +724,492 @@ def fix_byhand(parent):
     if len(fix) > 0:
         parent['RA'][fix] = 48.285686
         parent['DEC'][fix] = -50.562612
+
+    ## PGC011986 - wrong PA
+    #fix = np.where(parent['PGC'] == 11986)[0]
+    #if len(fix) > 0:
+    #    parent['PA'][fix] = 
+
+    # NGC7424; use NED
+    fix = np.where(parent['PGC'] == 70096)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.98
+        parent['BA'][fix] = 10**(-0.07)
+        parent['PA'][fix] = 85 # approximate
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC1566 - use NED
+    fix = np.where(parent['PGC'] == 14897)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.92
+        parent['BA'][fix] = 10**(-0.1)
+        parent['PA'][fix] = 60.
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC4552 - use NED
+    fix = np.where(parent['PGC'] == 41968)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.72
+        parent['BA'][fix] = 0.984
+        parent['PA'][fix] = 0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC1433 - use NED
+    fix = np.where(parent['PGC'] == 13586)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.81
+        parent['BA'][fix] = 10**(-0.04)
+        parent['PA'][fix] = 87.9
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC1808 - use NED
+    fix = np.where(parent['PGC'] == 16779)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.81
+        parent['BA'][fix] = 10**(-0.22)
+        parent['PA'][fix] = 133.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC4244 - use NED
+    fix = np.where(parent['PGC'] == 39422)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**2.22
+        parent['BA'][fix] = 10**(-0.94)
+        parent['PA'][fix] = 48
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC7606 - use NED
+    fix = np.where(parent['PGC'] == 71047)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.73
+        parent['BA'][fix] = 10**(-0.4)
+        parent['PA'][fix] = 145
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC3718 - use NED
+    fix = np.where(parent['PGC'] == 35616)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.91
+        parent['BA'][fix] = 10**(-0.31)
+        parent['PA'][fix] = 15
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC5629 - use NED
+    fix = np.where(parent['PGC'] == 51681)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.26
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC4597 - use NED
+    fix = np.where(parent['PGC'] == 42429)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 49.0
+        
+    # PGC143679 - totally wrong diameter!
+    fix = np.where(parent['PGC'] == 143679)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**0.386
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+        
+    # NGC2275 - use NED
+    fix = np.where(parent['PGC'] == 19605)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.1
+        parent['BA'][fix] = 10**(-0.12)
+        parent['PA'][fix] = 20
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # IC0983 - use NED
+    fix = np.where(parent['PGC'] == 50577)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.73
+        parent['BA'][fix] = 10**(-0.06)
+        parent['PA'][fix] = 120
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC5921 - use NED
+    fix = np.where(parent['PGC'] == 54849)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.69
+        parent['BA'][fix] = 10**(-0.09)
+        parent['PA'][fix] = 130
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC5987 - use NED
+    fix = np.where(parent['PGC'] == 55740)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.62
+        parent['BA'][fix] = 10**(-0.5)
+        parent['PA'][fix] = 165
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC1543 - use NED
+    fix = np.where(parent['PGC'] == 14659)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.69
+        parent['BA'][fix] = 10**(-0.24)
+        parent['PA'][fix] = 93
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC5774 - use NED
+    fix = np.where(parent['PGC'] == 53231)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.48
+        parent['BA'][fix] = 10**(-0.09)
+        parent['PA'][fix] = 145
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC1042 - use NED
+    fix = np.where(parent['PGC'] == 10122)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.5
+        parent['BA'][fix] = 1.0
+        parent['PA'][fix] = 0.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # UGC01176 - use NED
+    fix = np.where(parent['PGC'] == 6174)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.27
+        parent['BA'][fix] = 10**(-0.1)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC3556 - use NED
+    fix = np.where(parent['PGC'] == 34030)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.94
+        parent['BA'][fix] = 10**(-0.59)
+        parent['PA'][fix] = 80
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC0660 - use NED
+    fix = np.where(parent['PGC'] == 6318)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.92
+        parent['BA'][fix] = 10**(-0.42)
+        parent['PA'][fix] = 170
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC2805 - use NED
+    fix = np.where(parent['PGC'] == 26410)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.80
+        parent['BA'][fix] = 10**(-0.12)
+        parent['PA'][fix] = 125
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC5792 - use NED
+    fix = np.where(parent['PGC'] == 53499)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.84
+        parent['BA'][fix] = 10**(-0.6)
+        parent['PA'][fix] = 84
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC1189 - use NED
+    fix = np.where(parent['PGC'] == 11503)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.23
+        parent['BA'][fix] = 10**(-0.04)
+        parent['PA'][fix] = 0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4274 - use NED
+    fix = np.where(parent['PGC'] == 39724)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.83
+        parent['BA'][fix] = 10**(-0.43)
+        parent['PA'][fix] = 102
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC3893 - use NED
+    fix = np.where(parent['PGC'] == 36875)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.65
+        parent['BA'][fix] = 10**(-0.21)
+        parent['PA'][fix] = 165
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4203 - use NED
+    fix = np.where(parent['PGC'] == 39158)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.65
+        parent['BA'][fix] = 10**(-0.03)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # UGC06917 - use NED
+    fix = np.where(parent['PGC'] == 37525)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.55
+        parent['BA'][fix] = 10**(-0.24)
+        parent['PA'][fix] = 130
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # UGC08331 - use NED
+    fix = np.where(parent['PGC'] == 46127)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.43
+        parent['BA'][fix] = 10**(-0.46)
+        parent['PA'][fix] = 140
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC7753 - use NED
+    fix = np.where(parent['PGC'] == 72387)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.52
+        parent['BA'][fix] = 10**(-0.2)
+        parent['PA'][fix] = 50
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # ESO185-054 - use NED
+    fix = np.where(parent['PGC'] == 64041)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.55
+        parent['BA'][fix] = 10**(-0.17)
+        parent['PA'][fix] = 122
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # train wreck, Hyperleda is totally wrong here! - NGC6027, NGC6027A,
+    # NGC6027B, NGC6027C, NGC6027D, NGC6027E
+    fix = np.where(parent['GALAXY'] == 'NGC6027')[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 239.80224
+        parent['DEC'][fix] = 20.76336
+        parent['D25'][fix] = 0.1*10**0.64
+        parent['BA'][fix] = 10**(-0.28)
+        parent['PA'][fix] = 0.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+    
+    fix = np.where(parent['GALAXY'] == 'NGC6027A')[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 239.7964
+        parent['DEC'][fix] = 20.75485
+        parent['D25'][fix] = 0.1*10**0.83
+        parent['BA'][fix] = 10**(-0.16)
+        parent['PA'][fix] = 0.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+    
+    fix = np.where(parent['GALAXY'] == 'NGC6027B')[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 239.79514
+        parent['DEC'][fix] = 20.76219
+        parent['D25'][fix] = 0.1*10**0.60
+        parent['BA'][fix] = 10**(-0.16)
+        parent['PA'][fix] = 0.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+    
+    fix = np.where(parent['GALAXY'] == 'NGC6027C')[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 239.79945
+        parent['DEC'][fix] = 20.74762
+        parent['D25'][fix] = 0.1*10**0.94
+        parent['BA'][fix] = 10**(-0.68)
+        parent['PA'][fix] = 174.2
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+    
+    fix = np.where(parent['GALAXY'] == 'NGC6027D')[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 239.80373
+        parent['DEC'][fix] = 20.75993
+        parent['D25'][fix] = 0.1*10**0.22
+        parent['BA'][fix] = 1.0
+        parent['PA'][fix] = 0.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+    
+    fix = np.where(parent['GALAXY'] == 'NGC6027E')[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 239.81033
+        parent['DEC'][fix] = 20.76592
+        parent['D25'][fix] = 0.1*10**0.9
+        parent['BA'][fix] = 10**(-0.27)
+        parent['PA'][fix] = 0.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4912=NGC4914 - use NED
+    fix = np.where(parent['PGC'] == 44807)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.54
+        parent['BA'][fix] = 10**(-0.25)
+        parent['PA'][fix] = 155
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC6902 - use NED
+    fix = np.where(parent['PGC'] == 64632)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.75
+        parent['BA'][fix] = 10**(-0.16)
+        parent['PA'][fix] = 153
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC068303 - use NED
+    fix = np.where(parent['PGC'] == 68303)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 2 * 26.7 / 60
+        parent['BA'][fix] = 1 / 0.84
+        parent['PA'][fix] = 0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC3614 - use NED
+    fix = np.where(parent['PGC'] == 34561)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.66
+        parent['BA'][fix] = 10**(-0.24)
+        parent['PA'][fix] = 80
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC005341 - use NED
+    fix = np.where(parent['PGC'] == 5341)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 25
+
+    # NGC4267 - use NED
+    fix = np.where(parent['PGC'] == 39710)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.51
+        parent['BA'][fix] = 10**(-0.03)
+        parent['PA'][fix] = 40
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # PGC029842 - use NED
+    fix = np.where(parent['PGC'] == 29842)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 81
+
+    # PGC059251 - use NED
+    fix = np.where(parent['PGC'] == 59251)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 2 * 28.6 / 60
+        parent['BA'][fix] = 13.77 / 28.6
+        parent['PA'][fix] = 130.8
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC1721 - use NED
+    fix = np.where(parent['PGC'] == 16484)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.32
+        parent['BA'][fix] = 10**(-0.31)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4780 - use NED
+    fix = np.where(parent['PGC'] == 43870)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.29
+        parent['BA'][fix] = 10**(-0.180)
+        parent['PA'][fix] = 15 # eyeballed?
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4319 - use NED
+    fix = np.where(parent['PGC'] == 39981)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.47
+        parent['BA'][fix] = 10**(-0.11)
+        parent['PA'][fix] = 160
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC4705 - use NED
+    fix = np.where(parent['PGC'] == 43350)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.48
+        parent['BA'][fix] = 10**(-0.46)
+        parent['PA'][fix] = 125
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+          
+    # NGC4759 - wrong diameter; use Corwin et al. (dataset 17001)
+    fix = np.where(parent['PGC'] == 43754)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**0.54
+        parent['BA'][fix] = 10**(-0.3)
+        parent['PA'][fix] = 5
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC0259 - use NED
+    fix = np.where(parent['PGC'] == 2820)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 140
+
+    ## ESO205-027 - need to do something but not sure what!
+    #fix = np.where(parent['PGC'] == 18514)[0]
+    #if len(fix) > 0:
+    #    parent['D25'][fix] = 0.1*10**
+    #    parent['BA'][fix] = 10**()
+    #    parent['PA'][fix] = 
+    #    parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+    #      5 * np.log10(parent['D25'][fix])
+
+    # NGC7145 - use NED
+    fix = np.where(parent['PGC'] == 67583)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.4
+        parent['BA'][fix] = 10**(-0.02)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # SDSSJ161534.10+192734.8 - wrong diameter
+    fix = np.where(parent['PGC'] == 4530633)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**0.57
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # NGC4257 - use NED
+    fix = np.where(parent['PGC'] == 39624)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.10
+        parent['BA'][fix] = 10**(-0.55)
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
+    # 2MASXJ14532797+0532180 - fix PA
+    fix = np.where(parent['PGC'] == 3835908)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 85
 
     return parent
 
@@ -1070,8 +1649,8 @@ def main():
     parent = remove_spurious(parent)
 
     # Build a group catalog--
-    print('Skipping group catalog-making!!!')
-    #parent = build_group_catalog(parent)
+    #print('Skipping group catalog-making!!!')
+    parent = build_group_catalog(parent)
 
     # Flag galaxies near bright stars--
     parent, kdparent = near_stars(parent)
