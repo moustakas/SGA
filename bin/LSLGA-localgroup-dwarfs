@@ -120,7 +120,7 @@ def localgroup_dwarfs(leda=None, dwarfindx=3000000):
         leda = LSLGA.io.read_hyperleda(verbose=True)
 
     # Read the parent catalog of LG dwarfs--
-    dwarfsfile = os.path.join(LSLGA.io.sample_dir(), 'LGdwarfs-12McConnachie.fits')
+    dwarfsfile = os.path.join(LSLGA.io.sample_dir(), 'catalogs', 'LGdwarfs-12McConnachie.fits')
     dwarfs = Table(fitsio.read(dwarfsfile, upper=True))
     print('Read {} Local Group dwarfs from {}'.format(len(dwarfs), dwarfsfile))
 
@@ -367,7 +367,7 @@ if __name__ == '__main__':
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
 
-    outfile = os.path.join(LSLGA.io.sample_dir(), 'LSLGA-dwarfs.fits')
+    outfile = os.path.join(LSLGA.io.sample_dir(), 'catalogs', 'LSLGA-dwarfs.fits')
     if os.path.isfile(outfile) and not args.clobber:
         print('Output file {} exists; use clobber.'.format(outfile))
         sys.exit(1)

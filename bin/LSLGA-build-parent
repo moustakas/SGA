@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import fitsio
-from astropy.table import Table, Column, vstack
+from astropy.table import Table, Column, vstack, join
 from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, match_radec
 
 import LSLGA.io
@@ -69,8 +69,8 @@ def add_ngc(parent, startindx=5000000):
         gg = gg.strip()
         if len(gg) >= 7: # OK
             if len(gg) > 7:
-                print(gg) # e.g., NGC1097A
-                #pass
+                #print(gg) # e.g., NGC1097A
+                pass
             continue
         else:
             newgg = 'NGC{:04d}'.format(np.int(gg[3:]))
@@ -83,8 +83,8 @@ def add_ngc(parent, startindx=5000000):
         gg = gg.strip()
         if len(gg) >= 6: # OK
             if len(gg) > 6:
-                print(gg) # e.g., IC1097A
-                #pass
+                #print(gg) # e.g., IC1097A
+                pass
             continue
         else:
             newgg = 'IC{:04d}'.format(np.int(gg[2:]))
@@ -96,7 +96,7 @@ def add_ngc(parent, startindx=5000000):
              'pa', 'bmag', 'vmag', 'jmag', 'hmag', 'kmag', 'sbrightn', 'hubble',
              'cstarumag', 'cstarbmag', 'cstarvmag', 'messier', 'ngc', 'ic',
              'cstarnames', 'identifiers', 'commonnames', 'nednotes', 'ongcnotes')
-    NGCfile = os.path.join(sampledir, 'NGC.csv')
+    NGCfile = os.path.join(sampledir, 'catalogs', 'NGC.csv')
     NGC = ascii.read(NGCfile, delimiter=';', names=names)
     print('Read {} galaxies from {}'.format(len(NGC), NGCfile))
 
@@ -237,7 +237,7 @@ def add_rc3(parent, startindx=4000000):
     """
     print('Supplementing the LSGLA with missing RC3 galaxies.')
 
-    rc3file = os.path.join(os.getenv('CATALOGS_DIR'), 'rc3', 'rc3_parsed.fits.gz')
+    rc3file = os.path.join(sampledir, 'catalogs', 'rc3_parsed.fits.gz')
     rc3 = Table.read(rc3file)
     print('Read {} galaxies from {}'.format(len(rc3), rc3file))
 
@@ -1317,6 +1317,12 @@ def fix_byhand(parent):
         parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
           5 * np.log10(parent['D25'][fix])
 
+    # PGC1722712 - fix coords by eye
+    fix = np.where(parent['PGC'] == 1722712)[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 326.1247
+        parent['DEC'][fix] = 25.0086
+
     return parent
 
 def add_localgroup_dwarfs(parent):
@@ -1371,13 +1377,15 @@ def add_dr8_candidates(parent, startindx=6000000):
     catalogs.
 
     """
+    from legacyhalos.brick import brickname as get_brickname
+    
     print('Supplementing the LSGLA with the DR8 large galaxies.')
 
-    northfile = os.path.join(sampledir, 'dr8galaxies_gt14_north.fits')
+    northfile = os.path.join(sampledir, 'catalogs', 'dr8galaxies_gt14_north.fits')
     north = Table(fitsio.read(northfile, upper=True))
     print('Read {} galaxies from {}'.format(len(north), northfile))
 
-    southfile = os.path.join(sampledir, 'dr8galaxies_gt14_south.fits')
+    southfile = os.path.join(sampledir, 'catalogs', 'dr8galaxies_gt14_south.fits')
     south = Table(fitsio.read(southfile, upper=True))
     print('Read {} galaxies from {}'.format(len(south), southfile))
 
@@ -1396,6 +1404,12 @@ def add_dr8_candidates(parent, startindx=6000000):
     # Resolve north & south
     supp = vstack((north[nkeep], south[skeep]))
 
+    gaiafile = os.path.join(sampledir, 'catalogs', 'dr8-gaia-psf-galaxies.fits')
+    gaia = Table(fitsio.read(gaiafile, upper=True))
+    print('Read {} galaxies from {}'.format(len(gaia), gaiafile))
+
+    supp = vstack((supp, gaia), join_type='outer')
+
     # Assign IDs starting at startindx.
     supp.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(supp))), index=0)
     supp.rename_column('TYPE', 'OBJTYPE')
@@ -1409,10 +1423,15 @@ def add_dr8_candidates(parent, startindx=6000000):
             out[col] = supp[col]
     #out['OBJTYPE'] = 'G'
 
+    # Get the brickname
+    bricknames = get_brickname(supp['RA'], supp['DEC'])
+
     # Get the geometry from the Tractor fit--
     #print(set(supp['TYPE']))
     for igal, gal in enumerate(supp):
-        out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKID'][igal], supp['OBJID'][igal])
+        out['GALAXY'][igal] = 'DR8-{}-{}'.format(bricknames[igal], supp['OBJID'][igal])
+        #out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKNAME'][igal], supp['OBJID'][igal])
+        #out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKID'][igal], supp['OBJID'][igal])
         #out['GALAXY'][igal] = 'DR8-{}'.format(supp['LS_ID'][igal])
         out['MAG'][igal] = supp['MAG_R'][igal]
 
@@ -1430,7 +1449,7 @@ def add_dr8_candidates(parent, startindx=6000000):
             pa = np.float32(0.0)
             if typ == 'PSF':
                 print('Making up a radius for {} (type=PSF)!'.format(out['GALAXY'][igal]))
-                r50 = np.float32(5)
+                r50 = np.float32(10)
             else:
                 r50 = gal['SHAPEEXP_R'] # [arcsec]
         elif typ == 'COMP':
@@ -1492,12 +1511,12 @@ def remove_spurious(parent):
     from legacyhalos.misc import is_in_ellipse
 
     # Read the file from Schlegel--
-    rejfile = os.path.join(sampledir, 'lslga-dr8-psf-reject.txt')
+    rejfile = os.path.join(sampledir, 'catalogs', 'lslga-dr8-psf-reject.txt')
     rejid, rejra, rejdec = np.loadtxt(rejfile, unpack=True)
     print('Read {} spurious galaxies from {}'.format(len(rejid), rejfile))
     rejgal = parent[np.isin(parent['LSLGA_ID'], rejid)]['GALAXY'].data
 
-    rejfile = os.path.join(sampledir, 'lslga-spurious.txt')
+    rejfile = os.path.join(sampledir, 'catalogs', 'lslga-spurious.txt')
     spurgal = np.loadtxt(rejfile, dtype=str)
     print('Read spurious {} galaxies from {}'.format(len(spurgal), rejfile))
 
@@ -1768,8 +1787,8 @@ def main():
     parent = remove_spurious(parent)
 
     # Build a group catalog--
-    #print('Skipping group catalog-making!!!')
-    parent = build_group_catalog(parent)
+    print('Skipping group catalog-making!!!')
+    #parent = build_group_catalog(parent)
 
     # Flag galaxies near bright stars--
     parent, kdparent = near_stars(parent)
