@@ -390,7 +390,7 @@ def read_desi_tiles(verbose=False):
     """Read the latest DESI tile file.
     
     """
-    tilefile = os.path.join(sample_dir(), 'desi-tiles.fits')
+    tilefile = os.path.join(sample_dir(), 'catalogs', 'desi-tiles.fits')
     tiles = Table(fitsio.read(tilefile, ext=1, upper=True))
     tiles = tiles[tiles['IN_DESI'] > 0]
     
@@ -423,7 +423,7 @@ def read_tycho(magcut=99, verbose=False):
     
     return tycho
 
-def read_hyperleda(verbose=False, version=None):
+def read_hyperleda(verbose=False, allwise=False, version=None):
     """Read the Hyperleda catalog.
     
     """
@@ -447,6 +447,8 @@ def read_hyperleda(verbose=False, version=None):
     else:
         print('Unknown version!')
         raise ValueError
+
+    ref = 'LEDA-20180513'
     
     hyperledafile = os.path.join(sample_dir(), 'hyperleda', hyperfile)
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
@@ -456,37 +458,39 @@ def read_hyperleda(verbose=False, version=None):
     if verbose:
         print('Read {} objects from {}'.format(len(leda), hyperledafile), flush=True)
 
-    allwise = Table(fitsio.read(allwisefile, ext=1, upper=True))
-    if verbose:
-        print('Read {} objects from {}'.format(len(allwise), allwisefile), flush=True)
+    if allwise:
+        wise = Table(fitsio.read(allwisefile, ext=1, upper=True))
+        if verbose:
+            print('Read {} objects from {}'.format(len(wise), allwisefile), flush=True)
 
-    # Merge the tables
-    allwise.rename_column('RA', 'WISE_RA')
-    allwise.rename_column('DEC', 'WISE_DEC')
-    
-    leda = hstack( (leda, allwise) )
-    leda.add_column(Column(name='IN_ALLWISE', data=np.zeros(len(leda)).astype(bool)))
+        # Merge the tables
+        wise.rename_column('RA', 'WISE_RA')
+        wise.rename_column('DEC', 'WISE_DEC')
 
-    haswise = np.where(allwise['CNTR'] != -1)[0]
-    #nowise = np.where(allwise['CNTR'] == 0)[0]
-    #print('unWISE match: {}/{} ({:.2f}%) galaxies.'.format(len(haswise), len(leda)))
-    
-    #print('EXT_FLG summary:')
-    #for flg in sorted(set(leda['EXT_FLG'][haswise])):
-    #    nn = np.sum(flg == leda['EXT_FLG'][haswise])
-    #    print('  {}: {}/{} ({:.2f}%)'.format(flg, nn, len(haswise), 100*nn/len(haswise)))
-    #print('Need to think this through a bit more; look at:')
-    #print('  http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc')
-    #leda['INWISE'] = (np.array(['NULL' not in dd for dd in allwise['DESIGNATION']]) * 
-    #                  np.isfinite(allwise['W1SIGM']) * np.isfinite(allwise['W2SIGM']) )
-    leda['IN_ALLWISE'][haswise] = True
-    
-    print('  Identified {}/{} ({:.2f}%) objects with AllWISE photometry.'.format(
-        np.sum(leda['IN_ALLWISE']), len(leda), 100*np.sum(leda['IN_ALLWISE'])/len(leda) ))
+        leda = hstack( (leda, wise) )
+        leda.add_column(Column(name='IN_WISE', data=np.zeros(len(leda)).astype(bool)))
+
+        haswise = np.where(wise['CNTR'] != -1)[0]
+        #nowise = np.where(wise['CNTR'] == 0)[0]
+        #print('unWISE match: {}/{} ({:.2f}%) galaxies.'.format(len(haswise), len(leda)))
+
+        #print('EXT_FLG summary:')
+        #for flg in sorted(set(leda['EXT_FLG'][haswise])):
+        #    nn = np.sum(flg == leda['EXT_FLG'][haswise])
+        #    print('  {}: {}/{} ({:.2f}%)'.format(flg, nn, len(haswise), 100*nn/len(haswise)))
+        #print('Need to think this through a bit more; look at:')
+        #print('  http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc')
+        #leda['INWISE'] = (np.array(['NULL' not in dd for dd in wise['DESIGNATION']]) * 
+        #                  np.isfinite(wise['W1SIGM']) * np.isfinite(wise['W2SIGM']) )
+        leda['IN_ALLWISE'][haswise] = True
+
+        print('  Identified {}/{} ({:.2f}%) objects with AllWISE photometry.'.format(
+            np.sum(leda['IN_ALLWISE']), len(leda), 100*np.sum(leda['IN_ALLWISE'])/len(leda) ))
 
     # Assign a unique ID and also fix infinite PA and B/A.
     leda.add_column(Column(name='LSLGA_ID', length=len(leda), dtype='i8'), index=0)
     leda['LSLGA_ID'] = np.arange(len(leda))
+    leda['REF'] = ref
     
     fix = np.isnan(leda['PA'])
     if np.sum(fix) > 0:
@@ -494,6 +498,9 @@ def read_hyperleda(verbose=False, version=None):
     fix = np.isnan(leda['BA'])
     if np.sum(fix) > 0:
         leda['BA'][fix] = 1.0
+    fix = np.isnan(leda['Z'])
+    if np.sum(fix) > 0:
+        leda['Z'][fix] = -99.0
     
     return leda
 

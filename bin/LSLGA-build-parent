@@ -12,46 +12,10 @@ from astropy.table import Table, Column, vstack, join
 from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, match_radec
 
 import LSLGA.io
+from legacyhalos.misc import viewer_inspect, imagetool_inspect
 
 sampledir = LSLGA.io.sample_dir()
 qadir = os.path.join(LSLGA.io.sample_dir(), 'qa')
-
-def _viewer_inspect(cat):
-    """Write a little catalog that can be uploaded to the viewer.
-
-    """
-    out = cat['GALAXY', 'RA', 'DEC']
-    out.rename_column('GALAXY', 'NAME')
-    outfile = os.path.join(os.getenv('HOME'), 'tmp', 'viewer.fits')
-    print('Writing {} objects to {}'.format(len(cat), outfile))
-    out.write(outfile, overwrite=True)
-
-def _imagetool_inspect(cat, group=False):
-    """Write a little catalog that can be uploaded to
-    https://yymao.github.io/decals-image-list-tool/
-
-    """
-    if group:
-        galcol, racol, deccol = 'GROUP_NAME', 'GROUP_RA', 'GROUP_DEC'
-    else:
-        racol, deccol = 'RA', 'DEC'
-        galcol = 'GALAXY'
-        if not galcol in cat.colnames:
-            galcol = 'NAME'
-        
-    outfile = os.path.join(os.getenv('HOME'), 'tmp', 'inspect.txt')
-    print('Writing {} objects to {}'.format(len(cat), outfile))
-    with open(outfile, 'w') as ff:
-        ff.write('name ra dec\n')
-        for ii, (gal, ra, dec) in enumerate(zip(cat[galcol], cat[racol], cat[deccol])):
-            if gal.strip() == '':
-                if 'ALTNAME' in cat.colnames:
-                    gal = cat['ALTNAME'][ii].strip().replace(' ', '')
-                    if gal == '':
-                        gal = 'galaxy'
-                else:
-                    gal = 'galaxy'
-            ff.write('{} {:.6f} {:.6f}\n'.format(gal, ra, dec))
 
 def add_ngc(parent, startindx=5000000):
     """Add in missing NGC galaxies.
@@ -223,8 +187,8 @@ def add_ngc(parent, startindx=5000000):
         if col in out.colnames:
             out[col] = NGC[col]          
             
-    out['OBJTYPE'] = 'G'
-    out['SB_D25'] = out['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(out['D25'])
+    #out['OBJTYPE'] = 'G'
+    out['REF'] = 'OpenNGC'
 
     assert(np.all(out['D25'] > 0))
     parent = vstack((parent, out))
@@ -405,8 +369,8 @@ def add_rc3(parent, startindx=4000000):
         if col in out.colnames:
             out[col] = rc3[col]
             
-    out['OBJTYPE'] = 'G'
-    out['SB_D25'] = out['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(out['D25'])
+    #out['OBJTYPE'] = 'G'
+    out['REF'] = 'RC3'
     
     parent = vstack((parent, out))
     
@@ -1323,6 +1287,20 @@ def fix_byhand(parent):
         parent['RA'][fix] = 326.1247
         parent['DEC'][fix] = 25.0086
 
+    # PGC200231 is really part of PGC020460 in Hyperleda, but I'm going to move
+    # it "by hand" to make it the companion UGC03730, which is missing from the
+    # parent catalog.
+    fix = np.where(parent['PGC'] == 1722712)[0]
+    if len(fix) > 0:
+        parent['GALAXY'][fix] = 'UGC03730'
+        parent['RA'][fix] = 108.5847 # by eye
+        parent['DEC'][fix] = 73.4615
+        parent['D25'][fix] = 1.8
+        parent['BA'][fix] = 1.0
+        parent['PA'][fix] = 0.0
+        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
+          5 * np.log10(parent['D25'][fix])
+
     return parent
 
 def add_localgroup_dwarfs(parent):
@@ -1355,6 +1333,7 @@ def add_localgroup_dwarfs(parent):
     for col in dwarfs.colnames:
         if col in moredwarfs.colnames:
             moredwarfs[col] = dwarfs[col]
+    moredwarfs['REF'] = 'LGDWARFS'
 
     # Remove the duplicates and stack.
     keep = np.delete(np.arange(len(parent)), m1)
@@ -1377,42 +1356,57 @@ def add_dr8_candidates(parent, startindx=6000000):
     catalogs.
 
     """
+    import numpy.ma as ma
     from legacyhalos.brick import brickname as get_brickname
     
     print('Supplementing the LSGLA with the DR8 large galaxies.')
 
-    northfile = os.path.join(sampledir, 'catalogs', 'dr8galaxies_gt14_north.fits')
-    north = Table(fitsio.read(northfile, upper=True))
-    print('Read {} galaxies from {}'.format(len(north), northfile))
+    suppfile = os.path.join(sampledir, 'catalogs', 'dr8galaxies.fits')
+    _supp = Table(fitsio.read(suppfile, upper=True))
+    print('Read {} galaxies from {}'.format(len(_supp), suppfile))
 
-    southfile = os.path.join(sampledir, 'catalogs', 'dr8galaxies_gt14_south.fits')
-    south = Table(fitsio.read(southfile, upper=True))
-    print('Read {} galaxies from {}'.format(len(south), southfile))
-
-    nkeep = np.where((north['DEC'] > 32.375) * (north['VI_FLAG'] == 'Y'))[0]
-    skeep = np.where((south['DEC'] < 32.375) * (south['VI_FLAG'] == 'Y'))[0]
+    #northfile = os.path.join(sampledir, 'catalogs', 'dr8galaxies_gt14_north.fits')
+    #north = Table(fitsio.read(northfile, upper=True))
+    #print('Read {} galaxies from {}'.format(len(north), northfile))
+    #
+    #southfile = os.path.join(sampledir, 'catalogs', 'dr8galaxies_gt14_south.fits')
+    #south = Table(fitsio.read(southfile, upper=True))
+    #print('Read {} galaxies from {}'.format(len(south), southfile))
+    #
+    #nkeep = np.where((north['DEC'] > 32.375))[0]
+    #skeep = np.where((south['DEC'] < 32.375))[0]
+    ##nkeep = np.where((north['DEC'] > 32.375) * (north['VI_FLAG'] == 'Y'))[0]
+    ##skeep = np.where((south['DEC'] < 32.375) * (south['VI_FLAG'] == 'Y'))[0]
 
     #print('Add in a minimum d25 for the sdss-supplemented galaxies!!!!!!!!!')
 
-    if False:
-        plt.scatter(north['RA'], north['DEC'], label='North')
-        plt.scatter(south['RA'], south['DEC'], label='South')
-        plt.scatter(north['RA'][nkeep], north['DEC'][nkeep], label='North Keep')
-        plt.scatter(south['RA'][skeep], south['DEC'][skeep], label='South Keep') 
-        plt.legend() ; plt.axhline(y=32.375, color='k') ; plt.show()
+    #if False:
+    #    plt.scatter(north['RA'], north['DEC'], label='North')
+    #    plt.scatter(south['RA'], south['DEC'], label='South')
+    #    plt.scatter(north['RA'][nkeep], north['DEC'][nkeep], label='North Keep')
+    #    plt.scatter(south['RA'][skeep], south['DEC'][skeep], label='South Keep') 
+    #    plt.legend() ; plt.axhline(y=32.375, color='k') ; plt.show()
 
     # Resolve north & south
-    supp = vstack((north[nkeep], south[skeep]))
+    #supp = vstack((north[nkeep], south[skeep]))
 
     gaiafile = os.path.join(sampledir, 'catalogs', 'dr8-gaia-psf-galaxies.fits')
     gaia = Table(fitsio.read(gaiafile, upper=True))
     print('Read {} galaxies from {}'.format(len(gaia), gaiafile))
 
-    supp = vstack((supp, gaia), join_type='outer')
+    m1, m2, d12 = match_radec(_supp['RA'], _supp['DEC'], gaia['RA'], gaia['DEC'], 1/3600.0, nearest=True)
+    if len(m2) > 0:
+        keep = np.delete(np.arange(len(_supp)), m1)
+        _supp = _supp[keep]
+    #for col in supp.colnames:
+    #    if col in gaia.colnames:
+    #        print(col)
+            
+    supp = vstack((_supp, gaia), join_type='outer')
 
     # Assign IDs starting at startindx.
     supp.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(supp))), index=0)
-    supp.rename_column('TYPE', 'OBJTYPE')
+    supp.rename_column('TYPE', 'MORPHTYPE')
 
     # Make the supplemental catalog "look" like the parent Hyperleda catalog.
     out = Table()
@@ -1421,6 +1415,7 @@ def add_dr8_candidates(parent, startindx=6000000):
     for col in supp.colnames:
         if col in out.colnames:
             out[col] = supp[col]
+    out['Z'] = -99.0
     #out['OBJTYPE'] = 'G'
 
     # Get the brickname
@@ -1433,9 +1428,15 @@ def add_dr8_candidates(parent, startindx=6000000):
         #out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKNAME'][igal], supp['OBJID'][igal])
         #out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKID'][igal], supp['OBJID'][igal])
         #out['GALAXY'][igal] = 'DR8-{}'.format(supp['LS_ID'][igal])
-        out['MAG'][igal] = supp['MAG_R'][igal]
+        if supp['MAG_R'][igal] is ma.masked and supp['FLUX_R'][igal] is ma.masked:
+            print('No magnitude estimate!!')
+            pdb.set_trace()
+        if supp['MAG_R'][igal] is ma.masked:
+            out['MAG'][igal] = 22.5 - 2.5 * np.log10(supp['FLUX_R'][igal])
+        else:
+            out['MAG'][igal] = supp['MAG_R'][igal]
 
-        typ = gal['OBJTYPE'].strip()
+        typ = gal['MORPHTYPE'].strip()
         if typ == 'DEV':
             ee = np.hypot(gal['SHAPEDEV_E1'], gal['SHAPEDEV_E2'])
             r50 = gal['SHAPEDEV_R'] # [arcsec]
@@ -1444,12 +1445,12 @@ def add_dr8_candidates(parent, startindx=6000000):
             ee = np.hypot(gal['SHAPEEXP_E1'], gal['SHAPEEXP_E2'])
             r50 = gal['SHAPEEXP_R'] # [arcsec]
             pa = 180 - (-np.rad2deg(np.arctan2(gal['SHAPEEXP_E2'], gal['SHAPEEXP_E1']) / 2))
-        elif typ == 'REX' or typ == 'PSF':
+        elif typ == 'REX' or typ == 'PSF' or typ == 'DUP':
             ee = np.float32(0.0)
             pa = np.float32(0.0)
-            if typ == 'PSF':
-                print('Making up a radius for {} (type=PSF)!'.format(out['GALAXY'][igal]))
-                r50 = np.float32(10)
+            if typ == 'PSF' or typ == 'DUP':
+                #print('Making up a radius for {} (type=PSF, DUP)!'.format(out['GALAXY'][igal]))
+                r50 = np.float32(5) # arcsec
             else:
                 r50 = gal['SHAPEEXP_R'] # [arcsec]
         elif typ == 'COMP':
@@ -1473,6 +1474,7 @@ def add_dr8_candidates(parent, startindx=6000000):
                     ee = eeexp
                     pa = paexp
                     r50 = r50exp
+            #print(out['GALAXY'][igal], r50exp, r50dev)
         else:
             print('Doom!')
             pdb.set_trace()
@@ -1480,8 +1482,11 @@ def add_dr8_candidates(parent, startindx=6000000):
         ba = (1 - ee) / (1 + ee)
         pa = pa % 180
         theta = (270 - pa) % 180
-        #d25 = 2 * r50 / 60.0 # radius-->diameter and no fudge factor [arcmin]
-        d25 = 1.3 * 2 * r50 / 60.0 # radius-->diameter and then r50-->R(25) fudge factor [arcmin]
+        d25 = 2 * r50 / 60.0 # radius-->diameter and no fudge factor [arcmin]
+        #d25 = 1.5 * 2 * r50 / 60.0 # radius-->diameter and then r50-->R(25) fudge factor [arcmin]
+
+        #if out['GALAXY'][igal] == 'DR8-3420m507-2246':
+        #    pdb.set_trace()
 
         #if (supp['BRICKID'][igal] == 628872) * (supp['OBJID'][igal] == 3436):
         #    pdb.set_trace()
@@ -1490,6 +1495,7 @@ def add_dr8_candidates(parent, startindx=6000000):
         out['PA'][igal] = pa.astype('f4')
         out['D25'][igal] = d25.astype('f4')
 
+    out['REF'] = 'DR8'
     out['SB_D25'] = (out['MAG'] + 2.5 * np.log10(np.pi * (60/2)**2) + 5 * np.log10(out['D25'])).astype('f4')
 
     # Double-check for duplicates
@@ -1759,10 +1765,14 @@ def main():
     print('Working on LSLGA {}'.format(version))
 
     # Read the full Hyperleda catalog and immediately remove unwanted columns--
-    parent = LSLGA.io.read_hyperleda(verbose=True)
-    parent.remove_columns(('OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
-                           'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
-                           'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K'))
+    parent = LSLGA.io.read_hyperleda(verbose=True, allwise=False)
+    remcols = ['OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
+               'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
+               'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K',
+               'BAR', 'RING', 'MULTIPLE', 'COMPACTNESS', 'T', 'DIAM_REF',
+               'MAG_REF']
+    for col in remcols:
+        parent.remove_columns(col)
 
     # Repair some quantities "by hand". Do this first because some objects get
     # bumped above our diameter cut (e.g., UGC504).
@@ -1771,8 +1781,8 @@ def main():
     # Apply a minimum and maximum diameter cut.
     parent = apply_diamcut(parent, args.d25min, args.d25max)
 
-    # Find all galaxies in and out of the DESI footprint.
-    parent = in_footprint(parent, nside=args.nside)
+    # Useful for testing to find galaxies in and out of the footprint here--
+    #parent = in_footprint(parent, nside=args.nside)
 
     # Add in the LG dwarfs and the DR8-identified "large" galaxies from
     # Stephanie--
@@ -1781,14 +1791,29 @@ def main():
     parent = add_ngc(parent)
     parent = add_dr8_candidates(parent)
 
+    try:
+        assert(np.all(parent['D25'] > 0))
+        assert(np.all(parent['MAG'] > 0))
+        assert(np.all(np.isfinite(parent['PA'])))
+        assert(np.all((parent['BA'] > 0)*(parent['BA'] <= 1)))
+    except:
+        print('Problem here!')
+        pdb.set_trace()
+
+    # Recompute the surface brightness, for consistency.
+    parent['SB_D25'] = parent['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(parent['D25'])
+
+    # Find all galaxies in and out of the DESI footprint.
+    parent = in_footprint(parent, nside=args.nside)
+
     # Remove known *spurious* large galaxies (based on visual inspection,
     # etc.). We do reject a handful of DR8-supplement galaxies, so be sure to do
     # this step *after* we've added in the DR8 candidates.
     parent = remove_spurious(parent)
 
     # Build a group catalog--
-    print('Skipping group catalog-making!!!')
-    #parent = build_group_catalog(parent)
+    #print('Skipping group catalog-making!!!')
+    parent = build_group_catalog(parent)
 
     # Flag galaxies near bright stars--
     parent, kdparent = near_stars(parent)
