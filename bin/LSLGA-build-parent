@@ -69,6 +69,7 @@ def add_ngc(parent, startindx=5000000):
 
     NGC.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(NGC))), index=0)
     NGC = NGC[(NGC['RA_HMS'] != 'N/A')]
+    NGC['BYHAND'] = np.zeros(len(NGC), bool)
 
     ra, dec = [], []
     for _ra, _dec in zip(ma.getdata(NGC['RA_HMS']), ma.getdata(NGC['DEC_DMS'])):
@@ -148,37 +149,113 @@ def add_ngc(parent, startindx=5000000):
     NGC['D25'] *= 1.3
     
     fix = np.where(NGC['GALAXY'] == 'IC2155')[0]
-    NGC['D25'][fix] = 0.4 # eyeballed
-    NGC['PA'][fix] = 10
-    NGC['BA'][fix] = 0.5
+    if len(fix) > 0:
+        NGC['D25'][fix] = 0.4 # eyeballed
+        NGC['PA'][fix] = 10
+        NGC['BA'][fix] = 0.5
+        NGC['BYHAND'][fix] = True
     
     fix = np.where(NGC['GALAXY'] == 'IC2946')[0]
-    NGC['D25'][fix] = 0.8
-    NGC['PA'][fix] = 0.0
-    NGC['BA'][fix] = 1.0
+    if len(fix) > 0:
+        NGC['D25'][fix] = 0.8
+        NGC['PA'][fix] = 0.0
+        NGC['BA'][fix] = 1.0
+        NGC['BYHAND'][fix] = True
     
     fix = np.where(NGC['GALAXY'] == 'IC1249')[0]
-    NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+    if len(fix) > 0:
+        NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+        NGC['BYHAND'][fix] = True
 
     fix = np.where(NGC['GALAXY'] == 'IC3872')[0]
-    NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+    if len(fix) > 0:
+        NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+        NGC['BYHAND'][fix] = True
 
     fix = np.where(NGC['GALAXY'] == 'IC2676')[0]
-    NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+    if len(fix) > 0:
+        NGC['D25'][fix] = NGC['D25'][fix] * 1.5
+        NGC['BYHAND'][fix] = True
 
     fix = np.where(NGC['GALAXY'] == 'IC3396')[0]
-    NGC['PA'][fix] = 90
-    NGC['D25'][fix] = 0.4
+    if len(fix) > 0:
+        NGC['PA'][fix] = 90
+        NGC['D25'][fix] = 0.4
+        NGC['BYHAND'][fix] = True
 
     fix = np.where(NGC['GALAXY'] == 'IC3655')[0]
-    NGC['PA'][fix] = 90
-    NGC['BA'][fix] = 1.0
-    NGC['D25'][fix] = 0.6
+    if len(fix) > 0:
+        NGC['PA'][fix] = 90
+        NGC['BA'][fix] = 1.0
+        NGC['D25'][fix] = 0.6
+        NGC['BYHAND'][fix] = True
 
     fix = np.where(NGC['GALAXY'] == 'IC4087')[0]
-    NGC['PA'][fix] = 90
-    NGC['BA'][fix] = 1.0
-    NGC['D25'][fix] = 0.45
+    if len(fix) > 0:
+        NGC['PA'][fix] = 90
+        NGC['BA'][fix] = 1.0
+        NGC['D25'][fix] = 0.45
+        NGC['BYHAND'][fix] = True
+
+    fix = np.where(NGC['GALAXY'] == 'IC0113')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 13.3 # Ks, from NED/2MASS
+        NGC['BYHAND'][fix] = True
+
+    fix = np.where(NGC['GALAXY'] == 'IC0463')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 12.9 # Ks, from NED/2MASS
+        NGC['BYHAND'][fix] = True
+
+    fix = np.where(NGC['GALAXY'] == 'IC0921')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 15.7 # i-band, from NED/SDSS
+        NGC['BYHAND'][fix] = True
+
+    fix = np.where(NGC['GALAXY'] == 'IC0931')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 15.7 # z-band, from NED/SDSS
+        NGC['BYHAND'][fix] = True
+
+    fix = np.where(NGC['GALAXY'] == 'IC1798')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 12.8 # Ks-band, from NED/2MASS
+        NGC['BYHAND'][fix] = True
+
+    fix = np.where(NGC['GALAXY'] == 'IC2144')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 15.0 # no data, totally made up!
+        NGC['BYHAND'][fix] = True
+
+    fix = np.where(NGC['GALAXY'] == 'IC4277')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 16.5 # J-band, from NED/2MASS
+        NGC['BYHAND'][fix] = True
+    
+    fix = np.where(NGC['GALAXY'] == 'IC5153')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 14.5 # Ks-band, from NED/2MASS
+        NGC['BYHAND'][fix] = True
+    
+    fix = np.where(NGC['GALAXY'] == 'IC5299')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 11.3 # Ks-band, from NED/2MASS
+        NGC['BYHAND'][fix] = True
+    
+    fix = np.where(NGC['GALAXY'] == 'NGC0396')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 13.0 # Ks-band, from NED/2MASS
+        NGC['BYHAND'][fix] = True
+    
+    fix = np.where(NGC['GALAXY'] == 'NGC0704A')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 13.8 # "visual", from NED
+        NGC['BYHAND'][fix] = True
+    
+    fix = np.where(NGC['GALAXY'] == 'NGC7577')[0]
+    if len(fix) > 0:
+        NGC['MAG'][fix] = 12.6 # Ks-band, from NED/2MASS
+        NGC['BYHAND'][fix] = True
 
     out = Table()
     for col in parent.colnames:
@@ -189,8 +266,10 @@ def add_ngc(parent, startindx=5000000):
             
     #out['OBJTYPE'] = 'G'
     out['REF'] = 'OpenNGC'
+    out['Z'] = -99.0
 
     assert(np.all(out['D25'] > 0))
+    assert(np.all(out['MAG'] > 0))
     parent = vstack((parent, out))
 
     return parent
@@ -206,6 +285,7 @@ def add_rc3(parent, startindx=4000000):
     print('Read {} galaxies from {}'.format(len(rc3), rc3file))
 
     rc3.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(rc3))), index=0)
+    rc3['PA'].dtype = 'f4' # int-->f4
 
     # Code used for visual inspections--
     if False:
@@ -287,6 +367,7 @@ def add_rc3(parent, startindx=4000000):
 
     # Make the supplemental catalog "look" like the parent Hyperleda catalog.
     rc3['GALAXY'] = keepgals
+    rc3['BYHAND'] = np.zeros(len(rc3), bool)
     rc3['BA'] = rc3['D25_MIN'] / rc3['D25_MAJ']
     rc3.rename_column('D25_MAJ', 'D25')
     rc3.rename_column('BMAG', 'MAG')
@@ -296,65 +377,102 @@ def add_rc3(parent, startindx=4000000):
     rc3['PGC'] = pgc
 
     fix = np.where(rc3['GALAXY'] == 'ESO350-38')[0]
-    rc3['RA'][fix], rc3['DEC'][fix] = 9.219583, -33.554722 # from NED
+    if len(fix) > 0:
+        rc3['RA'][fix], rc3['DEC'][fix] = 9.219583, -33.554722 # from NED
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'NGC526')[0]
-    rc3['RA'][fix], rc3['DEC'][fix] = 20.993986, -35.122574 # from NED
+    if len(fix) > 0:
+        rc3['RA'][fix], rc3['DEC'][fix] = 20.993986, -35.122574 # from NED
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'MCG-1-3-72')[0]
-    rc3['PA'][fix] = 45 # by eye
-    rc3['MAG'][fix] = 17.55
+    if len(fix) > 0:
+        rc3['PA'][fix] = 45 # by eye
+        rc3['MAG'][fix] = 17.55
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'UGCA20')[0]
-    rc3['MAG'][fix] = 16.05
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 16.05
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'UGC4258')[0]
-    rc3['MAG'][fix] = 16.14
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 16.14
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'MCG-1-25-6')[0]
-    rc3['MAG'][fix] = 13.99
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 13.99
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'UGC5162')[0]
-    rc3['MAG'][fix] = 15.94
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 15.94
+        rc3['BYHAND'][fix] = True
+
+    fix = np.where(rc3['GALAXY'] == 'ESO201-10')[0]
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 16.0 # totally made up!
+        rc3['BYHAND'][fix] = True
+
+    fix = np.where(rc3['GALAXY'] == 'UGC4528')[0]
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 16.14
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'UGC5482')[0]
-    rc3['MAG'][fix] = 16.97
-
-    fix = np.where(rc3['GALAXY'] == 'UGC5482')[0]
-    rc3['MAG'][fix] = 16.97
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 16.97
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'NGC6050')[0]
-    rc3['MAG'][fix] = 15.4
+    if len(fix) > 0:
+        rc3['MAG'][fix] = 15.4
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'ESO116-15')[0]
-    rc3['PA'][fix] = 95 # by eye
+    if len(fix) > 0:
+        rc3['PA'][fix] = 95 # by eye
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'MCG1-32-96')[0]
-    rc3['PA'][fix] = 45 # by eye
+    if len(fix) > 0:
+        rc3['PA'][fix] = 45 # by eye
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'ESO118-30')[0]
-    rc3['D25'][fix] = 0.1*10**1.25
-    rc3['BA'][fix] = 10**(-0.26)
-    rc3['PA'][fix] = 64.3
-    rc3['MAG'][fix] = 14.3
+    if len(fix) > 0:
+        rc3['D25'][fix] = 0.1*10**1.25
+        rc3['BA'][fix] = 10**(-0.26)
+        rc3['PA'][fix] = 64.3
+        rc3['MAG'][fix] = 14.3
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'ESO248-6')[0]
-    rc3['D25'][fix] = 0.1*10**1.21
-    rc3['BA'][fix] = 10**(-0.41)
-    rc3['PA'][fix] = 12.5
-    rc3['MAG'][fix] = 15.05
+    if len(fix) > 0:
+        rc3['D25'][fix] = 0.1*10**1.21
+        rc3['BA'][fix] = 10**(-0.41)
+        rc3['PA'][fix] = 12.5
+        rc3['MAG'][fix] = 15.05
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'ESO356-14')[0]
-    rc3['D25'][fix] = 0.1*10**0.94
-    rc3['BA'][fix] = 10**(-0.12)
-    rc3['PA'][fix] = 127.7
-    rc3['MAG'][fix] = 14.77
+    if len(fix) > 0:
+        rc3['D25'][fix] = 0.1*10**0.94
+        rc3['BA'][fix] = 10**(-0.12)
+        rc3['PA'][fix] = 127.7
+        rc3['MAG'][fix] = 14.77
+        rc3['BYHAND'][fix] = True
 
     fix = np.where(rc3['GALAXY'] == 'NGC7592')[0]
-    rc3['D25'][fix] = 0.1*10**1.18
-    rc3['BA'][fix] = 10**(-0.12)
-    rc3['PA'][fix] = 85.0
-    rc3['MAG'][fix] = 14.5
+    if len(fix) > 0:
+        rc3['D25'][fix] = 0.1*10**1.18
+        rc3['BA'][fix] = 10**(-0.12)
+        rc3['PA'][fix] = 85.0
+        rc3['MAG'][fix] = 14.5
+        rc3['BYHAND'][fix] = True
 
     #fix = rc3['MAG'] < 0
     #rc3['MAG'][fix] = 15.0 # hack!
@@ -371,7 +489,8 @@ def add_rc3(parent, startindx=4000000):
             
     #out['OBJTYPE'] = 'G'
     out['REF'] = 'RC3'
-    
+    out['Z'] = -99.0
+
     parent = vstack((parent, out))
     
     return parent
@@ -505,20 +624,27 @@ def fix_byhand(parent):
     """
     print('Repairing some quantities by-hand.')
 
+    # Fix b/a>1 which are all wacky (but have been inspected, so they're real).
+    fix = np.where(parent['BA'] > 1)[0]
+    if len(fix) > 0:
+        parent['BA'][fix] = 1.0
+        parent['PA'][fix] = 0.0
+        parent['BYHAND'][fix] = True
+
     # IC5324
     # Coordinates are totally wrong!
     fix = np.where(parent['PGC'] == 71526)[0]
     if len(fix) > 0:
         parent['RA'][fix] = 352.07395833333334,
         parent['DEC'][fix] = -67.82136111111112
+        parent['BYHAND'][fix] = True
           
     # UGC504
     # Use RC3 values
     fix = np.where(parent['PGC'] == 2882)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 1.175
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # Maffei2
     # Use https://github.com/moustakas/LSLGA/blob/master/doc/compare-wxsc-largest-galaxies.ipynb
@@ -527,8 +653,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 2 * 8.50
         parent['PA'][fix] = 27.7
         parent['BA'][fix] = 0.44
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
         
     # UGC05302
     # https://ned.ipac.caltech.edu/byname?objname=UGC05302&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
@@ -537,16 +662,14 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.29
         parent['PA'][fix] = 117
         parent['BA'][fix] = 10**(-0.06)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
         
     # PGC061191 - fix by eye
     fix = np.where(parent['PGC'] == 61191)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.8
         parent['BA'][fix] = 1.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # PGC008356 - use RC3 diameters but PA from SDSS
     # https://ned.ipac.caltech.edu/byname?objname=PGC008356&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
@@ -555,19 +678,20 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.74
         parent['PA'][fix] = 105
         parent['BA'][fix] = 10**(-0.38)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
         
     # [PT2011]53, wrong PA
     fix = np.where(parent['GALAXY'] == '[PT2011]53')[0]
     if len(fix) > 0:
         parent['PA'][fix] = 45.0
+        parent['BYHAND'][fix] = True
     
     # PGC1035237, Leda coordiantes are totally wrong!
     fix = np.where(parent['PGC'] == 1035237)[0]
     if len(fix) > 0:
         parent['RA'][fix] = 31.8505
         parent['DEC'][fix] = -6.2346
+        parent['BYHAND'][fix] = True
 
     # PGC040184=VCC0619, use geometry from NED
     # https://ned.ipac.caltech.edu/byname?objname=PGC40184&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
@@ -576,6 +700,7 @@ def fix_byhand(parent):
         parent['RA'][fix] = 185.770708
         parent['DEC'][fix] = 15.931667
         parent['PA'][fix] = 70.0 # eye-balled
+        parent['BYHAND'][fix] = True
         
     # NGC5474, use D25, PA, and BA from NED
     # https://ned.ipac.caltech.edu/byname?objname=ngc5474&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
@@ -584,20 +709,21 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.68
         parent['PA'][fix] = 97.5
         parent['BA'][fix] = 10**(-0.05)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC170137, fix the PA--not sure why it's not populated
     # http://leda.univ-lyon1.fr/fG.cgi?n=a103&o=PGC170137
     fix = np.where(parent['PGC'] == 170137)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 42.0
+        parent['BYHAND'][fix] = True
 
     # NGC4526, use PA from NED
     # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
     fix = np.where(parent['PGC'] == 41772)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 113.0
+        parent['BYHAND'][fix] = True
 
     # PGC007900, use D25 from NED and visually determined PA
     # https://ned.ipac.caltech.edu/byname?objname=PGC007900&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
@@ -605,8 +731,7 @@ def fix_byhand(parent):
     if len(fix) > 0:
         parent['PA'][fix] = 65.0
         parent['D25'][fix] = 0.1 * 10**1.51 # [arcmin]
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
         
     # NGC5364, use PA and D25 from RC3/NED
     # https://ned.ipac.caltech.edu/byname?objname=ngc5364&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
@@ -615,16 +740,14 @@ def fix_byhand(parent):
         parent['PA'][fix] = 30.0
         parent['BA'][fix] = 0.65
         parent['D25'][fix] = 0.1 * 10**1.83 # [arcmin]
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC0779, use value from RC3
     # https://ned.ipac.caltech.edu/byname?objname=ngc779&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
     fix = np.where(parent['PGC'] == 7544)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1 * 10**1.6 # [arcmin]
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4448, use values from RC3
     # https://ned.ipac.caltech.edu/byname?objname=ngc4448&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
@@ -633,24 +756,21 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1 * 10**1.59 # [arcmin]
         parent['BA'][fix] = 10**(-0.44)
         parent['PA'][fix] = 94.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4395 https://github.com/moustakas/LSLGA/issues/28
     fix = np.where(parent['PGC'] == 40596)[0] 
     if len(fix) > 0:
         parent['D25'][fix] = 12.8 # [arcmin]
         parent['BA'][fix] = 0.833
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC2366 https://github.com/moustakas/LSLGA/issues/29
     fix = np.where(parent['PGC'] == 21102)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 8.8964 # [arcmin]
         parent['BA'][fix] = 0.5263
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # IC4212
     fix = np.where(parent['PGC'] == 45845)[0]
@@ -658,36 +778,33 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.49
         parent['BA'][fix] = 10**(-0.11)
         parent['PA'][fix] = 140
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC28111
     fix = np.where(parent['PGC'] == 28111)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**0.62
         parent['BA'][fix] = 10**(-0.11)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC075458=ESO488-31
     fix = np.where(parent['PGC'] == 75458)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.977
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC16395=ESO119-23
     fix = np.where(parent['PGC'] == 16395)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 1.445
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC011986 - coordinates are totally wrong!
     fix = np.where(parent['PGC'] == 11986)[0]
     if len(fix) > 0:
         parent['RA'][fix] = 48.285686
         parent['DEC'][fix] = -50.562612
+        parent['BYHAND'][fix] = True
 
     ## PGC011986 - wrong PA
     #fix = np.where(parent['PGC'] == 11986)[0]
@@ -700,8 +817,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.98
         parent['BA'][fix] = 10**(-0.07)
         parent['PA'][fix] = 85 # approximate
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC1566 - use NED
     fix = np.where(parent['PGC'] == 14897)[0]
@@ -709,8 +825,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.92
         parent['BA'][fix] = 10**(-0.1)
         parent['PA'][fix] = 60.
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC4552 - use NED
     fix = np.where(parent['PGC'] == 41968)[0]
@@ -718,8 +833,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.72
         parent['BA'][fix] = 0.984
         parent['PA'][fix] = 0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC1433 - use NED
     fix = np.where(parent['PGC'] == 13586)[0]
@@ -727,8 +841,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.81
         parent['BA'][fix] = 10**(-0.04)
         parent['PA'][fix] = 87.9
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC1808 - use NED
     fix = np.where(parent['PGC'] == 16779)[0]
@@ -736,8 +849,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.81
         parent['BA'][fix] = 10**(-0.22)
         parent['PA'][fix] = 133.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC4244 - use NED
     fix = np.where(parent['PGC'] == 39422)[0]
@@ -745,8 +857,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**2.22
         parent['BA'][fix] = 10**(-0.94)
         parent['PA'][fix] = 48
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC7606 - use NED
     fix = np.where(parent['PGC'] == 71047)[0]
@@ -754,8 +865,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.73
         parent['BA'][fix] = 10**(-0.4)
         parent['PA'][fix] = 145
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC3718 - use NED
     fix = np.where(parent['PGC'] == 35616)[0]
@@ -763,27 +873,25 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.91
         parent['BA'][fix] = 10**(-0.31)
         parent['PA'][fix] = 15
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC5629 - use NED
     fix = np.where(parent['PGC'] == 51681)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.26
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC4597 - use NED
     fix = np.where(parent['PGC'] == 42429)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 49.0
+        parent['BYHAND'][fix] = True
         
     # PGC143679 - totally wrong diameter!
     fix = np.where(parent['PGC'] == 143679)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**0.386
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
         
     # NGC2275 - use NED
     fix = np.where(parent['PGC'] == 19605)[0]
@@ -791,8 +899,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.1
         parent['BA'][fix] = 10**(-0.12)
         parent['PA'][fix] = 20
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # IC0983 - use NED
     fix = np.where(parent['PGC'] == 50577)[0]
@@ -800,8 +907,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.73
         parent['BA'][fix] = 10**(-0.06)
         parent['PA'][fix] = 120
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC5921 - use NED
     fix = np.where(parent['PGC'] == 54849)[0]
@@ -809,8 +915,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.69
         parent['BA'][fix] = 10**(-0.09)
         parent['PA'][fix] = 130
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC5987 - use NED
     fix = np.where(parent['PGC'] == 55740)[0]
@@ -818,8 +923,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.62
         parent['BA'][fix] = 10**(-0.5)
         parent['PA'][fix] = 165
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC1543 - use NED
     fix = np.where(parent['PGC'] == 14659)[0]
@@ -827,8 +931,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.69
         parent['BA'][fix] = 10**(-0.24)
         parent['PA'][fix] = 93
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC5774 - use NED
     fix = np.where(parent['PGC'] == 53231)[0]
@@ -836,8 +939,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.48
         parent['BA'][fix] = 10**(-0.09)
         parent['PA'][fix] = 145
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC1042 - use NED
     fix = np.where(parent['PGC'] == 10122)[0]
@@ -845,16 +947,14 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.5
         parent['BA'][fix] = 1.0
         parent['PA'][fix] = 0.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # UGC01176 - use NED
     fix = np.where(parent['PGC'] == 6174)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.27
         parent['BA'][fix] = 10**(-0.1)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC3556 - use NED
     fix = np.where(parent['PGC'] == 34030)[0]
@@ -862,8 +962,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.94
         parent['BA'][fix] = 10**(-0.59)
         parent['PA'][fix] = 80
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC0660 - use NED
     fix = np.where(parent['PGC'] == 6318)[0]
@@ -871,8 +970,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.92
         parent['BA'][fix] = 10**(-0.42)
         parent['PA'][fix] = 170
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC2805 - use NED
     fix = np.where(parent['PGC'] == 26410)[0]
@@ -880,8 +978,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.80
         parent['BA'][fix] = 10**(-0.12)
         parent['PA'][fix] = 125
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC5792 - use NED
     fix = np.where(parent['PGC'] == 53499)[0]
@@ -889,8 +986,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.84
         parent['BA'][fix] = 10**(-0.6)
         parent['PA'][fix] = 84
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC1189 - use NED
     fix = np.where(parent['PGC'] == 11503)[0]
@@ -898,8 +994,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.23
         parent['BA'][fix] = 10**(-0.04)
         parent['PA'][fix] = 0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4274 - use NED
     fix = np.where(parent['PGC'] == 39724)[0]
@@ -907,8 +1002,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.83
         parent['BA'][fix] = 10**(-0.43)
         parent['PA'][fix] = 102
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC3893 - use NED
     fix = np.where(parent['PGC'] == 36875)[0]
@@ -916,16 +1010,14 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.65
         parent['BA'][fix] = 10**(-0.21)
         parent['PA'][fix] = 165
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4203 - use NED
     fix = np.where(parent['PGC'] == 39158)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.65
         parent['BA'][fix] = 10**(-0.03)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # UGC06917 - use NED
     fix = np.where(parent['PGC'] == 37525)[0]
@@ -933,8 +1025,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.55
         parent['BA'][fix] = 10**(-0.24)
         parent['PA'][fix] = 130
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # UGC08331 - use NED
     fix = np.where(parent['PGC'] == 46127)[0]
@@ -942,8 +1033,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.43
         parent['BA'][fix] = 10**(-0.46)
         parent['PA'][fix] = 140
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC7753 - use NED
     fix = np.where(parent['PGC'] == 72387)[0]
@@ -951,8 +1041,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.52
         parent['BA'][fix] = 10**(-0.2)
         parent['PA'][fix] = 50
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # ESO185-054 - use NED
     fix = np.where(parent['PGC'] == 64041)[0]
@@ -960,8 +1049,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.55
         parent['BA'][fix] = 10**(-0.17)
         parent['PA'][fix] = 122
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # train wreck, Hyperleda is totally wrong here! - NGC6027, NGC6027A,
     # NGC6027B, NGC6027C, NGC6027D, NGC6027E
@@ -972,8 +1060,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.64
         parent['BA'][fix] = 10**(-0.28)
         parent['PA'][fix] = 90 # eyeball
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
     
     fix = np.where(parent['GALAXY'] == 'NGC6027A')[0]
     if len(fix) > 0:
@@ -982,8 +1069,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.83
         parent['BA'][fix] = 10**(-0.16)
         parent['PA'][fix] = 0.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
     
     fix = np.where(parent['GALAXY'] == 'NGC6027B')[0]
     if len(fix) > 0:
@@ -992,8 +1078,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.60
         parent['BA'][fix] = 10**(-0.16)
         parent['PA'][fix] = 0.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
     
     fix = np.where(parent['GALAXY'] == 'NGC6027C')[0]
     if len(fix) > 0:
@@ -1002,8 +1087,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.94
         parent['BA'][fix] = 10**(-0.68)
         parent['PA'][fix] = 174.2
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
     
     fix = np.where(parent['GALAXY'] == 'NGC6027D')[0]
     if len(fix) > 0:
@@ -1012,8 +1096,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.22
         parent['BA'][fix] = 1.0
         parent['PA'][fix] = 0.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
     
     fix = np.where(parent['GALAXY'] == 'NGC6027E')[0]
     if len(fix) > 0:
@@ -1022,8 +1105,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.9
         parent['BA'][fix] = 10**(-0.27)
         parent['PA'][fix] = 30 # eyeball
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4912=NGC4914 - use NED
     fix = np.where(parent['PGC'] == 44807)[0]
@@ -1031,8 +1113,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.54
         parent['BA'][fix] = 10**(-0.25)
         parent['PA'][fix] = 155
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC6902 - use NED
     fix = np.where(parent['PGC'] == 64632)[0]
@@ -1040,17 +1121,15 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.75
         parent['BA'][fix] = 10**(-0.16)
         parent['PA'][fix] = 153
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC068303 - use NED
     fix = np.where(parent['PGC'] == 68303)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 2 * 26.7 / 60
-        parent['BA'][fix] = 1 / 0.84
+        parent['BA'][fix] = 0.84
         parent['PA'][fix] = 0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC3614 - use NED
     fix = np.where(parent['PGC'] == 34561)[0]
@@ -1058,13 +1137,13 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.66
         parent['BA'][fix] = 10**(-0.24)
         parent['PA'][fix] = 80
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC005341 - use NED
     fix = np.where(parent['PGC'] == 5341)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 25
+        parent['BYHAND'][fix] = True
 
     # NGC4267 - use NED
     fix = np.where(parent['PGC'] == 39710)[0]
@@ -1072,13 +1151,13 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.51
         parent['BA'][fix] = 10**(-0.03)
         parent['PA'][fix] = 40
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC029842 - use NED
     fix = np.where(parent['PGC'] == 29842)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 81
+        parent['BYHAND'][fix] = True
 
     # PGC059251 - use NED
     fix = np.where(parent['PGC'] == 59251)[0]
@@ -1086,16 +1165,14 @@ def fix_byhand(parent):
         parent['D25'][fix] = 2 * 28.6 / 60
         parent['BA'][fix] = 13.77 / 28.6
         parent['PA'][fix] = 130.8
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC1721 - use NED
     fix = np.where(parent['PGC'] == 16484)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.32
         parent['BA'][fix] = 10**(-0.31)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4780 - use NED
     fix = np.where(parent['PGC'] == 43870)[0]
@@ -1103,8 +1180,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.29
         parent['BA'][fix] = 10**(-0.180)
         parent['PA'][fix] = 15 # eyeballed?
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4319 - use NED
     fix = np.where(parent['PGC'] == 39981)[0]
@@ -1112,8 +1188,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.47
         parent['BA'][fix] = 10**(-0.11)
         parent['PA'][fix] = 160
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC4705 - use NED
     fix = np.where(parent['PGC'] == 43350)[0]
@@ -1121,8 +1196,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.48
         parent['BA'][fix] = 10**(-0.46)
         parent['PA'][fix] = 125
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC4759 - wrong diameter; use Corwin et al. (dataset 17001)
     fix = np.where(parent['PGC'] == 43754)[0]
@@ -1130,13 +1204,13 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**0.54
         parent['BA'][fix] = 10**(-0.3)
         parent['PA'][fix] = 5
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC0259 - use NED
     fix = np.where(parent['PGC'] == 2820)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 140
+        parent['BYHAND'][fix] = True
 
     ## ESO205-027 - need to do something but not sure what!
     #fix = np.where(parent['PGC'] == 18514)[0]
@@ -1144,36 +1218,32 @@ def fix_byhand(parent):
     #    parent['D25'][fix] = 0.1*10**
     #    parent['BA'][fix] = 10**()
     #    parent['PA'][fix] = 
-    #    parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-    #      5 * np.log10(parent['D25'][fix])
 
     # NGC7145 - use NED
     fix = np.where(parent['PGC'] == 67583)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.4
         parent['BA'][fix] = 10**(-0.02)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # SDSSJ161534.10+192734.8 - wrong diameter
     fix = np.where(parent['PGC'] == 4530633)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**0.57
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4257 - use NED
     fix = np.where(parent['PGC'] == 39624)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.10
         parent['BA'][fix] = 10**(-0.55)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # 2MASXJ14532797+0532180 - fix PA
     fix = np.where(parent['PGC'] == 3835908)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 85
+        parent['BYHAND'][fix] = True
 
     # NGC5557 - use NED
     fix = np.where(parent['PGC'] == 51104)[0]
@@ -1181,21 +1251,20 @@ def fix_byhand(parent):
         parent['D25'][fix] = 2.28 * 1.5 # eyeball
         parent['BA'][fix] = 10**(-0.09)
         parent['PA'][fix] = 105
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # PGC065158 - fix PA
     fix = np.where(parent['PGC'] == 65158)[0]
     if len(fix) > 0:
         parent['PA'][fix] = 67
+        parent['BYHAND'][fix] = True
 
     # ESO108-023 - use NED
     fix = np.where(parent['PGC'] == 68473)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.41
         parent['BA'][fix] = 10**(-0.05)
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC4517A - use NED
     fix = np.where(parent['PGC'] == 41578)[0]
@@ -1203,8 +1272,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.60
         parent['BA'][fix] = 10**(-0.18)
         parent['PA'][fix] = 30
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # NGC4330 - use NED
     fix = np.where(parent['PGC'] == 40201)[0]
@@ -1212,15 +1280,13 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.65
         parent['BA'][fix] = 10**(-0.7)
         parent['PA'][fix] = 59
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
           
     # PGC131942 - fix diameter
     fix = np.where(parent['PGC'] == 131942)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**0.54
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC5523 - use NED
     fix = np.where(parent['PGC'] == 50895)[0]
@@ -1228,8 +1294,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.66
         parent['BA'][fix] = 10**(-0.56)
         parent['PA'][fix] = 99
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC041965 - use Corwin+
     fix = np.where(parent['PGC'] == 41965)[0]
@@ -1237,8 +1302,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.76
         parent['BA'][fix] = 0.708
         parent['PA'][fix] = 55
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC2776 - use NED
     fix = np.where(parent['PGC'] == 25946)[0]
@@ -1246,8 +1310,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.48
         parent['BA'][fix] = 10**(-0.05)
         parent['PA'][fix] = 111
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC4643 - use NED
     fix = np.where(parent['PGC'] == 42797)[0]
@@ -1255,8 +1318,7 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.49
         parent['BA'][fix] = 10**(-0.13)
         parent['PA'][fix] = 48
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC5701 - use NED
     fix = np.where(parent['PGC'] == 52365)[0]
@@ -1264,13 +1326,13 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.63
         parent['BA'][fix] = 10**(-0.02)
         parent['PA'][fix] = 3.5
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # NGC5324 - fix b/a
     fix = np.where(parent['PGC'] == 49236)[0]
     if len(fix) > 0:
         parent['BA'][fix] = 10**(-0.03)
+        parent['BYHAND'][fix] = True
 
     # ESO485-021 - use NED
     fix = np.where(parent['PGC'] == 16236)[0]
@@ -1278,14 +1340,14 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.1*10**1.59
         parent['BA'][fix] = 10**(-0.08)
         parent['PA'][fix] = 110
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
 
     # PGC1722712 - fix coords by eye
     fix = np.where(parent['PGC'] == 1722712)[0]
     if len(fix) > 0:
         parent['RA'][fix] = 326.1247
         parent['DEC'][fix] = 25.0086
+        parent['BYHAND'][fix] = True
 
     # PGC200231 is really part of PGC020460 in Hyperleda, but I'm going to move
     # it "by hand" to make it the companion UGC03730, which is missing from the
@@ -1298,8 +1360,15 @@ def fix_byhand(parent):
         parent['D25'][fix] = 1.8
         parent['BA'][fix] = 1.0
         parent['PA'][fix] = 0.0
-        parent['SB_D25'][fix] = parent['MAG'][fix] + 2.5 * np.log10( np.pi * (60/2)**2 ) + \
-          5 * np.log10(parent['D25'][fix])
+        parent['BYHAND'][fix] = True
+
+    # 2MASXJ11503438+0645560 - use NED
+    fix = np.where(parent['PGC'] == 3777902)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 2 * 19.5 / 60
+        parent['BA'][fix] = 0.44
+        parent['PA'][fix] = 35
+        parent['BYHAND'][fix] = True
 
     return parent
 
@@ -1496,7 +1565,6 @@ def add_dr8_candidates(parent, startindx=6000000):
         out['D25'][igal] = d25.astype('f4')
 
     out['REF'] = 'DR8'
-    out['SB_D25'] = (out['MAG'] + 2.5 * np.log10(np.pi * (60/2)**2) + 5 * np.log10(out['D25'])).astype('f4')
 
     # Double-check for duplicates
     m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], out['RA'], out['DEC'], 3/3600.0, nearest=True)
@@ -1557,7 +1625,8 @@ def remove_spurious(parent):
     
     indx = ['SDSS' in gg or '2MAS' in gg for gg in parent['GALAXY']]
     #indx = np.where(parent['IN_DESI'] * )[0]
-    host = np.where(parent['IN_DESI'] * (parent['D25'] > 0.5) * np.logical_not(indx))[0]
+    #host = np.where(parent['IN_DESI'] * (parent['D25'] > 0.5) * np.logical_not(indx))[0]
+    host = np.where((parent['D25'] > 0.5) * np.logical_not(indx))[0]
     
     sdssingal = np.zeros(len(parent), dtype=bool)
     for pp in parent[host]:
@@ -1635,6 +1704,8 @@ def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
     """
     from pydl.pydlutils.spheregroup import spheregroup
     from astrometry.util.starutil_numpy import degrees_between
+
+    print('Starting spheregrouping.')
 
     nchar = np.max([len(gg) for gg in cat['GALAXY']])+6 # add six characters for "_GROUP"
     
@@ -1791,6 +1862,13 @@ def main():
     parent = add_ngc(parent)
     parent = add_dr8_candidates(parent)
 
+    # Remove known *spurious* large galaxies (based on visual inspection,
+    # etc.). We do reject a handful of DR8-supplement galaxies, so be sure to do
+    # this step *after* we've added in the DR8 candidates.
+    parent = remove_spurious(parent)
+
+    # Some final checks (must be after spurious sources have been removed,
+    # because we toss out galaxies without magnitude estimates).
     try:
         assert(np.all(parent['D25'] > 0))
         assert(np.all(parent['MAG'] > 0))
@@ -1805,11 +1883,6 @@ def main():
 
     # Find all galaxies in and out of the DESI footprint.
     parent = in_footprint(parent, nside=args.nside)
-
-    # Remove known *spurious* large galaxies (based on visual inspection,
-    # etc.). We do reject a handful of DR8-supplement galaxies, so be sure to do
-    # this step *after* we've added in the DR8 candidates.
-    parent = remove_spurious(parent)
 
     # Build a group catalog--
     #print('Skipping group catalog-making!!!')
