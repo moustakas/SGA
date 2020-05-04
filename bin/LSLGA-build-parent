@@ -285,7 +285,9 @@ def add_rc3(parent, startindx=4000000):
     print('Read {} galaxies from {}'.format(len(rc3), rc3file))
 
     rc3.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(rc3))), index=0)
-    rc3['PA'].dtype = 'f4' # int-->f4
+    rc3.rename_column('PA', 'PA_ORIG')
+    rc3['PA'] = np.zeros(len(rc3), dtype='f4')
+    rc3['PA'] = rc3['PA_ORIG'].astype('f4') # int-->f4
 
     # Code used for visual inspections--
     if False:
@@ -343,6 +345,7 @@ def add_rc3(parent, startindx=4000000):
         #'ESO286-52', # in Hyperleda as NGC7012?
         'ESO288-40',
         'NGC7592', 
+        'NGC7720', 
         'ESO192-11'])
     gal = np.array([gg.strip().replace(' ', '') for gg in rc3['NAME']])
     alt = np.array([gg.strip().replace(' ', '') for gg in rc3['ALTNAME']])
@@ -472,6 +475,13 @@ def add_rc3(parent, startindx=4000000):
         rc3['BA'][fix] = 10**(-0.12)
         rc3['PA'][fix] = 85.0
         rc3['MAG'][fix] = 14.5
+        rc3['BYHAND'][fix] = True
+
+    fix = np.where(rc3['GALAXY'] == 'NGC7720')[0]
+    if len(fix) > 0:
+        rc3['PA'][fix] = 25
+        rc3['D25'][fix] = 1.9 # eyeballed
+        rc3['MAG'][fix] = 13.43
         rc3['BYHAND'][fix] = True
 
     #fix = rc3['MAG'] < 0
@@ -1404,10 +1414,17 @@ def fix_byhand(parent):
     # catalog
     fix = np.where(parent['PGC'] == 156103)[0]
     if len(fix) > 0:
-        parent['RA'][fix], parent['DEC'][fix] = 164.8449, -7.0008 # eyeballed
+        parent['RA'][fix] = 164.8449 # eyeballed
+        parent['DEC'][fix] = -7.0008 # eyeballed
         parent['D25'][fix] = 0.3
         parent['BA'][fix] = 0.3
         parent['PA'][fix] = 30
+        parent['BYHAND'][fix] = True
+
+    # PGC085570 - make a bit smaller (merger with NGC7720)
+    fix = np.where(parent['PGC'] == 85570)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.4
         parent['BYHAND'][fix] = True
 
     return parent
@@ -1511,33 +1528,29 @@ def add_dr8_candidates(parent, startindx=6000000):
     # Resolve north & south
     #supp = vstack((north[nkeep], south[skeep]))
 
-    if False:
-        gaiafile = os.path.join(sampledir, 'catalogs', 'dr8-gaia-psf-galaxies.fits')
-        gaia = Table(fitsio.read(gaiafile, upper=True))
-        print('Read {} galaxies from {}'.format(len(gaia), gaiafile))
-        bricknames = get_brickname(gaia['RA'], gaia['DEC'])
-        gaia['GALAXY'] = ['DR8-{}-{}'.format(bricknames[igal], gaia['OBJID'][igal]) for igal in np.arange(len(gaia))]
+    gaiafile = os.path.join(sampledir, 'catalogs', 'dr8-gaia-psf-galaxies.fits')
+    gaia = Table(fitsio.read(gaiafile, upper=True))
+    print('Read {} galaxies from {}'.format(len(gaia), gaiafile))
+    bricknames = get_brickname(gaia['RA'], gaia['DEC'])
+    gaia['GALAXY'] = ['DR8-{}-{}'.format(bricknames[igal], gaia['OBJID'][igal]) for igal in np.arange(len(gaia))]
 
-        # Find and remove duplicates--
-        m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], gaia['RA'], gaia['DEC'], 3/3600.0, nearest=True)
-        if len(m1) > 0:
-            print('Removing {} duplicates.'.format(len(m1)))
-            #imagetool_inspect(gaia[m2])
-            keep = np.delete(np.arange(len(gaia)), m2)
-            gaia = gaia[keep]
+    # Find and remove duplicates--
+    m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], gaia['RA'], gaia['DEC'], 3/3600.0, nearest=True)
+    if len(m1) > 0:
+        print('Removing {} duplicates.'.format(len(m1)))
+        #imagetool_inspect(gaia[m2])
+        keep = np.delete(np.arange(len(gaia)), m2)
+        gaia = gaia[keep]
 
-    #m1, m2, d12 = match_radec(_supp['RA'], _supp['DEC'], gaia['RA'], gaia['DEC'], 1/3600.0, nearest=True)
-    #if len(m2) > 0:
-    #    keep = np.delete(np.arange(len(_supp)), m1)
-    #    _supp = _supp[keep]
+    # Find and remove duplicates--
+    m1, m2, d12 = match_radec(_supp['RA'], _supp['DEC'], gaia['RA'], gaia['DEC'], 1/3600.0, nearest=True)
+    if len(m2) > 0:
+        keep = np.delete(np.arange(len(gaia)), m2)
+        gaia = gaia[keep]
     #for col in supp.colnames:
     #    if col in gaia.colnames:
     #        print(col)
-    #supp = vstack((_supp, gaia), join_type='outer')
-
-    print('hack!!')
-    supp = _supp
-    #supp = gaia
+    supp = vstack((_supp, gaia), join_type='outer')
 
     # Assign IDs starting at startindx.
     supp.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(supp))), index=0)
@@ -1636,246 +1649,6 @@ def add_dr8_candidates(parent, startindx=6000000):
         #if out['GALAXY'][igal] == 'DR8-3420m507-2246':
         #    pdb.set_trace()
 
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2831p685-212')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 30/60.0 # eyeballed
-            out['BA'][fix] = 0.5 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1032p525-176')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.5 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0204m140-5091')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2212p270-3349')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0826m615-2794')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-3441m090-2421')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 1.5 # eyeballed
-            out['BA'][fix] = 0.15 # eyeballed
-            out['PA'][fix] = 10 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2831p685-212')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BA'][fix] = 0.3 # eyeballed
-            out['PA'][fix] = 90 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0211p045-1034')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.8 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-3161m595-756')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.5 # eyeballed
-            out['BYHAND'][fix] = True
-            
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0555m570-754')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0861m477-2268')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0628m475-736')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0923m475-590')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0923m475-1726')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.5 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0166m470-1080')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0569m440-804')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-3496m430-4309')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['PA'][fix] = 25 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0167m132-599')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1658m042-3366')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.25 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0356m040-4639')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.25 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2398p030-1289')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0226p027-5571')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.5 # eyeballed
-            out['PA'][fix] = 0.0 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2322p075-174')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2302p077-1557')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1502p095-3160')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.5 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2599p110-1415')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.5 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2403p160-3198')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0356p172-1690')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0342p192-1779')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0356p195-3981')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.6 # eyeballed
-            out['PA'][fix] = 45 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0350p205-4515')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-            
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2217p207-3898')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-0351p210-2754')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.5 # eyeballed
-            out['BYHAND'][fix] = True
-            
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2645p227-1972')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BA'][fix] = 1.0 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1790p250-3335')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1974p402-694')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1989p420-3281')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2478p425-1079')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1668p477-2900')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.25 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2406p475-547')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2404p472-2595')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.4 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1139p502-2329')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BA'][fix] = 1.0
-            out['BYHAND'][fix] = True
-            
-        fix = np.where(out['GALAXY'][igal] == 'DR8-2227p507-2101')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1016p555-260')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.3 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1802p562-1472')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.25 # eyeballed
-            out['BYHAND'][fix] = True
-
-        fix = np.where(out['GALAXY'][igal] == 'DR8-1807p580-207')[0]
-        if len(fix) > 0:
-            out['D25'][fix] = 0.25 # eyeballed
-            out['BYHAND'][fix] = True
-
         #if (supp['BRICKID'][igal] == 628872) * (supp['OBJID'][igal] == 3436):
         #    pdb.set_trace()
 
@@ -1884,6 +1657,253 @@ def add_dr8_candidates(parent, startindx=6000000):
         out['D25'][igal] = d25.astype('f4')
 
     out['REF'] = 'DR8'
+
+    fix = np.where(out['GALAXY'] == 'DR8-1647m070-5067')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['PA'][fix] = 135
+        out['BA'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2831p685-212')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 30/60.0 # eyeballed
+        out['BA'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1032p525-176')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0204m140-5091')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2212p270-3349')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0826m615-2794')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-3441m090-2421')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 1.5 # eyeballed
+        out['BA'][fix] = 0.3 # eyeballed
+        out['PA'][fix] = 10 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2831p685-212')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BA'][fix] = 0.3 # eyeballed
+        out['PA'][fix] = 90 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0211p045-1034')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.8 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-3161m595-756')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0555m570-754')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0861m477-2268')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0628m475-736')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0923m475-590')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0923m475-1726')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0166m470-1080')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0569m440-804')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-3496m430-4309')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['PA'][fix] = 25 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0167m132-599')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1658m042-3366')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.25 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0356m040-4639')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.25 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2398p030-1289')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0226p027-5571')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.5 # eyeballed
+        out['PA'][fix] = 0.0 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2322p075-174')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2302p077-1557')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1502p095-3160')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2599p110-1415')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2403p160-3198')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0356p172-1690')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0342p192-1779')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0356p195-3981')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.6 # eyeballed
+        out['PA'][fix] = 45 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0350p205-4515')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2217p207-3898')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-0351p210-2754')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.5 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2645p227-1972')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BA'][fix] = 1.0 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1790p250-3335')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1974p402-694')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1989p420-3281')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2478p425-1079')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1668p477-2900')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.25 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2406p475-547')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2404p472-2595')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.4 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1139p502-2329')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BA'][fix] = 1.0
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-2227p507-2101')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1016p555-260')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.3 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1802p562-1472')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.25 # eyeballed
+        out['BYHAND'][fix] = True
+
+    fix = np.where(out['GALAXY'] == 'DR8-1807p580-207')[0]
+    if len(fix) > 0:
+        out['D25'][fix] = 0.25 # eyeballed
+        out['BYHAND'][fix] = True
 
     # Inspect
     #imagetool_inspect(out[(out['D25'] < 20/60)*(out['TYPE'] != 'PSF')])
@@ -1923,10 +1943,9 @@ def remove_spurious(parent, silent=False):
     #rejgal = parent[~np.isin(parent['GALAXY'], rejgalaxies)]
 
     notspuriouscut = ~np.isin(gal, rejgalfinal)
-
-    print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
-        np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
     if np.sum(notspuriouscut) > 0:
+        print('  Removed {}/{} ({:.2f}%) known spurious galaxies.'.format(
+            np.sum(~notspuriouscut), len(parent), 100*np.sum(~notspuriouscut)/len(parent)))
         parent = parent[notspuriouscut]
 
     # Require a magnitude estimate. Unfortunately many of these are real
@@ -1934,9 +1953,9 @@ def remove_spurious(parent, silent=False):
     # unreliable.
     #_viewer_inspect(parent[np.isnan(parent['MAG']) * parent['IN_DESI']])
     magcut = np.isfinite(parent['MAG'])
-    print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
-        np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
     if np.sum(magcut) > 0:
+        print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
+            np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
         #parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
         parent = parent[magcut]
 
@@ -1973,9 +1992,9 @@ def remove_spurious(parent, silent=False):
         
     #_imagetool_inspect(parent[inspect])
     
-    print('  Removed {}/{} ({:.2f}%) SDSS/2MASS galaxies inside another large galaxy.'.format(
-        np.sum(sdssingal), len(parent), 100*np.sum(sdssingal)/len(parent)))    
     if np.sum(sdssingal) > 0:
+        print('  Removed {}/{} ({:.2f}%) SDSS/2MASS galaxies inside another large galaxy.'.format(
+            np.sum(sdssingal), len(parent), 100*np.sum(sdssingal)/len(parent)))    
         parent = parent[~sdssingal]
     
     # Visually inspect all the SDSS galaxies above a certain surface brightness;
@@ -2204,6 +2223,7 @@ def main():
         assert(np.all(parent['D25'] > 0))
         assert(np.all(parent['MAG'] > 0))
         assert(np.all(np.isfinite(parent['PA'])))
+        assert(np.all((parent['PA'] >= 0)*(parent['PA'] <= 180)))
         assert(np.all((parent['BA'] > 0)*(parent['BA'] <= 1)))
     except:
         print('Problem here!')
