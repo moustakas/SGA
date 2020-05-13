@@ -104,6 +104,7 @@ def add_ngc(parent, startindx=5000000):
                                    np.where(NGC['NAME'] == 'IC1636')[0],   # better coords in Hyperleda
                                    np.where(NGC['NAME'] == 'NGC2680')[0],  # duplicate with NGC2679?
                                    np.where(NGC['NAME'] == 'NGC2458')[0],  # already in Hyperleda
+                                   np.where(NGC['NAME'] == 'NGC0292')[0],  # SMC - we don't want it
                                    np.where(NGC['NAME'] == 'NGC2363')[0],  # HII region
                                    np.where(NGC['NAME'] == 'IC2789')[0],   # tiny, reject
                                    np.where(NGC['NAME'] == 'IC3332')[0],   # star?
@@ -505,7 +506,7 @@ def add_rc3(parent, startindx=4000000):
     
     return parent
         
-def in_footprint(parent, nside=1024):
+def in_footprint(parent, nside=2048):
     """Find all galaxies in the DESI footprint.
 
     """
@@ -1427,6 +1428,39 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.4
         parent['BYHAND'][fix] = True
 
+    # NGC0331: - use a secondary name that NED recognizes
+    fix = np.where(parent['PGC'] == 3406)[0]
+    if len(fix) > 0:
+        parent['GALAXY'][fix] = 'MCG-01-03-039'
+        parent['BYHAND'][fix] = True
+
+    # NGC4842: - use a secondary name that NED recognizes
+    fix = np.where(parent['PGC'] == 44338)[0]
+    if len(fix) > 0:
+        parent['GALAXY'][fix] = '2MASSJ12573612+2729053'
+        parent['BYHAND'][fix] = True
+
+    # [MSB2017]J1305+41 - eyeballed coordinates
+    fix = np.where(parent['PGC'] == 6657076)[0]
+    if len(fix) > 0:
+        parent['RA'][fix] = 196.3716  # eyeballed
+        parent['DEC'][fix] =  41.8938 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    # [EKS2015]RS0955 
+    fix = np.where(parent['PGC'] == 6740714)[0]
+    if len(fix) > 0:
+        parent['BA'][fix] =  0.5 # eyeballed
+        parent['PA'][fix] =  30 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    # [CKT2009]D1028+70 - use Chiboucas+09
+    fix = np.where(parent['PGC'] == 5056941)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.146
+        parent['BA'][fix] = 10**(0.954-1.146)
+        parent['BYHAND'][fix] = True
+
     return parent
 
 def add_localgroup_dwarfs(parent):
@@ -2215,7 +2249,7 @@ def main():
     #imagetool_inspect(parent[ww])
     #pdb.set_trace()
 
-    print('Inspect all the <20 arcsec systems...')
+    print('ToDo: Inspect all the <20 arcsec systems...')
     
     # Some final checks (must be after spurious sources have been removed,
     # because we toss out galaxies without magnitude estimates).
@@ -2225,6 +2259,7 @@ def main():
         assert(np.all(np.isfinite(parent['PA'])))
         assert(np.all((parent['PA'] >= 0)*(parent['PA'] <= 180)))
         assert(np.all((parent['BA'] > 0)*(parent['BA'] <= 1)))
+        assert(len(parent['LSLGA_ID']) == len(np.unique(parent['LSLGA_ID'])))
     except:
         print('Problem here!')
         pdb.set_trace()
@@ -2232,6 +2267,19 @@ def main():
     # Recompute the surface brightness, for consistency.
     parent['SB_D25'] = parent['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(parent['D25'])
 
+    # Replace special characters in the GALAXY names to not create problems
+    # (e.g., with fitsio) downstream.
+    print('Removing special characters from galaxy names.')
+    fix = np.where(['[' in gg or ':' in gg for gg in parent['GALAXY']])[0]
+    if len(fix) > 0:
+        for ii in fix:
+            parent['BYHAND'][ii] = True
+            parent['GALAXY'][ii] = parent['GALAXY'][ii].replace('[', '').replace(']', '_').replace(':', '_')
+
+    fix = np.where(parent['PGC'] == 0)[0]
+    if len(fix) > 0:
+        parent['PGC'][fix] = -1
+    
     # Find all galaxies in and out of the DESI footprint.
     parent = in_footprint(parent, nside=args.nside)
 
@@ -2241,11 +2289,30 @@ def main():
     else:
         parent = build_group_catalog(parent)
 
-    # Flag galaxies near bright stars--
-    parent, kdparent = near_stars(parent)
-    
+    # Flag galaxies near bright stars (I guess we don't need this anymore)--
+    if False:
+        parent, kdparent = near_stars(parent)
+
+    # Update the data model.
+    cols = parent.colnames
+    parent.rename_column('TYPE', 'MORPHTYPE')
+    for col in ['Z', 'PA', 'D25', 'BA', 'SB_D25', 'MAG']:
+        parent.rename_column(col, '{}_LEDA'.format(col))
+    parent.remove_columns(['IN_DESI_NORTH', 'IN_DESI_SOUTH', 'IN_DESI_NORTH_GRZ', 'IN_DESI_SOUTH_GRZ'])
+
+    #ii = np.where(np.array(parent.colnames) == 'REF')[0][0]
+    #parent.add_column(Column(name='BA', data=np.zeros(len(parent), 'f4')), index=ii)
+    #parent.add_column(Column(name='PA', data=np.zeros(len(parent), 'f4')), index=ii)
+    #parent.add_column(Column(name='DIAM_REF', data=np.zeros(len(parent), 'U4')), index=ii)
+    #parent.add_column(Column(name='DIAM', data=np.zeros(len(parent), 'f4')), index=ii)
+
+    parent['DIAM'] = parent['D25_LEDA']
+    parent['DIAM_REF'] = 'LEDA'
+    parent['PA'] = parent['PA_LEDA']
+    parent['BA'] = parent['BA_LEDA']
+    parent['ELLIPSE'] = np.zeros(len(parent), dtype=np.int32) # bit
+
     print('Writing {} galaxies to {}'.format(len(parent), parentfile))
-    
     #parent.write(parentfile, overwrite=True)
     hdr = fitsio.FITSHDR()
     hdrversion = 'L{}'.format(version[1:2]) # fragile!

@@ -502,7 +502,7 @@ def read_hyperleda(verbose=False, allwise=False, version=None):
     fix = np.isnan(leda['Z'])
     if np.sum(fix) > 0:
         leda['Z'][fix] = -99.0
-    
+
     return leda
 
 def read_multiband(galaxy, galaxydir, band=('g', 'r', 'z'), refband='r',
