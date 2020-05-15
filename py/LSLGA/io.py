@@ -299,15 +299,23 @@ def get_galaxy_galaxydir(cat, analysisdir=None, htmldir=None, html=False):
         return galaxy, galaxydir
 
 def parent_version(version=None):
-    """Version of the parent catalog."""
+    """Version of the parent catalog.
+
+    These are the archived versions. For DR9 we reset the counter to start at v3.0!
+
+    #version = 'v1.0' # 18may13
+    #version = 'v2.0' # 18nov14
+    #version = 'v3.0' # 19sep26
+    #version = 'v4.0' # 19dec23
+    #version = 'v5.0' # 20jan30 (dr9e)
+    #version = 'v6.0' # 20feb25 (DR9-SV)
+    version = 'v7.0'  # 20apr18 (DR9)
+
+    """
     if version is None:
         #version = 'v1.0' # 18may13
-        #version = 'v2.0' # 18nov14
-        #version = 'v3.0' # 19sep26
-        #version = 'v4.0' # 19dec23
-        #version = 'v5.0' # 20jan30 (dr9e)
-        #version = 'v6.0' # 20feb25 (DR9-SV)
-        version = 'v7.0'  # 20apr18 (DR9)
+        #version = 'v2.0' # DR8 (18nov14)
+        version = 'v3.0' # DR9
     return version
 
 def get_parentfile(version=None, kd=False):
@@ -425,11 +433,9 @@ def read_tycho(magcut=99, verbose=False):
 
 def read_hyperleda(verbose=False, allwise=False, version=None):
     """Read the Hyperleda catalog.
-    
-    """
-    if version is None:
-        version = parent_version()
-        
+
+    These are the archived versions. For DR9 we reset the counter to start at v3.0!
+
     if version == 'v1.0':
         hyperfile = 'hyperleda-d25min10-18may13.fits'
     elif version == 'v2.0':
@@ -447,9 +453,24 @@ def read_hyperleda(verbose=False, allwise=False, version=None):
     else:
         print('Unknown version!')
         raise ValueError
-
-    ref = 'LEDA-20180513'
     
+    """
+    if version is None:
+        version = parent_version()
+        
+    if version == 'v1.0':
+        hyperfile = 'hyperleda-d25min10-18may13.fits'
+        ref = 'LEDA-20180513'
+    elif version == 'v2.0':
+        hyperfile = 'hyperleda-d25min10-18nov14.fits'
+        ref = 'LEDA-20181114'
+    elif version == 'v3.0':
+        hyperfile = 'hyperleda-d25min10-18nov14.fits'
+        ref = 'LEDA-20181114'
+    else:
+        print('Unknown version!')
+        raise ValueError
+
     hyperledafile = os.path.join(sample_dir(), 'hyperleda', hyperfile)
     allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
 
