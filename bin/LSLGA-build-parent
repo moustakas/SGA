@@ -2310,7 +2310,7 @@ def main():
     parent['DIAM_REF'] = 'LEDA'
     parent['PA'] = parent['PA_LEDA']
     parent['BA'] = parent['BA_LEDA']
-    parent['ELLIPSE'] = np.zeros(len(parent), dtype=np.int32) # bit
+    parent['ELLIPSEBIT'] = np.zeros(len(parent), dtype=np.int32) # warning bit
 
     print('Writing {} galaxies to {}'.format(len(parent), parentfile))
     #parent.write(parentfile, overwrite=True)
