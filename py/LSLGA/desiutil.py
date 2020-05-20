@@ -7,18 +7,23 @@ LSLGA.desiutil
 Module of utilities taken from desiutil
 """
 
-from __future__ import (print_function, absolute_import, division,
-                        unicode_literals)
-
 import os
-
+import warnings
+from datetime import date
+from types import MethodType
 import numpy as np
 import numpy.ma
-
-try:
-    basestring
-except NameError:  # For Python 3
-    basestring = str
+import matplotlib.pyplot as plt
+import matplotlib.dates
+from matplotlib.cm import ScalarMappable
+from matplotlib.collections import PolyCollection
+from matplotlib.colors import Normalize, colorConverter
+from matplotlib.patches import Ellipse
+from astropy.coordinates import SkyCoord, HeliocentricTrueEcliptic, ICRS, Longitude
+import astropy.units as u
+from astropy.time import Time
+from astropy.utils import iers
+from .iers import freeze_iers
 
 
 def plot_slices(x, y, x_lo, x_hi, y_cut, num_slices=5, min_count=100, axis=None,
@@ -64,9 +69,6 @@ def plot_slices(x, y, x_lo, x_hi, y_cut, num_slices=5, min_count=100, axis=None,
     :class:`matplotlib.axes.Axes`
         The Axes object used in the plot.
     """
-
-    import matplotlib.pyplot as plt
-
     if axis is None:
         axis = plt.gca()
 
@@ -118,7 +120,6 @@ def plot_slices(x, y, x_lo, x_hi, y_cut, num_slices=5, min_count=100, axis=None,
     # ylim
     if set_ylim_from_stats:
         axis.set_ylim(min_m2-max_yr/2., max_p2+max_yr/2.)
-
 
     # Plot cut lines.
     axis.axhline(+y_cut, ls=':', color='k')
@@ -293,7 +294,7 @@ def prepare_data(data, mask=None, clip_lo=None, clip_hi=None,
     # Convert percentile clip values to absolute values.
     def get_clip(value):
         clip_mask = False
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             if value.startswith('!'):
                 clip_mask = True
                 value = value[1:]
@@ -329,172 +330,170 @@ def prepare_data(data, mask=None, clip_lo=None, clip_hi=None,
     return clipped
 
 
-def init_sky(projection='eck4', ra_center=120, galactic_plane_color='red',
-             ra_labels=np.arange(0, 360, 60),
-             dec_labels=np.arange(-60, 90, 30), ax=None):
-    """Initialize a basemap projection of the full sky.
-
-    The returned Basemap object is augmented with an ``ellipse()`` method to
-    support drawing ellipses or circles on the sky, which is useful for
-    representing DESI tiles.
-
-    Note that the projection uses the geographic convention that RA increases
-    from left to right rather than the opposite celestial convention because
-    otherwise RA labels are drawn incorrectly (see
-    https://github.com/matplotlib/basemap/issues/283 for details).
-
-    The DESI footprint would look better with a projection centered at DEC ~ 15,
-    which should be possible with basemap but is not current working (see
-    https://github.com/matplotlib/basemap/issues/192).
-
-    Requires that matplotlib and basemap are installed.
+def init_sky(projection='mollweide', ra_center=120,
+             galactic_plane_color='red', ecliptic_plane_color='red',
+             ax=None):
+    """Initialize matplotlib axes with a projection of the full sky.
 
     Parameters
     ----------
-    projection : :class: `string`, optional
-        All-sky projection used for coordinate transformations. The default
-        'eck4' is recommended for the reasons given `here
-        <http://usersguidetotheuniverse.com/index.php/2011/03/03/
-        whats-the-best-map-projection/>`__.  Other good choices are
-        kav7' and 'moll'.
-    ra_center : float
-        Map is centered at this RA in degrees. Default is +120, which
-        avoids splitting the DESI northern and southern regions.
-    galactic_plane_color : color name or None
-        Draw a line representing the galactic plane using the specified
-        color, or do nothing when None.
-    ra_labels : iterable or None
-        List of RA values in degrees that will be labeled on the map.
-        If None, there will be no RA labels or grid lines.
-    dec_labels : iterable or None
-        List of DEC values in degrees that will be labeled on the map.
-        If None, there will be no DEC labels or grid lines.
-    ax : matplotlib axis objet or None
-        Axes to use for drawing this map, or use current axes if None.
+    projection : :class:`str`, optional
+        Projection to use. Defaults to 'mollweide'.  To show the available projections,
+        call :func:`matplotlib.projections.get_projection_names`.
+    ra_center : :class:`float`, optional
+        Projection is centered at this RA in degrees. Default is +120°, which avoids splitting
+        the DESI northern and southern regions.
+    galactic_plane_color : color name, optional
+        Draw a solid curve representing the galactic plane using the specified color, or do
+        nothing when ``None``.
+    ecliptic_plane_color : color name, optional
+        Draw a dotted curve representing the ecliptic plane using the specified color, or do
+        nothing when ``None``.
+    ax : :class:`~matplotlib.axes.Axes`, optional
+        Axes to use for drawing this map, or create new axes if ``None``.
 
     Returns
     -------
-    :class:`mpl_toolkits.basemap.Basemap`
-       The Basemap object created for this plot, which can be used for
-       additional projection and plotting operations.
+    :class:`~matplotlib.axes.Axes`
+        A matplotlib Axes object.  Helper methods ``projection_ra()`` and ``projection_dec()``
+        are added to the object to facilitate conversion to projection coordinates.
+
+    Notes
+    -----
+    If requested, the ecliptic and galactic planes are plotted with ``zorder`` set to 20.
+    This keeps them above most other plotted objects, but legends should be set to
+    a ``zorder`` higher than this value, for example::
+
+        leg = ax.legend(ncol=2, loc=1)
+        leg.set_zorder(25)
     """
-    import matplotlib
-    if 'TRAVIS_JOB_ID' in os.environ:
-        matplotlib.use('agg')
-    from matplotlib.patches import Polygon
-    from mpl_toolkits.basemap import pyproj
-    from mpl_toolkits.basemap import Basemap
-    from astropy.coordinates import SkyCoord
-    import astropy.units as u
+    #
+    # Internal functions.
+    #
+    def projection_ra(self, ra):
+        r"""Shift `ra` to the origin of the Axes object and convert to radians.
 
-    # Define a Basemap subclass with an ellipse() method.
-    class BasemapWithEllipse(Basemap):
-        """Code from http://stackoverflow.com/questions/8161144/
-        drawing-ellipses-on-matplotlib-basemap-projections
-        It adds ellipses to the class Basemap.
+        Parameters
+        ----------
+        ra : array-like
+            Right Ascension in degrees.
+
+        Returns
+        -------
+        array-like
+            `ra` converted to plot coordinates.
+
+        Notes
+        -----
+        In matplotlib, map projections expect longitude (RA), latitude (Dec)
+        in radians with limits :math:`[-\pi, \pi]`, :math:`[-\pi/2, \pi/2]`,
+        respectively.
         """
-        def ellipse(self, x0, y0, a, b, n, ax=None, **kwargs):
-            """Extension to Basemap class from `basemap` to draw ellipses.
+        #
+        # Shift RA values.
+        #
+        r = np.remainder(ra + 360 - ra_center, 360)
+        #
+        # Scale conversion to [-180, 180].
+        #
+        r[r > 180] -= 360
+        #
+        # Reverse the scale: East to the left.
+        #
+        r = -r
+        return np.radians(r)
 
-            Parameters
-            ----------
-            x0 : :class: `float`
-                Centroid of the ellipse in the X axis.
-            y0 : :class: `float`
-                Centroid of the ellipse in the Y axis.
-            a : :class: `float`
-                Semi-major axis of the ellipse.
-            b : :class: `float`
-                Semi-minor axis of the ellipse.
-            n : :class: `int`
-                Number of points to draw the ellipse.
+    def projection_dec(self, dec):
+        """Shift `dec` to the origin of the Axes object and convert to radians.
 
-            Returns
-            -------
-            :class: `Basemap`
-                It returns one Basemap ellipse at a time.
-            """
-            ax = kwargs.pop('ax', None) or self._check_ax()
-            g = pyproj.Geod(a=self.rmajor, b=self.rminor)
-            azf, azb, dist = g.inv([x0, x0], [y0, y0], [x0+a, x0], [y0, y0+b])
-            tsid = dist[0] * dist[1]  # a * b
-            seg = [self(x0+a, y0)]
-            AZ = np.linspace(azf[0], 360. + azf[0], n)
-            for i, az in enumerate(AZ):
-                # Skips segments along equator (Geod can't handle equatorial arcs).
-                if np.allclose(0., y0) and (np.allclose(90., az) or
-                                            np.allclose(270., az)):
-                    continue
+        Parameters
+        ----------
+        dec : array-like
+            Declination in degrees.
 
-                # In polar coordinates, with the origin at the center of the
-                # ellipse and with the angular coordinate ``az`` measured from the
-                # major axis, the ellipse's equation  is [1]:
-                #
-                #                           a * b
-                # r(az) = ------------------------------------------
-                #         ((b * cos(az))**2 + (a * sin(az))**2)**0.5
-                #
-                # Azymuth angle in radial coordinates and corrected for reference
-                # angle.
-                azr = 2. * np.pi / 360. * (az + 90.)
-                A = dist[0] * np.sin(azr)
-                B = dist[1] * np.cos(azr)
-                r = tsid / (B**2. + A**2.)**0.5
-                lon, lat, azb = g.fwd(x0, y0, az, r)
-                x, y = self(lon, lat)
-
-                # Add segment if it is in the map projection region.
-                if x < 1e20 and y < 1e20:
-                    seg.append((x, y))
-
-            poly = Polygon(seg, **kwargs)
-            ax.add_patch(poly)
-
-            # Set axes limits to fit map region.
-            self.set_axes_limits(ax=ax)
-
-            return poly
-
-    # Create an instance of our custom Basemap.
-    m = BasemapWithEllipse(
-        projection=projection, lon_0=ra_center, resolution=None,
-        celestial=False, ax=ax)
-    if ra_labels is not None:
-        if projection in ('hammer', 'moll'):
-            labels = [0, 0, 0, 0]
-        else:
-            labels = [0, 0, 1, 0]
-        m.drawmeridians(
-            ra_labels, labels=labels, labelstyle='+/-')
-    if dec_labels is not None:
-        m.drawparallels(
-            dec_labels, labels=[1, 1, 0, 0], labelstyle='+/-')
-    m.drawmapboundary()
-
-    # Draw the optional galactic plane.
+        Returns
+        -------
+        array-like
+            `dec` converted to plot coordinates.
+        """
+        return np.radians(dec)
+    #
+    # Create ax.
+    #
+    if ax is None:
+        fig = plt.figure(figsize=(10.0, 5.0), dpi=100)
+        ax = plt.subplot(111, projection=projection)
+    #
+    # Prepare labels.
+    #
+    base_tick_labels = np.array([150, 120, 90, 60, 30, 0, 330, 300, 270, 240, 210])
+    base_tick_labels = np.remainder(base_tick_labels+360+ra_center, 360)
+    tick_labels = np.array(['{0}°'.format(l) for l in base_tick_labels])
+    #
+    # Galactic plane.
+    #
     if galactic_plane_color is not None:
-        # Generate coordinates of a line in galactic coordinates and convert
-        # to equatorial coordinates.
         galactic_l = np.linspace(0, 2 * np.pi, 1000)
-        galactic_plane = SkyCoord(l=galactic_l*u.radian,
-                                  b=np.zeros_like(galactic_l)*u.radian,
-                                  frame='galactic').fk5
+        galactic = SkyCoord(l=galactic_l*u.radian, b=np.zeros_like(galactic_l)*u.radian,
+                            frame='galactic').transform_to(ICRS)
+        #
         # Project to map coordinates and display.  Use a scatter plot to
         # avoid wrap-around complications.
-        galactic_x, galactic_y = m(galactic_plane.ra.degree,
-                                   galactic_plane.dec.degree)
-
-        paths = m.scatter(
-            galactic_x, galactic_y, marker='.', s=10, lw=0, alpha=0.5,
-            c=galactic_plane_color)
+        #
+        paths = ax.scatter(projection_ra(0, galactic.ra.degree),
+                           projection_dec(0, galactic.dec.degree),
+                           marker='.', s=20, lw=0, alpha=0.75,
+                           c=galactic_plane_color, zorder=20)
         # Make sure the galactic plane stays above other displayed objects.
-        paths.set_zorder(20)
-
-    return m
+        # paths.set_zorder(20)
+    #
+    # Ecliptic plane.
+    #
+    if ecliptic_plane_color is not None:
+        ecliptic_l = np.linspace(0, 2 * np.pi, 50)
+        ecliptic = SkyCoord(lon=ecliptic_l*u.radian, lat=np.zeros_like(ecliptic_l)*u.radian, distance=1 * u.Mpc,
+                            frame='heliocentrictrueecliptic').transform_to(ICRS)
+        #
+        # Project to map coordinates and display.  Use a scatter plot to
+        # avoid wrap-around complications.
+        #
+        paths = ax.scatter(projection_ra(0, ecliptic.ra.degree),
+                           projection_dec(0, ecliptic.dec.degree),
+                           marker='.', s=20, lw=0, alpha=0.75,
+                           c=ecliptic_plane_color, zorder=20)
+        # paths.set_zorder(20)
+    #
+    # Set RA labels.
+    #
+    labels = ax.get_xticklabels()
+    for l, item in enumerate(labels):
+        item.set_text(tick_labels[l])
+    ax.set_xticklabels(labels)
+    #
+    # Set axis labels.
+    #
+    ax.set_xlabel('R.A. [deg]')
+    # ax.xaxis.label.set_fontsize(12)
+    ax.set_ylabel('Dec. [deg]')
+    # ax.yaxis.label.set_fontsize(12)
+    ax.grid(True)
+    #
+    # Attach helper methods.
+    #
+    if hasattr(ax, '_ra_center'):
+        warnings.warn("Attribute '_ra_center' detected.  Will be overwritten!")
+    ax._ra_center = ra_center
+    if hasattr(ax, 'projection_ra'):
+        warnings.warn("Attribute 'projection_ra' detected.  Will be overwritten!")
+    ax.projection_ra = MethodType(projection_ra, ax)
+    if hasattr(ax, 'projection_dec'):
+        warnings.warn("Attribute 'projection_dec' detected.  Will be overwritten!")
+    ax.projection_dec = MethodType(projection_dec, ax)
+    return ax
 
 
 def plot_healpix_map(data, nest=False, cmap='viridis', colorbar=True,
-                     label=None, basemap=None):
+                     label=None, ax=None, **kwargs):
     """Plot a healpix map using an all-sky projection.
 
     Pass the data array through :func:`prepare_data` to select a subset to plot
@@ -504,7 +503,9 @@ def plot_healpix_map(data, nest=False, cmap='viridis', colorbar=True,
     at high resolution and has less elegant handling of pixels that wrap around
     in RA, which are not drawn.
 
-    Requires that matplotlib, basemap, and healpy are installed.
+    Requires that matplotlib and healpy are installed.
+
+    Additional keyword parameters will be passed to :func:`init_sky`.
 
     Parameters
     ----------
@@ -513,86 +514,96 @@ def plot_healpix_map(data, nest=False, cmap='viridis', colorbar=True,
         exactly matches the number of pixels for some NSIDE value. Use the
         output of :func:`prepare_data` as a convenient way to specify
         data cuts and color map clipping.
-    nest : bool
-        If True, assume NESTED pixel ordering.  Otheriwse, assume RING pixel
+    nest : :class:`bool`, optional
+        If ``True``, assume NESTED pixel ordering.  Otheriwse, assume RING pixel
         ordering.
-    cmap : colormap name or object
+    cmap : colormap name or object, optional
         Matplotlib colormap to use for mapping data values to colors.
-    colorbar : bool
-        Draw a colorbar below the map when True.
-    label : str or None
-        Label to display under the colorbar.  Ignored unless colorbar is True.
-    basemap : Basemap object or None
-        Use the specified basemap or create a default basemap using
-        :func:`init_sky` when None.
+    colorbar : :class:`bool`, optional
+        Draw a colorbar below the map when ``True``.
+    label : :class:`str`, optional
+        Label to display under the colorbar.  Ignored unless colorbar is ``True``.
+    ax : :class:`~matplotlib.axes.Axes`, optional
+        Axes to use for drawing this map, or create default axes using
+        :func:`init_sky` when ``None``.
 
     Returns
     -------
-    basemap
-        The basemap used for the plot, which will match the input basemap
-        provided, or be a newly created basemap if None was provided.
+    :class:`~matplotlib.axes.Axes`
+        The axis object used for the plot.
     """
     import healpy as hp
-    import matplotlib.pyplot as plt
-    import matplotlib.colors
-    from matplotlib.collections import PolyCollection
 
     data = prepare_data(data)
     if len(data.shape) != 1:
         raise ValueError('Invalid data array, should be 1D.')
     nside = hp.npix2nside(len(data))
-
-    if basemap is None:
-        basemap = init_sky()
-
+    #
+    # Create axes.
+    #
+    if ax is None:
+        ax = init_sky(**kwargs)
+    proj_edge = ax._ra_center - 180
+    #
+    # Find the projection edge.
+    #
+    while proj_edge < 0:
+        proj_edge += 360
+    #
     # Get pixel boundaries as quadrilaterals.
+    #
     corners = hp.boundaries(nside, np.arange(len(data)), step=1, nest=nest)
     corner_theta, corner_phi = hp.vec2ang(corners.transpose(0, 2, 1))
     corner_ra, corner_dec = (np.degrees(corner_phi),
                              np.degrees(np.pi/2-corner_theta))
+    #
     # Convert sky coords to map coords.
-    x, y = basemap(corner_ra, corner_dec)
+    #
+    x, y = ax.projection_ra(corner_ra), ax.projection_dec(corner_dec)
+    #
     # Regroup into pixel corners.
+    #
     verts = np.array([x.reshape(-1, 4), y.reshape(-1, 4)]).transpose(1, 2, 0)
-
+    #
     # Find and mask any pixels that wrap around in RA.
+    #
     uv_verts = np.array([corner_phi.reshape(-1, 4),
                          corner_theta.reshape(-1, 4)]).transpose(1, 2, 0)
     theta_edge = np.unique(uv_verts[:, :, 1])
-    phi_edge = np.radians(basemap.lonmax)
+    phi_edge = np.radians(proj_edge)
     eps = 0.1 * np.sqrt(hp.nside2pixarea(nside))
     wrapped1 = hp.ang2pix(nside, theta_edge, phi_edge - eps, nest=nest)
     wrapped2 = hp.ang2pix(nside, theta_edge, phi_edge + eps, nest=nest)
     wrapped = np.unique(np.hstack((wrapped1, wrapped2)))
     data.mask[wrapped] = True
-
+    #
     # Normalize the data using its vmin, vmax attributes, if present.
+    #
     try:
-        norm = matplotlib.colors.Normalize(vmin=data.vmin, vmax=data.vmax)
+        norm = Normalize(vmin=data.vmin, vmax=data.vmax)
     except AttributeError:
         norm = None
-
+    #
     # Make the collection and add it to the plot.
-    collection = PolyCollection(
-        verts, array=data, cmap=cmap, norm=norm, edgecolors='none')
-
-    axes = plt.gca() if basemap.ax is None else basemap.ax
-    axes.add_collection(collection)
-    axes.autoscale_view()
+    #
+    collection = PolyCollection(verts, array=data, cmap=cmap, norm=norm,
+                                edgecolors='none')
+    ax.add_collection(collection)
+    ax.autoscale_view()
 
     if colorbar:
-        bar = plt.colorbar(
-            collection, ax=basemap.ax, orientation='horizontal',
-            spacing='proportional', pad=0.01, aspect=50)
+        bar = plt.colorbar(collection, ax=ax,
+                           orientation='horizontal', spacing='proportional',
+                           pad=0.11, fraction=0.05, aspect=50)
         if label:
             bar.set_label(label)
 
-    return basemap
+    return ax
 
 
 def plot_grid_map(data, ra_edges, dec_edges, cmap='viridis', colorbar=True,
-                  label=None, basemap=None):
-    """Plot an array of 2D values using an all-sky projection.
+                  label=None, ax=None, **kwargs):
+    r"""Plot an array of 2D values using an all-sky projection.
 
     Pass the data array through :func:`prepare_data` to select a subset to plot
     and clip the color map to specified values or percentiles.
@@ -600,120 +611,129 @@ def plot_grid_map(data, ra_edges, dec_edges, cmap='viridis', colorbar=True,
     This function is similar to :func:`plot_healpix_map` but is generally faster
     and has better handling of RA wrap around artifacts.
 
-    Requires that matplotlib and basemap are installed.
+    Additional keyword parameters will be passed to :func:`init_sky`.
 
     Parameters
     ----------
     data : array or masked array
         2D array of data associated with each grid cell, with shape
-        (n_ra, n_dec). Use the output of :func:`prepare_data` as a convenient
+        :math:`(N_{\mathrm{RA}}, N_{\mathrm{Dec}})`.
+        Use the output of :func:`prepare_data` as a convenient
         way to specify data cuts and color map clipping.
     ra_edges : array
-        1D array of n_ra+1 RA grid edge values in degrees, which must span the
-        full circle, i.e., ra_edges[0] == ra_edges[-1] - 360. The RA grid
-        does not need to match the edges of the basemap projection, in which
-        case any wrap-around cells will be duplicated on both edges.
+        1D array of :math:`N_{\mathrm{RA}} + 1` RA grid edge values in degrees,
+        which must span the full circle, *i.e.*,
+        ``ra_edges[0] == ra_edges[-1] - 360``. The RA grid does not need to match
+        the edges of the projection, in which case any wrap-around cells will
+        be duplicated on both edges.
     dec_edges : array
-        1D array of n_dec+1 DEC grid edge values in degrees.  Values are not
-        required to span the full range [-90, +90].
-    cmap : colormap name or object
+        1D array of :math:`N_{\mathrm{Dec}} + 1` Dec grid edge values in degrees.
+        Values are not required to span the full range ``[-90, +90]``.
+    cmap : colormap name or object, optional
         Matplotlib colormap to use for mapping data values to colors.
-    colorbar : bool
-        Draw a colorbar below the map when True.
-    label : str or None
-        Label to display under the colorbar.  Ignored unless colorbar is True.
-    basemap : Basemap object or None
-        Use the specified basemap or create a default basemap using
-        :func:`init_sky` when None.
+    colorbar : :class:`bool`, optional
+        Draw a colorbar below the map when ``True``.
+    label : :class:`str`, optional
+        Label to display under the colorbar.  Ignored unless colorbar is ``True``.
+    ax : :class:`~matplotlib.axes.Axes`, optional
+        Axes to use for drawing this map, or create default axes using
+        :func:`init_sky` when ``None``.
 
     Returns
     -------
-    basemap
-        The basemap used for the plot, which will match the input basemap
-        provided, or be a newly created basemap if None was provided.
+    :class:`~matplotlib.axes.Axes`
+        The axis object used for the plot.
     """
-    import matplotlib.pyplot as plt
-    import matplotlib.colors
-
     data = prepare_data(data)
     if len(data.shape) != 2:
         raise ValueError('Expected 2D data array.')
     n_dec, n_ra = data.shape
-
+    #
     # Normalize the data using its vmin, vmax attributes, if present.
     # Need to do this before hstack-ing below, which drops vmin, vmax.
+    #
     try:
-        norm = matplotlib.colors.Normalize(vmin=data.vmin, vmax=data.vmax)
+        norm = Normalize(vmin=data.vmin, vmax=data.vmax)
     except AttributeError:
         norm = None
-
+    #
     # Silently flatten, sort, and remove duplicates from the edges arrays.
+    #
     ra_edges = np.unique(ra_edges)
     dec_edges = np.unique(dec_edges)
     if len(ra_edges) != n_ra + 1:
         raise ValueError('Invalid ra_edges.')
     if len(dec_edges) != n_dec + 1:
         raise ValueError('Invalid dec_edges.')
-
     if ra_edges[0] != ra_edges[-1] - 360:
         raise ValueError('Invalid ra_edges, do not span 360 degrees.')
-
-    if basemap is None:
-        basemap = init_sky()
-
-    if basemap.lonmin + 360 != basemap.lonmax:
-        raise RuntimeError('Can only handle all-sky projections for now.')
-
-    # Shift RA gridlines so they overlap the map's left-edge RA.
-    while ra_edges[0] > basemap.lonmin:
-        ra_edges -= 360
-    while ra_edges[0] <= basemap.lonmin - 360:
-        ra_edges += 360
-
-    # Find the first RA gridline that fits within the map's left edge.
-    first = np.where(ra_edges >= basemap.lonmin)[0][0]
-
+    #
+    # Create axes.
+    #
+    if ax is None:
+        ax = init_sky(**kwargs)
+    #
+    # Find the projection edge.
+    #
+    proj_edge = ax._ra_center - 180
+    while proj_edge < 0:
+        proj_edge += 360
+    #
+    # Find the first RA gridline that fits within the map's right edge.
+    #
+    first = np.where(ra_edges >= proj_edge)[0][0]
     if first > 0:
         # Wrap the data beyond the left edge around to the right edge.
         # Remember to use numpy.ma.hstack for the data to preserve the mask.
-        if ra_edges[first] > basemap.lonmin:
+        if ra_edges[first] > proj_edge:
             # Split a wrap-around column into separate left and right columns.
-            ra_edges = np.hstack(([basemap.lonmin], ra_edges[first:],
-                                  ra_edges[:first] + 360, [basemap.lonmax]))
-            data = numpy.ma.hstack(
-                (data[:, first - 1:first], data[:, first:],
-                 data[:, :first], data[:, first:first + 1]))
+            ra_edges = np.hstack(([proj_edge], ra_edges[first:],
+                                  ra_edges[1:first] + 360, [proj_edge+360]))
+            data = numpy.ma.hstack((data[:, (first - 1):first],
+                                    data[:, first:],
+                                    data[:, :(first - 1)],
+                                    data[:, (first - 1):first]))
         else:
-            ra_edges = np.hstack((ra_edges[first:], ra_edges[:first + 1] + 360))
-            data = numpy.ma.hstack((data[:, first:], data[:, :first + 1]))
+            # One of the ra_edge values is exactly on the edge.
+            ra_edges = np.hstack((ra_edges[first:], ra_edges[:(first + 1)] + 360))
+            data = numpy.ma.hstack((data[:, first:], data[:, :(first + 1)]))
+
+    # Transform to projection coordinates.  By construction, the first value should be positive.
+    proj_ra = ax.projection_ra(ra_edges)
+    if proj_ra[0] < 0:
+        proj_ra[0] *= -1
 
     # Build a 2D array of grid line intersections.
-    grid_ra, grid_dec = np.meshgrid(ra_edges, dec_edges)
+    grid_ra, grid_dec = np.meshgrid(proj_ra, ax.projection_dec(dec_edges))
 
-    mesh = basemap.pcolormesh(
-        grid_ra, grid_dec, data, cmap=cmap, norm=norm,
-        edgecolor='none', lw=0, latlon=True)
+    mesh = ax.pcolormesh(grid_ra, grid_dec,
+                         data, cmap=cmap, norm=norm, edgecolor='none', lw=0)
+
+    # pcolormesh turns the grid off, turn it back on.
+    ax.grid(True)
 
     if colorbar:
-        bar = plt.colorbar(
-            mesh, ax=basemap.ax, orientation='horizontal',
-            spacing='proportional', pad=0.01, aspect=50)
+        bar = plt.colorbar(mesh, ax=ax,
+                           orientation='horizontal', spacing='proportional',
+                           pad=0.1, fraction=0.05, aspect=50)
         if label:
             bar.set_label(label)
 
-    return basemap
+    return ax
 
 
 def plot_sky_circles(ra_center, dec_center, field_of_view=3.2, data=None,
                      cmap='viridis', facecolors='skyblue', edgecolor='none',
                      colorbar=True, colorbar_ticks=None, label=None,
-                     basemap=None):
+                     ax=None, **kwargs):
     """Plot circles on an all-sky projection.
 
     Pass the optional data array through :func:`prepare_data` to select a
     subset to plot and clip the color map to specified values or percentiles.
 
-    Requires that matplotlib and basemap are installed.
+    Requires that matplotlib is installed.
+
+    Additional keyword parameters will be passed to :func:`init_sky`.
 
     Parameters
     ----------
@@ -724,38 +744,33 @@ def plot_sky_circles(ra_center, dec_center, field_of_view=3.2, data=None,
     field_of_view : array
         Full sky openning angle in degrees of the circles to plot. The default
         is appropriate for a DESI tile.
-    data : array or None
+    data : array, optional
         1D array of data associated with each circle, used to set its facecolor.
-    cmap : colormap name or object
+    cmap : colormap name, optional
         Matplotlib colormap to use for mapping data values to colors. Ignored
         unless data is specified.
-    facecolors : matplotlib color or array of colors
+    facecolors : matplotlib color or array of colors, optional
         Ignored when data is specified. An array must have one entry per circle
         or a single value is used for all circles.
-    edgecolor : matplotlib color
+    edgecolor : matplotlib color, optional
         The edge color used for all circles.  Use 'none' to hide edges.
-    colorbar : bool
-        Draw a colorbar below the map when True and data is provided.
-    colorbar_ticks : list or None
+    colorbar : :class:`bool`, optional
+        Draw a colorbar below the map when ``True`` and data is provided.
+    colorbar_ticks : :class:`list`, optional
         Use the specified colorbar ticks or determine them automatically
         when None.
-    label : str or None
+    label : :class:`str`
         Label to display under the colorbar.  Ignored unless a colorbar is
         displayed.
-    basemap : BasemapWithEllipse or None
-        An instance of the BasemapWithEllipse class, normally obtained by
-        calling :func:`init_sky`.  Create a default basemap when None.
+    ax : :class:`~matplotlib.axes.Axes`, optional
+        Axes to use for drawing this map, or create default axes using
+        :func:`init_sky` when ``None``.
 
     Returns
     -------
-    basemap
-        The basemap used for the plot, which will match the input basemap
-        provided, or be a newly created basemap if None was provided.
+    :class:`~matplotlib.axes.Axes`
+        The axis object used for the plot.
     """
-    import matplotlib.pyplot as plt
-    import matplotlib.colors
-    import matplotlib.cm
-
     ra_center = np.asarray(ra_center)
     dec_center = np.asarray(dec_center)
     if len(ra_center.shape) != 1:
@@ -773,18 +788,18 @@ def plot_sky_circles(ra_center, dec_center, field_of_view=3.2, data=None,
         # Colors associated with masked values in data will be ignored later.
         try:
             # Normalize the data using its vmin, vmax attributes, if present.
-            norm = matplotlib.colors.Normalize(vmin=data.vmin, vmax=data.vmax)
+            norm = Normalize(vmin=data.vmin, vmax=data.vmax)
         except AttributeError:
             # Otherwise use the data limits.
-            norm = matplotlib.colors.Normalize(vmin=data.min(), vmax=data.max())
-        cmapper = matplotlib.cm.ScalarMappable(norm, cmap)
+            norm = Normalize(vmin=data.min(), vmax=data.max())
+        cmapper = ScalarMappable(norm, cmap)
         facecolors = cmapper.to_rgba(data)
     else:
         colorbar = False
         # Try to repeat a single fixed color for all circles.
         try:
             facecolors = np.tile(
-                [matplotlib.colors.colorConverter.to_rgba(facecolors)],
+                [colorConverter.to_rgba(facecolors)],
                 (len(ra_center), 1))
         except ValueError:
             # Assume that facecolor is already an array.
@@ -793,58 +808,59 @@ def plot_sky_circles(ra_center, dec_center, field_of_view=3.2, data=None,
     if len(facecolors) != len(ra_center):
         raise ValueError('Invalid facecolor array.')
 
-    if basemap is None:
-        basemap = init_sky()
-
-    if basemap.lonmin + 360 != basemap.lonmax:
-        raise RuntimeError('Can only handle all-sky projections for now.')
-
-    if len(ra_center) == 0:
-        return
-
-    # Convert field-of-view angle into dDEC, dRA.
-    dDEC = 0.5 * field_of_view
-    dRA = dDEC / np.cos(np.radians(dec_center))
-
+    if ax is None:
+        ax = init_sky(**kwargs)
+    #
+    # Find the projection edge.
+    #
+    proj_edge = ax._ra_center - 180
+    while proj_edge < 0:
+        proj_edge += 360
+    #
+    # Convert field-of-view angle into dRA.
+    #
+    dRA = field_of_view / np.cos(np.radians(dec_center))
+    #
     # Identify circles that wrap around the map edges in RA.
-    edge_dist = np.fmod(ra_center - basemap.lonmin, 360)
-    wrapped = np.minimum(edge_dist, 360 - edge_dist) < 1.05 * dRA
-
-    # Set the number of vertices for approximating the ellipse based
-    # on the field of view.
-    n_pt = max(8, int(np.ceil(field_of_view)))
-
+    #
+    edge_dist = np.fabs(np.fmod(ra_center - proj_edge, 360))
+    wrapped = np.minimum(edge_dist, 360 - edge_dist) < 1.05 * 0.5 * dRA  # convert dRA to radius.
+    #
     # Loop over non-wrapped circles.
-    for ra, dec, dra, fc in zip(ra_center[~wrapped], dec_center[~wrapped],
+    #
+    for ra, dec, dra, fc in zip(ax.projection_ra(ra_center[~wrapped]), ax.projection_dec(dec_center[~wrapped]),
                                 dRA[~wrapped], facecolors[~wrapped]):
-        basemap.ellipse(ra, dec, dra, dDEC, n_pt, facecolor=fc,
-                        edgecolor=edgecolor)
+        e = Ellipse((ra, dec), np.radians(dra), np.radians(field_of_view),
+                    facecolor=fc, edgecolor=edgecolor)
+        ax.add_patch(e)
 
     if colorbar:
-        mappable = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+        mappable = ScalarMappable(norm=norm, cmap=cmap)
         mappable.set_array(data)
-        bar = plt.colorbar(
-            mappable, ax=basemap.ax, orientation='horizontal',
-            spacing='proportional', pad=0.01, aspect=50,
-            ticks=colorbar_ticks)
+        bar = plt.colorbar(mappable, ax=ax,
+                           orientation='horizontal', spacing='proportional',
+                           pad=0.1, fraction=0.05, aspect=50,
+                           ticks=colorbar_ticks)
         if label:
             bar.set_label(label)
 
-    return basemap
+    return ax
 
 
 def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
                     max_bin_area=5, clip_lo=None, clip_hi=None, verbose=False,
-                    cmap='viridis', colorbar=True, label=None, basemap=None,
-                    return_grid_data=False):
+                    cmap='viridis', colorbar=True, label=None, ax=None,
+                    return_grid_data=False, **kwargs):
     """Show objects on the sky using a binned plot.
 
     Bin values either show object counts per unit sky area or, if an array
     of associated data values is provided, mean data values within each bin.
     Objects can have associated weights.
 
-    Requires that matplotlib and basemap are installed. When plot_type is
+    Requires that matplotlib is installed. When plot_type is
     "healpix", healpy must also be installed.
+
+    Additional keyword parameters will be passed to :func:`init_sky`.
 
     Parameters
     ----------
@@ -852,49 +868,48 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
         Array of object RA values in degrees. Must have the same shape as
         dec and will be flattened if necessary.
     dec : array
-        Array of object DEC values in degrees. Must have the same shape as
+        Array of object Dec values in degrees. Must have the same shape as
         ra and will be flattened if necessary.
-    weights : array or None
+    weights : array, optional
         Optional of weights associated with each object.  All objects are
         assumed to have equal weight when this is None.
-    data : array or None
+    data : array, optional
         Optional array of scalar values associated with each object. The
         resulting plot shows the mean data value per bin when data is
         specified.  Otherwise, the plot shows counts per unit sky area.
-    plot_type : str
+    plot_type : {'grid', 'healpix'}
         Must be either 'grid' or 'healpix', and selects whether data in
-        binned in healpix or in (sin(DEC), RA).
-    max_bin_area : float
+        binned in healpix or in (sin(Dec), RA).
+    max_bin_area : :class:`float`, optional
         The bin size will be chosen automatically to be as close as
         possible to this value but not exceeding it.
-    clip_lo : float or str
+    clip_lo : :class:`float` or :class:`str`, optional
         Clipping is applied to the plot data calculated as counts / area
         or the mean data value per bin. See :func:`prepare_data` for
         details.
-    clip_hi : float or str
+    clip_hi : :class:`float` or :class:`str`, optional
         Clipping is applied to the plot data calculated as counts / area
         or the mean data value per bin. See :func:`prepare_data` for
         details.
-    verbose : bool
+    verbose : :class:`bool`, optional
         Print information about the automatic bin size calculation.
-    cmap : colormap name or object
+    cmap : colormap name or object, optional
         Matplotlib colormap to use for mapping data values to colors.
-    colorbar : bool
+    colorbar : :class:`bool`, optional
         Draw a colorbar below the map when True.
-    label : str or None
-        Label to display under the colorbar.  Ignored unless colorbar is True.
-    basemap : Basemap object or None
-        Use the specified basemap or create a default basemap using
-        :func:`init_sky` when None.
-    return_grid_data : bool
-        If true, return (basemap, grid_data) instead of just basemap
+    label : :class:`str`, optional
+        Label to display under the colorbar.  Ignored unless colorbar is ``True``.
+    ax : :class:`~matplotlib.axes.Axes`, optional
+        Axes to use for drawing this map, or create default axes using
+        :func:`init_sky` when ``None``.
+    return_grid_data : :class:`bool`, optional
+        If ``True``, return (ax, grid_data) instead of just ax.
 
     Returns
     -------
-    basemap or (basemap, grid_data)
-        The basemap used for the plot, which will match the input basemap
-        provided, or be a newly created basemap if None was provided.
-        The grid_data plotted is also returned if return_grid_data is True.
+    :class:`~matplotlib.axes.Axes` or (ax, grid_data)
+        The axis object used for the plot, and the grid_data if
+        `return_grid_data` is ``True``.
     """
     ra = np.asarray(ra).reshape(-1)
     dec = np.asarray(dec).reshape(-1)
@@ -903,9 +918,7 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
 
     plot_types = ('grid', 'healpix',)
     if plot_type not in plot_types:
-        raise ValueError(
-            'Invalid plot_type, should be one of {0}.'
-            .format(', '.join(plot_types)))
+        raise ValueError('Invalid plot_type, should be one of {0}.'.format(', '.join(plot_types)))
 
     if data is not None and weights is None:
         weights = np.ones_like(data)
@@ -920,38 +933,38 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
         # Calculate the actual pixel area in sq. degrees.
         bin_area = 360 ** 2 / np.pi / (n_cos_dec * n_ra)
         if verbose:
-            print(
-                'Using {0} x {1} grid in cos(DEC) x RA'.format(n_cos_dec, n_ra),
-                'with pixel area {:.3f} sq.deg.'.format(bin_area))
+            print('Using {0} x {1} grid in cos(DEC) x RA'.format(n_cos_dec, n_ra),
+                  'with pixel area {:.3f} sq.deg.'.format(bin_area))
 
         # Calculate the bin edges in degrees.
-        ra_edges = np.linspace(-180., +180., n_ra + 1)
+        # ra_edges = np.linspace(-180., +180., n_ra + 1)
+        ra_edges = np.linspace(0.0, 360.0, n_ra + 1)
         dec_edges = np.degrees(np.arcsin(np.linspace(-1., +1., n_cos_dec + 1)))
 
         # Put RA values in the range [-180, 180).
-        ra = np.fmod(ra, 360.)
-        ra[ra >= 180.] -= 360.
+        # ra = np.fmod(ra, 360.)
+        # ra[ra >= 180.] -= 360.
 
         # Histogram the input coordinates.
-        counts, _, _ = np.histogram2d(
-            dec, ra, [dec_edges, ra_edges], weights=weights)
+        counts, _, _ = np.histogram2d(dec, ra, [dec_edges, ra_edges],
+                                      weights=weights)
 
         if data is None:
             grid_data = counts / bin_area
         else:
-            sums, _, _ = np.histogram2d(
-                dec, ra, [dec_edges, ra_edges], weights=weights * data)
+            sums, _, _ = np.histogram2d(dec, ra, [dec_edges, ra_edges],
+                                        weights=weights * data)
             # This ratio might result in some nan (0/0) or inf (1/0) values,
             # but these will be masked by prepare_data().
             settings = np.seterr(all='ignore')
             grid_data = sums / counts
             np.seterr(**settings)
 
-        grid_data = prepare_data(
-            grid_data, clip_lo=clip_lo, clip_hi=clip_hi)
+        grid_data = prepare_data(grid_data, clip_lo=clip_lo, clip_hi=clip_hi)
 
-        basemap = plot_grid_map(
-            grid_data, ra_edges, dec_edges, cmap, colorbar, label, basemap)
+        ax = plot_grid_map(grid_data, ra_edges, dec_edges,
+                           cmap=cmap, colorbar=colorbar, label=label,
+                           ax=ax, **kwargs)
 
     elif plot_type == 'healpix':
 
@@ -965,9 +978,8 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
         npix = hp.nside2npix(nside)
         nest = False
         if verbose:
-            print(
-                'Using healpix map with NSIDE={0}'.format(nside),
-                'and pixel area {:.3f} sq.deg.'.format(bin_area))
+            print('Using healpix map with NSIDE={0}'.format(nside),
+                  'and pixel area {:.3f} sq.deg.'.format(bin_area))
 
         pixels = hp.ang2pix(nside, np.radians(90 - dec), np.radians(ra), nest)
         counts = np.bincount(pixels, weights=weights, minlength=npix)
@@ -981,10 +993,124 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
 
         grid_data = prepare_data(grid_data, clip_lo=clip_lo, clip_hi=clip_hi)
 
-        basemap = plot_healpix_map(
-            grid_data, nest, cmap, colorbar, label, basemap)
+        ax = plot_healpix_map(grid_data, nest=nest,
+                              cmap=cmap, colorbar=colorbar, label=label,
+                              ax=ax, **kwargs)
 
     if return_grid_data:
-        return basemap, grid_data
+        return (ax, grid_data)
     else:
-        return basemap
+        return ax
+
+
+def plot_iers(which='auto', num_points=500, save=None):
+    """Plot IERS data from 2015-2025.
+
+    Plots the UT1-UTC time offset and polar x,y motions over a 10-year
+    period that includes the DESI survey, to demonstrate the time ranges
+    when different sources (IERS-A, IERS-B) are used and where values
+    are predicted then fixed.
+
+    This function is primarily intended to document and debug the
+    :func:`desiutil.iers.freeze_iers` function.
+
+    Requires that the matplotlib package is installed.
+
+    Parameters
+    ----------
+    which : {'auto', 'A', 'B', 'frozen'}
+        Select which IERS table source to use.  The default 'auto' matches
+        the internal astropy default.  Use 'A' or 'B' to force the source
+        to be either the latest IERS-A table (which will be downloaded),
+        or the IERS-B table packaged with the current version of astropy.
+        The 'frozen' option calls :func:`~desiutil.iers.freeze_iers`.
+    num_points : :class:`int`, optional
+        The number of times covering 2015-25 to calculate and plot.
+    save : :class:`str`, optional
+        Name of file where plot should be saved.  Format is inferred from
+        the extension.
+
+    Returns
+    -------
+    :func:`tuple`
+        Tuple (figure, axes) returned by ``plt.subplots()``.
+    """
+    #
+    # These values are copied from the desisurvey config.yaml file.
+    # They may or may not reflect the latest configuration.
+    #
+    # Survey nominally starts on night of this date. Format is YYYY-MM-DD.
+    first_day = date(2019, 12, 1)
+    # Survey nominally ends on morning of this date. Format is YYYY-MM-DD.
+    last_day = date(2024, 11, 30)
+
+    # Calculate UTC midnight timestamps covering 2015 - 2025
+    start = Time('2015-01-01 00:00')
+    stop = Time('2025-01-01 00:00')
+    mjd = np.linspace(start.mjd, stop.mjd, num_points)
+    times = Time(mjd, format='mjd')
+
+    t_lo = matplotlib.dates.date2num(start.datetime)
+    t_hi = matplotlib.dates.date2num(stop.datetime)
+    t = np.linspace(t_lo, t_hi, num_points)
+
+    t_start = matplotlib.dates.date2num(first_day)
+    t_stop = matplotlib.dates.date2num(last_day)
+
+    # Load the specified IERS table.
+    if which == 'auto':
+        iers = iers.IERS_Auto.open()
+    elif which == 'B':
+        iers = iers.IERS_B.open()
+    elif which == 'A':
+        # This requires network access to download the latest file.
+        iers = iers.IERS_A.open(iers.conf.iers_auto_url)
+    elif which == 'frozen':
+        freeze_iers()
+        iers = iers.IERS_Auto.open()
+    else:
+        raise ValueError('Invalid which option.')
+
+    # Calculate UT1-UTC using the IERS table.
+    dt, dt_status = iers.ut1_utc(times, return_status=True)
+    dt = dt.to(u.s).value
+
+    # Calculate polar x,y motion using the IERS table.
+    pmx, pmy, pm_status = iers.pm_xy(times, return_status=True)
+    pmx = pmx.to(u.arcsec).value
+    pmy = pmy.to(u.arcsec).value
+
+    assert np.all(dt_status == pm_status)
+    codes = np.unique(dt_status)
+
+    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(8, 6))
+
+    labels = {-2: 'Fixed', 0: 'IERS-B', 1: 'IERS-A', 2: 'Predict'}
+    styles = {-2: 'r:', 0: 'b-', 1: 'go', 2: 'r--'}
+    ms = 3
+    for code in codes:
+        sel = dt_status == code
+        ax[0].plot(t[sel], dt[sel], styles[code], ms=ms, label=labels[code])
+        ax[1].plot(t[sel], pmx[sel], styles[code], ms=ms, label='Polar x')
+        ax[1].plot(t[sel], pmy[sel], styles[code], ms=ms, label='Polar y')
+
+    ax[0].legend(ncol=4)
+    ax[0].set_ylabel('UT1 - UTC [s]')
+    ax[1].set_ylabel('Polar x,y motion [arcsec]')
+
+    for i in range(2):
+        # Vertical lines showing the survey start / stop dates.
+        ax[i].axvline(t_start, ls='--', c='k')
+        ax[i].axvline(t_stop, ls='--', c='k')
+
+    # Use year labels for the horizontal axis.
+    xaxis = ax[1].xaxis
+    xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
+    ax[i].set_xlim(start.datetime, stop.datetime)
+
+    plt.tight_layout()
+    if save:
+        plt.savefig(save)
+
+    return fig, ax
