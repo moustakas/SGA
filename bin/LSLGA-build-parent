@@ -67,7 +67,7 @@ def add_ngc(parent, startindx=5000000):
     for col in NGC.colnames:
         NGC.rename_column(col, col.upper())
 
-    NGC.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(NGC))), index=0)
+    NGC.add_column(Column(name='ID', data=startindx + np.arange(len(NGC))), index=0)
     NGC = NGC[(NGC['RA_HMS'] != 'N/A')]
     NGC['BYHAND'] = np.zeros(len(NGC), bool)
 
@@ -285,7 +285,7 @@ def add_rc3(parent, startindx=4000000):
     rc3 = Table.read(rc3file)
     print('Read {} galaxies from {}'.format(len(rc3), rc3file))
 
-    rc3.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(rc3))), index=0)
+    rc3.add_column(Column(name='ID', data=startindx + np.arange(len(rc3))), index=0)
     rc3.rename_column('PA', 'PA_ORIG')
     rc3['PA'] = np.zeros(len(rc3), dtype='f4')
     rc3['PA'] = rc3['PA_ORIG'].astype('f4') # int-->f4
@@ -1498,7 +1498,7 @@ def add_localgroup_dwarfs(parent):
     # Remove the duplicates and stack.
     keep = np.delete(np.arange(len(parent)), m1)
     parent = vstack((parent[keep], moredwarfs))
-    #parent = parent[np.argsort(parent['LSLGA_ID'])]
+    #parent = parent[np.argsort(parent['ID'])]
 
     # Finally, remove the dwarfs that are so sparse that we don't care about
     # them and the dwarfs that are so resolved (Fornax & Sculptor) that we
@@ -1587,7 +1587,7 @@ def add_dr8_candidates(parent, startindx=6000000):
     supp = vstack((_supp, gaia), join_type='outer')
 
     # Assign IDs starting at startindx.
-    supp.add_column(Column(name='LSLGA_ID', data=startindx + np.arange(len(supp))), index=0)
+    supp.add_column(Column(name='ID', data=startindx + np.arange(len(supp))), index=0)
     #supp.rename_column('TYPE', 'MORPHTYPE')
 
     # Make the supplemental catalog "look" like the parent Hyperleda catalog.
@@ -1604,28 +1604,16 @@ def add_dr8_candidates(parent, startindx=6000000):
     #print(set(supp['TYPE']))
     r50min = np.float32(5.0) # [arcsec]
     for igal, gal in enumerate(supp):
-        #out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKNAME'][igal], supp['OBJID'][igal])
-        #out['GALAXY'][igal] = 'DR8-{}-{}'.format(supp['BRICKID'][igal], supp['OBJID'][igal])
-        #out['GALAXY'][igal] = 'DR8-{}'.format(supp['LS_ID'][igal])
-        if igal==0:
-            print('ADD IN GAIA CATALOG!!')
-            
+
         # Some objects have no r-band flux...
         if np.isfinite(supp['MAG_R'][igal]) and supp['MAG_R'][igal] > 0:
             out['MAG'][igal] = supp['MAG_R'][igal]
+        elif np.isfinite(supp['FLUX_R'][igal]) and supp['FLUX_R'][igal] > 0:
+            out['MAG'][igal] = 22.5-2.5*np.log10(supp['FLUX_R'][igal])
         else:
             print('Making up an r-band magnitude for {}!'.format(out['GALAXY'][igal]))
             out['MAG'][igal] = 17.0
         
-        #out['MAG'][igal] = 22.5 - 2.5 * np.log10(supp['FLUX_R'][igal])
-        #if supp['MAG_R'][igal] is ma.masked and supp['FLUX_R'][igal] is ma.masked:
-        #    print('No magnitude estimate!!')
-        #    pdb.set_trace()
-        #if supp['MAG_R'][igal] is ma.masked:
-        #    out['MAG'][igal] = 22.5 - 2.5 * np.log10(supp['FLUX_R'][igal])
-        #else:
-        #    out['MAG'][igal] = supp['MAG_R'][igal]
-
         typ = gal['TYPE'].strip()
         #typ = gal['MORPHTYPE'].strip()
         if typ == 'DEV':
@@ -1965,7 +1953,7 @@ def remove_spurious(parent, silent=False):
     rejfile = os.path.join(sampledir, 'catalogs', 'lslga-dr8-psf-reject.txt')
     rejid, rejra, rejdec = np.loadtxt(rejfile, unpack=True)
     print('Read {} spurious galaxies from {}'.format(len(rejid), rejfile))
-    rejgal = parent[np.isin(parent['LSLGA_ID'], rejid)]['GALAXY'].data
+    rejgal = parent[np.isin(parent['ID'], rejid)]['GALAXY'].data
 
     rejfile = os.path.join(sampledir, 'catalogs', 'lslga-spurious.txt')
     spurgal = np.loadtxt(rejfile, dtype=str)
@@ -2245,7 +2233,7 @@ def main():
     parent = add_dr8_candidates(parent)
     parent = remove_spurious(parent)
 
-    #ww = np.where(parent['LSLGA_ID'] > 6e6)[0]
+    #ww = np.where(parent['ID'] > 6e6)[0]
     #imagetool_inspect(parent[ww])
     #pdb.set_trace()
 
@@ -2259,7 +2247,7 @@ def main():
         assert(np.all(np.isfinite(parent['PA'])))
         assert(np.all((parent['PA'] >= 0)*(parent['PA'] <= 180)))
         assert(np.all((parent['BA'] > 0)*(parent['BA'] <= 1)))
-        assert(len(parent['LSLGA_ID']) == len(np.unique(parent['LSLGA_ID'])))
+        assert(len(parent['ID']) == len(np.unique(parent['ID'])))
     except:
         print('Problem here!')
         pdb.set_trace()

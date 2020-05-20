@@ -509,8 +509,8 @@ def read_hyperleda(verbose=False, allwise=False, version=None):
             np.sum(leda['IN_ALLWISE']), len(leda), 100*np.sum(leda['IN_ALLWISE'])/len(leda) ))
 
     # Assign a unique ID and also fix infinite PA and B/A.
-    leda.add_column(Column(name='LSLGA_ID', length=len(leda), dtype='i8'), index=0)
-    leda['LSLGA_ID'] = np.arange(len(leda))
+    leda.add_column(Column(name='ID', length=len(leda), dtype='i8'), index=0)
+    leda['ID'] = np.arange(len(leda))
     leda['BYHAND'] = np.zeros(len(leda), bool)
     leda['REF'] = ref
     
