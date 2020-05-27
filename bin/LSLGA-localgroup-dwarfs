@@ -10,7 +10,7 @@ import numpy as np
 
 import LSLGA.io
 
-def localgroup_dwarfs(leda=None, dwarfindx=3000000):
+def localgroup_dwarfs(leda=None, dwarfindx=2000000):
     """Read and parse the catalog of LG galaxies from 
 
     # move to globular clusters bit

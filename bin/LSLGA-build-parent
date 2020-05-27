@@ -2,6 +2,17 @@
 
 """Generate the parent sample of large galaxies.
 
+from LSLGA.io import read_parent
+ss = read_parent(verbose=True)
+gnum = ss['GROUP_ID']
+npergrp, _ = np.histogram(gnum, bins=len(gnum), range=(0, len(gnum)))
+print('Found {} total groups, including:'.format(len(set(gnum))))
+print('  {} groups with 1 member'.format(np.sum( (npergrp == 1) ).astype('int')))
+print('  {} groups with 2 members'.format(np.sum( (npergrp == 2) ).astype('int')))
+print('  {} group(s) with 3-5 members'.format(np.sum( (npergrp >= 3)*(npergrp <= 5) ).astype('int')))
+print('  {} group(s) with 6-10 members'.format(np.sum( (npergrp >= 6)*(npergrp <= 10) ).astype('int')))
+print('  {} group(s) with >10 members'.format(np.sum( (npergrp > 10) ).astype('int')))
+
 """
 import os, sys, time, pdb
 import numpy as np
@@ -17,7 +28,7 @@ from legacyhalos.misc import viewer_inspect, imagetool_inspect
 sampledir = LSLGA.io.sample_dir()
 qadir = os.path.join(LSLGA.io.sample_dir(), 'qa')
 
-def add_ngc(parent, startindx=5000000):
+def add_ngc(parent, startindx=4000000):
     """Add in missing NGC galaxies.
 
     """
@@ -275,7 +286,7 @@ def add_ngc(parent, startindx=5000000):
 
     return parent
     
-def add_rc3(parent, startindx=4000000):
+def add_rc3(parent, startindx=3000000):
     """Add in missing RC3 galaxies.
 
     """
@@ -1511,7 +1522,7 @@ def add_localgroup_dwarfs(parent):
 
     return parent
 
-def add_dr8_candidates(parent, startindx=6000000):
+def add_dr8_candidates(parent, startindx=5000000):
     """Read the set of "large" galaxies identified by Stephanie Juneau from the DR8
     catalogs.
 
@@ -1597,7 +1608,7 @@ def add_dr8_candidates(parent, startindx=6000000):
     for col in supp.colnames:
         if col in out.colnames:
             out[col] = supp[col]
-    out['Z'] = -99.0
+    out['Z'] = -1.0
     #out['OBJTYPE'] = 'G'
 
     # Get the geometry from the Tractor fit--
@@ -2233,6 +2244,8 @@ def main():
     parent = add_dr8_candidates(parent)
     parent = remove_spurious(parent)
 
+    pdb.set_trace()
+
     #ww = np.where(parent['ID'] > 6e6)[0]
     #imagetool_inspect(parent[ww])
     #pdb.set_trace()
@@ -2267,6 +2280,10 @@ def main():
     fix = np.where(parent['PGC'] == 0)[0]
     if len(fix) > 0:
         parent['PGC'][fix] = -1
+    
+    fix = np.where(parent['MORPHTYPE'] == 'nan')[0]
+    if len(fix) > 0:
+        parent['MORPHTYPE'][fix] = ''
     
     # Find all galaxies in and out of the DESI footprint.
     parent = in_footprint(parent, nside=args.nside)
