@@ -1,19 +1,9 @@
-Legacy Survey Large Galaxy Atlas
-================================
+Siena Galaxy Atlas 2020
+=======================
 
-The Legacy Survey Large Galaxy Atlas (LSLGA) delivers multicolor images and
-model fits for a diameter-limited sample of "large" galaxies in `Legacy Survey`_
-imaging, which consists of deep *grz* optical imaging and unWISE *W1* and *W2*
-mid-infrared imaging.
-
-Installing with Anaconda
-------------------------
-
-```
-conda create --name LSLGA python=3
-source activate LSLGA
-conda install --file requirements.txt
-```
+The Siena Galaxy Atlas (SGA-2020) delivers multicolor images and model fits for
+a diameter-limited sample of large galaxies in `Legacy Survey`_ imaging, which
+consists of deep *grz* optical imaging and unWISE *W1-W4* mid-infrared imaging.
 
 .. image:: https://img.shields.io/badge/PDF-latest-orange.svg?style=flat
     :target: https://github.com/moustakas/LSLGA/blob/master-pdf/paper/ms.pdf
