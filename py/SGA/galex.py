@@ -11,7 +11,7 @@ import numpy as np
 from astrometry.util.util import Tan
 from astrometry.util.fits import fits_table
 
-import LSLGA.misc
+import SGA.misc
 
 def _ra_ranges_overlap(ralo, rahi, ra1, ra2):
     import numpy as np
@@ -215,8 +215,8 @@ def galex_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
 
                 if r50:
                     majoraxis =  r50 * 5 / pixscale # [pixels]
-                    ba, phi = LSLGA.misc.convert_tractor_e1e2(e1, e2)
-                    these = LSLGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
+                    ba, phi = SGA.misc.convert_tractor_e1e2(e1, e2)
+                    these = SGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
                                                     np.radians(phi), cat.bx*pixfactor, cat.by*pixfactor)
                     if np.sum(these) > 0:
                         #keep[these] = False
@@ -226,7 +226,7 @@ def galex_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
 
             #srcs = read_fits_catalog(cat)
             #_srcs = np.array(srcs)[~keep].tolist()
-            #mod = LSLGA.misc.srcs2image(_srcs, ConstantFitsWcs(targetwcs), psf_sigma=3.0)
+            #mod = SGA.misc.srcs2image(_srcs, ConstantFitsWcs(targetwcs), psf_sigma=3.0)
             #import matplotlib.pyplot as plt
             ##plt.imshow(mod, origin='lower') ; plt.savefig('junk.png')
             #plt.imshow(np.log10(mod), origin='lower') ; plt.savefig('junk.png')

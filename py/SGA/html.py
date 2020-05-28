@@ -1,8 +1,8 @@
 """
-LSLGA.html
-==========
+SGA.html
+========
 
-Code to generate HTML output for the various stages of the LSLGA analysis.
+Code to generate HTML output for the various stages of the SGA analysis.
 
 """
 import os
@@ -67,8 +67,8 @@ def _add_labels_one(args):
 
 def add_labels_one(group, sample, clobber=False, nothumb=False):
 
-    jpgdir = os.path.join(LSLGAdir, 'cutouts', 'jpg')
-    pngdir = os.path.join(LSLGAdir, 'cutouts', 'png')
+    jpgdir = os.path.join(SGAdir, 'cutouts', 'jpg')
+    pngdir = os.path.join(SGAdir, 'cutouts', 'png')
     if not os.path.isdir(pngdir):
         os.mkdir(pngdir)
 
@@ -118,7 +118,7 @@ def add_labels(groupsample, sample, clobber=False):
 def html_rows(_groupkeep, sample, nperrow=4):
     
     # Not all objects may have been analyzed.
-    these = [os.path.isfile(os.path.join(LSLGAdir, 'cutouts', 'png', '{}.png'.format(
+    these = [os.path.isfile(os.path.join(SGAdir, 'cutouts', 'png', '{}.png'.format(
         get_groupname(gg)))) for gg in _groupkeep]
     groupkeep = _groupkeep[these]
     
@@ -221,12 +221,12 @@ def make_html(sample=None, htmldir=None, dr='dr6-dr7', makeplots=True, clobber=F
     """Make the HTML pages.
 
     """
-    import LSLGA.io
+    import SGA.io
 
     if htmldir is None:
-        htmldir = LSLGA.io.html_dir()
+        htmldir = SGA.io.html_dir()
 
-    sample = LSLGA.io.read_parent(dr=dr)
+    sample = SGA.io.read_parent(dr=dr)
     objid, objdir = legacyhalos.io.get_objid(sample)
 
     reject = []
@@ -272,7 +272,7 @@ def make_html(sample=None, htmldir=None, dr='dr6-dr7', makeplots=True, clobber=F
         html.write('p.ls-gallery {width: 80%;}\n')
         html.write('</style>\n')
         html.write('</head><body>\n')
-        html.write('<h1>Legacy Surveys Large Galaxy Atlas (LSLGA)</h1>\n')
+        html.write('<h1>Siena Galaxy Atlas 2020 (SGA-2020)</h1>\n')
         html.write("""<p class="ls-gallery">Each thumbnail links to a larger image while the galaxy 
         name below each thumbnail links to the <a href="http://legacysurvey.org/viewer">Sky Viewer</a>.  
         For reference, the horizontal white bar in the lower-right corner of each image represents 
