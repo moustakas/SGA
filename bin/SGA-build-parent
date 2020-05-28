@@ -2,7 +2,7 @@
 
 """Generate the parent sample of large galaxies.
 
-from LSLGA.io import read_parent
+from SGA.io import read_parent
 ss = read_parent(verbose=True)
 gnum = ss['GROUP_ID']
 npergrp, _ = np.histogram(gnum, bins=len(gnum), range=(0, len(gnum)))
@@ -22,11 +22,11 @@ import fitsio
 from astropy.table import Table, Column, vstack, join
 from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, match_radec
 
-import LSLGA.io
+import SGA.io
 from legacyhalos.misc import viewer_inspect, imagetool_inspect
 
-sampledir = LSLGA.io.sample_dir()
-qadir = os.path.join(LSLGA.io.sample_dir(), 'qa')
+sampledir = SGA.io.sample_dir()
+qadir = os.path.join(SGA.io.sample_dir(), 'qa')
 
 def add_ngc(parent, startindx=4000000):
     """Add in missing NGC galaxies.
@@ -522,12 +522,12 @@ def in_footprint(parent, nside=2048):
 
     """
     import healpy as hp
-    import LSLGA.misc
+    import legacyhalos.misc
     
-    #tiles = LSLGA.io.read_desi_tiles(verbose=verbose)
-    #indesi = LSLGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
+    #tiles = SGA.io.read_desi_tiles(verbose=verbose)
+    #indesi = SGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
 
-    parentpix = LSLGA.misc.radec2pix(nside, parent['RA'], parent['DEC'])
+    parentpix = legacyhalos.misc.radec2pix(nside, parent['RA'], parent['DEC'])
     #parentpix = np.hstack((parentpix, hp.pixelfunc.get_all_neighbours(nside, parentpix, nest=True).flatten()))
 
     dr = 'dr9'
@@ -557,7 +557,7 @@ def in_footprint(parent, nside=2048):
                 ww = ccds['filter'] == band
                 if np.sum(ww) > 0:
                     # add the neighboring healpixels to protect against edge effects
-                    ccdpix = LSLGA.misc.radec2pix(nside, ccds['ra'][ww], ccds['dec'][ww])
+                    ccdpix = legacyhalos.misc.radec2pix(nside, ccds['ra'][ww], ccds['dec'][ww])
                     ccdpix = np.hstack((ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()))
                     if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
                         ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
@@ -600,7 +600,7 @@ def near_stars(parent):
     """Flag galaxies near bright stars.
 
     """
-    tycho = LSLGA.io.read_tycho(verbose=True)
+    tycho = SGA.io.read_tycho(verbose=True)
     kdparent = tree_build_radec(parent['RA'], parent['DEC'])
 
     nearstar = np.zeros( len(parent) ).astype(bool)
@@ -633,7 +633,7 @@ def apply_diamcut(parent, d25min, d25max):
     print('  Removed {}/{} ({:.2f}%) objects with D(25) < {:.3f} arcsec and D(25) > {:.3f} arcmin.'.format(
         np.sum(~diamcut), len(parent), 100*np.sum(~diamcut)/len(parent), d25min*60, d25max))
     if np.sum(diamcut) > 0:
-        #parent[~diamcut].write(os.path.join(qadir, 'LSLGA-{}-diamcut.fits'.format(version)), overwrite=True)
+        #parent[~diamcut].write(os.path.join(qadir, 'SGA-{}-diamcut.fits'.format(version)), overwrite=True)
         parent = parent[diamcut]
 
     return parent
@@ -669,7 +669,7 @@ def fix_byhand(parent):
         parent['BYHAND'][fix] = True
           
     # Maffei2
-    # Use https://github.com/moustakas/LSLGA/blob/master/doc/compare-wxsc-largest-galaxies.ipynb
+    # Use https://github.com/moustakas/SGA/blob/master/doc/compare-wxsc-largest-galaxies.ipynb
     fix = np.where(parent['PGC'] == 10217)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 2 * 8.50
@@ -780,14 +780,14 @@ def fix_byhand(parent):
         parent['PA'][fix] = 94.0
         parent['BYHAND'][fix] = True
 
-    # NGC4395 https://github.com/moustakas/LSLGA/issues/28
+    # NGC4395 https://github.com/moustakas/SGA/issues/28
     fix = np.where(parent['PGC'] == 40596)[0] 
     if len(fix) > 0:
         parent['D25'][fix] = 12.8 # [arcmin]
         parent['BA'][fix] = 0.833
         parent['BYHAND'][fix] = True
 
-    # NGC2366 https://github.com/moustakas/LSLGA/issues/29
+    # NGC2366 https://github.com/moustakas/SGA/issues/29
     fix = np.where(parent['PGC'] == 21102)[0]
     if len(fix) > 0:
         parent['D25'][fix] = 8.8964 # [arcmin]
@@ -1481,7 +1481,7 @@ def add_localgroup_dwarfs(parent):
     from astropy.table import hstack
     
     print('Adding in the LG dwarfs.')
-    dwarfs = LSLGA.io.read_localgroup_dwarfs()
+    dwarfs = SGA.io.read_localgroup_dwarfs()
     #dwarfs = dwarfs[(~dwarfs['IGNORE']) * (~dwarfs['RESOLVED'])] # remove these below
 
     m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], dwarfs['RA'], dwarfs['DEC'], 60/3600.0, nearest=True)
@@ -1989,7 +1989,7 @@ def remove_spurious(parent, silent=False):
     if np.sum(magcut) > 0:
         print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
             np.sum(~magcut), len(parent), 100*np.sum(~magcut)/len(parent)))
-        #parent[~magcut].write(os.path.join(sandboxdir, 'LSLGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
+        #parent[~magcut].write(os.path.join(sandboxdir, 'SGA-{}-nomagnitude.fits'.format(version)), overwrite=True)
         parent = parent[magcut]
 
     # Toss out all SDSS and 2MASS galaxies "near" another large galaxy.  Many of
@@ -2054,7 +2054,7 @@ def remove_spurious(parent, silent=False):
     #print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
     #    np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
     #if np.sum(lsbcut) > 0:
-    #    #parent[lsbcut].write(os.path.join(sandboxdir, 'LSLGA-{}-lsb.fits'.format(version)), overwrite=True)
+    #    #parent[lsbcut].write(os.path.join(sandboxdir, 'SGA-{}-lsb.fits'.format(version)), overwrite=True)
     #    parent = parent[~lsbcut]
 
     #sdss2massgal = np.array(['SDSS' in gg or '2MAS' in gg or '[' in gg or 'WINGS' in gg for gg in parent['GALAXY']])
@@ -2062,7 +2062,7 @@ def remove_spurious(parent, silent=False):
     #    np.sum(sdss2massgal), len(parent), 100*np.sum(sdss2massgal)/len(parent)))
     #if np.sum(sdss2massgal) > 0:
     #    if sandbox:
-    #        parent[sdss2massgal].write(os.path.join(sandboxdir, 'LSLGA-{}-sdss2mass.fits'.format(
+    #        parent[sdss2massgal].write(os.path.join(sandboxdir, 'SGA-{}-sdss2mass.fits'.format(
     #            version)), overwrite=True)
     #    parent = parent[~sdss2massgal]
 
@@ -2071,7 +2071,7 @@ def remove_spurious(parent, silent=False):
 def build_group_catalog(cat, mfac=2.0, dmax=10.0/60.0):
     """dmax in arcmin
 
-    Group LSLGA galaxies together where their circular radii would overlap.  Use
+    Group SGA galaxies together where their circular radii would overlap.  Use
     the catalog D25 diameters (in arcmin) multiplied by a scaling factor MFAC.
     The output catalog adds the column GROUP_ID which is unique for each group.
     The column MULT_GROUP is the multiplicity of that galaxy's group.
@@ -2201,18 +2201,18 @@ def main():
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
     args = parser.parse_args()
 
-    version = LSLGA.io.parent_version()
-    parentfile = LSLGA.io.get_parentfile(version=version)
-    kdparentfile = LSLGA.io.get_parentfile(version=version, kd=True)
+    version = SGA.io.parent_version()
+    parentfile = SGA.io.get_parentfile(version=version)
+    kdparentfile = SGA.io.get_parentfile(version=version, kd=True)
 
     if os.path.isfile(parentfile) and not args.clobber:
         print('Output file {} exists; use clobber.'.format(parentfile))
         sys.exit(1)
 
-    print('Working on LSLGA {}'.format(version))
+    print('Working on SGA {}'.format(version))
 
     # Read the full Hyperleda catalog and immediately remove unwanted columns--
-    parent = LSLGA.io.read_hyperleda(verbose=True, allwise=False)
+    parent = SGA.io.read_hyperleda(verbose=True, allwise=False)
     remcols = ['OBJTYPE', 'BT', 'VT', 'IT', 'KT', 'MODBEST',
                'DIAM_ISO', 'BA_ISO', 'DIAM_B', 'BA_B', 'DIAM_V', 'BA_V',
                'DIAM_R', 'BA_R', 'DIAM_I', 'BA_I', 'DIAM_K', 'BA_K',
@@ -2321,11 +2321,11 @@ def main():
     #parent.write(parentfile, overwrite=True)
     hdr = fitsio.FITSHDR()
     hdrversion = 'L{}'.format(version[1:2]) # fragile!
-    hdr['LSLGAVER'] = hdrversion
+    hdr['SGAVER'] = hdrversion
     fitsio.write(parentfile, parent.as_array(), header=hdr, clobber=True)
 
     # Hack!
-    cmd = 'modhead {} LSLGAVER {}'.format(parentfile, hdrversion)
+    cmd = 'modhead {} SGAVER {}'.format(parentfile, hdrversion)
     _ = os.system(cmd)
 
     print('Writing {}'.format(kdparentfile))
@@ -2333,7 +2333,7 @@ def main():
     #print(cmd)
     _ = os.system(cmd)
 
-    cmd = 'modhead {} LSLGAVER {}'.format(kdparentfile, hdrversion)
+    cmd = 'modhead {} SGAVER {}'.format(kdparentfile, hdrversion)
     _ = os.system(cmd)
 
 if __name__ == '__main__':
