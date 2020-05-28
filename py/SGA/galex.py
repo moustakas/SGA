@@ -1,6 +1,6 @@
 """
-LSLGA.galex
-===========
+SGA.galex
+=========
 
 Code to generate GALEX custom coadds / mosaics.
 
