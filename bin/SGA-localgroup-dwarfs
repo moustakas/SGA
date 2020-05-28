@@ -1,0 +1,379 @@
+#!/usr/bin/env python
+
+"""Build the catalog of Local Group dwarf galaxies based on McConnachie+12, but
+differentiate between galaxies that we need to preburn vs those that we need to
+treat like globular clusters.
+
+"""
+import os, sys, argparse, pdb
+import numpy as np
+
+import SGA.io
+
+def localgroup_dwarfs(leda=None, dwarfindx=2000000):
+    """Read and parse the catalog of LG galaxies from 
+
+    # move to globular clusters bit
+    Fornax - use larger ellipse (McC12)
+    Sculptor - use larger ellipse (McC12)
+
+    # exclude from catalog
+    SagittariusdSph - do nothing
+    Sextans I - do nothing
+    Ursa Minor - do nothing
+    Bootes I - do nothing
+    Ursa Major I - do nothing
+    Ursa Major II - do nothing
+    Draco - use larger ellipse (McC12)
+    Canes Venatici I - do nothing
+    Hercules - do nothing
+    Andromeda II - do nothing
+    Coma Bernices - do nothing
+    Leo IV - do nothing
+    Segue I - do nothing
+    Bootes II - do nothing
+    Segue II - do nothing
+    Leo V - do nothing
+    Willman 1 - do nothing
+    Andromeda XXIX - do nothing
+    Andromeda XIV - do nothing
+    Canes Venatici II - do nothing
+    Pisces II - do nothing
+    Andromeda XXII - do nothing
+    Andromeda XVI - do nothing
+    Andromeda XIII - do nothing 
+    Leo T - do nothing
+    Andromeda XX - outside DR8 field / do nothing
+    Antlia - outside DR8 field / do nothing
+    Carina - outside DR8 field / do nothing
+    Andromeda X - outside DR8 field / do nothing
+    Andromeda IX - outside DR8 field / do nothing
+    Andromeda XVII - outside DR8 field / do nothing
+    Andromeda XXVII - outside DR8 field / do nothing
+    Andromeda XXV - outside DR8 field / do nothing
+    Andromeda I - outside DR8 field / do nothing
+    Andromeda III - outside DR8 field / do nothing
+    Andromeda XV - outside DR8 field / do nothing
+    Andromeda XII - outside DR8 field / do nothing
+    Andromeda XI - outside DR8 field / do nothing
+    Andromeda XXVI - outside DR8 field / do nothing
+    Andromeda XIX - outside DR8 field / do nothing
+    Andromeda XXI - outside DR8 field / do nothing
+    Andromeda XVIII - outside DR8 field / do nothing
+    Andromeda XXIV - outside DR8 field / do nothing
+    Andromeda XXIII - outside DR8 field / do nothing
+    Andromeda V - outside DR8 field / do nothing
+    Andromeda VII - outside DR8 field / do nothing
+    Aquarius - outside DR8 field / do nothing
+
+    # preburn
+    Leo II - use McC12 ellipse (not in SGA)
+    Leo I - use larger ellipse (McC12)
+    NGC205 - use SGA ellipse
+    NGC3109 - use SGA ellipse
+    IC1613 - use smaller ellipse (SGA)
+    NGC55 - use larger ellipse (SGA)
+    NGC300 - use larger ellipse (McC12)
+    Phoenix - use ellipse that is 1/2 the size of the McC12 ellipse
+    Cetus - use smaller ellipse (SGA)
+    Sextans A - use smaller ellipse (SGA)
+    Andromeda VI - use Mc12 ellipse (not in SGA)
+    Leo A - use smaller ellipse (SGA) (LeoA=UGC05364)
+    LGS3 - use ellipse that is 1/2 the size of the McC12 ellipse
+    Pegasus dIrr - use larger ellipse (McC12)
+    Andromeda XXVIII - use ellipse that is 3/4 the size of the McC12 ellipse 
+    Tucana - use larger ellipse (McC12) (SGA PA is totally wrong!)
+    Sextans B - use ellipse that is 1.3 x the size of the McC12 ellipse 
+    DDO 125 - use ellipse that is 1.2 x the size of the McC12 ellipse. PA should be inbetween the PAs from McC12 and SGA
+    IC5152 - use larger ellipse (SGA)
+    DDO 99 - use ellipse that is 1.3 x the size of the McC12 ellipse (PA is not exactly right, but should work)
+    DDO 113 - use an ellipse centered on SGA location, with PA = 45, major axis = 1.5 x SGA, and minor axis = SGA
+    UGC9128 - use larger ellipse (McC12)
+    DDO190 - use larger ellipse (McC12)
+    ESO410-G005 - use larger ellipse (McC12) - PA should really be rotated by -5 deg
+    NGC4163 - use ellipse that is 1.3 x the McC12 ellipse
+    UGC8508 - use an elipse that is 1.3 x the McC12 ellipse 
+    ESO294-G010 - use larger ellipse (McC12)
+    UGC4879 - use ellipse that is 2.2x larger than McC12 ellipse; recenter at 10” east and 5” north of current McC12 position
+    KKR25 - use ellipse that is 0.8 x McC12 ellipse (not in SGA)
+    KKR3 - use larger ellipse (McC12) but make minor axis 1/2 x major axis
+    GR8 - use ellipse that is 2 x the smaller ellipse (SGA), but recenter at 5” N of current location
+    KKH86 - use larger ellipse (McC12) but recenter at SGA location
+    M32 - outside DR8 field but preburn
+    NGC147 - outside DR8 field but preburn
+    NGC6822 - outside DR8 field but preburn
+    NGC185 - outside DR8 field but preburn
+    UGCA86 - outside DR8 field but preburn
+    IC10 - outside DR8 field but preburn
+    IC3104 - outside DR8 field but preburn
+    IC4662 - outside DR8 field but preburn
+    WLM - outside DR8 field but preburn using the SGA ellipse
+    KKH98 - outside DR8 field but preburn using 1/2 x McC12 ellipse
+    UKS2323-326 - outside DR8 field but preburn using 3/4 x McC12 ellipse
+
+    """
+    import fitsio
+    from astropy.table import Table, Column
+    from astrometry.libkd.spherematch import match_radec
+
+    if leda is None:
+        leda = SGA.io.read_hyperleda(verbose=True)
+
+    # Read the parent catalog of LG dwarfs--
+    dwarfsfile = os.path.join(SGA.io.sample_dir(), 'catalogs', 'LGdwarfs-12McConnachie.fits')
+    dwarfs = Table(fitsio.read(dwarfsfile, upper=True))
+    print('Read {} Local Group dwarfs from {}'.format(len(dwarfs), dwarfsfile))
+
+    # Assign IDs starting at DWARFINDX.
+    dwarfs.add_column(Column(name='ID', data=dwarfindx + np.arange(len(dwarfs))), index=0)
+
+    # Rename some columns and add some new columns that match the SGA data
+    # model.  
+    [dwarfs.rename_column(old, new) for old, new in zip(
+        ('_RAJ2000', '_DEJ2000', 'NAME', 'MTYPE', 'VMAG'), ('RA', 'DEC', 'GALAXY', 'TYPE', 'MAG'))]
+    
+    dwarfs['GALAXY'] = [gg.strip().replace(' ','').replace('(','').replace(')','') for gg in dwarfs['GALAXY']]
+    dwarfs['GALAXY'][dwarfs['GALAXY'] == 'LGS3LocalGroupSuspect3'] = 'LGS3'
+    dwarfs['GALAXY'][dwarfs['GALAXY'] == 'WLMWolf-Lundmark-Melotte'] = 'WLM'
+    
+    dwarfs['BA'] = 1 - dwarfs['ELL']  # ell = 1-b/a
+    dwarfs['PA'] = dwarfs['PA'] % 180 # put in [0-180] range
+    dwarfs['Z'] = dwarfs['HRV'] / 2.99e5 # heliocentric
+    dwarfs['OBJTYPE'] = 'G' # =galaxy
+    dwarfs['PGC'] = np.zeros(len(dwarfs), dtype=np.int64) - 1 # placeholder
+
+    # The sizes in McConnachie+12 are half-light radii, but the SGA sizes are
+    # diameters to the 25 mag/arcsec2 isophote. The ratio obviously depends on
+    # the surface-brightness profile. The sigma-clipped ratio of the radii is
+    # 1.3 with a scatter of 0.8. Here, I will use two times the half-light
+    # radius but then make some object-specific adjustments below.
+    dwarfs['D25'] = dwarfs['R1'] * 2 * 2 # radius --> diameter --> half-light radius to D(25) # [arcmin]
+    dwarfs.add_column(Column(name='SB_D25', length=len(dwarfs), dtype='f4'))
+    
+    # Add a flag indicating which galaxies are sufficiently "resolved" that we
+    # want to treat them like globular clusters--
+    resgal = ('Fornax', 'Sculptor')
+    I = np.where(np.isin(dwarfs['GALAXY'], resgal))[0]
+    dwarfs['RESOLVED'] = np.zeros(len(dwarfs), dtype=bool)
+    dwarfs['RESOLVED'][I] = True
+
+    # Add a flag indicating which galaxies we want to ignore from both the
+    # pre-burning and from the special treatment in production; these galaxies
+    # will likely need to be masked for clustering statistics but are sparse
+    # enough to not need to be treated "special".
+    ignoregal = (
+        'SagittariusdSph',
+        'SegueI', 
+        'UrsaMajorII', 
+        'BootesII', 
+        'SegueII', 
+        'Willman1', 
+        'BootesI', 
+        'Draco',
+        'UrsaMinor', 
+        'SextansI', 
+        'UrsaMajorI', 
+        'Hercules', 
+        'LeoIV', 
+        'LeoV', 
+        'PiscesII', 
+        'CanesVenaticiI', 
+        'AndromedaXIV', 
+        'AndromedaXIII',
+        'AndromedaII', 
+        'AndromedaXXIX', 
+        'AndromedaXXII', 
+        'AndromedaXVI', 
+        'LeoT',
+        'ComaBerenices', 
+        'CanesVenaticiII',
+        'AndromedaXX',
+        'Antlia',
+        'Carina',
+        'AndromedaX',
+        'AndromedaIX',
+        'AndromedaXVII',
+        'AndromedaXXVII',
+        'AndromedaXXV',
+        'AndromedaI',
+        'AndromedaIII',
+        'AndromedaXV',
+        'AndromedaXII',
+        'AndromedaXI',
+        'AndromedaXXVI',
+        'AndromedaXIX',
+        'AndromedaXXI',
+        'AndromedaXVIII',
+        'AndromedaXXIV',
+        'AndromedaXXIII',
+        'AndromedaV',
+        'AndromedaVII',
+        'Aquarius',        
+        )
+    I = np.where(np.isin(dwarfs['GALAXY'], ignoregal))[0]
+    dwarfs['IGNORE'] = np.zeros(len(dwarfs), dtype=bool)
+    dwarfs['IGNORE'][I] = True
+
+    # "Repair" the ellipse geometry from McC12 based on visual inspections.
+
+    # Use SGA geometry--
+    fixgal = ('IC1613', 'Cetus', 'LeoA', 'SextansA', 'NGC55', 'IC5152', 'GR8', 'DDO113', 'NGC205', 'WLM')
+    I = np.where(np.isin(dwarfs['GALAXY'], fixgal))[0]
+    for ii in I:
+        m1, m2, d12 = match_radec(leda['RA'], leda['DEC'], dwarfs['RA'][ii], dwarfs['DEC'][ii], 60.0/3600.0, nearest=True)
+        if len(m1) != 1:
+            print('Problem matching {}!'.format(dwarfs['GALAXY'][ii]))
+        dwarfs['D25'][ii] = leda['D25'][m1]
+        dwarfs['BA'][ii] = leda['BA'][m1]
+        if np.isnan(leda['PA'][m1]):
+            dwarfs['PA'][ii] = 0.0
+        else:
+            dwarfs['PA'][ii] = leda['PA'][m1]
+
+        # DDO 113 - use an ellipse centered on SGA location, with PA = 45,
+        # major axis = 1.5 x SGA, and minor axis = SGA
+        if dwarfs['GALAXY'][ii] == 'DDO113':
+            dwarfs['RA'][ii] = leda['RA'][m1]
+            dwarfs['DEC'][ii] = leda['DEC'][m1]
+            dwarfs['D25'][ii] = 1.5 * leda['D25'][m1]
+            dwarfs['BA'][ii] = 1 / 1.5
+            dwarfs['PA'][ii] = 45.
+
+        # GR8 - use ellipse that is 2 x the smaller ellipse (SGA), but recenter at
+        # 5” N of current location
+        if dwarfs['GALAXY'][ii] == 'GR8':
+            dwarfs['D25'][ii] *= 2.0
+            dwarfs['DEC'][ii] += 5 / 3600.0
+            
+    # Individual fixes.
+
+    # Phoenix - use ellipse that is 1/2 the size of the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'Phoenix'
+    dwarfs['D25'][ii] *= 0.5 
+
+    # UKS2323-326 - outside DR8 field but preburn using 3/4 x McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'UKS2323-326'
+    dwarfs['D25'][ii] *= 0.75
+
+    # KKH98 - outside DR8 field but preburn using 1/2 x McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'KKH98'
+    dwarfs['D25'][ii] *= 0.5
+
+    # LGS3 - use ellipse that is 1/2 the size of the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'LGS3' 
+    dwarfs['D25'][ii] *= 0.5 
+
+    # Sextans B - use ellipse that is 1.3 x the size of the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'SextansB'
+    dwarfs['D25'][ii] *= 1.3 
+
+    # DDO 125 - use ellipse that is 1.2 x the size of the McC12 ellipse; PA
+    # should be in between the PAs from McC12 (112) and SGA (125.5)
+    ii = dwarfs['GALAXY'] == 'DDO125'
+    dwarfs['D25'][ii] *= 1.2 
+    dwarfs['PA'][ii] = 120 
+
+    # DDO 99 - use ellipse that is 1.3 x the size of the McC12 ellipse; use PA from RC3.
+    ii = dwarfs['GALAXY'] == 'DDO99'
+    dwarfs['D25'][ii] *= 1.3 
+    dwarfs['PA'][ii] = 65    
+
+    # KKH86 - use larger ellipse (McC12) but recenter at SGA location
+    ii = dwarfs['GALAXY'] == 'KKH86'
+    dwarfs['RA'][ii] = 208.639395
+    dwarfs['DEC'][ii] = 4.244438
+
+    # UGC 4879 - use ellipse that is 2.2x larger than McC12 ellipse; recenter at 10” east and 5” north of current McC12 position
+    ii = dwarfs['GALAXY'] == 'UGC4879'
+    dwarfs['D25'][ii] *= 2.2
+    dwarfs['RA'][ii] += 10.0 / 3600
+    dwarfs['DEC'][ii] += 5.0 / 3600
+    
+    # Andromeda XXVIII - use ellipse that is 3/4 the size of the McC12 ellipse 
+    ii = dwarfs['GALAXY'] == 'AndromedaXXVIII'
+    dwarfs['D25'][ii] *= 0.75 # use ellipse that is 3/4 the size of the McC12 ellipse 
+
+    # NGC4163 - use ellipse that is 1.3 x the McC12 ellipse
+    ii = dwarfs['GALAXY'] == 'NGC4163'
+    dwarfs['D25'][ii] *= 1.3
+
+    # UGC8508 - use an elipse that is 1.3 x the McC12 ellipse 
+    ii = dwarfs['GALAXY'] == 'UGC8508'
+    dwarfs['D25'][ii] *= 1.3
+
+    # KKR3 - use larger ellipse (McC12) but make minor axis 1/2 x major axis
+    ii = dwarfs['GALAXY'] == 'KKR3'
+    dwarfs['BA'][ii] = 0.5
+
+    # ESO410-G005 - use larger ellipse (McC12) - PA should really be rotated by -5 deg
+    ii = dwarfs['GALAXY'] == 'ESO410-G005'
+    dwarfs['PA'][ii] = 52
+
+    # NGC205 - use RC3 PA
+    ii = dwarfs['GALAXY'] == 'NGC205'
+    dwarfs['PA'][ii] = 170
+
+    # Compute the surface brightness.
+    dwarfs['SB_D25'] = dwarfs['MAG'] + 2.5 * np.log10( np.pi * (60/2)**2 ) + 5 * np.log10(dwarfs['D25'])
+
+    ## Now match to the leda SGA sample.
+    #m1, m2, d12 = match_radec(leda['RA'], leda['DEC'], dwarfs['RA'], dwarfs['DEC'], 60.0/3600.0, nearest=True)
+    #dwarfs['PGC'][m2] = leda['PGC'][m1]
+    #
+    ### Make the dwarfs catalog "look" like the leda Hyperleda catalog and
+    ### 
+    ##outdwarfs = Table()
+    ##for col in leda.colnames:
+    ##    outdwarfs[col] = np.zeros(len(dwarfs), dtype=leda[col].dtype)
+    ##for col in dwarfs.colnames:
+    ##    if col in outdwarfs.colnames:
+    ##        outdwarfs[col] = dwarfs[col]
+    #
+    ### Remove the duplicates and stack.
+    ##keep = np.delete(np.arange(len(leda)), m1)
+    ##leda = vstack((leda[keep], outdwarfs))
+    ##leda = leda[np.argsort(leda['ID'])]
+
+    ## DDO113=PGC039145 https://github.com/moustakas/SGA/issues/30
+    #fix = np.where(parent['PGC'] == 39145)[0] 
+    #if len(fix) > 0:
+    #    parent['D25'][fix] = 
+
+    ## Sculptor=ESO351-030 https://github.com/moustakas/SGA/issues/27
+    ## use RC3 value http://leda.univ-lyon1.fr/fG.cgi?n=a106&o=ESO351-030
+    #fix = np.where(parent['PGC'] == 3589)[0] 
+    #if len(fix) > 0:
+    #    parent['D25'][fix] = 0.1 * 10**2.700 # [arcmin]
+    #
+    ## Fornax=ESO356-004 https://github.com/moustakas/SGA/issues/30
+    ## use NED value 4200 arcsec = 70 arcmin
+    ## https://ned.ipac.caltech.edu/byname?objname=eso356-004&hconst=67.8&omegam=0.308&omegav=0.692&wmap=4&corr_z=1
+    #fix = np.where(parent['PGC'] == 10074)[0] 
+    #if len(fix) > 0:
+    #    parent['D25'][fix] = 4200.0 / 60 # [arcmin]
+    #
+    ## Ursa Minor=PGC054074=UGC09749
+    ## https://github.com/moustakas/SGA/issues/30
+    ## http://legacysurvey.org/viewer-dev?ra=227.2956&dec=67.2137&layer=dr8&zoom=13&lslga
+    #fix = np.where(parent['PGC'] == 54074)[0] 
+    #if len(fix) > 0:
+    #    parent['D25'][fix] = 0.1 * 10**2.48 # [arcmin]
+            
+    return dwarfs
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
+    args = parser.parse_args()
+
+    outfile = os.path.join(SGA.io.sample_dir(), 'catalogs', 'SGA-dwarfs.fits')
+    if os.path.isfile(outfile) and not args.clobber:
+        print('Output file {} exists; use clobber.'.format(outfile))
+        sys.exit(1)
+
+    dwarfs = localgroup_dwarfs()
+    print(dwarfs)
+
+    print('Writing {} LG dwarfs to {}'.format(len(dwarfs), outfile))
+    dwarfs.write(outfile, overwrite=True)

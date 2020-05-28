@@ -1,0 +1,91 @@
+\section{Sample Selection}\label{sec:sample}
+
+{\bf The Hyperleda paper is Makarov+14}
+
+Our goal is to define a parent sample of large galaxies---galaxies with large
+angular diameters--- in Legacy Survey imaging.
+%which will require special care
+%during pre-processing (e.g., when the sky is subtracted) and when they are
+%processed by the {\tt legacypipe} photometric pipeline.  
+Although there are many different published catalogs of large galaxies, we have
+found the {\tt HyperLeda}\footnote{\url{http://leda.univ-lyon1.fr}}
+extragalactic database to be the most comprehensive and homogeneous.  We select
+our parent sample by executing the following two SQL queries:\footnote{See
+  \url{http://leda.univ-lyon1.fr/leda/fullsql.html} for the SQL interface and
+  \url{http://leda.univ-lyon1.fr/leda/ldoc.html} for documentation on each of
+  the stored quantities.  Note that two separate queries are necessary to stay
+  within the time and memory limits of the SQL server.  }
+
+\begin{verbatim}
+SELECT
+  pgc, objname, objtype, al2000, de2000, type, 
+  multiple, logd25, logr25, pa, bt, it, v
+WHERE 
+  logd25 > 0.05 AND logd25 < 0.5 and (objtype='G' or objtype='g' or 
+  objtype='M' or objtype='M2' or objtype='M3' or objtype='MG' or 
+  objtype='MC')
+\end{verbatim}
+
+\noindent and
+
+\begin{verbatim}
+SELECT
+  pgc, objname, objtype, al2000, de2000, type, 
+  multiple, logd25, logr25, pa, bt, it, v
+WHERE 
+  logd25 > 0.5 and (objtype='G' or objtype='g' or 
+  objtype='M' or objtype='M2' or objtype='M3' or objtype='MG' or 
+  objtype='MC')
+\end{verbatim}
+
+%\begin{figure}[!ht]
+%\centering
+%\includegraphics[width=0.9\textwidth]{figures/lslga-dr2-radec.pdf}
+%\caption{Celestial positions of the galaxies in our parent sample (blue
+%  colormap) and our final angular-diameter limited sample of $\approx10,000$
+%  galaxies with DECaLS/DR2 $grz$ imaging (red squares).  We render the parent
+%  sample of $>2$~million galaxies using a logarithmic density
+%  map. \label{fig:radec}}
+%\end{figure}
+
+\noindent The resulting two output tables, consisting of $2,143,628$ unique
+galaxies (or unresolved galaxy pairs and triplets, e.g., mergers), are parsed
+and combined into a single FITS catalog which is angular-diameter limited to
+$0.11$~arcmin, or approximately $6.7$~arcsec (subject to the surface brightness
+completeness of {\tt HyperLeda}).  Following historical precedent, the angular
+diameter is given by $D(25)$, the diameter of the galaxy at the
+$25$~mag~arcsec$^{-2}$ isophote in the $B$-band (Johnson, Vega).
+
+Next, we reduce this sample further by applying two additional cuts.  First, we
+restrict the sample to have $0.5<D(25)<10$~arcmin.  The lower limit was somewhat
+arbitrarily chosen to reduce the sample to a more manageable size, while the
+upper cut was applied to remove galaxies like Andromeda=M31 from the sample,
+which require even more care and effort to analyze properly.  We note here that
+$10$~arcmin is roughly the diameter of a single DECam CCD.  And finally, we
+remove galaxies which do not have $grz$ imaging in DECaLS/DR2, leaving a final
+sample of $10,654$ galaxies.
+
+In Figure~\ref{fig:radec} we plot the positions of all the galaxies in the
+parent sample (blue density map) and the galaxies in our final sample (red
+squares).  Obviously, the size of the sample with three-band imaging will grow
+significantly in subsequent DECaLS data releases, as well as once we begin to
+incorporate data from the BASS and MzLS imaging surveys.
+
+%\begin{figure}[!ht]
+%\centering
+%\includegraphics[width=0.9\textwidth]{figures/lslga-dr2-d25-bmag.pdf}
+%\caption{Angular diameter, $D(25)$, versus $B$-band magnitude for the parent
+%  sample (blue density map) and our final sample of galaxies with $grz$
+%  DECaLS/DR2 imaging (red points).  The horizontal dashed lines bounded by 
+%  $0.5<D(25)<10$~arcmin show the additional angular diameter cuts we apply to
+%  select our final sample. \label{fig:d25}}
+%\end{figure}
+
+Finally, in Figure~\ref{fig:d25} we plot $D(25)$ versus $B$-band
+magnitude\footnote{The $B$-band magnitudes are tabulated in {\tt HyperLeda} and
+  are only meant to be indicative of the galaxy brightness.  Many of these
+  magnitudes are based on decades-old photographic plates.} for both samples.
+On this figure we annotate two particularly large galaxies---M31 and the Small
+Magellanic Cloud---which are excluded by our angular diameter cuts (horizontal
+dashed lines).  We plot our final sample of galaxies using small red points.
+
