@@ -1,6 +1,6 @@
 """
-LSLGA.unwise
-============
+SGA.unwise
+==========
 
 Code to generate unWISE custom coadds / mosaics.
 
@@ -8,7 +8,7 @@ Code to generate unWISE custom coadds / mosaics.
 import os, pdb
 import numpy as np
 
-import LSLGA.misc
+import SGA.misc
 
 def _unwise_to_rgb(imgs, bands=[1,2], mn=-1, mx=100, arcsinh=1.0):
     """Support routine to generate color unWISE images.
@@ -134,8 +134,8 @@ def unwise_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
 
                 if r50:
                     majoraxis =  r50 * 5 / pixscale # [pixels]
-                    ba, phi = LSLGA.misc.convert_tractor_e1e2(e1, e2)
-                    these = LSLGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
+                    ba, phi = SGA.misc.convert_tractor_e1e2(e1, e2)
+                    these = SGA.misc.ellipse_mask(W / 2, W / 2, majoraxis, ba * majoraxis,
                                                     np.radians(phi), cat.bx*pixfactor, cat.by*pixfactor)
                     if np.sum(these) > 0:
                         #keep[these] = False
@@ -145,7 +145,7 @@ def unwise_coadds(onegal, galaxy=None, radius_mosaic=30, radius_mask=None,
 
             #srcs = read_fits_catalog(cat)
             #_srcs = np.array(srcs)[~keep].tolist()
-            #mod = LSLGA.misc.srcs2image(_srcs, ConstantFitsWcs(targetwcs), psf_sigma=3.0)
+            #mod = SGA.misc.srcs2image(_srcs, ConstantFitsWcs(targetwcs), psf_sigma=3.0)
             #import matplotlib.pyplot as plt
             ##plt.imshow(mod, origin='lower') ; plt.savefig('junk.png')
             #plt.imshow(np.log10(mod), origin='lower') ; plt.savefig('junk.png')

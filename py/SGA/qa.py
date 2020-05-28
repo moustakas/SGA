@@ -1,6 +1,6 @@
 """
-LSLGA.qa
-========
+SGA.qa
+======
 
 Code to do produce various QA (quality assurance) plots. 
 
@@ -12,11 +12,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-import LSLGA.misc
+import SGA.misc
 
 #import seaborn as sns
 #sns.set(style='ticks', font_scale=1.4, palette='Set2')
-sns, _ = LSLGA.misc.plot_style()
+sns, _ = SGA.misc.plot_style()
 
 def _sbprofile_colors():
     """Return an iterator of colors good for the surface brightness profile plots.
@@ -177,7 +177,7 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
         band, refband = ellipsefit['band'], ellipsefit['refband']
         redshift, pixscale = ellipsefit['redshift'], ellipsefit['pixscale']
         if smascale is None:
-            smascale = LSLGA.misc.arcsec2kpc(redshift) # [kpc/arcsec]
+            smascale = SGA.misc.arcsec2kpc(redshift) # [kpc/arcsec]
 
         #if png:
         #    sbfile = png.replace('.png', '.txt')
@@ -433,7 +433,7 @@ def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
     band, refband, redshift = ellipsefit['band'], ellipsefit['refband'], ellipsefit['redshift']
 
     maxsma = ellipsefit['apphot_sma_{}'.format(refband)].max()
-    smascale = LSLGA.misc.arcsec2kpc(redshift) # [kpc/arcsec]
+    smascale = SGA.misc.arcsec2kpc(redshift) # [kpc/arcsec]
 
     yfaint, ybright = 0, 50
     for filt in band:
@@ -596,7 +596,7 @@ def display_ccdpos(onegal, ccds, radius=None, pixscale=0.262,
     if radius is None:
         radius = 100 # [pixels]
 
-    wcs = LSLGA.misc.simple_wcs(onegal, radius=radius, pixscale=pixscale)
+    wcs = SGA.misc.simple_wcs(onegal, radius=radius, pixscale=pixscale)
     width, height = wcs.get_width() * pixscale / 3600, wcs.get_height() * pixscale / 3600 # [degrees]
     bb, bbcc = wcs.radec_bounds(), wcs.radec_center() # [degrees]
     pad = 0.2 # [degrees]
@@ -627,7 +627,7 @@ def display_ccdpos(onegal, ccds, radius=None, pixscale=0.262,
         col = plt.cm.Set1(np.linspace(0, 1, len(ccds)))
         for ii, ccd in enumerate(ccds[these]):
             #print(ccd.expnum, ccd.ccdname, ccd.filter)
-            W, H, ccdwcs = LSLGA.misc.ccdwcs(ccd)
+            W, H, ccdwcs = SGA.misc.ccdwcs(ccd)
 
             cc = ccdwcs.radec_bounds()
             ax.add_patch(patches.Rectangle((cc[0], cc[2]), cc[1]-cc[0],
