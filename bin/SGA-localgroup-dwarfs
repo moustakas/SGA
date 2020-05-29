@@ -125,7 +125,7 @@ def localgroup_dwarfs(leda=None, dwarfindx=2000000):
     print('Read {} Local Group dwarfs from {}'.format(len(dwarfs), dwarfsfile))
 
     # Assign IDs starting at DWARFINDX.
-    dwarfs.add_column(Column(name='ID', data=dwarfindx + np.arange(len(dwarfs))), index=0)
+    dwarfs.add_column(Column(name='SGA_ID', data=dwarfindx + np.arange(len(dwarfs))), index=0)
 
     # Rename some columns and add some new columns that match the SGA data
     # model.  
@@ -332,7 +332,7 @@ def localgroup_dwarfs(leda=None, dwarfindx=2000000):
     ### Remove the duplicates and stack.
     ##keep = np.delete(np.arange(len(leda)), m1)
     ##leda = vstack((leda[keep], outdwarfs))
-    ##leda = leda[np.argsort(leda['ID'])]
+    ##leda = leda[np.argsort(leda['SGA_ID'])]
 
     ## DDO113=PGC039145 https://github.com/moustakas/SGA/issues/30
     #fix = np.where(parent['PGC'] == 39145)[0] 

@@ -78,7 +78,7 @@ def add_ngc(parent, startindx=4000000):
     for col in NGC.colnames:
         NGC.rename_column(col, col.upper())
 
-    NGC.add_column(Column(name='ID', data=startindx + np.arange(len(NGC))), index=0)
+    NGC.add_column(Column(name='SGA_ID', data=startindx + np.arange(len(NGC))), index=0)
     NGC = NGC[(NGC['RA_HMS'] != 'N/A')]
     NGC['BYHAND'] = np.zeros(len(NGC), bool)
 
@@ -296,7 +296,7 @@ def add_rc3(parent, startindx=3000000):
     rc3 = Table.read(rc3file)
     print('Read {} galaxies from {}'.format(len(rc3), rc3file))
 
-    rc3.add_column(Column(name='ID', data=startindx + np.arange(len(rc3))), index=0)
+    rc3.add_column(Column(name='SGA_ID', data=startindx + np.arange(len(rc3))), index=0)
     rc3.rename_column('PA', 'PA_ORIG')
     rc3['PA'] = np.zeros(len(rc3), dtype='f4')
     rc3['PA'] = rc3['PA_ORIG'].astype('f4') # int-->f4
@@ -1509,7 +1509,7 @@ def add_localgroup_dwarfs(parent):
     # Remove the duplicates and stack.
     keep = np.delete(np.arange(len(parent)), m1)
     parent = vstack((parent[keep], moredwarfs))
-    #parent = parent[np.argsort(parent['ID'])]
+    #parent = parent[np.argsort(parent['SGA_ID'])]
 
     # Finally, remove the dwarfs that are so sparse that we don't care about
     # them and the dwarfs that are so resolved (Fornax & Sculptor) that we
@@ -1530,7 +1530,7 @@ def add_dr8_candidates(parent, startindx=5000000):
     from legacyhalos.misc import is_in_ellipse
 
     import numpy.ma as ma
-    from legacyhalos.brick import brickname as get_brickname
+    from legacyhalos.desiutil import brickname as get_brickname
     
     print('Supplementing the LSGLA with the DR8 large galaxies.')
 
@@ -1598,7 +1598,7 @@ def add_dr8_candidates(parent, startindx=5000000):
     supp = vstack((_supp, gaia), join_type='outer')
 
     # Assign IDs starting at startindx.
-    supp.add_column(Column(name='ID', data=startindx + np.arange(len(supp))), index=0)
+    supp.add_column(Column(name='SGA_ID', data=startindx + np.arange(len(supp))), index=0)
     #supp.rename_column('TYPE', 'MORPHTYPE')
 
     # Make the supplemental catalog "look" like the parent Hyperleda catalog.
@@ -1961,12 +1961,12 @@ def remove_spurious(parent, silent=False):
     from legacyhalos.misc import is_in_ellipse
 
     # Read the file from Schlegel--
-    rejfile = os.path.join(sampledir, 'catalogs', 'lslga-dr8-psf-reject.txt')
+    rejfile = os.path.join(sampledir, 'catalogs', 'dr8-psf-reject.txt')
     rejid, rejra, rejdec = np.loadtxt(rejfile, unpack=True)
     print('Read {} spurious galaxies from {}'.format(len(rejid), rejfile))
-    rejgal = parent[np.isin(parent['ID'], rejid)]['GALAXY'].data
+    rejgal = parent[np.isin(parent['SGA_ID'], rejid)]['GALAXY'].data
 
-    rejfile = os.path.join(sampledir, 'catalogs', 'lslga-spurious.txt')
+    rejfile = os.path.join(sampledir, 'catalogs', 'leda-spurious.txt')
     spurgal = np.loadtxt(rejfile, dtype=str)
     print('Read spurious {} galaxies from {}'.format(len(spurgal), rejfile))
 
@@ -2246,7 +2246,7 @@ def main():
 
     pdb.set_trace()
 
-    #ww = np.where(parent['ID'] > 6e6)[0]
+    #ww = np.where(parent['SGA_ID'] > 6e6)[0]
     #imagetool_inspect(parent[ww])
     #pdb.set_trace()
 
@@ -2260,7 +2260,7 @@ def main():
         assert(np.all(np.isfinite(parent['PA'])))
         assert(np.all((parent['PA'] >= 0)*(parent['PA'] <= 180)))
         assert(np.all((parent['BA'] > 0)*(parent['BA'] <= 1)))
-        assert(len(parent['ID']) == len(np.unique(parent['ID'])))
+        assert(len(parent['SGA_ID']) == len(np.unique(parent['SGA_ID'])))
     except:
         print('Problem here!')
         pdb.set_trace()
