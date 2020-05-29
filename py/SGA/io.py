@@ -85,7 +85,7 @@ def get_parentfile(version=None, kd=False):
     else:
         suffix = 'fits'
         
-    parentfile = os.path.join(sample_dir(version=version), 'SGA-{}.{}'.format(version, suffix))
+    parentfile = os.path.join(sample_dir(version=version), 'SGA-parent-{}.{}'.format(version, suffix))
 
     return parentfile
 

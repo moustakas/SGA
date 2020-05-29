@@ -2244,8 +2244,6 @@ def main():
     parent = add_dr8_candidates(parent)
     parent = remove_spurious(parent)
 
-    pdb.set_trace()
-
     #ww = np.where(parent['SGA_ID'] > 6e6)[0]
     #imagetool_inspect(parent[ww])
     #pdb.set_trace()
@@ -2281,10 +2279,6 @@ def main():
     if len(fix) > 0:
         parent['PGC'][fix] = -1
     
-    fix = np.where(parent['MORPHTYPE'] == 'nan')[0]
-    if len(fix) > 0:
-        parent['MORPHTYPE'][fix] = ''
-    
     # Find all galaxies in and out of the DESI footprint.
     parent = in_footprint(parent, nside=args.nside)
 
@@ -2305,6 +2299,10 @@ def main():
         parent.rename_column(col, '{}_LEDA'.format(col))
     parent.remove_columns(['IN_DESI_NORTH', 'IN_DESI_SOUTH', 'IN_DESI_NORTH_GRZ', 'IN_DESI_SOUTH_GRZ'])
 
+    fix = np.where(parent['MORPHTYPE'] == 'nan')[0]
+    if len(fix) > 0:
+        parent['MORPHTYPE'][fix] = ''
+    
     #ii = np.where(np.array(parent.colnames) == 'REF')[0][0]
     #parent.add_column(Column(name='BA', data=np.zeros(len(parent), 'f4')), index=ii)
     #parent.add_column(Column(name='PA', data=np.zeros(len(parent), 'f4')), index=ii)
