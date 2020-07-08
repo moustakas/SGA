@@ -295,3 +295,83 @@ def read_localgroup_dwarfs():
     print('Read {} Local Group dwarfs from {}'.format(len(dwarfs), dwarfsfile))
 
     return dwarfs
+
+def in_footprint(parent, nside=2048, dr='dr9'):
+    """Find all galaxies in the DESI footprint.
+
+    """
+    import time
+    import healpy as hp
+    import legacyhalos.misc
+    
+    #tiles = SGA.io.read_desi_tiles(verbose=verbose)
+    #indesi = SGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
+
+    parentpix = legacyhalos.misc.radec2pix(nside, parent['RA'], parent['DEC'])
+    #parentpix = np.hstack((parentpix, hp.pixelfunc.get_all_neighbours(nside, parentpix, nest=True).flatten()))
+
+    drdir = os.path.join(sample_dir(), dr)
+
+    bands = ('g', 'r', 'z')
+    camera = ('90prime', 'mosaic', 'decam')
+
+    indesi = dict()
+    for cam in camera:
+        for band in bands:
+            indesi.update({'{}_{}'.format(cam, band): np.zeros(len(parent), dtype=bool)})
+
+    #indesi = np.zeros(len(parent), dtype=bool)
+    t0 = time.time()
+    for cam, radius in zip(camera, (0.44, 0.21, 0.17)):
+        if False:
+            from astrometry.libkd.spherematch import trees_match, tree_open
+            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr)))
+            I, J, dd = trees_match(kdparent, kdccds, np.radians(radius))#, nearest=True)
+        else:
+            ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr))
+            ccds = fitsio.read(ccdsfile)
+            print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
+
+            for band in bands:
+                ww = ccds['filter'] == band
+                if np.sum(ww) > 0:
+                    # add the neighboring healpixels to protect against edge effects
+                    ccdpix = legacyhalos.misc.radec2pix(nside, ccds['ra'][ww], ccds['dec'][ww])
+                    ccdpix = np.hstack((ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()))
+                    if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
+                        ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
+                    I = np.isin(parentpix, ccdpix)
+                    indesi['{}_{}'.format(cam, band)][I] = True
+                else:
+                    I = [False]
+                #print('Found {} galaxies in {} {} footprint in {:.1f} sec'.format(np.sum(I), cam, time.time() - t0))
+                print('  Found {} galaxies in {} {} footprint.'.format(np.sum(I), cam, band))
+    print('Total time to find galaxies in footprint = {:.1f} sec'.format(time.time() - t0))
+    
+    parent['IN_DESI_NORTH'] = indesi['90prime_g'] | indesi['90prime_r'] | indesi['mosaic_z']
+    parent['IN_DESI_NORTH_GRZ'] = indesi['90prime_g'] & indesi['90prime_r'] & indesi['mosaic_z']
+
+    parent['IN_DESI_SOUTH'] = indesi['decam_g'] | indesi['decam_r'] | indesi['decam_z']
+    parent['IN_DESI_SOUTH_GRZ'] = indesi['decam_g'] & indesi['decam_r'] & indesi['decam_z']
+    
+    parent['IN_DESI'] = parent['IN_DESI_NORTH'] | parent['IN_DESI_SOUTH']
+    parent['IN_DESI_GRZ'] = parent['IN_DESI_NORTH_GRZ'] | parent['IN_DESI_SOUTH_GRZ']
+
+    #plt.scatter(parent['RA'], parent['DEC'], s=1)
+    #plt.scatter(parent['RA'][indesi], parent['DEC'][indesi], s=1)
+    #plt.xlim(360, 0)
+    #plt.show()
+
+    #bb = parent[parent['IN_DESI_NORTH_GRZ'] & parent['IN_DESI_SOUTH_GRZ']]
+    #plt.scatter(bb['RA'], bb['DEC'], s=1)
+    #plt.xlim(300, 90) ; plt.ylim(30, 36)
+    #plt.axhline(y=32.375, color='k')
+    #plt.xlabel('RA') ; plt.ylabel('Dec')
+    #plt.show()
+    
+    print('  Identified {}/{} ({:.2f}%) galaxies inside and {}/{} ({:.2f}%) galaxies outside the DESI footprint.'.format(
+        np.sum(parent['IN_DESI']), len(parent), 100*np.sum(parent['IN_DESI'])/len(parent), np.sum(~parent['IN_DESI']),
+        len(parent), 100*np.sum(~parent['IN_DESI'])/len(parent)))
+
+    return parent
+
