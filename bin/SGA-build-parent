@@ -824,6 +824,12 @@ def fix_byhand(parent):
     if len(fix) > 0:
         parent['D25'][fix] = 0.1*10**1.26
         parent['BYHAND'][fix] = True
+
+    # NGC5668 - use NED
+    fix = np.where(parent['PGC'] == 52018)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.1*10**1.52
+        parent['BYHAND'][fix] = True
           
     # NGC4597 - use NED
     fix = np.where(parent['PGC'] == 42429)[0]
@@ -1774,6 +1780,765 @@ def fix_byhand(parent):
         parent['D25'][fix] = 0.5 # eyeballed
         parent['BYHAND'][fix] = True
 
+    fix = np.where(parent['PGC'] == 59728)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 257.6078, 69.9368
+        parent['PA'][fix] = 150.0  # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 2345748)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 108.4192, 49.5328
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 985131)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 46.6400, -9.8894
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 321475)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 330.6644, -64.5593
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 1011757)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 17.5055, -7.8701
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 869358)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 55.7068, -18.3377
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 1029997)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.45 # eyeballed
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 1030009)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 155.2036, -6.6855
+        parent['BA'][fix] = 0.4   # eyeballed
+        parent['D25'][fix] = 0.35 # eyeballed
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 39707)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 184.9354, 3.8447
+        parent['PA'][fix] = 150  # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 722008)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.6845, -30.0534
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 665792)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 38.8722, -34.1942
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 473840)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.6901, -49.7287
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 401513)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.7102, -56.2757
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 600643)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.6405, -39.2121
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 598586)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.6670, -39.4021
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 131304)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.6654, -39.3810
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 634571)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 24.0099, -36.6263
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 666789)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 38.8243, -34.1231
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 723927)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.6634, -29.8930
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 399214)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 79.0444, -56.5524
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 663300)[0] # foreground Gaia star!
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 37.7093, -34.3678
+        parent['BA'][fix] = 0.8 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 91386)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 220.9103, 79.7673
+        parent['PA'][fix] = 0.0
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 495313)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.5687, -47.8139
+        parent['BYHAND'][fix] = True
+        
+    fix = np.where(parent['PGC'] == 524909)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 76.6193, -45.6073
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 677398)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 85.9054, -33.3607
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 413588)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 38.8092, -55.0165
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 91622)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 272.8855, 25.0056
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 597053)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 38.7992, -39.5385
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 91654)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 290.2557, 54.8155
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 510581)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.7399, -46.7951
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 92124)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 79.0226, -36.9036
+        parent['D25'][fix] = 0.5 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 422579)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.6353, -54.1265
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 492063)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 76.5676, -48.0415
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 613722)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 79.0649, -38.0548
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 572910)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.7201, -41.7094
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 746195)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.6637, -28.0731
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 84347)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 223.4046, 17.1505
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 465942)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 334.1886, -50.4906
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 639654)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 24.0395, -36.1984
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 10241)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 40.5656, -59.8983 # interacting pair
+        parent['D25'][fix] = 0.6 # eyeballed
+        parent['PA'][fix] = 0.0 # eyeballed
+        parent['BA'][fix] = 0.47 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 456966)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 49.4323, -51.3809
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 601272)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.7427, -39.1552
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 482560)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.6443, -48.8978
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 92713)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 329.9460, -42.1569
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1032956)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 149.2167, -6.4300
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1026526)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 197.5289, -6.9522
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 3050)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 12.9994, -48.2234
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 398703)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 63.7450, -56.6164
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 678071)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 38.8800, -33.3093
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 480503)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.8247, -49.0976
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 469904)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 310.7371, -50.1010
+        parent['BA'][fix] = 0.2 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 574139)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 76.5282, -41.5869
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 68107)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 332.0151, -10.3334
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 479321)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 25.1950, -49.2079
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 406222)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 16.6459, -55.7642
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 411585)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 334.1332, -55.2136
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 502210)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 321.2213, -47.3855
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 648732)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 78.9666, -35.4536
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 691324)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 79.0989, -32.4691
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 687297)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 24.0597, -32.7137
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 68317)[0] # =IC5181
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 333.3403, -46.0176
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 72300)[0] # =NGC7744
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 356.2467, -42.9110
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 68165)[0] # =NGC7213
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 332.3176, -47.1667
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 64784)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 307.2793, -50.6830
+        parent['PA'][fix] = 95.0 # eyeballed
+        parent['D25'][fix] = 0.5 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 17990)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 87.7984, -52.9026
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 68732)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 335.8425, -41.6078
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 29814)[0] # =NGC3166
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 153.4401, 3.4247
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 29855)[0] # =NGC3169
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 153.56251350877397, 3.466228655359304
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 476521)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 339.2430, -49.4705
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 677883)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 60.8211, -33.3241
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 559170)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 47.9370, -42.7148
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1722171)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 222.9544, 24.9897
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 704032)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 4.8339, -31.5348
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 335366)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 9.5493, -63.1442
+        parent['PA'][fix] = 110.0 # eyeballed
+        parent['BA'][fix] = 0.2   # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 725133)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 90.2809, -29.7873
+        parent['BA'][fix] = 0.2   # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 609576)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 35.4358, -38.3875
+        parent['PA'][fix] = 25.0   # eyeballed
+        parent['BA'][fix] = 0.25   # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 635761)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 28.0195, -36.5236
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 856177)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 56.9420, -19.3698
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 2273922)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 95.9075, 46.0092
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 9037)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 35.6863, -3.9689
+        parent['PA'][fix] = 0.0   # eyeballed
+        parent['BA'][fix] = 1.0   # eyeballed
+        parent['D25'][fix] = 1.9  # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 902665)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 53.1122, -16.0839
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1144847)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 235.2054, -0.3772
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 3836970)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.4
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 974268)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 328.0386, -10.7468
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 64986)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 308.6081, -47.6690
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 9717)[0] # =UGC02027
+    if len(fix) > 0:
+        parent['PA'][fix] = 30.0  # eyeballed
+        parent['D25'][fix] = 1.3  # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 569164)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 84.2434, -42.0315
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 58402)[0] # =UGC10433
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 247.6998, 39.2177 # ??
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 2802454)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 139.4016, -7.9971
+        parent['PA'][fix] = 5.0  # eyeballed
+        parent['BA'][fix] = 0.4  # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 324271)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 342.7784, -64.2821
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 825)[0] # =UGC00109
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.85 # eyeballed
+        parent['PA'][fix] = 0.0   # eyeballed
+        parent['BA'][fix] = 1.0   # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 799520)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 84.9687, -23.5646
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 899406)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 14.5400, -16.3398
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1062926)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 355.9293, -4.0967
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 731640)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 58.5238, -29.2430
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1382523)[0]
+    if len(fix) > 0:
+        parent['PA'][fix] = 30.0   # eyeballed
+        parent['D25'][fix] = 0.75  # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 395525)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 342.1914, -56.9561
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 92618)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 311.6779, -50.1186
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 415849)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 353.3399, -54.7834
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 58912)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 251.3188, 67.9378
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1121034)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 166.4610, -1.3400
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 374110)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 3.7222, -59.0799
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 602264)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 93.1940, -39.0596
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1095684)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 202.3025, -2.3079
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1230597)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 197.3669, 2.5550
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 176223)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 51.8769, -2.6208
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1183247)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 254.8981, 1.0590
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1571017)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 318.8697, 18.8097
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 800604)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 88.6453, -23.4632
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 2431112)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 205.5680, 53.0714
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1075282)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 169.2540, -3.1672
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 30484)[0] # =UGC05612
+    if len(fix) > 0:
+        parent['D25'][fix] = 3.0 # eyeballed, about 15% bigger
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 2039465)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 278.8400, 33.8243
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1128496)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 52.4913, -1.0341
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 321841)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 330.4494, -64.5240
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1121580)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 237.5418, -1.3178
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1068838)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 186.0005, -3.6265
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1168182)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 5.8877, 0.5233
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 25347)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 135.3830, 50.6171
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 925561)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 23.2972, -14.3619
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 4209627)[0] # =SDSSJ094155.11+105108.6
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 145.4792, 10.8517
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1474850)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 316.1112, 15.0866
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 689023)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 12.1374, -32.6094
+        parent['PA'][fix] = 0.0 # eyeballed
+        parent['BA'][fix] = 0.75
+        parent['D25'][fix] = 0.6
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 324793)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 336.2976, -64.2360
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 382876)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 303.7553, -58.0299
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 928928)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 67.2587, -14.1060
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 91709)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 323.6306, 14.6806
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1257426)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 198.2142, 3.7229
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 715613)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 47.9437, -30.5738
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 759390)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 74.7955, -27.1315
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1050534)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 38.8975, -5.0083
+        parent['PA'][fix] = 30.0 # eyeballed
+        parent['D25'][fix] = 0.4
+        parent['BA'][fix] = 0.7
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 443218)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 309.4618, -52.4876
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 178605)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 83.8909, -60.0599
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 91604)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.7
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 38456)[0] # =UGC07104
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 181.7875, 16.9212
+        parent['D25'][fix] = 0.9
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 701571)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 11.9761, -31.7477
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 742230)[0]
+    if len(fix) > 0:
+        parent['D25'][fix] = 0.4
+        parent['PA'][fix] = 20
+        parent['BA'][fix] = 0.3
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 14965)[0] # =NGC1574
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 65.4948, -56.9746
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 32249)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 161.9263, 13.9859
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1018114)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 197.3684, -7.4884
+        parent['D25'][fix] = 0.34 # eyeballed
+        parent['PA'][fix] = 0.0
+        parent['BA'][fix] = 1.0
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 70005)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 343.8284, -38.0346
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1078694)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 118.9593, -2.9786
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 92800)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 352.4830, -38.1029
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 91629)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 276.4260, 29.4966
+        parent['BYHAND'][fix] = True
+
     return parent
 
 def add_localgroup_dwarfs(parent):
@@ -2447,7 +3212,7 @@ def main():
     # Replace special characters in the GALAXY names to not create problems
     # (e.g., with fitsio) downstream.
     print('Removing special characters from galaxy names.')
-    fix = np.where(['[' in gg or ':' in gg for gg in parent['GALAXY']])[0]
+    fix = np.where(['[' in gg or ':' in gg or '(' in gg for gg in parent['GALAXY']])[0]
     if len(fix) > 0:
         for ii in fix:
             parent['BYHAND'][ii] = True
