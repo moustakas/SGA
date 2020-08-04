@@ -330,6 +330,7 @@ def in_footprint(parent, nside=2048, dr='dr9'):
         else:
             ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr))
             ccds = fitsio.read(ccdsfile)
+            ccds = ccds[ccds['ccd_cuts'] == 0]
             print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
 
             for band in bands:
