@@ -116,6 +116,9 @@ def add_ngc(parent, startindx=4000000):
                                    np.where(NGC['NAME'] == 'IC1636')[0],   # better coords in Hyperleda
                                    np.where(NGC['NAME'] == 'NGC2680')[0],  # duplicate with NGC2679?
                                    np.where(NGC['NAME'] == 'NGC2458')[0],  # already in Hyperleda
+                                   np.where(NGC['NAME'] == 'IC1623A')[0],  # already in Hyperleda
+                                   np.where(NGC['NAME'] == 'NGC6822')[0],  # already in Hyperleda
+                                   np.where(NGC['NAME'] == 'NGC6215A')[0],  # already in Hyperleda
                                    np.where(NGC['NAME'] == 'NGC0292')[0],  # SMC - we don't want it
                                    np.where(NGC['NAME'] == 'NGC2363')[0],  # HII region
                                    np.where(NGC['NAME'] == 'IC2789')[0],   # tiny, reject
@@ -3039,6 +3042,119 @@ def fix_byhand(parent):
     if len(fix) > 0:
         parent['RA'][fix], parent['DEC'][fix] = 50.4884, -23.7511
         parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 554508)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 41.8788, -43.0062
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1033054)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 184.4025, -6.4198
+        parent['PA'][fix] = 150
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 46831)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 201.0144, 22.7146
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 2883)[0] #=UGC00505
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 12.3568, -1.7707
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 127879)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 25.8573, -58.0180
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 536360)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 20.9320, -44.5273
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 5107)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 20.9778, -44.5073
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 7934)[0] # NGC0807
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 31.23196846830805, 28.987563180427912
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 12611)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 50.4793, -13.6507
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 444275)[0] 
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 89.9962, -52.4120
+        parent['BA'][fix] = 0.6
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 48280)[0]  # =UGC08638
+    if len(fix) > 0:
+        parent['D25'][fix] = 1.5 # eyeballed
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 621)[0]  # =ESO349-031
+    if len(fix) > 0:
+        parent['D25'][fix] = 1.2 # eyeballed
+        parent['BA'][fix] = 0.8
+        parent['PA'][fix] = 25
+        parent['BYHAND'][fix] = True
+
+    fix = np.where(parent['PGC'] == 1358707)[0]
+    if len(fix) > 0:
+        parent['RA'][fix], parent['DEC'][fix] = 347.9536, 9.0524
+        parent['PA'][fix] = 20
+        parent['BA'][fix] = 0.7
+        parent['BYHAND'][fix] = True
+
+    # Hyperleda calls this IC3582 but that's wrong!
+    fix = np.where(parent['PGC'] == 42060)[0] 
+    if len(fix) > 0:
+        parent['GALAXY'][fix] = 'UGC07778'
+        parent['BYHAND'][fix] = True
+
+    # Hyperleda calls this IC3582 but that's wrong!
+    fix = np.where(parent['PGC'] == 42060)[0] 
+    if len(fix) > 0:
+        parent['GALAXY'][fix] = 'UGC07778'
+        parent['BYHAND'][fix] = True
+
+    # Hyperleda calls this IC0233 but that's wrong!
+    fix = np.where(parent['PGC'] == 9610)[0] 
+    if len(fix) > 0:
+        parent['GALAXY'][fix] = 'CGCG388-033'
+        parent['BYHAND'][fix] = True
+
+    # Hyperleda calls this IC2186 but that's wrong!
+    fix = np.where(parent['PGC'] == 20858)[0] 
+    if len(fix) > 0:
+        parent['GALAXY'][fix] = 'IC2188'
+        parent['BYHAND'][fix] = True
+
+    # Fix more coordinates from a file--
+    if True:
+        coordsfile = os.path.join(sampledir, 'catalogs', 'sga-fix-coordinates.txt')
+        coords = Table.read(coordsfile, format='ascii.basic')
+        print('Read {} galaxies from {}'.format(len(coords), coordsfile))
+        coords['pgc'].astype(np.int)
+        coords['ra'].astype('f8')
+        coords['dec'].astype('f8')
+
+        for ii in range(len(coords)):
+            if coords['pgc'][ii] == -1:
+                fix = np.where(parent['GALAXY'] == coords['galaxy'][ii])[0]
+            else:
+                fix = np.where(parent['PGC'] == coords['pgc'][ii])[0]
+            if len(fix) > 0:
+                parent['RA'][fix], parent['DEC'][fix] = coords['ra'][ii], coords['dec'][ii]
+                parent['BYHAND'][fix] = True
 
     return parent
 
