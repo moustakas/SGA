@@ -140,7 +140,7 @@ def add_ngc(parent, startindx=4000000):
     #NGC['NAME'] = ['tmp-{}'.format(nn.strip().replace(' ', '_')) for nn in NGC['NAME']]
 
     #NGC = SGA.io.in_footprint(NGC)
-    #NGC = NGC[NGC['IN_DESI']]
+    #NGC = NGC[NGC['IN_FOOTPRINT']]
     #print('Cutting to {} missing galaxies in the DESI footprint.'.format(len(NGC)))
     
     #_imagetool_inspect(NGC)
@@ -325,7 +325,7 @@ def add_rc3(parent, startindx=3000000):
 
         rc3 = rc3[missing]
         rc3 = SGA.io.in_footprint(rc3)
-        rc3 = rc3[rc3['IN_DESI']]
+        rc3 = rc3[rc3['IN_FOOTPRINT']]
         print('Cutting to {} missing galaxies in the DESI footprint.'.format(len(rc3)))
 
         #m1, m2, d12 = match_radec(parent['RA'], parent['DEC'], rc3['RA'], rc3['DEC'], 10/3600.0, nearest=True)
@@ -3448,6 +3448,12 @@ def add_dr8_candidates(parent, startindx=5000000):
         out['BA'][fix] = 0.5 # eyeballed
         out['BYHAND'][fix] = True
 
+    fix = np.where(out['GALAXY'] == 'DR8-0435m297-7217')[0]
+    if len(fix) > 0:
+        out['RA'][fix], out['DEC'][fix] = 43.4361, -29.6403
+        out['PA'][fix] = 5.0
+        out['BYHAND'][fix] = True
+
     fix = np.where(out['GALAXY'] == 'DR8-3441m090-2421')[0]
     if len(fix) > 0:
         out['D25'][fix] = 1.5 # eyeballed
@@ -3544,7 +3550,7 @@ def remove_spurious(parent, silent=False):
     # Require a magnitude estimate. Unfortunately many of these are real
     # galaxies, although either their positions or their geometry is totally
     # unreliable.
-    #_viewer_inspect(parent[np.isnan(parent['MAG']) * parent['IN_DESI']])
+    #_viewer_inspect(parent[np.isnan(parent['MAG']) * parent['IN_FOOTPRINT']])
     magcut = np.isfinite(parent['MAG'])
     if np.sum(magcut) > 0:
         print('  Removed {}/{} ({:.2f}%) objects with no magnitude estimate.'.format(
@@ -3559,8 +3565,8 @@ def remove_spurious(parent, silent=False):
     kdparent = tree_build_radec(parent['RA'], parent['DEC'])
     
     indx = ['SDSS' in gg or '2MAS' in gg for gg in parent['GALAXY']]
-    #indx = np.where(parent['IN_DESI'] * )[0]
-    #host = np.where(parent['IN_DESI'] * (parent['D25'] > 0.5) * np.logical_not(indx))[0]
+    #indx = np.where(parent['IN_FOOTPRINT'] * )[0]
+    #host = np.where(parent['IN_FOOTPRINT'] * (parent['D25'] > 0.5) * np.logical_not(indx))[0]
     host = np.where((parent['D25'] > 0.5) * np.logical_not(indx))[0]
     
     sdssingal = np.zeros(len(parent), dtype=bool)
@@ -3592,14 +3598,14 @@ def remove_spurious(parent, silent=False):
     
     # Visually inspect all the SDSS galaxies above a certain surface brightness;
     # most of these are spurious, but there are many we want to keep.
-    #w1 = np.where(parent['IN_DESI'] * (parent['SB_D25'] > 26) * (parent['D25'] <= 0.9))[0]
+    #w1 = np.where(parent['IN_FOOTPRINT'] * (parent['SB_D25'] > 26) * (parent['D25'] <= 0.9))[0]
     #w2 = np.where(['SDSS' in gg for gg in parent['GALAXY'][w1]])[0]
     #_imagetool_inspect(parent[w1][w2])
 
-    #ww = np.where(parent['IN_DESI'] * (parent['SB_D25'] > 27))[0]
+    #ww = np.where(parent['IN_FOOTPRINT'] * (parent['SB_D25'] > 27))[0]
     #_imagetool_inspect(parent[ww])
     
-    #ww = np.where(parent['IN_DESI'])[0]
+    #ww = np.where(parent['IN_FOOTPRINT'])[0]
     #plt.clf() #; plt.scatter(parent['MAG'][ww], parent['SB_D25'][ww], s=1)
     ##plt.scatter(parent['MAG'][ww][ii], parent['SB_D25'][ww][ii], s=1, color='orange', alpha=0.5)
     #plt.clf() ; plt.scatter(parent['D25'][ww], parent['SB_D25'][ww], s=1)
@@ -3609,7 +3615,7 @@ def remove_spurious(parent, silent=False):
     #plt.savefig('junk3.png')
     
     # Check all the galaxies with b/a=1--they're OK!
-    #_viewer_inspect(parent[(parent['BA']==1) * parent['IN_DESI']])
+    #_viewer_inspect(parent[(parent['BA']==1) * parent['IN_FOOTPRINT']])
 
     #print('  Removed {}/{} ({:.2f}%) low surface-brightness galaxies.'.format(
     #    np.sum(lsbcut), len(parent), 100*np.sum(lsbcut)/len(parent)))
@@ -3857,7 +3863,7 @@ def main():
     parent.rename_column('TYPE', 'MORPHTYPE')
     for col in ['Z', 'PA', 'D25', 'BA', 'SB_D25', 'MAG']:
         parent.rename_column(col, '{}_LEDA'.format(col))
-    parent.remove_columns(['IN_DESI_NORTH', 'IN_DESI_SOUTH', 'IN_DESI_NORTH_GRZ', 'IN_DESI_SOUTH_GRZ'])
+    parent.remove_columns(['IN_FOOTPRINT_NORTH', 'IN_FOOTPRINT_SOUTH', 'IN_FOOTPRINT_NORTH_GRZ', 'IN_FOOTPRINT_SOUTH_GRZ'])
 
     fix = np.where(parent['MORPHTYPE'] == 'nan')[0]
     if len(fix) > 0:

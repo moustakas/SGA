@@ -296,6 +296,21 @@ def read_localgroup_dwarfs():
 
     return dwarfs
 
+#def in_footprint(parent, verbose=False):
+#    """Find all galaxies in the DESI footprint.
+#
+#    """
+#    import time
+#    import healpy as hp
+#    import legacyhalos.misc
+#    
+#    tiles = read_desi_tiles(verbose=verbose)
+#    indesi = SGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
+#
+#    t0 = time.time()
+#
+#    return parent
+
 def in_footprint(parent, nside=2048, dr='dr9'):
     """Find all galaxies in the DESI footprint.
 
@@ -349,21 +364,21 @@ def in_footprint(parent, nside=2048, dr='dr9'):
                 print('  Found {} galaxies in {} {} footprint.'.format(np.sum(I), cam, band))
     print('Total time to find galaxies in footprint = {:.1f} sec'.format(time.time() - t0))
     
-    parent['IN_DESI_NORTH'] = indesi['90prime_g'] | indesi['90prime_r'] | indesi['mosaic_z']
-    parent['IN_DESI_NORTH_GRZ'] = indesi['90prime_g'] & indesi['90prime_r'] & indesi['mosaic_z']
+    parent['IN_FOOTPRINT_NORTH'] = indesi['90prime_g'] | indesi['90prime_r'] | indesi['mosaic_z']
+    parent['IN_FOOTPRINT_NORTH_GRZ'] = indesi['90prime_g'] & indesi['90prime_r'] & indesi['mosaic_z']
 
-    parent['IN_DESI_SOUTH'] = indesi['decam_g'] | indesi['decam_r'] | indesi['decam_z']
-    parent['IN_DESI_SOUTH_GRZ'] = indesi['decam_g'] & indesi['decam_r'] & indesi['decam_z']
+    parent['IN_FOOTPRINT_SOUTH'] = indesi['decam_g'] | indesi['decam_r'] | indesi['decam_z']
+    parent['IN_FOOTPRINT_SOUTH_GRZ'] = indesi['decam_g'] & indesi['decam_r'] & indesi['decam_z']
     
-    parent['IN_DESI'] = parent['IN_DESI_NORTH'] | parent['IN_DESI_SOUTH']
-    parent['IN_DESI_GRZ'] = parent['IN_DESI_NORTH_GRZ'] | parent['IN_DESI_SOUTH_GRZ']
+    parent['IN_FOOTPRINT'] = parent['IN_FOOTPRINT_NORTH'] | parent['IN_FOOTPRINT_SOUTH']
+    parent['IN_FOOTPRINT_GRZ'] = parent['IN_FOOTPRINT_NORTH_GRZ'] | parent['IN_FOOTPRINT_SOUTH_GRZ']
 
     #plt.scatter(parent['RA'], parent['DEC'], s=1)
     #plt.scatter(parent['RA'][indesi], parent['DEC'][indesi], s=1)
     #plt.xlim(360, 0)
     #plt.show()
 
-    #bb = parent[parent['IN_DESI_NORTH_GRZ'] & parent['IN_DESI_SOUTH_GRZ']]
+    #bb = parent[parent['IN_FOOTPRINT_NORTH_GRZ'] & parent['IN_FOOTPRINT_SOUTH_GRZ']]
     #plt.scatter(bb['RA'], bb['DEC'], s=1)
     #plt.xlim(300, 90) ; plt.ylim(30, 36)
     #plt.axhline(y=32.375, color='k')
@@ -371,8 +386,8 @@ def in_footprint(parent, nside=2048, dr='dr9'):
     #plt.show()
     
     print('  Identified {}/{} ({:.2f}%) galaxies inside and {}/{} ({:.2f}%) galaxies outside the DESI footprint.'.format(
-        np.sum(parent['IN_DESI']), len(parent), 100*np.sum(parent['IN_DESI'])/len(parent), np.sum(~parent['IN_DESI']),
-        len(parent), 100*np.sum(~parent['IN_DESI'])/len(parent)))
+        np.sum(parent['IN_FOOTPRINT']), len(parent), 100*np.sum(parent['IN_FOOTPRINT'])/len(parent), np.sum(~parent['IN_FOOTPRINT']),
+        len(parent), 100*np.sum(~parent['IN_FOOTPRINT'])/len(parent)))
 
     return parent
 
