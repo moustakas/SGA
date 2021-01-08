@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+Legacy Halos
+{% endblock %}
+
+{% block content %}
+<div><center>
+<h2><em>legacyhalos</em></h2>
+<p class="big"><a href="list">Search</a></p>
+<br/>
+<br/>
+<br/>
+<img class="cluster" src="{% static "data/0000510/0000510-coadd-montage.png" %}" alt="Central Galaxy 510"/>
+<p>Each mosaic (left to right: data, model of all but the central galaxy, residual image containing just the central galaxy) is 300 kpc by 300 kpc.</p>
+<br/><br/>
+</center>
+<p class="indexleft">We generously acknowledge partial funding support for this work by the National Science Foundation grant AST-1616414.</p> 
+<p class="indexleft">Contact: <a href="https://www.siena.edu/faculty-and-staff/person/john-moustakas/" >John Moustakas</a>, jmoustakas@siena.edu<br/></p>
+<p class="indexleft"><a href="https://github.com/moustakas/legacyhalos">code</a></p>
+</div>
+{% endblock %}

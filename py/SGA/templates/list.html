@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load my_templatetag %}
+
+{% block title %}
+List of halos
+{% endblock %}
+
+
+
+{% block content %}
+
+<center>
+  <h2 id="filterhead">
+    Central Galaxy Search
+ </h2>
+<a href="../" style="float: left; margin-left: 20px;">Home</a>
+  <form method="get">
+<table>
+   <!-- {{ filter.form.as_p }} -->
+    <tr>
+         <th class="search_th"><label for="idlo">redMaPPer ID:</label></th>
+         <td><input id="idlo" name="mem_match_id__gte" type="number" value=""
+         placeholder="min" min="0"/></td> 
+         <td><input id="idhi" name="mem_match_id__lte" type="number" value="" placeholder="max" min="0"/></td> 
+    </tr>
+    <tr>
+         <th class="search_th"><label for="ralo">RA:</label></th>
+         <td><input id="ralo" name="ra__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+         <td><input id="rahi" name="ra__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+    </tr>
+    <tr>
+         <th class="search_th"><label for="declo">Dec:</label></th>
+         <td><input id="declo" name="dec__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+         <td><input id="dechi" name="dec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+    </tr>
+    <tr>
+         <th class="search_th"><label for="zlo">Redshift:</label></th>
+         <td><input id="zlo" name="z__gte" step="0.01" type="number" value="" placeholder="min" min="0"/></td> 
+         <td><input id="zhi" name="z__lte" step="0.01" type="number" value="" placeholder="max" min="0"/></td> 
+    </tr>
+    <tr>
+         <th class="search_th"><label for="lalo">Richness:</label></th>
+         <td><input id="lalo" name="la__gte" step="0.01" type="number" value="" placeholder="min" min="0"/></td> 
+         <td><input id="lahi" name="la__lte" step="0.01" type="number" value="" placeholder="max" min="0"/></td> 
+    </tr>
+   
+</table>
+    <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Search</button>
+     
+  </form>
+
+
+<script>
+document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+({{ page.end_index }})+' of '+({{paginator.count}})+'</p>')
+</script>
+<pre class="search_log" > {% url_pull request %} </pre>
+
+<form method="post">
+{% csrf_token %}
+<button href="" type="submit" class="btn btn-primary" name="dbutn" >Download</button>
+
+</form>
+</center>
+
+<table class="table">
+<thead>
+<tr><th>Number</th>
+<th style="min-width:155px"><a href="?{% url_replace_sort request 'mem_match_id' %}">redMaPPer ID</a></th>
+<th><a href="?{% url_replace_sort request 'ra' %}">RA</a></th>
+<th><a href="?{% url_replace_sort request 'dec' %}">Dec</a></th>
+<th><a href="?{% url_replace_sort request 'z' %}">Redshift</a></th>
+<th><a href="?{% url_replace_sort request 'la' %}">Richness</a></th>
+<th>Viewer</th>
+<th>SkyServer</th></tr>
+</thead>
+<tbody>
+  {% for cen in page %}
+<tr><script>
+var index = {{ forloop.counter0}} + {{page.start_index }};
+document.write('<td>'+index+'</td>');
+document.write('<td><a href="{{BASE_URL}}centrals?index='+index+'">{{cen.mem_match_id_string}}</a></td>');
+</script>
+<td><script>
+  var ra = {{ cen.ra }};
+  ra = ra.toFixed(7);
+  document.write(ra);
+</script></td>
+<td><script>
+  var dec = {{ cen.dec }};
+  dec = dec.toFixed(7);
+  document.write(dec);
+</script></td>
+<td><script>
+  var z = {{ cen.z }};
+  z = z.toFixed(3);
+  document.write(z);
+</script></td>
+<td><script>
+  var la = {{ cen.la }};
+  la = la.toFixed(3);
+  document.write(la);
+</script></td>
+<td><a href = "{{ cen.viewer_link }}">link</a></td><td><a href = "{{ cen.skyserver_link }}">link</a></td></tr>
+  {% endfor %}
+</tbody>
+  </table>
+
+<div style="text-align:center; padding: 10;">
+    <span class="step-links">
+        {% if page.has_previous %}
+            <a href="?{% url_replace request 'page' 1 %}">&laquo; first</a>
+            <a href="?{% url_replace request 'page' page.previous_page_number %}">previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ page.number }} of {{ page.paginator.num_pages }}
+        </span>
+
+        {% if page.has_next %}
+            
+            <a href="?{% url_replace request 'page' page.next_page_number %}">next</a>
+            <a href="?{% url_replace request 'page' paginator.num_pages %}">last &raquo;</a>
+        {% endif %}
+    </span>
+</div>
+{% endblock %}

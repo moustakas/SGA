@@ -1,0 +1,100 @@
+{% load static %}
+
+<html>
+{% block header %}
+<head>
+<title>
+{% block title %}
+unWISE coadds
+{% endblock %}
+</title>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB" crossorigin="anonymous">
+<style type="text/css">
+{% block basecss %}
+body { font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif; }
+hr { width: 66%; }
+.bigbutton { 
+  font-size:125%; 
+  padding:2px; 
+  padding-left:10px; 
+  padding-right:10px; 
+  font-weight: bold
+}
+.big {
+  font-size:150%;
+  font-weight: bold;
+}
+form { margin: 15px }
+.table {
+  margin: 15px;
+  border-style: solid;
+  border-color: black;
+  width: 98%;
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (min-width: 700px){
+  .table {
+    width: 700px;
+  }
+}
+.indexleft {
+  margin: 10px 0px;
+  padding: 5px 0px;
+}
+#filterhead {
+  margin: 10px 0px;
+  padding: 5px 0px;
+  background-color: #cceeff;
+}
+.errorlist { color:red; }
+.cluster{
+  width:75%;
+  height:auto;
+}
+.step-links {
+text-align: center;
+}
+.search_log{
+color: #D3D3D3;
+max-width: 700px;
+text-align: center;
+padding: 1px;
+margin: 0px;
+margin-left: auto;
+margin-right: auto;
+}
+.cen_table{
+ border: 2px solid black;
+ text-align: center;
+}
+td input{
+width: 100px;
+padding: 3px;
+margin: 3px;
+}
+.search_th {
+text-align: right;
+padding-top: 10px ;
+}
+.centrals-wrapper {
+ width: 750px;
+ margin: 0 auto;
+ padding: 15px;
+}
+
+{% endblock %}
+{% block css %}
+{% endblock css %}
+</style>
+<link rel="shortcut icon" href="{% static 'favicon.ico' %}" />
+</head>
+{% endblock %}
+{% block javascript %}
+{% endblock %}
+<body>
+{% block content %}
+{% endblock %}
+</body>
+</html>
