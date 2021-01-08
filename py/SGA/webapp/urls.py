@@ -1,4 +1,3 @@
-#In legacyhalos_web
 """legacyhalos_web URL Configuration
 
 The `urlpatterns` list routes URLs to views. For more information please see:
@@ -16,14 +15,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.conf.urls import url
-import centrals.views as cen
+import SGA.webapp.sample.views as sample
 from django.views.generic import TemplateView
 
 
 urlpatterns = [
     url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
-    url(r'^list$', cen.list),
-    url(r'^centrals$', cen.centrals),
+    url(r'^list$', sample.list),
+    #url(r'^centrals$', .centrals),
     
 #   path('admin/', admin.site.urls),
 

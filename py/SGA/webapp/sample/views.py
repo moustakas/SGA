@@ -15,8 +15,8 @@ from astropy.table import Table, Column
 from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
-from .filters import CentralsFilter
-from legacyhalos_web.models import Centrals
+#from .filters import CentralsFilter
+#from legacyhalos_web.models import Centrals
 
 def list(req):
     """
