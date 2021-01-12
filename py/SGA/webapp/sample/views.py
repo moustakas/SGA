@@ -15,8 +15,8 @@ from astropy.table import Table, Column
 from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
-#from .filters import CentralsFilter
-#from legacyhalos_web.models import Centrals
+from .filters import SampleFilter
+from .models import Sample
 
 def list(req):
     """
@@ -45,23 +45,26 @@ def list(req):
         os.unlink(tmpfn)
         data.write(tmpfn)
         return send_file(tmpfn, 'image/fits', unlink=True, filename='results.fits')
+
     #otherwise render the page based on new filter
-    #automatically sort by mem_match_id if no other sort value given
-    sort = 'mem_match_id'
+    #automatically sort by sga_id if no other sort value given
+    sort = 'sga_id'
     if "sort" in req.GET:
         sort = req.GET.get('sort')
-        
+
     #apply filter to centrals model, then store in queryset
-    cen_filter = CentralsFilter(req.GET, queryset=Centrals.objects.all().order_by(sort))
-    cen_filtered = cen_filter.qs
+    sample_filter = SampleFilter(req.GET, queryset=Sample.objects.all().order_by(sort))
+    sample_filtered = sample_filter.qs
     #use pickle to serialize queryset, and store in session
-    req.session['results_list'] = pickle.dumps(cen_filtered)
+    req.session['results_list'] = pickle.dumps(sample_filtered)
     #use django pagination functionality
-    paginator = Paginator(cen_filtered, 50)
+    paginator = Paginator(sample_filtered, 50)
     page_num = req.GET.get('page')
     page = paginator.get_page(page_num)
     #include pagination values we will use in html page in the return statement
     return render(req, 'list.html', {'page': page, 'paginator': paginator})
+
+    
 
 def index(req):
     """

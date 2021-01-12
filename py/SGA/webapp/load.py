@@ -3,12 +3,12 @@ Load and parse through an input data file. Currently using "centrals-sample.fits
 Creates and populates a database table to represent centrals model
 """
 import os,sys
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "legacyhalos_web.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
 import django
 django.setup()
 
-from legacyhalos_web.models import Centrals
-#import csv
+from SGA.webapp.sample.models import Sample
+import fitsio
 from astropy.table import Table
 
 #if True:
@@ -28,27 +28,35 @@ from astropy.table import Table
 ##     centrals.save()
 
 #
-data = Table.read('centrals-sample.fits')
-data.rename_column('type', 'morphtype')
+data = Table(fitsio.read('/global/cfs/cdirs/cosmo/work/legacysurvey/SGA-2020/SGA-ellipse-v3.2.fits', columns=['sga_id','ra','dec']))
+#data.rename_column('type', 'morphtype')
+print('Read', len(data), 'rows')
+data = data[data['SGA_ID'] >= 0]
+print('Cut to', len(data), 'with SGA_ID')
 
-for row in data:
-    #print('Row:', row)
-    centrals=Centrals()
-    centrals.objid=row[0]
-    centrals.morphtype=row[1]
-    centrals.ra = row[2]
-    centrals.dec = row[3]
-    centrals.mem_match_id_string = '%0*d' % (7, row[4])
-    centrals.mem_match_id = row[4]
-    centrals.z = row[5]
-    centrals.la = row[6]
-    centrals.sdss_objid = row[7]
-    #centrals.viewer_link = centrals.viewer_link()
-    #centrals.skyserver_link = centrals.skyserver_link()
-    centrals.viewer_link = 'http://legacysurvey.org/viewer/?ra={:.6f}&dec={:.6f}&zoom=15&layer=decals-dr5'.format(centrals.ra, centrals.dec)
-    centrals.skyserver_link = 'http://skyserver.sdss.org/dr14/en/tools/explore/summary.aspx?id={}'.format(centrals.sdss_objid)
+objs = []
+nextpow = 1024
+for i,(sgaid,ra,dec) in enumerate(zip(data['SGA_ID'], data['RA'], data['DEC'])):
+    if i == nextpow:
+        print('Row', i)
+        nextpow *= 2
+    sam=Sample()
+    sam.sga_id = sgaid
+    sam.ra     = ra
+    sam.dec    = dec
+    objs.append(sam)
+    #sam.save()
+
+print('Bulk create')
+Sample.objects.bulk_create(objs)
     
-    centrals.save()
+# for row in data:
+#     #print('Row:', row)
+#     sam=Sample()
+#     sam.sga_id = row[0]
+#     sam.ra     = row[1]
+#     sam.dec    = row[2]
+#     sam.save()
 
 ## for row in data:
 ##     centrals = Centrals()

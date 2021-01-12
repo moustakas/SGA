@@ -30,7 +30,8 @@ DEBUG = bool( os.environ.get('DJANGO_DEBUG', True) )
 DEBUG = True
 
 ALLOWED_HOSTS = ['nyx.siena.edu', 'galaxy.siena.edu', 'atlas.local', '127.0.0.1',
-                 'lb.cosmo-sga.development.svc.spin.nersc.org']
+                 'lb.cosmo-sga.development.svc.spin.nersc.org',
+                 'sga.legacysurvey.org']
 
 
 # Application definition
@@ -42,7 +43,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'SGA.webapp.sample.app.SgaApp',
+    #'SGA.webapp.sample.app.SgaApp',
+    'SGA.webapp.sample',
 ]
 
 MIDDLEWARE = [
@@ -87,7 +89,7 @@ WSGI_APPLICATION = 'SGA.webapp.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'NAME': os.path.join(BASE_DIR, 'db', 'db.sqlite3'),
     }
 }
 
