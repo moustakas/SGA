@@ -20,9 +20,18 @@ class SampleFilter(django_filters.FilterSet):
     dec__gte = django_filters.NumberFilter(field_name='dec', lookup_expr='gte')
     dec__lte = django_filters.NumberFilter(field_name='dec', lookup_expr='lte')
 
+    #ra__cone = django_filters.NumberFilter(field_name='ra', method='conesearch')
+
     sgaid__gte = django_filters.NumberFilter(field_name='sga_id', lookup_expr='gte')
     sgaid__lte = django_filters.NumberFilter(field_name='sga_id', lookup_expr='lte')
 
+    # def conesearch(self, queryset, name, value):
+    #     print('Conesearch!', name, value, self)
+    #     return queryset
+    #.filter(**{
+    #        name: value,
+    #    })
+    
     class Meta:
         model = Sample
         #add variable to fields[] if looking for exact match

@@ -18,10 +18,10 @@ List of halos
 <table>
    <!-- {{ filter.form.as_p }} -->
     <tr>
-         <th class="search_th"><label for="idlo">redMaPPer ID:</label></th>
-         <td><input id="idlo" name="mem_match_id__gte" type="number" value=""
+         <th class="search_th"><label for="idlo">SGA ID:</label></th>
+         <td><input id="idlo" name="sga_id__gte" type="number" value=""
          placeholder="min" min="0"/></td> 
-         <td><input id="idhi" name="mem_match_id__lte" type="number" value="" placeholder="max" min="0"/></td> 
+         <td><input id="idhi" name="sga_id__lte" type="number" value="" placeholder="max" min="0"/></td> 
     </tr>
     <tr>
          <th class="search_th"><label for="ralo">RA:</label></th>
@@ -34,21 +34,29 @@ List of halos
          <td><input id="dechi" name="dec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
     </tr>
     <tr>
-         <th class="search_th"><label for="zlo">Redshift:</label></th>
-         <td><input id="zlo" name="z__gte" step="0.01" type="number" value="" placeholder="min" min="0"/></td> 
-         <td><input id="zhi" name="z__lte" step="0.01" type="number" value="" placeholder="max" min="0"/></td> 
-    </tr>
-    <tr>
          <th class="search_th"><label for="lalo">Richness:</label></th>
          <td><input id="lalo" name="la__gte" step="0.01" type="number" value="" placeholder="min" min="0"/></td> 
          <td><input id="lahi" name="la__lte" step="0.01" type="number" value="" placeholder="max" min="0"/></td> 
     </tr>
-   
+
+   <tr>
+     <th>Cone search</th>
+     <td class="search_th"><label for="conera">RA:</label></td>
+     <td><input id="conera" name="conera" step="1" type="number" value="" placeholder="ra" min="0"/></td> 
+    </tr>
+   <tr>
+     <td colspan="2" class="search_th"><label for="conedec">Dec:</label></td>
+     <td><input id="conedec" name="conedec" step="1" type="number" value="" placeholder="dec" min="-90"/></td> 
+   </tr>
+   <tr>
+     <td colspan="2" class="search_th"><label for="coneradius">Radius (arcmin):</label></td>
+     <td><input id="coneradius" name="coneradius" step="1" type="number" value="" placeholder="arcmin" min="0"/></td>
+    </tr>
+    
 </table>
     <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Search</button>
      
   </form>
-
 
 <script>
 document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+({{ page.end_index }})+' of '+({{paginator.count}})+'</p>')
@@ -65,20 +73,19 @@ document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+(
 <table class="table">
 <thead>
 <tr><th>Number</th>
-<th style="min-width:155px"><a href="?{% url_replace_sort request 'mem_match_id' %}">redMaPPer ID</a></th>
+<th style="min-width:155px"><a href="?{% url_replace_sort request 'sga_id' %}">SGA ID</a></th>
 <th><a href="?{% url_replace_sort request 'ra' %}">RA</a></th>
 <th><a href="?{% url_replace_sort request 'dec' %}">Dec</a></th>
-<th><a href="?{% url_replace_sort request 'z' %}">Redshift</a></th>
 <th><a href="?{% url_replace_sort request 'la' %}">Richness</a></th>
 <th>Viewer</th>
 <th>SkyServer</th></tr>
 </thead>
 <tbody>
-  {% for cen in page %}
+  {% for sam in page %}
 <tr><script>
 var index = {{ forloop.counter0}} + {{page.start_index }};
 document.write('<td>'+index+'</td>');
-document.write('<td><a href="{{BASE_URL}}centrals?index='+index+'">{{cen.mem_match_id_string}}</a></td>');
+document.write('<td><a href="{{BASE_URL}}sample?index='+index+'">{{cen.sga_id_string}}</a></td>');
 </script>
 <td><script>
   var ra = {{ cen.ra }};

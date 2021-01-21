@@ -52,8 +52,42 @@ def list(req):
     if "sort" in req.GET:
         sort = req.GET.get('sort')
 
+    print('list(): req.GET', req.GET)
+
+    #queryset = Sample.objects.all()
+    queryset = None
+    
+    cone_ra  = req.GET.get('conera','')
+    cone_dec = req.GET.get('conedec','')
+    cone_rad = req.GET.get('coneradius','')
+    if len(cone_ra) and len(cone_dec) and len(cone_rad):
+        try:
+            from django.db.models import F
+
+            cone_ra = float(cone_ra)
+            cone_dec = float(cone_dec)
+            cone_rad = float(cone_rad) / 60.
+
+            dd = np.deg2rad(cone_dec)
+            rr = np.deg2rad(cone_ra)
+            cosd = np.cos(dd)
+            x,y,z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
+            r2 = np.deg2rad(cone_rad)**2
+
+            queryset = Sample.objects.all().annotate(r2=((F('x')-x)*(F('x')-x) +
+                                                         (F('y')-y)*(F('y')-y) +
+                                                         (F('z')-z)*(F('z')-z)))
+            queryset = queryset.filter(r2__lt=r2)
+            
+            #queryset = Sample.objects.all().filter().order_by(sort)
+            #queryset = sample_near_radec(cone_ra, cone_dec, cone_rad).order_by(sort)
+        except ValueError:
+            pass
+    
+    if queryset is None:
+        queryset = Sample.objects.all().order_by(sort)
     #apply filter to centrals model, then store in queryset
-    sample_filter = SampleFilter(req.GET, queryset=Sample.objects.all().order_by(sort))
+    sample_filter = SampleFilter(req.GET, queryset)
     sample_filtered = sample_filter.qs
     #use pickle to serialize queryset, and store in session
     req.session['results_list'] = pickle.dumps(sample_filtered)
@@ -141,3 +175,24 @@ def send_file(fn, content_type, unlink=False, modsince=None, expires=3600, filen
     res['Expires'] = then.strftime(timefmt)
     res['Last-Modified'] = lastmod.strftime(timefmt)
     return res
+
+
+
+
+def sample_near_radec(ra, dec, rad, tablename='sample',
+                      extra_where='', clazz=Sample):
+    #from astrometry.util.starutil import deg2distsq
+    dec = np.deg2rad(dec)
+    ra = np.deg2rad(ra)
+    cosd = np.cos(dec)
+    x,y,z = cosd * np.cos(ra), cosd * np.sin(ra), np.sin(dec)
+    radius = rad + np.sqrt(2.)/2. * 2048 * 2.75 / 3600. * 1.01
+    ## FIXME
+    r2 = np.deg2rad(radius)**2
+    #r2 = deg2distsq(radius)
+    sample = clazz.objects.raw(
+        ('SELECT *, ((x-(%g))*(x-(%g))+(y-(%g))*(y-(%g))+(z-(%g))*(z-(%g))) as r2'
+         + ' FROM %s where r2 <= %g %s ORDER BY r2') %
+        (x,x,y,y,z,z, tablename, r2, extra_where))
+    return sample
+
