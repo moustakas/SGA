@@ -48,7 +48,7 @@ def list(req):
 
     #otherwise render the page based on new filter
     #automatically sort by sga_id if no other sort value given
-    sort = 'sga_id'
+    sort = None
     if "sort" in req.GET:
         sort = req.GET.get('sort')
 
@@ -60,6 +60,8 @@ def list(req):
     cone_ra  = req.GET.get('conera','')
     cone_dec = req.GET.get('conedec','')
     cone_rad = req.GET.get('coneradius','')
+    # save for form default
+    cone_rad_arcmin = cone_rad
     if len(cone_ra) and len(cone_dec) and len(cone_rad):
         try:
             from django.db.models import F
@@ -74,18 +76,21 @@ def list(req):
             x,y,z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
             r2 = np.deg2rad(cone_rad)**2
 
-            queryset = Sample.objects.all().annotate(r2=((F('x')-x)*(F('x')-x) +
-                                                         (F('y')-y)*(F('y')-y) +
-                                                         (F('z')-z)*(F('z')-z)))
+            queryset = Sample.objects.all().annotate(r2=((F('ux')-x)*(F('ux')-x) +
+                                                         (F('uy')-y)*(F('uy')-y) +
+                                                         (F('uz')-z)*(F('uz')-z)))
             queryset = queryset.filter(r2__lt=r2)
-            
-            #queryset = Sample.objects.all().filter().order_by(sort)
+            if sort is None:
+                sort='r2'
             #queryset = sample_near_radec(cone_ra, cone_dec, cone_rad).order_by(sort)
         except ValueError:
             pass
-    
+
     if queryset is None:
-        queryset = Sample.objects.all().order_by(sort)
+        queryset = Sample.objects.all()
+    if sort is None:
+        sort = 'sga_id'
+    queryset = queryset.order_by(sort)
     #apply filter to centrals model, then store in queryset
     sample_filter = SampleFilter(req.GET, queryset)
     sample_filtered = sample_filter.qs
@@ -96,7 +101,9 @@ def list(req):
     page_num = req.GET.get('page')
     page = paginator.get_page(page_num)
     #include pagination values we will use in html page in the return statement
-    return render(req, 'list.html', {'page': page, 'paginator': paginator})
+    return render(req, 'list.html', {'page': page, 'paginator': paginator,
+                                     'cone_ra':cone_ra, 'cone_dec':cone_dec,
+                                     'cone_rad':cone_rad_arcmin})
 
     
 
@@ -191,7 +198,7 @@ def sample_near_radec(ra, dec, rad, tablename='sample',
     r2 = np.deg2rad(radius)**2
     #r2 = deg2distsq(radius)
     sample = clazz.objects.raw(
-        ('SELECT *, ((x-(%g))*(x-(%g))+(y-(%g))*(y-(%g))+(z-(%g))*(z-(%g))) as r2'
+        ('SELECT *, ((ux-(%g))*(ux-(%g))+(uy-(%g))*(uy-(%g))+(uz-(%g))*(uz-(%g))) as r2'
          + ' FROM %s where r2 <= %g %s ORDER BY r2') %
         (x,x,y,y,z,z, tablename, r2, extra_where))
     return sample

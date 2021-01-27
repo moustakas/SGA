@@ -16,6 +16,16 @@ class Sample(Model):
     dec = FloatField(null=True)
     sga_id = IntegerField(null=True)
 
+    # radec2xyz, for cone search in the database
+    ux = FloatField(default=-2.0)
+    uy = FloatField(default=-2.0)
+    uz = FloatField(default=-2.0)
+
+    group_name = CharField(max_length=40, default='')
+    galaxy_name = CharField(max_length=30, default='')
+    pa = FloatField(default=0.0)
+    ba = FloatField(default=0.0)
+    diam = FloatField(default=0.0)
     # objid = IntegerField(null=True)
     # morphtype = CharField(max_length=6, null=True)
     # ra = FloatField(null=True)
@@ -31,12 +41,17 @@ class Sample(Model):
     # def __str__(self):
     #     return ('user Central Search(%s,%s,%s,%s,%s,%s,%s,%s)' % (self.objid, self.morphtype, self.ra, self.dec, self.mem_match_id, self.z, self.la, self.sdss_objid))
 
-    #def viewer_link(self):
-    #    baseurl = 'http://legacysurvey.org/viewer/'
-    #    viewer = '{}?ra={:.6f}&dec={:.6f}&zoom=15&layer=decals-dr5'.format(
-    #        baseurl, self.ra, self.dec)
-    #    return viewer
-    #
-    #def skyserver_link(self):
-    #    return 'http://skyserver.sdss.org/dr14/en/tools/explore/summary.aspx?id=%d' % self.sdss_objid
+    def galaxy_link(self):
+        baseurl = 'https://portal.nersc.gov/project/cosmo/temp/ioannis/SGA-html-2020/'
+        radeg = '%i' % int(self.ra)
+        url = baseurl + radeg + '/' + self.galaxy_name + '/' + self.galaxy_name + '.html'
+        return url
 
+    def group_link(self):
+        baseurl = 'https://portal.nersc.gov/project/cosmo/temp/ioannis/SGA-html-2020/'
+        radeg = '%i' % int(self.ra)
+        url = baseurl + radeg + '/' + self.group_name + '/' + self.group_name + '.html'
+        return url
+
+    def sga_id_string(self):
+        return '%i' % self.sga_id

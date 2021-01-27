@@ -28,15 +28,20 @@ from astropy.table import Table
 ##     centrals.save()
 
 #
-data = Table(fitsio.read('/global/cfs/cdirs/cosmo/work/legacysurvey/SGA-2020/SGA-ellipse-v3.2.fits', columns=['sga_id','ra','dec']))
+data = Table(fitsio.read('/global/cfs/cdirs/cosmo/work/legacysurvey/SGA-2020/SGA-ellipse-v3.2.fits', columns=['sga_id','ra','dec', 'group_name', 'galaxy', 'ba', 'pa', 'diam']))
 #data.rename_column('type', 'morphtype')
 print('Read', len(data), 'rows')
 data = data[data['SGA_ID'] >= 0]
 print('Cut to', len(data), 'with SGA_ID')
 
+from astrometry.util.starutil_numpy import radectoxyz
+xyz = radectoxyz(data['RA'], data['DEC'])
+
 objs = []
 nextpow = 1024
-for i,(sgaid,ra,dec) in enumerate(zip(data['SGA_ID'], data['RA'], data['DEC'])):
+for i,(sgaid,ra,dec,grp,gal,ba,pa,diam) in enumerate(zip(data['SGA_ID'], data['RA'], data['DEC'],
+                                                         data['GROUP_NAME'], data['GALAXY'],
+                                                         data['BA'], data['PA'], data['DIAM'])):
     if i == nextpow:
         print('Row', i)
         nextpow *= 2
@@ -44,6 +49,14 @@ for i,(sgaid,ra,dec) in enumerate(zip(data['SGA_ID'], data['RA'], data['DEC'])):
     sam.sga_id = sgaid
     sam.ra     = ra
     sam.dec    = dec
+    sam.ux      = xyz[i,0]
+    sam.uy      = xyz[i,1]
+    sam.uz      = xyz[i,2]
+    sam.group_name = grp.strip()
+    sam.galaxy_name = gal.strip()
+    sam.pa = pa
+    sam.ba = ba
+    sam.diam = diam
     objs.append(sam)
     #sam.save()
 
