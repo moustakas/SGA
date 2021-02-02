@@ -28,11 +28,15 @@ from astropy.table import Table
 ##     centrals.save()
 
 #
-data = Table(fitsio.read('/global/cfs/cdirs/cosmo/work/legacysurvey/SGA-2020/SGA-ellipse-v3.2.fits', columns=['sga_id','ra','dec', 'group_name', 'galaxy', 'ba', 'pa', 'diam']))
+data = Table(fitsio.read('/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020.fits', ext='SGA',
+                         columns=['sga_id', 'ra', 'dec', 'group_name', 'galaxy', 'ba', 'pa', 'diam']))
+print('Hacking RA, Dec!')
+data.rename_column('SGA_RA', 'RA')
+data.rename_column('SGA_DEC', 'DEC')
 #data.rename_column('type', 'morphtype')
 print('Read', len(data), 'rows')
-data = data[data['SGA_ID'] >= 0]
-print('Cut to', len(data), 'with SGA_ID')
+#data = data[data['SGA_ID'] >= 0]
+#print('Cut to', len(data), 'with SGA_ID')
 
 from astrometry.util.starutil_numpy import radectoxyz
 xyz = radectoxyz(data['RA'], data['DEC'])
