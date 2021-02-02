@@ -1,26 +1,29 @@
-"""
-Holds the functions that send http responses to the browser, including 
-rendering the html pages index.html, list.html, and centrals.html, or sending a download file.
+#!/usr/bin/env python
 
-All logic that must be done before the browser renders the html occurs here, including 
-sessions, serialization, querying database, applying filters, and pagination.
-"""
+"""Holds the functions that send http responses to the browser, including
+rendering the html pages index.html, list.html, and sample.html, or sending a
+download file.
 
-import os
-import pickle
-import tempfile
+All logic that must be done before the browser renders the html occurs here,
+including sessions, serialization, querying database, applying filters, and
+pagination.
+
+"""
+import os, pickle, tempfile
 import numpy as np
+
 import astropy.io.fits
 from astropy.table import Table, Column
+
 from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
+
 from .filters import SampleFilter
 from .models import Sample
 
 def list(req):
-    """
-    Returns the list.html download file, or renders the list.html page after it 
+    """Returns the list.html download file, or renders the list.html page after it
     applies the filter, stores result to session, and sets up pagination.
     
     Args:
@@ -28,26 +31,27 @@ def list(req):
         
     Returns: 
         File stream if user clicked download, otherwise render for list.html
-    """
-    #if download button was pressed return a send_file
-    if req.method == 'POST':
-        # Ideally, this step would grab the full set of data from the parent
-        # FITS file (before it's loaded into Django in load.py).  So this is a
-        # hack!
-        data = Table()
-        for col in ('objid', 'ra', 'dec', 'morphtype', 'z',
-                    'la', 'sdss_objid'):
-            data[col] = [getattr(cc, col) for cc in cen_filtered]
-            
-        # Write the FITS file contents...
-        f, tmpfn = tempfile.mkstemp(suffix='.fits')
-        os.close(f)
-        os.unlink(tmpfn)
-        data.write(tmpfn)
-        return send_file(tmpfn, 'image/fits', unlink=True, filename='results.fits')
 
-    #otherwise render the page based on new filter
-    #automatically sort by sga_id if no other sort value given
+    """
+    ##if download button was pressed return a send_file
+    #if req.method == 'POST':
+    #    # Ideally, this step would grab the full set of data from the parent
+    #    # FITS file (before it's loaded into Django in load.py).  So this is a
+    #    # hack!
+    #    data = Table()
+    #    for col in ('objid', 'ra', 'dec', 'morphtype', 'z',
+    #                'la', 'sdss_objid'):
+    #        data[col] = [getattr(cc, col) for cc in cen_filtered]
+    #        
+    #    # Write the FITS file contents...
+    #    f, tmpfn = tempfile.mkstemp(suffix='.fits')
+    #    os.close(f)
+    #    os.unlink(tmpfn)
+    #    data.write(tmpfn)
+    #    return send_file(tmpfn, 'image/fits', unlink=True, filename='sga.fits')
+
+    # Render the page based on new filter. Automatically sort by sga_id if no
+    # other sort value given.
     sort = None
     if "sort" in req.GET:
         sort = req.GET.get('sort')
@@ -60,6 +64,7 @@ def list(req):
     cone_ra  = req.GET.get('conera','')
     cone_dec = req.GET.get('conedec','')
     cone_rad = req.GET.get('coneradius','')
+
     # save for form default
     cone_rad_arcmin = cone_rad
     if len(cone_ra) and len(cone_dec) and len(cone_rad):
@@ -73,12 +78,13 @@ def list(req):
             dd = np.deg2rad(cone_dec)
             rr = np.deg2rad(cone_ra)
             cosd = np.cos(dd)
-            x,y,z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
+            x, y, z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
             r2 = np.deg2rad(cone_rad)**2
 
-            queryset = Sample.objects.all().annotate(r2=((F('ux')-x)*(F('ux')-x) +
-                                                         (F('uy')-y)*(F('uy')-y) +
-                                                         (F('uz')-z)*(F('uz')-z)))
+            queryset = Sample.objects.all().annotate(
+                r2=((F('ux')-x)*(F('ux')-x) +
+                    (F('uy')-y)*(F('uy')-y) +
+                    (F('uz')-z)*(F('uz')-z)))
             queryset = queryset.filter(r2__lt=r2)
             if sort is None:
                 sort='r2'
@@ -90,21 +96,26 @@ def list(req):
         queryset = Sample.objects.all()
     if sort is None:
         sort = 'sga_id'
+        
     queryset = queryset.order_by(sort)
-    #apply filter to centrals model, then store in queryset
+
+    #apply filter to Sample model, then store in queryset
     sample_filter = SampleFilter(req.GET, queryset)
     sample_filtered = sample_filter.qs
+
     #use pickle to serialize queryset, and store in session
     req.session['results_list'] = pickle.dumps(sample_filtered)
+
     #use django pagination functionality
     paginator = Paginator(sample_filtered, 50)
     page_num = req.GET.get('page')
     page = paginator.get_page(page_num)
-    #include pagination values we will use in html page in the return statement
+
+    # Include pagination values we will use in html page in the return
+    # statement.
     return render(req, 'list.html', {'page': page, 'paginator': paginator,
                                      'cone_ra':cone_ra, 'cone_dec':cone_dec,
                                      'cone_rad':cone_rad_arcmin})
-
     
 
 def index(req):
@@ -116,6 +127,7 @@ def index(req):
         
     Returns: 
         Render for index.html
+    
     """
     return render(req, 'index.html')
 
@@ -129,6 +141,7 @@ def centrals(req):
         
     Returns: 
         Render for centrals.html based on index value
+
     """
     index = int(req.GET.get('index'))
     #load from session and use slicing to access info on that Central object
@@ -141,16 +154,20 @@ def centrals(req):
     next_index = index + 1
     if (next_index > len(cen_list)):
        next_index = 1
-    #include values we will use in html page in the return statement
-    return render(req, 'centrals.html', {'cen_list': cen_list, 'index': index, 'cen': cen, 'next_index': next_index, 'prev_index': prev_index})
+       
+    # Include values we will use in html page in the return statement.
+    return render(req, 'centrals.html', {'cen_list': cen_list, 'index': index, 'cen': cen,
+                                         'next_index': next_index, 'prev_index': prev_index})
 
 def send_file(fn, content_type, unlink=False, modsince=None, expires=3600, filename=None):
-    """
-    Creates a streaminghttpresponse to send download file to browser
-    Taken from unwise.me views.py
+    """Creates a streaminghttpresponse to send download file to browser
+
+    Taken from unwise.views.py.
+
     """
     import datetime
     from django.http import HttpResponseNotModified, StreamingHttpResponse
+
     '''
     modsince: If-Modified-Since header string from the client.
     '''
@@ -183,9 +200,6 @@ def send_file(fn, content_type, unlink=False, modsince=None, expires=3600, filen
     res['Last-Modified'] = lastmod.strftime(timefmt)
     return res
 
-
-
-
 def sample_near_radec(ra, dec, rad, tablename='sample',
                       extra_where='', clazz=Sample):
     #from astrometry.util.starutil import deg2distsq
@@ -194,6 +208,7 @@ def sample_near_radec(ra, dec, rad, tablename='sample',
     cosd = np.cos(dec)
     x,y,z = cosd * np.cos(ra), cosd * np.sin(ra), np.sin(dec)
     radius = rad + np.sqrt(2.)/2. * 2048 * 2.75 / 3600. * 1.01
+
     ## FIXME
     r2 = np.deg2rad(radius)**2
     #r2 = deg2distsq(radius)
@@ -201,5 +216,6 @@ def sample_near_radec(ra, dec, rad, tablename='sample',
         ('SELECT *, ((ux-(%g))*(ux-(%g))+(uy-(%g))*(uy-(%g))+(uz-(%g))*(uz-(%g))) as r2'
          + ' FROM %s where r2 <= %g %s ORDER BY r2') %
         (x,x,y,y,z,z, tablename, r2, extra_where))
+    
     return sample
 
