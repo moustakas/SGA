@@ -36,6 +36,7 @@ def main():
             nextpow *= 2
             
         sam = Sample()
+        sam.row_index = i
         sam.sga_id = sgaid
         sam.galaxy_name = gal.strip()
         sam.ra = ra

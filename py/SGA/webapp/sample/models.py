@@ -15,6 +15,9 @@ class Sample(Model):
     """Model to represent a single galaxy.
 
     """
+    # in FITS table
+    row_index = IntegerField(default=-1)
+
     sga_id = IntegerField(null=True)
     galaxy_name = CharField(max_length=30, default='')
     ra = FloatField(null=True)
