@@ -15,12 +15,17 @@ import numpy as np
 import astropy.io.fits
 from astropy.table import Table, Column
 
+if __name__ == '__main__':
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
+    import django
+    django.setup()
+
 from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
 
-from .filters import SampleFilter
-from .models import Sample
+from SGA.webapp.sample.filters import SampleFilter
+from SGA.webapp.sample.models import Sample
 
 def list(req):
     """Returns the list.html download file, or renders the list.html page after it
@@ -231,3 +236,17 @@ def sample_near_radec(ra, dec, rad, tablename='sample',
     
     return sample
 
+
+def main():
+    from django.test import Client
+    import time
+    c = Client()
+    t0 = time.process_time()
+    wt0 = time.time()
+    r = c.get('/list')
+    t1 = time.process_time()
+    wt1 = time.time()
+    print('Took', t1-t0, 'cpu', wt1-wt0, 'wall')
+
+if __name__ == '__main__':
+    main()
