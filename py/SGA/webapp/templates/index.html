@@ -6,19 +6,37 @@ Siena Galaxy Atlas 2020
 {% endblock %}
 
 {% block content %}
+
 <div><center>
-<h2><em>Siena Galaxy Atlas 2020</em></h2>
-<p class="big"><a href="/data/SGA-2020/SGA-ellipse-v3.2.fits">Download the whole catalog (5 GB)</a></p>
-<p class="big"><a href="list">Search</a></p>
-<br/>
-<br/>
-<br/>
-<img class="cluster" src="{% static "data/0000510/0000510-coadd-montage.png" %}" alt="Central Galaxy 510"/>
-<p>Each mosaic (left to right: data, model of all but the central galaxy, residual image containing just the central galaxy) is 300 kpc by 300 kpc.</p>
+<br/> <br/> <br/>
+<h1>Siena Galaxy Atlas</h1>
+
+<p style="width: 80%">This web portal provides access to the Siena Galaxy Atlas
+  (SGA), a multiwavelength atlas of nearby galaxies selected based on their
+  apparent angular diameter.</p>
+
+<p style="width: 80%">For a detailed description of the data, including the data
+  model and the conditions for use, please see
+  the <a href="https://legacysurvey.org/dr9/sga">SGA documentation</a>.</p>
+
+<br/> <br/>
+
+<p class="big"><a href="list">Query the Sample</a></p>
+<p class="big"><a href="/data/sga/2020/SGA-2020.fits">Download SGA-2020.fits (600 MB)</a></p>
+<p class="big"><a href="/data/sga/2020/SGA-2020-leda.fits">Download SGA-2020-leda.fits (28 MB)</a></p>
+
+<br/> <br/> <br/>
+
+<!--
+<img class="logo" src="{% static "logo.png" %}" alt="logo"/>
+
 <br/><br/>
 </center>
 <p class="indexleft">We generously acknowledge partial funding support for this work by the National Science Foundation grant AST-1616414.</p> 
 <p class="indexleft">Contact: <a href="https://www.siena.edu/faculty-and-staff/person/john-moustakas/" >John Moustakas</a>, jmoustakas@siena.edu<br/></p>
 <p class="indexleft"><a href="https://github.com/moustakas/SGA">code</a></p>
+-->
+
 </div>
+
 {% endblock %}
