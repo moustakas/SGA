@@ -1,10 +1,10 @@
+#!/usr/bin/env python
+
 """
 Used to run the server for this Django project
-"""
 
-#!/usr/bin/env python
-import os
-import sys
+"""
+import os, sys
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
