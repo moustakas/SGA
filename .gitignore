@@ -4,7 +4,7 @@ __pycache__/
 .ipynb_checkpoints                                                                                            
 # C extensions
 *.so
-.sqlite3
+*.sqlite3
 
 # Distribution / packaging
 .Python
@@ -24,6 +24,7 @@ var/
 *.egg
 MANIFEST
 migrations/
+db/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

@@ -5,13 +5,11 @@
 List of halos
 {% endblock %}
 
-
-
 {% block content %}
 
 <center>
   <h2 id="filterhead">
-    Central Galaxy Search
+    SGA Query
  </h2>
 <a href="../" style="float: left; margin-left: 20px;">Home</a>
   <form method="get">
@@ -22,9 +20,9 @@ List of halos
     <table>
     <tr>
          <th class="search_th"><label for="idlo">SGA ID:</label></th>
-         <td><input id="idlo" name="sga_id__gte" type="number" value=""
+         <td><input id="idlo" name="sgaid__gte" type="number" value=""
          placeholder="min" min="0"/></td> 
-         <td><input id="idhi" name="sga_id__lte" type="number" value="" placeholder="max" min="0"/></td> 
+         <td><input id="idhi" name="sgaid__lte" type="number" value="" placeholder="max" min="0"/></td> 
     </tr>
     <tr>
          <th class="search_th"><label for="ralo">RA:</label></th>
@@ -37,13 +35,35 @@ List of halos
          <td><input id="dechi" name="dec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
     </tr>
     <tr>
-         <th class="search_th"><label for="lalo">Richness:</label></th>
-         <td><input id="lalo" name="la__gte" step="0.01" type="number" value="" placeholder="min" min="0"/></td> 
-         <td><input id="lahi" name="la__lte" step="0.01" type="number" value="" placeholder="max" min="0"/></td> 
+         <th class="search_th"><label for="diamlo">Angular Diameter (arcmin):</label></th>
+         <td><input id="diamlo" name="diam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
+         <td><input id="diamhi" name="diam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
+    </tr>
+
+    <tr>
+         <th class="search_th"><label for="groupidlo">SGA Group ID:</label></th>
+         <td><input id="groupidlo" name="groupid__gte" type="number" value=""
+         placeholder="min" min="0"/></td> 
+         <td><input id="groupidhi" name="groupid__lte" type="number" value="" placeholder="max" min="0"/></td> 
+    </tr>
+    <tr>
+         <th class="search_th"><label for="groupralo">RA:</label></th>
+         <td><input id="groupralo" name="groupra__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+         <td><input id="grouprahi" name="groupra__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+    </tr>
+    <tr>
+         <th class="search_th"><label for="groupdeclo">Dec:</label></th>
+         <td><input id="groupdeclo" name="groupdec__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+         <td><input id="groupdechi" name="groupdec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+    </tr>
+    <tr>
+         <th class="search_th"><label for="groupdiamlo">Group Diameter (arcmin):</label></th>
+         <td><input id="groupdiamlo" name="groupdiam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
+         <td><input id="groupdiamhi" name="groupdiam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
     </tr>
 
    <tr>
-     <th>Cone search</th>
+     <th>Group Cone Search</th>
      <td class="search_th"><label for="conera">RA:</label></td>
      <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="ra" min="0"/></td> 
     </tr>
@@ -81,7 +101,7 @@ document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+(
 <th><a href="?{% url_replace_sort request 'dec' %}">Dec</a></th>
 <th><a href="?{% url_replace_sort request 'galaxy_name' %}">Galaxy</a></th>
 <th><a href="?{% url_replace_sort request 'group_name' %}">Group</a></th>
-<th>Galaxy Details</th>
+<!--<th>Galaxy Details</th>-->
 <th>Group Details</th>
 </tr>
 </thead>
@@ -110,7 +130,7 @@ document.write('<td><a href="{{BASE_URL}}sample?index='+index+'">{{sam.sga_id_st
   <td>
       {{ sam.group_name }}
 </td>
-  <td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td>
+<!--  <td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td> -->
   <td><a href = "{{ sam.group_link }}">group link</a></td></tr>
   {% endfor %}
 </tbody>

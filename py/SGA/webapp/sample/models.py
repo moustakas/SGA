@@ -39,7 +39,8 @@ class Sample(Model):
 
     def group_link(self):
         baseurl = 'https://portal.nersc.gov/project/cosmo/temp/ioannis/SGA-html-2020/'
-        raslice = '{:06d}'.format(int(self.group_ra*1000))[:3]
+        #raslice = '{:06d}'.format(int(self.group_ra*1000))[:3]
+        raslice = '000'
         url = baseurl + raslice + '/' + self.group_name + '/' + self.group_name + '.html'
         return url
 

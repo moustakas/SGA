@@ -10,11 +10,11 @@ import django
 from astropy.table import Table
 from astrometry.util.starutil_numpy import radectoxyz
 
-from SGA.webapp.sample.models import Sample
-
 def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
     django.setup()
+
+    from SGA.webapp.sample.models import Sample
 
     datafile = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020.fits'
     columns = ['sga_id', 'ra', 'dec', 'galaxy', 'diam',
