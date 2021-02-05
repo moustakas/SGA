@@ -30,6 +30,7 @@ DEBUG = bool( os.environ.get('DJANGO_DEBUG', True) )
 DEBUG = True
 
 ALLOWED_HOSTS = ['127.0.0.1',
+                 'testserver',
                  'lb.cosmo-sga.development.svc.spin.nersc.org',
                  'sga.legacysurvey.org']
 
