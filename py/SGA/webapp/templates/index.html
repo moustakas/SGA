@@ -1,31 +1,68 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}
-Siena Galaxy Atlas 2020
+{% block content %}
+
+<div class="body-content">
+<div class="row">
+            
+<article class="storypage" itemscope="itemscope" itemtype="http://schema.org/Article"><header></header><div class="e-content entry-content" itemprop="articleBody text">
+<br /><br /><br />
+<div>
+  <div class="col-md-6 col-left docutils container">
+    <h2>Siena Galaxy Atlas</h2>
+
+    <p style="width: 80%">This web portal provides dedicated access to the Siena
+     Galaxy Atlas (SGA), a multiwavelength atlas of nearby galaxies selected
+     based on their apparent angular diameter.</p>
+
+    <p style="width: 80%">For a detailed description of the data, including the
+    data model and the conditions for use, please see
+    the <a href="https://legacysurvey.org/dr9/sga">SGA documentation</a>.</p>
+
+<table border="1" class="docutils">
+<colgroup>
+<col width="34%">
+<col width="30%">
+<col width="35%">
+</colgroup>
+<tbody valign="top"><tr>
+<td>
+<em>The Beijing-Arizona Sky Survey</em> (<a class="reference external" href="bass">BASS</a>)</td>
+<td>
+<em>The DECam Legacy Survey</em> (<a class="reference external" href="decamls">DECaLS</a>)</td>
+<td>
+<em>The Mayall z-band Legacy Survey</em> (<a class="reference external" href="mzls">MzLS</a>)</td>
+</tr></tbody>
+</table>
+</div>
+
+<div class="col-md-6 col-right docutils container">
+  <div class="jumbotron">
+    <h3><a href="list">Explore the Data</a></h3>
+  </div>
+</div>
+
+</div>
+</div>
+</article>
+</div>
+</div>
+</div>
+</body>
 {% endblock %}
 
-{% block content %}
+<!--
 
 <div class="row">
 <article class="storypage" itemscope="itemscope" itemtype="http://schema.org/Article"><header></header><div class="e-content entry-content" itemprop="articleBody text">
 <div>
 
-<h2>Siena Galaxy Atlas</h2>
 
 <div class="col-md-6 col-left docutils container">
 
-<!--
 <img src="{% static "sga-sky.png" %}" alt="SGA Distribution" width="20%" />
--->
 
-<p style="width: 80%">This web portal provides access to the Siena Galaxy Atlas
-  (SGA), a multiwavelength atlas of nearby galaxies selected based on their
-  apparent angular diameter.</p>
-
-<p style="width: 80%">For a detailed description of the data, including the data
-  model and the conditions for use, please see
-  the <a href="https://legacysurvey.org/dr9/sga">SGA documentation</a>.</p>
 <br/>
 
 <p class="big"><a href="list">Query the Sample</a></p>
@@ -37,4 +74,3 @@ Siena Galaxy Atlas 2020
 </div>
 <!--End of body content-->
 
-{% endblock %}
