@@ -1,7 +1,128 @@
 {% load static %}
-
 <html>
 {% block header %}
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Release 1 | Legacy Survey</title>
+<!-- <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css" rel="stylesheet"> --><!-- <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous"> --><link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootswatch/3.4.1/readable/bootstrap.min.css" type="text/css">
+<link href="css/rst.css" rel="stylesheet" type="text/css">
+<link href="css/code.css" rel="stylesheet" type="text/css">
+<link href="css/colorbox.css" rel="stylesheet" type="text/css">
+<link href="css/theme.css" rel="stylesheet" type="text/css">
+<link href="css/custom.css" rel="stylesheet" type="text/css">
+<link rel="canonical" href="https://sga.legacysurvey.org">
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script><meta name="author" content="Legacy Survey">
+
+<!--
+<link rel="icon" href="static/sga-thumb.png" sizes="32x32">
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml">
+<meta property="og:description" content="Description
+Files
+Catalogs
+Known Issues and Workarounds">
+<meta property="article:published_time" content="2020-03-26T17:10:49Z">
+-->
+
+<meta property="og:site_name" content="Siena Galaxy Atlas">
+<meta property="og:title" content="Siena Galaxy Atlas - 2020">
+<meta property="og:url" content="https://sga.legacysurvey.org">
+<meta property="og:type" content="article">
+</head>
+
+<nav class="navbar navbar-default navbar-fixed-top" role="navigation"><div class="container">
+<!-- This keeps the margins nice -->
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="https://www.legacysurvey.org/">
+            <!--
+                <img src="static/sga-thumb.png" size="32x32" alt="SGA logo" id="logo"></a>
+            -->
+        </div>
+<!-- /.navbar-header -->
+<div class="collapse navbar-collapse navbar-ex1-collapse">
+<ul class="nav navbar-nav">
+<li><a href="./">Home</a></li>
+<li class="dropdown"><a href="#" class="dropdown-toggle" data-toggle="dropdown">DR9<b class="caret"></b></a><ul class="dropdown-menu">
+<li>
+<a href="../dr9/description">Description</a>
+                    </li>
+  </ul>
+  
+</li>
+<li class="dropdown">
+<a href="#" class="dropdown-toggle" data-toggle="dropdown">Sky Viewer<b class="caret"></b></a>
+            <ul class="dropdown-menu">
+<li>
+<a href="https://www.legacysurvey.org/viewer">Go to the Sky Viewer</a>
+                    </li>
+<li>
+<a href="../svtips">Sky Viewer Tips &amp; Tricks</a>
+                    </li>
+<li>
+<a href="https://www.legacysurvey.org/viewer/urls">List of Cutout/URL Patterns</a>
+            </li>
+</ul>
+</li>
+<li class="dropdown">
+<a href="#" class="dropdown-toggle" data-toggle="dropdown">Gallery<b class="caret"></b></a>
+            <ul class="dropdown-menu">
+<li>
+<a href="../dr9/gallery">DR9</a>
+                    </li>
+<li>
+<a href="../dr8/gallery">DR8</a>
+                    </li>
+<li>
+<a href="../dr7/gallery">DR7</a>
+                    </li>
+<li>
+<a href="../dr6/gallery">DR6</a>
+                    </li>
+<li>
+<a href="../dr5/gallery">DR5</a>
+                    </li>
+<li>
+<a href="../dr2/gallery">DR4</a>
+                    </li>
+<li>
+<a href="../dr2/gallery">DR3</a>
+                    </li>
+<li>
+<a href="../dr2/gallery">DR2</a>
+            </li>
+</ul>
+</li>
+<li>
+<a href="../status">Status</a>
+                </li>
+<li>
+<a href="../pubs">Publications</a>
+                </li>
+<li>
+<a href="https://desi.lbl.gov/trac/wiki/DecamLegacy">Wiki</a>
+                </li>
+<li>
+<a href="../contact">Contacts</a>
+
+                
+            </li>
+</ul>
+<ul class="nav navbar-nav navbar-right"></ul>
+</div>
+        <!-- /.navbar-collapse -->
+    </div>
+<!-- /.container -->
+</nav><!-- End of Menubar --><div class="container" id="content" role="main">
+  
+
+<!--
 <head>
   <title>
     {% block title %}
@@ -11,7 +132,7 @@
 
 <link href="style.css" rel="stylesheet" type="text/css">
 
-<!--<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB" crossorigin="anonymous">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB" crossorigin="anonymous">
 <style type="text/css">
 
 {% block basecss %}
@@ -100,14 +221,15 @@ margin: 3px;
 {% block css %}
 {% endblock css %}
 </style>
--->
 
 <link rel="shortcut icon" href="{% static 'favicon.ico' %}" />
 </head>
+-->
 
 {% endblock %}
 {% block javascript %}
 {% endblock %}
+
 <body>
 {% block content %}
 {% endblock %}

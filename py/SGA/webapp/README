@@ -10,3 +10,5 @@ python load.py
 
 touch wsgi.py
 
+
+convert sga-sky.png -gravity north -crop 100x82% sga-thumb.png

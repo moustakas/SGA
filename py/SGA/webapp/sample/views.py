@@ -46,7 +46,7 @@ def list(req):
         qs = Sample.objects.all()
         qs.query = query
         inds = qs.values_list('row_index')
-        datafile = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020.fits'
+        datafile = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020-ls.fits' #'/data/SGA-2020.fits' #'/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020.fits'
         inds = np.array(inds)
         inds = inds[:,0]
         print('Query indices:', inds.shape)
