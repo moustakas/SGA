@@ -15,12 +15,17 @@ import numpy as np
 import astropy.io.fits
 from astropy.table import Table, Column
 
+if __name__ == '__main__':
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
+    import django
+    django.setup()
+
 from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
 
-from .filters import SampleFilter
-from .models import Sample
+from SGA.webapp.sample.filters import SampleFilter
+from SGA.webapp.sample.models import Sample
 
 def list(req):
     """Returns the list.html download file, or renders the list.html page after it
@@ -33,22 +38,38 @@ def list(req):
         File stream if user clicked download, otherwise render for list.html
 
     """
-    ##if download button was pressed return a send_file
-    #if req.method == 'POST':
-    #    # Ideally, this step would grab the full set of data from the parent
-    #    # FITS file (before it's loaded into Django in load.py).  So this is a
-    #    # hack!
-    #    data = Table()
-    #    for col in ('objid', 'ra', 'dec', 'morphtype', 'z',
-    #                'la', 'sdss_objid'):
-    #        data[col] = [getattr(cc, col) for cc in cen_filtered]
-    #        
-    #    # Write the FITS file contents...
-    #    f, tmpfn = tempfile.mkstemp(suffix='.fits')
-    #    os.close(f)
-    #    os.unlink(tmpfn)
-    #    data.write(tmpfn)
-    #    return send_file(tmpfn, 'image/fits', unlink=True, filename='sga.fits')
+    ##if download button was pressed return the selected subset of the FITS table.
+    if req.method == 'POST':
+        print('download: req.GET:', req.GET)
+        query = pickle.loads(req.session['sample_query'])
+        print('Query:', query)
+        qs = Sample.objects.all()
+        qs.query = query
+        inds = qs.values_list('row_index')
+        datafile = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020-ls.fits' #'/data/SGA-2020.fits' #'/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020.fits'
+        inds = np.array(inds)
+        inds = inds[:,0]
+        print('Query indices:', inds.shape)
+        import fitsio
+        fin = fitsio.FITS(datafile)
+        hdu = fin['SGA']
+        t = hdu.read(rows=inds)
+        hdr = hdu.read_header()
+        phdr = fin[0].read_header()
+        hdu2 = fin['SGA-TRACTOR']
+        t2 = hdu2.read(rows=inds)
+        hdr2 = hdu2.read_header()
+        #print('Read', t)
+        fits = fitsio.FITS('mem://', 'rw')
+        fits.write(None, header=phdr)
+        fits.write(t, header=hdr, extname='SGA')
+        fits.write(t2, header=hdr2, extname='SGA-TRACTOR')
+        rawdata = fits.read_raw()
+        fits.close()
+        filename = 'sga-query.fits'
+        res = HttpResponse(rawdata, content_type='application/fits')
+        res['Content-Disposition'] = 'attachment; filename="%s"' % filename
+        return res
 
     # Render the page based on new filter. Automatically sort by sga_id if no
     # other sort value given.
@@ -56,31 +77,26 @@ def list(req):
     if "sort" in req.GET:
         sort = req.GET.get('sort')
 
-    print('list(): req.GET', req.GET)
+    #print('list(): req.GET', req.GET)
 
-    #queryset = Sample.objects.all()
     queryset = None
     
     cone_ra  = req.GET.get('conera','')
     cone_dec = req.GET.get('conedec','')
     cone_rad = req.GET.get('coneradius','')
-
     # save for form default
     cone_rad_arcmin = cone_rad
     if len(cone_ra) and len(cone_dec) and len(cone_rad):
         try:
             from django.db.models import F
-
             cone_ra = float(cone_ra)
             cone_dec = float(cone_dec)
             cone_rad = float(cone_rad) / 60.
-
             dd = np.deg2rad(cone_dec)
             rr = np.deg2rad(cone_ra)
             cosd = np.cos(dd)
             x, y, z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
             r2 = np.deg2rad(cone_rad)**2
-
             queryset = Sample.objects.all().annotate(
                 r2=((F('ux')-x)*(F('ux')-x) +
                     (F('uy')-y)*(F('uy')-y) +
@@ -94,23 +110,24 @@ def list(req):
 
     if queryset is None:
         queryset = Sample.objects.all()
+
     if sort is None:
         sort = 'sga_id'
-        
+
     queryset = queryset.order_by(sort)
 
     #apply filter to Sample model, then store in queryset
     sample_filter = SampleFilter(req.GET, queryset)
     sample_filtered = sample_filter.qs
 
-    #use pickle to serialize queryset, and store in session
-    req.session['results_list'] = pickle.dumps(sample_filtered)
-
+    #use pickle to serialize queryset (just the SQL query), and store in session
+    req.session['sample_query'] = pickle.dumps(sample_filtered.query)
+    
     #use django pagination functionality
     paginator = Paginator(sample_filtered, 50)
     page_num = req.GET.get('page')
     page = paginator.get_page(page_num)
-
+    
     # Include pagination values we will use in html page in the return
     # statement.
     return render(req, 'list.html', {'page': page, 'paginator': paginator,
@@ -219,3 +236,17 @@ def sample_near_radec(ra, dec, rad, tablename='sample',
     
     return sample
 
+
+def main():
+    from django.test import Client
+    import time
+    c = Client()
+    t0 = time.process_time()
+    wt0 = time.time()
+    r = c.get('/list')
+    t1 = time.process_time()
+    wt1 = time.time()
+    print('Took', t1-t0, 'cpu', wt1-wt0, 'wall')
+
+if __name__ == '__main__':
+    main()

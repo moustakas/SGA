@@ -1,85 +1,87 @@
 {% extends "base.html" %}
 {% load my_templatetag %}
 
+<!--
 {% block title %}
 List of halos
 {% endblock %}
+-->
 
 {% block content %}
 
-<center>
-  <h2 id="filterhead">
-    SGA Query
- </h2>
 <a href="../" style="float: left; margin-left: 20px;">Home</a>
-  <form method="get">
+<center>
+<h2 id="filterhead">SGA Query</h2>
 
-<!-- {{ filter.form.as_p }}-->
+<form method="get">
+  <table>
+  <tr>
+       <th class="search_th"><label for="idlo">SGA ID</label></th>
+       <td><input id="idlo" name="sgaid__gte" type="number" value=""
+       placeholder="min" min="0"/></td> 
+       <td><input id="idhi" name="sgaid__lte" type="number" value="" placeholder="max" min="0"/></td> 
+  </tr>
+  <tr>
+       <th class="search_th"><label for="groupidlo">SGA Group ID</label></th>
+       <td><input id="groupidlo" name="groupid__gte" type="number" value=""
+       placeholder="min" min="0"/></td> 
+       <td><input id="groupidhi" name="groupid__lte" type="number" value="" placeholder="max" min="0"/></td> 
+  </tr>
+  <tr>
+       <th class="search_th"><label for="ralo">RA</label></th>
+       <td><input id="ralo" name="ra__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+       <td><input id="rahi" name="ra__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+  </tr>
+  <tr>
+       <th class="search_th"><label for="declo">Dec</label></th>
+       <td><input id="declo" name="dec__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+       <td><input id="dechi" name="dec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+  </tr>
+  <tr>
+       <th class="search_th"><label for="groupralo">Group RA</label></th>
+       <td><input id="groupralo" name="groupra__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+       <td><input id="grouprahi" name="groupra__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+  </tr>
+  <tr>
+       <th class="search_th"><label for="groupdeclo">Group Dec</label></th>
+       <td><input id="groupdeclo" name="groupdec__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
+       <td><input id="groupdechi" name="groupdec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+  </tr>
+  <tr>
+       <th class="search_th"><label for="diamlo">Galaxy Diameter (arcmin)</label></th>
+       <td><input id="diamlo" name="diam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
+       <td><input id="diamhi" name="diam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
+  </tr>
 
+  <tr>
+       <th class="search_th"><label for="groupdiamlo">Group Diameter (arcmin)</label></th>
+       <td><input id="groupdiamlo" name="groupdiam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
+       <td><input id="groupdiamhi" name="groupdiam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
+  </tr>
+  </table>
+<button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
+</form>
 
-    <table>
-    <tr>
-         <th class="search_th"><label for="idlo">SGA ID:</label></th>
-         <td><input id="idlo" name="sgaid__gte" type="number" value=""
-         placeholder="min" min="0"/></td> 
-         <td><input id="idhi" name="sgaid__lte" type="number" value="" placeholder="max" min="0"/></td> 
-    </tr>
-    <tr>
-         <th class="search_th"><label for="ralo">RA:</label></th>
-         <td><input id="ralo" name="ra__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
-         <td><input id="rahi" name="ra__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
-    </tr>
-    <tr>
-         <th class="search_th"><label for="declo">Dec:</label></th>
-         <td><input id="declo" name="dec__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
-         <td><input id="dechi" name="dec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
-    </tr>
-    <tr>
-         <th class="search_th"><label for="diamlo">Angular Diameter (arcmin):</label></th>
-         <td><input id="diamlo" name="diam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
-         <td><input id="diamhi" name="diam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
-    </tr>
+<br /><br />
 
-    <tr>
-         <th class="search_th"><label for="groupidlo">SGA Group ID:</label></th>
-         <td><input id="groupidlo" name="groupid__gte" type="number" value=""
-         placeholder="min" min="0"/></td> 
-         <td><input id="groupidhi" name="groupid__lte" type="number" value="" placeholder="max" min="0"/></td> 
-    </tr>
-    <tr>
-         <th class="search_th"><label for="groupralo">RA:</label></th>
-         <td><input id="groupralo" name="groupra__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
-         <td><input id="grouprahi" name="groupra__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
-    </tr>
-    <tr>
-         <th class="search_th"><label for="groupdeclo">Dec:</label></th>
-         <td><input id="groupdeclo" name="groupdec__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
-         <td><input id="groupdechi" name="groupdec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
-    </tr>
-    <tr>
-         <th class="search_th"><label for="groupdiamlo">Group Diameter (arcmin):</label></th>
-         <td><input id="groupdiamlo" name="groupdiam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
-         <td><input id="groupdiamhi" name="groupdiam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
-    </tr>
-
-   <tr>
-     <th>Group Cone Search</th>
-     <td class="search_th"><label for="conera">RA:</label></td>
-     <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="ra" min="0"/></td> 
-    </tr>
-   <tr>
-     <td colspan="2" class="search_th"><label for="conedec">Dec:</label></td>
-     <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="dec" min="-90"/></td> 
+<form method="get">
+  <table>
+  <tr>
+    <th>Cone Search</th>
+    <td class="search_th"><label for="conera">Search RA</label></td>
+    <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="ra" min="0"/></td> 
    </tr>
-   <tr>
-     <td colspan="2" class="search_th"><label for="coneradius">Radius (arcmin):</label></td>
-     <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
-    </tr>
-    
-</table>
-    <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Search</button>
-     
-  </form>
+  <tr>
+    <td colspan="2" class="search_th"><label for="conedec">Search Dec</label></td>
+    <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="dec" min="-90"/></td> 
+  </tr>
+  <tr>
+    <td colspan="2" class="search_th"><label for="coneradius">Search Radius (arcmin)</label></td>
+    <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
+   </tr>
+  </table>
+<button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
+</form>
 
 <script>
 document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+({{ page.end_index }})+' of '+({{paginator.count}})+'</p>')
@@ -95,49 +97,66 @@ document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+(
 
 <table class="table">
 <thead>
-<tr><th>Number</th>
+
+<tr>
+<th>Number</th>
 <th style="min-width:155px"><a href="?{% url_replace_sort request 'sga_id' %}">SGA ID</a></th>
+<th><a href="?{% url_replace_sort request 'galaxy_name' %}">Galaxy</a></th>
 <th><a href="?{% url_replace_sort request 'ra' %}">RA</a></th>
 <th><a href="?{% url_replace_sort request 'dec' %}">Dec</a></th>
-<th><a href="?{% url_replace_sort request 'galaxy_name' %}">Galaxy</a></th>
-<th><a href="?{% url_replace_sort request 'group_name' %}">Group</a></th>
-<!--<th>Galaxy Details</th>-->
-<th>Group Details</th>
+<th><a href="?{% url_replace_sort request 'dec' %}">Galaxy Diameter</a></th>
+<th><a href="?{% url_replace_sort request 'group_name' %}">Group Name</a></th>
+<th><a href="?{% url_replace_sort request 'ra' %}">Group RA</a></th>
+<th><a href="?{% url_replace_sort request 'dec' %}">Group Dec</a></th>
+<th><a href="?{% url_replace_sort request 'dec' %}">Group Diameter</a></th>
 </tr>
+<tr>
+<th></th>
+<th></th>
+<th></th>
+<th><a href="?{% url_replace_sort request 'ra' %}">(degree)</a></th>
+<th><a href="?{% url_replace_sort request 'dec' %}">(degree)</a></th>
+<th><a href="?{% url_replace_sort request 'dec' %}">(arcmin)</a></th>
+<th></th>
+<th><a href="?{% url_replace_sort request 'ra' %}">(degree)</a></th>
+<th><a href="?{% url_replace_sort request 'dec' %}">(degree)</a></th>
+<th><a href="?{% url_replace_sort request 'dec' %}">(arcmin)</a></th>
+</tr>
+
 </thead>
 <tbody>
   {% for sam in page %}
 <tr><script>
 var index = {{ forloop.counter0}} + {{page.start_index }};
 document.write('<td>'+index+'</td>');
-document.write('<td><a href="{{BASE_URL}}sample?index='+index+'">{{sam.sga_id_string}}</a></td>');
+<!--document.write('<td><a href="{{BASE_URL}}sample?index='+index+'">{{sam.sga_id_string}}</a></td>');-->
+document.write('<td>{{ sam.sga_id_string }}</td>');
 </script>
-  <td>
+<td>{{ sam.galaxy_name }}</td>
+<!--
+  
     {% comment <script> %}
     var ra = {{ sam.ra|floatformat:6 }};
     ra = ra.toFixed(7);
     document.write(ra);
     </script>
     {% endcomment %}
-  {{ sam.ra|floatformat:6 }}
-</td>
-<td>
-  {{ sam.dec|floatformat:6 }}
-</td>
-  <td>
-      {{ sam.galaxy_name }}
-</td>
-  <td>
-      <a href = "{{ sam.group_link }}">{{ sam.group_name }}</a>
-</td>
-<!--    
-<td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td> -->
-  <td><a href = "{{ sam.group_link }}">group link</a></td>
+    {{ sam.ra|floatformat:7 }}
+  </td>
 -->
-</tr>
-  {% endfor %}
+<td>{{ sam.ra|floatformat:7 }}</td>
+<td>{{ sam.dec|floatformat:6 }}</td>
+<td>{{ sam.diam|floatformat:3 }}</td>
+<td><a href = "{{ sam.galaxy_link }}">{{ sam.group_name }}</a></td>
+<td>{{ sam.group_ra|floatformat:7 }}</td>
+<td>{{ sam.group_dec|floatformat:6 }}</td>
+<td>{{ sam.group_diam|floatformat:3 }}</td>
+<!--  <td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td> 
+  <td><a href = "{{ sam.group_link }}">group link</a></td></tr>
+-->
+{% endfor %}
 </tbody>
-  </table>
+</table>
 
 <div style="text-align:center; padding: 10;">
     <span class="step-links">
@@ -151,7 +170,6 @@ document.write('<td><a href="{{BASE_URL}}sample?index='+index+'">{{sam.sga_id_st
         </span>
 
         {% if page.has_next %}
-            
             <a href="?{% url_replace request 'page' page.next_page_number %}">next</a>
             <a href="?{% url_replace request 'page' paginator.num_pages %}">last &raquo;</a>
         {% endif %}
