@@ -52,7 +52,7 @@ def explore(req):
         print('Query indices:', inds.shape)
         import fitsio
         fin = fitsio.FITS(datafile)
-        hdu = fin['SGA']
+        hdu = fin['SGA-LS']
         t = hdu.read(rows=inds)
         hdr = hdu.read_header()
         phdr = fin[0].read_header()
@@ -62,7 +62,7 @@ def explore(req):
         #print('Read', t)
         fits = fitsio.FITS('mem://', 'rw')
         fits.write(None, header=phdr)
-        fits.write(t, header=hdr, extname='SGA')
+        fits.write(t, header=hdr, extname='SGA-LS')
         fits.write(t2, header=hdr2, extname='SGA-TRACTOR')
         rawdata = fits.read_raw()
         fits.close()
@@ -132,7 +132,18 @@ def explore(req):
                                         'cone_ra':cone_ra, 'cone_dec':cone_dec,
                                         'cone_rad':cone_rad_arcmin})
     
+def group(req, group_name):
+    members = Sample.objects.all().filter(group_name=group_name)
+    members.order_by('sga_id')
+    nice_group_name = group_name.replace('_GROUP', ' Group')
+    primary = [m for m in members if m.group_primary]
+    primary = primary[0]
+    return render(req, 'group.html', {'group_name': group_name,
+                                      'nice_group_name': nice_group_name,
+                                      'primary': primary,
+                                      'members': members})
 
+    
 def index(req):
     """
     Renders the homepage from index.html

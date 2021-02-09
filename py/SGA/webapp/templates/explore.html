@@ -12,6 +12,37 @@
 <br /><br /><br />
 <br /><br />
 
+<h3>SGA Files</h2>
+<h4>On the web</h3>
+<a href="https://portal.nersc.gov/project/cosmo/data/sga/2020/data">https://portal.nersc.gov/project/cosmo/data/sga/2020/data</a>
+<h4>At NERSC (for collaborators)</h4>/global/cfs/cdirs/cosmo/data/sga/2020/data
+<h4>Full sample (within Legacy Surveys footprint)</h4><a href="/data/sga/2020/SGA-2020-ls.fits">Download SGA-2020.fits (600 MB)</a>
+<h4>Full sample (outside Legacy Surveys footprint)</h4><a href="/data/sga/2020/SGA-2020-nols.fits">Download SGA-2020-leda.fits (28 MB)</a>
+
+<br /><br /><hr />
+<br />
+
+<h3>Cone Search</h3>
+<form method="get" action="#results">
+  <table>
+  <tr>
+    <td class="search_th"><label for="conera">Search RA</label></td>
+    <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="ra" min="0"/></td> 
+   </tr>
+  <tr>
+    <td class="search_th"><label for="conedec">Search Dec</label></td>
+    <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="dec" min="-90"/></td> 
+  </tr>
+  <tr>
+    <td class="search_th"><label for="coneradius">Search Radius (arcmin)</label></td>
+    <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
+   </tr>
+  </table>
+<button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
+</form>
+
+<br /><br />
+<h3>Explore</h3>
 <form method="get">
   <table>
   <tr>
@@ -61,26 +92,10 @@
 <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
 </form>
 
+<a name="results" id="results"></a>
 <br /><br />
 
-<form method="get">
-  <table>
-  <tr>
-    <th>Cone Search</th>
-    <td class="search_th"><label for="conera">Search RA</label></td>
-    <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="ra" min="0"/></td> 
-   </tr>
-  <tr>
-    <td colspan="2" class="search_th"><label for="conedec">Search Dec</label></td>
-    <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="dec" min="-90"/></td> 
-  </tr>
-  <tr>
-    <td colspan="2" class="search_th"><label for="coneradius">Search Radius (arcmin)</label></td>
-    <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
-   </tr>
-  </table>
-<button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
-</form>
+<h3>Query Results</h3>
 
 <script>
 document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+({{ page.end_index }})+' of '+({{paginator.count}})+'</p>')
@@ -89,7 +104,7 @@ document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+(
 
 <form method="post">
 {% csrf_token %}
-<button href="" type="submit" class="btn btn-primary" name="dbutn" >Download</button>
+<button href="" type="submit" class="btn btn-primary" name="dbutn" >Download results</button>
 
 </form>
 </center>
@@ -113,25 +128,22 @@ document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+(
 <th></th>
 <th></th>
 <th></th>
-<th><a href="?{% url_replace_sort request 'ra' %}">(degree)</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">(degree)</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">(arcmin)</a></th>
+<th>(degree)</th>
+<th>(degree)</th>
+<th>(arcmin)</th>
 <th></th>
-<th><a href="?{% url_replace_sort request 'ra' %}">(degree)</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">(degree)</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">(arcmin)</a></th>
+<th>(degree)</th>
+<th>(degree)</th>
+<th>(arcmin)</th>
 </tr>
 
 </thead>
 <tbody>
   {% for sam in page %}
-<tr><script>
-var index = {{ forloop.counter0}} + {{page.start_index }};
-document.write('<td>'+index+'</td>');
-<!--document.write('<td><a href="{{BASE_URL}}sample?index='+index+'">{{sam.sga_id_string}}</a></td>');-->
-document.write('<td>{{ sam.sga_id_string }}</td>');
-</script>
-<td>{{ sam.galaxy_name }}</td>
+  <tr>
+      <td>{{ forloop.counter0|add:page.start_index }}</td>
+      <td>{{ sam.sga_id_string }}</td>
+      <td>{{ sam.galaxy_name }}</td>
 <!--
   
     {% comment <script> %}
@@ -146,8 +158,9 @@ document.write('<td>{{ sam.sga_id_string }}</td>');
 <td>{{ sam.ra|floatformat:7 }}</td>
 <td>{{ sam.dec|floatformat:6 }}</td>
 <td>{{ sam.diam|floatformat:3 }}</td>
-<td><a href = "{{ sam.galaxy_link }}">{{ sam.group_name }}</a></td>
-<td>{{ sam.group_ra|floatformat:7 }}</td>
+<td><a href="{% url 'group' sam.group_name %}">{{ sam.group_name }}</a></td>
+<!---{{ sam.group_link }}"-->
+      <td>{{ sam.group_ra|floatformat:7 }}</td>
 <td>{{ sam.group_dec|floatformat:6 }}</td>
 <td>{{ sam.group_diam|floatformat:3 }}</td>
 <!--  <td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td> 

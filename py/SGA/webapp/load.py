@@ -16,20 +16,21 @@ def main():
 
     from SGA.webapp.sample.models import Sample
 
-    datafile = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020.fits'
-    columns = ['sga_id', 'ra', 'dec', 'galaxy', 'diam',
-               'group_id', 'group_name', 'group_ra', 'group_dec', 'group_diameter']
-    data = Table(fitsio.read(datafile, ext='SGA', columns=columns))
+    datafile = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020-ls.fits'
+    columns = ['sga_id', 'ra_leda', 'dec_leda', 'galaxy', 'diam',
+               'group_id', 'group_name', 'group_ra', 'group_dec', 'group_diameter',
+               'group_primary']
+    data = Table(fitsio.read(datafile, ext='SGA-LS', columns=columns))
 
     print('Read {} rows from {}'.format(len(data), datafile))
 
-    xyz = radectoxyz(data['RA'], data['DEC'])
+    xyz = radectoxyz(data['RA_LEDA'], data['DEC_LEDA'])
 
     objs = []
     nextpow = 512 # 1024
-    for i, (sgaid, gal, ra, dec, diam, gid, gname, gra, gdec, gdiam) in enumerate(zip(
-        data['SGA_ID'], data['GALAXY'], data['RA'], data['DEC'], data['DIAM'],
-        data['GROUP_ID'], data['GROUP_NAME'], data['GROUP_RA'], data['GROUP_DEC'], data['GROUP_DIAMETER'])):
+    for i, (sgaid, gal, ra, dec, diam, gid, gname, gra, gdec, gdiam, gprim) in enumerate(zip(
+        data['SGA_ID'], data['GALAXY'], data['RA_LEDA'], data['DEC_LEDA'], data['DIAM'],
+            data['GROUP_ID'], data['GROUP_NAME'], data['GROUP_RA'], data['GROUP_DEC'], data['GROUP_DIAMETER'], data['GROUP_PRIMARY'])):
         
         if i == nextpow:
             print('Row', i)
@@ -47,6 +48,7 @@ def main():
         sam.uy = xyz[i, 1]
         sam.uz = xyz[i, 2]
 
+        sam.group_primary = gprim
         sam.group_id = gid
         sam.group_name = gname.strip()
         sam.nice_group_name = gname.strip().replace('_GROUP', ' GROUP')

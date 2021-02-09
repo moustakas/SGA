@@ -24,6 +24,7 @@ class Sample(Model):
     dec = FloatField(null=True)
     diam = FloatField(default=0.0)
 
+    group_primary = BooleanField(default=False)
     group_id = IntegerField(null=True)
     group_name = CharField(max_length=40, default='')
     group_ra = FloatField(null=True)
@@ -46,6 +47,19 @@ class Sample(Model):
         raslice = '000'
         url = baseurl + raslice + '/' + self.group_name + '/' + self.group_name + '.html'
         return url
+
+    def png_base_url(self):
+        baseurl = 'https://portal.nersc.gov/project/cosmo/data/sga/2020/html/'
+        baseurl += self.ra_slice() + '/' + self.group_name + '/';
+        return baseurl
+
+    def mosaic_diam(self):
+        # FIXME
+        return 3.*self.group_diam
+
+    def ra_slice(self):
+        raslice = '{:06d}'.format(int(self.group_ra*1000))[:3]
+        return raslice
 
     def sga_id_string(self):
         return '{}'.format(self.sga_id)
