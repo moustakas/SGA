@@ -24,7 +24,7 @@ import SGA.webapp.sample.views as sample
 
 urlpatterns = [
     url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
-    url(r'^list$', sample.list),
+    url(r'^explore$', sample.explore),
     
 #   path('admin/', admin.site.urls),
 

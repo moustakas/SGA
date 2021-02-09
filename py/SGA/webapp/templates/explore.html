@@ -1,17 +1,16 @@
 {% extends "base.html" %}
 {% load my_templatetag %}
 
-<!--
-{% block title %}
-List of halos
-{% endblock %}
--->
-
 {% block content %}
 
-<a href="../" style="float: left; margin-left: 20px;">Home</a>
 <center>
-<h2 id="filterhead">SGA Query</h2>
+<!--
+<div class="col-md-6 col-left docutils container">
+  <h2 id="filterhead">SGA Query</h2>
+</div>
+-->
+<br /><br /><br />
+<br /><br />
 
 <form method="get">
   <table>
@@ -95,7 +94,7 @@ document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+(
 </form>
 </center>
 
-<table class="table">
+<table class="table .table.bordered">
 <thead>
 
 <tr>
@@ -174,5 +173,8 @@ document.write('<td>{{ sam.sga_id_string }}</td>');
             <a href="?{% url_replace request 'page' paginator.num_pages %}">last &raquo;</a>
         {% endif %}
     </span>
+
 </div>
+</div>
+</body>
 {% endblock %}

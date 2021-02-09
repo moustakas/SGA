@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """Holds the functions that send http responses to the browser, including
-rendering the html pages index.html, list.html, and sample.html, or sending a
+rendering the html pages index.html, explore.html, and sample.html, or sending a
 download file.
 
 All logic that must be done before the browser renders the html occurs here,
@@ -27,15 +27,15 @@ from django.http import HttpResponse
 from SGA.webapp.sample.filters import SampleFilter
 from SGA.webapp.sample.models import Sample
 
-def list(req):
-    """Returns the list.html download file, or renders the list.html page after it
+def explore(req):
+    """Returns the explore.html file, or renders the explore.html page after it
     applies the filter, stores result to session, and sets up pagination.
     
     Args:
         req: the http request
         
     Returns: 
-        File stream if user clicked download, otherwise render for list.html
+        File stream if user clicked download, otherwise render for explore.html
 
     """
     ##if download button was pressed return the selected subset of the FITS table.
@@ -76,8 +76,6 @@ def list(req):
     sort = None
     if "sort" in req.GET:
         sort = req.GET.get('sort')
-
-    #print('list(): req.GET', req.GET)
 
     queryset = None
     
@@ -130,9 +128,9 @@ def list(req):
     
     # Include pagination values we will use in html page in the return
     # statement.
-    return render(req, 'list.html', {'page': page, 'paginator': paginator,
-                                     'cone_ra':cone_ra, 'cone_dec':cone_dec,
-                                     'cone_rad':cone_rad_arcmin})
+    return render(req, 'explore.html', {'page': page, 'paginator': paginator,
+                                        'cone_ra':cone_ra, 'cone_dec':cone_dec,
+                                        'cone_rad':cone_rad_arcmin})
     
 
 def index(req):
@@ -243,7 +241,7 @@ def main():
     c = Client()
     t0 = time.process_time()
     wt0 = time.time()
-    r = c.get('/list')
+    r = c.get('/explore.html')
     t1 = time.process_time()
     wt1 = time.time()
     print('Took', t1-t0, 'cpu', wt1-wt0, 'wall')
