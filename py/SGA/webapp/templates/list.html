@@ -128,10 +128,13 @@ document.write('<td><a href="{{BASE_URL}}sample?index='+index+'">{{sam.sga_id_st
       {{ sam.galaxy_name }}
 </td>
   <td>
-      {{ sam.group_name }}
+      <a href = "{{ sam.group_link }}">{{ sam.group_name }}</a>
 </td>
-<!--  <td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td> -->
-  <td><a href = "{{ sam.group_link }}">group link</a></td></tr>
+<!--    
+<td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td> -->
+  <td><a href = "{{ sam.group_link }}">group link</a></td>
+-->
+</tr>
   {% endfor %}
 </tbody>
   </table>
