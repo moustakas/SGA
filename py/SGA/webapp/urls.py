@@ -26,7 +26,7 @@ urlpatterns = [
     #url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
     #url(r'^explore$', sample.explore),
     url(r'^$', sample.explore, name='index'),
-    url(r'^group/(\w+)$', sample.group, name='group'),
+    url(r'^group/(.+)$', sample.group, name='group'),
 
 #   path('admin/', admin.site.urls),
 

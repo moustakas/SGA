@@ -2,20 +2,18 @@
 
 {% block content %}
 
-{% comment %}
 <style type="text/css">
 table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 </style>
+
+{% comment %}
 {% endcomment %}
 
 <br /><br /><br />
-<br /><br />
 
-{{ group_name }}
+<h2><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">{{ nice_group_name }}</a></h2>
 
-
-<h1><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">{{ nice_group_name }}</a></h1>
-<h2>Group Properties</h2>
+<h3>Group Properties</h3>
 <table>
 <tr>
 <th>SGA ID<br />(Primary Galaxy)</th>
@@ -28,13 +26,14 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 <tr>
 <td>{{primary.sga_id}}</td>
 <td>{{primary.group_name}}</td>
-<td>{{primary.group_ra}}</td>
-<td>{{primary.group_dec}}</td>
+<td>{{primary.group_ra_string}}</td>
+<td>{{primary.group_dec_string}}</td>
 <td>{{primary.mosaic_diam}}</td>
 <td>{{members|length}}</td>
 </tr>
 </table>
-<h3>Group Members</h3>
+
+<h4>Group Members</h4>
 <table>
 <tr>
 <th>SGA ID</th>
@@ -44,20 +43,24 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 <th>Dec<br />(deg)</th>
 </tr>
 <tr>
-<td>2</td>
-<td>PGC1283207</td>
-<td>S?</td>
-<td>228.3770865</td>
-<td>5.4232017</td>
-</tr>
+{% for mem in members %}
+    <td>{{ mem.sga_id_string }}</td>
+    <td>{{ mem.galaxy_name }}</td>
+    <td>S?</td>
+    <td>{{ mem.ra_string }}</td>
+    <td>{{ mem.dec_string }}</td>
+    </tr>
+{% endfor %}
 </table>
-<h2>Image Mosaics</h2>
+
+<h3>Image Mosaics</h3>
 <p>Color mosaics showing the data (left panel), model (middle panel), and residuals (right panel).</p>
 <table width="90%">
-<tr><td><a href="{{ primary.png_base_url }}{{ primary.group_name}}-largegalaxy-grz-montage.png"><img src="{{ primary.png_base_url }}thumb-{{primary.group_name}}-largegalaxy-grz-montage.png" alt="Missing file PGC1283207-largegalaxy-grz-montage.png" height="auto" width="100%"></a></td></tr>
+<tr><td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-grz-montage.png"><img src="{{ primary.png_base_url }}thumb-{{primary.group_name}}-largegalaxy-grz-montage.png" alt="Missing file {{ primary.group_name }}-largegalaxy-grz-montage.png" height="auto" width="100%"></a></td></tr>
 </table>
-<h2>Elliptical Isophote Analysis</h2>
-<h3>Geometry</h3>
+
+<h3>Elliptical Isophote Analysis</h3>
+<h4>Geometry</h4>
 <table>
 <tr><th></th>
 <th colspan="5">Tractor</th>
@@ -71,14 +74,29 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 <th>Size<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
 <th>R(24)<br />(arcsec)</th><th>R(25)<br />(arcsec)</th><th>R(26)<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
 </tr>
-<tr><td>2</td>
-<td>SER</td><td>1.72</td><td>3.326</td><td>156.36</td><td>0.579</td>
-<td>10.892</td><td>152.20</td><td>0.276</td>
-<td>10.897</td><td>158.20</td><td>0.454</td>
-<td>10.074</td><td>12.391</td><td>14.841</td><td>158.20</td><td>0.454</td>
-</tr>
+{% for mem in members %}
+    <tr>
+    <td>{{ mem.sga_id_string }}</td>
+    {% comment %}
+      <td>{{ mem.ra_leda }}</td>
+      <td>SER</td><td>1.72</td><td>3.326</td><td>156.36</td><td>0.579</td>
+      <td>10.892</td><td>152.20</td><td>0.276</td>
+      <td>10.897</td><td>158.20</td><td>0.454</td>
+      <td>10.074</td><td>12.391</td><td>14.841</td><td>158.20</td><td>0.454</td>
+    {% endcomment %}
+    </tr>
+{% endfor %}    
 </table>
-<h3>Photometry</h3>
+
+<h4>Photometry</h4>
+<p>The table below provides the Tractor model photometry and the cumulative flux
+measured within the R(24), R(25), and R(26) radii (corresponding to the size of
+the galaxy at the 24, 25, and 26 magnitude per square arcsec surface brightness
+thresholds, respectively). The last three columns provide the total, integrated
+magnitude based on fitting the curve of growth in each bandpass with an
+empirical model (shown as a thin dashed line in the curve-of-growth figure,
+below).</p>
+
 <table>
 <tr><th></th><th></th>
 <th colspan="3"></th>
@@ -98,27 +116,41 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 <th>g</th><th>r</th><th>z</th>
 <th>g</th><th>r</th><th>z</th>
 </tr>
-<tr><td>2</td><td>PGC1283207</td>
-<td>16.692</td><td>15.835</td><td>15.205</td>
-<td>16.747</td><td>15.897</td><td>15.272</td>
-<td>16.708</td><td>15.862</td><td>15.237</td>
-<td>16.690</td><td>15.844</td><td>15.220</td>
-<td>16.537</td><td>15.694</td><td>15.041</td>
-</tr>
+{% for mem in members %}
+    <tr>
+    <td>{{ mem.sga_id_string }}</td>
+    <td>{{ mem.galaxy_name }}</td>
+    {% comment %}
+      <td>16.692</td><td>15.835</td><td>15.205</td>
+      <td>16.747</td><td>15.897</td><td>15.272</td>
+      <td>16.708</td><td>15.862</td><td>15.237</td>
+      <td>16.690</td><td>15.844</td><td>15.220</td>
+      <td>16.537</td><td>15.694</td><td>15.041</td>
+    {% endcomment %}
+    </tr>
+{% endfor %}
 </table>
-<h4>2 - PGC1283207</h4>
-<table width="90%">
-<tr>
-<td><a href="PGC1283207-largegalaxy-2-ellipse-multiband.png"><img src="thumb-PGC1283207-largegalaxy-2-ellipse-multiband.png" alt="Missing file thumb-PGC1283207-largegalaxy-2-ellipse-multiband.png" height="auto" width="100%"></a></td>
-</tr>
-</table>
-<br />
-<table width="90%">
-<tr>
-<td width="50%"><a href="PGC1283207-largegalaxy-2-ellipse-sbprofile.png"><img src="PGC1283207-largegalaxy-2-ellipse-sbprofile.png" alt="Missing file PGC1283207-largegalaxy-2-ellipse-sbprofile.png" height="auto" width="100%"></a></td>
-<td><a href="PGC1283207-largegalaxy-2-ellipse-cog.png"><img src="PGC1283207-largegalaxy-2-ellipse-cog.png" alt="Missing file PGC1283207-largegalaxy-2-ellipse-cog.png" height="auto" width="100%"></a></td>
-</tr>
-</table>
+
+{% for mem in members %}
+    <h5>{{ mem.sga_id_string }} - {{ mem.galaxy_name }}</h5>
+    {% if mem.ellipse_exists %}
+        <table width="90%">
+        <tr>
+        <td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"><img src="{{ primary.png_base_url }}thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" alt="Missing file thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" height="auto" width="100%"></a></td>
+        </tr>
+        </table>
+        <br />
+        <table width="90%">
+        <tr>
+        <td width="50%"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" height="auto" width="100%"></a></td>
+        <td width="50%"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"><img src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" height="auto" width="100%"></a></td>
+        </tr>
+        </table>
+    {% else %}
+        <p>Ellipse-fitting not done or failed.</p>
+    {% endif %}
+{% endfor %}
+
 <br /><b><br />
 
 {% endblock %}
