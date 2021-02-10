@@ -143,7 +143,6 @@ def group(req, group_name):
                                       'primary': primary,
                                       'members': members})
 
-    
 def index(req):
     """
     Renders the homepage from index.html
@@ -156,34 +155,6 @@ def index(req):
     
     """
     return render(req, 'index.html')
-
-def centrals(req):
-    """
-    Renders the centrals.html page for the current index after it 
-    loads queryset from session and determines previous and next index to look at.
-    
-    Args:
-        req: the http request
-        
-    Returns: 
-        Render for centrals.html based on index value
-
-    """
-    index = int(req.GET.get('index'))
-    #load from session and use slicing to access info on that Central object
-    cen_list = pickle.loads(req.session['results_list'])
-    cen = cen_list[index-1:index][0]
-    #determine previous and next index
-    prev_index = index - 1
-    if (prev_index == 0):
-        prev_index = len(cen_list)
-    next_index = index + 1
-    if (next_index > len(cen_list)):
-       next_index = 1
-       
-    # Include values we will use in html page in the return statement.
-    return render(req, 'centrals.html', {'cen_list': cen_list, 'index': index, 'cen': cen,
-                                         'next_index': next_index, 'prev_index': prev_index})
 
 def send_file(fn, content_type, unlink=False, modsince=None, expires=3600, filename=None):
     """Creates a streaminghttpresponse to send download file to browser

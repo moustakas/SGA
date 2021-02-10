@@ -20,13 +20,12 @@ def main():
     datadir = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020'
     sgafile = os.path.join(datadir, 'SGA-2020-ls.fits')
 
-    sga_columns = ['sga_id', 'galaxy', 'morphtype', 'ra_leda', 'dec_leda', 'd25_leda', 'pa_leda', 'ba_leda',
+    sga_columns = ['sga_id', 'galaxy', 'morphtype',
+                   'ra_leda', 'dec_leda', 'd25_leda', 'pa_leda', 'ba_leda',
                    'diam', 'pa', 'ba', #'majoraxis',
                    'group_id', 'group_name', 'group_ra', 'group_dec', 'group_diameter', 'group_primary',
-                   'g_mag_sb24', 'g_mag_sb24', 'g_mag_sb24', 'r_mag_sb24', 'r_mag_sb24', 'r_mag_sb24', 'z_mag_sb24', 'z_mag_sb24', 'z_mag_sb24', 
-                   'g_mag_sb25', 'g_mag_sb25', 'g_mag_sb25', 'r_mag_sb25', 'r_mag_sb25', 'r_mag_sb25', 'z_mag_sb25', 'z_mag_sb25', 'z_mag_sb25', 
-                   'g_mag_sb26', 'g_mag_sb26', 'g_mag_sb26', 'r_mag_sb26', 'r_mag_sb26', 'r_mag_sb26', 'z_mag_sb26', 'z_mag_sb26', 'z_mag_sb26',
-                   'radius_sb24', 'radius_sb25', 'radius_sb26'
+                   'radius_sb24', 'radius_sb25', 'radius_sb26',
+                   'g_mag_sb24', 'g_mag_sb25', 'g_mag_sb26', 'r_mag_sb24', 'r_mag_sb25', 'r_mag_sb26', 'z_mag_sb24', 'z_mag_sb25', 'z_mag_sb26',
                    ]
                    
     tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2',
@@ -36,6 +35,11 @@ def main():
     sga_tractor = Table(fitsio.read(sgafile, ext='SGA-TRACTOR', columns=tractor_cols))
     sga = hstack((sga, sga_tractor))
     print('Read {} rows from {}'.format(len(sga), sgafile))
+
+    sga.rename_column('TYPE', 'TRACTORTYPE')
+    sga['NICE_GROUP_NAME'] = [gname.replace('_GROUP', ' Group') for gname in sga['GROUP_NAME']]
+
+    print(sga.colnames)
 
     xyz = radectoxyz(sga['RA_LEDA'], sga['DEC_LEDA'])
 
@@ -56,10 +60,7 @@ def main():
             val = onegal[col]
             if type(val) == np.str or type(val) == np.str_:
                 val.strip()
-
             setattr(sam, col.lower(), val)
-            if col == 'GROUP_NAME':
-                setattr(sam, 'nice_group_name', val.replace('_GROUP', ' Group'))
 
         objs.append(sam)
             

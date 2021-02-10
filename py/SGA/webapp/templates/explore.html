@@ -3,46 +3,44 @@
 
 {% block content %}
 
-<center>
-<!--
-<div class="col-md-6 col-left docutils container">
-  <h2 id="filterhead">SGA Query</h2>
-</div>
--->
 <br /><br /><br />
 <br /><br />
 
-<h3>SGA Files</h2>
-<h4>On the web</h3>
-<a href="https://portal.nersc.gov/project/cosmo/data/sga/2020/data">https://portal.nersc.gov/project/cosmo/data/sga/2020/data</a>
-<h4>At NERSC (for collaborators)</h4>/global/cfs/cdirs/cosmo/data/sga/2020/data
-<h4>Full sample (within Legacy Surveys footprint)</h4><a href="/data/sga/2020/SGA-2020-ls.fits">Download SGA-2020.fits (600 MB)</a>
-<h4>Full sample (outside Legacy Surveys footprint)</h4><a href="/data/sga/2020/SGA-2020-nols.fits">Download SGA-2020-leda.fits (28 MB)</a>
+<div>
+  <h3>SGA-2020</h3>
+  <h4>On the web</h4>
+  <a href="https://portal.nersc.gov/project/cosmo/data/sga/2020/data">https://portal.nersc.gov/project/cosmo/data/sga/2020/data</a>
+  <h4>At NERSC (for collaborators)</h4>/global/cfs/cdirs/cosmo/data/sga/2020/data
+  <h4>Full sample (within Legacy Surveys footprint)</h4><a href="/data/sga/2020/SGA-2020-ls.fits">Download SGA-2020.fits (600 MB)</a>
+  <h4>Full sample (outside Legacy Surveys footprint)</h4><a href="/data/sga/2020/SGA-2020-nols.fits">Download SGA-2020-leda.fits (28 MB)</a>
+</div>
 
-<br /><br /><hr />
-<br />
+<hr />
 
+<center>
+<div>
 <h3>Cone Search</h3>
 <form method="get" action="#results">
   <table>
   <tr>
     <td class="search_th"><label for="conera">Search RA</label></td>
-    <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="ra" min="0"/></td> 
+    <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0"/></td> 
    </tr>
   <tr>
     <td class="search_th"><label for="conedec">Search Dec</label></td>
-    <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="dec" min="-90"/></td> 
+    <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90"/></td> 
   </tr>
   <tr>
-    <td class="search_th"><label for="coneradius">Search Radius (arcmin)</label></td>
+    <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp &nbsp</td>
     <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
    </tr>
   </table>
 <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
 </form>
 
-<br /><br />
-<h3>Explore</h3>
+<hr />
+
+<h3>Filter the Sample</h3>
 <form method="get">
   <table>
   <tr>
@@ -69,103 +67,83 @@
   </tr>
   <tr>
        <th class="search_th"><label for="groupralo">Group RA</label></th>
-       <td><input id="groupralo" name="groupra__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
-       <td><input id="grouprahi" name="groupra__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+       <td><input id="groupralo" name="groupra__gte" step="0.01" type="number"
+       value="" placeholder="min (degrees)"/></td> 
+       <td><input id="grouprahi" name="groupra__lte" step="0.01" type="number"
+       value="" placeholder="max (degrees)"/></td> 
   </tr>
   <tr>
-       <th class="search_th"><label for="groupdeclo">Group Dec</label></th>
-       <td><input id="groupdeclo" name="groupdec__gte" step="0.01" type="number" value="" placeholder="min"/></td> 
-       <td><input id="groupdechi" name="groupdec__lte" step="0.01" type="number" value="" placeholder="max"/></td> 
+       <th class="search_th"><label for="groupdeclo">Group Dec</label>&nbsp
+       &nbsp</th> 
+       <td><input id="groupdeclo" name="groupdec__gte" step="0.01" type="number"
+       value="" placeholder="min (degrees)"/></td>  
+       <td><input id="groupdechi" name="groupdec__lte" step="0.01" type="number"
+       value="" placeholder="max (degrees)"/></td>  
   </tr>
   <tr>
-       <th class="search_th"><label for="diamlo">Galaxy Diameter (arcmin)</label></th>
-       <td><input id="diamlo" name="diam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
-       <td><input id="diamhi" name="diam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
+       <th class="search_th"><label for="diamlo">Galaxy Diameter</label>&nbsp
+       &nbsp</th> 
+       <td><input id="diamlo" name="diam__gte" step="0.1" type="number" value=""
+       placeholder="min (arcmin)" min="0"/></td> 
+       <td><input id="diamhi" name="diam__lte" step="0.1" type="number" value=""
+       placeholder="max (arcmin)" min="0"/></td> 
   </tr>
 
-  <tr>
-       <th class="search_th"><label for="groupdiamlo">Group Diameter (arcmin)</label></th>
-       <td><input id="groupdiamlo" name="groupdiam__gte" step="0.1" type="number" value="" placeholder="min" min="0"/></td> 
-       <td><input id="groupdiamhi" name="groupdiam__lte" step="0.1" type="number" value="" placeholder="max" min="0"/></td> 
-  </tr>
   </table>
 <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
 </form>
 
 <a name="results" id="results"></a>
-<br /><br />
 
-<h3>Query Results</h3>
+<hr />
+
+<h3>Results</h3>
 
 <script>
 document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+({{ page.end_index }})+' of '+({{paginator.count}})+'</p>')
 </script>
+
+{% comment %}
 <pre class="search_log" > {% url_pull request %} </pre>
+{% endcomment %}
 
 <form method="post">
 {% csrf_token %}
-<button href="" type="submit" class="btn btn-primary" name="dbutn" >Download results</button>
-
+<button href="" type="submit" class="btn btn-primary" name="dbutn" >Download</button>
 </form>
+
+<br />
+
+</div>
 </center>
 
-<table class="table .table.bordered">
+<table class="table table-bordered table-hover">
 <thead>
-
 <tr>
-<th>Number</th>
-<th style="min-width:155px"><a href="?{% url_replace_sort request 'sga_id' %}">SGA ID</a></th>
-<th><a href="?{% url_replace_sort request 'galaxy_name' %}">Galaxy</a></th>
-<th><a href="?{% url_replace_sort request 'ra' %}">RA</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">Dec</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">Galaxy Diameter</a></th>
-<th><a href="?{% url_replace_sort request 'group_name' %}">Group Name</a></th>
-<th><a href="?{% url_replace_sort request 'ra' %}">Group RA</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">Group Dec</a></th>
-<th><a href="?{% url_replace_sort request 'dec' %}">Group Diameter</a></th>
+<th style="text-align: center;">Number</th>
+<th style="min-width: 155px; text-align: center;"><a href="?{% url_replace_sort request 'sga_id' %}">SGA ID</a></th>
+<th style="text-align: center;"><a href="?{% url_replace_sort request 'group_name' %}">Group Name</a></th>
+<th style="text-align: center;"><a href="?{% url_replace_sort request 'galaxy' %}">Galaxy</a></th>
+<th style="text-align: center;"><a href="?{% url_replace_sort request 'group_ra' %}">Group RA<br />(degrees)</a></th>
+<th style="text-align: center;"><a href="?{% url_replace_sort request 'group_dec' %}">Group Dec<br />(degrees)</a></th>
+<th style="text-align: center;"><a href="?{% url_replace_sort request 'ra_leda' %}">RA<br />(degrees)</a></th>
+<th style="text-align: center;"><a href="?{% url_replace_sort request 'dec_leda' %}">Dec<br />(degrees)</a></th>
+<th style="text-align: center;"><a href="?{% url_replace_sort request 'd25_leda' %}">Galaxy Diameter<br />(arcmin)</a></th>
 </tr>
-<tr>
-<th></th>
-<th></th>
-<th></th>
-<th>(degree)</th>
-<th>(degree)</th>
-<th>(arcmin)</th>
-<th></th>
-<th>(degree)</th>
-<th>(degree)</th>
-<th>(arcmin)</th>
-</tr>
-
 </thead>
+
 <tbody>
   {% for sam in page %}
   <tr>
-      <td>{{ forloop.counter0|add:page.start_index }}</td>
-      <td>{{ sam.sga_id_string }}</td>
-      <td>{{ sam.galaxy_name }}</td>
-<!--
-  
-    {% comment <script> %}
-    var ra = {{ sam.ra|floatformat:6 }};
-    ra = ra.toFixed(7);
-    document.write(ra);
-    </script>
-    {% endcomment %}
-    {{ sam.ra|floatformat:7 }}
-  </td>
--->
-<td>{{ sam.ra|floatformat:7 }}</td>
-<td>{{ sam.dec|floatformat:6 }}</td>
-<td>{{ sam.diam|floatformat:3 }}</td>
-<td><a href="{% url 'group' sam.group_name %}">{{ sam.group_name }}</a></td>
-<!---{{ sam.group_link }}"-->
-      <td>{{ sam.group_ra|floatformat:7 }}</td>
-<td>{{ sam.group_dec|floatformat:6 }}</td>
-<td>{{ sam.group_diam|floatformat:3 }}</td>
-<!--  <td><a href = "{{ sam.galaxy_link }}">galaxy link</a></td> 
-  <td><a href = "{{ sam.group_link }}">group link</a></td></tr>
--->
+      <td style="text-align: center;">{{ forloop.counter0|add:page.start_index }}</td>
+      <td style="text-align: center;">{{ sam.sga_id_string }}</td>
+      <td><a href="{% url 'group' sam.group_name %}">{{ sam.group_name }}</a></td>
+      <td>{{ sam.galaxy }}</td>
+      <td style="text-align: center;">{{ sam.group_ra|floatformat:7 }}</td>
+      <td style="text-align: center;">{{ sam.group_dec|floatformat:6 }}</td>
+      <td style="text-align: center;">{{ sam.ra_leda|floatformat:7 }}</td>
+      <td style="text-align: center;">{{ sam.dec_leda|floatformat:6 }}</td>
+      <td style="text-align: center;">{{ sam.d25_leda|floatformat:3 }}</td>
 {% endfor %}
 </tbody>
 </table>
@@ -187,7 +165,6 @@ document.write('<p class="search_log">Showing '+({{ page.start_index }})+' - '+(
         {% endif %}
     </span>
 
-</div>
 </div>
 </body>
 {% endblock %}

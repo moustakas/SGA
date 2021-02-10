@@ -45,8 +45,8 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 <tr>
 {% for mem in members %}
     <td>{{ mem.sga_id_string }}</td>
-    <td>{{ mem.galaxy_name }}</td>
-    <td>S?</td>
+    <td>{{ mem.galaxy }}</td>
+    <td>{{ mem.morphtype }}</td>
     <td>{{ mem.ra_string }}</td>
     <td>{{ mem.dec_string }}</td>
     </tr>
@@ -64,7 +64,7 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 <table>
 <tr><th></th>
 <th colspan="5">Tractor</th>
-<th colspan="3">ID</th>
+<th colspan="3">HyperLeda</th>
 <th colspan="3">Ellipse Moments</th>
 <th colspan="5">Ellipse Fitting</th>
 </tr>
@@ -77,13 +77,10 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 {% for mem in members %}
     <tr>
     <td>{{ mem.sga_id_string }}</td>
-    {% comment %}
-      <td>{{ mem.ra_leda }}</td>
-      <td>SER</td><td>1.72</td><td>3.326</td><td>156.36</td><td>0.579</td>
-      <td>10.892</td><td>152.20</td><td>0.276</td>
-      <td>10.897</td><td>158.20</td><td>0.454</td>
-      <td>10.074</td><td>12.391</td><td>14.841</td><td>158.20</td><td>0.454</td>
-    {% endcomment %}
+    <td>{{ mem.tractortype }}</td><td>{{ mem.sersic_string }}</td><td>{{ mem.shape_r_string }}</td><td>{{ mem.tractor_pa_string }}</td><td>{{ mem.tractor_eps_string }}</td>
+    <td>{{ mem.r25_leda_string }}</td><td>{{ mem.pa_leda_string }}</td><td>{{ mem.eps_leda_string }}</td>
+    <td>TBA</td><td>{{ mem.pa_string }}</td><td>{{ mem.eps_string }}</td>
+    <td>{{ mem.radius_sb24_string }}</td><td>{{ mem.radius_sb25_string }}</td><td>{{ mem.radius_sb26_string }}</td><td>{{ mem.pa_string }}</td><td>{{ mem.eps_string }}</td>
     </tr>
 {% endfor %}    
 </table>
@@ -119,7 +116,7 @@ below).</p>
 {% for mem in members %}
     <tr>
     <td>{{ mem.sga_id_string }}</td>
-    <td>{{ mem.galaxy_name }}</td>
+    <td>{{ mem.galaxy }}</td>
     {% comment %}
       <td>16.692</td><td>15.835</td><td>15.205</td>
       <td>16.747</td><td>15.897</td><td>15.272</td>
@@ -132,7 +129,7 @@ below).</p>
 </table>
 
 {% for mem in members %}
-    <h5>{{ mem.sga_id_string }} - {{ mem.galaxy_name }}</h5>
+    <h5>{{ mem.sga_id_string }} - {{ mem.galaxy }}</h5>
     {% if mem.ellipse_exists %}
         <table width="90%">
         <tr>
