@@ -133,15 +133,24 @@ def explore(req):
                                         'cone_rad':cone_rad_arcmin})
     
 def group(req, group_name):
+    # figure out the members of this group
     members = Sample.objects.all().filter(group_name=group_name)
     members.order_by('sga_id')
     nice_group_name = group_name.replace('_GROUP', ' Group')
     primary = [m for m in members if m.group_primary]
     primary = primary[0]
+
+    ## figure out which objects were queried
+    #qs = Sample.objects.all()    
+    #query = pickle.loads(req.session['sample_query'])    
+    #qs.query = query
+    #allgroups = qs.group_name
+    
     return render(req, 'group.html', {'group_name': group_name,
                                       'nice_group_name': nice_group_name,
                                       'primary': primary,
                                       'members': members})
+                                      #'allgroups': allgroups})
 
 def index(req):
     """
