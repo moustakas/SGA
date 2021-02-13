@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """Holds the functions that send http responses to the browser, including
-rendering the html pages index.html, list.html, and sample.html, or sending a
+rendering the html pages index.html, explore.html, and sample.html, or sending a
 download file.
 
 All logic that must be done before the browser renders the html occurs here,
@@ -27,15 +27,15 @@ from django.http import HttpResponse
 from SGA.webapp.sample.filters import SampleFilter
 from SGA.webapp.sample.models import Sample
 
-def list(req):
-    """Returns the list.html download file, or renders the list.html page after it
+def explore(req):
+    """Returns the explore.html file, or renders the explore.html page after it
     applies the filter, stores result to session, and sets up pagination.
     
     Args:
         req: the http request
         
     Returns: 
-        File stream if user clicked download, otherwise render for list.html
+        File stream if user clicked download, otherwise render for explore.html
 
     """
     ##if download button was pressed return the selected subset of the FITS table.
@@ -52,7 +52,7 @@ def list(req):
         print('Query indices:', inds.shape)
         import fitsio
         fin = fitsio.FITS(datafile)
-        hdu = fin['SGA']
+        hdu = fin['SGA-LS']
         t = hdu.read(rows=inds)
         hdr = hdu.read_header()
         phdr = fin[0].read_header()
@@ -62,7 +62,7 @@ def list(req):
         #print('Read', t)
         fits = fitsio.FITS('mem://', 'rw')
         fits.write(None, header=phdr)
-        fits.write(t, header=hdr, extname='SGA')
+        fits.write(t, header=hdr, extname='SGA-LS')
         fits.write(t2, header=hdr2, extname='SGA-TRACTOR')
         rawdata = fits.read_raw()
         fits.close()
@@ -76,8 +76,6 @@ def list(req):
     sort = None
     if "sort" in req.GET:
         sort = req.GET.get('sort')
-
-    #print('list(): req.GET', req.GET)
 
     queryset = None
     
@@ -130,10 +128,29 @@ def list(req):
     
     # Include pagination values we will use in html page in the return
     # statement.
-    return render(req, 'list.html', {'page': page, 'paginator': paginator,
-                                     'cone_ra':cone_ra, 'cone_dec':cone_dec,
-                                     'cone_rad':cone_rad_arcmin})
+    return render(req, 'explore.html', {'page': page, 'paginator': paginator,
+                                        'cone_ra':cone_ra, 'cone_dec':cone_dec,
+                                        'cone_rad':cone_rad_arcmin})
     
+def group(req, group_name):
+    # figure out the members of this group
+    members = Sample.objects.all().filter(group_name=group_name)
+    members.order_by('sga_id')
+    nice_group_name = group_name.replace('_GROUP', ' Group')
+    primary = [m for m in members if m.group_primary]
+    primary = primary[0]
+
+    ## figure out which objects were queried
+    #qs = Sample.objects.all()    
+    #query = pickle.loads(req.session['sample_query'])    
+    #qs.query = query
+    #allgroups = qs.group_name
+    
+    return render(req, 'group.html', {'group_name': group_name,
+                                      'nice_group_name': nice_group_name,
+                                      'primary': primary,
+                                      'members': members})
+                                      #'allgroups': allgroups})
 
 def index(req):
     """
@@ -147,34 +164,6 @@ def index(req):
     
     """
     return render(req, 'index.html')
-
-def centrals(req):
-    """
-    Renders the centrals.html page for the current index after it 
-    loads queryset from session and determines previous and next index to look at.
-    
-    Args:
-        req: the http request
-        
-    Returns: 
-        Render for centrals.html based on index value
-
-    """
-    index = int(req.GET.get('index'))
-    #load from session and use slicing to access info on that Central object
-    cen_list = pickle.loads(req.session['results_list'])
-    cen = cen_list[index-1:index][0]
-    #determine previous and next index
-    prev_index = index - 1
-    if (prev_index == 0):
-        prev_index = len(cen_list)
-    next_index = index + 1
-    if (next_index > len(cen_list)):
-       next_index = 1
-       
-    # Include values we will use in html page in the return statement.
-    return render(req, 'centrals.html', {'cen_list': cen_list, 'index': index, 'cen': cen,
-                                         'next_index': next_index, 'prev_index': prev_index})
 
 def send_file(fn, content_type, unlink=False, modsince=None, expires=3600, filename=None):
     """Creates a streaminghttpresponse to send download file to browser
@@ -243,7 +232,7 @@ def main():
     c = Client()
     t0 = time.process_time()
     wt0 = time.time()
-    r = c.get('/list')
+    r = c.get('/explore.html')
     t1 = time.process_time()
     wt1 = time.time()
     print('Took', t1-t0, 'cpu', wt1-wt0, 'wall')

@@ -7,8 +7,8 @@ cd /global/cfs/cdirs/cosmo/webapp/sga-webapp/py/SGA/webapp
 python manage.py makemigrations
 python manage.py migrate
 python load.py
+chmod 666 db/db.sqlite3
 
 touch wsgi.py
 
-
-convert sga-sky.png -gravity north -crop 100x82% sga-thumb.png
+convert sga-sky.png -thumbnail 216 -gravity north -crop 100x82% -size 216 sga-thumb.png
