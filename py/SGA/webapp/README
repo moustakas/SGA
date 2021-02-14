@@ -11,4 +11,4 @@ chmod 666 db/db.sqlite3
 
 touch wsgi.py
 
-convert sga-sky.png -thumbnail 216 -gravity north -crop 100x82% -size 216 sga-thumb.png
+convert sga-2020-sky.png -thumbnail 400  sga-2020-thumb.png

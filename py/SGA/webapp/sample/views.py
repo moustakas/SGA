@@ -40,30 +40,32 @@ def explore(req):
     """
     ##if download button was pressed return the selected subset of the FITS table.
     if req.method == 'POST':
+        from SGA.webapp.load import DATADIR
+        
         print('download: req.GET:', req.GET)
         query = pickle.loads(req.session['sample_query'])
         print('Query:', query)
         qs = Sample.objects.all()
         qs.query = query
         inds = qs.values_list('row_index')
-        datafile = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020-ls.fits' #'/data/SGA-2020.fits' #'/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/SGA-2020.fits'
+        datafile = os.path.join(DATADIR, 'SGA-2020.fits')
         inds = np.array(inds)
         inds = inds[:,0]
         print('Query indices:', inds.shape)
         import fitsio
         fin = fitsio.FITS(datafile)
-        hdu = fin['SGA-LS']
+        hdu = fin['ELLIPSE']
         t = hdu.read(rows=inds)
         hdr = hdu.read_header()
         phdr = fin[0].read_header()
-        hdu2 = fin['SGA-TRACTOR']
+        hdu2 = fin['TRACTOR']
         t2 = hdu2.read(rows=inds)
         hdr2 = hdu2.read_header()
         #print('Read', t)
         fits = fitsio.FITS('mem://', 'rw')
         fits.write(None, header=phdr)
-        fits.write(t, header=hdr, extname='SGA-LS')
-        fits.write(t2, header=hdr2, extname='SGA-TRACTOR')
+        fits.write(t, header=hdr, extname='ELLIPSE')
+        fits.write(t2, header=hdr2, extname='TRACTOR')
         rawdata = fits.read_raw()
         fits.close()
         filename = 'sga-query.fits'
@@ -140,17 +142,64 @@ def group(req, group_name):
     primary = [m for m in members if m.group_primary]
     primary = primary[0]
 
-    ## figure out which objects were queried
-    #qs = Sample.objects.all()    
-    #query = pickle.loads(req.session['sample_query'])    
-    #qs.query = query
-    #allgroups = qs.group_name
+    result_index = req.GET.get('index', '-1')
+    try:
+        result_index = int(result_index, 10)
+    except:
+        result_index = -1
+
+    has_next = has_prev = False
+    if result_index > -1:
+        i_next,_ = get_next_group(req, result_index)
+        i_prev,_ = get_next_group(req, result_index, direction=-1)
+        has_next = i_next is not None
+        has_prev = i_prev is not None
     
     return render(req, 'group.html', {'group_name': group_name,
                                       'nice_group_name': nice_group_name,
                                       'primary': primary,
-                                      'members': members})
-                                      #'allgroups': allgroups})
+                                      'members': members,
+                                      'result_index': result_index,
+                                      'has_next': has_next,
+                                      'has_prev': has_prev,})
+
+def get_next_group(req, index, qs=None, direction=1):
+    # "index" is actually 1-indexed...
+    index -= 1
+    if qs is None:
+        query = pickle.loads(req.session['sample_query'])
+        qs = Sample.objects.all()
+        qs.query = query
+    N = qs.count()
+    if index >= N or index < 0:
+        return None,None
+    # Find the next group.
+    gal = qs[index]
+    grp = gal.group_name
+    while True:
+        index += direction
+        if index >= N or index < 0:
+            return None,None
+        if qs[index].group_name != grp:
+            return index+1, qs[index].group_name
+
+def group_prev(req, index):
+    from django.shortcuts import redirect
+    from django.urls import reverse
+    index = int(index,10)
+    nextindex,nextgroup = get_next_group(req, index, direction=-1)
+    if nextindex is None:
+        return HttpResponse('bad index')
+    return redirect(reverse(group, args=(nextgroup,)) + '?index=%i' % (nextindex))
+
+def group_next(req, index):
+    from django.shortcuts import redirect
+    from django.urls import reverse
+    index = int(index,10)
+    nextindex,nextgroup = get_next_group(req, index)
+    if nextindex is None:
+        return HttpResponse('bad index')
+    return redirect(reverse(group, args=(nextgroup,)) + '?index=%i' % (nextindex))
 
 def index(req):
     """

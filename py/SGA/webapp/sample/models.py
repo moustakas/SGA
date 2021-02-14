@@ -28,11 +28,14 @@ class Sample(Model):
     d25_leda = FloatField(default=0.0)
     pa_leda = FloatField(default=0.0)
     ba_leda = FloatField(default=0.0)
-
+    pgc = IntegerField(null=True)
+    
     diam = FloatField(default=0.0)
     pa = FloatField(default=0.0)
     ba = FloatField(default=0.0)
-    #majoraxis = FloatField(default=0.0)
+    radius_moment = FloatField(default=0.0)
+    ra_moment = FloatField(null=True)
+    dec_moment = FloatField(null=True)
 
     group_id = IntegerField(null=True)
     group_name = CharField(max_length=40, default='')
@@ -85,6 +88,21 @@ class Sample(Model):
         baseurl += self.ra_slice() + '/' + self.group_name + '/';
         return baseurl
 
+    def data_base_url(self):
+        baseurl = 'https://portal.nersc.gov/project/cosmo/data/sga/2020/data/'
+        baseurl += self.ra_slice() + '/' + self.group_name + '/';
+        return baseurl
+
+    def hyperleda_html(self):
+        if self.pgc > -1:
+            url = 'http://leda.univ-lyon1.fr/ledacat.cgi?o=PGC{}'.format(self.pgc)
+        elif 'DR8' in self.galaxy:
+            url = 'http://leda.univ-lyon1.fr/ledacat.cgi?{}&ob=ra'.format(self.galaxy.strip())
+        else:
+            url = 'http://leda.univ-lyon1.fr/fG.cgi?n=a000&c=o&p={}%20{}&f=0.1&ob=ra'.format(
+                self.ra_leda, self.dec_leda)
+        return url
+
     def mosaic_diam(self):
         if self.group_diameter > 30: # NGC0598=M33 is 61 arcmin in diameter!
             mosaic_diam = self.group_diameter * 2 * 0.7 # [arcmin]
@@ -107,15 +125,22 @@ class Sample(Model):
     def group_dec_string(self):
         return '{:.7f}'.format(self.group_dec)
 
-    def ra_string(self):
+    def ra_leda_string(self):
         return '{:.7f}'.format(self.ra_leda)
-
-    def dec_string(self):
+    def dec_leda_string(self):
         return '{:.7f}'.format(self.dec_leda)
+
+    def ra_string(self):
+        return '{:.7f}'.format(self.ra_moment)
+    def dec_string(self):
+        return '{:.7f}'.format(self.dec_moment)
 
     def group_id_string(self):
         return '{}'.format(self.group_id)
 
+    def group_diameter_string(self):
+        return '{:.3f}'.format(self.group_diameter)
+    
     def sersic_string(self):
         return '{:.2f}'.format(self.sersic)
 
@@ -129,13 +154,16 @@ class Sample(Model):
         return '{:.3f}'.format(1-self.ba_leda)
 
     def r25_leda_string(self):
-        return '{:.3f}'.format(self.d25_leda / 2)
+        return '{:.3f}'.format(self.d25_leda * 60 / 2)
 
     def pa_string(self):
         return '{:.1f}'.format(self.pa)
 
     def eps_string(self):
         return '{:.3f}'.format(1-self.ba)
+
+    def radius_moment_string(self):
+        return '{:.3f}'.format(self.radius_moment)
 
     def radius_sb24_string(self):
         if self.radius_sb24 < 0:
@@ -155,15 +183,77 @@ class Sample(Model):
         else:
             return '{:.3f}'.format(self.radius_sb26)
 
+    def gmag_sb24(self):
+        if self.g_mag_sb24 > 0:
+            return '{:.3f}'.format(self.g_mag_sb24)
+        else:
+            return '...'
+    def rmag_sb24(self):
+        if self.r_mag_sb24 > 0:
+            return '{:.3f}'.format(self.r_mag_sb24)
+        else:
+            return '...'
+    def zmag_sb24(self):
+        if self.z_mag_sb24 > 0:
+            return '{:.3f}'.format(self.z_mag_sb24)
+        else:
+            return '...'
+
+    def gmag_sb25(self):
+        if self.g_mag_sb25 > 0:
+            return '{:.3f}'.format(self.g_mag_sb25)
+        else:
+            return '...'
+    def rmag_sb25(self):
+        if self.r_mag_sb25 > 0:
+            return '{:.3f}'.format(self.r_mag_sb25)
+        else:
+            return '...'
+    def zmag_sb25(self):
+        if self.z_mag_sb25 > 0:
+            return '{:.3f}'.format(self.z_mag_sb25)
+        else:
+            return '...'
+
+    def gmag_sb26(self):
+        if self.g_mag_sb26 > 0:
+            return '{:.3f}'.format(self.g_mag_sb26)
+        else:
+            return '...'
+    def rmag_sb26(self):
+        if self.r_mag_sb26 > 0:
+            return '{:.3f}'.format(self.r_mag_sb26)
+        else:
+            return '...'
+    def zmag_sb26(self):
+        if self.z_mag_sb26 > 0:
+            return '{:.3f}'.format(self.z_mag_sb26)
+        else:
+            return '...'
+
     def tractor_pa_string(self):
         pa = 180 - (-np.rad2deg(np.arctan2(self.shape_e2, self.shape_e1) / 2))
         pa = pa % 180
         return '{:.1f}'.format(pa)
-
     def tractor_eps_string(self):
         ee = np.hypot(self.shape_e1, self.shape_e2)
         ba = (1 - ee) / (1 + ee)
         return '{:.3f}'.format(1-ba)
+    def tractor_gmag(self):
+        if self.flux_g > 0:
+            return '{:.3f}'.format(22.5-2.5*np.log10(self.flux_g))
+        else:
+            return '...'
+    def tractor_rmag(self):
+        if self.flux_r > 0:
+            return '{:.3f}'.format(22.5-2.5*np.log10(self.flux_r))
+        else:
+            return '...'
+    def tractor_zmag(self):
+        if self.flux_z > 0:
+            return '{:.3f}'.format(22.5-2.5*np.log10(self.flux_z))
+        else:
+            return '...'
 
     def ellipsefile(self):
         ellipsefile = '{}{}-largegalaxy-{}-ellipse-sbprofile.png'.format(self.png_base_url(), self.group_name, self.sga_id_string())

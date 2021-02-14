@@ -17,12 +17,15 @@ def main():
 
     from SGA.webapp.sample.models import Sample
 
-    datadir = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020'
-    sgafile = os.path.join(datadir, 'SGA-2020-ls.fits')
+    DATADIR = '/global/cfs/cdirs/cosmo/data/sga/2020'
+    #DATADIR = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020'
+
+    sgafile = os.path.join(DATADIR, 'SGA-2020.fits')
 
     sga_columns = ['sga_id', 'galaxy', 'morphtype',
-                   'ra_leda', 'dec_leda', 'd25_leda', 'pa_leda', 'ba_leda',
-                   'diam', 'pa', 'ba', #'majoraxis',
+                   'ra_leda', 'dec_leda',
+                   'd25_leda', 'pa_leda', 'ba_leda', 'pgc',
+                   'ra_moment', 'dec_moment', 'diam', 'pa', 'ba', 'radius_moment',
                    'group_id', 'group_name', 'group_ra', 'group_dec', 'group_diameter', 'group_primary',
                    'radius_sb24', 'radius_sb25', 'radius_sb26',
                    'g_mag_sb24', 'g_mag_sb25', 'g_mag_sb26', 'r_mag_sb24', 'r_mag_sb25', 'r_mag_sb26', 'z_mag_sb24', 'z_mag_sb25', 'z_mag_sb26',
@@ -31,8 +34,8 @@ def main():
     tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2',
                     'flux_g', 'flux_r', 'flux_z', 'flux_ivar_g', 'flux_ivar_r', 'flux_ivar_z']
        
-    sga = Table(fitsio.read(sgafile, ext='SGA-LS', columns=sga_columns))
-    sga_tractor = Table(fitsio.read(sgafile, ext='SGA-TRACTOR', columns=tractor_cols))
+    sga = Table(fitsio.read(sgafile, ext='ELLIPSE', columns=sga_columns))
+    sga_tractor = Table(fitsio.read(sgafile, ext='TRACTOR', columns=tractor_cols))
     sga = hstack((sga, sga_tractor))
     print('Read {} rows from {}'.format(len(sga), sgafile))
 
@@ -41,7 +44,8 @@ def main():
 
     print(sga.colnames)
 
-    xyz = radectoxyz(sga['RA_LEDA'], sga['DEC_LEDA'])
+    xyz = radectoxyz(sga['RA_MOMENT'], sga['DEC_MOMENT'])
+    #xyz = radectoxyz(sga['RA_LEDA'], sga['DEC_LEDA'])
 
     objs = []
     nextpow = 1024

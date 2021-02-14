@@ -2,24 +2,41 @@
 
 {% block content %}
 
+{% comment %}
 <style type="text/css">
 table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 </style>
-
-{% comment %}
 {% endcomment %}
 
-<br /><br /><br />
+<style type="text/css">
+td, th {text-align: center}
+</style>
+
+{% if result_index > -1 %}
+<br />
+<form style="display:inline;" action="{% url 'group-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
+<form style="display:inline;" action="{% url 'group-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
+<form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
+<br />
+{% endif %}
 
 <h2><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">{{ nice_group_name }}</a></h2>
 
+<h4><a href="{{ primary.data_base_url }}">Images &amp; Catalogs</a></h4> 
+<h4><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">Viewer</a></h4> 
+
+{% comment %}
+<a href="http://faraday.uwyo.edu/~admyers/scratch/legacysurvey/sga/sga/sga2020#group-files">(documentation)</a>
+{% endcomment %}
+
 <h3>Group Properties</h3>
-<table>
+<table class="table table-bordered table-hover">
 <tr>
 <th>SGA ID<br />(Primary Galaxy)</th>
 <th>Group Name</th>
 <th>Group RA<br />(deg)</th>
 <th>Group Dec<br />(deg)</th>
+<th>Group Diameter<br />(arcmin)</th>
 <th>Mosaic Diameter<br />(arcmin)</th>
 <th>Number of Group<br />Members</th>
 </tr>
@@ -28,19 +45,22 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
 <td>{{primary.group_name}}</td>
 <td>{{primary.group_ra_string}}</td>
 <td>{{primary.group_dec_string}}</td>
+<td>{{primary.group_diameter_string}}</td>
 <td>{{primary.mosaic_diam}}</td>
 <td>{{members|length}}</td>
 </tr>
 </table>
 
+<br />
 <h4>Group Members</h4>
-<table>
+<table class="table table-bordered table-hover">
 <tr>
 <th>SGA ID</th>
 <th>Galaxy</th>
 <th>Visual<br />Morphology</th>
 <th>RA<br />(deg)</th>
 <th>Dec<br />(deg)</th>
+<th>HyperLeda</th>
 </tr>
 <tr>
 {% for mem in members %}
@@ -49,42 +69,46 @@ table, td, th {padding: 5px; text-align: center; border: 1px solid black}
     <td>{{ mem.morphtype }}</td>
     <td>{{ mem.ra_string }}</td>
     <td>{{ mem.dec_string }}</td>
+    <td><a href="{{ mem.hyperleda_html }}" target="_blank">Link</a></td>
     </tr>
 {% endfor %}
 </table>
 
+<br />
 <h3>Image Mosaics</h3>
 <p>Color mosaics showing the data (left panel), model (middle panel), and residuals (right panel).</p>
-<table width="90%">
-<tr><td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-grz-montage.png"><img src="{{ primary.png_base_url }}thumb-{{primary.group_name}}-largegalaxy-grz-montage.png" alt="Missing file {{ primary.group_name }}-largegalaxy-grz-montage.png" height="auto" width="100%"></a></td></tr>
+<table class="table table-bordered">
+<tr><td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-grz-montage.png"><img class="img-responsive" width="100%" src="{{ primary.png_base_url }}thumb-{{primary.group_name}}-largegalaxy-grz-montage.png" alt="Missing file {{ primary.group_name }}-largegalaxy-grz-montage.png"></a></td></tr>
 </table>
 
+<br /><br />
 <h3>Elliptical Isophote Analysis</h3>
 <h4>Geometry</h4>
-<table>
-<tr><th></th>
+<table class="table table-bordered table-hover">
+<tr><th></th><th></th>
 <th colspan="5">Tractor</th>
 <th colspan="3">HyperLeda</th>
 <th colspan="3">Ellipse Moments</th>
-<th colspan="5">Ellipse Fitting</th>
+<th colspan="3">Surface Brightness<br />Threshold Radii</th>
 </tr>
-<tr><th>SGA ID</th>
+<tr><th>SGA ID</th><th>Galaxy</th>
 <th>Type</th><th>n</th><th>r(50)<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
 <th>R(25)<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
 <th>Size<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
-<th>R(24)<br />(arcsec)</th><th>R(25)<br />(arcsec)</th><th>R(26)<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
+<th>R(24)<br />(arcsec)</th><th>R(25)<br />(arcsec)</th><th>R(26)<br />(arcsec)</th>
 </tr>
 {% for mem in members %}
     <tr>
-    <td>{{ mem.sga_id_string }}</td>
+    <td>{{ mem.sga_id_string }}</td><td>{{ mem.galaxy }}</td>
     <td>{{ mem.tractortype }}</td><td>{{ mem.sersic_string }}</td><td>{{ mem.shape_r_string }}</td><td>{{ mem.tractor_pa_string }}</td><td>{{ mem.tractor_eps_string }}</td>
     <td>{{ mem.r25_leda_string }}</td><td>{{ mem.pa_leda_string }}</td><td>{{ mem.eps_leda_string }}</td>
-    <td>TBA</td><td>{{ mem.pa_string }}</td><td>{{ mem.eps_string }}</td>
-    <td>{{ mem.radius_sb24_string }}</td><td>{{ mem.radius_sb25_string }}</td><td>{{ mem.radius_sb26_string }}</td><td>{{ mem.pa_string }}</td><td>{{ mem.eps_string }}</td>
+    <td>{{ mem.radius_moment_string }}</td><td>{{ mem.pa_string }}</td><td>{{ mem.eps_string }}</td>
+    <td>{{ mem.radius_sb24_string }}</td><td>{{ mem.radius_sb25_string }}</td><td>{{ mem.radius_sb26_string }}</td>
     </tr>
 {% endfor %}    
 </table>
 
+<br />
 <h4>Photometry</h4>
 <p>The table below provides the Tractor model photometry and the cumulative flux
 measured within the R(24), R(25), and R(26) radii (corresponding to the size of
@@ -94,20 +118,18 @@ magnitude based on fitting the curve of growth in each bandpass with an
 empirical model (shown as a thin dashed line in the curve-of-growth figure,
 below).</p>
 
-<table>
+<table class="table table-bordered table-hover">
 <tr><th></th><th></th>
 <th colspan="3"></th>
-<th colspan="12">Curve of Growth</th>
+<th colspan="9">Curve of Growth</th>
 </tr>
 <tr><th></th><th></th>
 <th colspan="3">Tractor</th>
 <th colspan="3">&lt R(24)<br />arcsec</th>
 <th colspan="3">&lt R(25)<br />arcsec</th>
 <th colspan="3">&lt R(26)<br />arcsec</th>
-<th colspan="3">Integrated</th>
 </tr>
 <tr><th>SGA ID</th><th>Galaxy</th>
-<th>g</th><th>r</th><th>z</th>
 <th>g</th><th>r</th><th>z</th>
 <th>g</th><th>r</th><th>z</th>
 <th>g</th><th>r</th><th>z</th>
@@ -117,38 +139,40 @@ below).</p>
     <tr>
     <td>{{ mem.sga_id_string }}</td>
     <td>{{ mem.galaxy }}</td>
-    {% comment %}
-      <td>16.692</td><td>15.835</td><td>15.205</td>
-      <td>16.747</td><td>15.897</td><td>15.272</td>
-      <td>16.708</td><td>15.862</td><td>15.237</td>
-      <td>16.690</td><td>15.844</td><td>15.220</td>
-      <td>16.537</td><td>15.694</td><td>15.041</td>
-    {% endcomment %}
+    <td>{{ mem.tractor_gmag }}</td><td>{{ mem.tractor_rmag }}</td><td>{{ mem.tractor_zmag }}</td>
+    <td>{{ mem.gmag_sb24 }}</td><td>{{ mem.rmag_sb24 }}</td><td>{{ mem.zmag_sb24 }}</td>
+    <td>{{ mem.gmag_sb25 }}</td><td>{{ mem.rmag_sb25 }}</td><td>{{ mem.zmag_sb25 }}</td>
+    <td>{{ mem.gmag_sb26 }}</td><td>{{ mem.rmag_sb26 }}</td><td>{{ mem.zmag_sb26 }}</td>
     </tr>
 {% endfor %}
 </table>
 
+<br />
 {% for mem in members %}
-    <h5>{{ mem.sga_id_string }} - {{ mem.galaxy }}</h5>
+    <h5>{{ mem.galaxy }} (SGA ID {{ mem.sga_id_string }})</h5>
     {% if mem.ellipse_exists %}
-        <table width="90%">
+        <table class="table table-bordered">
         <tr>
-        <td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"><img src="{{ primary.png_base_url }}thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" alt="Missing file thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" height="auto" width="100%"></a></td>
+          <td colspan="2"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"><img width="100%" class="img-responsive" src="{{ primary.png_base_url }}thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" alt="Missing file thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"></a></td>
         </tr>
-        </table>
-        <br />
-        <table width="90%">
         <tr>
-        <td width="50%"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" height="auto" width="100%"></a></td>
-        <td width="50%"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"><img src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" height="auto" width="100%"></a></td>
+          <td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"></a></td>
+          <td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"></a></td> 
         </tr>
         </table>
     {% else %}
         <p>Ellipse-fitting not done or failed.</p>
     {% endif %}
+<br />
 {% endfor %}
 
-<br /><b><br />
+{% if result_index > -1 %}
+<form style="display:inline;" action="{% url 'group-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
+<form style="display:inline;" action="{% url 'group-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
+<form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
+<br /><br /><br />
+{% endif %}
+
 
 {% endblock %}
 

@@ -27,6 +27,8 @@ urlpatterns = [
     #url(r'^explore$', sample.explore),
     url(r'^$', sample.explore, name='index'),
     url(r'^group/(.+)$', sample.group, name='group'),
+    url(r'^group-prev/(\d+)$', sample.group_prev, name='group-prev'),
+    url(r'^group-next/(\d+)$', sample.group_next, name='group-next'),
 
 #   path('admin/', admin.site.urls),
 
