@@ -113,10 +113,7 @@ td, th {text-align: center}
 <p>The table below provides the Tractor model photometry and the cumulative flux
 measured within the R(24), R(25), and R(26) radii (corresponding to the size of
 the galaxy at the 24, 25, and 26 magnitude per square arcsec surface brightness
-thresholds, respectively). The last three columns provide the total, integrated
-magnitude based on fitting the curve of growth in each bandpass with an
-empirical model (shown as a thin dashed line in the curve-of-growth figure,
-below).</p>
+thresholds, respectively).</p>
 
 <table class="table table-bordered table-hover">
 <tr><th></th><th></th>
@@ -156,10 +153,14 @@ below).</p>
           <td colspan="2"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"><img width="100%" class="img-responsive" src="{{ primary.png_base_url }}thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" alt="Missing file thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"></a></td>
         </tr>
         <tr>
-          <td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"></a></td>
-          <td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"></a></td> 
+          <td style="vertical-align:middle;"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"></a></td>
+          <td style="vertical-align:middle;"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"></a></td> 
         </tr>
         </table>
+        <p>In the curve-of-growth figure, the thin dashed line is the empirical
+         model fitted to the data (see
+         the <a href="https://portal.nersc.gov/project/cosmo/temp/ioannis/sga-dr9/sga/sga2020#ellipse-fitting">ellipse-fitting
+         documentation</a>).</p>  
     {% else %}
         <p>Ellipse-fitting not done or failed.</p>
     {% endif %}
