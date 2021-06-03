@@ -1,0 +1,36 @@
+@import url(https://weloveiconfonts.com/api/?family=fontawesome);
+
+body {
+    padding-top: 70px;
+    /* See http://stackoverflow.com/questions/22948843/why-is-my-header-getting-covered-by-nav-bar-bootstrap */
+}
+
+.navbar {
+    font-family: "Raleway", "Helvetica Neue", Helvetica, Arial, sans-serif, "FontAwesome";
+}
+
+.navbar-brand {
+    padding: 5px 15px;
+}
+
+.navbar-brand #logo {
+    height: 54px;
+    padding: 0;
+    margin: 0;
+}
+
+.carousel {
+    display: inline-block;
+}
+
+.col-left {
+    padding-left: 0px;
+}
+
+.col-right {
+    padding-right: 0px;
+}
+
+hr.docutils {
+    width: 100%;
+}

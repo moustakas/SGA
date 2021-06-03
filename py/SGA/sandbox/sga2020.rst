@@ -1,0 +1,852 @@
+.. title: Siena Galaxy Atlas 2020
+.. slug: sga2020
+.. tags: mathjax
+.. description:
+
+.. |deg|    unicode:: U+000B0 .. DEGREE SIGN
+.. |Prime|    unicode:: U+02033 .. DOUBLE PRIME
+
+.. class:: pull-right well
+
+.. contents::
+
+*Primary contacts:* `John Moustakas (Siena College)`_ and `Dustin Lang (Perimeter Institute)`_.
+
+.. _`John Moustakas (Siena College)`: ../../contact/#other-experts
+.. _`Dustin Lang (Perimeter Institute)`: ../../contact/#other-experts
+
+`Data Portal`_
+==============
+
+The SGA-2020 data products can be browsed and downloaded at the `SGA
+web-portal`_, both for individual galaxies and the full sample. Below, we
+describe the data model for these data products. A forthcoming paper (Moustakas,
+Lang, et al., in preparation) will describe the SGA-2020 in detail.
+
+Overview
+========
+
+The Siena Galaxy Atlas (SGA) is a multiwavelength atlas of approximately 385,000
+nearby galaxies selected based on their apparent angular diameter.
+
+These galaxies are intrinsically large enough to be spatially resolved from our
+vantage point in the universe, providing a unique and powerful window into the
+fossil record of galaxy formation and evolution and the galaxy-halo
+connection. In addition, the atlas serves as a valuable angular map of the
+foreground extragalactic sky for cosmological surveys of distant galaxies like
+the `Dark Energy Spectroscopic Instrument (DESI)`_ survey.
+
+The SGA delivers precise coordinates, multiwavelength mosaics, azimuthally
+averaged optical surface brightness and color profiles, integrated and aperture
+photometry, model images and photometry, and additional metadata for the full
+sample. The primary sample relies on deep, wide-field *grz* imaging from the
+`DESI Legacy Imaging Surveys DR9`_ as well as all-sky infrared imaging at 3.4-22
+microns from `unWISE`_.
+
+The 2020 version of the atlas, SGA-2020, is primarily selected from the
+`Hyperleda extragalactic database`_ of *known* large angular-diameter galaxies,
+although future versions of the atlas will be supplemented with galaxies
+identified from the `DR9`_ imaging itself, which will mitigate the heterogeneity
+and surface brightness incompleteness of the parent sample.
+
+Coupled with existing and forthcoming optical spectroscopy from `DESI`_,
+particularly the Bright Galaxy Survey (BGS) of 10 million galaxies brigher than
+:math:`r=20`, the SGA-2020 will yield important new insights into the star
+formation and mass assembly histories of galaxies, enable a myriad complementary
+studies of the nearby and distant universe, and help engage the broader public
+in astronomy with visually striking color imaging of large, well-resolved,
+nearby galaxies.
+
+Reporting Issues
+================
+
+We welcome questions and feedback from users, as well as requests for additional
+data products through the ticket system at
+
+- https://github.com/moustakas/SGA/issues
+
+We also acknowledge that all the code used to select, build, and analyze the
+catalog is open source and publicly available:
+
+- https://github.com/moustakas/SGA
+- https://github.com/moustakas/legacyhalos
+- https://github.com/legacysurvey/legacypipe
+
+Sample Selection
+================
+
+In this section we briefly describe the construction of the parent SGA-2020 sample.
+
+Hyperleda Catalog
+-----------------
+
+To construct the initial galaxy catalog, we queried the `Hyperleda extragalactic
+database`_ for galaxies with angular diameter :math:`D(25)>0.2` arcmin, where
+:math:`D(25)` is the diameter at the :math:`25\ \mathrm{mag\ arcsec}^{-2}`
+surface brightness isophote (in the optical, typically the `B`-band), a
+traditional measure of the "size" of the galaxy popularized by the `Third
+Reference Catalog of Bright Galaxies (RC3)`_.
+
+We executed the following query on the 2018 November 14 version of the
+`Hyperleda`_ database, resulting in a catalog of 1,436,176 galaxies:
+
+.. code-block:: sql
+                
+   WITH
+   "R50" AS (
+     SELECT pgc, avg(lax) AS lax, avg(sax) AS sax
+     FROM rawdia
+     WHERE quality=0 and dcode=5 and band between 4400 and 4499 GROUP BY pgc
+   ),
+   "IR" AS (
+     SELECT pgc, avg(lax) AS lax, avg(sax) AS sax
+     FROM rawdia
+     WHERE quality=0 and iref in (27129) and dcode=7 and band=0 GROUP BY pgc
+   )
+   
+   SELECT
+     m.pgc, m.objname, m.objtype, m.al2000, m.de2000, m.type, m.bar, m.ring, m.multiple, m.compactness, m.t, 
+     m.logd25, m.logr25, m.pa, m.bt, m.it, m.kt, m.v, m.modbest, "R50".lax, "R50".sax, "IR".lax, "IR".sax,
+   FROM
+     m000 AS m
+     LEFT JOIN "R50" USING (pgc)
+     LEFT JOIN "IR" USING (pgc)
+   WHERE
+     objtype='G' and (m.logd25>0.2 or "R50".lax>0.2 or "IR".lax>0.2)
+
+
+Based on a large number of visual inspections and both quantitative and
+qualitative tests, we culled the resulting sample by applying the following
+additional cuts:
+
+1. We limited the sample to :math:`0.333<D(25)<180` arcmin, which removed
+   roughly 900,000 galaxies (approximately 65% of the original sample),
+   including the Magellanic Clouds and the Sagittarius Dwarf Galaxy at the
+   large-diameter end. We implemented the :math:`D(25)<20` arcsec cut because
+   we found that the fraction of spurious sources (or sources with incorrect
+   diameters) increased rapidly below this diameter; moreover, galaxies smaller
+   than this size are modeled reasonably well as part of the standard *Tractor*
+   pipeline (see `Tractor implementation details`_).
+  
+..  
+  
+
+2. We removed approximately 3800 galaxies with no magnitude estimate in
+   `Hyperleda`_, galaxies which we found to be largely spurious based on visual
+   inspection.
+  
+..  
+  
+
+3. We removed an additional roughly 6500 spurious sources (or galaxies with
+   significantly overestimated diameters) based on visual inspection.
+  
+..  
+  
+
+4. Finally, we rejected approximately 1700 galaxies whose primary galaxy
+   identifier (in `Hyperleda`_) was from either SDSS or 2MASS and whose central
+   coordinates placed it *inside* the elliptical aperture of *another* (non-SDSS
+   and non-2MASS) galaxy with diameter greater than 0.5 arcmin. Based on visual
+   inspection, we found that many of these sources were due to shredding or were
+   spurious sources with grossly over-estimated diameters.
+
+In addition, we visually inspected all galaxies in the sample with
+:math:`D(25)>0.75` arcmin, including all the NGC/IC galaxies, and assessed their
+published elliptical geometry and coordinates. Where necessary, we updated the
+diameter, position angle, minor-to-major axis ratio, and, in some cases, central
+coordinates "by hand", as indicated in the ``BYHAND`` column described in the
+data model below. The `NASA Extragalactic Database (NED)`_ proved invaluable for
+these cross-checks.
+
+Supplemental Catalogs
+---------------------
+
+To improve the completeness of the `Hyperleda`_ catalog, we supplemented the
+sample with several additional catalogs:
+
+1. We added the sample of Local Group Dwarf Galaxies from `McConnachie (2012)`_,
+   making sure to account for any systems already in the `Hyperleda`_
+   catalog. Using visual inspection, we determined that approximately half these
+   systems were too unresolved to be part of the SGA-2020 (e.g., Ursa Minor),
+   and so we removed them from the sample.
+  
+..  
+  
+
+2. Next, we identified the sample of galaxies in the `RC3`_ and `OpenNGC`_
+   catalogs which were missing from the `Hyperleda`_ sample. Surprisingly, many
+   of these systems are large and have high average surface brightness.
+  
+..  
+  
+
+3. Finally, we used the `DR8`_ photometric catalogs to identify additional
+   large-diameter galaxies. This supplemental catalog consists of two
+   subsamples:
+   
+   a. First, after applying a variety of catalog-level quality cuts (and
+      extensive visual inspection), we identified all objects in `DR8`_ with
+      half-light radii :math:`r(50)>14` arcsec based on their *Tractor* model
+      fits;
+ 
+   b. And second, we constructed a candidate sample of compact galaxies which
+      would otherwise be forced to be point sources in `DR9`_ based on their Gaia
+      catalog properties (see `this notebook`_ for details).
+
+Group Catalog
+-------------
+
+Galaxies which are close to one another (in apparent, angular coordinates) must
+be analyzed jointly. Consequently, we built a simple group catalog using a
+friends-of-friends algorithm and a 10 arcmin linking length, taking care to
+ensure that galaxies which overlap (within two times their circularized
+:math:`D(25)` diameter) were assigned to the same group.
+
+Using this procedure, we identified approximately 515,000 unique groups, of
+which roughly 93% have just one member. Among the remaining 7% of groups,
+approximately 15,000 groups have two members, 1700 groups have 3-5 members, 50
+groups have 6-10 members, and just four groups have 10 or more galaxies,
+including the center of the Coma Cluster.
+
+..
+  We also identify galaxies lying within and outside the Legacy Surveys imaging
+  footprint.
+
+Final Parent Sample
+-------------------
+
+The final parent sample contains 531,677 galaxies approximately limited to
+:math:`D(25)>20` arcsec, spanning a wide range of magnitude and mean surface
+brightness. Of these, 383,568 have *grz* imaging from `DR9`_.
+
+..
+  Note that because of the supplemental catalogs, this sample includes a small
+  fraction of sources with `D(25)<20 arcsec`; however we retain these galaxies
+  in the parent sample because some of them are historically important NGC/IC
+  galaxies.
+
+Custom Mosaics & Ellipse-Fitting
+================================
+
+We analyze every galaxy group in the parent SGA-2020 catalog independently
+(noting that the pipeline is MPI-parallelized, and so it scales reasonably
+well). In the following two sections (`Custom Mosaics`_ and `Ellipse-Fitting`_)
+we describe our procedure in more detail.
+
+Information regarding the resulting data products and their organization on-disk
+can be found in the `Data Products`_ section.
+
+Custom Mosaics
+--------------
+
+We run the `DR9`_ pipeline on a "custom brick" based on the estimated center and
+diameter of the galaxy group (using ``GROUP_RA``, ``GROUP_DEC``, and
+``GROUP_DIAMETER`` defined in `SGA-2020-ls.fits`_). Specifically, we generate
+mosaics according to the following criteria:
+
+* For groups with ``GROUP_DIAMETER``:math:`\,<14` arcmin we use a mosaic diameter
+  of :math:`3\, \times` ``GROUP_DIAMETER``;
+* For groups with :math:`14\,<` ``GROUP_DIAMETER``:math:`\,<30` arcmin we use a
+  mosaic diameter of :math:`2\, \times` ``GROUP_DIAMETER``;
+* And for groups with ``GROUP_DIAMETER``:math:`\,>30` arcmin (which only affects
+  ``NGC0598_GROUP``) we use a mosaic diameter of :math:`1.4\, \times`
+  ``GROUP_DIAMETER``.
+
+In all cases, for the *grz* imaging we adopt a fixed pixel scale of 0.262
+arcsec/pixel and for the unWISE mosaics we use 2.75 arcsec/pixel.
+
+Unlike in `DR9`_, we use a couple different options when calling the
+`legacypipe`_ photometric pipeline:
+
+* First, we invoke the ``--fit-on-coadds`` option, which triggers the following
+  specialized behavior:
+  
+  * After reading the individual, sky-subtracted CCD images and rejecting
+    outlier pixels, we rescale the inverse variance weights in order to
+    downweight the bright central region of the galaxy (even more than from
+    Poisson noise). This change was implemented in order to prevent *Tractor*
+    from fitting the central part of the (typically large, high-surface
+    brightness) galaxy at the expense of the outer envelope;
+  * We generate and write out inverse-variance weighted pixelized PSFs for each
+    of the *g-, *r*, and *z* bandpasses based on all the available input
+    imaging;
+  * We turn off the default behavior of only fitting point sources to objects
+    detected within the elliptical mask of each SGA large galaxy;
+  * And finally, we continue with source detection and model fitting *on the
+    coadded images*, unlike in the normal pipeline (in which source detection
+    and model fitting are run on the individual CCDs).
+    
+..  
+  
+
+* Second, we increase the threshold for detecting and deblending sources by
+  specifying ``--saddle-fraction 0.2`` (the default value is ``0.1``) and
+  ``--saddle-min 4.0`` (versus the default ``2.0``). These parameters control
+  the fractional peak height for identifying new sources around existing
+  sources, and the minimum required saddle point depth (in units of the standard
+  deviation of pixel values above the noise) from existing sources down to new
+  sources, respectively. We find these options necessary in order to prevent
+  excessive shredding and overfitting of the "resolved" galactic structure in
+  individual galaxies (e.g., HII regions).
+
+Ellipse-Fitting
+---------------
+
+We measure the multi-band surface brightness profiles of each galaxy in the
+SGA using the ellipse-fitting tools in the `astropy`_-affiliated package
+`photutils`_. Once again, we analyze each galaxy group independently and use MPI
+parallelization to process the full sample.
+
+Specifically, we carry out the following steps for each galaxy group:
+
+1. We begin by reading the ``GROUP_NAME-largegalaxy-tractor.fits`` and
+   ``GROUP_NAME-largegalaxy-sample.fits`` catalogs for each group (see the
+   `Images and Catalogs`_ section) and reject the following sources from the
+   subsequent ellipse-fitting step, if any:
+   
+   * objects missing from the *Tractor* catalog (i.e., they were dropped during
+     *Tractor* modeling);
+   * objects with negative *r*-band flux or objects fit by *Tractor* as type
+     ``PSF``;
+   * galaxies fit as *Tractor* type ``REX`` which have a measured half-light
+     radius ``shape_r`` :math:`<5` arcsec`;
+   * galaxies fit as *Tractor* types ``EXP``, ``DEV``, or ``SER`` which have a
+     measured half-light radius ``shape_r`` :math:`<2` arcsec`;
+
+   The first two criteria identify spurious sources in the initial parent
+   catalog or objects with grossly over-estimated diameters, and all these
+   objects already have been removed from the `SGA-2020-ls.fits`_ catalog.
+
+   The second two criteria identify galaxies which are too small to benefit from
+   ellipse-fitting, i.e., they are well-fit by the standard photometric pipeline
+   and have been deemed to not require special handling. These sources will
+   likely be removed from future versions of the SGA.
+
+2. Next, we read the *grz* images and corresponding inverse variance and model
+   images. Here and throughout our analysis we use the *r*-band image as the
+   "reference band." We also read the ``GROUP_NAME-largegalaxy-maskbits.fits``
+   image (see `Images and Catalogs`_) but only retain the ``BRIGHT``,
+   ``MEDIUM``, ``CLUSTER``, ``ALLMASK_G``, ``ALLMASK_R``, and ``ALLMASK_Z`` bits
+   (defined in the `DR9 bitmasks`_ page). Hereafter, we refer to this mask as
+   the ``starmask``.
+
+   With these data in hand, we carry out the following steps:
+   
+   * First, we build a ``residual_mask`` which accounts for statistically
+     significant differences between the data and the *Tractor* models. In
+     detail, we flag all pixels which deviate by more than math:`5-sigma` (in
+     *any* bandpass) from the absolute value of the Gaussian-smoothed residual
+     image, which we construct by subtracting the model image from the data and
+     smoothing with a `2-pixel` Gaussian kernel. This step obviously masks all
+     sources *including* the galaxy of interest, but we restore those pixels in
+     the next step. In addition, we iteratively dilate the mask two times and we
+     also mask pixels along the border of the mosaic with a border equal to 2%
+     the size of the mosaic.
+    
+   ..  
+  
+    
+   * Next, we iterate on each galaxy in the group from brightest to faintest
+     based on its *r*-band flux (from *Tractor*). For each galaxy, we construct
+     the model image from all the *Tractor* sources in the field *except the
+     galaxy of interest*, and subtract this model image from the data. 
+
+     We then measure the mean elliptical geometry of the galaxy based on the
+     second moment of the light distribution using a modified version of
+     `Michele Cappellari's mge.find_galaxy`_ algorithm (hereafter, the ``ellipse
+     moments``). When computing the ``ellipse moments``, we only use pixels with
+     surface brightness :math:`>27\ \mathrm{mag\ arcsec}^{-2}` and we
+     median-filter the image with a `3-pixel` boxcar to smooth out any
+     small-scale galactic structure.
+
+     Finally, we combine the ``residual_mask`` with the ``starmask`` (using
+     Boolean logic), but *unmask* pixels belonging to the galaxy based on the
+     ``ellipse moments`` geometry, but using 1.5 times the estimated semi-major
+     axis of the galaxy.
+    
+   ..  
+  
+    
+   * The preceding algorithm fails in fields containing more than one galaxy if
+     the central coordinates of one of the galaxies is masked by a previous
+     (brighter) system. (We consider a source to be impacted if *any* pixels in
+     a `5-pixel` diameter box centered on the *Tractor* position of the galaxy
+     are masked.) In this case, we iteratively *shrink* the elliptical mask of
+     any of the previous galaxies until the central position of the current
+     galaxy is unmasked.
+
+     Note that this algorithm is not perfect, particularly in crowded fields
+     (e.g., the center of the Coma Cluster), but will be improved in future
+     versions of the SGA.
+    
+   ..  
+  
+    
+   * Another occasional failure mode is if the flux-weighted position of the
+     galaxy based on the ``ellipse moments`` differs by the *Tractor* position
+     by more than `10 pixels`, which can happen in crowded fields and near
+     bright stars and unmasked image artifacts. In this case we revert to using
+     the *Tractor* coordinates and model geometry and record this occurence in
+     the ``largeshift`` bit (see the `SGA Bitmasks`_ page). 
+    
+   ..  
+  
+     
+   * Finally, we convert the images to surface brightness in 
+     :math:`\mathrm{nanomaggies\ arcsec}^{-2}` and the weight maps to variance
+     images in :math:`\mathrm{nanomaggies}^2\ \mathrm{arcsec}^{-4}`.
+
+3. With the images and individual masks for each galaxy in hand, we can now
+   measure the multi-band surface-brightness profiles of each galaxy. We assume
+   a fixed elliptical geometry based on the ``ellipse moments`` previously
+   measured, and robustly determine the surface brightness along the elliptical
+   path from the central pixel to two times the estimated semi-major axis of the
+   galaxy (based on the ``ellipse moments``), in `1-pixel` (0.262 arcsec)
+   intervals.
+
+   In detail, we measure the surface brightness (and the uncertainty) using
+   *nclip=3*, *sclip=3*, and *integrmode=median*, i.e., two sigma-clipping
+   iterations, a :math:`3\sigma` clipping threshold, and *median* area
+   integration, respectively, as documented in the
+   `photutils.isophote.Ellipse.fit_image`_ method.
+
+   From the *r*-band surface brightness profile, we also robustly measure the
+   size of the galaxy at the following surface brightness thresholds: 22, 22.5,
+   23, 23.5, 24, 24.5, 25, 25.5, and :math:`26\ \mathrm{mag\ arcsec}^{-2}` . We
+   perform this measurement by fitting a linear model to the surface brightness
+   profile converted to :math:`\mathrm{mag\ arcsec}^{-2}` vs :math:`r^{0.25}`
+   (which would be a straight line for a de Vaucouleurs galaxy profile), but
+   only consider measurements which are within :math:`\pm1\ \mathrm{mag\
+   arcsec}^{-2}` of the desired surface brightness threshold. To estimate the
+   uncertainty in this radius we generate Monte Carlo realizations of the
+   surface brightness profile and use the standard deviation of the resulting
+   distribution of radii.
+
+   Finally, we also measure the curve-of-growth in each bandpass using the tools
+   in `photutils.aperture`_. Briefly, we integrate the image and variance image
+   in each bandpass using elliptical apertures from the center of the galaxy to
+   two times its estimated semi-major axis (based on the ``ellipse moments``,
+   again, in 1-pixel or 0.262 arcsec intervals).
+
+   We fit the curve-of-growth, :math:`m(r)` using the following empirical model
+   (taken from `Observational Astronomy by Birney, Gonzalez, & Oesper`_):
+
+   .. math::
+                   
+      m(r) = m_{1} + m_{0} \left\{1-\exp\left[ -\alpha_{1} \left(\frac{r}{r_{0}}\right)^{-\alpha_{2}} \right]\right\}
+
+   where :math:`m_{1}`, :math:`m_{0}`, :math:`\alpha_{1}`, :math:`\alpha_{2}`,
+   and :math:`r_{0}` are constant parameters of the model and *r* is the
+   semi-major axis in arcsec. In our analysis we take the radius scale factor
+   :math:`r_{0}=10` arcsec to be fixed.
+
+   Note that in the limit :math:`r\rightarrow\infty`, :math:`m_{1}` is the
+   total, integrated magnitude, and as :math:`r\rightarrow0`,
+   :math:`m_{0}+m_{1}` is the brightness at the center of the galaxy.
+
+   Finally, we package all the measurements, one per galaxy, into an
+   `astropy.QTable`_ table (including units on all the quantities), and write
+   out the results (as documented in the `Ellipse-Fitting`_ section).
+
+Data Products
+=============
+
+We divide the SGA-2020 into two non-overlapping samples and define the data
+model for each catalog below.
+
+SGA-2020-ls.fits
+----------------
+
+`SGA-2020-ls.fits`_ contains 383,568 galaxies with three-band (*grz*) imaging
+from `DR9`_, spanning approximately 20,000 square degrees (see the `Contents of
+DR9`_ page for a more precise area). (Here, the suffix *ls* means "Legacy
+Surveys" imaging.)
+
+For these systems we are able to generate multiband mosaics and measure their
+surface-brightness and color profiles using standard ellipse-fitting techniques
+(except as indicated by the ``ELLIPSEBIT`` bitmask, defined below).
+
+The multi-band mosaics, detailed ellipse-fitting results, *Tractor* catalogs,
+and other data products corresponding to each galaxy group in the SGA-2020 are
+documented in the `Group Files`_ section.  .
+
+====== ======== ======== ======================
+Number EXTNAME  Type     Contents
+====== ======== ======== ======================
+HDU00  PRIMARY  IMAGE    Empty.
+HDU01  ELLIPSE_ BINTABLE Ellipse-fitting results.
+HDU02  TRACTOR_ BINTABLE *Tractor* modeling results.
+====== ======== ======== ======================
+
+ELLIPSE
+~~~~~~~
+
+========================================================== ============ =========================================== ===============================================
+Name                                                       Type         Units                                       Description
+========================================================== ============ =========================================== ===============================================
+``SGA_ID``                                                 int64                                                    Unique integer identifier.
+``SGA_GALAXY``                                             char16                                                   SGA galaxy name, constructed as "SGA-2020 ``SGA_ID``".
+``GALAXY``                                                 char[29]                                                 Unique galaxy name.
+``PGC``                                                    int64                                                    Unique identifier from the `Principal Catalogue of Galaxies`_ (-1 if none or not known).
+``RA_LEDA``                                                float64      degree                                      Right ascension (J2000) from the reference indicated in ``REF`` (but see also the ``BYHAND`` column).
+``DEC_LEDA``                                               float64      degree                                      Declination (J2000) from the reference indicated in ``REF`` (but see also the ``BYHAND`` column).
+``MORPHTYPE``                                              char[21]                                                 Visual morphological type from `Hyperleda`_ (if available).
+``PA_LEDA``                                                float32      degree                                      Galaxy position angle, measured positive clockwise from North, taken from the reference indicated in ``REF`` (but see also the ``BYHAND`` column).
+``D25_LEDA``                                               float32      arcmin                                      Approximate diameter at the :math:`25\ \mathrm{mag}/\mathrm{arcsec}^2` (optical) surface brightness isophote, taken from the reference indicated in ``REF`` (but see also the ``BYHAND`` column).
+``BA_LEDA``                                                float32                                                  Ratio of the semi-minor axis to the semi-major axis, taken from the reference indicated in ``REF`` (but see also the ``BYHAND`` column).
+``Z_LEDA``                                                 float32                                                  Heliocentric redshift from `HyperLeda`_. *Note: a missing value, represented with -1.0, does not imply that no redshift exists*.
+``SB_D25_LEDA``                                            float32      Vega :math:`\mathrm{mag}/\mathrm{arcsec}^2` Mean surface brightness within ``D25_LEDA`` based on the brightness in ``MAG_LEDA``.
+``MAG_LEDA``                                               float32      Vega mag                                    Approximate brightness (*Note: this magnitude estimate is heterogeneous in both bandpass and aperture but for most galaxies it is measured in the B-band within* ``D25_LEDA`` *; use with care*.) 
+``BYHAND``                                                 Boolean                                                  Flag indicating whether one or more of ``RA_LEDA``, ``DEC_LEDA``, ``D25_LEDA``, ``PA_LEDA``, ``BA_LEDA``, or ``MAG_LEDA`` were changed from their published `HyperLeda`_ values, generally based on visual inspection.
+``REF``                                                    char[13]                                                 Unique reference name indicating the original source of the object, as described in `Sample Selection`_: ``LEDA-20181114``, ``LGDWARFS``, ``RC3``, ``OpenNGC``, or ``DR8``.
+``GROUP_ID``                                               int64                                                    Unique group identification number.
+``GROUP_NAME``                                             char[35]                                                 Unique group name, constructed from the name of its largest member (based on ``D25_LEDA``) and the suffix ``_GROUP`` (e.g., ``PGC193199_GROUP``).
+``GROUP_MULT``                                             int16                                                    Group multiplicity (i.e., number of group members from the parent sample).
+``GROUP_PRIMARY``                                          Boolean                                                  Flag indicating the primary (i.e., largest) group member.
+``GROUP_RA``                                               float64      degree                                      Right ascencion of the group weighted by ``D25_LEDA``.
+``GROUP_DEC``                                              float64      degree                                      Declination of the group weighted by ``D25_LEDA``.
+``GROUP_DIAMETER``                                         float32      arcmin                                      Approximate group diameter. For groups with a single galaxy this quantity equals ``D25_LEDA``. For galaxies with multiple members, we estimate the diameter of the group as the maximum separation of all the pairs of group members (plus their ``D25_LEDA`` diameter).
+``BRICKNAME``                                              char[8]                                                  Name of brick, encoding the brick sky position, e.g. "1126p222" is centered on RA=112.6, Dec=+22.2. 
+``DIAM``                                                   float32      arcmin                                      Galaxy semi-major axis diameter measured at the :math:`26\ \mathrm{mag}/\mathrm{arcsec}^2\ r`-band isophote based on ``RADIUS_SB26``. If the *r*-band surface-brightness profile could not be measured at this level, the diameter is set equal to :math:`2.5\times` ``RADIUS_SB25`` or :math:`1.5\times` ``D25_LEDA``, in that order of priority.
+``DIAM_REF``                                               char[4]                                                  Reference indicating the origin of the ``DIAM`` measurement: ``SB26``, ``SB25``, or ``LEDA``.
+``PA``                                                     float32      degree                                      Galaxy position angle, measured positive clockwise from North, as measured from the ``ellipse moments`` (or equivalent to ``PA_LEDA`` if the ``ellipse moments`` could not be measured).
+``BA``                                                     float32                                                  Minor-to-major axis ratio, as measured from the ``ellipse moments`` (or equivalent to ``BA_LEDA`` if the ``ellipse moments`` could not be measured).
+``ELLIPSEBIT``                                             int32                                                    See the `SGA Bitmasks`_ documentation.
+``RADIUS_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]``          float32      arcsec                                      Taken from the `Ellipse Fits`_ table.
+``RADIUS_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]_ERR``      float32      arcsec                                      Taken from the `Ellipse Fits`_ table.
+``[G,R,Z]_MAG_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]``     float32      AB mag                                      Taken from the `Ellipse Fits`_ table.
+``[G,R,Z]_MAG_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]_ERR`` float32      AB mag                                      Taken from the `Ellipse Fits`_ table.
+``[G,R,Z]_COG_PARAMS_MTOT``                                float32      AB mag                                      Taken from the `Ellipse Fits`_ table.
+``[G,R,Z]_COG_PARAMS_M0``                                  float32      AB mag                                      Taken from the `Ellipse Fits`_ table.
+``[G,R,Z]_COG_PARAMS_ALPHA1``                              float32                                                  Taken from the `Ellipse Fits`_ table.
+``[G,R,Z]_COG_PARAMS_ALPHA2``                              float32                                                  Taken from the `Ellipse Fits`_ table.
+``[G,R,Z]_COG_PARAMS_CHI2``                                float32                                                  Taken from the `Ellipse Fits`_ table.
+========================================================== ============ =========================================== ===============================================
+
+TRACTOR
+~~~~~~~
+
+This binary table is row-matched to the `SGA-LS`_ table in the preceding HDU and
+contains all the columns documented in the `DR9 Tractor catalogs`_, supplemented
+(for convenience) with ``SGA_ID``. 
+
+Note that all sources in this table have ``REF_CAT=="L3"`` and ``REF_ID`` is
+identical to ``SGA_ID``, as described in the `external catalogs documentation`_.
+
+**Document RELEASE declination cuts.**
+
+SGA-2020-nols.fits
+------------------
+
+`SGA-2020-nols.fits`_ contains the remaining 148,109 galaxies from the `Final
+Parent Sample`_ which lie *off* the `DR9`_ imaging footprint. (Here, the suffix
+*nols* means "no Legacy Surveys" imaging.)
+
+Note that a small number of these galaxies are within the boundaries of the
+footprint but they lack three-band coverage and therefore they are not analyzed
+as part of the SGA-2020; however, they may be added to the SGA at a future date.
+
+====== ============ ======== ======================
+Number EXTNAME      Type     Contents
+====== ============ ======== ======================
+HDU00  PRIMARY      IMAGE    Empty.
+HDU01  SGA-NOLS_    BINTABLE Metadata based on the parent catalog.
+====== ============ ======== ======================
+
+SGA-NOLS
+~~~~~~~~
+
+==================== ============ =========================================== ===============================================
+Name                 Type         Units                                       Description
+==================== ============ =========================================== ===============================================
+``SGA_ID``           int64                                                    See `SGA-LS`_ data model.
+``SGA_GALAXY``       char16                                                   See `SGA-LS`_ data model.
+``GALAXY``           char[29]                                                 See `SGA-LS`_ data model.
+``PGC``              int64                                                    See `SGA-LS`_ data model.
+``RA_LEDA``          float64      degree                                      See `SGA-LS`_ data model.
+``DEC_LEDA``         float64      degree                                      See `SGA-LS`_ data model.
+``MORPHTYPE``        char[21]                                                 See `SGA-LS`_ data model.
+``PA_LEDA``          float32      degree                                      See `SGA-LS`_ data model.
+``D25_LEDA``         float32      arcmin                                      See `SGA-LS`_ data model.
+``BA_LEDA``          float32                                                  See `SGA-LS`_ data model.
+``Z_LEDA``           float32                                                  See `SGA-LS`_ data model.
+``SB_D25_LEDA``      float32      Vega :math:`\mathrm{mag}/\mathrm{arcsec}^2` See `SGA-LS`_ data model.
+``MAG_LEDA``         float32      Vega mag                                    See `SGA-LS`_ data model.
+``BYHAND``           Boolean                                                  See `SGA-LS`_ data model.
+``REF``              char[13]                                                 See `SGA-LS`_ data model.
+``GROUP_ID``         int64                                                    See `SGA-LS`_ data model.
+``GROUP_NAME``       char[35]                                                 See `SGA-LS`_ data model.
+``GROUP_MULT``       int16                                                    See `SGA-LS`_ data model.
+``GROUP_PRIMARY``    Boolean                                                  See `SGA-LS`_ data model.
+``GROUP_RA``         float64      degree                                      See `SGA-LS`_ data model.
+``GROUP_DEC``        float64      degree                                      See `SGA-LS`_ data model.
+``GROUP_DIAMETER``   float32      arcmin                                      See `SGA-LS`_ data model.
+``BRICKNAME``        char[8]                                                  See `SGA-LS`_ data model.
+``DROPBIT``          int32                                                    See the `SGA Bitmasks`_ documentation.
+==================== ============ =========================================== ===============================================
+
+Group Files
+-----------
+
+For each galaxy group in the SGA-2020 (i.e., each row in `SGA-2020-ls.fits`_) we
+produce the set of files described in the `Images and Catalogs`_ table and the
+`Custom Mosaics & Ellipse-Fitting`_ documentation section.
+
+These files are organized into the directory structure ``RASLICE/GROUP_NAME``,
+where ``GROUP_NAME`` is the name of the galaxy group and ``RASLICE``
+(``000-359``) is the one-degree wide *slice* of the sky that the object belongs
+to. Specifically, in Python:
+
+.. code-block:: python
+
+   RASLICE = '{:06d}'.format(int(GROUP_RA*1000))[:3]
+   
+Images and Catalogs
+~~~~~~~~~~~~~~~~~~~
+
+The table below documents the nominal set of files produced by the SGA
+pipeline. Many of these files are standard `DR9`_ data products (see the `DR9
+files documentation`_), although they are based on slightly different inputs
+than those used for nominal `DR9`_ processing (see `Custom Mosaics`_ for more
+details) and with names which are specific to the SGA.
+
+============================================================================== ================================================
+File                                                                           Description
+============================================================================== ================================================
+**DR9 Pipeline Catalogs**
+-------------------------------------------------------------------------------------------------------------------------------
+``GROUP_NAME``-ccds-[north,south].fits                                         Input table of ``north`` or ``south`` `CCDs`_ used to generate the optical image stacks.  
+``GROUP_NAME``-largegalaxy-blobs.fits.gz                                       Enumerated segmentation ("blob") image (see the `metrics`_ documentation); may be removed in future releases.
+``GROUP_NAME``-largegalaxy-tractor.fits                                        `Tractor catalog`_ of all detected sources in the field.
+**DR9 Pipeline Mosaics and Catalogs**                                          
+-------------------------------------------------------------------------------------------------------------------------------
+``GROUP_NAME``-largegalaxy-maskbits.fits.fz                                    Image encoding the `DR9 bitmasks`_ contributing to each pixel (see also the `DR9 image stacks`_ documentation).
+``GROUP_NAME``-largegalaxy-outlier-mask.fits.fz                                Image of pixels rejecting during outlier masking (see the `metrics`_ documentation); may be removed in future releases.
+``GROUP_NAME``-depth-`[g,r,z]`.fits.fz                                         Image of the :math:`5\sigma` point-source depth at each pixel (see also the `DR9 image stacks`_ documentation).
+``GROUP_NAME``-largegalaxy-psf-`[g,r,z]`.fits.fz                               Postage stamp of the inverse-variance weighted mean pixelized *grz* PSF at the center of the field (see the `PSF documentation`_ for more details). 
+``GROUP_NAME``-largegalaxy-`[image,invvar,model]`-`[g,r,z]`.fits.fz            Inverse-variance weighted image, inverse variance image, and *Tractor* model image based on the input *grz* imaging (see the `DR9 image stacks`_ documentation for more details).
+``GROUP_NAME``-largegalaxy-`[image,model,resid]`-grz.jpg                       JPEG visualization of the data, model, and residual *grz* mosaics.
+``GROUP_NAME``-`[image,invvar]`-`[W1,W2,W3,W4]`.fits.fz                        Inverse-variance weighted image and inverse variance image based on the input *W1-W4* imaging (see the `DR9 image stacks`_ documentation for more details). *Note: there is no ``largegalaxy`` prefix because the data used to generate these files is independent of the SGA.*
+``GROUP_NAME``-largegalaxy-model-`[W1,W2,W3,W4]`.fits.fz                       unWISE *Tractor* model *W1-W4* mosaic based on the forced photometry technique used in `DR9`_. *Note that the ``largegalaxy`` prefix is present because the Tractor models used to generate this image rely on assumptions made specifically for the SGA.*
+``GROUP_NAME``-`[image,model`]-W1W2.jpg                                        JPEG visualization of the data and model *W1W2* mosaics.
+**SGA Pipeline Files**                                                         
+-------------------------------------------------------------------------------------------------------------------------------
+``GROUP_NAME``-largegalaxy-sample.fits                                         Catalog of (one or more) galaxies from `SGA-2020-ls.fits`_ belonging to this group.
+``GROUP_NAME``-largegalaxy-``SGA_ID``-ellipse.fits                             See the `Ellipse Fits`_ data model; note that this file may be missing (for the galaxy of a given ``SGA_ID``) if ellipse-fitting failed or is not carried out (see ``SGA Bitmasks``).
+``GROUP_NAME``-coadds.log                                                      Logging output for the *coadds* stage of the pipeline; may be missing in some cases.
+``GROUP_NAME``-ellipse.log                                                     Logging output for the *ellipse* stage of the pipeline; may be missing in some cases.
+============================================================================== ================================================
+
+Ellipse Fits
+~~~~~~~~~~~~
+
+We produce a single FITS table to store the ellipse-fitting results for each
+galaxy in the SGA-2020 which could be ellipse-fit (see the
+`Ellipse-Fitting`_ documentation for more details).
+
+Many of the ellipse-fitting measurements are taken directly from the
+`photutils.isophote.IsophoteList`_ attributes, although in many cases the column
+names have been renamed for clarity. 
+
+========================================================== ========== ============================================== ===============================================
+Name                                                       Type       Units                                          Description
+========================================================== ========== ============================================== ===============================================
+``SGA_ID``                                                 int64                                                     See `SGA-LS`_ data model.
+``GALAXY``                                                 char[?]                                                   See `SGA-LS`_ data model.
+``RA``                                                     float64    degree                                         See `SGA-LS`_ data model.
+``DEC``                                                    float64    degree                                         See `SGA-LS`_ data model.
+``PGC``                                                    int64                                                     See `SGA-LS`_ data model.
+``PA_LEDA``                                                float32    degree                                         See `SGA-LS`_ data model.
+``BA_LEDA``                                                float32                                                   See `SGA-LS`_ data model.
+``D25_LEDA``                                               float32    arcmin                                         See `SGA-LS`_ data model.
+``BANDS``                                                  char[1][3]                                                List of bandpasses fitted (here, always `g,r,z`).
+``REFBAND``                                                char[1]                                                   Reference band (here, always `r`).
+``REFPIXSCALE``                                            float32    arcsec/pixel                                   Pixel scale in ``REFBAND``.
+``SUCCESS``                                                Boolean                                                   Flag indicating ellipse-fitting success or failure.
+``FITGEOMETRY``                                            Boolean                                                   Flag indicating whether the ellipse geometry was allowed to vary with semi-major axis (here, always ``False``).
+``INPUT_ELLIPSE``                                          Boolean                                                   Flag indicating whether ellipse parameters were passed from an external file (here, always ``False``).
+``LARGESHIFT``                                             Boolean                                                   Flag indicating that the light-weighted center (from the ``ellipse moments``) is different from the *Tractor* position by more than 10 pixels in either dimension, in which case we adopt the *Tractor* model position.
+``RA_X0``                                                  float64    degree                                         Right ascension (J2000) at pixel position ``X0``.
+``DEC_Y0``                                                 float64    degree                                         Declination (J2000) at pixel position ``Y0``.
+``X0``                                                     float32    pixel                                          Light-weighted position along the *x*-axis (from ``ellipse moments``).
+``Y0``                                                     float32    pixel                                          Light-weighted position along the *y*-axis (from ``ellipse moments``).
+``EPS``                                                    float32                                                   Ellipticity :math:`e=1-b/a`, where :math:`b/a` is the semi-minor to semi-major axis ratio ``BA`` given in the `SGA-2020-ls.fits`_ table.
+``PA``                                                     float32    degree                                         Galaxy position angle (astronomical convention, measured clockwise from North); equivalent to ``PA`` in the `SGA-2020-ls.fits`_ table.
+``THETA``                                                  float32    degree                                         Galaxy position angle (physics convention, measured clockwise from the *x*-axis), and given by [:math:`(270-PA)` mod 180].
+``MAJORAXIS``                                              float32    pixel                                          Light-weighted length of the semi-major axis (from ``ellipse moments``).
+``MAXSMA``                                                 float32    pixel                                          Maximum semi-major axis length used for the ellipse-fitting and curve-of-growth measurements (typically taken to be :math:`2\times` ``MAJORAXIS``).
+``INTEGRMODE``                                             char[6]                                                   `photutils.isophote.Ellipse.fit_image`_ integration mode (here, always *median*).
+``SCLIP``                                                  int16                                                     `photutils.isophote.Ellipse.fit_image`_ sigma-clipping (here, always *3*).
+``NCLIP``                                                  int16                                                     Number of `photutils.isophote.Ellipse.fit_image`_ sigma-clipping iterations (here, always *3*).
+``PSFSIZE_[G,R,Z]``                                        float32    arcsec                                         Mean width of the point-spread function over the full mosaic (derived from the ``PSFSIZE_[G,R,Z]`` columns in the `Tractor catalogs`_).
+``PSFDEPTH_[G,R,Z]``                                       float32    AB mag                                         Mean :math:`5\hbox{-}\sigma` depth over the full mosaic (derived from the ``PSFDEPTH_[G,R,Z]`` columns in the `Tractor catalogs`_).
+``MW_TRANSMISSION_[G,R,Z]``                                float32                                                   Galactic transmission fraction (taken from the corresponding `Tractor catalog`_ at the central coordinates of the galaxy).
+``REFBAND_WIDTH``                                          float32    pixel                                          Width of the optical mosaics in ``REFBAND``.
+``REFBAND_HEIGHT``                                         float32    pixel                                          Height of the optical mosaics in ``REFBAND`` (always equal to ``REFBAND_WIDTH``).
+``[G,R,Z]_SMA``                                            float32[N] pixel                                          Semi-major axis position, where ``N`` is the total number of (pixel) samples along the semi-major axis.
+``[G,R,Z]_INTENS``                                         float32[N] :math:`\mathrm{nanomaggies}/\mathrm{arcsec}^2` Linear surface brightness at the semi-major axis position given by ``[G,R,Z]_SMA``.
+``[G,R,Z]_INTENS_ERR``                                     float32[N] :math:`\mathrm{nanomaggies}/\mathrm{arcsec}^2` Uncertainty in ``[G,R,Z]_INTENS`` (:math:`1\sigma`).
+``[G,R,Z]_EPS``                                            float32[N]                                                Ellipticity along the semi-major axis; here, taken to be fixed at the value given by ``EPS``.
+``[G,R,Z]_EPS_ERR``                                        float32[N]                                                Uncertainty in ``[G,R,Z]_EPS`` (:math:`1\sigma`).
+``[G,R,Z]_PA``                                             float32[N] degree                                         Position angle along the semi-major axis; here, taken to be fixed at the value given by ``PA``.
+``[G,R,Z]_PA_ERR``                                         float32[N] degree                                         Uncertainty in ``[G,R,Z]_PA`` (:math:`1\sigma`).
+``[G,R,Z]_X0``                                             float32[N] pixel                                          Pixel coordinate of the ellipse along the *x*-axis; here, taken to be fixed at the value given by ``X0``.
+``[G,R,Z]_X0_ERR``                                         float32[N] pixel                                          Uncertainty in ``[G,R,Z]_X0`` (:math:`1\sigma`).
+``[G,R,Z]_Y0``                                             float32[N] pixel                                          Pixel coordinate of the ellipse along the *x*-axis; here, taken to be fixed at the value given by ``Y0``.
+``[G,R,Z]_Y0_ERR``                                         float32[N] pixel                                          Uncertainty in ``[G,R,Z]_Y0`` (:math:`1\sigma`).                       
+``[G,R,Z]_A3``                                             float32[N]                                                Third-order harmonic coefficient (see `photutils.isophote.IsophoteList`_); not used.
+``[G,R,Z]_A3_ERR``                                         float32[N]                                                Uncertainty in ``[G,R,Z]_A3`` (:math:`1\sigma`).                       
+``[G,R,Z]_A4``                                             float32[N]                                                Fourth-order harmonic coefficient (see `photutils.isophote.IsophoteList`_); not used.
+``[G,R,Z]_A4_ERR``                                         float32[N]                                                Uncertainty in ``[G,R,Z]_A4`` (:math:`1\sigma`).                       
+``[G,R,Z]_RMS``                                            float32[N] :math:`\mathrm{nanomaggies}/\mathrm{arcsec}^2` Root-mean-square of the surface brightness along the elliptical path (see `photutils.isophote.IsophoteList`_).
+``[G,R,Z]_PIX_STDDEV``                                     float32[N] :math:`\mathrm{nanomaggies}/\mathrm{arcsec}^2` Estimate of the pixel standard deviation along the elliptical path (see `photutils.isophote.IsophoteList`_).
+``[G,R,Z]_STOP_CODE``                                      int16[N]                                                  Fitting stop code (see `photutils.isophote.IsophoteList`_ and `photutils.isophote.Isophote`_).
+``[G,R,Z]_NDATA``                                          int16[N]                                                  Number of data points used for the fit (see `photutils.isophote.IsophoteList`_).
+``[G,R,Z]_NFLAG``                                          int16[N]                                                  Number of points rejected during the fit (see `photutils.isophote.IsophoteList`_).
+``[G,R,Z]_NITER``                                          int16[N]                                                  Number of fitting iterations (see `photutils.isophote.IsophoteList`_).
+``[G,R,Z]_COG_SMA``                                        float32[M] pixel                                          Semi-major axis position for the curve-of-growth aperture photometry measurements, where ``M`` is the total number of samples (in arcsec) along the semi-major axis.
+``[G,R,Z]_COG_MAG``                                        float32[M] AB mag                                         Aperture photometry within the semi-major axis given by ``[G,R,Z]_COG_SMA``.
+``[G,R,Z]_COG_MAGERR``                                     float32[M] AB mag                                         Uncertainty in ``[G,R,Z]_COG_MAG`` (:math:`1\sigma`).                       
+``[G,R,Z]_COG_PARAMS_MTOT``                                float32    AB mag                                         Best-fitting parameter :math:`m_{1}` based on the fit to the curve of growth (see the `Ellipse-Fitting`_ section).
+``[G,R,Z]_COG_PARAMS_M0``                                  float32    AB mag                                         Best-fitting parameter :math:`m_{0}` based on the fit to the curve of growth (see the `Ellipse-Fitting`_ section).
+``[G,R,Z]_COG_PARAMS_ALPHA1``                              float32                                                   Best-fitting parameter :math:`\alpha_{1}` based on the fit to the curve of growth (see the `Ellipse-Fitting`_ section).
+``[G,R,Z]_COG_PARAMS_ALPHA2``                              float32                                                   Best-fitting parameter :math:`\alpha_{2}` based on the fit to the curve of growth (see the `Ellipse-Fitting`_ section).
+``[G,R,Z]_COG_PARAMS_CHI2``                                float32                                                   Reduced :math:`\chi^{2}` of the fit to the curve of growth. *Note: large values of* :math:`\chi^{2}` *indicate a poor or problematic fit and should be inspected.*
+``RADIUS_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]``          float32    arcsec                                         Semi-major axis length at the :math:`\mu=` 22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, and 26 :math:`\mathrm{mag}\ \mathrm{arcsec}^{-2}` isophote in the *r*-band (-1 if not measured).
+``RADIUS_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]_ERR``      float32    arcsec                                         Uncertainty in ``RADIUS_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]`` (:math:`1\sigma`). *Note: can be -1 if there was an issue estimating the uncertainty.*
+``[G,R,Z]_MAG_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]``     float32    AB mag                                         Cumulative brightness measured within the corresponding ``RADIUS_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]`` (-1 if not measured).
+``[G,R,Z]_MAG_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]_ERR`` float32    AB mag                                         Uncertainty in ``[G,R,Z]_MAG_SB[22,22.5,23,23.5,24,24.5,25,25.5,26]`` (:math:`1\sigma`). *Note: can be -1 if there was an issue estimating the uncertainty.*
+========================================================== ========== ============================================== ===============================================
+
+SGA Bitmasks
+============
+
+The following tables document some of the bit-masks used in the SGA pipeline, as
+listed in the `SGA-2020-ls.fits`_ and `SGA-2020-nols.fits`_ catalogs. The bits
+are enumerated as a power of two, e.g., in Python, the expression
+
+.. code-block:: python
+   
+   'ELLIPSEBIT' & 2**1 != 0
+
+would return a Boolean array of the objects fitted as type ``REX`` which were
+too small to be ellipse-fit.
+
+ELLIPSEBIT
+----------
+
+The following bits largely pertain to galaxies *with* `DR9`_ imaging; they
+indicate why a given object in the `SGA-2020-ls.fits`_ catalog was not
+ellipse-fit.
+
+=== =================== ===============================
+Bit Name                Description
+=== =================== ===============================
+0                       Not used; ignore.
+1   ``REX_TOOSMALL``    Object was not ellipse-fit because it was classified as too-small type ``REX`` (see the `Ellipse-Fitting`_ section for details).
+2   ``NOTREX_TOOSMALL`` Object was not ellipse-fit because it was classified as too-small type ``EXP``, ``DEV``, or ``SER`` (see the `Ellipse-Fitting`_ section for details). 
+3   ``FAILED``          Ellipse-fitting was attempted but failed.
+4   ``NOTFIT``          Ellipse-fitting was not attempted *or* the ellipse-fitting results were rejected based on visual inspection; see `Known Issues`_ for additional information. 
+4   ``REJECTED``        Ellipse-fitting was not attempted *or* the ellipse-fitting results were rejected based on visual inspection; see `Known Issues`_ for additional information. 
+=== =================== ===============================
+
+DROPBIT
+-------
+
+The following bits largely pertain to galaxies *without* `DR9`_ imaging; they
+encode why an object in the `Final Parent Sample`_ sample was excluded from the
+`SGA-2020-ls.fits`_ catalog.
+
+=== ===========  ===============================
+Bit Name         Description
+=== ===========  ===============================
+0                Not used; ignore.
+1   ``NOGRZ``    Missing *grz* imaging (typically due to lying off the `DR9`_ footprint).
+2   ``MASKED``   Fully masked (i.e., inverse variance equal to zero) in a :math:`\pm2` pixel box centered on the initial position of the galaxy (e.g., due to a bleed trail or other gap in optical imaging).
+3                Not used; ignore.
+4   ``ISPSF``    Fit as type ``PSF`` by *Tractor*. These objects were all inspected and verified to be extended sources; however, due to problems with segmentation or other issues they could not be fit successfully by *Tractor* as galaxies.
+5   ``NEGFLUX``  Fit with a negative *r*-band flux by *Tractor*. These objects were all inspected and verified to be actual sources; however, due to problems with segmentation or other issues the *Tractor* fits were still problematic.
+=== ===========  ===============================
+
+Known Issues
+============
+
+**To be written/expanded.**
+
+Some known issues include:
+
+* Some magnitude errors based on the curve-of-growth as negative.
+* Talk about the largest galaxies that were not ellipse-fit, including NGC0598.
+* Galaxies fit as PSF or negative.
+* Issues with building the final catalog: 
+
+
+
+Future Plans
+============
+
+**To be written/expanded.**
+
+* Infrared surface-brightness profiles in *W1-W4*.
+
+Acknowledgments
+===============
+
+Use of the SGA-2020 data products *must* acknowledge the `Scientific Publication
+Acknowledgment`_ for the DESI Legacy Imaging Surveys as well as the specific
+`SGA acknowledgment`_.
+
+The SGA-2020 was also made possible by contributions from the following
+(current and former) undergraduate students at `Siena College`_:
+
+- `Alissa Ronca`_
+- `Luis Villa`_
+- `Kevin Napier (University of Michigan)`_
+
+.. _`Data Access`: https://sga.legacysurvey.org
+.. _`SGA web-portal`: https://sga.legacysurvey.org
+.. _`DESI Legacy Imaging Surveys DR9`: ../../dr9
+.. _`DR9`: ../../dr9
+.. _`unWISE`: http://unwise.me
+.. _`Dark Energy Spectroscopic Instrument (DESI)`: http://desi.lbl.gov
+.. _`DESI`: http://desi.lbl.gov
+.. _`HyperLeda`: http://leda.univ-lyon1.fr/
+.. _`HyperLeda extragalactic database`: http://leda.univ-lyon1.fr/
+.. _`Third Reference Catalog of Bright Galaxies (RC3)`: https://vizier.u-strasbg.fr/viz-bin/VizieR?-source=VII/155
+.. _`RC3`: https://vizier.u-strasbg.fr/viz-bin/VizieR?-source=VII/155
+.. _`Tractor implementation details`: https://www.legacysurvey.org/dr9/description/#tractor-implementation-details
+.. _`NASA Extragalactic Database (NED)`: https://ned.ipac.caltech.edu
+.. _`McConnachie (2012)`: https://ui.adsabs.harvard.edu/abs/2012AJ....144....4M/abstract
+.. _`OpenNGC`: https://github.com/mattiaverga/OpenNGC
+.. _`DR8`: ../../dr8
+.. _`this notebook`: https://github.com/legacysurvey/legacypipe/blob/master/doc/nb/lslga-from-gaia.ipynb
+.. _`Principal Catalogue of Galaxies`: https://ui.adsabs.harvard.edu/abs/1989A%26AS...80..299P/abstract
+.. _`DR9 Tractor catalogs`: ../catalogs
+.. _`external catalogs documentation`: ../external/#sga-large-galaxies
+.. _`DR9 files documentation`: ../files
+.. _`legacypipe`: https://github.com/legacysurvey/legacypipe
+.. _`CCDs`: ../files/#survey-ccds-camera-dr9-fits-gz
+.. _`metrics`: ../files/#other-files
+.. _`DR9 image stacks`: ../files/#image-stacks-region-coadd
+.. _`DR9 bitmasks`: ../bitmasks
+.. _`Tractor catalog`: ../catalogs
+.. _`Tractor catalogs`: ../catalogs
+.. _`PSF documentation`: ../description/#psf
+.. _`astropy`: https://docs.astropy.org/en/stable 
+.. _`photutils`: https://photutils.readthedocs.io/en/stable/isophote.html
+.. _`photutils.isophote.Ellipse.fit_image`: https://photutils.readthedocs.io/en/stable/api/photutils.isophote.Ellipse.html#photutils.isophote.Ellipse.fit_image 
+.. _`photutils.isophote.IsophoteList`: https://photutils.readthedocs.io/en/stable/api/photutils.isophote.IsophoteList.html#photutils.isophote.IsophoteList
+.. _`photutils.isophote.Isophote`: https://photutils.readthedocs.io/en/stable/api/photutils.isophote.Isophote.html#photutils.isophote.Isophote
+.. _`astropy.QTable`: https://docs.astropy.org/en/stable/api/astropy.table.QTable.html#astropy.table.QTable
+.. _`Michele Cappellari's mge.find_galaxy`: https://www-astro.physics.ox.ac.uk/~mxc/software/#mge
+.. _`photutils.aperture`: https://photutils.readthedocs.io/en/stable/aperture.html
+.. _`Observational Astronomy by Birney, Gonzalez, & Oesper`: https://www.cambridge.org/core/books/observational-astronomy/98B4694421AEB3953FE088D19BA0495C
+.. _`DR9 Tractor catalogs`: ../catalogs
+.. _`Scientific Publication Acknowledgment`: ../../acknowledgment/#scientific-publication-acknowledgment
+.. _`SGA acknowledgment`: ../../acknowledgment/#siena-galaxy-atlas
+.. _`Kevin Napier (University of Michigan)`: https://github.com/kjnapier
+.. _`Alissa Ronca`: https://www.linkedin.com/in/alissa-ronca/
+.. _`Luis Villa`: https://www.linkedin.com/in/luis-c-villa/
+.. _`Siena College`: https://www.siena.edu
+.. _`Contents of DR9`: ../../dr9/description/#contents-of-dr9

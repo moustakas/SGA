@@ -4,6 +4,10 @@ __pycache__/
 .ipynb_checkpoints                                                                                            
 # C extensions
 *.so
+*.sqlite3
+
+# EMACS backup files
+*~
 
 # Distribution / packaging
 .Python
@@ -22,6 +26,8 @@ var/
 .installed.cfg
 *.egg
 MANIFEST
+migrations/
+db/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
