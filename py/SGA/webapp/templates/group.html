@@ -20,10 +20,15 @@ td, th {text-align: center}
 <br />
 {% endif %}
 
-<h2><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">{{ nice_group_name }}</a></h2>
+<!--<h2><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra --
+  --}}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">{{ --
+  --nice_group_name }}</a></h2>--> 
+<h2>{{ nice_group_name }}</h2>
 
+<h4><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra
+       }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga"
+       target="_blank">Sky Viewer</a></h4> 
 <h4><a href="{{ primary.data_base_url }}">Images &amp; Catalogs</a></h4> 
-<h4><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">Viewer</a></h4> 
 
 {% comment %}
 <a href="https://portal.nersc.gov/project/cosmo/temp/ioannis/sga-dr9/sga/sga2020#group-files">(documentation)</a>
@@ -32,10 +37,10 @@ td, th {text-align: center}
 <h3>Group Properties</h3>
 <table class="table table-bordered table-hover">
 <tr>
-<th>SGA ID<br />(Primary Galaxy)</th>
+<th>SGA ID<br />of Primary Galaxy</th>
 <th>Group Name</th>
-<th>Group RA<br />(deg)</th>
-<th>Group Dec<br />(deg)</th>
+<th>Group RA<br />(degree)</th>
+<th>Group Dec<br />(degree)</th>
 <th>Group Diameter<br />(arcmin)</th>
 <th>Mosaic Diameter<br />(arcmin)</th>
 <th>Number of Group<br />Members</th>
@@ -58,8 +63,8 @@ td, th {text-align: center}
 <th>SGA ID</th>
 <th>Galaxy</th>
 <th>Visual<br />Morphology</th>
-<th>RA<br />(deg)</th>
-<th>Dec<br />(deg)</th>
+<th>RA<br />(degree)</th>
+<th>Dec<br />(degree)</th>
 <th>HyperLeda</th>
 </tr>
 <tr>
@@ -92,9 +97,9 @@ td, th {text-align: center}
 <th colspan="3">Surface Brightness<br />Threshold Radii</th>
 </tr>
 <tr><th>SGA ID</th><th>Galaxy</th>
-<th>Type</th><th>n</th><th>r(50)<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
-<th>R(25)<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
-<th>Size<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>
+<th>Type</th><th>n</th><th>r(50)<br />(arcsec)</th><th>PA<br />(degree)</th><th>e</th>
+<th>R(25)<br />(arcsec)</th><th>PA<br />(degree)</th><th>e</th>
+<th>Size<br />(arcsec)</th><th>PA<br />(degree)</th><th>e</th>
 <th>R(24)<br />(arcsec)</th><th>R(25)<br />(arcsec)</th><th>R(26)<br />(arcsec)</th>
 </tr>
 {% for mem in members %}
@@ -111,17 +116,17 @@ td, th {text-align: center}
 <br />
 <h4>Photometry</h4>
 <p>The table below provides the Tractor model photometry and the cumulative flux
-measured within the R(24), R(25), and R(26) radii (corresponding to the size of
-the galaxy at the 24, 25, and 26 magnitude per square arcsec surface brightness
-thresholds, respectively).</p>
+measured within the R(24), R(25), and R(26) radii (corresponding to the
+semi-major axis length of the galaxy at the 24, 25, and 26 magnitude per square
+arcsec surface brightness threshold, respectively).</p>
 
 <table class="table table-bordered table-hover">
 <tr><th></th><th></th>
 <th colspan="3"></th>
-<th colspan="9">Curve of Growth</th>
+<th colspan="9">Curve of Growth Photometry</th>
 </tr>
 <tr><th></th><th></th>
-<th colspan="3">Tractor</th>
+<th colspan="3">Tractor Photometry</th>
 <th colspan="3">&lt R(24)<br />arcsec</th>
 <th colspan="3">&lt R(25)<br />arcsec</th>
 <th colspan="3">&lt R(26)<br />arcsec</th>
@@ -153,14 +158,22 @@ thresholds, respectively).</p>
           <td colspan="2"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"><img width="100%" class="img-responsive" src="{{ primary.png_base_url }}thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" alt="Missing file thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"></a></td>
         </tr>
         <tr>
-          <td style="vertical-align:middle;"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"></a></td>
-          <td style="vertical-align:middle;"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"></a></td> 
+          <td style="vertical-align:middle;"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img class="img-responsive" style="width: 60%" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"></a></td>
+
+          <!-- <td style="vertical-align:middle;"><a href="{{ --
+            -- primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ --
+            -- mem.sga_id_string }}-ellipse-cog.png"><img class="img-responsive" --
+            -- src="{{ primary.png_base_url }}{{ primary.group_name --
+            -- }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" --
+            -- alt="Missing file {{ primary.group_name }}-largegalaxy-{{ --
+            -- mem.sga_id_string }}-ellipse-cog.png"></a></td>  -->
         </tr>
         </table>
+        <!--
         <p>In the curve-of-growth figure, the thin dashed line is the empirical
          model fitted to the data (see
          the <a href="https://portal.nersc.gov/project/cosmo/temp/ioannis/sga-dr9/sga/sga2020#ellipse-fitting">ellipse-fitting
-         documentation</a>).</p>  
+         documentation</a>).</p>   -->
     {% else %}
         <p>Ellipse-fitting not done or failed.</p>
     {% endif %}
