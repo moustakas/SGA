@@ -23,8 +23,8 @@ class SampleFilter(django_filters.FilterSet):
     galaxy__match = django_filters.CharFilter(field_name='galaxy', lookup_expr='icontains')
     group__match = django_filters.CharFilter(field_name='group_name', lookup_expr='icontains')
 
-    diam__gte = django_filters.NumberFilter(field_name='diam', lookup_expr='gte')
-    diam__lte = django_filters.NumberFilter(field_name='diam', lookup_expr='lte')
+    diam__gte = django_filters.NumberFilter(field_name='d26', lookup_expr='gte')
+    diam__lte = django_filters.NumberFilter(field_name='d26', lookup_expr='lte')
 
     groupdiam__gte = django_filters.NumberFilter(field_name='group_diam', lookup_expr='gte')
     groupdiam__lte = django_filters.NumberFilter(field_name='group_diam', lookup_expr='lte')

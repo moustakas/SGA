@@ -23,12 +23,17 @@ def main():
     sgafile = os.path.join(DATADIR, 'SGA-2020.fits')
 
     sga_columns = ['sga_id', 'galaxy', 'morphtype',
+                   'ra', 'dec',
                    'ra_leda', 'dec_leda',
                    'd25_leda', 'pa_leda', 'ba_leda', 'pgc',
-                   'ra_moment', 'dec_moment', 'diam', 'pa', 'ba', 'radius_moment',
+                   'ra_moment', 'dec_moment', 'd26', 'pa', 'ba', 'sma_moment',
                    'group_id', 'group_name', 'group_ra', 'group_dec', 'group_diameter', 'group_primary',
-                   'radius_sb24', 'radius_sb25', 'radius_sb26',
-                   'g_mag_sb24', 'g_mag_sb25', 'g_mag_sb26', 'r_mag_sb24', 'r_mag_sb25', 'r_mag_sb26', 'z_mag_sb24', 'z_mag_sb25', 'z_mag_sb26',
+                   'g_sma50', 'r_sma50', 'z_sma50', 
+                   'sma_sb24', 'sma_sb25', 'sma_sb26',
+                   'g_mag_sb24', 'g_mag_sb25', 'g_mag_sb26',
+                   'r_mag_sb24', 'r_mag_sb25', 'r_mag_sb26',
+                   'z_mag_sb24', 'z_mag_sb25', 'z_mag_sb26',
+                   'g_cog_params_mtot', 'r_cog_params_mtot', 'z_cog_params_mtot', 
                    ]
                    
     tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2',
@@ -44,7 +49,8 @@ def main():
 
     print(sga.colnames)
 
-    xyz = radectoxyz(sga['RA_MOMENT'], sga['DEC_MOMENT'])
+    xyz = radectoxyz(sga['RA'], sga['DEC'])
+    #xyz = radectoxyz(sga['RA_MOMENT'], sga['DEC_MOMENT'])
     #xyz = radectoxyz(sga['RA_LEDA'], sga['DEC_LEDA'])
 
     objs = []

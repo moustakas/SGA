@@ -30,10 +30,12 @@ class Sample(Model):
     ba_leda = FloatField(default=0.0)
     pgc = IntegerField(null=True)
     
-    diam = FloatField(default=0.0)
+    d26 = FloatField(default=0.0)
     pa = FloatField(default=0.0)
     ba = FloatField(default=0.0)
-    radius_moment = FloatField(default=0.0)
+    sma_moment = FloatField(default=0.0)
+    ra = FloatField(null=True)
+    dec = FloatField(null=True)
     ra_moment = FloatField(null=True)
     dec_moment = FloatField(null=True)
 
@@ -45,9 +47,13 @@ class Sample(Model):
     group_diameter = FloatField(default=0.0)
     group_primary = BooleanField(default=False)
 
-    radius_sb24 = FloatField(null=True)
-    radius_sb25 = FloatField(null=True)
-    radius_sb26 = FloatField(null=True)
+    sma_sb24 = FloatField(null=True)
+    sma_sb25 = FloatField(null=True)
+    sma_sb26 = FloatField(null=True)
+
+    g_sma50 = FloatField(null=True)
+    r_sma50 = FloatField(null=True)
+    z_sma50 = FloatField(null=True)
 
     g_mag_sb24 = FloatField(null=True)
     g_mag_sb25 = FloatField(null=True)
@@ -60,6 +66,10 @@ class Sample(Model):
     z_mag_sb24 = FloatField(null=True)
     z_mag_sb25 = FloatField(null=True)
     z_mag_sb26 = FloatField(null=True)
+
+    g_cog_params_mtot = FloatField(null=True)
+    r_cog_params_mtot = FloatField(null=True)
+    z_cog_params_mtot = FloatField(null=True)
 
     tractortype = CharField(max_length=3, default='')
     sersic = FloatField(null=True)
@@ -131,9 +141,11 @@ class Sample(Model):
         return '{:.7f}'.format(self.dec_leda)
 
     def ra_string(self):
-        return '{:.7f}'.format(self.ra_moment)
+        return '{:.7f}'.format(self.ra)
+        #return '{:.7f}'.format(self.ra_moment)
     def dec_string(self):
-        return '{:.7f}'.format(self.dec_moment)
+        return '{:.7f}'.format(self.dec)
+        #return '{:.7f}'.format(self.dec_moment)
 
     def group_id_string(self):
         return '{}'.format(self.group_id)
@@ -162,26 +174,44 @@ class Sample(Model):
     def eps_string(self):
         return '{:.3f}'.format(1-self.ba)
 
-    def radius_moment_string(self):
-        return '{:.3f}'.format(self.radius_moment)
+    def sma_moment_string(self):
+        return '{:.3f}'.format(self.sma_moment)
 
-    def radius_sb24_string(self):
-        if self.radius_sb24 < 0:
+    def g_sma50_string(self):
+        if self.g_sma50 < 0:
             return '...'
         else:
-            return '{:.3f}'.format(self.radius_sb24)
+            return '{:.3f}'.format(self.g_sma50)
 
-    def radius_sb25_string(self):
-        if self.radius_sb25 < 0:
+    def r_sma50_string(self):
+        if self.r_sma50 < 0:
             return '...'
         else:
-            return '{:.3f}'.format(self.radius_sb25)
+            return '{:.3f}'.format(self.r_sma50)
 
-    def radius_sb26_string(self):
-        if self.radius_sb26 < 0:
+    def z_sma50_string(self):
+        if self.z_sma50 < 0:
             return '...'
         else:
-            return '{:.3f}'.format(self.radius_sb26)
+            return '{:.3f}'.format(self.z_sma50)
+
+    def sma_sb24_string(self):
+        if self.sma_sb24 < 0:
+            return '...'
+        else:
+            return '{:.3f}'.format(self.sma_sb24)
+
+    def sma_sb25_string(self):
+        if self.sma_sb25 < 0:
+            return '...'
+        else:
+            return '{:.3f}'.format(self.sma_sb25)
+
+    def sma_sb26_string(self):
+        if self.sma_sb26 < 0:
+            return '...'
+        else:
+            return '{:.3f}'.format(self.sma_sb26)
 
     def gmag_sb24(self):
         if self.g_mag_sb24 > 0:
@@ -231,6 +261,24 @@ class Sample(Model):
         else:
             return '...'
 
+    def cog_gtot(self):
+        if self.g_cog_params_mtot < 0:
+            return '...'
+        else:
+            return '{:.3f}'.format(self.g_cog_params_mtot)
+        
+    def cog_rtot(self):
+        if self.r_cog_params_mtot < 0:
+            return '...'
+        else:
+            return '{:.3f}'.format(self.r_cog_params_mtot)
+        
+    def cog_ztot(self):
+        if self.z_cog_params_mtot < 0:
+            return '...'
+        else:
+            return '{:.3f}'.format(self.z_cog_params_mtot)
+        
     def tractor_pa_string(self):
         pa = 180 - (-np.rad2deg(np.arctan2(self.shape_e2, self.shape_e1) / 2))
         pa = pa % 180
