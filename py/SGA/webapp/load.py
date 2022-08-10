@@ -9,16 +9,16 @@ import fitsio
 import django
 
 from astropy.table import Table, hstack
-from astrometry.util.starutil_numpy import radectoxyz
+
+DATADIR = '/global/cfs/cdirs/cosmo/data/sga/2020'
+#DATADIR = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020'
 
 def main():
+    from astrometry.util.starutil_numpy import radectoxyz
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
     django.setup()
 
     from SGA.webapp.sample.models import Sample
-
-    DATADIR = '/global/cfs/cdirs/cosmo/data/sga/2020'
-    #DATADIR = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020'
 
     sgafile = os.path.join(DATADIR, 'SGA-2020.fits')
 
