@@ -1,0 +1,5 @@
+# SGA-2024 Notes
+
+salloc -N 4 -C cpu -A desi -t 01:00:00 --qos interactive --image=legacysurvey/legacyhalos:v1.2
+
+https://www.legacysurvey.org/viewer-dev/?ra=15.8299&dec=-4.6714&layer=ls-dr9&zoom=15&bricks&sga
