@@ -11,20 +11,6 @@ shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915
 shifter --image dstndstn/viewer-cutouts bash
 /global/u2/i/ioannis/code/git/legacyhalos/bin/SGA2024/get-2024cutouts --mp 128
 
-cd /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/html/healpix
-from glob import glob
-nftot = 0
-for survey in sorted(glob('*')):
-    for program in glob(os.path.join(survey, '*')):
-        nf = 0
-        for hp100 in glob(os.path.join(program, '*')):
-            for hp in glob(os.path.join(hp100, '*')):
-                nf += len(glob(hp+'/tmp*.jpeg'))
-        nftot += nf
-        print(program, nf)
-print()
-print('Total: ', nftot)
-
 """
 import pdb # for debugging
 
@@ -91,50 +77,6 @@ def get_basefiles_one(obj, outdir_data, overwrite=False, verbose=False):
                 print(f'Skipping existing object {basefile}.')
 
     return basefile, obj['RA'], obj['DEC'], nobj
-
-def get_cutout_filename(metadata, coadd_type, outprefix=None, htmldir=None):
-    """Build the cutout filename.
-
-    """
-    import astropy
-
-    if htmldir is None:
-        htmldir = '.'
-        
-    if outprefix is None:
-        outprefix = 'fastspec'
-
-    def _one_filename(_metadata):
-        if coadd_type == 'healpix':
-            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}-{}.jpeg'.format(
-                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
-                _metadata['HEALPIX'], _metadata['TARGETID']))
-        elif coadd_type == 'cumulative':
-            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}.jpeg'.format(
-                outprefix, _metadata['TILEID'], coadd_type, _metadata['TARGETID']))
-        elif coadd_type == 'pernight':
-            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}.jpeg'.format(
-                outprefix, _metadata['TILEID'], _metadata['NIGHT'], _metadata['TARGETID']))
-        elif coadd_type == 'perexp':
-            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}-{}.jpeg'.format(
-                outprefix, _metadata['TILEID'], _metadata['NIGHT'],
-                _metadata['EXPID'], _metadata['TARGETID']))
-        elif coadd_type == 'custom':
-            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}-{}.jpeg'.format(
-                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
-                _metadata['HEALPIX'], _metadata['TARGETID']))
-        else:
-            errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
-            print(errmsg)
-            raise ValueError(errmsg)
-        return jpegfile
-
-    if type(metadata) is astropy.table.row.Row:
-        jpegfile = _one_filename(metadata)
-    else:
-        jpegfile = [_one_filename(_metadata) for _metadata in metadata]
-    
-    return np.array(jpegfile)
 
 def plan(cat, comm=None, outdir_data='.', mp=1, overwrite=False):
 
