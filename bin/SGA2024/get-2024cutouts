@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+
+"""MPI wrapper to get a large number of image cutouts. Only run ahead of a VAC
+release.
+
+get-cutouts --survey cmx --mp 16 --dry-run
+
+shifterimg pull dstndstn/viewer-cutouts:latest
+shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
+
+shifter --image dstndstn/viewer-cutouts bash
+/global/u2/i/ioannis/code/git/legacyhalos/bin/SGA2024/get-2024cutouts --mp 128
+
+cd /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/html/healpix
+from glob import glob
+nftot = 0
+for survey in sorted(glob('*')):
+    for program in glob(os.path.join(survey, '*')):
+        nf = 0
+        for hp100 in glob(os.path.join(program, '*')):
+            for hp in glob(os.path.join(hp100, '*')):
+                nf += len(glob(hp+'/tmp*.jpeg'))
+        nftot += nf
+        print(program, nf)
+print()
+print('Total: ', nftot)
+
+"""
+import pdb # for debugging
+
+import os, sys, time
+import numpy as np
+import fitsio
+from astropy.table import Table
+import multiprocessing
+from glob import glob
+
+def custom_brickname(ra, dec):
+    brickname = '{:08d}{}{:07d}'.format(
+        int(100000*ra), 'm' if dec < 0 else 'p',
+        int(100000*np.abs(dec)))
+    #brickname = '{:06d}{}{:05d}'.format(
+    #    int(1000*ra), 'm' if dec < 0 else 'p',
+    #    int(1000*np.abs(dec)))
+    return brickname
+
+def get_raslice(ra):
+    return '{:06d}'.format(int(ra*1000))[:3]
+
+def _cutout_one(args):
+    return cutout_one(*args)
+
+def cutout_one(basefile, ra, dec, width, pixscale, dry_run):
+    """
+    pixscale = 0.262
+    width = int(30 / pixscale)   # =114
+    height = int(width / 1.3) # =87 [3:2 aspect ratio]
+
+    """
+    import subprocess
+
+    for suffix in ['.jpeg', '.fits']:
+        outfile = basefile+suffix
+        cmd = f'cutout --output={outfile} --ra={ra} --dec={dec} --size={width} --layer=ls-dr9 --pixscale={pixscale} --force'
+        if dry_run:
+            print(cmd)
+        else:
+            err = subprocess.call(cmd.split())
+            if err != 0:
+                print('Warning: Problem writing {}'.format(outfile))
+
+def _get_basefiles_one(args):
+    return get_basefiles_one(*args)
+
+def get_basefiles_one(obj, outdir_data, overwrite=False, verbose=False):
+
+    raslice = get_raslice(obj['RA'])
+    brick = custom_brickname(obj['RA'], obj['DEC'])
+    outdir = os.path.join(outdir_data, raslice, brick[:6])
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+
+    basefile = os.path.join(outdir, brick)
+    nobj = 1
+
+    if overwrite is False:
+        if os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg'):
+            nobj = 0
+            basefile = []
+            if verbose:
+                print(f'Skipping existing object {basefile}.')
+
+    return basefile, obj['RA'], obj['DEC'], nobj
+
+def get_cutout_filename(metadata, coadd_type, outprefix=None, htmldir=None):
+    """Build the cutout filename.
+
+    """
+    import astropy
+
+    if htmldir is None:
+        htmldir = '.'
+        
+    if outprefix is None:
+        outprefix = 'fastspec'
+
+    def _one_filename(_metadata):
+        if coadd_type == 'healpix':
+            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}-{}.jpeg'.format(
+                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
+                _metadata['HEALPIX'], _metadata['TARGETID']))
+        elif coadd_type == 'cumulative':
+            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}.jpeg'.format(
+                outprefix, _metadata['TILEID'], coadd_type, _metadata['TARGETID']))
+        elif coadd_type == 'pernight':
+            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}.jpeg'.format(
+                outprefix, _metadata['TILEID'], _metadata['NIGHT'], _metadata['TARGETID']))
+        elif coadd_type == 'perexp':
+            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}-{}.jpeg'.format(
+                outprefix, _metadata['TILEID'], _metadata['NIGHT'],
+                _metadata['EXPID'], _metadata['TARGETID']))
+        elif coadd_type == 'custom':
+            jpegfile = os.path.join(htmldir, 'tmp.{}-{}-{}-{}-{}.jpeg'.format(
+                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
+                _metadata['HEALPIX'], _metadata['TARGETID']))
+        else:
+            errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
+            print(errmsg)
+            raise ValueError(errmsg)
+        return jpegfile
+
+    if type(metadata) is astropy.table.row.Row:
+        jpegfile = _one_filename(metadata)
+    else:
+        jpegfile = [_one_filename(_metadata) for _metadata in metadata]
+    
+    return np.array(jpegfile)
+
+def plan(cat, comm=None, outdir_data='.', mp=1, overwrite=False):
+
+    from astropy.table import Table
+                                
+    t0 = time.time()
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
+    #desi_root = '/global/cfs/cdirs/desi'
+    #desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+    # look for data in the standard location
+
+    outdir = outdir_data
+    #outdir = os.path.join(outdir_data, specprod, subdir)
+    htmldir = outdir_data # os.path.join(outdir_data, specprod, 'html', subdir)
+
+    verbose = True
+    mpargs = [(obj, outdir_data, overwrite, verbose) for obj in np.atleast_1d(cat)]
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            out = P.map(_get_basefiles_one, mpargs)
+    else:
+        out = [get_basefiles_one(*mparg) for mparg in mpargs]
+    out = list(zip(*out))
+
+    basefiles = np.array(out[0], dtype=object)
+    allra = np.array(out[1], dtype=object)
+    alldec = np.array(out[2], dtype=object)
+    nobj = np.array(out[3], dtype=object)
+
+    iempty = np.where(nobj == 0)[0]
+    if len(iempty) > 0:
+        print('Skipping {} objects with no cutouts to generate.'.format(len(iempty)))
+
+    itodo = np.where(nobj > 0)[0]
+    if len(itodo) > 0:
+        basefiles = basefiles[itodo]
+        allra = allra[itodo]
+        alldec = alldec[itodo]
+        nobj = nobj[itodo]
+
+        print('Missing cutouts for {} objects.'.format(np.sum(nobj)))
+        indices = np.arange(len(basefiles))
+
+        # Assign the sample to ranks to make the jpegfiles distribution per rank ~flat.
+        # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
+        cumuweight = nobj.cumsum() / nobj.sum()
+        idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
+        if len(idx) < size: # can happen in corner cases or with 1 rank
+            groups = np.array_split(indices, size) # unweighted
+        else:
+            groups = np.array_split(indices, idx) # weighted
+        for ii in range(size): # sort by weight
+            srt = np.argsort(nobj[groups[ii]])
+            groups[ii] = groups[ii][srt]
+    else:
+        groups = [np.array([])]
+
+    return basefiles, allra, alldec, groups
+
+def do_cutouts(args, cat, width=152, pixscale=0.262, comm=None, outdir_data='.'):
+
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
+    t0 = time.time()
+    if rank == 0:
+        basefiles, allra, alldec, groups = plan(cat, comm=comm, outdir_data=outdir_data,
+                                                overwrite=args.overwrite, mp=args.mp)
+        print('Planning took {:.2f} sec'.format(time.time() - t0))
+    else:
+        basefiles, allra, alldec, groups = [], [], [], []
+
+    if comm:
+        basefiles = comm.bcast(basefiles, root=0)
+        allra = comm.bcast(allra, root=0)
+        alldec = comm.bcast(alldec, root=0)
+        groups = comm.bcast(groups, root=0)
+    sys.stdout.flush()
+    
+    # all done
+    if len(basefiles) == 0 or len(np.hstack(basefiles)) == 0:
+        return
+        
+    assert(len(groups) == size)
+
+    for ii in groups[rank]:
+        print('Rank {} started at {}'.format(rank, time.asctime()))
+        sys.stdout.flush()
+
+        mpargs = [(basefiles[ii], allra[ii], alldec[ii], width, pixscale, args.dry_run)]
+        if args.mp > 1:
+            with multiprocessing.Pool(args.mp) as P:
+                P.map(_cutout_one, mpargs)
+        else:
+            [cutout_one(*mparg) for mparg in mpargs]
+
+    print('  rank {} is done'.format(rank))
+    sys.stdout.flush()
+
+    if comm is not None:
+        comm.barrier()
+
+    if rank == 0 and not args.dry_run:
+        print('All done at {}'.format(time.asctime()))
+        
+def main():
+    """Main wrapper.
+
+    """
+    import argparse    
+    
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--width', type=int, default=152, help='Default cutout width [pixels].')
+    parser.add_argument('--pixscale', type=float, default=0.262, help='Default pixel scale [arcsec/pixel].')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
+    parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
+    parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
+    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
+
+    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
+                        type=str, help='Base output HTML directory.')
+    parser.add_argument('--outdir-data', default='/pscratch/sd/i/ioannis/SGA2024',
+                        type=str, help='Base output data directory.')
+    
+    args = parser.parse_args()
+
+    if args.nompi:
+        comm = None
+    else:
+        try:
+            from mpi4py import MPI
+            comm = MPI.COMM_WORLD
+        except ImportError:
+            comm = None
+
+    if comm is None:
+        rank = 0
+    else:
+        rank = comm.rank
+
+    if rank == 0:
+        # sky fibers
+        # https://data.desi.lbl.gov/public/ets/target/catalogs/dr9/1.1.1/skies/
+
+        # select the sample here!
+        cat = Table(fitsio.read('/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits', 'ELLIPSE',
+                                columns=['SGA_ID', 'GALAXY', 'RA', 'DEC', 'D26']))
+        d26_pixels = cat['D26'] * 60 / args.pixscale # [pixels]
+        I = np.where(d26_pixels < (args.width * 1.2))[0] # no more than 20% larger than the default cutout width
+        I = I[:10]
+        print('Selecting {}/{} SGA galaxies with cutout width < 1.2*{} pixels.'.format(
+            len(I), len(cat), args.width))
+        
+    if args.plan:
+        if rank == 0:
+            plan(cat[I], comm=comm, outdir_data=args.outdir_data,
+                 overwrite=args.overwrite, mp=args.mp)
+    else:
+        do_cutouts(args, cat[I], width=args.width, pixscale=args.pixscale, comm=comm,
+                   outdir_data=args.outdir_data)
+
+if __name__ == '__main__':
+    main()
