@@ -25,8 +25,7 @@ def custom_brickname(ra, dec):
     return brickname
 
 def get_raslice(ra):
-    return '{:03d}'.format(int(ra*1000))
-
+    return '{:03d}'.format(int(ra))
 
 def SGA_dir():
     if 'SGA_DIR' not in os.environ:

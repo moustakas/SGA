@@ -2,13 +2,8 @@
 
 """MPI wrapper to get a large number of image cutouts.
 
-get-cutouts --mp 16 --dry-run
-
-shifterimg pull dstndstn/viewer-cutouts:latest
-shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
-
 shifter --image dstndstn/viewer-cutouts bash
-/global/u2/i/ioannis/code/git/legacyhalos/bin/SGA2024/get-2024cutouts --mp 128
+$HOME/code/git/SGA/bin/SGA2024/get-2024cutouts --outdir-data $SCRATCH/SGA2024 --catalog-type skies --mp 128 
 
 """
 import pdb # for debugging
@@ -20,24 +15,44 @@ from astropy.table import Table
 import multiprocessing
 from glob import glob
 
+def custom_brickname(ra, dec):
+    brickname = '{:08d}{}{:07d}'.format(
+        int(100000*ra), 'm' if dec < 0 else 'p',
+        int(100000*np.abs(dec)))
+    #brickname = '{:06d}{}{:05d}'.format(
+    #    int(1000*ra), 'm' if dec < 0 else 'p',
+    #    int(1000*np.abs(dec)))
+    return brickname
+
+def get_raslice(ra):
+    return '{:03d}'.format(int(ra))
+
 def _cutout_one(args):
     return cutout_one(*args)
 
-def cutout_one(basefile, ra, dec, width, pixscale, dry_run):
+def cutout_one(basefile, ra, dec, width, pixscale, dry_run, count):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
     height = int(width / 1.3) # =87 [3:2 aspect ratio]
 
+    shifterimg pull dstndstn/viewer-cutouts:latest
+    shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
+
     """
     import subprocess
 
+    #print(basefile, ra, dec, width, pixscale, dry_run, count)
     for suffix in ['.jpeg', '.fits']:
         outfile = basefile+suffix
         cmd = f'cutout --output={outfile} --ra={ra} --dec={dec} --size={width} --layer=ls-dr9 --pixscale={pixscale} --force'
         if dry_run:
             print(cmd)
         else:
+            if suffix == '.jpeg':
+                outdir = os.path.dirname(basefile)
+                if not os.path.isdir(outdir):
+                    os.makedirs(outdir, exist_ok=True)
             err = subprocess.call(cmd.split())
             if err != 0:
                 print('Warning: Problem writing {}'.format(outfile))
@@ -46,15 +61,15 @@ def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 def get_basefiles_one(obj, outdir_data, overwrite=False, verbose=False):
-    from SGA.io import custom_brickname, get_raslice
-    
     raslice = get_raslice(obj['RA'])
     brick = custom_brickname(obj['RA'], obj['DEC'])
-    outdir = os.path.join(outdir_data, raslice, brick[:6])
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir, exist_ok=True)
 
-    basefile = os.path.join(outdir, brick)
+    #outdir = os.path.join(outdir_data, raslice, brick[:6])
+    #if not os.path.isdir(outdir):
+    #    os.makedirs(outdir, exist_ok=True)
+    #basefile = os.path.join(outdir, brick)
+
+    basefile = os.path.join(outdir_data, raslice, brick[:6], brick)
     nobj = 1
 
     if overwrite is False:
@@ -111,18 +126,20 @@ def plan(cat, comm=None, outdir_data='.', mp=1, overwrite=False):
 
         print('Missing cutouts for {} objects.'.format(np.sum(nobj)))
         indices = np.arange(len(basefiles))
-
-        # Assign the sample to ranks to make the jpegfiles distribution per rank ~flat.
-        # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
-        cumuweight = nobj.cumsum() / nobj.sum()
-        idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
-        if len(idx) < size: # can happen in corner cases or with 1 rank
+        if True:
             groups = np.array_split(indices, size) # unweighted
         else:
-            groups = np.array_split(indices, idx) # weighted
-        for ii in range(size): # sort by weight
-            srt = np.argsort(nobj[groups[ii]])
-            groups[ii] = groups[ii][srt]
+            # Assign the sample to ranks to make the jpegfiles distribution per rank ~flat.
+            # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
+            cumuweight = nobj.cumsum() / nobj.sum()
+            idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
+            if len(idx) < size: # can happen in corner cases or with 1 rank
+                groups = np.array_split(indices, size) # unweighted
+            else:
+                groups = np.array_split(indices, idx) # weighted
+            for ii in range(size): # sort by weight
+                srt = np.argsort(nobj[groups[ii]])
+                groups[ii] = groups[ii][srt]
     else:
         groups = [np.array([])]
 
@@ -156,16 +173,16 @@ def do_cutouts(args, cat, width=152, pixscale=0.262, comm=None, outdir_data='.')
         
     assert(len(groups) == size)
 
-    for ii in groups[rank]:
-        print('Rank {} started at {}'.format(rank, time.asctime()))
-        sys.stdout.flush()
+    print('Rank {} started at {}'.format(rank, time.asctime()))
+    sys.stdout.flush()
 
-        mpargs = [(basefiles[ii], allra[ii], alldec[ii], width, pixscale, args.dry_run)]
-        if args.mp > 1:
-            with multiprocessing.Pool(args.mp) as P:
-                P.map(_cutout_one, mpargs)
-        else:
-            [cutout_one(*mparg) for mparg in mpargs]
+    indx = groups[rank]
+    mpargs = [(basefiles[ii], allra[ii], alldec[ii], width, pixscale, args.dry_run, ii) for ii in indx]
+    if args.mp > 1:
+        with multiprocessing.Pool(args.mp) as P:
+            P.map(_cutout_one, mpargs)
+    else:
+        [cutout_one(*mparg) for mparg in mpargs]
 
     print('  rank {} is done'.format(rank))
     sys.stdout.flush()
@@ -190,7 +207,8 @@ def main():
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
-    parser.add_argument('--catalog-type', default='sga2020', choices=['sga2020', 'sga2020-offset', 'sga2024-candidates', 'skies'],
+    parser.add_argument('--catalog-type', default='sga2020', choices=['sga2020', 'sga2020-offset', 'sga2020-missing',
+                                                                      'sga2024-candidates', 'skies'],
                         type=str, help='Catalog type to read and process.')
     parser.add_argument('--outdir-data', default='./', type=str, help='Base output data directory.')
     
@@ -211,26 +229,34 @@ def main():
         rank = comm.rank
 
     if rank == 0:
-        # sky fibers
-        # https://data.desi.lbl.gov/public/ets/target/catalogs/dr9/1.1.1/skies/
-
-        # select the sample here!
-        cat = Table(fitsio.read('/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits', 'ELLIPSE',
-                                columns=['SGA_ID', 'GALAXY', 'RA', 'DEC', 'D26']))
-        d26_pixels = cat['D26'] * 60 / args.pixscale # [pixels]
-        I = np.where(d26_pixels < (args.width * 1.2))[0] # no more than 20% larger than the default cutout width
-        I = I[:1024]
-        print('Selecting {}/{} SGA galaxies with cutout width < 1.2*{} pixels.'.format(
-            len(I), len(cat), args.width))
-        pdb.set_trace()
+        outdir = os.path.join(args.outdir_data, 'cutouts')
+        catdir = os.path.join(args.outdir_data, 'catalogs')
         
+        if args.catalog_type == 'sga2020':
+            catfile = os.path.join(catdir, 'sga2020.fits')
+        elif args.catalog_type == 'sga2020-offset':
+            raise NotImplemented
+        elif args.catalog_type == 'sga2020-missing':
+            raise NotImplemented
+        elif args.catalog_type == 'sga2020-candidates':
+            raise NotImplemented
+        elif args.catalog_type == 'skies':
+            catfile = os.path.join(catdir, 'skies.fits')
+
+        cat = fitsio.read(catfile)
+        print('Read {} rows from {}'.format(len(cat), catfile))
+
+        if comm is not None:
+            cat = comm.bcast(cat, root=0)
+            outdir = comm.bcast(outdir, root=0)
+
     if args.plan:
         if rank == 0:
-            plan(cat[I], comm=comm, outdir_data=args.outdir_data,
+            plan(cat, comm=comm, outdir_data=outdir,
                  overwrite=args.overwrite, mp=args.mp)
     else:
-        do_cutouts(args, cat[I], width=args.width, pixscale=args.pixscale, comm=comm,
-                   outdir_data=args.outdir_data)
+        do_cutouts(args, cat, width=args.width, pixscale=args.pixscale,
+                   comm=comm, outdir_data=outdir)
 
 if __name__ == '__main__':
     main()
