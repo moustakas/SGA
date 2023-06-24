@@ -15,6 +15,19 @@ import fitsio
 from astropy.table import Table, Column, hstack
 from astropy.io import fits
 
+def custom_brickname(ra, dec):
+    brickname = '{:08d}{}{:07d}'.format(
+        int(100000*ra), 'm' if dec < 0 else 'p',
+        int(100000*np.abs(dec)))
+    #brickname = '{:06d}{}{:05d}'.format(
+    #    int(1000*ra), 'm' if dec < 0 else 'p',
+    #    int(1000*np.abs(dec)))
+    return brickname
+
+def get_raslice(ra):
+    return '{:03d}'.format(int(ra*1000))
+
+
 def SGA_dir():
     if 'SGA_DIR' not in os.environ:
         print('Required ${SGA_DIR environment variable not set.')

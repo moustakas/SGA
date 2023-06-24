@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
-"""MPI wrapper to get a large number of image cutouts. Only run ahead of a VAC
-release.
+"""MPI wrapper to get a large number of image cutouts.
 
-get-cutouts --survey cmx --mp 16 --dry-run
+get-cutouts --mp 16 --dry-run
 
 shifterimg pull dstndstn/viewer-cutouts:latest
 shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
@@ -20,18 +19,6 @@ import fitsio
 from astropy.table import Table
 import multiprocessing
 from glob import glob
-
-def custom_brickname(ra, dec):
-    brickname = '{:08d}{}{:07d}'.format(
-        int(100000*ra), 'm' if dec < 0 else 'p',
-        int(100000*np.abs(dec)))
-    #brickname = '{:06d}{}{:05d}'.format(
-    #    int(1000*ra), 'm' if dec < 0 else 'p',
-    #    int(1000*np.abs(dec)))
-    return brickname
-
-def get_raslice(ra):
-    return '{:06d}'.format(int(ra*1000))[:3]
 
 def _cutout_one(args):
     return cutout_one(*args)
@@ -59,7 +46,8 @@ def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 def get_basefiles_one(obj, outdir_data, overwrite=False, verbose=False):
-
+    from SGA.io import custom_brickname, get_raslice
+    
     raslice = get_raslice(obj['RA'])
     brick = custom_brickname(obj['RA'], obj['DEC'])
     outdir = os.path.join(outdir_data, raslice, brick[:6])
@@ -202,11 +190,9 @@ def main():
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
-
-    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
-                        type=str, help='Base output HTML directory.')
-    parser.add_argument('--outdir-data', default='/pscratch/sd/i/ioannis/SGA2024',
-                        type=str, help='Base output data directory.')
+    parser.add_argument('--catalog-type', default='sga2020', choices=['sga2020', 'sga2020-offset', 'sga2024-candidates', 'skies'],
+                        type=str, help='Catalog type to read and process.')
+    parser.add_argument('--outdir-data', default='./', type=str, help='Base output data directory.')
     
     args = parser.parse_args()
 
@@ -233,9 +219,10 @@ def main():
                                 columns=['SGA_ID', 'GALAXY', 'RA', 'DEC', 'D26']))
         d26_pixels = cat['D26'] * 60 / args.pixscale # [pixels]
         I = np.where(d26_pixels < (args.width * 1.2))[0] # no more than 20% larger than the default cutout width
-        I = I[:10]
+        I = I[:1024]
         print('Selecting {}/{} SGA galaxies with cutout width < 1.2*{} pixels.'.format(
             len(I), len(cat), args.width))
+        pdb.set_trace()
         
     if args.plan:
         if rank == 0:
