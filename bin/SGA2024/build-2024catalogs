@@ -3,10 +3,12 @@
 """Build the catalogs to be used with get-2024cutouts.
 
 source /global/cfs/cdirs/desi/software/desi_environment.sh main
+export SGA_CODE_DIR=/global/homes/i/ioannis/code/git/SGA
 export PATH=$SGA_CODE_DIR/bin/SGA2024:$PATH
 export PYTHONPATH=$SGA_CODE_DIR/py:$PYTHONPATH
 
 build-2024catalogs --outdir-data $SCRATCH/SGA2024 --catalog-type sga2020
+build-2024catalogs --outdir-data $SCRATCH/SGA2024 --catalog-type sga2020-missing
 build-2024catalogs --outdir-data $SCRATCH/SGA2024 --catalog-type skies --nskies 128
 
 """
