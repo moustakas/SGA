@@ -61,7 +61,14 @@ def main():
     elif args.catalog_type == 'sga2020-offset':
         raise NotImplemented
     elif args.catalog_type == 'sga2020-missing':
-        raise NotImplemented
+        import importlib_resources
+        missingfile = importlib_resources.files('SGA') / 'data' / 'SGA2020' / 'SGA2020-missing-galaxies.ecsv'
+        out = Table.read(missingfile)
+        print('Read {} galaxies from {}'.format(len(out), missingfile))
+
+        outfile = os.path.join(outdir, 'sga2020-missing.fits')        
+        out = out['GALAXY', 'RA', 'DEC', 'DIAM']
+        out.meta = {}
     elif args.catalog_type == 'skies':
         import healpy as hp
         from glob import glob

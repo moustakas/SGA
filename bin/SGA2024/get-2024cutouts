@@ -4,6 +4,8 @@
 
 shifter --image dstndstn/viewer-cutouts bash
 $HOME/code/git/SGA/bin/SGA2024/get-2024cutouts --outdir-data $SCRATCH/SGA2024 --catalog-type skies --mp 128 
+$HOME/code/git/SGA/bin/SGA2024/get-2024cutouts --outdir-data $SCRATCH/SGA2024 --catalog-type sga2020 --mp 128 
+$HOME/code/git/SGA/bin/SGA2024/get-2024cutouts --outdir-data $SCRATCH/SGA2024 --catalog-type sga2020-missing --mp 128 
 
 """
 import pdb # for debugging
@@ -237,7 +239,7 @@ def main():
         elif args.catalog_type == 'sga2020-offset':
             raise NotImplemented
         elif args.catalog_type == 'sga2020-missing':
-            raise NotImplemented
+            catfile = os.path.join(catdir, 'sga2020-missing.fits')
         elif args.catalog_type == 'sga2020-candidates':
             raise NotImplemented
         elif args.catalog_type == 'skies':
