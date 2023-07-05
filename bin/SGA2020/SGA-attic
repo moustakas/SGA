@@ -1,0 +1,151 @@
+#!/usr/bin/env python
+
+"""Archive old SGA files.
+
+"""
+import subprocess
+import os, shutil, pdb
+import numpy as np
+from glob import glob
+import multiprocessing
+from legacyhalos.SGA import get_galaxy_galaxydir, read_sample
+
+
+def _atticfiles_one(args):
+    return atticfiles_one(*args)
+
+def atticfiles_one(gdir):
+    pickles = len(glob('{}/*.p'.format(gdir))) > 0
+    coadds = os.path.isdir('{}/coadd'.format(gdir))
+    if pickles or coadds:
+        return gdir
+    else:
+        return None
+
+def _cogfiles_one(args):
+    return cogfiles_one(*args)
+
+def cogfiles_one(gdir):
+    print(gdir)
+    cogfiles = glob(os.path.join(gdir, '*', '*-ellipse-cog.png'))
+    sbfiles = glob(os.path.join(gdir, '*', '*-ellipse-sbprofile.png'))
+    oldfiles = cogfiles + sbfiles
+
+    oldfiles = glob(os.path.join(gdir, '*', '*-html.log'))
+    if len(oldfiles) > 0:
+        _oldfiles = ' '.join(oldfiles)
+        cmd = '/bin/mv '+_oldfiles+' '+atticdir+'/'
+        #print(cmd)
+        err = subprocess.call(cmd.split())
+
+os.environ['LEGACYHALOS_HTML_DIR'] = '/global/cfs/cdirs/cosmo/data/sga/2020/html'
+
+ss = read_sample(verbose=True, final_sample=False)
+galaxy, galaxydir, htmlgalaxydir = get_galaxy_galaxydir(ss, html=True)
+
+## move them back!
+#atticdir = '/global/cscratch1/sd/ioannis/todelete-SGA-data-2020-donefiles/'
+#for ii, (gal, gdir) in enumerate(zip(galaxy, galaxydir)):
+#    if ii % 20000 == 0:
+#        print(ii)
+#    for suffix in ('coadds', 'ellipse'):
+#        donefile = os.path.join(atticdir, '{}-largegalaxy-{}.isdone'.format(gal, suffix))
+#        if os.path.isfile(donefile):
+#            outfile = os.path.join(gdir, '{}-largegalaxy-{}.isdone'.format(gal, suffix))
+#            shutil.move(donefile, outfile)
+#
+#pdb.set_trace()
+
+## remove the html.isdone files from SGA-2020-data
+#atticdir = '/global/cscratch1/sd/ioannis/todelete-SGA-data-2020-donefiles/'
+#for ii, (gal, gdir) in enumerate(zip(galaxy, galaxydir)):
+#    #gdir = gdir.replace('/global/cscratch1/sd/ioannis/SGA-data-2020', '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020/data')
+#    if ii % 20000 == 0:
+#        print(ii)
+#    for suffix in ('coadds', 'ellipse'):
+#        donefile = os.path.join(gdir, '{}-largegalaxy-{}.isdone'.format(gal, suffix))
+#        if os.path.isfile(donefile):
+#            shutil.move(donefile, atticdir)
+#
+#pdb.set_trace()
+
+# remove old cog and sb qa figures
+#atticdir = '/global/cscratch1/sd/ioannis/todelete-SGA-html-2020-cog-and-sb'
+atticdir = '/global/cscratch1/sd/ioannis/todelete-SGA-html-2020-logfiles2'
+
+nproc = 32
+glist = [['/global/cfs/cdirs/cosmo/data/sga/2020/html/{:03d}'.format(raslice)] for raslice in np.arange(360)]
+if nproc > 1:
+    with multiprocessing.Pool(nproc) as P:
+        P.map(_cogfiles_one, glist)
+else:
+    [cogfiles_one(gl) for gl in glist]
+
+pdb.set_trace()
+
+for ii, (gal, hdir) in enumerate(zip(galaxy, htmlgalaxydir)):
+    if ii % 30000 == 0:
+        print(ii)
+    cogfiles = glob(os.path.join(hdir, '{}-largegalaxy-*-ellipse-cog.png'.format(gal)))
+    sbfiles = glob(os.path.join(hdir, '{}-largegalaxy-*-ellipse-sbprofile.png'.format(gal)))
+    oldfiles = cogfiles + sbfiles
+    if len(oldfiles) > 0:
+        for oldfile in oldfiles:
+            shutil.move(oldfile, atticdir)
+
+pdb.set_trace()
+
+## remove any existing .html files since we're making these dynamically now
+#atticdir = '/global/cscratch1/sd/ioannis/todelete-SGA-html-2020-logfiles'
+#for ii, (gal, hdir) in enumerate(zip(galaxy, htmlgalaxydir)):
+#    if ii % 50000 == 0:
+#        print(ii)
+#    logfile = os.path.join(hdir, '{}.html'.format(gal))
+#    outfile = os.path.join(atticdir, '{}.html'.format(gal))
+#    if os.path.isfile(logfile):
+#        shutil.move(logfile, atticdir)
+#
+#pdb.set_trace()
+
+## remove html log files
+#atticdir = '/global/cscratch1/sd/ioannis/todelete-SGA-html-2020-logfiles'
+#for ii, (gal, hdir) in enumerate(zip(galaxy, htmlgalaxydir)):
+#    if ii % 50000 == 0:
+#        print(ii)
+#    logfile = os.path.join(hdir, '{}-html.log'.format(gal))
+#    outfile = os.path.join(atticdir, '{}-html.log'.format(gal))
+#    if os.path.isfile(logfile):
+#        shutil.move(logfile, atticdir)
+#
+#pdb.set_trace()
+
+# check for left-over pickle files and coadd directories
+nproc = 32
+glist = [[gdir] for gdir in galaxydir]
+with multiprocessing.Pool(nproc) as P:
+    rr = P.map(_atticfiles_one, glist)
+gfix = list(filter(None, rr))
+
+
+pdb.set_trace()
+
+# now check for obsolete galaxies and groups to be moved
+alldir = np.array(glob('/global/cscratch1/sd/ioannis/SGA-data-dr9alpha/???/*'))
+assert(np.sum(np.isin(alldir, galaxydir)) == len(galaxydir))
+
+# directories that no longer exist--
+mvdir = alldir[np.where(np.logical_not(np.isin(alldir, galaxydir)))[0]]
+print('Found {}/{} obsolete directories that need to be moved.'.format(len(mvdir), len(alldir)))
+assert(len(alldir)-len(mvdir)==len(galaxydir))
+
+if False:
+    with open('/global/cscratch1/sd/ioannis/SGA-attic/SGA-attic.txt', 'w') as ff:
+        [ff.write('{}\n'.format(mv)) for mv in mvdir]
+
+for ii, mv in enumerate(mvdir):
+    print(ii)
+    if os.path.isdir(mv):
+        shutil.move(mv, '/global/cscratch1/sd/ioannis/SGA-attic/')
+        
+
+pdb.set_trace()

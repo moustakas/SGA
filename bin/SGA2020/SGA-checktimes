@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+
+"""Look for outdated ellipse files.
+
+"""
+import os, glob, argparse, pdb
+import numpy as np
+import multiprocessing
+from legacyhalos.SGA import read_sample, get_galaxy_galaxydir
+
+def _checktimes_one(args):
+    return checktimes_one(*args)
+
+def checktimes_one(gal, gdir):
+    cfile = os.path.join(gdir, '{}-largegalaxy-tractor.fits'.format(gal))
+    efiles = glob.glob(os.path.join(gdir, '{}-largegalaxy-*-ellipse.fits'.format(gal)))
+    #if not os.path.isfile(cfile):
+    #    print('Missing Tractor catalog for {}'.format(gdir))
+    if os.path.isfile(cfile) and len(efiles) > 0:
+        ctime = os.path.getmtime(cfile)
+        etimes = [os.path.getmtime(efile) for efile in efiles]
+        if ctime > np.min(etimes):
+            #print('{}/{}-largegalaxy-*ellipse.fits'.format(gdir, gal))
+            #print('Out of data ellipse fit: {}'.format(gdir))
+            #pdb.set_trace()
+
+            return gal, gdir
+    return None, None
+
+nproc = 32
+#prefix = 'north'
+prefix = 'south'
+
+ss = read_sample(verbose=True)#, galaxylist=['PGC005714', 'PGC972493'])
+if prefix == 'south':
+    ss = ss[ss['DEC'] <= 30]
+else:
+    ss = ss[ss['DEC'] > 30]
+    
+print('Working on {} {} galaxies.'.format(len(ss), prefix))
+galaxy, galaxydir = get_galaxy_galaxydir(ss)
+
+pool = multiprocessing.Pool(nproc)
+missargs = []
+for gal, gdir in zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir)):
+    missargs.append([gal, gdir])
+    
+rr = pool.map(_checktimes_one, missargs)
+rr = list(zip(*rr))
+galtofix = list(filter(None, rr[0]))
+gdirtofix = list(filter(None, rr[1]))
+print('Found {} galaxies with outdated ellipse catalogs'.format(len(galtofix)))
+
+if len(galtofix) > 0:
+    with open('{}-ellipse-outdated2.txt'.format(prefix), 'w') as ff:
+        [ff.write('{}\n'.format(gal)) for gal in galtofix]
+
+    with open('{}-ellipse-outdated2-rm.txt'.format(prefix), 'w') as ff:
+        [ff.write('\\rm {}/{}-largegalaxy-*ellipse.fits\n'.format(gdir, gal)) for gal, gdir in zip(galtofix, gdirtofix)]
