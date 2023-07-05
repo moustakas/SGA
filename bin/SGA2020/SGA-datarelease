@@ -1,0 +1,233 @@
+#!/usr/bin/env python
+
+"""Produce the data release catalogs.
+
+This script should be run after building the "ellipse" catalog via e.g.,
+  salloc -N 1 -C haswell -A desi -L cfs,SCRATCH -t 04:00:00 --qos interactive --image=legacysurvey/legacyhalos:v0.0.4
+  srun -n 32 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 $LEGACYHALOS_CODE_DIR/bin/SGA/SGA-mpi.sh buildSGA 32 > buildSGA.log 2>&1 &
+
+"""
+import os, pdb
+import numpy as np
+import fitsio
+import astropy.units as u
+from astropy.table import QTable, Column
+from astropy.io import fits
+
+def main():
+
+    ellipsefile = '/global/cscratch1/sd/ioannis/SGA-data-2020/SGA-ellipse-v3.0.fits'
+    #ellipsefile = '/global/cfs/cdirs/cosmo/staging/largegalaxies/v3.2/SGA-ellipse-v3.2.fits'
+    ellipse = QTable(fitsio.read(ellipsefile))
+    print('Read {} galaxies from {}'.format(len(ellipse), ellipsefile))
+
+    # First, remove the non-SGA Tractor sources. These sources end up in the DR9
+    # files and are identifiable with the selection FITBITS & 'FROZEN' != 0.
+    isga = np.where(ellipse['SGA_ID'] != -1)[0]
+    print('Keeping {} SGA galaxies (i.e., removing non-SGA Tractor sources.'.format(len(isga)))
+    sgaall = ellipse[isga]
+
+    # Divide the sample into the pre-burned (in-footprint) and not pre-burned
+    # (off-footprint) samples. In the off-footprint sample we don't need all the
+    # SGA columns; we will just store the Hyperleda catalog parameters.
+    sga = sgaall[sgaall['PREBURNED']]
+    sga_leda = sgaall[np.logical_not(sgaall['PREBURNED'])]
+
+    print('Keeping {} galaxies in the SGA (fitted) sample.'.format(len(sga)))
+    print('Keeping {} galaxies in the SGA/LEDA (not fitted) sample.'.format(len(sga_leda)))
+
+    # Update the data model.
+    for col in ['PREBURNED', 'FREEZE', 'IN_FOOTPRINT', 'IN_FOOTPRINT_GRZ']:
+        sga.remove_column(col)
+        sga_leda.remove_column(col)
+
+    tractorcols = [
+        'RELEASE', 'BRICKID', 'OBJID', 'BRICK_PRIMARY', 'MASKBITS', 'ITERATIVE',
+        'TYPE', 'RA', 'DEC', 'RA_IVAR', 'DEC_IVAR', 'BX', 'BY', 'DCHISQ', 'EBV',
+        'MJD_MIN', 'MJD_MAX', 'REF_CAT', 'REF_ID', 'PMRA', 'PMDEC', 'PARALLAX',
+        'PMRA_IVAR', 'PMDEC_IVAR', 'PARALLAX_IVAR', 'REF_EPOCH', 'GAIA_POINTSOURCE',
+        'GAIA_PHOT_G_MEAN_MAG', 'GAIA_PHOT_G_MEAN_FLUX_OVER_ERROR',
+        'GAIA_PHOT_G_N_OBS', 'GAIA_PHOT_BP_MEAN_MAG',
+        'GAIA_PHOT_BP_MEAN_FLUX_OVER_ERROR', 'GAIA_PHOT_BP_N_OBS',
+        'GAIA_PHOT_RP_MEAN_MAG', 'GAIA_PHOT_RP_MEAN_FLUX_OVER_ERROR',
+        'GAIA_PHOT_RP_N_OBS', 'GAIA_PHOT_VARIABLE_FLAG',
+        'GAIA_ASTROMETRIC_EXCESS_NOISE', 'GAIA_ASTROMETRIC_EXCESS_NOISE_SIG',
+        'GAIA_ASTROMETRIC_N_OBS_AL', 'GAIA_ASTROMETRIC_N_GOOD_OBS_AL',
+        'GAIA_ASTROMETRIC_WEIGHT_AL', 'GAIA_DUPLICATED_SOURCE', 'GAIA_A_G_VAL',
+        'GAIA_E_BP_MIN_RP_VAL', 'GAIA_PHOT_BP_RP_EXCESS_FACTOR',
+        'GAIA_ASTROMETRIC_SIGMA5D_MAX', 'GAIA_ASTROMETRIC_PARAMS_SOLVED', 'FLUX_G',
+        'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+        'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2',
+        'FLUX_IVAR_W3', 'FLUX_IVAR_W4', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+        'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 'APFLUX_G',
+        'APFLUX_R', 'APFLUX_Z', 'APFLUX_RESID_G', 'APFLUX_RESID_R',
+        'APFLUX_RESID_Z', 'APFLUX_BLOBRESID_G', 'APFLUX_BLOBRESID_R',
+        'APFLUX_BLOBRESID_Z', 'APFLUX_IVAR_G', 'APFLUX_IVAR_R', 'APFLUX_IVAR_Z',
+        'APFLUX_MASKED_G', 'APFLUX_MASKED_R', 'APFLUX_MASKED_Z', 'APFLUX_W1',
+        'APFLUX_W2', 'APFLUX_W3', 'APFLUX_W4', 'APFLUX_RESID_W1', 'APFLUX_RESID_W2',
+        'APFLUX_RESID_W3', 'APFLUX_RESID_W4', 'APFLUX_IVAR_W1', 'APFLUX_IVAR_W2',
+        'APFLUX_IVAR_W3', 'APFLUX_IVAR_W4', 'MW_TRANSMISSION_G',
+        'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1',
+        'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4', 'NOBS_G',
+        'NOBS_R', 'NOBS_Z', 'NOBS_W1', 'NOBS_W2', 'NOBS_W3', 'NOBS_W4', 'RCHISQ_G',
+        'RCHISQ_R', 'RCHISQ_Z', 'RCHISQ_W1', 'RCHISQ_W2', 'RCHISQ_W3', 'RCHISQ_W4',
+        'FRACFLUX_G', 'FRACFLUX_R', 'FRACFLUX_Z', 'FRACFLUX_W1', 'FRACFLUX_W2',
+        'FRACFLUX_W3', 'FRACFLUX_W4', 'FRACMASKED_G', 'FRACMASKED_R',
+        'FRACMASKED_Z', 'FRACIN_G', 'FRACIN_R', 'FRACIN_Z', 'ANYMASK_G',
+        'ANYMASK_R', 'ANYMASK_Z', 'ALLMASK_G', 'ALLMASK_R', 'ALLMASK_Z',
+        'WISEMASK_W1', 'WISEMASK_W2', 'PSFSIZE_G', 'PSFSIZE_R', 'PSFSIZE_Z',
+        'PSFDEPTH_G', 'PSFDEPTH_R', 'PSFDEPTH_Z', 'GALDEPTH_G', 'GALDEPTH_R',
+        'GALDEPTH_Z', 'PSFDEPTH_W1', 'PSFDEPTH_W2', 'PSFDEPTH_W3', 'PSFDEPTH_W4',
+        'WISE_COADD_ID', 'WISE_X', 'WISE_Y', 'SERSIC', 'SERSIC_IVAR', 'SHAPE_R',
+        'SHAPE_R_IVAR', 'SHAPE_E1', 'SHAPE_E1_IVAR', 'SHAPE_E2', 'SHAPE_E2_IVAR']
+        
+    sgacols = [
+        'DIAM', 'DIAM_REF', 'PA', 'BA',
+        'RA_MOMENT', 'DEC_MOMENT', 'RADIUS_MOMENT', 
+
+        'G_RADIUS_HALF', 'R_RADIUS_HALF', 'Z_RADIUS_HALF', 
+        
+        'RADIUS_SB22', 'RADIUS_SB22.5', 'RADIUS_SB23',
+        'RADIUS_SB23.5', 'RADIUS_SB24', 'RADIUS_SB24.5',
+        'RADIUS_SB25', 'RADIUS_SB25.5', 'RADIUS_SB26',
+
+        'RADIUS_SB22_ERR', 'RADIUS_SB22.5_ERR', 'RADIUS_SB23_ERR',
+        'RADIUS_SB23.5_ERR', 'RADIUS_SB24_ERR', 'RADIUS_SB24.5_ERR',
+        'RADIUS_SB25_ERR', 'RADIUS_SB25.5_ERR', 'RADIUS_SB26_ERR',
+
+        'G_MAG_SB22', 'R_MAG_SB22', 'Z_MAG_SB22',
+        'G_MAG_SB22.5', 'R_MAG_SB22.5', 'Z_MAG_SB22.5',
+        'G_MAG_SB23', 'R_MAG_SB23', 'Z_MAG_SB23',
+        'G_MAG_SB23.5', 'R_MAG_SB23.5', 'Z_MAG_SB23.5',
+        'G_MAG_SB24', 'R_MAG_SB24', 'Z_MAG_SB24',
+        'G_MAG_SB24.5', 'R_MAG_SB24.5', 'Z_MAG_SB24.5',
+        'G_MAG_SB25', 'R_MAG_SB25', 'Z_MAG_SB25',
+        'G_MAG_SB25.5', 'R_MAG_SB25.5', 'Z_MAG_SB25.5',
+        'G_MAG_SB26', 'R_MAG_SB26', 'Z_MAG_SB26',
+
+        'G_MAG_SB22_ERR', 'R_MAG_SB22_ERR', 'Z_MAG_SB22_ERR',
+        'G_MAG_SB22.5_ERR', 'R_MAG_SB22.5_ERR', 'Z_MAG_SB22.5_ERR',
+        'G_MAG_SB23_ERR', 'R_MAG_SB23_ERR', 'Z_MAG_SB23_ERR',
+        'G_MAG_SB23.5_ERR', 'R_MAG_SB23.5_ERR', 'Z_MAG_SB23.5_ERR',
+        'G_MAG_SB24_ERR', 'R_MAG_SB24_ERR', 'Z_MAG_SB24_ERR',
+        'G_MAG_SB24.5_ERR', 'R_MAG_SB24.5_ERR', 'Z_MAG_SB24.5_ERR',
+        'G_MAG_SB25_ERR', 'R_MAG_SB25_ERR', 'Z_MAG_SB25_ERR',
+        'G_MAG_SB25.5_ERR', 'R_MAG_SB25.5_ERR', 'Z_MAG_SB25.5_ERR',
+        'G_MAG_SB26_ERR', 'R_MAG_SB26_ERR', 'Z_MAG_SB26_ERR',
+
+        'G_COG_PARAMS_MTOT', 'R_COG_PARAMS_MTOT', 'Z_COG_PARAMS_MTOT', 
+        'G_COG_PARAMS_M0', 'R_COG_PARAMS_M0', 'Z_COG_PARAMS_M0', 
+        'G_COG_PARAMS_ALPHA1', 'R_COG_PARAMS_ALPHA1', 'Z_COG_PARAMS_ALPHA1', 
+        'G_COG_PARAMS_ALPHA2', 'R_COG_PARAMS_ALPHA2', 'Z_COG_PARAMS_ALPHA2', 
+        'G_COG_PARAMS_CHI2', 'R_COG_PARAMS_CHI2', 'Z_COG_PARAMS_CHI2', 
+
+        'ELLIPSEBIT',
+        
+        #'DROPBIT',
+        #'G_MAG_TOT', 'R_MAG_TOT', 'Z_MAG_TOT'
+        ]
+
+    sga_tractor = sga[['SGA_ID']+tractorcols]
+    assert(np.all(sga_tractor['REF_ID'] == sga_tractor['SGA_ID']))
+    assert(np.all(sga_tractor['REF_CAT'] == 'L3'))
+
+    # add the tractor RA,DEC to the main HDU after brickname and then have
+    # ra_moment and dec_moment; also rename DIAM-->D26
+    for col in tractorcols:
+        sga.remove_column(col)
+        sga_leda.remove_column(col)
+    ib = np.where(np.array(sga.colnames) == 'BRICKNAME')[0][0]
+    sga.add_column(sga_tractor['RA'], index=ib+1)
+    sga.add_column(sga_tractor['DEC'], index=ib+2)
+    sga.rename_column('DIAM', 'D26')
+    sga.rename_column('DIAM_REF', 'D26_REF')
+
+    ellipsebit = sga['ELLIPSEBIT']
+    sga.remove_column('DROPBIT')
+    sga.remove_column('ELLIPSEBIT')
+    sga['ELLIPSEBIT'] = ellipsebit
+
+    # update release
+    from legacyhalos.io import get_run
+    runs = np.array([get_run(cat, racolumn='RA_LEDA', deccolumn='DEC_LEDA') for cat in sga])
+    isouth = np.where(runs == 'south')[0]
+    inorth = np.where(runs == 'north')[0]
+
+    sga_tractor['RELEASE'][isouth] = 9010
+    sga_tractor['RELEASE'][inorth] = 9011
+
+    #sga.rename_column('RA_LEDA', 'RA')
+    #sga.rename_column('DEC_LEDA', 'DEC')
+
+    for col in sgacols:
+        sga_leda.remove_column(col)
+
+    # rename the radius columns
+    oldcols = (
+        'RADIUS_MOMENT',
+        'G_RADIUS_HALF', 'R_RADIUS_HALF', 'Z_RADIUS_HALF', 
+        'RADIUS_SB22', 'RADIUS_SB22.5', 'RADIUS_SB23',
+        'RADIUS_SB23.5', 'RADIUS_SB24', 'RADIUS_SB24.5',
+        'RADIUS_SB25', 'RADIUS_SB25.5', 'RADIUS_SB26',
+        'RADIUS_SB22_ERR', 'RADIUS_SB22.5_ERR', 'RADIUS_SB23_ERR',
+        'RADIUS_SB23.5_ERR', 'RADIUS_SB24_ERR', 'RADIUS_SB24.5_ERR',
+        'RADIUS_SB25_ERR', 'RADIUS_SB25.5_ERR', 'RADIUS_SB26_ERR')
+    newcols = (
+        'SMA_MOMENT',
+        'G_SMA50', 'R_SMA50', 'Z_SMA50', 
+        'SMA_SB22', 'SMA_SB22.5', 'SMA_SB23',
+        'SMA_SB23.5', 'SMA_SB24', 'SMA_SB24.5',
+        'SMA_SB25', 'SMA_SB25.5', 'SMA_SB26',
+        'SMA_SB22_ERR', 'SMA_SB22.5_ERR', 'SMA_SB23_ERR',
+        'SMA_SB23.5_ERR', 'SMA_SB24_ERR', 'SMA_SB24.5_ERR',
+        'SMA_SB25_ERR', 'SMA_SB25.5_ERR', 'SMA_SB26_ERR')
+    for oldcol, newcol in zip(oldcols, newcols):
+        sga.rename_column(oldcol, newcol)
+    r50 = sga['G_SMA50', 'R_SMA50', 'Z_SMA50']
+    sga.remove_columns(['G_SMA50', 'R_SMA50', 'Z_SMA50'])
+    ib = np.where(np.array(sga.colnames) == 'SMA_MOMENT')[0][0]
+    for ii, col in enumerate(r50.colnames):
+        sga.add_column(r50[col], index=ib+1+ii)    
+    
+    # add an identifier
+    sga.add_column(Column(name='SGA_GALAXY', dtype='S16', length=len(sga)), index=1)
+    sga['SGA_GALAXY'] = ['SGA-2020 {}'.format(sga_id) for sga_id in sga['SGA_ID']]
+
+    #sga_leda.add_column(Column(name='SGA_GALAXY', dtype='S16', length=len(sga_leda)), index=1)
+    #sga_leda['SGA_GALAXY'] = ['SGA-2020 {}'.format(sga_id) for sga_id in sga_leda['SGA_ID']]
+
+    # write out
+    #outdir = '/global/cfs/cdirs/cosmo/data/sga/2020'
+    #outdir = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020'
+    outdir = '/global/cscratch1/sd/ioannis/SGA-data-2020/'
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+
+    # SGA
+    outfile = os.path.join(outdir, 'SGA-2020.fits')
+    hdu_primary = fits.PrimaryHDU()
+    hdu_sga = fits.convenience.table_to_hdu(sga)
+    hdu_sga.header['EXTNAME'] = 'ELLIPSE'
+
+    hdu_sga_tractor = fits.convenience.table_to_hdu(sga_tractor)
+    hdu_sga_tractor.header['EXTNAME'] = 'TRACTOR'
+        
+    hx = fits.HDUList([hdu_primary, hdu_sga, hdu_sga_tractor])
+    hx.writeto(outfile, overwrite=True, checksum=True)
+    print('Wrote {} galaxies to {}'.format(len(sga), outfile))
+
+    # SGA - LEDA
+    outfile = os.path.join(outdir, 'SGA-2020-nols.fits')
+    hdu_primary = fits.PrimaryHDU()
+    hdu_sga_leda = fits.convenience.table_to_hdu(sga_leda)
+    hdu_sga_leda.header['EXTNAME'] = 'ELLIPSE'
+
+    hx = fits.HDUList([hdu_primary, hdu_sga_leda])
+    hx.writeto(outfile, overwrite=True, checksum=True)
+    print('Wrote {} galaxies to {}'.format(len(sga_leda), outfile))
+
+    pdb.set_trace()
+
+if __name__ == '__main__':
+    main()
+

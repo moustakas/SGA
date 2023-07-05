@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Load the legacyhalos Docker container using shifter.
+#-c 'PATH=/mnt/code/legacyhalos/bin/legacyhalos:$PATH' 
+
+if [[ -z "$NERSC_HOST" ]]; then
+    DOCKER=legacysurvey/legacyhalos:v1.1
+    echo 'Updating and loading the Docker container '$DOCKER
+    echo 'Load the environment with: '
+    echo '  source /mnt/code/legacyhalos/bin/SGA/SGA-env'
+    docker pull $DOCKER
+    docker run -it \
+           -v $HOME/code/legacyhalos:/mnt/code/legacyhalos \
+           -v $HOME/code/legacysurvey/legacypipe:/mnt/code/legacypipe \
+           -v $HOME/code/talks-and-plots:/mnt/code/talks-and-plots \
+           -v $HOME/research/projects/SGA:/mnt/SGA \
+           -v $HOME/research/projects/SGA/2020/data:/mnt/SGA-data-2020 \
+           -v $HOME/research/projects/SGA/2020/html:/mnt/SGA-html-2020 \
+           -e LEGACYHALOS_DIR=/mnt/SGA \
+           -e LEGACYHALOS_DATA_DIR=/mnt/SGA-data-2020 \
+           -e LEGACYHALOS_HTML_DIR=/mnt/SGA-html-2020 \
+           -e LEGACYHALOS_CODE_DIR=/mnt/code/legacyhalos \
+           -e LEGACYPIPE_CODE_DIR=/mnt/code/legacypipe \
+           $DOCKER
+else
+    SHIFTER=docker:legacysurvey/legacyhalos:v1.1
+    echo 'Updating and loading the shifter image '$SHIFTER
+    echo 'Load the environment with: '
+    echo '  source '$LEGACYHALOS_CODE_DIR'/bin/SGA/SGA-env'
+    shifterimg pull $SHIFTER
+    shifter --image $SHIFTER bash
+fi

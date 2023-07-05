@@ -1,0 +1,84 @@
+#! /bin/bash
+# Shell script to set the environment variables for SGA project.
+
+project=SGA
+
+if [[ -z "$NERSC_HOST" ]]; then
+    #export LEGACYPIPE_CODE_DIR=$HOME/repos/legacysurvey/legacypipe
+    #export LEGACYHALOS_CODE_DIR=$HOME/repos/$project
+    #export LEGACYHALOS_DIR=$HOME/research/projects/$project
+    #export LEGACYHALOS_DATA_DIR=$HOME/research/projects/$project-data
+    #export LEGACYHALOS_HTML_DIR=$HOME/research/projects/$project-html
+    export PYTHONPATH=$LEGACYHALOS_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH
+    export PATH=$LEGACYHALOS_CODE_DIR/bin/$project:$PATH
+else
+    #############################
+    # For a power-user / testing. Use local checkouts of the code even though it's
+    # in the Docker container.
+    export LEGACYPIPE_CODE_DIR=/global/homes/i/ioannis/code/git/legacypipe
+    export LEGACYHALOS_CODE_DIR=/global/homes/i/ioannis/code/git/legacyhalos
+    export PYTHONPATH=$LEGACYHALOS_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH
+    export PATH=$LEGACYHALOS_CODE_DIR/bin/$project:$PATH
+    export PATH=${LEGACYHALOS_CODE_DIR}/science/SGA-2020:${PATH}
+    #############################
+    
+    # Specifiy the location of the input and output data.
+    export LEGACYHALOS_DIR=/global/cfs/cdirs/desi/users/ioannis/$project
+    export LEGACYHALOS_DATA_DIR=/global/cfs/cdirs/cosmo/data/sga/2020/data
+    #export LEGACYHALOS_DATA_DIR=/global/cfs/cdirs/desi/users/ioannis/$project
+    export LEGACYHALOS_HTML_DIR=/global/cfs/cdirs/cosmo/data/sga/2020/html
+    #export LEGACYHALOS_HTML_DIR=/global/cscratch1/sd/ioannis/SGA-html-2020
+    #export LEGACYHALOS_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/SGA-html-2020
+
+    # Pipeline variables---only change these if you know what you're doing!
+    export LEGACY_SURVEY_DIR=/global/cfs/cdirs/cosmo/work/legacysurvey/dr9
+    export SKY_TEMPLATE_DIR=/global/cfs/cdirs/cosmo/data/legacysurvey/dr9/calib/sky_pattern
+
+    export LARGEGALAXIES_CAT=/global/cfs/cdirs/desi/users/ioannis/legacyhalos/sample/redmapper-refcat.kd.fits
+    #export LARGEGALAXIES_CAT=/global/cfs/cdirs/cosmo/staging/largegalaxies/v3.0/SGA-parent-v3.0.kd.fits
+    #export LARGEGALAXIES_CAT=/global/cfs/cdirs/cosmo/staging/largegalaxies/v3.0/SGA-ellipse-v3.0.kd.fits
+    
+    export GAIA_CAT_DIR=/global/cfs/cdirs/desi/target/gaia_edr3/healpix
+    export GAIA_CAT_PREFIX=healpix
+    export GAIA_CAT_SCHEME=nested
+    export GAIA_CAT_VER=E
+
+    export TYCHO2_KD_DIR=/global/cfs/cdirs/cosmo/staging/tycho2
+    export PS1CAT_DIR=/global/cfs/cdirs/cosmo/work/ps1/cats/chunks-qz-star-v3
+    export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
+
+    export GALEX_DIR=/global/cfs/cdirs/cosmo/data/galex/images
+    export REDMAPPER_DIR=/global/cfs/cdirs/desi/users/ioannis/redmapper
+
+    # Uncomment this variable if you want time-resolved unWISE photometry (generally not needed). 
+    #export UNWISE_COADDS_TIMERESOLVED_DIR=/global/cfs/cdirs/cosmo/work/wise/outputs/merge/neo6
+    export UNWISE_COADDS_DIR=/global/cfs/cdirs/cosmo/data/unwise/neo7/unwise-coadds/fulldepth:/global/cfs/cdirs/cosmo/data/unwise/allwise/unwise-coadds/fulldepth
+    #export UNWISE_MODEL_SKY_DIR=/global/cfs/cdirs/cosmo/work/wise/unwise_catalog/dr3/mod
+    
+    export PYTHONNOUSERSITE=1
+    export OMP_NUM_THREADS=1
+    export MKL_NUM_THREADS=1
+    export KMP_AFFINITY=disabled
+    export MPICH_GNI_FORK_MODE=FULLCOPY
+
+    # Config directory nonsense
+    export TMPCACHE=$(mktemp -d)
+    mkdir $TMPCACHE/cache
+    mkdir $TMPCACHE/config
+    # astropy
+    export XDG_CACHE_HOME=$TMPCACHE/cache
+    export XDG_CONFIG_HOME=$TMPCACHE/config
+    mkdir $XDG_CACHE_HOME/astropy
+    cp -r $HOME/.astropy/cache $XDG_CACHE_HOME/astropy
+    mkdir $XDG_CONFIG_HOME/astropy
+    cp -r $HOME/.astropy/config $XDG_CONFIG_HOME/astropy
+    # matplotlib
+    export MPLCONFIGDIR=$TMPCACHE/matplotlib
+    mkdir $MPLCONFIGDIR
+    cp -r $HOME/.config/matplotlib $MPLCONFIGDIR
+    ## ipython
+    #export IPYTHONDIR=$TMPCACHE/ipython
+    #mkdir $IPYTHONDIR
+    #cp -r $HOME/.ipython $IPYTHONDIR  
+    
+fi
