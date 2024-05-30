@@ -5,8 +5,7 @@ SGA.io
 Code to read and write the various SGA files.
 
 """
-import os, warnings
-import pickle, pdb
+import os, warnings, pdb
 import numpy as np
 import numpy.ma as ma
 from glob import glob
