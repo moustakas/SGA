@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Load the SGA Docker container using shifter; unfortunately I can't source the
+# environment file in this script. (Passing the --env-file works OK, but $PATH
+# and $PYTHONPATH get overwritten.)
+
+SHIFTER=docker:legacysurvey/sga:0.2
+
+echo 'Updating and loading the shifter image '$SHIFTER
+echo 'Load the environment with: '
+echo 'source '$SGA_CODE_DIR'/bin/SGA2024/SGA2024-env'
+
+shifterimg pull $SHIFTER
+shifter --module=mpich --image $SHIFTER bash
