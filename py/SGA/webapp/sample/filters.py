@@ -26,8 +26,8 @@ class SampleFilter(django_filters.FilterSet):
     diam__gte = django_filters.NumberFilter(field_name='d26', lookup_expr='gte')
     diam__lte = django_filters.NumberFilter(field_name='d26', lookup_expr='lte')
 
-    groupdiam__gte = django_filters.NumberFilter(field_name='group_diam', lookup_expr='gte')
-    groupdiam__lte = django_filters.NumberFilter(field_name='group_diam', lookup_expr='lte')
+    groupdiam__gte = django_filters.NumberFilter(field_name='group_diameter', lookup_expr='gte')
+    groupdiam__lte = django_filters.NumberFilter(field_name='group_diameter', lookup_expr='lte')
 
     if False:
         groupid__gte = django_filters.NumberFilter(field_name='group_id', lookup_expr='gte')

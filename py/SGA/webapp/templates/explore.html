@@ -6,9 +6,9 @@
 
 <div class="e-content entry-content" itemprop="articleBody text">
 <div>
-<br />
+<br>
 <h2><a href="https://sga.legacysurvey.org"</a>Siena Galaxy Atlas 2020</h2>
-<br />
+<br>
 <div class="col-md-6 col-left docutils container">
   <p>Welcome to the data portal for the SGA-2020!</p>
   
@@ -18,6 +18,9 @@
   regarding this data release and
   the <a href="https://www.legacysurvey.org/sga/sga2020#acknowledgments">required
   acknowledgments and conditions of use</a>.</p> 
+
+  <p>We also encourage you to <a href="https://arxiv.org/abs/2307.04888">read
+      the paper</a>!</p>
 
   <img style="width: 400px;" src="{% static "files/sga-2020-sky.png" %}" alt="SGA-2020 sky"/>
 </div>
@@ -35,34 +38,14 @@
 
 <div class="container"></div>
 
-<hr />
+<hr>
 
 <div><a id="query"></a></div>
-<div style="text-align: center;">
-  <div style="text-align: center;">
-    <h3>Cone Search</h3>
-    <form style="display: inline-block;" method="get" action="#results">
-      <table>
-      <tr>
-        <td class="search_th"><label for="conera">Search RA</label></td>
-        <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0" max="360"/></td> 
-       </tr>
-      <tr>
-        <td class="search_th"><label for="conedec">Search Dec</label></td>
-        <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90" max="90"/></td> 
-      </tr>
-      <tr>
-        <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</td>
-        <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
-       </tr>
-      </table>
-    <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
-    </form>
 
-    <hr />
-    
-    <h3>Filter the Sample</h3>
-    <br />
+<div style="text-align: center;">
+  <div class="col-md-6 col-left docutils container">
+    <h4>Simple Filter</h4>
+    <br>
     <form style="display: inline-block;" method="get" action="#results">
       <table>
       <tr>
@@ -129,10 +112,35 @@
       </table>
     <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
     </form>
-    
-    <hr />
   </div>
   
+  <div class="col-md-6 col-right docutils container">
+    <h4>Cone Search</h4>
+    <form style="display: inline-block;" method="get" action="#results">
+      <table>
+      <tr>
+        <td class="search_th"><label for="conera">Search RA</label></td>
+        <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0" max="360"/></td> 
+       </tr>
+      <tr>
+        <td class="search_th"><label for="conedec">Search Dec</label></td>
+        <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90" max="90"/></td> 
+      </tr>
+      <tr>
+        <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</td>
+        <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
+       </tr>
+      </table>
+      <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
+    </form>
+  </div>
+</div>
+
+<br><br><br><br><br>
+<hr>
+<br><br><br><br><br>
+ 
+<div style="text-align: center;">
   <div><a id="results"></a></div>
     <h3>Results</h3>
     
@@ -147,7 +155,7 @@
     <button type="submit" class="btn btn-primary" name="dbutn" >Download</button>
     </form>
     
-    <br />
+    <br>
   </div>
   
   <div>
@@ -159,9 +167,9 @@
     <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'sga_id' %}#results">SGA ID</a></th>
     <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'group_name' %}#results">Group Name</a></th>
     <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'galaxy' %}#results">Galaxy</a></th>
-    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
-    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
-    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'd26' %}#results">Galaxy Diameter<br />(arcmin)</a></th>
+    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br>(degrees)</a></th>
+    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br>(degrees)</a></th>
+    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'd26' %}#results">Galaxy Diameter<br>(arcmin)</a></th>
     </tr>
     </thead>
     
@@ -199,7 +207,7 @@
       </span>
   </div>
   
-  <br /><br />
+  <br><br>
 </div>
 </div>
 
