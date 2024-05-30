@@ -5,23 +5,70 @@ SGA-mpi -h
 
 """
 import os, time, pdb
+import fitsio
 import numpy as np
+from astropy.table import Table
+
+
+def mpi_args():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--nproc', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--mpi', action='store_true', help='Use MPI parallelism')
+
+    parser.add_argument('--first', type=int, help='Index of first object to process.')
+    parser.add_argument('--last', type=int, help='Index of last object to process.')
+    parser.add_argument('--galaxylist', type=str, nargs='*', default=None, help='List of galaxy names to process.')
+
+    parser.add_argument('--d25min', default=0.1, type=float, help='Minimum diameter (arcmin).')
+    parser.add_argument('--d25max', default=100.0, type=float, help='Maximum diameter (arcmin).')
+
+    parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
+    parser.add_argument('--just-coadds', action='store_true', help='Just build the coadds and return (using --early-coadds in runbrick.py).')
+    parser.add_argument('--ellipse', action='store_true', help='Do the ellipse fitting.')
+
+    parser.add_argument('--htmlplots', action='store_true', help='Build the pipeline figures.')
+    parser.add_argument('--htmlindex', action='store_true', help='Build HTML index.html page.')
+    parser.add_argument('--htmlhome', default='index.html', type=str, help='Home page file name (use in tandem with --htmlindex).')
+    parser.add_argument('--html-raslices', action='store_true',
+                        help='Organize HTML pages by RA slice (use in tandem with --htmlindex).')
+    parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
+    
+    parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
+
+    parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
+
+    parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
+    parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
+    parser.add_argument('--ccdqa', action='store_true', help='Build the CCD-level diagnostics.')
+
+    parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
+    parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
+    parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
+    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
+
+    parser.add_argument('--build-SGA', action='store_true', help='Build the SGA reference catalog.')
+    args = parser.parse_args()
+
+    return args
+
 
 def main():
     """Top-level wrapper.
 
     """
-    from legacypipe.runs import get_survey
-    import legacyhalos.io
+    import SGA.io
     import legacyhalos.SGA
+    #from legacyhalos.SGA import ZCOLUMN, RACOLUMN, DECCOLUMN, DIAMCOLUMN
+    #from legacypipe.runs import get_survey
 
-    from legacyhalos.SGA import ZCOLUMN, RACOLUMN, DECCOLUMN, DIAMCOLUMN
-
-    basedir = legacyhalos.io.legacyhalos_dir()
-    datadir = legacyhalos.io.legacyhalos_data_dir()
-    htmldir = legacyhalos.io.legacyhalos_html_dir()
+    basedir = SGA.io.sga_dir()
+    datadir = SGA.io.sga_data_dir()
+    htmldir = SGA.io.sga_html_dir()
     
-    args = legacyhalos.SGA.mpi_args()
+    args = mpi_args()
 
     if args.mpi:
         from mpi4py import MPI
@@ -34,14 +81,22 @@ def main():
     # Read and broadcast the sample.
     sample, fullsample = None, None
     if rank == 0:
-        print('$LEGACYHALOS_DIR={}'.format(basedir))
-        print('$LEGACYHALOS_DATA_DIR={}'.format(datadir))
-        print('$LEGACYHALOS_HTML_DIR={}'.format(htmldir))
+        print(f'$LEGACYHALOS_DIR={basedir}')
+        print(f'$LEGACYHALOS_DATA_DIR={datadir}')
+        print(f'$LEGACYHALOS_HTML_DIR={htmldir}')
 
-        if args.remake_cogqa or args.htmlplots:
+        if args.htmlplots:
             final_sample = True
         else:
             final_sample = False
+
+        # read the bricklist
+        from legacypipe.survey import LegacySurveyData
+        survey = LegacySurveyData()
+        bricksfile = survey.find_file('bricks')
+        bricks = Table(fitsio.read(bricksfile))
+
+        pdb.set_trace()
 
         sample = legacyhalos.SGA.read_sample(first=args.first, last=args.last,
                                              d25min=args.d25min, d25max=args.d25max, 

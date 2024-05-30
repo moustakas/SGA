@@ -13,10 +13,10 @@ export PATH=$SGA_CODE_DIR/bin/$project:$PATH
 #############################
 
 # Specify the location of the input and output data.
-export LEGACYHALOS_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2024
-export LEGACYHALOS_DATA_DIR=$PSCRATCH/$project-data
-#export LEGACYHALOS_DATA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/$project-data
-export LEGACYHALOS_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/$project-html
+export SGA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2024
+export SGA_DATA_DIR=$PSCRATCH/$project-data
+#export SGA_DATA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/$project-data
+export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/$project-html
 
 # Pipeline variables---only change these if you know what you're doing!
 export LEGACY_SURVEY_DIR=/global/cfs/cdirs/cosmo/work/legacysurvey/dr9
