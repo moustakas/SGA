@@ -12,28 +12,28 @@ export COMPOSE_DOCKER_CLI_BUILD=0
 ```
 and then either
 ```
-docker buildx create --name mybuild --use
+docker buildx create --name SGA-build --node SGA --use
 ```
 or
 ```
-docker buildx use mybuild
+docker buildx use SGA-build
 ```
 and then
 
 ```
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/SGA:0.2
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/SGA:latest .
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:0.2 .
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:latest .
 ```
 
 To enter the container (with a shell prompt) on a laptop do:
 ```
-docker pull legacysurvey/SGA:latest
-docker run -it legacysurvey/SGA:latest
+docker pull legacysurvey/sga:latest
+docker run -it legacysurvey/sga:latest
 ```
 
 Or at NERSC:
 ```
-shifterimg pull docker:legacysurvey/SGA:0.2
-shifterimg pull docker:legacysurvey/SGA:latest
-shifter --image docker:legacysurvey/SGA:latest bash
+shifterimg pull docker:legacysurvey/sga:0.2
+shifterimg pull docker:legacysurvey/sga:latest
+shifter --image docker:legacysurvey/sga:latest bash
 ```
