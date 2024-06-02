@@ -9,13 +9,13 @@ import fitsio
 import numpy as np
 from astropy.table import Table
 
+from SGA.coadds import BANDS
 
 def mpi_args():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--nproc', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
-    parser.add_argument('--mpi', action='store_true', help='Use MPI parallelism')
+    parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
 
     parser.add_argument('--first', type=int, help='Index of first object to process.')
     parser.add_argument('--last', type=int, help='Index of last object to process.')
@@ -24,8 +24,10 @@ def mpi_args():
     parser.add_argument('--d25min', default=0.1, type=float, help='Minimum diameter (arcmin).')
     parser.add_argument('--d25max', default=100.0, type=float, help='Maximum diameter (arcmin).')
 
+    parser.add_argument('--detection-coadds', action='store_true', help='Build the detection coadds.')
+    parser.add_argument('--run', default='south', choices=['south', 'north'], type=str, help='Choose the dataset.')
+
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
-    parser.add_argument('--just-coadds', action='store_true', help='Just build the coadds and return (using --early-coadds in runbrick.py).')
     parser.add_argument('--ellipse', action='store_true', help='Do the ellipse fitting.')
 
     parser.add_argument('--htmlplots', action='store_true', help='Build the pipeline figures.')
@@ -48,6 +50,7 @@ def mpi_args():
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
+    parser.add_argument('--mpi', action='store_true', help='Use MPI parallelism')
 
     parser.add_argument('--build-SGA', action='store_true', help='Build the SGA reference catalog.')
     args = parser.parse_args()
@@ -55,19 +58,29 @@ def mpi_args():
     return args
 
 
+def call_detection_coadds(brick, survey, pixscale=0.262, mp=1, run='south',
+                          force=False):
+    """Wrapper script to build the detection coadds.
+
+    brick - table with brick information (brickname, ra, dec, etc.)
+
+    """
+    from SGA.coadds import detection_coadds
+
+    t0 = time.time()
+    ok, stagesuffix = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
+                                       run=run, force=force)
+    dt = time.time() - t0
+    
+                
 def main():
     """Top-level wrapper.
 
     """
-    import SGA.io
-    import legacyhalos.SGA
-    #from legacyhalos.SGA import ZCOLUMN, RACOLUMN, DECCOLUMN, DIAMCOLUMN
-    #from legacypipe.runs import get_survey
+    #import legacyhalos.SGA
+    ##from legacyhalos.SGA import ZCOLUMN, RACOLUMN, DECCOLUMN, DIAMCOLUMN
+    from legacypipe.runs import get_survey
 
-    basedir = SGA.io.sga_dir()
-    datadir = SGA.io.sga_data_dir()
-    htmldir = SGA.io.sga_html_dir()
-    
     args = mpi_args()
 
     if args.mpi:
@@ -79,105 +92,107 @@ def main():
         rank, size = 0, 1
 
     # Read and broadcast the sample.
-    sample, fullsample = None, None
     if rank == 0:
+        import SGA.io
+
+        basedir = SGA.io.sga_dir()
+        datadir = SGA.io.sga_data_dir()
+        htmldir = SGA.io.sga_html_dir()
+    
         print(f'$LEGACYHALOS_DIR={basedir}')
         print(f'$LEGACYHALOS_DATA_DIR={datadir}')
         print(f'$LEGACYHALOS_HTML_DIR={htmldir}')
 
-        if args.htmlplots:
-            final_sample = True
+        if args.detection_coadds:
+            outdir = os.path.join(datadir, 'detection')
+            survey = get_survey(args.run, output_dir=outdir, allbands=BANDS)
+            
+            bricks = SGA.io.read_survey_bricks(survey, custom=True)#, brickname='0159m047')
+            
+            if len(bricks) == 0:
+                return
+
+            sample = None
         else:
-            final_sample = False
-
-        # read the bricklist
-        from legacypipe.survey import LegacySurveyData
-        survey = LegacySurveyData()
-        bricksfile = survey.find_file('bricks')
-        bricks = Table(fitsio.read(bricksfile))
-
-        pdb.set_trace()
-
-        sample = legacyhalos.SGA.read_sample(first=args.first, last=args.last,
-                                             d25min=args.d25min, d25max=args.d25max, 
-                                             galaxylist=args.galaxylist,
-                                             verbose=args.verbose,
-                                             #customsky=args.customsky,
-                                             #customredux=args.customredux,
-                                             nproc=args.nproc,
-                                             preselect_sample=True,
-                                             final_sample=final_sample)
-        if len(sample) == 0:
-            return
+            sample = Table()
+            fullsample = Table()
+            #sample = legacyhalos.SGA.read_sample(first=args.first, last=args.last,
+            #                                     d25min=args.d25min, d25max=args.d25max, 
+            #                                     galaxylist=args.galaxylist,
+            #                                     verbose=args.verbose,
+            #                                     #customsky=args.customsky,
+            #                                     #customredux=args.customredux,
+            #                                     nproc=args.nproc,
+            #                                     preselect_sample=True,
+            #                                     final_sample=final_sample)
+            #
+            #if len(sample) == 0:
+            #    return
+            bricks = None
         
-        # For the custom coadds step we write out the full sample in each mosaic.
-        if args.coadds or args.build_SGA or args.remake_cogqa:
-            fullsample = legacyhalos.SGA.read_sample(verbose=args.verbose,
-                                                     preselect_sample=False,
-                                                     final_sample=final_sample)
-                                                     #customsky=False)
-            if args.remake_cogqa:
-                fullsample = fullsample[fullsample['SGA_ID'] > -1]
-                
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
-
-            if args.build_SGA:
-                sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
+        ## For the custom coadds step we write out the full sample in each mosaic.
+        #if args.coadds or args.build_SGA or args.remake_cogqa:
+        #    fullsample = legacyhalos.SGA.read_sample(verbose=args.verbose,
+        #                                             preselect_sample=False,
+        #                                             final_sample=final_sample)
+        #                                             #customsky=False)
+        #    if args.remake_cogqa:
+        #        fullsample = fullsample[fullsample['SGA_ID'] > -1]
+        #        
+        #    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+        #
+        #    if args.build_SGA:
+        #        sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
+    else:
+        sample = None
+        fullsample = None
+        bricks = None
 
     if comm is not None:
         sample = comm.bcast(sample, root=0)
         fullsample = comm.bcast(fullsample, root=0)
+        bricks = comm.bcast(bricks, root=0)
 
-    # Building the web-pages works on the full sample, so do that here and then
-    # return.
-    if args.htmlindex and rank == 0:
-        legacyhalos.SGA.make_html(sample, survey=None, pixscale=args.pixscale,
-                                  racolumn=RACOLUMN, deccolumn=DECCOLUMN, diamcolumn=DIAMCOLUMN,
-                                  zcolumn=ZCOLUMN, nproc=args.nproc, clobber=args.clobber,
-                                  makeplots=False, verbose=args.verbose, htmldir=args.htmldir,
-                                  htmlhome=args.htmlhome, html_raslices=args.html_raslices,
-                                  ccdqa=args.ccdqa, args=args)
-        return
+    ## Building the web-pages works on the full sample, so do that here and then
+    ## return.
+    #if args.htmlindex and rank == 0:
+    #    legacyhalos.SGA.make_html(sample, survey=None, pixscale=args.pixscale,
+    #                              racolumn=RACOLUMN, deccolumn=DECCOLUMN, diamcolumn=DIAMCOLUMN,
+    #                              zcolumn=ZCOLUMN, nproc=args.nproc, clobber=args.clobber,
+    #                              makeplots=False, verbose=args.verbose, htmldir=args.htmldir,
+    #                              htmlhome=args.htmlhome, html_raslices=args.html_raslices,
+    #                              ccdqa=args.ccdqa, args=args)
+    #    return
 
-    # Determine how many more galaxies we need to analyze and divide them across
-    # ranks.
+    # Determine how many more objects or bricks we need to analyze and divide
+    # them across ranks.
     if rank == 0:
-        if args.build_SGA:
-            # When building the final catalog, process the full sample, divided
-            # into a *fixed* number of bigchunks, distributed to all the
-            # available ranks.
-            suffix, fail = 'build-SGA', []
-
-            if False: # old chunking
-                bigchunksize = 1024
-                nbigchunks = np.ceil(len(sample) / bigchunksize).astype(np.int)
-                bigchunks = np.array_split(np.arange(len(sample)), nbigchunks)
-                #print('HACK!!!!!!!!!!!!!!')
-                #bigchunks = bigchunks[:5]
-            else:
-                from legacyhalos.SGA import get_raslice
-                raslices_str = np.array(['{:03d}'.format(raslice) for raslice in np.arange(360)])
-                raslices = np.array([get_raslice(ra) for ra in sample[RACOLUMN]])
-                bigchunks = []
-                for raslice in raslices_str:
-                    these = np.where(raslices == raslice)[0]
-                    #print(raslice, len(these))
-                    if len(these) > 0:
-                        bigchunks.append(these)
-            nbigchunks = len(bigchunks)
-            groups = np.array_split(bigchunks, size)
-
-            #print('Hack!!!!!!!!!')
-            #groups = [groups[0]]
-
-            ## Build the final catalog in chunks of 1000 (primary) galaxies.
-            #suffix, chunksize, fail = 'build-SGA', 1024, []
-            #nchunks = np.ceil(len(sample) / chunksize).astype(np.int)
-            #groups = np.array_split(np.arange(len(sample)), nchunks)
-            #groups = np.array_split(np.arange(len(sample)), size)
-        else:
-            suffix, groups, _, fail = legacyhalos.SGA.missing_files(args, sample, size)
-            #groups[0] = groups[0][32:]
+        #if args.build_SGA:
+        #    # When building the final catalog, process the full sample, divided
+        #    # into a *fixed* number of bigchunks, distributed to all the
+        #    # available ranks.
+        #    suffix, fail = 'build-SGA', []
+        #
+        #    from legacyhalos.SGA import get_raslice
+        #    raslices_str = np.array(['{:03d}'.format(raslice) for raslice in np.arange(360)])
+        #    raslices = np.array([get_raslice(ra) for ra in sample[RACOLUMN]])
+        #    bigchunks = []
+        #    for raslice in raslices_str:
+        #        these = np.where(raslices == raslice)[0]
+        #        #print(raslice, len(these))
+        #        if len(these) > 0:
+        #            bigchunks.append(these)
+        #    nbigchunks = len(bigchunks)
+        #    groups = np.array_split(bigchunks, size)
+        #else:
+        #    suffix, groups, _, fail = legacyhalos.SGA.missing_files(args, sample, size)
+        #    #groups[0] = groups[0][32:]
+        
+        suffix, groups, _, fail = SGA.io.missing_files(
+            sample=sample, bricks=bricks, detection_coadds=args.detection_coadds,
+            coadds=args.coadds, ellipse=args.ellipse, htmlplots=args.htmlplots,
+            htmlindex=args.htmlindex, build_SGA=args.build_SGA, clobber=args.clobber,
+            verbose=args.verbose, htmldir=htmldir, size=size, mp=args.mp)
     else:
         groups, suffix = [], ''
 
@@ -185,303 +200,306 @@ def main():
         groups = comm.bcast(groups, root=0)
         suffix = comm.bcast(suffix, root=0)
 
-    if rank == 0:
-        ntodo = len(np.hstack(groups))
-        print('{} left to do: {} / {} divided across {} rank(s).'.format(
-            suffix.upper(), ntodo, len(sample), size), flush=True)
+    #if rank == 0:
+    #    ntodo = len(np.hstack(groups))
+    #    print(f'{suffix.upper()} left to do: {ntodo} / {len(sample)} divided across {size} rank(s).')
         
-    # Wait for all ranks to catch up.
-    if comm is not None:
-        comm.barrier()
+    ## Wait for all ranks to catch up.
+    #if comm is not None:
+    #    comm.barrier()
 
-    if len(groups[rank]) == 0:
-        print('{} for all {} galaxies on rank {} are complete!'.format(
-            suffix.upper(), len(sample), rank), flush=True)
-        if rank == 0 and args.count and args.debug:
-            if len(fail[rank]) > 0:
-                print('{} failures: {} / {}'.format(suffix.upper(), len(fail[rank]), len(sample)), flush=True)
-                galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(sample[fail[rank]])
-                for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir), sample[fail[rank]][DIAMCOLUMN]):
-                    print('  {} {} (Group Diameter={:.3f})'.format(ii, dd, diam))
-        return
-    else:
-        if not args.build_SGA:
-            print(' Rank {}: {} galaxies left to do.'.format(rank, len(groups[rank])), flush=True)
-        if rank == 0 and args.count:
-            if args.debug:
-                if len(fail[rank]) > 0:
-                    print('{} failures: {} / {}'.format(suffix.upper(), len(fail[rank]), len(sample)), flush=True)
-                    galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(sample[fail[rank]])
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir), sample[fail[rank]][DIAMCOLUMN]):
-                        print('  {} {} (Group Diameter={:.3f})'.format(ii, dd, diam))
-                        #print('\\rm {}/{}-largegalaxy-*.isfail'.format(dd, os.path.basename(dd), suffix.lower()))
+    print(f'Starting {len(groups[rank])} {suffix.upper()} on rank {rank} with {args.mp} core(s) on {time.asctime()}')
 
-                todo = np.hstack(groups)
-                if len(todo) > 0:
-                    print('{} todo: {} / {}'.format(suffix.upper(), len(todo), len(sample)), flush=True)
-                    #print('Galaxies left to do:')
-                    galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(sample[todo])
-                    for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir), sample[todo][DIAMCOLUMN]):
-                        #print('{}'.format(dd))
-                        #print('touch {}/{}-largegalaxy-coadds.isdone'.format(dd, os.path.basename(dd), suffix.lower()))
-                        #from glob import glob
-                        #if len(glob('{}/{}-largegalaxy-*.p'.format(dd, os.path.basename(dd), suffix.lower()))) > 0:
-                        #    print('ls -l {}/{}-largegalaxy-*.p'.format(dd, os.path.basename(dd), suffix.lower()))
-                        #print('\\rm {}/{}-largegalaxy-*ellipse.fits'.format(dd, os.path.basename(dd), suffix.lower()))
-                        print('  {} {} (Group Diameter={:.3f})'.format(ii, dd, diam))
-            return
-        
-    # Wait for all ranks to catch up.
-    if comm is not None:
-        comm.barrier()
-
-    # Loop on the remaining objects.
-    #if not args.build_SGA:
-    print('Starting {} {} on rank {} with {} cores on {}'.format(
-        len(groups[rank]), suffix.upper(), rank, args.nproc, time.asctime()),
-        flush=True)
-
-    # Build the SGA only on rank 0 in order to avoid memory problems--
-    if args.build_SGA:
-        if rank == 0:
-            import fitsio
-            from astropy.table import Table
-            from legacyhalos.SGA import _init_ellipse_SGA
-
-            tall = time.time()
-            _init = _init_ellipse_SGA(clobber=args.clobber)
-            if _init is None:
-                return
-            outfile, dropfile, refcat = _init
-        else:
-            outfile, dropfile, refcat = None, None, None
-            
-        if comm is not None:
-            outfile = comm.bcast(outfile, root=0)
-            dropfile = comm.bcast(dropfile, root=0)
-            refcat = comm.bcast(refcat, root=0)
-
-        # Now loop over each "chunk" assigned to this rank.
-        from legacyhalos.SGA import get_raslice
-        from astrometry.util.multiproc import multiproc
-        from legacyhalos.SGA import _build_ellipse_SGA_one, _write_ellipse_SGA
-
-        chunkdatadir = os.path.join(datadir, 'rachunks')
-        #chunkdatadir = os.path.join(datadir, 'data', 'rachunks')
-        #print('HACKING THE CHUNK DIRECTORY!!!') ; chunkdatadir = os.path.join(datadir, 'test-chunks')
-
-        mp = multiproc(nthreads=args.nproc)
-        for ichunk, chunk in enumerate(groups[rank]):
-            print('Working on chunk {:03d}/{:03d}'.format(ichunk, len(groups[rank])-1))
-            tchunk = time.time()
-
-            raslice_str = get_raslice(sample['RA'][chunk[0]])
-            chunkdir = os.path.join(chunkdatadir, raslice_str)
-            if not os.path.isdir(chunkdir):
-                os.makedirs(chunkdir, exist_ok=True)
-
-            chunkoutfile = os.path.join(chunkdir, os.path.basename(outfile))
-            chunkdropfile = os.path.join(chunkdir, os.path.basename(dropfile))
-
-            # chunkoutfile gets written last, so test "doneness" based on that
-            # file's existence.
-            if os.path.isfile(chunkoutfile):
-                print('Skipping completed chunk {:03d}'.format(ichunk))
-                continue
-
-            # Do it!
-            chunksample = sample[chunk]
-            chunkfullsample = fullsample[np.isin(fullsample['GROUP_ID'], chunksample['GROUP_ID'])]
-
-            buildargs = []
-            for onegal in chunksample:
-                buildargs.append((onegal, chunkfullsample[chunkfullsample['GROUP_ID'] == onegal['GROUP_ID']], refcat, args.verbose))
-            results = mp.map(_build_ellipse_SGA_one, buildargs)
-            results = list(zip(*results))
-            
-            cat = list(filter(None, results[0]))
-            dropcat = list(filter(None, results[1]))
-            
-            print('Chunk {}: N(sample)={}, N(fullsample)={}, N(cat)={}, N(dropped)={}'.format(
-                ichunk, len(chunksample), len(chunkfullsample), len(cat), len(dropcat)))
-
-            _write_ellipse_SGA(cat, dropcat, chunkoutfile, chunkdropfile, refcat,
-                               exclude_full_sga=True, writekd=False)
-            print('Finished chunk {:03d}/{:03d} after {:.3f} minutes'.format(
-                ichunk, len(groups[rank])-1, (time.time() - tchunk) / 60))
-
-        if comm is not None:
-            comm.barrier() # wait
-
-        # Now gather up all the chunks and write out!
-        if rank == 0:
-            print('Finished all {:03d} chunks after {:.3f} minutes'.format(nbigchunks, (time.time() - tall) / 60))
-
-            tfinal = time.time()
-            cat, dropcat = [], []
-            for ichunk, chunk in enumerate(np.hstack(groups)):
-                print('Gathering chunk {:03d}/{:03d}'.format(ichunk, len(np.hstack(groups))-1), flush=True)
-                
-                raslice_str = get_raslice(sample['RA'][chunk[0]])
-                
-                #mingroup = np.min(sample['GROUP_ID'][chunk])
-                #maxgroup = np.max(sample['GROUP_ID'][chunk])                
-                #chunkdir = os.path.join(chunkdatadir, '{:03d}'.format(ichunk))
-                #chunkdir = os.path.join(chunkdatadir, '{}-{}'.format(mingroup, maxgroup))
-                #chunkdir = os.path.join(chunkdatadir, raslices_str[ichunk])
-                chunkdir = os.path.join(chunkdatadir, raslice_str)
-            
-                chunkoutfile = os.path.join(chunkdir, os.path.basename(outfile))
-                chunkdropfile = os.path.join(chunkdir, os.path.basename(dropfile))
-
-                if os.path.isfile(chunkoutfile):
-                    cat.append(Table(fitsio.read(chunkoutfile)))
-                if os.path.isfile(chunkdropfile):
-                    dropcat.append(Table(fitsio.read(chunkdropfile)))
-
-            _write_ellipse_SGA(cat, dropcat, outfile, dropfile, refcat,
-                               exclude_full_sga=False, writekd=True)
-            print('Gathering and writing out final files took {:.3f} minutes'.format(
-                (time.time() - tfinal) / 60), flush=True)
-            return
-        else:
-            print('All done on rank {}'.format(rank), flush=True)
-            return
-
-    # The rest of the pipeline--
-    
     tall = time.time()
     for count, ii in enumerate(groups[rank]):
-        onegal = sample[ii]
-        
-        if args.htmlplots:
-            galaxy, galaxydir, htmlgalaxydir = legacyhalos.SGA.get_galaxy_galaxydir(onegal, htmldir=htmldir, html=True)
-            if not os.path.isdir(htmlgalaxydir):
-                os.makedirs(htmlgalaxydir, exist_ok=True)
-            print('Rank {:03d} ({} / {}): {} {} (index {})'.format(
-                rank, count+1, len(groups[rank]), galaxydir, htmlgalaxydir, ii), flush=True)
-        else:
-            galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(onegal)
-            if not os.path.isdir(galaxydir):
-                os.makedirs(galaxydir, exist_ok=True)
-            print('Rank {:03d} ({} / {}): {} (index {})'.format(
-                rank, count+1, len(groups[rank]), galaxydir, ii), flush=True)
+        if args.detection_coadds:
+            call_detection_coadds(bricks[ii], survey, pixscale=args.pixscale,
+                                  mp=args.mp, force=args.force)
+    
+    #if len(groups[rank]) == 0:
+    #    print(f'{suffix.upper()} for all {len(sample)} galaxies on rank {rank} are complete!')
+    #    if rank == 0 and args.count and args.debug:
+    #        if len(fail[rank]) > 0:
+    #            print('{} failures: {} / {}'.format(suffix.upper(), len(fail[rank]), len(sample)), flush=True)
+    #            galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(sample[fail[rank]])
+    #            for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir), sample[fail[rank]][DIAMCOLUMN]):
+    #                print('  {} {} (Group Diameter={:.3f})'.format(ii, dd, diam))
+    #    return
+    #else:
+    #    #if not args.build_SGA:
+    #    #    print(' Rank {}: {} galaxies left to do.'.format(rank, len(groups[rank])), flush=True)
+    #    if rank == 0 and args.count:
+    #        if args.debug:
+    #            if len(fail[rank]) > 0:
+    #                print('{} failures: {} / {}'.format(suffix.upper(), len(fail[rank]), len(sample)), flush=True)
+    #                galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(sample[fail[rank]])
+    #                for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir), sample[fail[rank]][DIAMCOLUMN]):
+    #                    print('  {} {} (Group Diameter={:.3f})'.format(ii, dd, diam))
+    #                    #print('\\rm {}/{}-largegalaxy-*.isfail'.format(dd, os.path.basename(dd), suffix.lower()))
+    #
+    #            todo = np.hstack(groups)
+    #            if len(todo) > 0:
+    #                print('{} todo: {} / {}'.format(suffix.upper(), len(todo), len(sample)), flush=True)
+    #                #print('Galaxies left to do:')
+    #                galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(sample[todo])
+    #                for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir), sample[todo][DIAMCOLUMN]):
+    #                    #print('{}'.format(dd))
+    #                    #print('touch {}/{}-largegalaxy-coadds.isdone'.format(dd, os.path.basename(dd), suffix.lower()))
+    #                    #from glob import glob
+    #                    #if len(glob('{}/{}-largegalaxy-*.p'.format(dd, os.path.basename(dd), suffix.lower()))) > 0:
+    #                    #    print('ls -l {}/{}-largegalaxy-*.p'.format(dd, os.path.basename(dd), suffix.lower()))
+    #                    #print('\\rm {}/{}-largegalaxy-*ellipse.fits'.format(dd, os.path.basename(dd), suffix.lower()))
+    #                    print('  {} {} (Group Diameter={:.3f})'.format(ii, dd, diam))
+    #        return
+    #    
+    ### Wait for all ranks to catch up.
+    ##if comm is not None:
+    ##    comm.barrier()
+    #
+    ## Loop on the remaining objects.
+    ##if not args.build_SGA:
+    #print('Starting {} {} on rank {} with {} cores on {}'.format(
+    #    len(groups[rank]), suffix.upper(), rank, args.nproc, time.asctime()),
+    #    flush=True)
+    #
+    ## Build the SGA only on rank 0 in order to avoid memory problems--
+    #if args.build_SGA:
+    #    if rank == 0:
+    #        import fitsio
+    #        from astropy.table import Table
+    #        from legacyhalos.SGA import _init_ellipse_SGA
+    #
+    #        tall = time.time()
+    #        _init = _init_ellipse_SGA(clobber=args.clobber)
+    #        if _init is None:
+    #            return
+    #        outfile, dropfile, refcat = _init
+    #    else:
+    #        outfile, dropfile, refcat = None, None, None
+    #        
+    #    if comm is not None:
+    #        outfile = comm.bcast(outfile, root=0)
+    #        dropfile = comm.bcast(dropfile, root=0)
+    #        refcat = comm.bcast(refcat, root=0)
+    #
+    #    # Now loop over each "chunk" assigned to this rank.
+    #    from legacyhalos.SGA import get_raslice
+    #    from astrometry.util.multiproc import multiproc
+    #    from legacyhalos.SGA import _build_ellipse_SGA_one, _write_ellipse_SGA
+    #
+    #    chunkdatadir = os.path.join(datadir, 'rachunks')
+    #    #chunkdatadir = os.path.join(datadir, 'data', 'rachunks')
+    #    #print('HACKING THE CHUNK DIRECTORY!!!') ; chunkdatadir = os.path.join(datadir, 'test-chunks')
+    #
+    #    mp = multiproc(nthreads=args.nproc)
+    #    for ichunk, chunk in enumerate(groups[rank]):
+    #        print('Working on chunk {:03d}/{:03d}'.format(ichunk, len(groups[rank])-1))
+    #        tchunk = time.time()
+    #
+    #        raslice_str = get_raslice(sample['RA'][chunk[0]])
+    #        chunkdir = os.path.join(chunkdatadir, raslice_str)
+    #        if not os.path.isdir(chunkdir):
+    #            os.makedirs(chunkdir, exist_ok=True)
+    #
+    #        chunkoutfile = os.path.join(chunkdir, os.path.basename(outfile))
+    #        chunkdropfile = os.path.join(chunkdir, os.path.basename(dropfile))
+    #
+    #        # chunkoutfile gets written last, so test "doneness" based on that
+    #        # file's existence.
+    #        if os.path.isfile(chunkoutfile):
+    #            print('Skipping completed chunk {:03d}'.format(ichunk))
+    #            continue
+    #
+    #        # Do it!
+    #        chunksample = sample[chunk]
+    #        chunkfullsample = fullsample[np.isin(fullsample['GROUP_ID'], chunksample['GROUP_ID'])]
+    #
+    #        buildargs = []
+    #        for onegal in chunksample:
+    #            buildargs.append((onegal, chunkfullsample[chunkfullsample['GROUP_ID'] == onegal['GROUP_ID']], refcat, args.verbose))
+    #        results = mp.map(_build_ellipse_SGA_one, buildargs)
+    #        results = list(zip(*results))
+    #        
+    #        cat = list(filter(None, results[0]))
+    #        dropcat = list(filter(None, results[1]))
+    #        
+    #        print('Chunk {}: N(sample)={}, N(fullsample)={}, N(cat)={}, N(dropped)={}'.format(
+    #            ichunk, len(chunksample), len(chunkfullsample), len(cat), len(dropcat)))
+    #
+    #        _write_ellipse_SGA(cat, dropcat, chunkoutfile, chunkdropfile, refcat,
+    #                           exclude_full_sga=True, writekd=False)
+    #        print('Finished chunk {:03d}/{:03d} after {:.3f} minutes'.format(
+    #            ichunk, len(groups[rank])-1, (time.time() - tchunk) / 60))
+    #
+    #    if comm is not None:
+    #        comm.barrier() # wait
+    #
+    #    # Now gather up all the chunks and write out!
+    #    if rank == 0:
+    #        print('Finished all {:03d} chunks after {:.3f} minutes'.format(nbigchunks, (time.time() - tall) / 60))
+    #
+    #        tfinal = time.time()
+    #        cat, dropcat = [], []
+    #        for ichunk, chunk in enumerate(np.hstack(groups)):
+    #            print('Gathering chunk {:03d}/{:03d}'.format(ichunk, len(np.hstack(groups))-1), flush=True)
+    #            
+    #            raslice_str = get_raslice(sample['RA'][chunk[0]])
+    #            
+    #            #mingroup = np.min(sample['GROUP_ID'][chunk])
+    #            #maxgroup = np.max(sample['GROUP_ID'][chunk])                
+    #            #chunkdir = os.path.join(chunkdatadir, '{:03d}'.format(ichunk))
+    #            #chunkdir = os.path.join(chunkdatadir, '{}-{}'.format(mingroup, maxgroup))
+    #            #chunkdir = os.path.join(chunkdatadir, raslices_str[ichunk])
+    #            chunkdir = os.path.join(chunkdatadir, raslice_str)
+    #        
+    #            chunkoutfile = os.path.join(chunkdir, os.path.basename(outfile))
+    #            chunkdropfile = os.path.join(chunkdir, os.path.basename(dropfile))
+    #
+    #            if os.path.isfile(chunkoutfile):
+    #                cat.append(Table(fitsio.read(chunkoutfile)))
+    #            if os.path.isfile(chunkdropfile):
+    #                dropcat.append(Table(fitsio.read(chunkdropfile)))
+    #
+    #        _write_ellipse_SGA(cat, dropcat, outfile, dropfile, refcat,
+    #                           exclude_full_sga=False, writekd=True)
+    #        print('Gathering and writing out final files took {:.3f} minutes'.format(
+    #            (time.time() - tfinal) / 60), flush=True)
+    #        return
+    #    else:
+    #        print('All done on rank {}'.format(rank), flush=True)
+    #        return
+    #
+    ## The rest of the pipeline--
+    #
+    #tall = time.time()
+    #for count, ii in enumerate(groups[rank]):
+    #    onegal = sample[ii]
+    #    
+    #    if args.htmlplots:
+    #        galaxy, galaxydir, htmlgalaxydir = legacyhalos.SGA.get_galaxy_galaxydir(onegal, htmldir=htmldir, html=True)
+    #        if not os.path.isdir(htmlgalaxydir):
+    #            os.makedirs(htmlgalaxydir, exist_ok=True)
+    #        print('Rank {:03d} ({} / {}): {} {} (index {})'.format(
+    #            rank, count+1, len(groups[rank]), galaxydir, htmlgalaxydir, ii), flush=True)
+    #    else:
+    #        galaxy, galaxydir = legacyhalos.SGA.get_galaxy_galaxydir(onegal)
+    #        if not os.path.isdir(galaxydir):
+    #            os.makedirs(galaxydir, exist_ok=True)
+    #        print('Rank {:03d} ({} / {}): {} (index {})'.format(
+    #            rank, count+1, len(groups[rank]), galaxydir, ii), flush=True)
+    #
+    #    if args.debug:
+    #        logfile = None
+    #    else:
+    #        # write the HTML log to the output directory
+    #        if args.htmlplots:
+    #            logfile = os.path.join(htmlgalaxydir, '{}-{}.log'.format(galaxy, suffix))
+    #        else:
+    #            logfile = os.path.join(galaxydir, '{}-{}.log'.format(galaxy, suffix))
+    #    
+    #    # No unwise here (we do it in --coadds) and don't care about the
+    #    # model images.
+    #
+    #    run = legacyhalos.io.get_run(onegal, racolumn=RACOLUMN, deccolumn=DECCOLUMN)
+    #    survey = get_survey(run, output_dir=galaxydir)
+    #        
+    #    # Need the object "radius" to build the coadds.
+    #    if onegal[DIAMCOLUMN] > 30: # NGC0598=M33 is 61 arcmin in diameter!
+    #        radius_mosaic_arcsec = onegal[DIAMCOLUMN] * 60 * 0.7 # [arcsec]
+    #    elif onegal[DIAMCOLUMN] > 14 and onegal[DIAMCOLUMN] < 30:
+    #        radius_mosaic_arcsec = onegal[DIAMCOLUMN] * 60 * 1.0 # [arcsec]
+    #    else:
+    #        radius_mosaic_arcsec = onegal[DIAMCOLUMN] * 60 * 1.5 # [arcsec]
+    #
+    #    # custom sky-subtraction
+    #    if args.ubercal_sky:
+    #        radius_mask_arcsec = onegal[DIAMCOLUMN] * 60 / 2.0
+    #        subsky_radii = (radius_mask_arcsec, 1.5*radius_mask_arcsec, 2*radius_mask_arcsec)
+    #    else:
+    #        subsky_radii = None
+    #
+    #    if args.coadds:
+    #        from legacyhalos.mpi import call_custom_coadds
+    #
+    #        # Write out the individual galaxies for this mosaic.
+    #        thissample = fullsample[np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]]
+    #        samplefile = os.path.join(galaxydir, '{}-largegalaxy-sample.fits'.format(galaxy))
+    #        if args.clobber or not os.path.isfile(samplefile):
+    #            #print('Writing {} galaxy(ies) to {}'.format(len(thissample), samplefile))
+    #            tmpfile = samplefile+'.tmp'
+    #            thissample.write(tmpfile, overwrite=True, format='fits')
+    #            os.rename(tmpfile, samplefile)
+    #
+    #        call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, nproc=args.nproc,
+    #                           pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
+    #                           largegalaxy=True, pipeline=False, custom=False,
+    #                           apodize=False, unwise=args.unwise, force=args.force, plots=False,
+    #                           verbose=args.verbose, cleanup=args.cleanup, write_all_pickles=True,
+    #                           subsky_radii=subsky_radii,
+    #                           just_coadds=args.just_coadds, no_gaia=False, no_tycho=False,
+    #                           require_grz=True, debug=args.debug, logfile=logfile)
+    #
+    #    if args.pipeline_coadds:
+    #        from legacyhalos.mpi import call_custom_coadds
+    #        # No unwise here (we do it in --coadds) and don't care about the
+    #        # model images.
+    #
+    #        call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, nproc=args.nproc,
+    #                           pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
+    #                           largegalaxy=False, pipeline=True, custom=False,
+    #                           apodize=False, unwise=False, force=args.force, plots=False,
+    #                           verbose=args.verbose, cleanup=args.cleanup, write_all_pickles=True,
+    #                           just_coadds=args.just_coadds,
+    #                           no_gaia=False, no_tycho=False, debug=args.debug, logfile=logfile)
+    #
+    #    if args.ellipse:
+    #        from legacyhalos.SGA import call_ellipse
+    #        call_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
+    #                     bands=['g', 'r', 'z'], refband='r',                         
+    #                     pixscale=args.pixscale, nproc=args.nproc,
+    #                     verbose=args.verbose, debug=args.debug,
+    #                     unwise=False, logfile=logfile)
+    #                         
+    #    if args.htmlplots:
+    #        from legacyhalos.mpi import call_htmlplots
+    #        if radius_mosaic_arcsec > 6 * 60: # [>6] arcmin
+    #            barlabel = '2 arcmin'
+    #            barlen = np.ceil(120 / args.pixscale).astype(int) # [pixels]
+    #        elif (radius_mosaic_arcsec > 3 * 60) & (radius_mosaic_arcsec < 6 * 60): # [3-6] arcmin
+    #            barlabel = '1 arcmin'
+    #            barlen = np.ceil(60 / args.pixscale).astype(int) # [pixels]
+    #        else:
+    #            barlabel = '30 arcsec'
+    #            barlen = np.ceil(30 / args.pixscale).astype(int) # [pixels]
+    #        call_htmlplots(onegal, galaxy, survey, pixscale=args.pixscale, nproc=args.nproc,
+    #                       verbose=args.verbose, debug=args.debug, clobber=args.clobber,
+    #                       ccdqa=args.ccdqa, logfile=logfile, zcolumn=ZCOLUMN,
+    #                       htmldir=htmldir, datadir=datadir,
+    #                       barlen=barlen, barlabel=barlabel,
+    #                       radius_mosaic_arcsec=radius_mosaic_arcsec,
+    #                       just_coadds=args.just_coadds,
+    #                       write_donefile=False,
+    #                       get_galaxy_galaxydir=legacyhalos.SGA.get_galaxy_galaxydir,
+    #                       read_multiband=legacyhalos.SGA.read_multiband)
+    #
+    #    if args.remake_cogqa:
+    #        from legacyhalos.SGA import remake_cogqa
+    #        thissample = fullsample[np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]]            
+    #        remake_cogqa(onegal, thissample, htmldir=htmldir, clobber=args.clobber, verbose=args.verbose)
 
-        if args.debug:
-            logfile = None
-        else:
-            # write the HTML log to the output directory
-            if args.htmlplots:
-                logfile = os.path.join(htmlgalaxydir, '{}-{}.log'.format(galaxy, suffix))
-            else:
-                logfile = os.path.join(galaxydir, '{}-{}.log'.format(galaxy, suffix))
-        
-        # No unwise here (we do it in --coadds) and don't care about the
-        # model images.
-
-        run = legacyhalos.io.get_run(onegal, racolumn=RACOLUMN, deccolumn=DECCOLUMN)
-        survey = get_survey(run, output_dir=galaxydir)
-            
-        # Need the object "radius" to build the coadds.
-        #if args.customsky:
-        #    radius_mosaic_arcsec = onegal[DIAMCOLUMN] * 60 # [arcsec]
-        #else:
-        if onegal[DIAMCOLUMN] > 30: # NGC0598=M33 is 61 arcmin in diameter!
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] * 60 * 0.7 # [arcsec]
-        elif onegal[DIAMCOLUMN] > 14 and onegal[DIAMCOLUMN] < 30:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] * 60 * 1.0 # [arcsec]
-        else:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] * 60 * 1.5 # [arcsec]
-
-        # custom sky-subtraction
-        if args.ubercal_sky:
-            radius_mask_arcsec = onegal[DIAMCOLUMN] * 60 / 2.0
-            subsky_radii = (radius_mask_arcsec, 1.5*radius_mask_arcsec, 2*radius_mask_arcsec)
-        else:
-            subsky_radii = None
-
-        if args.coadds:
-            from legacyhalos.mpi import call_custom_coadds
-
-            # Write out the individual galaxies for this mosaic.
-            thissample = fullsample[np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]]
-            samplefile = os.path.join(galaxydir, '{}-largegalaxy-sample.fits'.format(galaxy))
-            if args.clobber or not os.path.isfile(samplefile):
-                #print('Writing {} galaxy(ies) to {}'.format(len(thissample), samplefile))
-                tmpfile = samplefile+'.tmp'
-                thissample.write(tmpfile, overwrite=True, format='fits')
-                os.rename(tmpfile, samplefile)
-
-            call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, nproc=args.nproc,
-                               pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                               largegalaxy=True, pipeline=False, custom=False,
-                               apodize=False, unwise=args.unwise, force=args.force, plots=False,
-                               verbose=args.verbose, cleanup=args.cleanup, write_all_pickles=True,
-                               subsky_radii=subsky_radii,
-                               just_coadds=args.just_coadds, no_gaia=False, no_tycho=False,
-                               require_grz=True, debug=args.debug, logfile=logfile)
-
-        if args.pipeline_coadds:
-            from legacyhalos.mpi import call_custom_coadds
-            # No unwise here (we do it in --coadds) and don't care about the
-            # model images.
-
-            call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, nproc=args.nproc,
-                               pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                               largegalaxy=False, pipeline=True, custom=False,
-                               apodize=False, unwise=False, force=args.force, plots=False,
-                               verbose=args.verbose, cleanup=args.cleanup, write_all_pickles=True,
-                               just_coadds=args.just_coadds,
-                               no_gaia=False, no_tycho=False, debug=args.debug, logfile=logfile)
-
-        if args.ellipse:
-            from legacyhalos.SGA import call_ellipse
-            call_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
-                         bands=['g', 'r', 'z'], refband='r',                         
-                         pixscale=args.pixscale, nproc=args.nproc,
-                         verbose=args.verbose, debug=args.debug,
-                         unwise=False, logfile=logfile)
-                             
-        if args.htmlplots:
-            from legacyhalos.mpi import call_htmlplots
-            if radius_mosaic_arcsec > 6 * 60: # [>6] arcmin
-                barlabel = '2 arcmin'
-                barlen = np.ceil(120 / args.pixscale).astype(int) # [pixels]
-            elif (radius_mosaic_arcsec > 3 * 60) & (radius_mosaic_arcsec < 6 * 60): # [3-6] arcmin
-                barlabel = '1 arcmin'
-                barlen = np.ceil(60 / args.pixscale).astype(int) # [pixels]
-            else:
-                barlabel = '30 arcsec'
-                barlen = np.ceil(30 / args.pixscale).astype(int) # [pixels]
-            call_htmlplots(onegal, galaxy, survey, pixscale=args.pixscale, nproc=args.nproc,
-                           verbose=args.verbose, debug=args.debug, clobber=args.clobber,
-                           ccdqa=args.ccdqa, logfile=logfile, zcolumn=ZCOLUMN,
-                           htmldir=htmldir, datadir=datadir,
-                           barlen=barlen, barlabel=barlabel,
-                           radius_mosaic_arcsec=radius_mosaic_arcsec,
-                           just_coadds=args.just_coadds,
-                           write_donefile=False,
-                           get_galaxy_galaxydir=legacyhalos.SGA.get_galaxy_galaxydir,
-                           read_multiband=legacyhalos.SGA.read_multiband)
-
-        if args.remake_cogqa:
-            from legacyhalos.SGA import remake_cogqa
-            thissample = fullsample[np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]]            
-            remake_cogqa(onegal, thissample, htmldir=htmldir, clobber=args.clobber, verbose=args.verbose)
-
-    # Wait for all ranks to finish.
-    if comm is not None:
-        comm.barrier()
-        
-    if rank == 0:
-        print('Finished {} {} at {} after {:.3f} minutes'.format(
-            ntodo, suffix.upper(), time.asctime(), (time.time() - tall) / 60 ), flush=True)
-        _, groups, _, _ = legacyhalos.SGA.missing_files(args, sample, size, clobber_overwrite=False)
-        if len(groups) > 0:
-            stilltodo = len(np.hstack(groups))
-        else:
-            stilltodo = 0
-        print('{} left to do: {} / {}.'.format(suffix.upper(), stilltodo, ntodo), flush=True)
+    ## Wait for all ranks to finish.
+    #if comm is not None:
+    #    comm.barrier()
+    #    
+    #if rank == 0:
+    #    print('Finished {} {} at {} after {:.3f} minutes'.format(
+    #        ntodo, suffix.upper(), time.asctime(), (time.time() - tall) / 60 ), flush=True)
+    #    _, groups, _, _ = legacyhalos.SGA.missing_files(args, sample, size, clobber_overwrite=False)
+    #    if len(groups) > 0:
+    #        stilltodo = len(np.hstack(groups))
+    #    else:
+    #        stilltodo = 0
+    #    print('{} left to do: {} / {}.'.format(suffix.upper(), stilltodo, ntodo), flush=True)
 
 if __name__ == '__main__':
     main()

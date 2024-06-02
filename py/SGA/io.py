@@ -41,6 +41,295 @@ def sga_html_dir():
     return ldir
 
 
+def get_raslice(ra):
+    return f'{int(ra):03d}'
+
+
+def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
+                         htmldir=None, html=False):
+    """Retrieve the galaxy name and the (nested) directory.
+
+    """
+    if sample is None and bricks is None:
+        msg = 'Must provide either sample or bricks.'
+        raise IOError(msg)
+
+    if datadir is None:
+        datadir = sga_data_dir()
+    if htmldir is None:
+        htmldir = sga_html_dir()
+
+    if bricks is not None:
+        objs = bricks['BRICKNAME']
+        ras = bricks['RA']
+        datadir = os.path.join(datadir, 'detection')
+        htmldir = os.path.join(htmldir, 'detection')
+    elif sample is not None:
+        # Handle groups.
+        if 'GROUP_NAME' in sample.colnames:
+            galcolumn = 'GROUP_NAME'
+            racolumn = 'GROUP_RA'
+        else:
+            galcolumn = 'GALAXY'
+            racolumn = 'RA'
+    
+        objs = sample[galcolumn]
+        ras = sample[racolumn]
+
+    objdirs, htmlobjdirs = [], []
+    for obj, ra in zip(objs, ras):
+        objdirs.append(os.path.join(datadir, get_raslice(ra), obj))
+        if html:
+            htmlobjdirs.append(os.path.join(htmldir, get_raslice(ra), obj))
+    objdirs = np.array(objdirs)
+    if html:
+        htmlobjdirs = np.array(htmlobjdirs)
+
+    if objdirs.size == 1:
+        objs = objs.item()
+        objdirs = objdirs.item()
+        if html:
+            htmlobjdirs = htmlobjdirs.item()
+
+    if html:
+        return objs, objdirs, htmlobjdirs
+    else:
+        return objs, objdirs
+
+    
+def read_survey_bricks(survey, brickname=None, custom=False):
+    """Read the sample of bricks corresponding to the given the run.
+
+    Currently, we read the full-sky set of bricks, but this should really be
+    reduced down to the set of bricks with data.
+
+    """
+    def _toTable(_bricks):
+        # convert to an astropy Table
+        _bricks = _bricks.to_dict()
+        bricks = Table()
+        for key in _bricks.keys():
+            bricks[key.upper()] = _bricks[key]
+        return bricks
+    
+    if custom:
+        from SGA.coadds import custom_brickname
+        # define a set of custom bricks (for testing purposes)
+        bricks = Table()
+        # https://www.legacysurvey.org/viewer-desi?ra=15.8232&dec=-4.6630&layer=ls-dr9&zoom=15&sga
+        bricks['RA'] = [15.8232] # in '0159m047'
+        bricks['DEC'] = [-4.6630]
+        bricks['WIDTH'] = [600]
+        bricks['BRICKNAME'] = [f'custom-{custom_brickname(ra, dec)}' for ra, dec in zip(bricks['RA'], bricks['DEC'])]
+    else:
+        if brickname is not None:
+            bricks = survey.get_bricks_by_name(brickname)
+        else:
+            bricks = survey.get_bricks()
+        bricks = _toTable(bricks)
+
+    return bricks
+
+
+def weighted_partition(weights, n):
+    '''
+    Partition `weights` into `n` groups with approximately same sum(weights)
+
+    Args:
+        weights: array-like weights
+        n: number of groups
+
+    Returns list of lists of indices of weights for each group
+
+    Notes:
+        compared to `dist_discrete_all`, this function allows non-contiguous
+        items to be grouped together which allows better balancing.
+
+    '''
+    #- sumweights will track the sum of the weights that have been assigned
+    #- to each group so far
+    sumweights = np.zeros(n, dtype=float)
+
+    #- Initialize list of lists of indices for each group
+    groups = list()
+    for i in range(n):
+        groups.append(list())
+
+    #- Assign items from highest weight to lowest weight, always assigning
+    #- to whichever group currently has the fewest weights
+    weights = np.asarray(weights)
+    for i in np.argsort(-weights):
+        j = np.argmin(sumweights)
+        groups[j].append(i)
+        sumweights[j] += weights[i]
+
+    assert len(groups) == n
+
+    return groups
+
+    
+def _missing_files_one(args):
+    """Wrapper for the multiprocessing."""
+    return missing_files_one(*args)
+
+def missing_files_one(checkfile, dependsfile, clobber):
+    """Simple support script for missing_files."""
+    
+    from pathlib import Path
+    if Path(checkfile).exists() and clobber is False:
+        # Is the stage that this stage depends on done, too?
+        #print(checkfile, dependsfile, clobber)
+        if dependsfile is None:
+            return 'done'
+        else:
+            if Path(dependsfile).exists():
+                return 'done'
+            else:
+                return 'todo'
+    else:
+        #print(f'missing_files_one {checkfile}')
+        # Did this object fail?
+        # fragile!
+        if checkfile[-6:] == 'isdone':
+            failfile = checkfile[:-6]+'isfail'
+            if Path(failfile).exists():
+                if clobber is False:
+                    return 'fail'
+                else:
+                    os.remove(failfile)
+                    return 'todo'
+            else:
+                return 'todo'
+        else:
+            if dependsfile is not None:
+                if os.path.isfile(dependsfile):
+                    return 'todo'
+                else:
+                    print(f'Missing depends file {dependsfile}')
+                    return 'fail'
+            else:
+                return 'todo'
+
+        return 'todo'
+
+    
+def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False,
+                  ellipse=False, htmlplots=False, htmlindex=False, build_SGA=False, 
+                  clobber=False, verbose=False, htmldir='.', size=1, mp=1):
+    """Figure out which files are missing and still need to be processed.
+
+    """
+    from glob import glob
+    import multiprocessing
+    import astropy
+
+    if sample is None and bricks is None:
+        msg = 'Must provide either sample or bricks.'
+        raise IOError(msg)
+
+    if sample is not None:
+        if type(sample) is astropy.table.row.Row:
+            msg = 'sample must be a Table not a Row'
+            raise ValueError(msg)
+        indices = np.arange(len(sample))
+    elif bricks is not None:
+        if type(bricks) is astropy.table.row.Row:
+            msg = 'bricks must be a Table not a Row'
+            raise ValueError(msg)
+        indices = np.arange(len(bricks))
+
+    dependson = None
+    if detection_coadds:
+        galaxy, galaxydir = get_galaxy_galaxydir(bricks=bricks)
+    else:
+        if htmlplots is False and htmlindex is False:
+            if verbose:
+                t0 = time.time()
+                print('Getting galaxy names and directories...', end='')
+            galaxy, galaxydir = get_galaxy_galaxydir(sample)
+            if verbose:
+                print(f'...took {time.time() - t0:.3f} sec')
+
+    if detection_coadds:
+        suffix = 'detection-coadds'
+        filesuffix = '-detection-coadds.isdone'
+    elif coadds:
+        suffix = 'coadds'
+        filesuffix = '-largegalaxy-coadds.isdone'
+    elif ellipse:
+        suffix = 'ellipse'
+        filesuffix = '-largegalaxy-ellipse.isdone'
+        dependson = '-largegalaxy-coadds.isdone'
+    elif build_SGA:
+        suffix = 'build-SGA'
+        filesuffix = '-largegalaxy-SGA.isdone'
+        dependson = '-largegalaxy-ellipse.isdone'
+    elif htmlplots:
+        suffix = 'html'
+        filesuffix = '-largegalaxy-grz-montage.png'
+        dependson = '-largegalaxy-image-grz.jpg'
+        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+    elif htmlindex:
+        suffix = 'htmlindex'
+        filesuffix = '-largegalaxy-grz-montage.png'
+        galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+    else:
+        raise ValueError('Need at least one keyword argument.')
+
+    # Make clobber=False for build_SGA and htmlindex because we're not making
+    # the files here, we're just looking for them. The argument clobber gets
+    # used downstream.
+    if htmlindex:
+        clobber = False
+
+    missargs = []
+    for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir))):
+        checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
+        if dependson:
+            missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), clobber])
+        else:
+            missargs.append([checkfile, None, clobber])
+
+    if verbose:
+        t0 = time.time()
+        print('Finding missing files...', end='')
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            todo = np.array(P.map(_missing_files_one, missargs))
+    else:
+        todo = np.array([_missing_files_one(_missargs) for _missargs in missargs])
+        
+    if verbose:
+        print(f'...took {(time.time() - t0)/60.:.3f} min')
+
+    itodo = np.where(todo == 'todo')[0]
+    idone = np.where(todo == 'done')[0]
+    ifail = np.where(todo == 'fail')[0]
+
+    if len(ifail) > 0:
+        fail_indices = [indices[ifail]]
+    else:
+        fail_indices = [np.array([])]
+
+    if len(idone) > 0:
+        done_indices = [indices[idone]]
+    else:
+        done_indices = [np.array([])]
+
+    if len(itodo) > 0:
+        _todo_indices = indices[itodo]
+
+        if sample is not None:
+            weight = np.atleast_1d(sample[DIAMCOLUMN])[_todo_indices]
+            todo_indices = weighted_partition(weight, size)
+        else:
+            # unweighted
+            todo_indices = np.array_split(_todo_indices, size)
+    else:
+        todo_indices = [np.array([])]
+
+    return suffix, todo_indices, done_indices, fail_indices
+
 
 #def custom_brickname(ra, dec):
 #    brickname = '{:08d}{}{:07d}'.format(
@@ -50,66 +339,6 @@ def sga_html_dir():
 #    #    int(1000*ra), 'm' if dec < 0 else 'p',
 #    #    int(1000*np.abs(dec)))
 #    return brickname
-#
-#def get_raslice(ra):
-#    return '{:03d}'.format(int(ra))
-#
-#def analysis_dir():
-#    adir = os.path.join(SGA_dir(), 'analysis')
-#    if not os.path.isdir(adir):
-#        os.makedirs(adir, exist_ok=True)
-#    return adir
-#
-#def sample_dir(version=None):
-#    sdir = os.path.join(SGA_dir(), 'sample')
-#    if not os.path.isdir(sdir):
-#        os.makedirs(sdir, exist_ok=True)
-#    if version:
-#        sdir = os.path.join(SGA_dir(), 'sample', version)
-#        if not os.path.isdir(sdir):
-#            os.makedirs(sdir, exist_ok=True)
-#    return sdir
-#
-#def paper1_dir(figures=True):
-#    pdir = os.path.join(SGA_dir(), 'science', 'paper1')
-#    if not os.path.ipdir(pdir):
-#        os.makedirs(pdir, exist_ok=True)
-#    if figures:
-#        pdir = os.path.join(pdir, 'figures')
-#        if not os.path.ipdir(pdir):
-#            os.makedirs(pdir, exist_ok=True)
-#    return pdir
-#
-#def html_dir():
-#    #if 'NERSC_HOST' in os.environ:
-#    #    htmldir = '/global/project/projectdirs/cosmo/www/temp/ioannis/SGA'
-#    #else:
-#    #    htmldir = os.path.join(SGA_dir(), 'html')
-#
-#    htmldir = os.path.join(SGA_dir(), 'html')
-#    if not os.path.isdir(htmldir):
-#        os.makedirs(htmldir, exist_ok=True)
-#    return htmldir
-#
-#def parent_version(version=None):
-#    """Version of the parent catalog.
-#
-#    These are the archived versions. For DR9 we reset the counter to start at v3.0!
-#
-#    #version = 'v1.0' # 18may13
-#    #version = 'v2.0' # 18nov14
-#    #version = 'v3.0' # 19sep26
-#    #version = 'v4.0' # 19dec23
-#    #version = 'v5.0' # 20jan30 (dr9e)
-#    #version = 'v6.0' # 20feb25 (DR9-SV)
-#    version = 'v7.0'  # 20apr18 (DR9)
-#
-#    """
-#    if version is None:
-#        #version = 'v1.0' # 18may13
-#        #version = 'v2.0' # DR8 (18nov14)
-#        version = 'v3.0' # DR9
-#    return version
 #
 #def get_parentfile(version=None, kd=False):
 #

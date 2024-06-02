@@ -6,6 +6,8 @@ SGA.coadds
 import os, pdb
 import numpy as np
 
+BANDS = ['g', 'r', 'i', 'z']
+
 
 def custom_brickname(ra, dec):
     brickname = '{:06d}{}{:05d}'.format(
@@ -28,7 +30,7 @@ def _mosaic_width(radius_mosaic, pixscale):
 
 
 def _rearrange_files(galaxy, output_dir, brickname, stagesuffix, run,
-                     bands=['g', 'r', 'z'],
+                     bands=BANDS,
                      unwise=True, galex=False, cleanup=False, just_coadds=False,
                      clobber=False, require_grz=True, missing_ok=False,
                      write_wise_psf=False):
@@ -309,29 +311,18 @@ def get_ccds(survey, ra, dec, pixscale, width, bands=['g', 'r', 'z']):
     return ccds
 
 
-def detection_coadds(survey_brickname=None, ra=None, dec=None, width=None, survey=None, mp=1,
-                     pixscale=0.262, run='south', bands=['g', 'r', 'i', 'z'],
-                     nsigma=None, log=None, force=False, verbose=False, cleanup=True):
+def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
+                     stagesuffix='detection', force=False):
     """Build the detection coadds.
 
-    brickname - (string) brick name from survey-bricks.fits.gz file
-      or
-    ra, dec, width (pixels)
+    brick - table with brick information (brickname, ra, dec, etc.)
     
     """
     import subprocess
 
-    if survey is None:
-        from legacypipe.survey import LegacySurveyData
-        survey = LegacySurveyData()
+    brickname = brick['BRICKNAME']
+    bands = ','.join(survey.allbands)
 
-    if survey_brickname is None:
-        if ra is None or dec is None or width is None:
-            raise ValueError('ra, dec, width are required')
-        brickname = custom_brickname(ra, dec)
-    else:
-        brickname = survey_brickname
-    
     ## Quickly read the input CCDs and check that we have all the colors we need.
     #ccds = get_ccds(survey, onegal[racolumn], onegal[deccolumn], pixscale, width, bands=bands)
     #if len(ccds) == 0:
@@ -349,35 +340,39 @@ def detection_coadds(survey_brickname=None, ra=None, dec=None, width=None, surve
     #    ccds.writeto(ccdsfile, overwrite=True)
     #    return 1, stagesuffix
 
-    # Run the pipeline!
-    cmd = 'python {legacypipe_dir}/py/legacypipe/runbrick.py '
-    if survey_brickname is None:
-        cmd += '--radec={ra} {dec} --width={width} --height={width} '
+    # Build the call to runbrick. If 'WIDTH' is in the bricks table, then this
+    # is a custom (test) brick, otherwise its a brick in the survey-bricks
+    # table.
+    cmd = f'python {os.getenv("LEGACYPIPE_CODE_DIR")}/py/legacypipe/runbrick.py '
+    if 'WIDTH' in brick.colnames:
+        outdir = os.path.join(survey.output_dir, brickname)
+        cmd += f'--radec {brick["RA"]} {brick["DEC"]} --width={brick["WIDTH"]} --height={brick["WIDTH"]} '
     else:
-        cmd += '--brick={brickname} '
-    cmd += '--pixscale={pixscale} --bands={bands} --threads={threads} '
-    cmd += '--outdir={outdir} --survey-dir={survey_dir} --run={run} '
-    cmd += '--stage=image_coadds --stage=srcs --force-stage srcs '
-    cmd += '--no-unwise-coadds --detection-kernels=20,40,115 '
-    cmd += '--checkpoint {galaxydir}/{brickname}-checkpoint.p '
-    cmd += '--pickle {galaxydir}/{brickname}-%%(stage)s.p '
-    #if force:
-    #    cmd += '--force-all '
-    #    checkpointfile = '{galaxydir}/{galaxy}-{stagesuffix}-checkpoint.p'.format(
-    #        galaxydir=survey.output_dir, galaxy=galaxy, stagesuffix=stagesuffix)
-    #    if os.path.isfile(checkpointfile):
-    #        os.remove(checkpointfile)
+        outdir = survey.output_dir
+        cmd += f'--brick {bricks["BRICKNAME"]} '
+    cmd += f'--pixscale={pixscale} --bands={bands} --threads={mp} '
+    cmd += f'--outdir={outdir} --run={run} '
+    cmd += '--no-unwise-coadds --stage=image_coadds --stage=srcs '#--force-stage srcs '
+    cmd += f'--detection-kernels=20,40,115 '
+    cmd += f'--checkpoint {outdir}/{brickname}-{stagesuffix}-checkpoint.p '
+    cmd += f'--pickle {outdir}/{brickname}-{stagesuffix}-%%(stage)s.p '
     
-    cmd = cmd.format(legacypipe_dir=os.getenv('LEGACYPIPE_CODE_DIR'), galaxy=galaxy,
-                     ra=ra, dec=dec, width=width,
-                     pixscale=pixscale, threads=nproc, outdir=survey.output_dir,
-                     bands=','.join(bands),
-                     galaxydir=survey.output_dir, survey_dir=survey.survey_dir, run=run,
-                     stagesuffix=stagesuffix)
-    print(cmd, flush=True, file=log)
-    err = subprocess.call(cmd.split(), stdout=log, stderr=log)
-    #err = 0
+    if force:
+        cmd += '--force-all '
+        checkpointfile = f'{outdir}/{brickname}-{stagesuffix}-checkpoint.p'
+        if os.path.isfile(checkpointfile):
+            os.remove(checkpointfile)
+            
+    print(cmd)
+    #print(cmd, flush=True, file=log)
 
+    err = subprocess.call(cmd.split())#, stdout=log, stderr=log)
+    if err != 0:
+        print('WARNING: Something went wrong; please check the logfile.')
+        return 0, stagesuffix
+    else:
+        return err, stagesuffix
+    
     
 def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
                   nproc=1, pixscale=0.262, run='south', racolumn='RA', deccolumn='DEC',
