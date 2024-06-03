@@ -9,8 +9,9 @@ import fitsio
 import numpy as np
 from astropy.table import Table
 
+from SGA.io import stdouterr_redirected
 from SGA.coadds import BANDS
-
+    
 def mpi_args():
     import argparse
 
@@ -25,11 +26,13 @@ def mpi_args():
     parser.add_argument('--d25max', default=100.0, type=float, help='Maximum diameter (arcmin).')
 
     parser.add_argument('--detection-coadds', action='store_true', help='Build the detection coadds.')
-    parser.add_argument('--run', default='south', choices=['south', 'north'], type=str, help='Choose the dataset.')
+    parser.add_argument('--gaussian-kernels', default='5,10,30', type=str,
+                        help='Gaussian kernel(s) to use with --detection-coadds (FWHM, arcsec).')
 
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
     parser.add_argument('--ellipse', action='store_true', help='Do the ellipse fitting.')
 
+    parser.add_argument('--run', default='south', choices=['south', 'north'], type=str, help='Choose the dataset.')
     parser.add_argument('--htmlplots', action='store_true', help='Build the pipeline figures.')
     parser.add_argument('--htmlindex', action='store_true', help='Build HTML index.html page.')
     parser.add_argument('--htmlhome', default='index.html', type=str, help='Home page file name (use in tandem with --htmlindex).')
@@ -45,11 +48,10 @@ def mpi_args():
     parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
     parser.add_argument('--ccdqa', action='store_true', help='Build the CCD-level diagnostics.')
 
-    parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
-    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files (including pickle files).')
     parser.add_argument('--mpi', action='store_true', help='Use MPI parallelism')
 
     parser.add_argument('--build-SGA', action='store_true', help='Build the SGA reference catalog.')
@@ -59,7 +61,8 @@ def mpi_args():
 
 
 def call_detection_coadds(brick, survey, pixscale=0.262, mp=1, run='south',
-                          force=False):
+                          stagesuffix='detection-coadds', gaussian_kernels='5,10,30',
+                          debug=False, overwrite=False):
     """Wrapper script to build the detection coadds.
 
     brick - table with brick information (brickname, ra, dec, etc.)
@@ -68,9 +71,22 @@ def call_detection_coadds(brick, survey, pixscale=0.262, mp=1, run='south',
     from SGA.coadds import detection_coadds
 
     t0 = time.time()
-    ok, stagesuffix = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
-                                       run=run, force=force)
-    dt = time.time() - t0
+    if debug:
+        ok = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
+                              run=run, stagesuffix=stagesuffix,
+                              gaussian_kernels=gaussian_kernels,
+                              overwrite=overwrite)
+    else:
+        brickname = brick['BRICKNAME']
+        logfile = os.path.join(survey.output_dir, brickname, f'{brickname}-{stagesuffix}.log')
+        with stdouterr_redirected(to=logfile, overwrite=overwrite):
+            print(f'Started working on brick {brickname} at {time.asctime()}')
+            ok = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
+                                  run=run, stagesuffix=stagesuffix,
+                                  gaussian_kernels=gaussian_kernels,
+                                  overwrite=overwrite)
+            dt = time.time() - t0
+            print(dt)
     
                 
 def main():
@@ -92,6 +108,11 @@ def main():
         rank, size = 0, 1
 
     # Read and broadcast the sample.
+    sample = None
+    fullsample = None
+    bricks = None
+    groups, stagesuffix = [], ''
+    
     if rank == 0:
         import SGA.io
 
@@ -108,11 +129,8 @@ def main():
             survey = get_survey(args.run, output_dir=outdir, allbands=BANDS)
             
             bricks = SGA.io.read_survey_bricks(survey, custom=True)#, brickname='0159m047')
-            
             if len(bricks) == 0:
                 return
-
-            sample = None
         else:
             sample = Table()
             fullsample = Table()
@@ -126,52 +144,37 @@ def main():
             #                                     preselect_sample=True,
             #                                     final_sample=final_sample)
             #
-            #if len(sample) == 0:
-            #    return
-            bricks = None
+            if len(sample) == 0:
+                return
         
-        ## For the custom coadds step we write out the full sample in each mosaic.
-        #if args.coadds or args.build_SGA or args.remake_cogqa:
-        #    fullsample = legacyhalos.SGA.read_sample(verbose=args.verbose,
-        #                                             preselect_sample=False,
-        #                                             final_sample=final_sample)
-        #                                             #customsky=False)
-        #    if args.remake_cogqa:
-        #        fullsample = fullsample[fullsample['SGA_ID'] > -1]
-        #        
-        #    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
-        #
-        #    if args.build_SGA:
-        #        sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
-    else:
-        sample = None
-        fullsample = None
-        bricks = None
+            ## For the custom coadds step we write out the full sample in each mosaic.
+            #if args.coadds or args.build_SGA or args.remake_cogqa:
+            #    fullsample = legacyhalos.SGA.read_sample(verbose=args.verbose,
+            #                                             preselect_sample=False,
+            #                                             final_sample=final_sample)
+            #                                             #customsky=False)
+            #    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            #    if args.build_SGA:
+            #        sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
+    
+            ## Building the web-pages works on the full sample, so do that here and then
+            ## return.
+            #if args.htmlindex:
+            #    legacyhalos.SGA.make_html(sample, survey=None, pixscale=args.pixscale,
+            #                              racolumn=RACOLUMN, deccolumn=DECCOLUMN, diamcolumn=DIAMCOLUMN,
+            #                              zcolumn=ZCOLUMN, nproc=args.nproc, clobber=args.clobber,
+            #                              makeplots=False, verbose=args.verbose, htmldir=args.htmldir,
+            #                              htmlhome=args.htmlhome, html_raslices=args.html_raslices,
+            #                              ccdqa=args.ccdqa, args=args)
+            #    return
 
-    if comm is not None:
-        sample = comm.bcast(sample, root=0)
-        fullsample = comm.bcast(fullsample, root=0)
-        bricks = comm.bcast(bricks, root=0)
-
-    ## Building the web-pages works on the full sample, so do that here and then
-    ## return.
-    #if args.htmlindex and rank == 0:
-    #    legacyhalos.SGA.make_html(sample, survey=None, pixscale=args.pixscale,
-    #                              racolumn=RACOLUMN, deccolumn=DECCOLUMN, diamcolumn=DIAMCOLUMN,
-    #                              zcolumn=ZCOLUMN, nproc=args.nproc, clobber=args.clobber,
-    #                              makeplots=False, verbose=args.verbose, htmldir=args.htmldir,
-    #                              htmlhome=args.htmlhome, html_raslices=args.html_raslices,
-    #                              ccdqa=args.ccdqa, args=args)
-    #    return
-
-    # Determine how many more objects or bricks we need to analyze and divide
-    # them across ranks.
-    if rank == 0:
+        # Determine how many more objects or bricks we need to analyze and divide
+        # them across ranks.
         #if args.build_SGA:
         #    # When building the final catalog, process the full sample, divided
         #    # into a *fixed* number of bigchunks, distributed to all the
         #    # available ranks.
-        #    suffix, fail = 'build-SGA', []
+        #    stagesuffix, fail = 'build-SGA', []
         #
         #    from legacyhalos.SGA import get_raslice
         #    raslices_str = np.array(['{:03d}'.format(raslice) for raslice in np.arange(360)])
@@ -185,36 +188,34 @@ def main():
         #    nbigchunks = len(bigchunks)
         #    groups = np.array_split(bigchunks, size)
         #else:
-        #    suffix, groups, _, fail = legacyhalos.SGA.missing_files(args, sample, size)
+        #    stagesuffix, groups, _, fail = legacyhalos.SGA.missing_files(args, sample, size)
         #    #groups[0] = groups[0][32:]
         
-        suffix, groups, _, fail = SGA.io.missing_files(
+        stagesuffix, groups, _, fail = SGA.io.missing_files(
             sample=sample, bricks=bricks, detection_coadds=args.detection_coadds,
             coadds=args.coadds, ellipse=args.ellipse, htmlplots=args.htmlplots,
-            htmlindex=args.htmlindex, build_SGA=args.build_SGA, clobber=args.clobber,
+            htmlindex=args.htmlindex, build_SGA=args.build_SGA, overwrite=args.overwrite,
             verbose=args.verbose, htmldir=htmldir, size=size, mp=args.mp)
-    else:
-        groups, suffix = [], ''
 
-    if comm is not None:
+    if comm:
+        sample = comm.bcast(sample, root=0)
+        fullsample = comm.bcast(fullsample, root=0)
+        bricks = comm.bcast(bricks, root=0)
         groups = comm.bcast(groups, root=0)
-        suffix = comm.bcast(suffix, root=0)
+        stagesuffix = comm.bcast(stagesuffix, root=0)
 
     #if rank == 0:
     #    ntodo = len(np.hstack(groups))
-    #    print(f'{suffix.upper()} left to do: {ntodo} / {len(sample)} divided across {size} rank(s).')
+    #    print(f'{stagesuffix.upper()} left to do: {ntodo} / {len(sample)} divided across {size} rank(s).')
         
-    ## Wait for all ranks to catch up.
-    #if comm is not None:
-    #    comm.barrier()
-
-    print(f'Starting {len(groups[rank])} {suffix.upper()} on rank {rank} with {args.mp} core(s) on {time.asctime()}')
+    print(f'Building {len(groups[rank])} {stagesuffix.upper()} on rank {rank} with {args.mp} core(s) on {time.asctime()}')
 
     tall = time.time()
     for count, ii in enumerate(groups[rank]):
         if args.detection_coadds:
-            call_detection_coadds(bricks[ii], survey, pixscale=args.pixscale,
-                                  mp=args.mp, force=args.force)
+            call_detection_coadds(bricks[ii], survey, pixscale=args.pixscale, mp=args.mp,
+                                  stagesuffix=stagesuffix, gaussian_kernels=args.gaussian_kernels,
+                                  debug=args.debug, overwrite=args.overwrite)
     
     #if len(groups[rank]) == 0:
     #    print(f'{suffix.upper()} for all {len(sample)} galaxies on rank {rank} are complete!')

@@ -5,12 +5,34 @@ SGA.io
 Code to read and write the various SGA files.
 
 """
-import os, warnings, pdb
+import os, sys, time, pdb
 import fitsio
 import numpy as np
 from astropy.table import Table
 
 
+# C file descriptors for stderr and stdout, used in redirection
+# context manager.
+import ctypes
+from contextlib import contextmanager
+
+libc = ctypes.CDLL(None)
+c_stdout = None
+c_stderr = None
+try:
+    # Linux systems
+    c_stdout = ctypes.c_void_p.in_dll(libc, 'stdout')
+    c_stderr = ctypes.c_void_p.in_dll(libc, 'stderr')
+except:
+    try:
+        # Darwin
+        c_stdout = ctypes.c_void_p.in_dll(libc, '__stdoutp')
+        c_stderr = ctypes.c_void_p.in_dll(libc, '__stdoutp')
+    except:
+        # Neither!
+        pass
+
+    
 def sga_dir():
     if 'SGA_DIR' not in os.environ:
         print('Required ${SGA_DIR} environment variable not set.')
@@ -167,18 +189,196 @@ def weighted_partition(weights, n):
 
     return groups
 
-    
+
+def backup_filename(filename):
+    """rename filename to next available filename.N
+
+    Args:
+        filename (str): full path to filename
+
+    Returns:
+        New filename.N, or filename if original file didn't already exist
+    """
+    if filename == '/dev/null' or not os.path.exists(filename):
+        return filename
+
+    n = 0
+    while True:
+        altfile = f'{filename}.{n}'
+        if os.path.exists(altfile):
+            n += 1
+        else:
+            break
+
+    os.rename(filename, altfile)
+
+    return altfile
+
+
+@contextmanager
+def stdouterr_redirected(to=None, comm=None, overwrite=False):
+    """
+    Redirect stdout and stderr to a file.
+
+    The general technique is based on:
+
+    http://stackoverflow.com/questions/5081657
+    http://eli.thegreenplace.net/2015/redirecting-all-kinds-of-stdout-in-python/
+
+    One difference here is that each process in the communicator
+    redirects to a different temporary file, and the upon exit
+    from the context the rank zero process concatenates these
+    in order to the file result.
+
+    Args:
+        to (str): The output file name.
+        comm (mpi4py.MPI.Comm): The optional MPI communicator.
+        overwrite (bool): if True overwrite file, otherwise backup to to.N first
+    """
+    nproc = 1
+    rank = 0
+    if comm is not None:
+        nproc = comm.size
+        rank = comm.rank
+
+    # The currently active POSIX file descriptors
+    fd_out = sys.stdout.fileno()
+    fd_err = sys.stderr.fileno()
+
+    # The DESI loggers.
+    #desi_loggers = desiutil.log._desiutil_log_root
+
+    def _redirect(out_to, err_to):
+
+        # Flush the C-level buffers
+        if c_stdout is not None:
+            libc.fflush(c_stdout)
+        if c_stderr is not None:
+            libc.fflush(c_stderr)
+
+        # This closes the python file handles, and marks the POSIX
+        # file descriptors for garbage collection- UNLESS those
+        # are the special file descriptors for stderr/stdout.
+        sys.stdout.close()
+        sys.stderr.close()
+
+        # Close fd_out/fd_err if they are open, and copy the
+        # input file descriptors to these.
+        os.dup2(out_to, fd_out)
+        os.dup2(err_to, fd_err)
+
+        # Create a new sys.stdout / sys.stderr that points to the
+        # redirected POSIX file descriptors.  In Python 3, these
+        # are actually higher level IO objects.
+        if sys.version_info[0] < 3:
+            sys.stdout = os.fdopen(fd_out, "wb")
+            sys.stderr = os.fdopen(fd_err, "wb")
+        else:
+            # Python 3 case
+            sys.stdout = io.TextIOWrapper(os.fdopen(fd_out, 'wb'))
+            sys.stderr = io.TextIOWrapper(os.fdopen(fd_err, 'wb'))
+
+        # update DESI logging to use new stdout
+        for name, logger in desi_loggers.items():
+            hformat = None
+            while len(logger.handlers) > 0:
+                h = logger.handlers[0]
+                if hformat is None:
+                    hformat = h.formatter._fmt
+                logger.removeHandler(h)
+            # Add the current stdout.
+            ch = logging.StreamHandler(sys.stdout)
+            formatter = logging.Formatter(hformat, datefmt='%Y-%m-%dT%H:%M:%S')
+            ch.setFormatter(formatter)
+            logger.addHandler(ch)
+
+    # redirect both stdout and stderr to the same file
+
+    if to is None:
+        to = "/dev/null"
+
+    if rank == 0:
+        #log = get_logger()
+        #log.info("Begin log redirection to {} at {}".format(to, time.asctime()))
+        print("Begin log redirection to {} at {}".format(to, time.asctime()))
+        if not overwrite:
+            backup_filename(to)
+
+    #- all ranks wait for logfile backup
+    if comm is not None:
+        comm.barrier()
+
+    # Save the original file descriptors so we can restore them later
+    saved_fd_out = os.dup(fd_out)
+    saved_fd_err = os.dup(fd_err)
+
+    try:
+        pto = to
+        if to != "/dev/null":
+            pto = "{}_{}".format(to, rank)
+
+        # open python file, which creates low-level POSIX file
+        # descriptor.
+        file = open(pto, "w")
+
+        # redirect stdout/stderr to this new file descriptor.
+        _redirect(out_to=file.fileno(), err_to=file.fileno())
+
+        yield # allow code to be run with the redirected output
+
+        # close python file handle, which will mark POSIX file
+        # descriptor for garbage collection.  That is fine since
+        # we are about to overwrite those in the finally clause.
+        file.close()
+
+    finally:
+        # flush python handles for good measure
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        # restore old stdout and stderr
+        _redirect(out_to=saved_fd_out, err_to=saved_fd_err)
+
+        if nproc > 1:
+            comm.barrier()
+
+        # concatenate per-process files
+        if rank == 0 and to != "/dev/null":
+            with open(to, "w") as outfile:
+                for p in range(nproc):
+                    outfile.write("================ Start of Process {} ================\n".format(p))
+                    fname = "{}_{}".format(to, p)
+                    with open(fname) as infile:
+                        outfile.write(infile.read())
+                    outfile.write("================= End of Process {} =================\n\n".format(p))
+                    os.remove(fname)
+
+        if nproc > 1:
+            comm.barrier()
+
+        if rank == 0:
+            #log = get_logger()
+            #log.info("End log redirection to {} at {}".format(to, time.asctime()))
+            print("End log redirection to {} at {}".format(to, time.asctime()))
+
+        # flush python handles for good measure
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+    return
+
+
 def _missing_files_one(args):
     """Wrapper for the multiprocessing."""
     return missing_files_one(*args)
 
-def missing_files_one(checkfile, dependsfile, clobber):
+def missing_files_one(checkfile, dependsfile, overwrite):
     """Simple support script for missing_files."""
     
     from pathlib import Path
-    if Path(checkfile).exists() and clobber is False:
+    if Path(checkfile).exists() and overwrite is False:
         # Is the stage that this stage depends on done, too?
-        #print(checkfile, dependsfile, clobber)
+        #print(checkfile, dependsfile, overwrite)
         if dependsfile is None:
             return 'done'
         else:
@@ -193,7 +393,7 @@ def missing_files_one(checkfile, dependsfile, clobber):
         if checkfile[-6:] == 'isdone':
             failfile = checkfile[:-6]+'isfail'
             if Path(failfile).exists():
-                if clobber is False:
+                if overwrite is False:
                     return 'fail'
                 else:
                     os.remove(failfile)
@@ -215,7 +415,7 @@ def missing_files_one(checkfile, dependsfile, clobber):
     
 def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False,
                   ellipse=False, htmlplots=False, htmlindex=False, build_SGA=False, 
-                  clobber=False, verbose=False, htmldir='.', size=1, mp=1):
+                  overwrite=False, verbose=False, htmldir='.', size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -276,19 +476,19 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False
     else:
         raise ValueError('Need at least one keyword argument.')
 
-    # Make clobber=False for build_SGA and htmlindex because we're not making
-    # the files here, we're just looking for them. The argument clobber gets
+    # Make overwrite=False for build_SGA and htmlindex because we're not making
+    # the files here, we're just looking for them. The argument overwrite gets
     # used downstream.
     if htmlindex:
-        clobber = False
+        overwrite = False
 
     missargs = []
     for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir))):
         checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
         if dependson:
-            missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), clobber])
+            missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), overwrite])
         else:
-            missargs.append([checkfile, None, clobber])
+            missargs.append([checkfile, None, overwrite])
 
     if verbose:
         t0 = time.time()

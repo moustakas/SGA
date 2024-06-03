@@ -312,7 +312,8 @@ def get_ccds(survey, ra, dec, pixscale, width, bands=['g', 'r', 'z']):
 
 
 def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
-                     stagesuffix='detection', force=False):
+                     gaussian_kernels='5,10,30', stagesuffix='detection-coadds',
+                     overwrite=False):
     """Build the detection coadds.
 
     brick - table with brick information (brickname, ra, dec, etc.)
@@ -322,12 +323,13 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
 
     brickname = brick['BRICKNAME']
     bands = ','.join(survey.allbands)
+    detection_kernels = ','.join(np.int16(np.array(gaussian_kernels.split(',')).astype(float) / pixscale).astype(str))
 
     ## Quickly read the input CCDs and check that we have all the colors we need.
     #ccds = get_ccds(survey, onegal[racolumn], onegal[deccolumn], pixscale, width, bands=bands)
     #if len(ccds) == 0:
     #    print('No CCDs touching this brick; nothing to do.')
-    #    return 1, stagesuffix
+    #    return 1
     #
     #usebands = list(sorted(set(ccds.filter)))
     #these = [filt in usebands for filt in bands]
@@ -338,7 +340,7 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
     #    # should we write out the CCDs file?
     #    print('Writing {} CCDs to {}'.format(len(ccds), ccdsfile))
     #    ccds.writeto(ccdsfile, overwrite=True)
-    #    return 1, stagesuffix
+    #    return 1
 
     # Build the call to runbrick. If 'WIDTH' is in the bricks table, then this
     # is a custom (test) brick, otherwise its a brick in the survey-bricks
@@ -353,11 +355,12 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
     cmd += f'--pixscale={pixscale} --bands={bands} --threads={mp} '
     cmd += f'--outdir={outdir} --run={run} '
     cmd += '--no-unwise-coadds --stage=image_coadds --stage=srcs '#--force-stage srcs '
-    cmd += f'--detection-kernels=20,40,115 '
+    cmd += f'--detection-kernels={detection_kernels} '
     cmd += f'--checkpoint {outdir}/{brickname}-{stagesuffix}-checkpoint.p '
     cmd += f'--pickle {outdir}/{brickname}-{stagesuffix}-%%(stage)s.p '
-    
-    if force:
+
+    # ignore previous checkpoint and pickle files
+    if overwrite:
         cmd += '--force-all '
         checkpointfile = f'{outdir}/{brickname}-{stagesuffix}-checkpoint.p'
         if os.path.isfile(checkpointfile):
@@ -369,9 +372,9 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
     err = subprocess.call(cmd.split())#, stdout=log, stderr=log)
     if err != 0:
         print('WARNING: Something went wrong; please check the logfile.')
-        return 0, stagesuffix
+        return 0
     else:
-        return err, stagesuffix
+        return err
     
     
 def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
