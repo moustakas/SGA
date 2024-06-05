@@ -32,11 +32,15 @@ def mpi_args():
     parser.add_argument('--d25min', default=0.1, type=float, help='Minimum diameter (arcmin).')
     parser.add_argument('--d25max', default=100.0, type=float, help='Maximum diameter (arcmin).')
 
+    # stage 1
     parser.add_argument('--detection-coadds', action='store_true', help='Build the detection coadds.')
-    parser.add_argument('--candidate-cutouts', action='store_true', help='Generate cutouts of all large-galaxy candidates.')
     parser.add_argument('--gaussian-kernels', default='5,10,30', type=str,
                         help='Gaussian kernel(s) to use with --detection-coadds (FWHM, arcsec).')
 
+    # stage 2
+    parser.add_argument('--ssl-width', default=152, type=int, help='Width of ssl-legacysurvey cutouts.')
+    parser.add_argument('--candidate-cutouts', action='store_true', help='Generate cutouts of all large-galaxy candidates.')
+    
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
     parser.add_argument('--ellipse', action='store_true', help='Do the ellipse fitting.')
 
@@ -105,10 +109,42 @@ def call_detection_coadds(brick, survey, pixscale=0.262, mp=1, run='south',
         #log.info('All done, ', dt)
 
     if err == 0:
-        donefile = os.path.join(outdir, f'{brickname}-{stagesuffix}.isdone')
+        donefile = os.path.join(outdir, brickname, f'{brickname}-{stagesuffix}.isdone')
     else:
-        donefile = os.path.join(outdir, f'{brickname}-{stagesuffix}.isfail')
+        donefile = os.path.join(outdir, brickname, f'{brickname}-{stagesuffix}.isfail')
         
+    subprocess.call(f'touch {donefile}'.split())
+
+                
+def call_candidate_cutouts(brick, survey, ssl_width=152, stagesuffix='candidate-cutouts',
+                           debug=False, overwrite=False):
+    """Wrapper script to generate cutouts of all the candidate large galaxies.
+
+    brick - table with brick information (brickname, ra, dec, etc.)
+
+    """
+    from SGA.coadds import candidate_cutouts
+
+    brickname = brick['BRICKNAME']
+    raslice = SGA.io.get_raslice(brick['RA'])
+
+    coaddsdir = os.path.join(survey.output_dir, raslice, brickname)
+    logfile = os.path.join(coaddsdir, f'{brickname}-{stagesuffix}.log')
+
+    t0 = time.time()
+    if debug:
+        err = candidate_cutouts(brick, coaddsdir, bands=survey.allbands,
+                                ssl_width=ssl_width, stagesuffix=stagesuffix,
+                                overwrite=overwrite)
+    else:
+        err = candidate_cutouts(brick, coaddsdir, bands=survey.allbands,
+                                ssl_width=ssl_width, stagesuffix=stagesuffix,
+                                overwrite=overwrite)
+
+    if err == 0:
+        donefile = os.path.join(coaddsdir, f'{brickname}-{stagesuffix}.isdone')
+    else:
+        donefile = os.path.join(coaddsdir, f'{brickname}-{stagesuffix}.isfail')
     subprocess.call(f'touch {donefile}'.split())
 
                 
@@ -214,6 +250,7 @@ def main():
         
         stagesuffix, groups, _, fail = SGA.io.missing_files(
             sample=sample, bricks=bricks, detection_coadds=args.detection_coadds,
+            candidate_cutouts=args.candidate_cutouts, 
             coadds=args.coadds, ellipse=args.ellipse, htmlplots=args.htmlplots,
             htmlindex=args.htmlindex, build_SGA=args.build_SGA, overwrite=args.overwrite,
             verbose=args.verbose, htmldir=htmldir, size=size, mp=args.mp)
@@ -227,7 +264,7 @@ def main():
 
     if rank == 0:
         ntodo = len(np.hstack(groups))
-        if args.detection_coadds:
+        if args.detection_coadds or args.candidate_cutouts:
             log.info(f'{stagesuffix.upper()} left to do: {ntodo} / {len(bricks)} divided across {size} rank(s).')
         else:
             log.info(f'{stagesuffix.upper()} left to do: {ntodo} / {len(sample)} divided across {size} rank(s).')
@@ -240,6 +277,10 @@ def main():
             call_detection_coadds(bricks[ii], survey, pixscale=args.pixscale, mp=args.mp,
                                   stagesuffix=stagesuffix, gaussian_kernels=args.gaussian_kernels,
                                   debug=args.debug, overwrite=args.overwrite)
+        elif args.candidate_cutouts:
+            call_candidate_cutouts(bricks[ii], survey, stagesuffix=stagesuffix,
+                                   ssl_width=args.ssl_width, 
+                                   debug=args.debug, overwrite=args.overwrite)
         else:
             galaxy, galaxydir = SGA.io.get_galaxy_galaxydir(sample[ii])
     

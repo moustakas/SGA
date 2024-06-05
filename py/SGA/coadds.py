@@ -381,6 +381,117 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
         return err
     
     
+def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=['g', 'r', 'i', 'z'],
+                      stagesuffix='candidate-cutouts', overwrite=False):
+    """Generate cutouts of all the candidate large galaxies.
+
+    * brick - table with brick information (brickname, ra, dec, etc.)
+    * coaddsdir - location of the detection coadds
+    
+    """
+    import fitsio
+    import h5py
+    from astropy.table import Table
+    import matplotlib.pyplot as plt
+    import matplotlib.image as mpimg
+
+    brickname = brick['BRICKNAME']
+    if 'custom' in brickname:
+        subdir = 'cus'
+    else:
+        subdir = brickname
+
+    #outdir = os.path.join(coaddsdir, 'candidates')
+    #if not os.path.isdir(outdir):
+    #    os.makedirs(outdir)
+
+    nband = len(bands)
+
+    #...
+    srcsfile = os.path.join(coaddsdir, 'metrics', subdir, f'sources-{brickname}.fits')
+    srcs = Table(fitsio.read(srcsfile))
+    log.info(f'Read {len(srcs)} objects from {srcsfile}')
+
+    jpgfile = os.path.join(coaddsdir, 'coadd', subdir, brickname, f'legacysurvey-{brickname}-image.jpg')
+    jpg = mpimg.imread(jpgfile)
+    log.info(f'Read {jpgfile}')
+    height, width, _ = jpg.shape
+                
+    # trim off-image (reference) sources 
+    I = (srcs['ibx'] > 0) * (srcs['iby'] > 0) * (srcs['iby'] < height) * (srcs['ibx'] < width)
+    log.info(f'Trimming to {np.sum(I)}/{len(srcs)} on-image sources.')
+    srcs = srcs[I]
+    #srcs = srcs[166:]
+    nobj = len(srcs)
+
+    if True:
+        fig, ax = plt.subplots(figsize=(6, 6))#, sharey=True)
+        ax.imshow(jpg)
+        for src in srcs:
+            ax.scatter(src['ibx'], height-src['iby'], marker='+', color='dodgerblue')
+        ax.axis('off')
+        fig.tight_layout()
+        fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}')
+
+        ## SGA source
+        #for src in srcs:
+        #    cutout = jpg[height-src['iby']-ssl_width//2:height-src['iby']+ssl_width//2, src['ibx']-ssl_width//2:src['ibx']+ssl_width//2, :]
+        #    try:
+        #        fig, ax = plt.subplots(figsize=(4, 4))
+        #        ax.imshow(cutout)
+        #        ax.axis('off')
+        #        fig.tight_layout()
+        #        fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/junk.png')
+        #    except:
+        #        pdb.set_trace()
+
+    # Build the hdf5 file needed by ssl-legacysurvey
+    h5file = os.path.join(coaddsdir, f'ssl-{brickname}.hdf5')
+    if os.path.isfile(h5file):
+        log.warning(f'Output file {h5file} exists!')
+
+    try:
+        F = h5py.File(h5file, 'w')
+        images = F.create_dataset('images', (nobj, nband, ssl_width, ssl_width))
+        F.create_dataset('ra', data=srcs['ra'].data)
+        F.create_dataset('dec', data=srcs['dec'].data)
+    
+        for iband, band in enumerate(bands):
+            log.debug(f'Working on band {band}')
+            imgfile = os.path.join(coaddsdir, 'coadd', subdir, brickname, f'legacysurvey-{brickname}-image-{band}.fits.fz')
+            if not os.path.isfile(imgfile):
+                log.info(f'Missing {imgfile}')
+                continue
+
+            # pad the image with zeros so we can get cutouts with impunity
+            img = np.zeros((height + ssl_width, width + ssl_width), 'f4')
+            img[ssl_width//2:height+ssl_width//2, ssl_width//2:width+ssl_width//2] = fitsio.read(imgfile)            
+            
+            for isrc, src in enumerate(srcs):
+                # one-pixel offset?!?
+                y1 = src['iby'] - ssl_width//2 + ssl_width//2
+                y2 = src['iby'] + ssl_width//2 + ssl_width//2
+                x1 = src['ibx'] - ssl_width//2 + ssl_width//2
+                x2 = src['ibx'] + ssl_width//2 + ssl_width//2
+                #print(isrc, y1, y2, x1, x2)
+                cutout = img[y1:y2, x1:x2]
+                assert(cutout.shape[0] == ssl_width and cutout.shape[1] == ssl_width)
+                images[isrc, iband, :] = cutout
+                
+                #plt.clf() ; plt.imshow(np.log10(cutout), origin='lower') ; plt.savefig('/global/cfs/cdirs/desi/users/ioannis/tmp/junk2.png')
+                #pdb.set_trace()
+    except:
+        msg = f'Problem generating HDF5 dataset {h5file}!'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    F.close()
+    log.info(f'Wrote {nobj} cutout(s) to {h5file}')
+
+    #with h5py.File(h5file, 'r') as F:
+    #    print(list(F['ra']))
+
+
 def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
                   nproc=1, pixscale=0.262, run='south', racolumn='RA', deccolumn='DEC',
                   bands=['g', 'r', 'z'],

@@ -420,9 +420,10 @@ def missing_files_one(checkfile, dependsfile, overwrite):
         return 'todo'
 
     
-def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False,
-                  ellipse=False, htmlplots=False, htmlindex=False, build_SGA=False, 
-                  overwrite=False, verbose=False, htmldir='.', size=1, mp=1):
+def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cutouts=False,
+                  coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
+                  build_SGA=False, overwrite=False, verbose=False, htmldir='.',
+                  size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -445,8 +446,8 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False
             raise ValueError(msg)
         indices = np.arange(len(bricks))
 
-    dependson = None
-    if detection_coadds:
+    dependson, dependsondir = None, None
+    if detection_coadds or candidate_cutouts:
         galaxy, galaxydir = get_galaxy_galaxydir(bricks=bricks)
     else:
         if htmlplots is False and htmlindex is False:
@@ -460,6 +461,10 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False
     if detection_coadds:
         suffix = 'detection-coadds'
         filesuffix = '-detection-coadds.isdone'
+    elif candidate_cutouts:
+        suffix = 'candidate-cutouts'
+        filesuffix = '-candidate-cutouts.isdone'
+        dependson = '-detection-coadds.isdone'
     elif coadds:
         suffix = 'coadds'
         filesuffix = '-largegalaxy-coadds.isdone'
@@ -493,7 +498,10 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False
     for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir))):
         checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
         if dependson:
-            missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), overwrite])
+            if dependsondir:
+                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), overwrite])
+            else:
+                missargs.append([checkfile, os.path.join(gdir, f'{gal}{dependson}'), overwrite])
         else:
             missargs.append([checkfile, None, overwrite])
 
