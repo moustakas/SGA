@@ -6,8 +6,10 @@ SGA.coadds
 import os, pdb
 import numpy as np
 
-BANDS = ['g', 'r', 'i', 'z']
+from SGA.log import get_logger#, DEBUG
+log = get_logger()
 
+BANDS = ['g', 'r', 'i', 'z']
 
 def custom_brickname(ra, dec):
     brickname = '{:06d}{}{:05d}'.format(
@@ -313,7 +315,7 @@ def get_ccds(survey, ra, dec, pixscale, width, bands=['g', 'r', 'z']):
 
 def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
                      gaussian_kernels='5,10,30', stagesuffix='detection-coadds',
-                     overwrite=False):
+                     outdir=None, overwrite=False):
     """Build the detection coadds.
 
     brick - table with brick information (brickname, ra, dec, etc.)
@@ -324,6 +326,9 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
     brickname = brick['BRICKNAME']
     bands = ','.join(survey.allbands)
     detection_kernels = ','.join(np.int16(np.array(gaussian_kernels.split(',')).astype(float) / pixscale).astype(str))
+
+    if outdir is None:
+        outdir = survey.output_dir
 
     ## Quickly read the input CCDs and check that we have all the colors we need.
     #ccds = get_ccds(survey, onegal[racolumn], onegal[deccolumn], pixscale, width, bands=bands)
@@ -347,10 +352,9 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
     # table.
     cmd = f'python {os.getenv("LEGACYPIPE_CODE_DIR")}/py/legacypipe/runbrick.py '
     if 'WIDTH' in brick.colnames:
-        outdir = os.path.join(survey.output_dir, brickname)
+        outdir = os.path.join(outdir, brickname)
         cmd += f'--radec {brick["RA"]} {brick["DEC"]} --width={brick["WIDTH"]} --height={brick["WIDTH"]} '
     else:
-        outdir = survey.output_dir
         cmd += f'--brick {bricks["BRICKNAME"]} '
     cmd += f'--pixscale={pixscale} --bands={bands} --threads={mp} '
     cmd += f'--outdir={outdir} --run={run} '
@@ -366,12 +370,12 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
         if os.path.isfile(checkpointfile):
             os.remove(checkpointfile)
             
-    print(cmd)
-    #print(cmd, flush=True, file=log)
-
+    log.info(cmd)
     err = subprocess.call(cmd.split())#, stdout=log, stderr=log)
+    
     if err != 0:
-        print('WARNING: Something went wrong; please check the logfile.')
+        msg = 'WARNING: Something went wrong; please check the logfile.'
+        log.warning(msg)
         return 0
     else:
         return err

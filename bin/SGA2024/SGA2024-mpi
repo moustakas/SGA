@@ -4,13 +4,20 @@
 SGA-mpi -h
 
 """
-import os, time, pdb
+import os, sys, time, pdb
+import subprocess
 import fitsio
 import numpy as np
 from astropy.table import Table
 
-from SGA.io import stdouterr_redirected
+#from contextlib import redirect_stdout, redirect_stderr
+#from SGA.io import stdouterr_redirected
+
+import SGA.io
 from SGA.coadds import BANDS
+
+from SGA.log import get_logger#, DEBUG
+log = get_logger()
     
 def mpi_args():
     import argparse
@@ -26,6 +33,7 @@ def mpi_args():
     parser.add_argument('--d25max', default=100.0, type=float, help='Maximum diameter (arcmin).')
 
     parser.add_argument('--detection-coadds', action='store_true', help='Build the detection coadds.')
+    parser.add_argument('--candidate-cutouts', action='store_true', help='Generate cutouts of all large-galaxy candidates.')
     parser.add_argument('--gaussian-kernels', default='5,10,30', type=str,
                         help='Gaussian kernel(s) to use with --detection-coadds (FWHM, arcsec).')
 
@@ -70,24 +78,39 @@ def call_detection_coadds(brick, survey, pixscale=0.262, mp=1, run='south',
     """
     from SGA.coadds import detection_coadds
 
+    brickname = brick['BRICKNAME']
+    raslice = SGA.io.get_raslice(brick['RA'])
+    #brickname, outdir = SGA.io.get_galaxy_galaxydir(bricks=brick)
+
+    outdir = os.path.join(survey.output_dir, raslice)
+    logfile = os.path.join(outdir, brickname, f'{brickname}-{stagesuffix}.log')
+
     t0 = time.time()
     if debug:
-        ok = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
-                              run=run, stagesuffix=stagesuffix,
-                              gaussian_kernels=gaussian_kernels,
-                              overwrite=overwrite)
+        err = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
+                               run=run, stagesuffix=stagesuffix,
+                               gaussian_kernels=gaussian_kernels,
+                               outdir=outdir, overwrite=overwrite)
     else:
-        brickname = brick['BRICKNAME']
-        logfile = os.path.join(survey.output_dir, brickname, f'{brickname}-{stagesuffix}.log')
-        with stdouterr_redirected(to=logfile, overwrite=overwrite):
-            print(f'Started working on brick {brickname} at {time.asctime()}')
-            ok = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
-                                  run=run, stagesuffix=stagesuffix,
-                                  gaussian_kernels=gaussian_kernels,
-                                  overwrite=overwrite)
-            dt = time.time() - t0
-            print(dt)
-    
+        #with stdouterr_redirected(to=logfile, overwrite=True):#overwrite):
+        #with open(logfile, 'w') as mylog:
+        #    with redirect_stdout(mylog), redirect_stderr(mylog):
+        log.info(f'Started working on brick {brickname} at {time.asctime()}')
+        err = detection_coadds(brick, survey, mp=mp, pixscale=pixscale,
+                               run=run, stagesuffix=stagesuffix,
+                               gaussian_kernels=gaussian_kernels,
+                               outdir=outdir, overwrite=overwrite)
+        #pdb.set_trace()
+        #dt = time.time() - t0
+        #log.info('All done, ', dt)
+
+    if err == 0:
+        donefile = os.path.join(outdir, f'{brickname}-{stagesuffix}.isdone')
+    else:
+        donefile = os.path.join(outdir, f'{brickname}-{stagesuffix}.isfail')
+        
+    subprocess.call(f'touch {donefile}'.split())
+
                 
 def main():
     """Top-level wrapper.
@@ -95,7 +118,6 @@ def main():
     """
     #import legacyhalos.SGA
     ##from legacyhalos.SGA import ZCOLUMN, RACOLUMN, DECCOLUMN, DIAMCOLUMN
-    from legacypipe.runs import get_survey
 
     args = mpi_args()
 
@@ -114,8 +136,6 @@ def main():
     groups, stagesuffix = [], ''
     
     if rank == 0:
-        import SGA.io
-
         basedir = SGA.io.sga_dir()
         datadir = SGA.io.sga_data_dir()
         htmldir = SGA.io.sga_html_dir()
@@ -124,9 +144,10 @@ def main():
         print(f'$LEGACYHALOS_DATA_DIR={datadir}')
         print(f'$LEGACYHALOS_HTML_DIR={htmldir}')
 
-        if args.detection_coadds:
+        if args.detection_coadds or args.candidate_cutouts:
+            from legacypipe.runs import get_survey
             outdir = os.path.join(datadir, 'detection')
-            survey = get_survey(args.run, output_dir=outdir, allbands=BANDS)
+            survey = get_survey(args.run, allbands=BANDS, output_dir=outdir)
             
             bricks = SGA.io.read_survey_bricks(survey, custom=True)#, brickname='0159m047')
             if len(bricks) == 0:
@@ -204,10 +225,13 @@ def main():
         groups = comm.bcast(groups, root=0)
         stagesuffix = comm.bcast(stagesuffix, root=0)
 
-    #if rank == 0:
-    #    ntodo = len(np.hstack(groups))
-    #    print(f'{stagesuffix.upper()} left to do: {ntodo} / {len(sample)} divided across {size} rank(s).')
-        
+    if rank == 0:
+        ntodo = len(np.hstack(groups))
+        if args.detection_coadds:
+            log.info(f'{stagesuffix.upper()} left to do: {ntodo} / {len(bricks)} divided across {size} rank(s).')
+        else:
+            log.info(f'{stagesuffix.upper()} left to do: {ntodo} / {len(sample)} divided across {size} rank(s).')
+            
     print(f'Building {len(groups[rank])} {stagesuffix.upper()} on rank {rank} with {args.mp} core(s) on {time.asctime()}')
 
     tall = time.time()
@@ -216,6 +240,8 @@ def main():
             call_detection_coadds(bricks[ii], survey, pixscale=args.pixscale, mp=args.mp,
                                   stagesuffix=stagesuffix, gaussian_kernels=args.gaussian_kernels,
                                   debug=args.debug, overwrite=args.overwrite)
+        else:
+            galaxy, galaxydir = SGA.io.get_galaxy_galaxydir(sample[ii])
     
     #if len(groups[rank]) == 0:
     #    print(f'{suffix.upper()} for all {len(sample)} galaxies on rank {rank} are complete!')

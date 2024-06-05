@@ -10,6 +10,8 @@ import fitsio
 import numpy as np
 from astropy.table import Table
 
+from SGA.log import get_logger#, DEBUG
+log = get_logger()
 
 # C file descriptors for stderr and stdout, used in redirection
 # context manager.
@@ -35,8 +37,9 @@ except:
     
 def sga_dir():
     if 'SGA_DIR' not in os.environ:
-        print('Required ${SGA_DIR} environment variable not set.')
-        raise EnvironmentError
+        msg = 'Required ${SGA_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
     ldir = os.path.abspath(os.getenv('SGA_DIR'))
     if not os.path.isdir(ldir):
         os.makedirs(ldir, exist_ok=True)
@@ -45,8 +48,9 @@ def sga_dir():
 
 def sga_data_dir():
     if 'SGA_DATA_DIR' not in os.environ:
-        print('Required ${SGA_DATA_DIR} environment variable not set.')
-        raise EnvironmentError
+        msg = 'Required ${SGA_DATA_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
     ldir = os.path.abspath(os.getenv('SGA_DATA_DIR'))
     if not os.path.isdir(ldir):
         os.makedirs(ldir, exist_ok=True)
@@ -55,8 +59,9 @@ def sga_data_dir():
 
 def sga_html_dir():
     if 'SGA_HTML_DIR' not in os.environ:
-        print('Required ${SGA_HTML_DIR} environment variable not set.')
-        raise EnvironmentError
+        msg = 'Required ${SGA_HTML_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
     ldir = os.path.abspath(os.getenv('SGA_HTML_DIR'))
     if not os.path.isdir(ldir):
         os.makedirs(ldir, exist_ok=True)
@@ -82,8 +87,8 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         htmldir = sga_html_dir()
 
     if bricks is not None:
-        objs = bricks['BRICKNAME']
-        ras = bricks['RA']
+        objs = np.atleast_1d(bricks['BRICKNAME'])
+        ras = np.atleast_1d(bricks['RA'])
         datadir = os.path.join(datadir, 'detection')
         htmldir = os.path.join(htmldir, 'detection')
     elif sample is not None:
@@ -95,8 +100,8 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
             galcolumn = 'GALAXY'
             racolumn = 'RA'
     
-        objs = sample[galcolumn]
-        ras = sample[racolumn]
+        objs = np.atleast_1d(sample[galcolumn])
+        ras = np.atleast_1d(sample[racolumn])
 
     objdirs, htmlobjdirs = [], []
     for obj, ra in zip(objs, ras):
@@ -260,6 +265,7 @@ def stdouterr_redirected(to=None, comm=None, overwrite=False):
         # file descriptors for garbage collection- UNLESS those
         # are the special file descriptors for stderr/stdout.
         sys.stdout.close()
+        print('HI!!!!!!!!!!!')
         sys.stderr.close()
 
         # Close fd_out/fd_err if they are open, and copy the
@@ -298,9 +304,9 @@ def stdouterr_redirected(to=None, comm=None, overwrite=False):
         to = "/dev/null"
 
     if rank == 0:
-        #log = get_logger()
-        #log.info("Begin log redirection to {} at {}".format(to, time.asctime()))
-        print("Begin log redirection to {} at {}".format(to, time.asctime()))
+        log = get_logger()
+        log.info("Begin log redirection to {} at {}".format(to, time.asctime()))
+        #print("Begin log redirection to {} at {}".format(to, time.asctime()))
         if not overwrite:
             backup_filename(to)
 
@@ -330,8 +336,9 @@ def stdouterr_redirected(to=None, comm=None, overwrite=False):
         # descriptor for garbage collection.  That is fine since
         # we are about to overwrite those in the finally clause.
         file.close()
-
     finally:
+        print('HI!!!!!!!!!!!')
+        import pdb ; pdb.set_trace()
         # flush python handles for good measure
         sys.stdout.flush()
         sys.stderr.flush()
@@ -357,9 +364,9 @@ def stdouterr_redirected(to=None, comm=None, overwrite=False):
             comm.barrier()
 
         if rank == 0:
-            #log = get_logger()
-            #log.info("End log redirection to {} at {}".format(to, time.asctime()))
-            print("End log redirection to {} at {}".format(to, time.asctime()))
+            log = get_logger()
+            log.info("End log redirection to {} at {}".format(to, time.asctime()))
+            #print("End log redirection to {} at {}".format(to, time.asctime()))
 
         # flush python handles for good measure
         sys.stdout.flush()
@@ -374,11 +381,11 @@ def _missing_files_one(args):
 
 def missing_files_one(checkfile, dependsfile, overwrite):
     """Simple support script for missing_files."""
-    
+
     from pathlib import Path
     if Path(checkfile).exists() and overwrite is False:
         # Is the stage that this stage depends on done, too?
-        #print(checkfile, dependsfile, overwrite)
+        #log.warning(checkfile, dependsfile, overwrite)
         if dependsfile is None:
             return 'done'
         else:
@@ -387,7 +394,7 @@ def missing_files_one(checkfile, dependsfile, overwrite):
             else:
                 return 'todo'
     else:
-        #print(f'missing_files_one {checkfile}')
+        #log.warning(f'missing_files_one {checkfile}')
         # Did this object fail?
         # fragile!
         if checkfile[-6:] == 'isdone':
@@ -405,7 +412,7 @@ def missing_files_one(checkfile, dependsfile, overwrite):
                 if os.path.isfile(dependsfile):
                     return 'todo'
                 else:
-                    print(f'Missing depends file {dependsfile}')
+                    log.warning(f'Missing depends file {dependsfile}')
                     return 'fail'
             else:
                 return 'todo'
@@ -445,10 +452,10 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False
         if htmlplots is False and htmlindex is False:
             if verbose:
                 t0 = time.time()
-                print('Getting galaxy names and directories...', end='')
+                log.info('Getting galaxy names and directories...', end='')
             galaxy, galaxydir = get_galaxy_galaxydir(sample)
             if verbose:
-                print(f'...took {time.time() - t0:.3f} sec')
+                log.info(f'...took {time.time() - t0:.3f} sec')
 
     if detection_coadds:
         suffix = 'detection-coadds'
@@ -492,7 +499,7 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False
 
     if verbose:
         t0 = time.time()
-        print('Finding missing files...', end='')
+        log.info('Finding missing files...', end='')
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             todo = np.array(P.map(_missing_files_one, missargs))
@@ -500,7 +507,7 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, coadds=False
         todo = np.array([_missing_files_one(_missargs) for _missargs in missargs])
         
     if verbose:
-        print(f'...took {(time.time() - t0)/60.:.3f} min')
+        log.info(f'...took {(time.time() - t0)/60.:.3f} min')
 
     itodo = np.where(todo == 'todo')[0]
     idone = np.where(todo == 'done')[0]
