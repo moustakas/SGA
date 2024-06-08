@@ -9,7 +9,8 @@ import numpy as np
 from SGA.log import get_logger#, DEBUG
 log = get_logger()
 
-BANDS = ['g', 'r', 'i', 'z']
+BANDS = ['g', 'r', 'z']
+#BANDS = ['g', 'r', 'i', 'z']
 
 def custom_brickname(ra, dec):
     brickname = '{:06d}{}{:05d}'.format(
@@ -293,7 +294,7 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix, run,
     return 1
 
 
-def get_ccds(survey, ra, dec, pixscale, width, bands=['g', 'r', 'z']):
+def get_ccds(survey, ra, dec, pixscale, width, bands=BANDS):
     """Quickly get the CCDs touching this custom brick.  This code is mostly taken
     from legacypipe.runbrick.stage_tims.
 
@@ -381,7 +382,7 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
         return err
     
     
-def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=['g', 'r', 'i', 'z'],
+def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
                       stagesuffix='candidate-cutouts', overwrite=False):
     """Generate cutouts of all the candidate large galaxies.
 
@@ -446,7 +447,7 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=['g', 'r', 'i', 'z'
         #        pdb.set_trace()
 
     # Build the hdf5 file needed by ssl-legacysurvey
-    h5file = os.path.join(coaddsdir, f'ssl-{brickname}.hdf5')
+    h5file = os.path.join(coaddsdir, f'{brickname}-candidate-cutouts.hdf5')
     if os.path.isfile(h5file):
         log.warning(f'Output file {h5file} exists!')
 
@@ -491,10 +492,12 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=['g', 'r', 'i', 'z'
     #with h5py.File(h5file, 'r') as F:
     #    print(list(F['ra']))
 
+    return 0 # good
+
 
 def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
                   nproc=1, pixscale=0.262, run='south', racolumn='RA', deccolumn='DEC',
-                  bands=['g', 'r', 'z'],
+                  bands=BANDS,
                   nsigma=None, 
                   log=None, apodize=False, custom=True, unwise=True, galex=False, force=False,
                   plots=False, verbose=False, cleanup=True, missing_ok=False,
