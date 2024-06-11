@@ -392,6 +392,7 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
     """
     import fitsio
     import h5py
+    from SGA.io import get_raslice
     from astropy.table import Table
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
@@ -446,6 +447,81 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
         #    except:
         #        pdb.set_trace()
 
+    # read and select objects from the SGA-2020
+    sgadir = '/pscratch/sd/i/ioannis/SGA2024-data/SGA2020-cutouts'
+    catfile = '/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits'
+    cols = ['SGA_ID', 'GALAXY', 'RA', 'DEC', 'G_MAG_SB25', 'R_MAG_SB25', 'Z_MAG_SB25']
+    cat = Table(fitsio.read(catfile, 'ELLIPSE', columns=cols))
+
+    I = (cat['G_MAG_SB25'] != -1.) * (cat['R_MAG_SB25'] != -1.) * (cat['Z_MAG_SB25'] != -1.)
+    cat = cat[I]
+    sgaras = cat['RA']
+    sgadecs = cat['DEC']
+    sgaids = cat['SGA_ID']
+    rmag = cat['R_MAG_SB25'].data
+    grmag = cat['G_MAG_SB25'].data - cat['R_MAG_SB25'].data
+
+    # trim the worse outliers
+    rmin, rmax = np.percentile(rmag, [1., 99.])
+    grmin, grmax = np.percentile(grmag, [1., 99.])
+    I = (rmag > rmin) * (rmag < rmax) * (grmag > grmin) * (grmag < grmax)
+    sgaras = sgaras[I]
+    sgadecs = sgadecs[I]
+    sgaids = sgaids[I]
+    rmag = rmag[I]
+    grmag = grmag[I]
+
+    # this code is totally bogus
+    from scipy.stats import binned_statistic_2d
+    nSGA = 5000
+    nbins = 50
+    count, xbins, ybins, indx = binned_statistic_2d(rmag, grmag, np.zeros_like(rmag), 'count', bins=(nbins, nbins), expand_binnumbers=True)
+    indx -= 1 # https://stackoverflow.com/questions/60779093/scipy-stats-binned-statistic-dd-bin-numbering-has-lots-of-extra-bins
+
+    weights = count / np.sum(count)
+
+    seed = 1
+    rand = np.random.default_rng(seed)
+
+    I = []
+    for iybin in range(nbins):
+        for ixbin in range(nbins):
+            if count[iybin, ixbin] > 0:
+                Nbin = np.max((int(nSGA * weights[iybin, ixbin]), 1))
+                if Nbin > 0:
+                    J = np.where((indx[0, :] == iybin) * (indx[1, :] == ixbin))[0]
+                    if len(J) != count[iybin, ixbin]:
+                        raise ValueError
+                    Ibin = rand.choice(J, Nbin, replace=False)
+                    I.append(Ibin)
+    I = np.hstack(I)
+    assert(len(I) == len(np.unique(I)))
+
+    sgaras = sgaras[I]
+    sgadecs = sgadecs[I]
+    sgaids = sgaids[I]
+    nsga = len(sgaids)
+    
+    # draw uniformly from g-r vs g
+    # https://stackoverflow.com/questions/17821458/random-number-from-histogram
+    #hist, xbins, ybins = np.histogram2d(rmag, grmag, bins=(50, 50))
+    #weights = hist.flatten() / np.sum(hist)
+    #new_random = np.random.choice(indices[1:],5,p=weights)
+
+    #count, xbins, ybins, indx = binned_statistic_2d(rmag, grmag, np.zeros_like(rmag),
+    #                                                'count', bins=(50, 50), expand_binnumbers=True)
+    #x_bin_midpoints = x_bins[:-1] + np.diff(x_bins)/2
+    #y_bin_midpoints = y_bins[:-1] + np.diff(y_bins)/2
+    #cdf = np.cumsum(hist.ravel())
+    #cdf = cdf / cdf[-1]
+    #
+    #values = np.random.rand(nSGA)
+    #value_bins = np.searchsorted(cdf, values)
+    #x_idx, y_idx = np.unravel_index(value_bins, (len(x_bin_midpoints), len(y_bin_midpoints)))
+    #random_from_cdf = np.column_stack((x_bin_midpoints[x_idx],
+    #                                   y_bin_midpoints[y_idx]))
+    #new_x, new_y = random_from_cdf.T
+    
     # Build the hdf5 file needed by ssl-legacysurvey
     h5file = os.path.join(coaddsdir, f'{brickname}-candidate-cutouts.hdf5')
     if os.path.isfile(h5file):
@@ -453,9 +529,15 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
 
     try:
         F = h5py.File(h5file, 'w')
-        images = F.create_dataset('images', (nobj, nband, ssl_width, ssl_width))
-        F.create_dataset('ra', data=srcs['ra'].data)
-        F.create_dataset('dec', data=srcs['dec'].data)
+        images = F.create_dataset('images', (nsga + nobj, nband, ssl_width, ssl_width))
+        F.create_dataset('ra', data=np.hstack((sgaras, srcs['ra'].data)))
+        F.create_dataset('dec', data=np.hstack((sgadecs, srcs['dec'].data)))
+        #F.create_dataset('ra', data=srcs['ra'].data)
+        #F.create_dataset('dec', data=srcs['dec'].data)
+
+        for isga, (sgaid, sgara, sgadec) in enumerate(zip(sgaids, sgaras, sgadecs)):
+            coutoutfile = os.path.join(sgadir, get_raslice(sgara), f'SGA2020-{sgaid:06d}.fits')
+            images[isga, :] = fitsio.read(coutoutfile)
     
         for iband, band in enumerate(bands):
             log.debug(f'Working on band {band}')
@@ -477,7 +559,7 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
                 #print(isrc, y1, y2, x1, x2)
                 cutout = img[y1:y2, x1:x2]
                 assert(cutout.shape[0] == ssl_width and cutout.shape[1] == ssl_width)
-                images[isrc, iband, :] = cutout
+                images[nsga + isrc, iband, :] = cutout
                 
                 #plt.clf() ; plt.imshow(np.log10(cutout), origin='lower') ; plt.savefig('/global/cfs/cdirs/desi/users/ioannis/tmp/junk2.png')
                 #pdb.set_trace()
