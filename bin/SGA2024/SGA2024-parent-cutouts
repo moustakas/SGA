@@ -5,9 +5,11 @@
 This code only depends on Dustin's cutout container, not on any other software
 (including the SGA product), i.e., it is self-contained.
 
-shifter --image dstndstn/viewer-cutouts bash
-$HOME/code/git/SGA/bin/SGA2024/SGA2024-parent-cutouts --catalog /global/cfs/cdirs/desicollab/users/ioannis/SGA/2020/SGA-2020.fits \
-  --outdir $PSCRATCH/SGA2024-data/SGA2020-cutouts --mp 128 
+shifterimg pull dstndstn/cutouts:dvsro
+shifter --image dstndstn/cutouts:dvsro bash
+$HOME/code/git/SGA/bin/SGA2024/SGA2024-parent-cutouts --outdir $PSCRATCH/SGA2024-data/SGA2020-cutouts --mp 1 --catalog sga2020 --dry-run
+
+  
 
 """
 import pdb # for debugging
@@ -31,14 +33,14 @@ def custom_brickname(ra, dec):
 
 
 def get_raslice(ra):
-    return '{:03d}'.format(int(ra))
+    return f'{int(ra):03d}'
 
 
 def _cutout_one(args):
     return cutout_one(*args)
 
 
-def cutout_one(basefile, ra, dec, width, pixscale, dry_run, count):
+def cutout_one(basefile, ra, dec, width, pixscale, dry_run, rank, iobj):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
@@ -48,46 +50,51 @@ def cutout_one(basefile, ra, dec, width, pixscale, dry_run, count):
     shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
 
     """
-    import subprocess
+    from cutout import cutout
 
-    #print(basefile, ra, dec, width, pixscale, dry_run, count)
     for suffix in ['.jpeg', '.fits']:
         outfile = basefile+suffix
-        cmd = f'cutout --output={outfile} --ra={ra} --dec={dec} --size={width} --layer=ls-dr9 --pixscale={pixscale} --force'
+        cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} --layer=ls-dr9 --pixscale={pixscale} --force'
         if dry_run:
-            print(cmd)
+            if suffix == '.jpeg':
+                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')            
         else:
             if suffix == '.jpeg':
                 outdir = os.path.dirname(basefile)
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir, exist_ok=True)
-            err = subprocess.call(cmd.split())
-            if err != 0:
-                print('Warning: Problem writing {}'.format(outfile))
+            try:
+                cutout(ra, dec, outfile, size=width, layer='ls-dr9', pixscale=pixscale, force=True)
+                if suffix == '.jpeg':
+                    print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
+            except:
+                print(f'WARNING: Rank {rank}, object {iobj} off the footprint: cutout {cmdargs}')                
 
 
 def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 
-def get_basefiles_one(obj, outdir, overwrite=False, verbose=False):
+def get_basefiles_one(obj, objid, outdir, overwrite=False, verbose=False):
     raslice = get_raslice(obj['RA'])
-    brick = custom_brickname(obj['RA'], obj['DEC'])
 
-    basefile = os.path.join(outdir, raslice, brick[:6], brick)
+    if objid is None:
+        brick = custom_brickname(obj['RA'], obj['DEC'])
+        basefile = os.path.join(outdir, raslice, brick[:6], brick)
+    else:
+        basefile = os.path.join(outdir, raslice, objid)
     nobj = 1
 
     if overwrite is False:
         if os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg'):
             nobj = 0
-            basefile = []
             if verbose:
                 print(f'Skipping existing object {basefile}.')
 
     return basefile, obj['RA'], obj['DEC'], nobj
 
 
-def plan(cat, comm=None, outdir='.', mp=1, overwrite=False):
+def plan(cat, objid=None, comm=None, outdir='.', mp=1, overwrite=False):
 
     from astropy.table import Table
                                 
@@ -101,8 +108,11 @@ def plan(cat, comm=None, outdir='.', mp=1, overwrite=False):
     #desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
     # look for data in the standard location
 
+    if objid is None:
+        objid = [None] * len(cat)
+
     verbose = True
-    mpargs = [(obj, outdir, overwrite, verbose) for obj in np.atleast_1d(cat)]
+    mpargs = [(obj, _objid, outdir, overwrite, verbose) for obj, _objid in zip(cat, objid)]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             out = P.map(_get_basefiles_one, mpargs)
@@ -117,7 +127,7 @@ def plan(cat, comm=None, outdir='.', mp=1, overwrite=False):
 
     iempty = np.where(nobj == 0)[0]
     if len(iempty) > 0:
-        print('Skipping {} objects with no cutouts to generate.'.format(len(iempty)))
+        print(f'Skipping {len(iempty)} objects with no cutouts to generate.')
 
     itodo = np.where(nobj > 0)[0]
     if len(itodo) > 0:
@@ -126,29 +136,17 @@ def plan(cat, comm=None, outdir='.', mp=1, overwrite=False):
         alldec = alldec[itodo]
         nobj = nobj[itodo]
 
-        print('Missing cutouts for {} objects.'.format(np.sum(nobj)))
+        print(f'Missing cutouts for {np.sum(nobj)} objects.')
         indices = np.arange(len(basefiles))
-        if True:
-            groups = np.array_split(indices, size) # unweighted
-        else:
-            # Assign the sample to ranks to make the jpegfiles distribution per rank ~flat.
-            # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
-            cumuweight = nobj.cumsum() / nobj.sum()
-            idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
-            if len(idx) < size: # can happen in corner cases or with 1 rank
-                groups = np.array_split(indices, size) # unweighted
-            else:
-                groups = np.array_split(indices, idx) # weighted
-            for ii in range(size): # sort by weight
-                srt = np.argsort(nobj[groups[ii]])
-                groups[ii] = groups[ii][srt]
+        groups = np.array_split(indices, size) # unweighted distribution
     else:
         groups = [np.array([])]
 
     return basefiles, allra, alldec, groups
 
 
-def do_cutouts(args, cat, width=152, pixscale=0.262, comm=None, outdir='.'):
+def do_cutouts(cat, objid=None, width=152, pixscale=0.262, comm=None, mp=1,
+               outdir='.', overwrite=False, dry_run=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -157,9 +155,9 @@ def do_cutouts(args, cat, width=152, pixscale=0.262, comm=None, outdir='.'):
 
     t0 = time.time()
     if rank == 0:
-        basefiles, allra, alldec, groups = plan(cat, comm=comm, outdir=outdir,
-                                                overwrite=args.overwrite, mp=args.mp)
-        print('Planning took {:.2f} sec'.format(time.time() - t0))
+        basefiles, allra, alldec, groups = plan(cat, objid, comm=comm, outdir=outdir,
+                                                overwrite=overwrite, mp=mp)
+        print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
 
@@ -176,25 +174,25 @@ def do_cutouts(args, cat, width=152, pixscale=0.262, comm=None, outdir='.'):
         
     assert(len(groups) == size)
 
-    print('Rank {} started at {}'.format(rank, time.asctime()))
+    print(f'Rank {rank} started at {time.asctime()}')
     sys.stdout.flush()
 
     indx = groups[rank]
-    mpargs = [(basefiles[ii], allra[ii], alldec[ii], width, pixscale, args.dry_run, ii) for ii in indx]
-    if args.mp > 1:
-        with multiprocessing.Pool(args.mp) as P:
+    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width, pixscale, dry_run, rank, iobj) for iobj in indx]
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
             P.map(_cutout_one, mpargs)
     else:
         [cutout_one(*mparg) for mparg in mpargs]
 
-    print('  rank {} is done'.format(rank))
+    print(f'  rank {rank} is done')
     sys.stdout.flush()
 
     if comm is not None:
         comm.barrier()
 
-    if rank == 0 and not args.dry_run:
-        print('All done at {}'.format(time.asctime()))
+    if rank == 0 and not dry_run:
+        print(f'All done at {time.asctime()}')
 
         
 def main():
@@ -209,23 +207,23 @@ def main():
     parser.add_argument('--pixscale', type=float, default=0.262, help='Default pixel scale [arcsec/pixel].')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
-    parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
-    parser.add_argument('--catalog-type', default='sga2020', choices=['sga2020', 'sga2020-offset', 'sga2020-missing',
-                                                                      'sga2024-candidates', 'skies'],
-                        type=str, help='Catalog type to read and process.')
+
+    parser.add_argument('--catalog', type=str, default='sga2020', choices=['sga2020'], help='Catalog to read.')
     parser.add_argument('--outdir', default='./', type=str, help='Base output data directory.')
     
     args = parser.parse_args()
 
-    if args.nompi:
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+    except ImportError:
         comm = None
-    else:
-        try:
-            from mpi4py import MPI
-            comm = MPI.COMM_WORLD
-        except ImportError:
-            comm = None
+
+    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('spawn')
 
     if comm is None:
         rank = 0
@@ -233,34 +231,41 @@ def main():
         rank = comm.rank
 
     if rank == 0:
-        outdir = os.path.join(args.outdir, 'cutouts')
-        catdir = os.path.join(args.outdir, 'catalogs')
+        if args.catalog == 'sga2020':
+            catfile = '/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits'
+            if not os.path.isfile(catfile):
+                print(f'Catalog {catfile} not found')
+                return
+            
+            try:
+                cat = Table(fitsio.read(catfile, 'ELLIPSE', columns=['SGA_ID', 'GALAXY', 'RA', 'DEC']))#, rows=np.arange(5)))
+                objid = [f'SGA2020-{sgaid:06d}' for sgaid in cat['SGA_ID']]
+                print(f'Read {len(cat):,d} galaxies from {catfile}')
+            except:
+                msg = f'Problem reading {args.catalog}'
+                raise IOError(msg)
+            
+            #d26_pixels = cat['D26'] * 60 / args.pixscale # [pixels]
+            #d26cut_arcmin = args.width * 1.5 * args.pixscale / 60
+            #I = np.where(d26_pixels < (args.width * 1.5))[0] # no more than 50% larger than the default cutout width
+            #I = rand.choice(I, 4096, replace=False)
+            #print(f'Selecting {len(I):,d}/{len(cat):,d} SGA galaxies with cutout width < 1.5*{args.width} pixels (<{d26cut_arcmin:.2f} arcmin).')
+            #out = cat[I]
+    else:
+        cat, objid = None, None
         
-        if args.catalog_type == 'sga2020':
-            catfile = os.path.join(catdir, 'sga2020.fits')
-        elif args.catalog_type == 'sga2020-offset':
-            raise NotImplemented
-        elif args.catalog_type == 'sga2020-missing':
-            catfile = os.path.join(catdir, 'sga2020-missing.fits')
-        elif args.catalog_type == 'sga2020-candidates':
-            raise NotImplemented
-        elif args.catalog_type == 'skies':
-            catfile = os.path.join(catdir, 'skies.fits')
-
-        cat = fitsio.read(catfile)
-        print('Read {} rows from {}'.format(len(cat), catfile))
-
-        if comm is not None:
-            cat = comm.bcast(cat, root=0)
-            outdir = comm.bcast(outdir, root=0)
+    if comm is not None:
+        cat = comm.bcast(cat, root=0)
+        objid = comm.bcast(objid, root=0)
 
     if args.plan:
         if rank == 0:
-            plan(cat, comm=comm, outdir=outdir,
-                 overwrite=args.overwrite, mp=args.mp)
+            plan(cat, objid, comm=comm, outdir=args.outdir, mp=args.mp,
+                 overwrite=args.overwrite)
     else:
-        do_cutouts(args, cat, width=args.width, pixscale=args.pixscale,
-                   comm=comm, outdir=outdir)
+        do_cutouts(cat, objid=objid, width=args.width, pixscale=args.pixscale, mp=args.mp,
+                   comm=comm, outdir=args.outdir, overwrite=args.overwrite,
+                   dry_run=args.dry_run)
 
 if __name__ == '__main__':
     main()
