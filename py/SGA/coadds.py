@@ -325,6 +325,8 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
     import subprocess
 
     brickname = brick['BRICKNAME']
+    outdir = os.path.join(outdir, brickname)
+    
     bands = ','.join(survey.allbands)
     detection_kernels = ','.join(np.int16(np.array(gaussian_kernels.split(',')).astype(float) / pixscale).astype(str))
 
@@ -353,10 +355,9 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
     # table.
     cmd = f'python {os.getenv("LEGACYPIPE_CODE_DIR")}/py/legacypipe/runbrick.py '
     if 'WIDTH' in brick.colnames:
-        outdir = os.path.join(outdir, brickname)
         cmd += f'--radec {brick["RA"]} {brick["DEC"]} --width={brick["WIDTH"]} --height={brick["WIDTH"]} '
     else:
-        cmd += f'--brick {bricks["BRICKNAME"]} '
+        cmd += f'--brick={brick["BRICKNAME"]} '
     cmd += f'--pixscale={pixscale} --bands={bands} --threads={mp} '
     cmd += f'--outdir={outdir} --run={run} '
     cmd += '--no-unwise-coadds --stage=image_coadds --stage=srcs '#--force-stage srcs '
@@ -401,7 +402,7 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
     if 'custom' in brickname:
         subdir = 'cus'
     else:
-        subdir = brickname
+        subdir = brickname[:3]
 
     #outdir = os.path.join(coaddsdir, 'candidates')
     #if not os.path.isdir(outdir):
@@ -454,10 +455,20 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
         aper = CircularAperture(apxy, rad_pixels)
         phot = aperture_photometry(coimg, aper, error=imsigma, mask=mask)
         #phot.rename_columns(['aperture_sum', 'aperture_sum_err'], [f'flux_{band}', f'flux_err_{band}'])
-        snrphot[:, iband] = phot['aperture_sum'] / phot['aperture_sum_err']
+        good = np.where(phot['aperture_sum_err'] > 0)[0]
+        if len(good) > 0:
+            snrphot[good, iband] = phot['aperture_sum'][good] / phot['aperture_sum_err'][good]
 
     snrphot = np.max(snrphot, axis=1) # max over any band
 
+    log.info('HACK! - Trim sources!')
+    if brickname != 'custom-015823m04663':
+        C  = snrphot > minsnr
+        srcs = srcs[C]
+        snrphot = snrphot[C]
+
+    nobj = len(srcs)
+    
     # Read and select objects from the SGA-2020; this should happen once outside
     # of this function!
     sgadir = '/pscratch/sd/i/ioannis/SGA2024-data/SGA2020-cutouts'
@@ -578,6 +589,8 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
                     
             fig.subplots_adjust(wspace=0.05, hspace=0.05, left=0.05, right=0.95, bottom=0.05, top=0.95)
             fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}'.replace('-image.jpg', '-cutouts.jpg'))
+
+    #pdb.set_trace()
             
     # Build the hdf5 file needed by ssl-legacysurvey
     h5file = os.path.join(coaddsdir, f'{brickname}-candidate-cutouts.hdf5')

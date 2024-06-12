@@ -185,8 +185,11 @@ def main():
             from legacypipe.runs import get_survey
             outdir = os.path.join(datadir, 'detection')
             survey = get_survey(args.run, allbands=BANDS, output_dir=outdir)
-            
-            bricks = SGA.io.read_survey_bricks(survey, custom=True)#, brickname='0159m047')
+
+            if False:
+                bricks = SGA.io.read_survey_bricks(survey, custom=True)#, brickname='0159m047')
+            else:
+                bricks = SGA.io.read_survey_bricks(survey, brickname='0405m085')
             if len(bricks) == 0:
                 return
         else:
