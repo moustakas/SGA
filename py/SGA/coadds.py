@@ -382,7 +382,7 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
         return err
     
     
-def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
+def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BANDS,
                       stagesuffix='candidate-cutouts', overwrite=False):
     """Generate cutouts of all the candidate large galaxies.
 
@@ -426,28 +426,40 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
     #srcs = srcs[166:]
     nobj = len(srcs)
 
-    if True:
-        fig, ax = plt.subplots(figsize=(6, 6))#, sharey=True)
-        ax.imshow(jpg)
-        for src in srcs:
-            ax.scatter(src['ibx'], height-src['iby'], marker='+', color='dodgerblue')
-        ax.axis('off')
-        fig.tight_layout()
-        fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}')
+    # Measure the S/N in a small aperture.
+    from photutils.aperture import CircularAperture, aperture_photometry
 
-        ## SGA source
-        #for src in srcs:
-        #    cutout = jpg[height-src['iby']-ssl_width//2:height-src['iby']+ssl_width//2, src['ibx']-ssl_width//2:src['ibx']+ssl_width//2, :]
-        #    try:
-        #        fig, ax = plt.subplots(figsize=(4, 4))
-        #        ax.imshow(cutout)
-        #        ax.axis('off')
-        #        fig.tight_layout()
-        #        fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/junk.png')
-        #    except:
-        #        pdb.set_trace()
+    rad_arcsec = 3.
+    rad_pixels = rad_arcsec / pixscale
+    minsnr = 10.
 
-    # read and select objects from the SGA-2020
+    snrphot = np.zeros((nobj, nband), 'f4')
+    for iband, band in enumerate(bands):
+        log.debug(f'Working on band {band}')
+        coimgfile = os.path.join(coaddsdir, 'coadd', subdir, brickname, f'legacysurvey-{brickname}-image-{band}.fits.fz')
+        coivfile = os.path.join(coaddsdir, 'coadd', subdir, brickname, f'legacysurvey-{brickname}-invvar-{band}.fits.fz')
+        if not os.path.isfile(coimgfile):
+            log.info(f'Missing {coimgfile}')
+            continue
+        coimg = fitsio.read(coimgfile)
+        coiv = fitsio.read(coivfile)
+        mask = (coiv == 0)
+        coimg[mask] = 0.
+
+        with np.errstate(divide='ignore'):
+            imsigma = 1. / np.sqrt(coiv)
+            imsigma[mask] = 0.
+            
+        apxy = np.vstack((srcs['ibx'], srcs['iby'])).T
+        aper = CircularAperture(apxy, rad_pixels)
+        phot = aperture_photometry(coimg, aper, error=imsigma, mask=mask)
+        #phot.rename_columns(['aperture_sum', 'aperture_sum_err'], [f'flux_{band}', f'flux_err_{band}'])
+        snrphot[:, iband] = phot['aperture_sum'] / phot['aperture_sum_err']
+
+    snrphot = np.max(snrphot, axis=1) # max over any band
+
+    # Read and select objects from the SGA-2020; this should happen once outside
+    # of this function!
     sgadir = '/pscratch/sd/i/ioannis/SGA2024-data/SGA2020-cutouts'
     catfile = '/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits'
     cols = ['SGA_ID', 'GALAXY', 'RA', 'DEC', 'G_MAG_SB25', 'R_MAG_SB25', 'Z_MAG_SB25']
@@ -470,6 +482,9 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
     sgaids = sgaids[I]
     rmag = rmag[I]
     grmag = grmag[I]
+
+    # draw uniformly from g-r vs g
+    # https://stackoverflow.com/questions/17821458/random-number-from-histogram
 
     # this code is totally bogus
     from scipy.stats import binned_statistic_2d
@@ -501,32 +516,73 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, bands=BANDS,
     sgadecs = sgadecs[I]
     sgaids = sgaids[I]
     nsga = len(sgaids)
-    
-    # draw uniformly from g-r vs g
-    # https://stackoverflow.com/questions/17821458/random-number-from-histogram
-    #hist, xbins, ybins = np.histogram2d(rmag, grmag, bins=(50, 50))
-    #weights = hist.flatten() / np.sum(hist)
-    #new_random = np.random.choice(indices[1:],5,p=weights)
 
-    #count, xbins, ybins, indx = binned_statistic_2d(rmag, grmag, np.zeros_like(rmag),
-    #                                                'count', bins=(50, 50), expand_binnumbers=True)
-    #x_bin_midpoints = x_bins[:-1] + np.diff(x_bins)/2
-    #y_bin_midpoints = y_bins[:-1] + np.diff(y_bins)/2
-    #cdf = np.cumsum(hist.ravel())
-    #cdf = cdf / cdf[-1]
-    #
-    #values = np.random.rand(nSGA)
-    #value_bins = np.searchsorted(cdf, values)
-    #x_idx, y_idx = np.unravel_index(value_bins, (len(x_bin_midpoints), len(y_bin_midpoints)))
-    #random_from_cdf = np.column_stack((x_bin_midpoints[x_idx],
-    #                                   y_bin_midpoints[y_idx]))
-    #new_x, new_y = random_from_cdf.T
+    # build a simple QA plot
+    if True:
+        fig, ax = plt.subplots(figsize=(6, 6))#, sharey=True)
+        ax.imshow(jpg)
+        S = (srcs['ref_cat'] == 'L3') * (snrphot > minsnr)
+        G = (srcs['ref_cat'] == 'GE') * (snrphot > minsnr)
+        I = (srcs['ref_cat'] == '  ') * (snrphot > minsnr)
+        if np.sum(S) > 0:
+            ax.scatter(srcs['ibx'][S], height-srcs['iby'][S], marker='o', color='red')
+        if np.sum(G) > 0:
+            ax.scatter(srcs['ibx'][G], height-srcs['iby'][G], marker='s', color='green')
+        if np.sum(I) > 0:
+            ax.scatter(srcs['ibx'][I], height-srcs['iby'][I], marker='+', color='dodgerblue')
+
+        ax.axis('off')
+        fig.tight_layout()
+        fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}')
+
+        # total hack below here!
+        if brickname == 'custom-015823m04663':
+
+            # pad the jpg image with zeros so we can get cutouts with impunity
+            bigjpg = np.zeros((height + ssl_width, width + ssl_width, 3), jpg.dtype)
+            bigjpg[ssl_width//2:height+ssl_width//2, ssl_width//2:width+ssl_width//2, :] = jpg
+            bigheight, bigwidth, _ = bigjpg.shape
+        
+            nrows, ncols = 4, 3
     
+            #nrows, ncols = 20, 10
+            #bigimg = np.zeros((nrows * ssl_width, ncols * ssl_width, 3), jpg.dtype)
+    
+            iobj = 0
+            I = np.array([5142, 5143, 5144, 5145, 5146, 5150, 5270, 5303, 5306, 5308]) - nsga
+            #I = np.arange(nobj)
+    
+            snrsort = np.argsort(snrphot[I])[::-1]
+            srcs_sorted = srcs[I][snrsort]
+    
+            fig, ax = plt.subplots(nrows, ncols, figsize=(2.5*ncols, 2.5*nrows),
+                                   sharex=True, sharey=True)
+            
+            for icol in range(ncols):
+                for irow in range(nrows):
+                    #print(irow, icol)
+                    if iobj < len(I):
+                        y1 = srcs_sorted['iby'][iobj] + ssl_width//2 + ssl_width//2
+                        y2 = srcs_sorted['iby'][iobj] - ssl_width//2 + ssl_width//2
+                        x1 = srcs_sorted['ibx'][iobj] - ssl_width//2 + ssl_width//2
+                        x2 = srcs_sorted['ibx'][iobj] + ssl_width//2 + ssl_width//2
+                        cutout = bigjpg[bigheight-y1:bigheight-y2, x1:x2, :]
+                        ax[irow, icol].imshow(cutout)
+                        ax[irow, icol].axis('off')
+                    else:
+                        ax[irow, icol].axis('off')
+    
+                    #bigimg[irow*ssl_width:(irow+1)*ssl_width,icol*ssl_width:(icol+1)*ssl_width, :] = cutout
+                        
+                    iobj += 1
+                    
+            fig.subplots_adjust(wspace=0.05, hspace=0.05, left=0.05, right=0.95, bottom=0.05, top=0.95)
+            fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}'.replace('-image.jpg', '-cutouts.jpg'))
+            
     # Build the hdf5 file needed by ssl-legacysurvey
     h5file = os.path.join(coaddsdir, f'{brickname}-candidate-cutouts.hdf5')
     if os.path.isfile(h5file):
         log.warning(f'Output file {h5file} exists!')
-
     try:
         F = h5py.File(h5file, 'w')
         images = F.create_dataset('images', (nsga + nobj, nband, ssl_width, ssl_width))

@@ -116,7 +116,8 @@ def call_detection_coadds(brick, survey, pixscale=0.262, mp=1, run='south',
     subprocess.call(f'touch {donefile}'.split())
 
                 
-def call_candidate_cutouts(brick, survey, ssl_width=152, stagesuffix='candidate-cutouts',
+def call_candidate_cutouts(brick, survey, ssl_width=152, pixscale=0.262,
+                           stagesuffix='candidate-cutouts',
                            debug=False, overwrite=False):
     """Wrapper script to generate cutouts of all the candidate large galaxies.
 
@@ -133,11 +134,11 @@ def call_candidate_cutouts(brick, survey, ssl_width=152, stagesuffix='candidate-
 
     t0 = time.time()
     if debug:
-        err = candidate_cutouts(brick, coaddsdir, bands=survey.allbands,
+        err = candidate_cutouts(brick, coaddsdir, pixscale=pixscale, bands=survey.allbands,
                                 ssl_width=ssl_width, stagesuffix=stagesuffix,
                                 overwrite=overwrite)
     else:
-        err = candidate_cutouts(brick, coaddsdir, bands=survey.allbands,
+        err = candidate_cutouts(brick, coaddsdir, pixscale=pixscale, bands=survey.allbands,
                                 ssl_width=ssl_width, stagesuffix=stagesuffix,
                                 overwrite=overwrite)
 
@@ -278,8 +279,8 @@ def main():
                                   stagesuffix=stagesuffix, gaussian_kernels=args.gaussian_kernels,
                                   debug=args.debug, overwrite=args.overwrite)
         elif args.candidate_cutouts:
-            call_candidate_cutouts(bricks[ii], survey, stagesuffix=stagesuffix,
-                                   ssl_width=args.ssl_width, 
+            call_candidate_cutouts(bricks[ii], survey, pixscale=args.pixscale,
+                                   stagesuffix=stagesuffix, ssl_width=args.ssl_width, 
                                    debug=args.debug, overwrite=args.overwrite)
         else:
             galaxy, galaxydir = SGA.io.get_galaxy_galaxydir(sample[ii])
