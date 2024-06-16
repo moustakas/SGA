@@ -397,6 +397,7 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
     from astropy.table import Table
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
+    from PIL import Image
 
     brickname = brick['BRICKNAME']
     if 'custom' in brickname:
@@ -544,7 +545,9 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
 
         ax.axis('off')
         fig.tight_layout()
-        fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}')
+        jpgfile = f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}'
+        fig.savefig(jpgfile)
+        log.info(f'Wrote {jpgfile}')
 
         # total hack below here!
         if brickname == 'custom-015823m04663':
@@ -565,7 +568,13 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
     
             snrsort = np.argsort(snrphot[I])[::-1]
             srcs_sorted = srcs[I][snrsort]
-    
+
+            # temporary hack - run 'find_galaxy' on the r-band image
+            from SGA.ellipse import find_galaxy
+            imgfile = os.path.join(coaddsdir, 'coadd', subdir, brickname, f'legacysurvey-{brickname}-image-r.fits.fz')
+            img = np.zeros((height + ssl_width, width + ssl_width), 'f4')
+            img[ssl_width//2:height+ssl_width//2, ssl_width//2:width+ssl_width//2] = fitsio.read(imgfile)            
+            
             fig, ax = plt.subplots(nrows, ncols, figsize=(2.5*ncols, 2.5*nrows),
                                    sharex=True, sharey=True)
             
@@ -577,8 +586,16 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
                         y2 = srcs_sorted['iby'][iobj] - ssl_width//2 + ssl_width//2
                         x1 = srcs_sorted['ibx'][iobj] - ssl_width//2 + ssl_width//2
                         x2 = srcs_sorted['ibx'][iobj] + ssl_width//2 + ssl_width//2
-                        cutout = bigjpg[bigheight-y1:bigheight-y2, x1:x2, :]
-                        ax[irow, icol].imshow(cutout)
+                        jpgcutout = bigjpg[bigheight-y1:bigheight-y2, x1:x2, :]
+
+                        imgcutout = img[y2:y1, x1:x2]
+                        mge = find_galaxy(imgcutout, plot=False)
+                        jpgcutout = Image.fromarray(jpgcutout)
+                        
+                        
+                        pdb.set_trace()
+                        
+                        ax[irow, icol].imshow(jpgcutout)
                         ax[irow, icol].axis('off')
                     else:
                         ax[irow, icol].axis('off')
@@ -588,14 +605,16 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
                     iobj += 1
                     
             fig.subplots_adjust(wspace=0.05, hspace=0.05, left=0.05, right=0.95, bottom=0.05, top=0.95)
-            fig.savefig(f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}'.replace('-image.jpg', '-cutouts.jpg'))
+            jpgfile = f'/global/cfs/cdirs/desi/users/ioannis/tmp/{os.path.basename(jpgfile)}'.replace('-image.jpg', '-cutouts.jpg')
+            fig.savefig(jpgfile)
+            log.info(f'Wrote {jpgfile}')
 
-    #pdb.set_trace()
+    pdb.set_trace()
             
     # Build the hdf5 file needed by ssl-legacysurvey
     h5file = os.path.join(coaddsdir, f'{brickname}-candidate-cutouts.hdf5')
-    if os.path.isfile(h5file):
-        log.warning(f'Output file {h5file} exists!')
+    if os.path.isfile(h5file) and not overwrite:
+        log.warning(f'Skipping existing output file {h5file}.')
     try:
         F = h5py.File(h5file, 'w')
         images = F.create_dataset('images', (nsga + nobj, nband, ssl_width, ssl_width))

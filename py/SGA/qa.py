@@ -18,6 +18,33 @@ import SGA.misc
 #sns.set(style='ticks', font_scale=1.4, palette='Set2')
 sns, _ = SGA.misc.plot_style()
 
+
+def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
+                        pixscale, color='#3388ff', linewidth=3):
+    """Write me.
+
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    Image.MAX_IMAGE_PIXELS = None
+    
+    minor_axis_diameter_arcsec = major_axis_diameter_arcsec * ba
+
+    overlay_height = int(major_axis_diameter_arcsec / pixscale)
+    overlay_width = int(minor_axis_diameter_arcsec / pixscale)
+    overlay = Image.new('RGBA', (overlay_width, overlay_height))
+
+    draw = ImageDraw.ImageDraw(overlay)
+    box_corners = (0, 0, overlay_width, overlay_height)
+    draw.ellipse(box_corners, fill=None, outline=color, width=linewidth)
+
+    rotated = overlay.rotate(pa, expand=True)
+    rotated_width, rotated_height = rotated.size
+    paste_shift_x = int(x0 - rotated_width / 2)
+    paste_shift_y = int(y0 - rotated_height / 2)
+    im.paste(rotated, (paste_shift_x, paste_shift_y), rotated)
+
+
 def _sbprofile_colors():
     """Return an iterator of colors good for the surface brightness profile plots.
     https://seaborn.pydata.org/generated/seaborn.color_palette.html#seaborn.color_palette

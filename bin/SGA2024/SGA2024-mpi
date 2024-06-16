@@ -186,10 +186,11 @@ def main():
             outdir = os.path.join(datadir, 'detection')
             survey = get_survey(args.run, allbands=BANDS, output_dir=outdir)
 
-            if False:
-                bricks = SGA.io.read_survey_bricks(survey, custom=True)#, brickname='0159m047')
+            if True:
+                bricks = SGA.io.read_survey_bricks(survey, custom=True)
             else:
-                bricks = SGA.io.read_survey_bricks(survey, brickname='0405m085')
+                bricks = SGA.io.read_survey_bricks(survey, brickname='0405m085') # '0159m047')
+                
             if len(bricks) == 0:
                 return
         else:
