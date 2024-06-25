@@ -13,28 +13,28 @@ from astropy.table import Table
 from SGA.log import get_logger#, DEBUG
 log = get_logger()
 
-# C file descriptors for stderr and stdout, used in redirection
-# context manager.
-import ctypes
-from contextlib import contextmanager
+## C file descriptors for stderr and stdout, used in redirection
+## context manager.
+#import ctypes
+#from contextlib import contextmanager
+#
+#libc = ctypes.CDLL(None)
+#c_stdout = None
+#c_stderr = None
+#try:
+#    # Linux systems
+#    c_stdout = ctypes.c_void_p.in_dll(libc, 'stdout')
+#    c_stderr = ctypes.c_void_p.in_dll(libc, 'stderr')
+#except:
+#    try:
+#        # Darwin
+#        c_stdout = ctypes.c_void_p.in_dll(libc, '__stdoutp')
+#        c_stderr = ctypes.c_void_p.in_dll(libc, '__stdoutp')
+#    except:
+#        # Neither!
+#        pass
 
-libc = ctypes.CDLL(None)
-c_stdout = None
-c_stderr = None
-try:
-    # Linux systems
-    c_stdout = ctypes.c_void_p.in_dll(libc, 'stdout')
-    c_stderr = ctypes.c_void_p.in_dll(libc, 'stderr')
-except:
-    try:
-        # Darwin
-        c_stdout = ctypes.c_void_p.in_dll(libc, '__stdoutp')
-        c_stderr = ctypes.c_void_p.in_dll(libc, '__stdoutp')
-    except:
-        # Neither!
-        pass
 
-    
 def sga_dir():
     if 'SGA_DIR' not in os.environ:
         msg = 'Required ${SGA_DIR} environment variable not set.'
@@ -156,43 +156,6 @@ def read_survey_bricks(survey, brickname=None, custom=False):
         bricks = _toTable(bricks)
 
     return bricks
-
-
-def weighted_partition(weights, n):
-    '''
-    Partition `weights` into `n` groups with approximately same sum(weights)
-
-    Args:
-        weights: array-like weights
-        n: number of groups
-
-    Returns list of lists of indices of weights for each group
-
-    Notes:
-        compared to `dist_discrete_all`, this function allows non-contiguous
-        items to be grouped together which allows better balancing.
-
-    '''
-    #- sumweights will track the sum of the weights that have been assigned
-    #- to each group so far
-    sumweights = np.zeros(n, dtype=float)
-
-    #- Initialize list of lists of indices for each group
-    groups = list()
-    for i in range(n):
-        groups.append(list())
-
-    #- Assign items from highest weight to lowest weight, always assigning
-    #- to whichever group currently has the fewest weights
-    weights = np.asarray(weights)
-    for i in np.argsort(-weights):
-        j = np.argmin(sumweights)
-        groups[j].append(i)
-        sumweights[j] += weights[i]
-
-    assert len(groups) == n
-
-    return groups
 
 
 def backup_filename(filename):
@@ -430,6 +393,7 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
     from glob import glob
     import multiprocessing
     import astropy
+    from SGA.util import weighted_partition
 
     if sample is None and bricks is None:
         msg = 'Must provide either sample or bricks.'

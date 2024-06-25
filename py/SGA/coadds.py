@@ -12,6 +12,8 @@ log = get_logger()
 BANDS = ['g', 'r', 'z']
 #BANDS = ['g', 'r', 'i', 'z']
 
+PIXSCALE = 0.262
+
 def custom_brickname(ra, dec):
     brickname = '{:06d}{}{:05d}'.format(
         int(1000*ra), 'm' if dec < 0 else 'p',
@@ -294,27 +296,33 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix, run,
     return 1
 
 
-def get_ccds(survey, ra, dec, pixscale, width, bands=BANDS):
+def _get_ccds(args):
+    """Wrapper for the multiprocessing."""
+    return get_ccds(*args)
+
+
+def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     """Quickly get the CCDs touching this custom brick.  This code is mostly taken
     from legacypipe.runbrick.stage_tims.
 
     """
     from legacypipe.survey import wcs_for_brick, BrickDuck
-    brickname = 'custom-{}'.format(custom_brickname(ra, dec))
+    brickname = f'custom-{custom_brickname(ra, dec)}'
     brick = BrickDuck(ra, dec, brickname)
 
-    targetwcs = wcs_for_brick(brick, W=float(width), H=float(width), pixscale=pixscale)
+    targetwcs = wcs_for_brick(brick, W=float(width_pixels), H=float(width_pixels), pixscale=pixscale)
     ccds = survey.ccds_touching_wcs(targetwcs)
 
     if ccds is None or np.sum(ccds.ccd_cuts == 0) == 0:
         return []
     ccds.cut(ccds.ccd_cuts == 0)
-    ccds.cut(np.array([b in bands for b in ccds.filter]))
+    if bands is not None:
+        ccds.cut(np.array([b in bands for b in ccds.filter]))
 
     return ccds
 
 
-def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
+def detection_coadds(brick, survey, mp=1, pixscale=PIXSCALE, run='south',
                      gaussian_kernels='5,10,30', stagesuffix='detection-coadds',
                      outdir=None, overwrite=False):
     """Build the detection coadds.
@@ -383,7 +391,7 @@ def detection_coadds(brick, survey, mp=1, pixscale=0.262, run='south',
         return err
     
     
-def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BANDS,
+def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=PIXSCALE, bands=BANDS,
                       stagesuffix='candidate-cutouts', overwrite=False):
     """Generate cutouts of all the candidate large galaxies.
 
@@ -666,7 +674,7 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=0.262, bands=BAN
 
 
 def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
-                  nproc=1, pixscale=0.262, run='south', racolumn='RA', deccolumn='DEC',
+                  nproc=1, pixscale=PIXSCALE, run='south', racolumn='RA', deccolumn='DEC',
                   bands=BANDS,
                   nsigma=None, 
                   log=None, apodize=False, custom=True, unwise=True, galex=False, force=False,
@@ -704,7 +712,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
     brickname = 'custom-{}'.format(custom_brickname(onegal[racolumn], onegal[deccolumn]))
 
     # Quickly read the input CCDs and check that we have all the colors we need.
-    ccds = get_ccds(survey, onegal[racolumn], onegal[deccolumn], pixscale, width, bands=bands)
+    ccds = get_ccds(survey, onegal[racolumn], onegal[deccolumn], width, pixscale, bands=bands)
     if len(ccds) == 0:
         print('No CCDs touching this brick; nothing to do.')
         return 1, stagesuffix

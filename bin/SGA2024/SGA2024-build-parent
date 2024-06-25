@@ -1,0 +1,137 @@
+#!/usr/bin/env python 
+
+"""Code to build the parent SGA2024 sample based on a combination of internal and external catalogs.
+
+"""
+import pdb # for debugging
+
+import os
+import numpy as np
+import numpy.ma as ma
+import fitsio
+import multiprocessing
+from astropy.table import Table, vstack
+import matplotlib.pyplot as plt
+
+import SGA.io
+from SGA.coadds import PIXSCALE
+
+basedir = SGA.io.sga_dir()
+
+#from astroquery.ipac.ned import Ned
+#qq = Ned.query_object("UM198")
+#qq = Ned.get_table('um198', table='diameters')
+
+
+def read_wxsc():
+    """Read the WXSC catalog.
+
+    """
+    wxscfile = os.path.join(basedir, 'parent', 'external', 'WXSC_Riso_W1mag_24Jun024.tbl') # 'WXSC_Riso_1arcmin_10Jun2024.tbl')
+    wxsc = Table.read(wxscfile, format='ascii.ipac')
+    print(f'Read {len(wxsc):,d} objects from {wxscfile}')
+
+    # toss out duplicates
+    radec = np.array([f'{ra}-{dec}' for ra, dec in zip(wxsc['ra'].astype(str), wxsc['dec'].astype(str))])
+    u, c = np.unique(radec, return_counts=True)
+
+    _, uindx = np.unique(radec, return_index=True)    
+    
+    print(f'Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on (ra,dec)')
+    wxsc = wxsc[uindx]
+
+    _, uindx = np.unique(wxsc['NED_name'], return_index=True)
+    print(f'WARNING: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on NED name')
+    wxsc = wxsc[uindx]
+
+    #u, c = np.unique(wxsc['NED_name'], return_counts=True)
+    #print(np.unique(c))
+    #dup = vstack([wxsc[wxsc['NED_name'] == gal] for gal in u[c>1]])
+    #return dup
+
+    [wxsc.rename_column(col, col.upper()) for col in wxsc.colnames]    
+
+    #plt.clf() ; plt.hist(np.log10(bb['Riso']), bins=100) ; plt.savefig('junk.png')
+
+    return wxsc
+
+
+def read_hyperleda():
+    """Read the HyperLeda catalog.
+
+    """
+    hyperfile = os.path.join(basedir, 'parent', 'external', 'HyperLeda_meandata_1718379336.txt')
+
+    with open(hyperfile, 'r') as F:
+        nrows = len(F.readlines())
+    
+    hyper = Table.read(hyperfile, format='ascii.csv', data_start=22,
+                       data_end=nrows-5, header_start=20)
+    [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
+
+    hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
+    hyper['RA'] *= 15. # [decimal degrees]
+    
+    nhyper = len(hyper)
+    print(f'Read {nhyper:,d} objects from {hyperfile}')
+    assert(nhyper == len(np.unique(hyper['PGC'])))
+
+    ## objects with all three of diameter, Bt-mag, and redshift
+    #J = np.logical_and.reduce((hyper['LOGD25'].mask, hyper['BT'].mask, hyper['v'].mask))
+    #
+    ## objects with *none* of diameter, Bt-mag, or redshift, which are most likely to be stars or spurious
+    #I = np.logical_or.reduce((~hyper['LOGD25'].mask, ~hyper['BT'].mask, ~hyper['v'].mask))
+
+    return hyper
+
+
+def in_footprint(cat, survey, width_pixels=152, mp=1):
+    """Find which objects are in the given survey footprint.
+
+    width_pixels = 152 # =int(40. / pixscale) # [pixels]
+
+    """
+    from SGA.coadds import _get_ccds
+
+    mpargs = []
+    for obj in cat:
+        mpargs.append([survey, obj['RA'], obj['DEC'], width_pixels, PIXSCALE, None])
+
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            ccds = np.array(P.map(_get_ccds, mpargs))
+    else:
+        ccds = np.array([_get_ccds(_mpargs) for _mpargs in mpargs])
+
+    return ccds
+
+
+def main():
+    """Main wrapper
+
+    """
+    import argparse
+    from legacypipe.runs import get_survey
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
+    args = parser.parse_args()
+
+    pdb.set_trace()
+
+    run = 'north'
+    #BANDS = ['g', 'r', 'z']
+    survey = get_survey(run)#, allbands=BANDS)
+
+    print('TODO! NEDLVS_20210922_v2.fits')
+    print('TODO! Need to download z0MGS!')
+
+    hyper = read_hyperleda()
+    ccds = in_footprint(hyper[:10], survey, mp=args.mp)
+    pdb.set_trace()
+
+    wxsc = read_wxsc()
+
+
+if __name__ == '__main__':
+    main()
