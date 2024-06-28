@@ -116,7 +116,7 @@ def get_ccds(counter, allccds, ra, dec, row, width_pixels, pixscale=PIXSCALE):
     from SGA.coadds import custom_brickname
     from legacypipe.survey import wcs_for_brick, BrickDuck, ccds_touching_wcs
 
-    print(counter)
+    #print(counter)
     
     brickname = f'custom-{custom_brickname(ra, dec)}'
     brick = BrickDuck(ra, dec, brickname)
@@ -152,42 +152,19 @@ def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, mp=1):
 
     """
     from astrometry.libkd.spherematch import match_radec
+
+    # I, which has len(cat), is the index into allccds of the matches, or None
+    # if no match (which we immediately filter out).
     I = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
                     radius, indexlist=True)
-    #m1, m2, d12 = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
-    #                          radius, indexlist=True)
-    pdb.set_trace()
-    
-    import astropy.units as u
-    from astropy.coordinates import SkyCoord
+    M = [indx for indx, val in enumerate(I) if val is not None]
+    print(f'Found {len(M):,d}/{len(cat):,d} objects with at least one CCD within {radius} deg.')
 
-    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match
-    tree = tree_build_radec(cat['RA'], cat['DEC'])
-    ccdtree = tree_build_radec(allccds.ra, allccds.dec)
-    I, J, dd, counts = trees_match(tree, ccdtree, np.radians(radius), count=True)
-    #I = tree_search_radec(tree, ra, dec, radius)
-
-    c_ccds = SkyCoord(ra=allccds.ra*u.deg, dec=allccds.dec*u.deg)
-    c_cat = SkyCoord(ra=cat['RA'].value*u.deg, dec=cat['DEC'].value*u.deg)
-
-    #indx_ccds, sep2d, _ = c_cat.match_to_catalog_sky(c_ccds)
-
-    indx_cat, indx_ccds, d2d, _ = c_ccds.search_around_sky(c_cat, radius * u.deg)
-    uindx_cat = np.unique(indx_cat)
-    uindx_ccds = np.unique(indx_ccds)
-    print(f'Found {len(uindx_cat):,d}/{len(cat):,d} unique objects and ' + \
-          f'{len(uindx_ccds):,d}/{len(allccds):,d} unique CCDs within {radius} deg of any CCD.')
-
-    ucat = cat[uindx_cat]
-    uccds = allccds[uindx_ccds]
-    c_cat = c_cat[uindx_cat]
-    c_ccds = c_ccds[uindx_ccds]
-
-    # now perform a more refined search for each matching objects
+    # now perform a more refined search for each matching object
     mpargs = []
-    for iobj, obj in enumerate(ucat):
-        these = c_cat[iobj].separation(c_ccds) < radius * u.deg
-        mpargs.append([iobj, uccds[these], obj['RA'], obj['DEC'], obj['ROW'], width_pixels, PIXSCALE])
+    for icat, catindx in enumerate(M):
+        mpargs.append([icat, allccds[I[catindx]], cat[catindx]['RA'], cat[catindx]['DEC'],
+                       cat[catindx]['ROW'], width_pixels, PIXSCALE])
 
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
@@ -199,8 +176,8 @@ def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, mp=1):
         ccds = vstack(ccds)    
 
     urows = np.sort(np.unique(ccds['ROW']))
-    fcat = ucat[np.isin(ucat['ROW'], urows)]
-    print(f'Final sample {len(fcat):,d}/{len(ucat):,d} objects and {len(ccds):,d} CCDs.')
+    fcat = cat[np.isin(cat['ROW'], urows)]
+    print(f'Final sample: {len(fcat):,d}/{len(M):,d} objects and {len(ccds):,d} CCDs.')
 
     nccd = np.zeros(len(fcat), int)
     filters = np.zeros(len(fcat), '<U4')
@@ -209,14 +186,6 @@ def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, mp=1):
         filters[iobj] = ''.join(sorted(set(ccds[ccds['ROW'] == row]['FILTER'])))
     fcat['NCCD'] = nccd
     fcat['FILTERS'] = filters
-
-    plt.clf()
-    plt.scatter(cat['RA'], cat['DEC'], s=1, color='gray')
-    for bands in set(fcat['FILTERS']):
-        I = fcat['FILTERS'] == bands
-        plt.scatter(fcat['RA'][I], fcat['DEC'][I], s=1, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
-    plt.legend(fontsize=10)
-    plt.savefig('/global/cfs/cdirs/cosmo/www/temp/ioannis/tmp/junk.png')
 
     return ccds, fcat
 
@@ -229,7 +198,8 @@ def main():
     from legacypipe.runs import get_survey
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')    
+    parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
     parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
     args = parser.parse_args()
 
@@ -239,9 +209,9 @@ def main():
         multiprocessing.set_start_method('spawn')
 
     if args.in_footprint:
-        infootdir = os.path.join(basedir, 'parent', 'in-footprint')
-        if not os.path.isdir(infootdir):
-            os.makedirs(infootdir)
+        outdir = os.path.join(basedir, 'parent', 'in-footprint')
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
         
         #for run in ['south', 'north']:
         for run in ['north', 'south']:
@@ -252,13 +222,35 @@ def main():
             #for catname in ['WXSC']:#, ]:#, 'LVS', 'HECATE', 'LVD', 'z0MGS']:
             for catname in ['HyperLeda']:#, 'WXSC']:#, 'LVS', 'HECATE', 'LVD', 'z0MGS']:
                 print(f'Working on run={run} and catalog={catname}')
+                outfile = os.path.join(outdir, f'{catname}-{run}.fits')
+                qafile = os.path.join(outdir, f'qa-{catname}-{run}.png')
                 fullcat = read_cat(catname)
-                ccds, cat = in_footprint(fullcat, allccds=survey.ccds, bands=None, mp=args.mp)
-                # write out
-                infootfile = os.path.join(infootdir, f'{catname}-{run}.fits')
-                print(f'Writing {len(cat):,d} objects to {infootfile}')
-                fitsio.write(infootfile, cat.as_array(), extname='CATALOG', clobber=True)
-                fitsio.write(infootfile, ccds.as_array(), extname='CCDS')
+                if not os.path.isfile(outfile) or args.overwrite:
+                    ccds, cat = in_footprint(fullcat, allccds=survey.ccds, bands=None, mp=args.mp)
+                    # write out
+                    print(f'Writing {len(cat):,d} objects and {len(ccds):,d} to {outfile}')
+                    fitsio.write(outfile, cat.as_array(), extname='CATALOG', clobber=True)
+                    fitsio.write(outfile, ccds.as_array(), extname='CCDS')
+                else:
+                    cat = Table(fitsio.read(outfile, ext='CATALOG'))
+                    ccds = Table(fitsio.read(outfile, ext='CCDS'))
+                    print(f'Read {len(cat):,d} objects and {len(ccds)} from {outfile}')
+
+                # simple QA
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.scatter(fullcat['RA'], fullcat['DEC'], s=1, color='gray')
+                for bands in sorted(set(cat['FILTERS'])):
+                    I = cat['FILTERS'] == bands
+                    ax.scatter(cat['RA'][I], cat['DEC'][I], s=1, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
+                ax.set_xlabel('RA')
+                ax.set_ylabel('Dec')
+                ax.set_xlim(360., 0.)
+                ax.set_ylim(-90., 90.)
+                #ax.invert_xaxis()
+                ax.legend(fontsize=10, ncols=2, markerscale=10, loc='lower left')
+                fig.tight_layout()
+                fig.savefig(qafile)
+                print(f'Wrote {qafile}')
 
         pdb.set_trace()
 
