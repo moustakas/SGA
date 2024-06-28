@@ -14,7 +14,7 @@ from astropy.table import Table, vstack
 import matplotlib.pyplot as plt
 
 import SGA.io
-from SGA.coadds import PIXSCALE
+from SGA.coadds import PIXSCALE, BANDS
 
 basedir = SGA.io.sga_dir()
 
@@ -29,6 +29,7 @@ def read_wxsc():
     """
     wxscfile = os.path.join(basedir, 'parent', 'external', 'WXSC_Riso_W1mag_24Jun024.tbl') # 'WXSC_Riso_1arcmin_10Jun2024.tbl')
     wxsc = Table.read(wxscfile, format='ascii.ipac')
+    wxsc['ROW'] = np.arange(len(wxsc))
     print(f'Read {len(wxsc):,d} objects from {wxscfile}')
 
     # toss out duplicates
@@ -49,7 +50,8 @@ def read_wxsc():
     #dup = vstack([wxsc[wxsc['NED_name'] == gal] for gal in u[c>1]])
     #return dup
 
-    [wxsc.rename_column(col, col.upper()) for col in wxsc.colnames]    
+    [wxsc.rename_column(col, col.upper()) for col in wxsc.colnames]
+    wxsc['GALAXY'] = wxsc['WXSCNAME']
 
     #plt.clf() ; plt.hist(np.log10(bb['Riso']), bins=100) ; plt.savefig('junk.png')
 
@@ -68,6 +70,7 @@ def read_hyperleda():
     hyper = Table.read(hyperfile, format='ascii.csv', data_start=22,
                        data_end=nrows-5, header_start=20)
     [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
+    hyper['ROW'] = np.arange(len(hyper))
 
     hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
     hyper['RA'] *= 15. # [decimal degrees]
@@ -85,25 +88,137 @@ def read_hyperleda():
     return hyper
 
 
-def in_footprint(cat, survey, width_pixels=152, mp=1):
-    """Find which objects are in the given survey footprint.
-
-    width_pixels = 152 # =int(40. / pixscale) # [pixels]
+def read_cat(catname):
+    """Wrapper to read one of the known external catalogs.
 
     """
-    from SGA.coadds import _get_ccds
+    match catname.lower():
+        case 'wxsc':
+            cat = read_wxsc()
+        case 'hyperleda':
+            cat = read_hyperleda()
+        case _:
+            raise ValueError(f'Unrecognized catalog name {catname}')
 
+    return cat
+
+
+def _get_ccds(args):
+    """Wrapper for the multiprocessing."""
+    return get_ccds(*args)
+
+
+def get_ccds(counter, allccds, ra, dec, row, width_pixels, pixscale=PIXSCALE):
+    """Quickly get the CCDs touching this custom brick.  This code is mostly taken
+    from legacypipe.runbrick.stage_tims.
+
+    """
+    from SGA.coadds import custom_brickname
+    from legacypipe.survey import wcs_for_brick, BrickDuck, ccds_touching_wcs
+
+    print(counter)
+    
+    brickname = f'custom-{custom_brickname(ra, dec)}'
+    brick = BrickDuck(ra, dec, brickname)
+
+    targetwcs = wcs_for_brick(brick, W=float(width_pixels), H=float(width_pixels), pixscale=pixscale)
+    I = ccds_touching_wcs(targetwcs, allccds)
+    #ccds = survey.ccds_touching_wcs(targetwcs)
+    #print(len(I))
+
+    if len(I) == 0:
+        return Table()
+
+    ccds = allccds[I]
+
+    # convert to an astropy Table so we can vstack
+    _ccds = ccds.to_dict()
+    ccds = Table()
+    for key in _ccds.keys():
+        ccds[key.upper()] = _ccds[key]
+
+    ccds = ccds['CAMERA', 'EXPNUM', 'PLVER', 'CCDNAME', 'FILTER']
+    #ccds['GALAXY'] = [galaxy]
+    ccds['ROW'] = [row]
+    
+    return ccds
+
+
+def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, mp=1):
+    """Find which objects are in the given survey footprint based on positional
+    matching with a very generous (1 deg) search radius.
+
+    radius in degrees
+
+    """
+    from astrometry.libkd.spherematch import match_radec
+    I = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
+                    radius, indexlist=True)
+    #m1, m2, d12 = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
+    #                          radius, indexlist=True)
+    pdb.set_trace()
+    
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+
+    from astrometry.libkd.spherematch import tree_build_radec, tree_search_radec, trees_match
+    tree = tree_build_radec(cat['RA'], cat['DEC'])
+    ccdtree = tree_build_radec(allccds.ra, allccds.dec)
+    I, J, dd, counts = trees_match(tree, ccdtree, np.radians(radius), count=True)
+    #I = tree_search_radec(tree, ra, dec, radius)
+
+    c_ccds = SkyCoord(ra=allccds.ra*u.deg, dec=allccds.dec*u.deg)
+    c_cat = SkyCoord(ra=cat['RA'].value*u.deg, dec=cat['DEC'].value*u.deg)
+
+    #indx_ccds, sep2d, _ = c_cat.match_to_catalog_sky(c_ccds)
+
+    indx_cat, indx_ccds, d2d, _ = c_ccds.search_around_sky(c_cat, radius * u.deg)
+    uindx_cat = np.unique(indx_cat)
+    uindx_ccds = np.unique(indx_ccds)
+    print(f'Found {len(uindx_cat):,d}/{len(cat):,d} unique objects and ' + \
+          f'{len(uindx_ccds):,d}/{len(allccds):,d} unique CCDs within {radius} deg of any CCD.')
+
+    ucat = cat[uindx_cat]
+    uccds = allccds[uindx_ccds]
+    c_cat = c_cat[uindx_cat]
+    c_ccds = c_ccds[uindx_ccds]
+
+    # now perform a more refined search for each matching objects
     mpargs = []
-    for obj in cat:
-        mpargs.append([survey, obj['RA'], obj['DEC'], width_pixels, PIXSCALE, None])
+    for iobj, obj in enumerate(ucat):
+        these = c_cat[iobj].separation(c_ccds) < radius * u.deg
+        mpargs.append([iobj, uccds[these], obj['RA'], obj['DEC'], obj['ROW'], width_pixels, PIXSCALE])
 
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
-            ccds = np.array(P.map(_get_ccds, mpargs))
+            ccds = P.map(_get_ccds, mpargs)
     else:
-        ccds = np.array([_get_ccds(_mpargs) for _mpargs in mpargs])
+        ccds = [_get_ccds(_mpargs) for _mpargs in mpargs]
+        
+    if len(ccds) > 0:
+        ccds = vstack(ccds)    
 
-    return ccds
+    urows = np.sort(np.unique(ccds['ROW']))
+    fcat = ucat[np.isin(ucat['ROW'], urows)]
+    print(f'Final sample {len(fcat):,d}/{len(ucat):,d} objects and {len(ccds):,d} CCDs.')
+
+    nccd = np.zeros(len(fcat), int)
+    filters = np.zeros(len(fcat), '<U4')
+    for iobj, row in enumerate(fcat['ROW']):
+        nccd[iobj] = np.sum(ccds['ROW'] == row)
+        filters[iobj] = ''.join(sorted(set(ccds[ccds['ROW'] == row]['FILTER'])))
+    fcat['NCCD'] = nccd
+    fcat['FILTERS'] = filters
+
+    plt.clf()
+    plt.scatter(cat['RA'], cat['DEC'], s=1, color='gray')
+    for bands in set(fcat['FILTERS']):
+        I = fcat['FILTERS'] == bands
+        plt.scatter(fcat['RA'][I], fcat['DEC'][I], s=1, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
+    plt.legend(fontsize=10)
+    plt.savefig('/global/cfs/cdirs/cosmo/www/temp/ioannis/tmp/junk.png')
+
+    return ccds, fcat
 
 
 def main():
@@ -114,24 +229,38 @@ def main():
     from legacypipe.runs import get_survey
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')    
     parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
     args = parser.parse_args()
 
-    pdb.set_trace()
+    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('spawn')
 
-    run = 'north'
-    #BANDS = ['g', 'r', 'z']
-    survey = get_survey(run)#, allbands=BANDS)
+    if args.in_footprint:
+        infootdir = os.path.join(basedir, 'parent', 'in-footprint')
+        if not os.path.isdir(infootdir):
+            os.makedirs(infootdir)
+        
+        #for run in ['south', 'north']:
+        for run in ['north', 'south']:
+            survey = get_survey(run)#, allbands=BANDS)
+            # populate the ccds and ccd_kdtrees cache
+            _ = survey.get_ccds_readonly()
+            _ = survey.get_ccd_kdtrees()   
+            #for catname in ['WXSC']:#, ]:#, 'LVS', 'HECATE', 'LVD', 'z0MGS']:
+            for catname in ['HyperLeda']:#, 'WXSC']:#, 'LVS', 'HECATE', 'LVD', 'z0MGS']:
+                print(f'Working on run={run} and catalog={catname}')
+                fullcat = read_cat(catname)
+                ccds, cat = in_footprint(fullcat, allccds=survey.ccds, bands=None, mp=args.mp)
+                # write out
+                infootfile = os.path.join(infootdir, f'{catname}-{run}.fits')
+                print(f'Writing {len(cat):,d} objects to {infootfile}')
+                fitsio.write(infootfile, cat.as_array(), extname='CATALOG', clobber=True)
+                fitsio.write(infootfile, ccds.as_array(), extname='CCDS')
 
-    print('TODO! NEDLVS_20210922_v2.fits')
-    print('TODO! Need to download z0MGS!')
-
-    hyper = read_hyperleda()
-    ccds = in_footprint(hyper[:10], survey, mp=args.mp)
-    pdb.set_trace()
-
-    wxsc = read_wxsc()
-
+        pdb.set_trace()
 
 if __name__ == '__main__':
     main()

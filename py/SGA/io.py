@@ -183,159 +183,159 @@ def backup_filename(filename):
     return altfile
 
 
-@contextmanager
-def stdouterr_redirected(to=None, comm=None, overwrite=False):
-    """
-    Redirect stdout and stderr to a file.
-
-    The general technique is based on:
-
-    http://stackoverflow.com/questions/5081657
-    http://eli.thegreenplace.net/2015/redirecting-all-kinds-of-stdout-in-python/
-
-    One difference here is that each process in the communicator
-    redirects to a different temporary file, and the upon exit
-    from the context the rank zero process concatenates these
-    in order to the file result.
-
-    Args:
-        to (str): The output file name.
-        comm (mpi4py.MPI.Comm): The optional MPI communicator.
-        overwrite (bool): if True overwrite file, otherwise backup to to.N first
-    """
-    nproc = 1
-    rank = 0
-    if comm is not None:
-        nproc = comm.size
-        rank = comm.rank
-
-    # The currently active POSIX file descriptors
-    fd_out = sys.stdout.fileno()
-    fd_err = sys.stderr.fileno()
-
-    # The DESI loggers.
-    #desi_loggers = desiutil.log._desiutil_log_root
-
-    def _redirect(out_to, err_to):
-
-        # Flush the C-level buffers
-        if c_stdout is not None:
-            libc.fflush(c_stdout)
-        if c_stderr is not None:
-            libc.fflush(c_stderr)
-
-        # This closes the python file handles, and marks the POSIX
-        # file descriptors for garbage collection- UNLESS those
-        # are the special file descriptors for stderr/stdout.
-        sys.stdout.close()
-        print('HI!!!!!!!!!!!')
-        sys.stderr.close()
-
-        # Close fd_out/fd_err if they are open, and copy the
-        # input file descriptors to these.
-        os.dup2(out_to, fd_out)
-        os.dup2(err_to, fd_err)
-
-        # Create a new sys.stdout / sys.stderr that points to the
-        # redirected POSIX file descriptors.  In Python 3, these
-        # are actually higher level IO objects.
-        if sys.version_info[0] < 3:
-            sys.stdout = os.fdopen(fd_out, "wb")
-            sys.stderr = os.fdopen(fd_err, "wb")
-        else:
-            # Python 3 case
-            sys.stdout = io.TextIOWrapper(os.fdopen(fd_out, 'wb'))
-            sys.stderr = io.TextIOWrapper(os.fdopen(fd_err, 'wb'))
-
-        # update DESI logging to use new stdout
-        for name, logger in desi_loggers.items():
-            hformat = None
-            while len(logger.handlers) > 0:
-                h = logger.handlers[0]
-                if hformat is None:
-                    hformat = h.formatter._fmt
-                logger.removeHandler(h)
-            # Add the current stdout.
-            ch = logging.StreamHandler(sys.stdout)
-            formatter = logging.Formatter(hformat, datefmt='%Y-%m-%dT%H:%M:%S')
-            ch.setFormatter(formatter)
-            logger.addHandler(ch)
-
-    # redirect both stdout and stderr to the same file
-
-    if to is None:
-        to = "/dev/null"
-
-    if rank == 0:
-        log = get_logger()
-        log.info("Begin log redirection to {} at {}".format(to, time.asctime()))
-        #print("Begin log redirection to {} at {}".format(to, time.asctime()))
-        if not overwrite:
-            backup_filename(to)
-
-    #- all ranks wait for logfile backup
-    if comm is not None:
-        comm.barrier()
-
-    # Save the original file descriptors so we can restore them later
-    saved_fd_out = os.dup(fd_out)
-    saved_fd_err = os.dup(fd_err)
-
-    try:
-        pto = to
-        if to != "/dev/null":
-            pto = "{}_{}".format(to, rank)
-
-        # open python file, which creates low-level POSIX file
-        # descriptor.
-        file = open(pto, "w")
-
-        # redirect stdout/stderr to this new file descriptor.
-        _redirect(out_to=file.fileno(), err_to=file.fileno())
-
-        yield # allow code to be run with the redirected output
-
-        # close python file handle, which will mark POSIX file
-        # descriptor for garbage collection.  That is fine since
-        # we are about to overwrite those in the finally clause.
-        file.close()
-    finally:
-        print('HI!!!!!!!!!!!')
-        import pdb ; pdb.set_trace()
-        # flush python handles for good measure
-        sys.stdout.flush()
-        sys.stderr.flush()
-
-        # restore old stdout and stderr
-        _redirect(out_to=saved_fd_out, err_to=saved_fd_err)
-
-        if nproc > 1:
-            comm.barrier()
-
-        # concatenate per-process files
-        if rank == 0 and to != "/dev/null":
-            with open(to, "w") as outfile:
-                for p in range(nproc):
-                    outfile.write("================ Start of Process {} ================\n".format(p))
-                    fname = "{}_{}".format(to, p)
-                    with open(fname) as infile:
-                        outfile.write(infile.read())
-                    outfile.write("================= End of Process {} =================\n\n".format(p))
-                    os.remove(fname)
-
-        if nproc > 1:
-            comm.barrier()
-
-        if rank == 0:
-            log = get_logger()
-            log.info("End log redirection to {} at {}".format(to, time.asctime()))
-            #print("End log redirection to {} at {}".format(to, time.asctime()))
-
-        # flush python handles for good measure
-        sys.stdout.flush()
-        sys.stderr.flush()
-
-    return
+#@contextmanager
+#def stdouterr_redirected(to=None, comm=None, overwrite=False):
+#    """
+#    Redirect stdout and stderr to a file.
+#
+#    The general technique is based on:
+#
+#    http://stackoverflow.com/questions/5081657
+#    http://eli.thegreenplace.net/2015/redirecting-all-kinds-of-stdout-in-python/
+#
+#    One difference here is that each process in the communicator
+#    redirects to a different temporary file, and the upon exit
+#    from the context the rank zero process concatenates these
+#    in order to the file result.
+#
+#    Args:
+#        to (str): The output file name.
+#        comm (mpi4py.MPI.Comm): The optional MPI communicator.
+#        overwrite (bool): if True overwrite file, otherwise backup to to.N first
+#    """
+#    nproc = 1
+#    rank = 0
+#    if comm is not None:
+#        nproc = comm.size
+#        rank = comm.rank
+#
+#    # The currently active POSIX file descriptors
+#    fd_out = sys.stdout.fileno()
+#    fd_err = sys.stderr.fileno()
+#
+#    # The DESI loggers.
+#    #desi_loggers = desiutil.log._desiutil_log_root
+#
+#    def _redirect(out_to, err_to):
+#
+#        # Flush the C-level buffers
+#        if c_stdout is not None:
+#            libc.fflush(c_stdout)
+#        if c_stderr is not None:
+#            libc.fflush(c_stderr)
+#
+#        # This closes the python file handles, and marks the POSIX
+#        # file descriptors for garbage collection- UNLESS those
+#        # are the special file descriptors for stderr/stdout.
+#        sys.stdout.close()
+#        print('HI!!!!!!!!!!!')
+#        sys.stderr.close()
+#
+#        # Close fd_out/fd_err if they are open, and copy the
+#        # input file descriptors to these.
+#        os.dup2(out_to, fd_out)
+#        os.dup2(err_to, fd_err)
+#
+#        # Create a new sys.stdout / sys.stderr that points to the
+#        # redirected POSIX file descriptors.  In Python 3, these
+#        # are actually higher level IO objects.
+#        if sys.version_info[0] < 3:
+#            sys.stdout = os.fdopen(fd_out, "wb")
+#            sys.stderr = os.fdopen(fd_err, "wb")
+#        else:
+#            # Python 3 case
+#            sys.stdout = io.TextIOWrapper(os.fdopen(fd_out, 'wb'))
+#            sys.stderr = io.TextIOWrapper(os.fdopen(fd_err, 'wb'))
+#
+#        # update DESI logging to use new stdout
+#        for name, logger in desi_loggers.items():
+#            hformat = None
+#            while len(logger.handlers) > 0:
+#                h = logger.handlers[0]
+#                if hformat is None:
+#                    hformat = h.formatter._fmt
+#                logger.removeHandler(h)
+#            # Add the current stdout.
+#            ch = logging.StreamHandler(sys.stdout)
+#            formatter = logging.Formatter(hformat, datefmt='%Y-%m-%dT%H:%M:%S')
+#            ch.setFormatter(formatter)
+#            logger.addHandler(ch)
+#
+#    # redirect both stdout and stderr to the same file
+#
+#    if to is None:
+#        to = "/dev/null"
+#
+#    if rank == 0:
+#        log = get_logger()
+#        log.info("Begin log redirection to {} at {}".format(to, time.asctime()))
+#        #print("Begin log redirection to {} at {}".format(to, time.asctime()))
+#        if not overwrite:
+#            backup_filename(to)
+#
+#    #- all ranks wait for logfile backup
+#    if comm is not None:
+#        comm.barrier()
+#
+#    # Save the original file descriptors so we can restore them later
+#    saved_fd_out = os.dup(fd_out)
+#    saved_fd_err = os.dup(fd_err)
+#
+#    try:
+#        pto = to
+#        if to != "/dev/null":
+#            pto = "{}_{}".format(to, rank)
+#
+#        # open python file, which creates low-level POSIX file
+#        # descriptor.
+#        file = open(pto, "w")
+#
+#        # redirect stdout/stderr to this new file descriptor.
+#        _redirect(out_to=file.fileno(), err_to=file.fileno())
+#
+#        yield # allow code to be run with the redirected output
+#
+#        # close python file handle, which will mark POSIX file
+#        # descriptor for garbage collection.  That is fine since
+#        # we are about to overwrite those in the finally clause.
+#        file.close()
+#    finally:
+#        print('HI!!!!!!!!!!!')
+#        import pdb ; pdb.set_trace()
+#        # flush python handles for good measure
+#        sys.stdout.flush()
+#        sys.stderr.flush()
+#
+#        # restore old stdout and stderr
+#        _redirect(out_to=saved_fd_out, err_to=saved_fd_err)
+#
+#        if nproc > 1:
+#            comm.barrier()
+#
+#        # concatenate per-process files
+#        if rank == 0 and to != "/dev/null":
+#            with open(to, "w") as outfile:
+#                for p in range(nproc):
+#                    outfile.write("================ Start of Process {} ================\n".format(p))
+#                    fname = "{}_{}".format(to, p)
+#                    with open(fname) as infile:
+#                        outfile.write(infile.read())
+#                    outfile.write("================= End of Process {} =================\n\n".format(p))
+#                    os.remove(fname)
+#
+#        if nproc > 1:
+#            comm.barrier()
+#
+#        if rank == 0:
+#            log = get_logger()
+#            log.info("End log redirection to {} at {}".format(to, time.asctime()))
+#            #print("End log redirection to {} at {}".format(to, time.asctime()))
+#
+#        # flush python handles for good measure
+#        sys.stdout.flush()
+#        sys.stderr.flush()
+#
+#    return
 
 
 def _missing_files_one(args):
