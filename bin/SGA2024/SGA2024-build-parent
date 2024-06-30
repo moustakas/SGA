@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 
 """Code to build the parent SGA2024 sample based on a combination of internal and external catalogs.
 
@@ -7,13 +7,11 @@ SGA2024-build-parent --in-footprint --mp 128 --overwrite
 """
 import pdb # for debugging
 
-import os
+import os, time
 import numpy as np
 import numpy.ma as ma
 import fitsio
-import multiprocessing
 from astropy.table import Table, vstack, hstack, join
-import matplotlib.pyplot as plt
 
 import SGA.io
 from SGA.coadds import PIXSCALE, BANDS
@@ -25,7 +23,7 @@ basedir = SGA.io.sga_dir()
 #qq = Ned.get_table('um198', table='diameters')
 
 
-def domatch_pgc(cat, refcat):
+def domatch_pgc(cat, refcat, rank=0):
     """Match a catalog and a reference catalog based on PGC number and then positionally.
 
     """
@@ -36,7 +34,7 @@ def domatch_pgc(cat, refcat):
     # match on PGC
     if 'PGC' in cat.colnames:
         indx_cat, indx_refcat = match(cat['PGC'], refcat['PGC'])
-        print(f'Matched {len(indx_cat):,d}/{len(cat):,d} objects based on PGC number.')
+        print(f'Rank {rank:03d}: Matched {len(indx_cat):,d}/{len(cat):,d} objects based on PGC number.')
 
         refcols = ['PGC', 'OBJNAME', 'RA', 'DEC', 'LOGD25', 'PA']
         cols = ['PGC', 'GALAXY', 'RA', 'DEC', 'RHALF', 'POSITION_ANGLE', 'ELLIPTICITY', 'SURFACE_BRIGHTNESS_RHALF']
@@ -47,11 +45,11 @@ def domatch_pgc(cat, refcat):
     # match on coordinates
     nopgc = np.where(cat['PGC'] == -1)[0]
     if len(nopgc) > 0:
-        print('Matching based on coordinates.')
+        print('Rank {rank:03d}: Matching based on coordinates.')
         c_cat = SkyCoord(cat['RA'][nopgc]*u.deg, cat['DEC'][nopgc]*u.deg)
         c_refcat = SkyCoord(refcat['RA']*u.deg, refcat['DEC']*u.deg)
         indx_refcat, sep2d, _ = c_cat.match_to_catalog_sky(c_refcat)
-        print(f'Mean and max separation between {len(cat)} galaxies is ' \
+        print(f'Rank {rank:03d}: Mean and max separation between {len(cat)} galaxies is ' \
               '{np.mean(sep2d.arcsec):.3f}+/-{np.std(sep2d.arcsec):.3f}, {np.max(sep2d.arcsec):.3f} arcsec.')
 
         pdb.set_trace()
@@ -62,7 +60,7 @@ def domatch_pgc(cat, refcat):
     pdb.set_trace()
 
 
-def domatch_coord(cat, refcat):
+def domatch_coord(cat, refcat, rank=0):
     """Match a catalog and a reference catalog based coordinates.
 
     """
@@ -70,11 +68,11 @@ def domatch_coord(cat, refcat):
     from astropy.coordinates import SkyCoord
     from SGA.util import match
 
-    print('Matching based on coordinates.')
+    print('Rank {rank:03d}: Matching based on coordinates.')
     c_cat = SkyCoord(cat['RA']*u.deg, cat['DEC']*u.deg)
     c_refcat = SkyCoord(refcat['RA']*u.deg, refcat['DEC']*u.deg)
     indx_refcat, sep2d, _ = c_cat.match_to_catalog_sky(c_refcat)
-    print(f'Mean and max separation between {len(cat)} galaxies is ' \
+    print(f'Rank {rank:03d}: Mean and max separation between {len(cat)} galaxies is ' \
           f'{np.mean(sep2d.arcsec):.3f}+/-{np.std(sep2d.arcsec):.3f}, {np.max(sep2d.arcsec):.3f} arcsec.')
 
     srt = np.argsort(sep2d)[::-1]
@@ -90,173 +88,171 @@ def domatch_coord(cat, refcat):
     pdb.set_trace()
 
 
-def read_lvd():
+def add_pgc(cat, catname):
+    """Add PGC numbers to the various samples.
+
+    """
+    # 0 = not in HyperLeda; -1 not checked yet
+    cat['PGC'] = np.zeros(len(cat), int) - 1
+
+    if catname.lower() == 'lvd':
+        # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719669736 - north
+        # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719674256 - south
+
+        # PGC1198787 = KKR53 ???
+        # PGC1330929 = KKR33 ??
+        # PGC200320 = KKR13 ??
+        # PGC2801041 = KKR43 ??
+        # PGC2801056 = KKR63
+        # PGC2801063 = KKR73
+        # PGC57522 = KKR23
+        pgc = {
+            # north
+            'Bootes IV': 0, 
+            'Canes Venatici II': 4713558, 
+            'Draco': 60095, 
+            'Draco II': 0, 
+            'Ursa Major I': 4713554, 
+            'Ursa Major II': 4713555, 
+            'Ursa Minor': 54074, 
+            'Willman 1': 4713556, 
+            'M 32': 2555, 
+            'NGC 205': 2429, 
+            'DDO 44': 21302, 
+            'DDO 99': 37050, 
+            'DDO 113': 39145, 
+            'DDO 125': 40904, 
+            'DDO 147': 43129, 
+            'DDO 190': 51472, 
+            'KKR 25': 2801026, 
+            'KKR 3': 166185,
+            'Leo A': 28868,  # =Leo 3
+            'NGC 4163': 38881, 
+            'NGC 4190': 39023, 
+            'NGC 4214': 39225, 
+            'UGC 4879': 26142, 
+            'UGC 8508': 47495,
+            # south
+            'Aquarius II': 5953206,
+            'Bootes I': 4713553,
+            'Bootes II': 4713552,
+            'Bootes III': 4713562,
+            'Bootes V': 0,
+            'Canes Venatici I': 4689223,
+            'Cetus II': 6740632,
+            'Cetus III': 6726344,
+            'Columba I': 6740626,
+            'Coma Berenices': 0,
+            'Eridanus II': 5074553,
+            'Fornax': 10074,
+            'Grus I': 5074558,
+            'Grus II': 6740630,
+            'Hercules': 4713560,
+            'Horologium I': 5074554,
+            'Horologium II': 5092747,
+            'Leo I': 29488,
+            'Leo II': 34176, # = Leo B
+            'Leo IV': 4713561,
+            'Leo V': 4713563,
+            'Leo Minor I': 0,
+            'Pegasus III': 5074547,
+            'Pegasus IV': 0,
+            'Phoenix II': 5074556,
+            'Pictor I': 0,
+            'Pisces II': 5056949,
+            'Reticulum II': 5074552,
+            'Reticulum III': 6740628,
+            'Sculptor': 3589,
+            'Segue 1': 4713559,
+            'Segue 2': 4713565,
+            'Sextans': 0,
+            'Sextans II': 0,
+            'Tucana II': 5074560,
+            'Tucana III': 6657034,
+            'Tucana IV': 6740629,
+            'Tucana V': 6740631,
+            'Ursa Major III': 0, # discovered in 2024
+            'Virgo I': 6657032,
+            'Virgo II': 0,
+            'Virgo III': 0,
+            'Andromeda II': 4601,
+            'Andromeda VI': 2807158,
+            'Andromeda XIII': 5056925,
+            'Andromeda XIV': 5056922,
+            'Andromeda XVI': 5056927,
+            'Andromeda XXII': 5057232,
+            'Andromeda XXVIII': 5060429,
+            'Andromeda XXIX': 5060430,
+            'LGS 3': 3792,
+            'Pegasus V': 0,
+            'Pisces VII': 0,
+            'AGC749235': 5059199,
+            'Antlia': 29194,
+            'Antlia B': 5098252,
+            'Cetus': 3097691,
+            'ESO 294-G010': 1641,
+            'ESO 410-G005': 1038,
+            'GR 8': 44491,
+            'IC 1613': 3844,
+            'IC 5152': 67908,
+            'KKH 86': 2807150,
+            'Leo K': 0,
+            'Leo M': 0,
+            'Leo P': 5065058,
+            'Leo T': 4713564,
+            'NGC 55': 1014,
+            'NGC 55-dw1': 0,
+            'NGC 300': 3238,
+            'NGC 3109': 29128,
+            'Pegasus dIrr': 0, # = Pegasus 1 (not in NED)
+            'Pegasus W': 0, # in NED
+            'Phoenix': 6830,
+            'Sextans A': 29653,
+            'Sextans B': 28913,
+            'Tucana': 69519,
+            'Tucana B': 0, # = SMDG J2247005-582429
+            'UGC 9128': 50961,
+            }
+
+    for key in pgc.keys():
+        I = np.where(cat['GALAXY'] == key)[0]
+        if len(I) == 0:
+            #raise ValueError(f'Error in galaxy name {key}')
+            continue
+        cat['PGC'][I] = pgc[key]
+
+    ## add NED names, so we can match against the NED-LVS
+    #ned = {'Bootes IV': 'Bootes IV Dwarf', # not in NED-LVS
+    #       'Coma Berenices': 'Coma Berenices Dwarf',
+    #       'Draco II': 'Draco II',
+    #       }
+
+    return cat
+
+
+def read_lvd(rank=0):
     """Read the Local Volume Database (LVD) dwarf-galaxy catalog.
 
     """
     lvdfile = os.path.join(basedir, 'parent', 'external', 'LVD-dwarf-all-b685634.fits')
     lvd = Table(fitsio.read(lvdfile))
     lvd['ROW'] = np.arange(len(lvd))
-    print(f'Read {len(lvd):,d} objects from {lvdfile}')
+    print(f'Rank {rank:03d}: Read {len(lvd):,d} objects from {lvdfile}')
 
     [lvd.rename_column(col, col.upper()) for col in lvd.colnames]
     lvd['GALAXY'] = lvd['NAME']
 
-    # 0 = not in HyperLeda; -1 not checked yet
-
-    # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719669736
-    # PGC1198787 = KKR53 ???
-    # PGC1330929 = KKR33 ??
-    # PGC200320 = KKR13 ??
-    # PGC2801041 = KKR43 ??
-    # PGC2801056 = KKR63
-    # PGC2801063 = KKR73
-    # PGC57522 = KKR23
-    pgc_north = {
-        'Bootes IV': 0, 
-        'Bootes V': 0, # not in NED
-        'Canes Venatici I': 4689223, 
-        'Canes Venatici II': 4713558, 
-        'Draco': 60095, 
-        'Draco II': 0, 
-        'Ursa Major I': 4713554, 
-        'Ursa Major II': 4713555, 
-        'Ursa Major III': 0, # discovered in 2024
-        'Ursa Minor': 54074, 
-        'Willman 1': 4713556, 
-        'M 32': 2555, 
-        'NGC 205': 2429, 
-        'DDO 44': 21302, 
-        'DDO 99': 37050, 
-        'DDO 113': 39145, 
-        'DDO 125': 40904, 
-        'DDO 147': 43129, 
-        'DDO 190': 51472, 
-        'KKR 25': 2801026, 
-        'KKR 3': 166185,
-        'Leo A': 28868,  # =Leo 3
-        'NGC 4163': 38881, 
-        'NGC 4190': 39023, 
-        'NGC 4214': 39225, 
-        'UGC 4879': 26142, 
-        'UGC 8508': 47495,
-        }
-
-    # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719674256
-    pgc_south = {
-        'Aquarius II': 5953206,
-        'Bootes I': 4713553,
-        'Bootes II': 4713552,
-        'Bootes III': 4713562,
-        'Bootes V': 0,
-        'Canes Venatici I': 4689223,
-        'Cetus II': 6740632,
-        'Cetus III': 6726344,
-        'Columba I': 6740626,
-        'Coma Berenices': 0,
-        'Eridanus II': 5074553,
-        'Fornax': 10074,
-        'Grus I': 5074558,
-        'Grus II': 6740630,
-        'Hercules': 4713560,
-        'Horologium I': 5074554,
-        'Horologium II': 5092747,
-        'Leo I': 29488,
-        'Leo II': 34176, # = Leo B
-        'Leo IV': 4713561,
-        'Leo V': 4713563,
-        'Leo Minor I': 0,
-        'Pegasus III': 5074547,
-        'Pegasus IV': 0,
-        'Phoenix II': 5074556,
-        'Pictor I': 0,
-        'Pisces II': 5056949,
-        'Reticulum II': 5074552,
-        'Reticulum III': 6740628,
-        'Sculptor': 3589,
-        'Segue 1': 4713559,
-        'Segue 2': 4713565,
-        'Sextans': 0,
-        'Sextans II': 0,
-        'Tucana II': 5074560,
-        'Tucana III': 6657034,
-        'Tucana IV': 6740629,
-        'Tucana V': 6740631,
-        'Ursa Major III': 0, # discovered in 2024
-        'Virgo I': 6657032,
-        'Virgo II': 0,
-        'Virgo III': 0,
-        'Andromeda II': 4601,
-        'Andromeda VI': 2807158,
-        'Andromeda XIII': 5056925,
-        'Andromeda XIV': 5056922,
-        'Andromeda XVI': 5056927,
-        'Andromeda XXII': 5057232,
-        'Andromeda XXVIII': 5060429,
-        'Andromeda XXIX': 5060430,
-        'LGS 3': 3792,
-        'Pegasus V': 0,
-        'Pisces VII': 0,
-        'AGC749235': 5059199,
-        'Antlia': 29194,
-        'Antlia B': 5098252,
-        'Cetus': 3097691,
-        'ESO 294-G010': 1641,
-        'ESO 410-G005': 1038,
-        'GR 8': 44491,
-        'IC 1613': 3844,
-        'IC 5152': 67908,
-        'KKH 86': 2807150,
-        'Leo A': 28868,
-        'Leo K': 0,
-        'Leo M': 0,
-        'Leo P': 5065058,
-        'Leo T': 4713564,
-        'NGC 55': 1014,
-        'NGC 55-dw1': 0,
-        'NGC 300': 3238,
-        'NGC 3109': 29128,
-        'Pegasus dIrr': 0, # = Pegasus 1 (not in NED)
-        'Pegasus W': 0, # in NED
-        'Phoenix': 6830,
-        'Sextans A': 29653,
-        'Sextans B': 28913,
-        'Tucana': 69519,
-        'Tucana B': 0, # = SMDG J2247005-582429
-        'UGC 9128': 50961,
-        }
-
-    pgc = pgc_north.copy()
-    for key in pgc_south.keys():
-        if key in pgc.keys():
-            assert(pgc[key] == pgc_south[key])
-        else:
-            pgc[key] = pgc_south[key]
-
-    lvd['PGC'] = np.zeros(len(lvd), int) - 1
-    for key in pgc.keys():
-        I = np.where(lvd['GALAXY'] == key)[0]
-        if len(I) == 0:
-            raise ValueError(f'Error in galaxy name {key}')
-        lvd['PGC'][I] = pgc[key]
-
-    # add NED names, so we can match against the NED-LVS
-    ned = {'Bootes IV': 'Bootes IV Dwarf', # not in NED-LVS
-           'Coma Berenices': 'Coma Berenices Dwarf',
-           'Draco II': 'Draco II',
-           }
-
     return lvd
 
 
-def read_nedlvs():
+def read_nedlvs(rank=0):
     """Read the NED-LVS catalog.
 
     """
     nedlvsfile = os.path.join(basedir, 'parent', 'external', 'NEDLVS_20210922_v2.fits')
     nedlvs = Table(fitsio.read(nedlvsfile))
     nedlvs['ROW'] = np.arange(len(nedlvs))
-    print(f'Read {len(nedlvs):,d} objects from {nedlvsfile}')
+    print(f'Rank {rank:03d}: Read {len(nedlvs):,d} objects from {nedlvsfile}')
 
     [nedlvs.rename_column(col, col.upper()) for col in nedlvs.colnames]
     nedlvs['GALAXY'] = nedlvs['OBJNAME']
@@ -264,14 +260,14 @@ def read_nedlvs():
     return nedlvs
 
 
-def read_wxsc():
+def read_wxsc(rank=0):
     """Read the WXSC catalog.
 
     """
     wxscfile = os.path.join(basedir, 'parent', 'external', 'WXSC_Riso_W1mag_24Jun024.tbl') # 'WXSC_Riso_1arcmin_10Jun2024.tbl')
     wxsc = Table.read(wxscfile, format='ascii.ipac')
     wxsc['ROW'] = np.arange(len(wxsc))
-    print(f'Read {len(wxsc):,d} objects from {wxscfile}')
+    print(f'Rank {rank:03d}: Read {len(wxsc):,d} objects from {wxscfile}')
 
     # toss out duplicates
     radec = np.array([f'{ra}-{dec}' for ra, dec in zip(wxsc['ra'].astype(str), wxsc['dec'].astype(str))])
@@ -279,11 +275,11 @@ def read_wxsc():
 
     _, uindx = np.unique(radec, return_index=True)    
     
-    print(f'Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on (ra,dec)')
+    print(f'Rank {rank:03d}: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on (ra,dec)')
     wxsc = wxsc[uindx]
 
     _, uindx = np.unique(wxsc['NED_name'], return_index=True)
-    print(f'WARNING: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on NED name')
+    print(f'Rank {rank:03d}: WARNING: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on NED name')
     wxsc = wxsc[uindx]
 
     #u, c = np.unique(wxsc['NED_name'], return_counts=True)
@@ -294,12 +290,10 @@ def read_wxsc():
     [wxsc.rename_column(col, col.upper()) for col in wxsc.colnames]
     wxsc['GALAXY'] = wxsc['WXSCNAME']
 
-    #plt.clf() ; plt.hist(np.log10(bb['Riso']), bins=100) ; plt.savefig('junk.png')
-
     return wxsc
 
 
-def read_hyperleda():
+def read_hyperleda(rank=0):
     """Read the HyperLeda catalog.
 
     """
@@ -317,7 +311,7 @@ def read_hyperleda():
     hyper['RA'] *= 15. # [decimal degrees]
     
     nhyper = len(hyper)
-    print(f'Read {nhyper:,d} objects from {hyperfile}')
+    print(f'Rank {rank:03d}: Read {nhyper:,d} objects from {hyperfile}')
     assert(nhyper == len(np.unique(hyper['PGC'])))
 
     ## objects with all three of diameter, Bt-mag, and redshift
@@ -329,11 +323,11 @@ def read_hyperleda():
     return hyper
 
 
-def read_cat(catname):
+def read_cat(catalog):
     """Wrapper to read one of the known external catalogs.
 
     """
-    match catname.lower():
+    match catalog.lower():
         case 'hyperleda':
             cat = read_hyperleda()
         case 'wxsc':
@@ -343,17 +337,17 @@ def read_cat(catname):
         case 'lvd':
             cat = read_lvd()
         case _:
-            raise ValueError(f'Unrecognized catalog name {catname}')
+            raise ValueError(f'Unrecognized catalog name {catalog}')
 
     return cat
 
 
-def _get_ccds(args):
-    """Wrapper for the multiprocessing."""
-    return get_ccds(*args)
+#def _get_ccds(args):
+#    """Wrapper for the multiprocessing."""
+#    return get_ccds(*args)
 
 
-def get_ccds(counter, allccds, onegal, width_pixels, pixscale=PIXSCALE):
+def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False):
     """Quickly get the CCDs touching this custom brick.  This code is mostly taken
     from legacypipe.runbrick.stage_tims.
 
@@ -361,8 +355,6 @@ def get_ccds(counter, allccds, onegal, width_pixels, pixscale=PIXSCALE):
     from SGA.coadds import custom_brickname
     from legacypipe.survey import wcs_for_brick, BrickDuck, ccds_touching_wcs
 
-    #print(counter)
-    
     brickname = f'custom-{custom_brickname(onegal["RA"], onegal["DEC"])}'
     brick = BrickDuck(onegal['RA'], onegal['DEC'], brickname)
 
@@ -373,27 +365,33 @@ def get_ccds(counter, allccds, onegal, width_pixels, pixscale=PIXSCALE):
 
     # no CCDs within width_pixels
     if len(I) == 0:
-        return Table(), Table()
+        if return_ccds:
+            return Table(), Table()
+        else:
+            return Table()
 
     ccds = allccds[I]
 
-    # convert to an astropy Table so we can vstack
-    _ccds = ccds.to_dict()
-    ccds = Table()
-    for key in _ccds.keys():
-        ccds[key.upper()] = _ccds[key]
-
-    ccds = ccds['RA', 'DEC', 'CAMERA', 'EXPNUM', 'PLVER', 'CCDNAME', 'FILTER']
-    #ccds['GALAXY'] = [galaxy]
-    ccds['ROW'] = onegal['ROW']
-
     onegal['NCCD'] = len(ccds)
-    onegal['FILTERS'] = ''.join(sorted(set(ccds['FILTER'])))
+    onegal['FILTERS'] = ''.join(sorted(set(ccds.filter)))
     
-    return ccds, Table(onegal)
+    if return_ccds:
+        # convert to an astropy Table so we can vstack
+        _ccds = ccds.to_dict()
+        ccds = Table()
+        for key in _ccds.keys():
+            ccds[key.upper()] = _ccds[key]
+
+        ccds = ccds['RA', 'DEC', 'CAMERA', 'EXPNUM', 'PLVER', 'CCDNAME', 'FILTER']
+        #ccds['GALAXY'] = [galaxy]
+        ccds['ROW'] = onegal['ROW']
+
+        return ccds, Table(onegal)
+    else:
+        return Table(onegal)
 
 
-def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, mp=1):
+def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, comm=None, mp=1):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
@@ -401,39 +399,93 @@ def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, mp=1):
 
     """
     from astrometry.libkd.spherematch import match_radec
-    #from SGA.util import match
+    from SGA.util import weighted_partition, match_to
 
-    # I, which has len(cat), is the index into allccds of the matches, or None
-    # if no match (which we immediately filter out).
-    I = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
-                    radius, indexlist=True)
-    M = [indx for indx, val in enumerate(I) if val is not None]
-    print(f'Found {len(M):,d}/{len(cat):,d} objects with at least one CCD within {radius} deg.')
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
 
     cat['NCCD'] = np.zeros(len(cat), int)
     cat['FILTERS'] = np.zeros(len(cat), '<U4')
 
-    # now perform a more refined search for each matching object
-    mpargs = []
-    for icat, catindx in enumerate(M):
-        mpargs.append([icat, allccds[I[catindx]], cat[catindx], width_pixels, PIXSCALE])
+    if rank == 0:
+        t0 = time.time()
 
-    if mp > 1:
-        with multiprocessing.Pool(mp) as P:
-            out = P.map(_get_ccds, mpargs)
+        # I, which is a list of len(cat), is the variable-length of indices into
+        # allccds of the matches, or None if no match (which we filter out).
+        indx_ccds = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
+                                radius, indexlist=True)
+
+        indx_cat = []
+        nccdperobj = []
+        for icat, val in enumerate(indx_ccds):
+            if val is not None:
+                indx_cat.append(icat)
+                nccdperobj.append(len(indx_ccds[icat]))
+        print(f'Rank {rank:03d}: Found {len(indx_cat):,d}/{len(cat):,d} objects with at least one CCD within {radius} deg.')
+
+        groups = weighted_partition(nccdperobj, size)
     else:
-        out = [_get_ccds(_mpargs) for _mpargs in mpargs]
-    out = list(zip(*out))
+        indx_cat = []
+        indx_ccds = []
+        groups = [np.array([])]
 
-    ccds = out[0]
-    fcat = out[1]
-    if len(ccds) > 0:
-        ccds = vstack(ccds)
+    # broadcast the work to the other ranks
+    if comm:
+        indx_cat = comm.bcast(indx_cat, root=0)
+        indx_ccds = comm.bcast(indx_ccds, root=0)
+        groups = comm.bcast(groups, root=0)
+
+    # now perform a more refined search for each matching object
+    
+    fcat = []
+    #ccds = []
+    for icat, indx in enumerate(groups[rank]):
+        catindx = indx_cat[indx]
+        onegal = cat[catindx]
+        if icat % len(groups[rank]) == 0 or icat+1 == len(groups[rank]):
+            print(f'Rank {rank:03d}: Working on galaxy: {icat+1:,d}/{len(groups[rank])}')
+        #print(f'Rank {rank:03d} working on galaxy: {onegal["GALAXY"]}')
+        one_fcat = get_ccds(allccds[indx_ccds[catindx]], onegal, width_pixels,
+                            pixscale=PIXSCALE, return_ccds=False)
+        fcat.append(one_fcat)
+
+    if len(fcat) > 0:
+        fcat = vstack(fcat)
+        
+    #mpargs = []
+    #for icat, catindx in enumerate(M):
+    #    mpargs.append([icat, allccds[I[catindx]], cat[catindx], width_pixels, PIXSCALE])
+    #
+    #if mp > 1:
+    #    import multiprocessing
+    #    with multiprocessing.Pool(mp) as P:
+    #        out = P.map(_get_ccds, mpargs)
+    #else:
+    #    out = [_get_ccds(_mpargs) for _mpargs in mpargs]
+    #out = list(zip(*out))
+    #
+    #ccds = out[0]
+    #fcat = out[1]
+    #if len(ccds) > 0:
+    #    ccds = vstack(ccds)
+    #    fcat = vstack(fcat)
+    #print(f'Final sample: {len(fcat):,d}/{len(indx_cat):,d} objects and {len(ccds):,d} CCDs.')
+    #return fcat, ccds
+
+    if comm:
+        fcat = comm.gather(fcat, root=0)
+
+    # sort and return
+    if rank == 0:
         fcat = vstack(fcat)
 
-    print(f'Final sample: {len(fcat):,d}/{len(M):,d} objects and {len(ccds):,d} CCDs.')
-
-    return ccds, fcat
+        print(f'Rank {rank:03d}: Final sample: {len(fcat):,d}/{len(indx_cat):,d} objects.')
+        
+        fcat = fcat[match_to(fcat['ROW'], cat['ROW'])]
+        print(f'Rank {rank:03d}: Total time: {(time.time()-t0)/60.:.3f} min')
+        return fcat
 
 
 def main():
@@ -443,8 +495,13 @@ def main():
     import argparse
     from legacypipe.runs import get_survey
 
+    regions = ['north', 'south']
+    catalogs = ['HyperLeda', 'NEDLVS', 'WXSC', 'LVD'] # 'HECATE', 'Z0MGS']
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--merge', action='store_true', help='Merge into a single, final parent catalog.')
+    parser.add_argument('--region', choices=regions, type=str, nargs='*', help='Region to pass to --in-footprint.')
+    parser.add_argument('--catalog', choices=catalogs, type=str, help='External catalog to pass to --in-footprint.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
     parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
@@ -455,65 +512,95 @@ def main():
         import multiprocessing
         multiprocessing.set_start_method('spawn')
 
+    try:
+        from mpi4py import MPI
+        from mpi4py.util import pkl5
+        #comm = MPI.COMM_WORLD
+        comm = pkl5.Intracomm(MPI.COMM_WORLD)
+    except ImportError:
+        comm = None
+
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
     footdir = os.path.join(basedir, 'parent', 'in-footprint')
     if args.in_footprint:
         if not os.path.isdir(footdir):
             os.makedirs(footdir)
-        
-        #for run in ['south', 'north']:
-        for run in ['north', 'south']:
-            survey = get_survey(run)#, allbands=BANDS)
-            # populate the ccds and ccd_kdtrees cache
-            _ = survey.get_ccds_readonly()
-            #_ = survey.get_ccd_kdtrees()   
-            for catname in ['LVD']:#'WXSC']:#, ]:#, 'LVS', 'HECATE', 'LVD', 'z0MGS']:
-            #for catname in ['HyperLeda']:#, 'WXSC']:#, 'LVS', 'HECATE', 'LVD', 'z0MGS']:
-                print(f'Working on run={run} and catalog={catname}')
-                outfile = os.path.join(footdir, f'{catname}-{run}.fits')
-                qafile = os.path.join(footdir, f'qa-{catname}-{run}.png')
-                fullcat = read_cat(catname)
-                if not os.path.isfile(outfile) or args.overwrite:
-                    ccds, cat = in_footprint(fullcat, allccds=survey.ccds, bands=None, mp=args.mp)
-                    # write out
-                    print(f'Writing {len(cat):,d} objects and {len(ccds):,d} CCDs to {outfile}')
-                    fitsio.write(outfile, cat.as_array(), extname='CATALOG', clobber=True)
-                    fitsio.write(outfile, ccds.as_array(), extname='CCDS')
-                else:
-                    cat = Table(fitsio.read(outfile, ext='CATALOG'))
-                    #ccds = Table(fitsio.read(outfile, ext='CCDS'))
-                    print(f'Read {len(cat):,d} objects from {outfile}')
 
-                # simple QA
-                if len(fullcat) < 1e3:
-                    s = 20
-                    markerscale = 1
+        for region in np.atleast_1d(args.region):
+            survey = get_survey(region)#, allbands=BANDS)
+            _ = survey.get_ccds_readonly()
+
+            for catalog in np.atleast_1d(args.catalog):
+                outfile = os.path.join(footdir, f'{catalog}-{region}.fits')
+                qafile = os.path.join(footdir, f'qa-{catalog}-{region}.png')
+                if rank == 0:
+                    print(f'Rank {rank:03d}: Working on region={region} and catalog={catalog}')
+                    fullcat = read_cat(catalog)
                 else:
-                    s = 1
-                    markerscale = 10
-                fig, ax = plt.subplots(figsize=(8, 6))
-                ax.scatter(fullcat['RA'], fullcat['DEC'], s=s, color='gray')
-                for bands in sorted(set(cat['FILTERS'])):
-                    I = cat['FILTERS'] == bands
-                    ax.scatter(cat['RA'][I], cat['DEC'][I], s=s, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
-                ax.set_xlabel('RA')
-                ax.set_ylabel('Dec')
-                ax.set_xlim(360., 0.)
-                ax.set_ylim(-90., 90.)
-                #ax.invert_xaxis()
-                ax.legend(fontsize=10, ncols=2, markerscale=markerscale, loc='lower left')
-                fig.tight_layout()
-                fig.savefig(qafile)
-                print(f'Wrote {qafile}')
+                    fullcat = Table()
+
+                if comm:
+                    fullcat = comm.bcast(fullcat, root=0)        
+                    
+                if not os.path.isfile(outfile) or args.overwrite:
+                    cat = in_footprint(fullcat, allccds=survey.ccds, bands=None, comm=comm, mp=1)#=args.mp)
+                    # write out
+                    if rank == 0:
+                        nccds = np.sum(cat['NCCD'])
+                        print(f'Rank {rank:03d}: Writing {len(cat):,d} objects with {nccds:,d} CCDs to {outfile}')
+                        #print(f'Writing {len(cat):,d} objects and {len(ccds):,d} CCDs to {outfile}')
+                        fitsio.write(outfile, cat.as_array(), extname='CATALOG', clobber=True)
+                        #fitsio.write(outfile, ccds.as_array(), extname='CCDS')
+                else:
+                    if rank == 0:
+                        cat = Table(fitsio.read(outfile, ext='CATALOG'))
+                        #ccds = Table(fitsio.read(outfile, ext='CCDS'))
+                        print(f'Rank {rank:03d}: Read {len(cat):,d} objects from {outfile}')
+    
+                if rank == 0:
+                    # simple QA
+                    import matplotlib.pyplot as plt
+                    import seaborn as sns
+                    
+                    if len(fullcat) < 1e3:
+                        s = 20
+                        markerscale = 1
+                    else:
+                        s = 1
+                        markerscale = 10
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    ax.scatter(fullcat['RA'], fullcat['DEC'], s=s, color='gray')
+                    for bands in sorted(set(cat['FILTERS'])):
+                        I = cat['FILTERS'] == bands
+                        ax.scatter(cat['RA'][I], cat['DEC'][I], s=s, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
+                    ax.set_xlabel('RA')
+                    ax.set_ylabel('Dec')
+                    ax.set_xlim(360., 0.)
+                    ax.set_ylim(-90., 90.)
+                    #ax.invert_xaxis()
+                    ax.legend(fontsize=10, ncols=2, markerscale=markerscale, loc='lower left')
+                    fig.tight_layout()
+                    fig.savefig(qafile)
+                    print(f'Rank {rank:03d}: Wrote {qafile}')
+
 
     if args.merge:
         # What's missing?
 
-        #run = 'south'
-        run = 'north'
+        #region = 'south'
+        region = 'north'
+        cat = Table(fitsio.read(os.path.join(footdir, f'LVD-{region}.fits'), 'CATALOG'))
+        cat = add_pgc(cat, 'lvd')
         
-        cat = Table(fitsio.read(os.path.join(footdir, f'NEDLVS-{run}.fits'), 'CATALOG'))
-        #cat = Table(fitsio.read(os.path.join(footdir, f'LVD-{run}.fits'), 'CATALOG'))
-        refcat = Table(fitsio.read(os.path.join(footdir, f'HyperLeda-{run}.fits'), 'CATALOG'))
+
+        pdb.set_trace()
+        
+        cat = Table(fitsio.read(os.path.join(footdir, f'NEDLVS-{region}.fits'), 'CATALOG'))
+        refcat = Table(fitsio.read(os.path.join(footdir, f'HyperLeda-{region}.fits'), 'CATALOG'))
 
         #info = domatch_pgc(cat, refcat)
         info = domatch_coord(cat, refcat)
