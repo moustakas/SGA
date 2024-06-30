@@ -9,7 +9,9 @@ RUN for x in \
   corner \
   scikit-image \
   seaborn \
-  ; do pip --no-cache-dir install $x; done
+  photutils \
+  astroquery \
+  ; do pip --no-cache-dir install --upgrade $x; done
 
 # Remove the policy.xml file so we do not get an 'exhausted cache resources'
 # error when we build mosaics for very large systems.
