@@ -1,0 +1,229 @@
+#!/usr/bin/env python
+
+"""Query NED for the full HyperLeda sample.
+
+hyperleda-ned-query --query-data
+hyperleda-ned-query --gather-data
+  
+"""
+import pdb # for debugging
+
+import os, re, time
+from glob import glob
+import numpy as np
+import fitsio
+from astropy.table import Table, vstack
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+
+
+def readone(queryfile):
+    """Read one file.
+
+    """
+    skip_head = 17
+    skip_foot = 4
+    data_start = skip_head + 1
+
+    with open(queryfile, 'r') as F:
+        D = F.readlines()
+    D = [line.replace('\n', '') for line in D]
+
+    nodata = 'No input names recognized by the NED name interpreter'
+    if nodata in D[-4]:
+        print(f'No data in {queryfile}')
+        return Table()
+    else:
+        print(f'Reading {queryfile}')
+
+    #D14 = D[14].split('|')
+    #D15 = D[15].split('|')
+    #D16 = D[16].split('|')
+    #D17 = D[17].split('|')
+    #for ii in range(30):
+    #    txt14 = f'{D14[ii][:30]:30}'.replace(' ', '.')
+    #    txt15 = f'{D15[ii][:30]:30}'.replace(' ', '.')
+    #    txt16 = f'{D16[ii][:30]:30}'.replace(' ', '.')
+    #    txt17 = f'{D17[ii][:30]:30}'.replace(' ', '.')
+    #    print(f'{txt14}  {txt15}  {txt16}  {txt17}')
+    
+    rawdata = D[data_start:-skip_foot]
+    nned = len(rawdata)
+    #if nned != len(racat[ss:ee]):
+    #    print('Missing some objects')
+    #    pdb.set_trace()
+    
+    # pack the data into a Table
+    cols = ['ROW', 'OBJECT_NOTE', 'OBJNAME', 'ESSENTIAL_NOTE', 
+            'OBJNAME_NED','RA', 'DEC', 'OBJTYPE', 'Z', 
+            'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 'BASIC_MORPH', 'MORPH', 
+            'SDSS_R', 'RC3_B', 'TWOMASS_K',
+            'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
+            'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
+            'RC3_DIAM_B', 'RC3_BA_B', 'RC3_PA_B',
+            'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B',
+            'ROW2']
+    
+    data = []
+    for irow, row in enumerate(rawdata):
+        #print(irow, len(row.split('|')))
+        row = row.replace('|b|', 'b') # special case the essential note for PGC006041
+        row = row.replace('|S(87GB) - S(87GB[BWE91])|', 'S(87GB) - S(87GB[BWE91])') # PGC2822076
+        row = row.split('|')
+        row = [val.strip() for val in row]
+        if len(row) != len(cols):
+            print(f'Problem parsing row {irow} of {queryfile}')
+            pdb.set_trace()
+        data.append(row)
+    nobj = len(data)
+
+    data = list(zip(*data))
+    
+    temp = Table()
+    for icol, col in enumerate(cols):
+        #print(col, data[icol])
+        #if len(data[icol]) != nobj:
+        #    pdb.set_trace()
+        temp[col] = data[icol]
+        #pdb.set_trace()
+    
+    if not np.all(temp['ROW'] == temp['ROW2']):
+        pdb.set_trace()
+    
+    # clean up the columns
+    out = Table()
+    #out['ROW'] = temp['ROW'].astype(int)
+    out['OBJNAME'] = temp['OBJNAME']
+    out['OBJNAME_NED'] = temp['OBJNAME_NED']
+    out['OBJTYPE'] = temp['OBJTYPE']
+    out['OBJECT_NOTE'] = temp['OBJECT_NOTE']
+    out['ESSENTIAL_NOTE'] = temp['ESSENTIAL_NOTE']
+    
+    # coordinates
+    ra = np.zeros(nobj, 'f8') - 99.
+    dec = np.zeros(nobj, 'f8') - 99.
+    for iobj, (strra, strdec) in enumerate(temp.iterrows('RA', 'DEC')):
+        # no coordinates if NED doesn't resolve the name
+        if strra != '' and strdec != '':
+            cc = SkyCoord(strra, strdec)
+            ra[iobj] = cc.ra.value
+            dec[iobj] = cc.dec.value
+    out['RA'] = ra
+    out['DEC'] = dec
+    
+    for col in ['Z', 'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 
+                'SDSS_R', 'RC3_B', 'TWOMASS_K',
+                'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
+                'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
+                'RC3_DIAM_B', 'RC3_BA_B', 'RC3_PA_B',
+                'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B']:
+        val = np.zeros(nobj, 'f4') - 99.
+        for iobj, strval in enumerate(temp[col]):
+            if strval != '':
+                val[iobj] = np.float32(re.sub('[^0-9,.]', '', strval))
+                if 'DIAM' in col:
+                    val[iobj] /= 60. # [arcsec --> arcmin]
+        out[col] = val
+    #temp[temp.colnames[14:20]]
+    #out[out.colnames[14:20]]
+
+    return out
+
+
+def main():
+    """Main wrapper.
+
+    """
+    import argparse    
+    from urllib.request import urlretrieve
+    from urllib.parse import quote # make the galaxy name http-safe
+    from SGA.io import sga_dir, read_hyperleda, get_raslice
+    
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--query-data', action='store_true', help='Query for basic data.')
+    parser.add_argument('--query-crossid', action='store_true', help='Query for cross-IDs.')
+    parser.add_argument('--gather-data', action='store_true', help='Gather the query-data output.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
+    args = parser.parse_args()
+
+    cat = read_hyperleda()#rows=np.arange(500))
+    ngal = len(cat)
+
+    workdir = os.path.join(sga_dir(), 'parent', 'external', 'hyperleda-ned')
+
+    if args.query_data:
+        # https://ned.ipac.caltech.edu/forms/gmd.html
+        nperquery = 200 # number of galaxies per query
+        linebreak = '%0D%0A'
+
+        logdir = os.path.join(workdir, 'logs')
+        if not os.path.isdir(logdir):
+            os.makedirs(logdir)
+
+        # sort into RA slices
+        raslices = np.array([get_raslice(ra) for ra in cat['RA'].value])
+        uraslices = np.unique(raslices)
+        print(f'Dividing the sample into {len(uraslices)} unique RA slices.')
+
+        for uraslice in uraslices:#[122:]:
+            racat = cat[uraslice == raslices]
+            nobj = len(racat)
+            nquery = int(np.ceil(nobj / nperquery)) # number of queries
+            print(f'RA slice {uraslice} will require {nquery:,d} queries of {nperquery} objects per query.')
+
+            querydir = os.path.join(workdir, uraslice)
+            if not os.path.isdir(querydir):
+                os.makedirs(querydir)
+
+            logfile = os.path.join(logdir, f'raslice{uraslice}.log')
+            if os.path.isfile(logfile) and args.overwrite:
+                os.remove(logfile)
+
+            for iquery in range(nquery): #[79]:
+                queryfile = os.path.join(querydir, f'raslice{uraslice}-query{iquery:05d}.txt')
+
+                ss = iquery * nperquery
+                ee = (iquery + 1) * nperquery
+                if ee > ngal:
+                    ee = ngal
+
+                if iquery % 1 == 0:
+                    print(f'Executing query {iquery+1:05d}/{nquery:05d}')
+
+                if not os.path.isfile(queryfile) or args.overwrite:
+                    uplist = '+' + ''.join([f'{quote(gal)}{linebreak}' for gal in racat[ss:ee]['OBJNAME'].value])
+                    #uplist = '+' + ''.join([f'{gal.replace(" ", "").replace("+", "%2b")}{linebreak}' for gal in racat[ss:ee]['OBJNAME'].value])
+
+                    url = f'https://ned.ipac.caltech.edu/cgi-bin/gmd?uplist={uplist}&delimiter=bar' + \
+                        '&NO_LINKS=1&nondb=row_count&nondb=user_name_msg&nondb=user_objname' + \
+                        '&crosid=objname&position=ra%2Cdec&enotes=objnote&position=pretype' + \
+                        '&position=z&gadata=magnit&gadata=sizemaj&gadata=sizemin&gadata=morphol' + \
+                        '&attdat_CON=M&gphotoms_CON=5861&gphotoms_CON=22&gphotoms_CON=1495' + \
+                        '&diamdat_CON=117&diamdat_CON=2&diamdat_CON=32&diamdat_CON=15&attdat=attned' + \
+                        '&gphotoms=q_value&diamdat=ned_maj_dia&diamdat=ned_min_dia&diamdat=ned_pa'
+
+                    # update the log
+                    with open(logfile, 'a') as L:
+                        L.write(f'{url}\n')
+
+                    urlretrieve(url, queryfile)
+                    #time.sleep(0.2)
+
+    if args.gather_data:
+        allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query?????.txt')))
+        #allfiles = glob(os.path.join(workdir, '000', 'raslice000-query00061.txt'))
+        allfiles = ['/Users/ioannis/research/projects/SGA/2024/parent/external/hyperleda-ned/122/raslice122-query00079.txt']
+        print(f'Found {len(allfiles):,d} query files.')
+
+        data = []
+        for onefile in allfiles:
+            data1 = readone(onefile)
+            #pdb.set_trace()
+            data.append(data1)
+        data = vstack(data)
+
+        pdb.set_trace()
+
+
+if __name__ == '__main__':
+    main()

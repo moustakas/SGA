@@ -183,6 +183,40 @@ def backup_filename(filename):
     return altfile
 
 
+def read_hyperleda(rank=0, rows=None):
+    """Read the HyperLeda catalog.
+
+    """
+    hyperfile = os.path.join(sga_dir(), 'parent', 'external', 'HyperLeda_meandata_1718379336.txt')
+
+    with open(hyperfile, 'r') as F:
+        nrows = len(F.readlines())
+    
+    hyper = Table.read(hyperfile, format='ascii.csv', data_start=22,
+                       data_end=nrows-5, header_start=20)
+    [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
+    hyper['ROW'] = np.arange(len(hyper))
+
+    hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
+    hyper['RA'] *= 15. # [decimal degrees]
+    
+    nhyper = len(hyper)
+    print(f'Rank {rank:03d}: Read {nhyper:,d} objects from {hyperfile}')
+    assert(nhyper == len(np.unique(hyper['PGC'])))
+
+    ## objects with all three of diameter, Bt-mag, and redshift
+    #J = np.logical_and.reduce((hyper['LOGD25'].mask, hyper['BT'].mask, hyper['v'].mask))
+    #
+    ## objects with *none* of diameter, Bt-mag, or redshift, which are most likely to be stars or spurious
+    #I = np.logical_or.reduce((~hyper['LOGD25'].mask, ~hyper['BT'].mask, ~hyper['v'].mask))
+
+    if rows is not None:
+        return hyper[rows]
+    else:
+        return hyper
+
+
+
 #@contextmanager
 #def stdouterr_redirected(to=None, comm=None, overwrite=False):
 #    """
