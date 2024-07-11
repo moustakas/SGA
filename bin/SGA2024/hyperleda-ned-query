@@ -119,8 +119,11 @@ def readone(queryfile):
                 'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B']:
         val = np.zeros(nobj, 'f4') - 99.
         for iobj, strval in enumerate(temp[col]):
-            if strval != '':
-                val[iobj] = np.float32(re.sub('[^0-9,.]', '', strval))
+            if strval != '' and strval != 'R': # special case for [MLF2006]J072039.75+710950.8
+                try:
+                    val[iobj] = np.float32(re.sub('[^0-9,.]', '', strval))
+                except:
+                    pdb.set_trace()
                 if 'DIAM' in col:
                     val[iobj] /= 60. # [arcsec --> arcmin]
         out[col] = val
@@ -130,13 +133,29 @@ def readone(queryfile):
     return out
 
 
+def build_url(objnames, linebreak='%0D%0A'):
+
+    from urllib.parse import quote # make the galaxy name http-safe
+
+    uplist = '+' + ''.join([f'{quote(obj)}{linebreak}' for obj in objnames])
+
+    url = f'https://ned.ipac.caltech.edu/cgi-bin/gmd?uplist={uplist}&delimiter=bar' + \
+        '&NO_LINKS=1&nondb=row_count&nondb=user_name_msg&nondb=user_objname' + \
+        '&crosid=objname&position=ra%2Cdec&enotes=objnote&position=pretype' + \
+        '&position=z&gadata=magnit&gadata=sizemaj&gadata=sizemin&gadata=morphol' + \
+        '&attdat_CON=M&gphotoms_CON=5861&gphotoms_CON=22&gphotoms_CON=1495' + \
+        '&diamdat_CON=117&diamdat_CON=2&diamdat_CON=32&diamdat_CON=15&attdat=attned' + \
+        '&gphotoms=q_value&diamdat=ned_maj_dia&diamdat=ned_min_dia&diamdat=ned_pa'
+
+    return url
+
 def main():
     """Main wrapper.
 
     """
     import argparse    
     from urllib.request import urlretrieve
-    from urllib.parse import quote # make the galaxy name http-safe
+    from urllib.error import HTTPError
     from SGA.io import sga_dir, read_hyperleda, get_raslice
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -153,8 +172,7 @@ def main():
 
     if args.query_data:
         # https://ned.ipac.caltech.edu/forms/gmd.html
-        nperquery = 200 # number of galaxies per query
-        linebreak = '%0D%0A'
+        nperquery = 250 # number of galaxies per query        
 
         logdir = os.path.join(workdir, 'logs')
         if not os.path.isdir(logdir):
@@ -165,7 +183,7 @@ def main():
         uraslices = np.unique(raslices)
         print(f'Dividing the sample into {len(uraslices)} unique RA slices.')
 
-        for uraslice in uraslices:#[122:]:
+        for uraslice in uraslices:
             racat = cat[uraslice == raslices]
             nobj = len(racat)
             nquery = int(np.ceil(nobj / nperquery)) # number of queries
@@ -187,32 +205,41 @@ def main():
                 if ee > ngal:
                     ee = ngal
 
-                if iquery % 1 == 0:
-                    print(f'Executing query {iquery+1:05d}/{nquery:05d}')
+                racat1 = racat[ss:ee]
 
                 if not os.path.isfile(queryfile) or args.overwrite:
-                    uplist = '+' + ''.join([f'{quote(gal)}{linebreak}' for gal in racat[ss:ee]['OBJNAME'].value])
-                    #uplist = '+' + ''.join([f'{gal.replace(" ", "").replace("+", "%2b")}{linebreak}' for gal in racat[ss:ee]['OBJNAME'].value])
+                    if iquery % 1 == 0:
+                        print(f'Executing query {iquery:05d}/{nquery-1:05d}')
 
-                    url = f'https://ned.ipac.caltech.edu/cgi-bin/gmd?uplist={uplist}&delimiter=bar' + \
-                        '&NO_LINKS=1&nondb=row_count&nondb=user_name_msg&nondb=user_objname' + \
-                        '&crosid=objname&position=ra%2Cdec&enotes=objnote&position=pretype' + \
-                        '&position=z&gadata=magnit&gadata=sizemaj&gadata=sizemin&gadata=morphol' + \
-                        '&attdat_CON=M&gphotoms_CON=5861&gphotoms_CON=22&gphotoms_CON=1495' + \
-                        '&diamdat_CON=117&diamdat_CON=2&diamdat_CON=32&diamdat_CON=15&attdat=attned' + \
-                        '&gphotoms=q_value&diamdat=ned_maj_dia&diamdat=ned_min_dia&diamdat=ned_pa'
-
-                    # update the log
-                    with open(logfile, 'a') as L:
-                        L.write(f'{url}\n')
-
-                    urlretrieve(url, queryfile)
+                    objnames = racat1['OBJNAME'].value
+                    url = build_url(objnames)
+                    try:
+                        urlretrieve(url, queryfile)
+                        # update the log
+                        with open(logfile, 'a') as L:
+                            L.write(f'{url}\n')
+                    except HTTPError as err:
+                        # http request was too long for the NED server, so split
+                        # the request in two
+                        if err.code == 414:
+                            print(f'Too many objects in query {queryfile}; splitting in two.')
+                            for suffix, _objnames in zip(['a', 'b'], np.array_split(objnames, 2)):
+                                _queryfile = queryfile.replace('.txt', f'{suffix}.txt')
+                                url = build_url(_objnames)
+                                urlretrieve(url, _queryfile)
+                                with open(logfile, 'a') as L:
+                                    L.write(f'{url}\n')
+                        else:
+                            print(url)
+                            raise HTTPError(f'Problem with {queryfile}')
                     #time.sleep(0.2)
+                else:
+                    print(f'Skipping existing query {iquery:05d}/{nquery-1:05d}')
 
     if args.gather_data:
-        allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query?????.txt')))
-        #allfiles = glob(os.path.join(workdir, '000', 'raslice000-query00061.txt'))
-        allfiles = ['/Users/ioannis/research/projects/SGA/2024/parent/external/hyperleda-ned/122/raslice122-query00079.txt']
+        allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query?????[a-b].txt')))
+        #allfiles = glob(os.path.join(workdir, '110', 'raslice110-query00016*.txt'))
+        
         print(f'Found {len(allfiles):,d} query files.')
 
         data = []
