@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-"""Query NED for the full HyperLeda sample.
+"""Query NED with an external SGA2024 sample (e.g., HyperLeda).
 
-hyperleda-ned-query --query-data
-hyperleda-ned-query --gather-data
+SGA2024-query-ned --catalog HyperLeda --query-data
+SGA2024-query-ned --catalog HyperLeda --gather-data
   
 """
 import pdb # for debugging
@@ -156,19 +156,27 @@ def main():
     import argparse    
     from urllib.request import urlretrieve
     from urllib.error import HTTPError
-    from SGA.io import sga_dir, read_hyperleda, get_raslice
-    
+    from SGA.io import sga_dir, get_raslice
+
+    catalogs = ['HyperLeda']
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
     parser.add_argument('--query-data', action='store_true', help='Query for basic data.')
     parser.add_argument('--query-crossid', action='store_true', help='Query for cross-IDs.')
     parser.add_argument('--gather-data', action='store_true', help='Gather the query-data output.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     args = parser.parse_args()
 
-    cat = read_hyperleda()#rows=np.arange(500))
+    match args.catalog.lower():
+        case 'hyperleda'
+            from SGA.io import read_hyperleda
+            cat = read_hyperleda()#rows=np.arange(500))
+        case _:
+            raise NotImplementedError
     ngal = len(cat)
 
-    workdir = os.path.join(sga_dir(), 'parent', 'external', 'hyperleda-ned')
+    workdir = os.path.join(sga_dir(), 'parent', 'external', f'nedquery-{args.catalog.lower()}')
 
     if args.query_data:
         # https://ned.ipac.caltech.edu/forms/gmd.html
@@ -236,18 +244,22 @@ def main():
                 else:
                     print(f'Skipping existing query {iquery:05d}/{nquery-1:05d}')
 
+
     if args.gather_data:
         allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query?????[a-b].txt')))
         #allfiles = glob(os.path.join(workdir, '110', 'raslice110-query00016*.txt'))
         
-        print(f'Found {len(allfiles):,d} query files.')
+        print(f'Merging {len(allfiles):,d} query files.')
 
         data = []
         for onefile in allfiles:
             data1 = readone(onefile)
-            #pdb.set_trace()
             data.append(data1)
         data = vstack(data)
+
+        
+        
+
 
         pdb.set_trace()
 
