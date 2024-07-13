@@ -12,7 +12,7 @@ import os, re, time
 from glob import glob
 import numpy as np
 import fitsio
-from astropy.table import Table, vstack
+from astropy.table import Table, vstack, join
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 
@@ -35,6 +35,7 @@ def readone(queryfile):
         return Table()
     else:
         print(f'Reading {queryfile}')
+        #pass
 
     #D14 = D[14].split('|')
     #D15 = D[15].split('|')
@@ -48,7 +49,11 @@ def readone(queryfile):
     #    print(f'{txt14}  {txt15}  {txt16}  {txt17}')
     
     rawdata = D[data_start:-skip_foot]
+    # the header is different(!!) if only 1 object is in the file 
+    if len(rawdata) == 0:
+        rawdata = D[data_start-1:-skip_foot]
     nned = len(rawdata)
+
     #if nned != len(racat[ss:ee]):
     #    print('Missing some objects')
     #    pdb.set_trace()
@@ -69,6 +74,7 @@ def readone(queryfile):
         #print(irow, len(row.split('|')))
         row = row.replace('|b|', 'b') # special case the essential note for PGC006041
         row = row.replace('|S(87GB) - S(87GB[BWE91])|', 'S(87GB) - S(87GB[BWE91])') # PGC2822076
+        row = row.replace('comp|SB?c', 'comp; SB?c') # ESO 108-IG 021
         row = row.split('|')
         row = [val.strip() for val in row]
         if len(row) != len(cols):
@@ -84,8 +90,10 @@ def readone(queryfile):
         #print(col, data[icol])
         #if len(data[icol]) != nobj:
         #    pdb.set_trace()
-        temp[col] = data[icol]
-        #pdb.set_trace()
+        try:
+            temp[col] = data[icol]
+        except:
+            pdb.set_trace()
     
     if not np.all(temp['ROW'] == temp['ROW2']):
         pdb.set_trace()
@@ -119,9 +127,14 @@ def readone(queryfile):
                 'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B']:
         val = np.zeros(nobj, 'f4') - 99.
         for iobj, strval in enumerate(temp[col]):
-            if strval != '' and strval != 'R': # special case for [MLF2006]J072039.75+710950.8
+            if strval != '':
                 try:
-                    val[iobj] = np.float32(re.sub('[^0-9,.]', '', strval))
+                    vval = re.sub('[^0-9,.]', '', strval)
+                    if vval != '': # e.g., [MLF2006]J072039.75+710950.8 has 'R' and PGC021687 has 'B'
+                        # special case for PGC019437 and possibly others
+                        if vval[-1] == '.':
+                            vval = vval[:-1] 
+                        val[iobj] = np.float32(vval)
                 except:
                     pdb.set_trace()
                 if 'DIAM' in col:
@@ -149,6 +162,7 @@ def build_url(objnames, linebreak='%0D%0A'):
 
     return url
 
+
 def main():
     """Main wrapper.
 
@@ -157,8 +171,9 @@ def main():
     from urllib.request import urlretrieve
     from urllib.error import HTTPError
     from SGA.io import sga_dir, get_raslice
+    from SGA.util import match
 
-    catalogs = ['HyperLeda']
+    catalogs = ['HyperLeda', 'NEDLVS', 'LVD']
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
@@ -169,9 +184,17 @@ def main():
     args = parser.parse_args()
 
     match args.catalog.lower():
-        case 'hyperleda'
-            from SGA.io import read_hyperleda
+        case 'hyperleda':
+            from SGA.io import read_hyperleda, version_hyperleda, nedfriendly_hyperleda
             cat = read_hyperleda()#rows=np.arange(500))
+        case 'nedlvs':
+            from SGA.io import read_nedlvs, version_nedlvs
+            cat = read_nedlvs()#rows=np.arange(1000))
+            version = version_nedlvs()
+        case 'lvd':
+            from SGA.io import read_lvd, version_lvd, nedfriendly_lvd
+            cat = read_lvd()
+            version = version_lvd()
         case _:
             raise NotImplementedError
     ngal = len(cat)
@@ -191,7 +214,7 @@ def main():
         uraslices = np.unique(raslices)
         print(f'Dividing the sample into {len(uraslices)} unique RA slices.')
 
-        for uraslice in uraslices:
+        for uraslice in uraslices:#[181:]:
             racat = cat[uraslice == raslices]
             nobj = len(racat)
             nquery = int(np.ceil(nobj / nperquery)) # number of queries
@@ -205,7 +228,7 @@ def main():
             if os.path.isfile(logfile) and args.overwrite:
                 os.remove(logfile)
 
-            for iquery in range(nquery): #[79]:
+            for iquery in range(nquery):
                 queryfile = os.path.join(querydir, f'raslice{uraslice}-query{iquery:05d}.txt')
 
                 ss = iquery * nperquery
@@ -220,6 +243,12 @@ def main():
                         print(f'Executing query {iquery:05d}/{nquery-1:05d}')
 
                     objnames = racat1['OBJNAME'].value
+                    # NED-friendly names!
+                    if args.catalog.lower() == 'hyperleda':
+                        objnames = nedfriendly_hyperleda(objnames, racat1['PGC'].value)
+                    if args.catalog.lower() == 'lvd':
+                        objnames = nedfriendly_lvd(objnames)
+
                     url = build_url(objnames)
                     try:
                         urlretrieve(url, queryfile)
@@ -246,8 +275,8 @@ def main():
 
 
     if args.gather_data:
-        allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query?????[a-b].txt')))
-        #allfiles = glob(os.path.join(workdir, '110', 'raslice110-query00016*.txt'))
+        allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query*.txt')))
+        #allfiles = glob(os.path.join(workdir, '176', 'raslice176-query*.txt'))
         
         print(f'Merging {len(allfiles):,d} query files.')
 
@@ -257,11 +286,83 @@ def main():
             data.append(data1)
         data = vstack(data)
 
-        
-        
+        #np.sum(np.logical_or.reduce((data['RC3_DIAM_B'] > 0., data['TWOMASS_DIAM_K'] > 0., data['SDSS_PA_R'] > 0.)))
+        #np.sum(np.logical_or.reduce((data['RC3_PA_B'] > 0., data['TWOMASS_PA_K'] > 0., data['SDSS_PA_R'] > 0.)))
+
+        if args.catalog.lower() == 'lvd':
+            from SGA.io import nedfriendly_lvd
+            
+            keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED' # = Bootes V
+            data = data[keep]
+
+            miss = cat[~np.isin(nedfriendly_lvd(cat['OBJNAME'].value), data['OBJNAME'])]
+
+            indx_cat, indx_data = match(nedfriendly_lvd(cat['OBJNAME']), data['OBJNAME'])
+            cat = cat[indx_cat]
+            data = data[indx_data]
+
+            assert(np.all(nedfriendly_lvd(cat['OBJNAME']) == data['OBJNAME']))
+            data['ROW'] = cat['ROW']
+            data = data[np.argsort(data['ROW'])]
 
 
-        pdb.set_trace()
+
+        
+        if args.catalog.lower() == 'nedlvs':
+            assert(len(data) == len(np.unique(data['OBJNAME'])))
+
+            indx_cat, indx_data = match(cat['OBJNAME'], data['OBJNAME'])
+            srt = np.argsort(indx_cat)
+            data = data[indx_data[srt]]
+            assert(np.all(cat['OBJNAME'] == data['OBJNAME']))
+            data['ROW'] = cat['ROW']
+
+
+
+        if args.catalog.lower() == 'hyperleda':
+            ## In the HyperLeda sample, one object name is duplicated because when we
+            ## executed the query we had not removed a handful of the duplicates (see
+            ## SGA.io.read_hyperleda), so we remove that object here.
+            #_, uindx = np.unique(data['OBJNAME'], return_index=True)
+            #data = data[uindx]
+            #assert(len(data) == len(np.unique(data['OBJNAME'])))
+
+            # Any objects with OBJECT_NOTE "ERROR: Input name not recognized by NED"
+            # or which are not in 'data', were not resolved by NED. 
+            ndata = len(data)
+    
+            keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
+            #miss = np.logical_not(keep)
+            print(f'Keeping {np.sum(keep):,d}/{ndata:,d} objects resolved by NED.')
+            out = data[keep]
+            ndata = len(out)
+    
+            warn = np.array(['WARNING: Same object as in entry' in note for note in out['OBJECT_NOTE'].value])
+            keep = np.logical_not(warn)
+            print(f'Keeping {np.sum(keep):,d}/{ndata:,d} objects not flagged as duplicates by NED.')
+    
+            out = join(out[keep], cat, keys='OBJNAME', table_names=['NED', 'LEDA'])
+            #bb = join(out, cat, keys='OBJNAME', table_names=['NED', 'LEDA'])
+            
+    
+            # missing entries
+            missing = cat[~np.isin(cat['OBJNAME'], out['OBJNAME'])]
+    
+    
+    
+            pdb.set_trace()
+    
+            Ikeep = np.isin(cat['OBJNAME'], data['OBJNAME'])
+            out = data[np.isin(data['OBJNAME'], cat['OBJNAME'][Ikeep])]
+    
+            Imiss = np.isin(data['OBJNAME'], cat['OBJNAME'])
+            if np.sum(Imiss) > 0:
+                miss = data[Imiss]
+
+
+        outfile = os.path.join(sga_dir(), 'parent', 'external', f'NED-{args.catalog}_{version}.fits')
+        print(f'Writing {len(data):,d} objects to {outfile}')
+        data.write(outfile, overwrite=True)
 
 
 if __name__ == '__main__':

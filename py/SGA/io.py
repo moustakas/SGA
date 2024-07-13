@@ -183,38 +183,377 @@ def backup_filename(filename):
     return altfile
 
 
+def nedfriendly_hyperleda(old, pgc):
+    """Rename some of the HyperLeda names to be NED-friendly.
+
+    E.g., NED does not resolve HyperLeda's name 3C218A, but this is also
+    PGC 26269, which NED *does* resolve--
+      http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=PGC%2026269
+      https://ned.ipac.caltech.edu/byname?objname=PGC+26269
+
+    """
+    new = old.copy()
+    I = pgc <= 73197
+    if np.any(I):
+        new[I] = [f'PGC{num:06d}' for num in pgc[I].astype(int)]
+    return new
+
+
+def version_hyperleda():
+    #return 'meandata_1718379336'
+    return 'meandata_1720804662'
+
+
 def read_hyperleda(rank=0, rows=None):
     """Read the HyperLeda catalog.
 
+    Feedback for Dmitry:
+
+    * 87 duplicated entries (see below)
+
     """
-    hyperfile = os.path.join(sga_dir(), 'parent', 'external', 'HyperLeda_meandata_1718379336.txt')
+    version = version_hyperleda()
+    hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
 
-    with open(hyperfile, 'r') as F:
-        nrows = len(F.readlines())
+    if not os.path.isfile(hyperfile):
+        txtfile = hyperfile.replace('.fits', '.txt')
+
+        with open(txtfile, 'r') as F:
+            nrows = len(F.readlines())
     
-    hyper = Table.read(hyperfile, format='ascii.csv', data_start=22,
-                       data_end=nrows-5, header_start=20)
-    [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
-    hyper['ROW'] = np.arange(len(hyper))
+        if version == 'meandata_1718379336':
+            header_start = 20
+            data_start = 22
+            data_offset = 5
+            delimiter = ','
+        elif version == 'meandata_1720804662':
+            header_start = 22
+            data_start = 24
+            data_offset = 7 # 4846383-20
+            delimiter = '|'
+        
+        hyper = Table.read(txtfile, format='ascii.csv', data_start=data_start,
+                           data_end=nrows-data_offset, header_start=header_start,
+                           delimiter=delimiter)
 
-    hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
-    hyper['RA'] *= 15. # [decimal degrees]
+        if version == 'meandata_1720804662':
+            hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
+
+        [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
+
+        hyper['ROW'] = np.arange(len(hyper))
     
-    nhyper = len(hyper)
-    print(f'Rank {rank:03d}: Read {nhyper:,d} objects from {hyperfile}')
-    assert(nhyper == len(np.unique(hyper['PGC'])))
+        nhyper = len(hyper)
+        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        assert(nhyper == len(np.unique(hyper['PGC'])))
+    
+        # There are 87 duplicated object names. The entries are either identical or
+        # they differ mildly in their redshift, B-band magnitude, or position
+        # angle. We do not attempt to merge or average the data; we simply choose
+        # the first entry.
+        objs, uindx, count = np.unique(hyper['OBJNAME'], return_counts=True, return_index=True)
+        #dups = objs[count > 1]
+        #for dup in dups:
+        #    I = np.where(hyper['OBJNAME'] == dup)[0]
+        #    print(hyper[I])
+        #    print()
+        hyper = hyper[uindx]
+        print(f'Trimming to {len(hyper):,d}/{nhyper:,d} unique objects.')
+    
+        hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
+        hyper['RA'] *= 15. # [decimal degrees]
+        
+        ## objects with all three of diameter, Bt-mag, and redshift
+        #J = np.logical_and.reduce((hyper['LOGD25'].mask, hyper['BT'].mask, hyper['v'].mask))
+        #
+        ## objects with *none* of diameter, Bt-mag, or redshift, which are most likely to be stars or spurious
+        #I = np.logical_or.reduce((~hyper['LOGD25'].mask, ~hyper['BT'].mask, ~hyper['v'].mask))
 
-    ## objects with all three of diameter, Bt-mag, and redshift
-    #J = np.logical_and.reduce((hyper['LOGD25'].mask, hyper['BT'].mask, hyper['v'].mask))
-    #
-    ## objects with *none* of diameter, Bt-mag, or redshift, which are most likely to be stars or spurious
-    #I = np.logical_or.reduce((~hyper['LOGD25'].mask, ~hyper['BT'].mask, ~hyper['v'].mask))
+        # get just the first three alternate names
+        altnames = []
+        for iobj in range(len(hyper)):
+            objname = hyper['OBJNAME'][iobj]
+            names = np.array(hyper['ALTNAMES'][iobj].split(','))
+            # remove the primary name
+            names = names[~np.isin(names, objname)]
+            names = ','.join(names[:3]) # top 3
+            altnames.append(names)
+        hyper['ALTNAMES'] = altnames
+        
+        # re-sort by PGC number
+        hyper = hyper[np.argsort(hyper['PGC'])]
 
+        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        hyper.write(hyperfile, overwrite=True)
+
+    hyper = Table(fitsio.read(hyperfile, rows=rows))
+    print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+
+    return hyper
+
+
+def nedfriendly_lvd(old):
+    """Rename some of the LVD names to be NED-friendly.
+
+    E.g., Canes Venatici I is CVn I dSph
+
+    """
+    ned = {'Canes Venatici II': 'CVn II dSph',
+           'Canes Venatici I': 'CVn I dSph',
+           'Draco': 'Draco Dwarf',
+           'Fornax': 'Fornax Dwarf Spheroidal',
+           'Hercules': 'Hercules dSph',
+           'Pegasus IV': 'Pegasus IV Dwarf',
+           'Sagittarius': 'Sagittarius Dwarf Spheroidal',
+           'Sculptor': 'Sculptor Dwarf Elliptical',
+           'Sextans': 'Sextans dSph',
+           'Pegasus V': 'Pegasus V Dwarf', # ='Andromeda XXXIV'
+           'Antlia': 'Antlia Dwarf Spheroidal',
+           'Aquarius': 'Aquarius dIrr',
+           'KK 258': 'ESO 468- G 020',
+           'KKS 3': 'SGC 0224.3-7345',
+           'KKS53': 'PGC1 0046957 NED015', # ??
+           'Pegasus dIrr': 'Pegasus Dwarf',
+           'Phoenix': 'Phoenix Dwarf',
+           'Sagittarius dIrr': 'SagDIG',
+           'Tucana': 'Tucana Dwarf',
+           # not in NED
+           #'Bootes V': '',
+           #'Eridanus IV': '',
+           #'Leo Minor I': '',
+           #'Sextans II': '',
+           #'Ursa Major III': '',
+           #'Virgo II': '',
+           #'Leo K': '',
+           #'Leo M': '',
+           #'Pavo': '',
+           }
+
+    new = old.copy()
+
+    I = np.where(np.isin(old, list(ned.keys())))[0]
+    if len(I) > 0:
+        for ii in I:
+            #print(f'Replacing {new[ii]} --> {ned[old[ii]]}')
+            new[ii] = ned[old[ii]]
+
+    return new
+
+
+def version_lvd():
+    return 'dwarf-all-b685634'
+
+
+def read_lvd(rank=0, rows=None):
+    """Read the Local Volume Database (LVD) dwarf-galaxy catalog.
+
+    """
+    version = version_lvd()
+
+    lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-{version}.fits')
+    F = fitsio.FITS(lvdfile)
+    row = np.arange(F[1].get_nrows())
     if rows is not None:
-        return hyper[rows]
-    else:
-        return hyper
+        row = row[rows]
 
+    lvd = Table(F[1].read(rows=rows))
+    lvd['ROW'] = row
+    print(f'Rank {rank:03d}: Read {len(lvd):,d} objects from {lvdfile}')
+
+    [lvd.rename_column(col, col.upper()) for col in lvd.colnames]
+
+    lvd.rename_column('NAME', 'OBJNAME')
+
+    # add PGC numbers
+    # 0 = not in HyperLeda; -1 not checked yet
+    lvd['PGC'] = np.zeros(len(lvd), int) - 1
+
+    # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719669736 - north
+    # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719674256 - south
+
+    # PGC1198787 = KKR53 ???
+    # PGC1330929 = KKR33 ??
+    # PGC200320 = KKR13 ??
+    # PGC2801041 = KKR43 ??
+    # PGC2801056 = KKR63
+    # PGC2801063 = KKR73
+    # PGC57522 = KKR23
+    pgc = {
+        # north
+        'Bootes IV': 0, 
+        'Canes Venatici II': 4713558, 
+        'Draco': 60095, 
+        'Draco II': 0, 
+        'Ursa Major I': 4713554, 
+        'Ursa Major II': 4713555, 
+        'Ursa Minor': 54074, 
+        'Willman 1': 4713556, 
+        'M 32': 2555, 
+        'NGC 205': 2429, 
+        'DDO 44': 21302, 
+        'DDO 99': 37050, 
+        'DDO 113': 39145, 
+        'DDO 125': 40904, 
+        'DDO 147': 43129, 
+        'DDO 190': 51472, 
+        'KKR 25': 2801026, 
+        'KKR 3': 166185,
+        'Leo A': 28868,  # =Leo 3
+        'NGC 4163': 38881, 
+        'NGC 4190': 39023, 
+        'NGC 4214': 39225, 
+        'UGC 4879': 26142, 
+        'UGC 8508': 47495,
+        # south
+        'Aquarius II': 5953206,
+        'Bootes I': 4713553,
+        'Bootes II': 4713552,
+        'Bootes III': 4713562,
+        'Bootes V': 0,
+        'Canes Venatici I': 4689223,
+        'Cetus II': 6740632,
+        'Cetus III': 6726344,
+        'Columba I': 6740626,
+        'Coma Berenices': 0,
+        'Eridanus II': 5074553,
+        'Fornax': 10074,
+        'Grus I': 5074558,
+        'Grus II': 6740630,
+        'Hercules': 4713560,
+        'Horologium I': 5074554,
+        'Horologium II': 5092747,
+        'Leo I': 29488,
+        'Leo II': 34176, # = Leo B
+        'Leo IV': 4713561,
+        'Leo V': 4713563,
+        'Leo Minor I': 0,
+        'Pegasus III': 5074547,
+        'Pegasus IV': 0,
+        'Phoenix II': 5074556,
+        'Pictor I': 0,
+        'Pisces II': 5056949,
+        'Reticulum II': 5074552,
+        'Reticulum III': 6740628,
+        'Sculptor': 3589,
+        'Segue 1': 4713559,
+        'Segue 2': 4713565,
+        'Sextans': 0,
+        'Sextans II': 0,
+        'Tucana II': 5074560,
+        'Tucana III': 6657034,
+        'Tucana IV': 6740629,
+        'Tucana V': 6740631,
+        'Ursa Major III': 0, # discovered in 2024
+        'Virgo I': 6657032,
+        'Virgo II': 0,
+        'Virgo III': 0,
+        'Andromeda II': 4601,
+        'Andromeda VI': 2807158,
+        'Andromeda XIII': 5056925,
+        'Andromeda XIV': 5056922,
+        'Andromeda XVI': 5056927,
+        'Andromeda XXII': 5057232,
+        'Andromeda XXVIII': 5060429,
+        'Andromeda XXIX': 5060430,
+        'LGS 3': 3792,
+        'Pegasus V': 0,
+        'Pisces VII': 0,
+        'AGC749235': 5059199,
+        'Antlia': 29194,
+        'Antlia B': 5098252,
+        'Cetus': 3097691,
+        'ESO 294-G010': 1641,
+        'ESO 410-G005': 1038,
+        'GR 8': 44491,
+        'IC 1613': 3844,
+        'IC 5152': 67908,
+        'KKH 86': 2807150,
+        'Leo K': 0,
+        'Leo M': 0,
+        'Leo P': 5065058,
+        'Leo T': 4713564,
+        'NGC 55': 1014,
+        'NGC 55-dw1': 0,
+        'NGC 300': 3238,
+        'NGC 3109': 29128,
+        'Pegasus dIrr': 71538,
+        'Pegasus W': 0, # in NED
+        'Phoenix': 6830,
+        'Sextans A': 29653,
+        'Sextans B': 28913,
+        'Tucana': 69519,
+        'Tucana B': 0, # = SMDG J2247005-582429
+        'UGC 9128': 50961,
+        'Eridanus IV': 0,
+        'Pavo': 0,
+        }
+
+    for key in pgc.keys():
+        I = np.where(lvd['OBJNAME'] == key)[0]
+        if len(I) == 0:
+            #raise ValueError(f'Error in galaxy name {key}')
+            continue
+        lvd['PGC'][I] = pgc[key]
+
+    # drop unconfirmed systems
+    lvd = lvd[lvd['CONFIRMED_REAL']]
+    lvd.remove_columns(['KEY', 'CONFIRMED_REAL'])
+
+    lvd['GALAXY'] = lvd['OBJNAME']
+
+    return lvd
+
+
+def version_nedlvs():
+    return '20210922_v2'
+
+
+def read_nedlvs(rank=0, rows=None):
+    """Read the NED-LVS catalog.
+
+    """
+    nedlvsfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDLVS_{version_nedlvs()}.fits')
+    nedlvs = Table(fitsio.read(nedlvsfile, rows=rows))
+    nedlvs['ROW'] = np.arange(len(nedlvs))
+    print(f'Rank {rank:03d}: Read {len(nedlvs):,d} objects from {nedlvsfile}')
+
+    [nedlvs.rename_column(col, col.upper()) for col in nedlvs.colnames]
+    nedlvs['GALAXY'] = nedlvs['OBJNAME']
+
+    return nedlvs
+
+
+def read_wxsc(rank=0):
+    """Read the WXSC catalog.
+
+    """
+    wxscfile = os.path.join(sga_dir(), 'parent', 'external', 'WXSC_Riso_W1mag_24Jun024.tbl') # 'WXSC_Riso_1arcmin_10Jun2024.tbl')
+    wxsc = Table.read(wxscfile, format='ascii.ipac')
+    wxsc['ROW'] = np.arange(len(wxsc))
+    print(f'Rank {rank:03d}: Read {len(wxsc):,d} objects from {wxscfile}')
+
+    # toss out duplicates
+    radec = np.array([f'{ra}-{dec}' for ra, dec in zip(wxsc['ra'].astype(str), wxsc['dec'].astype(str))])
+    u, c = np.unique(radec, return_counts=True)
+
+    _, uindx = np.unique(radec, return_index=True)    
+    
+    print(f'Rank {rank:03d}: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on (ra,dec)')
+    wxsc = wxsc[uindx]
+
+    _, uindx = np.unique(wxsc['NED_name'], return_index=True)
+    print(f'Rank {rank:03d}: WARNING: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on NED name')
+    wxsc = wxsc[uindx]
+
+    #u, c = np.unique(wxsc['NED_name'], return_counts=True)
+    #print(np.unique(c))
+    #dup = vstack([wxsc[wxsc['NED_name'] == gal] for gal in u[c>1]])
+    #return dup
+
+    [wxsc.rename_column(col, col.upper()) for col in wxsc.colnames]
+    wxsc['GALAXY'] = wxsc['WXSCNAME']
+
+    return wxsc
 
 
 #@contextmanager
