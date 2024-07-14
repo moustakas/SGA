@@ -75,6 +75,7 @@ def readone(queryfile):
         row = row.replace('|b|', 'b') # special case the essential note for PGC006041
         row = row.replace('|S(87GB) - S(87GB[BWE91])|', 'S(87GB) - S(87GB[BWE91])') # PGC2822076
         row = row.replace('comp|SB?c', 'comp; SB?c') # ESO 108-IG 021
+        row = row.replace('Spiral;|HSB', 'Spiral; HSBc') # PGC1372311
         row = row.split('|')
         row = [val.strip() for val in row]
         if len(row) != len(cols):
@@ -173,7 +174,7 @@ def main():
     from SGA.io import sga_dir, get_raslice
     from SGA.util import match
 
-    catalogs = ['HyperLeda', 'NEDLVS', 'LVD']
+    catalogs = ['HyperLeda', 'HyperLeda-altname', 'NEDLVS', 'LVD']
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
@@ -186,15 +187,20 @@ def main():
     match args.catalog.lower():
         case 'hyperleda':
             from SGA.io import read_hyperleda, version_hyperleda, nedfriendly_hyperleda
+            version = version_hyperleda()
+            cat = read_hyperleda()#rows=np.arange(500))
+        case 'hyperleda-altname':
+            from SGA.io import read_hyperleda, version_hyperleda, nedfriendly_hyperleda
+            version = version_hyperleda()
             cat = read_hyperleda()#rows=np.arange(500))
         case 'nedlvs':
             from SGA.io import read_nedlvs, version_nedlvs
-            cat = read_nedlvs()#rows=np.arange(1000))
             version = version_nedlvs()
+            cat = read_nedlvs()#rows=np.arange(1000))
         case 'lvd':
             from SGA.io import read_lvd, version_lvd, nedfriendly_lvd
-            cat = read_lvd()
             version = version_lvd()
+            cat = read_lvd()
         case _:
             raise NotImplementedError
     ngal = len(cat)
@@ -310,7 +316,6 @@ def main():
         
         if args.catalog.lower() == 'nedlvs':
             assert(len(data) == len(np.unique(data['OBJNAME'])))
-
             indx_cat, indx_data = match(cat['OBJNAME'], data['OBJNAME'])
             srt = np.argsort(indx_cat)
             data = data[indx_data[srt]]
@@ -320,44 +325,50 @@ def main():
 
 
         if args.catalog.lower() == 'hyperleda':
-            ## In the HyperLeda sample, one object name is duplicated because when we
-            ## executed the query we had not removed a handful of the duplicates (see
-            ## SGA.io.read_hyperleda), so we remove that object here.
-            #_, uindx = np.unique(data['OBJNAME'], return_index=True)
-            #data = data[uindx]
-            #assert(len(data) == len(np.unique(data['OBJNAME'])))
+            from SGA.io import nedfriendly_hyperleda
 
             # Any objects with OBJECT_NOTE "ERROR: Input name not recognized by NED"
             # or which are not in 'data', were not resolved by NED. 
-            ndata = len(data)
-    
             keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
-            #miss = np.logical_not(keep)
-            print(f'Keeping {np.sum(keep):,d}/{ndata:,d} objects resolved by NED.')
+            print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
             out = data[keep]
-            ndata = len(out)
-    
-            warn = np.array(['WARNING: Same object as in entry' in note for note in out['OBJECT_NOTE'].value])
-            keep = np.logical_not(warn)
-            print(f'Keeping {np.sum(keep):,d}/{ndata:,d} objects not flagged as duplicates by NED.')
-    
-            out = join(out[keep], cat, keys='OBJNAME', table_names=['NED', 'LEDA'])
-            #bb = join(out, cat, keys='OBJNAME', table_names=['NED', 'LEDA'])
-            
-    
-            # missing entries
-            missing = cat[~np.isin(cat['OBJNAME'], out['OBJNAME'])]
-    
-    
-    
-            pdb.set_trace()
-    
-            Ikeep = np.isin(cat['OBJNAME'], data['OBJNAME'])
-            out = data[np.isin(data['OBJNAME'], cat['OBJNAME'][Ikeep])]
-    
-            Imiss = np.isin(data['OBJNAME'], cat['OBJNAME'])
-            if np.sum(Imiss) > 0:
-                miss = data[Imiss]
+
+            # Remove three duplicates that come from recasting the PGC names in
+            # nedfriendly_hyperleda.
+            #gg, cc = np.unique(out['OBJNAME'], return_counts=True)
+            #print(out[np.isin(out['OBJNAME'], gg[cc>1])])
+            _, uindx = np.unique(out['OBJNAME'], return_index=True)
+            out = out[uindx]
+
+            # There are 2747 OBJNAME_NED duplicates that will need to be
+            # resolved by-hand later! In particular, those with a "'WARNING:
+            # Same object as in entry...'" warning can be identified with
+            # OBJNAME_NED=='', and there are 1601 of those.  
+            # gg, cc =np.unique(out['OBJNAME_NED'], return_counts=True) 
+            # print(gg[cc>1])
+
+            # Now, in order to match back to the original catalog we need the
+            # PGC number, which we don't have for 'out'! But making the
+            # NED-friendly names leads to 4 duplicates...
+            objnames_ned = nedfriendly_hyperleda(cat['OBJNAME'], cat['PGC'])
+            #gg, cc = np.unique(objnames_ned, return_counts=True)
+            #cat[np.isin(objnames_ned, gg[cc>1])]['PGC', 'OBJNAME', 'ALTNAMES', 'RA', 'DEC']
+
+            out['PGC'] = np.zeros(len(out), dtype=cat['PGC'].dtype)
+            out['ROW'] = np.zeros(len(out), dtype=cat['ROW'].dtype)
+
+            I = cat['PGC'] <= 73197            
+            indx1_cat, indx1_out = match(objnames_ned[I], out['OBJNAME'])
+            out['PGC'][indx1_out] = cat[I][indx1_cat]['PGC']
+            out['ROW'][indx1_out] = cat[I][indx1_cat]['ROW']
+
+            indx2_cat, indx2_out = match(objnames_ned[~I], out['OBJNAME'])
+            out['PGC'][indx2_out] = cat[~I][indx2_cat]['PGC']
+            out['ROW'][indx2_out] = cat[~I][indx2_cat]['ROW']
+            assert(len(out) == len(np.unique(out['ROW'])))
+
+            out = out[np.argsort(out['ROW'])]
+            data = out
 
 
         outfile = os.path.join(sga_dir(), 'parent', 'external', f'NED-{args.catalog}_{version}.fits')
