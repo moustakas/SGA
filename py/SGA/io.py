@@ -183,6 +183,27 @@ def backup_filename(filename):
     return altfile
 
 
+def altnames_hyperleda(cat):
+    """Retrieve the alternate name for the HyperLeda catalog.
+
+    """
+    altname = []
+    for altnames in cat['ALTNAMES'].value:
+        altnames = np.array(altnames.split(','))
+        # prefer the first 2MASS name
+        M = ['2MASS' in name or '2MASX' in name for name in altnames]
+        if np.any(M):
+            altname.append(altnames[M][0])
+        else:
+            #C = [':' in name  for name in altnames]
+            #if np.any(C):
+            #    #pdb.set_trace()
+            #    print(altnames)
+            altname.append(altnames[0])
+
+    return np.array(altname)
+
+
 def nedfriendly_hyperleda(old, pgc):
     """Rename some of the HyperLeda names to be NED-friendly.
 

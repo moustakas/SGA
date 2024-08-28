@@ -189,18 +189,42 @@ def main():
             from SGA.io import read_hyperleda, version_hyperleda, nedfriendly_hyperleda
             version = version_hyperleda()
             cat = read_hyperleda()#rows=np.arange(500))
+
         case 'hyperleda-altname':
-            from SGA.io import read_hyperleda, version_hyperleda, nedfriendly_hyperleda
+            # for non-matching sources, use ALTNAME
+            from SGA.io import read_hyperleda, version_hyperleda, altnames_hyperleda
             version = version_hyperleda()
-            cat = read_hyperleda()#rows=np.arange(500))
+            cat = read_hyperleda()
+
+            nedfile = os.path.join(sga_dir(), 'parent', 'external', f'NED-HyperLeda_{version}.fits')
+            ned = Table(fitsio.read(nedfile))
+            print(f'Read {len(ned):,d} objects from {nedfile}')
+
+            alt = cat[~np.isin(cat['ROW'], ned['ROW'])] # no match
+            alt = alt[alt['ALTNAMES'] != '']
+            altname = altnames_hyperleda(alt)
+
+            alt.rename_column('OBJNAME', 'OBJNAME_ORIG')
+            alt['OBJNAME'] = altname
+
+            # 2489 duplicates!!
+            _, uindx = np.unique(alt['OBJNAME'], return_index=True)
+            alt = alt[uindx]
+            print(f'Trimmed to {len(alt):,d} objects with unique altnames')
+
+            cat = alt
+            version = f'{version_hyperleda()}-altname'
+
         case 'nedlvs':
             from SGA.io import read_nedlvs, version_nedlvs
             version = version_nedlvs()
             cat = read_nedlvs()#rows=np.arange(1000))
+
         case 'lvd':
             from SGA.io import read_lvd, version_lvd, nedfriendly_lvd
             version = version_lvd()
             cat = read_lvd()
+
         case _:
             raise NotImplementedError
     ngal = len(cat)
@@ -311,8 +335,6 @@ def main():
             data['ROW'] = cat['ROW']
             data = data[np.argsort(data['ROW'])]
 
-
-
         
         if args.catalog.lower() == 'nedlvs':
             assert(len(data) == len(np.unique(data['OBJNAME'])))
@@ -321,7 +343,6 @@ def main():
             data = data[indx_data[srt]]
             assert(np.all(cat['OBJNAME'] == data['OBJNAME']))
             data['ROW'] = cat['ROW']
-
 
 
         if args.catalog.lower() == 'hyperleda':
@@ -365,6 +386,28 @@ def main():
             indx2_cat, indx2_out = match(objnames_ned[~I], out['OBJNAME'])
             out['PGC'][indx2_out] = cat[~I][indx2_cat]['PGC']
             out['ROW'][indx2_out] = cat[~I][indx2_cat]['ROW']
+            assert(len(out) == len(np.unique(out['ROW'])))
+
+            out = out[np.argsort(out['ROW'])]
+            data = out
+
+
+        if args.catalog.lower() == 'hyperleda-altname':
+            from SGA.io import altnames_hyperleda
+
+            keep = ( (data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED') *
+                     (data['OBJECT_NOTE'] != 'ERROR: Input name (32) too long - max 30 characters') )
+            print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
+            out = data[keep]
+
+            altname = altnames_hyperleda(cat)
+
+            out['PGC'] = np.zeros(len(out), dtype=cat['PGC'].dtype)
+            out['ROW'] = np.zeros(len(out), dtype=cat['ROW'].dtype)
+
+            indx_cat, indx_out = match(altname, out['OBJNAME'])
+            out['PGC'][indx_out] = cat[indx_cat]['PGC']
+            out['ROW'][indx_out] = cat[indx_cat]['ROW']
             assert(len(out) == len(np.unique(out['ROW'])))
 
             out = out[np.argsort(out['ROW'])]
