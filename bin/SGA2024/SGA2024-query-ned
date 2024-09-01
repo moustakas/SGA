@@ -4,15 +4,13 @@
 
 SGA2024-query-ned --catalog HyperLeda --query-data
 SGA2024-query-ned --catalog HyperLeda --gather-data
-  
-"""
-import pdb # for debugging
 
+"""
 import os, re, time
 from glob import glob
 import numpy as np
 import fitsio
-from astropy.table import Table, vstack, join
+from astropy.table import Table, vstack, hstack, join
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 
@@ -47,28 +45,28 @@ def readone(queryfile):
     #    txt16 = f'{D16[ii][:30]:30}'.replace(' ', '.')
     #    txt17 = f'{D17[ii][:30]:30}'.replace(' ', '.')
     #    print(f'{txt14}  {txt15}  {txt16}  {txt17}')
-    
+
     rawdata = D[data_start:-skip_foot]
-    # the header is different(!!) if only 1 object is in the file 
+    # the header is different(!!) if only 1 object is in the file
     if len(rawdata) == 0:
         rawdata = D[data_start-1:-skip_foot]
     nned = len(rawdata)
 
     #if nned != len(racat[ss:ee]):
     #    print('Missing some objects')
-    #    pdb.set_trace()
-    
+    #    raise ValueError()
+
     # pack the data into a Table
-    cols = ['ROW', 'OBJECT_NOTE', 'OBJNAME', 'ESSENTIAL_NOTE', 
-            'OBJNAME_NED','RA', 'DEC', 'OBJTYPE', 'Z', 
-            'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 'BASIC_MORPH', 'MORPH', 
+    cols = ['ROW', 'OBJECT_NOTE', 'OBJNAME', 'ESSENTIAL_NOTE',
+            'OBJNAME_NED','RA', 'DEC', 'OBJTYPE', 'Z',
+            'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 'BASIC_MORPH', 'MORPH',
             'SDSS_R', 'RC3_B', 'TWOMASS_K',
             'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
             'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
             'RC3_DIAM_B', 'RC3_BA_B', 'RC3_PA_B',
             'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B',
             'ROW2']
-    
+
     data = []
     for irow, row in enumerate(rawdata):
         #print(irow, len(row.split('|')))
@@ -80,25 +78,25 @@ def readone(queryfile):
         row = [val.strip() for val in row]
         if len(row) != len(cols):
             print(f'Problem parsing row {irow} of {queryfile}')
-            pdb.set_trace()
+            raise ValueError()
         data.append(row)
     nobj = len(data)
 
     data = list(zip(*data))
-    
+
     temp = Table()
     for icol, col in enumerate(cols):
         #print(col, data[icol])
         #if len(data[icol]) != nobj:
-        #    pdb.set_trace()
+        #    raise ValueError()
         try:
             temp[col] = data[icol]
         except:
-            pdb.set_trace()
-    
+            raise ValueError()
+
     if not np.all(temp['ROW'] == temp['ROW2']):
-        pdb.set_trace()
-    
+        raise ValueError()
+
     # clean up the columns
     out = Table()
     #out['ROW'] = temp['ROW'].astype(int)
@@ -107,7 +105,7 @@ def readone(queryfile):
     out['OBJTYPE'] = temp['OBJTYPE']
     out['OBJECT_NOTE'] = temp['OBJECT_NOTE']
     out['ESSENTIAL_NOTE'] = temp['ESSENTIAL_NOTE']
-    
+
     # coordinates
     ra = np.zeros(nobj, 'f8') - 99.
     dec = np.zeros(nobj, 'f8') - 99.
@@ -119,8 +117,8 @@ def readone(queryfile):
             dec[iobj] = cc.dec.value
     out['RA'] = ra
     out['DEC'] = dec
-    
-    for col in ['Z', 'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 
+
+    for col in ['Z', 'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR',
                 'SDSS_R', 'RC3_B', 'TWOMASS_K',
                 'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
                 'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
@@ -134,10 +132,10 @@ def readone(queryfile):
                     if vval != '': # e.g., [MLF2006]J072039.75+710950.8 has 'R' and PGC021687 has 'B'
                         # special case for PGC019437 and possibly others
                         if vval[-1] == '.':
-                            vval = vval[:-1] 
+                            vval = vval[:-1]
                         val[iobj] = np.float32(vval)
                 except:
-                    pdb.set_trace()
+                    raise ValueError()
                 if 'DIAM' in col:
                     val[iobj] /= 60. # [arcsec --> arcmin]
         out[col] = val
@@ -168,21 +166,115 @@ def main():
     """Main wrapper.
 
     """
-    import argparse    
+    import argparse
     from urllib.request import urlretrieve
     from urllib.error import HTTPError
+
     from SGA.io import sga_dir, get_raslice
-    from SGA.util import match
+    from SGA.util import get_basic_geometry, match
 
     catalogs = ['HyperLeda', 'HyperLeda-altname', 'NEDLVS', 'LVD']
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
     parser.add_argument('--query-data', action='store_true', help='Query for basic data.')
-    parser.add_argument('--query-crossid', action='store_true', help='Query for cross-IDs.')
     parser.add_argument('--gather-data', action='store_true', help='Gather the query-data output.')
+    parser.add_argument('--merge', action='store_true', help='Merge all the results.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     args = parser.parse_args()
+
+    if args.merge:
+        from SGA.io import (read_hyperleda, read_nedlvs, read_lvd, version_hyperleda, nedfriendly_hyperleda,
+                            altnames_hyperleda, version_lvd, version_nedlvs, nedfriendly_lvd)
+
+        def readit(catalog, version):
+            datafile = os.path.join(sga_dir(), 'parent', 'external', f'NED-{catalog}_{version}.fits')
+            data = Table(fitsio.read(datafile))
+            print(f'Read {len(data):,d} objects from {datafile}')
+            return data
+
+        hyper = read_hyperleda()
+        nedlvs = read_nedlvs()
+        lvd = read_lvd()
+
+        ned_lvd = readit('LVD', version_lvd())
+        ned_nedlvs = readit('NEDLVS', version_nedlvs())
+        ned_hyper = readit('HyperLeda', version_hyperleda())
+        ned_hyperalt = readit('HyperLeda-altname', f'{version_hyperleda()}-altname')
+        #assert(np.all(nedlvs['OBJNAME'] == nedlvs['OBJNAME_NED']))
+        #assert(len(nedlvs) == len(np.unique(nedlvs['OBJNAME_NED'])))
+
+        # [1] - NED flags the following objects as duplicates and most of them
+        # indeed appear to be errors in HyperLeda cross-identification. Remove
+        # them here but deal with them later.
+        warn = ['WARNING' in objnote for objnote in ned_hyper['OBJECT_NOTE']]
+        warnalt = ['WARNING' in objnote for objnote in ned_hyperalt['OBJECT_NOTE']]
+        cross = vstack((ned_hyper[warn], ned_hyperalt[warnalt]))
+        crossfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version_hyperleda()}-crossID-errors.fits')
+        cross.write(crossfile, overwrite=True)
+        print(f'Wrote {len(cross):,d} objects to {crossfile}')
+
+        ned_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], cross['ROW'])]
+        ned_hyperalt = ned_hyperalt[~np.isin(ned_hyperalt['ROW'], cross['ROW'])]
+
+        # [2] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
+        keys = np.array(ned_nedlvs.colnames)
+        keys = keys[~np.isin(keys, ['OBJNAME', 'ROW'])]
+
+        _out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
+        _out2 = join(ned_hyperalt, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
+        out1 = vstack((_out1, _out2))
+
+        # WINGSJ125256.27-152110.4 is a duplicate:
+        #  As the primary object, it's PGC4777821 - http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=WINGS%20J125256.27-152110.4
+        #  But as the alternate object, it's also [CZ2003]1631C-0295:095=PGC6729485 - http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=%5BCZ2003%5D1631C-0295%3A095
+        # Here, we drop the second object.
+        _, uindx = np.unique(out1['OBJNAME_HYPERLEDA'], return_index=True)
+        out1 = out1[uindx]
+        indx_out, indx_hyper = match(out1['ROW_HYPERLEDA'], hyper['ROW'])
+        out1['OBJNAME_HYPERLEDA'][indx_out] = hyper['OBJNAME'][indx_hyper]
+        out1 = out1[np.argsort(out1['ROW_HYPERLEDA'])]
+
+        # [2] - Try to match more of the HyperLeda sample to NEDLVS using
+        # coordinates. Ignore the crossID errors from above because
+        # many/most/all of those are real and we want to pick them up.
+        miss_hyper = hyper[~np.isin(hyper['ROW'], out1['ROW_HYPERLEDA'])]
+        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], out1['ROW_NEDLVS'])]
+
+        c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
+        c_nedlvs = SkyCoord(ra=miss_nedlvs['RA']*u.deg, dec=miss_nedlvs['DEC']*u.deg)
+        rad = 1.5 * u.arcsec
+        indx_nedlvs, indx_hyper, d2d, _ = c_hyper.search_around_sky(c_nedlvs, rad)
+
+        out2 = hstack((miss_hyper[indx_hyper]['PGC','OBJNAME','ALTNAMES','ROW'],
+                       miss_nedlvs[indx_nedlvs]['OBJNAME','OBJNAME_NED','RA','DEC','ROW']),
+                      table_names=['HYPERLEDA','NEDLVS'])
+        out2 = out2[np.argsort(out2['ROW_HYPERLEDA'])]
+
+        # [3] At this point we have ~290k NEDLVS and 3.3M HyperLeda objects
+        # with no match to within 1.5 arcsec.
+        miss_hyper = hyper[~np.isin(hyper['ROW'], np.hstack((out1['ROW_HYPERLEDA'], out2['ROW_HYPERLEDA'])))]
+        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], np.hstack((out1['ROW_NEDLVS'], out2['ROW_NEDLVS'])))]
+
+        c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
+        c_nedlvs = SkyCoord(ra=miss_nedlvs['RA']*u.deg, dec=miss_nedlvs['DEC']*u.deg)
+        _, sep2d, _ = c_hyper.match_to_catalog_sky(c_nedlvs)
+
+        I = np.where(~np.isnan(miss_hyper['LOGD25']) * (0.1*10**miss_hyper['LOGD25'] > 0.))[0]
+
+
+
+        import matplotlib.pyplot as plt
+        plt.clf()
+        plt.hist(np.log10(sep2d.arcsec), bins=100, log=True);
+        plt.savefig('junk.png')
+
+
+        import pdb ; pdb.set_trace()
+
+        return
+
+    # query stuff below here
 
     match args.catalog.lower():
         case 'hyperleda':
@@ -233,7 +325,7 @@ def main():
 
     if args.query_data:
         # https://ned.ipac.caltech.edu/forms/gmd.html
-        nperquery = 250 # number of galaxies per query        
+        nperquery = 250 # number of galaxies per query
 
         logdir = os.path.join(workdir, 'logs')
         if not os.path.isdir(logdir):
@@ -307,7 +399,7 @@ def main():
     if args.gather_data:
         allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query*.txt')))
         #allfiles = glob(os.path.join(workdir, '176', 'raslice176-query*.txt'))
-        
+
         print(f'Merging {len(allfiles):,d} query files.')
 
         data = []
@@ -321,7 +413,7 @@ def main():
 
         if args.catalog.lower() == 'lvd':
             from SGA.io import nedfriendly_lvd
-            
+
             keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED' # = Bootes V
             data = data[keep]
 
@@ -335,7 +427,7 @@ def main():
             data['ROW'] = cat['ROW']
             data = data[np.argsort(data['ROW'])]
 
-        
+
         if args.catalog.lower() == 'nedlvs':
             assert(len(data) == len(np.unique(data['OBJNAME'])))
             indx_cat, indx_data = match(cat['OBJNAME'], data['OBJNAME'])
@@ -344,12 +436,22 @@ def main():
             assert(np.all(cat['OBJNAME'] == data['OBJNAME']))
             data['ROW'] = cat['ROW']
 
+            # 1139 objects have NED 'resolve' issues. Throw those out here.
+            diff = data[data['OBJNAME'] != data['OBJNAME_NED']]['OBJNAME', 'OBJNAME_NED', 'OBJECT_NOTE', 'Z']
+            diff = join(diff, cat['OBJNAME', 'RA', 'DEC', 'Z'], keys='OBJNAME', table_names=['QUERY', 'LVS'])
+            #diff[diff['OBJECT_NOTE'] != '']
+            diff.write('NEDLVS-resolve-issues.fits', overwrite=True)
+
+            I = np.where(data['OBJNAME'] == data['OBJNAME_NED'])[0]
+            print(f'Keeping {len(I):,d}/{len(data):,d} objects where OBJNAME==OBJNAME_NED')
+            data = data[I]
+
 
         if args.catalog.lower() == 'hyperleda':
             from SGA.io import nedfriendly_hyperleda
 
             # Any objects with OBJECT_NOTE "ERROR: Input name not recognized by NED"
-            # or which are not in 'data', were not resolved by NED. 
+            # or which are not in 'data', were not resolved by NED.
             keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
             print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
             out = data[keep]
@@ -364,8 +466,8 @@ def main():
             # There are 2747 OBJNAME_NED duplicates that will need to be
             # resolved by-hand later! In particular, those with a "'WARNING:
             # Same object as in entry...'" warning can be identified with
-            # OBJNAME_NED=='', and there are 1601 of those.  
-            # gg, cc =np.unique(out['OBJNAME_NED'], return_counts=True) 
+            # OBJNAME_NED=='', and there are 1601 of those.
+            # gg, cc =np.unique(out['OBJNAME_NED'], return_counts=True)
             # print(gg[cc>1])
 
             # Now, in order to match back to the original catalog we need the
@@ -378,7 +480,7 @@ def main():
             out['PGC'] = np.zeros(len(out), dtype=cat['PGC'].dtype)
             out['ROW'] = np.zeros(len(out), dtype=cat['ROW'].dtype)
 
-            I = cat['PGC'] <= 73197            
+            I = cat['PGC'] <= 73197
             indx1_cat, indx1_out = match(objnames_ned[I], out['OBJNAME'])
             out['PGC'][indx1_out] = cat[I][indx1_cat]['PGC']
             out['ROW'][indx1_out] = cat[I][indx1_cat]['ROW']

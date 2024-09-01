@@ -9,8 +9,6 @@ shifterimg pull dstndstn/cutouts:dvsro
 shifter --image dstndstn/cutouts:dvsro bash
 $HOME/code/git/SGA/bin/SGA2024/SGA2024-parent-cutouts --outdir $PSCRATCH/SGA2024-data/SGA2020-cutouts --mp 1 --catalog sga2020 --dry-run
 
-  
-
 """
 import pdb # for debugging
 

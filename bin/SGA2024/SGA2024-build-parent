@@ -4,6 +4,9 @@
 
 SGA2024-build-parent --in-footprint --mp 128 --overwrite
 
+Or, on my laptop:
+/opt/homebrew/bin/python3 ~/code/SGA/bin/SGA2024/SGA2024-build-parent --merge
+
 """
 import pdb # for debugging
 
@@ -41,7 +44,7 @@ def domatch_pgc(cat, refcat, rank=0):
         info = join(refcat[refcols][indx_refcat], cat[cols][indx_cat], keys='PGC',
                     table_names=['REFCAT', 'CAT'])
         print(info[np.argsort(info['SEPARCSEC'])[::-1]])
-        
+
     # match on coordinates
     nopgc = np.where(cat['PGC'] == -1)[0]
     if len(nopgc) > 0:
@@ -56,7 +59,7 @@ def domatch_pgc(cat, refcat, rank=0):
 
         info = hstack((refcat[indx_refcat]['PGC', 'OBJNAME', 'RA', 'DEC', 'LOGD25'], cat['GALAXY', 'RA', 'DEC', 'RHALF', 'SURFACE_BRIGHTNESS_RHALF']))
         info['SEPARCSEC'] = sep2d.arcsec.astype('f4')
-    
+
     pdb.set_trace()
 
 
@@ -78,13 +81,12 @@ def domatch_coord(cat, refcat, rank=0):
     srt = np.argsort(sep2d)[::-1]
     refcat[indx_refcat[srt]][:10]
     cat[srt][:10]
-    
-          
+
     pdb.set_trace()
 
     info = hstack((refcat[indx_refcat]['PGC', 'OBJNAME', 'RA', 'DEC', 'LOGD25'], cat['GALAXY', 'RA', 'DEC', 'RHALF', 'SURFACE_BRIGHTNESS_RHALF']))
     info['SEPARCSEC'] = sep2d.arcsec.astype('f4')
-    
+
     pdb.set_trace()
 
 
@@ -143,7 +145,7 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
 
     onegal['NCCD'] = len(ccds)
     onegal['FILTERS'] = ''.join(sorted(set(ccds.filter)))
-    
+
     if return_ccds:
         # convert to an astropy Table so we can vstack
         _ccds = ccds.to_dict()
@@ -207,7 +209,7 @@ def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, comm=No
         groups = comm.bcast(groups, root=0)
 
     # now perform a more refined search for each matching object
-    
+
     fcat = []
     #ccds = []
     for icat, indx in enumerate(groups[rank]):
@@ -222,7 +224,7 @@ def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, comm=No
 
     if len(fcat) > 0:
         fcat = vstack(fcat)
-        
+
     #mpargs = []
     #for icat, catindx in enumerate(M):
     #    mpargs.append([icat, allccds[I[catindx]], cat[catindx], width_pixels, PIXSCALE])
@@ -251,7 +253,7 @@ def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, comm=No
         fcat = vstack(fcat)
 
         print(f'Rank {rank:03d}: Final sample: {len(fcat):,d}/{len(indx_cat):,d} objects.')
-        
+
         fcat = fcat[match_to(fcat['ROW'], cat['ROW'])]
         print(f'Rank {rank:03d}: Total time: {(time.time()-t0)/60.:.3f} min')
         return fcat
@@ -313,8 +315,8 @@ def main():
                     fullcat = Table()
 
                 if comm:
-                    fullcat = comm.bcast(fullcat, root=0)        
-                    
+                    fullcat = comm.bcast(fullcat, root=0)
+
                 if not os.path.isfile(outfile) or args.overwrite:
                     cat = in_footprint(fullcat, allccds=survey.ccds, bands=None, comm=comm, mp=1)#=args.mp)
                     # write out
@@ -329,12 +331,12 @@ def main():
                         cat = Table(fitsio.read(outfile, ext='CATALOG'))
                         #ccds = Table(fitsio.read(outfile, ext='CCDS'))
                         print(f'Rank {rank:03d}: Read {len(cat):,d} objects from {outfile}')
-    
+
                 if rank == 0:
                     # simple QA
                     import matplotlib.pyplot as plt
                     import seaborn as sns
-                    
+
                     if len(fullcat) < 1e3:
                         s = 20
                         markerscale = 1
@@ -360,14 +362,17 @@ def main():
     if args.merge:
         # What's missing?
 
+
+
+
+        pdb.set_trace()
+
         #region = 'south'
         region = 'north'
         cat = Table(fitsio.read(os.path.join(footdir, f'LVD-{region}.fits'), 'CATALOG'))
         cat = add_pgc(cat, 'lvd')
-        
 
-        pdb.set_trace()
-        
+
         cat = Table(fitsio.read(os.path.join(footdir, f'NEDLVS-{region}.fits'), 'CATALOG'))
         refcat = Table(fitsio.read(os.path.join(footdir, f'HyperLeda-{region}.fits'), 'CATALOG'))
 
@@ -375,7 +380,7 @@ def main():
         info = domatch_coord(cat, refcat)
 
         pdb.set_trace()
-        
+
         cat = read_lvd()
         cc = cat[cat['PGC'] == 0]['NAME', 'RA', 'DEC', 'CONFIRMED_REAL', 'REF_STRUCTURE']
         for oo in cc:
@@ -383,7 +388,7 @@ def main():
 
         ned = read_nedlvs()
         I = [indx for indx, gg in enumerate(ned['OBJNAME']) if 'bootes' in gg.lower()]
-        
+
         pdb.set_trace()
 
 

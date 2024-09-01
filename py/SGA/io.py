@@ -99,7 +99,7 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         else:
             galcolumn = 'GALAXY'
             racolumn = 'RA'
-    
+
         objs = np.atleast_1d(sample[galcolumn])
         ras = np.atleast_1d(sample[racolumn])
 
@@ -123,7 +123,7 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
     else:
         return objs, objdirs
 
-    
+
 def read_survey_bricks(survey, brickname=None, custom=False):
     """Read the sample of bricks corresponding to the given the run.
 
@@ -138,7 +138,7 @@ def read_survey_bricks(survey, brickname=None, custom=False):
         for key in _bricks.keys():
             bricks[key.upper()] = _bricks[key]
         return bricks
-    
+
     if custom:
         from SGA.coadds import custom_brickname
         # define a set of custom bricks (for testing purposes)
@@ -241,7 +241,7 @@ def read_hyperleda(rank=0, rows=None):
 
         with open(txtfile, 'r') as F:
             nrows = len(F.readlines())
-    
+
         if version == 'meandata_1718379336':
             header_start = 20
             data_start = 22
@@ -252,7 +252,7 @@ def read_hyperleda(rank=0, rows=None):
             data_start = 24
             data_offset = 7 # 4846383-20
             delimiter = '|'
-        
+
         hyper = Table.read(txtfile, format='ascii.csv', data_start=data_start,
                            data_end=nrows-data_offset, header_start=header_start,
                            delimiter=delimiter)
@@ -263,11 +263,11 @@ def read_hyperleda(rank=0, rows=None):
         [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
 
         hyper['ROW'] = np.arange(len(hyper))
-    
+
         nhyper = len(hyper)
         print(f'Read {nhyper:,d} objects from {hyperfile}')
         assert(nhyper == len(np.unique(hyper['PGC'])))
-    
+
         # There are 87 duplicated object names. The entries are either identical or
         # they differ mildly in their redshift, B-band magnitude, or position
         # angle. We do not attempt to merge or average the data; we simply choose
@@ -280,10 +280,10 @@ def read_hyperleda(rank=0, rows=None):
         #    print()
         hyper = hyper[uindx]
         print(f'Trimming to {len(hyper):,d}/{nhyper:,d} unique objects.')
-    
+
         hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
         hyper['RA'] *= 15. # [decimal degrees]
-        
+
         ## objects with all three of diameter, Bt-mag, and redshift
         #J = np.logical_and.reduce((hyper['LOGD25'].mask, hyper['BT'].mask, hyper['v'].mask))
         #
@@ -300,7 +300,7 @@ def read_hyperleda(rank=0, rows=None):
             names = ','.join(names[:3]) # top 3
             altnames.append(names)
         hyper['ALTNAMES'] = altnames
-        
+
         # re-sort by PGC number
         hyper = hyper[np.argsort(hyper['PGC'])]
 
