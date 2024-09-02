@@ -15,6 +15,45 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 
 
+def parent_datamodel(nobj):
+    """Initialize the data model for the parent sample.
+
+    """
+    # [('PGC', '>i8'), ('OBJNAME', '<U30'), ('ALTNAMES', '<U88'), ('OBJTYPE',
+    # '<U1'), ('RA', '>f8'), ('DEC', '>f8'), ('F_ASTROM', '>i8'), ('TYPE',
+    # '<U4'), ('BT', '>f8'), ('V', '>f8'), ('LOGD25', '>f8'), ('LOGR25',
+    # '>f8'), ('PA', '>f8'), ('ROW', '>i8')])
+
+    parent = Table()
+    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+
+    parent['RA'] = np.zeros(nobj, 'f8')
+    parent['DEC'] = np.zeros(nobj, 'f8')
+    parent['Z'] = np.zeros(nobj, 'f8')
+    parent['PGC'] = np.zeros(nobj, '<i8')
+
+    parent['MAG'] = np.zeros(nobj, 'f4')
+    parent['MAG_REF'] = np.zeros(nobj, '<U7')
+    parent['BAND'] = np.zeros(nobj, '<U1')
+    parent['DIAM'] = np.zeros(nobj, 'f4')
+    parent['DIAM_REF'] = np.zeros(nobj, '<U7')
+    parent['BA'] = np.zeros(nobj, 'f4')
+    parent['BA_REF'] = np.zeros(nobj, '<U7')
+    parent['PA'] = np.zeros(nobj, 'f4')
+    parent['PA_REF'] = np.zeros(nobj, '<U7')
+
+    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8')
+    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8')
+    parent['ROW_LVD'] = np.zeros(nobj, '<i8')
+
+    return parent
+
+
+
 def readone(queryfile):
     """Read one file.
 
@@ -225,19 +264,23 @@ def main():
         _out2 = join(ned_hyperalt, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
         out1 = vstack((_out1, _out2))
 
-        # WINGSJ125256.27-152110.4 is a duplicate:
-        #  As the primary object, it's PGC4777821 - http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=WINGS%20J125256.27-152110.4
-        #  But as the alternate object, it's also [CZ2003]1631C-0295:095=PGC6729485 - http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=%5BCZ2003%5D1631C-0295%3A095
-        # Here, we drop the second object.
+        # NB: WINGSJ125256.27-152110.4 is a duplicate. As the primary object,
+        # it's PGC4777821, but as the alternate object, it's also
+        # [CZ2003]1631C-0295:095 = PGC6729485. Here, we drop the second object.
         _, uindx = np.unique(out1['OBJNAME_HYPERLEDA'], return_index=True)
         out1 = out1[uindx]
         indx_out, indx_hyper = match(out1['ROW_HYPERLEDA'], hyper['ROW'])
         out1['OBJNAME_HYPERLEDA'][indx_out] = hyper['OBJNAME'][indx_hyper]
         out1 = out1[np.argsort(out1['ROW_HYPERLEDA'])]
 
-        # [2] - Try to match more of the HyperLeda sample to NEDLVS using
-        # coordinates. Ignore the crossID errors from above because
-        # many/most/all of those are real and we want to pick them up.
+        basic_out1 = get_basic_geometry(out1, galaxy_column='OBJNAME_NED', verbose=True)
+        import pdb ; pdb.set_trace()
+
+        basic_out1.remove_column('GALAXY')
+
+        # [2] - Match more of the HyperLeda sample to NEDLVS using coordinates.
+        # Ignore the crossID errors from above because many/most/all of those
+        # are real and we want to pick them up via NEDLVS.
         miss_hyper = hyper[~np.isin(hyper['ROW'], out1['ROW_HYPERLEDA'])]
         miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], out1['ROW_NEDLVS'])]
 
@@ -251,23 +294,49 @@ def main():
                       table_names=['HYPERLEDA','NEDLVS'])
         out2 = out2[np.argsort(out2['ROW_HYPERLEDA'])]
 
-        # [3] At this point we have ~290k NEDLVS and 3.3M HyperLeda objects
+        # [3] At this point we have ~288k NEDLVS and 3.26M HyperLeda objects
         # with no match to within 1.5 arcsec.
+
+        # miss_nedlvs - ~199k objects have at least one diameter; among the
+        #   remaining ~90k, 58% of them have objtype='G'
+
+        # miss_hyper - ~1.07M (32%) have a non-zero diameter and no cross-ID
+        #   error.
+
         miss_hyper = hyper[~np.isin(hyper['ROW'], np.hstack((out1['ROW_HYPERLEDA'], out2['ROW_HYPERLEDA'])))]
         miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], np.hstack((out1['ROW_NEDLVS'], out2['ROW_NEDLVS'])))]
 
-        c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
-        c_nedlvs = SkyCoord(ra=miss_nedlvs['RA']*u.deg, dec=miss_nedlvs['DEC']*u.deg)
-        _, sep2d, _ = c_hyper.match_to_catalog_sky(c_nedlvs)
+        #c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
+        #c_nedlvs = SkyCoord(ra=miss_nedlvs['RA']*u.deg, dec=miss_nedlvs['DEC']*u.deg)
+        #_, sep2d, _ = c_hyper.match_to_catalog_sky(c_nedlvs)
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.hist(np.log10(sep2d.arcsec), bins=100, log=True);
+        #plt.savefig('junk.png')
 
-        I = np.where(~np.isnan(miss_hyper['LOGD25']) * (0.1*10**miss_hyper['LOGD25'] > 0.))[0]
+        basic_nedlvs = get_basic_geometry(miss_nedlvs, verbose=True)
+        basic_nedlvs.remove_column('GALAXY')
+        miss_nedlvs.remove_columns(('BASIC_MAG','BASIC_DMAJOR','BASIC_DMINOR','SDSS_R','RC3_B',
+                                    'TWOMASS_K','SDSS_DIAM_R','SDSS_BA_R','SDSS_PA_R','TWOMASS_DIAM_K',
+                                    'TWOMASS_BA_K','TWOMASS_PA_K','RC3_DIAM_B','RC3_BA_B',
+                                    'RC3_PA_B','ESO_DIAM_B','ESO_BA_B','ESO_PA_B'))
+        out_nedlvs = hstack((miss_nedlvs, basic_nedlvs))
 
+        keep = (miss_hyper['LOGD25'] > 0.) * ~np.isin(miss_hyper['ROW'], cross['ROW'])
+        rej = np.logical_or.reduce((np.isnan(miss_hyper['LOGD25']), (miss_hyper['LOGD25'] <= 0.),
+                                    np.isin(miss_hyper['ROW'], cross['ROW'])))
+        out_hyper = miss_hyper[keep]
+        rej_hyper = miss_hyper[rej]
 
+        # [4] write everything out
 
-        import matplotlib.pyplot as plt
-        plt.clf()
-        plt.hist(np.log10(sep2d.arcsec), bins=100, log=True);
-        plt.savefig('junk.png')
+        # out1
+        # out2
+        # miss_nedlvs
+        # out_hyper
+        # rej_hyper
+        N = [len(out1), len(out2), len(miss_nedlvs), len(out_hyper)]
+        print(N, np.sum(N), len(rej_hyper))
 
 
         import pdb ; pdb.set_trace()

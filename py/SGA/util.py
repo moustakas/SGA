@@ -9,81 +9,159 @@ import numpy as np
 
 
 def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
-    """From a NED-query like catalog containing magnitudes, diameters, position
-    angles, and ellipticities, return a "basic" value for each property in a
-    dictionary.
+    """From a catalog containing magnitudes, diameters, position angles, and
+    ellipticities, return a "basic" value for each property.
 
     """
+    from astropy.table import Table
+    from SGA.io import read_lvd
+    cat = read_lvd()
     #import fitsio
-    #from astropy.table import Table
     #cat = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2024/parent/external/NED-NEDLVS_20210922_v2.fits', rows=np.arange(100)))
+    #cat = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2024/parent/external/HyperLeda_meandata_1720804662.fits', rows=np.arange(100)))
     nobj = len(cat)
 
-    if verbose:
-        data = cat['BASIC_MAG','BASIC_DMAJOR','BASIC_DMINOR',
-                   'SDSS_R','RC3_B','TWOMASS_K',
-                   'SDSS_DIAM_R','SDSS_BA_R','SDSS_PA_R',
-                   'TWOMASS_DIAM_K','TWOMASS_BA_K','TWOMASS_PA_K',
-                   'RC3_DIAM_B','RC3_BA_B','RC3_PA_B',
-                   'ESO_DIAM_B','ESO_BA_B','ESO_PA_B']
-
     basic = Table()
-    basic['GALAXY'] = cat[galaxy_column]
+    basic['GALAXY'] = cat[galaxy_column].value
 
-    for prop in ('mag', 'diam', 'ba', 'pa'):
-        if prop == 'mag':
-            refs = ('SDSS', 'TWOMASS', 'RC3')
-            bands = ('R', 'K', 'B')
-        else:
-            refs = ('ESO', 'SDSS', 'TWOMASS', 'RC3')
-            bands = ('B', 'R', 'K', 'B')
-        nref = len(refs)
+    # HyperLeda
+    if 'LOGD25' in cat.columns:
+        ref = 'LEDA'
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            val = np.zeros(nobj, 'f4') - 1.
+            val_ref = np.zeros(nobj, '<U7')
+            val_band = np.zeros(nobj, 'U1')
 
-        val = np.zeros(nobj)
-        val_ref = np.zeros(nobj, '<U7')
-        val_band = np.zeros(nobj, 'U1')
+            match prop:
+                case 'mag':
+                    col = 'BT'
+                    band = 'B'
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                        val_band[I] = band
+                case 'diam':
+                    col = 'LOGD25'
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = 0.1 * 10.**cat[col][I]
+                        val_ref[I] = ref
+                case 'ba':
+                    col = 'LOGR25'
+                    I = ~np.isnan(cat[col]) * (cat[col] != 0.)
+                    if np.sum(I) > 0:
+                        val[I] = 10.**(-cat[col][I])
+                        val_ref[I] = ref
+                case 'pa':
+                    col = 'PA'
+                    I = ~np.isnan(cat[col])
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
 
-        #allI = np.zeros((nobj, nref), bool)
-        for iref, (ref, band) in enumerate(zip(refs, bands)):
-            if prop == 'mag':
-                col = f'{ref}_{band}'
-            else:
-                col = f'{ref}_{prop.upper()}_{band}'
-            I = cat[col] > 0.
-            #allI[:, iref] = I
-
-            if np.sum(I) > 0:
-                val[I] = cat[col][I]
-                val_ref[I] = ref
-                val_band[I] = band
-
-        basic[prop.upper()] = val
-        if prop == 'mag':
-            basic['BAND'] = val_band
-        else:
+            basic[prop.upper()] = val
             basic[f'{prop.upper()}_REF'] = val_ref
+            if prop == 'mag':
+                basic['BAND'] = val_band
+    # LVD
+    elif 'RHALF' in cat.columns:
+        ref = 'LVD'
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            val = np.zeros(nobj, 'f4') - 1.
+            val_ref = np.zeros(nobj, '<U7')
+            val_band = np.zeros(nobj, 'U1')
 
-    # supplement any missing values with the "BASIC" data
-    I = (basic['MAG'] <= 0.) * (cat['BASIC_MAG'] > 0.)
-    if np.any(I):
-        basic['MAG'][I] = cat['BASIC_MAG'][I]
-        basic['BAND'][I] = 'V'
+            #import pdb ; pdb.set_trace()
+            match prop:
+                case 'mag':
+                    col = 'APPARENT_MAGNITUDE_V'
+                    band = 'V'
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                        val_band[I] = band
+                case 'diam':
+                    col = 'RHALF' # [arcmin]
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                case 'ba':
+                    col = 'ELLIPTICITY' # =1-b/a
+                    I = ~np.isnan(cat[col])
+                    if np.sum(I) > 0:
+                        val[I] = 1. - cat[col][I]
+                        val_ref[I] = ref
+                case 'pa':
+                    col = 'POSITION_ANGLE'
+                    I = ~np.isnan(cat[col])
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                        import pdb ; pdb.set_trace()
 
-    I = (basic['DIAM'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.)
-    if np.any(I):
-        basic['DIAM'][I] = cat['BASIC_DMAJOR'][I]
-        basic['DIAM_REF'][I] = 'BASIC'
+            basic[prop.upper()] = val
+            basic[f'{prop.upper()}_REF'] = val_ref
+            if prop == 'mag':
+                basic['BAND'] = val_band
+    # NED
+    else:
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            if prop == 'mag':
+                refs = ('SDSS', 'TWOMASS', 'RC3')
+                bands = ('R', 'K', 'B')
+            else:
+                refs = ('ESO', 'SDSS', 'TWOMASS', 'RC3')
+                bands = ('B', 'R', 'K', 'B')
+            nref = len(refs)
 
-    I = (basic['BA'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.) * (cat['BASIC_DMINOR'] > 0.)
-    if np.any(I):
-        basic['BA'][I] = cat['BASIC_DMINOR'][I] / cat['BASIC_DMAJOR'][I]
-        basic['BA_REF'][I] = 'BASIC'
+            val = np.zeros(nobj, 'f4') - 1.
+            val_ref = np.zeros(nobj, '<U7')
+            val_band = np.zeros(nobj, 'U1')
+
+            #allI = np.zeros((nobj, nref), bool)
+            for iref, (ref, band) in enumerate(zip(refs, bands)):
+                if prop == 'mag':
+                    col = f'{ref}_{band}'
+                else:
+                    col = f'{ref}_{prop.upper()}_{band}'
+                I = cat[col] > 0.
+                #allI[:, iref] = I
+
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+                    val_band[I] = band
+
+            basic[prop.upper()] = val
+            basic[f'{prop.upper()}_REF'] = val_ref
+            if prop == 'mag':
+                basic['BAND'] = val_band
+
+        # supplement any missing values with the "BASIC" data
+        I = (basic['MAG'] <= 0.) * (cat['BASIC_MAG'] > 0.)
+        if np.any(I):
+            basic['MAG'][I] = cat['BASIC_MAG'][I]
+            basic['BAND'][I] = 'V'
+
+        I = (basic['DIAM'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.)
+        if np.any(I):
+            basic['DIAM'][I] = cat['BASIC_DMAJOR'][I]
+            basic['DIAM_REF'][I] = 'BASIC'
+
+        I = (basic['BA'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.) * (cat['BASIC_DMINOR'] > 0.)
+        if np.any(I):
+            basic['BA'][I] = cat['BASIC_DMINOR'][I] / cat['BASIC_DMAJOR'][I]
+            basic['BA_REF'][I] = 'BASIC'
 
     # summarize
     if verbose:
         M = basic['MAG'] > 0.
         D = basic['DIAM'] > 0.
-        print(f'Derived photometry for {np.sum(M):,d}/{nobj:,d} and diameters for {np.sum(D):,d}/{nobj:,d} objects.')
+        print(f'Derived photometry for {np.sum(M):,d}/{nobj:,d} objects and ' + \
+              f'diameters for {np.sum(D):,d}/{nobj:,d} objects.')
 
     return basic
 
