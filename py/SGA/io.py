@@ -319,36 +319,45 @@ def nedfriendly_lvd(old):
     E.g., Canes Venatici I is CVn I dSph
 
     """
-    ned = {'Canes Venatici II': 'CVn II dSph',
-           'Canes Venatici I': 'CVn I dSph',
-           'Draco': 'Draco Dwarf',
-           'Fornax': 'Fornax Dwarf Spheroidal',
-           'Hercules': 'Hercules dSph',
-           'Pegasus IV': 'Pegasus IV Dwarf',
-           'Sagittarius': 'Sagittarius Dwarf Spheroidal',
-           'Sculptor': 'Sculptor Dwarf Elliptical',
-           'Sextans': 'Sextans dSph',
-           'Pegasus V': 'Pegasus V Dwarf', # ='Andromeda XXXIV'
-           'Antlia': 'Antlia Dwarf Spheroidal',
-           'Aquarius': 'Aquarius dIrr',
-           'KK 258': 'ESO 468- G 020',
-           'KKS 3': 'SGC 0224.3-7345',
-           'KKS53': 'PGC1 0046957 NED015', # ??
-           'Pegasus dIrr': 'Pegasus Dwarf',
-           'Phoenix': 'Phoenix Dwarf',
-           'Sagittarius dIrr': 'SagDIG',
-           'Tucana': 'Tucana Dwarf',
-           # not in NED
-           #'Bootes V': '',
-           #'Eridanus IV': '',
-           #'Leo Minor I': '',
-           #'Sextans II': '',
-           #'Ursa Major III': '',
-           #'Virgo II': '',
-           #'Leo K': '',
-           #'Leo M': '',
-           #'Pavo': '',
-           }
+    ned = {
+        'Leo I 09': 'NGC 3368:[CVD2018] DF6',
+        'Sagittarius': 'Sagittarius Dwarf Spheroidal',
+        'Sagittarius dIrr': 'Sagittarius Dwarf IrregularDC',
+        'KKS 3': 'SGC 0224.3-7345',
+
+
+        'Antlia': 'Antlia Dwarf Spheroidal',
+        'Aquarius': 'Aquarius dIrr',
+        'Canes Venatici II': 'CVn II dSph',
+        'Canes Venatici I': 'CVn I dSph',
+        'Cetus': 'Cetus Dwarf Spheroidal', # NED matches Cetus to Cetus II!
+        'Draco': 'Draco Dwarf',
+        'Fornax': 'Fornax Dwarf Spheroidal',
+        'Hercules': 'Hercules dSph',
+        'KK 258': 'ESO 468- G 020',
+        'KKS 3': 'SGC 0224.3-7345',
+        'KKS53': 'PGC1 0046957 NED015', # ??
+        'Pegasus IV': 'Pegasus IV Dwarf',
+        'Pegasus V': 'Pegasus V Dwarf', # ='Andromeda XXXIV'
+        'Pegasus dIrr': 'Pegasus Dwarf',
+        'Phoenix': 'Phoenix Dwarf',
+        'Sagittarius': 'Sagittarius Dwarf Spheroidal',
+        'Sculptor': 'Sculptor Dwarf Elliptical',
+        'Sextans': 'Sextans dSph',
+        'Sagittarius dIrr': 'SagDIG',
+        'Tucana': 'Tucana Dwarf',
+        # not in NED
+        #'Bedin 1': '',
+        #'Bootes V': '',
+        #'Eridanus IV': '',
+        #'Leo Minor I': '',
+        #'Sextans II': '',
+        #'Ursa Major III': '',
+        #'Virgo II': '',
+        #'Leo K': '',
+        #'Leo M': '',
+        #'Pavo': '',
+    }
 
     new = old.copy()
 
@@ -362,7 +371,9 @@ def nedfriendly_lvd(old):
 
 
 def version_lvd():
-    return 'dwarf-all-b685634'
+    #ver = 'dwarf-all-b685634'
+    ver = '0e7f2e4'
+    return ver
 
 
 def read_lvd(rank=0, rows=None):
@@ -371,7 +382,32 @@ def read_lvd(rank=0, rows=None):
     """
     version = version_lvd()
 
+    # combine the dwarf-all and dwarf-local-field-distant files
     lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-{version}.fits')
+    if not os.path.isfile(lvdfile):
+        from astropy.table import vstack
+        allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-dwarf-all-{version}.csv')
+        disfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-dwarf-local-field-distant-{version}.csv')
+        dall = Table.read(allfile)
+        ddis = Table.read(disfile)
+        for col in ddis.colnames:
+            ddis[col] = ddis[col].astype(dall[col].dtype)
+        dall['tablename'] = 'all'
+        ddis['tablename'] = 'local-field-distant'
+        # typos
+        dall['name'][dall['name'] == 'KKS53'] = 'KKS 53'
+        for obj in ['KKs 51', 'KKs 54', 'KKs 55', 'KKs 57', 'KKs 58']:
+            I = np.where(ddis['name'] == obj)[0]
+            ddis['name'][I] = obj.upper()
+        lvd = vstack((dall, ddis))
+
+        # drop unconfirmed systems
+        print(f'Rank {rank:03d}: Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
+        lvd = lvd[lvd['confirmed_real'] == 1]
+        lvd.remove_columns(['key', 'confirmed_real'])
+        lvd.write(lvdfile, overwrite=True)
+
+
     F = fitsio.FITS(lvdfile)
     row = np.arange(F[1].get_nrows())
     if rows is not None:
@@ -384,6 +420,7 @@ def read_lvd(rank=0, rows=None):
     [lvd.rename_column(col, col.upper()) for col in lvd.colnames]
 
     lvd.rename_column('NAME', 'OBJNAME')
+    lvd = lvd[np.argsort(lvd['OBJNAME'])]
 
     # add PGC numbers
     # 0 = not in HyperLeda; -1 not checked yet
@@ -400,113 +437,280 @@ def read_lvd(rank=0, rows=None):
     # PGC2801063 = KKR73
     # PGC57522 = KKR23
     pgc = {
-        # north
-        'Bootes IV': 0, 
-        'Canes Venatici II': 4713558, 
-        'Draco': 60095, 
-        'Draco II': 0, 
-        'Ursa Major I': 4713554, 
-        'Ursa Major II': 4713555, 
-        'Ursa Minor': 54074, 
-        'Willman 1': 4713556, 
-        'M 32': 2555, 
-        'NGC 205': 2429, 
-        'DDO 44': 21302, 
-        'DDO 99': 37050, 
-        'DDO 113': 39145, 
-        'DDO 125': 40904, 
-        'DDO 147': 43129, 
-        'DDO 190': 51472, 
-        'KKR 25': 2801026, 
-        'KKR 3': 166185,
-        'Leo A': 28868,  # =Leo 3
-        'NGC 4163': 38881, 
-        'NGC 4190': 39023, 
-        'NGC 4214': 39225, 
-        'UGC 4879': 26142, 
-        'UGC 8508': 47495,
-        # south
+        'AGC749235': 5059199,
+        'AM 1320-230': 0,
+        'Andromeda I': 2666,
+        'Andromeda II': 4601,
+        'Andromeda III': 2121,
+        'Andromeda IV': 2544,
+        'Andromeda IX': 4689222,
+        'Andromeda V': 3097824,
+        'Andromeda VI': 2807158,
+        'Andromeda VII': 2807155,
+        'Andromeda X': 5056921,
+        'Andromeda XI': 5056923,
+        'Andromeda XII': 5056924,
+        'Andromeda XIII': 5056925,
+        'Andromeda XIV': 5056922,
+        'Andromeda XIX': 5056919,
+        'Andromeda XV': 5056926,
+        'Andromeda XVI': 5056927,
+        'Andromeda XVII': 4608690,
+        'Andromeda XVIII': 5056918,
+        'Andromeda XX': 5056920,
+        'Andromeda XXI': 5057231,
+        'Andromeda XXII': 5057232,
+        'Andromeda XXIII': 5057226,
+        'Andromeda XXIV': 5057227,
+        'Andromeda XXIX': 5060430,
+        'Andromeda XXV': 5057228,
+        'Andromeda XXVI': 5057229,
+        'Andromeda XXVII': 5057230,
+        'Andromeda XXVIII': 5060429,
+        'Antlia': 29194,
+        'Antlia B': 5098252,
+        'Antlia II': 6775392,
+        'Aquarius': 65367,
         'Aquarius II': 5953206,
+        'BK5N': 29231,
+        'Bedin 1': 0,
         'Bootes I': 4713553,
         'Bootes II': 4713552,
         'Bootes III': 4713562,
+        'Bootes IV': 0,
         'Bootes V': 0,
         'Canes Venatici I': 4689223,
+        'Canes Venatici II': 4713558,
+        'Carina': 19441,
+        'Carina II': 0,
+        'Carina III': 0,
+        'Cassiopeia II': 5065056,
+        'Cassiopeia III': 5065678,
+        'CenA-MM-Dw1': 5072213,
+        'CenA-MM-Dw2': 5072214,
+        'CenA-MM-Dw3': 5509262,
+        'CenA-MM-Dw4': 5509263,
+        'CenA-MM-Dw5': 5509264,
+        'CenA-MM-Dw6': 5509265,
+        'CenA-MM-Dw7': 5509266,
+        'Centaurus I': 0,
+        'Cetus': 3097691,
         'Cetus II': 6740632,
-        'Cetus III': 6726344,
         'Columba I': 6740626,
         'Coma Berenices': 0,
+        'Corvus A': 0,
+        'Crater II': 5742923,
+        'DDO 113': 39145,
+        'DDO 125': 40904,
+        'DDO 147': 43129,
+        'DDO 190': 51472,
+        'DDO 44': 21302,
+        'DDO 6': 2902,
+        'DDO 99': 37050,
+        'Donatiello III': 0,
+        'Donatiello IV': 0,
+        'Draco': 60095,
+        'Draco II': 0,
+        'ESO 006-001': 23344,
+        'ESO 269-066': 45916,
+        'ESO 274-001': 54392,
+        'ESO 294-G010': 1641,
+        'ESO 325-011': 48738,
+        'ESO 381-018': 42936,
+        'ESO 381-020': 43048,
+        'ESO 383-087': 49050,
+        'ESO 384-016': 49615,
+        'ESO 410-G005': 1038,
+        'ESO 443-009': 43978,
+        'ESO 444-084': 48111,
+        'ESO 540-032': 2933,
         'Eridanus II': 5074553,
+        'Eridanus IV': 0,
+        'F8D1': 3097827,
+        'FM1': 0,
         'Fornax': 10074,
+        'GALFA Dw3': 5072714,
+        'GALFA Dw4': 5072715,
+        'GR 8': 44491,
         'Grus I': 5074558,
         'Grus II': 6740630,
+        'HIDEEP J1337-3320': 677373,
+        'HIPASS J1131-31': 5060432,
+        'HIPASS J1337-39': 592761,
+        'HIPASS J1348-37': 4614882,
         'Hercules': 4713560,
+        'Holm IV': 49448,
         'Horologium I': 5074554,
         'Horologium II': 5092747,
+        'Hydra II': 5074546,
+        'Hydrus I': 0,
+        'IC 10': 1305,
+        'IC 1613': 3844,
+        'IC 3104': 39573,
+        'IC 4247': 47073,
+        'IC 4316': 48368,
+        'IC 4662': 60849,
+        'IC 5152': 67908,
+        'IKN': 4689195,
+        'KDG 2': 2881,
+        'KDG 61': 28731,
+        'KDG 64': 29388,
+        'KK 182': 166152,
+        'KK 189': 166158,
+        'KK 195': 166163,
+        'KK 196': 46663,
+        'KK 197': 46680,
+        'KK 200': 46885,
+        'KK 203': 166167,
+        'KK 208': 166170,
+        'KK 211': 48515,
+        'KK 213': 166172,
+        'KK 218': 166176,
+        'KK 221': 166179,
+        'KK 258': 69468,
+        'KKH 22': 2807114,
+        'KKH 86': 2807150,
+        'KKH 98': 2807157,
+        'KKR 25': 2801026,
+        'KKR 3': 166185,
+        'KKS 3': 9140,
+        'KKS 53': 2815820,
+        'KKS 51': 2815819,
+        'KKS 54': 2815821,
+        'KKS 55': 2815822,
+        'KKS 57': 2815823,
+        'KKS 58': 2815824,
+        'LGS 3': 3792,
+        'LMC': 17223,
+        'LV J0055-2310': 6740710,
+        'LV J1157+5638': 2543081,
+        'LV J1157+5638 sat': 6740587,
+        'LV J1228+4358': 5057024,
+        'Lacerta I': 5065677,
+        'Leo A': 28868,  # =Leo 3
         'Leo I': 29488,
+        'Leo I 09': 4689210,
         'Leo II': 34176, # = Leo B
         'Leo IV': 4713561,
-        'Leo V': 4713563,
+        'Leo K': 0,
+        'Leo M': 0,
         'Leo Minor I': 0,
+        'Leo P': 5065058,
+        'Leo T': 4713564,
+        'Leo V': 4713563,
+        'Leo VI': 0,
+        'M 32': 2555,
+        'M101 Dw9': 0,
+        'M101 DwA': 5067392,
+        'M101-DF1': 5067385,
+        'M101-DF2': 5067386,
+        'M101-DF3': 5067387,
+        'MADCASH-1': 0,
+        'MADCASH-2': 0,
+        'MCG-04-31-038': 45628,
+        'NGC 147': 2004,
+        'NGC 1560': 15488,
+        'NGC 185': 2329,
+        'NGC 205': 2429,
+        'NGC 247': 2758,
+        'NGC 300': 3238,
+        'NGC 3109': 29128,
+        'NGC 404': 4126,
+        'NGC 4163': 38881,
+        'NGC 4190': 39023,
+        'NGC 4214': 39225,
+        'NGC 4449': 40973,
+        'NGC 5011C': 45917,
+        'NGC 5264': 48467,
+        'NGC 5474': 50216,
+        'NGC 5477': 50262,
+        'NGC 55': 1014,
+        'NGC 5585': 51210,
+        'NGC 6822': 63616,
+        'Pavo': 0,
         'Pegasus III': 5074547,
         'Pegasus IV': 0,
+        'Pegasus V': 0,
+        'Pegasus W': 0, # in NED
+        'Pegasus dIrr': 71538,
+        'Perseus I': 5067061,
+        'Phoenix': 6830,
         'Phoenix II': 5074556,
         'Pictor I': 0,
+        'Pictor II': 6657033,
+        'Pisces A': 5072710,
+        'Pisces B': 5072711,
         'Pisces II': 5056949,
+        'Pisces VII': 0,
         'Reticulum II': 5074552,
         'Reticulum III': 6740628,
+        'SMC': 3085,
+        'Sagittarius': 4689212,
+        'Sagittarius dIrr': 63287,
+        'Scl-MM-Dw1': 5067869,
+        'Scl-MM-Dw2': 5478807,
+        'Scl-MM-Dw3': 0,
+        'Scl-MM-Dw4': 0,
+        'Scl-MM-Dw5': 0,
         'Sculptor': 3589,
+        'Sculptor-dE1': 0,
         'Segue 1': 4713559,
         'Segue 2': 4713565,
         'Sextans': 0,
+        'Sextans A': 29653,
+        'Sextans B': 28913,
         'Sextans II': 0,
+        'Triangulum II': 5074545,
+        'Tucana': 69519,
+        'Tucana B': 0, # = SMDG J2247005-582429
         'Tucana II': 5074560,
         'Tucana III': 6657034,
         'Tucana IV': 6740629,
         'Tucana V': 6740631,
+        'UGC 4879': 26142,
+        'UGC 5497': 29735,
+        'UGC 8508': 47495,
+        'UGC 8882': 49636,
+        'UGC 9128': 50961,
+        'UGC 9405': 5146,
+        'UGCA 365': 48029,
+        'UGCA 86': 14241,
+        'UKS 2323-326': 71431,
+        'Ursa Major I': 4713554,
+        'Ursa Major II': 4713555,
         'Ursa Major III': 0, # discovered in 2024
+        'Ursa Minor': 54074,
         'Virgo I': 6657032,
         'Virgo II': 0,
-        'Virgo III': 0,
-        'Andromeda II': 4601,
-        'Andromeda VI': 2807158,
-        'Andromeda XIII': 5056925,
-        'Andromeda XIV': 5056922,
-        'Andromeda XVI': 5056927,
-        'Andromeda XXII': 5057232,
-        'Andromeda XXVIII': 5060429,
-        'Andromeda XXIX': 5060430,
-        'LGS 3': 3792,
-        'Pegasus V': 0,
-        'Pisces VII': 0,
-        'AGC749235': 5059199,
-        'Antlia': 29194,
-        'Antlia B': 5098252,
-        'Cetus': 3097691,
-        'ESO 294-G010': 1641,
-        'ESO 410-G005': 1038,
-        'GR 8': 44491,
-        'IC 1613': 3844,
-        'IC 5152': 67908,
-        'KKH 86': 2807150,
-        'Leo K': 0,
-        'Leo M': 0,
-        'Leo P': 5065058,
-        'Leo T': 4713564,
-        'NGC 55': 1014,
-        'NGC 55-dw1': 0,
-        'NGC 300': 3238,
-        'NGC 3109': 29128,
-        'Pegasus dIrr': 71538,
-        'Pegasus W': 0, # in NED
-        'Phoenix': 6830,
-        'Sextans A': 29653,
-        'Sextans B': 28913,
-        'Tucana': 69519,
-        'Tucana B': 0, # = SMDG J2247005-582429
-        'UGC 9128': 50961,
-        'Eridanus IV': 0,
-        'Pavo': 0,
+        'WLM': 143,
+        'Willman 1': 4713556,
+        'd0926+70': 0,
+        'd0934+70': 0,
+        'd0939+71': 0,
+        'd0944+69': 0,
+        'd0944+71': 0,
+        'd0955+70': 0,
+        'd0958+66': 0,
+        'd0959+68': 0,
+        'd1006+67': 0,
+        'd1014+68': 0,
+        'd1015+69': 0,
+        'd1028+70': 0,
+        'd1041+70': 0,
+        'dw0036m2828': 0,
+        'dw1046+1244': 0,
+        'dw1322-39': 0,
+        'dw1323-40a': 0,
+        'dw1323-40b': 0,
+        'dw1329-45': 0,
+        'dw1335-29': 0,
+        'dw1336-44': 0,
+        'dw1340-30': 0,
+        'dw1341-43': 0,
+        'dw1342-43': 0,
+        #'Cetus III': 6726344,
+        #'Virgo III': 0,
+        #'NGC 55-dw1': 0,
         }
 
     for key in pgc.keys():
@@ -515,10 +719,6 @@ def read_lvd(rank=0, rows=None):
             #raise ValueError(f'Error in galaxy name {key}')
             continue
         lvd['PGC'][I] = pgc[key]
-
-    # drop unconfirmed systems
-    lvd = lvd[lvd['CONFIRMED_REAL']]
-    lvd.remove_columns(['KEY', 'CONFIRMED_REAL'])
 
     lvd['GALAXY'] = lvd['OBJNAME']
 

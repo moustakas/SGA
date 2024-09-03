@@ -14,8 +14,8 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
 
     """
     from astropy.table import Table
-    from SGA.io import read_lvd
-    cat = read_lvd()
+    #from SGA.io import read_lvd
+    #cat = read_lvd()
     #import fitsio
     #cat = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2024/parent/external/NED-NEDLVS_20210922_v2.fits', rows=np.arange(100)))
     #cat = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2024/parent/external/HyperLeda_meandata_1720804662.fits', rows=np.arange(100)))
@@ -28,7 +28,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     if 'LOGD25' in cat.columns:
         ref = 'LEDA'
         for prop in ('mag', 'diam', 'ba', 'pa'):
-            val = np.zeros(nobj, 'f4') - 1.
+            val = np.zeros(nobj, 'f4') - 99.
             val_ref = np.zeros(nobj, '<U7')
             val_band = np.zeros(nobj, 'U1')
 
@@ -68,7 +68,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     elif 'RHALF' in cat.columns:
         ref = 'LVD'
         for prop in ('mag', 'diam', 'ba', 'pa'):
-            val = np.zeros(nobj, 'f4') - 1.
+            val = np.zeros(nobj, 'f4') - 99.
             val_ref = np.zeros(nobj, '<U7')
             val_band = np.zeros(nobj, 'U1')
 
@@ -98,9 +98,8 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     col = 'POSITION_ANGLE'
                     I = ~np.isnan(cat[col])
                     if np.sum(I) > 0:
-                        val[I] = cat[col][I]
+                        val[I] = cat[col][I] % 180 # put in the range [0, 180]
                         val_ref[I] = ref
-                        import pdb ; pdb.set_trace()
 
             basic[prop.upper()] = val
             basic[f'{prop.upper()}_REF'] = val_ref
@@ -117,7 +116,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                 bands = ('B', 'R', 'K', 'B')
             nref = len(refs)
 
-            val = np.zeros(nobj, 'f4') - 1.
+            val = np.zeros(nobj, 'f4') - 99.
             val_ref = np.zeros(nobj, '<U7')
             val_band = np.zeros(nobj, 'U1')
 
@@ -247,7 +246,7 @@ def match(A, B, check_for_dups=True):
             msg.append("Array B has {} duplicates".format(n_Bdups))
         if len(msg) > 0:
             msg = "; ".join(msg)
-            log.error(msg)
+            print(msg)
             raise ValueError(msg)
 
     # AR mask equivalent to np.in1d(A, B) for unique elements.

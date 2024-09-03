@@ -19,36 +19,46 @@ def parent_datamodel(nobj):
     """Initialize the data model for the parent sample.
 
     """
-    # [('PGC', '>i8'), ('OBJNAME', '<U30'), ('ALTNAMES', '<U88'), ('OBJTYPE',
-    # '<U1'), ('RA', '>f8'), ('DEC', '>f8'), ('F_ASTROM', '>i8'), ('TYPE',
-    # '<U4'), ('BT', '>f8'), ('V', '>f8'), ('LOGD25', '>f8'), ('LOGR25',
-    # '>f8'), ('PA', '>f8'), ('ROW', '>i8')])
-
     parent = Table()
-    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    #parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
     parent['OBJTYPE'] = np.zeros(nobj, '<U6')
 
-    parent['RA'] = np.zeros(nobj, 'f8')
-    parent['DEC'] = np.zeros(nobj, 'f8')
-    parent['Z'] = np.zeros(nobj, 'f8')
-    parent['PGC'] = np.zeros(nobj, '<i8')
+    #parent['RA'] = np.zeros(nobj, 'f8') -99.
+    #parent['DEC'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
 
-    parent['MAG'] = np.zeros(nobj, 'f4')
+    #parent['Z'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['PGC'] = np.zeros(nobj, '<i8') -99.
+
+    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
+
+    parent['MAG'] = np.zeros(nobj, 'f4') -99.
     parent['MAG_REF'] = np.zeros(nobj, '<U7')
     parent['BAND'] = np.zeros(nobj, '<U1')
-    parent['DIAM'] = np.zeros(nobj, 'f4')
+    parent['DIAM'] = np.zeros(nobj, 'f4') -99.
     parent['DIAM_REF'] = np.zeros(nobj, '<U7')
-    parent['BA'] = np.zeros(nobj, 'f4')
+    parent['BA'] = np.zeros(nobj, 'f4') -99.
     parent['BA_REF'] = np.zeros(nobj, '<U7')
-    parent['PA'] = np.zeros(nobj, 'f4')
+    parent['PA'] = np.zeros(nobj, 'f4') -99.
     parent['PA_REF'] = np.zeros(nobj, '<U7')
 
-    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8')
-    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8')
-    parent['ROW_LVD'] = np.zeros(nobj, '<i8')
+    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
 
     return parent
 
@@ -232,68 +242,171 @@ def main():
             print(f'Read {len(data):,d} objects from {datafile}')
             return data
 
-        hyper = read_hyperleda()
-        nedlvs = read_nedlvs()
         lvd = read_lvd()
+        nedlvs = read_nedlvs()
+        hyper = read_hyperleda()
 
         ned_lvd = readit('LVD', version_lvd())
         ned_nedlvs = readit('NEDLVS', version_nedlvs())
-        ned_hyper = readit('HyperLeda', version_hyperleda())
-        ned_hyperalt = readit('HyperLeda-altname', f'{version_hyperleda()}-altname')
+        ned_hyper = vstack((readit('HyperLeda', version_hyperleda()),
+                            readit('HyperLeda-altname', f'{version_hyperleda()}-altname')))
         #assert(np.all(nedlvs['OBJNAME'] == nedlvs['OBJNAME_NED']))
         #assert(len(nedlvs) == len(np.unique(nedlvs['OBJNAME_NED'])))
 
-        # [1] - NED flags the following objects as duplicates and most of them
-        # indeed appear to be errors in HyperLeda cross-identification. Remove
-        # them here but deal with them later.
+        # remove the NED-matched sources
+        lvd = lvd[~np.isin(lvd['ROW'], ned_lvd['ROW'])] # =8
+        hyper = hyper[~np.isin(hyper['ROW'], ned_hyper['ROW'])] # =1.1M
+        nedlvs = nedlvs[~np.isin(nedlvs['ROW'], ned_nedlvs['ROW'])] # =135
+
+        for cat in (ned_lvd, ned_nedlvs, ned_hyper):
+            nobj = len(cat)
+            for col in ['OBJNAME', 'OBJNAME_NED', 'ROW']:
+                try:
+                    assert(len(np.unique(cat[col])) == nobj)
+                except:
+                    rr, cc = np.unique(cat[col], return_counts=True)
+                    print(rr[cc>1])
+
+                    import pdb ; pdb.set_trace()
+
+        # [1] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
+
+        # However, we have to deal with duplicates. NED flags the following
+        # objects as duplicates and most of them indeed appear to be errors in
+        # HyperLeda cross-identification. Remove them here but deal with them
+        # later.
+        #
+        # E.g., WINGSJ125256.27-152110.4 is a duplicate. As the primary object,
+        # it's PGC4777821, but as the alternate object, it's also
+        # [CZ2003]1631C-0295:095 = PGC6729485.
         warn = ['WARNING' in objnote for objnote in ned_hyper['OBJECT_NOTE']]
+
+        import pdb ; pdb.set_trace()
+
         warnalt = ['WARNING' in objnote for objnote in ned_hyperalt['OBJECT_NOTE']]
         cross = vstack((ned_hyper[warn], ned_hyperalt[warnalt]))
-        crossfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version_hyperleda()}-crossID-errors.fits')
-        cross.write(crossfile, overwrite=True)
-        print(f'Wrote {len(cross):,d} objects to {crossfile}')
+        cross['NOTE'] = 'NED-duplicate'
 
         ned_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], cross['ROW'])]
         ned_hyperalt = ned_hyperalt[~np.isin(ned_hyperalt['ROW'], cross['ROW'])]
 
-        # [2] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
         keys = np.array(ned_nedlvs.colnames)
         keys = keys[~np.isin(keys, ['OBJNAME', 'ROW'])]
 
         _out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
         _out2 = join(ned_hyperalt, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
         out1 = vstack((_out1, _out2))
+        out1.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
 
-        # NB: WINGSJ125256.27-152110.4 is a duplicate. As the primary object,
-        # it's PGC4777821, but as the alternate object, it's also
-        # [CZ2003]1631C-0295:095 = PGC6729485. Here, we drop the second object.
-        _, uindx = np.unique(out1['OBJNAME_HYPERLEDA'], return_index=True)
-        out1 = out1[uindx]
+        # The 'warn{alt}' arrays, above, pick up duplicates / cross-ID errors
+        # that happened to appear on the same NED query. Identify the rest of
+        # them here.
+        rr, cc = np.unique(out1['ROW_NEDLVS'], return_counts=True)
+        dd = out1[np.isin(out1['ROW_NEDLVS'], rr[cc>1])]
+        dd[np.argsort(dd['OBJNAME_NED'])]
+        toss = []
+        for objname in np.unique(dd['OBJNAME_NED']):
+            I = np.where(out1['OBJNAME_NED'] == objname)[0]
+            I = I[np.argsort(out1['ROW_HYPERLEDA'][I])]
+            toss.append(I[1:]) # keep the zeroth match
+        toss = np.hstack(toss)
+
+        _cross = vstack((ned_hyper[np.isin(ned_hyper['OBJNAME'], out1['OBJNAME_HYPERLEDA'][toss])],
+                         ned_hyperalt[np.isin(ned_hyperalt['OBJNAME'], out1['OBJNAME_HYPERLEDA'][toss])]))
+        _cross['NOTE'] = 'NED-duplicate'
+        cross = vstack((cross, _cross))
+
+        out1 = out1[np.delete(np.arange(len(out1)), toss)]
+
         indx_out, indx_hyper = match(out1['ROW_HYPERLEDA'], hyper['ROW'])
         out1['OBJNAME_HYPERLEDA'][indx_out] = hyper['OBJNAME'][indx_hyper]
         out1 = out1[np.argsort(out1['ROW_HYPERLEDA'])]
-
         basic_out1 = get_basic_geometry(out1, galaxy_column='OBJNAME_NED', verbose=True)
-        import pdb ; pdb.set_trace()
 
-        basic_out1.remove_column('GALAXY')
+        parent1 = parent_datamodel(len(out1))
+        for col in parent1.columns:
+            if col in out1.columns:
+                parent1[col] = out1[col]
+            if col in basic_out1.columns:
+                parent1[col] = basic_out1[col]
+
+        indx_parent, indx_hyper = match(parent1['ROW_HYPERLEDA'], hyper['ROW'])
+        parent1['RA_HYPERLEDA'][indx_parent] = hyper['RA'][indx_hyper]
+        parent1['DEC_HYPERLEDA'][indx_parent] = hyper['DEC'][indx_hyper]
+        I = np.where(~np.isnan(hyper['V'][indx_hyper]))[0]
+        parent1['Z_HYPERLEDA'][indx_parent[I]] = hyper['V'][indx_hyper[I]] / 2.99e5
+
+        indx_parent, indx_nedlvs = match(parent1['ROW_NEDLVS'], nedlvs['ROW'])
+        parent1['RA_NEDLVS'][indx_parent] = nedlvs['RA'][indx_nedlvs]
+        parent1['DEC_NEDLVS'][indx_parent] = nedlvs['DEC'][indx_nedlvs]
+        I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
+        parent1['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
+
+        for col in ['OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
+            assert(len(np.unique(parent1[col])) == len(parent1))
 
         # [2] - Match more of the HyperLeda sample to NEDLVS using coordinates.
         # Ignore the crossID errors from above because many/most/all of those
         # are real and we want to pick them up via NEDLVS.
-        miss_hyper = hyper[~np.isin(hyper['ROW'], out1['ROW_HYPERLEDA'])]
-        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], out1['ROW_NEDLVS'])]
+        miss_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], parent1['ROW_HYPERLEDA'])]
+        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], parent1['ROW_NEDLVS'])]
+        miss_hyper.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+        miss_nedlvs.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
 
         c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
-        c_nedlvs = SkyCoord(ra=miss_nedlvs['RA']*u.deg, dec=miss_nedlvs['DEC']*u.deg)
+        c_nedlvs = SkyCoord(ra=miss_nedlvs['RA_NED']*u.deg, dec=miss_nedlvs['DEC_NED']*u.deg)
         rad = 1.5 * u.arcsec
         indx_nedlvs, indx_hyper, d2d, _ = c_hyper.search_around_sky(c_nedlvs, rad)
 
-        out2 = hstack((miss_hyper[indx_hyper]['PGC','OBJNAME','ALTNAMES','ROW'],
-                       miss_nedlvs[indx_nedlvs]['OBJNAME','OBJNAME_NED','RA','DEC','ROW']),
-                      table_names=['HYPERLEDA','NEDLVS'])
+        out2 = hstack((miss_hyper[indx_hyper], miss_nedlvs[indx_nedlvs]),
+                      table_names=['HYPERLEDA', 'NEDLVS'])
         out2 = out2[np.argsort(out2['ROW_HYPERLEDA'])]
 
+        rr, cc = np.unique(out2['ROW_NEDLVS'], return_counts=True)
+        dd = out2[np.isin(out2['ROW_NEDLVS'], rr[cc>1])]
+        import pdb ; pdb.set_trace()
+
+        dd = dd[np.argsort(dd['OBJNAME_NED'])]
+
+        toss = []
+        for objname in np.unique(dd['OBJNAME_NED']):
+            I = np.where(out1['OBJNAME_NED'] == objname)[0]
+            I = I[np.argsort(out1['ROW_HYPERLEDA'][I])]
+            toss.append(I[1:]) # keep the zeroth match
+        toss = np.hstack(toss)
+
+        import pdb ; pdb.set_trace()
+
+        basic_out2 = get_basic_geometry(out2, galaxy_column='OBJNAME_NED', verbose=True)
+
+        parent2 = parent_datamodel(len(out2))
+        for col in parent2.columns:
+            if col in out2.columns:
+                parent2[col] = out2[col]
+            if col in basic_out2.columns:
+                parent2[col] = basic_out2[col]
+
+        import pdb ; pdb.set_trace()
+        indx_parent, indx_nedlvs = match(parent2['ROW_NEDLVS'], nedlvs['ROW'])
+        parent2['RA_NEDLVS'][indx_parent] = nedlvs['RA'][indx_nedlvs]
+        parent2['DEC_NEDLVS'][indx_parent] = nedlvs['DEC'][indx_nedlvs]
+        I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
+        parent2['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
+
+        for col in ['OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
+            try:
+                assert(len(np.unique(parent2[col])) == len(parent2))
+            except:
+                import pdb ; pdb.set_trace()
+
+        parent = vstack((parent1, parent2))
+        #del parent1, parent2
+
+        crossfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version_hyperleda()}-crossID-errors.fits')
+        cross.write(crossfile, overwrite=True)
+        print(f'Wrote {len(cross):,d} objects to {crossfile}')
+
+        import pdb ; pdb.set_trace()
         # [3] At this point we have ~288k NEDLVS and 3.26M HyperLeda objects
         # with no match to within 1.5 arcsec.
 
@@ -302,9 +415,7 @@ def main():
 
         # miss_hyper - ~1.07M (32%) have a non-zero diameter and no cross-ID
         #   error.
-
-        miss_hyper = hyper[~np.isin(hyper['ROW'], np.hstack((out1['ROW_HYPERLEDA'], out2['ROW_HYPERLEDA'])))]
-        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], np.hstack((out1['ROW_NEDLVS'], out2['ROW_NEDLVS'])))]
+        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], parent['ROW_NEDLVS'])]
 
         #c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
         #c_nedlvs = SkyCoord(ra=miss_nedlvs['RA']*u.deg, dec=miss_nedlvs['DEC']*u.deg)
@@ -315,18 +426,44 @@ def main():
         #plt.savefig('junk.png')
 
         basic_nedlvs = get_basic_geometry(miss_nedlvs, verbose=True)
-        basic_nedlvs.remove_column('GALAXY')
-        miss_nedlvs.remove_columns(('BASIC_MAG','BASIC_DMAJOR','BASIC_DMINOR','SDSS_R','RC3_B',
-                                    'TWOMASS_K','SDSS_DIAM_R','SDSS_BA_R','SDSS_PA_R','TWOMASS_DIAM_K',
-                                    'TWOMASS_BA_K','TWOMASS_PA_K','RC3_DIAM_B','RC3_BA_B',
-                                    'RC3_PA_B','ESO_DIAM_B','ESO_BA_B','ESO_PA_B'))
-        out_nedlvs = hstack((miss_nedlvs, basic_nedlvs))
+        parent3 = parent_datamodel(len(miss_nedlvs))
+        for col in parent3.columns:
+            if col == 'OBJNAME':
+                continue
+            if col in miss_nedlvs.columns:
+                parent3[col] = miss_nedlvs[col]
+            if col in basic_nedlvs.columns:
+                parent3[col] = basic_nedlvs[col]
+        parent3['OBJNAME_NEDLVS'] = miss_nedlvs['OBJNAME']
+        parent3['RA_NEDLVS'] = miss_nedlvs['RA']
+        parent3['DEC_NEDLVS'] = miss_nedlvs['DEC']
+        parent3['ROW_NEDLVS'] = miss_nedlvs['ROW']
 
+        parent = vstack((parent, parent3))
+
+        import pdb ; pdb.set_trace()
+
+        miss_hyper = hyper[~np.isin(hyper['ROW'], parent['ROW_HYPERLEDA'])]
         keep = (miss_hyper['LOGD25'] > 0.) * ~np.isin(miss_hyper['ROW'], cross['ROW'])
-        rej = np.logical_or.reduce((np.isnan(miss_hyper['LOGD25']), (miss_hyper['LOGD25'] <= 0.),
-                                    np.isin(miss_hyper['ROW'], cross['ROW'])))
-        out_hyper = miss_hyper[keep]
-        rej_hyper = miss_hyper[rej]
+        rej_hyper = miss_hyper[~keep]
+        miss_hyper = miss_hyper[keep]
+
+        basic_hyper = get_basic_geometry(miss_hyper, verbose=True)
+        parent4 = parent_datamodel(len(miss_hyper))
+        for col in parent4.columns:
+            if col == 'OBJNAME':
+                continue
+            if col in miss_hyper.columns:
+                parent4[col] = miss_hyper[col]
+            if col in basic_hyper.columns:
+                parent4[col] = basic_hyper[col]
+        parent4['OBJNAME_HYPERLEDA'] = miss_hyper['OBJNAME']
+        parent4['RA_HYPERLEDA'] = miss_hyper['RA']
+        parent4['DEC_HYPERLEDA'] = miss_hyper['DEC']
+        parent4['ROW_HYPERLEDA'] = miss_hyper['ROW']
+
+
+        import pdb ; pdb.set_trace()
 
         # [4] write everything out
 
@@ -338,8 +475,6 @@ def main():
         N = [len(out1), len(out2), len(miss_nedlvs), len(out_hyper)]
         print(N, np.sum(N), len(rej_hyper))
 
-
-        import pdb ; pdb.set_trace()
 
         return
 
@@ -505,14 +640,17 @@ def main():
             assert(np.all(cat['OBJNAME'] == data['OBJNAME']))
             data['ROW'] = cat['ROW']
 
-            # 1139 objects have NED 'resolve' issues. Throw those out here.
-            diff = data[data['OBJNAME'] != data['OBJNAME_NED']]['OBJNAME', 'OBJNAME_NED', 'OBJECT_NOTE', 'Z']
+            # 135 objects have NED 'resolve' issues (duplicates or not
+            # recognized). Throw those out here.
+            diff = data[data['OBJECT_NOTE'] != '']['OBJNAME', 'OBJNAME_NED', 'OBJECT_NOTE', 'Z']
+            #diff = data[data['OBJNAME'] != data['OBJNAME_NED']]['OBJNAME', 'OBJNAME_NED', 'OBJECT_NOTE', 'Z']
             diff = join(diff, cat['OBJNAME', 'RA', 'DEC', 'Z'], keys='OBJNAME', table_names=['QUERY', 'LVS'])
             #diff[diff['OBJECT_NOTE'] != '']
             diff.write('NEDLVS-resolve-issues.fits', overwrite=True)
 
-            I = np.where(data['OBJNAME'] == data['OBJNAME_NED'])[0]
-            print(f'Keeping {len(I):,d}/{len(data):,d} objects where OBJNAME==OBJNAME_NED')
+            I = np.where(data['OBJECT_NOTE'] == '')[0]
+            #I = np.where(data['OBJNAME'] == data['OBJNAME_NED'])[0]
+            print(f'Keeping {len(I):,d}/{len(data):,d} objects without NED resolve issues.')
             data = data[I]
 
 
