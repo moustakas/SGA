@@ -250,10 +250,14 @@ def main():
         ned_nedlvs = readit('NEDLVS', version_nedlvs())
         ned_hyper = vstack((readit('HyperLeda', version_hyperleda()),
                             readit('HyperLeda-altname', f'{version_hyperleda()}-altname')))
+        nobj_ned_lvd = len(ned_lvd)
+        nobj_ned_nedlvs = len(ned_nedlvs)
+        nobj_ned_hyper = len(ned_hyper)
+        print()
 
         # [1] Preprocess the data.
 
-        # 21 objects are duplicates in ned_nedlvs, apparently because of
+        # ned_nedlvs - 21 objects are duplicates, apparently because of
         # cross-identification problems in NED. Keep just the first one of each
         # occurrance here (=10 unique objects)
         col = 'OBJNAME_NED'
@@ -269,7 +273,20 @@ def main():
         print(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d}  {col} duplicates from ned_nedlvs.')
         ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
 
-        # 1 object (WINGSJ125256.27-152110.4) is a duplicate in ned_hyper. As
+        #from pydl.pydlutils.spheregroup import spheregroup
+        #ingroup, group_mult, firstgroup, nextgroup = spheregroup(ned_nedlvs['RA'], ned_nedlvs['DEC'], 1.5/60.)
+
+        # Toss out non-galaxies in ned_nedlvs. But note:
+        # * Need to make sure the individual members of the GGroup systems are
+        #   in the final parent sample.
+        # https://ned.ipac.caltech.edu/help/ui/nearposn-list_objecttypes?popup=1
+        toss = np.where(np.isin(ned_nedlvs['OBJTYPE'], ['QSO', 'Q_Lens', 'G_Lens', '*', 'Other',
+                                                        'GGroup', 'GPair', 'GTrpl']))[0]
+        print(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} non-galaxy objects from ned_nedlvs.')
+        ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
+        print()
+
+        # ned_hyper - 1 object (WINGSJ125256.27-152110.4) is a duplicate. As
         # the primary object, it's PGC4777821, but as the alternate object,
         # it's also [CZ2003]1631C-0295:095 = PGC6729485. In addition, remove
         # the ~2500 objects not in NED and the ~11k objects resolve to the same
@@ -304,51 +321,51 @@ def main():
         print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} {col} duplicates from ned_hyper.')
         ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
 
-        # [2] Remove the NED-matched sources and verify all's well.
-        lvd = lvd[~np.isin(lvd['ROW'], ned_lvd['ROW'])] # =8
-        hyper = hyper[~np.isin(hyper['ROW'], ned_hyper['ROW'])] # =1.1M
-        nedlvs = nedlvs[~np.isin(nedlvs['ROW'], ned_nedlvs['ROW'])] # =135
+        # Toss out non-galaxies in ned_hyper. But note:
+        # * Need to make sure the individual members of the GGroup systems are
+        #   in the final parent sample.
+        # * Some objects classified as point sources (*) have SDSS redshifts,
+        #   so the classification is wrong (e.g., GAMA743045=SDSSJ141614.97-005648.2)
 
-        for cat in (ned_lvd, ned_nedlvs, ned_hyper):
+        # https://ned.ipac.caltech.edu/help/ui/nearposn-list_objecttypes?popup=1
+        toss = np.where(np.isin(ned_hyper['OBJTYPE'], ['PofG', '!V*', '!PN', '**', 'GClstr', 'WD*',
+                                                       'Red*', '!HII', 'C*', 'PN', '*Ass', 'Blue*',
+                                                       '!**', 'SN', '!*', 'Other', 'SNR', '*Cl',
+                                                       'GGroup', 'GPair', 'GTrpl', 'V*', '*',
+                                                       'HII', 'Nova', 'Neb', 'RfN', '!V*', '!C*',
+                                                       'QSO', 'Q_Lens', 'G_Lens']))[0]
+        print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} non-galaxy objects from ned_hyper.')
+        ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
+        print()
+
+        # check
+        print('After basic cuts:')
+        for name, cat, norig in zip(['ned_lvd', 'ned_nedlvs', 'ned_hyper'],
+                                    [ned_lvd, ned_nedlvs, ned_hyper],
+                                    [nobj_ned_lvd, nobj_ned_nedlvs, nobj_ned_hyper]):
             nobj = len(cat)
+            print(f'{name}: {nobj:,d}/{norig:,d} objects')
             for col in ['OBJNAME', 'OBJNAME_NED', 'ROW']:
                 assert(len(np.unique(cat[col])) == nobj)
                 #rr, cc = np.unique(cat[col], return_counts=True)
                 ##print(rr[cc>1])
                 #bb = cat[np.isin(cat[col], rr[cc>1].value)]
                 #bb = bb[np.argsort(bb[col])]
+        print()
 
-        # [3] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
+        # [2] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
         keys = np.array(ned_nedlvs.colnames)
         keys = keys[~np.isin(keys, ['OBJNAME', 'ROW'])]
 
         out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
         out1.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+        print(f'Matched {len(out1):,d} ned_hyper-ned_nedlvs objects on OBJNAME_NED.')
 
-        # The 'warn{alt}' arrays, above, pick up duplicates / cross-ID errors
-        # that happened to appear on the same NED query. Identify the rest of
-        # them here.
-        rr, cc = np.unique(out1['ROW_NEDLVS'], return_counts=True)
-        dd = out1[np.isin(out1['ROW_NEDLVS'], rr[cc>1])]
-        dd[np.argsort(dd['OBJNAME_NED'])]
-        toss = []
-        for objname in np.unique(dd['OBJNAME_NED']):
-            I = np.where(out1['OBJNAME_NED'] == objname)[0]
-            I = I[np.argsort(out1['ROW_HYPERLEDA'][I])]
-            toss.append(I[1:]) # keep the zeroth match
-        toss = np.hstack(toss)
+        basic_out1 = get_basic_geometry(out1, galaxy_column='OBJNAME_NED', verbose=False)
 
-        _cross = vstack((ned_hyper[np.isin(ned_hyper['OBJNAME'], out1['OBJNAME_HYPERLEDA'][toss])],
-                         ned_hyperalt[np.isin(ned_hyperalt['OBJNAME'], out1['OBJNAME_HYPERLEDA'][toss])]))
-        _cross['NOTE'] = 'NED-duplicate'
-        cross = vstack((cross, _cross))
-
-        out1 = out1[np.delete(np.arange(len(out1)), toss)]
-
-        indx_out, indx_hyper = match(out1['ROW_HYPERLEDA'], hyper['ROW'])
-        out1['OBJNAME_HYPERLEDA'][indx_out] = hyper['OBJNAME'][indx_hyper]
-        out1 = out1[np.argsort(out1['ROW_HYPERLEDA'])]
-        basic_out1 = get_basic_geometry(out1, galaxy_column='OBJNAME_NED', verbose=True)
+        #indx_out, indx_hyper = match(out1['ROW_HYPERLEDA'], hyper['ROW'])
+        #out1['OBJNAME_HYPERLEDA'][indx_out] = hyper['OBJNAME'][indx_hyper]
+        #out1 = out1[np.argsort(out1['ROW_HYPERLEDA'])]
 
         parent1 = parent_datamodel(len(out1))
         for col in parent1.columns:
@@ -369,16 +386,82 @@ def main():
         I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
         parent1['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
 
-        for col in ['OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
+        for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
             assert(len(np.unique(parent1[col])) == len(parent1))
+        print()
+
+        # [2] - Add as many of the remaining ned_hyper objects as possible.
+        miss_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], parent1['ROW_HYPERLEDA'])]
+        miss_hyper.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA'])
+        miss_hyper.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+        print(f'Adding {len(miss_hyper):,d} objects from ned_hyper which did not name-match ned_nedlvs.')
+
+        # Positionally match against ned_nedlvs within 1.5 arcsec. Most of
+        # these appear to be cross-identification errors in either NED and/or
+        # HyperLeda (N~2100). Prefer ned_nedlvs over ned_hyper here. However,
+        # note that multiple ned_nedlvs objects match to the same ned_hyper
+        # object!
+        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], parent1['ROW_NEDLVS'])]
+        miss_nedlvs.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_NEDLVS', 'ROW_NEDLVS'])
+        miss_nedlvs.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+
+        c_hyper = SkyCoord(ra=miss_hyper['RA_NED']*u.deg, dec=miss_hyper['DEC_NED']*u.deg)
+        c_nedlvs = SkyCoord(ra=miss_nedlvs['RA_NED']*u.deg, dec=miss_nedlvs['DEC_NED']*u.deg)
+        rad = 1.5 * u.arcsec
+        indx_nedlvs, indx_hyper, d2d, _ = c_hyper.search_around_sky(c_nedlvs, rad)
+        print(f'Replacing {len(np.unique(indx_hyper)):,d}/{len(miss_hyper):,d} ned_hyper objects ' + \
+              f'with {len(indx_nedlvs):,d} ned_nedlvs objects (note the duplicates in ned_hyper).')
+
+        miss_hyper = miss_hyper[np.delete(np.arange(len(miss_hyper)), indx_hyper)]
+        basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_NED', verbose=False)
+
+        parent2a = parent_datamodel(len(miss_hyper))
+        for col in parent2a.columns:
+            if col in miss_hyper.columns:
+                parent2a[col] = miss_hyper[col]
+            if col in basic_miss_hyper.columns:
+                parent2a[col] = basic_miss_hyper[col]
+
+        indx_parent, indx_hyper = match(parent2a['ROW_HYPERLEDA'], hyper['ROW'])
+        parent2a['RA_HYPERLEDA'][indx_parent] = hyper['RA'][indx_hyper]
+        parent2a['DEC_HYPERLEDA'][indx_parent] = hyper['DEC'][indx_hyper]
+        I = np.where(~np.isnan(hyper['V'][indx_hyper]))[0]
+        parent2a['Z_HYPERLEDA'][indx_parent[I]] = hyper['V'][indx_hyper[I]] / 2.99e5
+
+        miss_nedlvs = miss_nedlvs[indx_nedlvs]
+        basic_miss_nedlvs = get_basic_geometry(miss_nedlvs, galaxy_column='OBJNAME_NED', verbose=False)
+
+        parent2b = parent_datamodel(len(miss_nedlvs))
+        for col in parent2b.columns:
+            if col in miss_nedlvs.columns:
+                parent2b[col] = miss_nedlvs[col]
+            if col in basic_miss_nedlvs.columns:
+                parent2b[col] = basic_miss_nedlvs[col]
+
+        indx_parent, indx_nedlvs = match(parent2b['ROW_NEDLVS'], nedlvs['ROW'])
+        parent2b['RA_NEDLVS'][indx_parent] = nedlvs['RA'][indx_nedlvs]
+        parent2b['DEC_NEDLVS'][indx_parent] = nedlvs['DEC'][indx_nedlvs]
+        I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
+        parent2b['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
+
+        parent2 = vstack((parent2a, parent2b))
+
+        for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
+            try:
+                assert(len(np.unique(parent2[col])) == len(parent2))
+            except:
+                import pdb ; pdb.set_trace()
+
+        import pdb ; pdb.set_trace()
 
         # [2] - Match more of the HyperLeda sample to NEDLVS using coordinates.
         # Ignore the crossID errors from above because many/most/all of those
         # are real and we want to pick them up via NEDLVS.
-        miss_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], parent1['ROW_HYPERLEDA'])]
         miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], parent1['ROW_NEDLVS'])]
-        miss_hyper.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+        miss_nedlvs.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_NEDLVS', 'ROW_NEDLVS'])
         miss_nedlvs.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+
+        import pdb ; pdb.set_trace()
 
         c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
         c_nedlvs = SkyCoord(ra=miss_nedlvs['RA_NED']*u.deg, dec=miss_nedlvs['DEC_NED']*u.deg)
@@ -391,7 +474,6 @@ def main():
 
         rr, cc = np.unique(out2['ROW_NEDLVS'], return_counts=True)
         dd = out2[np.isin(out2['ROW_NEDLVS'], rr[cc>1])]
-        import pdb ; pdb.set_trace()
 
         dd = dd[np.argsort(dd['OBJNAME_NED'])]
 
