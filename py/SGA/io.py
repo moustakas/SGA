@@ -320,46 +320,108 @@ def nedfriendly_lvd(old):
 
     """
     ned = {
-        'Leo I 09': 'NGC 3368:[CVD2018] DF6',
-        'Sagittarius': 'Sagittarius Dwarf Spheroidal',
-        'Sagittarius dIrr': 'Sagittarius Dwarf IrregularDC',
-        'KKS 3': 'SGC 0224.3-7345',
-
-
         'Antlia': 'Antlia Dwarf Spheroidal',
         'Aquarius': 'Aquarius dIrr',
-        'Canes Venatici II': 'CVn II dSph',
         'Canes Venatici I': 'CVn I dSph',
+        'Canes Venatici II': 'CVn II dSph',
+        'CenA-MM-Dw1': 'CenA-Dw-133013-415321',
+        'CenA-MM-Dw2': 'CenA-Dw-132956-415220',
+        'CenA-MM-Dw3': 'Centaurus A:[CSS2016] MM-Dw03',
+        'CenA-MM-Dw4': 'CenA-Dw-132302-414705',
+        'CenA-MM-Dw5': 'CenA-Dw-131952-415938',
+        'CenA-MM-Dw6': 'CenA-Dw-132557-410538',
+        'CenA-MM-Dw7': 'CenA-Dw-132628-433318',
         'Cetus': 'Cetus Dwarf Spheroidal', # NED matches Cetus to Cetus II!
+        'Donatiello III': '[TDW2021] 300548367', # ???
         'Draco': 'Draco Dwarf',
+        'FM1': 'F06D1',
         'Fornax': 'Fornax Dwarf Spheroidal',
         'Hercules': 'Hercules dSph',
+        'HIDEEP J1337-3320': 'GALEXASC J133700.38-332144.3',
+        'KK 182': 'PGC1 0166152 NED001',
+        'KK 189': 'Centaurus A-dE1',
+        'KK 195': 'GALEXASC J132108.25-313149.7',
+        'KK 196': 'AM 1318-444',
+        'KK 200': 'AM 1321-304',
+        'KK 203': 'AM 1324-450',
+        'KK 208': 'PGC1 0048082 NED002',
+        'KK 211': 'AM 1339-445',
+        'KK 218': 'Centaurus A-dE4',
+        'KK 221': 'PGC1 0046957 NED025',
         'KK 258': 'ESO 468- G 020',
         'KKS 3': 'SGC 0224.3-7345',
-        'KKS53': 'PGC1 0046957 NED015', # ??
+        'KKS 51': 'WISEA J124421.29-425620.9',
+        'KKS 53': 'PGC1 0046957 NED015',
+        'KKS 54': 'Centaurus A-dE2',
+        'KKS 55': 'PGC1 0046957 NED024',
+        'KKS 57': 'PGC1 0046957 NED023',
+        'KKS 58': 'Centaurus A-dE3',
+        'Leo I 09': 'NGC 3368:[CVD2018] DF6',
+        'M101-DF1': 'PGC1 0050063 NED008',
+        'M101-DF2': 'PGC1 0050063 NED007',
+        'M101-DF3': 'PGC1 0050063 NED009',
+        'M101 Dw9': 'Messier 101:[BSC2017] Dw 09',
         'Pegasus IV': 'Pegasus IV Dwarf',
         'Pegasus V': 'Pegasus V Dwarf', # ='Andromeda XXXIV'
         'Pegasus dIrr': 'Pegasus Dwarf',
         'Phoenix': 'Phoenix Dwarf',
         'Sagittarius': 'Sagittarius Dwarf Spheroidal',
+        'Sagittarius dIrr': 'Sagittarius Dwarf Irregular',
         'Sculptor': 'Sculptor Dwarf Elliptical',
         'Sextans': 'Sextans dSph',
-        'Sagittarius dIrr': 'SagDIG',
         'Tucana': 'Tucana Dwarf',
+        'd0926+70': 'GALEXMSC J092627.92+703027.0',
+        'd0939+71': 'PGC1 0028630 NED038',
+        'd0955+70': 'PGC1 0028630 NED029',
+        'd1028+70': 'WISEA J102839.75+701401.6',
+        'd1041+70': 'PGC1 0028630 NED037',
+        'dw1335-29': '[MJB2015] dw J1335-29',
+        'd0934+70': 'PGC1 0028630 NED026',
+        'd0944+69': 'PGC1 0028630 NED036',
+        'd0944+71': 'GALEXMSC J094435.06+712857.6',
+        'd0958+66': 'KUG 0945+670', # could also be GALEXASC J095848.78+665057.9??
+        'd0959+68': 'PGC1 0028630 NED031',
+        'd1006+67': 'PGC1 0028630 NED030',
+        'd1014+68': 'WISEA J101456.37+684529.2',
+        'd1015+69': 'PGC1 0028630 NED035',
+        'dw1323-40a': '[CGG2021] dw J1323-40',
+        'dw1329-45': 'Cen A:[MJP2016] dw1329-45',
+        'dw1336-44': 'Cen A:[MJP2016] dw1336-44',
+        'dw1340-30': '[KKM2018a] dw J1340-30',
+        'dw1341-43': 'Cen A:[MJP2016] dw1341-43',
+        'dw1342-43': 'Cen A:[MJP2016] dw1342-43',
+        'dw1322-39': 'Cen A:[MJP2016] dw1322-39',
+        'dw0036m2828': '[CGB2022] dw J0036-2828',
         # not in NED
         #'Bedin 1': '',
         #'Bootes V': '',
+        #'Corvus A': '',
+        #'Donatiello IV': '',
         #'Eridanus IV': '',
+        #'Leo K': '',
+        #'Leo M': '',
         #'Leo Minor I': '',
+        #'Leo IV': '',
+        #'M101 DwA': '',
+        #'MADCASH-1': '',
+        #'MADCASH-2': '',
+        #'Pavo': '',
         #'Sextans II': '',
         #'Ursa Major III': '',
         #'Virgo II': '',
-        #'Leo K': '',
-        #'Leo M': '',
-        #'Pavo': '',
+        #'dw1323-40b': '[CGG2021] dw J1323-40b', # NED incorrectly cross-identifies this with [CGG2021] dw J1323-40
     }
 
     new = old.copy()
+
+    maxlen = 0
+    for obj in ned.keys():
+        maxlen = np.max((maxlen, len(ned[obj])))
+    new = new.astype(f'<U{maxlen}')
+
+    #new['OBJNAME2'] = np.zeros(len(old), f'<U{maxlen}')
+    #new['OBJNAME'] = new['OBJNAME2']
+    #new.remove_column('OBJNAME2')
 
     I = np.where(np.isin(old, list(ned.keys())))[0]
     if len(I) > 0:
@@ -684,26 +746,26 @@ def read_lvd(rank=0, rows=None):
         'Virgo II': 0,
         'WLM': 143,
         'Willman 1': 4713556,
-        'd0926+70': 0,
-        'd0934+70': 0,
-        'd0939+71': 0,
-        'd0944+69': 0,
-        'd0944+71': 0,
-        'd0955+70': 0,
-        'd0958+66': 0,
-        'd0959+68': 0,
-        'd1006+67': 0,
-        'd1014+68': 0,
-        'd1015+69': 0,
-        'd1028+70': 0,
-        'd1041+70': 0,
+        'd0926+70': 5056943,
+        'd0939+71': 5056932,
+        'd0955+70': 5056934,
+        'd1028+70': 5056941,
+        'd1041+70': 5056942,
+        'dw1335-29': 0,
+        'd0934+70': 5056931,
+        'd0944+69': 5056933,
+        'd0944+71': 5056944, # GALEXMSC J094435.06+712857.6??
+        'd0958+66': 28826, # KUG 0945+670??
+        'd0959+68': 5056936,
+        'd1006+67': 5056937,
+        'd1014+68': 5056938,
+        'd1015+69': 5056947,
         'dw0036m2828': 0,
         'dw1046+1244': 0,
         'dw1322-39': 0,
         'dw1323-40a': 0,
         'dw1323-40b': 0,
         'dw1329-45': 0,
-        'dw1335-29': 0,
         'dw1336-44': 0,
         'dw1340-30': 0,
         'dw1341-43': 0,
@@ -1071,7 +1133,7 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
             todo = np.array(P.map(_missing_files_one, missargs))
     else:
         todo = np.array([_missing_files_one(_missargs) for _missargs in missargs])
-        
+
     if verbose:
         log.info(f'...took {(time.time() - t0)/60.:.3f} min')
 

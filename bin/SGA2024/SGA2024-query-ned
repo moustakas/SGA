@@ -250,10 +250,61 @@ def main():
         ned_nedlvs = readit('NEDLVS', version_nedlvs())
         ned_hyper = vstack((readit('HyperLeda', version_hyperleda()),
                             readit('HyperLeda-altname', f'{version_hyperleda()}-altname')))
-        #assert(np.all(nedlvs['OBJNAME'] == nedlvs['OBJNAME_NED']))
-        #assert(len(nedlvs) == len(np.unique(nedlvs['OBJNAME_NED'])))
 
-        # remove the NED-matched sources
+        # [1] Preprocess the data.
+
+        # 21 objects are duplicates in ned_nedlvs, apparently because of
+        # cross-identification problems in NED. Keep just the first one of each
+        # occurrance here (=10 unique objects)
+        col = 'OBJNAME_NED'
+        rr, cc = np.unique(ned_nedlvs[col], return_counts=True)
+        dd = ned_nedlvs[np.isin(ned_nedlvs[col], rr[cc>1].value)]
+        dd = dd[np.argsort(dd[col])]
+        toss = []
+        for objname in np.unique(dd[col]):
+            I = np.where(ned_nedlvs[col] == objname)[0]
+            I = I[np.argsort(ned_nedlvs[col][I])]
+            toss.append(I[1:]) # keep the zeroth match
+        toss = np.hstack(toss)
+        print(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d}  {col} duplicates from ned_nedlvs.')
+        ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
+
+        # 1 object (WINGSJ125256.27-152110.4) is a duplicate in ned_hyper. As
+        # the primary object, it's PGC4777821, but as the alternate object,
+        # it's also [CZ2003]1631C-0295:095 = PGC6729485. In addition, remove
+        # the ~2500 objects not in NED and the ~11k objects resolve to the same
+        # object in NED; choose the first one.
+        warn = np.array(['WARNING' in objnote for objnote in ned_hyper['OBJECT_NOTE']])
+        print(f'Removing {np.sum(warn):,d}/{len(ned_hyper):,d} objects with NED warnings from ned_hyper.')
+        ned_hyper = ned_hyper[~warn]
+
+        col = 'OBJNAME'
+        rr, cc = np.unique(ned_hyper[col], return_counts=True)
+        dd = ned_hyper[np.isin(ned_hyper[col], rr[cc>1].value)]
+        dd = dd[np.argsort(dd[col])]
+        toss = []
+        for objname in np.unique(dd[col]):
+            I = np.where(ned_hyper[col] == objname)[0]
+            I = I[np.argsort(ned_hyper[col][I])]
+            toss.append(I[1:]) # keep the zeroth match
+        toss = np.hstack(toss)
+        print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} {col} duplicates from ned_hyper.')
+        ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
+
+        col = 'OBJNAME_NED'
+        rr, cc = np.unique(ned_hyper[col], return_counts=True)
+        dd = ned_hyper[np.isin(ned_hyper[col], rr[cc>1].value)]
+        dd = dd[np.argsort(dd[col])]
+        toss = []
+        for objname in np.unique(dd[col]):
+            I = np.where(ned_hyper[col] == objname)[0]
+            I = I[np.argsort(ned_hyper[col][I])]
+            toss.append(I[1:]) # keep the zeroth match
+        toss = np.hstack(toss)
+        print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} {col} duplicates from ned_hyper.')
+        ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
+
+        # [2] Remove the NED-matched sources and verify all's well.
         lvd = lvd[~np.isin(lvd['ROW'], ned_lvd['ROW'])] # =8
         hyper = hyper[~np.isin(hyper['ROW'], ned_hyper['ROW'])] # =1.1M
         nedlvs = nedlvs[~np.isin(nedlvs['ROW'], ned_nedlvs['ROW'])] # =135
@@ -261,41 +312,17 @@ def main():
         for cat in (ned_lvd, ned_nedlvs, ned_hyper):
             nobj = len(cat)
             for col in ['OBJNAME', 'OBJNAME_NED', 'ROW']:
-                try:
-                    assert(len(np.unique(cat[col])) == nobj)
-                except:
-                    rr, cc = np.unique(cat[col], return_counts=True)
-                    print(rr[cc>1])
+                assert(len(np.unique(cat[col])) == nobj)
+                #rr, cc = np.unique(cat[col], return_counts=True)
+                ##print(rr[cc>1])
+                #bb = cat[np.isin(cat[col], rr[cc>1].value)]
+                #bb = bb[np.argsort(bb[col])]
 
-                    import pdb ; pdb.set_trace()
-
-        # [1] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
-
-        # However, we have to deal with duplicates. NED flags the following
-        # objects as duplicates and most of them indeed appear to be errors in
-        # HyperLeda cross-identification. Remove them here but deal with them
-        # later.
-        #
-        # E.g., WINGSJ125256.27-152110.4 is a duplicate. As the primary object,
-        # it's PGC4777821, but as the alternate object, it's also
-        # [CZ2003]1631C-0295:095 = PGC6729485.
-        warn = ['WARNING' in objnote for objnote in ned_hyper['OBJECT_NOTE']]
-
-        import pdb ; pdb.set_trace()
-
-        warnalt = ['WARNING' in objnote for objnote in ned_hyperalt['OBJECT_NOTE']]
-        cross = vstack((ned_hyper[warn], ned_hyperalt[warnalt]))
-        cross['NOTE'] = 'NED-duplicate'
-
-        ned_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], cross['ROW'])]
-        ned_hyperalt = ned_hyperalt[~np.isin(ned_hyperalt['ROW'], cross['ROW'])]
-
+        # [3] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
         keys = np.array(ned_nedlvs.colnames)
         keys = keys[~np.isin(keys, ['OBJNAME', 'ROW'])]
 
-        _out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
-        _out2 = join(ned_hyperalt, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
-        out1 = vstack((_out1, _out2))
+        out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
         out1.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
 
         # The 'warn{alt}' arrays, above, pick up duplicates / cross-ID errors
