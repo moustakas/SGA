@@ -222,7 +222,8 @@ def nedfriendly_hyperleda(old, pgc):
 
 def version_hyperleda():
     #return 'meandata_1718379336'
-    return 'meandata_1720804662'
+    #return 'meandata_1720804662'
+    return 'meandata_1725482144'
 
 
 def read_hyperleda(rank=0, rows=None):
@@ -252,13 +253,19 @@ def read_hyperleda(rank=0, rows=None):
             data_start = 24
             data_offset = 7 # 4846383-20
             delimiter = '|'
+        elif version == 'meandata_1725482144':
+            header_start = 21
+            data_start = 23
+            data_offset = 5 # 4846383-20
+            delimiter = '|'
 
         hyper = Table.read(txtfile, format='ascii.csv', data_start=data_start,
                            data_end=nrows-data_offset, header_start=header_start,
                            delimiter=delimiter)
 
-        if version == 'meandata_1720804662':
+        if version == 'meandata_1720804662' or version == 'meandata_1725482144':
             hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
+        hyper.remove_column('f_astrom')
 
         [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
 
@@ -268,16 +275,17 @@ def read_hyperleda(rank=0, rows=None):
         print(f'Read {nhyper:,d} objects from {hyperfile}')
         assert(nhyper == len(np.unique(hyper['PGC'])))
 
-        # There are 87 duplicated object names. The entries are either identical or
-        # they differ mildly in their redshift, B-band magnitude, or position
-        # angle. We do not attempt to merge or average the data; we simply choose
-        # the first entry.
+        # There are 87 duplicated object names. The entries are either
+        # identical or they differ mildly in their redshift, B-band magnitude,
+        # or position angle. We do not attempt to merge or average the data; we
+        # simply choose the first entry.
         objs, uindx, count = np.unique(hyper['OBJNAME'], return_counts=True, return_index=True)
         #dups = objs[count > 1]
         #for dup in dups:
         #    I = np.where(hyper['OBJNAME'] == dup)[0]
         #    print(hyper[I])
         #    print()
+
         hyper = hyper[uindx]
         print(f'Trimming to {len(hyper):,d}/{nhyper:,d} unique objects.')
 

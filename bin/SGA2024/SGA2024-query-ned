@@ -13,6 +13,7 @@ import fitsio
 from astropy.table import Table, vstack, hstack, join
 import astropy.units as u
 from astropy.coordinates import SkyCoord
+import matplotlib.pyplot as plt
 
 
 def parent_datamodel(nobj):
@@ -253,6 +254,9 @@ def main():
         nobj_ned_lvd = len(ned_lvd)
         nobj_ned_nedlvs = len(ned_nedlvs)
         nobj_ned_hyper = len(ned_hyper)
+
+        hyper_noned = hyper[~np.isin(hyper['ROW'], ned_hyper['ROW'])]
+
         print()
 
         # [1] Preprocess the data.
@@ -359,8 +363,6 @@ def main():
 
         out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
         out1.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
-        print(f'Matched {len(out1):,d} ned_hyper-ned_nedlvs objects on OBJNAME_NED.')
-
         basic_out1 = get_basic_geometry(out1, galaxy_column='OBJNAME_NED', verbose=False)
 
         #indx_out, indx_hyper = match(out1['ROW_HYPERLEDA'], hyper['ROW'])
@@ -388,9 +390,10 @@ def main():
 
         for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
             assert(len(np.unique(parent1[col])) == len(parent1))
+        print(f'Parent 1: {len(parent1):,d} ned_hyper+ned_nedlvs objects matched on OBJNAME_NED.')
         print()
 
-        # [2] - Add as many of the remaining ned_hyper objects as possible.
+        # [3] - Add as many of the remaining ned_hyper objects as possible.
         miss_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], parent1['ROW_HYPERLEDA'])]
         miss_hyper.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA'])
         miss_hyper.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
@@ -410,7 +413,7 @@ def main():
         rad = 1.5 * u.arcsec
         indx_nedlvs, indx_hyper, d2d, _ = c_hyper.search_around_sky(c_nedlvs, rad)
         print(f'Replacing {len(np.unique(indx_hyper)):,d}/{len(miss_hyper):,d} ned_hyper objects ' + \
-              f'with {len(indx_nedlvs):,d} ned_nedlvs objects (note the duplicates in ned_hyper).')
+              f'with {len(np.unique(indx_nedlvs)):,d} ned_nedlvs objects (note the duplicates).')
 
         miss_hyper = miss_hyper[np.delete(np.arange(len(miss_hyper)), indx_hyper)]
         basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_NED', verbose=False)
@@ -428,6 +431,7 @@ def main():
         I = np.where(~np.isnan(hyper['V'][indx_hyper]))[0]
         parent2a['Z_HYPERLEDA'][indx_parent[I]] = hyper['V'][indx_hyper[I]] / 2.99e5
 
+        indx_nedlvs = np.unique(indx_nedlvs) # 9 duplicates
         miss_nedlvs = miss_nedlvs[indx_nedlvs]
         basic_miss_nedlvs = get_basic_geometry(miss_nedlvs, galaxy_column='OBJNAME_NED', verbose=False)
 
@@ -445,86 +449,98 @@ def main():
         parent2b['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
 
         parent2 = vstack((parent2a, parent2b))
+        print()
+        print(f'Parent 2: {len(parent2):,d} ned_hyper+ned_nedlvs objects with no OBJNAME_NED match.')
+        print()
 
-        for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
-            try:
-                assert(len(np.unique(parent2[col])) == len(parent2))
-            except:
-                import pdb ; pdb.set_trace()
+        # [4] - Add the rest of the ned_nedlvs objects.
+        parent = vstack((parent1, parent2))
 
-        import pdb ; pdb.set_trace()
+        #miss_hyper = ned_hyper[~np.isin(ned_hyper['ROW'], parent['ROW_HYPERLEDA'])]
+        #miss_hyper.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA'])
+        #miss_hyper.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+        #print(f'Adding {len(miss_hyper):,d} more ned_hyper objects.')
 
-        # [2] - Match more of the HyperLeda sample to NEDLVS using coordinates.
-        # Ignore the crossID errors from above because many/most/all of those
-        # are real and we want to pick them up via NEDLVS.
-        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], parent1['ROW_NEDLVS'])]
+        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], parent['ROW_NEDLVS'])]
         miss_nedlvs.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_NEDLVS', 'ROW_NEDLVS'])
         miss_nedlvs.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
+        print(f'Adding {len(miss_nedlvs):,d} more ned_nedlvs objects.')
 
-        import pdb ; pdb.set_trace()
+        ## confirm that none of these match to within 1.5 arcsec
+        #c_hyper = SkyCoord(ra=miss_hyper['RA_NED']*u.deg, dec=miss_hyper['DEC_NED']*u.deg)
+        #c_nedlvs = SkyCoord(ra=miss_nedlvs['RA_NED']*u.deg, dec=miss_nedlvs['DEC_NED']*u.deg)
+        #rad = 1.5 * u.arcsec
+        #indx_nedlvs, indx_hyper, d2d, _ = c_hyper.search_around_sky(c_nedlvs, rad)
+        #assert(len(indx_nedlvs) == 0)
 
-        c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
-        c_nedlvs = SkyCoord(ra=miss_nedlvs['RA_NED']*u.deg, dec=miss_nedlvs['DEC_NED']*u.deg)
-        rad = 1.5 * u.arcsec
-        indx_nedlvs, indx_hyper, d2d, _ = c_hyper.search_around_sky(c_nedlvs, rad)
+        #basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_NED', verbose=False)
+        basic_miss_nedlvs = get_basic_geometry(miss_nedlvs, galaxy_column='OBJNAME_NED', verbose=False)
 
-        out2 = hstack((miss_hyper[indx_hyper], miss_nedlvs[indx_nedlvs]),
-                      table_names=['HYPERLEDA', 'NEDLVS'])
-        out2 = out2[np.argsort(out2['ROW_HYPERLEDA'])]
+        #parent3a = parent_datamodel(len(miss_hyper))
+        #for col in parent3a.columns:
+        #    if col in miss_hyper.columns:
+        #        parent3a[col] = miss_hyper[col]
+        #    if col in basic_miss_hyper.columns:
+        #        parent3a[col] = basic_miss_hyper[col]
+        #
+        #indx_parent, indx_hyper = match(parent3a['ROW_HYPERLEDA'], hyper['ROW'])
+        #parent3a['RA_HYPERLEDA'][indx_parent] = hyper['RA'][indx_hyper]
+        #parent3a['DEC_HYPERLEDA'][indx_parent] = hyper['DEC'][indx_hyper]
+        #I = np.where(~np.isnan(hyper['V'][indx_hyper]))[0]
+        #parent3a['Z_HYPERLEDA'][indx_parent[I]] = hyper['V'][indx_hyper[I]] / 2.99e5
 
-        rr, cc = np.unique(out2['ROW_NEDLVS'], return_counts=True)
-        dd = out2[np.isin(out2['ROW_NEDLVS'], rr[cc>1])]
+        parent3b = parent_datamodel(len(miss_nedlvs))
+        for col in parent3b.columns:
+            if col in miss_nedlvs.columns:
+                parent3b[col] = miss_nedlvs[col]
+            if col in basic_miss_nedlvs.columns:
+                parent3b[col] = basic_miss_nedlvs[col]
 
-        dd = dd[np.argsort(dd['OBJNAME_NED'])]
-
-        toss = []
-        for objname in np.unique(dd['OBJNAME_NED']):
-            I = np.where(out1['OBJNAME_NED'] == objname)[0]
-            I = I[np.argsort(out1['ROW_HYPERLEDA'][I])]
-            toss.append(I[1:]) # keep the zeroth match
-        toss = np.hstack(toss)
-
-        import pdb ; pdb.set_trace()
-
-        basic_out2 = get_basic_geometry(out2, galaxy_column='OBJNAME_NED', verbose=True)
-
-        parent2 = parent_datamodel(len(out2))
-        for col in parent2.columns:
-            if col in out2.columns:
-                parent2[col] = out2[col]
-            if col in basic_out2.columns:
-                parent2[col] = basic_out2[col]
-
-        import pdb ; pdb.set_trace()
-        indx_parent, indx_nedlvs = match(parent2['ROW_NEDLVS'], nedlvs['ROW'])
-        parent2['RA_NEDLVS'][indx_parent] = nedlvs['RA'][indx_nedlvs]
-        parent2['DEC_NEDLVS'][indx_parent] = nedlvs['DEC'][indx_nedlvs]
+        indx_parent, indx_nedlvs = match(parent3b['ROW_NEDLVS'], nedlvs['ROW'])
+        parent3b['RA_NEDLVS'][indx_parent] = nedlvs['RA'][indx_nedlvs]
+        parent3b['DEC_NEDLVS'][indx_parent] = nedlvs['DEC'][indx_nedlvs]
         I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
-        parent2['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
+        parent3b['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
 
-        for col in ['OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
-            try:
-                assert(len(np.unique(parent2[col])) == len(parent2))
-            except:
-                import pdb ; pdb.set_trace()
+        parent3 = parent3b
+        #parent3 = vstack((parent3a, parent3b))
+        print()
+        print(f'Parent 3: {len(parent3):,d} ned_hyper+ned_nedlvs objects.')
+        print()
 
-        parent = vstack((parent1, parent2))
-        #del parent1, parent2
+        # [5] - Add any outstanding hyper objects with good astrometry.
+        parent = vstack((parent, parent3))
 
-        crossfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version_hyperleda()}-crossID-errors.fits')
-        cross.write(crossfile, overwrite=True)
-        print(f'Wrote {len(cross):,d} objects to {crossfile}')
+        miss_hyper = hyper_noned[~np.isin(hyper_noned['ROW'], parent['ROW_HYPERLEDA'])]
+        miss_hyper.rename_columns(['OBJNAME', 'ROW', 'RA', 'DEC'], ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA'])
+
+        # http://atlas.obs-hp.fr/hyperleda/leda/param/celpos.html
+        I = np.where(miss_hyper['F_ASTROM'] <= 0)[0]
+        print(f'Trimming to {len(I):,d}/{len(miss_hyper):,d} hyper_noned objects with good astrometry.')
+        miss_hyper = miss_hyper[I]
+
+        basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_HYPERLEDA', verbose=False)
+
+        parent4 = parent_datamodel(len(miss_hyper))
+        for col in parent4.columns:
+            if col in miss_hyper.columns:
+                parent4[col] = miss_hyper[col]
+            if col in basic_miss_hyper.columns:
+                parent4[col] = basic_miss_hyper[col]
+
+        print()
+        print(f'Parent 4: {len(parent4):,d} hyper_noned objects with good astrometry.')
+        print()
+
+        parent = vstack((parent, parent4))
 
         import pdb ; pdb.set_trace()
-        # [3] At this point we have ~288k NEDLVS and 3.26M HyperLeda objects
-        # with no match to within 1.5 arcsec.
 
-        # miss_nedlvs - ~199k objects have at least one diameter; among the
-        #   remaining ~90k, 58% of them have objtype='G'
 
-        # miss_hyper - ~1.07M (32%) have a non-zero diameter and no cross-ID
-        #   error.
-        miss_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['ROW'], parent['ROW_NEDLVS'])]
+
+
+
+
 
         #c_hyper = SkyCoord(ra=miss_hyper['RA']*u.deg, dec=miss_hyper['DEC']*u.deg)
         #c_nedlvs = SkyCoord(ra=miss_nedlvs['RA']*u.deg, dec=miss_nedlvs['DEC']*u.deg)
@@ -534,7 +550,6 @@ def main():
         #plt.hist(np.log10(sep2d.arcsec), bins=100, log=True);
         #plt.savefig('junk.png')
 
-        basic_nedlvs = get_basic_geometry(miss_nedlvs, verbose=True)
         parent3 = parent_datamodel(len(miss_nedlvs))
         for col in parent3.columns:
             if col == 'OBJNAME':
@@ -636,6 +651,7 @@ def main():
 
     workdir = os.path.join(sga_dir(), 'parent', 'external', f'nedquery-{args.catalog.lower()}')
 
+
     if args.query_data:
         # https://ned.ipac.caltech.edu/forms/gmd.html
         nperquery = 250 # number of galaxies per query
@@ -643,6 +659,8 @@ def main():
         logdir = os.path.join(workdir, 'logs')
         if not os.path.isdir(logdir):
             os.makedirs(logdir)
+
+        #cat = cat[(cat['PGC'] > 21040) * (cat['PGC'] < 21045)]
 
         # sort into RA slices
         raslices = np.array([get_raslice(ra) for ra in cat['RA'].value])
@@ -678,9 +696,10 @@ def main():
                         print(f'Executing query {iquery:05d}/{nquery-1:05d}')
 
                     objnames = racat1['OBJNAME'].value
-                    # NED-friendly names!
-                    if args.catalog.lower() == 'hyperleda':
-                        objnames = nedfriendly_hyperleda(objnames, racat1['PGC'].value)
+
+                    ## NED-friendly names!
+                    #if args.catalog.lower() == 'hyperleda':
+                    #    objnames = nedfriendly_hyperleda(objnames, racat1['PGC'].value)
                     if args.catalog.lower() == 'lvd':
                         objnames = nedfriendly_lvd(objnames)
 
@@ -771,6 +790,8 @@ def main():
             keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
             print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
             out = data[keep]
+
+            import pdb ; pdb.set_trace()
 
             # Remove three duplicates that come from recasting the PGC names in
             # nedfriendly_hyperleda.
