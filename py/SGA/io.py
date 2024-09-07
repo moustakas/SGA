@@ -204,7 +204,7 @@ def altnames_hyperleda(cat):
     return np.array(altname)
 
 
-def nedfriendly_hyperleda(old, pgc):
+def nedfriendly_hyperleda(old, reverse=False):
     """Rename some of the HyperLeda names to be NED-friendly.
 
     E.g., NED does not resolve HyperLeda's name 3C218A, but this is also
@@ -213,11 +213,16 @@ def nedfriendly_hyperleda(old, pgc):
       https://ned.ipac.caltech.edu/byname?objname=PGC+26269
 
     """
-    new = old.copy()
-    I = pgc <= 73197
-    if np.any(I):
-        new[I] = [f'PGC{num:06d}' for num in pgc[I].astype(int)]
-    return new
+    if reverse:
+        return np.char.replace(old, 'SDSS J', 'SDSSJ') # ???
+    else:
+        return np.char.replace(old, 'SDSSJ', 'SDSS J') # ???
+
+    #new = old.copy()
+    #I = pgc <= 73197
+    #if np.any(I):
+    #    new[I] = [f'PGC{num:06d}' for num in pgc[I].astype(int)]
+    #return new
 
 
 def version_hyperleda():
@@ -1046,7 +1051,7 @@ def missing_files_one(checkfile, dependsfile, overwrite):
 
         return 'todo'
 
-    
+
 def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cutouts=False,
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
                   build_SGA=False, overwrite=False, verbose=False, htmldir='.',
