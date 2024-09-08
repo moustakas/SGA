@@ -321,7 +321,8 @@ def read_hyperleda(rank=0, rows=None):
         hyper.write(hyperfile, overwrite=True)
 
     hyper = Table(fitsio.read(hyperfile, rows=rows))
-    print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+    print(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
 
     return hyper
 
@@ -477,7 +478,8 @@ def read_lvd(rank=0, rows=None):
         lvd = vstack((dall, ddis))
 
         # drop unconfirmed systems
-        print(f'Rank {rank:03d}: Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
+        print(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
+        #print(f'Rank {rank:03d}: Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
         lvd = lvd[lvd['confirmed_real'] == 1]
         lvd.remove_columns(['key', 'confirmed_real'])
         lvd.write(lvdfile, overwrite=True)
@@ -490,7 +492,8 @@ def read_lvd(rank=0, rows=None):
 
     lvd = Table(F[1].read(rows=rows))
     lvd['ROW'] = row
-    print(f'Rank {rank:03d}: Read {len(lvd):,d} objects from {lvdfile}')
+    print(f'Read {len(lvd):,d} objects from {lvdfile}')
+    #print(f'Rank {rank:03d}: Read {len(lvd):,d} objects from {lvdfile}')
 
     [lvd.rename_column(col, col.upper()) for col in lvd.colnames]
 
@@ -811,7 +814,8 @@ def read_nedlvs(rank=0, rows=None):
     nedlvsfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDLVS_{version_nedlvs()}.fits')
     nedlvs = Table(fitsio.read(nedlvsfile, rows=rows))
     nedlvs['ROW'] = np.arange(len(nedlvs))
-    print(f'Rank {rank:03d}: Read {len(nedlvs):,d} objects from {nedlvsfile}')
+    print(f'Read {len(nedlvs):,d} objects from {nedlvsfile}')
+    #print(f'Rank {rank:03d}: Read {len(nedlvs):,d} objects from {nedlvsfile}')
 
     [nedlvs.rename_column(col, col.upper()) for col in nedlvs.colnames]
     nedlvs['GALAXY'] = nedlvs['OBJNAME']
@@ -832,8 +836,8 @@ def read_wxsc(rank=0):
     radec = np.array([f'{ra}-{dec}' for ra, dec in zip(wxsc['ra'].astype(str), wxsc['dec'].astype(str))])
     u, c = np.unique(radec, return_counts=True)
 
-    _, uindx = np.unique(radec, return_index=True)    
-    
+    _, uindx = np.unique(radec, return_index=True)
+
     print(f'Rank {rank:03d}: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on (ra,dec)')
     wxsc = wxsc[uindx]
 

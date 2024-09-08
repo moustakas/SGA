@@ -280,13 +280,18 @@ def readone_bycoord(queryfile):
     if not np.all(temp['ROW'] == temp['ROW2']):
         raise ValueError()
 
+    # no matching galaxies within the separation
+    temp = temp[temp['SEPARATION'] != '']
+    nobj = len(temp)
+
     # clean up the columns
     out = Table()
     #out['ROW'] = temp['ROW'].astype(int)
     #out['OBJNAME'] = temp['OBJNAME']
+    out['INPUT_POSITION'] = temp['INPUT_POSITION']
     out['INPUT_RA'] = np.zeros(len(temp), 'f8')
     out['INPUT_DEC'] = np.zeros(len(temp), 'f8')
-    out['SEPARATION'] = temp['SEPARATION']
+    out['SEPARATION'] = temp['SEPARATION'].astype('f4')
     out['OBJNAME_NED'] = temp['OBJNAME_NED']
     out['OBJTYPE'] = temp['OBJTYPE']
     out['OBJECT_NOTE'] = temp['OBJECT_NOTE']
@@ -297,6 +302,7 @@ def readone_bycoord(queryfile):
     blank = np.where(inputcoord == '')[0]
     for one in blank:
         #print(inputcoord[one], inputcoord[one-1])
+        out['INPUT_POSITION'][one] = out['INPUT_POSITION'][one-1]
         inputcoord[one] = inputcoord[one-1]
 
     inputcoord = np.char.split(inputcoord, ' ')
@@ -361,7 +367,7 @@ def build_url_byname(objnames, linebreak='%0D%0A'):
 
 def build_url_bycoord(ras, decs, linebreak='%0D%0A', sep=3.):
 
-    uplist = '+' + ''.join([f'{ra}+{dec}{linebreak}' for ra, dec in zip(ras, decs)])
+    uplist = '+' + ''.join([f'{np.round(ra, 10)}+{np.round(dec, 10)}{linebreak}' for ra, dec in zip(ras, decs)])
 
     url = f'https://ned.ipac.caltech.edu/cgi-bin/nnd?uplist={uplist}&sr_arcsec={sep}&delimiter=bar&NO_LINKS=1' + \
         '&nondb=row_count&nondb=user_inp_msg&nondb=user_inplist&nondb=user_inp_sep&crosid=objname&position=ra%2Cdec' + \
@@ -382,7 +388,7 @@ def read_catalog(catalog):
             version = version_hyperleda()
             cat = read_hyperleda()#rows=np.arange(500))
 
-        case 'hyperleda-bycoord':
+        case 'hyperleda-coords':
             # for objects for which NED could not resolve OBJNAME
             version = version_hyperleda()
             cat = read_hyperleda()
@@ -390,6 +396,9 @@ def read_catalog(catalog):
             nedfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDbyname-HyperLeda_{version}.fits')
             ned = Table(fitsio.read(nedfile))
             print(f'Read {len(ned):,d} objects from {nedfile}')
+
+            # remove NED-duplicates
+            ned = ned[ned['OBJECT_NOTE'] == '']
 
             alt = cat[~np.isin(cat['ROW'], ned['ROW'])] # no match
             cat = alt
@@ -570,8 +579,6 @@ def gather_query(catalog, byname=True, bycoord=False):
         data.append(data1)
     data = vstack(data)
 
-    #np.sum(np.logical_or.reduce((data['RC3_DIAM_B'] > 0., data['TWOMASS_DIAM_K'] > 0., data['SDSS_PA_R'] > 0.)))
-    #np.sum(np.logical_or.reduce((data['RC3_PA_B'] > 0., data['TWOMASS_PA_K'] > 0., data['SDSS_PA_R'] > 0.)))
 
     if catalog.lower() == 'lvd':
         version = version_lvd()
@@ -658,21 +665,68 @@ def gather_query(catalog, byname=True, bycoord=False):
 
 
     if catalog.lower() == 'hyperleda-coords':
-        version = version_hyperleda()+'-coords'
+        version = version_hyperleda()
 
-        keep = ( (data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED') *
-                 (data['OBJECT_NOTE'] != 'ERROR: Input name (32) too long - max 30 characters') )
-        print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
-        out = data[keep]
+        ## non-matches (SEPARATION=='') were already removed
+        #keep = data['OBJECT_NOTE'] == ''
+        #print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
+        #out = data[keep]
 
-        altname = altnames_hyperleda(cat)
+        # Remove XX coordinate duplicates in the input / HyperLeda catalog.
+        # E.g., PGC4586787 and PGC4586817 have the same coordinates but
+        # different properties!
+        ref_input = np.char.add(np.round(cat['RA'], 10).astype(str), [' ']*len(cat))
+        ref_input = np.char.add(ref_input, np.round(cat['DEC'], 10).astype(str))
+        #rr, cc = np.unique(ref_input, return_counts=True)
+        #dd = cat[np.isin(ref_input, rr[cc>1])]
+        #dd = dd[np.argsort(dd['RA'])]
+        _, uindx = np.unique(ref_input, return_index=True)
+        print(f'Trimmed to {len(uindx):,d} objects with unique reference coordinates.')
+        cat = cat[uindx]
+        ref_input = ref_input[uindx]
 
-        out['PGC'] = np.zeros(len(out), dtype=cat['PGC'].dtype)
-        out['ROW'] = np.zeros(len(out), dtype=cat['ROW'].dtype)
+        # Next, our 'data' table has many duplicates since we searched on
+        # coordinates. If there's just one match, we're done, otherwise we need
+        # to choose one of the matches.
+        _, uindx, ucount = np.unique(data['INPUT_POSITION'], return_index=True, return_counts=True)
+        uindx = uindx[ucount == 1]
 
-        indx_cat, indx_out = match(altname, out['OBJNAME'])
-        out['PGC'][indx_out] = cat[indx_cat]['PGC']
-        out['ROW'][indx_out] = cat[indx_cat]['ROW']
+        # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
+        def dup_indices(records_array):
+            # creates an array of indices, sorted by unique element
+            idx_sort = np.argsort(records_array)
+            # sorts records array so all unique elements are together
+            sorted_records_array = records_array[idx_sort]
+            # returns the unique values, the index of the first occurrence of a value, and the count for each element
+            vals, idx_start, count = np.unique(sorted_records_array, return_counts=True, return_index=True)
+            # splits the indices into separate arrays
+            res = np.split(idx_sort, idx_start[1:])
+            #filter them with respect to their size, keeping only items occurring more than once
+            vals = vals[count > 1]
+            return list(filter(lambda x: x.size > 1, res))
+
+        res = dup_indices(data['INPUT_POSITION'].value)
+
+        # Resolve multiple matches:
+        print(f'Resolving {len(res):,d} multiple matches.')
+        J = []
+        for dups in res:
+            dups.sort()
+            objtypes = data[dups]['OBJTYPE'].value
+            G = np.where(objtypes == 'G')[0]
+            nG = len(G)
+            if nG == 0:
+                J.append(dups[0])
+            else:
+                # closest G match
+                J.append(dups[G[0]])
+
+        J = np.hstack(J)
+        I = np.hstack((uindx, J))
+
+        indx_cat, indx_data = match(ref_input, data[I]['INPUT_POSITION'])
+        out = cat[indx_cat]['OBJNAME', 'ALTNAMES', 'PGC', 'ROW']
+        out = hstack((out, data[I][indx_data]))
         assert(len(out) == len(np.unique(out['ROW'])))
 
         out = out[np.argsort(out['ROW'])]
@@ -688,8 +742,12 @@ def merge_external_catalogs():
     """Merge external catalogs.
 
     """
-    def readit(catalog, version):
-        datafile = os.path.join(sga_dir(), 'parent', 'external', f'NED-{catalog}_{version}.fits')
+    def readit(catalog, version, bycoord=False):
+        if bycoord:
+            suffix = 'bycoord'
+        else:
+            suffix = 'byname'
+        datafile = os.path.join(sga_dir(), 'parent', 'external', f'NED{suffix}-{catalog}_{version}.fits')
         data = Table(fitsio.read(datafile))
         print(f'Read {len(data):,d} objects from {datafile}')
         return data
@@ -700,8 +758,11 @@ def merge_external_catalogs():
 
     ned_lvd = readit('LVD', version_lvd())
     ned_nedlvs = readit('NEDLVS', version_nedlvs())
-    ned_hyper = vstack((readit('HyperLeda', version_hyperleda()),
-                        readit('HyperLeda-altname', f'{version_hyperleda()}-altname')))
+
+    ned_hyper = readit('HyperLeda', version_hyperleda())
+    ned_hyper_coords = readit('HyperLeda-coords', f'{version_hyperleda()}', bycoord=True)
+    import pdb ; pdb.set_trace()
+
     nobj_ned_lvd = len(ned_lvd)
     nobj_ned_nedlvs = len(ned_nedlvs)
     nobj_ned_hyper = len(ned_hyper)
@@ -750,18 +811,18 @@ def merge_external_catalogs():
     print(f'Removing {np.sum(warn):,d}/{len(ned_hyper):,d} objects with NED warnings from ned_hyper.')
     ned_hyper = ned_hyper[~warn]
 
-    col = 'OBJNAME'
-    rr, cc = np.unique(ned_hyper[col], return_counts=True)
-    dd = ned_hyper[np.isin(ned_hyper[col], rr[cc>1].value)]
-    dd = dd[np.argsort(dd[col])]
-    toss = []
-    for objname in np.unique(dd[col]):
-        I = np.where(ned_hyper[col] == objname)[0]
-        I = I[np.argsort(ned_hyper[col][I])]
-        toss.append(I[1:]) # keep the zeroth match
-    toss = np.hstack(toss)
-    print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} {col} duplicates from ned_hyper.')
-    ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
+    #col = 'OBJNAME'
+    #rr, cc = np.unique(ned_hyper[col], return_counts=True)
+    #dd = ned_hyper[np.isin(ned_hyper[col], rr[cc>1].value)]
+    #dd = dd[np.argsort(dd[col])]
+    #toss = []
+    #for objname in np.unique(dd[col]):
+    #    I = np.where(ned_hyper[col] == objname)[0]
+    #    I = I[np.argsort(ned_hyper[col][I])]
+    #    toss.append(I[1:]) # keep the zeroth match
+    #toss = np.hstack(toss)
+    #print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} {col} duplicates from ned_hyper.')
+    #ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
 
     col = 'OBJNAME_NED'
     rr, cc = np.unique(ned_hyper[col], return_counts=True)
@@ -774,6 +835,7 @@ def merge_external_catalogs():
         toss.append(I[1:]) # keep the zeroth match
     toss = np.hstack(toss)
     print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} {col} duplicates from ned_hyper.')
+    import pdb ; pdb.set_trace()
     ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
 
     # Toss out non-galaxies in ned_hyper. But note:
@@ -1059,7 +1121,7 @@ def main():
     """
     import argparse
 
-    catalogs = ['HyperLeda', 'HyperLeda-bycoord', 'NEDLVS', 'LVD']
+    catalogs = ['HyperLeda', 'HyperLeda-coords', 'NEDLVS', 'LVD']
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
