@@ -12,6 +12,8 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     """From a catalog containing magnitudes, diameters, position angles, and
     ellipticities, return a "basic" value for each property.
 
+    Priority order: RC3, TWOMASS, SDSS, ESO, NED/BASIC
+
     """
     from astropy.table import Table
     #from SGA.io import read_lvd
@@ -72,7 +74,6 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             val_ref = np.zeros(nobj, '<U7')
             val_band = np.zeros(nobj, 'U1')
 
-            #import pdb ; pdb.set_trace()
             match prop:
                 case 'mag':
                     col = 'APPARENT_MAGNITUDE_V'

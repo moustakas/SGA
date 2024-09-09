@@ -270,7 +270,7 @@ def read_hyperleda(rank=0, rows=None):
 
         if version == 'meandata_1720804662' or version == 'meandata_1725482144':
             hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
-        hyper.remove_column('f_astrom')
+        #hyper.remove_column('f_astrom')
 
         [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
 
