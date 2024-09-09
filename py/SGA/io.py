@@ -516,7 +516,7 @@ def read_lvd(rank=0, rows=None):
     # PGC57522 = KKR23
     pgc = {
         'AGC749235': 5059199,
-        'AM 1320-230': 0,
+        'AM 1320-230': 3097728, # = PGC3097728
         'Andromeda I': 2666,
         'Andromeda II': 4601,
         'Andromeda III': 2121,
@@ -714,7 +714,7 @@ def read_lvd(rank=0, rows=None):
         'Perseus I': 5067061,
         'Phoenix': 6830,
         'Phoenix II': 5074556,
-        'Pictor I': 0,
+        'Pictor I': 5074555, # =PICTORIS1
         'Pictor II': 6657033,
         'Pisces A': 5072710,
         'Pisces B': 5072711,
@@ -734,7 +734,7 @@ def read_lvd(rank=0, rows=None):
         'Sculptor-dE1': 0,
         'Segue 1': 4713559,
         'Segue 2': 4713565,
-        'Sextans': 0,
+        'Sextans': 88608, # = PGC088608
         'Sextans A': 29653,
         'Sextans B': 28913,
         'Sextans II': 0,
@@ -767,7 +767,7 @@ def read_lvd(rank=0, rows=None):
         'd0955+70': 5056934,
         'd1028+70': 5056941,
         'd1041+70': 5056942,
-        'dw1335-29': 0,
+        'dw1335-29': 5477876, # = [MJB2015]DW1335-29
         'd0934+70': 5056931,
         'd0944+69': 5056933,
         'd0944+71': 5056944, # GALEXMSC J094435.06+712857.6??
@@ -778,14 +778,14 @@ def read_lvd(rank=0, rows=None):
         'd1015+69': 5056947,
         'dw0036m2828': 0,
         'dw1046+1244': 0,
-        'dw1322-39': 0,
+        'dw1322-39': 5912201, # = [MJB2016]DW1322-39
         'dw1323-40a': 0,
         'dw1323-40b': 0,
-        'dw1329-45': 0,
-        'dw1336-44': 0,
+        'dw1329-45': 5912206, # = [MJB2016]DW1329-45
+        'dw1336-44': 5912210, # = [MJB2016]DW1336-44
         'dw1340-30': 0,
-        'dw1341-43': 0,
-        'dw1342-43': 0,
+        'dw1341-43': 5912213, # = [MJB2016]DW1341-43
+        'dw1342-43': 5912214, # = [MJB2016]DW1342-43
         #'Cetus III': 6726344,
         #'Virgo III': 0,
         #'NGC 55-dw1': 0,
