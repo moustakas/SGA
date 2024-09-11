@@ -1,0 +1,699 @@
+#!/usr/bin/env python
+
+"""Query NED with an external SGA2024 sample.
+
+SGA2024-query-ned --catalog HyperLeda --query-byname
+SGA2024-query-ned --catalog HyperLeda --gather-byname
+
+SGA2024-query-ned --catalog HyperLeda-coords --query-bycoord
+SGA2024-query-ned --catalog HyperLeda-coords --gather-bycoord
+
+SGA2024-query-ned --catalog LVD --query-byname
+SGA2024-query-ned --catalog LVD --gather-byname
+
+SGA2024-query-ned --catalog NEDLVS --query-byname
+SGA2024-query-ned --catalog NEDLVS --gather-byname
+
+"""
+import os, re, time
+from glob import glob
+import numpy as np
+import fitsio
+from astropy.table import Table, vstack, hstack, join
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+import matplotlib.pyplot as plt
+
+from urllib.request import urlretrieve
+from urllib.error import HTTPError
+
+from SGA.util import match, match_to
+from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
+                    nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
+                    read_lvd, version_lvd, nedfriendly_lvd)
+
+
+def readone_byname(queryfile):
+    """Read one file.
+
+    """
+    skip_head = 17
+    skip_foot = 4
+    data_start = skip_head + 1
+
+    with open(queryfile, 'r') as F:
+        D = F.readlines()
+    D = [line.replace('\n', '') for line in D]
+
+    nodata = 'No input names recognized by the NED name interpreter'
+    if nodata in D[-4]:
+        print(f'No data in {queryfile}')
+        return Table()
+    else:
+        print(f'Reading {queryfile}')
+        #pass
+
+    #D14 = D[14].split('|')
+    #D15 = D[15].split('|')
+    #D16 = D[16].split('|')
+    #D17 = D[17].split('|')
+    #for ii in range(30):
+    #    txt14 = f'{D14[ii][:30]:30}'.replace(' ', '.')
+    #    txt15 = f'{D15[ii][:30]:30}'.replace(' ', '.')
+    #    txt16 = f'{D16[ii][:30]:30}'.replace(' ', '.')
+    #    txt17 = f'{D17[ii][:30]:30}'.replace(' ', '.')
+    #    print(f'{txt14}  {txt15}  {txt16}  {txt17}')
+
+    rawdata = D[data_start:-skip_foot]
+    # the header is different(!!) if only 1 object is in the file
+    if len(rawdata) == 0:
+        rawdata = D[data_start-1:-skip_foot]
+    nned = len(rawdata)
+
+    #if nned != len(racat[ss:ee]):
+    #    print('Missing some objects')
+    #    raise ValueError()
+
+    # pack the data into a Table
+    cols = ['ROW', 'OBJECT_NOTE', 'OBJNAME', 'ESSENTIAL_NOTE',
+            'OBJNAME_NED','RA', 'DEC', 'OBJTYPE', 'Z',
+            'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 'BASIC_MORPH', 'MORPH',
+            'SDSS_R', 'RC3_B', 'TWOMASS_K',
+            'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
+            'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
+            'RC3_DIAM_B', 'RC3_BA_B', 'RC3_PA_B',
+            'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B',
+            'ROW2']
+
+    data = []
+    for irow, row in enumerate(rawdata):
+        #print(irow, len(row.split('|')))
+        row = row.replace('|b|', 'b') # special case the essential note for PGC006041
+        row = row.replace('|S(87GB) - S(87GB[BWE91])|', 'S(87GB) - S(87GB[BWE91])') # PGC2822076
+        row = row.replace('comp|SB?c', 'comp; SB?c') # ESO 108-IG 021
+        row = row.replace('Spiral;|HSB', 'Spiral; HSBc') # PGC1372311
+        row = row.split('|')
+        row = [val.strip() for val in row]
+        if len(row) != len(cols):
+            print(f'Problem parsing row {irow} of {queryfile}')
+            raise ValueError()
+        data.append(row)
+    nobj = len(data)
+
+    data = list(zip(*data))
+
+    temp = Table()
+    for icol, col in enumerate(cols):
+        #print(col, data[icol])
+        #if len(data[icol]) != nobj:
+        #    raise ValueError()
+        try:
+            temp[col] = data[icol]
+        except:
+            raise ValueError()
+
+    if not np.all(temp['ROW'] == temp['ROW2']):
+        raise ValueError()
+
+    # clean up the columns
+    out = Table()
+    #out['ROW'] = temp['ROW'].astype(int)
+    out['OBJNAME'] = temp['OBJNAME']
+    out['OBJNAME_NED'] = temp['OBJNAME_NED']
+    out['OBJTYPE'] = temp['OBJTYPE']
+    out['OBJECT_NOTE'] = temp['OBJECT_NOTE']
+    out['ESSENTIAL_NOTE'] = temp['ESSENTIAL_NOTE']
+
+    # coordinates
+    ra = np.zeros(nobj, 'f8') - 99.
+    dec = np.zeros(nobj, 'f8') - 99.
+    for iobj, (strra, strdec) in enumerate(temp.iterrows('RA', 'DEC')):
+        # no coordinates if NED doesn't resolve the name
+        if strra != '' and strdec != '':
+            cc = SkyCoord(strra, strdec)
+            ra[iobj] = cc.ra.value
+            dec[iobj] = cc.dec.value
+    out['RA'] = ra
+    out['DEC'] = dec
+
+    for col in ['Z', 'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR',
+                'SDSS_R', 'RC3_B', 'TWOMASS_K',
+                'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
+                'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
+                'RC3_DIAM_B', 'RC3_BA_B', 'RC3_PA_B',
+                'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B']:
+        val = np.zeros(nobj, 'f4') - 99.
+        for iobj, strval in enumerate(temp[col]):
+            if strval != '':
+                try:
+                    vval = re.sub('[^0-9,.]', '', strval)
+                    if vval != '': # e.g., [MLF2006]J072039.75+710950.8 has 'R' and PGC021687 has 'B'
+                        # special case for PGC019437 and possibly others
+                        if vval[-1] == '.':
+                            vval = vval[:-1]
+                        val[iobj] = np.float32(vval)
+                except:
+                    raise ValueError()
+                if 'DIAM' in col:
+                    val[iobj] /= 60. # [arcsec --> arcmin]
+        out[col] = val
+    #temp[temp.colnames[14:20]]
+    #out[out.colnames[14:20]]
+
+    return out
+
+
+def readone_bycoord(queryfile):
+    """Read one file.
+
+    """
+    skip_head = 17
+    skip_foot = 4
+    data_start = skip_head + 1
+
+    with open(queryfile, 'r') as F:
+        D = F.readlines()
+    D = [line.replace('\n', '') for line in D]
+
+    nodata = 'No objects found for the input list and search radius'
+    if nodata in D[-4]:
+        print(f'No data in {queryfile}')
+        return Table()
+    else:
+        print(f'Reading {queryfile}')
+        #pass
+
+    #D14 = D[14].split('|')
+    #D15 = D[15].split('|')
+    #D16 = D[16].split('|')
+    #D17 = D[17].split('|')
+    #for ii in range(30):
+    #    txt14 = f'{D14[ii][:30]:30}'.replace(' ', '.')
+    #    txt15 = f'{D15[ii][:30]:30}'.replace(' ', '.')
+    #    txt16 = f'{D16[ii][:30]:30}'.replace(' ', '.')
+    #    txt17 = f'{D17[ii][:30]:30}'.replace(' ', '.')
+    #    print(f'{txt14}  {txt15}  {txt16}  {txt17}')
+
+    rawdata = D[data_start:-skip_foot]
+    # the header is different(!!) if only 1 object is in the file
+    if len(rawdata) == 0:
+        rawdata = D[data_start-1:-skip_foot]
+    nned = len(rawdata)
+
+    # pack the data into a Table
+    cols = ['ROW', 'OBJECT_NOTE', 'INPUT_POSITION', 'SEPARATION', 'ESSENTIAL_NOTE',
+            'OBJNAME_NED','RA', 'DEC', 'OBJTYPE', 'Z',
+            'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 'BASIC_MORPH', 'MORPH',
+            'SDSS_R', 'RC3_B', 'TWOMASS_K',
+            'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
+            'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
+            'RC3_DIAM_B', 'RC3_BA_B', 'RC3_PA_B',
+            'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B',
+            'ROW2']
+
+    data = []
+    for irow, row in enumerate(rawdata):
+        #print(irow, len(row.split('|')))
+        row = row.replace('|b|', 'b') # special case
+        #row = row.replace('|S(87GB) - S(87GB[BWE91])|', 'S(87GB) - S(87GB[BWE91])') # PGC2822076
+        #row = row.replace('comp|SB?c', 'comp; SB?c') # ESO 108-IG 021
+        #row = row.replace('Spiral;|HSB', 'Spiral; HSBc') # PGC1372311
+        row = row.split('|')
+        row = [val.strip() for val in row]
+        if len(row) != len(cols):
+            print(f'Problem parsing row {irow} of {queryfile}')
+            raise ValueError()
+        data.append(row)
+    nobj = len(data)
+
+    data = list(zip(*data))
+
+    temp = Table()
+    for icol, col in enumerate(cols):
+        #print(col, data[icol])
+        #if len(data[icol]) != nobj:
+        #    raise ValueError()
+        try:
+            temp[col] = data[icol]
+        except:
+            raise ValueError()
+
+    if not np.all(temp['ROW'] == temp['ROW2']):
+        raise ValueError()
+
+    # no matching galaxies within the separation
+    temp = temp[temp['SEPARATION'] != '']
+    nobj = len(temp)
+
+    # clean up the columns
+    out = Table()
+    #out['ROW'] = temp['ROW'].astype(int)
+    #out['OBJNAME'] = temp['OBJNAME']
+    out['INPUT_POSITION'] = temp['INPUT_POSITION']
+    out['INPUT_RA'] = np.zeros(len(temp), 'f8')
+    out['INPUT_DEC'] = np.zeros(len(temp), 'f8')
+    out['SEPARATION'] = temp['SEPARATION'].astype('f4')
+    out['OBJNAME_NED'] = temp['OBJNAME_NED']
+    out['OBJTYPE'] = temp['OBJTYPE']
+    out['OBJECT_NOTE'] = temp['OBJECT_NOTE']
+    out['ESSENTIAL_NOTE'] = temp['ESSENTIAL_NOTE']
+
+    # parse the input coordinates
+    inputcoord = temp['INPUT_POSITION']
+    blank = np.where(inputcoord == '')[0]
+    for one in blank:
+        #print(inputcoord[one], inputcoord[one-1])
+        out['INPUT_POSITION'][one] = out['INPUT_POSITION'][one-1]
+        inputcoord[one] = inputcoord[one-1]
+
+    inputcoord = np.char.split(inputcoord, ' ')
+    inputcoord = list(zip(*inputcoord))
+    out['INPUT_RA'] = np.array(inputcoord[0]).astype('f8')
+    out['INPUT_DEC'] = np.array(inputcoord[1]).astype('f8')
+
+    # coordinates
+    ra = np.zeros(nobj, 'f8') - 99.
+    dec = np.zeros(nobj, 'f8') - 99.
+    for iobj, (strra, strdec) in enumerate(temp.iterrows('RA', 'DEC')):
+        # no coordinates if NED doesn't resolve the name
+        if strra != '' and strdec != '':
+            cc = SkyCoord(strra, strdec)
+            ra[iobj] = cc.ra.value
+            dec[iobj] = cc.dec.value
+    out['RA'] = ra
+    out['DEC'] = dec
+
+    for col in ['Z', 'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR',
+                'SDSS_R', 'RC3_B', 'TWOMASS_K',
+                'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
+                'TWOMASS_DIAM_K', 'TWOMASS_BA_K', 'TWOMASS_PA_K',
+                'RC3_DIAM_B', 'RC3_BA_B', 'RC3_PA_B',
+                'ESO_DIAM_B', 'ESO_BA_B', 'ESO_PA_B']:
+        val = np.zeros(nobj, 'f4') - 99.
+        for iobj, strval in enumerate(temp[col]):
+            if strval != '':
+                try:
+                    vval = re.sub('[^0-9,.]', '', strval)
+                    if vval != '':
+                        if vval[-1] == '.':
+                            vval = vval[:-1]
+                        val[iobj] = np.float32(vval)
+                except:
+                    raise ValueError()
+                if 'DIAM' in col:
+                    val[iobj] /= 60. # [arcsec --> arcmin]
+        out[col] = val
+    #temp[temp.colnames[14:20]]
+    #out[out.colnames[14:20]]
+
+    return out
+
+
+def build_url_byname(objnames, linebreak='%0D%0A'):
+
+    from urllib.parse import quote # make the galaxy name http-safe
+
+    uplist = '+' + ''.join([f'{quote(obj)}{linebreak}' for obj in objnames])
+
+    url = f'https://ned.ipac.caltech.edu/cgi-bin/gmd?uplist={uplist}&delimiter=bar' + \
+        '&NO_LINKS=1&nondb=row_count&nondb=user_name_msg&nondb=user_objname' + \
+        '&crosid=objname&position=ra%2Cdec&enotes=objnote&position=pretype' + \
+        '&position=z&gadata=magnit&gadata=sizemaj&gadata=sizemin&gadata=morphol' + \
+        '&attdat_CON=M&gphotoms_CON=5861&gphotoms_CON=22&gphotoms_CON=1495' + \
+        '&diamdat_CON=117&diamdat_CON=2&diamdat_CON=32&diamdat_CON=15&attdat=attned' + \
+        '&gphotoms=q_value&diamdat=ned_maj_dia&diamdat=ned_min_dia&diamdat=ned_pa'
+
+    return url
+
+
+def build_url_bycoord(ras, decs, linebreak='%0D%0A', sep=3.):
+
+    uplist = '+' + ''.join([f'{np.round(ra, 10)}+{np.round(dec, 10)}{linebreak}' for ra, dec in zip(ras, decs)])
+
+    url = f'https://ned.ipac.caltech.edu/cgi-bin/nnd?uplist={uplist}&sr_arcsec={sep}&delimiter=bar&NO_LINKS=1' + \
+        '&nondb=row_count&nondb=user_inp_msg&nondb=user_inplist&nondb=user_inp_sep&crosid=objname&position=ra%2Cdec' + \
+        '&enotes=objnote&position=pretype&position=z&gadata=magnit&gadata=sizemaj&gadata=sizemin&gadata=morphol&' + \
+        'attdat_CON=M&gphotoms_CON=5861&gphotoms_CON=22&gphotoms_CON=1495&diamdat_CON=117&diamdat_CON=2&diamdat_CON=32' + \
+        '&diamdat_CON=15&attdat=attned&gphotoms=q_value&diamdat=ned_maj_dia&diamdat=ned_min_dia&diamdat=ned_pa' + \
+        '&distance=avg&distance=stddev_samp'
+
+    return url
+
+
+def read_catalog(catalog):
+    """Read a catalog.
+
+    """
+    match catalog.lower():
+        case 'hyperleda':
+            version = version_hyperleda()
+            cat = read_hyperleda()#rows=np.arange(500))
+
+        case 'hyperleda-coords':
+            # for objects for which NED could not resolve OBJNAME
+            version = version_hyperleda()
+            cat = read_hyperleda()
+
+            nedfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDbyname-HyperLeda_{version}.fits')
+            ned = Table(fitsio.read(nedfile))
+            print(f'Read {len(ned):,d} objects from {nedfile}')
+
+            # remove NED-duplicates
+            ned = ned[ned['OBJECT_NOTE'] == '']
+
+            alt = cat[~np.isin(cat['ROW'], ned['ROW'])] # no match
+            cat = alt
+            version = f'{version_hyperleda()}-byname'
+
+        case 'nedlvs':
+            version = version_nedlvs()
+            cat = read_nedlvs()#rows=np.arange(1000))
+
+        case 'lvd':
+            version = version_lvd()
+            cat = read_lvd()
+
+        case _:
+            raise NotImplementedError
+
+    return cat
+
+
+def query_ned(catalog, byname=True, bycoord=False, overwrite=False):
+    """Query NED either by name or by coordinates.
+
+    """
+    cat = read_catalog(catalog)
+    ngal = len(cat)
+
+    if byname:
+        prefix = 'nedbyname'
+    elif bycoord:
+        prefix = 'nedbycoord'
+
+    workdir = os.path.join(sga_dir(), 'parent', 'external', f'{prefix}-{catalog.lower()}')
+
+    # find . -size 1054c -exec ls -lh {} \+ | wc
+
+    # https://ned.ipac.caltech.edu/forms/gmd.html
+    # https://ned.ipac.caltech.edu/forms/nnd.html
+    nperquery = 250 # number of galaxies per query
+
+    logdir = os.path.join(workdir, 'logs')
+    if not os.path.isdir(logdir):
+        os.makedirs(logdir)
+
+    #cat = cat[(cat['PGC'] > 21040) * (cat['PGC'] < 21045)]
+    #cat = cat[np.random.choice(len(cat), 1000, replace=False)]
+
+    # sort into RA slices
+    raslices = np.array([get_raslice(ra) for ra in cat['RA'].value])
+    uraslices = np.unique(raslices)
+    print(f'Dividing the sample into {len(uraslices)} unique RA slices.')
+
+    for uraslice in uraslices:#[181:]:
+        racat = cat[uraslice == raslices]
+        nobj = len(racat)
+        nquery = int(np.ceil(nobj / nperquery)) # number of queries
+        print(f'RA slice {uraslice} will require {nquery:,d} queries of {nperquery} objects per query.')
+
+        querydir = os.path.join(workdir, uraslice)
+        if not os.path.isdir(querydir):
+            os.makedirs(querydir)
+
+        logfile = os.path.join(logdir, f'raslice{uraslice}.log')
+        if os.path.isfile(logfile) and overwrite:
+            os.remove(logfile)
+
+        for iquery in range(nquery):
+            queryfile = os.path.join(querydir, f'raslice{uraslice}-query{iquery:05d}.txt')
+
+            ss = iquery * nperquery
+            ee = (iquery + 1) * nperquery
+            if ee > ngal:
+                ee = ngal
+
+            racat1 = racat[ss:ee]
+
+            if (len(glob(queryfile.replace('.txt', '*.txt'))) == 0) or overwrite:
+                if iquery % 1 == 0:
+                    print(f'Executing query {iquery:05d}/{nquery-1:05d}')
+
+                objnames = racat1['OBJNAME'].value
+                ras = racat1['RA'].value
+                decs = racat1['DEC'].value
+
+                if byname:
+                    # NED-friendly names!
+                    if catalog.lower() == 'hyperleda':
+                        objnames = nedfriendly_hyperleda(objnames)#, racat1['PGC'].value)
+                    if catalog.lower() == 'lvd':
+                        objnames = nedfriendly_lvd(objnames)
+                    url = build_url_byname(objnames)
+                elif bycoord:
+                    url = build_url_bycoord(ras, decs, sep=3.)
+
+                try:
+                    urlretrieve(url, queryfile)
+                    # update the log
+                    with open(logfile, 'a') as L:
+                        L.write(f'{os.path.basename(queryfile)}\n')
+                        L.write(f'{url}\n')
+                        L.write('\n')
+                except HTTPError as err:
+                    # http request was too long for the NED server, so split
+                    # the request in two
+                    if err.code == 414:
+                        print(f'Too many objects in query {queryfile}; splitting in two.')
+                        for suffix, _objnames, _ras, _decs in zip(['a', 'b'], np.array_split(objnames, 2),
+                                                                  np.array_split(ras, 2), np.array_split(decs, 2)):
+                            _queryfile = queryfile.replace('.txt', f'{suffix}.txt')
+                            if byname:
+                                url = build_url_byname(_objnames)
+                            elif bycoord:
+                                url = build_url_bycoord(_ras, _decs, sep=3.)
+                            urlretrieve(url, _queryfile)
+                            with open(logfile, 'a') as L:
+                                L.write(f'{os.path.basename(_queryfile)}\n')
+                                L.write(f'{url}\n')
+                                L.write('\n')
+                    else:
+                        print(url)
+                        raise HTTPError(f'Problem with {queryfile}')
+                #time.sleep(1)
+            else:
+                print(f'Skipping existing query {iquery:05d}/{nquery-1:05d}')
+
+
+def gather_query(catalog, byname=True, bycoord=False):
+    """Gather the NED query results (either by name or by coordinates).
+
+    """
+    cat = read_catalog(catalog)
+    ngal = len(cat)
+
+    if byname:
+        prefix = 'nedbyname'
+        suffix = 'byname'
+    elif bycoord:
+        prefix = 'nedbycoord'
+        suffix = 'bycoord'
+
+    workdir = os.path.join(sga_dir(), 'parent', 'external', f'{prefix}-{catalog.lower()}')
+
+    allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query*.txt')))
+    #allfiles = glob(os.path.join(workdir, '176', 'raslice176-query*.txt'))
+
+    print(f'Merging {len(allfiles):,d} query files.')
+
+    data = []
+    for onefile in allfiles:
+        if byname:
+            data1 = readone_byname(onefile)
+        elif bycoord:
+            data1 = readone_bycoord(onefile)
+        data.append(data1)
+    data = vstack(data)
+
+
+    if catalog.lower() == 'lvd':
+        version = version_lvd()
+
+        keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED' # = Bootes V
+        data = data[keep]
+
+        miss = cat[~np.isin(nedfriendly_lvd(cat['OBJNAME'].value), data['OBJNAME'])]
+
+        indx_cat, indx_data = match(nedfriendly_lvd(cat['OBJNAME']), data['OBJNAME'])
+        cat = cat[indx_cat]
+        data = data[indx_data]
+
+        assert(np.all(nedfriendly_lvd(cat['OBJNAME']) == data['OBJNAME']))
+        data['ROW'] = cat['ROW']
+        data = data[np.argsort(data['ROW'])]
+
+
+    if catalog.lower() == 'nedlvs':
+        version = version_nedlvs()
+
+        assert(len(data) == len(np.unique(data['OBJNAME'])))
+        indx_cat, indx_data = match(cat['OBJNAME'], data['OBJNAME'])
+        srt = np.argsort(indx_cat)
+        data = data[indx_data[srt]]
+        assert(np.all(cat['OBJNAME'] == data['OBJNAME']))
+        data['ROW'] = cat['ROW']
+
+        # 135 objects have NED 'resolve' issues (duplicates or not
+        # recognized). Throw those out here.
+        diff = data[data['OBJECT_NOTE'] != '']['OBJNAME', 'OBJNAME_NED', 'OBJECT_NOTE', 'Z']
+        #diff = data[data['OBJNAME'] != data['OBJNAME_NED']]['OBJNAME', 'OBJNAME_NED', 'OBJECT_NOTE', 'Z']
+        diff = join(diff, cat['OBJNAME', 'RA', 'DEC', 'Z'], keys='OBJNAME', table_names=['QUERY', 'LVS'])
+        #diff[diff['OBJECT_NOTE'] != '']
+        diff.write('NEDLVS-resolve-issues.fits', overwrite=True)
+
+        I = np.where(data['OBJECT_NOTE'] == '')[0]
+        #I = np.where(data['OBJNAME'] == data['OBJNAME_NED'])[0]
+        print(f'Keeping {len(I):,d}/{len(data):,d} objects without NED resolve issues.')
+        data = data[I]
+
+
+    if catalog.lower() == 'hyperleda':
+        version = version_hyperleda()
+
+        # Any objects with OBJECT_NOTE "ERROR: Input name not recognized by NED"
+        # or which are not in 'data', were not resolved by NED.
+        keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
+        print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
+        out = data[keep]
+
+        # reverse the nedfriendly_hyperleda business
+        out['OBJNAME'] = nedfriendly_hyperleda(out['OBJNAME'], reverse=True)
+
+        # Remove the ~2500 objects not in NED and the ~11k objects resolve to
+        # the same object in NED; choose the first one.
+        keep = out['OBJECT_NOTE'] == ''
+        print(f'Keeping {np.sum(keep):,d}/{len(out):,d} objects with no NED duplicate-object warning.')
+        out = out[keep]
+
+        # add ROW, PGC, and ALTNAMES
+        out['ALTNAMES'] = np.zeros(len(out), dtype=cat['ALTNAMES'].dtype)
+        out['PGC'] = np.zeros(len(out), dtype=cat['PGC'].dtype)
+        out['ROW'] = np.zeros(len(out), dtype=cat['ROW'].dtype)
+
+        indx_cat, indx_out = match(cat['OBJNAME'], out['OBJNAME'])
+        out['ALTNAMES'][indx_out] = cat[indx_cat]['ALTNAMES']
+        out['PGC'][indx_out] = cat[indx_cat]['PGC']
+        out['ROW'][indx_out] = cat[indx_cat]['ROW']
+
+        out = out[np.argsort(out['ROW'])]
+        data = out
+
+
+    if catalog.lower() == 'hyperleda-coords':
+        version = version_hyperleda()
+
+        ## non-matches (SEPARATION=='') were already removed
+        #keep = data['OBJECT_NOTE'] == ''
+        #print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
+        #out = data[keep]
+
+        # special-case Andromeda VI, which incorrectly matches to WISEA
+        # J235146.58+243459.9; however, we pick it up in NED via the NEDLVS and
+        # LVD catalogs.
+        print(f'Dropping WISEA J235146.58+243459.9, which is an incorrect match to Andromeda VI.')
+        data = data[data['OBJNAME_NED'] != 'WISEA J235146.58+243459.9']
+
+        # Remove XX coordinate duplicates in the input / HyperLeda catalog.
+        # E.g., PGC4586787 and PGC4586817 have the same coordinates but
+        # different properties!
+        ref_input = np.char.add(np.round(cat['RA'], 10).astype(str), [' ']*len(cat))
+        ref_input = np.char.add(ref_input, np.round(cat['DEC'], 10).astype(str))
+        #rr, cc = np.unique(ref_input, return_counts=True)
+        #dd = cat[np.isin(ref_input, rr[cc>1])]
+        #dd = dd[np.argsort(dd['RA'])]
+        _, uindx = np.unique(ref_input, return_index=True)
+        print(f'Trimmed to {len(uindx):,d} objects with unique reference coordinates.')
+        cat = cat[uindx]
+        ref_input = ref_input[uindx]
+
+        # Next, our 'data' table has many duplicates since we searched on
+        # coordinates. If there's just one match, we're done, otherwise we need
+        # to choose one of the matches.
+        _, uindx, ucount = np.unique(data['INPUT_POSITION'], return_index=True, return_counts=True)
+        uindx = uindx[ucount == 1]
+
+        # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
+        def dup_indices(records_array):
+            # creates an array of indices, sorted by unique element
+            idx_sort = np.argsort(records_array)
+            # sorts records array so all unique elements are together
+            sorted_records_array = records_array[idx_sort]
+            # returns the unique values, the index of the first occurrence of a value, and the count for each element
+            vals, idx_start, count = np.unique(sorted_records_array, return_counts=True, return_index=True)
+            # splits the indices into separate arrays
+            res = np.split(idx_sort, idx_start[1:])
+            #filter them with respect to their size, keeping only items occurring more than once
+            vals = vals[count > 1]
+            return list(filter(lambda x: x.size > 1, res))
+
+        res = dup_indices(data['INPUT_POSITION'].value)
+
+        # Resolve multiple matches:
+        print(f'Resolving {len(res):,d} multiple matches.')
+        J = []
+        for dups in res:
+            dups.sort()
+            objtypes = data[dups]['OBJTYPE'].value
+            G = np.where(objtypes == 'G')[0]
+            nG = len(G)
+            if nG == 0:
+                J.append(dups[0])
+            else:
+                # closest G match
+                J.append(dups[G[0]])
+
+        J = np.hstack(J)
+        I = np.hstack((uindx, J))
+
+        indx_cat, indx_data = match(ref_input, data[I]['INPUT_POSITION'])
+        out = cat[indx_cat]['OBJNAME', 'ALTNAMES', 'PGC', 'ROW']
+        out = hstack((out, data[I][indx_data]))
+        assert(len(out) == len(np.unique(out['ROW'])))
+
+        out = out[np.argsort(out['ROW'])]
+        data = out
+
+
+    outfile = os.path.join(sga_dir(), 'parent', 'external', f'NED{suffix}-{catalog}_{version}.fits')
+    print(f'Writing {len(data):,d} objects to {outfile}')
+    data.write(outfile, overwrite=True)
+
+
+def main():
+    """Main wrapper.
+
+    """
+    import argparse
+
+    catalogs = ['HyperLeda', 'HyperLeda-coords', 'NEDLVS', 'LVD']
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
+    parser.add_argument('--query-byname', action='store_true', help='Query for basic data by object name.')
+    parser.add_argument('--query-bycoord', action='store_true', help='Query for basic data by coordinates.')
+    parser.add_argument('--gather-byname', action='store_true', help='Gather the query-byname output.')
+    parser.add_argument('--gather-bycoord', action='store_true', help='Gather the query-bycoord output.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
+    args = parser.parse_args()
+
+
+    if args.query_byname or args.query_bycoord:
+        query_ned(args.catalog, byname=args.query_byname, bycoord=args.query_bycoord,
+                  overwrite=args.overwrite)
+
+    if args.gather_byname or args.gather_bycoord:
+        gather_query(args.catalog, byname=args.gather_byname, bycoord=args.gather_bycoord)
+
+
+if __name__ == '__main__':
+    main()
