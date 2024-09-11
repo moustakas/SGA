@@ -458,37 +458,41 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
 
 
-def fig_size_mag(sample, leda=True, png=None):
-    """D(25) vs Bt from the parent sample and D(25) histogram.
+def fig_size_mag(sample, pngfile=None):
+    """D(25) vs mag from the parent sample and D(25) histogram.
 
     """
     import corner
 
     sns, colors = plot_style(talk=True, font_scale=1.2)
 
-    if leda:
-        good = np.where((sample['D25_LEDA'] > 0) * (sample['MAG_LEDA'] > 0))[0]
+    #if leda:
+    #    good = np.where((sample['D25_LEDA'] > 0) * (sample['MAG_LEDA'] > 0))[0]
+    #
+    #    isleda = sample['SGA_ID'][good] < 2000000
+    #    notleda = sample['SGA_ID'][good] >= 2000000
+    #
+    #    mag_leda = sample['MAG_LEDA'][good][isleda]
+    #    diam_leda = np.log10(sample['D25_LEDA'][good][isleda]) # [arcmin]
+    #
+    #    mag_notleda = sample['MAG_LEDA'][good][notleda]
+    #    diam_notleda = np.log10(sample['D25_LEDA'][good][notleda]) # [arcmin]
+    #
+    #    xlabel = r'$b_{t}$ (Vega mag)'
+    #    ylabel = r'$D_{\mathrm{L}}(25)$ (arcmin)'
+    #    #ylabel = r'$D_{i}(25)$ (arcmin)'
+    #else:
+    #    good = np.where((sample['RADIUS_SB26'] != -1) * (sample['R_MAG_SB26'] != -1))[0]
+    #    mag = sample['R_MAG_SB26'][good]
+    #    diam = np.log10(sample['RADIUS_SB26'][good]/60) # [arcmin]
+    #    xlabel = r'$m_{r}(<R_{26})$ (AB mag)'
+    #    ylabel = r'$R_{26}$ (arcmin)'
 
-        isleda = sample['SGA_ID'][good] < 2000000
-        notleda = sample['SGA_ID'][good] >= 2000000
-
-        mag_leda = sample['MAG_LEDA'][good][isleda]
-        diam_leda = np.log10(sample['D25_LEDA'][good][isleda]) # [arcmin]
-
-        mag_notleda = sample['MAG_LEDA'][good][notleda]
-        diam_notleda = np.log10(sample['D25_LEDA'][good][notleda]) # [arcmin]
-
-        xlabel = r'$b_{t}$ (Vega mag)'
-        ylabel = r'$D_{\mathrm{L}}(25)$ (arcmin)'
-        #ylabel = r'$D_{i}(25)$ (arcmin)'
-    else:
-        good = np.where((sample['RADIUS_SB26'] != -1) * (sample['R_MAG_SB26'] != -1))[0]
-        mag = sample['R_MAG_SB26'][good]
-        diam = np.log10(sample['RADIUS_SB26'][good]/60) # [arcmin]
-        xlabel = r'$m_{r}(<R_{26})$ (AB mag)'
-        ylabel = r'$R_{26}$ (arcmin)'
-    
-    xlim, ylim = (20, 7), (-1, 1.6)
+    xlabel = r'$b_{t}$ (Vega mag)'
+    ylabel = r'Diameter (arcmin)'
+    #ylabel = r'$D_{\mathrm{L}}(25)$ (arcmin)'
+    xlim, ylim = (25, 0), (-2., 2.8)
+    #xlim, ylim = (20, 7), (-1, 1.6)
 
     @ticker.FuncFormatter
     def major_formatter(x, pos):
@@ -501,24 +505,29 @@ def fig_size_mag(sample, leda=True, png=None):
 
     # https://matplotlib.org/stable/gallery/lines_bars_and_markers/scatter_hist.html
     #fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 7), sharey=True)
-    gs = fig.add_gridspec(1, 2,  width_ratios=(2, 1.1), 
+    gs = fig.add_gridspec(1, 2,  width_ratios=(2, 1.1),
                           #left=0.1, right=0.9, bottom=0.1, top=0.9,
                           wspace=0.05)
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
 
-    corner.hist2d(mag_leda, diam_leda,
-                  levels=[0.5, 0.75, 0.95, 0.995],
-                  bins=100, smooth=True, color=colors[0], ax=ax1, # mpl.cm.get_cmap('viridis'),
-                  plot_density=True, fill_contours=True, range=(xlim, ylim),
-                  data_kwargs={'color': colors[0], 'alpha': 0.2, 'ms': 4, 'alpha': 0.5},
-                  contour_kwargs={'colors': 'k'},
-                 )
-    #ax1.scatter(mag_leda[:2], diam_leda[:2], s=2, color=colors[0], alpha=0.5, # hack
-    #            label='HyperLeda')
-    ax1.scatter(mag_notleda, diam_notleda, s=2, color=colors[2], alpha=0.5)#
-                #label='Supplemental')
-
+    for iref, ref in enumerate(np.unique(sample['DIAM_REF'])):
+        I = np.where((sample['DIAM_REF'] == ref) * (sample['DIAM'] != -99.) * (sample['MAG'] != -99.))[0]
+        if len(I) == 0:
+            continue
+        mag = sample['MAG'][I]
+        logdiam = np.log10(sample['DIAM'][I])
+        print(ref, len(I), min(mag), max(mag), min(logdiam), max(logdiam))
+        corner.hist2d(mag, logdiam, label=ref,
+                      levels=[0.5, 0.75, 0.95, 0.995],
+                      bins=100, smooth=True, color=colors[iref], ax=ax1, # mpl.cm.get_cmap('viridis'),
+                      plot_density=True, fill_contours=True, range=(xlim, ylim),
+                      data_kwargs={'color': colors[iref], 'alpha': 0.2, 'ms': 4, 'alpha': 0.5},
+                      contour_kwargs={'colors': 'k'},
+                      )
+    ax1.legend(loc='upper right', fontsize=14) # frameon=False,
+    #ax1.scatter(mag_notleda, logdiam_notleda, s=2, color=colors[2], alpha=0.5)#
+    #            #label='Supplemental')
     ax1.yaxis.set_major_formatter(major_formatter)
     ax1.set_yticks(np.log10([0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 40]))
     #ax1.legend(loc='upper right', frameon=False)
@@ -534,37 +543,38 @@ def fig_size_mag(sample, leda=True, png=None):
     #ax.scatter(rmag[ingc], radius[ingc], marker='s', edgecolors='k',
     #           s=10, alpha=1.0, lw=1, color='k')
 
-    ax2.hist(diam_leda, orientation='horizontal', range=ylim, bins=75, 
-             color=colors[0], label='HyperLeda')
-    ax2.hist(diam_notleda, orientation='horizontal', range=ylim, bins=75, 
-             color=colors[2], alpha=0.7, label='Supplemental')
-    #ax1.axhline(y=np.log10(20/60), lw=2, ls='-', color='k')
-    #ax2.axhline(y=np.log10(20/60), lw=2, ls='-', color='k', label=r'$D_{\mathrm{L}}(25)=20$ arcsec')
-    ax2.set_xscale('log')
-    ax2.set_xlabel('Number of Galaxies')
-    #ax2.spines[['right', 'top']].set_visible(False)
-    ax2.tick_params(axis='y', labelleft=False)
-    ax2_twin = ax2.twinx()
+    #ax2.hist(diam_leda, orientation='horizontal', range=ylim, bins=75,
+    #         color=colors[0], label='HyperLeda')
+    #ax2.hist(diam_notleda, orientation='horizontal', range=ylim, bins=75,
+    #         color=colors[2], alpha=0.7, label='Supplemental')
+    ##ax1.axhline(y=np.log10(20/60), lw=2, ls='-', color='k')
+    ##ax2.axhline(y=np.log10(20/60), lw=2, ls='-', color='k', label=r'$D_{\mathrm{L}}(25)=20$ arcsec')
+    #ax2.set_xscale('log')
+    #ax2.set_xlabel('Number of Galaxies')
+    ##ax2.spines[['right', 'top']].set_visible(False)
+    #ax2.tick_params(axis='y', labelleft=False)
+    #ax2_twin = ax2.twinx()
+    #
+    #ax2_twin.yaxis.set_major_formatter(major_formatter)
+    #ax2_twin.set_yticks(np.log10([0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 40]))
+    ##ax2_twin.set_xscale('log')
+    #ax2_twin.set_ylim(ylim)
+    #ax2_twin.set_ylabel(ylabel, rotation=270, labelpad=25)
+    #
+    #ax2.legend(loc='upper right', fontsize=14) # frameon=False,
+    ##hh, ll = ax2.get_legend_handles_labels()
+    ##ax2.legend([hh[0], hh[1], hh[2]], [ll[0], ll[1], ll[2]],
+    ##           loc='upper right', fontsize=14) # frameon=False,
 
-    ax2_twin.yaxis.set_major_formatter(major_formatter)
-    ax2_twin.set_yticks(np.log10([0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 40]))
-    #ax2_twin.set_xscale('log')
-    ax2_twin.set_ylim(ylim)
-    ax2_twin.set_ylabel(ylabel, rotation=270, labelpad=25)
-
-    ax2.legend(loc='upper right', fontsize=14) # frameon=False, 
-    #hh, ll = ax2.get_legend_handles_labels()
-    #ax2.legend([hh[0], hh[1], hh[2]], [ll[0], ll[1], ll[2]], 
-    #           loc='upper right', fontsize=14) # frameon=False, 
-
+    #fig.tight_layout()
     fig.subplots_adjust(bottom=0.18, top=0.95, right=0.9, left=0.1)
 
-    if png:
-        pngfile = os.path.join(figdir, png)
-        print('Writing {}'.format(pngfile))
+    if pngfile:
+        print(f'Writing {pngfile}')
         fig.savefig(pngfile)#, bbox_inches='tight')
         plt.close(fig)
 
+    pdb.set_trace()
 
 def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
                         pixscale, color='#3388ff', linewidth=3):
@@ -866,18 +876,17 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
         #ax2.set_xlabel(r'Galactocentric radius $r$ (arcsec)')
         #ax2.legend(loc='upper left')
         ax2.legend(bbox_to_anchor=(0.25, 0.99))
-        
+
         ax2.set_ylabel('Color (mag)')
         ax2.set_ylim(-0.5, 2.8)
 
         for xx in (ax1, ax2):
             xx.set_xlim(xlim)
-            
             ylim = xx.get_ylim()
             xx.fill_between([0, 3*ellipsefit['psfsigma_r']*ellipsefit['pixscale']], [ylim[0], ylim[0]],
                             [ylim[1], ylim[1]], color='grey', alpha=0.1)
-            
-        ax2.text(0.03, 0.09, 'PSF\n(3$\sigma$)', ha='center', va='center',
+
+        ax2.text(0.03, 0.09, r'PSF\n(3$\sigma$)', ha='center', va='center',
             transform=ax2.transAxes, fontsize=10)
 
         fig.subplots_adjust(hspace=0.0)
@@ -948,7 +957,7 @@ def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
         ax3.xaxis.set_major_formatter(ScalarFormatter())
         ax3.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
-        ax4.fill_between(ellipsefit[refband].sma[good] * pixscale, 
+        ax4.fill_between(ellipsefit[refband].sma[good] * pixscale,
                          ellipsefit[refband].y0[good]-ellipsefit[refband].y0_err[good],
                          ellipsefit[refband].y0[good]+ellipsefit[refband].y0_err[good])#,
                          #edgecolor='k', lw=2)
@@ -958,7 +967,7 @@ def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
         #ax4.errorbar(ellipsefit[refband].sma[good] * smascale, ellipsefit[refband].y0[good],
         #             ellipsefit[refband].y0_err[good], fmt='o',
         #             markersize=4)#, color=color[refband])
-            
+
         ax2.yaxis.tick_right()
         ax2.yaxis.set_label_position('right')
         ax2.yaxis.set_major_formatter(ScalarFormatter())
@@ -971,7 +980,7 @@ def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
 
         for xx in (ax1, ax2, ax3, ax4):
             xx.set_xlim(xmin=0)
-        
+
         xlim = ax1.get_xlim()
         ax1_twin = ax1.twiny()
         ax1_twin.set_xlim( (xlim[0]*smascale, xlim[1]*smascale) )

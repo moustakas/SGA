@@ -460,11 +460,11 @@ def read_lvd(rank=0, rows=None):
     version = version_lvd()
 
     # combine the dwarf-all and dwarf-local-field-distant files
-    lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-{version}.fits')
+    lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_{version}.fits')
     if not os.path.isfile(lvdfile):
         from astropy.table import vstack
-        allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-dwarf-all-{version}.csv')
-        disfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-dwarf-local-field-distant-{version}.csv')
+        allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_dwarf_all_{version}.csv')
+        disfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_dwarf_local_field_distant_{version}.csv')
         dall = Table.read(allfile)
         ddis = Table.read(disfile)
         for col in ddis.colnames:

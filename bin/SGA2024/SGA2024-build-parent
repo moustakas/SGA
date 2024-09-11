@@ -8,9 +8,7 @@ Or, on my laptop:
 /opt/homebrew/bin/python3 ~/code/SGA/bin/SGA2024/SGA2024-build-parent --merge
 
 """
-import pdb # for debugging
-
-import os, time
+import os, time, pdb
 import numpy as np
 import numpy.ma as ma
 import fitsio
@@ -82,9 +80,11 @@ def parent_datamodel(nobj):
     parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
     parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+    parent['MORPH'] = np.zeros(nobj, '<U20')
+    parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
 
-    #parent['RA'] = np.zeros(nobj, 'f8') -99.
-    #parent['DEC'] = np.zeros(nobj, 'f8') -99.
+    parent['RA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC'] = np.zeros(nobj, 'f8') -99.
     parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
     parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
     parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
@@ -112,6 +112,10 @@ def parent_datamodel(nobj):
     parent['PA'] = np.zeros(nobj, 'f4') -99.
     parent['PA_REF'] = np.zeros(nobj, '<U7')
 
+    parent['DIAM_LEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_LEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_LEDA'] = np.zeros(nobj, 'f4') -99.
+
     parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
     parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
     parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
@@ -119,7 +123,7 @@ def parent_datamodel(nobj):
     return parent
 
 
-def merge_nedquery_catalogs():
+def merge_nedquery_catalogs(verbose=True):
     """Merge external catalogs.
 
     """
@@ -132,6 +136,21 @@ def merge_nedquery_catalogs():
         data = Table(fitsio.read(datafile))
         print(f'Read {len(data):,d} objects from {datafile}')
         return data
+
+
+    def populate_parent(input_cat, input_basic, verbose=False):
+        parent = parent_datamodel(len(input_cat))
+        for col in parent.columns:
+            if col in input_cat.columns:
+                if verbose:
+                    print(f'Populating {col}')
+                parent[col] = input_cat[col]
+            if col in input_basic.columns:
+                if verbose:
+                    print(f'Populating {col}')
+                parent[col] = input_basic[col]
+        return parent
+
 
     print('#####')
     print('Input data:')
@@ -168,7 +187,7 @@ def merge_nedquery_catalogs():
     rr, cc = np.unique(ned_nedlvs[col], return_counts=True)
     dd = ned_nedlvs[np.isin(ned_nedlvs[col], rr[cc>1].value)]
     dd = dd[np.argsort(dd[col])]
-    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=False)
+    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
     toss = []
     for objname in np.unique(dd[col]):
         I = np.where(ned_nedlvs[col] == objname)[0]
@@ -189,7 +208,7 @@ def merge_nedquery_catalogs():
     indx_nedlvs, sep2d, _ = match_coordinates_sky(c_nedlvs, c_nedlvs, nthneighbor=2)
     dd = ned_nedlvs[sep2d.arcsec == 0.]
     dd = dd[np.argsort(dd['RA'])]
-    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=False)
+    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
     radecs = np.char.add(np.round(dd['RA'], 10).astype(str), np.round(dd['DEC'], 10).astype(str))
     ref_radecs = np.char.add(np.round(ned_nedlvs['RA'], 10).astype(str), np.round(ned_nedlvs['DEC'], 10).astype(str))
     toss = []
@@ -246,7 +265,7 @@ def merge_nedquery_catalogs():
     rr, cc = np.unique(ned_hyper[col], return_counts=True)
     dd = ned_hyper[np.isin(ned_hyper[col], rr[cc>1].value)]
     dd = dd[np.argsort(dd[col])]
-    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=False)
+    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
     toss = []
     for objname in np.unique(dd[col]):
         I = np.where(ned_hyper[col] == objname)[0]
@@ -265,7 +284,7 @@ def merge_nedquery_catalogs():
     indx_hyper, sep2d, _ = match_coordinates_sky(c_hyper, c_hyper, nthneighbor=2)
     dd = ned_hyper[sep2d.arcsec == 0.]
     dd = dd[np.argsort(dd['RA'])]
-    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=False)
+    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
     radecs = np.char.add(np.round(dd['RA'], 10).astype(str), np.round(dd['DEC'], 10).astype(str))
     ref_radecs = np.char.add(np.round(ned_hyper['RA'], 10).astype(str), np.round(ned_hyper['DEC'], 10).astype(str))
     toss = []
@@ -316,37 +335,39 @@ def merge_nedquery_catalogs():
             #bb = bb[np.argsort(bb[col])]
 
     # [2] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
+    print()
+    print('#####')
+
     keys = np.array(ned_nedlvs.colnames)
     keys = keys[~np.isin(keys, ['OBJNAME', 'ROW'])]
 
     out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
     out1.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
 
-    print()
-    print('#####')
     print(f'Matched {len(out1):,d}/{len(ned_hyper):,d} ({100.*len(out1)/len(ned_hyper):.1f}%) ned_hyper and ' + \
           f'{len(out1):,d}/{len(ned_nedlvs):,d} ({100.*len(out1)/len(ned_nedlvs):.1f}%) ned_nedlvs objects using OBJNAME_NED.')
 
-    basic_out1 = get_basic_geometry(out1, galaxy_column='OBJNAME_NED', verbose=False)
+    basic_out1 = get_basic_geometry(out1, galaxy_column='OBJNAME_NED', verbose=verbose)
 
     #indx_out, indx_hyper = match(out1['ROW_HYPERLEDA'], hyper['ROW'])
     #out1['OBJNAME_HYPERLEDA'][indx_out] = hyper['OBJNAME'][indx_hyper]
     #out1 = out1[np.argsort(out1['ROW_HYPERLEDA'])]
 
-    parent1 = parent_datamodel(len(out1))
-    for col in parent1.columns:
-        if col in out1.columns:
-            parent1[col] = out1[col]
-        if col in basic_out1.columns:
-            parent1[col] = basic_out1[col]
+    parent1 = populate_parent(out1, basic_out1, verbose=verbose)
 
     indx_parent, indx_hyper = match(parent1['ROW_HYPERLEDA'], hyper['ROW'])
+    if verbose:
+        for col in ['RA_HYPERLEDA', 'DEC_HYPERLEDA', 'Z_HYPERLEDA']:
+            print(f'Populating {col}')
     parent1['RA_HYPERLEDA'][indx_parent] = hyper['RA'][indx_hyper]
     parent1['DEC_HYPERLEDA'][indx_parent] = hyper['DEC'][indx_hyper]
     I = np.where(~np.isnan(hyper['V'][indx_hyper]))[0]
     parent1['Z_HYPERLEDA'][indx_parent[I]] = hyper['V'][indx_hyper[I]] / 2.99e5
 
     indx_parent, indx_nedlvs = match(parent1['ROW_NEDLVS'], nedlvs['ROW'])
+    if verbose:
+        for col in ['RA_NEDLVS', 'DEC_NEDLVS', 'Z_NEDLVS']:
+            print(f'Populating {col}')
     parent1['RA_NEDLVS'][indx_parent] = nedlvs['RA'][indx_nedlvs]
     parent1['DEC_NEDLVS'][indx_parent] = nedlvs['DEC'][indx_nedlvs]
     I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
@@ -355,37 +376,34 @@ def merge_nedquery_catalogs():
     for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
         assert(len(np.unique(parent1[col])) == len(parent1))
     print()
-    print(f'Parent 1: N={len(parent1):,d}.')
+    print(f'Parent 1: N={len(parent1):,d}')
 
     # [3] - Add as many of the remaining ned_hyper objects as possible. Special
     # case VIRGO1, which incorrectly matches (in NED) to 'Virgo I Dwarf' rather
     # than 'Virgo I'.
+    print()
+    print('#####')
     miss_hyper = ned_hyper[np.logical_and(~np.isin(ned_hyper['ROW'], parent1['ROW_HYPERLEDA']),
                                           (ned_hyper['OBJNAME'] != 'VIRGO1'))]
     miss_hyper.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA'])
     miss_hyper.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
 
-    basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_NED', verbose=False)
-
-    print()
-    print('#####')
     print(f'Adding the remaining {len(miss_hyper):,d} objects from ned_hyper which did not name-match ned_nedlvs.')
+    basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_NED', verbose=verbose)
 
-    parent2 = parent_datamodel(len(miss_hyper))
-    for col in parent2.columns:
-        if col in miss_hyper.columns:
-            parent2[col] = miss_hyper[col]
-        if col in basic_miss_hyper.columns:
-            parent2[col] = basic_miss_hyper[col]
+    parent2 = populate_parent(miss_hyper, basic_miss_hyper, verbose=verbose)
 
     indx_parent, indx_hyper = match(parent2['ROW_HYPERLEDA'], hyper['ROW'])
+    if verbose:
+        for col in ['RA_HYPERLEDA', 'DEC_HYPERLEDA', 'Z_HYPERLEDA']:
+            print(f'Populating {col}')
     parent2['RA_HYPERLEDA'][indx_parent] = hyper['RA'][indx_hyper]
     parent2['DEC_HYPERLEDA'][indx_parent] = hyper['DEC'][indx_hyper]
     I = np.where(~np.isnan(hyper['V'][indx_hyper]))[0]
     parent2['Z_HYPERLEDA'][indx_parent[I]] = hyper['V'][indx_hyper[I]] / 2.99e5
 
     print()
-    print(f'Parent 2: N={len(parent2):,d}.')
+    print(f'Parent 2: N={len(parent2):,d}')
 
     # [4] - Add the rest of the ned_nedlvs objects, being careful about exact
     # duplicates.
@@ -414,75 +432,72 @@ def merge_nedquery_catalogs():
     #parent = parent[np.delete(np.arange(len(parent)), indx_dup_parent)]
     miss_nedlvs = miss_nedlvs[np.delete(np.arange(len(miss_nedlvs)), indx_dup_nedlvs)]
 
-    basic_miss_nedlvs = get_basic_geometry(miss_nedlvs, galaxy_column='OBJNAME_NED', verbose=False)
+    basic_miss_nedlvs = get_basic_geometry(miss_nedlvs, galaxy_column='OBJNAME_NED', verbose=verbose)
 
-    parent3 = parent_datamodel(len(miss_nedlvs))
-    for col in parent3.columns:
-        if col in miss_nedlvs.columns:
-            parent3[col] = miss_nedlvs[col]
-        if col in basic_miss_nedlvs.columns:
-            parent3[col] = basic_miss_nedlvs[col]
+    parent3 = populate_parent(miss_nedlvs, basic_miss_nedlvs, verbose=verbose)
 
     indx_parent, indx_nedlvs = match(parent3['ROW_NEDLVS'], nedlvs['ROW'])
+    if verbose:
+        for col in ['RA_NEDLVS', 'DEC_NEDLVS', 'Z_NEDLVS']:
+            print(f'Populating {col}')
     parent3['RA_NEDLVS'][indx_parent] = nedlvs['RA'][indx_nedlvs]
     parent3['DEC_NEDLVS'][indx_parent] = nedlvs['DEC'][indx_nedlvs]
     I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
     parent3['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
 
     print()
-    print(f'Parent 3: N={len(parent3):,d}.')
+    print(f'Parent 3: N={len(parent3):,d}')
 
     parent = vstack((parent, parent3))
 
     # [5] - Add any outstanding hyper objects with good astrometry and measured
     # diameters. Deprecated for now: most of these appear to be in our catalog
     # already and/or junk (e.g., SDSSJ002732.08+160242.8).
-    if False:
-        print()
-        print('#####')
-
-        miss_hyper = hyper_noned[~np.isin(hyper_noned['ROW'], parent['ROW_HYPERLEDA'])]
-        miss_hyper.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA'])
-        miss_hyper.rename_columns(['RA', 'DEC'], ['RA_HYPERLEDA', 'DEC_HYPERLEDA'])
-        miss_hyper['Z_HYPERLEDA'] = np.zeros(len(miss_hyper)) - 99.
-        I = np.where(~np.isnan(miss_hyper['V']))[0]
-        miss_hyper['Z_HYPERLEDA'][I] = hyper['V'][I] / 2.99e5
-
-        # http://atlas.obs-hp.fr/hyperleda/leda/param/celpos.html
-        I = np.where((0.1*10**miss_hyper['LOGD25'] > 1.) * (miss_hyper['F_ASTROM'] < 1))[0]
-        miss_hyper = miss_hyper[I]
-        basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_HYPERLEDA', verbose=False)
-
-        parent4 = parent_datamodel(len(miss_hyper))
-        for col in parent4.columns:
-            if col in miss_hyper.columns:
-                parent4[col] = miss_hyper[col]
-            if col in basic_miss_hyper.columns:
-                parent4[col] = basic_miss_hyper[col]
-
-        print()
-        print(f'Parent 4: N={len(parent4):,d}.')
-
-        parent = vstack((parent, parent4))
+    #if False:
+    #    print()
+    #    print('#####')
+    #
+    #    miss_hyper = hyper_noned[~np.isin(hyper_noned['ROW'], parent['ROW_HYPERLEDA'])]
+    #    miss_hyper.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA'])
+    #    miss_hyper.rename_columns(['RA', 'DEC'], ['RA_HYPERLEDA', 'DEC_HYPERLEDA'])
+    #    miss_hyper['Z_HYPERLEDA'] = np.zeros(len(miss_hyper)) - 99.
+    #    I = np.where(~np.isnan(miss_hyper['V']))[0]
+    #    miss_hyper['Z_HYPERLEDA'][I] = hyper['V'][I] / 2.99e5
+    #
+    #    # http://atlas.obs-hp.fr/hyperleda/leda/param/celpos.html
+    #    I = np.where((0.1*10**miss_hyper['LOGD25'] > 1.) * (miss_hyper['F_ASTROM'] < 1))[0]
+    #    miss_hyper = miss_hyper[I]
+    #    basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_HYPERLEDA', verbose=verbose)
+    #
+    #    parent4 = populate_parent(miss_hyper, basic_miss_hyper, verbose=verbose)
+    #
+    #    print()
+    #    print(f'Parent 4: N={len(parent4):,d}.')
+    #
+    #    parent = vstack((parent, parent4))
 
     # [6] Add LVD.
     print()
     print('#####')
-    print(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} are in ned_lvd.')
+    print(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ({100.*len(lvd)/len(ned_lvd):,1f}%) are in ned_lvd.')
 
     # ned_lvd - already in parent sample
     indx_parent, indx_lvd = match(parent['OBJNAME_NED'], ned_lvd['OBJNAME_NED'])
 
     nexisting = len(indx_parent)
+    if verbose:
+        print(f'Populating ROW_LVD')
     parent['ROW_LVD'][indx_parent] = ned_lvd['ROW'][indx_lvd]
     print(f'Matched {len(indx_lvd):,d}/{len(lvd):,d} ({100.*len(indx_lvd)/len(lvd):.1f}%) ' + \
-          'ned_lvd objects to the current parent sample using OBJNAME_NED.')
+          'ned_lvd objects to the /existing/ parent sample using OBJNAME_NED.')
 
     indx_parent2, indx_lvd2 = match(parent['ROW_LVD'][indx_parent], lvd['ROW'])
+    if verbose:
+        for col in ['OBJNAME_LVD', 'RA_LVD', 'DEC_LVD']:
+            print(f'Populating {col}')
     parent['OBJNAME_LVD'][indx_parent[indx_parent2]] = lvd['OBJNAME'][indx_lvd2]
     parent['RA_LVD'][indx_parent[indx_parent2]] = lvd['RA'][indx_lvd2]
     parent['DEC_LVD'][indx_parent[indx_parent2]] = lvd['DEC'][indx_lvd2]
-    parent['PGC'][indx_parent[indx_parent2]] = lvd['PGC'][indx_lvd2]
     #parent[indx_parent[indx_parent2]]['OBJNAME_NED', 'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'RA_LVD', 'DEC_LVD', 'ROW_LVD', 'PGC']
 
     # ned_lvd - not in parent sample (new)
@@ -490,16 +505,11 @@ def merge_nedquery_catalogs():
     miss_lvd.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_LVD', 'ROW_LVD'])
     miss_lvd.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
     print(f'Adding {len(miss_lvd):,d}/{len(lvd):,d} ({100.*len(miss_lvd)/len(lvd):.1f}%) ' + \
-          'new ned_lvd objects to the parent sample.')
+          '/new/ ned_lvd objects to the parent sample.')
 
-    basic_miss_lvd = get_basic_geometry(miss_lvd, galaxy_column='OBJNAME_LVD', verbose=False)
+    basic_miss_lvd = get_basic_geometry(miss_lvd, galaxy_column='OBJNAME_LVD', verbose=verbose)
 
-    parent4a = parent_datamodel(len(miss_lvd))
-    for col in parent4a.columns:
-        if col in miss_lvd.columns:
-            parent4a[col] = miss_lvd[col]
-        if col in basic_miss_lvd.columns:
-            parent4a[col] = basic_miss_lvd[col]
+    parent4a = populate_parent(miss_lvd, basic_miss_lvd, verbose=verbose)
 
     # LVD - not in parent sample (new)
     miss_lvd = lvd[np.logical_and(~np.isin(lvd['ROW'], parent['ROW_LVD']),
@@ -509,25 +519,24 @@ def merge_nedquery_catalogs():
     print(f'Adding {len(miss_lvd):,d}/{len(lvd):,d} ({100.*len(miss_lvd)/len(lvd):.1f}%) ' + \
           'new LVD objects to the parent sample.')
 
-    basic_miss_lvd = get_basic_geometry(miss_lvd, galaxy_column='OBJNAME_LVD', verbose=False)
+    basic_miss_lvd = get_basic_geometry(miss_lvd, galaxy_column='OBJNAME_LVD', verbose=verbose)
 
-    parent4b = parent_datamodel(len(miss_lvd))
-    for col in parent4b.columns:
-        if col in miss_lvd.columns:
-            parent4b[col] = miss_lvd[col]
-        if col in basic_miss_lvd.columns:
-            parent4b[col] = basic_miss_lvd[col]
+    parent4b = populate_parent(miss_lvd, basic_miss_lvd, verbose=verbose)
 
     parent4 = vstack((parent4a, parent4b))
 
     # Fill in a bit more info.
     indx_parent, indx_lvd = match(parent4['ROW_LVD'], lvd['ROW'])
+    print(f'Matching {len(indx_parent):,d} objects to the original LVD catalog.')
+    if verbose:
+        for col in ['OBJNAME_LVD (replacing the NED-friendly names)', 'RA_LVD', 'DEC_LVD']:
+            print(f'Populating {col}')
     parent4['OBJNAME_LVD'][indx_parent] = lvd['OBJNAME'][indx_lvd] # replace the NED-friendly names
     parent4['RA_LVD'][indx_parent] = lvd['RA'][indx_lvd]
     parent4['DEC_LVD'][indx_parent] = lvd['DEC'][indx_lvd]
 
     print()
-    print(f'Parent 4: N={len(parent4)+nexisting:,d}.')
+    print(f'Parent 4: N={len(parent4)+nexisting:,d}')
 
     # [7] build final sample
     parent = vstack((parent, parent4))
@@ -559,14 +568,13 @@ def merge_nedquery_catalogs():
 
     print()
     print('#####')
-    print(f'Final parent sample: N={len(parent):,d}.')
+    print(f'Final parent sample: N={len(parent):,d}')
 
     # reset and then prioritize the diameters
-    ver = False
-    basic_lvd = get_basic_geometry(lvd, galaxy_column='ROW', verbose=ver)
-    basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=ver)
-    basic_ned_hyper = get_basic_geometry(ned_hyper, galaxy_column='ROW', verbose=ver)
-    basic_ned_nedlvs = get_basic_geometry(ned_nedlvs, galaxy_column='ROW', verbose=ver)
+    basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
+    basic_ned_hyper = get_basic_geometry(ned_hyper, galaxy_column='ROW', verbose=verbose)
+    basic_ned_nedlvs = get_basic_geometry(ned_nedlvs, galaxy_column='ROW', verbose=verbose)
+    basic_lvd = get_basic_geometry(lvd, galaxy_column='ROW', verbose=verbose)
 
     for col in ['DIAM', 'BA', 'PA', 'MAG']:
         parent[col] = -99.
@@ -589,6 +597,12 @@ def merge_nedquery_catalogs():
                         parent['BAND'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND']
                     #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'BA', 'BA_REF', 'PA', 'PA_REF']
         print()
+
+        if dataset == 'HyperLeda':
+            I = np.where(parent[row] != -99)[0]
+            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY'])
+            for col in ['DIAM', 'BA', 'PA']:
+                parent[f'DIAM_LEDA'][I[indx_parent]] = basic[indx_basic][col]
 
     # final statistics
     nobj = len(parent)
@@ -838,7 +852,8 @@ def main():
 
 
     if args.qa_parent:
-        qa_parent(nocuts=True, sky=True)
+        qa_parent(nocuts=True, size_mag=True)
+        #qa_parent(nocuts=True, sky=True)
 
 
 
