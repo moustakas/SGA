@@ -25,6 +25,52 @@ from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
                     read_lvd, version_lvd, nedfriendly_lvd)
 
 
+def qa_parent(nocuts=False, sky=False, size_mag=False):
+    """QA of the parent sample.
+
+    """
+    from SGA.qa import fig_sky, fig_size_mag
+
+    qadir = os.path.join(sga_dir(), 'parent', 'qa')
+    if not os.path.isdir(qadir):
+        os.makedirs(qadir)
+
+    if nocuts:
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
+    else:
+        pass
+
+    cat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
+    print(f'Read {len(cat):,d} objects from {catfile}')
+
+    ###########
+    # need to move this to the merge script
+    cat['RA'] = cat['RA_LVD'].value
+    cat['DEC'] = cat['DEC_LVD'].value
+    I = np.where((cat['RA'] < 0.) * (cat['RA_NED']))[0]
+    if len(I) > 0:
+        cat['RA'][I] = cat[I]['RA_NED'].value
+        cat['DEC'][I] = cat[I]['DEC_NED'].value
+    I = np.where((cat['RA'] < 0.) * (cat['RA_HYPERLEDA']))[0]
+    if len(I) > 0:
+        cat['RA'][I] = cat[I]['RA_HYPERLEDA'].value
+        cat['DEC'][I] = cat[I]['DEC_HYPERLEDA'].value
+    I = np.sum(cat['RA'] < 0.)
+    ###########
+
+    if sky:
+        png = os.path.join(qadir, 'qa-sky-parent-nocuts.png')
+        #I = cat['DIAM'] > 0.2
+        fig_sky(cat, racolumn='RA', deccolumn='DEC', pngfile=png,
+                clip_lo=0., clip_hi=300., mloc=50.)
+
+    if size_mag:
+        png = os.path.join(qadir, 'qa-sizemag-parent-nocuts.png')
+        fig_size_mag(cat, pngfile=png)
+    pdb.set_trace()
+
+
+
 def parent_datamodel(nobj):
     """Initialize the data model for the parent sample.
 
@@ -542,7 +588,7 @@ def merge_nedquery_catalogs():
                     if col == 'MAG':
                         parent['BAND'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND']
                     #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'BA', 'BA_REF', 'PA', 'PA_REF']
-            print()
+        print()
 
     # final statistics
     nobj = len(parent)
@@ -760,6 +806,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--merge-nedquery', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned.')
+    parser.add_argument('--qa-parent', action='store_true', help='Build QA.')
     parser.add_argument('--region', choices=regions, type=str, nargs='*', help='Region to pass to --in-footprint.')
     parser.add_argument('--catalog', choices=catalogs, type=str, help='External catalog to pass to --in-footprint.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
@@ -788,6 +835,11 @@ def main():
 
     if args.merge_nedquery:
         merge_nedquery_catalogs()
+
+
+    if args.qa_parent:
+        qa_parent(nocuts=True, sky=True)
+
 
 
     #basedir = sga_dir()

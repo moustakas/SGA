@@ -2,21 +2,568 @@
 SGA.qa
 ======
 
-Code to do produce various QA (quality assurance) plots. 
+Code to do produce various QA (quality assurance) plots.
 
 """
 import os, pdb
 import warnings
 import time, subprocess
 import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-
-import SGA.misc
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 #import seaborn as sns
 #sns.set(style='ticks', font_scale=1.4, palette='Set2')
-sns, _ = SGA.misc.plot_style()
+
+
+def plot_style(font_scale=1.2, paper=False, talk=True):
+
+    import seaborn as sns
+    rc = {'font.family': 'serif'}#, 'text.usetex': True}
+    #rc = {'font.family': 'serif', 'text.usetex': True,
+    #       'text.latex.preamble': r'\boldmath'})
+    palette, context = 'Set2', 'talk'
+
+    if paper:
+        context = 'paper'
+        palette = 'deep'
+        rc.update({'text.usetex': False})
+
+    if talk:
+        context = 'talk'
+        palette = 'deep'
+        #rc.update({'text.usetex': True})
+
+    sns.set(context=context, style='ticks', font_scale=font_scale, rc=rc)
+    sns.set_palette(palette, 12)
+
+    colors = sns.color_palette()
+    #sns.reset_orig()
+
+    return sns, colors
+
+
+# adapted from https://github.com/desihub/desiutil/blob/5735fdc34c4e77c7fda84c92c32b9ac41158b8e1/py/desiutil/plots.py#L735-L857
+def ar_sky_cbar(ax, sc, label, extend=None, mloc=None):
+    cbar = plt.colorbar(sc, ax=ax, location='bottom',
+                        orientation="horizontal",
+                        spacing="proportional",
+                        extend=extend, extendfrac=0.025,
+                        pad=0.1,
+                        fraction=0.035, aspect=40)
+    cbar.ax.xaxis.set_ticks_position("bottom")
+    cbar.ax.set_xlim(0., cbar.ax.get_xlim()[1]) # force zero
+    cbar.set_label(label)#, labelpad=10)
+    if mloc is not None:
+        cbar.ax.xaxis.set_major_locator(ticker.MultipleLocator(mloc))
+
+
+def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
+                    max_bin_area=5, clip_lo=None, clip_hi=None, verbose=False,
+                    cmap='viridis', colorbar=True, label=None, ax=None,
+                    return_grid_data=False, **kwargs):
+    """Show objects on the sky using a binned plot.
+
+    Bin values either show object counts per unit sky area or, if an array
+    of associated data values is provided, mean data values within each bin.
+    Objects can have associated weights.
+
+    Requires that matplotlib is installed. When plot_type is
+    "healpix", healpy must also be installed.
+
+    Additional keyword parameters will be passed to :func:`init_sky`.
+
+    Parameters
+    ----------
+    ra : array
+        Array of object RA values in degrees. Must have the same shape as
+        dec and will be flattened if necessary.
+    dec : array
+        Array of object Dec values in degrees. Must have the same shape as
+        ra and will be flattened if necessary.
+    weights : array, optional
+        Optional of weights associated with each object.  All objects are
+        assumed to have equal weight when this is None.
+    data : array, optional
+        Optional array of scalar values associated with each object. The
+        resulting plot shows the mean data value per bin when data is
+        specified.  Otherwise, the plot shows counts per unit sky area.
+    plot_type : {'grid', 'healpix'}
+        Must be either 'grid' or 'healpix', and selects whether data in
+        binned in healpix or in (sin(Dec), RA).
+    max_bin_area : :class:`float`, optional
+        The bin size will be chosen automatically to be as close as
+        possible to this value but not exceeding it.
+    clip_lo : :class:`float` or :class:`str`, optional
+        Clipping is applied to the plot data calculated as counts / area
+        or the mean data value per bin. See :func:`prepare_data` for
+        details.
+    clip_hi : :class:`float` or :class:`str`, optional
+        Clipping is applied to the plot data calculated as counts / area
+        or the mean data value per bin. See :func:`prepare_data` for
+        details.
+    verbose : :class:`bool`, optional
+        Print information about the automatic bin size calculation.
+    cmap : colormap name or object, optional
+        Matplotlib colormap to use for mapping data values to colors.
+    colorbar : :class:`bool`, optional
+        Draw a colorbar below the map when True.
+    label : :class:`str`, optional
+        Label to display under the colorbar.  Ignored unless colorbar is ``True``.
+    ax : :class:`~matplotlib.axes.Axes`, optional
+        Axes to use for drawing this map, or create default axes using
+        :func:`init_sky` when ``None``.
+    return_grid_data : :class:`bool`, optional
+        If ``True``, return (ax, grid_data) instead of just ax.
+
+    Returns
+    -------
+    :class:`~matplotlib.axes.Axes` or (ax, grid_data)
+        The axis object used for the plot, and the grid_data if
+        `return_grid_data` is ``True``.
+    """
+    from desiutil.plots import prepare_data
+
+    ra = np.asarray(ra).reshape(-1)
+    dec = np.asarray(dec).reshape(-1)
+    if len(ra) != len(dec):
+        raise ValueError('Arrays ra,dec must have same size.')
+
+    plot_types = ('grid', 'healpix',)
+    if plot_type not in plot_types:
+        raise ValueError('Invalid plot_type, should be one of {0}.'.format(', '.join(plot_types)))
+
+    if data is not None and weights is None:
+        weights = np.ones_like(data)
+
+    if plot_type == 'grid':
+        # Convert the maximum pixel area to steradians.
+        max_bin_area = max_bin_area * (np.pi / 180.) ** 2
+
+        # Pick the number of bins in cos(DEC) and RA to use.
+        n_cos_dec = int(np.ceil(2 / np.sqrt(max_bin_area)))
+        n_ra = int(np.ceil(4 * np.pi / max_bin_area / n_cos_dec))
+        # Calculate the actual pixel area in sq. degrees.
+        bin_area = 360 ** 2 / np.pi / (n_cos_dec * n_ra)
+        if verbose:
+            print('Using {0} x {1} grid in cos(DEC) x RA'.format(n_cos_dec, n_ra),
+                  'with pixel area {:.3f} sq.deg.'.format(bin_area))
+
+        # Calculate the bin edges in degrees.
+        # ra_edges = np.linspace(-180., +180., n_ra + 1)
+        ra_edges = np.linspace(0.0, 360.0, n_ra + 1)
+        dec_edges = np.degrees(np.arcsin(np.linspace(-1., +1., n_cos_dec + 1)))
+
+        # Put RA values in the range [-180, 180).
+        # ra = np.fmod(ra, 360.)
+        # ra[ra >= 180.] -= 360.
+
+        # Histogram the input coordinates.
+        counts, _, _ = np.histogram2d(dec, ra, [dec_edges, ra_edges],
+                                      weights=weights)
+
+        if data is None:
+            grid_data = counts / bin_area
+        else:
+            sums, _, _ = np.histogram2d(dec, ra, [dec_edges, ra_edges],
+                                        weights=weights * data)
+            # This ratio might result in some nan (0/0) or inf (1/0) values,
+            # but these will be masked by prepare_data().
+            settings = np.seterr(all='ignore')
+            grid_data = sums / counts
+            np.seterr(**settings)
+
+        grid_data = prepare_data(grid_data, clip_lo=clip_lo, clip_hi=clip_hi)
+
+        ax = plot_grid_map(grid_data, ra_edges, dec_edges,
+                           cmap=cmap, colorbar=colorbar, label=label,
+                           ax=ax, **kwargs)
+
+    elif plot_type == 'healpix':
+
+        import healpy as hp
+
+        for n in range(1, 25):
+            nside = 2 ** n
+            bin_area = hp.nside2pixarea(nside, degrees=True)
+            if bin_area <= max_bin_area:
+                break
+        npix = hp.nside2npix(nside)
+        nest = False
+        if verbose:
+            print('Using healpix map with NSIDE={0}'.format(nside),
+                  'and pixel area {:.3f} sq.deg.'.format(bin_area))
+
+        pixels = hp.ang2pix(nside, np.radians(90 - dec), np.radians(ra), nest)
+        counts = np.bincount(pixels, weights=weights, minlength=npix)
+        if data is None:
+            grid_data = counts / bin_area
+        else:
+            sums = np.bincount(pixels, weights=weights * data, minlength=npix)
+            grid_data = np.zeros_like(sums, dtype=float)
+            nonzero = counts > 0
+            grid_data[nonzero] = sums[nonzero] / counts[nonzero]
+
+        grid_data = prepare_data(grid_data, clip_lo=clip_lo, clip_hi=clip_hi)
+        # Hack
+        import numpy.ma as ma
+        R = np.logical_or(grid_data==0., grid_data <= clip_lo)
+        grid_data[R] = ma.masked
+
+        ax = plot_healpix_map(grid_data, nest=nest,
+                              cmap=cmap, colorbar=colorbar, label=label,
+                              ax=ax, **kwargs)
+
+    if return_grid_data:
+        return (ax, grid_data)
+    else:
+        return ax
+
+def plot_healpix_map(data, nest=False, cmap='viridis', colorbar=True,
+                     label=None, ax=None, **kwargs):
+    """Plot a healpix map using an all-sky projection.
+
+    Pass the data array through :func:`prepare_data` to select a subset to plot
+    and clip the color map to specified values or percentiles.
+
+    This function is similar to :func:`plot_grid_map` but is generally slower
+    at high resolution and has less elegant handling of pixels that wrap around
+    in RA, which are not drawn.
+
+    Requires that matplotlib and healpy are installed.
+
+    Additional keyword parameters will be passed to :func:`init_sky`.
+
+    Parameters
+    ----------
+    data : array or masked array
+        1D array of data associated with each healpix.  Must have a size that
+        exactly matches the number of pixels for some NSIDE value. Use the
+        output of :func:`prepare_data` as a convenient way to specify
+        data cuts and color map clipping.
+    nest : :class:`bool`, optional
+        If ``True``, assume NESTED pixel ordering.  Otheriwse, assume RING pixel
+        ordering.
+    cmap : colormap name or object, optional
+        Matplotlib colormap to use for mapping data values to colors.
+    colorbar : :class:`bool`, optional
+        Draw a colorbar below the map when ``True``.
+    label : :class:`str`, optional
+        Label to display under the colorbar.  Ignored unless colorbar is ``True``.
+    ax : :class:`~matplotlib.axes.Axes`, optional
+        Axes to use for drawing this map, or create default axes using
+        :func:`init_sky` when ``None``.
+
+    Returns
+    -------
+    :class:`~matplotlib.axes.Axes`
+        The axis object used for the plot.
+    """
+    import healpy as hp
+    from desiutil.plots import prepare_data
+    from matplotlib.colors import Normalize, colorConverter
+    from matplotlib.collections import PolyCollection
+
+    data = prepare_data(data)
+    if len(data.shape) != 1:
+        raise ValueError('Invalid data array, should be 1D.')
+    nside = hp.npix2nside(len(data))
+    #
+    # Create axes.
+    #
+    if ax is None:
+        ax = init_sky(**kwargs)
+    proj_edge = ax._ra_center - 180
+    #
+    # Find the projection edge.
+    #
+    while proj_edge < 0:
+        proj_edge += 360
+    #
+    # Get pixel boundaries as quadrilaterals.
+    #
+    corners = hp.boundaries(nside, np.arange(len(data)), step=1, nest=nest)
+    corner_theta, corner_phi = hp.vec2ang(corners.transpose(0, 2, 1))
+    corner_ra, corner_dec = (np.degrees(corner_phi),
+                             np.degrees(np.pi/2-corner_theta))
+    #
+    # Convert sky coords to map coords.
+    #
+    x, y = ax.projection_ra(corner_ra), ax.projection_dec(corner_dec)
+    #
+    # Regroup into pixel corners.
+    #
+    verts = np.array([x.reshape(-1, 4), y.reshape(-1, 4)]).transpose(1, 2, 0)
+    #
+    # Find and mask any pixels that wrap around in RA.
+    #
+    uv_verts = np.array([corner_phi.reshape(-1, 4),
+                         corner_theta.reshape(-1, 4)]).transpose(1, 2, 0)
+    theta_edge = np.unique(uv_verts[:, :, 1])
+    phi_edge = np.radians(proj_edge)
+    eps = 0.1 * np.sqrt(hp.nside2pixarea(nside))
+    wrapped1 = hp.ang2pix(nside, theta_edge, phi_edge - eps, nest=nest)
+    wrapped2 = hp.ang2pix(nside, theta_edge, phi_edge + eps, nest=nest)
+    wrapped = np.unique(np.hstack((wrapped1, wrapped2)))
+    data.mask[wrapped] = True
+    #
+    # Normalize the data using its vmin, vmax attributes, if present.
+    #
+    try:
+        norm = Normalize(vmin=data.vmin, vmax=data.vmax)
+    except AttributeError:
+        norm = None
+    #
+    # Make the collection and add it to the plot.
+    #
+    good = np.where(~data.mask)[0]
+    collection = PolyCollection(verts[good, :, :], array=data[good], cmap=cmap, norm=norm,
+                                edgecolors='none')
+    ax.add_collection(collection)
+    ax.autoscale_view()
+
+    if colorbar:
+        bar = plt.colorbar(collection, ax=ax,
+                           orientation='horizontal', spacing='proportional',
+                           pad=0.11, fraction=0.05, aspect=50)
+        if label:
+            bar.set_label(label)
+
+    return ax
+
+
+def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
+            max_bin_area=10, mloc=10, pngfile=None):
+
+    import seaborn as sns
+    import healpy as hp
+    from astropy.coordinates import SkyCoord
+    from astropy import units, constants
+    from desiutil.plots import init_sky#, prepare_data, plot_sky_binned
+
+    #sns, _ = plot_style(talk=True, font_scale=0.8)
+
+    font = {'size': 14,} #'family': 'normal', 'weight': 'bold'}
+    mpl.rc('font', **font)
+
+    # AR DES
+    def plot_des(ax, desfn=None, **kwargs):
+        if desfn is None:
+            desfn = os.path.join(os.getenv("DESI_ROOT"), "survey", "observations", "misc", "des_footprint.txt")
+        ras, decs = np.loadtxt(desfn, unpack=True)
+        ax.plot(ax.projection_ra(ras), ax.projection_dec(decs), **kwargs)
+
+    # AR galactic, ecliptic plane
+    def plot_gp_ep(ax, frame, npt=1000, **kwargs):
+        """
+        frame: "galactic" or "barycentricmeanecliptic"
+
+        """ 
+        cs =  SkyCoord(
+            np.linspace(0, 360, npt) * units.degree,
+            np.zeros(npt) * units.degree,
+            frame=frame,
+        )
+        ras, decs = cs.icrs.ra.degree, cs.icrs.dec.degree
+        ii = ax.projection_ra(ras).argsort()
+        _ = ax.plot(ax.projection_ra(ras[ii]), ax.projection_dec(decs[ii]), **kwargs)
+
+    def custom_plot_sky_circles(ax, ra_center, dec_center, field_of_view, **kwargs):
+        """
+        similar to desiutil.plots.plot_sky_circles
+        but with propagating **kwargs
+        """
+        if (isinstance(ra_center, int) | isinstance(ra_center, float)):
+            ra_center, dec_center = np.array([ra_center]), np.array([dec_center])
+        proj_edge = ax._ra_center - 180
+        while proj_edge < 0:
+            proj_edge += 360
+        #
+        angs = np.linspace(2 * np.pi, 0, 101)
+        for ra, dec in zip(ra_center, dec_center):
+            ras = ra + 0.5 * field_of_view / np.cos(np.radians(dec)) * np.cos(angs)
+            decs = dec + 0.5 * field_of_view * np.sin(angs)
+            for sel in [ras > proj_edge, ras <= proj_edge]:
+                if sel.sum() > 0:
+                    ax.fill(ax.projection_ra(ras[sel]), ax.projection_dec(decs[sel]), **kwargs)
+
+    ras = S[racolumn].data
+    decs = S[deccolumn].data
+    cmap = 'twilight' # 'Blues' # 'vlag'
+    #cmap = sns.color_palette(cmap, as_cmap=True)
+
+    ## Make zero values truly white (cmap.Blue(0) = 0.97,0.98,1.0)
+    #cmap = mpl.colormaps.get_cmap(cmap).copy()
+    #cmap.set_bad(color='white')
+    #cmap.set_under(color='white')
+    #cmap.set_over(color='white')
+
+    #nside = 16
+    #nest = True
+    #
+    #bin_area = hp.nside2pixarea(nside, degrees=True)
+    #print(bin_area)
+    #
+    #npix = hp.nside2npix(nside)
+    #pixels = hp.ang2pix(nside, np.radians(90 - decs), np.radians(ras), nest=nest)
+    #counts = np.bincount(pixels, weights=np.ones_like(ras), minlength=npix)
+    #
+    #grid_data = counts / bin_area
+    #grid_data = prepare_data(grid_data, clip_lo=None, clip_hi=None)
+    #
+    ##cs = np.random.uniform(size=len(S))
+    #sc = ax.scatter(ax.projection_ra(ras), ax.projection_dec(decs), s=1)#, c=cs)
+
+    fig = plt.figure(figsize=(10, 7))#, dpi=300)
+    ax = fig.add_subplot(111, projection='mollweide')
+
+    ax = init_sky(galactic_plane_color='k', ecliptic_plane_color='none', ax=ax)
+
+    ax, data = plot_sky_binned(ras, decs, plot_type='healpix', max_bin_area=max_bin_area,
+                               clip_lo=clip_lo, clip_hi=clip_hi,
+                               verbose=True, ax=ax,
+                               cmap=cmap, return_grid_data=True, colorbar=False)
+    import numpy.ma as ma
+    print(ma.min(data), ma.median(data), ma.mean(data), ma.std(data), ma.max(data))
+    #print(np.nanpercentile(data, [5., 10., 25., 50., 75., 90., 95.]))
+
+    ax.set_ylabel('Dec (degrees)')
+    ax.set_xlabel('RA (degrees)')
+
+    sc = ax.collections[2]
+    ar_sky_cbar(ax, sc, r'Galaxy Surface Density (deg$^{-2}$)',
+                extend='both', mloc=mloc, clip_lo=clip_lo)
+
+    # AR DES, galactic, ecliptic plane
+    #desfn = os.path.join(os.getenv("DESI_ROOT"), "survey", "observations", "misc", "des_footprint.txt")
+    #plot_des(ax, desfn=desfn, c="orange", lw=0.5, alpha=1, zorder=1)
+    #plot_gp_ep(ax, "galactic", c="k", lw=1, alpha=1, zorder=1)
+    #plot_gp_ep(ax, "barycentricmeanecliptic", c="k", lw=0.25, alpha=1, ls="--", zorder=1)
+
+    ## AR circle
+    #custom_plot_sky_circles(ax, 0, 0, 2 * 20, color="g", facecolor="none")
+    #custom_plot_sky_circles(ax, 290, 0, 2 * 20, color="b", alpha=0.5)
+    #ax.set_axisbelow(True)
+
+    fig.subplots_adjust(left=0.1, bottom=0.13, right=0.95, top=0.95)
+
+    if pngfile:
+        print(f'Writing {pngfile}')
+        fig.savefig(pngfile)
+        plt.close(fig)
+
+
+
+def fig_size_mag(sample, leda=True, png=None):
+    """D(25) vs Bt from the parent sample and D(25) histogram.
+
+    """
+    import corner
+
+    sns, colors = plot_style(talk=True, font_scale=1.2)
+
+    if leda:
+        good = np.where((sample['D25_LEDA'] > 0) * (sample['MAG_LEDA'] > 0))[0]
+
+        isleda = sample['SGA_ID'][good] < 2000000
+        notleda = sample['SGA_ID'][good] >= 2000000
+
+        mag_leda = sample['MAG_LEDA'][good][isleda]
+        diam_leda = np.log10(sample['D25_LEDA'][good][isleda]) # [arcmin]
+
+        mag_notleda = sample['MAG_LEDA'][good][notleda]
+        diam_notleda = np.log10(sample['D25_LEDA'][good][notleda]) # [arcmin]
+
+        xlabel = r'$b_{t}$ (Vega mag)'
+        ylabel = r'$D_{\mathrm{L}}(25)$ (arcmin)'
+        #ylabel = r'$D_{i}(25)$ (arcmin)'
+    else:
+        good = np.where((sample['RADIUS_SB26'] != -1) * (sample['R_MAG_SB26'] != -1))[0]
+        mag = sample['R_MAG_SB26'][good]
+        diam = np.log10(sample['RADIUS_SB26'][good]/60) # [arcmin]
+        xlabel = r'$m_{r}(<R_{26})$ (AB mag)'
+        ylabel = r'$R_{26}$ (arcmin)'
+    
+    xlim, ylim = (20, 7), (-1, 1.6)
+
+    @ticker.FuncFormatter
+    def major_formatter(x, pos):
+        if x >= 0:
+            return '{:.0f}'.format(10**x)
+        else:
+            return '{:.1f}'.format(10**x)
+
+    fig = plt.figure(figsize=(14, 7))
+
+    # https://matplotlib.org/stable/gallery/lines_bars_and_markers/scatter_hist.html
+    #fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 7), sharey=True)
+    gs = fig.add_gridspec(1, 2,  width_ratios=(2, 1.1), 
+                          #left=0.1, right=0.9, bottom=0.1, top=0.9,
+                          wspace=0.05)
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
+
+    corner.hist2d(mag_leda, diam_leda,
+                  levels=[0.5, 0.75, 0.95, 0.995],
+                  bins=100, smooth=True, color=colors[0], ax=ax1, # mpl.cm.get_cmap('viridis'),
+                  plot_density=True, fill_contours=True, range=(xlim, ylim),
+                  data_kwargs={'color': colors[0], 'alpha': 0.2, 'ms': 4, 'alpha': 0.5},
+                  contour_kwargs={'colors': 'k'},
+                 )
+    #ax1.scatter(mag_leda[:2], diam_leda[:2], s=2, color=colors[0], alpha=0.5, # hack
+    #            label='HyperLeda')
+    ax1.scatter(mag_notleda, diam_notleda, s=2, color=colors[2], alpha=0.5)#
+                #label='Supplemental')
+
+    ax1.yaxis.set_major_formatter(major_formatter)
+    ax1.set_yticks(np.log10([0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 40]))
+    #ax1.legend(loc='upper right', frameon=False)
+
+    ax1.set_xlim(xlim)
+    ax1.set_ylim(ylim)
+    ax1.set_xlabel(xlabel)
+    ax1.set_ylabel(ylabel)
+
+    #big = np.where(sample['RADIUS_SB26'][good]/60 > 2)[0]
+    #ingc = np.where(['NGC' in gg or 'UGC' in gg for gg in sample['GALAXY'][big]])[0]
+    #ingc = np.where(['NGC' in gg for gg in sample['GALAXY'][good]])[0]
+    #ax.scatter(rmag[ingc], radius[ingc], marker='s', edgecolors='k',
+    #           s=10, alpha=1.0, lw=1, color='k')
+
+    ax2.hist(diam_leda, orientation='horizontal', range=ylim, bins=75, 
+             color=colors[0], label='HyperLeda')
+    ax2.hist(diam_notleda, orientation='horizontal', range=ylim, bins=75, 
+             color=colors[2], alpha=0.7, label='Supplemental')
+    #ax1.axhline(y=np.log10(20/60), lw=2, ls='-', color='k')
+    #ax2.axhline(y=np.log10(20/60), lw=2, ls='-', color='k', label=r'$D_{\mathrm{L}}(25)=20$ arcsec')
+    ax2.set_xscale('log')
+    ax2.set_xlabel('Number of Galaxies')
+    #ax2.spines[['right', 'top']].set_visible(False)
+    ax2.tick_params(axis='y', labelleft=False)
+    ax2_twin = ax2.twinx()
+
+    ax2_twin.yaxis.set_major_formatter(major_formatter)
+    ax2_twin.set_yticks(np.log10([0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 40]))
+    #ax2_twin.set_xscale('log')
+    ax2_twin.set_ylim(ylim)
+    ax2_twin.set_ylabel(ylabel, rotation=270, labelpad=25)
+
+    ax2.legend(loc='upper right', fontsize=14) # frameon=False, 
+    #hh, ll = ax2.get_legend_handles_labels()
+    #ax2.legend([hh[0], hh[1], hh[2]], [ll[0], ll[1], ll[2]], 
+    #           loc='upper right', fontsize=14) # frameon=False, 
+
+    fig.subplots_adjust(bottom=0.18, top=0.95, right=0.9, left=0.1)
+
+    if png:
+        pngfile = os.path.join(figdir, png)
+        print('Writing {}'.format(pngfile))
+        fig.savefig(pngfile)#, bbox_inches='tight')
+        plt.close(fig)
 
 
 def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
@@ -27,7 +574,7 @@ def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
     from PIL import Image, ImageDraw, ImageFont
 
     Image.MAX_IMAGE_PIXELS = None
-    
+
     minor_axis_diameter_arcsec = major_axis_diameter_arcsec * ba
 
     overlay_height = int(major_axis_diameter_arcsec / pixscale)
@@ -56,23 +603,24 @@ def _sbprofile_colors():
                     _colors[9], _colors[10]])
     return colors
 
+
 def qa_binned_radec(cat, nside=64, png=None):
     import warnings
     import healpy as hp
     import desimodel.io
     import desimodel.footprint
     from desiutil.plots import init_sky, plot_sky_binned
-    
+
     ra, dec = cat['ra'].data, cat['dec'].data
     hpix = desimodel.footprint.radec2pix(nside, ra, dec)
-    
+
     fig, ax = plt.subplots(figsize=(9, 5))
 
     with warnings.catch_warnings():
         pixweight = desimodel.io.load_pixweight(nside)
         fracarea = pixweight[hpix]
         weight = 1 / fracarea
-        
+
         warnings.simplefilter('ignore')
         basemap = init_sky(galactic_plane_color='k', ax=ax);
         plot_sky_binned(ra, dec, weights=weight, 
@@ -81,9 +629,10 @@ def qa_binned_radec(cat, nside=64, png=None):
                         plot_type='healpix', basemap=basemap,
                         label=r'$N$(Large Galaxies) / deg$^2$')
         #plt.suptitle('Parent Sample')
-    
+
     if png:
         fig.savefig(png)
+
 
 def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
                               verbose=True):
@@ -102,8 +651,8 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
             if not os.path.isfile(_jpgfile):
                 print('File {} not found!'.format(_jpgfile))
                 check = False
-                
-        if check:        
+
+        if check:
             cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -geometry +0+0 -resize 512 '
             cmd = cmd+' '.join(ff for ff in jpgfile)
             cmd = cmd+' {}'.format(montagefile)
@@ -129,8 +678,8 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
             if not os.path.isfile(_jpgfile):
                 print('File {} not found!'.format(_jpgfile))
                 check = False
-                
-        if check:        
+
+        if check:
             cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x3 -geometry +0+0 -resize 512 '
             cmd = cmd+' '.join(ff for ff in jpgfile)
             cmd = cmd+' {}'.format(montagefile)
@@ -138,6 +687,7 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
             if verbose:
                 print('Writing {}'.format(montagefile))
             subprocess.call(cmd.split())
+
 
 def ellipse_sbprofile(ellipsefit, minerr=0.0):
     """Convert ellipse-fitting results to a magnitude, color, and surface brightness
@@ -153,7 +703,6 @@ def ellipse_sbprofile(ellipsefit, minerr=0.0):
     for filt in band:
         sbprofile['psfsigma_{}'.format(filt)] = ellipsefit['psfsigma_{}'.format(filt)]
     sbprofile['redshift'] = redshift
-    
     sbprofile['minerr'] = minerr
     sbprofile['smaunit'] = 'arcsec'
     sbprofile['sma'] = ellipsefit['r'].sma[indx] * pixscale # [arcsec]
@@ -190,6 +739,7 @@ def ellipse_sbprofile(ellipsefit, minerr=0.0):
 
     return sbprofile
 
+
 def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
                               smascale=None, png=None, verbose=True):
     """Display the multiwavelength surface brightness profile.
@@ -224,11 +774,11 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
 
             #good = (ellipsefit[filt].stop_code < 4)
             #bad = ~good
-            
+
             #with np.errstate(invalid='ignore'):
             #    good = np.isfinite(mu) * (mu / muerr > 2)
             good = np.isfinite(mu) * (muerr < 0.5)
-            
+
             sma = sma[good]
             mu = mu[good]
             muerr = muerr[good]
@@ -340,6 +890,7 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
         else:
             plt.show()
 
+
 def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
     """Display the isophote fitting results."""
 
@@ -348,13 +899,12 @@ def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
     colors = iter(sns.color_palette())
 
     if ellipsefit['success']:
-        
         band, refband = ellipsefit['band'], ellipsefit['refband']
         pixscale, redshift = ellipsefit['pixscale'], ellipsefit['redshift']
         smascale = legacyhalos.misc.arcsec2kpc(redshift) # [kpc/arcsec]
 
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 9), sharex=True)
-        
+
         good = (ellipsefit[refband].stop_code < 4)
         bad = ~good
         ax1.fill_between(ellipsefit[refband].sma[good] * pixscale,
@@ -451,7 +1001,8 @@ def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
             plt.close(fig)
         else:
             plt.show()
-        
+
+
 def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
     """Plot up the curve of growth versus semi-major axis.
 
@@ -489,7 +1040,7 @@ def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
 
     yfaint += 0.5
     ybright += -0.5
-    
+
     ax.set_ylim(yfaint, ybright)
     ax_twin = ax.twinx()
     ax_twin.set_ylim(yfaint, ybright)
@@ -501,6 +1052,7 @@ def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
 
     if png:
         fig.savefig(png)
+
 
 def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=None,
                       magrange=10, inchperband=3, contours=False, png=None,
@@ -534,7 +1086,7 @@ def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=No
         fig, ax = plt.subplots(3, 1, figsize=(nband, inchperband*nband))
     else:
         fig, ax = plt.subplots(1, 3, figsize=(inchperband*nband, nband))
-        
+
     for filt, ax1 in zip(band, ax):
 
         img = data['{}_masked'.format(filt)]
@@ -558,7 +1110,7 @@ def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=No
             model = _multi_gauss(mgefit[filt].sol, img, sigmapsf, normpsf,
                                  mgefit['xpeak'], mgefit['ypeak'],
                                  mgefit['pa'])
-            
+
             peak = data[filt][mgefit['xpeak'], mgefit['ypeak']]
             levels = peak * _magrange
             s = img.shape
@@ -569,7 +1121,7 @@ def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=No
 
         if geometry:
             from photutils import EllipticalAperture
-            
+
             ellaper = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma,
                                          geometry.sma*(1 - geometry.eps), geometry.pa)
             ellaper.plot(color='k', lw=1, ax=ax1, alpha=0.75)
@@ -605,7 +1157,7 @@ def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=No
         fig.subplots_adjust(hspace=0.02, top=0.98, bottom=0.02, left=0.02, right=0.98)
     else:
         fig.subplots_adjust(wspace=0.02, top=0.98, bottom=0.02, left=0.02, right=0.98)
-        
+
     if png:
         if verbose:
             print('Writing {}'.format(png))
@@ -614,7 +1166,8 @@ def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=No
     else:
         plt.show()
 
-def display_ccdpos(onegal, ccds, radius=None, pixscale=0.262, 
+
+def display_ccdpos(onegal, ccds, radius=None, pixscale=0.262,
                    png=None, verbose=False):
     """Visualize the position of all the CCDs contributing to the image stack of a
     single galaxy.

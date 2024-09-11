@@ -57,12 +57,12 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     #rc = {'font.family': 'serif', 'text.usetex': True,
     #       'text.latex.preamble': r'\boldmath'})
     palette, context = 'Set2', 'talk'
-    
+
     if paper:
         context = 'paper'
         palette = 'deep'
         rc.update({'text.usetex': False})
-    
+
     if talk:
         context = 'talk'
         palette = 'deep'
@@ -88,6 +88,7 @@ def ar_sky_cbar(ax, sc, label, extend=None, mloc=None):
     cbar.set_label(label)#, labelpad=10)
     if mloc is not None:
         cbar.ax.xaxis.set_major_locator(ticker.MultipleLocator(mloc))
+
 
 def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
                     max_bin_area=5, clip_lo=None, clip_hi=None, verbose=False,
