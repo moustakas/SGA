@@ -87,7 +87,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     col = 'RHALF' # [arcmin]
                     I = cat[col] > 0.
                     if np.sum(I) > 0:
-                        val[I] = cat[col][I]
+                        val[I] = cat[col][I] * 2. * 2. # half-light-->full-light; radius-->diameter
                         val_ref[I] = ref
                 case 'ba':
                     col = 'ELLIPTICITY' # =1-b/a

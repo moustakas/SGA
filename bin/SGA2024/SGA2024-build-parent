@@ -2,6 +2,9 @@
 
 """Code to build the parent SGA2024 sample based on a combination of internal and external catalogs.
 
+SGA2024-build-parent --build-parent-nocuts
+SGA2024-build-parent --build-parent --mindiam 0.25
+
 SGA2024-build-parent --in-footprint --mp 128 --overwrite
 
 Or, on my laptop:
@@ -15,6 +18,7 @@ import fitsio
 from astropy.table import Table, vstack, hstack, join
 import astropy.units as u
 from astropy.coordinates import SkyCoord, match_coordinates_sky
+import matplotlib.pyplot as plt
 
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.util import get_basic_geometry, match, match_to
@@ -23,15 +27,206 @@ from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
                     read_lvd, version_lvd, nedfriendly_lvd)
 
 
+qadir = os.path.join(sga_dir(), 'parent', 'qa')
+if not os.path.isdir(qadir):
+    os.makedirs(qadir)
+
+
+def parent_datamodel(nobj):
+    """Initialize the data model for the parent-nocuts sample.
+
+    """
+    parent = Table()
+    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+    parent['MORPH'] = np.zeros(nobj, '<U20')
+    parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
+
+    parent['RA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+
+    parent['Z'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+
+    parent['PGC'] = np.zeros(nobj, '<i8') -99
+    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
+
+    parent['MAG'] = np.zeros(nobj, 'f4') -99.
+    parent['MAG_REF'] = np.zeros(nobj, '<U7')
+    parent['BAND'] = np.zeros(nobj, '<U1')
+    parent['DIAM'] = np.zeros(nobj, 'f4') -99.
+    parent['DIAM_REF'] = np.zeros(nobj, '<U7')
+    parent['BA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_REF'] = np.zeros(nobj, '<U7')
+    parent['PA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_REF'] = np.zeros(nobj, '<U7')
+
+    parent['DIAM_LEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_LEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_LEDA'] = np.zeros(nobj, 'f4') -99.
+
+    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
+
+    return parent
+
+
+#def parent_datamodel(nobj):
+#    """Initialize the data model for the parent sample.
+#
+#    """
+#    parent = Table()
+#    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+#    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
+#    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
+#    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+#    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+#    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+#    parent['MORPH'] = np.zeros(nobj, '<U40')
+#
+#    parent['RA'] = np.zeros(nobj, 'f8') -99.
+#    parent['DEC'] = np.zeros(nobj, 'f8') -99.
+#    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
+#    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
+#    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+#    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+#    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+#    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+#    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
+#    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+#
+#    #parent['Z'] = np.zeros(nobj, 'f8') -99.
+#    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
+#    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+#    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+#    parent['PGC'] = np.zeros(nobj, '<i8') -99
+#
+#    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
+#
+#    parent['MAG'] = np.zeros(nobj, 'f4') -99.
+#    parent['MAG_REF'] = np.zeros(nobj, '<U7')
+#    parent['BAND'] = np.zeros(nobj, '<U1')
+#    parent['DIAM'] = np.zeros(nobj, 'f4') -99.
+#    parent['DIAM_REF'] = np.zeros(nobj, '<U7')
+#    parent['BA'] = np.zeros(nobj, 'f4') -99.
+#    parent['BA_REF'] = np.zeros(nobj, '<U7')
+#    parent['PA'] = np.zeros(nobj, 'f4') -99.
+#    parent['PA_REF'] = np.zeros(nobj, '<U7')
+#
+#    parent['DIAM_LEDA'] = np.zeros(nobj, 'f4') -99.
+#    parent['BA_LEDA'] = np.zeros(nobj, 'f4') -99.
+#    parent['PA_LEDA'] = np.zeros(nobj, 'f4') -99.
+#
+#    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
+#    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+#    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
+#
+#    return parent
+
+
+def build_parent(mindiam=15./60.):
+    """Build the parent catalog.
+
+    mindiam in arcmin
+
+    """
+    import corner
+    from SGA.qa import plot_style
+    from astrometry.libkd.spherematch import match_radec
+
+    sns, colors = plot_style(talk=True, font_scale=1.2)
+
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
+    allcat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
+    print(f'Read {len(allcat):,d} objects from {catfile}')
+
+    # adopt RA, DEC
+    allcat['RA'] = allcat['RA_NED']
+    allcat['DEC'] = allcat['DEC_NED']
+    I = allcat['RA'] == -99.
+    allcat['RA'][I] = allcat['RA_LVD'][I]
+    allcat['DEC'][I] = allcat['DEC_LVD'][I]
+
+    indx = match_radec(allcat['RA'], allcat['DEC'], allcat['RA'], allcat['DEC'],
+                       1./3600., indexlist=True, notself=False)
+    M = np.where([len(oneindx) > 1 for oneindx in indx])[0]
+    #M = np.where([oneindx is not None for oneindx in indx])[0]
+
+
+    pdb.set_trace()
+
+    c_cat = SkyCoord(ra=allcat['RA']*u.deg, dec=allcat['DEC']*u.deg)
+    indx_cat, sep2d, _ = match_coordinates_sky(c_cat, c_cat, nthneighbor=2)
+    #dd = allcat[(sep2d.arcsec < 1.) * (allcat['DIAM'] > 1.)]
+    dd = allcat[(sep2d.arcsec < 1.)]
+    dd = dd[np.argsort(dd['RA'])]
+
+    pdb.set_trace()
+
+    #W = np.where(allcat['DIAM_LEDA'] > 10.)[0]
+    W = np.where((allcat['DIAM_LEDA'] > 5.) * (allcat['DIAM_LEDA'] < 10.))[0]
+    srt = np.argsort(allcat['DIAM_LEDA'][W])[::-1]
+    bb = allcat[W[srt]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM', 'DIAM_LEDA', 'DIAM_REF', 'MORPH']
+
+    # compare diameters
+    pngfile = os.path.join(qadir, 'qa-diamleda.png')
+    I = np.where((allcat['DIAM'] > 0.) * (allcat['DIAM_LEDA'] > mindiam))[0]
+    print(len(I))
+    lim = (-1.7, 3.)
+    #lim = (np.log10(mindiam)-0.1, 3.)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    xx = np.log10(allcat['DIAM_LEDA'][I])
+    yy = np.log10(allcat['DIAM'][I])
+    J = ['IRAS' in morph for morph in allcat['MORPH'][I]]
+    corner.hist2d(xx, yy, levels=[0.5, 0.75, 0.95, 0.995],
+                  bins=100, smooth=True, color=colors[0], ax=ax, # mpl.cm.get_cmap('viridis'),
+                  plot_density=True, fill_contours=True, range=(lim, lim),
+                  data_kwargs={'color': colors[0], 'alpha': 0.4, 'ms': 4},
+                  contour_kwargs={'colors': 'k'},)
+    ax.scatter(xx[J], yy[J], s=15, marker='x', color=colors[2])
+    #ax.scatter(xx, yy, s=10)
+    ax.set_xlabel(r'$\log_{10}$ (Diameter) [HyperLeda]')
+    ax.set_ylabel(r'$\log_{10}$ (Diameter) [archive]')
+    #ax.set_xlim(lim)
+    #ax.set_ylim(lim)
+    ax.plot(lim, lim, color='k', lw=2)
+    fig.tight_layout()
+    print(f'Writing {pngfile}')
+    fig.savefig(pngfile)#, bbox_inches='tight')
+    plt.close(fig)
+
+    I = np.where(allcat['DIAM'] > mindiam)[0]
+    print(f'Trimming to {len(I):,d}/{len(allcat):,d} ({100.*len(I)/len(allcat):.1f}%) ' + \
+          f'objects with DIAM>{60.*mindiam:.1f} arcsec.')
+    cat = allcat[I]
+
+    srt = np.argsort(cat['DIAM'])[::-1]
+    cat[srt]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'MORPH']
+
+    pdb.set_trace()
+
+
 def qa_parent(nocuts=False, sky=False, size_mag=False):
     """QA of the parent sample.
 
     """
     from SGA.qa import fig_sky, fig_size_mag
-
-    qadir = os.path.join(sga_dir(), 'parent', 'qa')
-    if not os.path.isdir(qadir):
-        os.makedirs(qadir)
 
     if nocuts:
         catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
@@ -69,62 +264,10 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
 
 
 
-def parent_datamodel(nobj):
-    """Initialize the data model for the parent sample.
-
-    """
-    parent = Table()
-    #parent['OBJNAME'] = np.zeros(nobj, '<U30')
-    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
-    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
-    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
-    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
-    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
-    parent['MORPH'] = np.zeros(nobj, '<U20')
-    parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
-
-    parent['RA'] = np.zeros(nobj, 'f8') -99.
-    parent['DEC'] = np.zeros(nobj, 'f8') -99.
-    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
-    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
-    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
-    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
-    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
-    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
-    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
-    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
-
-    #parent['Z'] = np.zeros(nobj, 'f8') -99.
-    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
-    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
-    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
-    parent['PGC'] = np.zeros(nobj, '<i8') -99
-
-    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
-
-    parent['MAG'] = np.zeros(nobj, 'f4') -99.
-    parent['MAG_REF'] = np.zeros(nobj, '<U7')
-    parent['BAND'] = np.zeros(nobj, '<U1')
-    parent['DIAM'] = np.zeros(nobj, 'f4') -99.
-    parent['DIAM_REF'] = np.zeros(nobj, '<U7')
-    parent['BA'] = np.zeros(nobj, 'f4') -99.
-    parent['BA_REF'] = np.zeros(nobj, '<U7')
-    parent['PA'] = np.zeros(nobj, 'f4') -99.
-    parent['PA_REF'] = np.zeros(nobj, '<U7')
-
-    parent['DIAM_LEDA'] = np.zeros(nobj, 'f4') -99.
-    parent['BA_LEDA'] = np.zeros(nobj, 'f4') -99.
-    parent['PA_LEDA'] = np.zeros(nobj, 'f4') -99.
-
-    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
-    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
-    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
-
-    return parent
 
 
-def merge_nedquery_catalogs(verbose=True):
-    """Merge external catalogs.
+def build_parent_nocuts(verbose=True):
+    """Merge the external catalogs from SGA2024-query-ned.
 
     """
     def readit(catalog, version, bycoord=False):
@@ -479,7 +622,7 @@ def merge_nedquery_catalogs(verbose=True):
     # [6] Add LVD.
     print()
     print('#####')
-    print(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ({100.*len(lvd)/len(ned_lvd):,1f}%) are in ned_lvd.')
+    print(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ({100.*len(ned_lvd)/len(lvd):.1f}%) are in ned_lvd.')
 
     # ned_lvd - already in parent sample
     indx_parent, indx_lvd = match(parent['OBJNAME_NED'], ned_lvd['OBJNAME_NED'])
@@ -570,6 +713,26 @@ def merge_nedquery_catalogs(verbose=True):
     print('#####')
     print(f'Final parent sample: N={len(parent):,d}')
 
+    # Populate OBJNAME, RA, DEC, and Z
+    print()
+    for dataset in ['NED', 'LVD', 'NEDLVS', 'HYPERLEDA']:
+        I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
+        if len(I) > 0:
+            print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) RA,DEC values from {dataset}.')
+            parent['RA'][I] = parent[I][f'RA_{dataset}']
+            parent['DEC'][I] = parent[I][f'DEC_{dataset}']
+        I = np.where((parent['OBJNAME'] == '') * (parent[f'OBJNAME_{dataset}'] != ''))[0]
+        if len(I) > 0:
+            print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) OBJNAMEs from {dataset}.')
+            parent['OBJNAME'][I] = parent[I][f'OBJNAME_{dataset}']
+
+    for dataset in ['NEDLVS', 'NED', 'HYPERLEDA']:
+        I = np.where((parent['Z'] == -99.) * (parent[f'Z_{dataset}'] != -99.))[0]
+        if len(I) > 0:
+            print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) Z values from {dataset}.')
+            parent['Z'][I] = parent[I][f'Z_{dataset}']
+    print()
+
     # reset and then prioritize the diameters
     basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
     basic_ned_hyper = get_basic_geometry(ned_hyper, galaxy_column='ROW', verbose=verbose)
@@ -600,9 +763,9 @@ def merge_nedquery_catalogs(verbose=True):
 
         if dataset == 'HyperLeda':
             I = np.where(parent[row] != -99)[0]
-            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY'])
+            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY']) # 'GALAXY' here is actually 'ROW'
             for col in ['DIAM', 'BA', 'PA']:
-                parent[f'DIAM_LEDA'][I[indx_parent]] = basic[indx_basic][col]
+                parent[f'{col}_LEDA'][I[indx_parent]] = basic[indx_basic][col]
 
     # final statistics
     nobj = len(parent)
@@ -617,8 +780,6 @@ def merge_nedquery_catalogs(verbose=True):
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
     print(f'Writing {len(parent):,d} objects to {outfile}')
     parent.write(outfile, overwrite=True)
-
-    pdb.set_trace()
 
 
 #def domatch_coord(cat, refcat, rank=0):
@@ -819,8 +980,10 @@ def main():
     catalogs = ['HyperLeda', 'NEDLVS', 'WXSC', 'LVD'] # 'HECATE', 'Z0MGS']
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--merge-nedquery', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned.')
+    parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned into the parent-nocuts catalog.')
+    parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned.')
     parser.add_argument('--qa-parent', action='store_true', help='Build QA.')
+    parser.add_argument('--mindiam', default=15./60., type=float, help='Minimum diameter for selecting parent sample.')
     parser.add_argument('--region', choices=regions, type=str, nargs='*', help='Region to pass to --in-footprint.')
     parser.add_argument('--catalog', choices=catalogs, type=str, help='External catalog to pass to --in-footprint.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
@@ -847,9 +1010,11 @@ def main():
         rank, size = comm.rank, comm.size
 
 
-    if args.merge_nedquery:
-        merge_nedquery_catalogs()
+    if args.build_parent_nocuts:
+        build_parent_nocuts()
 
+    if args.build_parent:
+        build_parent(mindiam=args.mindiam)
 
     if args.qa_parent:
         qa_parent(nocuts=True, size_mag=True)

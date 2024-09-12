@@ -811,7 +811,7 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
                     warnings.simplefilter('ignore')
                     sky = astropy.stats.mad_std(skyellipsefit[filt], axis=1, ignore_nan=True)
                     # sky = np.nanstd(skyellipsefit[filt], axis=1) # / np.sqrt(skyellipsefit[
-                    
+
                 skygood = np.isfinite(sky)
                 skysma = skysma[skygood]
                 skymu = 22.5 - 2.5 * np.log10(sky[skygood])
