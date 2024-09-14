@@ -138,6 +138,56 @@ def parent_datamodel(nobj):
 #
 #    return parent
 
+def resolve_close(cat, refcat, maxsep=1., verbose=False):
+    """Resolve close objects.
+
+    maxsep in arcsec
+
+    """
+    from astrometry.libkd.spherematch import match_radec
+    from astrometry.util.starutil_numpy import degrees_between
+
+    indx = match_radec(cat['RA'].value, cat['DEC'].value,
+                       refcat['RA'].value, refcat['DEC'].value,
+                       maxsep/3600., indexlist=True, notself=False)
+    M = np.where([len(oneindx) > 1 for oneindx in indx])[0]
+    print(f'Found {len(M):,d}/{len(cat):,d} pairs within {maxsep:.1f} arcsec.')
+
+    toss = []
+    for I in M:
+        info = refcat[indx[I]]
+        dtheta = degrees_between(cat[I]['RA'], cat[I]['DEC'], info['RA'], info['DEC']) * 3600. # [arcsec]
+        info['SEP'] = dtheta.astype('f4')
+        nobj = len(info)
+
+        this = info['OBJTYPE'] == 'GPair'
+        if np.sum(this) == 0:
+            this = info['OBJTYPE'] == 'G'
+
+        if np.sum(this) == 1:
+            keep = np.array(indx[I])[this]
+            drop = np.array(indx[I])[~this]
+            toss.append(drop)
+        else:
+            pdb.set_trace()
+
+        if verbose:
+            print(f'{info[this][0]["OBJNAME"]}: {info[this][0]["OBJTYPE"]}, z={info[this][0]["Z"]:.5f}, D={info[this][0]["DIAM"]:.2f} arcmin')
+            for ii in drop:
+                print(f'  Dropping {refcat[ii]["OBJNAME"]}: {refcat[ii]["OBJTYPE"]}, z={refcat[ii]["Z"]:.5f}, D={refcat[ii]["DIAM"]:.5f} arcmin')
+            print()
+
+            #print(info['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'PGC', 'RA', 'DEC',
+            #           #'RA_NED', 'DEC_NED', 'Z', 'Z_NED', 'Z_HYPERLEDA',
+            #           'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'MAG',
+            #           'DIAM', 'DIAM_LEDA', 'DIAM_REF', 'MORPH', 'BASIC_MORPH', 'OBJTYPE'])
+
+        # GPair cases
+        # -one object - unresolved merger
+        # -one object 
+
+    pdb.set_trace()
+
 
 def build_parent(mindiam=15./60.):
     """Build the parent catalog.
@@ -145,28 +195,22 @@ def build_parent(mindiam=15./60.):
     mindiam in arcmin
 
     """
-    import corner
-    from SGA.qa import plot_style
-    from astrometry.libkd.spherematch import match_radec
-
-    sns, colors = plot_style(talk=True, font_scale=1.2)
-
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
     allcat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
     print(f'Read {len(allcat):,d} objects from {catfile}')
 
-    # adopt RA, DEC
-    allcat['RA'] = allcat['RA_NED']
-    allcat['DEC'] = allcat['DEC_NED']
-    I = allcat['RA'] == -99.
-    allcat['RA'][I] = allcat['RA_LVD'][I]
-    allcat['DEC'][I] = allcat['DEC_LVD'][I]
+    # First, resolve 1-arcsec pairs:
+    print(f'Resolving 1-arcsec close-pairs.')
+    resolve_close(allcat, allcat, maxsep=1., verbose=True)
 
-    indx = match_radec(allcat['RA'], allcat['DEC'], allcat['RA'], allcat['DEC'],
-                       1./3600., indexlist=True, notself=False)
-    M = np.where([len(oneindx) > 1 for oneindx in indx])[0]
-    #M = np.where([oneindx is not None for oneindx in indx])[0]
+    pdb.set_trace()
 
+    # Resolve galaxy mergers (pairs, triples) as well as close (potentially
+    # duplicate) objects.
+    for objtype in ['GPair', 'GTrpl']:
+        I = allcat['OBJTYPE'] == objtype
+        print(f'Resolving {np.sum(I):,d} {objtype}.')
+        resolve_close(allcat[I], allcat, maxsep=60., verbose=True)
 
     pdb.set_trace()
 
@@ -189,6 +233,12 @@ def build_parent(mindiam=15./60.):
     print(len(I))
     lim = (-1.7, 3.)
     #lim = (np.log10(mindiam)-0.1, 3.)
+
+
+
+    import corner
+    from SGA.qa import plot_style
+    sns, colors = plot_style(talk=True, font_scale=1.2)
 
     fig, ax = plt.subplots(figsize=(7, 7))
     xx = np.log10(allcat['DIAM_LEDA'][I])
@@ -261,9 +311,6 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
         png = os.path.join(qadir, 'qa-sizemag-parent-nocuts.png')
         fig_size_mag(cat, pngfile=png)
     pdb.set_trace()
-
-
-
 
 
 def build_parent_nocuts(verbose=True):
@@ -375,8 +422,10 @@ def build_parent_nocuts(verbose=True):
     # * Need to make sure the individual members of the GGroup systems are
     #   in the final parent sample.
     # https://ned.ipac.caltech.edu/help/ui/nearposn-list_objecttypes?popup=1
-    toss = np.where(np.isin(ned_nedlvs['OBJTYPE'], ['QSO', 'Q_Lens', 'G_Lens', '*', 'Other',
-                                                    'GGroup', 'GPair', 'GTrpl']))[0]
+    toss = np.where(np.isin(ned_nedlvs['OBJTYPE'], ['QSO', 'Q_Lens', 'G_Lens', '*',
+                                                    'Other', 'GGroup'#,
+                                                    #'GPair', 'GTrpl'
+                                                    ]))[0]
     print(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ({100.*len(toss)/len(ned_nedlvs):.1f}%) non-galaxies.')
     ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
 
@@ -455,8 +504,9 @@ def build_parent_nocuts(verbose=True):
     toss = np.where(np.isin(ned_hyper['OBJTYPE'], ['PofG', '!V*', '!PN', '**', 'GClstr', 'WD*',
                                                    'Red*', '!HII', 'C*', 'PN', '*Ass', 'Blue*',
                                                    '!**', 'SN', '!*', 'Other', 'SNR', '*Cl',
-                                                   'GGroup', 'GPair', 'GTrpl', 'V*', '*',
-                                                   'HII', 'Nova', 'Neb', 'RfN', '!V*', '!C*',
+                                                   'GGroup',
+                                                   #'GPair', 'GTrpl',
+                                                   'V*', '*', 'HII', 'Nova', 'Neb', 'RfN', '!V*', '!C*',
                                                    'QSO', 'Q_Lens', 'G_Lens']))[0]
     toss = np.hstack((toss, np.where(ned_hyper['OBJNAME'] == 'VIRGO01')[0]))
     print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} ({100.*len(toss)/len(ned_hyper):.1f}%) non-galaxies.')
