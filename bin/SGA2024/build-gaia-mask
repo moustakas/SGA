@@ -140,13 +140,11 @@ def main():
     fig.tight_layout()
     fig.savefig('ioannis/tmp/junk.png')
 
-    outfn = os.path.join(outdir, 'gaia-mask.fits')
+    outfn = os.path.join(outdir, 'gaia-mask-dr3-allsky.fits')
     if os.path.isfile(outfn):
         os.remove(outfn)
     G.writeto(outfn, columns=cols, units=units)
 
-
-    pdb.set_trace()
 
 if __name__ == '__main__':
     main()

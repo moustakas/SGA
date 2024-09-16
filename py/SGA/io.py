@@ -378,6 +378,7 @@ def nedfriendly_lvd(old):
         'M101 DwA': 'Messier 101:[BSC2017] Dw A',
         'Pegasus IV': 'Pegasus IV Dwarf',
         'Pegasus V': 'Pegasus V Dwarf', # ='Andromeda XXXIV'
+        'Pegasus III': 'Pegasus III Dwarf',
         'Pegasus dIrr': 'Pegasus Dwarf',
         'Perseus I': 'Andromeda XXXIII', # incorrectly resolves to 'PGC1 5067061 NED001'
         'Phoenix': 'Phoenix Dwarf',

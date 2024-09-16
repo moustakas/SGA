@@ -147,36 +147,95 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
     from astrometry.libkd.spherematch import match_radec
     from astrometry.util.starutil_numpy import degrees_between
 
-    indx = match_radec(cat['RA'].value, cat['DEC'].value,
-                       refcat['RA'].value, refcat['DEC'].value,
-                       maxsep/3600., indexlist=True, notself=False)
-    M = np.where([len(oneindx) > 1 for oneindx in indx])[0]
-    print(f'Found {len(M):,d}/{len(cat):,d} pairs within {maxsep:.1f} arcsec.')
 
-    toss = []
-    for I in M:
-        info = refcat[indx[I]]
-        dtheta = degrees_between(cat[I]['RA'], cat[I]['DEC'], info['RA'], info['DEC']) * 3600. # [arcsec]
-        info['SEP'] = dtheta.astype('f4')
-        nobj = len(info)
+    def choose_primary(group, verbose=False):
+        """Choose the primary member of a group.
 
-        this = info['OBJTYPE'] == 'GPair'
-        if np.sum(this) == 0:
-            this = info['OBJTYPE'] == 'G'
+        """
+        #IM = np.logical_or(group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
+        #IG = group['OBJTYPE'] == 'G'
+        IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
+        ID = np.vstack((group['DIAM'] != -99., group['DIAM_LEDA'] != -99.)).T
+        IZ = group['Z'] != -99.
+        IS = group['SEP'] == 0.
 
-        if np.sum(this) == 1:
-            keep = np.array(indx[I])[this]
-            drop = np.array(indx[I])[~this]
-            toss.append(drop)
-        else:
-            pdb.set_trace()
+        #mask0 = IM                           # objtype={GPair,GTrpl}
+        mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
+        mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
+        mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
+        mask4 = np.all(ID, axis=1) * IZ      # both diameters and a redshift
+        mask5 = np.all(ID, axis=1) * IS      # both diameters and separation=0 (usually PGC is a minimum)
+        mask6 = np.all(ID, axis=1)           # both diameters
+        mask7 = np.any(ID, axis=1) * IS      # either diameter and separation=0
+        mask8 = IS                           # separation=0
 
-        if verbose:
-            print(f'{info[this][0]["OBJNAME"]}: {info[this][0]["OBJTYPE"]}, z={info[this][0]["Z"]:.5f}, D={info[this][0]["DIAM"]:.2f} arcmin')
+        for mask in (mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8):
+            keep, drop = np.where(mask)[0], np.where(~mask)[0]
+            if len(keep) == 1:
+                keep, drop = np.where(mask)[0], np.where(~mask)[0]
+                return keep, drop
+
+        raise ValueError('Need more cases!')
+        print(group['OBJNAME', 'OBJTYPE', 'DIAM', 'DIAM_LEDA', 'Z', 'PGC', 'SEP'])
+
+
+    allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                             refcat['RA'].value, refcat['DEC'].value,
+                             maxsep/3600., indexlist=True, notself=False)
+    nobj = 0
+    allindx_cat, allindx_refcat = [], []
+    for iobj, onematch in enumerate(allmatches):
+        nmatch = len(onematch)
+        if nmatch > 1:
+            nobj += nmatch
+            allindx_cat.append(iobj)
+            allindx_refcat.append(onematch)
+
+    if verbose:
+        maxname = len(max(refcat['OBJNAME'], key=len))
+        maxtyp = len(max(refcat['OBJTYPE'], key=len))
+
+    refcat['GROUP_ID'] = np.zeros(len(refcat), np.int32) - 99
+    refcat['PRIMARY'] = np.ones(len(refcat), bool)
+    refcat['NGROUP'] = np.ones(len(refcat), np.int16)
+    refcat['SEPARATION'] = np.zeros(len(refcat), 'f4')
+    refcat['DONE'] = np.zeros(len(refcat), bool)
+
+    for igroup, (indx_cat, indx_refcat) in enumerate(zip(allindx_cat, allindx_refcat)):
+        if verbose and (igroup % 500 == 0):
+            print(f'Working on group {igroup+1:,d}/{len(allindx_refcat):,d}')
+        indx_cat = np.array(indx_cat)
+        indx_refcat = np.array(indx_refcat)
+        if np.all(refcat['DONE'][indx_refcat]):
+            continue
+
+        group = refcat[indx_refcat]
+        dtheta = degrees_between(cat[indx_cat]['RA'], cat[indx_cat]['DEC'], group['RA'], group['DEC']) * 3600. # [arcsec]
+        group['SEP'] = dtheta.astype('f4')
+        ngroup = len(group)
+
+        primary, drop = choose_primary(group, verbose=verbose)
+        refcat['GROUP_ID'][indx_refcat] = igroup
+        refcat['PRIMARY'][indx_refcat[drop]] = False
+        refcat['NGROUP'][indx_refcat] = len(group)
+        refcat['SEPARATION'][indx_refcat] = dtheta
+        refcat['DONE'][indx_refcat] = True
+
+        if verbose and np.any(group['OBJTYPE'] == 'GPair'):
+            print('Keep: '+'{name: <{W}}'.format(name=group[primary][0]["OBJNAME"], W=maxname)+': ' + \
+                  '{typ: <{W}}'.format(typ=group[primary][0]["OBJTYPE"], W=maxtyp)+', ' + \
+                  f'z={group[primary][0]["Z"]:.5f}, D={group[primary][0]["DIAM"]:.2f},{group[primary][0]["DIAM_LEDA"]:.2f} arcmin')
             for ii in drop:
-                print(f'  Dropping {refcat[ii]["OBJNAME"]}: {refcat[ii]["OBJTYPE"]}, z={refcat[ii]["Z"]:.5f}, D={refcat[ii]["DIAM"]:.5f} arcmin')
+                print('Drop: '+'{name: <{W}}'.format(name=group[ii]["OBJNAME"], W=maxname)+': ' + \
+                      '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
+                      f'z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f},{group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
             print()
 
+        #allkeep.append(indx_refcat[primary])
+        #if len(drop) > 0: # mergers
+        #    alldrop.append(indx_refcat[drop])
+
+        #if verbose:
             #print(info['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'PGC', 'RA', 'DEC',
             #           #'RA_NED', 'DEC_NED', 'Z', 'Z_NED', 'Z_HYPERLEDA',
             #           'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'MAG',
@@ -186,7 +245,20 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
         # -one object - unresolved merger
         # -one object 
 
+    print(f'Found {len(np.unique(refcat["GROUP_ID"]))-1:,d} groups with ' + \
+          f'({np.sum(refcat["GROUP_ID"] != -99):,d}/{len(refcat):,d} ' + \
+          f'unique objects) within {maxsep:.1f} arcsec.')
+
+    #check = refcat[refcat['GROUP_ID'] != -99]
+    #check = check[np.argsort(check['GROUP_ID'])]
+    #drop = refcat[(refcat['GROUP_ID'] != -99) * (refcat['PRIMARY'] == False)]
+    #prefix = np.array([objname.split(' ')[0] for objname in drop['OBJNAME']])
     pdb.set_trace()
+
+    out = refcat[refcat['PRIMARY']]
+    refcat.remove_columns(['GROUP_ID', 'PRIMARY', 'NGROUP', 'SEPARATION', 'DONE'])
+
+    return out
 
 
 def build_parent(mindiam=15./60.):
@@ -195,15 +267,60 @@ def build_parent(mindiam=15./60.):
     mindiam in arcmin
 
     """
+    from collections import Counter
+
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
     allcat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
     print(f'Read {len(allcat):,d} objects from {catfile}')
 
-    # First, resolve 1-arcsec pairs:
-    print(f'Resolving 1-arcsec close-pairs.')
-    resolve_close(allcat, allcat, maxsep=1., verbose=True)
+    # Resolve GTrpl, most of which are actually galaxy groups in NED. We want
+    # to keep the real triples, so we can make sure we have the individual
+    # galaxies making up the triple (e.g., all the Arp systems).
+    T = allcat[allcat['OBJTYPE'] == 'GTrpl']
+    prefix = np.array([objname.split(' ')[0] for objname in T['OBJNAME']])
+    print(f'Working on {len(T):,d}/{len(T):,d} objects with objtype=GTrpl.')
+
+    C = Counter(prefix).most_common()
+
+    # keep: CGCG, ESO, UGC, NGC, SBS, some of WISEA, AM, 2MASX, III Zw,
+    # B2, MGC, IV Zw, LCSB, VI Zw, DUKST, 2MFGC, II Zw, I Zw, KUG, VII Zw,
+    # V Zw, APMUKS(BJ), VIII Zw, IRAS, IC, MCG, ARP, VV, CGMW
+    drop = []
+    for pre in ['Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'LDCE',
+                'Mr18:[BFW2006]', 'USGC', 'HDCE', 'UZC-CG',
+                'NSCS', 'zCOSMOS', 'KTG', 'V1CG', '[YSS2008] 703',
+                'LGG', 'LCLG', 'RSCG', 'HOLM', '[BWH2007]',
+                '[ALB2009]', 'KTS', '[KLI2009]',
+                'AGC', 'HIPASS', 'GALEXMSC', 'DEEP2', 'WBL',
+                'PPS2', '[SAB2007]', 'VCC', 'WAS', 'CGPG',
+                'APMBGC', '[H87]', 'LCRS', 'SSRS', 'CB-20.07763', '[PCM2000]',
+                'SCG', 'FLASH', 'HIDEEP', '[SPS2007]',
+                'COMAi', 'AKARI', 'PM2GC', 'MLCG', '[BJG2014]']:
+        I = np.where(pre == prefix)[0]
+        print(f'Dropping {len(I):,d} objects with prefix {pre}.')
+        drop.append(I)
+
+    for pre in ['WISEA', '2MASS', 'SDSS', '2dFGRS', 'GALEXASC']:
+        I = np.where((pre == prefix) * (T['PGC'] == -99))[0]
+        print(f'Dropping {len(I):,d} objects with prefix {pre} and no PGC number.')
+        drop.append(I)
+
+    for pre in ['NGC', 'IC']:
+        I = np.where((pre == prefix) * np.array(['GROUP' in objname for objname in T['OBJNAME']]))[0]
+        print(f'Dropping {len(I):,d} objects with prefix {pre} and GROUP in their name.')
+        drop.append(I)
+
+    drop = np.hstack(drop)
+    #keep = np.delete(np.arange(len(T)), drop)
+    print(f'Dropping total of {len(drop:,d} objects.')
+    allcat = allcat[~np.isin(allcat['OBJNAME'], T[drop]['OBJNAME'])]
 
     pdb.set_trace()
+
+    # First, resolve 1-arcsec pairs:
+    trimcat = resolve_close(allcat, allcat, maxsep=1., verbose=False)
+    pdb.set_trace()
+    trimcat = resolve_close(trimcat, trimcat, maxsep=3., verbose=True)
 
     # Resolve galaxy mergers (pairs, triples) as well as close (potentially
     # duplicate) objects.
