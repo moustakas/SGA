@@ -138,7 +138,7 @@ def parent_datamodel(nobj):
 #
 #    return parent
 
-def resolve_close(cat, refcat, maxsep=1., verbose=False):
+def resolve_close(cat, refcat, maxsep=1., verbose=False, keep_all_mergers=False):
     """Resolve close objects.
 
     maxsep in arcsec
@@ -148,18 +148,24 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
     from astrometry.util.starutil_numpy import degrees_between
 
 
-    def choose_primary(group, verbose=False):
+    def choose_primary(group, verbose=False, keep_all_mergers=False):
         """Choose the primary member of a group.
 
+        if keep_all_mergers=True then always keep {GPair,GTrpl} sources, even
+          if they do not have a diameter.
+
         """
-        #IM = np.logical_or(group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
-        #IG = group['OBJTYPE'] == 'G'
-        IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
+        if keep_all_mergers:
+            IM = np.logical_or(group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
+            IG = group['OBJTYPE'] == 'G'
+        else:
+            IG = np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
+
+        #IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
         ID = np.vstack((group['DIAM'] != -99., group['DIAM_LEDA'] != -99.)).T
         IZ = group['Z'] != -99.
         IS = group['SEP'] == 0.
 
-        #mask0 = IM                           # objtype={GPair,GTrpl}
         mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
         mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
         mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
@@ -169,7 +175,13 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
         mask7 = np.any(ID, axis=1) * IS      # either diameter and separation=0
         mask8 = IS                           # separation=0
 
-        for mask in (mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8):
+        if keep_all_mergers:
+            mask0 = IM # objtype={GPair,GTrpl}
+            allmasks = (mask0, mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8)
+        else:
+            allmasks = (mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8)
+
+        for mask in allmasks:
             keep, drop = np.where(mask)[0], np.where(~mask)[0]
             if len(keep) == 1:
                 keep, drop = np.where(mask)[0], np.where(~mask)[0]
@@ -214,14 +226,14 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
         group['SEP'] = dtheta.astype('f4')
         ngroup = len(group)
 
-        primary, drop = choose_primary(group, verbose=verbose)
+        primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers)
         refcat['GROUP_ID'][indx_refcat] = igroup
         refcat['PRIMARY'][indx_refcat[drop]] = False
         refcat['NGROUP'][indx_refcat] = len(group)
         refcat['SEPARATION'][indx_refcat] = dtheta
         refcat['DONE'][indx_refcat] = True
 
-        if verbose and np.any(group['OBJTYPE'] == 'GPair'):
+        if verbose and (np.any(group['OBJTYPE'] == 'GPair') or np.any(group['OBJTYPE'] == 'GTrpl')):
             print('Keep: '+'{name: <{W}}'.format(name=group[primary][0]["OBJNAME"], W=maxname)+': ' + \
                   '{typ: <{W}}'.format(typ=group[primary][0]["OBJTYPE"], W=maxtyp)+', ' + \
                   f'z={group[primary][0]["Z"]:.5f}, D={group[primary][0]["DIAM"]:.2f},{group[primary][0]["DIAM_LEDA"]:.2f} arcmin')
@@ -231,20 +243,6 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
                       f'z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f},{group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
             print()
 
-        #allkeep.append(indx_refcat[primary])
-        #if len(drop) > 0: # mergers
-        #    alldrop.append(indx_refcat[drop])
-
-        #if verbose:
-            #print(info['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'PGC', 'RA', 'DEC',
-            #           #'RA_NED', 'DEC_NED', 'Z', 'Z_NED', 'Z_HYPERLEDA',
-            #           'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'MAG',
-            #           'DIAM', 'DIAM_LEDA', 'DIAM_REF', 'MORPH', 'BASIC_MORPH', 'OBJTYPE'])
-
-        # GPair cases
-        # -one object - unresolved merger
-        # -one object 
-
     print(f'Found {len(np.unique(refcat["GROUP_ID"]))-1:,d} groups with ' + \
           f'({np.sum(refcat["GROUP_ID"] != -99):,d}/{len(refcat):,d} ' + \
           f'unique objects) within {maxsep:.1f} arcsec.')
@@ -253,7 +251,6 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
     #check = check[np.argsort(check['GROUP_ID'])]
     #drop = refcat[(refcat['GROUP_ID'] != -99) * (refcat['PRIMARY'] == False)]
     #prefix = np.array([objname.split(' ')[0] for objname in drop['OBJNAME']])
-    pdb.set_trace()
 
     out = refcat[refcat['PRIMARY']]
     refcat.remove_columns(['GROUP_ID', 'PRIMARY', 'NGROUP', 'SEPARATION', 'DONE'])
@@ -261,66 +258,347 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False):
     return out
 
 
-def build_parent(mindiam=15./60.):
+def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
+                pngdir='.', jpgdir='.', verbose=False, overwrite=False):
+    """Build QA which shows all the objects in a ~little patch of sky.
+
+    primary - parent-style catalog
+    group (optional) - parent-style catalog with additional systems in the field
+
+    """
+    import matplotlib.image as mpimg
+    from matplotlib.patches import Circle
+    from urllib.request import urlretrieve
+    from astropy.wcs import WCS
+    from astropy.io import fits
+
+    def get_wcs(ra, dec, width_arcmin=2., survey='ls'):
+        pix = {'ls': 0.262, 'unwise': 2.75}
+        pixscale = pix[survey]
+        width = int(60. * width_arcmin / pixscale)
+        hdr = fits.Header()
+        hdr['NAXIS'] = 2
+        hdr['NAXIS1'] = width
+        hdr['NAXIS2'] = width
+        hdr['CTYPE1'] = 'RA---TAN'
+        hdr['CTYPE2'] = 'DEC--TAN'
+        hdr['CRVAL1'] = ra
+        hdr['CRVAL2'] = dec
+        hdr['CRPIX1'] = width/2+0.5
+        hdr['CRPIX2'] = width/2+0.5
+        hdr['CD1_1'] = -pixscale/3600.
+        hdr['CD1_2'] = 0.0
+        hdr['CD2_1'] = 0.0
+        hdr['CD2_2'] = +pixscale/3600.
+        wcs = WCS(hdr)
+        width = wcs.pixel_shape[0]
+        return wcs, width, pixscale
+
+    def get_url(ra, dec, width, layer):
+        url = f'https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={width}&layer={layer}'
+        print(url)
+        return url
+
+    bbox = dict(boxstyle='round', facecolor='k', alpha=0.5)
+    ref_pixscale = 0.262
+
+    if group is None:
+        group = Table(primary)
+
+    if verbose:
+        print(group)
+    N = len(group)
+
+    ra = primary[racol]
+    dec = primary[deccol]
+    objname = primary['OBJNAME']
+    outname = f'{objname.replace(' ', '_')}-{suffix}'
+    pngfile = os.path.join(pngdir, f'{outname}.png')
+    if os.path.isfile(pngfile) and not overwrite:
+        print(f'Output file {pngfile} exists; skipping.')
+        return
+
+
+    # check if the viewer cutout file exists
+    surveys = ['ls', 'ls', 'unwise']
+    layers = ['ls-dr9', 'ls-dr10', 'unwise-neo7']
+    for survey, layer in zip(surveys, layers):
+        jpgfile = os.path.join(jpgdir, f'{outname}-{layer}.jpeg')
+        if os.path.isfile(jpgfile):
+            surveys = [survey]
+            layers = [layer]
+
+    for survey, layer in zip(surveys, layers):
+        wcs, width, pixscale = get_wcs(ra, dec, survey=survey)
+        jpgfile = os.path.join(jpgdir, f'{outname}-{layer}.jpeg')
+        if os.path.isfile(jpgfile):
+            img = mpimg.imread(jpgfile)
+        else:
+            urlretrieve(get_url(ra, dec, width, layer=layer), jpgfile)
+            img = mpimg.imread(jpgfile)
+            if np.all(img == 32): # no data
+                os.remove(jpgfile)
+            else:
+                break
+
+    decsort = np.argsort(group[deccol])
+    #fig = plt.figure()
+    #ax = fig.add_subplot()#projection=wcs)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(img, origin='lower')
+    for imem, (mem, yoffset) in enumerate(zip(group[decsort], (np.arange(0, N)+0.5) * width / N)):
+        label = f'{mem["OBJNAME"]}: D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
+        if imem % 2 == 0:
+            xoffset = 0.2 * width
+        else:
+            xoffset = width - 0.2 * width
+
+        if width-yoffset > width / 2:
+            va = 'top'
+        else:
+            va = 'bottom'
+
+        pix = wcs.wcs_world2pix(mem[racol], mem[deccol], 1)
+        if np.abs(pix[1]-yoffset) < int(0.03*width):
+            yoffset += int(0.03*width)
+
+        ax.add_artist(Circle((pix[0], width-pix[1]), radius=4.*ref_pixscale/pixscale,
+                             facecolor='none', edgecolor='blue', ls='-', alpha=0.8))
+        ax.annotate('', xy=(pix[0], width-pix[1]), xytext=(xoffset, width-yoffset),
+                    arrowprops=dict(facecolor='blue', width=2,
+                                    headwidth=8, shrink=0.01, alpha=0.5))
+        ax.annotate(label, xy=(xoffset, width-yoffset), xytext=(xoffset, width-yoffset),
+                    va=va, ha='center', color='white', bbox=bbox, fontsize=9)
+
+        if mem['RA_HYPERLEDA'] != -99.:
+            hyper_pix = wcs.wcs_world2pix(mem['RA_HYPERLEDA'], mem['DEC_HYPERLEDA'], 1)
+            ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
+                                 facecolor='none', edgecolor='red', ls='--', alpha=0.8))
+            ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
+                        arrowprops=dict(facecolor='red', width=1, ls='--',
+                                        headwidth=8, shrink=0.01, alpha=0.5))
+
+    ax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
+    ax.set_title(f'{objname} ({ra:.8f},{dec:.8f})')
+    ax.axis('off')
+    fig.tight_layout()
+    fig.savefig(pngfile, bbox_inches=0)
+    print(f'Wrote {pngfile}')
+
+
+def resolve_multiples(incat, system='GTrpl', verbose=False, overwrite=False):
+    """Remove (most) GTrpl and GPair systems, most of which are actually galaxy
+    groups in NED. We want to keep the real pairs and triples, so we can make
+    sure we have the individual galaxies making up the system (e.g., all the
+    Arp systems).
+
+    """
+    from collections import Counter
+    from astrometry.libkd.spherematch import match_radec
+
+    cols = ['OBJNAME', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA', 'OBJTYPE',
+            'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
+            'Z', 'PGC', 'PARENT_ROW']
+    cat = incat[cols]
+
+    T = cat[cat['OBJTYPE'] == system]
+
+    # Read the "VI actions" file.
+    actionsfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-actions.csv')
+    actions = Table.read(actionsfile, format='csv', comment='#')
+
+    for action in np.unique(actions['action']):
+        match action:
+            case 'drop':
+                obj = actions[action == actions['action']]['objname'].value
+                I = np.isin(cat['OBJNAME'].value, obj)
+                if np.sum(I) != len(obj):
+                    raise ValueError('Some objects not found!')
+                if verbose:
+                    print(f'Action: dropping {len(obj):,d} objects.')
+                cat = cat[~I]
+
+            case 'hyperleda-coords':
+                obj = actions[action == actions['action']]['objname'].value
+                I = np.isin(cat['OBJNAME'].value, obj)
+                if np.sum(I) != len(obj):
+                    raise ValueError('Some objects not found!')
+                if verbose:
+                    print(f'Action: adopting HyperLeda coordinates for {len(obj):,d} object(s).')
+                cat['RA'][I] = cat[I]['RA_HYPERLEDA']
+                cat['DEC'][I] = cat[I]['DEC_HYPERLEDA']
+
+
+    ## side hustle - inspect NED01/NED02 pairs
+    #I = []
+    #for iobj, objname in enumerate(T['OBJNAME']):
+    #    J = np.where(np.logical_or(cat['OBJNAME'] == f'{objname} NED01', cat['OBJNAME'] == f'{objname} NED02'))[0]
+    #    if len(J) > 1:
+    #        I.append(iobj)
+    #I = np.hstack(I)
+    #T = T[I]
+
+    prefix = np.array([objname.split(' ')[0] for objname in T['OBJNAME']])
+    C = Counter(prefix)
+    C.most_common()
+
+    allmatches = match_radec(T['RA'].value, T['DEC'].value, cat['RA'].value, cat['DEC'].value,
+                             60./3600., indexlist=True, notself=False)
+
+    # np.flatnonzero(np.core.defchararray.find(cat['OBJNAME'].value, objname) != -1)
+
+    # build QA of all the uncommon prefixes
+    jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-{system}-uncommon-prefixes')
+    if not os.path.isdir(jpgdir):
+        os.makedirs(jpgdir)
+
+    pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'{system}-uncommon-prefixes')
+    if not os.path.isdir(pngdir):
+        os.makedirs(pngdir)
+
+    #for pre, count in sorted(C.items()):
+    for pre, count in zip(['3C'], [1]):
+        if count < 10:
+            print(f'Working on prefix {pre}')
+            I = np.where(prefix == pre)[0][0]
+            primary = T[I]
+            group= cat[allmatches[I]]
+            qa_skypatch(primary, group=group, suffix=system, pngdir=pngdir,
+                        jpgdir=jpgdir, verbose=True, overwrite=overwrite)
+            pdb.set_trace()
+
+    # fix problems here
+    pdb.set_trace()
+
+
+    # now clean up the sample
+    match system:
+        case 'GTrpl':
+            # keep: CGCG, ESO, UGC, NGC, SBS, some of WISEA, AM, 2MASX, III Zw,
+            # B2, MGC, IV Zw, LCSB, VI Zw, DUKST, 2MFGC, II Zw, I Zw, KUG, VII Zw,
+            # V Zw, APMUKS(BJ), VIII Zw, IRAS, IC, MCG, ARP, VV, CGMW
+            drop = []
+            for pre in ['Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'LDCE',
+                        'Mr18:[BFW2006]', 'USGC', 'HDCE', 'UZC-CG',
+                        'NSCS', 'zCOSMOS', 'KTG', 'V1CG', '[YSS2008]',
+                        'LGG', 'LCLG', 'RSCG', 'HOLM', '[BWH2007]',
+                        '[ALB2009]', 'KTS', '[KLI2009]',
+                        'AGC', 'HIPASS', 'GALEXMSC', 'DEEP2', 'WBL',
+                        'PPS2', '[SAB2007]', 'VCC', 'WAS', 'CGPG',
+                        'APMBGC', '[H87]', 'LCRS', 'SSRS', 'CB-20.07763', '[PCM2000]',
+                        'SCG', 'FLASH', 'HIDEEP', '[SPS2007]',
+                        'COMAi', 'AKARI', 'PM2GC', 'MLCG', '[BJG2014]']:
+                I = np.where(pre == prefix)[0]
+                if verbose:
+                    print(f'Dropping {len(I):,d} object(s) with prefix {pre}.')
+                drop.append(I)
+
+            for pre in ['WISEA', '2MASS', 'SDSS', '2dFGRS', 'GALEXASC']:
+                I = np.where((pre == prefix) * (T['PGC'] == -99))[0]
+                if verbose:
+                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and no PGC number.')
+                drop.append(I)
+
+            for pre in ['NGC', 'IC']:
+                I = np.where((pre == prefix) * np.array(['group' in objname.lower() for objname in T['OBJNAME']]))[0]
+                if verbose:
+                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and GROUP in their name.')
+                drop.append(I)
+
+        case 'GPair':
+            pass
+
+
+    drop = []
+
+    for indx_T, indx_cat in enumerate(allmatches):
+        primary = T[indx_T]
+        group = cat[indx_cat][cols]
+
+        qa_skypatch(primary, group=group, suffix=system, pngdir=pngdir, jpgdir=jpgdir)
+
+        #drop.append(iobj)
+
+    drop = np.hstack(drop)
+    #keep = np.delete(np.arange(len(T)), drop)
+
+    print(f'Removing {len(drop):,d}/{len(T):,d} GTrpl systems (most are galaxy groups).')
+    cat = cat[~np.isin(cat['OBJNAME'], T[drop]['OBJNAME'])]
+
+    # Next, resolve the remaining systems. Basically, we want to make sure that
+    # each galaxy member of a galaxy triple (or pair) is included in our parent
+    # sample. However, NED's "GTrpl" and "GPair" designations can be ambiguous
+    # or incomplete, especially for very compact systems or advanced mergers.
+    T = cat[cat['OBJTYPE'] == 'GTrpl']
+    #cat_noT = cat[~np.isin(cat['OBJNAME'], T['OBJNAME'])]
+    allmatches = match_radec(T['RA'].value, T['DEC'].value,
+                             cat['RA'].value, cat['DEC'].value,
+                             60./3600., indexlist=True, notself=False)
+
+    drop = []
+    for indx_T, indx_cat in enumerate(allmatches):
+        prim = T[indx_T]['OBJNAME']
+
+        members = cat[indx_cat]['OBJNAME'].value
+        nmembers = len(members)
+
+        memb = ', '.join(np.atleast_1d(cat[indx_cat]['OBJNAME'].value))
+        print(f'{indx_T:03} {prim}: {len(indx_cat)} members: [{memb}]')
+        print(cat[indx_cat]['OBJNAME', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA', 'OBJTYPE', 'RA', 'DEC', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'Z', 'PGC'])
+        print()
+
+        if len(members) != 4:
+            pdb.set_trace()
+
+        # special-casing
+        match prim:
+            case 'ESO 012-IG 019':
+                # NED coordinates are bunk, HyperLeda is good; drop NED02 and keep the GTrpl.
+                drop.append('ESO 012-IG 016 NED02')
+                cat['RA'][indx_cat] = cat['RA_HYPERLEDA'][indx_cat]
+                cat['DEC'][indx_cat] = cat['DEC_HYPERLEDA'][indx_cat]
+            case _:
+                drop.append(prim)
+
+    return cat
+
+
+def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     """Build the parent catalog.
 
     mindiam in arcmin
 
     """
-    from collections import Counter
+    if False:
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
+        allcat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
+        print(f'Read {len(allcat):,d} objects from {catfile}')
 
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
-    allcat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
-    print(f'Read {len(allcat):,d} objects from {catfile}')
+        allcat['PARENT_ROW'] = np.arange(len(allcat))
 
-    # Resolve GTrpl, most of which are actually galaxy groups in NED. We want
-    # to keep the real triples, so we can make sure we have the individual
-    # galaxies making up the triple (e.g., all the Arp systems).
-    T = allcat[allcat['OBJTYPE'] == 'GTrpl']
-    prefix = np.array([objname.split(' ')[0] for objname in T['OBJNAME']])
-    print(f'Working on {len(T):,d}/{len(T):,d} objects with objtype=GTrpl.')
+        # First, resolve 1-arcsec pairs:
+        cat = resolve_close(allcat, allcat, maxsep=1., keep_all_mergers=True, verbose=verbose)
+        #trimcat = resolve_close(trimcat, trimcat, maxsep=3., verbose=True)
+        cat.write(os.path.join(sga_dir(), 'parent', 'junk-parent.fits'), overwrite=True)
+    else:
+        print('HACK!!!!!!')
+        catfile = os.path.join(sga_dir(), 'parent', 'junk-parent.fits')
+        print(f'Reading {catfile}')
+        if False:
+            rows = fitsio.read(catfile, columns='PARENT_ROW')
+            I = np.where(np.isin(rows, [6,3183437,4912507,3183438,3,467708,3178270,3178271,2255,3264786,2383404,3960635,2383405,911,19219,3237549]))[0]
+            cat = Table(fitsio.read(catfile, rows=I))
+        else:
+            cat = Table(fitsio.read(catfile))
 
-    C = Counter(prefix).most_common()
+    # Analyze GTrpl and GPair systems.
+    cat = resolve_multiples(cat, 'GPair', verbose=verbose, overwrite=overwrite)
+    #cat = resolve_multiples(cat, 'GTrpl', verbose=verbose)
 
-    # keep: CGCG, ESO, UGC, NGC, SBS, some of WISEA, AM, 2MASX, III Zw,
-    # B2, MGC, IV Zw, LCSB, VI Zw, DUKST, 2MFGC, II Zw, I Zw, KUG, VII Zw,
-    # V Zw, APMUKS(BJ), VIII Zw, IRAS, IC, MCG, ARP, VV, CGMW
-    drop = []
-    for pre in ['Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'LDCE',
-                'Mr18:[BFW2006]', 'USGC', 'HDCE', 'UZC-CG',
-                'NSCS', 'zCOSMOS', 'KTG', 'V1CG', '[YSS2008] 703',
-                'LGG', 'LCLG', 'RSCG', 'HOLM', '[BWH2007]',
-                '[ALB2009]', 'KTS', '[KLI2009]',
-                'AGC', 'HIPASS', 'GALEXMSC', 'DEEP2', 'WBL',
-                'PPS2', '[SAB2007]', 'VCC', 'WAS', 'CGPG',
-                'APMBGC', '[H87]', 'LCRS', 'SSRS', 'CB-20.07763', '[PCM2000]',
-                'SCG', 'FLASH', 'HIDEEP', '[SPS2007]',
-                'COMAi', 'AKARI', 'PM2GC', 'MLCG', '[BJG2014]']:
-        I = np.where(pre == prefix)[0]
-        print(f'Dropping {len(I):,d} objects with prefix {pre}.')
-        drop.append(I)
-
-    for pre in ['WISEA', '2MASS', 'SDSS', '2dFGRS', 'GALEXASC']:
-        I = np.where((pre == prefix) * (T['PGC'] == -99))[0]
-        print(f'Dropping {len(I):,d} objects with prefix {pre} and no PGC number.')
-        drop.append(I)
-
-    for pre in ['NGC', 'IC']:
-        I = np.where((pre == prefix) * np.array(['GROUP' in objname for objname in T['OBJNAME']]))[0]
-        print(f'Dropping {len(I):,d} objects with prefix {pre} and GROUP in their name.')
-        drop.append(I)
-
-    drop = np.hstack(drop)
-    #keep = np.delete(np.arange(len(T)), drop)
-    print(f'Dropping total of {len(drop:,d} objects.')
-    allcat = allcat[~np.isin(allcat['OBJNAME'], T[drop]['OBJNAME'])]
-
+    # Re-resolve 1-arcsec pairs because in 'resolve_multiples' we fix the
+    # coordinates of some sources, which leads to new overlaps.
+    cat = resolve_close(cat, cat, maxsep=1., keep_all_mergers=False, verbose=verbose)
     pdb.set_trace()
-
-    # First, resolve 1-arcsec pairs:
-    trimcat = resolve_close(allcat, allcat, maxsep=1., verbose=False)
-    pdb.set_trace()
-    trimcat = resolve_close(trimcat, trimcat, maxsep=3., verbose=True)
 
     # Resolve galaxy mergers (pairs, triples) as well as close (potentially
     # duplicate) objects.
@@ -621,7 +899,7 @@ def build_parent_nocuts(verbose=True):
     toss = np.where(np.isin(ned_hyper['OBJTYPE'], ['PofG', '!V*', '!PN', '**', 'GClstr', 'WD*',
                                                    'Red*', '!HII', 'C*', 'PN', '*Ass', 'Blue*',
                                                    '!**', 'SN', '!*', 'Other', 'SNR', '*Cl',
-                                                   'GGroup',
+                                                   '!WD*', 'GGroup',
                                                    #'GPair', 'GTrpl',
                                                    'V*', '*', 'HII', 'Nova', 'Neb', 'RfN', '!V*', '!C*',
                                                    'QSO', 'Q_Lens', 'G_Lens']))[0]
@@ -1154,6 +1432,7 @@ def main():
     parser.add_argument('--region', choices=regions, type=str, nargs='*', help='Region to pass to --in-footprint.')
     parser.add_argument('--catalog', choices=catalogs, type=str, help='External catalog to pass to --in-footprint.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
     parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
     args = parser.parse_args()
@@ -1181,7 +1460,7 @@ def main():
         build_parent_nocuts()
 
     if args.build_parent:
-        build_parent(mindiam=args.mindiam)
+        build_parent(mindiam=args.mindiam, overwrite=args.overwrite, verbose=args.verbose)
 
     if args.qa_parent:
         qa_parent(nocuts=True, size_mag=True)
