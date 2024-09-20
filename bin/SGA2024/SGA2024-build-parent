@@ -297,7 +297,7 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
 
     def get_url(ra, dec, width, layer):
         url = f'https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={width}&layer={layer}'
-        print(url)
+        #print(url)
         return url
 
     bbox = dict(boxstyle='round', facecolor='k', alpha=0.5)
@@ -346,12 +346,19 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
                 break
 
     decsort = np.argsort(group[deccol])
+
+    leg_colors = ['red']
+    leg_lines = ['-']
+    leg_labels = ['Adopted']
+
     #fig = plt.figure()
     #ax = fig.add_subplot()#projection=wcs)
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.imshow(img, origin='lower')
     for imem, (mem, yoffset) in enumerate(zip(group[decsort], (np.arange(0, N)+0.5) * width / N)):
+
         label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
+
         if imem % 2 == 0:
             xoffset = 0.2 * width
         else:
@@ -367,35 +374,50 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
             yoffset += int(0.03*width)
 
         ax.add_artist(Circle((pix[0], width-pix[1]), radius=4.*ref_pixscale/pixscale,
-                             facecolor='none', edgecolor='blue', lw=2, ls='-', alpha=0.8))
+                             facecolor='none', edgecolor='red', lw=2, ls='-', alpha=0.9))
         ax.annotate('', xy=(pix[0], width-pix[1]), xytext=(xoffset, width-yoffset),
-                    arrowprops=dict(facecolor='blue', width=2,
-                                    headwidth=8, shrink=0.01, alpha=0.5))
+                    arrowprops=dict(facecolor='red', width=3,
+                                    headwidth=8, shrink=0.01, alpha=0.9))
         ax.annotate(label, xy=(xoffset, width-yoffset), xytext=(xoffset, width-yoffset),
                     va=va, ha='center', color='white', bbox=bbox, fontsize=9)
 
-        if mem['RA_HYPERLEDA'] != -99.:
+        if mem['RA_HYPERLEDA'] != -99. and mem['RA'] != mem['RA_HYPERLEDA']:
             hyper_pix = wcs.wcs_world2pix(mem['RA_HYPERLEDA'], mem['DEC_HYPERLEDA'], 1)
             ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='red', lw=1, ls='-', alpha=0.6))
+                                 facecolor='none', edgecolor='cyan', lw=1, ls='--', alpha=0.5))
             ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
-                        arrowprops=dict(facecolor='red', width=1, ls='--',
-                                        headwidth=8, shrink=0.01, alpha=0.5))
+                        arrowprops=dict(facecolor='cyan', width=1, ls='--',
+                                        headwidth=4, shrink=0.01, alpha=0.5))
+            leg_colors += ['cyan']
+            leg_lines += ['--']
+            leg_labels += ['HyperLeda']
 
-        if mem['RA_NED'] != -99.:
-            hyper_pix = wcs.wcs_world2pix(mem['RA_NED'], mem['DEC_NED'], 1)
-            ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='yellow', lw=1, ls='--', alpha=0.6))
-            ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
+        if mem['RA_NED'] != -99. and mem['RA'] != mem['RA_NED']:
+            ned_pix = wcs.wcs_world2pix(mem['RA_NED'], mem['DEC_NED'], 1)
+            ax.add_artist(Circle((ned_pix[0], width-ned_pix[1]), radius=8.*ref_pixscale/pixscale,
+                                 facecolor='none', edgecolor='yellow', lw=1, ls='--', alpha=0.5))
+            ax.annotate('', xy=(ned_pix[0], width-ned_pix[1]), xytext=(xoffset, width-yoffset),
                         arrowprops=dict(facecolor='yellow', width=1, ls='--',
-                                        headwidth=8, shrink=0.01, alpha=0.5))
+                                        headwidth=4, shrink=0.01, alpha=0.5))
+            leg_colors += ['yellow']
+            leg_lines += ['--']
+            leg_labels += ['NED']
 
-    leg_colors = ['blue', 'red', 'yellow']
-    leg_lines = ['-', '-', '--']
-    leg_labels = ['Adopted', 'HyperLeda', 'NED']
+        if mem['RA_LVD'] != -99. and mem['RA'] != mem['RA_LVD']:
+            lvd_pix = wcs.wcs_world2pix(mem['RA_LVD'], mem['DEC_LVD'], 1)
+            ax.add_artist(Circle((lvd_pix[0], width-lvd_pix[1]), radius=8.*ref_pixscale/pixscale,
+                                 facecolor='none', edgecolor='blue', lw=1, ls='--', alpha=0.5))
+            ax.annotate('', xy=(lvd_pix[0], width-lvd_pix[1]), xytext=(xoffset, width-yoffset),
+                        arrowprops=dict(facecolor='blue', width=1, ls='--',
+                                        headwidth=4, shrink=0.01, alpha=0.5))
+            leg_colors += ['blue']
+            leg_lines += ['--']
+            leg_labels += ['LVD']
+
+    _, uindx = np.unique(leg_labels, return_index=True)
     ax.legend([Line2D([0], [0], color=col, linewidth=2, linestyle=ls)
-               for col, ls in zip(leg_colors, leg_lines)],
-              leg_labels, loc='upper left', frameon=True, framealpha=0.7,
+               for col, ls in zip(np.array(leg_colors)[uindx], np.array(leg_lines)[uindx])],
+              np.array(leg_labels)[uindx], loc='upper left', frameon=True, framealpha=0.7,
               fontsize=8)
 
     ax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
@@ -404,7 +426,7 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
     fig.tight_layout()
     fig.savefig(pngfile, bbox_inches=0)
     plt.close()
-    print(f'Wrote {pngfile}')
+    #print(f'Wrote {pngfile}')
 
 
 def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
@@ -511,6 +533,7 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
                 I = np.isin(cat['OBJNAME'].value, obj)
                 Ifull = np.isin(fullcat['OBJNAME'].value, obj)
                 if (np.sum(I) != len(obj)) or (np.sum(Ifull) != len(obj)):
+                    pdb.set_trace()
                     raise ValueError('Some objects not found!')
                 if verbose:
                     print(f'Action: adopting HyperLeda coordinates for {len(obj):,d} object(s).')
@@ -574,7 +597,7 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
                              'EDCSN', 'GEMS', 'GEMS_N1566_05', 'GEMS_N1566_11',
                              'GEMS_N3783_05', 'SSTSL2', '[BFH91]', '[MKB2002]',
                              '[PSP2017]', '[vvd91a]', 'AKARI',
-                             'Bolocam', 'ABELL', 'FCCB', 'FOCA', 'GALEX',
+                             'Bolocam', 'ABELL', 'FCCB', 'FOCA', 'GALEX', 'GALEXMSC',
                              'GEMS_N7144_06', 'GIN', 'LQAC',
                              'LSBC', 'MESSIER', 'MaxBCG', 'NPM1G',
                              'SCOSMOS160', 'Shadowy', 'SMM', 'TAFFY2', 'USGC',
@@ -631,7 +654,7 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
     for pre, count in sorted(C.items()):
     #testprefix = ['KAZ'] # ['ARK', 'CoD', 'HARO', 'KAZ', 'NPM1G', 'Dwarf', 'PG', 'RB', 'TOLOLO']
     #for pre, count in zip(testprefix, [1]*len(testprefix)):
-        if (count > 0) * (count < 2):
+        if (count > 2) * (count < 4):
             print(f'Working on prefix {pre} (N={count})')
             I = np.where(pre == prefix)[0]
             for J in I:
