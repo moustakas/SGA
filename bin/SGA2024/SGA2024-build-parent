@@ -236,14 +236,14 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False, keep_all_mergers=False)
         if verbose and (np.any(group['OBJTYPE'] == 'GPair') or np.any(group['OBJTYPE'] == 'GTrpl')):
             print('Keep: '+'{name: <{W}}'.format(name=group[primary][0]["OBJNAME"], W=maxname)+': ' + \
                   '{typ: <{W}}'.format(typ=group[primary][0]["OBJTYPE"], W=maxtyp)+', ' + \
-                  f'z={group[primary][0]["Z"]:.5f}, D={group[primary][0]["DIAM"]:.2f},{group[primary][0]["DIAM_LEDA"]:.2f} arcmin')
+                  f'z={group[primary][0]["Z"]:.5f}, D={group[primary][0]["DIAM"]:.2f}, D(LEDA)={group[primary][0]["DIAM_LEDA"]:.2f} arcmin')
             for ii in drop:
                 print('Drop: '+'{name: <{W}}'.format(name=group[ii]["OBJNAME"], W=maxname)+': ' + \
                       '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
-                      f'z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f},{group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
+                      f'z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
             print()
 
-    print(f'Found {len(np.unique(refcat["GROUP_ID"]))-1:,d} groups with ' + \
+    print(f'Found {len(np.unique(refcat["GROUP_ID"])):,d} group(s) with ' + \
           f'({np.sum(refcat["GROUP_ID"] != -99):,d}/{len(refcat):,d} ' + \
           f'unique objects) within {maxsep:.1f} arcsec.')
 
@@ -268,6 +268,7 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
     """
     import matplotlib.image as mpimg
     from matplotlib.patches import Circle
+    from matplotlib.lines import Line2D
     from urllib.request import urlretrieve
     from astropy.wcs import WCS
     from astropy.io import fits
@@ -306,7 +307,10 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
         group = Table(primary)
 
     if verbose:
-        print(group)
+        cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA',
+                'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
+                'MAG', 'Z', 'PGC', 'PARENT_ROW']
+        print(group[cols])
     N = len(group)
 
     ra = primary[racol]
@@ -347,7 +351,7 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.imshow(img, origin='lower')
     for imem, (mem, yoffset) in enumerate(zip(group[decsort], (np.arange(0, N)+0.5) * width / N)):
-        label = f'{mem["OBJNAME"]}: D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
+        label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
         if imem % 2 == 0:
             xoffset = 0.2 * width
         else:
@@ -363,7 +367,7 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
             yoffset += int(0.03*width)
 
         ax.add_artist(Circle((pix[0], width-pix[1]), radius=4.*ref_pixscale/pixscale,
-                             facecolor='none', edgecolor='blue', ls='-', alpha=0.8))
+                             facecolor='none', edgecolor='blue', lw=2, ls='-', alpha=0.8))
         ax.annotate('', xy=(pix[0], width-pix[1]), xytext=(xoffset, width-yoffset),
                     arrowprops=dict(facecolor='blue', width=2,
                                     headwidth=8, shrink=0.01, alpha=0.5))
@@ -373,62 +377,227 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
         if mem['RA_HYPERLEDA'] != -99.:
             hyper_pix = wcs.wcs_world2pix(mem['RA_HYPERLEDA'], mem['DEC_HYPERLEDA'], 1)
             ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='red', ls='--', alpha=0.8))
+                                 facecolor='none', edgecolor='red', lw=1, ls='-', alpha=0.6))
             ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
                         arrowprops=dict(facecolor='red', width=1, ls='--',
                                         headwidth=8, shrink=0.01, alpha=0.5))
+
+        if mem['RA_NED'] != -99.:
+            hyper_pix = wcs.wcs_world2pix(mem['RA_NED'], mem['DEC_NED'], 1)
+            ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
+                                 facecolor='none', edgecolor='yellow', lw=1, ls='--', alpha=0.6))
+            ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
+                        arrowprops=dict(facecolor='yellow', width=1, ls='--',
+                                        headwidth=8, shrink=0.01, alpha=0.5))
+
+    leg_colors = ['blue', 'red', 'yellow']
+    leg_lines = ['-', '-', '--']
+    leg_labels = ['Adopted', 'HyperLeda', 'NED']
+    ax.legend([Line2D([0], [0], color=col, linewidth=2, linestyle=ls)
+               for col, ls in zip(leg_colors, leg_lines)],
+              leg_labels, loc='upper left', frameon=True, framealpha=0.7,
+              fontsize=8)
 
     ax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
     ax.set_title(f'{objname} ({ra:.8f},{dec:.8f})')
     ax.axis('off')
     fig.tight_layout()
     fig.savefig(pngfile, bbox_inches=0)
+    plt.close()
     print(f'Wrote {pngfile}')
 
 
-def resolve_multiples(incat, system='GTrpl', verbose=False, overwrite=False):
+def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
     """Remove (most) GTrpl and GPair systems, most of which are actually galaxy
     groups in NED. We want to keep the real pairs and triples, so we can make
     sure we have the individual galaxies making up the system (e.g., all the
     Arp systems).
 
     """
+    from glob import glob
     from collections import Counter
     from astrometry.libkd.spherematch import match_radec
 
-    cols = ['OBJNAME', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA', 'OBJTYPE',
-            'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
-            'Z', 'PGC', 'PARENT_ROW']
-    cat = incat[cols]
 
-    T = cat[cat['OBJTYPE'] == system]
+    def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, verbose=False):
+        """Drop sources according to their name prefix. Most/all of these have
+        been visually inspected. However, don't drop a source if it has PGC
+        number and at least one diameter.
 
-    # Read the "VI actions" file.
+        """
+        I = drop_prefix == allprefixes
+        if pgc is not None and diam is not None:
+            G = (pgc != -99) * (diam != -99.)
+            I *= ~G
+        I = np.where(I)[0]
+
+        if verbose:
+            print(f'Dropping {len(I):,d} object(s) with prefix {drop_prefix}.')
+        return I
+
+    # Create a "working" catalog, but at the end copy over the results to
+    # 'fullcat'.
+    cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA',
+            'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
+            'MAG', 'Z', 'PGC', 'PARENT_ROW']
+    cat = fullcat.copy()#[cols]
+
+    # First, read and act on the cross-identification errors file.
+    crossidfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-crossid-errors.csv')
+    crossids = Table.read(crossidfile, format='csv', comment='#')
+
+    for crossid in crossids:
+        match crossid['action']:
+            case 'from-hyperleda':
+                I_ned = np.where(crossid['ned_objname'] == cat['OBJNAME_NED'])[0]
+                I_hyper = np.where(crossid['pgc'] == cat['PGC'])[0]
+                Ifull_ned = np.where(crossid['ned_objname'] == fullcat['OBJNAME_NED'])[0]
+                Ifull_hyper = np.where(crossid['pgc'] == fullcat['PGC'])[0]
+                if (len(I_ned) != 1 or len(I_hyper) != 1) and (len(Ifull_ned) != 1 or len(Ifull_hyper) != 1):
+                    raise ValueError('Objects not found!')
+                if verbose:
+                    print(f'Updating {crossid["ned_objname"]} quantities from PGC {crossid["pgc"]}')
+                for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'DIAM', 'DIAM_LEDA',
+                            'BA_LEDA', 'PA_LEDA', 'ROW_HYPERLEDA', 'PGC']:
+                    broken = cat[col][I_ned[0]]
+                    fixed = cat[col][I_hyper[0]]
+                    if fixed == '' and broken == '':
+                        raise ValueError('Special case - write me')
+                    if 'DIAM' in col and fixed != -99 and broken != -99:
+                        fixed = np.max((fixed, broken))
+                    if (fixed != '' or fixed != -99) and (broken == '' or broken == -99):
+                        # Do not create duplicate PGC or coordinate values...
+                        cat[col][I_ned] = fixed
+                        cat[col][I_hyper] = broken
+                        fullcat[col][Ifull_ned] = fixed
+                        fullcat[col][Ifull_hyper] = broken
+                        if verbose:
+                            print(f'  Replacing {col}: {broken} --> {fixed}')
+                    else:
+                        if verbose:
+                            print(f'  Keeping {col}: {broken} (ignoring {fixed})')
+                for col in ['RA', 'DEC']:
+                    old = cat[col][I_ned]
+                    new = cat[f'{col}_HYPERLEDA'][I_ned]
+                    if verbose:
+                        print(f'  Replacing {col}: {old[0]} --> {new[0]}')
+                    cat[col][I_ned] = new
+                    fullcat[col][Ifull_ned] = new
+
+                if verbose:
+                    print()
+
+
+    # Next, read and act on the "VI actions" file.
     actionsfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
 
     for action in np.unique(actions['action']):
         match action:
+            # drop from the sample
             case 'drop':
                 obj = actions[action == actions['action']]['objname'].value
                 I = np.isin(cat['OBJNAME'].value, obj)
-                if np.sum(I) != len(obj):
+                Ifull = np.isin(fullcat['OBJNAME'].value, obj)
+                if (np.sum(I) != len(obj)) or (np.sum(Ifull) != len(obj)):
                     raise ValueError('Some objects not found!')
                 if verbose:
                     print(f'Action: dropping {len(obj):,d} objects.')
                 cat = cat[~I]
-
+                fullcat = fullcat[~Ifull]
+            # NED coordinates are wrong; adopt HyperLeda
             case 'hyperleda-coords':
                 obj = actions[action == actions['action']]['objname'].value
                 I = np.isin(cat['OBJNAME'].value, obj)
-                if np.sum(I) != len(obj):
+                Ifull = np.isin(fullcat['OBJNAME'].value, obj)
+                if (np.sum(I) != len(obj)) or (np.sum(Ifull) != len(obj)):
                     raise ValueError('Some objects not found!')
                 if verbose:
                     print(f'Action: adopting HyperLeda coordinates for {len(obj):,d} object(s).')
-                cat['RA'][I] = cat[I]['RA_HYPERLEDA']
-                cat['DEC'][I] = cat[I]['DEC_HYPERLEDA']
+                for col in ['RA', 'DEC']:
+                    cat[col][I] = cat[I][f'{col}_HYPERLEDA']
+                    fullcat[col][Ifull] = fullcat[Ifull][f'{col}_HYPERLEDA']
 
 
+    # Next, drop objects by prefix (after VI). Only consider objects (of the
+    # given prefix) close to the input {GPair,GTrpl} system.
+    T = cat[cat['OBJTYPE'] == system]
+    allmatches = match_radec(T['RA'].value, T['DEC'].value, cat['RA'].value, cat['DEC'].value,
+                             60./3600., indexlist=True, notself=False)
+    cat = cat[np.unique(np.hstack(allmatches))]
+    allmatches = match_radec(T['RA'].value, T['DEC'].value, cat['RA'].value, cat['DEC'].value,
+                             60./3600., indexlist=True, notself=False)
+
+    prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
+
+    match system:
+        case 'GTrpl':
+            # keep: CGCG, ESO, UGC, NGC, SBS, some of WISEA, AM, 2MASX, III Zw,
+            # B2, MGC, IV Zw, LCSB, VI Zw, DUKST, 2MFGC, II Zw, I Zw, KUG, VII Zw,
+            # V Zw, APMUKS(BJ), VIII Zw, IRAS, IC, MCG, ARP, VV, CGMW
+            drop = []
+            for pre in ['Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
+                        'LDCE', 'USGC', 'HDCE', 'UZC-CG',
+                        'NSCS', 'zCOSMOS', 'KTG', 'V1CG', '[YSS2008]',
+                        'LGG', 'LCLG', 'RSCG', 'HOLM', '[BWH2007]',
+                        '[ALB2009]', 'KTS', '[KLI2009]',
+                        'AGC', 'HIPASS', 'GALEXMSC', 'DEEP2', 'WBL',
+                        'PPS2', '[SAB2007]', 'VCC', 'WAS', 'CGPG',
+                        'APMBGC', '[H87]', 'LCRS', 'SSRS', 'CB-20.07763', '[PCM2000]',
+                        'SCG', 'FLASH', 'HIDEEP', '[SPS2007]',
+                        'COMAi', 'AKARI', 'PM2GC', 'MLCG', '[BJG2014]']:
+                I = np.where(pre == prefix)[0]
+                if verbose:
+                    print(f'Dropping {len(I):,d} object(s) with prefix {pre}.')
+                drop.append(I)
+
+            for pre in ['WISEA', '2MASS', 'SDSS', '2dFGRS', 'GALEXASC']:
+                I = np.where((pre == prefix) * (T['PGC'] == -99))[0]
+                if verbose:
+                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and no PGC number.')
+                drop.append(I)
+
+            for pre in ['NGC', 'IC']:
+                I = np.where((pre == prefix) * np.array(['group' in objname.lower() for objname in T['OBJNAME']]))[0]
+                if verbose:
+                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and GROUP in their name.')
+                drop.append(I)
+
+        case 'GPair':
+            I = []
+            # These are mostly very faint and/or high-redshift, and ~none have
+            # diamters larger than ~10 arcsec.
+            diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
+            drop_prefixes = ['GOODS', 'S-CANDELS', 'CANDELS', 'ACS-GC', 'WINGS',
+                             'COSMOS', 'zCOSMOS', 'ADBS', '[SAB2007]',
+                             'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
+                             'EDCSN', 'GEMS', 'GEMS_N1566_05', 'GEMS_N1566_11',
+                             'GEMS_N3783_05', 'SSTSL2', '[BFH91]', '[MKB2002]',
+                             '[PSP2017]', '[vvd91a]', 'AKARI',
+                             'Bolocam', 'ABELL', 'FCCB', 'FOCA', 'GALEX',
+                             'GEMS_N7144_06', 'GIN', 'LQAC',
+                             'LSBC', 'MESSIER', 'MaxBCG', 'NPM1G',
+                             'SCOSMOS160', 'Shadowy', 'SMM', 'TAFFY2', 'USGC',
+                             'VLANEP', 'VPC', '[IBG2003]', 'Lock', 'MM',
+                             'HDF:[LYF96]', 'HDF:[T2003]', 'CTS', 'PG',
+                             'UDF:[JBM2015]', 'HIZSS', 'HS', 'ISO_A2218_54']
+            for drop_prefix in drop_prefixes:
+                I.append(drop_by_prefix(drop_prefix, prefix, pgc=cat['PGC'].value, diam=diam, verbose=False))
+            if len(I) > 0:
+                I = np.unique(np.hstack(I))
+                if verbose:
+                    print(f'Removing {len(I):,d}/{len(cat):,d} {system} centrals and satellites based on prefix.')
+                    cat = cat[~np.isin(cat['PARENT_ROW'], cat[I]['PARENT_ROW'])]
+
+    # Now remake the group catalogs.
+    T = cat[cat['OBJTYPE'] == system]
+    allmatches = match_radec(T['RA'].value, T['DEC'].value, cat['RA'].value, cat['DEC'].value,
+                             60./3600., indexlist=True, notself=False)
+
+    prefix = np.array(list(zip(*np.char.split(T['OBJNAME'].value, ' ').tolist()))[0])
+    allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
+
+    #SSTSL2 J121345.98+024833.9
     ## side hustle - inspect NED01/NED02 pairs
     #I = []
     #for iobj, objname in enumerate(T['OBJNAME']):
@@ -438,12 +607,10 @@ def resolve_multiples(incat, system='GTrpl', verbose=False, overwrite=False):
     #I = np.hstack(I)
     #T = T[I]
 
-    prefix = np.array([objname.split(' ')[0] for objname in T['OBJNAME']])
     C = Counter(prefix)
+    Call = Counter(allprefix)
     C.most_common()
-
-    allmatches = match_radec(T['RA'].value, T['DEC'].value, cat['RA'].value, cat['DEC'].value,
-                             60./3600., indexlist=True, notself=False)
+    Call.most_common()
 
     # np.flatnonzero(np.core.defchararray.find(cat['OBJNAME'].value, objname) != -1)
 
@@ -456,16 +623,27 @@ def resolve_multiples(incat, system='GTrpl', verbose=False, overwrite=False):
     if not os.path.isdir(pngdir):
         os.makedirs(pngdir)
 
-    #for pre, count in sorted(C.items()):
-    for pre, count in zip(['3C'], [1]):
-        if count < 10:
-            print(f'Working on prefix {pre}')
-            I = np.where(prefix == pre)[0][0]
-            primary = T[I]
-            group= cat[allmatches[I]]
-            qa_skypatch(primary, group=group, suffix=system, pngdir=pngdir,
-                        jpgdir=jpgdir, verbose=True, overwrite=overwrite)
-            pdb.set_trace()
+    if overwrite:
+        flist = glob(os.path.join(pngdir, '*.png'))
+        for onefile in flist:
+            os.remove(onefile)
+
+    for pre, count in sorted(C.items()):
+    #testprefix = ['KAZ'] # ['ARK', 'CoD', 'HARO', 'KAZ', 'NPM1G', 'Dwarf', 'PG', 'RB', 'TOLOLO']
+    #for pre, count in zip(testprefix, [1]*len(testprefix)):
+        if (count > 0) * (count < 2):
+            print(f'Working on prefix {pre} (N={count})')
+            I = np.where(pre == prefix)[0]
+            for J in I:
+                primary = T[J]
+                group= cat[allmatches[J]]
+                qa_skypatch(primary, group=group, suffix=system, pngdir=pngdir,
+                            jpgdir=jpgdir, verbose=True, overwrite=overwrite)
+            print()
+
+    # update fullcat
+
+
 
     # fix problems here
     pdb.set_trace()
@@ -591,9 +769,14 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
         else:
             cat = Table(fitsio.read(catfile))
 
+    #bb = cat[np.isin(cat['OBJNAME'], ['WISEA J212344.58+250427.7', '3C 433'])]
+    #bb['RA'][0] = bb['RA_HYPERLEDA'][0]
+    #bb['DEC'][0] = bb['DEC_HYPERLEDA'][0]
+
     # Analyze GTrpl and GPair systems.
     cat = resolve_multiples(cat, 'GPair', verbose=verbose, overwrite=overwrite)
     #cat = resolve_multiples(cat, 'GTrpl', verbose=verbose)
+    pdb.set_trace()
 
     # Re-resolve 1-arcsec pairs because in 'resolve_multiples' we fix the
     # coordinates of some sources, which leads to new overlaps.
