@@ -106,6 +106,45 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             basic[f'{prop.upper()}_REF'] = val_ref
             if prop == 'mag':
                 basic['BAND'] = val_band
+    # custom
+    elif 'DIAM' in cat.columns:
+        ref = 'CUSTOM'
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            val = np.zeros(nobj, 'f4') - 99.
+            val_ref = np.zeros(nobj, '<U7')
+            val_band = np.zeros(nobj, 'U1')
+
+            match prop:
+                case 'mag':
+                    col = 'MAG'
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                        val_band[I] = cat[f'{col}_BAND'][I]
+                case 'diam':
+                    col = 'DIAM' # [arcmin]
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                case 'ba':
+                    col = 'BA'
+                    I = cat[col] != -99.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                case 'pa':
+                    col = 'PA'
+                    I = cat[col] != -99.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+
+            basic[prop.upper()] = val
+            basic[f'{prop.upper()}_REF'] = val_ref
+            if prop == 'mag':
+                basic['BAND'] = val_band
     # NED
     else:
         for prop in ('mag', 'diam', 'ba', 'pa'):

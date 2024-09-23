@@ -24,7 +24,8 @@ from SGA.coadds import PIXSCALE, BANDS
 from SGA.util import get_basic_geometry, match, match_to
 from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
                     nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
-                    read_lvd, version_lvd, nedfriendly_lvd)
+                    read_lvd, version_lvd, nedfriendly_lvd, version_custom_external,
+                    read_custom_external)
 
 
 qadir = os.path.join(sga_dir(), 'parent', 'qa')
@@ -82,114 +83,76 @@ def parent_datamodel(nobj):
     parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
     parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
     parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
 
     return parent
 
 
-#def parent_datamodel(nobj):
-#    """Initialize the data model for the parent sample.
-#
-#    """
-#    parent = Table()
-#    parent['OBJNAME'] = np.zeros(nobj, '<U30')
-#    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
-#    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
-#    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
-#    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
-#    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
-#    parent['MORPH'] = np.zeros(nobj, '<U40')
-#
-#    parent['RA'] = np.zeros(nobj, 'f8') -99.
-#    parent['DEC'] = np.zeros(nobj, 'f8') -99.
-#    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
-#    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
-#    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
-#    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
-#    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
-#    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
-#    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
-#    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
-#
-#    #parent['Z'] = np.zeros(nobj, 'f8') -99.
-#    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
-#    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
-#    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
-#    parent['PGC'] = np.zeros(nobj, '<i8') -99
-#
-#    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
-#
-#    parent['MAG'] = np.zeros(nobj, 'f4') -99.
-#    parent['MAG_REF'] = np.zeros(nobj, '<U7')
-#    parent['BAND'] = np.zeros(nobj, '<U1')
-#    parent['DIAM'] = np.zeros(nobj, 'f4') -99.
-#    parent['DIAM_REF'] = np.zeros(nobj, '<U7')
-#    parent['BA'] = np.zeros(nobj, 'f4') -99.
-#    parent['BA_REF'] = np.zeros(nobj, '<U7')
-#    parent['PA'] = np.zeros(nobj, 'f4') -99.
-#    parent['PA_REF'] = np.zeros(nobj, '<U7')
-#
-#    parent['DIAM_LEDA'] = np.zeros(nobj, 'f4') -99.
-#    parent['BA_LEDA'] = np.zeros(nobj, 'f4') -99.
-#    parent['PA_LEDA'] = np.zeros(nobj, 'f4') -99.
-#
-#    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
-#    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
-#    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
-#
-#    return parent
+def choose_primary(group, verbose=False, keep_all_mergers=False):
+    """Choose the primary member of a group.
 
-def resolve_close(cat, refcat, maxsep=1., verbose=False, keep_all_mergers=False):
+    keep_all is helpful for returning a group catalog without dropping any
+    sources.
+
+    if keep_all_mergers=True then always keep {GPair,GTrpl} sources, even
+      if they do not have a diameter.
+
+    if allow_vetos=True then do not drop systems that are in a 'veto' list,
+      even if they overlap with another source.
+
+    """
+    if keep_all_mergers:
+        IM = np.logical_or(group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
+        IG = group['OBJTYPE'] == 'G'
+    else:
+        IG = np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
+
+    #IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
+    ID = np.vstack((group['DIAM'] != -99., group['DIAM_LEDA'] != -99.)).T
+    IZ = group['Z'] != -99.
+    IS = group['SEP'] == 0.
+
+    mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
+    mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
+    mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
+    mask4 = np.all(ID, axis=1) * IZ      # both diameters and a redshift
+    mask5 = np.all(ID, axis=1) * IS      # both diameters and separation=0 (usually PGC is a minimum)
+    mask6 = np.all(ID, axis=1)           # both diameters
+    mask7 = np.any(ID, axis=1) * IS      # either diameter and separation=0
+    mask8 = IS                           # separation=0
+
+    if keep_all_mergers:
+        mask0 = IM # objtype={GPair,GTrpl}
+        allmasks = (mask0, mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8)
+    else:
+        allmasks = (mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8)
+
+    for mask in allmasks:
+        keep = np.where(mask)[0]
+        drop = np.where(~mask)[0]
+        if len(keep) == 1:
+            keep, drop = np.where(mask)[0], np.where(~mask)[0]
+            return keep, drop
+
+    print('Need more cases!')
+    pdb.set_trace()
+    raise ValueError('Need more cases!')
+    print(group['OBJNAME', 'OBJTYPE', 'DIAM', 'DIAM_LEDA', 'Z', 'PGC', 'SEP'])
+
+
+def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
+                  keep_all_mergers=False, verbose=False):
     """Resolve close objects.
 
     maxsep in arcsec
 
     """
     from astrometry.libkd.spherematch import match_radec
-    from astrometry.util.starutil_numpy import degrees_between
+    from astrometry.util.starutil_numpy import arcsec_between
 
-
-    def choose_primary(group, verbose=False, keep_all_mergers=False):
-        """Choose the primary member of a group.
-
-        if keep_all_mergers=True then always keep {GPair,GTrpl} sources, even
-          if they do not have a diameter.
-
-        """
-        if keep_all_mergers:
-            IM = np.logical_or(group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
-            IG = group['OBJTYPE'] == 'G'
-        else:
-            IG = np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
-
-        #IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
-        ID = np.vstack((group['DIAM'] != -99., group['DIAM_LEDA'] != -99.)).T
-        IZ = group['Z'] != -99.
-        IS = group['SEP'] == 0.
-
-        mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
-        mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
-        mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
-        mask4 = np.all(ID, axis=1) * IZ      # both diameters and a redshift
-        mask5 = np.all(ID, axis=1) * IS      # both diameters and separation=0 (usually PGC is a minimum)
-        mask6 = np.all(ID, axis=1)           # both diameters
-        mask7 = np.any(ID, axis=1) * IS      # either diameter and separation=0
-        mask8 = IS                           # separation=0
-
-        if keep_all_mergers:
-            mask0 = IM # objtype={GPair,GTrpl}
-            allmasks = (mask0, mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8)
-        else:
-            allmasks = (mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8)
-
-        for mask in allmasks:
-            keep, drop = np.where(mask)[0], np.where(~mask)[0]
-            if len(keep) == 1:
-                keep, drop = np.where(mask)[0], np.where(~mask)[0]
-                return keep, drop
-
-        raise ValueError('Need more cases!')
-        print(group['OBJNAME', 'OBJTYPE', 'DIAM', 'DIAM_LEDA', 'Z', 'PGC', 'SEP'])
-
+    VETO = [
+        '2MASX J15134005+2607307', # overlaps with 3C 315, but the coordinates for 3C 315 are wrong
+    ]
 
     allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                              refcat['RA'].value, refcat['DEC'].value,
@@ -222,26 +185,48 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False, keep_all_mergers=False)
             continue
 
         group = refcat[indx_refcat]
-        dtheta = degrees_between(cat[indx_cat]['RA'], cat[indx_cat]['DEC'], group['RA'], group['DEC']) * 3600. # [arcsec]
+        dtheta = arcsec_between(cat[indx_cat]['RA'], cat[indx_cat]['DEC'], # [arcsec]
+                                 group['RA'], group['DEC'])
         group['SEP'] = dtheta.astype('f4')
         ngroup = len(group)
 
-        primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers)
         refcat['GROUP_ID'][indx_refcat] = igroup
-        refcat['PRIMARY'][indx_refcat[drop]] = False
-        refcat['NGROUP'][indx_refcat] = len(group)
+        refcat['NGROUP'][indx_refcat] = ngroup
         refcat['SEPARATION'][indx_refcat] = dtheta
         refcat['DONE'][indx_refcat] = True
 
-        if verbose and (np.any(group['OBJTYPE'] == 'GPair') or np.any(group['OBJTYPE'] == 'GTrpl')):
-            print('Keep: '+'{name: <{W}}'.format(name=group[primary][0]["OBJNAME"], W=maxname)+': ' + \
-                  '{typ: <{W}}'.format(typ=group[primary][0]["OBJTYPE"], W=maxtyp)+', ' + \
-                  f'z={group[primary][0]["Z"]:.5f}, D={group[primary][0]["DIAM"]:.2f}, D(LEDA)={group[primary][0]["DIAM_LEDA"]:.2f} arcmin')
+        if keep_all:
+            primary = np.arange(ngroup)
+            drop = np.array([])
+        else:
+            primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers)
+            refcat['PRIMARY'][indx_refcat[drop]] = False
+
+        #if verbose and (np.any(group['OBJTYPE'] == 'GPair') or np.any(group['OBJTYPE'] == 'GTrpl')):
+        if verbose:
+            for ii in primary:
+                print('Keep: '+'{name: <{W}}'.format(name=group[ii]["OBJNAME"], W=maxname)+': ' + \
+                      '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
+                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
+                      f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, (ra,dec)={group[ii]["RA"]:.6f},' + \
+                      f'{group[ii]["DEC"]:.6f}')
             for ii in drop:
                 print('Drop: '+'{name: <{W}}'.format(name=group[ii]["OBJNAME"], W=maxname)+': ' + \
                       '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
-                      f'z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
+                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
+                      f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
+
+        # check for vetos
+        if allow_vetos:
+            for veto in VETO:
+                I = np.where(np.isin(refcat[indx_refcat]['OBJNAME'], veto))[0]
+                if len(I) == 1:
+                    if refcat[indx_refcat[I]]['PRIMARY'] == False:
+                        print(f'Restoring vetoed object {refcat[indx_refcat[I[0]]]["OBJNAME"]}')
+                        refcat['PRIMARY'][indx_refcat[I]] = True
+        if verbose:
             print()
+
 
     print(f'Found {len(np.unique(refcat["GROUP_ID"])):,d} group(s) with ' + \
           f'({np.sum(refcat["GROUP_ID"] != -99):,d}/{len(refcat):,d} ' + \
@@ -253,7 +238,7 @@ def resolve_close(cat, refcat, maxsep=1., verbose=False, keep_all_mergers=False)
     #prefix = np.array([objname.split(' ')[0] for objname in drop['OBJNAME']])
 
     out = refcat[refcat['PRIMARY']]
-    refcat.remove_columns(['GROUP_ID', 'PRIMARY', 'NGROUP', 'SEPARATION', 'DONE'])
+    out.remove_columns(['GROUP_ID', 'PRIMARY', 'NGROUP', 'SEPARATION', 'DONE'])
 
     return out
 
@@ -374,20 +359,21 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
             yoffset += int(0.03*width)
 
         ax.add_artist(Circle((pix[0], width-pix[1]), radius=4.*ref_pixscale/pixscale,
-                             facecolor='none', edgecolor='red', lw=2, ls='-', alpha=0.9))
+                             facecolor='none', edgecolor='red', lw=2, ls='-', alpha=0.9, clip_on=False))
         ax.annotate('', xy=(pix[0], width-pix[1]), xytext=(xoffset, width-yoffset),
-                    arrowprops=dict(facecolor='red', width=3,
-                                    headwidth=8, shrink=0.01, alpha=0.9))
+                    annotation_clip=False, arrowprops=dict(
+                        facecolor='red', width=3, headwidth=8, shrink=0.01, alpha=0.9))
         ax.annotate(label, xy=(xoffset, width-yoffset), xytext=(xoffset, width-yoffset),
-                    va=va, ha='center', color='white', bbox=bbox, fontsize=9)
+                    va=va, ha='center', color='white', bbox=bbox, fontsize=9,
+                    annotation_clip=False)
 
         if mem['RA_HYPERLEDA'] != -99. and mem['RA'] != mem['RA_HYPERLEDA']:
             hyper_pix = wcs.wcs_world2pix(mem['RA_HYPERLEDA'], mem['DEC_HYPERLEDA'], 1)
             ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='cyan', lw=1, ls='--', alpha=0.5))
+                                 facecolor='none', edgecolor='cyan', lw=1, ls='--', alpha=0.5, clip_on=False))
             ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
-                        arrowprops=dict(facecolor='cyan', width=1, ls='--',
-                                        headwidth=4, shrink=0.01, alpha=0.5))
+                        annotation_clip=False, arrowprops=dict(
+                            facecolor='cyan', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
             leg_colors += ['cyan']
             leg_lines += ['--']
             leg_labels += ['HyperLeda']
@@ -395,10 +381,10 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
         if mem['RA_NED'] != -99. and mem['RA'] != mem['RA_NED']:
             ned_pix = wcs.wcs_world2pix(mem['RA_NED'], mem['DEC_NED'], 1)
             ax.add_artist(Circle((ned_pix[0], width-ned_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='yellow', lw=1, ls='--', alpha=0.5))
+                                 facecolor='none', edgecolor='yellow', lw=1, ls='--', alpha=0.5, clip_on=False))
             ax.annotate('', xy=(ned_pix[0], width-ned_pix[1]), xytext=(xoffset, width-yoffset),
-                        arrowprops=dict(facecolor='yellow', width=1, ls='--',
-                                        headwidth=4, shrink=0.01, alpha=0.5))
+                        annotation_clip=False, arrowprops=dict(
+                            facecolor='yellow', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
             leg_colors += ['yellow']
             leg_lines += ['--']
             leg_labels += ['NED']
@@ -406,10 +392,10 @@ def qa_skypatch(primary, group=None, racol='RA', deccol='DEC', suffix='group',
         if mem['RA_LVD'] != -99. and mem['RA'] != mem['RA_LVD']:
             lvd_pix = wcs.wcs_world2pix(mem['RA_LVD'], mem['DEC_LVD'], 1)
             ax.add_artist(Circle((lvd_pix[0], width-lvd_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='blue', lw=1, ls='--', alpha=0.5))
+                                 facecolor='none', edgecolor='blue', lw=1, ls='--', alpha=0.5, clip_on=False))
             ax.annotate('', xy=(lvd_pix[0], width-lvd_pix[1]), xytext=(xoffset, width-yoffset),
-                        arrowprops=dict(facecolor='blue', width=1, ls='--',
-                                        headwidth=4, shrink=0.01, alpha=0.5))
+                        annotation_clip=False, arrowprops=dict(
+                            facecolor='blue', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
             leg_colors += ['blue']
             leg_lines += ['--']
             leg_labels += ['LVD']
@@ -438,6 +424,7 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
     """
     from glob import glob
     from collections import Counter
+    from astrometry.util.starutil_numpy import arcsec_between
     from astrometry.libkd.spherematch import match_radec
 
 
@@ -457,6 +444,7 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
             print(f'Dropping {len(I):,d} object(s) with prefix {drop_prefix}.')
         return I
 
+
     # Create a "working" catalog, but at the end copy over the results to
     # 'fullcat'.
     cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA',
@@ -464,51 +452,69 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
             'MAG', 'Z', 'PGC', 'PARENT_ROW']
     cat = fullcat.copy()#[cols]
 
-    # First, read and act on the cross-identification errors file.
-    crossidfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-crossid-errors.csv')
-    crossids = Table.read(crossidfile, format='csv', comment='#')
+    # Algorithmically identify cross-identification errors. Basically, NED
+    # associates the properties from HyperLeda (PGC number, diameter, etc.)
+    # with the *system* rather than with the appropriate galaxy (which is
+    # another entry in NED).
+    jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-crossid-errors')
+    if not os.path.isdir(jpgdir):
+        os.makedirs(jpgdir)
 
-    for crossid in crossids:
-        match crossid['action']:
-            case 'from-hyperleda':
-                I_ned = np.where(crossid['ned_objname'] == cat['OBJNAME_NED'])[0]
-                I_hyper = np.where(crossid['pgc'] == cat['PGC'])[0]
-                Ifull_ned = np.where(crossid['ned_objname'] == fullcat['OBJNAME_NED'])[0]
-                Ifull_hyper = np.where(crossid['pgc'] == fullcat['PGC'])[0]
-                if (len(I_ned) != 1 or len(I_hyper) != 1) and (len(Ifull_ned) != 1 or len(Ifull_hyper) != 1):
-                    raise ValueError('Objects not found!')
-                if verbose:
-                    print(f'Updating {crossid["ned_objname"]} quantities from PGC {crossid["pgc"]}')
-                for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'DIAM', 'DIAM_LEDA',
-                            'BA_LEDA', 'PA_LEDA', 'ROW_HYPERLEDA', 'PGC']:
-                    broken = cat[col][I_ned[0]]
-                    fixed = cat[col][I_hyper[0]]
-                    if fixed == '' and broken == '':
-                        raise ValueError('Special case - write me')
-                    if 'DIAM' in col and fixed != -99 and broken != -99:
-                        fixed = np.max((fixed, broken))
-                    if (fixed != '' or fixed != -99) and (broken == '' or broken == -99):
-                        # Do not create duplicate PGC or coordinate values...
-                        cat[col][I_ned] = fixed
-                        cat[col][I_hyper] = broken
-                        fullcat[col][Ifull_ned] = fixed
-                        fullcat[col][Ifull_hyper] = broken
-                        if verbose:
-                            print(f'  Replacing {col}: {broken} --> {fixed}')
-                    else:
-                        if verbose:
-                            print(f'  Keeping {col}: {broken} (ignoring {fixed})')
-                for col in ['RA', 'DEC']:
-                    old = cat[col][I_ned]
-                    new = cat[f'{col}_HYPERLEDA'][I_ned]
+    pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'{system}-crossid-errors')
+    if not os.path.isdir(pngdir):
+        os.makedirs(pngdir)
+
+    M = np.where((cat['OBJTYPE'] == system) * (cat['PGC'] != -99))[0]
+    for m1 in M:
+        dtheta = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'])
+        # Is there *another* source more than 1 arcsec away which is within
+        # 1 arcsec of the *HyperLeda* coordinates with PGC==-99?
+        m2 = np.where((dtheta < 1.) * (cat['PGC'] == -99))[0]
+        if len(m2) == 0:
+            continue
+        elif len(m2) > 1:
+            raise ValueError('Need to write some code here.')
+            #qa_skypatch(cat[m1], group=vstack((cat[m1], cat[m2])), suffix=system, pngdir=pngdir, jpgdir=jpgdir, verbose=True, overwrite=overwrite)
+            #continue
+        else:
+            # If so, copy over the HyperLeda quantities over to the other
+            # source.
+            m2 = m2[0]
+            m1full = np.where(cat[m1]['OBJNAME'] == fullcat['OBJNAME'])[0][0]
+            m2full = np.where(cat[m2]['OBJNAME'] == fullcat['OBJNAME'])[0][0]
+            if verbose:
+                print(f'Copying {cat[m1]["OBJNAME"]} (PGC {cat[m1]["PGC"]}) to {cat[m2]["OBJNAME"]} (PGC {cat[m2]["PGC"]})')
+            for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'DIAM', 'BA', 'PA',
+                        'DIAM_LEDA', 'BA_LEDA', 'PA_LEDA', 'ROW_HYPERLEDA', 'PGC']:
+                new = cat[col][m1]
+                old = cat[col][m2]
+                if new == '' and old == '':
+                    raise ValueError('Special case - write me')
+                if 'DIAM' in col:
+                    new = np.max((new, old))
+                if (new != '' or new != -99) and (old == '' or old == -99):
                     if verbose:
-                        print(f'  Replacing {col}: {old[0]} --> {new[0]}')
-                    cat[col][I_ned] = new
-                    fullcat[col][Ifull_ned] = new
-
+                        print(f'  Replacing {col}: {old} --> {new}')
+                    # Do not create duplicate PGC or coordinate values...
+                    cat[col][m2] = new
+                    cat[col][m1] = old
+                    fullcat[col][m2full] = new
+                    fullcat[col][m1full] = old
+                else:
+                    if verbose:
+                        print(f'  Keeping {col}: {old} (ignoring {new})')
+            for col in ['RA', 'DEC']:
+                old = cat[col][m1]
+                new = cat[f'{col}_HYPERLEDA'][m1]
                 if verbose:
-                    print()
+                    print(f'  Replacing {col}: {old} --> {new}')
+                cat[col][m1] = new
+                fullcat[col][m1full] = new
 
+            if verbose:
+                print()
+
+    pdb.set_trace()
 
     # Next, read and act on the "VI actions" file.
     actionsfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-actions.csv')
@@ -533,7 +539,6 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
                 I = np.isin(cat['OBJNAME'].value, obj)
                 Ifull = np.isin(fullcat['OBJNAME'].value, obj)
                 if (np.sum(I) != len(obj)) or (np.sum(Ifull) != len(obj)):
-                    pdb.set_trace()
                     raise ValueError('Some objects not found!')
                 if verbose:
                     print(f'Action: adopting HyperLeda coordinates for {len(obj):,d} object(s).')
@@ -553,64 +558,62 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
 
     prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
 
+    diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
     match system:
         case 'GTrpl':
-            # keep: CGCG, ESO, UGC, NGC, SBS, some of WISEA, AM, 2MASX, III Zw,
-            # B2, MGC, IV Zw, LCSB, VI Zw, DUKST, 2MFGC, II Zw, I Zw, KUG, VII Zw,
-            # V Zw, APMUKS(BJ), VIII Zw, IRAS, IC, MCG, ARP, VV, CGMW
-            drop = []
-            for pre in ['Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
-                        'LDCE', 'USGC', 'HDCE', 'UZC-CG',
-                        'NSCS', 'zCOSMOS', 'KTG', 'V1CG', '[YSS2008]',
-                        'LGG', 'LCLG', 'RSCG', 'HOLM', '[BWH2007]',
-                        '[ALB2009]', 'KTS', '[KLI2009]',
-                        'AGC', 'HIPASS', 'GALEXMSC', 'DEEP2', 'WBL',
-                        'PPS2', '[SAB2007]', 'VCC', 'WAS', 'CGPG',
-                        'APMBGC', '[H87]', 'LCRS', 'SSRS', 'CB-20.07763', '[PCM2000]',
-                        'SCG', 'FLASH', 'HIDEEP', '[SPS2007]',
-                        'COMAi', 'AKARI', 'PM2GC', 'MLCG', '[BJG2014]']:
-                I = np.where(pre == prefix)[0]
-                if verbose:
-                    print(f'Dropping {len(I):,d} object(s) with prefix {pre}.')
-                drop.append(I)
-
-            for pre in ['WISEA', '2MASS', 'SDSS', '2dFGRS', 'GALEXASC']:
-                I = np.where((pre == prefix) * (T['PGC'] == -99))[0]
-                if verbose:
-                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and no PGC number.')
-                drop.append(I)
-
-            for pre in ['NGC', 'IC']:
-                I = np.where((pre == prefix) * np.array(['group' in objname.lower() for objname in T['OBJNAME']]))[0]
-                if verbose:
-                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and GROUP in their name.')
-                drop.append(I)
+            drop_prefixes = [
+                'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]', '[BJG2014]',
+                '[H87]', '[PCM2000]', '[SPS2007]', '3C', 'AKARI', 'APMBGC',
+                'CB-20.07763', 'HIDEEP', 'III', 'LCRS', 'LCSB', '[BFW2006]',
+                'MLCG', 'PM2GC', '[IBG2003]', 'SCG', 'SSRS', 'VCC', 'VI', 'WAS',
+                'FLASH', 'COSMOS', '[SAB2007]', 'DUKST', 'PPS2',
+            ]
+            ## keep: CGCG, ESO, UGC, NGC, SBS, some of WISEA, AM, 2MASX, III Zw,
+            ## B2, MGC, IV Zw, LCSB, VI Zw, DUKST, 2MFGC, II Zw, I Zw, KUG, VII Zw,
+            ## V Zw, APMUKS(BJ), VIII Zw, IRAS, IC, MCG, ARP, VV, CGMW
+            #drop = []
+            #for pre in ['LDCE', 'USGC', 'HDCE', 'UZC-CG',
+            #            'NSCS', 'zCOSMOS', 'KTG', 'V1CG', '[YSS2008]',
+            #            'LGG', 'LCLG', 'RSCG', 'HOLM', '[BWH2007]',
+            #            '[ALB2009]', 'KTS', '[KLI2009]',
+            #            'AGC', 'HIPASS', 'GALEXMSC', 'DEEP2', 'WBL',
+            #            'PPS2', '[SAB2007]', 'VCC', 'WAS', 'CGPG',
+            #            'SCG', 'FLASH', 
+            #            'COMAi', 'PM2GC', ]:
+            #for pre in ['WISEA', '2MASS', 'SDSS', '2dFGRS', 'GALEXASC']:
+            #    I = np.where((pre == prefix) * (T['PGC'] == -99))[0]
+            #    if verbose:
+            #        print(f'Dropping {len(I):,d} object(s) with prefix {pre} and no PGC number.')
+            #for pre in ['NGC', 'IC']:
+            #    I = np.where((pre == prefix) * np.array(['group' in objname.lower() for objname in T['OBJNAME']]))[0]
+            #    if verbose:
+            #        print(f'Dropping {len(I):,d} object(s) with prefix {pre} and GROUP in their name.')
 
         case 'GPair':
-            I = []
             # These are mostly very faint and/or high-redshift, and ~none have
             # diamters larger than ~10 arcsec.
-            diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
-            drop_prefixes = ['GOODS', 'S-CANDELS', 'CANDELS', 'ACS-GC', 'WINGS',
-                             'COSMOS', 'zCOSMOS', 'ADBS', '[SAB2007]',
-                             'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
-                             'EDCSN', 'GEMS', 'GEMS_N1566_05', 'GEMS_N1566_11',
-                             'GEMS_N3783_05', 'SSTSL2', '[BFH91]', '[MKB2002]',
-                             '[PSP2017]', '[vvd91a]', 'AKARI',
-                             'Bolocam', 'ABELL', 'FCCB', 'FOCA', 'GALEX', 'GALEXMSC',
-                             'GEMS_N7144_06', 'GIN', 'LQAC',
-                             'LSBC', 'MESSIER', 'MaxBCG', 'NPM1G',
-                             'SCOSMOS160', 'Shadowy', 'SMM', 'TAFFY2', 'USGC',
-                             'VLANEP', 'VPC', '[IBG2003]', 'Lock', 'MM',
-                             'HDF:[LYF96]', 'HDF:[T2003]', 'CTS', 'PG',
-                             'UDF:[JBM2015]', 'HIZSS', 'HS', 'ISO_A2218_54']
-            for drop_prefix in drop_prefixes:
-                I.append(drop_by_prefix(drop_prefix, prefix, pgc=cat['PGC'].value, diam=diam, verbose=False))
-            if len(I) > 0:
-                I = np.unique(np.hstack(I))
-                if verbose:
-                    print(f'Removing {len(I):,d}/{len(cat):,d} {system} centrals and satellites based on prefix.')
-                    cat = cat[~np.isin(cat['PARENT_ROW'], cat[I]['PARENT_ROW'])]
+            drop_prefixes = [
+                'GOODS', 'S-CANDELS', 'CANDELS', 'ACS-GC', 'WINGS', 'COSMOS',
+                'zCOSMOS', 'ADBS', '[SAB2007]', 'Mr20:[BFW2006]', 'Mr19:[BFW2006]',
+                'Mr18:[BFW2006]', 'EDCSN', 'GEMS', 'GEMS_N1566_05', 'GEMS_N1566_11',
+                'GEMS_N3783_05', 'SSTSL2', '[BFH91]', '[MKB2002]', '[PSP2017]', '[vvd91a]',
+                'AKARI', 'Bolocam', 'ABELL', 'FCCB', 'FOCA', 'GALEX', 'GALEXMSC',
+                'GEMS_N7144_06', 'GIN', 'LQAC', 'LSBC', 'MESSIER', 'MaxBCG', 'NPM1G',
+                'SCOSMOS160', 'Shadowy', 'SMM', 'TAFFY2', 'USGC', 'VLANEP', 'VPC',
+                '[IBG2003]', 'Lock', 'MM', 'HDF:[LYF96]', 'HDF:[T2003]', 'CTS', 'PG',
+                'UDF:[JBM2015]', 'HIZSS', 'HS', 'ISO_A2218_54']
+        case _:
+            drop_prefixes = None
+
+    if drop_prefixes is not None:
+        I = []
+        for drop_prefix in drop_prefixes:
+            I.append(drop_by_prefix(drop_prefix, prefix, pgc=cat['PGC'].value, diam=diam, verbose=False))
+        if len(I) > 0:
+            I = np.unique(np.hstack(I))
+            if verbose:
+                print(f'Removing {len(I):,d}/{len(cat):,d} {system} centrals and satellites based on prefix.')
+                cat = cat[~np.isin(cat['PARENT_ROW'], cat[I]['PARENT_ROW'])]
 
     # Now remake the group catalogs.
     T = cat[cat['OBJTYPE'] == system]
@@ -651,10 +654,11 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
         for onefile in flist:
             os.remove(onefile)
 
-    for pre, count in sorted(C.items()):
-    #testprefix = ['KAZ'] # ['ARK', 'CoD', 'HARO', 'KAZ', 'NPM1G', 'Dwarf', 'PG', 'RB', 'TOLOLO']
-    #for pre, count in zip(testprefix, [1]*len(testprefix)):
-        if (count > 2) * (count < 4):
+    #for pre, count in sorted(C.items()):
+    testprefix = ['I'] # ['ARK', 'CoD', 'HARO', 'KAZ', 'NPM1G', 'Dwarf', 'PG', 'RB', 'TOLOLO']
+    for pre, count in zip(testprefix, [1]*len(testprefix)):
+        if (count > 0) * (count < 3):
+        #if (count > 1) * (count < 3):
             print(f'Working on prefix {pre} (N={count})')
             I = np.where(pre == prefix)[0]
             for J in I:
@@ -664,104 +668,136 @@ def resolve_multiples(fullcat, system='GTrpl', verbose=False, overwrite=False):
                             jpgdir=jpgdir, verbose=True, overwrite=overwrite)
             print()
 
-    # update fullcat
-
-
-
     # fix problems here
     pdb.set_trace()
 
 
-    # now clean up the sample
-    match system:
-        case 'GTrpl':
-            # keep: CGCG, ESO, UGC, NGC, SBS, some of WISEA, AM, 2MASX, III Zw,
-            # B2, MGC, IV Zw, LCSB, VI Zw, DUKST, 2MFGC, II Zw, I Zw, KUG, VII Zw,
-            # V Zw, APMUKS(BJ), VIII Zw, IRAS, IC, MCG, ARP, VV, CGMW
-            drop = []
-            for pre in ['Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'LDCE',
-                        'Mr18:[BFW2006]', 'USGC', 'HDCE', 'UZC-CG',
-                        'NSCS', 'zCOSMOS', 'KTG', 'V1CG', '[YSS2008]',
-                        'LGG', 'LCLG', 'RSCG', 'HOLM', '[BWH2007]',
-                        '[ALB2009]', 'KTS', '[KLI2009]',
-                        'AGC', 'HIPASS', 'GALEXMSC', 'DEEP2', 'WBL',
-                        'PPS2', '[SAB2007]', 'VCC', 'WAS', 'CGPG',
-                        'APMBGC', '[H87]', 'LCRS', 'SSRS', 'CB-20.07763', '[PCM2000]',
-                        'SCG', 'FLASH', 'HIDEEP', '[SPS2007]',
-                        'COMAi', 'AKARI', 'PM2GC', 'MLCG', '[BJG2014]']:
-                I = np.where(pre == prefix)[0]
-                if verbose:
-                    print(f'Dropping {len(I):,d} object(s) with prefix {pre}.')
-                drop.append(I)
+    #print(f'Removing {len(drop):,d}/{len(T):,d} GTrpl systems (most are galaxy groups).')
+    #cat = cat[~np.isin(cat['OBJNAME'], T[drop]['OBJNAME'])]
 
-            for pre in ['WISEA', '2MASS', 'SDSS', '2dFGRS', 'GALEXASC']:
-                I = np.where((pre == prefix) * (T['PGC'] == -99))[0]
-                if verbose:
-                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and no PGC number.')
-                drop.append(I)
+    ## special-casing
+    #match prim:
+    #    case 'ESO 012-IG 019':
+    #        # NED coordinates are bunk, HyperLeda is good; drop NED02 and keep the GTrpl.
+    #        drop.append('ESO 012-IG 016 NED02')
+    #        cat['RA'][indx_cat] = cat['RA_HYPERLEDA'][indx_cat]
+    #        cat['DEC'][indx_cat] = cat['DEC_HYPERLEDA'][indx_cat]
+    #    case _:
+    #        drop.append(prim)
 
-            for pre in ['NGC', 'IC']:
-                I = np.where((pre == prefix) * np.array(['group' in objname.lower() for objname in T['OBJNAME']]))[0]
-                if verbose:
-                    print(f'Dropping {len(I):,d} object(s) with prefix {pre} and GROUP in their name.')
-                drop.append(I)
+    # update fullcat
 
-        case 'GPair':
-            pass
-
-
-    drop = []
-
-    for indx_T, indx_cat in enumerate(allmatches):
-        primary = T[indx_T]
-        group = cat[indx_cat][cols]
-
-        qa_skypatch(primary, group=group, suffix=system, pngdir=pngdir, jpgdir=jpgdir)
-
-        #drop.append(iobj)
-
-    drop = np.hstack(drop)
-    #keep = np.delete(np.arange(len(T)), drop)
-
-    print(f'Removing {len(drop):,d}/{len(T):,d} GTrpl systems (most are galaxy groups).')
-    cat = cat[~np.isin(cat['OBJNAME'], T[drop]['OBJNAME'])]
-
-    # Next, resolve the remaining systems. Basically, we want to make sure that
-    # each galaxy member of a galaxy triple (or pair) is included in our parent
-    # sample. However, NED's "GTrpl" and "GPair" designations can be ambiguous
-    # or incomplete, especially for very compact systems or advanced mergers.
-    T = cat[cat['OBJTYPE'] == 'GTrpl']
-    #cat_noT = cat[~np.isin(cat['OBJNAME'], T['OBJNAME'])]
-    allmatches = match_radec(T['RA'].value, T['DEC'].value,
-                             cat['RA'].value, cat['DEC'].value,
-                             60./3600., indexlist=True, notself=False)
-
-    drop = []
-    for indx_T, indx_cat in enumerate(allmatches):
-        prim = T[indx_T]['OBJNAME']
-
-        members = cat[indx_cat]['OBJNAME'].value
-        nmembers = len(members)
-
-        memb = ', '.join(np.atleast_1d(cat[indx_cat]['OBJNAME'].value))
-        print(f'{indx_T:03} {prim}: {len(indx_cat)} members: [{memb}]')
-        print(cat[indx_cat]['OBJNAME', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA', 'OBJTYPE', 'RA', 'DEC', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'Z', 'PGC'])
-        print()
-
-        if len(members) != 4:
-            pdb.set_trace()
-
-        # special-casing
-        match prim:
-            case 'ESO 012-IG 019':
-                # NED coordinates are bunk, HyperLeda is good; drop NED02 and keep the GTrpl.
-                drop.append('ESO 012-IG 016 NED02')
-                cat['RA'][indx_cat] = cat['RA_HYPERLEDA'][indx_cat]
-                cat['DEC'][indx_cat] = cat['DEC_HYPERLEDA'][indx_cat]
-            case _:
-                drop.append(prim)
 
     return cat
+
+
+def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False):
+    """Identify cross-identification errors.
+
+    """
+    from astrometry.util.starutil_numpy import arcsec_between
+    from astrometry.libkd.spherematch import match_radec
+
+    # convenience columns
+    cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA',
+            'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
+            'MAG', 'Z', 'PGC', 'PARENT_ROW']
+
+    # Read or, optionally, rebuild the cross-id error file.
+    if rebuild_file:
+        # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
+        I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
+
+        cat = resolve_close(fullcat[I], fullcat[I], maxsep=1., allow_vetos=True, verbose=False)
+        cat = vstack((cat, fullcat[~I]))
+        cat = cat[np.argsort(cat['PARENT_ROW'])]
+
+        # Next, algorithmically identify cross-identification errors.
+        # Basically, NED typically associates the properties from HyperLeda
+        # (PGC number, diameter, etc.) with the *system* rather than with the
+        # appropriate galaxy (which is another entry in NED).
+        crossidfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-crossid-errors.csv')
+        print(f'Writing {crossidfile}')
+        F = open(crossidfile, 'w')
+        F.write('objname_ned_from,pgc_from,objname_ned_to,dtheta_arcsec,comment\n')
+
+        #for system in ['GPair']:
+        for system in ['GTrpl', 'GPair']:
+            M = np.where((cat['OBJTYPE'] == system) * (cat['PGC'] != -99))[0]
+            for m1 in M: # [1516:]:
+                dtheta = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'])
+                # Is there *another* source more than 1 arcsec away which is within
+                # 1 arcsec of the *HyperLeda* coordinates with PGC==-99?
+                m2 = np.where((dtheta < 1.) * (cat['PGC'] == -99))[0]
+                if len(m2) == 0:
+                    continue
+                elif len(m2) > 1:
+                    #qa_skypatch(cat[m1], group=vstack((cat[m1], cat[m2])), pngdir='.', jpgdir='.', verbose=True, overwrite=True)
+                    group = cat[m2]
+                    group['SEP'] = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], group['RA'], group['DEC'])
+                    primary, drop = choose_primary(group)
+                    m2 = m2[primary]
+
+                # If so, copy over the HyperLeda quantities over to the other
+                # source.
+                m2 = m2[0]
+
+                # delta-theta between NED (old) and HyperLeda (adopted)
+                dtheta_ned = arcsec_between(cat[m1]['RA'], cat[m1]['DEC'], cat[m1]['RA_HYPERLEDA'],
+                                            cat[m1]['DEC_HYPERLEDA'])
+
+                # objname_ned_from,objname_ned_to,dtheta_arcsec,comment\n')
+                F.write(f'{cat[m1]["OBJNAME_NED"]},{cat[m1]["PGC"]},{cat[m2]["OBJNAME_NED"]},{dtheta_ned:.3f},{cat[m1]["OBJTYPE"]}\n')
+                if verbose:
+                    print(f'Writing {cat[m1]["OBJNAME"]} (PGC {cat[m1]["PGC"]}) --> {cat[m2]["OBJNAME"]} (PGC {cat[m2]["PGC"]})')
+
+        F.close()
+
+    # Read the existing file and build QA.
+    crossidfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-crossid-errors.csv')
+    crossids = Table.read(crossidfile, format='csv', comment='#')
+    print(f'Read {len(crossids):,d} rows from {crossidfile}')
+
+    jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-crossid-errors')
+    if not os.path.isdir(jpgdir):
+        os.makedirs(jpgdir)
+
+    pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'crossid-errors')
+    if not os.path.isdir(pngdir):
+        os.makedirs(pngdir)
+
+    for crossid in crossids:
+        m1 = np.where(crossid['objname_ned_from'] == fullcat['OBJNAME'])[0][0]
+        m2 = np.where(crossid['objname_ned_to']== fullcat['OBJNAME'])[0][0]
+        if verbose:
+            print(f'Copying {fullcat[m1]["OBJNAME"]} (PGC {fullcat[m1]["PGC"]}) to {fullcat[m2]["OBJNAME"]} (PGC {fullcat[m2]["PGC"]})')
+        for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'DIAM', 'BA', 'PA',
+                    'DIAM_LEDA', 'BA_LEDA', 'PA_LEDA', 'ROW_HYPERLEDA', 'PGC']:
+            new = fullcat[col][m1]
+            old = fullcat[col][m2]
+            if new == '' and old == '':
+                raise ValueError('Special case - write me')
+            if 'DIAM' in col:
+                new = np.max((new, old))
+            if (new != '' or new != -99) and (old == '' or old == -99):
+                if verbose:
+                    print(f'  Replacing {col}: {old} --> {new}')
+                # Do not create duplicate PGC or coordinate values...
+                fullcat[col][m2] = new
+                fullcat[col][m1] = old
+            else:
+                if verbose:
+                    print(f'  Keeping {col}: {old} (ignoring {new})')
+        for col in ['RA', 'DEC']:
+            old = fullcat[col][m2]
+            new = fullcat[f'{col}_HYPERLEDA'][m2]
+            if verbose:
+                print(f'  Replacing {col}: {old} --> {new}')
+            fullcat[col][m1] = new
+        if verbose:
+            print()
+
+    return fullcat
 
 
 def build_parent(mindiam=15./60., verbose=False, overwrite=False):
@@ -770,16 +806,17 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     mindiam in arcmin
 
     """
-    if False:
+    if True:
         catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
         allcat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
         print(f'Read {len(allcat):,d} objects from {catfile}')
 
         allcat['PARENT_ROW'] = np.arange(len(allcat))
 
-        # First, resolve 1-arcsec pairs:
-        cat = resolve_close(allcat, allcat, maxsep=1., keep_all_mergers=True, verbose=verbose)
-        #trimcat = resolve_close(trimcat, trimcat, maxsep=3., verbose=True)
+        # First, resolve cross-identification errors in NED/HyperLeda.
+        print('Identifying cross-identification errors.')
+        cat = resolve_crossid_errors(allcat, verbose=False, rebuild_file=False)
+
         cat.write(os.path.join(sga_dir(), 'parent', 'junk-parent.fits'), overwrite=True)
     else:
         print('HACK!!!!!!')
@@ -796,10 +833,26 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     #bb['RA'][0] = bb['RA_HYPERLEDA'][0]
     #bb['DEC'][0] = bb['DEC_HYPERLEDA'][0]
 
-    # Analyze GTrpl and GPair systems.
+    # Next, analyze GTrpl and GPair systems.
     cat = resolve_multiples(cat, 'GPair', verbose=verbose, overwrite=overwrite)
+
     #cat = resolve_multiples(cat, 'GTrpl', verbose=verbose)
     pdb.set_trace()
+
+    # First, resolve 1-arcsec GPair pairs. These are almost all cross-ID
+    # errors in NED, where...
+    I = cat['OBJTYPE'] == 'GTrpl'
+    trimcat = resolve_close(cat[I], cat, maxsep=1., allow_vetos=True, verbose=verbose)
+
+    pdb.set_trace()
+
+    # First, resolve 1-arcsec pairs:
+    I = allcat['OBJTYPE'] == 'GPair'
+    cat = resolve_close(allcat[I], allcat, maxsep=1., keep_all_mergers=True,
+                        allow_vetos=True, verbose=verbose)
+    pdb.set_trace()
+
+    #trimcat = resolve_close(trimcat, trimcat, maxsep=3., verbose=True)
 
     # Re-resolve 1-arcsec pairs because in 'resolve_multiples' we fix the
     # coordinates of some sources, which leads to new overlaps.
@@ -945,6 +998,7 @@ def build_parent_nocuts(verbose=True):
 
     print('#####')
     print('Input data:')
+    custom = read_custom_external()
     lvd = read_lvd()
     nedlvs = read_nedlvs()
     hyper = read_hyperleda()
@@ -1332,11 +1386,24 @@ def build_parent_nocuts(verbose=True):
     print()
     print(f'Parent 4: N={len(parent4)+nexisting:,d}')
 
-    # [7] build final sample
-    parent = vstack((parent, parent4))
+    # [7] include the custom-added objects
+    print()
+    print('#####')
+    print(f'Adding {len(custom):,d} more objects from the custom catalog.')
+
+    custom.rename_column('ROW', 'ROW_CUSTOM')
+    basic_custom = get_basic_geometry(custom, galaxy_column='OBJNAME', verbose=verbose)
+    parent5 = populate_parent(custom, basic_custom, verbose=verbose)
+
+    print()
+    print(f'Parent 5: N={len(parent5):,d}')
+
+    # [8] build the final sample
+    parent = vstack((parent, parent4, parent5))
 
     # sort, check for uniqueness, and then write out
-    srt = np.lexsort((parent['ROW_HYPERLEDA'].value, parent['ROW_NEDLVS'].value, parent['ROW_LVD'].value))
+    srt = np.lexsort((parent['ROW_HYPERLEDA'].value, parent['ROW_NEDLVS'].value,
+                      parent['ROW_LVD'].value, parent['ROW_CUSTOM'].value))
     parent = parent[srt]
 
     for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD']:
@@ -1351,14 +1418,9 @@ def build_parent_nocuts(verbose=True):
     #                                                        'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'PGC', 'ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD']
     #bb = bb[np.argsort(bb['PGC'])]
 
-    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD']:
+    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_CUSTOM']:
         I = parent[col] != -99
         assert(len(parent[I]) == len(np.unique(parent[col][I])))
-
-    #N1 = (parent['ROW_HYPERLEDA'] != -99) * (parent['ROW_NEDLVS'] != -99) * (parent['ROW_LVD'] != -99)
-    #N2 = np.sum((parent['ROW_HYPERLEDA'] != -99) * (parent['ROW_NEDLVS'] != -99) * (parent['ROW_LVD'] == -99))
-    #N3 = np.sum((parent['ROW_HYPERLEDA'] != -99) * (parent['ROW_NEDLVS'] == -99) * (parent['ROW_LVD'] == -99))
-    #N4 = np.sum((parent['ROW_HYPERLEDA'] == -99) * (parent['ROW_NEDLVS'] != -99) * (parent['ROW_LVD'] == -99))
 
     print()
     print('#####')

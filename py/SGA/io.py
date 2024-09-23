@@ -805,6 +805,44 @@ def read_lvd(rank=0, rows=None):
     return lvd
 
 
+def version_custom_external():
+    ver = 'v1.0'
+    return ver
+
+
+def read_custom_external(rank=0, rows=None):
+    """Read the custom external catalog.
+
+    """
+    version = version_custom_external()
+
+    customfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.fits')
+    if not os.path.isfile(customfile):
+        csvfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.csv')
+        data = Table.read(csvfile, format='csv', comment='#')
+        data['mag_band'] = data['mag_band'].astype('<U1')
+        data['mag_band'].fill_value = ''
+        data = data.filled()
+        for col in ['diam', 'ba', 'pa', 'mag']:
+            data[col] = data[col].astype('f4')
+        [data.rename_column(col, col.upper()) for col in data.colnames]
+        data.write(customfile, overwrite=True)
+
+    F = fitsio.FITS(customfile)
+    row = np.arange(F[1].get_nrows())
+    if rows is not None:
+        row = row[rows]
+
+    data = Table(F[1].read(rows=rows))
+    data['ROW'] = row
+    print(f'Read {len(data):,d} objects from {customfile}')
+
+    data = data[np.argsort(data['OBJNAME'])]
+    data['GALAXY'] = data['OBJNAME']
+
+    return data
+
+
 def version_nedlvs():
     return '20210922_v2'
 

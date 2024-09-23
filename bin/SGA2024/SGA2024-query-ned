@@ -76,7 +76,7 @@ def readone_byname(queryfile):
 
     # pack the data into a Table
     cols = ['ROW', 'OBJECT_NOTE', 'OBJNAME', 'ESSENTIAL_NOTE',
-            'OBJNAME_NED','RA', 'DEC', 'OBJTYPE', 'Z', 
+            'OBJNAME_NED','RA', 'DEC', 'OBJTYPE', 'Z',
             'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR', 'MORPH', 'BASIC_MORPH',
             'SDSS_R', 'RC3_B', 'TWOMASS_K',
             'SDSS_DIAM_R', 'SDSS_BA_R', 'SDSS_PA_R',
@@ -692,7 +692,7 @@ def main():
     """
     import argparse
 
-    catalogs = ['HyperLeda', 'HyperLeda-coords', 'NEDLVS', 'LVD']
+    catalogs = ['HyperLeda', 'HyperLeda-coords', 'NEDLVS', 'LVD', 'custom-external']
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
