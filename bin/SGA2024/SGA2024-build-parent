@@ -675,6 +675,11 @@ def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False, build_qa=
 
     # Read or, optionally, rebuild the cross-id error file.
     if rebuild_file:
+        VETO = [
+            'SBS 0924+554', # SBS 0924+554 and SDSS J092824.31+551107.4 are distinct.
+            '2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
+        ]
+
         # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
         I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
 
@@ -694,6 +699,10 @@ def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False, build_qa=
         for system in ['GTrpl', 'GPair']:
             M = np.where((cat['OBJTYPE'] == system) * (cat['PGC'] != -99))[0]
             for m1 in M: # [1516:]:
+                if cat[m1]['OBJNAME_NED'] in VETO:
+                    print(f'Skipping vetoed system {cat[m1]["OBJNAME_NED"]}')
+                    continue
+
                 dtheta = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'])
                 # Is there *another* source more than 1 arcsec away which is within
                 # 1.5 arcsec of the *HyperLeda* coordinates with PGC==-99?
@@ -826,7 +835,9 @@ def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False, build_qa=
     match_new = match_radec(dropcat['RA'].value, dropcat['DEC'].value, newcat['RA'].value,
                             newcat['DEC'].value, 75./3600., indexlist=True, notself=False)
 
-    #ewcat[match_new[np.where(dropcat['OBJNAME'] == 'ESO 292-IG 010')[0][0]]][cols]
+    #prefix = np.array(list(zip(*np.char.split(newcat['OBJNAME'].value, ' ').tolist()))[0])
+    #allprefix = np.array(list(zip(*np.char.split(fullcat['OBJNAME'].value, ' ').tolist()))[0])
+    #newcat[match_new[np.where(dropcat['OBJNAME'] == 'ESO 292-IG 010')[0][0]]][cols]
     #fullcat[match_full[np.where(dropcat['OBJNAME'] == 'APMUKS(BJ) B020550.65-13135 ID')[0][0]]][cols]
     #newcat[np.flatnonzero(np.core.defchararray.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
 
@@ -847,7 +858,7 @@ def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False, build_qa=
         npdf = int(np.ceil(len(crossids) / nperpdf))
 
         #for ii in range(npdf):
-        for ii in np.arange(5, 9):
+        for ii in np.arange(20, npdf):
             ss = ii * nperpdf
             ee = (ii + 1) * nperpdf
 
@@ -899,6 +910,7 @@ def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False, build_qa=
         pdb.set_trace()
 
         #newcat[match_new[np.where(dropcat['OBJNAME'] == 'CGCG 039-044')[0][0]]][cols]
+        #newcat[np.flatnonzero(np.core.defchararray.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
 
     return newcat
 
@@ -1073,6 +1085,8 @@ def build_parent_nocuts(verbose=True):
     """Merge the external catalogs from SGA2024-query-ned.
 
     """
+    import re
+
     def readit(catalog, version, bycoord=False):
         if bycoord:
             suffix = 'bycoord'
@@ -1549,7 +1563,14 @@ def build_parent_nocuts(verbose=True):
             # Standardize that here so we match NED-LVS and so that we're
             # NED-friendly.
             if dataset == 'HYPERLEDA':
-                parent['OBJNAME'][I] = nedfriendly_hyperleda(parent[I][f'OBJNAME_{dataset}'])
+                objname = nedfriendly_hyperleda(parent[I][f'OBJNAME_{dataset}'])
+                # put a space after the prefix, to better match NED
+                prefix = np.array([re.findall(r'\d*\D+', obj)[0] for obj in objname])
+                newobjname = objname.copy()
+                for iobj, (obj, pre) in enumerate(zip(objname, prefix)):
+                    if not 'SDSS' in pre:
+                        newobjname[iobj] = obj.replace(pre, f'{pre} ')
+                parent['OBJNAME'][I] = newobjname
             else:
                 parent['OBJNAME'][I] = parent[I][f'OBJNAME_{dataset}']
 
