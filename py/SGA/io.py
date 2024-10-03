@@ -225,6 +225,71 @@ def nedfriendly_hyperleda(old, reverse=False):
     #return new
 
 
+def version_hyperleda_multiples():
+    return 'meandata_multiples_1727885775'
+
+
+def read_hyperleda_multiples(rank=0, rows=None):
+    """Read the HyperLeda_multiples catalog.
+
+    """
+    version = version_hyperleda_multiples()
+    hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
+
+    if not os.path.isfile(hyperfile):
+        txtfile = hyperfile.replace('.fits', '.txt')
+
+        with open(txtfile, 'r') as F:
+            nrows = len(F.readlines())
+
+        if version == 'meandata_multiples_1727885775':
+            header_start = 21
+            data_start = 23
+            data_offset = 5 # 4846383-20
+            delimiter = '|'
+        else:
+            raise ValueError(f'Unknown version {version}')
+
+        hyper = Table.read(txtfile, format='ascii.csv', data_start=data_start,
+                           data_end=nrows-data_offset, header_start=header_start,
+                           delimiter=delimiter)
+
+        hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
+        [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
+
+        hyper['ROW'] = np.arange(len(hyper))
+
+        nhyper = len(hyper)
+        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        assert(nhyper == len(np.unique(hyper['PGC'])))
+
+        hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
+        hyper['RA'] *= 15. # [decimal degrees]
+
+        # get just the first three alternate names
+        altnames = []
+        for iobj in range(len(hyper)):
+            objname = hyper['OBJNAME'][iobj]
+            names = np.array(hyper['ALTNAMES'][iobj].split(','))
+            # remove the primary name
+            names = names[~np.isin(names, objname)]
+            names = ','.join(names[:3]) # top 3
+            altnames.append(names)
+        hyper['ALTNAMES'] = altnames
+
+        # re-sort by PGC number
+        hyper = hyper[np.argsort(hyper['PGC'])]
+
+        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        hyper.write(hyperfile, overwrite=True)
+
+    hyper = Table(fitsio.read(hyperfile, rows=rows))
+    print(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+
+    return hyper
+
+
 def version_hyperleda():
     #return 'meandata_1718379336'
     #return 'meandata_1720804662'
