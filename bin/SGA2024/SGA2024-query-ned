@@ -2,10 +2,10 @@
 
 """Query NED with an external SGA2024 sample.
 
-SGA2024-query-ned --catalog HyperLeda --query-byname
-SGA2024-query-ned --catalog HyperLeda --gather-byname
-SGA2024-query-ned --catalog HyperLeda-coords --query-bycoord
-SGA2024-query-ned --catalog HyperLeda-coords --gather-bycoord
+SGA2024-query-ned --catalog HyperLeda-galaxies --query-byname
+SGA2024-query-ned --catalog HyperLeda-galaxies --gather-byname
+SGA2024-query-ned --catalog HyperLeda-galaxies-coords --query-bycoord
+SGA2024-query-ned --catalog HyperLeda-galaxies-coords --gather-bycoord
 
 SGA2024-query-ned --catalog HyperLeda-multiples --query-byname
 SGA2024-query-ned --catalog HyperLeda-multiples --gather-byname
@@ -33,7 +33,7 @@ from urllib.error import HTTPError
 
 from SGA.util import (get_basic_geometry, match, match_to, choose_primary,
                       resolve_close, parent_datamodel)
-from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
+from SGA.io import (sga_dir, get_raslice, read_hyperleda_galaxies, version_hyperleda_galaxies,
                     read_hyperleda_multiples, version_hyperleda_multiples,
                     nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
                     read_lvd, version_lvd, nedfriendly_lvd)
@@ -177,7 +177,7 @@ def readone_byname(queryfile):
     return out
 
 
-def readone_bycoord(queryfile):
+def readone_bycoord(queryfile, maxsep=3.):
     """Read one file.
 
     """
@@ -256,6 +256,7 @@ def readone_bycoord(queryfile):
         raise ValueError()
 
     # no matching galaxies within the separation
+    #temp = temp[np.flatnonzero(np.core.defchararray.find(temp['OBJECT_NOTE'].value, 'NOTE: No objects found') == -1)]
     temp = temp[temp['SEPARATION'] != '']
     nobj = len(temp)
 
@@ -296,6 +297,20 @@ def readone_bycoord(queryfile):
             dec[iobj] = cc.dec.value
     out['RA'] = ra
     out['DEC'] = dec
+
+    # Need to be a little careful here. If NED flagged an input object as a
+    # duplicate then it will drop that object but still return matches for any
+    # subsequent objects (which will also have a non-zero separation). We can
+    # flag these by checking for a large discrepancy between the input and
+    # output coordinates. Example: WISEA J022352.66-000937.8 on
+    # nedbycoord-hyperleda-galaxies-coords/035/raslice035-query00021.txt
+    I = np.abs(out['RA'] - out['INPUT_RA'])*3600 < maxsep
+    if np.sum(~I) > 0:
+        print(f'Dropping {np.sum(~I)}/{len(out)} objects with incorrect coordinates due to how NED handles duplicates!')
+
+    out = out[I]
+    temp = temp[I]
+    nobj = len(out)
 
     for col in ['Z', 'MORPH', 'BASIC_MORPH', 'BASIC_MAG', 'BASIC_DMAJOR', 'BASIC_DMINOR',
                 'SDSS_R', 'RC3_B', 'TWOMASS_K',
@@ -366,16 +381,16 @@ def read_catalog(catalog):
 
     """
     match catalog.lower():
-        case 'hyperleda':
-            version = version_hyperleda()
-            cat = read_hyperleda()#rows=np.arange(500))
+        case 'hyperleda-galaxies':
+            version = version_hyperleda_galaxies()
+            cat = read_hyperleda_galaxies()#rows=np.arange(500))
 
-        case 'hyperleda-coords':
+        case 'hyperleda-galaxies-coords':
             # for objects for which NED could not resolve OBJNAME
-            version = version_hyperleda()
-            cat = read_hyperleda()
+            version = version_hyperleda_galaxies()
+            cat = read_hyperleda_galaxies()
 
-            nedfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDbyname-HyperLeda_{version}.fits')
+            nedfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDbyname-HyperLeda-galaxies_{version}.fits')
             ned = Table(fitsio.read(nedfile))
             print(f'Read {len(ned):,d} objects from {nedfile}')
 
@@ -384,7 +399,7 @@ def read_catalog(catalog):
 
             alt = cat[~np.isin(cat['ROW'], ned['ROW'])] # no match
             cat = alt
-            version = f'{version_hyperleda()}-byname'
+            version = f'{version_hyperleda_galaxies()}-byname'
 
         case 'hyperleda-multiples':
             version = version_hyperleda_multiples()
@@ -404,7 +419,7 @@ def read_catalog(catalog):
 
             alt = cat[~np.isin(cat['ROW'], ned['ROW'])] # no match
             cat = alt
-            version = f'{version_hyperleda()}-byname'
+            version = f'{version_hyperleda_multiples()}-byname'
 
         case 'nedlvs':
             version = version_nedlvs()
@@ -420,7 +435,7 @@ def read_catalog(catalog):
     return cat
 
 
-def query_ned(catalog, byname=True, bycoord=False, overwrite=False):
+def query_ned(catalog, maxsep=3., byname=True, bycoord=False, overwrite=False):
     """Query NED either by name or by coordinates.
 
     """
@@ -486,13 +501,13 @@ def query_ned(catalog, byname=True, bycoord=False, overwrite=False):
 
                 if byname:
                     # NED-friendly names!
-                    if catalog.lower() == 'hyperleda' or catalog.lower() == 'hyperleda-multiples':
+                    if catalog.lower() == 'hyperleda-galaxies' or catalog.lower() == 'hyperleda-multiples':
                         objnames = nedfriendly_hyperleda(objnames)#, racat1['PGC'].value)
                     if catalog.lower() == 'lvd':
                         objnames = nedfriendly_lvd(objnames)
                     url = build_url_byname(objnames)
                 elif bycoord:
-                    url = build_url_bycoord(ras, decs, sep=3.)
+                    url = build_url_bycoord(ras, decs, sep=maxsep)
 
                 try:
                     urlretrieve(url, queryfile)
@@ -512,7 +527,7 @@ def query_ned(catalog, byname=True, bycoord=False, overwrite=False):
                             if byname:
                                 url = build_url_byname(_objnames)
                             elif bycoord:
-                                url = build_url_bycoord(_ras, _decs, sep=3.)
+                                url = build_url_bycoord(_ras, _decs, sep=maxsep)
                             urlretrieve(url, _queryfile)
                             with open(logfile, 'a') as L:
                                 L.write(f'{os.path.basename(_queryfile)}\n')
@@ -526,7 +541,7 @@ def query_ned(catalog, byname=True, bycoord=False, overwrite=False):
                 print(f'Skipping existing query {iquery:05d}/{nquery-1:05d}')
 
 
-def gather_query(catalog, byname=True, bycoord=False):
+def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
     """Gather the NED query results (either by name or by coordinates).
 
     """
@@ -545,7 +560,7 @@ def gather_query(catalog, byname=True, bycoord=False):
     workdir = os.path.join(sga_dir(), 'parent', 'external', f'{prefix}-{catalog.lower()}')
 
     allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query*.txt')))
-    #allfiles = glob(os.path.join(workdir, '176', 'raslice176-query*.txt'))
+    #allfiles = glob(os.path.join(workdir, '035', 'raslice035-query00021.txt'))
     print(f'Merging {len(allfiles):,d} query files.')
 
     data = []
@@ -553,10 +568,9 @@ def gather_query(catalog, byname=True, bycoord=False):
         if byname:
             data1 = readone_byname(onefile)
         elif bycoord:
-            data1 = readone_bycoord(onefile)
+            data1 = readone_bycoord(onefile, maxsep=maxsep)
         data.append(data1)
     data = vstack(data)
-
 
     if catalog.lower() == 'lvd':
         version = version_lvd()
@@ -598,8 +612,8 @@ def gather_query(catalog, byname=True, bycoord=False):
         data = data[I]
 
 
-    if catalog.lower() == 'hyperleda':
-        version = version_hyperleda()
+    if catalog.lower() == 'hyperleda-galaxies':
+        version = version_hyperleda_galaxies()
 
         # Any objects with OBJECT_NOTE "ERROR: Input name not recognized by NED"
         # or which are not in 'data', were not resolved by NED.
@@ -663,8 +677,8 @@ def gather_query(catalog, byname=True, bycoord=False):
         data = out
 
 
-    if catalog.lower() == 'hyperleda-coords':
-        version = version_hyperleda()
+    if catalog.lower() == 'hyperleda-galaxies-coords':
+        version = version_hyperleda_galaxies()
 
         ## non-matches (SEPARATION=='') were already removed
         #keep = data['OBJECT_NOTE'] == ''
@@ -693,41 +707,76 @@ def gather_query(catalog, byname=True, bycoord=False):
         # Next, our 'data' table has many duplicates since we searched on
         # coordinates. If there's just one match, we're done, otherwise we need
         # to choose one of the matches.
-        _, uindx, ucount = np.unique(data['INPUT_POSITION'], return_index=True, return_counts=True)
-        uindx = uindx[ucount == 1]
+        if False:
+            _, uindx, ucount = np.unique(data['INPUT_POSITION'], return_index=True, return_counts=True)
+            uindx = uindx[ucount == 1]
 
-        # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
-        def dup_indices(records_array):
-            # creates an array of indices, sorted by unique element
-            idx_sort = np.argsort(records_array)
-            # sorts records array so all unique elements are together
-            sorted_records_array = records_array[idx_sort]
-            # returns the unique values, the index of the first occurrence of a value, and the count for each element
-            vals, idx_start, count = np.unique(sorted_records_array, return_counts=True, return_index=True)
-            # splits the indices into separate arrays
-            res = np.split(idx_sort, idx_start[1:])
-            #filter them with respect to their size, keeping only items occurring more than once
-            vals = vals[count > 1]
-            return list(filter(lambda x: x.size > 1, res))
+            # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
+            def dup_indices(records_array):
+                # creates an array of indices, sorted by unique element
+                idx_sort = np.argsort(records_array)
+                # sorts records array so all unique elements are together
+                sorted_records_array = records_array[idx_sort]
+                # returns the unique values, the index of the first occurrence of a value, and the count for each element
+                vals, idx_start, count = np.unique(sorted_records_array, return_counts=True, return_index=True)
+                # splits the indices into separate arrays
+                res = np.split(idx_sort, idx_start[1:])
+                #filter them with respect to their size, keeping only items occurring more than once
+                vals = vals[count > 1]
+                return list(filter(lambda x: x.size > 1, res))
 
-        res = dup_indices(data['INPUT_POSITION'].value)
+            res = dup_indices(data['INPUT_POSITION'].value)
 
-        # Resolve multiple matches:
-        print(f'Resolving {len(res):,d} multiple matches.')
-        J = []
-        for dups in res:
-            dups.sort()
-            objtypes = data[dups]['OBJTYPE'].value
-            G = np.where(objtypes == 'G')[0]
-            nG = len(G)
-            if nG == 0:
-                J.append(dups[0])
-            else:
-                # closest G match
-                J.append(dups[G[0]])
+            # Resolve multiple matches:
+            print(f'Resolving {len(res):,d} multiple matches.')
+            J = []
+            for dups in res:
+                dups.sort()
+                objtypes = data[dups]['OBJTYPE'].value
+                G = np.where(objtypes == 'G')[0]
+                nG = len(G)
+                if nG == 0:
+                    J.append(dups[0])
+                else:
+                    # closest G match
+                    J.append(dups[G[0]])
 
-        J = np.hstack(J)
-        I = np.hstack((uindx, J))
+            J = np.hstack(J)
+            I = np.hstack((uindx, J))
+
+        # choose based on object type, diameter, etc.
+        basic = get_basic_geometry(data, galaxy_column='OBJNAME_NED', verbose=False)
+        basic.rename_column('GALAXY', 'OBJNAME')
+        basic['RA'] = data['RA']
+        basic['DEC'] = data['DEC']
+        basic['Z'] = data['Z']
+        basic['OBJTYPE'] = data['OBJTYPE']
+        basic['DIAM_LEDA'] = -99.
+        basic['PGC'] = -99
+
+        # NED returns objects that are just outside of 3 arcsec (because of
+        # rounding I guess)???
+        res = resolve_close(cat, basic, maxsep=3.1, objname_column='OBJNAME',
+                            keep_all_mergers=False, verbose=False, trim=False)
+        I = np.where(res['PRIMARY'])[0]
+
+        #upos, cc = np.unique(data[I]['INPUT_POSITION'], return_counts=True)
+        #data[I][np.isin(data[I]['INPUT_POSITION'], upos[cc>1])]
+        #
+        #keep, drop = [], []
+        #for pos in upos[cc>1]:
+        #    indx_cat = np.where(pos == ref_input)[0]
+        #    indx_res = np.where(pos == data[I]['INPUT_POSITION'])[0]
+        #    res2 = resolve_close(cat[indx_cat], basic[I][indx_res], maxsep=5., objname_column='OBJNAME',
+        #                         keep_all_mergers=False, verbose=False, trim=False)
+        #    drop.append(indx_res[~res2['PRIMARY']])
+        #    keep.append(indx_res[res2['PRIMARY']])
+        #keep = np.unique(np.hstack(keep))
+        #drop = np.unique(np.hstack(drop))
+        #
+        #I = np.delete(I, drop)
+
+        pdb.set_trace()
 
         indx_cat, indx_data = match(ref_input, data[I]['INPUT_POSITION'])
         out = cat[indx_cat]['OBJNAME', 'ALTNAMES', 'PGC', 'ROW']
@@ -755,10 +804,10 @@ def gather_query(catalog, byname=True, bycoord=False):
         cat = cat[uindx]
         ref_input = ref_input[uindx]
 
+        # Next, our 'data' table has many duplicates since we searched on
+        # coordinates. If there's just one match, we're done, otherwise we need
+        # to choose one of the matches.
         if False:
-            # Next, our 'data' table has many duplicates since we searched on
-            # coordinates. If there's just one match, we're done, otherwise we need
-            # to choose one of the matches.
             _, uindx, ucount = np.unique(data['INPUT_POSITION'], return_index=True, return_counts=True)
             uindx = uindx[ucount == 1]
 
@@ -798,7 +847,7 @@ def gather_query(catalog, byname=True, bycoord=False):
             J = np.hstack(J)
             I = np.hstack((uindx, J))
 
-        # resolve close matches
+        # choose based on object type, diameter, etc.
         basic = get_basic_geometry(data, galaxy_column='OBJNAME_NED', verbose=True)
         basic.rename_column('GALAXY', 'OBJNAME')
         basic['RA'] = data['RA']
@@ -808,10 +857,10 @@ def gather_query(catalog, byname=True, bycoord=False):
         basic['DIAM_LEDA'] = -99.
         basic['PGC'] = -99
 
-        # need a little margin because NED returns objects that are just
-        # outside of 3 arcsec (because of rounding I guess??)
-        res = resolve_close(cat, basic, maxsep=3.05, objname_column='OBJNAME',
-                            keep_all_mergers=False, verbose=True, trim=False)
+        # NED returns objects that are just outside of 3 arcsec (because of
+        # rounding I guess)??? Add a little margin here.
+        res = resolve_close(cat, basic, maxsep=3.1, objname_column='OBJNAME',
+                            keep_all_mergers=False, verbose=False, trim=False)
         I = np.where(res['PRIMARY'])[0]
         #uu, cc = np.unique(data[I]['INPUT_POSITION'], return_counts=True)
         #data[I][np.isin(data[I]['INPUT_POSITION'], uu[cc>1])]
@@ -836,10 +885,12 @@ def main():
     """
     import argparse
 
-    catalogs = ['HyperLeda', 'HyperLeda-coords', 'HyperLeda-multiples', 'HyperLeda-multiples-coords', 'NEDLVS', 'LVD', 'custom-external']
+    catalogs = ['HyperLeda-galaxies', 'HyperLeda-galaxies-coords', 'HyperLeda-multiples',
+                'HyperLeda-multiples-coords', 'NEDLVS', 'LVD', 'custom-external']
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
+    parser.add_argument('--maxsep', default=3., type=float, help='Maximum separation (arcsec) when querying by coordinates.')
     parser.add_argument('--query-byname', action='store_true', help='Query for basic data by object name.')
     parser.add_argument('--query-bycoord', action='store_true', help='Query for basic data by coordinates.')
     parser.add_argument('--gather-byname', action='store_true', help='Gather the query-byname output.')
@@ -849,11 +900,12 @@ def main():
 
 
     if args.query_byname or args.query_bycoord:
-        query_ned(args.catalog, byname=args.query_byname, bycoord=args.query_bycoord,
-                  overwrite=args.overwrite)
+        query_ned(args.catalog, maxsep=args.maxsep, byname=args.query_byname,
+                  bycoord=args.query_bycoord, overwrite=args.overwrite)
 
     if args.gather_byname or args.gather_bycoord:
-        gather_query(args.catalog, byname=args.gather_byname, bycoord=args.gather_bycoord)
+        gather_query(args.catalog, maxsep=args.maxsep, byname=args.gather_byname,
+                     bycoord=args.gather_bycoord)
 
 
 if __name__ == '__main__':

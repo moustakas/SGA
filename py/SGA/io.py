@@ -8,7 +8,7 @@ Code to read and write the various SGA files.
 import os, sys, time, pdb
 import fitsio
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table, vstack
 
 from SGA.log import get_logger#, DEBUG
 log = get_logger()
@@ -197,7 +197,6 @@ def altnames_hyperleda(cat):
         else:
             #C = [':' in name  for name in altnames]
             #if np.any(C):
-            #    #pdb.set_trace()
             #    print(altnames)
             altname.append(altnames[0])
 
@@ -290,21 +289,21 @@ def read_hyperleda_multiples(rank=0, rows=None):
     return hyper
 
 
-def version_hyperleda():
+def version_hyperleda_galaxies():
     #return 'meandata_1718379336'
     #return 'meandata_1720804662'
-    return 'meandata_1725482144'
+    return 'meandata_galaxies_1725482144'
 
 
-def read_hyperleda(rank=0, rows=None):
-    """Read the HyperLeda catalog.
+def read_hyperleda_galaxies(rank=0, rows=None):
+    """Read the HyperLeda 'G' and 'g' catalog.
 
     Feedback for Dmitry:
 
     * 87 duplicated entries (see below)
 
     """
-    version = version_hyperleda()
+    version = version_hyperleda_galaxies()
     hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
 
     if not os.path.isfile(hyperfile):
@@ -313,17 +312,17 @@ def read_hyperleda(rank=0, rows=None):
         with open(txtfile, 'r') as F:
             nrows = len(F.readlines())
 
-        if version == 'meandata_1718379336':
+        if version == 'meandata_galaxies_1718379336':
             header_start = 20
             data_start = 22
             data_offset = 5
             delimiter = ','
-        elif version == 'meandata_1720804662':
+        elif version == 'meandata_galaxies_1720804662':
             header_start = 22
             data_start = 24
             data_offset = 7 # 4846383-20
             delimiter = '|'
-        elif version == 'meandata_1725482144':
+        elif version == 'meandata_galaxies_1725482144':
             header_start = 21
             data_start = 23
             data_offset = 5 # 4846383-20
@@ -333,7 +332,7 @@ def read_hyperleda(rank=0, rows=None):
                            data_end=nrows-data_offset, header_start=header_start,
                            delimiter=delimiter)
 
-        if version == 'meandata_1720804662' or version == 'meandata_1725482144':
+        if version == 'meandata_galaxies_1720804662' or version == 'meandata_galaxies_1725482144':
             hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
         #hyper.remove_column('f_astrom')
 
@@ -381,6 +380,36 @@ def read_hyperleda(rank=0, rows=None):
 
         # re-sort by PGC number
         hyper = hyper[np.argsort(hyper['PGC'])]
+
+        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        hyper.write(hyperfile, overwrite=True)
+
+    hyper = Table(fitsio.read(hyperfile, rows=rows))
+    print(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+
+    return hyper
+
+
+def version_hyperleda():
+    return 'meandata_v1.0'
+
+
+def read_hyperleda(rank=0, rows=None):
+    """Read the complete (galaxies + multiples) HyperLeda catalog.
+
+    """
+    version = version_hyperleda()
+    hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
+
+    if not os.path.isfile(hyperfile):
+        gals = read_hyperleda_galaxies(rank=rank, rows=rows)
+        mult = read_hyperleda_multiples(rank=rank, rows=rows)
+        hyper = vstack((gals, mult))
+
+        # sort by PGC number and reset ROW
+        hyper = hyper[np.argsort(hyper['PGC'])]
+        hyper['ROW'] = np.arange(len(hyper))
 
         print(f'Writing {len(hyper):,d} objects to {hyperfile}')
         hyper.write(hyperfile, overwrite=True)
