@@ -28,6 +28,9 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 import matplotlib.pyplot as plt
 
+from astrometry.util.starutil_numpy import arcsec_between
+from astrometry.libkd.spherematch import match_radec
+
 from urllib.request import urlretrieve
 from urllib.error import HTTPError
 
@@ -304,7 +307,11 @@ def readone_bycoord(queryfile, maxsep=3.):
     # flag these by checking for a large discrepancy between the input and
     # output coordinates. Example: WISEA J022352.66-000937.8 on
     # nedbycoord-hyperleda-galaxies-coords/035/raslice035-query00021.txt
-    I = np.abs(out['RA'] - out['INPUT_RA'])*3600 < maxsep
+    if nobj == 1:
+        sep = np.atleast_1d(arcsec_between(out['RA'], out['DEC'], out['INPUT_RA'], out['INPUT_DEC']))
+    else:
+        sep = np.diag(arcsec_between(out['RA'], out['DEC'], out['INPUT_RA'], out['INPUT_DEC']))
+    I = sep < (maxsep * 1.1) # a little margin
     if np.sum(~I) > 0:
         print(f'Dropping {np.sum(~I)}/{len(out)} objects with incorrect coordinates due to how NED handles duplicates!')
 
@@ -561,6 +568,7 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
 
     allfiles = sorted(glob(os.path.join(workdir, '???', 'raslice???-query*.txt')))
     #allfiles = glob(os.path.join(workdir, '035', 'raslice035-query00021.txt'))
+    #allfiles = glob(os.path.join(workdir, '292', 'raslice292-query00015.txt'))
     print(f'Merging {len(allfiles):,d} query files.')
 
     data = []
@@ -604,7 +612,8 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         #diff = data[data['OBJNAME'] != data['OBJNAME_NED']]['OBJNAME', 'OBJNAME_NED', 'OBJECT_NOTE', 'Z']
         diff = join(diff, cat['OBJNAME', 'RA', 'DEC', 'Z'], keys='OBJNAME', table_names=['QUERY', 'LVS'])
         #diff[diff['OBJECT_NOTE'] != '']
-        diff.write('NEDLVS-resolve-issues.fits', overwrite=True)
+        difffile = os.path.join(workdir, 'NEDLVS-resolve-issues.fits')
+        diff.write(difffile, overwrite=True)
 
         I = np.where(data['OBJECT_NOTE'] == '')[0]
         #I = np.where(data['OBJNAME'] == data['OBJNAME_NED'])[0]
@@ -760,9 +769,16 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
                             keep_all_mergers=False, verbose=False, trim=False)
         I = np.where(res['PRIMARY'])[0]
 
+        # need a second round of "resolving" due to some groups merging together
+        data = data[I]
+        basic = basic[I]
+        res = resolve_close(cat, basic, maxsep=3.1, objname_column='OBJNAME',
+                            keep_all_mergers=False, verbose=False, trim=False)
+        I = np.where(res['PRIMARY'])[0]
+
         #upos, cc = np.unique(data[I]['INPUT_POSITION'], return_counts=True)
         #data[I][np.isin(data[I]['INPUT_POSITION'], upos[cc>1])]
-        #
+
         #keep, drop = [], []
         #for pos in upos[cc>1]:
         #    indx_cat = np.where(pos == ref_input)[0]
@@ -773,10 +789,7 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         #    keep.append(indx_res[res2['PRIMARY']])
         #keep = np.unique(np.hstack(keep))
         #drop = np.unique(np.hstack(drop))
-        #
         #I = np.delete(I, drop)
-
-        pdb.set_trace()
 
         indx_cat, indx_data = match(ref_input, data[I]['INPUT_POSITION'])
         out = cat[indx_cat]['OBJNAME', 'ALTNAMES', 'PGC', 'ROW']

@@ -313,7 +313,8 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
             return keep, drop
 
     print('Warning: cases 1-9 failed; choosing by prefix.')
-    prefer_prefix = ['NGC', 'UGC', 'IC', 'MCG', 'CGCG', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII']
+    prefer_prefix = ['NGC', 'UGC', 'IC', 'MCG', 'CGCG', 'ESO',
+                     'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII']
     prefix = np.array(list(zip(*np.char.split(group['OBJNAME'].value, ' ').tolist()))[0])
     mask = np.array([pre in prefer_prefix for pre in prefix])
     keep = np.where(mask)[0]

@@ -26,6 +26,7 @@ from astrometry.libkd.spherematch import match_radec
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.util import get_basic_geometry, match, match_to, choose_primary, resolve_close
 from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
+                    read_hyperleda_galaxies, version_hyperleda_galaxies,
                     read_hyperleda_multiples, version_hyperleda_multiples,
                     nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
                     read_lvd, version_lvd, nedfriendly_lvd, version_custom_external,
@@ -893,16 +894,34 @@ def build_parent_nocuts(verbose=True):
     ned_lvd = readit('LVD', version_lvd())
     ned_nedlvs = readit('NEDLVS', version_nedlvs())
 
-    ned_hyper = readit('HyperLeda', version_hyperleda())
-    ned_hyper_coords = readit('HyperLeda-coords', f'{version_hyperleda()}', bycoord=True)
-    ned_hyper_coords.remove_columns(['INPUT_POSITION', 'INPUT_RA', 'INPUT_DEC', 'SEPARATION'])
+    ## For Kim!!
+    #basic = get_basic_geometry(ned_nedlvs, galaxy_column='OBJNAME')
+    #basic.write('/Users/ioannis/Downloads/NEDgeometry-NEDLVS_20210922_v2.fits', overwrite=True)
 
-    jj = readit('HyperLeda-multiples', version_hyperleda_multiples())
-    j2 = readit('HyperLeda-multiples-coords', version_hyperleda_multiples(), bycoord=True)
+    # merge all the ned_hyper catalogs and reset row (to match SGA.io.read_hyperleda())
+    ned_hyper_galaxies = readit('HyperLeda-galaxies', version_hyperleda_galaxies())
+    ned_hyper_multiples = readit('HyperLeda-multiples', version_hyperleda_multiples())
+    ned_hyper_galaxies_coords = readit('HyperLeda-galaxies-coords', f'{version_hyperleda_galaxies()}', bycoord=True)
+    ned_hyper_multiples_coords = readit('HyperLeda-multiples-coords', f'{version_hyperleda_multiples()}', bycoord=True)
+    ned_hyper_galaxies_coords.remove_columns(['INPUT_POSITION', 'INPUT_RA', 'INPUT_DEC', 'SEPARATION'])
+    ned_hyper_multiples_coords.remove_columns(['INPUT_POSITION', 'INPUT_RA', 'INPUT_DEC', 'SEPARATION'])
 
-    pdb.set_trace()
-    ned_hyper = vstack((ned_hyper, ned_hyper_coords))
-    del ned_hyper_coords
+    ned_hyper_galaxies = vstack((ned_hyper_galaxies, ned_hyper_galaxies_coords))
+    indx_hyper, indx_galaxies = match(hyper['OBJNAME'], ned_hyper_galaxies['OBJNAME'])
+    #indx_hyper, indx_galaxies = match(hyper['ROW_GALAXIES'], ned_hyper_galaxies['ROW'])
+    ned_hyper_galaxies['ROW'][indx_galaxies] = hyper[indx_hyper]['ROW']
+
+    ned_hyper_multiples = vstack((ned_hyper_multiples, ned_hyper_multiples_coords))
+    indx_hyper, indx_multiples = match(hyper['OBJNAME'], ned_hyper_multiples['OBJNAME'])
+    #indx_hyper, indx_multiples = match(hyper['ROW_MULTIPLES'], ned_hyper_multiples['ROW'])
+    ned_hyper_multiples['ROW'][indx_multiples] = hyper[indx_hyper]['ROW']
+
+    ned_hyper = vstack((ned_hyper_galaxies, ned_hyper_multiples))
+    ned_hyper = ned_hyper[np.argsort(ned_hyper['ROW'])]
+
+    del ned_hyper_galaxies, ned_hyper_multiples, ned_hyper_galaxies_coords, ned_hyper_multiples_coords
+
+    #match_radec(ned_hyper['RA'], ned_hyper['DEC'], custom['RA'], custom['DEC'], 3./3600.)
 
     nobj_ned_lvd = len(ned_lvd)
     nobj_ned_nedlvs = len(ned_nedlvs)
@@ -922,7 +941,17 @@ def build_parent_nocuts(verbose=True):
     rr, cc = np.unique(ned_nedlvs[col], return_counts=True)
     dd = ned_nedlvs[np.isin(ned_nedlvs[col], rr[cc>1].value)]
     dd = dd[np.argsort(dd[col])]
+
     basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
+    #basic_dd.rename_column('GALAXY', 'OBJNAME')
+    #basic_dd['RA'] = dd['RA']
+    #basic_dd['DEC'] = dd['DEC']
+    #basic_dd['Z'] = dd['Z']
+    #basic_dd['OBJTYPE'] = dd['OBJTYPE']
+    #basic_dd['DIAM_LEDA'] = -99.
+    #basic_dd['PGC'] = -99
+    #res = resolve_close(ned_nedlvs, basic_dd, maxsep=3.1, objname_column='OBJNAME', keep_all_mergers=False, verbose=True, trim=False)
+    #I = np.where(res['PRIMARY'])[0]
     toss = []
     for objname in np.unique(dd[col]):
         I = np.where(ned_nedlvs[col] == objname)[0]
@@ -1014,7 +1043,7 @@ def build_parent_nocuts(verbose=True):
             this = this[np.argsort(ned_hyper[I][this]['ROW'])]
             toss.append(np.delete(I, this[0]))
     toss = np.hstack(toss)
-    print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} ({100.*len(toss)/len(ned_hyper):.1f}%) {col} OBJNAME_NED duplicates.')
+    print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} ({100.*len(toss)/len(ned_hyper):.1f}%) {col} duplicates.')
     ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
 
     c_hyper = SkyCoord(ra=ned_hyper['RA']*u.deg, dec=ned_hyper['DEC']*u.deg)
@@ -1035,7 +1064,7 @@ def build_parent_nocuts(verbose=True):
             this = this[np.argsort(ned_hyper[I][this]['ROW'])]
             toss.append(np.delete(I, this[0]))
     toss = np.hstack(toss)
-    print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} ({100.*len(toss)/len(ned_hyper):.1f}%) {col} coordinate duplicates.')
+    print(f'Removing {len(toss):,d}/{len(ned_hyper):,d} ({100.*len(toss)/len(ned_hyper):.1f}%) coordinate duplicates.')
     ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
 
     # Toss out non-galaxies in ned_hyper. But note:
@@ -1077,11 +1106,13 @@ def build_parent_nocuts(verbose=True):
     print('#####')
 
     keys = np.array(ned_nedlvs.colnames)
-    keys = keys[~np.isin(keys, ['OBJNAME', 'ROW'])]
-
+    keys = keys[~np.isin(keys, ['OBJNAME', 'ROW', 'RA', 'DEC'])]
     out1 = join(ned_hyper, ned_nedlvs, keys=keys, table_names=['HYPERLEDA', 'NEDLVS'])
-    out1.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
 
+    # round-off
+    out1.rename_columns(['RA_HYPERLEDA', 'DEC_HYPERLEDA'], ['RA', 'DEC'])
+    out1.remove_columns(['RA_NEDLVS', 'DEC_NEDLVS'])
+    out1.rename_columns(['RA', 'DEC', 'Z'], ['RA_NED', 'DEC_NED', 'Z_NED'])
     print(f'Matched {len(out1):,d}/{len(ned_hyper):,d} ({100.*len(out1)/len(ned_hyper):.1f}%) ned_hyper and ' + \
           f'{len(out1):,d}/{len(ned_nedlvs):,d} ({100.*len(out1)/len(ned_nedlvs):.1f}%) ned_nedlvs objects using OBJNAME_NED.')
 
@@ -1141,6 +1172,8 @@ def build_parent_nocuts(verbose=True):
     I = np.where(~np.isnan(hyper['V'][indx_hyper]))[0]
     parent2['Z_HYPERLEDA'][indx_parent[I]] = hyper['V'][indx_hyper[I]] / 2.99e5
 
+    for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA']:
+        assert(len(np.unique(parent2[col])) == len(parent2))
     print()
     print(f'Parent 2: N={len(parent2):,d}')
     #pdb.set_trace()
@@ -1162,6 +1195,13 @@ def build_parent_nocuts(verbose=True):
     indx_dup_nedlvs, sep2d, _ = c_parent.match_to_catalog_sky(c_nedlvs)
     indx_dup_parent = np.where(sep2d.arcsec == 0.)[0]
     indx_dup_nedlvs = indx_dup_nedlvs[indx_dup_parent]
+
+    # also remove some duplicates that arose because my NEDLVS query came well
+    # before (~July 2024) my HyperLeda-multiples query, and I guess some of the
+    # coordinates changed...
+    _miss_nedlvs = miss_nedlvs[np.delete(np.arange(len(miss_nedlvs)), indx_dup_nedlvs)]
+    dups = _miss_nedlvs[np.isin(_miss_nedlvs['OBJNAME_NED'], parent['OBJNAME_NED'])]['OBJNAME_NED'].value
+    indx_dup_nedlvs = np.hstack((indx_dup_nedlvs, np.where(np.isin(miss_nedlvs['OBJNAME_NED'], dups))[0]))
 
     #dup_parent = parent[indx_dup_parent]
     #dup_parent['OBJNAME_HYPERLEDA', 'OBJNAME_NED', 'OBJNAME_NEDLVS', 'RA_NED', 'DEC_NED'][:10]
@@ -1185,6 +1225,8 @@ def build_parent_nocuts(verbose=True):
     I = np.where(~np.isnan(nedlvs['Z'][indx_nedlvs]))[0]
     parent3['Z_NEDLVS'][indx_parent[I]] = nedlvs['Z'][indx_nedlvs[I]]
 
+    for col in ['OBJNAME_NED', 'OBJNAME_NEDLVS', 'ROW_NEDLVS']:
+        assert(len(np.unique(parent3[col])) == len(parent3))
     print()
     print(f'Parent 3: N={len(parent3):,d}')
     #pdb.set_trace()
@@ -1212,6 +1254,8 @@ def build_parent_nocuts(verbose=True):
 
     parent4 = populate_parent(miss_hyper, basic_miss_hyper, verbose=verbose)
 
+    for col in ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA']:
+        assert(len(np.unique(parent4[col])) == len(parent4))
     print()
     print(f'Parent 4: N={len(parent4):,d}.')
     #pdb.set_trace()
@@ -1225,6 +1269,12 @@ def build_parent_nocuts(verbose=True):
 
     # ned_lvd - already in parent sample
     I = np.where(parent['OBJNAME_NED'] != '')[0]
+    #oo, cc = np.unique(parent[I]['OBJNAME_NED'], return_counts=True)
+    #p2 = parent2[np.isin(parent2['OBJNAME_NED'], oo[cc>1].value)]
+    #p3 = parent3[np.isin(parent3['OBJNAME_NED'], oo[cc>1].value)]
+    #p2 = p2[np.argsort(p2['OBJNAME_NED'])]
+    #p3 = p3[np.argsort(p3['OBJNAME_NED'])]
+    #np.diag(arcsec_between(p2['RA_NED'], p2['DEC_NED'], p3['RA_NED'], p3['DEC_NED']))
     indx_parent, indx_lvd = match(parent[I]['OBJNAME_NED'], ned_lvd['OBJNAME_NED'])
 
     nexisting = len(indx_parent)
