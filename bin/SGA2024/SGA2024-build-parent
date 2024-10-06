@@ -230,6 +230,80 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
     return pngfile
 
 
+def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=4, nrow=6,
+                       add_title=True, pngsuffix='group', jpgdir='.', pngdir='.',
+                       pdffile='multipage-skypatch.pdf', verbose=False, overwrite=True,
+                       cleanup=False):
+    """Call qa_skypatch on a table of sources.
+
+    """
+    from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.image import imread
+
+    if not os.path.isdir(jpgdir):
+        os.makedirs(jpgdir)
+    if not os.path.isdir(pngdir):
+        os.makedirs(pngdir)
+
+    primaries = Table(primaries)
+    nobj = len(primaries)
+
+    if cat is None:
+        groups = [None] * nobj
+    else:
+        matches = match_radec(primaries['RA'].value, primaries['DEC'].value, cat['RA'].value,
+                              cat['DEC'].value, width_arcsec/3600., indexlist=True, notself=False)
+        groups = [cat[onematch] for onematch in matches]
+
+
+    pngfile = []
+    for iobj, (primary, group) in enumerate(zip(primaries, groups)):
+        #width = crossid['dtheta_arcsec'] / 60. # [arcmin]
+        objname = f'{primary["OBJNAME"]}: {primary["OBJTYPE"]}'
+        racenter, deccenter = primary['RA'], primary['DEC']
+        #pngfile.append(
+        #    qa_skypatch(group=fullcat[match_full[iobj+ss]], pngsuffix='original',
+        #                add_title=False,
+        #                objname=objname, racenter=racenter, deccenter=deccenter,
+        #                pngdir=pngdir, jpgdir=jpgdir, verbose=True, overwrite=True)
+        #    )
+        pngfile.append(
+            qa_skypatch(primary, group=group, pngsuffix=pngsuffix, add_title=add_title,
+                        objname=objname, racenter=racenter, deccenter=deccenter,
+                        pngdir=pngdir, jpgdir=jpgdir, verbose=verbose, overwrite=overwrite)
+        )
+        if verbose:
+            print()
+
+    pngfile = np.array(pngfile)
+    allindx = np.arange(len(pngfile))
+
+    nperpage = ncol * nrow
+    npage = int(np.ceil(len(pngfile) / nperpage))
+
+    pdf = PdfPages(pdffile)
+    for ipage in range(npage):
+        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
+        fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
+        for iax, xx in enumerate(ax.flat):
+            if iax < len(indx):
+                xx.imshow(imread(pngfile[indx[iax]]), interpolation='None')
+            xx.axis('off')
+        #for xx in np.arange(iax, nperpage):
+        fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
+        pdf.savefig(fig, dpi=150)
+        plt.close()
+    pdf.close()
+    print(f'Wrote {pdffile}')
+
+    # clean up
+    if cleanup:
+        for png in pngfile:
+            if verbose:
+                print(f'Removing {png}')
+            os.remove(png)
+
+
 def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, verbose=False):
     """Drop sources according to their name prefix. Most/all of these have
     been visually inspected. However, don't drop a source if it has PGC
@@ -441,9 +515,6 @@ def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False, build_qa=
     """Identify cross-identification errors.
 
     """
-    from matplotlib.backends.backend_pdf import PdfPages
-    from matplotlib.image import imread
-
     crossidfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-crossid-errors-1.5arcsec.csv')
 
     # Read or, optionally, rebuild the cross-id error file.
@@ -615,88 +686,45 @@ def resolve_crossid_errors(fullcat, verbose=False, rebuild_file=False, build_qa=
     print(f'Dropping {np.sum(I):,d} close pairs.')
     newcat = newcat[~I]
 
+    # sort by diameter
+    srt = np.argsort(np.max((dropcat['DIAM'].value, dropcat['DIAM_LEDA'].value), axis=0))[::-1]
+    dropcat = dropcat[srt]
+
+    # Build QA showing the sources at the center of each of the objects dropped
+    # (in "dropcat").
+    if build_qa:
+
+        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-crossid-errors')
+        pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'crossid-errors')
+
+        # make multiple pdfs
+        nperpdf = 96
+        npdf = int(np.ceil(len(crossids) / nperpdf))
+
+        for ii in range(npdf):
+            ss = ii * nperpdf
+            ee = (ii + 1) * nperpdf
+            pdffile = os.path.join(sga_dir(), 'parent', 'vi', f'vi-crossid-errors-{ss:04}-{ee-1:04}.pdf')
+
+            #multipage_skypatch(dropcat[ss:ee], cat=fullcat, pngsuffix='group', jpgdir=jpgdir,
+            multipage_skypatch(dropcat[ss:ee], cat=newcat, pngsuffix='group', jpgdir=jpgdir,
+                               pngdir=pngdir, pdffile=pdffile, verbose=True, overwrite=True,
+                               add_title=True, cleanup=True)
+
+            pdb.set_trace()
+    #newcat[match_new[np.where(dropcat['OBJNAME'] == 'CGCG 039-044')[0][0]]][cols]
+    #newcat[np.flatnonzero(np.core.defchararray.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
+
+    #m1, m2, _ = match_radec(newcat['RA'], newcat['DEC'], 0.3728, 13.0985, 75./3600.)
+    #m1, m2, _ = match_radec(newcat['RA'], newcat['DEC'], newcat[newcat['PGC'] == 680515]['RA'], newcat[newcat['PGC'] == 680515]['DEC'], 120./3600.)
+    #newcat[m1][cols]
+    #qa_skypatch(newcat[m1[15]], group=newcat[m1], pngdir='.', jpgdir='.', verbose=True, overwrite=True, width_arcmin=4.)
+
     #prefix = np.array(list(zip(*np.char.split(newcat['OBJNAME'].value, ' ').tolist()))[0])
     #allprefix = np.array(list(zip(*np.char.split(fullcat['OBJNAME'].value, ' ').tolist()))[0])
     #newcat[match_new[np.where(dropcat['OBJNAME'] == 'ESO 292-IG 010')[0][0]]][cols]
     #fullcat[match_full[np.where(dropcat['OBJNAME'] == 'APMUKS(BJ) B020550.65-13135 ID')[0][0]]][cols]
     #newcat[np.flatnonzero(np.core.defchararray.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
-
-    # Build QA.
-    if build_qa:
-
-        match_new = match_radec(dropcat['RA'].value, dropcat['DEC'].value, newcat['RA'].value,
-                                newcat['DEC'].value, 75./3600., indexlist=True, notself=False)
-        match_full = match_radec(dropcat['RA'].value, dropcat['DEC'].value, fullcat['RA'].value,
-                                 fullcat['DEC'].value, 75./3600., indexlist=True, notself=False)
-
-        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-crossid-errors')
-        if not os.path.isdir(jpgdir):
-            os.makedirs(jpgdir)
-        pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'crossid-errors')
-        if not os.path.isdir(pngdir):
-            os.makedirs(pngdir)
-
-        # make multiple pdfs
-        nperpdf = 48
-        npdf = int(np.ceil(len(crossids) / nperpdf))
-
-        for ii in range(npdf):
-        #for ii in np.arange(20, npdf):
-            ss = ii * nperpdf
-            ee = (ii + 1) * nperpdf
-
-            pdffile = os.path.join(sga_dir(), 'parent', 'vi', f'vi-crossid-errors-{ss:04}-{ee-1:04}.pdf')
-
-            pngfile = []
-            for iobj, drop in enumerate(dropcat[ss:ee]):
-                #width = crossid['dtheta_arcsec'] / 60. # [arcmin]
-                objname = f'{drop["OBJNAME"]} {drop["OBJTYPE"]}'
-                racenter, deccenter = drop['RA'], drop['DEC']
-                pngfile.append(
-                    qa_skypatch(group=fullcat[match_full[iobj+ss]], pngsuffix='original',
-                                add_title=False,
-                                objname=objname, racenter=racenter, deccenter=deccenter,
-                                pngdir=pngdir, jpgdir=jpgdir, verbose=True, overwrite=True)
-                    )
-                pngfile.append(
-                    qa_skypatch(group=newcat[match_new[iobj+ss]], pngsuffix='fixed',
-                                add_title=False,
-                                objname=objname, racenter=racenter, deccenter=deccenter,
-                                pngdir=pngdir, jpgdir=jpgdir, verbose=False, overwrite=True))
-                print()
-
-            pngfile = np.array(pngfile)
-
-            ncol = 4
-            nrow = 6
-            nperpage = ncol * nrow
-            npage = int(np.ceil(len(pngfile) / nperpage))
-            allindx = np.arange(len(pngfile))
-
-            pdf = PdfPages(pdffile)
-
-            for ipage in range(npage):
-                indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
-                fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
-                for iax, xx in enumerate(ax.flat):
-                    if iax < len(indx):
-                        xx.imshow(imread(pngfile[indx[iax]]), interpolation='None')
-                    xx.axis('off')
-                #for xx in np.arange(iax, nperpage):
-                fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
-                pdf.savefig(fig, dpi=150)
-                plt.close()
-
-            pdf.close()
-            print(f'Wrote {pdffile}')
-
-        #newcat[match_new[np.where(dropcat['OBJNAME'] == 'CGCG 039-044')[0][0]]][cols]
-        #newcat[np.flatnonzero(np.core.defchararray.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
-
-        #m1, m2, _ = match_radec(newcat['RA'], newcat['DEC'], 0.3728, 13.0985, 75./3600.)
-        #m1, m2, _ = match_radec(newcat['RA'], newcat['DEC'], newcat[newcat['PGC'] == 680515]['RA'], newcat[newcat['PGC'] == 680515]['DEC'], 120./3600.)
-        #newcat[m1][cols]
-        #qa_skypatch(newcat[m1[15]], group=newcat[m1], pngdir='.', jpgdir='.', verbose=True, overwrite=True, width_arcmin=4.)
 
     pdb.set_trace()
 
@@ -717,11 +745,11 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     print('Identifying cross-identification errors.')
     cat = resolve_crossid_errors(allcat, verbose=False, rebuild_file=False, build_qa=True)
 
+    pdb.set_trace()
     # Next, analyze GTrpl and GPair systems.
     cat = resolve_multiples(cat, 'GPair', verbose=verbose, overwrite=overwrite)
 
     #cat = resolve_multiples(cat, 'GTrpl', verbose=verbose)
-    pdb.set_trace()
 
     # First, resolve 1-arcsec GPair pairs. These are almost all cross-ID
     # errors in NED, where...
@@ -1078,7 +1106,7 @@ def build_parent_nocuts(verbose=True):
     toss = np.where(np.isin(ned_hyper['OBJTYPE'], ['PofG', '!V*', '!PN', '**', 'GClstr', 'WD*',
                                                    'Red*', '!HII', 'C*', 'PN', '*Ass', 'Blue*',
                                                    '!**', 'SN', '!*', 'Other', 'SNR', '*Cl',
-                                                   '!WD*', 'GGroup',
+                                                   '!WD*', 'GGroup', 'WR*',
                                                    #'GPair', 'GTrpl',
                                                    'V*', '*', 'HII', 'Nova', 'Neb', 'RfN', '!V*', '!C*',
                                                    'QSO', 'Q_Lens', 'G_Lens']))[0]
@@ -1246,9 +1274,14 @@ def build_parent_nocuts(verbose=True):
 
     # http://atlas.obs-hp.fr/hyperleda/leda/param/celpos.html
     #I = np.where((0.1*10**miss_hyper['LOGD25'] > 1.) * (miss_hyper['F_ASTROM'] < 1))[0]
-    I = np.where(miss_hyper['LOGD25'] > 0.)[0]
+    I = np.where((miss_hyper['LOGD25'] > 0.) *
+                 (miss_hyper['OBJTYPE'] != 'R') *  # radio source
+                 (miss_hyper['OBJTYPE'] != 'PG') * # part of galaxy
+                 (miss_hyper['OBJTYPE'] != 'u')    # catalog error
+                 )[0]
     print(f'Adding {len(I):,d}/{len(miss_hyper):,d} HyperLeda objects with measured diameters ' + \
           'not in ned_hyper and not already in our catalog.')
+
     miss_hyper = miss_hyper[I]
     basic_miss_hyper = get_basic_geometry(miss_hyper, galaxy_column='OBJNAME_HYPERLEDA', verbose=verbose)
 
