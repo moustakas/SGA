@@ -12,6 +12,7 @@ Or, on my laptop:
 
 """
 import os, time, shutil, pdb
+from importlib import resources
 from glob import glob
 from collections import Counter
 import numpy as np
@@ -310,7 +311,7 @@ def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=4, nrow=6,
             shutil.rmtree(pngdir)
 
 
-def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, verbose=False):
+def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, reverse=False, verbose=False):
     """Drop sources according to their name prefix. Most/all of these have
     been visually inspected. However, don't drop a source if it has PGC
     number and at least one diameter.
@@ -324,10 +325,16 @@ def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, verbose=False)
         G = (diam != -99.)
         I *= ~G
 
-    I = np.where(I)[0]
+    if reverse:
+        I = np.where(~I)[0]
+    else:
+        I = np.where(I)[0]
 
     if verbose:
-        print(f'Dropping {len(I):,d} object(s) with prefix {drop_prefix}.')
+        if reverse:
+            print(f'Keeping {len(I):,d} object(s) without prefix {drop_prefix}.')
+        else:
+            print(f'Dropping {len(I):,d} object(s) with prefix {drop_prefix}.')
     return I
 
 
@@ -336,7 +343,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
     """Identify cross-identification errors.
 
     """
-    crossidfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-crossid-errors-1.5arcsec.csv')
+    crossidfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-crossid-errors.csv')
 
     # Read or, optionally, rebuild the cross-id error file.
     if rebuild_file:
@@ -446,7 +453,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
     newcat = newcat[np.delete(np.arange(len(newcat)), drop)]
 
     # Read and act on the "VI actions" file.
-    actionsfile = os.path.join(sga_dir(), 'parent', 'vi', 'vi-actions.csv')
+    actionsfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
 
     for action in np.unique(actions['action']):
@@ -566,13 +573,14 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     most of which are ultra-faint or galaxy groups (i.e., not galaxies).
 
     """
-    width_arcsec = 30.
+    width_arcsec = 120. # 30.
     ncol, nrow = 1, 1
     clip = True
 
     if merger_type is not None:
         suffix = merger_type
         qasuffix = merger_type
+        allprefix = np.array(list(zip(*np.char.split(fullcat['OBJNAME'].value, ' ').tolist()))[0])
         T = fullcat[fullcat['OBJTYPE'] == merger_type]
         print(f'Analyzing the prefix frequency of {len(T):,d}/{len(fullcat):,d} objects.')
     else:
@@ -587,33 +595,52 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     #pgc = cat['PGC'].value
     pgc = None
 
-    #C = Counter(prefix)
+    C = Counter(prefix)
     #print(C.most_common())
 
     match merger_type:
         case 'GTrpl':
+            # Done: GALEXASC, IC, VIII,
             #drop_prefixes = None
-            drop_prefixes = [
-                '[BJG2014]', '[H87]', '[PCM2000]', '[SPS2007]', '3C', 'AKARI', 'APMBGC',
-                'CB-20.07763', 'HIDEEP', 'III', 'LCRS', 'LCSB', 'MLCG', 'PM2GC', '[IBG2003]',
-                'SCG', 'SSRS', 'VCC', 'VI', 'WAS', 'FLASH', 'COSMOS', '[SAB2007]', 'DUKST', 'PPS2',
-            ]
+            drop_prefixes = ['AGC', 'HIPASS', '[BWH2007]', '2dFGRS', 'APMUKS(BJ)',
+                             'RSCG', 'MCG', 'LGG', 'LCLG', 'IRAS', 'PPS2', 'GALEXMSC',
+                             '[KLI2009]', 'DEEP2', '[ALB2009]', 'WBL', 'KTS', 'ARP',
+                             'AM', 'V1CG', 'KTG', 'UGC', 'VII', 'VV',
+                             ]
+            #    'CB-20.07763', 'HIDEEP', 'III', 'LCRS', 'LCSB', 'MLCG', 'PM2GC', '[IBG2003]',
+            #    'SCG', 'SSRS', 'VCC', 'VI', 'WAS', 'FLASH', 'COSMOS', '[SAB2007]', 'DUKST', 'PPS2',
+            #]
             drop_references = None
         case 'GPair':
-            drop_prefixes = None
+            #drop_prefixes = None
+            drop_prefixes = ['[PCM2000]', ]
             drop_references = None
         case _:
             drop_prefixes = ['WINGS', 'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
-                             '[BFW2006]', '[IBG2003]', '[BJG2014]', 'OPH', 'COMAi', 'zCOSMOS']
+                             '[BFW2006]', '[IBG2003]', '[BJG2014]', 'OPH', 'COMAi', 'zCOSMOS',
+                             'CDWFS', 'NuSTAR', '4U', '2CXO', '1RXS', 'SSTSL2', '[MHH96]',
+
+                             ]
             #drop_prefixes = ['KUG', '2MFGC', 'NGPFG', 'SA', 'MGC', ]
-            drop_references = ['MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]', ]
+            drop_references = ['MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
+                               'NGC 3607:[H2009]', # candidate globular clusters
+                               "Stephan's Quintet:[XLC2003]", 'HCG 092:[DUM2012]', 'HCG 092:[KAG2014]',
+
+                               ]
 
     # optionally build QA
     if build_qa:
         jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-{qasuffix}')
         pngdir = os.path.join(sga_dir(), 'parent', 'vi', qasuffix)
 
-        for drop_prefix in drop_prefixes:
+        qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 100 and pre not in drop_prefixes]
+        #qa_prefixes = ['ARP'] ; width_arcsec = 120. ; overwrite = True
+        #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[fullcat['OBJNAME'] == 'IC 0186B']['RA'], fullcat[fullcat['OBJNAME'] == 'IC 0186B']['DEC'], 75./3600.)
+        #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
+        #qa_skypatch(fullcat[m1[3]], group=fullcat[m1])
+
+        for drop_prefix in qa_prefixes:
+        #for drop_prefix in drop_prefixes:
             Idrop = drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, verbose=False)
             if len(Idrop) == 0:
                 print(f'No {suffix} sources with prefix {drop_prefix}')
@@ -624,6 +651,8 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                                    jpgdir=jpgdir, pngdir=pngdir, pngsuffix=f'{qasuffix}-{drop_prefix}',
                                    pdffile=pdffile, clip=clip, verbose=verbose, overwrite=overwrite,
                                    cleanup=cleanup)
+
+        pdb.set_trace()
 
     I = []
     # drop by prefix (but not if there's a measured diameter)
@@ -762,13 +791,18 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     cat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
-    # Drop systems with uncommon prefixes (after VI).
+    # [1] Drop systems with uncommon prefixes (after VI).
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False, cleanup=True)
 
-    # Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=verbose, rebuild_file=True, build_qa=False)
+    # [2] Resolve cross-identification errors in NED/HyperLeda.
+    cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
 
-    #cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=False, cleanup=True)
+    # [3] Resolve close (1 arcsec) pairs.
+    cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
+
+    # [4] Examine the GTrpl and GPair systems (with VI).
+    cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=True, cleanup=True, overwrite=True)
+
 
     pdb.set_trace()
 

@@ -1,0 +1,483 @@
+# Object-level actions based on VI (visual inspections). Note that an object may
+# appear more than once.
+objname,action,reason,comment
+#
+#IC 1559,drop,no source,Galaxy triple.
+#3C 433,hyperleda-coords,NED incorrect,In '3C 433' group
+#FAIRALL 0216,hyperleda-coords,NED incorrect,NED points to the center of the group
+#RB 143,drop,shred,Shred of '2MASS J12592926+2805540'
+#ZOAG G201.64-03.96,drop,shred,Shred of 'WISEA J061626.82+081114.0'
+#ZOAG G197.44+04.58,drop,shred,Shred of '2MASX J06392637+1551514'
+#ARK 388,drop,no source,Galaxy pair 'CGCG 043-025 NED01' and 'CGCG 043-025 NED02'
+#CoD -29 08887 X24,drop,no source,Galaxy pair '2MASX J11091617-3002389' and 'WISEA J110912.60-300230.2'
+#Dwarf Antennae,drop,no source,Galaxy pair 'WISEA J020239.95-092241.4' and '2MASX J02023879-0922128'
+#HARO 31,drop,no source,Galaxy pair 'HARO 31 NED01' and 'HARO 31 NED02'
+#KAZ 267,drop,no source,Galaxy pair 'KAZ 267a' and 'KAZ 267b'
+#NPM1G +18.0357,drop,no source,Galaxy pair 'WISEA J131325.95+182708.9' and 'SDSS J131326.09+182705.5'
+#PG 1452+132,drop,no source,Galaxy pair 'SDSS J145432.02+130206.4' and '2MASS J14543263+1302026'
+#PGC 043360,drop,no source,Confusion with 'WISEA J124932.72-412006.3'
+#PGC 030937,drop,no source,Galaxy pair 'LEDA 083083' and 'WISEA J102948.40-350550.5'
+#KOS SP4 042,drop,no source,Confusion with 'WISEA J004835.96-212155.1'
+#DUKST 470-030,drop,no source,Confusion with 'WISEA J232610.59-303106.3'
+#
+#CGCG 042-200 NED03,hyperleda-coords,NED incorrect,'VCC 1838' group
+#CGPG 2319.6+0443,hyperleda-coords,NED incorrect,
+#LSBG F250-028,hyperleda-coords,NED incorrect,
+#WAS 15 NED01,hyperleda-coords,NED incorrect,NED points to 'WISEA J104521.00+271934.4'
+#VCC 1134,hyperleda-coords,NED incorrect,NED points to the center of the group
+##
+##
+#PGC 049039,drop,no source,Galaxy pair 'NGC 5306' and 'VV 135c'
+#ZwCl 1700.5+3322 37,drop,no source,Galaxy pair 'WISEA J170248.64+333424.1' and 'ZwCl 1700.5+3322 35'
+#TOLOLO 00046,drop,no source,Centered on a real pair of small galaxies
+#TOLOLO 1214+044,drop,no source,Galaxy pair 'TOLOLO 1214+044 NED01' and 'TOLOLO 1214+044 NED02'
+#Superantennae,drop,no source,Galaxy pair 'AM 1925-724 NED01' and 'AM 1925-724 NED02'
+#TOLOLO 0341-407E,drop,shred,Shred of 'SCHG 0341-407'
+#UGC 09504,drop,no source,Galaxy pair 'UGC 09504 NED01' and 'UGC 09504 NED02'
+#VCC 2038,drop,no source,Galaxy pair 'IC 0815' and 'IC 3760'
+#PGC1 1946946 NED001,drop,no source,Galaxy pair 'UGC 09504 NED01' and 'UGC 09504 NED02'
+#WAS 96,drop,no source,Confusion with 'WISEA J151102.00+312839.9'
+#LCSB L0649P,drop,no source,Confusion with 'WISEA J150233.49-025101.2'
+#WAS 15,drop,no source,Galaxy pair 'WAS 15 NED01' and 'WISEA J104521.00+271934.4'
+#SCOSMOS70 J100123.2+022415,drop,no source,Galaxy pair 'WISEA J100123.60+022416.7' and 'WISEA J100123.21+022414.7'
+#KOS NP5 072,drop,no source,Galaxy pair '2MASX J13431580+2609530' and '2MASX J13431528+2610020'
+#DUKST 412-027,drop,no source,Galaxy pair 'WISEA J011338.10-313911.0' and 'WISEA J011336.82-313906.6'
+SDSS J125839.45+273922.5,drop,faint,In '1256+27W01' group.
+[APS2006] J194.676010+27.66179,drop,faint,In '1256+27W01' group.
+[APS2006] J194.681305+27.66864,drop,faint,In '1256+27W01' group.
+[APS2006] J194.672897+27.66616,drop,faint,In '1256+27W01' group.
+SDSS J105506.19+402723.0,drop,faint,In 'MAPS-NGP O_215_0381013' group.
+WISEA J101233.52+581302.8,drop,faint,In 'MCG +10-15-032' group.
+SDSS J102422.26+414155.0,drop,faint,In 'GCG 211-054' group.
+VII Zw 366 NOTES02,drop,faint,Compact; in 'VII Zw 366' group.
+GALEXASC J054529.11-255617.9,drop,faint,In 'VV 162' group.
+WISEA J054533.25-255607.2,drop,faint,In 'VV 162' group.
+#
+MGC 0006552,drop,compact,In 'MGC 0006552' group.
+2MASS J10225889-0010216,drop,compact,In 'MGC 0006552' group.
+2MASS J10225861-0010235,drop,compact,In 'MGC 0006552' group.
+SA 1656-068,drop,compact,Galaxy triple.
+SDSS J221758.44+001726.4,drop,compact,Galaxy triple.
+2MASS J12251100+1445426,drop,compact,Compact source in envelope of 'NGC 4337'.
+GALEXASC J130013.46-022818.8,drop,compact,Galaxy triple; faint.
+SDSS J115826.03+004230.1,drop,compact,In 'UGC 06959' group.
+WISEA J115825.11+004156.0,drop,compact,In 'UGC 06959' group.
+WISEA J115828.27+004147.3,drop,compact,In 'UGC 06959' group.
+WISEA J115829.64+004246.2,drop,compact,In 'UGC 06959' group.
+WISEA J115824.34+004251.4,drop,compact,In 'UGC 06959' group.
+WISEA J115824.62+004310.6,drop,compact,In 'UGC 06959' group.
+GALEXASC J100037.15-053230.9,drop,compact,
+GALEXASC J014951.32-345408.4,drop,compact,
+GALEXASC J163803.47-235103.2,drop,compact,
+#
+SDSS J164711.12+210514.8,drop,shred,In '[PSP2017] dmJ1647+21' group.
+WISEA J004600.29-633351.4,drop,shred,Shred of 'APM 004353.08-635019.4'.
+2MASS J12472730+0335321,drop,shred,Shred of 'ARK 388'.
+SDSS J171313.50+380455.3,drop,shred,Shred of 'I Zw 176 NOTES02'.
+KOS SP3 063,drop,shred,Shred of 'WISEA J003736.92-283413.1'.
+[AVL99] J005820.0-664758.0,drop,shred,Shred of '2MASX J00582086-6648011'.
+WKK 0731 NED02,drop,shred,Shred of 'WKK 0731'.
+CCC 101,drop,shred,Tidal debris of 'WISEA J124932.72-412006.3'.
+SDSS J092449.60+213418.6,drop,shred,Shred of 'VV 154b' and 'VV 154c'.
+CGCG 232-002 NED01,drop,shred,Shred of 'WISEA J055212.10+465020.2'.
+SDSS J103111.12+065227.3,drop,shred,Shred of 'VV 396 NED01'.
+SDSS J120703.25+254343.3,drop,shred,Shred of 'CGCG 128-031N'.
+SDSS J124558.51+451201.5,drop,shred,Shred of 'UGC 07936 NED01'.
+SDSS J124556.94+451122.1,drop,shred,Shred of 'UGC 07936 NED01'.
+SDSSCGB 13211.04,drop,shred,Shred of 'UGC 07936 NED01'.
+CGCG 015-030 NED03,drop,shred,Shred of 'CGCG 015-030 NED02'.
+SDSSCG 077b,drop,shred,Shred of 'CGCG 015-030 NED02'.
+SDSS J125323.84-002523.4,drop,shred,Shred of 'CGCG 015-030 NED02'.
+SDSS J131758.34-001839.3,drop,shred,Shred of 'UGC 08357 NED01'.
+SDSS J143538.35+130940.8,drop,shred,Shred of 'UGC 09394 NED03'.
+SDSS J085354.41+350906.7,drop,shred,Shred of 'UGC 04653 NED02'.
+SDSS J134423.35+202421.8,drop,shred,Shred of 'UGC 08691 NED01'.
+NGC 7212 NED03,drop,shred,Shred of 'WISEA J220702.36+101414.3'.
+ESO 463-IG 003 NED03,drop,shred,Shred of 'WISEA J203359.98-302221.2'.
+SDSS J151323.92+305744.2,drop,shred,Shred of 'CGCG 165-032 NED01'.
+2MASS J15132427+3057370,drop,shred,Shred of 'CGCG 165-032 NED01'.
+CGCG 048-073 NED02,drop,shred,Shred of 'WISEA J145639.75+062752.6'.
+2MASS J14563937+0627571,drop,shred,Shred of 'WISEA J145639.75+062752.6'.
+UGC 09540 NED03,drop,shred,Shred of 'UGC 09540 NED02'.
+SDSS J140208.64+093400.9,drop,shred,Shred of 'CGCG 1359.7+0949 NED01'.
+2MASS J14142272+0258341,drop,shred,Shred of 'UGC 09108 NED02'.
+AGC 230960,drop,shred,Shred of '2MASX J14015671+1222498' in 'KUG 1359+126' group.
+SDSS J140156.03+122241.4,drop,shred,Shred of '2MASX J14015671+1222498' in 'KUG 1359+126' group.
+SDSS J111056.30+044345.9,drop,shred,Shred of 'CGCG 039-044 NED02'.
+SDSS J011448.96-002937.5,drop,shred,Shred of 'UGC 00793 NED01'.
+ESO 350-IG 034 NED01,drop,shred,Shred of 'ESO 350-IG 034 NED02'.
+2dFGRS S557Z050,drop,shred,Shred of 'ESO 350-IG 034 NED02'.
+SDSS J004012.68+210433.2,drop,shred,Shred of 'CGCG 457-025 NED01'.
+VIII Zw 010 NED02,drop,shred,Shred of 'VIII Zw 010 NED02'.
+SDSS J095939.74+003514.6,drop,shred,Shred of 'WISEA J095939.53+003512.2' in 'UGC 05370 NOTES01' group.
+SDSS J151325.25+305717.8,drop,shred,Shred of 'CGCG 165-032 NED01' in 'CGCG 165-032' group.
+WISEA J013635.53+344433.6,drop,shred,Shred of 'KUG 0133+344 NED01' in 'KUG 0133+344' group.
+UGCA 025 NED02,drop,shred,Shred of 'WISEA J021650.53+372112.7'?
+SDSS J082618.08+171244.2,drop,shred,Shred of 'CGCG 089-025 NED01'.
+SDSS J083917.34-003643.1,drop,shred,Shred of 'CGCG 004-102 NED02'.
+SDSS J083916.36-003656.8,drop,shred,Shred of 'CGCG 004-102 NED02'.
+WISEA J093529.58+033922.6,drop,shred,Shred of 'WISEA J093529.80+033917.5'.
+2MASS J09363648+4828285,drop,shred,Shred of 'CGCG 239-011 NED02'.
+SDSS J093630.81+482819.1,drop,shred,Shred of 'CGCG 239-011 NED01'.
+SDSS J093629.62+482818.9,drop,shred,Shred of 'CGCG 239-011 NED01'.
+SDSS J093632.21+482808.0,drop,shred,Shred of 'CGCG 239-011 NED01'.
+WISEA J093922.03+233438.5,drop,shred,Shred of 'WISEA J093920.97+233426.9' in 'VV 659' group.
+SDSS J093921.20+233416.5,drop,shred,Shred of 'WISEA J093920.97+233426.9' in 'VV 659' group.
+CGCG 036-054 NED01,drop,shred,Shred of '2MASS J10120089+0321165' and '2MASS J10120083+0321111' in 'CGCG 036-054' group.
+WISEA J105508.12+402737.1,drop,shred,Shred of 'SDSS J105508.03+402734.5' in 'MAPS-NGP O_215_0381013' group.
+SDSS J110149.68+442654.8,drop,shred,Shred of 'CGCG 241-060 NED01' in 'CGCG 241-060' group.
+SDSS J110149.75+442647.4,drop,shred,Shred of 'CGCG 241-060 NED01' in 'CGCG 241-060' group.
+SDSS J110418.99+021855.1,drop,shred,Shred of 'CGCG 038-108 NED01' in 'CGCG 038-108' group.
+SDSS J110419.07+021856.8,drop,shred,Shred of 'CGCG 038-108 NED01' in 'CGCG 038-108' group.
+2MASS J11014831+4426594,drop,shred,Shred of 'CGCG 241-060 NED01' in 'CGCG 241-060' group.
+SDSS J110732.46+024446.4,drop,shred,Shred of 'MCG +01-29-001 NED02' in 'MCG +01-29-001' group.
+SDSS J111523.85+000622.5,drop,shred,Shred of 'CGCG 011-034 NED02' in 'CGCG 011-034' group.
+SDSS J113020.48+440944.6,drop,shred,Shred of 'CGCG 214-011 NED02' in 'CGCG 214-011' group.
+SDSS J113909.81+554000.2,drop,shred,Shred of 'CGCG 268-067 NED02' in 'CGCG 268-067' group.
+CGCG 043-129 NED01,drop,shred,Shred of 'CGCG 043-129 NED02' in 'CGCG 043-129' group.
+LEDA 4677183,drop,shred,Shred of 'UGC 08581 NED01' in 'UGC 08581' group.
+2MASS J13542703+0823316,drop,shred,Shred of 'CGCG 073-096 NED01' in 'CGCG 073-096' group.
+SDSS J141345.53+081318.5,drop,shred,Shred of 'UGC 09103 NOTES01' in 'VIII Zw 383' group.
+GAMA 592617,drop,shred,Shred of 'CGCG 018-089 NED01' in 'CGCG 018-089' group.
+WISEA J141444.66-001634.7,drop,shred,Shred of 'CGCG 018-092 NED01' in 'CGCG 018-092' group.
+SDSS J162921.34+485220.9,drop,shred,Shred of 'CGCG 251-023 NED02' in 'CGCG 251-023' group.
+SDSS J212604.71+052737.5,drop,shred,Shred of 'WISEA J212604.94+052731.7' in 'CGCG 401-022' group.
+WISEA J220652.51+154301.0,drop,shred,Shred of 'WISEA J220652.59+154254.5' in 'CGCG 428-031' group.
+PGC 1102511,drop,shred,Shred of 'CGCG 378-017 NED01' in 'CGCG 378-017' group.
+[SC98] 13125-2005a,drop,shred,Shred of '[SC98] 13125-2005b'.
+WISEA J002602.31-025537.0,drop,shred,Shred of 'WISEA J002601.81-025600.2' in 'VV 837' group.
+WISEA J002120.23+172025.8,drop,shred,Shred of 'UGC 00205 NED01' in 'UGC 00205' group.
+SDSS J001305.99+183014.1,drop,shred,Shred of 'CGCG 456-038 NED01' in 'CGCG 456-038' group.
+SDSSCGB 05478.04,drop,shred,Shred of '2MASX J01283988+1445536' in 'CGCG 436-060' group.
+2MASS J01544919-2808547,drop,shred,Shred of 'ESO 414-IG 009 NED02' in 'ESO 414-IG 009' group.
+NGC 0702 NED01,drop,shred,Shred of 'NGC 0702 NED02' in 'NGC 0702' group.
+IC 0510 NED01,drop,shred,Shred of 'IC 0510 NED02' in 'IC 0510' group.
+2MASS J08354104+4629400,drop,shred,Shred of '2MASS J08354046+4629389' in 'MRK 0092' group.
+2MASS J09393079+1907490,drop,shred,Shred of 'CGCG 092-021 NED01' in 'CGCG 092-021' group.
+CGCG 152-014 NED01,drop,shred,Shred of 'CGCG 152-014 NED02' in 'CGCG 152-014' group.
+2MASX J09290740+3008306,drop,shred,Shred of 'CGCG 152-014 NED02' in 'CGCG 152-014' group.
+2MASS J07463497+4448192,drop,shred,Shred of 'UGC 04008 NED02' in 'UGC 04008' group.
+2MASS J07440712+2914573,drop,shred,Shred of 'UGC 03995 NOTES01' in 'UGC 03995' group.
+SDSS J100435.94-014445.4,drop,shred,Shred of 'CGCG 008-032 NED01' in 'CGCG 008-032' group.
+PGC 894266,drop,shred,Shred of '2MASX J11324346-1643560' in 'MCG -03-30-002' group.
+IC 2873 NED01,drop,shred,Shred of 'IC 2873 NED02' in 'IC 2873' group.
+SDSS J111548.60+005130.5,drop,shred,Shred of 'UGC 06284 NED01' in 'UGC 06284' group.
+SDSS J102337.02+422040.5,drop,shred,Shred of 'KUG 1020+425 NED01' in 'KUG 1020+425' group.
+2MASS J11553167+5454040,drop,shred,Shred of '2MASX J11553166+5453565' in 'MCG +09-20-031' group.
+SDSS J130116.88+480337.5,drop,shred,Shred of 'MRK 0237b' in 'MRK 0237' group.
+SDSS J130117.07+480338.7,drop,shred,Shred of 'MRK 0237b' in 'MRK 0237' group.
+SDSS J130727.94+264323.3,drop,shred,Shred of 'ARP 139 NED02' in 'ARP 139' group.
+2MASS J13072652+2643166,drop,shred,Shred of 'ARP 139 NED02' in 'ARP 139' group.
+SDSS J130118.73+650027.2,drop,shred,Shred of 'VV 605 NED01' in 'VV 605' group.
+SDSS J125852.56+130845.9,drop,shred,Shred of 'CGCG 071-090 NED02' in 'CGCG 071-090' group.
+WISEA J123044.89+122159.6,drop,shred,Shred of 'UGC 07652 NED02' in 'UGC 07652' group.
+SDSS J114742.46+573849.0,drop,shred,Shred of 'UGC 06767 NED02' in 'UGC 06767' group.
+SDSS J114740.44+573836.3,drop,shred,Shred of 'UGC 06767 NED02' in 'UGC 06767' group.
+2MASS J11473963+5738360,drop,shred,Shred of 'UGC 06767 NED02' in 'UGC 06767' group.
+SDSS J114517.65+200115.5,drop,shred,Shred of 'CGCG 097-133E' in 'CGCG 097-133' group.
+UGC 06578 NED01,drop,shred,Shred of 'UGC 06578 NED02' in 'UGC 06578' group.
+WISEA J222517.09-005432.9,drop,shred,Shred of '2MFGC 16892' in '2MFGC 16892' group.
+2MASS J22251651-0054368,drop,shred,Shred of '2MFGC 16892' in '2MFGC 16892' group.
+SDSS J124846.31+264451.3,drop,shred,Shred of 'WISEA J124846.85+264455.7' in 'KUG 1246+270' group.
+6dF J0028517-233624,drop,shred,Shred of 'WISEA J002851.84-233622.6' in 'APMBGC 473-054-065' group.
+WISEA J131047.91-012244.0,drop,shred,Shred of 'VIII Zw 253 NED01' in 'VIII Zw 253' group.
+6dF J0321552-133901,drop,shred,Shred of 'VV 491 NED01' in 'MCG -02-09-035' group.
+VV 491 NED04,drop,shred,Train wreck; in 'MCG -02-09-035' group.
+PGC 333592,drop,shred,Shred of 'ESO 110-IG 025 NED01' in 'ESO 110-IG 025' group.
+PGC 333589,drop,shred,Shred of 'ESO 110-IG 025 NED01' in 'ESO 110-IG 025' group.
+SDSS J111634.35+284610.3,drop,shred,Shred of 'KUG 1113+290B' in 'CGCG 156-045' group.
+IRAS F22491-1808W,drop,shred,Shred of 'WISEA J225149.29-175223.8' in 'IRAS 22491-1808' group.
+SDSS J124156.72+265809.8,drop,shred,Shred of '2MASX J12415633+2658185' in 'KUG 1239+272' group.
+SDSS J091153.38+372410.7,drop,shred,Shred of 'SDSS J091153.60+372413.3' in 'B2 0908+37' group.
+2MASS J01114427-1532535,drop,shred,Shred of '2MASX J01114424-1532543' in 'GALEXASC J011144.18-153256.6' group.
+SDSS J082829.07+243831.6,drop,shred,Shred of 'KUG 0825+248 NED01' in 'KUG 0825+248' group.
+SDSS J113219.54+365626.6,drop,shred,Shred of 'KUG 1129+372 NED01' in 'KUG 1129+372' group.
+SDSS J093158.17+323452.1,drop,shred,Shred of 'KUG 0928+328 NED01' in 'KUG 0928+328' group.
+SDSS J152536.07+282624.9,drop,shred,Shred of 'WISEA J152535.91+282619.6' in 'CB-20.07763' group.
+LEDA 098508,drop,shred,Shred of 'WISEA J132834.84-312624.8' in 'FLASH J132834.24-312622.6' group.
+NGPFG 02543,drop,shred,Shred of three smaller sources; galaxy triple.
+LEDA 4676901,drop,shred,Shred of 'SDSSCGB 11546.02'.
+SDSS J033733.27+000837.4,drop,shred,
+SDSS J114840.08-001557.3,drop,shred,Shred of 'WISEA J114839.98-001557.1'
+SDSSCGB 00689.04,drop,shred,Shred of interacting pair in 'I Zw 076' group.
+2MASS J20005966-4704075,drop,shred,Shred of 'NGC 6845A'.
+PGC 506999,drop,shred,Shred of 'NGC 6845A'.
+WISEA J235421.74+410922.7,drop,shred,Shred of 'V Zw 438 NOTES03'.
+V Zw 438 NOTES02,drop,shred,Shred of 'V Zw 438 NOTES03'.
+VV 237d,drop,shred,Shred of 'WISEA J111115.12+284307.3'.
+SDSS J111112.72+284246.9,drop,shred,Shred of 'NGC 3561A'.
+VV 237e,drop,shred,Shred of 'NGC 3561A'.
+WISEA J114302.41+261625.4,drop,shred,Shred of 'UGC 06678 NOTES01'.
+SDSS J114301.03+261524.1,drop,shred,Shred of 'UGC 06678'.
+LEDA 4677121,drop,shred,Shred of 'NGC 2936'.
+2MASS J09374492+0245342,drop,shred,Shred of 'NGC 2936'.
+SDSS J112834.61+583423.0,drop,shred,Shred of 'NGC 3690'.
+2MASS J11282669+5834142,drop,shred,Shred of 'NGC 3690'.
+NYU-VAGC 0364548,drop,shred,Shred of 'NGC 3690'.
+NYU-VAGC 0100031,drop,shred,Shred of 'WISEA J021405.04+131902.2'.
+NYU-VAGC 0202550,drop,shred,Shred of 'WISEA J121354.85+024753.2'.
+WISEA J183236.84-392725.9,drop,shred,Shred of 'ESO 336- G 001'.
+SDSS J105153.19+510015.6,drop,shred,Shred of 'NGC 3410' in 'V1CG 559' group.
+2dFGRS N271Z004,drop,shred,Shred of 'WISEA J140211.98-012156.3' in 'KTG 52' group.
+SDSS J122105.97+395338.0,drop,shred,Shred of 'KUG 1218+401B' in 'KTG 43' group.
+[BFW2006] J261.33336+58.81476,drop,shred,Shred of 'NGC 6376' in 'UGC 10855' group.
+NGC 6376 NED01,drop,shred,Shred of 'NGC 6376' in 'UGC 10855' group.
+VII Zw 043 NOTES01,drop,shred,Shred of 'VII Zw 043 NOTES02' in 'VII Zw 043' group.
+2MASS J14460195+0829452,drop,shred,Shred of 'UGC 095092' in 'VV 109' group.
+SDSS J144604.46+082933.9,drop,shred,Shred of 'UGC 095092' in 'VV 109' group.
+UGC 09509 NOTES02,drop,shred,Shred of 'UGC 095092' in 'VV 109' group.
+SDSS J113755.22+215838.5,drop,shred,Shred of 'NGC 3753' in 'VV 282' group.
+UGC 03972 NOTES01,drop,shred,Shred of 'UGC 03972' in 'VV 349' group.
+WISEA J105435.60+565926.3,drop,shred,Shred of 'NGC 3445'.
+SDSSCGB 51774.02,drop,shred,Shred of 'NGC 3445' in 'ARP 024' group.
+SDSSCGB 51774.03,drop,shred,Shred of 'NGC 3445' in 'ARP 024' group.
+#
+WISEA J042438.35-073908.8,drop,anti-shred,Many smaller galaxies in the 'APMUKS(BJ) B042212.72-07455 ID' group.
+#
+UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
+UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
+2MASX J06413528+5015514,drop,star,Foreground star in 'CGCG 233-026 NED01'.
+[KE91] 105400.5+841412,drop,star,Foreground star in 'IRAS 10539+8414'?
+VV 757 NED05,drop,star,Foreground star in 'VV 757' group.
+GALEXASC J021209.52-023255.4,drop,star,Foreground star?
+VII Zw 910 NOTES03,drop,star,Foreground star in 'VII Zw 910' group.
+#
+ABELL 1205:[QR95] 3,drop,no source,In 'VV 145' group.
+ESO 292-IG 010 NED02,drop,no source,In 'ESO 292-IG 010' group.
+ESO 355-IG 012 NED02,drop,no source,In 'ESO 355-IG 012' group.
+ESO 355-IG 012 NED03,drop,no source,In 'ESO 355-IG 012' group.
+ESO 151-IG 014 NED02,drop,no source,In 'ESO 151-IG 014' group.
+ESO 193-IG 008 NED02,drop,no source,In 'ESO 193-IG 008' group.
+SBS 1532+591B,drop,no source,In 'SBS 1532+591' group.
+SBS 1520+503,drop,no source,In 'IRAS 15205+5021' group.
+2MASS J06324839+6855590,drop,no source,In 'IRAS 06273+6858' group.
+NGC 6745 NED01,drop,no source,In 'NGC 6745' group.
+2dFGRS S883Z423,drop,no source,In 'NGC 7764A' group.
+ESO-LV 2010242,drop,no source,In 'ESO 201-IG 024' group.
+VIII Zw 096,drop,no source,In 'MCG +02-27-036' group.
+PGC 1090498,drop,no source,In 'CGCG 012-059' group.
+VV 673,drop,no source,In 'VV 673' group.
+AGESVC1 040,drop,no source,In CGCG 043-009' group.
+UGC 08817,drop,no source,In 'UGC 08817' group.
+VV 223,drop,no source,In 'VIII Zw 383' group.
+UZC-CG 256,drop,no source,In 'CGCG 140-030' group.
+SDSS J233301.74+124939.6,drop,no source,In 'KUG 2330+125' group.
+SDSS J093731.86+351011.3,drop,no source,In 'KUG 0934+353' group.
+2dFGRS S289Z253,drop,no source,In 'APMBGC 411+004-028' group.
+PGC 266952,drop,no source,In '2MFGC 02112' group.
+AM 0231-302 NED01,drop,no source,In 'AM 0231-302' group.
+IRAS 21549-1206NW,drop,no source,In 'GALEXASC J215735.62-115145.9' group.
+KUG 2349+268 NED02,drop,no source,In 'KUG 2349+268' group.
+WISEA J095920.88+011753.4,drop,no source,In 'PKS 0956+015' group.
+ESO 195-IG 021 NED02,drop,no source,In 'ESO 195-IG 021' group.
+ESO 195-IG 021 NED01,drop,no source,In 'ESO 195-IG 021' group.
+AM 0659-680 W,drop,no source,In 'AM 0659-680' group.
+ESO 298-IG 024 NED01,drop,no source,In 'ESO 298-IG 024' group.
+NGC 1044 NED02,drop,no source,In 'NGC 1044' group.
+ESO 119-IG 027 NED01,drop,no source,In 'ESO 119-IG 027' group.
+SDSS J032044.93-010304.6,drop,no source,In 'UGC 02691' group.
+ESO 481-IG 012 NED01,drop,no source,In 'ESO 481-IG 012' group.
+WISEA J024938.63+340223.7,drop,no source,In 'MRK 1057' group.
+CGCG 091-070 NED02,drop,no source,In 'CGCG 091-070' group.
+USGC U257,drop,no source,In 'CGCG 035-052' group.
+PGC 3099314,drop,no source,In 'NGC 3550' group.
+SDSS J102525.57+553138.9,drop,no source,In 'CGCG 266-044' group.
+V1CG 572,drop,no source,In 'IC 2543' group.
+PGC 2770883,drop,no source,In 'UGCA 171' group.
+ESO 267-IG 009 NED02,drop,no source,In 'ESO 267-IG 009' group.
+VV 655 NED02,drop,no source,In 'VV 655' group.
+WISEA J114518.60+200035.9,drop,no source,In 'CGCG 097-133' group.
+SDSS J114518.75+200053.5,drop,no source,In 'CGCG 097-133' group.
+2dFGRS N311Z107,drop,no source,In 'WISEA J115020.46-003533.8' group.
+HOLM 477,drop,no source,In 'NGC 4759' group.
+2dFGRS S447Z179,drop,no source,In 'DUKST 412-027' group.
+DUKST 415-015 NED01,drop,no source,In 'AM 0218-321' group.
+AM 2309-311 NED01,drop,no source,In 'AM 2309-311' group.
+ABELL 3295:[VCC89] 1,drop,no source,In 'APMUKS(BJ) B045137.16-320104.3' group.
+2MFGC 03929,drop,no source,In 'IRAS 04433+6020' group.
+ABELL 1677:[AEF92],drop,no source,In 'MCG +05-31-128' group.
+VCC 1838,drop,no source,In 'VCC 1838' group.
+WAS 91,drop,no source,
+CGPG 1108.5+2857,drop,no source,In 'CGPG 1108.5+2857' group.
+CGPG 1108.5+2857 NED03,drop,no source,In 'CGPG 1108.5+2857' group.
+CGPG 1108.5+2857 NED02,drop,no source,In 'CGPG 1108.5+2857' group.
+UGC 06224 NOTES01,drop,no source,In 'CGPG 1108.5+2857' group.
+[H87] 3-83,drop,no source,In '[H87] 3-83' group.
+APMBGC 355-035-073,drop,no source,In 'APMBGC 355-035-073' group.
+LCRS B114750.8-031249,drop,no source,In 'LCRS B114750.8-031249' group.
+SSRS GROUP 70,drop,no source,In 'SSRS GROUP 70' group.
+CB-20.07763,drop,no source,In 'CB-20.07763' group.
+[PCM2000] 30,drop,no source,In '[PCM2000] 30' group.
+SCG 2203-2812,drop,no source,In 'SCG 2203-2812' group.
+MLCG 1264,drop,no source,In 'MLCG 1264' group.
+PM2GC GR1037,drop,no source,In 'PM2GC GR1037' group.
+AKARI J0835230+295315,drop,no source,In 'AKARI J0835230+295315' group.
+[SPS2007] 01,drop,no source,In '[SPS2007] 01' group.
+HIDEEP J1335-3409,drop,no source,In 'HIDEEP J1335-3409' group.
+FLASH J132834.24-312622.6,drop,no source,In 'FLASH J132834.24-312622.6' group.
+WINGS J132835.43-312629.9,drop,no source,In 'FLASH J132834.24-312622.6' group.
+3C 386:[MLO2002] TRIPLE,drop,no source,In '3C 386:[MLO2002] TRIPLE' group.
+PGC 130260,drop,no source,objtype=M2 in HyperLeda.
+SUMSS J032127-453041,drop,no source,In 'PGC 130260' M2 group.
+GALEXASC J195759.34+044732.0,drop,no source,Galaxy triple.
+VI Zw 109,drop,no source,Galaxy triple.
+VI Zw 150,drop,no source,Galaxy triple.
+2MASS J23074711-1209105,drop,no source,Galaxy triple.
+HOLM 511,drop,no source,Galaxy triple.
+HOLM 016,drop,no source,Galaxy triple.
+[SAB2007] LSS 34,drop,no source,Galaxy triple.
+[SAB2007] LSS 37,drop,no source,Galaxy triple.
+[ARN85] 0413+122G1,drop,no source,
+[ARN85] 0413+122G2,drop,no source,
+CFRS 22.0453,drop,no source,
+SDSS CE J153.955414-00.341320,drop,no source,
+I Zw 176,drop,no source,Galaxy triple.
+I Zw 044,drop,no source,Galaxy triple.
+I Zw 076,drop,no source,Galaxy triple.
+I Zw 190,drop,no source,Galaxy triple.
+IC 1094,drop,no source,Galaxy triple.
+IC 0186,drop,no source,Galaxy triple.
+IC 0275,drop,no source,Galaxy triple.
+IC 2722,drop,no source,Galaxy triple.
+SDSS J112655.59+004047.1,drop,no source,Galaxy triple.
+SDSS J084917.29+531755.8,drop,no source,Galaxy triple.
+II Zw 050,drop,no source,Galaxy triple.
+II Zw 099,drop,no source,Galaxy triple.
+II Zw 184,drop,no source,Galaxy triple.
+IV Zw 016,drop,no source,Galaxy triple; in 'IV Zw 016' group.
+IV Zw 016 NOTES02,drop,no source,In 'IV Zw 016' group.
+IV Zw 075,drop,no source,Galaxy triple; in 'IV Zw 075' group.
+IV Zw 075 NOTES01,drop,no source,In 'IV Zw 075' group.
+IV Zw 161,drop,no source,Galaxy triple; in 'IV Zw 161' group.
+IV Zw 161 NOTES02,drop,no source,In 'IV Zw 161' group.
+IV Zw 161 NOTES01,drop,no source,In 'IV Zw 161' group.
+III Zw 002,drop,no source,Galaxy triple.
+III Zw 120,drop,no source,Galaxy triple.
+III Zw 096,drop,no source,Galaxy triple.
+III Zw 065,drop,no source,Galaxy triple.
+III Zw 022,drop,no source,Galaxy triple.
+GALEXASC J130252.64-023102.9,drop,no source,Galaxy triple.
+GALEXASC J023427.50+325455.9,drop,no source,Galaxy triple.
+GALEXASC J030053.26-104515.2,drop,no source,Galaxy triple.
+GALEXASC J050209.70-633247.3,drop,no source,Galaxy triple.
+GALEXASC J104649.52-395954.1,drop,no source,Galaxy triple.
+GALEXASC J105343.22-454355.2,drop,no source,Galaxy triple.
+GALEXASC J023430.41+331357.6,drop,no source,Galaxy triple.
+GALEXASC J110913.38-472254.5,drop,no source,Galaxy triple.
+GALEXASC J193526.97-523514.7,drop,no source,Galaxy triple.
+GALEXASC J230033.22-470332.9,drop,no source,Galaxy triple.
+GALEXASC J133634.69+430113.1,drop,no source,Galaxy triple.
+IC 1559 GROUP,drop,no source,Galaxy group.
+VIII Zw 495,drop,no source,Galaxy triple.
+VIII Zw 060,drop,no source,Galaxy triple.
+VIII Zw 068,drop,no source,Galaxy triple.
+VIII Zw 125,drop,no source,Galaxy triple.
+VIII Zw 169,drop,no source,Galaxy triple.
+VIII Zw 198,drop,no source,Galaxy triple.
+VIII Zw 294,drop,no source,Galaxy triple.
+VIII Zw 346,drop,no source,Galaxy triple.
+VIII Zw 073,drop,no source,Galaxy triple.
+VIII Zw 319,drop,no source,Galaxy triple.
+V Zw 245,drop,no source,Galaxy triple.
+V Zw 026,drop,no source,Galaxy triple.
+V Zw 121,drop,no source,Galaxy triple.
+V Zw 137,drop,no source,Galaxy triple.
+V Zw 146,drop,no source,Galaxy triple.
+V Zw 174,drop,no source,Galaxy triple.
+V Zw 184,drop,no source,Galaxy triple.
+V Zw 209,drop,no source,Galaxy triple.
+V Zw 249,drop,no source,Galaxy triple.
+V Zw 279,drop,no source,Galaxy triple.
+V Zw 280,drop,no source,Galaxy triple.
+V Zw 438,drop,no source,Galaxy triple.
+V Zw 232,drop,no source,Galaxy triple.
+NGC 4933,drop,no source,Galaxy triple.
+NGC 3280,drop,no source,Galaxy triple.
+VIII Zw 060 NED02,drop,no source,In 'VIII Zw 060' group.
+VV 353b,drop,no source,In 'ARP 115' group.
+VV 316,drop,no source,In 'ARP 142' group.
+NGC 6482 GROUP,drop,no source,Galaxy group.
+NGC 0045 GROUP,drop,no source,Galaxy group.
+NGC 7386 GROUP,drop,no source,Galaxy group.
+NGC 4357 GROUP,drop,no source,Galaxy group.
+NGC 0043 GROUP,drop,no source,Galaxy group.
+NGC 7805 GROUP,drop,no source,Galaxy group.
+NGC 4725 GROUP,drop,no source,Galaxy group.
+NGC 3607 Group,drop,no source,Galaxy group.
+NGC 3672 GROUP,drop,no source,Galaxy group.
+NGC 1511 GROUP,drop,no source,Galaxy group.
+#
+UGC 06224,drop,duplicate,Close duplicate of 'NGC 3561'.
+#
+LCRS B222134.3-391730,drop,incorrect coordinates,
+II Zw 184 NOTES03,drop,incorrect coordinates,In 'II Zw 184' group.
+III Zw 022 NOTES02,drop,incorrect coordinates,In 'III Zw 022' group.
+III Zw 022 NOTES01,drop,incorrect coordinates,In 'III Zw 022' group.
+#
+AGC 222775,drop,radio source,In 'CGCG 128-031' group.
+AGC 212070,drop,radio source,In 'CGCG 039-044' group.
+2MASS J01144834-0029514,drop,radio source,In 'UGC 00793' group.
+AGC 214023,drop,radio source,In 'VIII Zw 128' group.
+FIRST J105749.1+361443,drop,radio source,In 'VV 747' group.
+AGC 230341,drop,radio source,In 'VV 831' group.
+AGC 749361,drop,radio source,In 'KUG 1605+275' group.
+SIP 0253-1,drop,Xray source,In 'NGC 3690' group.
+AGC 320762,drop,radio source,In 'UGC 11958' group.
+#
+ESO 186-IG 054 NED01,hyperleda-coords,NED incorrect,In 'ESO 186-IG 054' group.
+MCG +10-20-005 NED02,hyperleda-coords,NED incorrect,In 'MCG +10-20-005' group.
+WISEA J134023.91+564814.7,hyperleda-coords,NED incorrect,In 'MCG +10-20-005' group.
+ESO 533-IG 002 NED02,hyperleda-coords,NED incorrect,In 'ESO 533-IG 002' group.
+ESO 244-IG 029 NED01,hyperleda-coords,NED incorrect,In 'ESO 244-IG 029' group.
+NGC 0333A,hyperleda-coords,NED incorrect,In 'NGC 0333' group.
+GALEXASC J001905.03-612351.6,hyperleda-coords,NED incorrect,In 'AM 0016-614' group.
+UGC 12891 NED02,hyperleda-coords,NED incorrect,In 'UGC 12891' group.
+WISEA J000020.87+225942.5,hyperleda-coords,NED incorrect,In 'UGC 12891' group.
+V Zw 085 NOTES03,hyperleda-coords,NED incorrect,In 'V Zw 085' group.
+ESO 204-IG 024 NED02,hyperleda-coords,NED incorrect,In 'ESO 204-IG 024' group.
+MCG -03-13-040,hyperleda-coords,NED incorrect,In 'IRAS 04561-1501' group.
+ESO 251- G 001 NED02,hyperleda-coords,NED incorrect,In 'ESO 251- G 001' group.
+ESO 157-IG 024 NED01,hyperleda-coords,NED incorrect,In 'ESO 157-IG 024' group.
+ESO 249-IG 019 NED02,hyperleda-coords,NED incorrect,In 'ESO 249-IG 019' group.
+ESO 249-IG 019 NED01,hyperleda-coords,NED incorrect,In 'ESO 249-IG 019' group.
+ESO 356-IG 025 NED01,hyperleda-coords,NED incorrect,In 'ESO 356-IG 025' group.
+ESO 154-IG 015 NED01,hyperleda-coords,NED incorrect,In 'ESO 154-IG 015' group.
+2MASX J02421325-0829320,hyperleda-coords,NED incorrect,In 'KUG 0239-087' group.
+AM 0235-424 NED01,hyperleda-coords,NED incorrect,In 'ESO 247- G 002' group.
+ESO 088-IG 006 NED01,hyperleda-coords,NED incorrect,In 'ESO 088-IG 006' group.
+VII Zw 374 NOTES01,hyperleda-coords,NED incorrect,In 'VII Zw 374' group.
+2MASS J17505415+3152374,hyperleda-coords,NED incorrect,In 'CGCG 171-008' group.
+ESO 237-IG 039 NED01,hyperleda-coords,NED incorrect,In 'ESO 237-IG 039' group.
+FCCB 0140,hyperleda-coords,NED incorrect,In 'DUKST 357-064' group.
+ESO 194-IG 036 NED02,hyperleda-coords,NED incorrect,In 'ESO 194-IG 036' group.
+NGC 0454 NED01,hyperleda-coords,NED incorrect,In 'NGC 0454' group.
+UGC 01818 NED02,hyperleda-coords,NED incorrect,In 'UGC 01818' group.
+NGC 1088 NED02,hyperleda-coords,NED incorrect,In 'NGC 1088' group.
+IC 0298 NED01,hyperleda-coords,NED incorrect,In 'IC 0298' group.
+ESO 359-IG 014 NED01,hyperleda-coords,NED incorrect,In 'ESO 359-IG 014' group.
+ESO 157-IG 014 NED02,hyperleda-coords,NED incorrect,In 'ESO 157-IG 014' group.
+ESO 015-IG 011 NED02,hyperleda-coords,NED incorrect,In 'ESO 015-IG 011' group.
+ESO 414-IG 009 NED02,hyperleda-coords,NED incorrect,In 'ESO 414-IG 009' group.
+ESO 087-IG 041 NED02,hyperleda-coords,NED incorrect,In 'ESO 087-IG 041' group.
+NGC 3550 NED01,hyperleda-coords,NED incorrect,In 'NGC 3550' group.
+ESO 269-IG 022 NED01,hyperleda-coords,NED incorrect,In 'ESO 269-IG 022' group.
+CGCG 160-062 NED02,hyperleda-coords,NED incorrect,In 'CGCG 160-062' group.
+SDSS J143520.72+185841.5,hyperleda-coords,NED incorrect,In '2MASX J14352068+1858426' group.
+IC 1821 NED01,hyperleda-coords,NED incorrect,In 'IC 1821' group.
+2MASX J03481293-4618387,hyperleda-coords,NED incorrect,In '2dFGRS S889Z199' group.
+VV 491 NED02,hyperleda-coords,NED incorrect,In 'MCG -02-09-035' group; train wreck.
+DUKST 475-026,hyperleda-coords,NED incorrect,In 'NGC 0343' group.
+IV Zw 056 NOTES02,hyperleda-coords,NED incorrect,In 'IV Zw 056' group.
+2MASS J01114421-1532587,hyperleda-coords,NED incorrect,In 'GALEXASC J011144.18-153256.6' group.
+[LEB2022] J123525.9+355622.9,hyperleda-coords,NED incorrect,In 'KUG 1232+362' group.
+CGCG 042-200 NED03,hyperleda-coords,NED incorrect,In 'VCC 1838' group.
+IC 0186B,hyperleda-coords,NED incorrect,In 'IC 0186' group.
+II Zw 184 NOTES01,hyperleda-coords,NED incorrect,In 'II Zw 184' group.
+II Zw 184 NOTES02,hyperleda-coords,NED incorrect,In 'II Zw 184' group.
+IV Zw 016 NOTES01,hyperleda-coords,NED incorrect,In 'IV Zw 016' group.
+IV Zw 161 NOTES03,hyperleda-coords,NED incorrect,In 'IV Zw 161' group.
+VIII Zw 060 NED01,hyperleda-coords,NED incorrect,In 'VIII Zw 060' group.
+NGC 4933A,hyperleda-coords,NED incorrect,In 'NGC 4933' group.
+UGC 02337 NED03,hyperleda-coords,NED incorrect,In 'UGC 02337' group.
+PGC 017740,hyperleda-coords,NED incorrect,In 'VV 162' group.
+PGC 017742,hyperleda-coords,NED incorrect,In 'VV 162' group.
