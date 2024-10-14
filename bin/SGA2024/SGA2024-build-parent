@@ -176,7 +176,7 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
         ax.add_artist(Circle((pix[0], width-pix[1]), radius=4.*ref_pixscale/pixscale,
                              facecolor='none', edgecolor='red', lw=2, ls='-', alpha=0.9, clip_on=clip))
         ax.annotate('', xy=(pix[0], width-pix[1]), xytext=(xoffset, width-yoffset),
-                    annotation_clip=False, arrowprops=dict(
+                    annotation_clip=clip, arrowprops=dict(
                         facecolor='red', width=3, headwidth=8, shrink=0.01, alpha=0.9))
         ax.annotate(label, xy=(xoffset, width-yoffset), xytext=(xoffset, width-yoffset),
                     va=va, ha='center', color='white', bbox=bbox, fontsize=9,
@@ -357,6 +357,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
             '2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
             '2MFGC 16892',             # points to the center of the system
             'IV Zw 056',               # IV Zw 056 and IV Zw 056 NOTES02 are distinct
+            'AM 1913-605',             # will get dropped below; 
         ]
 
         # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
@@ -418,7 +419,11 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
 
     drop, dropcat = [], []
     for crossid in crossids:
+        if np.sum(crossid['objname_ned_from'] == newcat['OBJNAME']) == 0:
+            pdb.set_trace()
         m1 = np.where(crossid['objname_ned_from'] == newcat['OBJNAME'])[0][0]
+        if np.sum(crossid['objname_ned_to'] == newcat['OBJNAME']) == 0:
+            pdb.set_trace()
         m2 = np.where(crossid['objname_ned_to']== newcat['OBJNAME'])[0][0]
         drop.append(m1)
         dropcat.append(newcat[m1][cols])
@@ -513,8 +518,11 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
     # Build QA showing the sources at the center of each of the objects dropped
     # (in "dropcat").
     if build_qa:
-        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-crossid-errors')
-        pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'crossid-errors')
+        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'crossid-errors-viewer')
+        pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'crossid-errors-png')
+        pdfdir = os.path.join(sga_dir(), 'parent', 'vi', f'crossid-errors-pdf')
+        if not os.path.isdir(pdfdir):
+            os.makedirs(pdfdir)
 
         # make multiple pdfs
         nperpdf = 192
@@ -525,7 +533,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
             ee = (ii + 1) * nperpdf
             if ee > len(dropcat)-1:
                 ee = len(dropcat)-1
-            pdffile = os.path.join(sga_dir(), 'parent', 'vi', f'vi-crossid-errors-{ss:04}-{ee-1:04}.pdf')
+            pdffile = os.path.join(pdfdir, f'vi-crossid-errors-{ss:04}-{ee-1:04}.pdf')
 
             #multipage_skypatch(dropcat[ss:ee], cat=fullcat, pngsuffix='group', jpgdir=jpgdir,
             multipage_skypatch(dropcat[ss:ee], cat=newcat, width_arcsec=width_arcsec, clip=True,
@@ -558,7 +566,6 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     """
     width_arcsec = 120. # 30.
     ncol, nrow = 1, 1
-    clip = True
 
     if merger_type is not None:
         suffix = merger_type
@@ -604,12 +611,12 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              'UGCA', 'GALEX', 'GALEXMSC', 'VCC', 'USGC', 'MGC', 'LCRS',
                              'I', 'II', 'III', 'IV', 'VI', 'IC', 'MCG', 'NGC', 'APMUKS(BJ)',
                              'SDSS', 'V', 'KUG', 'GALEXASC', 'ARP', 'VV', 'IRAS', 'UGC',
-                             'VIII', 
+                             'VIII', '2dFGRS',
                              ]
             drop_references = None
         case _:
             VETO = None
-            drop_prefixes = ['WINGS', 'SRGb', 'KYDISC', ]
+            drop_prefixes = ['WINGS', 'SRGb', 'KYDISC', '[MD2000]', 'HeCS', 'ESP', ]
             drop_ignore_diam_prefixes = [
                 'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
                 '[BFW2006]', '[IBG2003]', '[BJG2014]', 'OPH', 'COMAi', 'zCOSMOS',
@@ -632,50 +639,20 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                 # candidate globular clusters:
                 'NGC 3607:[H2009]', 'NGC 5846:[H2009]', 'NGC 4494:[H2009]',
                 'NGC 5845:[H2009]', 'NGC 4125:[H2009]',
-                'NGC 4649:[KMZ2007]', 'NGC 3115:[KMZ2007]', 
+                'NGC 4649:[KMZ2007]', 'NGC 3115:[KMZ2007]',
                 ###
                 "Stephan's Quintet:[XLC2003]", 'HCG 092:[DUM2012]', 'HCG 092:[KAG2014]',
-                'HCG 090:[ZM98]', 'HCG 090:[DMG2011]', 
+                'HCG 090:[ZM98]', 'HCG 090:[DMG2011]',
                 'ABELL 0671:[MK91]', 'ABELL 1656:[GMP83]', 'ABELL 3558:[KMD98]',
                 'ABELL 3558:[MGP94]', 'ABELL 2218:[BOW83]', 'ABELL 2218:[LPS92]',
                 'ABELL 2218:AMI2012', 'GEMS', 'SCOSMOS', 'PKS 0537-441:[HJN2003]',
                 'PKS 0405-12:[PWC2006]', 'PKS 2005-489:[PWC2011]', 'PKS 1614+051:[HBS2015]',
                 'PKS 2155-304:[FFD2016]', 'PKS 1934-63:[RHL2016]', 'PKS 2135-14:[HBC97]',
                 'HS 1700+6416:[SSE2005]', 'NGC 4676:[BFB2004]', 'ABELL 2553:[QR95]',
-                '[GC2020]', '[GDW2019]',
-
+                '[GC2020]', '[GDW2019]', 'ABELL 1689:[GH91]', 'ABELL 1689:[MBC96]',
+                'ABELL 1689:[TCG90]',
             ]
 
-    # optionally build QA
-    if build_qa:
-        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-{qasuffix}')
-        pngdir = os.path.join(sga_dir(), 'parent', 'vi', qasuffix)
-
-        #qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
-        qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 200 and pre not in drop_prefixes]
-
-        #qa_prefixes = ['ARP'] ; width_arcsec = 120. ; overwrite = True
-        #obj='IC 1942' ; m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[fullcat['OBJNAME'] == obj]['RA'], fullcat[fullcat['OBJNAME'] == obj]['DEC'], 75./3600.)
-        #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
-        #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == '[BFH91]']['RA'], T[prefix == '[BFH91]']['DEC'], 75./3600.)
-        #qa_skypatch(fullcat[m1[3]], group=fullcat[m1], clip=True)
-        #fullcat[np.flatnonzero(np.core.defchararray.find(fullcat['OBJNAME'].value, 'ABELL 2247') != -1)][cols]
-
-        #for drop_prefix in ['III']:
-        for drop_prefix in qa_prefixes:
-        #for drop_prefix in drop_prefixes:
-            Idrop = drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, objname=objname,
-                                   VETO=VETO, verbose=False)
-            if len(Idrop) == 0:
-                print(f'No {suffix} sources with prefix {drop_prefix}')
-            else:
-                print(f'Building QA for {len(Idrop):,d} {suffix} sources with prefix {drop_prefix}')
-                pdffile = os.path.join(sga_dir(), 'parent', 'vi', f'vi-{qasuffix}-{drop_prefix}.pdf')
-                multipage_skypatch(T[Idrop], cat=fullcat, width_arcsec=width_arcsec, ncol=ncol, nrow=nrow,
-                                   jpgdir=jpgdir, pngdir=pngdir, pngsuffix=f'{qasuffix}-{drop_prefix}',
-                                   pdffile=pdffile, clip=clip, verbose=verbose, overwrite=overwrite,
-                                   cleanup=cleanup)
-        pdb.set_trace()
 
     I = []
     # drop by prefix (but not if there's a measured diameter)
@@ -709,7 +686,62 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     else:
         out = fullcat
 
+
+    # optionally build QA
+    if build_qa:
+        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'{qasuffix}-viewer')
+        pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'{qasuffix}-png')
+
+        qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
+        #qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 200 and pre not in drop_prefixes]
+
+        qa_prefixes = ['VII', ]
+
+        #qa_prefixes = ['ARP'] ; width_arcsec = 120. ; overwrite = True
+        #obj='IC 1942' ; m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[fullcat['OBJNAME'] == obj]['RA'], fullcat[fullcat['OBJNAME'] == obj]['DEC'], 75./3600.)
+        #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
+        #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == '[BFH91]']['RA'], T[prefix == '[BFH91]']['DEC'], 75./3600.)
+        #qa_skypatch(fullcat[m1[3]], group=fullcat[m1], clip=True)
+        #fullcat[np.flatnonzero(np.core.defchararray.find(fullcat['OBJNAME'].value, 'ABELL 2247') != -1)][cols]
+
+        #for drop_prefix in ['III']:
+        for drop_prefix in qa_prefixes:
+        #for drop_prefix in drop_prefixes:
+            Idrop = drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, objname=objname,
+                                   VETO=VETO, verbose=False)
+            if len(Idrop) == 0:
+                print(f'No {suffix} sources with prefix {drop_prefix}')
+            else:
+                print(f'Building QA for {len(Idrop):,d} {suffix} sources with prefix {drop_prefix}')
+                pdffile = os.path.join(sga_dir(), 'parent', 'vi', f'vi-{qasuffix}-{drop_prefix}.pdf')
+                multipage_skypatch(T[Idrop], cat=out, width_arcsec=width_arcsec, ncol=ncol, nrow=nrow,
+                                   jpgdir=jpgdir, pngdir=pngdir, pngsuffix=f'{qasuffix}-{drop_prefix}',
+                                   pdffile=pdffile, clip=True, verbose=verbose, overwrite=overwrite,
+                                   cleanup=cleanup)
+        pdb.set_trace()
+
     return out
+
+
+def repair_coordinates(cat, verbose=False):
+    """Repair incorrect coordinates in both NED and HyperLeda.
+
+    """
+    repairfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-vi-repair.csv')
+    repairs = Table.read(repairfile, format='csv', comment='#')
+
+    for objname, newra, newdec in zip(repairs['objname_ned'].value, repairs['ra'].value, repairs['dec'].value):
+        I = np.where(objname == cat['OBJNAME_NED'].value)[0]
+        if len(I) != 1:
+            raise ValueError(f'Problem finding {objname}!')
+        if verbose:
+            print(f'Repairing coordinates for {objname}:')
+            print(f'  Updating {cat["RA"][I[0]]} --> {newra}')
+            print(f'  Updating {cat["DEC"][I[0]]} --> {newdec}')
+        cat['RA'][I] = newra
+        cat['DEC'][I] = newdec
+
+    return cat
 
 
 def build_parent(mindiam=15./60., verbose=False, overwrite=False):
@@ -722,17 +754,29 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     cat = Table(fitsio.read(catfile))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
-    print('need to write the coordinate-repair code!!')
-    pdb.set_trace()
+    # [0] Repair coordinates.
+    cat = repair_coordinates(cat, verbose=verbose)
 
     # [1] Drop systems with uncommon prefixes (after VI).
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False, cleanup=True)
+    pdb.set_trace()
 
     # [2] Resolve cross-identification errors in NED/HyperLeda.
     cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
 
     # [3] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
+
+    pdb.set_trace()
+
+    I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
+    pdffile = 'tmp-objtype.pdf'
+    multipage_skypatch(cat[I[:50]], cat=cat, width_arcsec=30., ncol=5, nrow=5, clip=True, 
+                       jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
+                       pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
+
+
+
 
     # [4] Visually drop GTrpl and GPair systems without measured diameters and/or PGC numbers.
     cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=False, cleanup=True, overwrite=True)
@@ -1213,7 +1257,7 @@ def build_parent_nocuts(verbose=True):
         assert(len(np.unique(parent1[col])) == len(parent1))
     print()
     print(f'Parent 1: N={len(parent1):,d}')
-    pdb.set_trace()
+    #pdb.set_trace()
 
     # [2] - Add as many of the remaining ned_hyper objects as possible. Special
     # case VIRGO1, which incorrectly matches (in NED) to 'Virgo I Dwarf' rather
