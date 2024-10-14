@@ -639,6 +639,14 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         print(f'Keeping {np.sum(keep):,d}/{len(out):,d} objects with no NED duplicate-object warning.')
         out = out[keep]
 
+        # It's not clear why, but the coordinates for 2MASX J03294710-2901511
+        # came back (incorrectly!) from NED as (ra,dec)=(52.44783333,
+        # 29.02861111), which is actually 2MASX J03294748-2901428. Fix this
+        # here.
+        I = np.where(out['OBJNAME_NED'] == '2MASX J03294710-2901511')[0]
+        out['RA'][I] = 52.44616667
+        out['DEC'][I] = -29.03088889
+
         # add ROW, PGC, and ALTNAMES
         out['ALTNAMES'] = np.zeros(len(out), dtype=cat['ALTNAMES'].dtype)
         out['PGC'] = np.zeros(len(out), dtype=cat['PGC'].dtype)

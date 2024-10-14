@@ -585,6 +585,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     match merger_type:
         case 'GTrpl':
             VETO = None
+            drop_ignore_diam_prefixes = None
             drop_prefixes = ['AGC', 'HIPASS', '[BWH2007]', '2dFGRS', 'APMUKS(BJ)',
                              'RSCG', 'MCG', 'LGG', 'LCLG', 'IRAS', 'PPS2', 'GALEXMSC',
                              '[KLI2009]', 'DEEP2', '[ALB2009]', 'WBL', 'KTS', 'ARP',
@@ -593,45 +594,57 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              ]
             drop_references = None
         case 'GPair':
-            #drop_prefixes = None
             VETO = None
+            drop_ignore_diam_prefixes = None
             drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[H87]', '[PPC2002]', 'ZwCl',
                              '[vvd91a]', '2MASS', '2MASX', '2MASXi', '2MFGC', 'AGC', 'APMBGC',
                              'CGPG', 'Cocoon', 'CSL', 'CTS', 'FCCB', 'FLASH', 'MESSIER', 'GIN',
                              'VPCX', 'WAS', 'TOLOLO', 'SGC', 'KOS', 'PKS', 'PGC1', 'SARS',
                              'MAPS-NGP', 'FOCA', 'LSBG', 'LSBC', 'PGC', 'MRK', 'UM',
                              'UGCA', 'GALEX', 'GALEXMSC', 'VCC', 'USGC', 'MGC', 'LCRS',
-                             'I', 'II', 'III', 'IV', 'VI',
+                             'I', 'II', 'III', 'IV', 'VI', 'IC', 'MCG', 'NGC', 'APMUKS(BJ)',
+                             'SDSS', 'V', 'KUG', 'GALEXASC', 'ARP', 'VV', 'IRAS', 'UGC',
+                             'VIII', 
                              ]
             drop_references = None
         case _:
             VETO = None
-            drop_prefixes = ['WINGS', 'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
-                             '[BFW2006]', '[IBG2003]', '[BJG2014]', 'OPH', 'COMAi', 'zCOSMOS',
-                             'CDWFS', 'NuSTAR', '4U', '2CXO', '1RXS', 'SSTSL2', '[MHH96]',
-                             'NRGs', 'NSA', '[KSP2018]', '[AHH96]', 'NEP', '[MKB2002]',
-                             '[PSP2017]', 'ZwCl', '[SAB2007]', 'COSMOS', '1256+27W01',
-                             'Subaru-UDG', 'S-CANDELS', 'GOODS', 'TKRS', 'DEEP2', 'VVDS',
-                             'GMASS', 'COMBO-17', 'CNOC2', 'RCS', 'CANDELS', 'ACS-GC',
-                             'UKIDSS:[WQF2009]', 'UDF:[CBS2006]', 'FDF', 'EDCSN', 'HDF:[WBD96]',
-                             'CFRS', 'HDFS:[RVB2005]', 'UDF:[XPM2007]', 'COSMOS2015',
-                             'FIREWORKS', 'UDF:[BSK2006]', 'ADBS', 'AKARI', 'Bolocam', '[CIR2010]',
-                             'LH610MHz', 'RG', 'CB-19.04116', 'ISO_A2218_54', 'ISO_A2218_70',
-                             'HIDEEP', '[MGP2017]', 'Shadowy', 'VLANEP', 'TAFFY2', 'SMM',
-                             'Lock', 'SSSG', 'LQAC', 'HSG', 'HIZSS', 'HOLM', '[KLI2009]',
-                             'NSCS', 'H-KPAIR', 'KPAIR', 
-                             ]
-            #drop_prefixes = ['KUG', '2MFGC', 'NGPFG', 'SA', 'MGC', ]
-            drop_references = ['MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
-                               'NGC 3607:[H2009]', # candidate globular clusters
-                               "Stephan's Quintet:[XLC2003]", 'HCG 092:[DUM2012]', 'HCG 092:[KAG2014]',
-                               'ABELL 0671:[MK91]', 'ABELL 1656:[GMP83]', 'ABELL 3558:[KMD98]',
-                               'ABELL 3558:[MGP94]', 'ABELL 2218:[BOW83]', 'ABELL 2218:[LPS92]',
-                               'ABELL 2218:AMI2012', 'GEMS', 'SCOSMOS', 'PKS 0537-441:[HJN2003]',
-                               'PKS 0405-12:[PWC2006]', 'PKS 2005-489:[PWC2011]', 'PKS 1614+051:[HBS2015]',
-                               'PKS 2155-304:[FFD2016]', 'PKS 1934-63:[RHL2016]', 'PKS 2135-14:[HBC97]',
-                               'HS 1700+6416:[SSE2005]',
-                               ]
+            drop_prefixes = ['WINGS', 'SRGb', 'KYDISC', ]
+            drop_ignore_diam_prefixes = [
+                'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
+                '[BFW2006]', '[IBG2003]', '[BJG2014]', 'OPH', 'COMAi', 'zCOSMOS',
+                'CDWFS', 'NuSTAR', '4U', '2CXO', '1RXS', 'SSTSL2', '[MHH96]',
+                'NRGs', 'NSA', '[KSP2018]', '[AHH96]', 'NEP', '[MKB2002]',
+                '[PSP2017]', 'ZwCl', '[SAB2007]', 'COSMOS', '1256+27W01',
+                'Subaru-UDG', 'S-CANDELS', 'GOODS', 'TKRS', 'DEEP2', 'VVDS',
+                'GMASS', 'COMBO-17', 'CNOC2', 'RCS', 'CANDELS', 'ACS-GC',
+                'UKIDSS:[WQF2009]', 'UDF:[CBS2006]', 'FDF', 'EDCSN', 'HDF:[WBD96]',
+                'HDF:[LYF96]', 'HDF:[T2003]', 'HDFS:[RVB2005]', '[BRD2006]',
+                'CFRS', 'UDF:[XPM2007]', 'COSMOS2015',
+                'FIREWORKS', 'UDF:[BSK2006]', 'ADBS', 'AKARI', 'Bolocam', '[CIR2010]',
+                'LH610MHz', 'RG', 'CB-19.04116', 'ISO_A2218_54', 'ISO_A2218_70',
+                'HIDEEP', '[MGP2017]', 'Shadowy', 'VLANEP', 'TAFFY2', 'SMM',
+                'Lock', 'SSSG', 'LQAC', 'HSG', 'HIZSS', 'HOLM', '[KLI2009]',
+                'NSCS', 'H-KPAIR', 'KPAIR', 'HIPASS', 'ALFAZOA', 'HDF', '[MFB2005]',
+                'RR', 'RXC', 'MODS', 'BAS', 'HIZOA', ]
+            drop_references = [
+                'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
+                # candidate globular clusters:
+                'NGC 3607:[H2009]', 'NGC 5846:[H2009]', 'NGC 4494:[H2009]',
+                'NGC 5845:[H2009]', 'NGC 4125:[H2009]',
+                'NGC 4649:[KMZ2007]', 'NGC 3115:[KMZ2007]', 
+                ###
+                "Stephan's Quintet:[XLC2003]", 'HCG 092:[DUM2012]', 'HCG 092:[KAG2014]',
+                'HCG 090:[ZM98]', 'HCG 090:[DMG2011]', 
+                'ABELL 0671:[MK91]', 'ABELL 1656:[GMP83]', 'ABELL 3558:[KMD98]',
+                'ABELL 3558:[MGP94]', 'ABELL 2218:[BOW83]', 'ABELL 2218:[LPS92]',
+                'ABELL 2218:AMI2012', 'GEMS', 'SCOSMOS', 'PKS 0537-441:[HJN2003]',
+                'PKS 0405-12:[PWC2006]', 'PKS 2005-489:[PWC2011]', 'PKS 1614+051:[HBS2015]',
+                'PKS 2155-304:[FFD2016]', 'PKS 1934-63:[RHL2016]', 'PKS 2135-14:[HBC97]',
+                'HS 1700+6416:[SSE2005]', 'NGC 4676:[BFB2004]', 'ABELL 2553:[QR95]',
+                '[GC2020]', '[GDW2019]',
+
+            ]
 
     # optionally build QA
     if build_qa:
@@ -639,10 +652,10 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
         pngdir = os.path.join(sga_dir(), 'parent', 'vi', qasuffix)
 
         #qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
-        qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 60 and pre not in drop_prefixes]
+        qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 200 and pre not in drop_prefixes]
 
         #qa_prefixes = ['ARP'] ; width_arcsec = 120. ; overwrite = True
-        #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[fullcat['OBJNAME'] == 'IC 0186B']['RA'], fullcat[fullcat['OBJNAME'] == 'IC 0186B']['DEC'], 75./3600.)
+        #obj='IC 1942' ; m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[fullcat['OBJNAME'] == obj]['RA'], fullcat[fullcat['OBJNAME'] == obj]['DEC'], 75./3600.)
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == '[BFH91]']['RA'], T[prefix == '[BFH91]']['DEC'], 75./3600.)
         #qa_skypatch(fullcat[m1[3]], group=fullcat[m1], clip=True)
@@ -670,7 +683,15 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
         for drop_prefix in drop_prefixes:
             Idrop = drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, objname=objname,
                                    VETO=VETO, verbose=False)
-            print(f'Dropping {len(Idrop):,d} sources with prefix {drop_prefix}')
+            print(f'Dropping {len(Idrop):,d} sources with prefix {drop_prefix} and no diameter.')
+            I.append(Idrop)
+
+    # drop by prefix, ignoring the measured diameter
+    if drop_ignore_diam_prefixes is not None:
+        for drop_prefix in drop_ignore_diam_prefixes:
+            Idrop = drop_by_prefix(drop_prefix, prefix, pgc=None, diam=None,
+                                   objname=objname, VETO=VETO, verbose=False)
+            print(f'Dropping {len(Idrop):,d} sources with prefix {drop_prefix} ignoring diameter.')
             I.append(Idrop)
 
     # drop by reference
@@ -691,107 +712,6 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     return out
 
 
-def resolve_multiples(fullcat, system='GTrpl', build_qa=False, verbose=False, overwrite=False):
-    """Remove (most) GTrpl and GPair systems, most of which are actually galaxy
-    groups in NED. We want to keep the real pairs and triples, so we can make
-    sure we have the individual galaxies making up the system (e.g., all the
-    Arp systems).
-
-    """
-    from glob import glob
-
-    # Drop objects by prefix (after VI). Only consider objects (of the given
-    # prefix) close to the input {GPair,GTrpl} system.
-    T = fullcat[(fullcat['OBJTYPE'] == system) * (fullcat['VI'] == False)]
-    #T = cat[np.logical_or(cat['OBJTYPE'] == 'GTrpl', cat['OBJTYPE'] == 'GPair')]
-    allmatches = match_radec(T['RA'].value, T['DEC'].value, fullcat['RA'].value, fullcat['DEC'].value,
-                             75./3600., indexlist=True, notself=False)
-    cat = fullcat[np.unique(np.hstack(allmatches))]
-    allmatches = match_radec(T['RA'].value, T['DEC'].value, cat['RA'].value, cat['DEC'].value,
-                             75./3600., indexlist=True, notself=False)
-
-    match system:
-        case 'GTrpl':
-            drop_prefixes = None
-            #drop_prefixes = [
-            #    'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]', '[BFW2006]',
-            #    '[BJG2014]', '[H87]', '[PCM2000]', '[SPS2007]', '3C', 'AKARI', 'APMBGC',
-            #    'CB-20.07763', 'HIDEEP', 'III', 'LCRS', 'LCSB',
-            #    'MLCG', 'PM2GC', '[IBG2003]', 'SCG', 'SSRS', 'VCC', 'VI', 'WAS',
-            #    'FLASH', 'COSMOS', '[SAB2007]', 'DUKST', 'PPS2',
-            #]
-        case 'GPair':
-            # These are mostly very faint and/or high-redshift, and ~none have
-            # diamters larger than ~10 arcsec.
-            drop_prefixes = None
-            #drop_prefixes = [
-            #    'GOODS', 'S-CANDELS', 'CANDELS', 'ACS-GC', 'WINGS', 'COSMOS',
-            #    'zCOSMOS', 'ADBS', '[SAB2007]', 'Mr20:[BFW2006]', 'Mr19:[BFW2006]',
-            #    'Mr18:[BFW2006]', 'EDCSN', 'GEMS', 'GEMS_N1566_05', 'GEMS_N1566_11',
-            #    'GEMS_N3783_05', 'SSTSL2', '[BFH91]', '[MKB2002]', '[PSP2017]', '[vvd91a]',
-            #    'AKARI', 'Bolocam', 'ABELL', 'FCCB', 'FOCA', 'GALEX', 'GALEXMSC',
-            #    'GEMS_N7144_06', 'GIN', 'LQAC', 'LSBC', 'MESSIER', 'MaxBCG', 'NPM1G',
-            #    'SCOSMOS160', 'Shadowy', 'SMM', 'TAFFY2', 'USGC', 'VLANEP', 'VPC',
-            #    '[IBG2003]', 'Lock', 'MM', 'HDF:[LYF96]', 'HDF:[T2003]', 'CTS', 'PG',
-            #    'UDF:[JBM2015]', 'HIZSS', 'HS', 'ISO_A2218_54']
-        case _:
-            drop_prefixes = None
-
-
-    prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-    diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
-    pgc = cat['PGC'].value
-
-    if drop_prefixes is not None:
-        I = []
-        for drop_prefix in drop_prefixes:
-            I.append(drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, verbose=False))
-        if len(I) > 0:
-            I = np.unique(np.hstack(I))
-            if verbose:
-                print(f'Removing {len(I):,d}/{len(cat):,d} {system} centrals and satellites based on prefix.')
-                cat = cat[~np.isin(cat['PARENT_ROW'], cat[I]['PARENT_ROW'])]
-
-    # optionally build QA
-    if build_qa:
-        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'viewer-{system}')
-        pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'{system}')
-
-        # Remake the group catalogs.
-        T = cat[cat['OBJTYPE'] == system]
-        #T = cat[np.logical_or(cat['OBJTYPE'] == 'GPair', cat['OBJTYPE'] == 'GTrpl')]
-        allmatches = match_radec(T['RA'].value, T['DEC'].value, cat['RA'].value, cat['DEC'].value,
-                                 75./3600., indexlist=True, notself=False)
-
-        prefix = np.array(list(zip(*np.char.split(T['OBJNAME'].value, ' ').tolist()))[0])
-        allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-
-        C = Counter(prefix)
-        C.most_common()
-        #Call = Counter(allprefix)
-        #Call.most_common()
-
-
-
-
-        #for pre, count in sorted(C.items()):
-        testprefix = ['I'] # ['ARK', 'CoD', 'HARO', 'KAZ', 'NPM1G', 'Dwarf', 'PG', 'RB', 'TOLOLO']
-        for pre, count in zip(testprefix, [1]*len(testprefix)):
-            if (count > 0) * (count < 3):
-            #if (count > 1) * (count < 3):
-                print(f'Working on prefix {pre} (N={count})')
-                I = np.where(pre == prefix)[0]
-                for J in I:
-                    primary = T[J]
-                    group= cat[allmatches[J]]
-                    qa_skypatch(primary, group=group, suffix=system, pngdir=pngdir,
-                                jpgdir=jpgdir, verbose=True, overwrite=overwrite)
-                print()
-
-
-    return cat
-
-
 def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     """Build the parent catalog.
 
@@ -799,8 +719,11 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
 
     """
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
-    cat = Table(fitsio.read(catfile))#, rows=np.arange(10000)))
+    cat = Table(fitsio.read(catfile))
     print(f'Read {len(cat):,d} objects from {catfile}')
+
+    print('need to write the coordinate-repair code!!')
+    pdb.set_trace()
 
     # [1] Drop systems with uncommon prefixes (after VI).
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False, cleanup=True)
@@ -815,6 +738,23 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=False, cleanup=True, overwrite=True)
     cat = remove_by_prefix(cat, merger_type='GPair', verbose=verbose, build_qa=True, cleanup=True, overwrite=True)
 
+
+    pdb.set_trace()
+    # How many sources with diam<0.1 have no other source within 10 arcsec?
+    diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
+    I = np.where(diam < 0.1)[0]
+    refcat = cat[I]
+    allmatches = match_radec(cat['RA'].value, cat['DEC'].value, refcat['RA'].value, refcat['DEC'].value,
+                             10./3600., indexlist=True, notself=False)
+    allindx_cat, allindx_refcat = [], []
+    for iobj, onematch in enumerate(allmatches):
+        if onematch is None:
+            #continue
+            allindx_cat.append(iobj)
+            allindx_refcat.append(onematch)
+        #if len(onematch) == 1:
+        #    allindx_cat.append(iobj)
+        #    allindx_refcat.append(onematch)
     pdb.set_trace()
 
     ## Resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
@@ -1273,7 +1213,7 @@ def build_parent_nocuts(verbose=True):
         assert(len(np.unique(parent1[col])) == len(parent1))
     print()
     print(f'Parent 1: N={len(parent1):,d}')
-    #pdb.set_trace()
+    pdb.set_trace()
 
     # [2] - Add as many of the remaining ned_hyper objects as possible. Special
     # case VIRGO1, which incorrectly matches (in NED) to 'Virgo I Dwarf' rather
@@ -1490,7 +1430,7 @@ def build_parent_nocuts(verbose=True):
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
         except:
             print(f'Problem with column {col}!')
-            raise ValueError()
+            pdb.set_trace()
 
     I = parent['PGC'] > 0
     assert(len(parent[I]) == len(np.unique(parent['PGC'][I])))
