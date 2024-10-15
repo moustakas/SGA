@@ -3,4 +3,13 @@
 # updated.
 objname_ned,ra,dec,diam,pa,ba,comment
 NGC 4106,181.689961,-29.768386,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
+UGC 01386 NOTES01,28.748249999999995,13.46725,-99.,-99.,-99.,Center on the galaxy.
+ESO 406-IG 007 NED01,340.904793,-36.440937,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
+ESO 074-IG 013 NED02,312.853860,-67.935307,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
+ESO 235-IG 003 NED02,312.464326,-52.087964,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
+ESO 192-IG 005 NED01,353.099512,-55.779419,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
+
 AM 1913-605,-99.,-99.,0.4,-99.,-99.,Flagged as a galaxy pair but centered on a nice spiral.
+WISEA J003745.01+061330.3,-99.,-99.,0.3,-99.,-99.,Companion to 'CGCG 409-048 NED02'.
+WISEA J072519.38+553035.0,-99.,-99.,0.3,-99.,-99.,Companion to 'CGCG 261-065 NED02'.
+WISEA J233224.52-554705.1,-99.,-99.,0.3,-99.,-99.,Companion to 'ESO 192-IG 005 NED02'.

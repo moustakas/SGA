@@ -472,6 +472,9 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
                 obj = actions[action == actions['action']]['objname'].value
                 I = np.isin(newcat['OBJNAME'].value, obj)
                 if np.sum(I) != len(obj):
+                    #for oo in obj:
+                    #    if np.sum(np.isin(newcat['OBJNAME'], oo)) != 1:
+                    #        print(oo)
                     pdb.set_trace()
                     print(obj[~np.isin(obj, newcat['OBJNAME'][I].value)])
                     raise ValueError('Some objects not found!')
@@ -610,12 +613,13 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              'UGCA', 'GALEX', 'GALEXMSC', 'VCC', 'USGC', 'MGC', 'LCRS',
                              'I', 'II', 'III', 'IV', 'VI', 'IC', 'MCG', 'NGC', 'APMUKS(BJ)',
                              'SDSS', 'V', 'KUG', 'GALEXASC', 'ARP', 'VV', 'IRAS', 'UGC',
-                             'VIII', '2dFGRS', 'VII', 'AM', 'CGMW', 'WISEA', 'KPG', 
+                             'VIII', '2dFGRS', 'VII', 'AM', 'CGMW', 'WISEA', 'KPG', 'CGCG',
                              ]
             drop_references = None
         case _:
             VETO = None
-            drop_prefixes = ['WINGS', 'SRGb', 'KYDISC', '[MD2000]', 'HeCS', 'ESP', ]
+            drop_prefixes = ['WINGS', 'SRGb', 'KYDISC', '[MD2000]', 'HeCS', 'ESP',
+                             'SDSSCGB', 'NVSS', 'AGC', ]
             drop_ignore_diam_prefixes = [
                 'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
                 '[BFW2006]', '[IBG2003]', '[BJG2014]', 'OPH', 'COMAi', 'zCOSMOS',
