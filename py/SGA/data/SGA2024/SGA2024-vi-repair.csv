@@ -1,3 +1,0 @@
-# Object-level "repair" of coordinates based on VI (visual inspections).
-objname_ned,ra,dec,comment
-NGC 4106,181.689961,-29.768386,NED and HyperLeda are both incorrect.

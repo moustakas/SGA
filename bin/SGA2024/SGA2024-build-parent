@@ -357,7 +357,6 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
             '2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
             '2MFGC 16892',             # points to the center of the system
             'IV Zw 056',               # IV Zw 056 and IV Zw 056 NOTES02 are distinct
-            'AM 1913-605',             # will get dropped below; 
         ]
 
         # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
@@ -611,7 +610,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              'UGCA', 'GALEX', 'GALEXMSC', 'VCC', 'USGC', 'MGC', 'LCRS',
                              'I', 'II', 'III', 'IV', 'VI', 'IC', 'MCG', 'NGC', 'APMUKS(BJ)',
                              'SDSS', 'V', 'KUG', 'GALEXASC', 'ARP', 'VV', 'IRAS', 'UGC',
-                             'VIII', '2dFGRS',
+                             'VIII', '2dFGRS', 'VII', 'AM', 'CGMW', 'WISEA', 'KPG', 
                              ]
             drop_references = None
         case _:
@@ -633,7 +632,8 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                 'HIDEEP', '[MGP2017]', 'Shadowy', 'VLANEP', 'TAFFY2', 'SMM',
                 'Lock', 'SSSG', 'LQAC', 'HSG', 'HIZSS', 'HOLM', '[KLI2009]',
                 'NSCS', 'H-KPAIR', 'KPAIR', 'HIPASS', 'ALFAZOA', 'HDF', '[MFB2005]',
-                'RR', 'RXC', 'MODS', 'BAS', 'HIZOA', ]
+                'RR', 'RXC', 'MODS', 'BAS', 'HIZOA', 'LaCoSSPAr', 'HIJASS',
+                'AGESVC1', 'LRG', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:
@@ -695,8 +695,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
         qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
         #qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 200 and pre not in drop_prefixes]
 
-        qa_prefixes = ['VII', ]
-
+        #qa_prefixes = ['VII', ]
         #qa_prefixes = ['ARP'] ; width_arcsec = 120. ; overwrite = True
         #obj='IC 1942' ; m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[fullcat['OBJNAME'] == obj]['RA'], fullcat[fullcat['OBJNAME'] == obj]['DEC'], 75./3600.)
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
@@ -723,23 +722,31 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     return out
 
 
-def repair_coordinates(cat, verbose=False):
-    """Repair incorrect coordinates in both NED and HyperLeda.
+def update_properties(cat, verbose=False):
+    """Update properties, including incorrect coordinates, in both NED and
+    HyperLeda.
 
     """
-    repairfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-vi-repair.csv')
-    repairs = Table.read(repairfile, format='csv', comment='#')
+    propfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-vi-properties.csv')
+    props = Table.read(propfile, format='csv', comment='#')
 
-    for objname, newra, newdec in zip(repairs['objname_ned'].value, repairs['ra'].value, repairs['dec'].value):
+    for prop in props:
+        objname = prop['objname_ned']
         I = np.where(objname == cat['OBJNAME_NED'].value)[0]
         if len(I) != 1:
             raise ValueError(f'Problem finding {objname}!')
         if verbose:
-            print(f'Repairing coordinates for {objname}:')
-            print(f'  Updating {cat["RA"][I[0]]} --> {newra}')
-            print(f'  Updating {cat["DEC"][I[0]]} --> {newdec}')
-        cat['RA'][I] = newra
-        cat['DEC'][I] = newdec
+            print(f'{objname} ({cat["OBJTYPE"][I[0]]}):')
+        for newcol, col in zip(['ra', 'dec', 'diam', 'pa', 'ba'],
+                               ['RA', 'DEC', 'DIAM', 'PA', 'BA']):
+            newval = prop[newcol]
+            if verbose:
+                if newval != -99.:
+                    print(f'  Updating {col}: {cat[col][I[0]]} --> {newval}')
+                else:
+                    print(f'  Retaining {col}: {cat[col][I[0]]}')
+            if newval != -99.:
+                cat[col][I] = newval
 
     return cat
 
@@ -751,21 +758,24 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
 
     """
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
-    cat = Table(fitsio.read(catfile))
-    print(f'Read {len(cat):,d} objects from {catfile}')
+    origcat = Table(fitsio.read(catfile))
+    print(f'Read {len(origcat):,d} objects from {catfile}')
 
-    # [0] Repair coordinates.
-    cat = repair_coordinates(cat, verbose=verbose)
+    # [1] Update individual-galaxy properties, including coordinates.
+    cat = update_properties(origcat, verbose=verbose)
 
-    # [1] Drop systems with uncommon prefixes (after VI).
-    cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False, cleanup=True)
-    pdb.set_trace()
+    # [2] Drop systems with uncommon prefixes (after VI).
+    cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
-    # [2] Resolve cross-identification errors in NED/HyperLeda.
+    # [3] Resolve cross-identification errors in NED/HyperLeda.
     cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
 
-    # [3] Resolve close (1 arcsec) pairs.
+    # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
+
+    # [4] Visually drop GTrpl and GPair systems without measured diameters and/or PGC numbers.
+    cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=False, overwrite=True)
+    cat = remove_by_prefix(cat, merger_type='GPair', verbose=verbose, build_qa=True, overwrite=True)
 
     pdb.set_trace()
 
@@ -774,13 +784,6 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     multipage_skypatch(cat[I[:50]], cat=cat, width_arcsec=30., ncol=5, nrow=5, clip=True, 
                        jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
                        pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
-
-
-
-
-    # [4] Visually drop GTrpl and GPair systems without measured diameters and/or PGC numbers.
-    cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=False, cleanup=True, overwrite=True)
-    cat = remove_by_prefix(cat, merger_type='GPair', verbose=verbose, build_qa=True, cleanup=True, overwrite=True)
 
 
     pdb.set_trace()

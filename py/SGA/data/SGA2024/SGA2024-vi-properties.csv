@@ -1,0 +1,6 @@
+# Object-level update of coordinates and other galaxy properties based on VI
+# (visual inspections). A value of -99 means that property should not be
+# updated.
+objname_ned,ra,dec,diam,pa,ba,comment
+NGC 4106,181.689961,-29.768386,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
+AM 1913-605,-99.,-99.,0.4,-99.,-99.,Flagged as a galaxy pair but centered on a nice spiral.
