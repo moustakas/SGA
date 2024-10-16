@@ -599,13 +599,16 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              'RSCG', 'MCG', 'LGG', 'LCLG', 'IRAS', 'PPS2', 'GALEXMSC',
                              '[KLI2009]', 'DEEP2', '[ALB2009]', 'WBL', 'KTS', 'ARP',
                              'AM', 'V1CG', 'KTG', 'UGC', 'VII', 'VV', 'NSCS', 'WISEA',
-                             'CGCG', 'LDCE', 'HDCE', 'USGC', 'UZC-CG', 'ESO',
-                             ]
+                             'CGCG', 'LDCE', 'HDCE', 'USGC', 'UZC-CG', 'ESO', 'MLCG',
+                             'PM2GC', 'V1CG', '[SPS2007]', 'UZC-CG', 'FLASH', 'SCG',
+                             'USGC', 'CB-20.07763', 'SSRS', 'APMBGC', 'WAS', 'VCC',
+                             '2MASS', 'CGPG', 'II', 'VI', 'I', 'IC', 'IV', 'SDSS',
+                             'GALEXASC', 'VIII', 'V', 'NGC', ]
             drop_references = None
         case 'GPair':
             VETO = None
             drop_ignore_diam_prefixes = None
-            drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[H87]', '[PPC2002]', 'ZwCl',
+            drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]', 'ZwCl',
                              '[vvd91a]', '2MASS', '2MASX', '2MASXi', '2MFGC', 'AGC', 'APMBGC',
                              'CGPG', 'Cocoon', 'CSL', 'CTS', 'FCCB', 'FLASH', 'MESSIER', 'GIN',
                              'VPCX', 'WAS', 'TOLOLO', 'SGC', 'KOS', 'PKS', 'PGC1', 'SARS',
@@ -614,7 +617,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              'I', 'II', 'III', 'IV', 'VI', 'IC', 'MCG', 'NGC', 'APMUKS(BJ)',
                              'SDSS', 'V', 'KUG', 'GALEXASC', 'ARP', 'VV', 'IRAS', 'UGC',
                              'VIII', '2dFGRS', 'VII', 'AM', 'CGMW', 'WISEA', 'KPG', 'CGCG',
-                             ]
+                             'HS', 'ESO']
             drop_references = None
         case _:
             VETO = None
@@ -637,7 +640,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                 'Lock', 'SSSG', 'LQAC', 'HSG', 'HIZSS', 'HOLM', '[KLI2009]',
                 'NSCS', 'H-KPAIR', 'KPAIR', 'HIPASS', 'ALFAZOA', 'HDF', '[MFB2005]',
                 'RR', 'RXC', 'MODS', 'BAS', 'HIZOA', 'LaCoSSPAr', 'HIJASS',
-                'AGESVC1', 'LRG', ]
+                'AGESVC1', 'LRG', '[MLO2002]', '[H87]', '[ARN85]', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:
@@ -654,9 +657,22 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                 'PKS 2155-304:[FFD2016]', 'PKS 1934-63:[RHL2016]', 'PKS 2135-14:[HBC97]',
                 'HS 1700+6416:[SSE2005]', 'NGC 4676:[BFB2004]', 'ABELL 2553:[QR95]',
                 '[GC2020]', '[GDW2019]', 'ABELL 1689:[GH91]', 'ABELL 1689:[MBC96]',
-                'ABELL 1689:[TCG90]',
-            ]
-
+                'ABELL 1689:[TCG90]', 'ABELL 1677:[AEF92]', 'ABELL 3295:[VCC89]',
+                'ABELL 1205:[QR95]', ]
+            # {'ABELL 0116:KYDISC',
+            # 'ABELL 0646:KYDISC',
+            # 'ABELL 0655:KYDISC',
+            # 'ABELL 0667:KYDISC',
+            # 'ABELL 0690:KYDISC',
+            # 'ABELL 1126:KYDISC',
+            # 'ABELL 1139:KYDISC',
+            # 'ABELL 1146:KYDISC',
+            # 'ABELL 1278:KYDISC',
+            # 'ABELL 2061:KYDISC',
+            # 'ABELL 2249:KYDISC',
+            # 'ABELL 2589:KYDISC',
+            # 'ABELL 3574:KYDISC',
+            # 'ABELL 3659:KYDISC'}
 
     I = []
     # drop by prefix (but not if there's a measured diameter)
@@ -736,7 +752,7 @@ def update_properties(cat, verbose=False):
 
     for prop in props:
         objname = prop['objname_ned']
-        I = np.where(objname == cat['OBJNAME_NED'].value)[0]
+        I = np.where(objname == cat['OBJNAME'].value)[0]
         if len(I) != 1:
             raise ValueError(f'Problem finding {objname}!')
         if verbose:
@@ -772,16 +788,17 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
+    cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=True, build_qa=False)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
 
     # [4] Visually drop GTrpl and GPair systems without measured diameters and/or PGC numbers.
     cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=False, overwrite=True)
-    cat = remove_by_prefix(cat, merger_type='GPair', verbose=verbose, build_qa=True, overwrite=True)
+    cat = remove_by_prefix(cat, merger_type='GPair', verbose=verbose, build_qa=False, overwrite=True)
 
     pdb.set_trace()
+
 
     I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
     pdffile = 'tmp-objtype.pdf'

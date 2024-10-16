@@ -18,6 +18,8 @@ SDSS J121152.04+005738.9,drop,faint,In '2dFGRS N384Z040' group.
 SDSS J121151.84+005736.8,drop,faint,In '2dFGRS N384Z040' group.
 WISEA J121149.20+005806.6,drop,faint,In '2dFGRS N384Z040' group.
 WISEA J204722.45+001845.0,drop,faint,In 'KPG 548' group.
+WISEA J114518.60+200035.9,drop,faint,In 'CGCG 097-133' group.
+ESO 324-IG 022 NED02,drop,faint,In 'ESO 324-IG 022' group.
 #
 MGC 0006552,drop,compact,In 'MGC 0006552' group.
 2MASS J10225889-0010216,drop,compact,In 'MGC 0006552' group.
@@ -70,6 +72,7 @@ SDSS J103209.15-013001.4,drop,compact,Compact source in the envelope of 'UGC 057
 SDSS J142433.26+011057.3,drop,compact,Compact source in the envelope of 'UGC 09229'.
 2MASS J14260806+0514336,drop,compact,Compact source in the envelope of 'UGC 09244'.
 2MASS J17220407+5906460,drop,compact,Compact source in the envelope of 'SN 2019bgl HOST'.
+WISEA J122201.64-395918.9,drop,compact,Compact; very wrong diameter.
 #
 WISEA J042438.35-073908.8,drop,anti-shred,Many smaller galaxies in the 'APMUKS(BJ) B042212.72-07455 ID' group.
 #
@@ -557,6 +560,27 @@ SDSS J130933.30+005156.4,drop,shred,Shred or part of 'NGC 4996'.
 SDSS J130930.44+005042.1,drop,shred,Shred or part of 'NGC 4996'.
 2MASX J06430003-7415042,drop,shred,Shred or part of 'ESO 034-IG 011 NED02'.
 2MASS J06425857-7414449,drop,shred,Shred or part of 'ESO 034-IG 011 NED02'.
+PGC 3080165,drop,shred,Shred or part of 'NGC 1044 NED02'.
+2dFGRS S534Z238,drop,shred,Shred or part of 'ESO 406- G 010'.
+WISEA J205123.90-675536.6,drop,shred,Shred or part of 'ESO 074-IG 013 NED01'.
+ESO 384-IG 025 NED01,drop,shred,Shred or part of 'PGC 049816'; in 'ESO 384-IG 025' group.
+2MASS J13142364-4606410,drop,shred,Shred or part of 'ESO 269-IG 074 NED02'.
+ESO 219-IG?032 NED01,drop,shred,Shred or part of 'ESO 219-IG?032 NED02'.
+2MASS J12584426-3602310,drop,shred,Shred or part of 'ESO 381-IG 033 NED02'.
+ESO 568-IG 022 NED02,drop,shred,Shred or part of 'ESO 568-IG 022 NED01'.
+ESO 501-IG 006 NED02,drop,shred,Shred or part of 'ESO 501-IG 006 NED01'.
+WISEA J073446.67-522443.8,drop,shred,Shred or part of 'ESO 208-IG 024 NED02'.
+PGC 356672,drop,shred,Shred or part of 'ESO 118-IG 004 NED01'.
+ESO 107-IG 023 NED01,drop,shred,Shred or part of 'ESO 107-IG 023 NED02'.
+ESO 235-IG 068 NED02,drop,shred,Shred or part of 'ESO 235-IG 068 NED01'.
+WISEA J202006.40-194248.2,drop,shred,Shred or part of 'ESO 596-IG 018 NED02'.
+6dF J1310514-205746,drop,shred,Shred or part of 'ESO 576-IG 004 NED02'.
+2MASX J12533026-3431400,drop,shred,Shred or part of 'ESO 381-IG 027 NED02'.
+WISEA J125330.38-343138.6,drop,shred,Shred or part of 'ESO 381-IG 027 NED02'.
+2MASS J04084221-7509262,drop,shred,Shred or part of 'ESO 032-IG 010 NED02'.
+6dF J0313507-183102,drop,shred,Shred or part of 'ESO 547-IG 021 NED02'.
+ESO 352-IG 045 NED02,drop,shred,Shred or part of 'GALEXASC J011956.84-341537.8'.
+2dFGRS S506Z355,drop,shred,Shred or part of 'GALEXASC J011956.84-341537.8'.
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
@@ -581,197 +605,95 @@ VII Zw 853 NOTES01,drop,star,Foreground star in 'VII Zw 853 NOTES02'?
 VII Zw 861 NOTES02,drop,star,Foreground star in 'VII Zw 861 NOTES01'?
 2MASS J19273279+6155446,drop,star,Foreground star in 'VII Zw 884 NOTES01'.
 2MASS J16522206+3042409,drop,star,Foreground star in 'CGCG 169-009 NED01'?
+CGCG 091-070 NED02,drop,star,Foreground star in 'CGCG 091-070' group?
+ESO 284-IG 035 NED01,drop,star,Foreground star in 'ESO 284-IG 035' group.
+ESO 232-IG 007 NED01,drop,star,Foreground star in 'ESO 232-IG 007' group.
+WISEA J031158.60-551705.6,drop,star,Foreground star in 'ESO 150-IG 010' group?
+WISEA J024833.03-712334.4,drop,star,Foreground star in 'ESO 053-IG 018' group.
 #
-ABELL 1205:[QR95] 3,drop,no source,In 'VV 145' group.
 ESO 292-IG 010 NED02,drop,no source,In 'ESO 292-IG 010' group.
-ESO 355-IG 012 NED02,drop,no source,In 'ESO 355-IG 012' group.
-ESO 355-IG 012 NED03,drop,no source,In 'ESO 355-IG 012' group.
-ESO 151-IG 014 NED02,drop,no source,In 'ESO 151-IG 014' group.
 ESO 193-IG 008 NED02,drop,no source,In 'ESO 193-IG 008' group.
 SBS 1532+591B,drop,no source,In 'SBS 1532+591' group.
 SBS 1520+503,drop,no source,In 'IRAS 15205+5021' group.
 2MASS J06324839+6855590,drop,no source,In 'IRAS 06273+6858' group.
 NGC 6745 NED01,drop,no source,In 'NGC 6745' group.
-2dFGRS S883Z423,drop,no source,In 'NGC 7764A' group.
 ESO-LV 2010242,drop,no source,In 'ESO 201-IG 024' group.
 VIII Zw 096,drop,no source,In 'MCG +02-27-036' group.
 PGC 1090498,drop,no source,In 'CGCG 012-059' group.
-VV 673,drop,no source,In 'VV 673' group.
-UGC 08817,drop,no source,In 'UGC 08817' group.
-VV 223,drop,no source,In 'VIII Zw 383' group.
-UZC-CG 256,drop,no source,In 'CGCG 140-030' group.
 SDSS J233301.74+124939.6,drop,no source,In 'KUG 2330+125' group.
 SDSS J093731.86+351011.3,drop,no source,In 'KUG 0934+353' group.
 2dFGRS S289Z253,drop,no source,In 'APMBGC 411+004-028' group.
 PGC 266952,drop,no source,In '2MFGC 02112' group.
-AM 0231-302 NED01,drop,no source,In 'AM 0231-302' group.
 IRAS 21549-1206NW,drop,no source,In 'GALEXASC J215735.62-115145.9' group.
 KUG 2349+268 NED02,drop,no source,In 'KUG 2349+268' group.
-WISEA J095920.88+011753.4,drop,no source,In 'PKS 0956+015' group.
-ESO 195-IG 021 NED02,drop,no source,In 'ESO 195-IG 021' group.
 ESO 195-IG 021 NED01,drop,no source,In 'ESO 195-IG 021' group.
 AM 0659-680 W,drop,no source,In 'AM 0659-680' group.
 ESO 298-IG 024 NED01,drop,no source,In 'ESO 298-IG 024' group.
-NGC 1044 NED02,drop,no source,In 'NGC 1044' group.
 ESO 119-IG 027 NED01,drop,no source,In 'ESO 119-IG 027' group.
 SDSS J032044.93-010304.6,drop,no source,In 'UGC 02691' group.
-ESO 481-IG 012 NED01,drop,no source,In 'ESO 481-IG 012' group.
 WISEA J024938.63+340223.7,drop,no source,In 'MRK 1057' group.
-CGCG 091-070 NED02,drop,no source,In 'CGCG 091-070' group.
 USGC U257,drop,no source,In 'CGCG 035-052' group.
 PGC 3099314,drop,no source,In 'NGC 3550' group.
 SDSS J102525.57+553138.9,drop,no source,In 'CGCG 266-044' group.
-V1CG 572,drop,no source,In 'IC 2543' group.
 PGC 2770883,drop,no source,In 'UGCA 171' group.
 ESO 267-IG 009 NED02,drop,no source,In 'ESO 267-IG 009' group.
 VV 655 NED02,drop,no source,In 'VV 655' group.
-WISEA J114518.60+200035.9,drop,no source,In 'CGCG 097-133' group.
 SDSS J114518.75+200053.5,drop,no source,In 'CGCG 097-133' group.
 2dFGRS N311Z107,drop,no source,In 'WISEA J115020.46-003533.8' group.
 2dFGRS S447Z179,drop,no source,In 'DUKST 412-027' group.
 DUKST 415-015 NED01,drop,no source,In 'AM 0218-321' group.
-AM 2309-311 NED01,drop,no source,In 'AM 2309-311' group.
-ABELL 3295:[VCC89] 1,drop,no source,In 'APMUKS(BJ) B045137.16-320104.3' group.
 2MFGC 03929,drop,no source,In 'IRAS 04433+6020' group.
-ABELL 1677:[AEF92],drop,no source,In 'MCG +05-31-128' group.
-VCC 1838,drop,no source,In 'VCC 1838' group.
-WAS 91,drop,no source,
-CGPG 1108.5+2857,drop,no source,In 'CGPG 1108.5+2857' group.
 CGPG 1108.5+2857 NED03,drop,no source,In 'CGPG 1108.5+2857' group.
 CGPG 1108.5+2857 NED02,drop,no source,In 'CGPG 1108.5+2857' group.
 UGC 06224 NOTES01,drop,no source,In 'CGPG 1108.5+2857' group.
-[H87] 3-83,drop,no source,In '[H87] 3-83' group.
-APMBGC 355-035-073,drop,no source,In 'APMBGC 355-035-073' group.
 LCRS B114750.8-031249,drop,no source,In 'LCRS B114750.8-031249' group.
-SSRS GROUP 70,drop,no source,In 'SSRS GROUP 70' group.
-CB-20.07763,drop,no source,In 'CB-20.07763' group.
-[PCM2000] 30,drop,no source,In '[PCM2000] 30' group.
 SCG 2203-2812,drop,no source,In 'SCG 2203-2812' group.
-MLCG 1264,drop,no source,In 'MLCG 1264' group.
-PM2GC GR1037,drop,no source,In 'PM2GC GR1037' group.
-[SPS2007] 01,drop,no source,In '[SPS2007] 01' group.
-FLASH J132834.24-312622.6,drop,no source,In 'FLASH J132834.24-312622.6' group.
 WINGS J132835.43-312629.9,drop,no source,In 'FLASH J132834.24-312622.6' group.
-3C 386:[MLO2002] TRIPLE,drop,no source,In '3C 386:[MLO2002] TRIPLE' group.
-PGC 130260,drop,no source,objtype=M2 in HyperLeda.
 SUMSS J032127-453041,drop,no source,In 'PGC 130260' M2 group.
-GALEXASC J195759.34+044732.0,drop,no source,Galaxy triple.
-VI Zw 109,drop,no source,Galaxy triple.
-VI Zw 150,drop,no source,Galaxy triple.
-2MASS J23074711-1209105,drop,no source,Galaxy triple.
-[ARN85] 0413+122G1,drop,no source,
-[ARN85] 0413+122G2,drop,no source,
-SDSS CE J153.955414-00.341320,drop,no source,
-I Zw 176,drop,no source,Galaxy triple.
-I Zw 044,drop,no source,Galaxy triple.
-I Zw 076,drop,no source,Galaxy triple.
-I Zw 190,drop,no source,Galaxy triple.
-IC 1094,drop,no source,Galaxy triple.
-IC 0186,drop,no source,Galaxy triple.
-IC 0275,drop,no source,Galaxy triple.
-IC 2722,drop,no source,Galaxy triple.
 SDSS J112655.59+004047.1,drop,no source,Galaxy triple.
 SDSS J084917.29+531755.8,drop,no source,Galaxy triple.
-II Zw 050,drop,no source,Galaxy triple.
-II Zw 099,drop,no source,Galaxy triple.
-II Zw 184,drop,no source,Galaxy triple.
-IV Zw 016,drop,no source,Galaxy triple; in 'IV Zw 016' group.
-IV Zw 075,drop,no source,Galaxy triple; in 'IV Zw 075' group.
 IV Zw 075 NOTES01,drop,no source,In 'IV Zw 075' group.
-IV Zw 161,drop,no source,Galaxy triple; in 'IV Zw 161' group.
 IV Zw 161 NOTES02,drop,no source,In 'IV Zw 161' group.
 IV Zw 161 NOTES01,drop,no source,In 'IV Zw 161' group.
-III Zw 002,drop,no source,Galaxy triple.
-III Zw 120,drop,no source,Galaxy triple.
-III Zw 096,drop,no source,Galaxy triple.
-III Zw 065,drop,no source,Galaxy triple.
-GALEXASC J130252.64-023102.9,drop,no source,Galaxy triple.
-GALEXASC J023427.50+325455.9,drop,no source,Galaxy triple.
-GALEXASC J030053.26-104515.2,drop,no source,Galaxy triple.
-GALEXASC J050209.70-633247.3,drop,no source,Galaxy triple.
-GALEXASC J104649.52-395954.1,drop,no source,Galaxy triple.
-GALEXASC J105343.22-454355.2,drop,no source,Galaxy triple.
-GALEXASC J023430.41+331357.6,drop,no source,Galaxy triple.
-GALEXASC J110913.38-472254.5,drop,no source,Galaxy triple.
-GALEXASC J193526.97-523514.7,drop,no source,Galaxy triple.
-GALEXASC J230033.22-470332.9,drop,no source,Galaxy triple.
-GALEXASC J133634.69+430113.1,drop,no source,Galaxy triple.
 IC 1559 GROUP,drop,no source,Galaxy group.
-VIII Zw 495,drop,no source,Galaxy triple.
-VIII Zw 060,drop,no source,Galaxy triple.
-VIII Zw 068,drop,no source,Galaxy triple.
-VIII Zw 125,drop,no source,Galaxy triple.
-VIII Zw 169,drop,no source,Galaxy triple.
-VIII Zw 198,drop,no source,Galaxy triple.
-VIII Zw 294,drop,no source,Galaxy triple.
-VIII Zw 346,drop,no source,Galaxy triple.
-VIII Zw 073,drop,no source,Galaxy triple.
-VIII Zw 319,drop,no source,Galaxy triple.
-V Zw 245,drop,no source,Galaxy triple.
-V Zw 026,drop,no source,Galaxy triple.
-V Zw 121,drop,no source,Galaxy triple.
-V Zw 137,drop,no source,Galaxy triple.
-V Zw 146,drop,no source,Galaxy triple.
-V Zw 174,drop,no source,Galaxy triple.
-V Zw 184,drop,no source,Galaxy triple.
-V Zw 209,drop,no source,Galaxy triple.
-V Zw 249,drop,no source,Galaxy triple.
-V Zw 279,drop,no source,Galaxy triple.
-V Zw 280,drop,no source,Galaxy triple.
-V Zw 438,drop,no source,Galaxy triple.
-V Zw 232,drop,no source,Galaxy triple.
-NGC 4933,drop,no source,Galaxy triple.
-NGC 3280,drop,no source,Galaxy triple.
 VIII Zw 060 NED02,drop,no source,In 'VIII Zw 060' group.
-VV 353b,drop,no source,In 'ARP 115' group.
-VV 316,drop,no source,In 'ARP 142' group.
-NGC 6482 GROUP,drop,no source,Galaxy group.
-NGC 0045 GROUP,drop,no source,Galaxy group.
-NGC 7386 GROUP,drop,no source,Galaxy group.
-NGC 4357 GROUP,drop,no source,Galaxy group.
-NGC 0043 GROUP,drop,no source,Galaxy group.
-NGC 7805 GROUP,drop,no source,Galaxy group.
-NGC 4725 GROUP,drop,no source,Galaxy group.
-NGC 3607 Group,drop,no source,Galaxy group.
-NGC 3672 GROUP,drop,no source,Galaxy group.
-NGC 1511 GROUP,drop,no source,Galaxy group.
-NGC 3553,drop,no source,Should have 'SDSS J111040.30+284108.3' coordinates.
 ESO 294-IG 011 NED02,drop,no source,In 'ESO 294-IG 011' group.
-ESO 152-IG 023 NED02,drop,no source,In 'ESO 152-IG 023' group.
 ESO 154-IG 006 NED03,drop,no source,In 'ESO 154-IG 006' group.
 ESO 247-IG 004 NED02,drop,no source,In 'ESO 247-IG 004' group.
 ESO 155-IG 044 NED03,drop,no source,In 'ESO 155-IG 044' group.
-ESO 302-IG 013 NED02,drop,no source,In 'ESO 302-IG 013' group.
-ESO 118-IG 036 NED02,drop,no source,In 'ESO 118-IG 036' group.
-ESO 118-IG 041 NED01,drop,no source,In 'ESO 118-IG 041' group.
+ESO 302-IG 013 NED02,drop,no source,Duplicate with 'ESO 302-IG 013 NED03'; in 'ESO 302-IG 013' group.
+ESO 195-IG 021 NED03,drop,no source,Duplicate with 'ESO 195-IG 021 NED02'; in 'ESO 195-IG 021' group.
 ESO 284-IG 022 NED03,drop,no source,In 'ESO 284-IG 022' group.
-ESO 288-IG 024 NED03,drop,no source,In 'ESO 288-IG 024' group.
 ESO 146-IG 003 NED02,drop,no source,In 'ESO 146-IG 003' group.
-ESO 237-IG 032 NED02,drop,no source,In 'ESO 237-IG 032' group.
+ESO 146-IG 003 NED03,drop,no source,In 'ESO 146-IG 003' group.
 PGC 009257,drop,no source,In 'ESO 053-IG 008' group.
 ESO 119-IG 010 NED01,drop,no source,In 'ESO 119-IG 010' group.
 ESO 119-IG 010 NED03,drop,no source,In 'ESO 119-IG 010' group.
-ESO 190-IG 014 NED01,drop,no source,In 'ESO 190-IG 014' group.
-ESO 290-IG 047 NED03,drop,no source,In 'ESO 290-IG 047' group.
 LEDA 4676929,drop,no source,In 'NGC 6175' group.
 SDSS J151836.83+281907.6,drop,no source,In 'III Zw 071' group.
 VI Zw 025 NOTES01,drop,no source,In 'VI Zw 025' group.
 IC 1942 NED01,drop,no source,In 'IC 1942' group.
-HS 0331+0905,drop,no source,Galaxy group.
 IRAS 22279-1112NW,drop,no source,
 PGC 2298098,drop,no source,In 'UGC 06606' group.
 PGC 408840,drop,no source,In 'AM 1846-553' group.
 PGC 408863,drop,no source,In 'AM 1846-553' group.
-ESO 406- G 010,drop,no source,In 'AM 2242-342' group.
 AM 2242-342 NED02,drop,no source,In 'AM 2242-342' group.
 ESO 603-IG 030 NED03,drop,no source,In '2dFGRS S924Z034' group.
 LCRS B101017.4-052410,drop,no source,In '2dFGRS N096Z334' group.
 VIII Zw 150 NOTES01,drop,no source,In 'VIII Zw 150' group.
 VII Zw 066 NOTES02,drop,no source,In 'VII Zw 066' group.
-VII Zw 300 NOTES01,drop,no source,In 'VII Zw 300' group.
-VII Zw 316 NOTES02,drop,no source,In 'VII Zw 316' group.
-VII Zw 735 NOTES01,drop,no source,In 'VII Zw 735' group.
 CGCG 261-065 NED01,drop,no source,In 'CGCG 261-065' group.
+ESO 186-IG 045 NED02,drop,no source,In 'ESO 186-IG 045' group.
+ESO 345-IG 016 NED02,drop,no source,In 'ESO 345-IG 016' group.
+ESO 189-IG 026 NED02,drop,no source,In 'ESO 189-IG 026' group.
+PGC 066739,drop,no source,In 'ESO 287-IG 023' group.
+ESO 463-IG 027 NED01,drop,no source,In 'ESO 463-IG 027' group.
+ESO 105-IG 014 NED01,drop,no source,In 'ESO 105-IG 014' group.
+ESO 105-IG 014 NED02,drop,no source,In 'ESO 105-IG 014' group.
+ESO 200-IG 015 NED01,drop,no source,
+ESO 200-IG 015 NED02,drop,no source,
+ESO-LV 2000152,drop,no source,
+ESO-LV 1140062,drop,no source,
 #
 UGC 06224,drop,duplicate,Close duplicate of 'NGC 3561'.
 SBS 1110+567,drop,duplicate,Close duplicate of 'CGCG 291-041 NED02'.
@@ -779,7 +701,6 @@ SBS 1533+469,drop,duplicate,Close duplicate of 'I Zw 116 NOTES01'.
 VV 780 NED03,drop,duplicate,Close duplicate of 'IC 4518B'.
 #
 LCRS B222134.3-391730,drop,incorrect coordinates,
-II Zw 184 NOTES03,drop,incorrect coordinates,In 'II Zw 184' group.
 III Zw 022 NOTES02,drop,incorrect coordinates,In 'III Zw 022' group.
 III Zw 022 NOTES01,drop,incorrect coordinates,In 'III Zw 022' group.
 MCG +10-12-053 NED01,drop,incorrect coordinates,In 'MCG +10-12-053' group.
@@ -866,6 +787,7 @@ NGC 1540A,hyperleda-coords,NED incorrect,In 'NGC 1540' group; ambiguity between 
 NGC 1540,hyperleda-coords,NED incorrect,In 'NGC 1540' group; ambiguity between 'NGC 1540A' and 'NGC 1540B'.
 UGC 06945,hyperleda-coords,NED incorrect,Galaxy pair; in 'USGC U434' group.
 ESO 118-IG 036 NED03,hyperleda-coords,NED incorrect,In 'ESO 118-IG 036' group.
+ESO 118-IG 036 NED02,hyperleda-coords,NED incorrect,In 'ESO 118-IG 036' group.
 ESO 118-IG 041 NED03,hyperleda-coords,NED incorrect,In 'ESO 118-IG 041' group.
 ESO 118-IG 041 NED02,hyperleda-coords,NED incorrect,In 'ESO 118-IG 041' group.
 ESO 085-IG 033 NED01,hyperleda-coords,NED incorrect,In 'ESO 085-IG 033' group.
@@ -965,3 +887,158 @@ CGCG 064-047 NED02,hyperleda-coords,NED incorrect,In 'CGCG 064-047' group.
 ESO 286-IG 067 NED02,hyperleda-coords,NED incorrect,In 'ESO 286-IG 067' group.
 ESO 286-IG 067 NED01,hyperleda-coords,NED incorrect,In 'ESO 286-IG 067' group.
 ESO 074-IG 013 NED01,hyperleda-coords,NED incorrect,In 'ESO 074-IG 013' group.
+VI Zw 152,hyperleda-coords,NED incorrect,'VI Zw 150' group.
+VII Zw 316 NOTES02,hyperleda-coords,NED incorrect,'VII Zw 316' group.
+ESO 406- G 010,hyperleda-coords,NED incorrect,
+ESO 195-IG 021 NED02,hyperleda-coords,NED incorrect,In 'ESO 195-IG 021' group.
+ESO 399-IG 020 NED01,hyperleda-coords,NED incorrect,In 'ESO 399-IG 020' group.
+ESO 273-IG 013 NED01,hyperleda-coords,NED incorrect,In 'ESO 273-IG 013' group.
+ESO 272-IG 010 NED02,hyperleda-coords,NED incorrect,In 'ESO 272-IG 010' group.
+ESO 325-IG 037 NED02,hyperleda-coords,NED incorrect,In 'ESO 325-IG 037' group.
+ESO 269-IG 074 NED01,hyperleda-coords,NED incorrect,In 'ESO 269-IG 074' group.
+ESO 219-IG?032 NED02,hyperleda-coords,NED incorrect,In 'ESO 219-IG?032' group.
+ESO 269-IG 017 NED02,hyperleda-coords,NED incorrect,In 'ESO 269-IG 017' group.
+ESO 322-IG 023 NED02,hyperleda-coords,NED incorrect,In 'ESO 322-IG 023' group.
+ESO 263-IG 001 NED02,hyperleda-coords,NED incorrect,In 'ESO 263-IG 001' group.
+ESO 208-IG 024 NED02,hyperleda-coords,NED incorrect,In 'ESO 208-IG 024' group.
+ESO 207-IG 030 NED01,hyperleda-coords,NED incorrect,In 'ESO 207-IG 030' group.
+ESO 161-IG 027 NED01,hyperleda-coords,NED incorrect,In 'ESO 161-IG 027' group.
+ESO 121-IG 039 NED01,hyperleda-coords,NED incorrect,In 'ESO 121-IG 039' group.
+ESO 121-IG 039 NED02,hyperleda-coords,NED incorrect,In 'ESO 121-IG 039' group.
+ESO 118-IG 038 NED01,hyperleda-coords,NED incorrect,In 'ESO 118-IG 038' group.
+ESO 084-IG 027 NED02,hyperleda-coords,NED incorrect,In 'ESO 084-IG 027' group.
+ESO 032-IG 008 NED02,hyperleda-coords,NED incorrect,In 'ESO 032-IG 008' group.
+ESO 483-IG 001 NED02,hyperleda-coords,NED incorrect,In 'ESO 483-IG 001' group.
+ESO 113-IG 054 NED01,hyperleda-coords,NED incorrect,In 'ESO 113-IG 054' group.
+ESO 195-IG 004 NED02,hyperleda-coords,NED incorrect,In 'ESO 195-IG 004' group.
+ESO 149-IG 005 NED02,hyperleda-coords,NED incorrect,In 'ESO 149-IG 005' group.
+ESO 471-IG 037 NED01,hyperleda-coords,NED incorrect,In 'ESO 471-IG 037' group.
+ESO 111-IG 005 NED01,hyperleda-coords,NED incorrect,In 'ESO 111-IG 005' group.
+ESO 111-IG 005 NED02,hyperleda-coords,NED incorrect,In 'ESO 111-IG 005' group.
+ESO 292-IG 019 NED01,hyperleda-coords,NED incorrect,In 'ESO 292-IG 019' group.
+ESO 110-IG 003 NED02,hyperleda-coords,NED incorrect,In 'ESO 110-IG 003' group.
+ESO 290-IG 043 NED02,hyperleda-coords,NED incorrect,In 'ESO 290-IG 043' group.
+ESO 147-IG 015 NED02,hyperleda-coords,NED incorrect,In 'ESO 147-IG 015' group.
+ESO 290-IG 011 NED01,hyperleda-coords,NED incorrect,In 'ESO 290-IG 011' group.
+ESO 290-IG 011 NED02,hyperleda-coords,NED incorrect,In 'ESO 290-IG 011' group.
+ESO 290-IG 008 NED01,hyperleda-coords,NED incorrect,In 'ESO 290-IG 008' group.
+ESO 290-IG 008 NED02,hyperleda-coords,NED incorrect,In 'ESO 290-IG 008' group.
+ESO 345-IG 045 NED02,hyperleda-coords,NED incorrect,In 'ESO 345-IG 045' group.
+ESO 345-IG 045 NED01,hyperleda-coords,NED incorrect,In 'ESO 345-IG 045' group.
+ESO 289-IG 041 NED01,hyperleda-coords,NED incorrect,In 'ESO 289-IG 041' group.
+ESO 288-IG 029 NED02,hyperleda-coords,NED incorrect,In 'ESO 288-IG 029' group.
+ESO 189-IG 002 NED01,hyperleda-coords,NED incorrect,In 'ESO 189-IG 002' group.
+ESO 236-IG 048 NED02,hyperleda-coords,NED incorrect,In 'ESO 236-IG 048' group.
+ESO 075-IG 015 NED02,hyperleda-coords,NED incorrect,In 'ESO 075-IG 015' group.
+ESO-LV 2360222,hyperleda-coords,NED incorrect,In 'ESO 236-IG 022' group.
+ESO 236-IG 022 NED02,hyperleda-coords,NED incorrect,In 'ESO 236-IG 022' group.
+ESO-LV 5990192,hyperleda-coords,NED incorrect,In 'ESO 599-IG 019' group.
+ESO 599-IG 019 NED01,hyperleda-coords,NED incorrect,In 'ESO 599-IG 019' group.
+ESO 599-IG 017 NED01,hyperleda-coords,NED incorrect,In 'ESO 599-IG 017' group.
+ESO 188-IG 008 NED01,hyperleda-coords,NED incorrect,In 'ESO 188-IG 008' group.
+ESO 188-IG 008 NED02,hyperleda-coords,NED incorrect,In 'ESO 188-IG 008' group.
+ESO-LV 1070232,hyperleda-coords,NED incorrect,In 'ESO 107-IG 023' group.
+ESO 236-IG 005 NED02,hyperleda-coords,NED incorrect,In 'ESO 236-IG 005' group.
+ESO 236-IG 005 NED03,hyperleda-coords,NED incorrect,In 'ESO 236-IG 005' group.
+ESO 235-IG 048 NED03,hyperleda-coords,NED incorrect,In 'ESO 235-IG 048' group.
+ESO 235-IG 017 NED02,hyperleda-coords,NED incorrect,In 'ESO 235-IG 017' group.
+ESO 047-IG 015 NED01,hyperleda-coords,NED incorrect,In 'ESO 047-IG 015' group.
+ESO 234-IG 058 NED02,hyperleda-coords,NED incorrect,In 'ESO 234-IG 058' group.
+ESO 143-IG 032 NED01,hyperleda-coords,NED incorrect,In 'ESO 143-IG 032' group.
+ESO 596-IG 018 NED02,hyperleda-coords,NED incorrect,In 'ESO 596-IG 018' group.
+ESO 073-IG 024 NED02,hyperleda-coords,NED incorrect,In 'ESO 073-IG 024' group.
+ESO 073-IG 024 NED01,hyperleda-coords,NED incorrect,In 'ESO 073-IG 024' group.
+ESO 185-IG 047 NED02,hyperleda-coords,NED incorrect,In 'ESO 185-IG 047' group.
+ESO 185-IG 017 NED01,hyperleda-coords,NED incorrect,In 'ESO 185-IG 017' group.
+ESO 185-IG 017 NED02,hyperleda-coords,NED incorrect,In 'ESO 185-IG 017' group.
+ESO 232-IG 020 NED03,hyperleda-coords,NED incorrect,In 'ESO 232-IG 020' group.
+ESO 232-IG 015 NED01,hyperleda-coords,NED incorrect,In 'ESO 232-IG 015' group.
+ESO 232-IG 015 NED02,hyperleda-coords,NED incorrect,In 'ESO 232-IG 015' group.
+ESO 185-IG 002 NED02,hyperleda-coords,NED incorrect,In 'ESO 185-IG 002' group.
+ESO 232-IG 007 NED02,hyperleda-coords,NED incorrect,In 'ESO 232-IG 007' group.
+ESO 104-IG 041 NED01,hyperleda-coords,NED incorrect,In 'ESO 104-IG 041' group.
+ESO 141-IG 004 NED02,hyperleda-coords,NED incorrect,In 'ESO 141-IG 004' group.
+ESO 102-IG 017 NED01,hyperleda-coords,NED incorrect,In 'ESO 102-IG 017' group.
+ESO 271-IG 017 NED02,hyperleda-coords,NED incorrect,In 'ESO 271-IG 017' group.
+ESO 384-IG 052 NED02,hyperleda-coords,NED incorrect,In 'ESO 384-IG 052' group.
+ESO 324-IG 020 NED02,hyperleda-coords,NED incorrect,In 'ESO 324-IG 020' group.
+ESO 324-IG 020 NED01,hyperleda-coords,NED incorrect,In 'ESO 324-IG 020' group.
+ESO 575-IG 056 NED02,hyperleda-coords,NED incorrect,In 'ESO 575-IG 056' group.
+ESO 323-IG 037 NED01,hyperleda-coords,NED incorrect,In 'ESO 323-IG 037' group.
+ESO 323-IG 037 NED02,hyperleda-coords,NED incorrect,In 'ESO 323-IG 037' group.
+ESO 440-IG 002 NED02,hyperleda-coords,NED incorrect,In 'ESO 440-IG 002' group.
+ESO 434-IG 001 NED02,hyperleda-coords,NED incorrect,In 'ESO 434-IG 001' group.
+ESO 161-IG 012 NED02,hyperleda-coords,NED incorrect,In 'ESO 161-IG 012' group.
+ESO 308-IG 002 NED02,hyperleda-coords,NED incorrect,In 'ESO 308-IG 002' group.
+ESO 206-IG 010 NED02,hyperleda-coords,NED incorrect,In 'ESO 206-IG 010' group.
+ESO 254-IG 042 NED02,hyperleda-coords,NED incorrect,In 'ESO 254-IG 042' group.
+ESO 121-IG 007 NED01,hyperleda-coords,NED incorrect,In 'ESO 121-IG 007' group.
+ESO 121-IG 007 NED02,hyperleda-coords,NED incorrect,In 'ESO 121-IG 007' group.
+ESO 254-IG 018 NED02,hyperleda-coords,NED incorrect,In 'ESO 254-IG 018' group.
+ESO 086-IG 055 NED01,hyperleda-coords,NED incorrect,In 'ESO 086-IG 055' group.
+ESO 086-IG 055 NED02,hyperleda-coords,NED incorrect,In 'ESO 086-IG 055' group.
+ESO 488-IG 048 NED01,hyperleda-coords,NED incorrect,In 'ESO 488-IG 048' group.
+ESO 488-IG 041 NED02,hyperleda-coords,NED incorrect,In 'ESO 488-IG 041' group.
+ESO 205-IG 004 NED01,hyperleda-coords,NED incorrect,In 'ESO 205-IG 004' group.
+ESO 253-IG 025 NED02,hyperleda-coords,NED incorrect,In 'ESO 253-IG 025' group.
+ESO 487-IG 031 NED01,hyperleda-coords,NED incorrect,In 'ESO 487-IG 031' group.
+ESO 487-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 487-IG 031' group.
+ESO 159-IG 015 NED02,hyperleda-coords,NED incorrect,In 'ESO 159-IG 015' group.
+ESO 119-IG 057 NED02,hyperleda-coords,NED incorrect,In 'ESO 119-IG 057' group.
+ESO 486-IG 026 NED02,hyperleda-coords,NED incorrect,In 'ESO 486-IG 026' group.
+ESO 085-IG 011 NED02,hyperleda-coords,NED incorrect,In 'ESO 085-IG 011' group.
+ESO 085-IG 006 NED02,hyperleda-coords,NED incorrect,In 'ESO 085-IG 006' group.
+ESO 203-IG 005 NED02,hyperleda-coords,NED incorrect,In 'ESO 203-IG 005' group.
+ESO 304-IG 015 NED01,hyperleda-coords,NED incorrect,In 'ESO 304-IG 015' group.
+ESO 084-IG 025 NED02,hyperleda-coords,NED incorrect,In 'ESO 084-IG 025' group.
+ESO 303-IG 025 NED02,hyperleda-coords,NED incorrect,In 'ESO 303-IG 025' group.
+ESO 303-IG 025 NED01,hyperleda-coords,NED incorrect,In 'ESO 303-IG 025' group.
+ESO 118-IG 026 NED02,hyperleda-coords,NED incorrect,In 'ESO 118-IG 026' group.
+ESO 303-IG 007 NED01,hyperleda-coords,NED incorrect,In 'ESO 303-IG 007' group.
+ESO 117-IG 020 NED01,hyperleda-coords,NED incorrect,In 'ESO 117-IG 020' group.
+ESO 032-IG 007 NED01,hyperleda-coords,NED incorrect,In 'ESO 032-IG 007' group.
+ESO 032-IG 007 NED02,hyperleda-coords,NED incorrect,In 'ESO 032-IG 007' group.
+ESO 054-IG 023 NED02,hyperleda-coords,NED incorrect,In 'ESO 054-IG 023' group.
+ESO 201-IG 001 NED01,hyperleda-coords,NED incorrect,In 'ESO 201-IG 001' group.
+ESO 054-IG 018 NED02,hyperleda-coords,NED incorrect,In 'ESO 054-IG 018' group.
+ESO 156-IG 009 NED02,hyperleda-coords,NED incorrect,In 'ESO 156-IG 009' group.
+ESO 155-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 155-IG 031' group.
+ESO 083-IG 002 NED01,hyperleda-coords,NED incorrect,In 'ESO 083-IG 002' group.
+ESO 083-IG 002 NED02,hyperleda-coords,NED incorrect,In 'ESO 083-IG 002' group.
+ESO 155-IG 022 NED02,hyperleda-coords,NED incorrect,In 'ESO 155-IG 022' group.
+ESO 150-IG 010 NED02,hyperleda-coords,NED incorrect,In 'ESO 150-IG 010' group.
+ESO 150-IG 010 NED01,hyperleda-coords,NED incorrect,In 'ESO 150-IG 010' group.
+ESO 116-IG 004 NED02,hyperleda-coords,NED incorrect,In 'ESO 116-IG 004' group.
+ESO 247-IG 006 NED02,hyperleda-coords,NED incorrect,In 'ESO 247-IG 006' group.
+ESO 053-IG 018 NED02,hyperleda-coords,NED incorrect,In 'ESO 053-IG 018' group.
+ESO 154-IG 011 NED02,hyperleda-coords,NED incorrect,In 'ESO 154-IG 011' group.
+ESO 115-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 115-IG 031' group.
+ESO 053-IG 012 NED02,hyperleda-coords,NED incorrect,In 'ESO 053-IG 012' group.
+ESO 082-IG 003 NED02,hyperleda-coords,NED incorrect,In 'ESO 082-IG 003' group.
+ESO 198-IG 026 NED01,hyperleda-coords,NED incorrect,In 'ESO 198-IG 026' group.
+ESO 115-IG 019 NED01,hyperleda-coords,NED incorrect,In 'ESO 115-IG 019' group.
+ESO 153-IG 032 NED01,hyperleda-coords,NED incorrect,In 'ESO 153-IG 032' group.
+ESO 198-IG 009 NED02,hyperleda-coords,NED incorrect,In 'ESO 198-IG 009' group.
+ESO 198-IG 004 NED02,hyperleda-coords,NED incorrect,In 'ESO 198-IG 004' group.
+ESO 114-IG 030 NED02,hyperleda-coords,NED incorrect,In 'ESO 114-IG 030' group.
+ESO 197-IG 013 NED03,hyperleda-coords,NED incorrect,In 'ESO 197-IG 013' group.
+ESO 197-IG 013 NED01,hyperleda-coords,NED incorrect,In 'ESO 197-IG 013' group.
+ESO 080-IG 007 NED02,hyperleda-coords,NED incorrect,In 'ESO 080-IG 007' group.
+ESO 244-IG 051 NED02,hyperleda-coords,NED incorrect,In 'ESO 244-IG 051' group.
+ESO 152-IG 016 NED03,hyperleda-coords,NED incorrect,In 'ESO 152-IG 016' group.
+ESO 152-IG 016 NED02,hyperleda-coords,NED incorrect,In 'ESO 152-IG 016' group.
+ESO 196-IG 010 NED02,hyperleda-coords,NED incorrect,In 'ESO 196-IG 010' group.
+ESO 196-IG 010 NED01,hyperleda-coords,NED incorrect,In 'ESO 196-IG 010' group.
+ESO 113-IG 020 NED02,hyperleda-coords,NED incorrect,In 'ESO 113-IG 020' group.
+ESO 541-IG 009 NED01,hyperleda-coords,NED incorrect,In 'ESO 541-IG 009' group.
+ESO 242-IG 013 NED02,hyperleda-coords,NED incorrect,In 'ESO 242-IG 013' group.
+ESO 242-IG 013 NED01,hyperleda-coords,NED incorrect,In 'ESO 242-IG 013' group.
+ESO 194-IG 017 NED02,hyperleda-coords,NED incorrect,In 'ESO 194-IG 017' group.
+ESO 194-IG 017 NED01,hyperleda-coords,NED incorrect,In 'ESO 194-IG 017' group.
+ESO 350-IG 008 NED01,hyperleda-coords,NED incorrect,In 'ESO 350-IG 008' group.
+ESO 241-IG 024 NED02,hyperleda-coords,NED incorrect,In 'ESO 241-IG 024' group.
+ESO 293-IG 036 NED01,hyperleda-coords,NED incorrect,In 'ESO 293-IG 036' group.
+ESO 149-IG 017 NED01,hyperleda-coords,NED incorrect,In 'ESO 149-IG 017' group.
+ESO 293-IG 033 NED01,hyperleda-coords,NED incorrect,In 'ESO 293-IG 033' group.
+ESO 293-IG 028 NED01,hyperleda-coords,NED incorrect,In 'ESO 293-IG 028' group.
+ESO 086-IG 031 NED01,hyperleda-coords,NED incorrect,In 'ESO 086-IG 031' group.
