@@ -2,27 +2,32 @@
 # (visual inspections). A value of -99 means that property should not be
 # updated.
 objname_ned,ra,dec,diam,pa,ba,comment
-NGC 4106,181.689961,-29.768386,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 UGC 01386 NOTES01,28.748249999999995,13.46725,-99.,-99.,-99.,Center on the galaxy.
+NGC 4106,181.689961,-29.768386,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 406-IG 007 NED01,340.904793,-36.440937,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 074-IG 013 NED02,312.853860,-67.935307,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 235-IG 003 NED02,312.464326,-52.087964,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 192-IG 005 NED01,353.099512,-55.779419,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 355-IG 012 NED02,35.781179,-32.869500,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 355-IG 012 NED03,35.789259,-32.872562,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
-II Zw 184 NOTES03,340.299507,1.774371,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
-VII Zw 300 NOTES01,149.894981,81.871918,0.3,-99.,-99.,NED and HyperLeda are both incorrect.
 VII Zw 735 NOTES01,265.296127,67.897179,0.1,-99.,-99.,NED and HyperLeda are both incorrect.
 NGC 1044 NED02,40.280070,8.735402,0.5,-99.,-99.,NED and HyperLeda are both incorrect.
 NGC 3553,167.667917,28.685639,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 481-IG 012 NED01,48.110808,-27.140094,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
-ESO 290-IG 047 NED03,346.442550,-42.477154,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 190-IG 014 NED02,337.637496,-54.779187,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
-ESO 237-IG 032 NED02,330.934655,-49.089276,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
-ESO 288-IG 024 NED03,329.465995,-42.761460,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
-ESO 118-IG 041 NED01,71.236972,-58.081389,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
-ESO 152-IG 023 NED02,26.448174,-56.093643,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
 ESO 151-IG 014 NED02,14.407333,-56.599556,-99.,-99.,-99.,NED and HyperLeda are both incorrect.
+VII Zw 300 NOTES01,149.894981,81.871918,0.3,-99.,-99.,Moved to the position of '2MASS J09593479+8152189'.
+ESO 290-IG 047 NED03,346.442550,-42.477154,-99.,-99.,-99.,Moved to the position of 'MRSS 290-012872'.
+ESO 237-IG 032 NED02,330.934655,-49.089276,-99.,-99.,-99.,Moved to the position of 'WISEA J220344.31-490521.3'.
+ESO 288-IG 024 NED03,329.465995,-42.761460,-99.,-99.,-99.,Moved to the position of 'WISEA J215751.83-424541.2'.
+ESO 284-IG 022 NED01,302.641626,-46.545368,-99.,-99.,-99.,Moved to the position of '2MASS J20103399-4632433'.
+ESO 118-IG 041 NED01,71.236972,-58.081389,-99.,-99.,-99.,Moved to the position of 'WISEA J044456.87-580453.0'.
+ESO 152-IG 023 NED02,26.448174,-56.093643,-99.,-99.,-99.,Moved to the position of '2MASS J01454756-5605371'.
+ESO 152-IG 023 NED01,26.445557,-56.091656,-99.,-99.,-99.,Moved to the position of '2MASS J01454693-5605299'.
+ESO 146-IG 003 NED03,329.614991,-58.570221,-99.,-99.,-99.,Moved to the position of '2MASS J21582759-5834127'.
+IC 1942 NED01,51.974051,-52.677631,-99.,-99.,-99.,Moved to the position of '2MASS J03275377-5240394'.
+II Zw 184 NOTES03,340.299507,1.774371,-99.,-99.,-99.,Moved to the position of '2MASS J22411188+0146277'.
+MCG +10-12-053 NED01,120.26882787507336,62.10243488264047,-99.,-99.,-99.,Not in NED or HyperLeda.
 ESO 400-IG 031 NED02,307.30554166666667,-36.96230555555556,-99.,-99.,-99.,Moved to the position of 'WISEA J202913.34-365744.2'.
 ESO 400-IG 031 NED01,307.2949166666666,-36.96644444444445,-99.,-99.,-99.,Moved to the position of 'WISEA J202910.77-365759.0'.
 ESO 384-IG 025 NED02,209.954458,-33.682152,-99.,-99.,-99.,Moved to the position of 'WISEA J135949.07-334055.7'.
@@ -83,9 +88,21 @@ ESO 244-IG 004 NED02,18.595565,-42.597210,-99.,-99.,-99.,Moved to the position o
 ESO 294-IG 013 NED02,6.952318,-38.686112,-99.,-99.,-99.,Moved to the position of 'WISEA J002748.55-384110.0'.
 ESO 193-IG 021 NED01,1.474335,-47.319094,-99.,-99.,-99.,Moved to the position of 'WISEA J000553.84-471908.7'.
 ESO 149-IG 014 NED01,0.807574,-52.302841,-99.,-99.,-99.,Moved to the position of 'WISEA J000313.81-521810.2'.
+ESO 114-IG 018 NED02,30.282786,-58.922952,-99.,-99.,-99.,Moved to the position of 'WISEA J020107.86-585522.6'.
+ESO 358-IG 068 NED02,57.267522,-35.354989,-99.,-99.,-99.,Moved to the position of 'WISEA J034904.20-352117.9'.
+III Zw 022 NOTES01,17.714289,8.322072,-99.,-99.,-99.,Moved to the position of '2MASS J01105142+0819194'.
+III Zw 022 NOTES02,17.717211,8.323111,-99.,-99.,-99.,Moved to the position of '2MASS J01105213+0819231'.
+NGC 0333A,14.712637,-16.472082,-99.,-99.,-99.,Moved to the position of '2MASS J00585103-1628194'.
+VIII Zw 060 NED02,150.697637,3.963625,0.2,-99.,-99.,Moved to the position of 'WISEA J100247.43+035749.0'.
+III Zw 022 NOTES03,17.719928,8.324383,-99.,-99.,-99.,Coordinates on web interface does not match query results.
+VIII Zw 010 NED02,3.645512,-3.092323,-99.,-99.,-99.,Moved to the position of 'WISEA J001434.92-030532.3'.
+ESO 194-IG 036 NED02,11.585355,-47.428328,-99.,-99.,-99.,Moved to the position of 'WISEA J004620.48-472541.9'.
+ESO 355-IG 003 NED02,34.426041,-37.136176,-99.,-99.,-99.,Moved to the position of 'WISEA J021742.24-370810.2'.
+ESO 195-IG 026 NED02,15.984350,-49.523371,-99.,-99.,-99.,Moved to the position of 'WISEA J010356.24-493124.1'.
 AM 1913-605,-99.,-99.,0.4,-99.,-99.,Flagged as a galaxy pair but centered on a nice spiral.
 WISEA J003745.01+061330.3,-99.,-99.,0.3,-99.,-99.,Companion to 'CGCG 409-048 NED02'.
 WISEA J072519.38+553035.0,-99.,-99.,0.3,-99.,-99.,Companion to 'CGCG 261-065 NED02'.
 WISEA J233224.52-554705.1,-99.,-99.,0.3,-99.,-99.,Companion to 'ESO 192-IG 005 NED02'.
 WISEA J062944.89-544824.5,-99.,-99.,0.2,-99.,-99.,Companion to 'ESO 161-IG 010 NED01'.
 ESO 488-IG 041 NED01,-99.,-99.,0.3,-99.,-99.,Companion to 'ESO 488-IG 041 NED02'.
+LCRS B222134.3-391730,336.12686823302886,-39.037717325141685,0.3,-99.,-99.,Companion to '2MASS J22243101-3902150'.

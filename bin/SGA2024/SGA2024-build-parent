@@ -27,6 +27,7 @@ from astrometry.util.starutil_numpy import arcsec_between
 from astrometry.libkd.spherematch import match_radec
 
 from SGA.coadds import PIXSCALE, BANDS
+from SGA.qa import qa_skypatch, multipage_skypatch
 from SGA.util import get_basic_geometry, match, match_to, choose_primary, resolve_close
 from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
                     read_hyperleda_galaxies, version_hyperleda_galaxies,
@@ -43,273 +44,6 @@ cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LE
 qadir = os.path.join(sga_dir(), 'parent', 'qa')
 if not os.path.isdir(qadir):
     os.makedirs(qadir)
-
-
-def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
-                pngsuffix=None, objname=None, racenter=None, deccenter=None,
-                add_title=True, width_arcmin=2., pngdir='.', jpgdir='.', clip=False,
-                verbose=False, overwrite_viewer=False, overwrite=False):
-    """Build QA which shows all the objects in a ~little patch of sky.
-
-    primary - parent-style catalog
-    group (optional) - parent-style catalog with additional systems in the field
-
-    """
-    import matplotlib.image as mpimg
-    from matplotlib.patches import Circle
-    from matplotlib.lines import Line2D
-    from urllib.request import urlretrieve
-    from astropy.wcs import WCS
-    from astropy.io import fits
-
-
-    if pngsuffix is None:
-        pngsuffix = suffix
-
-    def get_wcs(racenter, deccenter, width_arcmin=2., survey='ls'):
-        pix = {'ls': 0.262, 'unwise': 2.75}
-        pixscale = pix[survey]
-        width = int(60. * width_arcmin / pixscale)
-        hdr = fits.Header()
-        hdr['NAXIS'] = 2
-        hdr['NAXIS1'] = width
-        hdr['NAXIS2'] = width
-        hdr['CTYPE1'] = 'RA---TAN'
-        hdr['CTYPE2'] = 'DEC--TAN'
-        hdr['CRVAL1'] = racenter
-        hdr['CRVAL2'] = deccenter
-        hdr['CRPIX1'] = width/2+0.5
-        hdr['CRPIX2'] = width/2+0.5
-        hdr['CD1_1'] = -pixscale/3600.
-        hdr['CD1_2'] = 0.0
-        hdr['CD2_1'] = 0.0
-        hdr['CD2_2'] = +pixscale/3600.
-        wcs = WCS(hdr)
-        width = wcs.pixel_shape[0]
-        return wcs, width, pixscale
-
-
-    def get_url(racenter, deccenter, width, layer):
-        url = f'https://www.legacysurvey.org/viewer/jpeg-cutout?ra={racenter}&dec=' + \
-            f'{deccenter}&width={width}&height={width}&layer={layer}'
-        #print(url)
-        return url
-
-    bbox = dict(boxstyle='round', facecolor='k', alpha=0.5)
-    ref_pixscale = 0.262
-
-    if primary is None and group is None:
-        raise ValueError('Must specify group *and/or* primary')
-
-    if primary is not None and group is None:
-        group = Table(primary)
-    if primary is None and group is not None:
-        primary = Table(group[0])
-
-    if verbose:
-        print(group[cols])
-    N = len(group)
-
-    if racenter is None and deccenter is None:
-        racenter = primary[racol]
-        deccenter = primary[deccol]
-    if objname is None:
-        objname = primary['OBJNAME']
-
-    outname = objname.replace(' ', '_')
-    pngfile = os.path.join(pngdir, f'{outname}-{pngsuffix}.png')
-    if os.path.isfile(pngfile) and not overwrite:
-        print(f'Output file {pngfile} exists; skipping.')
-        return
-
-
-    # check if the viewer cutout file exists
-    surveys = ['ls', 'ls', 'unwise']
-    layers = ['ls-dr9', 'ls-dr10', 'unwise-neo7']
-    for survey, layer in zip(surveys, layers):
-        jpgfile = os.path.join(jpgdir, f'{outname}-{suffix}-{layer}.jpeg')
-        if os.path.isfile(jpgfile):
-            surveys = [survey]
-            layers = [layer]
-
-    for survey, layer in zip(surveys, layers):
-        wcs, width, pixscale = get_wcs(racenter, deccenter, survey=survey, width_arcmin=width_arcmin)
-        jpgfile = os.path.join(jpgdir, f'{outname}-{suffix}-{layer}.jpeg')
-        if os.path.isfile(jpgfile) and not overwrite_viewer:
-            img = mpimg.imread(jpgfile)
-        else:
-            urlretrieve(get_url(racenter, deccenter, width, layer=layer), jpgfile)
-            img = mpimg.imread(jpgfile)
-            if np.all(img == 32): # no data
-                os.remove(jpgfile)
-            else:
-                break
-
-    decsort = np.argsort(group[deccol])
-
-    leg_colors = ['red']
-    leg_lines = ['-']
-    leg_labels = ['Adopted']
-
-    #fig = plt.figure()
-    #ax = fig.add_subplot()#projection=wcs)
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.imshow(img, origin='lower')
-    for imem, (mem, yoffset) in enumerate(zip(group[decsort], (np.arange(0, N)+0.5) * width / N)):
-
-        label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
-
-        if imem % 2 == 0:
-            xoffset = 0.2 * width
-        else:
-            xoffset = width - 0.2 * width
-
-        if width-yoffset > width / 2:
-            va = 'top'
-        else:
-            va = 'bottom'
-
-        pix = wcs.wcs_world2pix(mem[racol], mem[deccol], 1)
-        if np.abs(pix[1]-yoffset) < int(0.03*width):
-            yoffset += int(0.03*width)
-
-        ax.add_artist(Circle((pix[0], width-pix[1]), radius=4.*ref_pixscale/pixscale,
-                             facecolor='none', edgecolor='red', lw=2, ls='-', alpha=0.9, clip_on=clip))
-        ax.annotate('', xy=(pix[0], width-pix[1]), xytext=(xoffset, width-yoffset),
-                    annotation_clip=clip, arrowprops=dict(
-                        facecolor='red', width=3, headwidth=8, shrink=0.01, alpha=0.9))
-        ax.annotate(label, xy=(xoffset, width-yoffset), xytext=(xoffset, width-yoffset),
-                    va=va, ha='center', color='white', bbox=bbox, fontsize=9,
-                    annotation_clip=clip)
-
-        if mem['RA_HYPERLEDA'] != -99. and mem['RA'] != mem['RA_HYPERLEDA']:
-            hyper_pix = wcs.wcs_world2pix(mem['RA_HYPERLEDA'], mem['DEC_HYPERLEDA'], 1)
-            ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='cyan', lw=1, ls='--', alpha=0.5, clip_on=clip))
-            ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
-                        annotation_clip=clip, arrowprops=dict(
-                            facecolor='cyan', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
-            leg_colors += ['cyan']
-            leg_lines += ['--']
-            leg_labels += ['HyperLeda']
-
-        if mem['RA_NED'] != -99. and mem['RA'] != mem['RA_NED']:
-            ned_pix = wcs.wcs_world2pix(mem['RA_NED'], mem['DEC_NED'], 1)
-            ax.add_artist(Circle((ned_pix[0], width-ned_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='yellow', lw=1, ls='--', alpha=0.5, clip_on=clip))
-            ax.annotate('', xy=(ned_pix[0], width-ned_pix[1]), xytext=(xoffset, width-yoffset),
-                        annotation_clip=clip, arrowprops=dict(
-                            facecolor='yellow', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
-            leg_colors += ['yellow']
-            leg_lines += ['--']
-            leg_labels += ['NED']
-
-        if mem['RA_LVD'] != -99. and mem['RA'] != mem['RA_LVD']:
-            lvd_pix = wcs.wcs_world2pix(mem['RA_LVD'], mem['DEC_LVD'], 1)
-            ax.add_artist(Circle((lvd_pix[0], width-lvd_pix[1]), radius=8.*ref_pixscale/pixscale,
-                                 facecolor='none', edgecolor='blue', lw=1, ls='--', alpha=0.5, clip_on=clip))
-            ax.annotate('', xy=(lvd_pix[0], width-lvd_pix[1]), xytext=(xoffset, width-yoffset),
-                        annotation_clip=clip, arrowprops=dict(
-                            facecolor='blue', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
-            leg_colors += ['blue']
-            leg_lines += ['--']
-            leg_labels += ['LVD']
-
-    _, uindx = np.unique(leg_labels, return_index=True)
-    ax.legend([Line2D([0], [0], color=col, linewidth=2, linestyle=ls)
-               for col, ls in zip(np.array(leg_colors)[uindx], np.array(leg_lines)[uindx])],
-              np.array(leg_labels)[uindx], loc='upper left', frameon=True, framealpha=0.7,
-              fontsize=8)
-
-    ax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
-    if add_title:
-        ax.set_title(f'{objname} ({racenter:.8f},{deccenter:.8f})')
-    ax.axis('off')
-    fig.tight_layout()
-    fig.savefig(pngfile, bbox_inches=0)#, dpi=200)
-    plt.close()
-    #print(f'Wrote {pngfile}')
-
-    return pngfile
-
-
-def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=4, nrow=6,
-                       add_title=True, pngsuffix='group', jpgdir='.', pngdir='.',
-                       pdffile='multipage-skypatch.pdf', clip=False, verbose=False,
-                       overwrite_viewer=False, overwrite=True, cleanup=False):
-    """Call qa_skypatch on a table of sources.
-
-    """
-    from matplotlib.backends.backend_pdf import PdfPages
-    from matplotlib.image import imread
-
-    if not os.path.isdir(jpgdir):
-        os.makedirs(jpgdir)
-    if not os.path.isdir(pngdir):
-        os.makedirs(pngdir)
-
-    primaries = Table(primaries)
-    nobj = len(primaries)
-
-    if cat is None:
-        groups = [None] * nobj
-    else:
-        matches = match_radec(primaries['RA'].value, primaries['DEC'].value, cat['RA'].value,
-                              cat['DEC'].value, width_arcsec/3600., indexlist=True, notself=False)
-        groups = [cat[onematch] for onematch in matches]
-
-
-    pngfile = []
-    for iobj, (primary, group) in enumerate(zip(primaries, groups)):
-        #width = crossid['dtheta_arcsec'] / 60. # [arcmin]
-        objname = f'{primary["OBJNAME"]}-{primary["OBJTYPE"]}'
-        racenter, deccenter = primary['RA'], primary['DEC']
-        #pngfile.append(
-        #    qa_skypatch(group=fullcat[match_full[iobj+ss]], pngsuffix='original',
-        #                add_title=False,
-        #                objname=objname, racenter=racenter, deccenter=deccenter,
-        #                pngdir=pngdir, jpgdir=jpgdir, verbose=True, overwrite=True)
-        #    )
-        pngfile.append(
-            qa_skypatch(primary, group=group, pngsuffix=pngsuffix, add_title=add_title,
-                        objname=objname, racenter=racenter, deccenter=deccenter,
-                        width_arcmin=width_arcsec / 60., clip=clip, pngdir=pngdir,
-                        jpgdir=jpgdir, verbose=verbose, overwrite=overwrite,
-                        overwrite_viewer=overwrite_viewer)
-        )
-        if verbose:
-            print()
-
-    pngfile = np.array(pngfile)
-    allindx = np.arange(len(pngfile))
-
-    nperpage = ncol * nrow
-    npage = int(np.ceil(len(pngfile) / nperpage))
-
-    pdf = PdfPages(pdffile)
-    for ipage in range(npage):
-        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
-        fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
-        for iax, xx in enumerate(np.atleast_1d(ax).flat):
-            if iax < len(indx):
-                xx.imshow(imread(pngfile[indx[iax]]), interpolation='None')
-            xx.axis('off')
-        #for xx in np.arange(iax, nperpage):
-        fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
-        pdf.savefig(fig, dpi=150)
-        plt.close()
-    pdf.close()
-    print(f'Wrote {pdffile}')
-
-    # clean up
-    if cleanup:
-        for png in pngfile:
-            if os.path.isfile(png):
-                if verbose:
-                    print(f'Removing {png}')
-                os.remove(png)
-        if os.path.isfile(pngdir):
-            shutil.rmtree(pngdir)
 
 
 def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, objname=None,
@@ -349,54 +83,69 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
 
     """
     crossidfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-crossid-errors.csv')
+    #crossidfile2 = resources.files('SGA').joinpath('data/SGA2024/SGA2024-crossid-errors3.csv')
 
     # Read or, optionally, rebuild the cross-id error file.
     if rebuild_file:
         VETO = [
-            'SBS 0924+554',            # SBS 0924+554 and SDSS J092824.31+551107.4 are distinct.
-            '2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
-            '2MFGC 16892',             # points to the center of the system
-            'IV Zw 056',               # IV Zw 056 and IV Zw 056 NOTES02 are distinct
+            #'2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
         ]
 
-        # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
-        I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
+        if True:
+            # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
+            I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
+            cat = resolve_close(fullcat[I], fullcat[I], maxsep=1., allow_vetos=True, verbose=False)
+            cat = vstack((cat, fullcat[~I]))
+            cat = cat[np.argsort(cat['PARENT_ROW'])]
+        else:
+            cat = resolve_close(fullcat, fullcat, maxsep=1., allow_vetos=True, verbose=False)
 
-        cat = resolve_close(fullcat[I], fullcat[I], maxsep=1., allow_vetos=True, verbose=False)
-        cat = vstack((cat, fullcat[~I]))
-        cat = cat[np.argsort(cat['PARENT_ROW'])]
+        diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
 
-        # Next, algorithmically identify cross-identification errors.
-        # Basically, NED typically associates the properties from HyperLeda
-        # (PGC number, diameter, etc.) with the *system* rather than with the
-        # appropriate galaxy (which is another entry in NED).
+        # Next, algorithmically identify cross-identification errors: NED will
+        # (sometimes) associate the properties from HyperLeda (PGC number,
+        # diameter, etc.) with the *system* rather than with the appropriate
+        # galaxy (which is another entry in NED).
         print(f'Writing {crossidfile}')
         F = open(crossidfile, 'w')
         F.write('objname_ned_from,pgc_from,objname_ned_to,dtheta_arcsec,comment\n')
 
-        #for system in ['GPair']:
         for system in ['GTrpl', 'GPair']:
-            M = np.where((cat['OBJTYPE'] == system) * (cat['PGC'] != -99))[0]
+        #for system in ['GPair']:
+        #for system in ['GTrpl']:
+
+            # Is there *another* source more than 1 arcsec away which is within
+            # 1.5 arcsec of the *HyperLeda* coordinates? If so, add it to the
+            # cross-id file.
+            M = np.where((cat['OBJTYPE'] == system) * ~np.isin(cat['OBJNAME'], VETO))[0]
+            #M = np.where((cat['OBJTYPE'] == system) * (cat['PGC'] != -99))[0]
+
             for m1 in M: # [1516:]:
-                if cat[m1]['OBJNAME_NED'] in VETO:
+                if len(VETO) > 0 and cat[m1]['OBJNAME_NED'] in VETO:
                     print(f'Skipping vetoed system {cat[m1]["OBJNAME_NED"]}')
                     continue
 
-                dtheta = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'])
-                # Is there *another* source more than 1 arcsec away which is within
-                # 1.5 arcsec of the *HyperLeda* coordinates with PGC==-99?
-                m2 = np.where((dtheta < 1.5) * (cat['PGC'] == -99))[0]
+                #dtheta = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'])
+                #m2 = np.where(dtheta < 1.5)[0]
+                #m2 = np.where((dtheta < 1.5) * (cat['PGC'] == -99))[0]
+
+                _, m2, _ = match_radec(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'], 1.5/3600.)
+                m2 = m2[~np.isin(m2, m1)] # remove self
+
                 if len(m2) == 0:
                     continue
                 elif len(m2) > 1:
-                    #qa_skypatch(cat[m1], group=vstack((cat[m1], cat[m2])), pngdir='.', jpgdir='.', verbose=True, overwrite=True)
-                    group = cat[m2]
-                    group['SEP'] = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], group['RA'], group['DEC'])
-                    primary, drop = choose_primary(group)
-                    m2 = m2[primary]
+                    if len(m2) > 1:
+                        pdb.set_trace()
 
-                # If so, copy over the HyperLeda quantities over to the other
-                # source.
+                    j1, j2, _ = match_radec(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'], 75./3600.)
+                    multipage_skypatch(cat[m1], cat=cat[j2], ncol=1, nrow=1, overwrite=True)
+
+                    #group = cat[m2]
+                    #group['SEP'] = arcsec_between(cat[m1]['RA_HYPERLEDA'], cat[m1]['DEC_HYPERLEDA'], group['RA'], group['DEC'])
+                    #primary, drop = choose_primary(group)
+                    #m2 = m2[primary]
+
                 m2 = m2[0]
 
                 # delta-theta between NED (old) and HyperLeda (adopted)
@@ -408,11 +157,36 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=True, rebuild_file=Fa
                 if verbose:
                     print(f'Writing {cat[m1]["OBJNAME"]} (PGC {cat[m1]["PGC"]}) --> {cat[m2]["OBJNAME"]} (PGC {cat[m2]["PGC"]})')
 
+                # Also check to see if the "m2" source similarly matches
+                # another object in the catalog.
+                _, m3, _ = match_radec(cat[m2]['RA_HYPERLEDA'], cat[m2]['DEC_HYPERLEDA'], cat['RA'], cat['DEC'], 1.5/3600.)
+                m3 = m3[~np.isin(m3, [m1, m2])] # remove self
+
+                if len(m3) == 0:
+                    continue
+                elif len(m3) > 1:
+                    #if len(m2) > 1:
+                    #    pdb.set_trace()
+                    pdb.set_trace()
+
+                m3 = m3[0]
+
+                # delta-theta between NED (old) and HyperLeda (adopted)
+                dtheta_ned = arcsec_between(cat[m2]['RA'], cat[m2]['DEC'], cat[m2]['RA_HYPERLEDA'],
+                                            cat[m2]['DEC_HYPERLEDA'])
+
+                # objname_ned_from,objname_ned_to,dtheta_arcsec,comment\n')
+                F.write(f'{cat[m2]["OBJNAME_NED"]},{cat[m2]["PGC"]},{cat[m3]["OBJNAME_NED"]},{dtheta_ned:.3f},{cat[m2]["OBJTYPE"]}\n')
+                if verbose:
+                    print(f'  Adding {cat[m2]["OBJNAME"]} (PGC {cat[m2]["PGC"]}) --> {cat[m3]["OBJNAME"]} (PGC {cat[m3]["PGC"]})')
+                pdb.set_trace()
+
         F.close()
 
     # Update the input catalog.
     crossids = Table.read(crossidfile, format='csv', comment='#')
     print(f'Read {len(crossids):,d} rows from {crossidfile}')
+    pdb.set_trace()
 
     newcat = fullcat.copy()
 
@@ -594,7 +368,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
     match merger_type:
         case 'GTrpl':
             VETO = None
-            drop_ignore_diam_prefixes = None
+            drop_ignore_diam_prefixes = []
             drop_prefixes = ['AGC', 'HIPASS', '[BWH2007]', '2dFGRS', 'APMUKS(BJ)',
                              'RSCG', 'MCG', 'LGG', 'LCLG', 'IRAS', 'PPS2', 'GALEXMSC',
                              '[KLI2009]', 'DEEP2', '[ALB2009]', 'WBL', 'KTS', 'ARP',
@@ -604,10 +378,10 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              'USGC', 'CB-20.07763', 'SSRS', 'APMBGC', 'WAS', 'VCC',
                              '2MASS', 'CGPG', 'II', 'VI', 'I', 'IC', 'IV', 'SDSS',
                              'GALEXASC', 'VIII', 'V', 'NGC', ]
-            drop_references = None
+            drop_references = []
         case 'GPair':
             VETO = None
-            drop_ignore_diam_prefixes = None
+            drop_ignore_diam_prefixes = []
             drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]', 'ZwCl',
                              '[vvd91a]', '2MASS', '2MASX', '2MASXi', '2MFGC', 'AGC', 'APMBGC',
                              'CGPG', 'Cocoon', 'CSL', 'CTS', 'FCCB', 'FLASH', 'MESSIER', 'GIN',
@@ -618,10 +392,10 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
                              'SDSS', 'V', 'KUG', 'GALEXASC', 'ARP', 'VV', 'IRAS', 'UGC',
                              'VIII', '2dFGRS', 'VII', 'AM', 'CGMW', 'WISEA', 'KPG', 'CGCG',
                              'HS', 'ESO']
-            drop_references = None
+            drop_references = []
         case _:
             VETO = None
-            drop_prefixes = ['WINGS', 'SRGb', 'KYDISC', '[MD2000]', 'HeCS', 'ESP',
+            drop_prefixes = ['WINGS', 'SRGb', '[MD2000]', 'HeCS', 'ESP',
                              'SDSSCGB', 'NVSS', 'AGC', ]
             drop_ignore_diam_prefixes = [
                 'Mr20:[BFW2006]', 'Mr19:[BFW2006]', 'Mr18:[BFW2006]',
@@ -676,7 +450,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
 
     I = []
     # drop by prefix (but not if there's a measured diameter)
-    if drop_prefixes is not None:
+    if len(drop_prefixes) > 0:
         for drop_prefix in drop_prefixes:
             Idrop = drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, objname=objname,
                                    VETO=VETO, verbose=False)
@@ -684,7 +458,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
             I.append(Idrop)
 
     # drop by prefix, ignoring the measured diameter
-    if drop_ignore_diam_prefixes is not None:
+    if len(drop_ignore_diam_prefixes) > 0:
         for drop_prefix in drop_ignore_diam_prefixes:
             Idrop = drop_by_prefix(drop_prefix, prefix, pgc=None, diam=None,
                                    objname=objname, VETO=VETO, verbose=False)
@@ -692,7 +466,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
             I.append(Idrop)
 
     # drop by reference
-    if drop_references is not None:
+    if len(drop_references) > 0:
         for drop_reference in drop_references:
             Idrop = np.flatnonzero(np.core.defchararray.find(T['OBJNAME'].value, drop_reference) != -1)
             print(f'Dropping {len(Idrop):,d} {suffix} sources with reference {drop_reference}')
@@ -702,7 +476,7 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
         I = np.unique(np.hstack(I))
         if verbose:
             print(f'Removing {len(I):,d}/{len(T):,d} {suffix} sources.')
-            out = fullcat[~np.isin(fullcat['PARENT_ROW'], T[I]['PARENT_ROW'])]
+        out = fullcat[~np.isin(fullcat['PARENT_ROW'], T[I]['PARENT_ROW'])]
     else:
         out = fullcat
 
@@ -712,27 +486,31 @@ def remove_by_prefix(fullcat, merger_type=None, build_qa=False, cleanup=True,
         jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'{qasuffix}-viewer')
         pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'{qasuffix}-png')
 
-        qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
+        #qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
         #qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 200 and pre not in drop_prefixes]
+        qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 10 and pre not in drop_ignore_diam_prefixes]
 
         #qa_prefixes = ['VII', ]
         #qa_prefixes = ['ARP'] ; width_arcsec = 120. ; overwrite = True
-        #obj='IC 1942' ; m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[fullcat['OBJNAME'] == obj]['RA'], fullcat[fullcat['OBJNAME'] == obj]['DEC'], 75./3600.)
+        #obj='IC 1942' ; I=fullcat['OBJNAME'] == obj ; m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[I]['RA'], fullcat[I]['DEC'], 75./3600.)
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == '[BFH91]']['RA'], T[prefix == '[BFH91]']['DEC'], 75./3600.)
-        #qa_skypatch(fullcat[m1[3]], group=fullcat[m1], clip=True)
+        #prim=1 ; qa_skypatch(fullcat[m1[prim]], group=fullcat[m1])
         #fullcat[np.flatnonzero(np.core.defchararray.find(fullcat['OBJNAME'].value, 'ABELL 2247') != -1)][cols]
 
         #for drop_prefix in ['III']:
         for drop_prefix in qa_prefixes:
         #for drop_prefix in drop_prefixes:
-            Idrop = drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, objname=objname,
+            Idrop = drop_by_prefix(drop_prefix, prefix, pgc=None, diam=None, objname=objname,
                                    VETO=VETO, verbose=False)
+            #Idrop = drop_by_prefix(drop_prefix, prefix, pgc=pgc, diam=diam, objname=objname,
+            #                       VETO=VETO, verbose=False)
             if len(Idrop) == 0:
                 print(f'No {suffix} sources with prefix {drop_prefix}')
             else:
                 print(f'Building QA for {len(Idrop):,d} {suffix} sources with prefix {drop_prefix}')
                 pdffile = os.path.join(sga_dir(), 'parent', 'vi', f'vi-{qasuffix}-{drop_prefix}.pdf')
+                pdb.set_trace()
                 multipage_skypatch(T[Idrop], cat=out, width_arcsec=width_arcsec, ncol=ncol, nrow=nrow,
                                    jpgdir=jpgdir, pngdir=pngdir, pngsuffix=f'{qasuffix}-{drop_prefix}',
                                    pdffile=pdffile, clip=True, verbose=verbose, overwrite=overwrite,
@@ -777,28 +555,34 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     mindiam in arcmin
 
     """
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
-    origcat = Table(fitsio.read(catfile))
-    print(f'Read {len(origcat):,d} objects from {catfile}')
+    testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2024-parent-nocuts.fits')
+    if True:
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
+        origcat = Table(fitsio.read(catfile))
+        print(f'Read {len(origcat):,d} objects from {catfile}')
+    
+        # [1] Update individual-galaxy properties, including coordinates.
+        cat = update_properties(origcat, verbose=verbose)
+    
+        # [2] Drop systems with uncommon prefixes (after VI).
+        cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
-    # [1] Update individual-galaxy properties, including coordinates.
-    cat = update_properties(origcat, verbose=verbose)
-
-    # [2] Drop systems with uncommon prefixes (after VI).
-    cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
+        cat.write(testfile, overwrite=True)
+    else:
+        cat = Table(fitsio.read(testfile))
+        print(f'Read {len(cat):,d} objects from {testfile}')
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=True, build_qa=False)
+    cat = resolve_crossid_errors(cat, verbose=True, rebuild_file=True, build_qa=False)
+    pdb.set_trace()
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
 
     # [4] Visually drop GTrpl and GPair systems without measured diameters and/or PGC numbers.
-    cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=False, overwrite=True)
-    cat = remove_by_prefix(cat, merger_type='GPair', verbose=verbose, build_qa=False, overwrite=True)
-
+    cat = remove_by_prefix(cat, merger_type='GTrpl', verbose=verbose, build_qa=True)
     pdb.set_trace()
-
+    cat = remove_by_prefix(cat, merger_type='GPair', verbose=verbose, build_qa=False)
 
     I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
     pdffile = 'tmp-objtype.pdf'

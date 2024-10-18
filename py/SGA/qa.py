@@ -9,6 +9,7 @@ import os, pdb
 import warnings
 import time, subprocess
 import numpy as np
+from astropy.table import Table
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -19,6 +20,10 @@ import matplotlib.ticker as ticker
 #import seaborn as sns
 #sns.set(style='ticks', font_scale=1.4, palette='Set2')
 
+
+cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA',
+        'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
+        'MAG', 'Z', 'PGC', 'PARENT_ROW']
 
 def plot_style(font_scale=1.2, paper=False, talk=True):
 
@@ -45,6 +50,275 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     #sns.reset_orig()
 
     return sns, colors
+
+
+def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
+                pngsuffix=None, objname=None, racenter=None, deccenter=None,
+                add_title=True, width_arcmin=2., pngdir='.', jpgdir='.', clip=False,
+                verbose=False, overwrite_viewer=False, overwrite=False):
+    """Build QA which shows all the objects in a ~little patch of sky.
+
+    primary - parent-style catalog
+    group (optional) - parent-style catalog with additional systems in the field
+
+    """
+    import matplotlib.image as mpimg
+    from matplotlib.patches import Circle
+    from matplotlib.lines import Line2D
+    from urllib.request import urlretrieve
+    from astropy.wcs import WCS
+    from astropy.io import fits
+
+
+    if pngsuffix is None:
+        pngsuffix = suffix
+
+    def get_wcs(racenter, deccenter, width_arcmin=2., survey='ls'):
+        pix = {'ls': 0.262, 'unwise': 2.75}
+        pixscale = pix[survey]
+        width = int(60. * width_arcmin / pixscale)
+        hdr = fits.Header()
+        hdr['NAXIS'] = 2
+        hdr['NAXIS1'] = width
+        hdr['NAXIS2'] = width
+        hdr['CTYPE1'] = 'RA---TAN'
+        hdr['CTYPE2'] = 'DEC--TAN'
+        hdr['CRVAL1'] = racenter
+        hdr['CRVAL2'] = deccenter
+        hdr['CRPIX1'] = width/2+0.5
+        hdr['CRPIX2'] = width/2+0.5
+        hdr['CD1_1'] = -pixscale/3600.
+        hdr['CD1_2'] = 0.0
+        hdr['CD2_1'] = 0.0
+        hdr['CD2_2'] = +pixscale/3600.
+        wcs = WCS(hdr)
+        width = wcs.pixel_shape[0]
+        return wcs, width, pixscale
+
+
+    def get_url(racenter, deccenter, width, layer):
+        url = f'https://www.legacysurvey.org/viewer/jpeg-cutout?ra={racenter}&dec=' + \
+            f'{deccenter}&width={width}&height={width}&layer={layer}'
+        #print(url)
+        return url
+
+    bbox = dict(boxstyle='round', facecolor='k', alpha=0.5)
+    ref_pixscale = 0.262
+
+    if primary is None and group is None:
+        raise ValueError('Must specify group *and/or* primary')
+
+    if primary is not None and group is None:
+        group = Table(primary)
+    if primary is None and group is not None:
+        primary = Table(group[0])
+
+    if verbose:
+        print(group[cols])
+    N = len(group)
+
+    if racenter is None and deccenter is None:
+        racenter = primary[racol]
+        deccenter = primary[deccol]
+    if objname is None:
+        objname = primary['OBJNAME']
+
+    outname = objname.replace(' ', '_')
+    pngfile = os.path.join(pngdir, f'{outname}-{pngsuffix}.png')
+    if os.path.isfile(pngfile) and not overwrite:
+        print(f'Output file {pngfile} exists; skipping.')
+        return
+
+
+    # check if the viewer cutout file exists
+    surveys = ['ls', 'ls', 'unwise']
+    layers = ['ls-dr9', 'ls-dr10', 'unwise-neo7']
+    for survey, layer in zip(surveys, layers):
+        jpgfile = os.path.join(jpgdir, f'{outname}-{suffix}-{layer}.jpeg')
+        if os.path.isfile(jpgfile):
+            surveys = [survey]
+            layers = [layer]
+
+    for survey, layer in zip(surveys, layers):
+        wcs, width, pixscale = get_wcs(racenter, deccenter, survey=survey, width_arcmin=width_arcmin)
+        jpgfile = os.path.join(jpgdir, f'{outname}-{suffix}-{layer}.jpeg')
+        if os.path.isfile(jpgfile) and not overwrite_viewer:
+            img = mpimg.imread(jpgfile)
+        else:
+            urlretrieve(get_url(racenter, deccenter, width, layer=layer), jpgfile)
+            img = mpimg.imread(jpgfile)
+            if np.all(img == 32): # no data
+                os.remove(jpgfile)
+            else:
+                break
+
+    decsort = np.argsort(group[deccol])
+
+    leg_colors = ['red']
+    leg_lines = ['-']
+    leg_labels = ['Adopted']
+
+    #fig = plt.figure()
+    #ax = fig.add_subplot()#projection=wcs)
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.imshow(img, origin='lower')
+    for imem, (mem, yoffset) in enumerate(zip(group[decsort], (np.arange(0, N)+0.5) * width / N)):
+
+        label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
+
+        if imem % 2 == 0:
+            xoffset = 0.2 * width
+        else:
+            xoffset = width - 0.2 * width
+
+        if width-yoffset > width / 2:
+            va = 'top'
+        else:
+            va = 'bottom'
+
+        pix = wcs.wcs_world2pix(mem[racol], mem[deccol], 1)
+        if np.abs(pix[1]-yoffset) < int(0.03*width):
+            yoffset += int(0.03*width)
+
+        ax.add_artist(Circle((pix[0], width-pix[1]), radius=4.*ref_pixscale/pixscale,
+                             facecolor='none', edgecolor='red', lw=2, ls='-', alpha=0.9, clip_on=clip))
+        ax.annotate('', xy=(pix[0], width-pix[1]), xytext=(xoffset, width-yoffset),
+                    annotation_clip=clip, arrowprops=dict(
+                        facecolor='red', width=3, headwidth=8, shrink=0.01, alpha=0.9))
+        ax.annotate(label, xy=(xoffset, width-yoffset), xytext=(xoffset, width-yoffset),
+                    va=va, ha='center', color='white', bbox=bbox, fontsize=9,
+                    annotation_clip=clip)
+
+        if mem['RA_HYPERLEDA'] != -99. and mem['RA'] != mem['RA_HYPERLEDA']:
+            hyper_pix = wcs.wcs_world2pix(mem['RA_HYPERLEDA'], mem['DEC_HYPERLEDA'], 1)
+            ax.add_artist(Circle((hyper_pix[0], width-hyper_pix[1]), radius=8.*ref_pixscale/pixscale,
+                                 facecolor='none', edgecolor='cyan', lw=1, ls='--', alpha=0.5, clip_on=clip))
+            ax.annotate('', xy=(hyper_pix[0], width-hyper_pix[1]), xytext=(xoffset, width-yoffset),
+                        annotation_clip=clip, arrowprops=dict(
+                            facecolor='cyan', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
+            leg_colors += ['cyan']
+            leg_lines += ['--']
+            leg_labels += ['HyperLeda']
+
+        if mem['RA_NED'] != -99. and mem['RA'] != mem['RA_NED']:
+            ned_pix = wcs.wcs_world2pix(mem['RA_NED'], mem['DEC_NED'], 1)
+            ax.add_artist(Circle((ned_pix[0], width-ned_pix[1]), radius=8.*ref_pixscale/pixscale,
+                                 facecolor='none', edgecolor='yellow', lw=1, ls='--', alpha=0.5, clip_on=clip))
+            ax.annotate('', xy=(ned_pix[0], width-ned_pix[1]), xytext=(xoffset, width-yoffset),
+                        annotation_clip=clip, arrowprops=dict(
+                            facecolor='yellow', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
+            leg_colors += ['yellow']
+            leg_lines += ['--']
+            leg_labels += ['NED']
+
+        if mem['RA_LVD'] != -99. and mem['RA'] != mem['RA_LVD']:
+            lvd_pix = wcs.wcs_world2pix(mem['RA_LVD'], mem['DEC_LVD'], 1)
+            ax.add_artist(Circle((lvd_pix[0], width-lvd_pix[1]), radius=8.*ref_pixscale/pixscale,
+                                 facecolor='none', edgecolor='blue', lw=1, ls='--', alpha=0.5, clip_on=clip))
+            ax.annotate('', xy=(lvd_pix[0], width-lvd_pix[1]), xytext=(xoffset, width-yoffset),
+                        annotation_clip=clip, arrowprops=dict(
+                            facecolor='blue', width=1, ls='--', headwidth=4, shrink=0.01, alpha=0.5))
+            leg_colors += ['blue']
+            leg_lines += ['--']
+            leg_labels += ['LVD']
+
+    _, uindx = np.unique(leg_labels, return_index=True)
+    ax.legend([Line2D([0], [0], color=col, linewidth=2, linestyle=ls)
+               for col, ls in zip(np.array(leg_colors)[uindx], np.array(leg_lines)[uindx])],
+              np.array(leg_labels)[uindx], loc='upper left', frameon=True, framealpha=0.7,
+              fontsize=8)
+
+    ax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
+    if add_title:
+        ax.set_title(f'{objname} ({racenter:.8f},{deccenter:.8f})')
+    ax.axis('off')
+    fig.tight_layout()
+    fig.savefig(pngfile, bbox_inches=0)#, dpi=200)
+    plt.close()
+    #print(f'Wrote {pngfile}')
+
+    return pngfile
+
+
+def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=1, nrow=1,
+                       add_title=True, pngsuffix='group', jpgdir='.', pngdir='.',
+                       pdffile='multipage-skypatch.pdf', clip=True, verbose=False,
+                       overwrite_viewer=False, overwrite=True, cleanup=False):
+    """Call qa_skypatch on a table of sources.
+
+    """
+    from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.image import imread
+
+    from astrometry.libkd.spherematch import match_radec
+
+    if not os.path.isdir(jpgdir):
+        os.makedirs(jpgdir)
+    if not os.path.isdir(pngdir):
+        os.makedirs(pngdir)
+
+    primaries = Table(primaries)
+    nobj = len(primaries)
+
+    if cat is None:
+        groups = [None] * nobj
+    else:
+        matches = match_radec(primaries['RA'].value, primaries['DEC'].value, cat['RA'].value,
+                              cat['DEC'].value, width_arcsec/3600., indexlist=True, notself=False)
+        groups = [cat[onematch] for onematch in matches]
+
+
+    pngfile = []
+    for iobj, (primary, group) in enumerate(zip(primaries, groups)):
+        #width = crossid['dtheta_arcsec'] / 60. # [arcmin]
+        objname = f'{primary["OBJNAME"]}-{primary["OBJTYPE"]}'
+        racenter, deccenter = primary['RA'], primary['DEC']
+        #pngfile.append(
+        #    qa_skypatch(group=fullcat[match_full[iobj+ss]], pngsuffix='original',
+        #                add_title=False,
+        #                objname=objname, racenter=racenter, deccenter=deccenter,
+        #                pngdir=pngdir, jpgdir=jpgdir, verbose=True, overwrite=True)
+        #    )
+        pngfile.append(
+            qa_skypatch(primary, group=group, pngsuffix=pngsuffix, add_title=add_title,
+                        objname=objname, racenter=racenter, deccenter=deccenter,
+                        width_arcmin=width_arcsec / 60., clip=clip, pngdir=pngdir,
+                        jpgdir=jpgdir, verbose=verbose, overwrite=overwrite,
+                        overwrite_viewer=overwrite_viewer)
+        )
+        if verbose:
+            print()
+
+    pngfile = np.array(pngfile)
+    allindx = np.arange(len(pngfile))
+
+    nperpage = ncol * nrow
+    npage = int(np.ceil(len(pngfile) / nperpage))
+
+    pdf = PdfPages(pdffile)
+    for ipage in range(npage):
+        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
+        fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
+        for iax, xx in enumerate(np.atleast_1d(ax).flat):
+            if iax < len(indx):
+                xx.imshow(imread(pngfile[indx[iax]]), interpolation='None')
+            xx.axis('off')
+        #for xx in np.arange(iax, nperpage):
+        fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
+        pdf.savefig(fig, dpi=150)
+        plt.close()
+    pdf.close()
+    print(f'Wrote {pdffile}')
+
+    # clean up
+    if cleanup:
+        for png in pngfile:
+            if os.path.isfile(png):
+                if verbose:
+                    print(f'Removing {png}')
+                os.remove(png)
+        if os.path.isfile(pngdir):
+            shutil.rmtree(pngdir)
 
 
 # adapted from https://github.com/desihub/desiutil/blob/5735fdc34c4e77c7fda84c92c32b9ac41158b8e1/py/desiutil/plots.py#L735-L857
