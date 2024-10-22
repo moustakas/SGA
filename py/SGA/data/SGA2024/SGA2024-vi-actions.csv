@@ -22,6 +22,7 @@ WISEA J114518.60+200035.9,drop,faint,In 'CGCG 097-133' group.
 ESO 324-IG 022 NED02,drop,faint,In 'ESO 324-IG 022' group.
 WISEA J190344.58-055427.1,drop,faint,
 WISEA J033622.88-500957.7,drop,faint,Galaxy triple but fairly compact.
+SDSS J004151.23-092955.8,drop,faint,In 'MCG -02-02-087' group.
 #
 MGC 0006552,drop,compact,In 'MGC 0006552' group.
 2MASS J10225889-0010216,drop,compact,In 'MGC 0006552' group.
@@ -600,6 +601,8 @@ SDSS J161243.53+281748.3,drop,shred,Shred or part of 'UGC 10273 NED01'.
 UGC 11044 NED01,drop,shred,Shred or part of 'UGC 11044'.
 UGC 02140 NED01,drop,shred,Shred or part of 'UGC 02140 NED03'.
 UGC 02140 NED02,drop,shred,Shred or part of 'UGC 02140 NED03'.
+IRAS 18099+0623,drop,shred,Shred or part of 'WISEA J181220.58+062402.5'.
+SDSS J123202.13+493749.8,drop,shred,Shred or part of 'MCG +08-23-048 NED02'.
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
@@ -718,8 +721,50 @@ ESO 355-IG 012 NED02,drop,no source,In 'ESO 355-IG 012' group.
 ESO 355-IG 012 NED03,drop,no source,In 'ESO 355-IG 012' group.
 VV 663,drop,no source,Galaxy triple.
 VV 386,drop,no source,Galaxy triple.
-UGC 11367,drop,no source,Galaxy triple.
 UGC 02140,drop,no source,Galaxy triple.
+NGC 7592,drop,no source,Galaxy triple.
+GALEXASC J011412.46-163326.8,drop,no source,Galaxy triple.
+ESO 012-IG 016 NED02,drop,no source,In 'ESO 012-IG 016' group.
+ESO 053-IG 024,drop,no source,Galaxy triple.
+ESO 088- G 011,drop,no source,Galaxy triple.
+ESO 075-IG 004,drop,no source,Galaxy triple.
+ESO 238-IG 020,drop,no source,Galaxy triple.
+ESO 191-IG 002,drop,no source,Galaxy triple.
+ESO 488-IG 031 NED01,drop,no source,In 'ESO 488-IG 031' group.
+ESO 218-IG 004,drop,no source,Galaxy triple.
+ESO 141-IG 017,drop,no source,Galaxy triple.
+ESO 145-IG 003 NED02,drop,no source,In 'ESO 145-IG 003' group.
+IRAS 08227-1326,drop,no source,Galaxy triple.
+PGC 1413674,drop,no source,In 'II Zw 114' group.
+II Zw 114,drop,no source,Galaxy triple.
+CGCG 148-110,drop,no source,Galaxy triple.
+CGCG 058-014,drop,no source,Galaxy triple.
+CGMW 3-0151,drop,no source,Galaxy triple.
+CGMW 3-0427,drop,no source,Galaxy triple.
+CGMW 3-1437,drop,no source,Galaxy triple.
+CGMW 3-1493,drop,no source,Galaxy triple.
+CGMW 3-2113,drop,no source,Galaxy triple.
+CGMW 3-2304,drop,no source,Galaxy triple.
+CGMW 3-2528,drop,no source,Galaxy triple.
+CGMW 3-2678,drop,no source,Galaxy triple.
+CGMW 3-2750,drop,no source,Galaxy triple.
+CGMW 3-3032,drop,no source,Galaxy triple.
+CGMW 3-4779,drop,no source,Galaxy triple.
+CGMW 3-4946,drop,no source,Galaxy triple.
+CGMW 4-0216,drop,no source,Galaxy triple.
+CGMW 4-1144,drop,no source,Galaxy triple.
+CGMW 4-1614,drop,no source,Galaxy triple.
+CGMW 4-2919,drop,no source,Galaxy triple.
+MCG +07-02-001,drop,no source,Galaxy pair.
+MCG +10-16-101,drop,no source,Galaxy pair.
+MCG +10-17-081,drop,no source,Galaxy pair.
+MCG +00-13-025,drop,no source,Galaxy pair.
+MCG +04-22-015,drop,no source,Galaxy pair.
+MCG -01-25-007,drop,no source,Galaxy pair.
+MCG +03-31-053,drop,no source,Galaxy pair.
+MCG +08-23-049,drop,no source,Galaxy pair.
+MCG -03-07-023,drop,no source,Galaxy pair.
+MCG -02-02-087,drop,no source,Galaxy pair.
 #
 2MASS J01144834-0029514,drop,radio source,In 'UGC 00793' group.
 FIRST J105749.1+361443,drop,radio source,In 'VV 747' group.
@@ -1053,3 +1098,25 @@ ESO 079-IG 009 NED01,hyperleda-coords,NED incorrect,In 'ESO 079-IG 009' group.
 ESO 114-IG 018 NED02,hyperleda-coords,NED incorrect,In 'ESO 114-IG 018' group.
 UGC 07683 NOTES01,hyperleda-coords,NED incorrect,Ring galaxy?
 UGC 07683 NOTES02,hyperleda-coords,NED incorrect,Galaxy triple.
+APMUKS(BJ) B030437.41-12262 ID,hyperleda-coords,NED incorrect,Galaxy triple.
+ESO 012-IG 016 NED01,hyperleda-coords,NED incorrect,In 'ESO 012-IG 016' group.
+ESO 202- G 013 NED02,hyperleda-coords,NED incorrect,In 'ESO 202- G 013' group.
+ESO 119-IG 031,hyperleda-coords,NED incorrect,Galaxy triple.
+ESO 088- G 011 NED02,hyperleda-coords,NED incorrect,In 'ESO 088- G 011' group.
+ESO 327-IG 026,hyperleda-coords,NED incorrect,Galaxy triple.
+ESO 289-IG 025,hyperleda-coords,NED incorrect,Galaxy triple.
+ESO 290-IG 046,hyperleda-coords,NED incorrect,Galaxy triple.
+ESO 290-IG 046 NED01,hyperleda-coords,NED incorrect,In 'ESO 290-IG 046' group.
+ESO 293-IG 005 NED01,hyperleda-coords,NED incorrect,In 'ESO 293-IG 005' group.
+ESO 293-IG 005 NED02,hyperleda-coords,NED incorrect,In 'ESO 293-IG 005' group.
+ESO 299-IG 010,hyperleda-coords,NED incorrect,Galaxy triple.
+ESO 488-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 488-IG 031' group.
+KUG 1326+390,hyperleda-coords,NED incorrect,Galaxy triple.
+CGCG 135-050,hyperleda-coords,NED incorrect,Galaxy triple.
+CGCG 428-068,hyperleda-coords,NED incorrect,Galaxy triple.
+CGCG 254-013,hyperleda-coords,NED incorrect,Galaxy triple.
+CGCG 031-064,hyperleda-coords,NED incorrect,Galaxy triple.
+2MASS J04014134-1102293,hyperleda-coords,NED incorrect,Galaxy triple.
+MCG -02-01-027,hyperleda-coords,NED incorrect,Galaxy pair.
+MCG -01-05-016,hyperleda-coords,NED incorrect,Galaxy pair.
+MCG -03-08-037,hyperleda-coords,NED incorrect,Galaxy pair.

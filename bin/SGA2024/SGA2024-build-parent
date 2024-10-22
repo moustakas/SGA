@@ -536,12 +536,11 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
         qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
         #qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 10 and pre not in drop_prefixes]
 
-        qa_prefixes = ['UGC', ]
-        #qa_prefixes = ['ARP'] ; width_arcsec = 120. ; overwrite = True
-        #obj='IC 1942' ; I=fullcat['OBJNAME'] == obj ; m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], fullcat[I]['RA'], fullcat[I]['DEC'], 75./3600.)
+        #qa_prefixes = ['UGC', ]
+        #obj='IC 1942' ; cc = out ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 75./3600.) ; cc[m1][cols]
+        #prim=1 ; qa_skypatch(cc[m1[prim]], group=cc[m1])
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == '[BFH91]']['RA'], T[prefix == '[BFH91]']['DEC'], 75./3600.)
-        #prim=1 ; qa_skypatch(fullcat[m1[prim]], group=fullcat[m1])
         #fullcat[np.flatnonzero(np.core.defchararray.find(fullcat['OBJNAME'].value, 'ABELL 2247') != -1)][cols]
 
         #for drop_prefix in ['III']:
@@ -613,7 +612,7 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
 
     """
     testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2024-parent-nocuts.fits')
-    if False:
+    if True:
         catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
         origcat = Table(fitsio.read(catfile))
         print(f'Read {len(origcat):,d} objects from {catfile}')
@@ -625,7 +624,7 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
         cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
         # [3] Resolve cross-identification errors in NED/HyperLeda.
-        cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=True, build_qa=False)
+        cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
 
         # [4] Resolve close (1 arcsec) pairs.
         cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -640,9 +639,16 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
 
     # only explicitly drop mergers with diameters via VI and the VI-actions file
-    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=True, overwrite=True)
-    pdb.set_trace()
+    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False, overwrite=True)
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=True, overwrite=True)
+
+    # write out
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-vicuts.fits')
+    print(f'Writing {len(cat):,d} objects to {outfile}')
+    cat.write(outfile, overwrite=True)
+
+
+    pdb.set_trace()
 
     I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
     pdffile = 'tmp-objtype.pdf'
@@ -683,51 +689,6 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
 
 
 
-    allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-
-    I = cat['OBJTYPE'] == 'GTrpl'
-    prefix = np.array(list(zip(*np.char.split(cat[I]['OBJNAME'].value, ' ').tolist()))[0])
-    C = Counter(prefix)
-    C.most_common()
-
-    J = np.isin(prefix, ['KUG', '2MFGC', 'NGPFG', 'SA', 'MGC', 'VCC', 'WAS', 'CGPG', 'APMBGC', '[H87]', 'LCRS', 'SSRS',
-                         'CB-20.07763', '[PCM2000]', 'SCG', '3C', 'FLASH', 'HIDEEP', '[SPS2007]', 'Mr19:[BFW2006]',
-                         'COMAi', 'AKARI', 'PM2GC', 'MLCG'])
-    multipage_skypatch(cat[I][J], cat=cat, width_arcsec=75., ncol=1, nrow=1,
-                       pngsuffix='group', pdffile=f'pairs.pdf', verbose=True, overwrite=False, cleanup=False)
-
-
-    K = np.isin(allprefix, 'COMAi')
-    multipage_skypatch(cat[K], cat=cat, width_arcsec=15., ncol=4, nrow=4, pngsuffix='group', pdffile='comai.pdf', verbose=True, overwrite=False, cleanup=False)
-
-
-    pdb.set_trace()
-
-    # First, resolve 1-arcsec pairs:
-    I = allcat['OBJTYPE'] == 'GPair'
-    cat = resolve_close(allcat[I], allcat, maxsep=1., keep_all_mergers=True,
-                        allow_vetos=True, verbose=verbose)
-    pdb.set_trace()
-
-    #trimcat = resolve_close(trimcat, trimcat, maxsep=3., verbose=True)
-
-    # Re-resolve 1-arcsec pairs because in 'resolve_multiples' we fix the
-    # coordinates of some sources, which leads to new overlaps.
-    cat = resolve_close(cat, cat, maxsep=1., keep_all_mergers=False, verbose=verbose)
-    pdb.set_trace()
-
-    c_cat = SkyCoord(ra=allcat['RA']*u.deg, dec=allcat['DEC']*u.deg)
-    indx_cat, sep2d, _ = match_coordinates_sky(c_cat, c_cat, nthneighbor=2)
-    #dd = allcat[(sep2d.arcsec < 1.) * (allcat['DIAM'] > 1.)]
-    dd = allcat[(sep2d.arcsec < 1.)]
-    dd = dd[np.argsort(dd['RA'])]
-
-    pdb.set_trace()
-
-    #W = np.where(allcat['DIAM_LEDA'] > 10.)[0]
-    W = np.where((allcat['DIAM_LEDA'] > 5.) * (allcat['DIAM_LEDA'] < 10.))[0]
-    srt = np.argsort(allcat['DIAM_LEDA'][W])[::-1]
-    bb = allcat[W[srt]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM', 'DIAM_LEDA', 'DIAM_REF', 'MORPH']
 
     # compare diameters
     pngfile = os.path.join(qadir, 'qa-diamleda.png')
@@ -1445,29 +1406,6 @@ def build_parent_nocuts(verbose=True):
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
     print(f'Writing {len(parent):,d} objects to {outfile}')
     parent.write(outfile, overwrite=True)
-
-
-#def domatch_coord(cat, refcat, rank=0):
-#    """Match a catalog and a reference catalog based coordinates.
-#
-#    """
-#    import astropy.units as u
-#    from astropy.coordinates import SkyCoord
-#    from SGA.util import match
-#
-#    print('Rank {rank:03d}: Matching based on coordinates.')
-#    c_cat = SkyCoord(cat['RA']*u.deg, cat['DEC']*u.deg)
-#    c_refcat = SkyCoord(refcat['RA']*u.deg, refcat['DEC']*u.deg)
-#    indx_refcat, sep2d, _ = c_cat.match_to_catalog_sky(c_refcat)
-#    print(f'Rank {rank:03d}: Mean and max separation between {len(cat)} galaxies is ' \
-#          f'{np.mean(sep2d.arcsec):.3f}+/-{np.std(sep2d.arcsec):.3f}, {np.max(sep2d.arcsec):.3f} arcsec.')
-#
-#    srt = np.argsort(sep2d)[::-1]
-#    refcat[indx_refcat[srt]][:10]
-#    cat[srt][:10]
-#
-#    info = hstack((refcat[indx_refcat]['PGC', 'OBJNAME', 'RA', 'DEC', 'LOGD25'], cat['GALAXY', 'RA', 'DEC', 'RHALF', 'SURFACE_BRIGHTNESS_RHALF']))
-#    info['SEPARCSEC'] = sep2d.arcsec.astype('f4')
 
 
 def read_cat(catalog):

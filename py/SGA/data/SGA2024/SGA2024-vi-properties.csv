@@ -108,5 +108,21 @@ ESO 488-IG 041 NED01,-99.,-99.,0.3,-99.,-99.,No,Companion to 'ESO 488-IG 041 NED
 LCRS B222134.3-391730,336.12686823302886,-39.037717325141685,0.3,-99.,-99.,No,Companion to '2MASS J22243101-3902150'.
 VIII Zw 330 NED02,-99.,-99.,0.2,-99.,-99.,No,In 'VIII Zw 330' group.
 ESO 237-IG 006 NED01,327.770006,-48.809086,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215104.80-484832.7'.
-UGC 10273,243.1861666666666,28.28613888888889,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 10273 NED01' so the LEDA properties can be copied.
-UGC 11044,268.89708333333334,18.924444444444447,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 11044 NED03' so the LEDA properties can be copied.
+UGC 10273,243.1861666666666,28.28613888888889,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 10273 NED01'.
+UGC 11044,268.89708333333334,18.924444444444447,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 11044 NED03'.
+NGC 5745,221.25791666666666,-13.947194444444445,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'NGC 5745 NED03'.
+NGC 7018,316.85687499999995,-25.42855555555556,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'NGC 7018 NED02'.
+PRC C-59,-99.,-99.,0.5,-99.,-99.,No,
+ESO 409-IG 021 NED01,1.8366666666666667,-28.11863888888889,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000720.78-280706.9'.
+ESO 012-IG 016,5.445587,-81.117359,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J002146.94-810702.4'.
+ESO 012-IG 019,8.247833333333332,-78.21466666666667,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 012-IG 019 NED03'.
+ESO 152-IG 014,23.691374999999997,-53.41811111111111,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J013445.78-532505.9'.
+ESO 053-IG 024 NED01,45.352833,-69.614204,-99.,-99.,-99.,No,Moved to the position of '2MASS J03012467-6936511'.
+ESO 202- G 013,65.802751,-49.252654,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 202- G 013 NED03'.
+ESO 345-IG 052,341.55474999999996,-39.08338888888889,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J224613.26-390502.7'.
+ESO 194-IG 037,11.679833333333333,-51.00538888888889,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 194-IG 037 NED03'.
+CGCG 135-050 NED02,230.377882,21.192636,-99.,-99.,-99.,No,Moved to the position of '2MASS J15213069+2111334'.
+CGCG 135-050 NED01,230.376693,21.1906202,-99.,-99.,-99.,Yes,Moved to the position of galaxy triple 'CGCG 135-050'.
+CGCG 095-061 NED02,163.617441,17.7579675,-99.,-99.,-99.,No,Moved to the position of galaxy triple 'CGCG 095-061'.
+MCG -01-25-007 NED01,-99.,-99.,0.4,-99.,-99.,No,Companion to 'MCG -01-25-007 NED02'.
+MCG -03-07-023 NED01,37.409886,-17.045349,-99.,-99.,-99.,No,Moved to the position of '2MASS J02293837-1702432'.
