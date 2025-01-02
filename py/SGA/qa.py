@@ -69,6 +69,8 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
     from astropy.wcs import WCS
     from astropy.io import fits
 
+    if overwrite_viewer:
+        overwrite = True
 
     if pngsuffix is None:
         pngsuffix = suffix

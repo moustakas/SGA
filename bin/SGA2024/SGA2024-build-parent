@@ -3,7 +3,8 @@
 """Code to build the parent SGA2024 sample based on a combination of internal and external catalogs.
 
 SGA2024-build-parent --build-parent-nocuts
-SGA2024-build-parent --build-parent --mindiam 0.25
+SGA2024-build-parent --build-parent-vicuts
+SGA2024-build-parent --build-parent
 
 SGA2024-build-parent --in-footprint --mp 128 --overwrite
 
@@ -476,7 +477,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'HS 1700+6416:[SSE2005]', 'NGC 4676:[BFB2004]', 'ABELL 2553:[QR95]',
                 '[GC2020]', '[GDW2019]', 'ABELL 1689:[GH91]', 'ABELL 1689:[MBC96]',
                 'ABELL 1689:[TCG90]', 'ABELL 1677:[AEF92]', 'ABELL 3295:[VCC89]',
-                'ABELL 1205:[QR95]', ]
+                'ABELL 1205:[QR95]', 'ABELL 1413:[CSP2012]', 'ABELL 1413:[TFM92]',
+                'ABELL 1413:[MPC97]', ]
             # {'ABELL 0116:KYDISC',
             # 'ABELL 0646:KYDISC',
             # 'ABELL 0655:KYDISC',
@@ -605,10 +607,8 @@ def update_properties(cat, verbose=False):
     return out
 
 
-def build_parent(mindiam=15./60., verbose=False, overwrite=False):
+def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog.
-
-    mindiam in arcmin
 
     """
     testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2024-parent-nocuts.fits')
@@ -624,7 +624,7 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
         cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
         # [3] Resolve cross-identification errors in NED/HyperLeda.
-        cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
+        cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=True, build_qa=False)
 
         # [4] Resolve close (1 arcsec) pairs.
         cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -639,8 +639,8 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
 
     # only explicitly drop mergers with diameters via VI and the VI-actions file
-    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False, overwrite=True)
-    remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=True, overwrite=True)
+    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
+    remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
     # write out
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-vicuts.fits')
@@ -658,81 +658,51 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
 
 
     pdb.set_trace()
+
+
+def build_parent(mindiam=15./60., verbose=False, overwrite=False):
+    """Build the parent catalog.
+
+    mindiam in arcmin
+
+    """
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-vicuts.fits')
+    cat = Table(fitsio.read(catfile))
+    print(f'Read {len(cat):,d} objects from {catfile}')
+
+    pdb.set_trace()
+
     # How many sources with diam<0.1 have no other source within 10 arcsec?
+    radius_isolated = 10.
+
     diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
-    I = np.where(diam < 0.1)[0]
-    refcat = cat[I]
-    allmatches = match_radec(cat['RA'].value, cat['DEC'].value, refcat['RA'].value, refcat['DEC'].value,
-                             10./3600., indexlist=True, notself=False)
-    allindx_cat, allindx_refcat = [], []
-    for iobj, onematch in enumerate(allmatches):
+    I = np.where(diam == -99.)[0]
+    #I = np.where((diam > 0.) * (diam < 0.1))[0]
+    #I = np.where(diam < 0.1)[0]
+    cat_isolated = cat[I]
+    matches = match_radec(cat_isolated['RA'].value, cat_isolated['DEC'].value, cat['RA'].value,
+                          cat['DEC'].value, radius_isolated/3600., indexlist=True, notself=True)
+    indx_isolated = []
+    for iobj, onematch in enumerate(matches):
         if onematch is None:
-            #continue
-            allindx_cat.append(iobj)
-            allindx_refcat.append(onematch)
-        #if len(onematch) == 1:
-        #    allindx_cat.append(iobj)
-        #    allindx_refcat.append(onematch)
-    pdb.set_trace()
+            continue
+        if len(onematch) == 1:
+            indx_isolated.append(iobj)
+    indx_isolated = np.array(indx_isolated)
 
-    ## Resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
-    #I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
-    #cat = resolve_close(fullcat[I], fullcat[I], maxsep=1., allow_vetos=True, verbose=False)
-    #cat = vstack((cat, fullcat[~I]))
-    #cat = cat[np.argsort(cat['PARENT_ROW'])]
+    out = cat_isolated[indx_isolated]
+    #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], out[0]['RA'], out[0]['DEC'], 10./3600) ; cat[m1][cols]
+    #prim=0 ; qa_skypatch(cat[m1[prim]], group=cat[m1])
 
-    # Drop systems with uncommon prefixes (after VI).
-    for system in ['GTrpl', 'GPair', None]:
-        cat = remove_by_prefixx(cat, system=system, verbose=verbose,
-                                build_qa=True, cleanup=True)
+    prefix = np.array(list(zip(*np.char.split(out['OBJNAME'].value, ' ').tolist()))[0])
 
-
-
-
-
-    # compare diameters
-    pngfile = os.path.join(qadir, 'qa-diamleda.png')
-    I = np.where((allcat['DIAM'] > 0.) * (allcat['DIAM_LEDA'] > mindiam))[0]
-    print(len(I))
-    lim = (-1.7, 3.)
-    #lim = (np.log10(mindiam)-0.1, 3.)
-
-
-
-    import corner
-    from SGA.qa import plot_style
-    sns, colors = plot_style(talk=True, font_scale=1.2)
-
-    fig, ax = plt.subplots(figsize=(7, 7))
-    xx = np.log10(allcat['DIAM_LEDA'][I])
-    yy = np.log10(allcat['DIAM'][I])
-    J = ['IRAS' in morph for morph in allcat['MORPH'][I]]
-    corner.hist2d(xx, yy, levels=[0.5, 0.75, 0.95, 0.995],
-                  bins=100, smooth=True, color=colors[0], ax=ax, # mpl.cm.get_cmap('viridis'),
-                  plot_density=True, fill_contours=True, range=(lim, lim),
-                  data_kwargs={'color': colors[0], 'alpha': 0.4, 'ms': 4},
-                  contour_kwargs={'colors': 'k'},)
-    ax.scatter(xx[J], yy[J], s=15, marker='x', color=colors[2])
-    #ax.scatter(xx, yy, s=10)
-    ax.set_xlabel(r'$\log_{10}$ (Diameter) [HyperLeda]')
-    ax.set_ylabel(r'$\log_{10}$ (Diameter) [archive]')
-    #ax.set_xlim(lim)
-    #ax.set_ylim(lim)
-    ax.plot(lim, lim, color='k', lw=2)
-    fig.tight_layout()
-    print(f'Writing {pngfile}')
-    fig.savefig(pngfile)#, bbox_inches='tight')
-    plt.close(fig)
-
-    I = np.where(allcat['DIAM'] > mindiam)[0]
-    print(f'Trimming to {len(I):,d}/{len(allcat):,d} ({100.*len(I)/len(allcat):.1f}%) ' + \
-          f'objects with DIAM>{60.*mindiam:.1f} arcsec.')
-    cat = allcat[I]
-
-    srt = np.argsort(cat['DIAM'])[::-1]
-    cat[srt]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'MORPH']
+    pdffile = 'qa-isolated.pdf'
+    multipage_skypatch(out[:50], cat=cat, width_arcsec=30., ncol=1, nrow=1, clip=True,
+                       jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
+                       pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
 
     pdb.set_trace()
+
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
@@ -774,6 +744,48 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
         png = os.path.join(qadir, 'qa-sizemag-parent-nocuts.png')
         fig_size_mag(cat, pngfile=png)
     pdb.set_trace()
+
+    # compare diameters
+    if False:
+        pngfile = os.path.join(qadir, 'qa-diamleda.png')
+        I = np.where((allcat['DIAM'] > 0.) * (allcat['DIAM_LEDA'] > mindiam))[0]
+        print(len(I))
+        lim = (-1.7, 3.)
+        #lim = (np.log10(mindiam)-0.1, 3.)
+
+        import corner
+        from SGA.qa import plot_style
+        sns, colors = plot_style(talk=True, font_scale=1.2)
+
+        fig, ax = plt.subplots(figsize=(7, 7))
+        xx = np.log10(allcat['DIAM_LEDA'][I])
+        yy = np.log10(allcat['DIAM'][I])
+        J = ['IRAS' in morph for morph in allcat['MORPH'][I]]
+        corner.hist2d(xx, yy, levels=[0.5, 0.75, 0.95, 0.995],
+                      bins=100, smooth=True, color=colors[0], ax=ax, # mpl.cm.get_cmap('viridis'),
+                      plot_density=True, fill_contours=True, range=(lim, lim),
+                      data_kwargs={'color': colors[0], 'alpha': 0.4, 'ms': 4},
+                      contour_kwargs={'colors': 'k'},)
+        ax.scatter(xx[J], yy[J], s=15, marker='x', color=colors[2])
+        #ax.scatter(xx, yy, s=10)
+        ax.set_xlabel(r'$\log_{10}$ (Diameter) [HyperLeda]')
+        ax.set_ylabel(r'$\log_{10}$ (Diameter) [archive]')
+        #ax.set_xlim(lim)
+        #ax.set_ylim(lim)
+        ax.plot(lim, lim, color='k', lw=2)
+        fig.tight_layout()
+        print(f'Writing {pngfile}')
+        fig.savefig(pngfile)#, bbox_inches='tight')
+        plt.close(fig)
+
+        I = np.where(allcat['DIAM'] > mindiam)[0]
+        print(f'Trimming to {len(I):,d}/{len(allcat):,d} ({100.*len(I)/len(allcat):.1f}%) ' + \
+              f'objects with DIAM>{60.*mindiam:.1f} arcsec.')
+        cat = allcat[I]
+
+        srt = np.argsort(cat['DIAM'])[::-1]
+        cat[srt]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'MORPH']
+
 
 
 def build_parent_nocuts(verbose=True):
@@ -1583,6 +1595,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned into the parent-nocuts catalog.')
+    parser.add_argument('--build-parent-vicuts', action='store_true', help='Apply VI results to the parent-nocuts catalog.')
     parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned.')
     parser.add_argument('--qa-parent', action='store_true', help='Build QA.')
     parser.add_argument('--mindiam', default=15./60., type=float, help='Minimum diameter for selecting parent sample.')
@@ -1615,6 +1628,9 @@ def main():
 
     if args.build_parent_nocuts:
         build_parent_nocuts()
+
+    if args.build_parent_vicuts:
+        build_parent_vicuts(overwrite=args.overwrite, verbose=args.verbose)
 
     if args.build_parent:
         build_parent(mindiam=args.mindiam, overwrite=args.overwrite, verbose=args.verbose)
