@@ -5,7 +5,12 @@ SGA.util
 Support utilities.
 
 """
+import pdb
 import numpy as np
+from astropy.table import Table
+
+from astrometry.util.starutil_numpy import arcsec_between
+from astrometry.libkd.spherematch import match_radec
 
 
 def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
@@ -87,7 +92,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     col = 'RHALF' # [arcmin]
                     I = cat[col] > 0.
                     if np.sum(I) > 0:
-                        val[I] = cat[col][I]
+                        val[I] = cat[col][I] * 2. * 2. # half-light-->full-light; radius-->diameter
                         val_ref[I] = ref
                 case 'ba':
                     col = 'ELLIPTICITY' # =1-b/a
@@ -100,6 +105,45 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     I = ~np.isnan(cat[col])
                     if np.sum(I) > 0:
                         val[I] = cat[col][I] % 180 # put in the range [0, 180]
+                        val_ref[I] = ref
+
+            basic[prop.upper()] = val
+            basic[f'{prop.upper()}_REF'] = val_ref
+            if prop == 'mag':
+                basic['BAND'] = val_band
+    # custom
+    elif 'DIAM' in cat.columns:
+        ref = 'CUSTOM'
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            val = np.zeros(nobj, 'f4') - 99.
+            val_ref = np.zeros(nobj, '<U7')
+            val_band = np.zeros(nobj, 'U1')
+
+            match prop:
+                case 'mag':
+                    col = 'MAG'
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                        val_band[I] = cat[f'{col}_BAND'][I]
+                case 'diam':
+                    col = 'DIAM' # [arcmin]
+                    I = cat[col] > 0.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                case 'ba':
+                    col = 'BA'
+                    I = cat[col] != -99.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
+                        val_ref[I] = ref
+                case 'pa':
+                    col = 'PA'
+                    I = cat[col] != -99.
+                    if np.sum(I) > 0:
+                        val[I] = cat[col][I]
                         val_ref[I] = ref
 
             basic[prop.upper()] = val
@@ -164,6 +208,240 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
               f'diameters for {np.sum(D):,d}/{nobj:,d} objects.')
 
     return basic
+
+
+def parent_datamodel(nobj):
+    """Initialize the data model for the parent-nocuts sample.
+
+    """
+    parent = Table()
+    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+    parent['MORPH'] = np.zeros(nobj, '<U20')
+    parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
+
+    parent['RA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+
+    parent['Z'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+
+    parent['PGC'] = np.zeros(nobj, '<i8') -99
+    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
+
+    parent['MAG'] = np.zeros(nobj, 'f4') -99.
+    parent['MAG_REF'] = np.zeros(nobj, '<U7')
+    parent['BAND'] = np.zeros(nobj, '<U1')
+    parent['DIAM'] = np.zeros(nobj, 'f4') -99.
+    parent['DIAM_REF'] = np.zeros(nobj, '<U7')
+    parent['BA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_REF'] = np.zeros(nobj, '<U7')
+    parent['PA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_REF'] = np.zeros(nobj, '<U7')
+
+    parent['DIAM_LEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_LEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_LEDA'] = np.zeros(nobj, 'f4') -99.
+
+    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
+
+    return parent
+
+
+def choose_primary(group, verbose=False, keep_all_mergers=False):
+    """Choose the primary member of a group.
+
+    keep_all is helpful for returning a group catalog without dropping any
+    sources.
+
+    if keep_all_mergers=True then always keep {GPair,GTrpl} sources, even
+      if they do not have a diameter.
+
+    if allow_vetos=True then do not drop systems that are in a 'veto' list,
+      even if they overlap with another source.
+
+    """
+    if keep_all_mergers:
+        IM = np.logical_or(group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
+        IG = group['OBJTYPE'] == 'G'
+    else:
+        IG = np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
+
+    #IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
+    ID = np.vstack((group['DIAM'] != -99., group['DIAM_LEDA'] != -99.)).T
+    IZ = group['Z'] != -99.
+    IS = group['SEP'] == 0.
+
+    mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
+    mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
+    mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
+    mask4 = np.all(ID, axis=1) * IZ      # both diameters and a redshift
+    mask5 = np.all(ID, axis=1) * IS      # both diameters and separation=0 (usually PGC is a minimum)
+    mask6 = np.all(ID, axis=1)           # both diameters
+    mask7 = np.any(ID, axis=1) * IS      # either diameter and separation=0
+    mask8 = IS                           # separation=0
+    mask9 = IG                           # objtype=G
+
+    if keep_all_mergers:
+        mask0 = IM # objtype={GPair,GTrpl}
+        allmasks = (mask0, mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8)
+    else:
+        allmasks = (mask1, mask2, mask3, mask4, mask5, mask6, mask7, mask8, mask9)
+
+    for mask in allmasks:
+        keep = np.where(mask)[0]
+        drop = np.where(~mask)[0]
+        if len(keep) == 1:
+            keep, drop = np.where(mask)[0], np.where(~mask)[0]
+            return keep, drop
+
+    print('Warning: cases 1-9 failed; choosing by prefix.')
+    prefer_prefix = ['NGC', 'UGC', 'IC', 'MCG', 'CGCG', 'ESO',
+                     'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII']
+    prefix = np.array(list(zip(*np.char.split(group['OBJNAME'].value, ' ').tolist()))[0])
+    mask = np.array([pre in prefer_prefix for pre in prefix])
+    keep = np.where(mask)[0]
+    drop = np.where(~mask)[0]
+    if len(keep) == 1:
+        print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM', 'DIAM_LEDA', 'Z', 'PGC', 'SEP'])
+        keep, drop = np.where(mask)[0], np.where(~mask)[0]
+        return keep, drop
+
+    print('Warning: choosing by prefix failed; choosing by minimum separation.')
+    print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM', 'DIAM_LEDA', 'Z', 'PGC', 'SEP'])
+    print()
+    keep = np.atleast_1d(group['SEP'].argmin())
+    return keep, np.delete(np.arange(len(group)), keep)
+    #indx = np.arange(len(group))
+    #return indx[:1], indx[1:]
+
+
+def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
+                  keep_all_mergers=False, objname_column='OBJNAME',
+                  trim=True, verbose=False):
+    """Resolve close objects.
+
+    maxsep in arcsec
+    cat - smaller catalog
+    refcat - full catalog
+
+    """
+    VETO = [
+        '2MASX J15134005+2607307',  # overlaps with 3C 315, but the coordinates for 3C 315 are wrong
+    ]
+
+    allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                             refcat['RA'].value, refcat['DEC'].value,
+                             maxsep/3600., indexlist=True, notself=False)
+
+    nobj = 0
+    allindx_cat, allindx_refcat = [], []
+    for iobj, onematch in enumerate(allmatches):
+        if onematch is None:
+            continue
+        nmatch = len(onematch)
+        if nmatch > 1:
+            nobj += nmatch
+            allindx_cat.append(iobj)
+            allindx_refcat.append(onematch)
+
+    if verbose:
+        maxname = len(max(refcat[objname_column], key=len))
+        maxtyp = len(max(refcat['OBJTYPE'], key=len))
+
+    refcat['GROUP_ID'] = np.zeros(len(refcat), np.int32) - 99
+    refcat['PRIMARY'] = np.ones(len(refcat), bool)
+    refcat['NGROUP'] = np.ones(len(refcat), np.int16)
+    refcat['SEPARATION'] = np.zeros(len(refcat), 'f4')
+    refcat['DONE'] = np.zeros(len(refcat), bool)
+
+    for igroup, (indx_cat, indx_refcat) in enumerate(zip(allindx_cat, allindx_refcat)):
+        if verbose and (igroup % 500 == 0):
+            print(f'Working on group {igroup+1:,d}/{len(allindx_refcat):,d}')
+        indx_cat = np.array(indx_cat)
+        indx_refcat = np.array(indx_refcat)
+        if np.all(refcat['DONE'][indx_refcat]):
+            continue
+
+        group = refcat[indx_refcat]
+        dtheta = arcsec_between(Table(cat[indx_cat])['RA'], Table(cat[indx_cat])['DEC'],
+                                group['RA'].value, group['DEC'].value)
+        group['SEP'] = dtheta.astype('f4')
+        ngroup = len(group)
+
+        refcat['GROUP_ID'][indx_refcat] = igroup
+        refcat['NGROUP'][indx_refcat] = ngroup
+        refcat['SEPARATION'][indx_refcat] = dtheta
+        refcat['DONE'][indx_refcat] = True
+
+        if keep_all:
+            primary = np.arange(ngroup)
+            drop = np.array([])
+        else:
+            primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers)
+            refcat['PRIMARY'][indx_refcat[drop]] = False
+
+        #if verbose and (np.any(group['OBJTYPE'] == 'GPair') or np.any(group['OBJTYPE'] == 'GTrpl')):
+        if verbose:
+            for ii in primary:
+                print('Keep: '+'{name: <{W}}'.format(name=group[ii][objname_column], W=maxname)+': ' + \
+                      '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
+                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
+                      f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, (ra,dec)={group[ii]["RA"]:.6f},' + \
+                      f'{group[ii]["DEC"]:.6f}')
+            for ii in drop:
+                print('Drop: '+'{name: <{W}}'.format(name=group[ii][objname_column], W=maxname)+': ' + \
+                      '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
+                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
+                      f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
+
+        # check for vetos
+        if allow_vetos:
+            for veto in VETO:
+                I = np.where(np.isin(refcat[indx_refcat][objname_column], veto))[0]
+                if len(I) == 1:
+                    if refcat[indx_refcat[I]]['PRIMARY'] == False:
+                        print(f'Restoring vetoed object {refcat[indx_refcat[I[0]]][objname_column]}')
+                        refcat['PRIMARY'][indx_refcat[I]] = True
+        if verbose:
+            print()
+
+    ugroup = np.unique(refcat["GROUP_ID"])
+    ugroup = ugroup[ugroup != -99]
+
+    print(f'Found {len(ugroup):,d} group(s) with ' + \
+          f'({np.sum(refcat["GROUP_ID"] != -99):,d}/{len(refcat):,d} ' + \
+          f'unique objects) within {maxsep:.1f} arcsec.')
+
+    #check = refcat[refcat['GROUP_ID'] != -99]
+    #check = check[np.argsort(check['GROUP_ID'])]
+    #drop = refcat[(refcat['GROUP_ID'] != -99) * (refcat['PRIMARY'] == False)]
+    #prefix = np.array([objname.split(' ')[0] for objname in drop['OBJNAME']])
+
+    if trim:
+        out = refcat[refcat['PRIMARY']]
+        out.remove_columns(['GROUP_ID', 'PRIMARY', 'NGROUP', 'SEPARATION', 'DONE'])
+        return out
+    else:
+        refcat.remove_column('DONE')
+        return refcat
 
 
 def match_to(A, B, check_for_dups=True):

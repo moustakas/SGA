@@ -8,7 +8,7 @@ Code to read and write the various SGA files.
 import os, sys, time, pdb
 import fitsio
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table, vstack
 
 from SGA.log import get_logger#, DEBUG
 log = get_logger()
@@ -197,7 +197,6 @@ def altnames_hyperleda(cat):
         else:
             #C = [':' in name  for name in altnames]
             #if np.any(C):
-            #    #pdb.set_trace()
             #    print(altnames)
             altname.append(altnames[0])
 
@@ -225,21 +224,15 @@ def nedfriendly_hyperleda(old, reverse=False):
     #return new
 
 
-def version_hyperleda():
-    #return 'meandata_1718379336'
-    #return 'meandata_1720804662'
-    return 'meandata_1725482144'
+def version_hyperleda_multiples():
+    return 'meandata_multiples_1727885775'
 
 
-def read_hyperleda(rank=0, rows=None):
-    """Read the HyperLeda catalog.
-
-    Feedback for Dmitry:
-
-    * 87 duplicated entries (see below)
+def read_hyperleda_multiples(rank=0, rows=None):
+    """Read the HyperLeda_multiples catalog.
 
     """
-    version = version_hyperleda()
+    version = version_hyperleda_multiples()
     hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
 
     if not os.path.isfile(hyperfile):
@@ -248,17 +241,88 @@ def read_hyperleda(rank=0, rows=None):
         with open(txtfile, 'r') as F:
             nrows = len(F.readlines())
 
-        if version == 'meandata_1718379336':
+        if version == 'meandata_multiples_1727885775':
+            header_start = 21
+            data_start = 23
+            data_offset = 5 # 4846383-20
+            delimiter = '|'
+        else:
+            raise ValueError(f'Unknown version {version}')
+
+        hyper = Table.read(txtfile, format='ascii.csv', data_start=data_start,
+                           data_end=nrows-data_offset, header_start=header_start,
+                           delimiter=delimiter)
+
+        hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
+        [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
+
+        hyper['ROW'] = np.arange(len(hyper))
+
+        nhyper = len(hyper)
+        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        assert(nhyper == len(np.unique(hyper['PGC'])))
+
+        hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
+        hyper['RA'] *= 15. # [decimal degrees]
+
+        # get just the first three alternate names
+        altnames = []
+        for iobj in range(len(hyper)):
+            objname = hyper['OBJNAME'][iobj]
+            names = np.array(hyper['ALTNAMES'][iobj].split(','))
+            # remove the primary name
+            names = names[~np.isin(names, objname)]
+            names = ','.join(names[:3]) # top 3
+            altnames.append(names)
+        hyper['ALTNAMES'] = altnames
+
+        # re-sort by PGC number
+        hyper = hyper[np.argsort(hyper['PGC'])]
+
+        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        hyper.write(hyperfile, overwrite=True)
+
+    hyper = Table(fitsio.read(hyperfile, rows=rows))
+    print(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+
+    return hyper
+
+
+def version_hyperleda_galaxies():
+    #return 'meandata_1718379336'
+    #return 'meandata_1720804662'
+    return 'meandata_galaxies_1725482144'
+
+
+def read_hyperleda_galaxies(rank=0, rows=None):
+    """Read the HyperLeda 'G' and 'g' catalog.
+
+    Feedback for Dmitry:
+
+    * 87 duplicated entries (see below)
+
+    """
+    version = version_hyperleda_galaxies()
+    hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
+
+    if not os.path.isfile(hyperfile):
+        txtfile = hyperfile.replace('.fits', '.txt')
+
+        with open(txtfile, 'r') as F:
+            nrows = len(F.readlines())
+
+        if version == 'meandata_galaxies_1718379336':
             header_start = 20
             data_start = 22
             data_offset = 5
             delimiter = ','
-        elif version == 'meandata_1720804662':
+        elif version == 'meandata_galaxies_1720804662':
             header_start = 22
             data_start = 24
             data_offset = 7 # 4846383-20
             delimiter = '|'
-        elif version == 'meandata_1725482144':
+        elif version == 'meandata_galaxies_1725482144':
             header_start = 21
             data_start = 23
             data_offset = 5 # 4846383-20
@@ -268,7 +332,7 @@ def read_hyperleda(rank=0, rows=None):
                            data_end=nrows-data_offset, header_start=header_start,
                            delimiter=delimiter)
 
-        if version == 'meandata_1720804662' or version == 'meandata_1725482144':
+        if version == 'meandata_galaxies_1720804662' or version == 'meandata_galaxies_1725482144':
             hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
         #hyper.remove_column('f_astrom')
 
@@ -316,6 +380,43 @@ def read_hyperleda(rank=0, rows=None):
 
         # re-sort by PGC number
         hyper = hyper[np.argsort(hyper['PGC'])]
+
+        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        hyper.write(hyperfile, overwrite=True)
+
+    hyper = Table(fitsio.read(hyperfile, rows=rows))
+    print(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+
+    return hyper
+
+
+def version_hyperleda():
+    return 'meandata_v1.0'
+
+
+def read_hyperleda(rank=0, rows=None):
+    """Read the complete (galaxies + multiples) HyperLeda catalog.
+
+    """
+    version = version_hyperleda()
+    hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
+
+    if not os.path.isfile(hyperfile):
+        gals = read_hyperleda_galaxies(rank=rank, rows=rows)
+        mult = read_hyperleda_multiples(rank=rank, rows=rows)
+        #gals['ROW_GALAXIES'] = np.zeros(len(gals), np.int64) - 99
+        #mult['ROW_MULTIPLES'] = np.zeros(len(mult), np.int64) - 99
+        gals.rename_column('ROW', 'ROW_GALAXIES')
+        mult.rename_column('ROW', 'ROW_MULTIPLES')
+        hyper = vstack((gals, mult))
+        hyper['ROW_GALAXIES'].fill_value = -99
+        hyper['ROW_MULTIPLES'].fill_value = -99
+        hyper = hyper.filled()
+
+        # sort by PGC number and reset ROW
+        hyper = hyper[np.argsort(hyper['PGC'])]
+        hyper['ROW'] = np.arange(len(hyper))
 
         print(f'Writing {len(hyper):,d} objects to {hyperfile}')
         hyper.write(hyperfile, overwrite=True)
@@ -378,6 +479,7 @@ def nedfriendly_lvd(old):
         'M101 DwA': 'Messier 101:[BSC2017] Dw A',
         'Pegasus IV': 'Pegasus IV Dwarf',
         'Pegasus V': 'Pegasus V Dwarf', # ='Andromeda XXXIV'
+        'Pegasus III': 'Pegasus III Dwarf',
         'Pegasus dIrr': 'Pegasus Dwarf',
         'Perseus I': 'Andromeda XXXIII', # incorrectly resolves to 'PGC1 5067061 NED001'
         'Phoenix': 'Phoenix Dwarf',
@@ -460,11 +562,11 @@ def read_lvd(rank=0, rows=None):
     version = version_lvd()
 
     # combine the dwarf-all and dwarf-local-field-distant files
-    lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-{version}.fits')
+    lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_{version}.fits')
     if not os.path.isfile(lvdfile):
         from astropy.table import vstack
-        allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-dwarf-all-{version}.csv')
-        disfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD-dwarf-local-field-distant-{version}.csv')
+        allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_dwarf_all_{version}.csv')
+        disfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_dwarf_local_field_distant_{version}.csv')
         dall = Table.read(allfile)
         ddis = Table.read(disfile)
         for col in ddis.colnames:
@@ -802,6 +904,45 @@ def read_lvd(rank=0, rows=None):
     lvd['GALAXY'] = lvd['OBJNAME']
 
     return lvd
+
+
+def version_custom_external():
+    ver = 'v1.0'
+    return ver
+
+
+def read_custom_external(rank=0, rows=None, overwrite=False):
+    """Read the custom external catalog.
+
+    """
+    version = version_custom_external()
+
+    customfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.fits')
+    if not os.path.isfile(customfile) or overwrite:
+        csvfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.csv')
+        data = Table.read(csvfile, format='csv', comment='#')
+        data['mag_band'] = data['mag_band'].astype('<U1')
+        data['mag_band'].fill_value = ''
+        data['objname_ned'].fill_value = ''
+        data = data.filled()
+        for col in ['diam', 'ba', 'pa', 'mag']:
+            data[col] = data[col].astype('f4')
+        [data.rename_column(col, col.upper()) for col in data.colnames]
+        data.write(customfile, overwrite=True)
+
+    F = fitsio.FITS(customfile)
+    row = np.arange(F[1].get_nrows())
+    if rows is not None:
+        row = row[rows]
+
+    data = Table(F[1].read(rows=rows))
+    data['ROW'] = row
+    print(f'Read {len(data):,d} objects from {customfile}')
+
+    data = data[np.argsort(data['OBJNAME'])]
+    data['GALAXY'] = data['OBJNAME']
+
+    return data
 
 
 def version_nedlvs():
