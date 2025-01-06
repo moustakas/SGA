@@ -1,4 +1,4 @@
-# SGA-2024 Notes
+# SGA-2025 Notes
 
 salloc -N 4 -C cpu -A desi -t 01:00:00 --qos interactive --image=legacysurvey/legacyhalos:v1.2
 
