@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 
-"""Code to build the parent SGA2024 sample based on a combination of internal and external catalogs.
+"""Code to build the parent SGA2025 sample based on a combination of internal and external catalogs.
 
-SGA2024-build-parent --build-parent-nocuts
-SGA2024-build-parent --build-parent-vicuts
-SGA2024-build-parent --build-parent
+SGA2025-build-parent --build-parent-nocuts
+SGA2025-build-parent --build-parent-vicuts
+SGA2025-build-parent --build-parent
 
-SGA2024-build-parent --in-footprint --mp 128 --overwrite
+SGA2025-build-parent --in-footprint --mp 128 --overwrite
 
 Or, on my laptop:
-/opt/homebrew/bin/python3 ~/code/SGA/bin/SGA2024/SGA2024-build-parent --merge
+/opt/homebrew/bin/python3 ~/code/SGA/bin/SGA2025/SGA2025-build-parent --merge
 
 """
 import os, time, shutil, pdb
@@ -86,7 +86,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
     from astrometry.libkd.spherematch import tree_build_radec, trees_match
     from astrometry.util.starutil_numpy import deg2dist
 
-    crossidfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-crossid-errors.csv')
+    crossidfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-crossid-errors.csv')
 
     # Read or, optionally, rebuild the cross-id error file.
     if rebuild_file:
@@ -265,7 +265,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
     newcat = newcat[np.delete(np.arange(len(newcat)), drop)]
 
     # Read and act on the "VI actions" file.
-    actionsfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-vi-actions.csv')
+    actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
 
     for action in np.unique(actions['action']):
@@ -570,7 +570,7 @@ def update_properties(cat, verbose=False):
     HyperLeda.
 
     """
-    propfile = resources.files('SGA').joinpath('data/SGA2024/SGA2024-vi-properties.csv')
+    propfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-properties.csv')
     props = Table.read(propfile, format='csv', comment='#')
 
     out = cat.copy()
@@ -611,9 +611,9 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
-    testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2024-parent-nocuts.fits')
+    testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2025-parent-nocuts.fits')
     if True:
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts.fits')
         origcat = Table(fitsio.read(catfile))
         print(f'Read {len(origcat):,d} objects from {catfile}')
 
@@ -643,7 +643,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
     # write out
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-vicuts.fits')
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.write(outfile, overwrite=True)
 
@@ -666,7 +666,7 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     mindiam in arcmin
 
     """
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-vicuts.fits')
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts.fits')
     cat = Table(fitsio.read(catfile))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
@@ -712,7 +712,7 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
     from SGA.qa import fig_sky, fig_size_mag
 
     if nocuts:
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts.fits')
     else:
         pass
 
@@ -789,7 +789,7 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
 
 
 def build_parent_nocuts(verbose=True):
-    """Merge the external catalogs from SGA2024-query-ned.
+    """Merge the external catalogs from SGA2025-query-ned.
 
     """
     import re
@@ -1149,7 +1149,7 @@ def build_parent_nocuts(verbose=True):
     indx_dup_nedlvs = indx_dup_nedlvs[indx_dup_parent]
 
     # also remove some duplicates that arose because my NEDLVS query came well
-    # before (~July 2024) my HyperLeda-multiples query, and I guess some of the
+    # before (~July 2025) my HyperLeda-multiples query, and I guess some of the
     # coordinates changed...
     _miss_nedlvs = miss_nedlvs[np.delete(np.arange(len(miss_nedlvs)), indx_dup_nedlvs)]
     dups = _miss_nedlvs[np.isin(_miss_nedlvs['OBJNAME_NED'], parent['OBJNAME_NED'])]['OBJNAME_NED'].value
@@ -1415,7 +1415,7 @@ def build_parent_nocuts(verbose=True):
 
     parent['PARENT_ROW'] = np.arange(len(parent))
 
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2024-parent-nocuts.fits')
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts.fits')
     print(f'Writing {len(parent):,d} objects to {outfile}')
     parent.write(outfile, overwrite=True)
 
@@ -1594,9 +1594,9 @@ def main():
     catalogs = ['HyperLeda', 'NEDLVS', 'WXSC', 'LVD'] # 'HECATE', 'Z0MGS']
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned into the parent-nocuts catalog.')
+    parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned into the parent-nocuts catalog.')
     parser.add_argument('--build-parent-vicuts', action='store_true', help='Apply VI results to the parent-nocuts catalog.')
-    parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2024-query-ned.')
+    parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned.')
     parser.add_argument('--qa-parent', action='store_true', help='Build QA.')
     parser.add_argument('--mindiam', default=15./60., type=float, help='Minimum diameter for selecting parent sample.')
     parser.add_argument('--region', choices=regions, type=str, nargs='*', help='Region to pass to --in-footprint.')

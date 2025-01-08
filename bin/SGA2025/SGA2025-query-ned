@@ -1,22 +1,22 @@
 #!/usr/bin/env python
 
-"""Query NED with an external SGA2024 sample.
+"""Query NED with an external SGA2025 sample.
 
-SGA2024-query-ned --catalog HyperLeda-galaxies --query-byname
-SGA2024-query-ned --catalog HyperLeda-galaxies --gather-byname
-SGA2024-query-ned --catalog HyperLeda-galaxies-coords --query-bycoord
-SGA2024-query-ned --catalog HyperLeda-galaxies-coords --gather-bycoord
+SGA2025-query-ned --catalog HyperLeda-galaxies --query-byname
+SGA2025-query-ned --catalog HyperLeda-galaxies --gather-byname
+SGA2025-query-ned --catalog HyperLeda-galaxies-coords --query-bycoord
+SGA2025-query-ned --catalog HyperLeda-galaxies-coords --gather-bycoord
 
-SGA2024-query-ned --catalog HyperLeda-multiples --query-byname
-SGA2024-query-ned --catalog HyperLeda-multiples --gather-byname
-SGA2024-query-ned --catalog HyperLeda-multiples-coords --query-bycoord
-SGA2024-query-ned --catalog HyperLeda-multiples-coords --gather-bycoord
+SGA2025-query-ned --catalog HyperLeda-multiples --query-byname
+SGA2025-query-ned --catalog HyperLeda-multiples --gather-byname
+SGA2025-query-ned --catalog HyperLeda-multiples-coords --query-bycoord
+SGA2025-query-ned --catalog HyperLeda-multiples-coords --gather-bycoord
 
-SGA2024-query-ned --catalog LVD --query-byname
-SGA2024-query-ned --catalog LVD --gather-byname
+SGA2025-query-ned --catalog LVD --query-byname
+SGA2025-query-ned --catalog LVD --gather-byname
 
-SGA2024-query-ned --catalog NEDLVS --query-byname
-SGA2024-query-ned --catalog NEDLVS --gather-byname
+SGA2025-query-ned --catalog NEDLVS --query-byname
+SGA2025-query-ned --catalog NEDLVS --gather-byname
 
 """
 import os, re, time, pdb
@@ -583,7 +583,8 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
     if catalog.lower() == 'lvd':
         version = version_lvd()
 
-        keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED' # = Bootes V
+        keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
+        #cat[~np.isin(nedfriendly_lvd(cat['OBJNAME']), data['OBJNAME'][keep])]
         data = data[keep]
 
         miss = cat[~np.isin(nedfriendly_lvd(cat['OBJNAME'].value), data['OBJNAME'])]

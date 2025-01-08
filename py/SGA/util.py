@@ -21,11 +21,6 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
 
     """
     from astropy.table import Table
-    #from SGA.io import read_lvd
-    #cat = read_lvd()
-    #import fitsio
-    #cat = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2024/parent/external/NED-NEDLVS_20210922_v2.fits', rows=np.arange(100)))
-    #cat = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2024/parent/external/HyperLeda_meandata_1720804662.fits', rows=np.arange(100)))
     nobj = len(cat)
 
     basic = Table()
