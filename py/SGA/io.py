@@ -460,6 +460,8 @@ def nedfriendly_lvd(old):
         'KK 27': 'AM 0319-662',
         'KK 35': 'PGC1 0013826 NED006',
         'KK 77': 'F12D1',
+        'KK 109': 'GALEXASC J114711.81+434018.1',
+        'KK 160': 'SDSS J124357.79+433940.3',
         'KK 177': 'IC 4107',
         'KK 180': 'LSBC D575-08',
         'KK 182': 'PGC1 0166152 NED001',
@@ -475,13 +477,13 @@ def nedfriendly_lvd(old):
         'KK 221': 'PGC1 0046957 NED025',
         'KK 242': 'SMDG J1752485+700816',
         'KK 258': 'ESO 468- G 020',
-        'KKS 3': 'SGC 0224.3-7345',
-        'KKS 51': 'WISEA J124421.29-425620.9',
-        'KKS 53': 'PGC1 0046957 NED015',
-        'KKS 54': 'Centaurus A-dE2',
-        'KKS 55': 'PGC1 0046957 NED024',
-        'KKS 57': 'PGC1 0046957 NED023',
-        'KKS 58': 'Centaurus A-dE3',
+        'KKs 3': 'SGC 0224.3-7345',
+        'KKs 51': 'WISEA J124421.29-425620.9',
+        'KKs 53': 'PGC1 0046957 NED015',
+        'KKs 54': 'Centaurus A-dE2',
+        'KKs 55': 'PGC1 0046957 NED024',
+        'KKs 57': 'PGC1 0046957 NED023',
+        'KKs 58': 'Centaurus A-dE3',
         'KKSG 29': 'PGC1 0042407 NED014',
         'KKSG 31': 'PGC1 0042407 NED011',
         'KKSG 32': 'PGC1 0042407 NED015',
@@ -542,9 +544,7 @@ def nedfriendly_lvd(old):
         #'Donatiello IV': '',
         #'Eridanus IV': '',
         #'Fluffy': '',
-        #'KK 109': '',
-        #'KK 160': '',
-        #'KKS 59': '',
+        #'KKs 59': '',
         #'KV19-212': '',
         #'KV19-271': '',
         #'KV19-329': '',
@@ -599,11 +599,11 @@ def read_lvd(rank=0, rows=None):
         from astropy.table import vstack
         allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_dwarf_all_{version}.csv')
         lvd = Table.read(allfile)
-        # typos
-        lvd['name'][lvd['name'] == 'KKS53'] = 'KKS 53'
-        for obj in ['KKs 3', 'KKs 51', 'KKs 53', 'KKs 54', 'KKs 55', 'KKs 57', 'KKs 58', 'KKs 59']:
-            I = np.where(lvd['name'] == obj)[0]
-            lvd['name'][I] = obj.upper()
+        ## typos
+        #lvd['name'][lvd['name'] == 'KKS53'] = 'KKS 53'
+        #for obj in ['KKs 3', 'KKs 51', 'KKs 53', 'KKs 54', 'KKs 55', 'KKs 57', 'KKs 58', 'KKs 59']:
+        #    I = np.where(lvd['name'] == obj)[0]
+        #    lvd['name'][I] = obj.upper()
 
         # drop unconfirmed systems
         print(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
@@ -718,7 +718,6 @@ def read_lvd(rank=0, rows=None):
 		'KKH 37': 95597,
 		'KKH 57': 2807133,
 		'KKH 78': 2807147,
-		'KKS 59': 135780,
 		'LV J1243+4127': 0,
 		'LV J1313+1003': 0,
 		'HS 117': 0,
@@ -943,13 +942,14 @@ def read_lvd(rank=0, rows=None):
         'KKH 98': 2807157,
         'KKR 25': 2801026,
         'KKR 3': 166185,
-        'KKS 3': 9140,
-        'KKS 53': 2815820,
-        'KKS 51': 2815819,
-        'KKS 54': 2815821,
-        'KKS 55': 2815822,
-        'KKS 57': 2815823,
-        'KKS 58': 2815824,
+        'KKs 3': 9140,
+        'KKs 53': 2815820,
+        'KKs 51': 2815819,
+        'KKs 54': 2815821,
+        'KKs 55': 2815822,
+        'KKs 57': 2815823,
+        'KKs 58': 2815824,
+		'KKs 59': 0, # incorrectly matches to PGC135780
         'LGS 3': 3792,
         'LMC': 17223,
         'LV J0055-2310': 6740710,
