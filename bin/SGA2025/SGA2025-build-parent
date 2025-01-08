@@ -624,11 +624,11 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
         # [3] Resolve cross-identification errors in NED/HyperLeda.
-        cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=True, build_qa=False)
+        cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
 
         # [4] Resolve close (1 arcsec) pairs.
         cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
-        cat.write(testfile, overwrite=True)
+        #cat.write(testfile, overwrite=True)
     else:
         cat = Table(fitsio.read(testfile))
         print(f'Read {len(cat):,d} objects from {testfile}')
@@ -647,17 +647,14 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.write(outfile, overwrite=True)
 
-
-    pdb.set_trace()
-
-    I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
-    pdffile = 'tmp-objtype.pdf'
-    multipage_skypatch(cat[I[:50]], cat=cat, width_arcsec=30., ncol=5, nrow=5, clip=True, 
-                       jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
-                       pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
-
-
-    pdb.set_trace()
+    #pdb.set_trace()
+    #
+    #I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
+    #pdffile = 'tmp-objtype.pdf'
+    #multipage_skypatch(cat[I[:50]], cat=cat, width_arcsec=30., ncol=5, nrow=5, clip=True,
+    #                   jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
+    #                   pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
+        #pdb.set_trace()
 
 
 def build_parent(mindiam=15./60., verbose=False, overwrite=False):

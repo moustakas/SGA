@@ -800,7 +800,6 @@ CGMW 4-1144,drop,no source,Galaxy triple.
 CGMW 4-1614,drop,no source,Galaxy triple.
 CGMW 4-2919,drop,no source,Galaxy triple.
 MCG +07-02-001,drop,no source,Galaxy pair.
-MCG +10-16-101,drop,no source,Galaxy pair.
 MCG +10-17-081,drop,no source,Galaxy pair.
 MCG +00-13-025,drop,no source,Galaxy pair.
 MCG +04-22-015,drop,no source,Galaxy pair.
@@ -826,7 +825,6 @@ IC 1636,drop,no source,Galaxy pair.
 IC 1923,drop,no source,Galaxy pair.
 2MASX J13035310+0003081,drop,no source,Galaxy pair.
 AM 2040-434,drop,no source,Galaxy pair.
-AM 2320-314,drop,no source,Galaxy pair.
 AM 2344-471,drop,no source,Galaxy pair.
 AM 2335-513,drop,no source,Galaxy pair.
 AM 2243-525,drop,no source,Galaxy pair.
@@ -841,8 +839,6 @@ VII Zw 828,drop,no source,Galaxy pair.
 VII Zw 673,drop,no source,Galaxy pair.
 VII Zw 060,drop,no source,Galaxy pair.
 MRK 9029,drop,no source,Galaxy pair.
-V Zw 079,drop,no source,Galaxy pair.
-V Zw 158,drop,no source,Galaxy pair.
 III Zw 007,drop,no source,Galaxy pair.
 NGC 3537,drop,no source,Galaxy pair.
 NGC 6090,drop,no source,Galaxy pair.
@@ -1199,7 +1195,6 @@ ESO 293-IG 005 NED02,hyperleda-coords,NED incorrect,In 'ESO 293-IG 005' group.
 ESO 299-IG 010,hyperleda-coords,NED incorrect,Galaxy triple.
 ESO 488-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 488-IG 031' group.
 KUG 1326+390,hyperleda-coords,NED incorrect,Galaxy triple.
-CGCG 135-050,hyperleda-coords,NED incorrect,Galaxy triple.
 CGCG 428-068,hyperleda-coords,NED incorrect,Galaxy triple.
 CGCG 254-013,hyperleda-coords,NED incorrect,Galaxy triple.
 CGCG 031-064,hyperleda-coords,NED incorrect,Galaxy triple.
