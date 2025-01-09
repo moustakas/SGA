@@ -1715,11 +1715,12 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
         allfcat = vstack(allfcat)
         allfccds = vstack(allfccds)
 
-        #outcat = cat[np.isin(cat['PARENT_ROW'], allfcat['PARENT_ROW'])]
-        cat_indx, fcat_indx = match(cat['PARENT_ROW'], allfcat['PARENT_ROW'])
+        outcat = Table(fitsio.read(catfile)) # read the whole catalog
+        cat_indx, fcat_indx = match(outcat['PARENT_ROW'], allfcat['PARENT_ROW'])
+        outcat = outcat[cat_indx]
         allfcat = allfcat[fcat_indx]
-        outcat = cat[cat_indx]
         assert(np.all(outcat['PARENT_ROW'] == allfcat['PARENT_ROW']))
+
         outcat['NCCD'] = allfcat['NCCD']
         outcat['FILTERS'] = allfcat['FILTERS']
         outcat = outcat[np.argsort(outcat['PARENT_ROW'])]
@@ -1735,13 +1736,16 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
 
         print(f'All done in {(time.time()-t0)/60.:.2f} min')
 
+    return
 
 def qa_footprint(region='north', show_fullcat=False):
     """Build some simple QA of the in-footprint sample.
 
     """
     import matplotlib.pyplot as plt
-    import seaborn as sns
+    from SGA.qa import plot_style
+
+    sns, colors = plot_style(talk=True, font_scale=0.9)
 
     version = parent_version()
 
@@ -1760,15 +1764,20 @@ def qa_footprint(region='north', show_fullcat=False):
 
         ax.scatter(fullcat['RA'], fullcat['DEC'], s=1, color='gray')
 
-    for bands in sorted(set(cat['FILTERS'])):
+    #for bands in sorted(set(cat['FILTERS'])):
+    for iband, bands in enumerate(['grz', 'rz', 'gr', 'gz', 'g', 'r', 'z']):
+    #for bands in ['rz', 'gr', 'gz', 'g', 'r', 'z']:
         I = cat['FILTERS'] == bands
-        ax.scatter(cat['RA'][I], cat['DEC'][I], s=1, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
-    ax.set_xlabel('RA')
-    ax.set_ylabel('Dec')
+        if np.sum(I) > 0:
+            ax.scatter(cat['RA'][I], cat['DEC'][I], s=1, alpha=0.7, zorder=iband,
+                       label=f'{bands} (N={np.sum(I):,d})')
+    ax.set_xlabel('R.A. (degree)')
+    ax.set_ylabel('Dec (degree)')
     ax.set_xlim(360., 0.)
-    ax.set_ylim(-90., 90.)
+    ax.set_ylim(-25., 90.)
+    #ax.set_ylim(-90., 90.)
     #ax.invert_xaxis()
-    ax.legend(fontsize=10, ncols=2, markerscale=10, loc='lower left')
+    ax.legend(fontsize=9, ncols=4, markerscale=8, loc='lower left')
     fig.tight_layout()
     fig.savefig(qafile)
     print(f'Wrote {qafile}')
@@ -1780,9 +1789,6 @@ def main():
     """
     import argparse
 
-    regions = ['north', 'south']
-    #catalogs = ['HyperLeda', 'NEDLVS', 'WXSC', 'LVD'] # 'HECATE', 'Z0MGS']
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned into the parent-nocuts catalog.')
     parser.add_argument('--build-parent-vicuts', action='store_true', help='Apply VI results to the parent-nocuts catalog.')
@@ -1792,7 +1798,7 @@ def main():
     parser.add_argument('--qa-footprint', action='store_true', help='Build QA of the in-footprint samples.')
 
     parser.add_argument('--mindiam', default=15./60., type=float, help='Minimum diameter for selecting parent sample.')
-    parser.add_argument('--region', default='north', choices=regions, type=str, help='Region to pass to --in-footprint.')
+    parser.add_argument('--region', default='north', choices=['north', 'south'], type=str, help='Region to pass to --in-footprint.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')

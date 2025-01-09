@@ -7,7 +7,13 @@ This code only depends on Dustin's cutout container, not on any other software
 
 shifterimg pull dstndstn/cutouts:dvsro
 shifter --image dstndstn/cutouts:dvsro bash
-$HOME/code/git/SGA/bin/SGA2024/SGA2024-parent-cutouts --outdir $PSCRATCH/SGA2024-data/SGA2020-cutouts --mp 1 --catalog sga2020 --dry-run
+$HOME/code/git/SGA/bin/SGA2025/SGA2025-parent-cutouts --outdir $PSCRATCH/SGA2025-data/SGA2020-cutouts --mp=1 --catalog=sga2025-parent --region=north --dry-run
+
+or 
+
+salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
+srun --ntasks=2 shifter --env-file=$PSCRATCH/SGA2025/SGA2025-cutouts-env.sh python /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-cutouts --outdir=$PSCRATCH/SGA2025-data/cutouts-parent-north --catalog=sga2025-parent --region=north --mp=1 
+
 
 """
 import pdb # for debugging
@@ -38,7 +44,7 @@ def _cutout_one(args):
     return cutout_one(*args)
 
 
-def cutout_one(basefile, ra, dec, width, pixscale, dry_run, rank, iobj):
+def cutout_one(basefile, ra, dec, width, pixscale, layer, dry_run, rank, iobj):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
@@ -52,7 +58,7 @@ def cutout_one(basefile, ra, dec, width, pixscale, dry_run, rank, iobj):
 
     for suffix in ['.jpeg', '.fits']:
         outfile = basefile+suffix
-        cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} --layer=ls-dr9 --pixscale={pixscale} --force'
+        cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} --layer={layer} --pixscale={pixscale} --force'
         if dry_run:
             if suffix == '.jpeg':
                 print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')            
@@ -92,7 +98,8 @@ def get_basefiles_one(obj, objid, outdir, overwrite=False, verbose=False):
     return basefile, obj['RA'], obj['DEC'], nobj
 
 
-def plan(cat, objid=None, comm=None, outdir='.', mp=1, overwrite=False):
+def plan(cat, objid=None, layer='ls-dr9', comm=None, outdir='.', mp=1, 
+         overwrite=False):
 
     from astropy.table import Table
                                 
@@ -143,8 +150,8 @@ def plan(cat, objid=None, comm=None, outdir='.', mp=1, overwrite=False):
     return basefiles, allra, alldec, groups
 
 
-def do_cutouts(cat, objid=None, width=152, pixscale=0.262, comm=None, mp=1,
-               outdir='.', overwrite=False, dry_run=False):
+def do_cutouts(cat, objid=None, layer='ls-dr9', width=152, pixscale=0.262, 
+               comm=None, mp=1, outdir='.', overwrite=False, dry_run=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -153,8 +160,8 @@ def do_cutouts(cat, objid=None, width=152, pixscale=0.262, comm=None, mp=1,
 
     t0 = time.time()
     if rank == 0:
-        basefiles, allra, alldec, groups = plan(cat, objid, comm=comm, outdir=outdir,
-                                                overwrite=overwrite, mp=mp)
+        basefiles, allra, alldec, groups = plan(cat, objid, layer=layer, comm=comm, 
+                                                outdir=outdir, overwrite=overwrite, mp=mp)
         print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
@@ -176,14 +183,15 @@ def do_cutouts(cat, objid=None, width=152, pixscale=0.262, comm=None, mp=1,
     sys.stdout.flush()
 
     indx = groups[rank]
-    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width, pixscale, dry_run, rank, iobj) for iobj in indx]
+    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width, pixscale, 
+               layer, dry_run, rank, iobj) for iobj in indx]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_cutout_one, mpargs)
     else:
         [cutout_one(*mparg) for mparg in mpargs]
 
-    print(f'  rank {rank} is done')
+    #print(f'  rank {rank} is done')
     sys.stdout.flush()
 
     if comm is not None:
@@ -191,6 +199,20 @@ def do_cutouts(cat, objid=None, width=152, pixscale=0.262, comm=None, mp=1,
 
     if rank == 0 and not dry_run:
         print(f'All done at {time.asctime()}')
+
+
+def read_catalog(catfile, ext=1, columns=None):
+    if not os.path.isfile(catfile):
+        print(f'Catalog {catfile} not found')
+        return
+
+    try:
+        cat = Table(fitsio.read(catfile, ext=ext, columns=columns))#, rows=np.arange(5)))
+        print(f'Read {len(cat):,d} galaxies from {catfile}')
+        return cat
+    except:
+        msg = f'Problem reading {args.catalog}'
+        raise IOError(msg)
 
         
 def main():
@@ -207,7 +229,9 @@ def main():
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--catalog', type=str, default='sga2020', choices=['sga2020'], help='Catalog to read.')
+    parser.add_argument('--catalog', type=str, default='sga2025-parent', choices=['sga2025-parent', 'sga2020'], help='Catalog to read.')
+    parser.add_argument('--version', default='v1.0', type=str, help='Version of the parent catalog to read (only for --catalog="sga2025-parent").')
+    parser.add_argument('--region', default='north', choices=['north', 'south'], type=str, help='Region to analyze (only for --catalog="sga2025-parent").')
     parser.add_argument('--outdir', default='./', type=str, help='Base output data directory.')
     
     args = parser.parse_args()
@@ -229,19 +253,27 @@ def main():
         rank = comm.rank
 
     if rank == 0:
-        if args.catalog == 'sga2020':
+        if args.catalog == 'sga2025-parent':
+            catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/' + \
+                f'SGA2025-parent-{args.region}-{args.version}.fits'
+            cat = read_catalog(catfile)#, rows=np.arange(10))
+
+            print('Hack!')
+            cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104'])]
+            objid = np.char.replace(cat['OBJNAME'].value, ' ', '_')
+
+            layer = f'ls-dr9-{args.region}'
+            if args.region == 'south':
+                pass
+                #layer = f'ls-dr10-{args.region}'
+
+        elif args.catalog == 'sga2020':
             catfile = '/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits'
-            if not os.path.isfile(catfile):
-                print(f'Catalog {catfile} not found')
-                return
-            
-            try:
-                cat = Table(fitsio.read(catfile, 'ELLIPSE', columns=['SGA_ID', 'GALAXY', 'RA', 'DEC']))#, rows=np.arange(5)))
-                objid = [f'SGA2020-{sgaid:06d}' for sgaid in cat['SGA_ID']]
-                print(f'Read {len(cat):,d} galaxies from {catfile}')
-            except:
-                msg = f'Problem reading {args.catalog}'
-                raise IOError(msg)
+            columns = ['SGA_ID', 'GALAXY', 'RA', 'DEC']
+            cat = read_catalog(catfile, ext='ELLIPSE', columns=columns)#, rows=np.arange(10))
+            objid = [f'SGA2020-{sgaid:06d}' for sgaid in cat['SGA_ID']]
+
+            layer = 'ls-dr9'
             
             #d26_pixels = cat['D26'] * 60 / args.pixscale # [pixels]
             #d26cut_arcmin = args.width * 1.5 * args.pixscale / 60
@@ -258,11 +290,11 @@ def main():
 
     if args.plan:
         if rank == 0:
-            plan(cat, objid, comm=comm, outdir=args.outdir, mp=args.mp,
-                 overwrite=args.overwrite)
+            plan(cat, objid, layer=layer, comm=comm, outdir=args.outdir, 
+                 mp=args.mp, overwrite=args.overwrite)
     else:
-        do_cutouts(cat, objid=objid, width=args.width, pixscale=args.pixscale, mp=args.mp,
-                   comm=comm, outdir=args.outdir, overwrite=args.overwrite,
+        do_cutouts(cat, objid=objid, layer=layer, width=args.width, pixscale=args.pixscale, 
+                   mp=args.mp, comm=comm, outdir=args.outdir, overwrite=args.overwrite,
                    dry_run=args.dry_run)
 
 if __name__ == '__main__':
