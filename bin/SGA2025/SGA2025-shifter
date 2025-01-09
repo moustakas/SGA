@@ -8,7 +8,7 @@ SHIFTER=docker:legacysurvey/sga:0.2
 
 echo 'Updating and loading the shifter image '$SHIFTER
 echo 'Load the environment with: '
-echo 'source '$SGA_CODE_DIR'/bin/SGA2024/SGA2024-env'
+echo 'source '$SGA_CODE_DIR'/bin/SGA2025/SGA2025-env'
 
 shifterimg pull $SHIFTER
 shifter --module=mpich --image $SHIFTER bash

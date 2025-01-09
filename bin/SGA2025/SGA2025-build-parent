@@ -6,13 +6,12 @@ SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
-SGA2025-build-parent --in-footprint --mp 128 --overwrite
-
-Or, on my laptop:
-/opt/homebrew/bin/python3 ~/code/SGA/bin/SGA2025/SGA2025-build-parent --merge
+salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
+srun --ntasks=32 shifter --env-file=$PSCRATCH/SGA2025/SGA2025-in-footprint-env.sh SGA2025-build-parent --in-footprint --region=north
+srun --ntasks=32 shifter --env-file=$PSCRATCH/SGA2025/SGA2025-in-footprint-env.sh SGA2025-build-parent --in-footprint --region=south
 
 """
-import os, time, shutil, pdb
+import os, sys, time, shutil, pdb
 from importlib import resources
 from glob import glob
 from collections import Counter
@@ -45,6 +44,16 @@ cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LE
 qadir = os.path.join(sga_dir(), 'parent', 'qa')
 if not os.path.isdir(qadir):
     os.makedirs(qadir)
+
+
+def parent_version(vicuts=False, nocuts=False):
+    if nocuts:
+        version = 'v1.0'
+    elif vicuts:
+        version = 'v1.0'
+    else:
+        version = 'v1.0'
+    return version
 
 
 def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, objname=None,
@@ -611,9 +620,10 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
-    testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2025-parent-nocuts.fits')
+    version = parent_version(nocuts=True)
+    testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2025-parent-nocuts-{version}.fits')
     if True:
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts.fits')
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
         origcat = Table(fitsio.read(catfile))
         print(f'Read {len(origcat):,d} objects from {catfile}')
 
@@ -643,7 +653,8 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
     # write out
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts.fits')
+    version_vicuts = parent_version(vicuts=True)
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.write(outfile, overwrite=True)
 
@@ -663,43 +674,50 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     mindiam in arcmin
 
     """
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts.fits')
+    version_vicuts = parent_version(vicuts=True)
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     cat = Table(fitsio.read(catfile))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
-    pdb.set_trace()
+    # FIXME - apply cuts based on additional external catalogs
+    # (ssl-legacysurvey, Galaxy Zoo VI, etc.)
 
-    # How many sources with diam<0.1 have no other source within 10 arcsec?
-    radius_isolated = 10.
+    version = parent_version()
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+    print(f'Writing {len(cat):,d} objects to {outfile}')
+    cat.write(outfile, overwrite=True)
 
-    diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
-    I = np.where(diam == -99.)[0]
-    #I = np.where((diam > 0.) * (diam < 0.1))[0]
-    #I = np.where(diam < 0.1)[0]
-    cat_isolated = cat[I]
-    matches = match_radec(cat_isolated['RA'].value, cat_isolated['DEC'].value, cat['RA'].value,
-                          cat['DEC'].value, radius_isolated/3600., indexlist=True, notself=True)
-    indx_isolated = []
-    for iobj, onematch in enumerate(matches):
-        if onematch is None:
-            continue
-        if len(onematch) == 1:
-            indx_isolated.append(iobj)
-    indx_isolated = np.array(indx_isolated)
-
-    out = cat_isolated[indx_isolated]
-    #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], out[0]['RA'], out[0]['DEC'], 10./3600) ; cat[m1][cols]
-    #prim=0 ; qa_skypatch(cat[m1[prim]], group=cat[m1])
-
-    prefix = np.array(list(zip(*np.char.split(out['OBJNAME'].value, ' ').tolist()))[0])
-
-    pdffile = 'qa-isolated.pdf'
-    multipage_skypatch(out[:50], cat=cat, width_arcsec=30., ncol=1, nrow=1, clip=True,
-                       jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
-                       pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
-
-    pdb.set_trace()
-
+    if False:
+        # How many sources with diam<0.1 have no other source within 10 arcsec?
+        radius_isolated = 10.
+    
+        diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
+        I = np.where(diam == -99.)[0]
+        #I = np.where((diam > 0.) * (diam < 0.1))[0]
+        #I = np.where(diam < 0.1)[0]
+        cat_isolated = cat[I]
+        matches = match_radec(cat_isolated['RA'].value, cat_isolated['DEC'].value, cat['RA'].value,
+                              cat['DEC'].value, radius_isolated/3600., indexlist=True, notself=True)
+        indx_isolated = []
+        for iobj, onematch in enumerate(matches):
+            if onematch is None:
+                continue
+            if len(onematch) == 1:
+                indx_isolated.append(iobj)
+        indx_isolated = np.array(indx_isolated)
+    
+        out = cat_isolated[indx_isolated]
+        #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], out[0]['RA'], out[0]['DEC'], 10./3600) ; cat[m1][cols]
+        #prim=0 ; qa_skypatch(cat[m1[prim]], group=cat[m1])
+    
+        prefix = np.array(list(zip(*np.char.split(out['OBJNAME'].value, ' ').tolist()))[0])
+    
+        pdffile = 'qa-isolated.pdf'
+        multipage_skypatch(out[:50], cat=cat, width_arcsec=30., ncol=1, nrow=1, clip=True,
+                           jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
+                           pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
+    
+        pdb.set_trace()
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
@@ -709,7 +727,8 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
     from SGA.qa import fig_sky, fig_size_mag
 
     if nocuts:
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts.fits')
+        version = parent_version(nocuts=True)
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     else:
         pass
 
@@ -732,13 +751,13 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
     ###########
 
     if sky:
-        png = os.path.join(qadir, 'qa-sky-parent-nocuts.png')
+        png = os.path.join(qadir, f'qa-sky-parent-nocuts-{version}.png')
         #I = cat['DIAM'] > 0.2
         fig_sky(cat, racolumn='RA', deccolumn='DEC', pngfile=png,
                 clip_lo=0., clip_hi=300., mloc=50.)
 
     if size_mag:
-        png = os.path.join(qadir, 'qa-sizemag-parent-nocuts.png')
+        png = os.path.join(qadir, f'qa-sizemag-parent-nocuts-{version}.png')
         fig_size_mag(cat, pngfile=png)
     pdb.set_trace()
 
@@ -782,7 +801,6 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
 
         srt = np.argsort(cat['DIAM'])[::-1]
         cat[srt]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'MORPH']
-
 
 
 def build_parent_nocuts(verbose=True):
@@ -1412,7 +1430,8 @@ def build_parent_nocuts(verbose=True):
 
     parent['PARENT_ROW'] = np.arange(len(parent))
 
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts.fits')
+    version = parent_version(nocuts=True)
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     print(f'Writing {len(parent):,d} objects to {outfile}')
     parent.write(outfile, overwrite=True)
 
@@ -1434,11 +1453,6 @@ def read_cat(catalog):
             raise ValueError(f'Unrecognized catalog name {catalog}')
 
     return cat
-
-
-#def _get_ccds(args):
-#    """Wrapper for the multiprocessing."""
-#    return get_ccds(*args)
 
 
 def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False):
@@ -1463,8 +1477,9 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
             return Table(), Table()
         else:
             return Table()
-
     ccds = allccds[I]
+
+    #import pdb ; pdb.set_trace()
 
     onegal['NCCD'] = len(ccds)
     onegal['FILTERS'] = ''.join(sorted(set(ccds.filter)))
@@ -1478,107 +1493,285 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
 
         ccds = ccds['RA', 'DEC', 'CAMERA', 'EXPNUM', 'PLVER', 'CCDNAME', 'FILTER']
         #ccds['GALAXY'] = [galaxy]
-        ccds['ROW'] = onegal['ROW']
+        ccds['PARENT_ROW'] = onegal['PARENT_ROW']
 
         return ccds, Table(onegal)
     else:
         return Table(onegal)
 
 
-def in_footprint(cat, allccds, radius=1., width_pixels=152, bands=BANDS, comm=None, mp=1):
+def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
+                      width_pixels=152, bands=BANDS):
+    """Support routine for in_footprint.
+
+    """
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
+    if rank == 0:
+        from SGA.util import weighted_partition
+
+        t0 = time.time()
+
+        # work on a "chunk" of the catalog
+        cat = allcat[chunkindx]
+
+        # I, which is a list of len(cat), is the variable-length of indices into
+        # allccds of the matches, or None if no match (which we filter out).
+        allindx_ccds = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
+                                   radius, indexlist=True)
+
+        indx_cat = []
+        indx_ccds = []
+        nccdperobj = []
+        for icat, indx_ccds1 in enumerate(allindx_ccds):
+            if indx_ccds1 is not None:
+                indx_cat.append(icat)
+                indx_ccds.append(indx_ccds1)
+                nccdperobj.append(len(indx_ccds1))
+        nccdperobj = np.array(nccdperobj)
+        indx_cat = np.array(indx_cat)
+
+        if len(indx_cat) == 0:
+            print(f'  No objects with at least one CCD within {radius} degree')
+            return Table(), Table()
+        else:
+            print(f'  Found {len(indx_cat):,d}/{len(cat):,d} objects with at ' + \
+                  f'least one CCD within {radius} degree')
+
+        work_byrank = weighted_partition(nccdperobj, size)
+        print(f'  Distributing {len(np.unique(np.hstack(indx_cat))):,d} objects and ' + \
+              f'{len(np.unique(np.hstack(indx_ccds))):,d} CCDs to {size:,d} ranks')
+
+    if comm:
+        # Rank 0 sends work...
+        if rank == 0:
+            for onerank in range(1, size):
+                #print(f'Rank {rank} sending work to rank {onerank}')
+                if len(work_byrank[onerank]) > 0:
+                    comm.send(cat[indx_cat[work_byrank[onerank]]], dest=onerank, tag=1)
+                    # build and then send the per-object tables of CCDs
+                    ccds_onerank = []
+                    for work_byrank_onegal in work_byrank[onerank]:
+                        ccds_onerank.append(allccds[indx_ccds[work_byrank_onegal]])
+                    comm.send(ccds_onerank, dest=onerank, tag=2)
+                else:
+                    comm.send(Table(), dest=onerank, tag=1)
+                    comm.send(Table(), dest=onerank, tag=2)
+            # work for rank 0
+            cat_onerank = cat[indx_cat[work_byrank[rank]]]
+            ccds_onerank = []
+            for work_byrank_onegal in work_byrank[rank]:
+                ccds_onerank.append(allccds[indx_ccds[work_byrank_onegal]])
+            #print(f'Rank {rank} received {len(cat_onerank):,d} objects.')
+        else:
+            # ...and the other ranks receive the work.
+            cat_onerank = comm.recv(source=0, tag=1)
+            ccds_onerank = comm.recv(source=0, tag=2)
+            #print(f'Rank {rank} received {len(cat_onerank):,d} objects.')
+    else:
+        if len(work_byrank[rank]) > 0:
+            cat_onerank = cat[indx_cat[work_byrank[rank]]]
+            ccds_onerank = []
+            for indx_ccds_onegal in indx_ccds[work_byrank[rank]]:
+                ccds_onerank.append(allccds[indx_ccds_onegal])
+        else:
+            cat_onerank = Table()
+            ccds_onerank = Table()
+
+    if comm:
+        comm.barrier()
+
+    # now perform a more refined per-object search for matching CCDs
+    fcat = []
+    fccds = []
+    nobj = len(cat_onerank)
+    #print(rank, nobj)
+
+    if nobj == 0:
+        print(f'Rank {rank}: all done; no work to do.')
+    else:
+        t1 = time.time()
+        #print(f'Rank {rank}: gathering CCDs for {nobj:,d} objects.')
+        for icat, (cat_onegal, ccds_onegal) in enumerate(zip(cat_onerank, ccds_onerank)):
+            #if icat % 1000 == 0:
+            #    print(f'Rank {rank}: Working on galaxy: {icat:,d}/{nobj:,d}')
+            fccds1, fcat1 = get_ccds(ccds_onegal, cat_onegal, width_pixels,
+                                     pixscale=PIXSCALE, return_ccds=True)
+            fcat.append(fcat1)
+            fccds.append(fccds1)    
+        if len(fcat) > 0:
+            fcat = vstack(fcat)
+            fccds = vstack(fccds)
+        else:
+            fcat = Table()
+            fccds = Table()
+        #print(f'Rank {rank}: all done in {(time.time()-t1)/60.:.3f} minutes')
+
+    #if comm:
+    #    # Ranks>0 send their work back to rank 0...
+    #    if rank > 0:
+    #        comm.send(fcat, dest=0, tag=3)
+    #    else:
+    #        out = list(fcat)
+    #        for onerank in range(1, size):            
+    #            out.append(comm.recv(source=0, tag=3))
+    #        if len(out) > 0:
+    #            out = vstack(out)
+         
+    if comm:
+        fcat = comm.gather(fcat, root=0)
+        fccds = comm.gather(fccds, root=0)
+
+    # sort and return
+    if rank == 0:
+        fcat = vstack(fcat)
+        fccds = vstack(fccds)
+
+        fcat = fcat[np.argsort(fcat['PARENT_ROW'])]
+        fccds = fccds[np.argsort(fccds['PARENT_ROW'])]
+        print(f'  Gathered {len(fccds):,d} CCDs for {len(fcat):,d}/{len(indx_cat):,d} ' + \
+              f'objects in {time.time()-t0:.2f} sec')
+
+        return fcat, fccds
+    else:
+        return None, None
+
+
+def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=BANDS):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
     radius in degrees
 
     """
-    from SGA.util import weighted_partition, match_to
-
     if comm is None:
-        rank, size = 0, 1
+        rank = 0
     else:
-        rank, size = comm.rank, comm.size
-
-    cat['NCCD'] = np.zeros(len(cat), int)
-    cat['FILTERS'] = np.zeros(len(cat), '<U4')
+        rank = comm.rank
 
     if rank == 0:
+        from legacypipe.runs import get_survey
+
         t0 = time.time()
 
-        # I, which is a list of len(cat), is the variable-length of indices into
-        # allccds of the matches, or None if no match (which we filter out).
-        indx_ccds = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
-                                radius, indexlist=True)
+        # read the parent catalog
+        version = parent_version()
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
 
-        indx_cat = []
-        nccdperobj = []
-        for icat, val in enumerate(indx_ccds):
-            if val is not None:
-                indx_cat.append(icat)
-                nccdperobj.append(len(indx_ccds[icat]))
-        print(f'Rank {rank:03d}: Found {len(indx_cat):,d}/{len(cat):,d} objects with at least one CCD within {radius} deg.')
+        F = fitsio.FITS(catfile)
+        N = F[1].get_nrows()
+        if False:
+            S = 10000
+            rng = np.random.default_rng(seed=1)
+            I = rng.choice(N, size=S, replace=False)
+            I = I[np.argsort(I)]
+        else:
+            I = np.arange(N)
 
-        groups = weighted_partition(nccdperobj, size)
+        cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'PARENT_ROW'], rows=I))
+        cat['NCCD'] = np.zeros(len(cat), int)
+        cat['FILTERS'] = np.zeros(len(cat), '<U4')
+        print(f'Read {len(cat):,d} objects from {catfile}')
+
+        survey = get_survey(region)#, allbands=BANDS)
+        _ = survey.get_ccds_readonly()
+        allccds = survey.ccds
+        print(f'Read {len(allccds):,d} CCDs from region={region}')
+        sys.stdout.flush()
+
+        # divide the parent catalog into more managable chunks, and loop
+        nobj = len(cat)
+        nperchunk = 100000
+        nchunk = int(np.ceil(nobj / nperchunk))
+        chunkindx = np.array_split(np.arange(nobj), nchunk)
     else:
-        indx_cat = []
-        indx_ccds = []
-        groups = [np.array([])]
-
-    # broadcast the work to the other ranks
-    if comm:
-        indx_cat = comm.bcast(indx_cat, root=0)
-        indx_ccds = comm.bcast(indx_ccds, root=0)
-        groups = comm.bcast(groups, root=0)
-
-    # now perform a more refined search for each matching object
-
-    fcat = []
-    #ccds = []
-    for icat, indx in enumerate(groups[rank]):
-        catindx = indx_cat[indx]
-        onegal = cat[catindx]
-        if icat % len(groups[rank]) == 0 or icat+1 == len(groups[rank]):
-            print(f'Rank {rank:03d}: Working on galaxy: {icat+1:,d}/{len(groups[rank])}')
-        #print(f'Rank {rank:03d} working on galaxy: {onegal["GALAXY"]}')
-        one_fcat = get_ccds(allccds[indx_ccds[catindx]], onegal, width_pixels,
-                            pixscale=PIXSCALE, return_ccds=False)
-        fcat.append(one_fcat)
-
-    if len(fcat) > 0:
-        fcat = vstack(fcat)
-
-    #mpargs = []
-    #for icat, catindx in enumerate(M):
-    #    mpargs.append([icat, allccds[I[catindx]], cat[catindx], width_pixels, PIXSCALE])
-    #
-    #if mp > 1:
-    #    import multiprocessing
-    #    with multiprocessing.Pool(mp) as P:
-    #        out = P.map(_get_ccds, mpargs)
-    #else:
-    #    out = [_get_ccds(_mpargs) for _mpargs in mpargs]
-    #out = list(zip(*out))
-    #
-    #ccds = out[0]
-    #fcat = out[1]
-    #if len(ccds) > 0:
-    #    ccds = vstack(ccds)
-    #    fcat = vstack(fcat)
-    #print(f'Final sample: {len(fcat):,d}/{len(indx_cat):,d} objects and {len(ccds):,d} CCDs.')
-    #return fcat, ccds
+        cat = None
+        chunkindx = None
+        allccds = None
 
     if comm:
-        fcat = comm.gather(fcat, root=0)
+        chunkindx = comm.bcast(chunkindx, root=0)
 
-    # sort and return
+    allfcat = []
+    allfccds = []
+    for ichunk, indx in enumerate(chunkindx):
+        if rank == 0:
+            print(f'Working on chunk {ichunk+1:,d}/{nchunk:,d} with {len(indx):,d} objects')
+        fcat, fccds = in_footprint_work(cat, indx, allccds, comm=comm, radius=radius, 
+                                        width_pixels=width_pixels, bands=bands)
+        sys.stdout.flush()
+
+        if rank == 0:
+            allfcat.append(fcat)
+            allfccds.append(fccds)
+
+    # gather up the results and write out
     if rank == 0:
-        fcat = vstack(fcat)
+        from SGA.util import match
 
-        print(f'Rank {rank:03d}: Final sample: {len(fcat):,d}/{len(indx_cat):,d} objects.')
+        allfcat = vstack(allfcat)
+        allfccds = vstack(allfccds)
 
-        fcat = fcat[match_to(fcat['ROW'], cat['ROW'])]
-        print(f'Rank {rank:03d}: Total time: {(time.time()-t0)/60.:.3f} min')
-        return fcat
+        #outcat = cat[np.isin(cat['PARENT_ROW'], allfcat['PARENT_ROW'])]
+        cat_indx, fcat_indx = match(cat['PARENT_ROW'], allfcat['PARENT_ROW'])
+        allfcat = allfcat[fcat_indx]
+        outcat = cat[cat_indx]
+        assert(np.all(outcat['PARENT_ROW'] == allfcat['PARENT_ROW']))
+        outcat['NCCD'] = allfcat['NCCD']
+        outcat['FILTERS'] = allfcat['FILTERS']
+        outcat = outcat[np.argsort(outcat['PARENT_ROW'])]
+
+        version = parent_version()
+        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+        print(f'Writing {len(outcat):,d} objects to {outfile}')
+        outcat.write(outfile, overwrite=True)
+
+        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
+        print(f'Writing {len(allfccds):,d} CCDs to {outfile}')
+        allfccds.write(outfile, overwrite=True)
+
+        print(f'All done in {(time.time()-t0)/60.:.2f} min')
+
+
+def qa_footprint(region='north', show_fullcat=False):
+    """Build some simple QA of the in-footprint sample.
+
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    version = parent_version()
+
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+    cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'PARENT_ROW', 'FILTERS']))
+    print(f'Read {len(cat):,d} objects from {catfile}')
+
+    qafile = os.path.join(sga_dir(), 'parent', 'qa', f'qa-parent-{region}-{version}.png')
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    if show_fullcat:
+        fullcatfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+        fullcat = Table(fitsio.read(fullcatfile, columns=['OBJNAME', 'RA', 'DEC', 'PARENT_ROW']))
+        print(f'Read {len(fullcat):,d} objects from {fullcatfile}')
+
+        ax.scatter(fullcat['RA'], fullcat['DEC'], s=1, color='gray')
+
+    for bands in sorted(set(cat['FILTERS'])):
+        I = cat['FILTERS'] == bands
+        ax.scatter(cat['RA'][I], cat['DEC'][I], s=1, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
+    ax.set_xlabel('RA')
+    ax.set_ylabel('Dec')
+    ax.set_xlim(360., 0.)
+    ax.set_ylim(-90., 90.)
+    #ax.invert_xaxis()
+    ax.legend(fontsize=10, ncols=2, markerscale=10, loc='lower left')
+    fig.tight_layout()
+    fig.savefig(qafile)
+    print(f'Wrote {qafile}')
 
 
 def main():
@@ -1588,16 +1781,18 @@ def main():
     import argparse
 
     regions = ['north', 'south']
-    catalogs = ['HyperLeda', 'NEDLVS', 'WXSC', 'LVD'] # 'HECATE', 'Z0MGS']
+    #catalogs = ['HyperLeda', 'NEDLVS', 'WXSC', 'LVD'] # 'HECATE', 'Z0MGS']
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned into the parent-nocuts catalog.')
     parser.add_argument('--build-parent-vicuts', action='store_true', help='Apply VI results to the parent-nocuts catalog.')
     parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned.')
-    parser.add_argument('--qa-parent', action='store_true', help='Build QA.')
+
+    parser.add_argument('--qa-parent', action='store_true', help='Build QA of the parent sample.')
+    parser.add_argument('--qa-footprint', action='store_true', help='Build QA of the in-footprint samples.')
+
     parser.add_argument('--mindiam', default=15./60., type=float, help='Minimum diameter for selecting parent sample.')
-    parser.add_argument('--region', choices=regions, type=str, nargs='*', help='Region to pass to --in-footprint.')
-    parser.add_argument('--catalog', choices=catalogs, type=str, help='External catalog to pass to --in-footprint.')
+    parser.add_argument('--region', default='north', choices=regions, type=str, help='Region to pass to --in-footprint.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
@@ -1612,7 +1807,6 @@ def main():
     try:
         from mpi4py import MPI
         from mpi4py.util import pkl5
-        #comm = MPI.COMM_WORLD
         comm = pkl5.Intracomm(MPI.COMM_WORLD)
     except ImportError:
         comm = None
@@ -1621,7 +1815,6 @@ def main():
         rank, size = 0, 1
     else:
         rank, size = comm.rank, comm.size
-
 
     if args.build_parent_nocuts:
         build_parent_nocuts()
@@ -1632,99 +1825,16 @@ def main():
     if args.build_parent:
         build_parent(mindiam=args.mindiam, overwrite=args.overwrite, verbose=args.verbose)
 
+    if args.in_footprint:
+        in_footprint(region=args.region, comm=comm)
+        
+    if args.qa_footprint:
+        qa_footprint(region=args.region)
+        
     if args.qa_parent:
         qa_parent(nocuts=True, size_mag=True)
         #qa_parent(nocuts=True, sky=True)
 
-
-
-    #basedir = sga_dir()
-    #footdir = os.path.join(basedir, 'parent', 'in-footprint')
-    #if args.in_footprint:
-    #    from legacypipe.runs import get_survey
-    #
-    #    if not os.path.isdir(footdir):
-    #        os.makedirs(footdir)
-    #
-    #    for region in np.atleast_1d(args.region):
-    #        survey = get_survey(region)#, allbands=BANDS)
-    #        _ = survey.get_ccds_readonly()
-    #
-    #        for catalog in np.atleast_1d(args.catalog):
-    #            outfile = os.path.join(footdir, f'{catalog}-{region}.fits')
-    #            qafile = os.path.join(footdir, f'qa-{catalog}-{region}.png')
-    #            if rank == 0:
-    #                print(f'Rank {rank:03d}: Working on region={region} and catalog={catalog}')
-    #                fullcat = read_cat(catalog)
-    #            else:
-    #                fullcat = Table()
-    #
-    #            if comm:
-    #                fullcat = comm.bcast(fullcat, root=0)
-    #
-    #            if not os.path.isfile(outfile) or args.overwrite:
-    #                cat = in_footprint(fullcat, allccds=survey.ccds, bands=None, comm=comm, mp=1)#=args.mp)
-    #                # write out
-    #                if rank == 0:
-    #                    nccds = np.sum(cat['NCCD'])
-    #                    print(f'Rank {rank:03d}: Writing {len(cat):,d} objects with {nccds:,d} CCDs to {outfile}')
-    #                    #print(f'Writing {len(cat):,d} objects and {len(ccds):,d} CCDs to {outfile}')
-    #                    fitsio.write(outfile, cat.as_array(), extname='CATALOG', clobber=True)
-    #                    #fitsio.write(outfile, ccds.as_array(), extname='CCDS')
-    #            else:
-    #                if rank == 0:
-    #                    cat = Table(fitsio.read(outfile, ext='CATALOG'))
-    #                    #ccds = Table(fitsio.read(outfile, ext='CCDS'))
-    #                    print(f'Rank {rank:03d}: Read {len(cat):,d} objects from {outfile}')
-    #
-    #            if rank == 0:
-    #                # simple QA
-    #                import matplotlib.pyplot as plt
-    #                import seaborn as sns
-    #
-    #                if len(fullcat) < 1e3:
-    #                    s = 20
-    #                    markerscale = 1
-    #                else:
-    #                    s = 1
-    #                    markerscale = 10
-    #                fig, ax = plt.subplots(figsize=(8, 6))
-    #                ax.scatter(fullcat['RA'], fullcat['DEC'], s=s, color='gray')
-    #                for bands in sorted(set(cat['FILTERS'])):
-    #                    I = cat['FILTERS'] == bands
-    #                    ax.scatter(cat['RA'][I], cat['DEC'][I], s=s, alpha=0.7, label=f'{bands} (N={np.sum(I):,d})')
-    #                ax.set_xlabel('RA')
-    #                ax.set_ylabel('Dec')
-    #                ax.set_xlim(360., 0.)
-    #                ax.set_ylim(-90., 90.)
-    #                #ax.invert_xaxis()
-    #                ax.legend(fontsize=10, ncols=2, markerscale=markerscale, loc='lower left')
-    #                fig.tight_layout()
-    #                fig.savefig(qafile)
-    #                print(f'Rank {rank:03d}: Wrote {qafile}')
-    #
-
-    #if args.merge:
-    #    # What's missing?
-    #
-    #    #region = 'south'
-    #    region = 'north'
-    #    cat = Table(fitsio.read(os.path.join(footdir, f'LVD-{region}.fits'), 'CATALOG'))
-    #    cat = add_pgc(cat, 'lvd')
-    #
-    #    cat = Table(fitsio.read(os.path.join(footdir, f'NEDLVS-{region}.fits'), 'CATALOG'))
-    #    refcat = Table(fitsio.read(os.path.join(footdir, f'HyperLeda-{region}.fits'), 'CATALOG'))
-    #
-    #    #info = domatch_pgc(cat, refcat)
-    #    info = domatch_coord(cat, refcat)
-    #
-    #    cat = read_lvd()
-    #    cc = cat[cat['PGC'] == 0]['NAME', 'RA', 'DEC', 'CONFIRMED_REAL', 'REF_STRUCTURE']
-    #    for oo in cc:
-    #        print(f'{oo["NAME"]} {oo["RA"]}d {oo["DEC"]}d 0.5')
-    #
-    #    ned = read_nedlvs()
-    #    I = [indx for indx, gg in enumerate(ned['OBJNAME']) if 'bootes' in gg.lower()]
 
 
 if __name__ == '__main__':
