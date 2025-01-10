@@ -570,3 +570,78 @@ def weighted_partition(weights, n):
     assert len(groups) == n
 
     return groups
+
+
+def radec_to_name(target_ra, target_dec, prefix='SGA2025'):
+    """Convert the right ascension and declination of an object into a
+    disk-friendly "name", for reference in publications.  Length of
+    `target_ra` and `target_dec` must be the same if providing an
+    array or list.
+
+    Parameters
+    ----------
+    target_ra: array of :class:`~numpy.float64`
+        Right ascension in degrees of target object(s). Can be float, double,
+        or array/list of floats or doubles.
+    target_dec: array of :class:`~numpy.float64`
+        Declination in degrees of target object(s). Can be float, double,
+        or array/list of floats or doubles.
+
+    Returns
+    -------
+    array of :class:`str`
+        Names referring to the input target RA and DEC's. Array is the
+        same length as the input arrays.
+
+    Raises
+    ------
+    ValueError
+        If any input values are out of bounds.
+
+    Notes
+    -----
+    Written by A. Kremin (LBNL) for DESI. Taken entirely from
+    desiutil.names.radec_to_desiname.
+
+    """
+    # Convert to numpy array in case inputs are scalars or lists
+    target_ra, target_dec = np.atleast_1d(target_ra), np.atleast_1d(target_dec)
+
+    base_tests = [('NaN values', np.isnan),
+                  ('Infinite values', np.isinf),]
+    inputs = {'target_ra': {'data': target_ra,
+                            'tests': base_tests + [('RA not in range [0, 360)', lambda x: (x < 0) | (x >= 360))]},
+              'target_dec': {'data': target_dec,
+                             'tests': base_tests + [('Dec not in range [-90, 90]', lambda x: (x < -90) | (x > 90))]}}
+    for coord in inputs:
+        for message, check in inputs[coord]['tests']:
+            if check(inputs[coord]['data']).any():
+                raise ValueError(f"{message} detected in {coord}!")
+
+    # Number of decimal places in final naming convention
+    precision = 4
+
+    # Truncate decimals to the given precision
+    ratrunc = np.trunc((10.**precision) * target_ra).astype(int).astype(str)
+    dectrunc = np.trunc((10.**precision) * target_dec).astype(int).astype(str)
+
+    # Loop over input values and create the name as DESINAME as: DESI JXXX.XXXX+/-YY.YYYY
+    # Here J refers to J2000, which isn't strictly correct but is the closest
+    #   IAU compliant term
+    names = []
+    for ra, dec in zip(ratrunc, dectrunc):
+        zra = ra.zfill(7)
+        name = f'{prefix} J' + zra[:-precision] + '.' + zra[-precision:]
+        # Positive numbers need an explicit "+" while negative numbers
+        #   already have a "-".
+        # zfill works properly with '-' but counts it in number of characters
+        #   so need one more
+        if dec.startswith('-'):
+            zdec = dec.zfill(7)
+            name += zdec[:-precision] + '.' + zdec[-precision:]
+        else:
+            zdec = dec.zfill(6)
+            name += '+' + zdec[:-precision] + '.' + zdec[-precision:]
+        names.append(name)
+
+    return np.array(names)
