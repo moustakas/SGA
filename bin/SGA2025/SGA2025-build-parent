@@ -6,9 +6,9 @@ SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
-salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
-srun --ntasks=32 shifter --env-file=$PSCRATCH/SGA2025/SGA2025-in-footprint-env.sh SGA2025-build-parent --in-footprint --region=north
-srun --ntasks=32 shifter --env-file=$PSCRATCH/SGA2025/SGA2025-in-footprint-env.sh SGA2025-build-parent --in-footprint --region=south
+salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
+srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-in-footprint-env.sh SGA2025-build-parent --in-footprint --region=north
+
 
 """
 import os, sys, time, shutil, pdb
@@ -1600,6 +1600,7 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
             #    print(f'Rank {rank}: Working on galaxy: {icat:,d}/{nobj:,d}')
             fccds1, fcat1 = get_ccds(ccds_onegal, cat_onegal, width_pixels,
                                      pixscale=PIXSCALE, return_ccds=True)
+            pdb.set_trace()
             fcat.append(fcat1)
             fccds.append(fccds1)    
         if len(fcat) > 0:
@@ -1670,6 +1671,8 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
             I = I[np.argsort(I)]
         else:
             I = np.arange(N)
+
+        I = np.array([4784167, 4784170])
 
         cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'PARENT_ROW'], rows=I))
         cat['NCCD'] = np.zeros(len(cat), int)
@@ -1773,10 +1776,15 @@ def qa_footprint(region='north', show_fullcat=False):
                        label=f'{bands} (N={np.sum(I):,d})')
     ax.set_xlabel('R.A. (degree)')
     ax.set_ylabel('Dec (degree)')
-    ax.set_xlim(360., 0.)
-    ax.set_ylim(-25., 90.)
-    #ax.set_ylim(-90., 90.)
-    #ax.invert_xaxis()
+    if False: # M31 + family
+        ax.set_xlim(15., 8.)
+        ax.set_ylim(30., 50.)
+    else:
+        ax.set_xlim(360., 0.)
+        if region == 'north':
+            ax.set_ylim(-25., 90.)
+        else:
+            ax.set_ylim(-90., 90.)
     ax.legend(fontsize=9, ncols=4, markerscale=8, loc='lower left')
     fig.tight_layout()
     fig.savefig(qafile)
@@ -1838,9 +1846,7 @@ def main():
         qa_footprint(region=args.region)
         
     if args.qa_parent:
-        qa_parent(nocuts=True, size_mag=True)
-        #qa_parent(nocuts=True, sky=True)
-
+        qa_parent(nocuts=True, size_mag=True, sky=True)
 
 
 if __name__ == '__main__':
