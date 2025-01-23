@@ -13,6 +13,59 @@ from astrometry.util.starutil_numpy import arcsec_between
 from astrometry.libkd.spherematch import match_radec
 
 
+def choose_geometry(cat, mindiam=152*0.262):
+    """Choose an object's geometry, selecting between the
+    NED-assembled values (DIAM, BA, PA) and HyperLeda's values
+    (DIAM_LEDA, BA_LEDA, PA_LEDA).
+
+    mindiam is ~40 arcsec
+
+    Default values of BA and PA are 1.0 and 0.0.
+
+    """
+    diam = np.zeros(len(cat)) + mindiam # [arcsec]
+    ba = np.ones(len(cat))
+    pa = np.zeros(len(cat))
+
+    I = np.logical_and(cat['DIAM'] < 0., cat['DIAM_LEDA'] > 0.)
+    if np.any(I):
+        diam[I] = cat[I]['DIAM_LEDA'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_LEDA']
+        pa[I] = cat[I]['PA_LEDA']
+
+    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_LEDA'] < 0.)
+    if np.any(I):
+        diam[I] = cat[I]['DIAM'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA']
+        pa[I] = cat[I]['PA']
+
+    # which one should we select??
+    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_LEDA'] > 0.)
+    if np.any(I):
+        diam[I] = cat[I]['DIAM_LEDA'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_LEDA']
+        pa[I] = cat[I]['PA_LEDA']
+
+    # set a minimum floor on the diameter
+    I = diam < mindiam
+    if np.any(I):
+        diam[I] = mindiam
+
+    # special-cases - north
+    S = [
+        'WISEA J151427.24+604725.4', # not in HyperLeda; basic-data diameter is 12.11 arcmin!
+        ]
+    I = np.isin(cat['OBJNAME'], S)
+    if np.any(I):
+        diam[I] = mindiam
+
+    # clean up missing values of BA and PA
+    ba[ba < 0.] = 1.
+    pa[pa < 0.] = 0.
+
+    return diam, ba, pa
+
+        
 def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     """From a catalog containing magnitudes, diameters, position angles, and
     ellipticities, return a "basic" value for each property.
@@ -34,33 +87,32 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             val_ref = np.zeros(nobj, '<U7')
             val_band = np.zeros(nobj, 'U1')
 
-            match prop:
-                case 'mag':
-                    col = 'BT'
-                    band = 'B'
-                    I = cat[col] > 0.
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I]
-                        val_ref[I] = ref
-                        val_band[I] = band
-                case 'diam':
-                    col = 'LOGD25'
-                    I = cat[col] > 0.
-                    if np.sum(I) > 0:
-                        val[I] = 0.1 * 10.**cat[col][I]
-                        val_ref[I] = ref
-                case 'ba':
-                    col = 'LOGR25'
-                    I = ~np.isnan(cat[col]) * (cat[col] != 0.)
-                    if np.sum(I) > 0:
-                        val[I] = 10.**(-cat[col][I])
-                        val_ref[I] = ref
-                case 'pa':
-                    col = 'PA'
-                    I = ~np.isnan(cat[col])
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I]
-                        val_ref[I] = ref
+            if prop == 'mag':
+                col = 'BT'
+                band = 'B'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+                    val_band[I] = band
+            elif prop == 'diam':
+                col = 'LOGD25'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = 0.1 * 10.**cat[col][I]
+                    val_ref[I] = ref
+            elif prop == 'ba':
+                col = 'LOGR25'
+                I = ~np.isnan(cat[col]) * (cat[col] != 0.)
+                if np.sum(I) > 0:
+                    val[I] = 10.**(-cat[col][I])
+                    val_ref[I] = ref
+            elif prop == 'pa':
+                col = 'PA'
+                I = ~np.isnan(cat[col])
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
 
             basic[prop.upper()] = val
             basic[f'{prop.upper()}_REF'] = val_ref
@@ -74,33 +126,32 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             val_ref = np.zeros(nobj, '<U7')
             val_band = np.zeros(nobj, 'U1')
 
-            match prop:
-                case 'mag':
-                    col = 'APPARENT_MAGNITUDE_V'
-                    band = 'V'
-                    I = cat[col] > 0.
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I]
-                        val_ref[I] = ref
-                        val_band[I] = band
-                case 'diam':
-                    col = 'RHALF' # [arcmin]
-                    I = cat[col] > 0.
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I] * 2. * 2. # half-light-->full-light; radius-->diameter
-                        val_ref[I] = ref
-                case 'ba':
-                    col = 'ELLIPTICITY' # =1-b/a
-                    I = ~np.isnan(cat[col])
-                    if np.sum(I) > 0:
-                        val[I] = 1. - cat[col][I]
-                        val_ref[I] = ref
-                case 'pa':
-                    col = 'POSITION_ANGLE'
-                    I = ~np.isnan(cat[col])
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I] % 180 # put in the range [0, 180]
-                        val_ref[I] = ref
+            if prop == 'mag':
+                col = 'APPARENT_MAGNITUDE_V'
+                band = 'V'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+                    val_band[I] = band
+            elif prop == 'diam':
+                col = 'RHALF' # [arcmin]
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I] * 2. * 2. # half-light-->full-light; radius-->diameter
+                    val_ref[I] = ref
+            elif prop == 'ba':
+                col = 'ELLIPTICITY' # =1-b/a
+                I = ~np.isnan(cat[col])
+                if np.sum(I) > 0:
+                    val[I] = 1. - cat[col][I]
+                    val_ref[I] = ref
+            elif prop == 'pa':
+                col = 'POSITION_ANGLE'
+                I = ~np.isnan(cat[col])
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I] % 180 # put in the range [0, 180]
+                    val_ref[I] = ref
 
             basic[prop.upper()] = val
             basic[f'{prop.upper()}_REF'] = val_ref
@@ -114,32 +165,31 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             val_ref = np.zeros(nobj, '<U7')
             val_band = np.zeros(nobj, 'U1')
 
-            match prop:
-                case 'mag':
-                    col = 'MAG'
-                    I = cat[col] > 0.
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I]
-                        val_ref[I] = ref
-                        val_band[I] = cat[f'{col}_BAND'][I]
-                case 'diam':
-                    col = 'DIAM' # [arcmin]
-                    I = cat[col] > 0.
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I]
-                        val_ref[I] = ref
-                case 'ba':
-                    col = 'BA'
-                    I = cat[col] != -99.
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I]
-                        val_ref[I] = ref
-                case 'pa':
-                    col = 'PA'
-                    I = cat[col] != -99.
-                    if np.sum(I) > 0:
-                        val[I] = cat[col][I]
-                        val_ref[I] = ref
+            if prop == 'mag':
+                col = 'MAG'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+                    val_band[I] = cat[f'{col}_BAND'][I]
+            elif prop == 'diam':
+                col = 'DIAM' # [arcmin]
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+            elif prop == 'ba':
+                col = 'BA'
+                I = cat[col] != -99.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+            elif prop == 'pa':
+                col = 'PA'
+                I = cat[col] != -99.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
 
             basic[prop.upper()] = val
             basic[f'{prop.upper()}_REF'] = val_ref
