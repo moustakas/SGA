@@ -2,31 +2,18 @@
 
 """MPI wrapper to get a large number of image cutouts.
 
-This code only depends on Dustin's cutout container, not on any other software
-(including the SGA product), i.e., it is self-contained.
+Working interactively in a login node, one would do something like:
 
-shifter --image dstndstn/cutouts:dvsro bash
-/global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-cutouts --outdir=$PSCRATCH/SGA2025-data/SGA2020-cutouts --mp=1 --catalog=sga2025-parent --region=north --dry-run
+  shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro bash
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=1
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=1 --annotate
 
-or 
+Alternatively, in production, one would do:
 
-salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
-
-srun --ntasks=1 shifter /usr/bin/python /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-cutouts \
-  --outdir=$PSCRATCH/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=1 
-
-srun --ntasks=1 shifter /usr/bin/python /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-cutouts \
-  --outdir=$PSCRATCH/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --rescale --mp=1 
-
-time srun --ntasks=32 shifter /usr/bin/python /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-cutouts \
-  --outdir=$PSCRATCH/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=4 \
-  > SGA2025-cutouts-parent-north-native-34740851.log 2>&1 &
-
-
-
-srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-cutouts-env.sh \
-  /usr/bin/python /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-cutouts \
-  --outdir=$PSCRATCH/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=1 
+  salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
+  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=4 > \
+    SGA2025-cutouts-parent-north-native-JOBID.log 2>&1 &
 
 """
 import pdb # for debugging
@@ -36,97 +23,217 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 import multiprocessing
-from glob import glob
+
+from SGA.io import custom_brickname, get_raslice
 
 
-def radec_to_name(target_ra, target_dec, prefix='SGA2025'):
-    """Convert the right ascension and declination of an object into a
-    disk-friendly "name", for reference in publications.  Length of
-    `target_ra` and `target_dec` must be the same if providing an
-    array or list.
+def _get_annotate_one(args):
+    return get_annotate_one(*args)
 
-    Parameters
-    ----------
-    target_ra: array of :class:`~numpy.float64`
-        Right ascension in degrees of target object(s). Can be float, double,
-        or array/list of floats or doubles.
-    target_dec: array of :class:`~numpy.float64`
-        Declination in degrees of target object(s). Can be float, double,
-        or array/list of floats or doubles.
 
-    Returns
-    -------
-    array of :class:`str`
-        Names referring to the input target RA and DEC's. Array is the
-        same length as the input arrays.
+def get_annotate_one(obj, objname, indir, outdir, overwrite=False, verbose=False):
+    raslice = get_raslice(obj['RA'])
 
-    Raises
-    ------
-    ValueError
-        If any input values are out of bounds.
+    if objname is None:
+        brick = custom_brickname(obj['RA'], obj['DEC'])
+        jpgfile = os.path.join(indir, raslice, brick[:6], f'{brick}.jpeg')
+        pngfile = os.path.join(outdir, raslice, brick[:6], f'{brick}.png')
+    else:
+        jpgfile = os.path.join(indir, raslice, f'{objname}.jpeg')
+        pngfile = os.path.join(outdir, raslice, f'{objname}.png')
+    nobj = 1
 
-    Notes
-    -----
-    Written by A. Kremin (LBNL) for DESI. Taken entirely from
-    desiutil.names.radec_to_desiname.
+    outdir = os.path.dirname(pngfile)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+
+    if overwrite is False:
+        if os.path.isfile(pngfile):
+            nobj = 0
+            if verbose:
+                print(f'Skipping existing annotated cutout {pngfile}')
+    else:
+        if not os.path.isfile(jpgfile):
+            nobj = 0
+            print(f'Missing input cutout {jpgfile}')
+
+    return jpgfile, pngfile, nobj
+
+
+def _annotate_one(args):
+    return annotate_one(*args)
+
+
+def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
+                 group, dry_run, rank, iobj):
+    """Annotate one image.
+
+    group is a list of [(ra, dec), diam, ba, pa] with the zeroth
+      elements belonging to the primary member
 
     """
-    # Convert to numpy array in case inputs are scalars or lists
-    target_ra, target_dec = np.atleast_1d(target_ra), np.atleast_1d(target_dec)
+    #from PIL import Image, ImageDraw
+    #from astropy.io import fits
+    #from astropy.wcs import WCS
+    #import astropy.units as u
+    #from astropy.coordinates import SkyCoord
+    #from SGA.qa import draw_ellipse_on_png#, addbar_to_png
 
-    base_tests = [('NaN values', np.isnan),
-                  ('Infinite values', np.isinf),]
-    inputs = {'target_ra': {'data': target_ra,
-                            'tests': base_tests + [('RA not in range [0, 360)', lambda x: (x < 0) | (x >= 360))]},
-              'target_dec': {'data': target_dec,
-                             'tests': base_tests + [('Dec not in range [-90, 90]', lambda x: (x < -90) | (x > 90))]}}
-    for coord in inputs:
-        for message, check in inputs[coord]['tests']:
-            if check(inputs[coord]['data']).any():
-                raise ValueError(f"{message} detected in {coord}!")
+    import matplotlib.pyplot as plt
+    import matplotlib.image as mpimg
+    from matplotlib.patches import Circle, Ellipse
+    from matplotlib.lines import Line2D
+    from urllib.request import urlretrieve
+    from astropy.wcs import WCS
+    from astropy.io import fits
 
-    # Number of decimal places in final naming convention
-    precision = 4
-
-    # Truncate decimals to the given precision
-    ratrunc = np.trunc((10.**precision) * target_ra).astype(int).astype(str)
-    dectrunc = np.trunc((10.**precision) * target_dec).astype(int).astype(str)
-
-    # Loop over input values and create the name as DESINAME as: DESI JXXX.XXXX+/-YY.YYYY
-    # Here J refers to J2000, which isn't strictly correct but is the closest
-    #   IAU compliant term
-    names = []
-    for ra, dec in zip(ratrunc, dectrunc):
-        zra = ra.zfill(7)
-        name = f'{prefix} J' + zra[:-precision] + '.' + zra[-precision:]
-        # Positive numbers need an explicit "+" while negative numbers
-        #   already have a "-".
-        # zfill works properly with '-' but counts it in number of characters
-        #   so need one more
-        if dec.startswith('-'):
-            zdec = dec.zfill(7)
-            name += zdec[:-precision] + '.' + zdec[-precision:]
-        else:
-            zdec = dec.zfill(6)
-            name += '+' + zdec[:-precision] + '.' + zdec[-precision:]
-        names.append(name)
-
-    return np.array(names)
+    def get_wcs(racenter, deccenter, width):
+        hdr = fits.Header()
+        hdr['NAXIS'] = 2
+        hdr['NAXIS1'] = width
+        hdr['NAXIS2'] = width
+        hdr['CTYPE1'] = 'RA---TAN'
+        hdr['CTYPE2'] = 'DEC--TAN'
+        hdr['CRVAL1'] = racenter
+        hdr['CRVAL2'] = deccenter
+        hdr['CRPIX1'] = width/2+0.5
+        hdr['CRPIX2'] = width/2+0.5
+        hdr['CD1_1'] = -pixscale/3600.
+        hdr['CD1_2'] = 0.0
+        hdr['CD2_1'] = 0.0
+        hdr['CD2_2'] = +pixscale/3600.
+        return WCS(hdr)
 
 
-def custom_brickname(ra, dec):
-    brickname = '{:08d}{}{:07d}'.format(
-        int(100000*ra), 'm' if dec < 0 else 'p',
-        int(100000*np.abs(dec)))
-    #brickname = '{:06d}{}{:05d}'.format(
-    #    int(1000*ra), 'm' if dec < 0 else 'p',
-    #    int(1000*np.abs(dec)))
-    return brickname
+    #sns, colors = plot_style(talk=True, font_scale=1.0)
+
+    bbox = dict(boxstyle='round', facecolor='k', alpha=0.5)
+    ref_pixscale = 0.262
+
+    #barlen = np.ceil(30 / pixscale) # [pixels]
+    #barlabel = '' # '30 arcsec'
+
+    #leg_colors = ['red']
+    #leg_lines = ['-']
+    #leg_labels = ['Adopted']
+
+    if not os.path.isfile(jpgfile):
+        return
+
+    N = len(group)
+    ras, decs, diams, bas, pas = group
+
+    primary_ra, primary_dec = ras[0], decs[0]
+
+    img = mpimg.imread(jpgfile)
+    width = img.shape[0]
+    wcs = get_wcs(primary_ra, primary_dec, width)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.imshow(img, origin='lower')
+    for ra, dec, diam, ba, pa in zip(ras, decs, diams, bas, pas):
+        #label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
+
+        xpix, ypix = wcs.wcs_world2pix(ra, dec, 1)
+        if xpix < 0 or ypix < 0 or xpix > width or ypix > width:
+            continue
+
+        semimajor = diam / pixscale # [pixels]
+        semiminor = ba * semimajor  # [pixels]
+        theta = np.radians(90.-pa)
+
+        xymajor = [xpix+semimajor/2*np.cos(theta), width-ypix+semimajor/2*np.sin(theta),
+                   xpix+semimajor/2*np.cos(theta+np.pi), ypix+semimajor/2*np.sin(theta+np.pi)]
+        xyminor = [xpix+semiminor/2*np.cos(theta+np.pi/2.), width-ypix+semiminor/2*np.sin(theta+np.pi/2.),
+                   xpix+semiminor/2*np.cos(theta+3.*np.pi/2.), ypix+semiminor/2*np.sin(theta+3.*np.pi/2.)]
+        ax.add_artist(Ellipse((xpix, width-ypix), semimajor, semiminor, angle=90.-pa,
+                              facecolor='none', edgecolor='red', lw=3, ls='-', alpha=0.9, clip_on=True))
+        ax.plot([xymajor[0], xymajor[2]], [xymajor[1], xymajor[3]], color='red')
+        ax.plot([xyminor[0], xyminor[2]], [xyminor[1], xyminor[3]], color='red')
+
+    ax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
+    print(ax.get_xlim(), ax.get_ylim())
+    ax.set_title(f'{commonname}:{objname} ({primary_ra:.8f},{primary_dec:.8f})')
+    ax.axis('off')
+    fig.tight_layout()
+    fig.savefig(pngfile, bbox_inches=0)#, dpi=200)
+    plt.close()
+    print(f'Wrote {pngfile}')
+
+    pdb.set_trace()
 
 
-def get_raslice(ra):
-    return f'{int(ra):03d}'
+def do_annotate(cat, objname, commonname, diam, ba, pa, pixscale=0.262, 
+                comm=None, mp=1, indir='.', outdir='.', overwrite=False, 
+                dry_run=False, verbose=False):
+    """Wrapper to set up the full set of annotations.
 
+    """
+    from astrometry.libkd.spherematch import match_radec
+
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
+    t0 = time.time()
+    if rank == 0:
+        jpgfiles, pngfiles, groups = plan(
+            cat, objname, comm=comm, outdir=outdir, 
+            indir=indir, overwrite=overwrite, mp=mp, 
+            verbose=verbose, annotate=True)
+        print(f'Planning took {time.time() - t0:.2f} sec')
+    else:
+        jpgfiles, pngfiles, groups = [], [], []
+
+    if comm:
+        jpgfiles = comm.bcast(jpgfiles, root=0)
+        pngfiles = comm.bcast(pngfiles, root=0)
+        groups = comm.bcast(groups, root=0)
+    sys.stdout.flush()
+
+    # all done
+    if len(jpgfiles) == 0 or len(np.hstack(jpgfiles)) == 0:
+        return
+        
+    assert(len(groups) == size)
+
+    print(f'Rank {rank} started at {time.asctime()}')
+    sys.stdout.flush()
+
+    indx = groups[rank]
+
+    if np.isscalar(pixscale):
+        in_pixscale = [pixscale] * len(indx)
+    else:
+        in_pixscale = pixscale
+
+    mpargs = []
+    for iobj in indx:
+        # find nearby objects
+        m1, m2, _ = match_radec(cat[iobj]['RA'], cat[iobj]['DEC'], 
+                                cat['RA'], cat['DEC'], 2.*diam[iobj]/3600.)
+        #if len(m2) == 1:
+        #    continue
+        group = (cat[m2]['RA'].value, cat[m2]['DEC'].value, diam[m2], ba[m2], pa[m2])
+
+        mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj], 
+                       in_pixscale[iobj], group, dry_run, rank, iobj))
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            P.map(_annotate_one, mpargs)
+    else:
+        [annotate_one(*mparg) for mparg in mpargs]
+
+    #print(f'  rank {rank} is done')
+    sys.stdout.flush()
+
+    if comm is not None:
+        comm.barrier()
+
+    if rank == 0 and not dry_run:
+        print(f'All done at {time.asctime()}')
+    
 
 def _cutout_one(args):
     return cutout_one(*args)
@@ -162,7 +269,8 @@ def cutout_one(basefile, ra, dec, width, pixscale, layer, dry_run, rank, iobj):
                 if suffix == '.jpeg':
                     print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
             except:
-                print(f'WARNING: Rank {rank}, object {iobj} off the footprint: cutout {cmdargs}')                
+                if suffix == '.jpeg':
+                    print(f'WARNING: Rank {rank}, object {iobj} off the footprint: cutout {cmdargs}')                
 
 
 def _get_basefiles_one(args):
@@ -183,38 +291,49 @@ def get_basefiles_one(obj, objname, outdir, overwrite=False, verbose=False):
         if os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg'):
             nobj = 0
             if verbose:
-                print(f'Skipping existing object {basefile}.')
+                print(f'Skipping existing cutout {basefile}.')
 
     return basefile, obj['RA'], obj['DEC'], nobj
 
 
-def plan(cat, objname=None, layer='ls-dr9', comm=None, outdir='.', mp=1, 
-         overwrite=False):
+def plan(cat, objname, layer='ls-dr9', comm=None, indir='.', outdir='.', 
+         mp=1, annotate=False, overwrite=False, verbose=False):
+    """Build a plan!
 
-    from astropy.table import Table
-                                
+    """
     t0 = time.time()
     if comm is None:
         rank, size = 0, 1
     else:
         rank, size = comm.rank, comm.size
 
-    if objname is None:
-        objname = [None] * len(cat)
-
-    verbose = True
-    mpargs = [(obj, objname1, outdir, overwrite, verbose) for obj, objname1 in zip(cat, objname)]
-    if mp > 1:
-        with multiprocessing.Pool(mp) as P:
-            out = P.map(_get_basefiles_one, mpargs)
+    if annotate:
+        mpargs = [(obj, objname1, indir, outdir, overwrite, verbose) 
+                  for obj, objname1 in zip(cat, objname)]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                out = P.map(_get_annotate_one, mpargs)
+        else:
+            out = [get_annotate_one(*mparg) for mparg in mpargs]
+        out = list(zip(*out))
+    
+        jpgfiles = np.array(out[0], dtype=object)
+        pngfiles = np.array(out[1], dtype=object)
+        nobj = np.array(out[2], dtype=object)
     else:
-        out = [get_basefiles_one(*mparg) for mparg in mpargs]
-    out = list(zip(*out))
-
-    basefiles = np.array(out[0], dtype=object)
-    allra = np.array(out[1], dtype=object)
-    alldec = np.array(out[2], dtype=object)
-    nobj = np.array(out[3], dtype=object)
+        mpargs = [(obj, objname1, outdir, overwrite, verbose) 
+                  for obj, objname1 in zip(cat, objname)]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                out = P.map(_get_basefiles_one, mpargs)
+        else:
+            out = [get_basefiles_one(*mparg) for mparg in mpargs]
+        out = list(zip(*out))
+    
+        basefiles = np.array(out[0], dtype=object)
+        allra = np.array(out[1], dtype=object)
+        alldec = np.array(out[2], dtype=object)
+        nobj = np.array(out[3], dtype=object)
 
     iempty = np.where(nobj == 0)[0]
     if len(iempty) > 0:
@@ -222,22 +341,31 @@ def plan(cat, objname=None, layer='ls-dr9', comm=None, outdir='.', mp=1,
 
     itodo = np.where(nobj > 0)[0]
     if len(itodo) > 0:
-        basefiles = basefiles[itodo]
-        allra = allra[itodo]
-        alldec = alldec[itodo]
         nobj = nobj[itodo]
+        if annotate:
+            print(f'Annotating {np.sum(nobj):,d} images.')
+            jpgfiles = jpgfiles[itodo]
+            pngfiles = pngfiles[itodo]
+        else:
+            print(f'Generating cutouts for {np.sum(nobj):,d} objects.')
+            basefiles = basefiles[itodo]
+            allra = allra[itodo]
+            alldec = alldec[itodo]
 
-        print(f'Generating cutouts for {np.sum(nobj):,d} objects.')
-        indices = np.arange(len(basefiles))
+        indices = np.arange(len(nobj))
         groups = np.array_split(indices, size) # unweighted distribution
     else:
         groups = [np.array([])]
 
-    return basefiles, allra, alldec, groups
+    if annotate:
+        return jpgfiles, pngfiles, groups
+    else:
+        return basefiles, allra, alldec, groups
 
 
-def do_cutouts(cat, objname=None, layer='ls-dr9', width=152, pixscale=0.262, 
-               comm=None, mp=1, outdir='.', overwrite=False, dry_run=False):
+def do_cutouts(cat, objname, layer='ls-dr9', width=152, pixscale=0.262, 
+               comm=None, mp=1, outdir='.', overwrite=False, dry_run=False,
+               verbose=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -247,7 +375,8 @@ def do_cutouts(cat, objname=None, layer='ls-dr9', width=152, pixscale=0.262,
     t0 = time.time()
     if rank == 0:
         basefiles, allra, alldec, groups = plan(cat, objname, layer=layer, comm=comm, 
-                                                outdir=outdir, overwrite=overwrite, mp=mp)
+                                                outdir=outdir, overwrite=overwrite, mp=mp,
+                                                verbose=verbose)
         print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
@@ -315,43 +444,35 @@ def read_catalog(catfile, ext=1, columns=None, rows=None):
         raise IOError(msg)
 
 
-def choose_diameter(cat, mindiam=152*0.262):
-    """Choose between DIAM and DIAM_LEDA.
-
-    mindiam is ~40 arcsec
+def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=5.,
+                           default_width=152, default_pixscale=0.262):
+    """Simple function to compute the pixel scale of the desired
+    output images.
 
     """
-    diam = np.zeros(len(cat)) + mindiam # [arcsec]
+    nobj = len(diam)
 
-    I = np.logical_and(cat['DIAM'] < 0., cat['DIAM_LEDA'] > 0.)
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_LEDA'] * 60. # [arcsec]
+    if rescale:
+        # scale the pixel scale so that larger objects "fit" in DEFAULT_WIDTH
+        pixscale = args.pixscale * 2. * diam / mindiam   # [arcsec/pixel]
+        width = np.zeros(nobj, int) + default_width # [pixels]
+    else:
+        # full-mosaic, native resolution width, except for objects
+        # larger than XX arcmin
+        pixscale = np.zeros(nobj) + default_pixscale # [arcsec/pixel]
+        width = 2. * diam / pixscale # [pixels]
+    
+        maxdiam = maxdiam_arcmin * 60 # [arcsec]
+        I = diam > maxdiam
+        if np.any(I):
+            pixscale[I] = default_pixscale * diam[I] / maxdiam
+            width[I] = 2. * diam[I] / pixscale[I]
+    
+    width = width.astype(int)
 
-    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_LEDA'] < 0.)
-    if np.any(I):
-        diam[I] = cat[I]['DIAM'] * 60. # [arcsec]
+    return pixscale, width
 
-    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_LEDA'] > 0.)
-    if np.any(I):
-        # ???
-        diam[I] = cat[I]['DIAM_LEDA'] * 60. # [arcsec]
 
-    # set a minimum floor
-    I = diam < mindiam
-    if np.any(I):
-        diam[I] = mindiam
-
-    # special-cases - north
-    S = [
-        'WISEA J151427.24+604725.4', # not in HyperLeda; basic-data diameter is 12.11 arcmin!
-        ]
-    I = np.isin(cat['OBJNAME'], S)
-    if np.any(I):
-        diam[I] = mindiam
-
-    return diam
-
-        
 def main():
     """Main wrapper.
 
@@ -359,20 +480,20 @@ def main():
     import argparse    
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--catalog', type=str, default='sga2025-parent', choices=['sga2025-parent', 'sga2020'], help='Catalog to read.')
+    parser.add_argument('--region', default='north', choices=['north', 'south'], type=str, help='Region to analyze (only for --catalog="sga2025-parent").')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--width', type=int, default=152, help='Default cutout width [pixels].')
     parser.add_argument('--pixscale', type=float, default=0.262, help='Default pixel scale [arcsec/pixel].')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
-    parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
-    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
-
-    parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
-
-    parser.add_argument('--catalog', type=str, default='sga2025-parent', choices=['sga2025-parent', 'sga2020'], help='Catalog to read.')
     parser.add_argument('--version', default='v1.0', type=str, help='Version of the parent catalog to read (only for --catalog="sga2025-parent").')
-    parser.add_argument('--region', default='north', choices=['north', 'south'], type=str, help='Region to analyze (only for --catalog="sga2025-parent").')
-
     parser.add_argument('--outdir', default='./', type=str, help='Base output data directory.')
+
+    parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
+    parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
+    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
+    parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     
     args = parser.parse_args()
 
@@ -395,13 +516,15 @@ def main():
     else:
         rank = comm.rank
 
+    (cat, objname, commonname, layer, indir, outdir, pixscale, width, diam, ba, pa) = [[]] * 11
     if rank == 0:
         if args.catalog == 'sga2025-parent':
-            #from SGA.util import radec_to_name
+            from SGA.util import radec_to_name, choose_geometry
 
             catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/' + \
                 f'SGA2025-parent-{args.region}-{args.version}.fits'
-            columns = ['OBJNAME', 'RA', 'DEC', 'DIAM', 'DIAM_LEDA']
+            columns = ['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA', 
+                       'DIAM_LEDA', 'BA_LEDA', 'PA_LEDA', 'DIAM_REF']
 
             F = fitsio.FITS(catfile)
             N = F[1].get_nrows()
@@ -418,40 +541,37 @@ def main():
             #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
             #cat = cat[cat['DIAM'] == 60.]
             #cat = cat[cat['DIAM_LEDA'] > 5.]
+            cat = cat[cat['DIAM_REF'] == 'RC3']
+            cat = cat[cat['OBJNAME'] == 'NGC 1020']
+            #cat = cat[:128]
             print(f'Trimming to {len(cat):,d} objects')
 
+            commonname = cat['OBJNAME']
             objname = np.char.replace(radec_to_name(cat['RA'], cat['DEC']), ' ', '_')
             #objname = np.char.replace(cat['OBJNAME'].value, ' ', '_')
 
-            layer = f'ls-dr9-{args.region}'
-            if args.region == 'south':
-                #layer = f'ls-dr10-{args.region}'
-                pass
+            mindiam = args.width * args.pixscale # [arcsec]
+            diam, ba, pa = choose_geometry(cat, mindiam=mindiam)
 
-            mindiam = args.width * args.pixscale         # [arcsec]
-            diam = choose_diameter(cat, mindiam=mindiam) # [arcsec]
+            pixscale, width = get_pixscale_and_width(
+                diam, mindiam, rescale=args.rescale, 
+                default_width=args.width,
+                default_pixscale=args.pixscale)
 
-            if args.rescale:
-                # scale the pixel scale so larger objects "fit" in the input WIDTH
-                outdir = os.path.join(args.outdir, args.region, 'rescale')
-
-                pixscale = args.pixscale * diam / mindiam
-                width = np.zeros(len(cat), int) + args.width
+            if args.annotate:
+                indir = os.path.join(args.outdir, args.region, 'native')
+                outdir = os.path.join(args.outdir, args.region, 'annotate')
             else:
-                # full-mosaic, native resolution, except for objects
-                # larger than 5 arcmin
-                outdir = os.path.join(args.outdir, args.region, 'native')
-
-                pixscale = np.zeros(len(cat)) + args.pixscale
-                width = diam / pixscale
-
-                maxdiam = 5. * 60 # [arcsec]
-                I = diam > maxdiam
-                if np.any(I):
-                    pixscale[I] = args.pixscale * diam[I] / maxdiam
-                    width[I] = diam[I] / pixscale[I]
-
-            width = width.astype(int)
+                layer = f'ls-dr9-{args.region}'
+                if args.region == 'south':
+                    # FIXME - need DR10 CCDs file
+                    #layer = f'ls-dr10-{args.region}'
+                    pass
+    
+                if args.rescale:
+                    outdir = os.path.join(args.outdir, args.region, 'rescale')
+                else:
+                    outdir = os.path.join(args.outdir, args.region, 'native')
 
         elif args.catalog == 'sga2020':
             catfile = '/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits'
@@ -467,25 +587,34 @@ def main():
             #I = rand.choice(I, 4096, replace=False)
             #print(f'Selecting {len(I):,d}/{len(cat):,d} SGA galaxies with cutout width < 1.5*{args.width} pixels (<{d26cut_arcmin:.2f} arcmin).')
             #out = cat[I]
-    else:
-        cat, objname, layer, outdir, pixscale, width = None, None, None, None, None, None
         
     if comm is not None:
         cat = comm.bcast(cat, root=0)
         objname = comm.bcast(objname, root=0)
+        commonname = comm.bcast(commonname, root=0)
         layer = comm.bcast(layer, root=0)
         outdir = comm.bcast(outdir, root=0)
+        indir = comm.bcast(indir, root=0)
         pixscale = comm.bcast(pixscale, root=0)
         width = comm.bcast(width, root=0)
+        diam = comm.bcast(diam, root=0)
+        ba = comm.bcast(ba, root=0)
+        pa = comm.bcast(pa, root=0)
 
     if args.plan:
         if rank == 0:
-            plan(cat, objname, layer=layer, comm=comm, outdir=outdir, 
-                 mp=args.mp, overwrite=args.overwrite)
+            plan(cat, objname, layer=layer, comm=comm, indir=indir, outdir=outdir, 
+                 mp=args.mp, annotate=args.annotate, overwrite=args.overwrite, 
+                 verbose=args.verbose)
     else:
-        do_cutouts(cat, objname=objname, layer=layer, width=width, pixscale=pixscale, 
-                   mp=args.mp, comm=comm, outdir=outdir, overwrite=args.overwrite,
-                   dry_run=args.dry_run)
+        if args.annotate:
+            do_annotate(cat, objname, commonname, diam, ba, pa, pixscale=pixscale, 
+                        mp=args.mp, comm=comm, indir=indir, outdir=outdir, 
+                        overwrite=args.overwrite, dry_run=args.dry_run, verbose=args.verbose)
+        else:
+            do_cutouts(cat, objname, layer=layer, width=width, pixscale=pixscale, 
+                       mp=args.mp, comm=comm, outdir=outdir, overwrite=args.overwrite,
+                       dry_run=args.dry_run, verbose=args.verbose)
 
 if __name__ == '__main__':
     main()
