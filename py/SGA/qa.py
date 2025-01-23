@@ -25,6 +25,7 @@ cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LE
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
         'MAG', 'Z', 'PGC', 'PARENT_ROW']
 
+
 def plot_style(font_scale=1.2, paper=False, talk=True):
 
     import seaborn as sns
@@ -851,6 +852,7 @@ def fig_size_mag(sample, pngfile=None):
         plt.close(fig)
 
     pdb.set_trace()
+
 
 def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
                         pixscale, color='#3388ff', linewidth=3):
