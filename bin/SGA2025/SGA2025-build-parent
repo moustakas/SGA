@@ -2,6 +2,9 @@
 
 """Code to build the parent SGA2025 sample based on a combination of internal and external catalogs.
 
+SGA2025-shifter
+source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
+
 SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
@@ -32,18 +35,18 @@ from astrometry.libkd.spherematch import match_radec
 
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.qa import qa_skypatch, multipage_skypatch
-from SGA.util import get_basic_geometry, match, match_to, choose_primary, resolve_close
+from SGA.util import get_basic_geometry, match, choose_primary, resolve_close
 from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
                     read_hyperleda_galaxies, version_hyperleda_galaxies,
                     read_hyperleda_multiples, version_hyperleda_multiples,
-                    nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
+                    nedfriendly_hyperleda, read_nedlvs, version_nedlvs, read_sga2020,
                     read_lvd, version_lvd, nedfriendly_lvd, version_custom_external,
                     read_custom_external)
 
 
-cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA',
+cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_HYPERLEDA',
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
-        'MAG', 'Z', 'PGC', 'PARENT_ROW']
+        'MAG_LIT', 'Z', 'PGC', 'PARENT_ROW']
 
 qadir = os.path.join(sga_dir(), 'parent', 'qa')
 if not os.path.isdir(qadir):
@@ -114,7 +117,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
         cat = cat[np.argsort(cat['PARENT_ROW'])]
         #cat = resolve_close(fullcat, fullcat, maxsep=1.5, allow_vetos=True, verbose=False)
 
-        #diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
+        #diam = np.max((cat['DIAM'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
 
         # Next, algorithmically identify cross-identification errors: NED will
         # (sometimes) associate the properties from HyperLeda (PGC number,
@@ -184,13 +187,13 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                             print('Keep: '+'{name: <{W}}'.format(name=group[ii][objname_column], W=maxname)+': ' + \
                                   '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
                                   f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
-                                  f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, (ra,dec)={group[ii]["RA"]:.6f},' + \
+                                  f'D(LEDA)={group[ii]["DIAM_HYPERLEDA"]:.2f} arcmin, (ra,dec)={group[ii]["RA"]:.6f},' + \
                                   f'{group[ii]["DEC"]:.6f}')
                         for ii in drop:
                             print('Drop: '+'{name: <{W}}'.format(name=group[ii][objname_column], W=maxname)+': ' + \
                                   '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
                                   f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
-                                  f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
+                                  f'D(LEDA)={group[ii]["DIAM_HYPERLEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
 
                     m2 = m2[primary]
 
@@ -246,7 +249,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
             print(f'Copying {newcat[m1]["OBJNAME"]} (PGC {newcat[m1]["PGC"]}, {newcat[m1]["OBJTYPE"]}) to ' + \
                   f'{newcat[m2]["OBJNAME"]} (PGC {newcat[m2]["PGC"]}, PGC {newcat[m2]["OBJTYPE"]})')
         for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'DIAM', 'BA', 'PA',
-                    'DIAM_LEDA', 'BA_LEDA', 'PA_LEDA', 'ROW_HYPERLEDA', 'PGC']:
+                    'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA', 'ROW_HYPERLEDA', 'PGC']:
             new = newcat[col][m1]
             old = newcat[col][m2]
             if new == '' and old == '':
@@ -323,7 +326,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
     newcat = newcat[~I]
 
     # sort by diameter
-    srt = np.argsort(np.max((dropcat['DIAM'].value, dropcat['DIAM_LEDA'].value), axis=0))[::-1]
+    srt = np.argsort(np.max((dropcat['DIAM'].value, dropcat['DIAM_HYPERLEDA'].value), axis=0))[::-1]
     dropcat = dropcat[srt]
 
     # add a VI bit; all these systems have been visually checked
@@ -396,7 +399,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
 
     print(f'Analyzing the prefix frequency of {len(T):,d}/{len(fullcat):,d} objects.')
 
-    diam = np.max((T['DIAM'].value, T['DIAM_LEDA'].value), axis=0)
+    diam = np.max((T['DIAM'].value, T['DIAM_HYPERLEDA'].value), axis=0)
     if merger_type is not None:
         if merger_has_diameter:
             I = np.where(diam != -99)[0]
@@ -695,7 +698,7 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
         # How many sources with diam<0.1 have no other source within 10 arcsec?
         radius_isolated = 10.
     
-        diam = np.max((cat['DIAM'].value, cat['DIAM_LEDA'].value), axis=0)
+        diam = np.max((cat['DIAM'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
         I = np.where(diam == -99.)[0]
         #I = np.where((diam > 0.) * (diam < 0.1))[0]
         #I = np.where(diam < 0.1)[0]
@@ -768,7 +771,7 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
     # compare diameters
     if False:
         pngfile = os.path.join(qadir, 'qa-diamleda.png')
-        I = np.where((allcat['DIAM'] > 0.) * (allcat['DIAM_LEDA'] > mindiam))[0]
+        I = np.where((allcat['DIAM'] > 0.) * (allcat['DIAM_HYPERLEDA'] > mindiam))[0]
         print(len(I))
         lim = (-1.7, 3.)
         #lim = (np.log10(mindiam)-0.1, 3.)
@@ -778,7 +781,7 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
         sns, colors = plot_style(talk=True, font_scale=1.2)
 
         fig, ax = plt.subplots(figsize=(7, 7))
-        xx = np.log10(allcat['DIAM_LEDA'][I])
+        xx = np.log10(allcat['DIAM_HYPERLEDA'][I])
         yy = np.log10(allcat['DIAM'][I])
         J = ['IRAS' in morph for morph in allcat['MORPH'][I]]
         corner.hist2d(xx, yy, levels=[0.5, 0.75, 0.95, 0.995],
@@ -844,6 +847,7 @@ def build_parent_nocuts(verbose=True):
     custom = read_custom_external(overwrite=True) # always regenerate the FITS file
     lvd = read_lvd()
     nedlvs = read_nedlvs()
+    sga2020 = read_sga2020()
     hyper = read_hyperleda()
     print()
 
@@ -874,8 +878,7 @@ def build_parent_nocuts(verbose=True):
 
     ned_hyper = vstack((ned_hyper_galaxies, ned_hyper_multiples))
     ned_hyper = ned_hyper[np.argsort(ned_hyper['ROW'])]
-
-    del ned_hyper_galaxies, ned_hyper_multiples, ned_hyper_galaxies_coords, ned_hyper_multiples_coords
+    #del ned_hyper_galaxies, ned_hyper_multiples, ned_hyper_galaxies_coords, ned_hyper_multiples_coords
 
     #match_radec(ned_hyper['RA'], ned_hyper['DEC'], custom['RA'], custom['DEC'], 3./3600.)
 
@@ -904,7 +907,7 @@ def build_parent_nocuts(verbose=True):
     #basic_dd['DEC'] = dd['DEC']
     #basic_dd['Z'] = dd['Z']
     #basic_dd['OBJTYPE'] = dd['OBJTYPE']
-    #basic_dd['DIAM_LEDA'] = -99.
+    #basic_dd['DIAM_HYPERLEDA'] = -99.
     #basic_dd['PGC'] = -99
     #res = resolve_close(ned_nedlvs, basic_dd, maxsep=3.1, objname_column='OBJNAME', keep_all_mergers=False, verbose=True, trim=False)
     #I = np.where(res['PRIMARY'])[0]
@@ -912,7 +915,7 @@ def build_parent_nocuts(verbose=True):
     for objname in np.unique(dd[col]):
         I = np.where(ned_nedlvs[col] == objname)[0]
         J = np.where(basic_dd['GALAXY'] == objname)[0]
-        this = np.where(basic_dd[J]['DIAM'] > 0.)[0]
+        this = np.where(basic_dd[J]['DIAM_LIT'] > 0.)[0]
         if len(this) == 0:
             toss.append(np.delete(I, np.argmin(ned_nedlvs[I]['ROW'])))
         else:
@@ -935,7 +938,7 @@ def build_parent_nocuts(verbose=True):
     for radec in np.unique(radecs):
         I = np.where(radec == ref_radecs)[0]
         J = np.where(radec == radecs)[0]
-        this = np.where(basic_dd[J]['DIAM'] > 0.)[0]
+        this = np.where(basic_dd[J]['DIAM_LIT'] > 0.)[0]
         if len(this) == 0:
             toss.append(np.delete(I, np.argmin(ned_nedlvs[I]['ROW'])))
         else:
@@ -992,7 +995,7 @@ def build_parent_nocuts(verbose=True):
     for objname in np.unique(dd[col]):
         I = np.where(ned_hyper[col] == objname)[0]
         J = np.where(basic_dd['GALAXY'] == objname)[0]
-        this = np.where(basic_dd[J]['DIAM'] > 0.)[0]
+        this = np.where(basic_dd[J]['DIAM_LIT'] > 0.)[0]
         if len(this) == 0:
             toss.append(np.delete(I, np.argmin(ned_hyper[I]['ROW'])))
         else:
@@ -1013,7 +1016,7 @@ def build_parent_nocuts(verbose=True):
     basic_dd['DEC'] = dd['DEC']
     basic_dd['Z'] = dd['Z']
     basic_dd['OBJTYPE'] = dd['OBJTYPE']
-    basic_dd['DIAM_LEDA'] = -99.
+    basic_dd['DIAM_HYPERLEDA'] = -99.
     basic_dd['PGC'] = -99
     res = resolve_close(basic_dd, basic_dd, maxsep=1., objname_column='OBJNAME',
                         keep_all_mergers=False, verbose=False, trim=False)
@@ -1025,7 +1028,7 @@ def build_parent_nocuts(verbose=True):
     #for radec in np.unique(radecs):
     #    I = np.where(radec == ref_radecs)[0]
     #    J = np.where(radec == radecs)[0]
-    #    this = np.where(basic_dd[J]['DIAM'] > 0.)[0]
+    #    this = np.where(basic_dd[J]['DIAM_LIT'] > 0.)[0]
     #    if len(this) == 0:
     #        toss.append(np.delete(I, np.argmin(ned_hyper[I]['ROW'])))
 #   #     elif len(this) == 1:
@@ -1117,7 +1120,6 @@ def build_parent_nocuts(verbose=True):
         assert(len(np.unique(parent1[col])) == len(parent1))
     print()
     print(f'Parent 1: N={len(parent1):,d}')
-    #pdb.set_trace()
 
     # [2] - Add as many of the remaining ned_hyper objects as possible. Special
     # case VIRGO1, which incorrectly matches (in NED) to 'Virgo I Dwarf' rather
@@ -1147,7 +1149,6 @@ def build_parent_nocuts(verbose=True):
         assert(len(np.unique(parent2[col])) == len(parent2))
     print()
     print(f'Parent 2: N={len(parent2):,d}')
-    #pdb.set_trace()
 
     # [3] - Add the rest of the ned_nedlvs objects, being careful about exact
     # duplicates.
@@ -1200,7 +1201,6 @@ def build_parent_nocuts(verbose=True):
         assert(len(np.unique(parent3[col])) == len(parent3))
     print()
     print(f'Parent 3: N={len(parent3):,d}')
-    #pdb.set_trace()
 
     parent = vstack((parent, parent3))
 
@@ -1234,14 +1234,14 @@ def build_parent_nocuts(verbose=True):
         assert(len(np.unique(parent4[col])) == len(parent4))
     print()
     print(f'Parent 4: N={len(parent4):,d}')
-    #pdb.set_trace()
 
     parent = vstack((parent, parent4))
 
     # [5] Add LVD.
     print()
     print('#####')
-    print(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ({100.*len(ned_lvd)/len(lvd):.1f}%) are in ned_lvd.')
+    print(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ' + \
+          f'({100.*len(ned_lvd)/len(lvd):.1f}%) are in ned_lvd.')
 
     # ned_lvd - already in parent sample
     I = np.where(parent['OBJNAME_NED'] != '')[0]
@@ -1308,7 +1308,81 @@ def build_parent_nocuts(verbose=True):
     print(f'Parent 5: N={len(parent5)+nexisting:,d}')
     #pdb.set_trace()
 
-    # [6] include the custom-added objects
+    # [6] Add SGA2020
+    parent = vstack((parent, parent5))
+
+    print()
+    print('#####')
+    print(f'Analyzing {len(sga2020):,d} SGA-2020 objects.')
+
+    # First match by coordinates. Don't match by PGC because there can
+    # be some pretty striking mismatches due to errors in either NED
+    # and/or HyperLeda.
+    ra, dec = parent['RA_NED'].value, parent['DEC_NED'].value
+    I = (ra == -99.) * (parent['RA_HYPERLEDA'] != -99.)
+    if np.any(I):
+        ra[I] = parent['RA_HYPERLEDA'][I].value
+        dec[I] = parent['DEC_HYPERLEDA'][I].value
+    I = (ra == -99.) * (parent['RA_LVD'] != -99.)
+    if np.any(I):
+        ra[I] = parent['RA_LVD'][I].value
+        dec[I] = parent['DEC_LVD'][I].value
+    m1, m2, _ = match_radec(sga2020['RA'], sga2020['DEC'], ra, dec, 1./3600., nearest=True)
+
+    # Matched 360,265/383,620 (93.9%) SGA-2020 objects via a 1 arcsec radius.
+    print(f'Matched {len(m1):,d}/{len(sga2020):,d} ({100.*len(m1)/len(sga2020):.1f}%) ' + \
+          'SGA-2020 objects via a 1 arcsec radius.')
+    for col, sgacol in zip(['OBJNAME_SGA2020', 'RA_SGA2020', 'DEC_SGA2020', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_SGA2020'],
+                           ['GALAXY', 'RA', 'DEC', 'D26', 'BA', 'PA', 'ROW']):
+        if verbose:
+            print(f'Populating {sgacol} --> {col}')
+        parent[col][m2] = sga2020[m1][sgacol]
+    miss_sga2020 = sga2020[np.delete(np.arange(len(sga2020)), parent[parent['ROW_SGA2020'] != -99]['ROW_SGA2020'].value)]
+
+    # Next attempt to match by PGC but only for objects not previously
+    # matched. Note that the PGC numbers may be different for objects
+    # that matched via their coordinates!
+    I = np.where((parent['PGC'] > 0) * (parent['ROW_SGA2020'] < 0))[0]
+    J = np.where(miss_sga2020['PGC'] > 0)[0]
+    indx_parent, indx_sga2020 = match(parent[I]['PGC'], miss_sga2020[J]['PGC'])
+
+    # Matched 25,296/27,585 (91.7%) SGA-2020 objects using PGC.
+    print(f'Matched {len(indx_sga2020):,d}/{len(miss_sga2020):,d} ({100.*len(indx_sga2020)/len(miss_sga2020):.1f}%) ' + \
+          'SGA-2020 objects using PGC.')
+
+    for col, sgacol in zip(['OBJNAME_SGA2020', 'RA_SGA2020', 'DEC_SGA2020', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_SGA2020'],
+                           ['GALAXY', 'RA', 'DEC', 'D26', 'BA', 'PA', 'ROW']):
+        if verbose:
+            print(f'Populating {sgacol} --> {col}')
+        parent[col][I[indx_parent]] = miss_sga2020[J[indx_sga2020]][sgacol]
+    miss_sga2020 = sga2020[np.delete(np.arange(len(sga2020)), parent[parent['ROW_SGA2020'] != -99]['ROW_SGA2020'].value)]
+
+    # Finally, match by HyperLeda name.
+    I = np.where((parent['OBJNAME_HYPERLEDA'] != '') * (parent['ROW_SGA2020'] < 0))[0]
+    indx_parent, indx_sga2020 = match(parent[I]['OBJNAME_HYPERLEDA'], miss_sga2020['GALAXY'])
+
+    # Matched 5/2,289 (0.2%) SGA-2020 objects using OBJNAME_HYPERLEDA.
+    print(f'Matched {len(indx_parent):,d}/{len(miss_sga2020):,d} ({100.*len(indx_parent)/len(miss_sga2020):.1f}%) ' + \
+          'SGA-2020 objects using OBJNAME_HYPERLEDA.')
+    for col, sgacol in zip(['OBJNAME_SGA2020', 'RA_SGA2020', 'DEC_SGA2020', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_SGA2020'],
+                           ['GALAXY', 'RA', 'DEC', 'D26', 'BA', 'PA', 'ROW']):
+        if verbose:
+            print(f'Populating {sgacol} --> {col}')
+        parent[col][I[indx_parent]] = miss_sga2020[indx_sga2020][sgacol]
+
+    # NB: all but 2284 (<0.6% of the parent sample) objects match, the
+    # remaining of which are either from DR8, LG Dwarfs, or mergers
+    # which are now correctly handled in the SGA-2025.
+    #miss_sga2020 = sga2020[np.delete(np.arange(len(sga2020)), parent[parent['ROW_SGA2020'] != -99]['ROW_SGA2020'].value)]
+    I = np.where(parent['ROW_SGA2020'] > 0)[0]
+    for col in ['OBJNAME_SGA2020', 'ROW_SGA2020']:
+        try:
+            assert(len(np.unique(parent[I][col])) == len(parent[I]))
+        except:
+            print(f'Duplicate {col} values!')
+            pdb.set_trace()
+
+    # [7] include the custom-added objects
     print()
     print('#####')
     print(f'Adding {len(custom):,d} more objects from the custom catalog.')
@@ -1320,15 +1394,16 @@ def build_parent_nocuts(verbose=True):
     print()
     print(f'Parent 6: N={len(parent6):,d}')
 
-    # [7] build the final sample
-    parent = vstack((parent, parent5, parent6))
+    # [8] build the final sample
+    parent = vstack((parent, parent6))
 
     # sort, check for uniqueness, and then write out
     srt = np.lexsort((parent['ROW_HYPERLEDA'].value, parent['ROW_NEDLVS'].value,
-                      parent['ROW_LVD'].value, parent['ROW_CUSTOM'].value))
+                      parent['ROW_SGA2020'].value, parent['ROW_LVD'].value, 
+                      parent['ROW_CUSTOM'].value))
     parent = parent[srt]
 
-    for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD']:
+    for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_SGA2020', 'OBJNAME_LVD']:
         I = parent[col] != ''
         try:
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
@@ -1344,25 +1419,40 @@ def build_parent_nocuts(verbose=True):
     #                                                        'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'PGC', 'ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD']
     #bb = bb[np.argsort(bb['PGC'])]
 
-    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_CUSTOM']:
+    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_SGA2020', 'ROW_LVD', 'ROW_CUSTOM']:
         I = parent[col] != -99
-        assert(len(parent[I]) == len(np.unique(parent[col][I])))
+        try:
+            assert(len(parent[I]) == len(np.unique(parent[col][I])))
+        except:
+            print(f'Duplicate entries of {col}!')
+            pdb.set_trace()
 
     print()
     print('#####')
     print(f'Final parent sample: N={len(parent):,d}')
 
+    pdb.set_trace()
+    #parent.write('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/junk-sga2020.fits', overwrite=True)
+
     # Populate OBJNAME, RA, DEC, and Z
     print()
-    for dataset in ['NED', 'LVD', 'NEDLVS', 'HYPERLEDA']:
+
+    # NB - prefer LVD coordinates over NED
+    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
         I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
         if len(I) > 0:
-            print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) RA,DEC values from {dataset}.')
+            print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
+                  f'RA,DEC values from {dataset}.')
             parent['RA'][I] = parent[I][f'RA_{dataset}']
             parent['DEC'][I] = parent[I][f'DEC_{dataset}']
+
+
+    # NB - prefer NED names
+    for dataset in ['NED', 'NEDLVS', 'LVD', 'SGA2020', 'HYPERLEDA']:
         I = np.where((parent['OBJNAME'] == '') * (parent[f'OBJNAME_{dataset}'] != ''))[0]
         if len(I) > 0:
-            print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) OBJNAMEs from {dataset}.')
+            print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
+                  f'OBJNAMEs from {dataset}.')
             # Roughly 4300 objects have "SDSSJ" names rather than "SDSS J".
             # Standardize that here so we match NED-LVS and so that we're
             # NED-friendly.
@@ -1378,6 +1468,7 @@ def build_parent_nocuts(verbose=True):
             else:
                 parent['OBJNAME'][I] = parent[I][f'OBJNAME_{dataset}']
 
+    # NB - prefer NEDLVS redshifts
     for dataset in ['NEDLVS', 'NED', 'HYPERLEDA']:
         I = np.where((parent['Z'] == -99.) * (parent[f'Z_{dataset}'] != -99.))[0]
         if len(I) > 0:
@@ -1385,46 +1476,58 @@ def build_parent_nocuts(verbose=True):
             parent['Z'][I] = parent[I][f'Z_{dataset}']
     print()
 
-    # reset and then prioritize the diameters
-    basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
+    # reset the values from the literature and then prioritize
     basic_ned_hyper = get_basic_geometry(ned_hyper, galaxy_column='ROW', verbose=verbose)
     basic_ned_nedlvs = get_basic_geometry(ned_nedlvs, galaxy_column='ROW', verbose=verbose)
     basic_lvd = get_basic_geometry(lvd, galaxy_column='ROW', verbose=verbose)
     basic_custom = get_basic_geometry(custom, galaxy_column='ROW_CUSTOM', verbose=verbose)
 
-    for col in ['DIAM', 'BA', 'PA', 'MAG']:
+    for col in ['DIAM_LIT', 'BA_LIT', 'PA_LIT', 'MAG_LIT']:
         parent[col] = -99.
         parent[f'{col}_REF'] = ''
-    parent['BAND'] = ''
+    parent['BAND_LIT'] = ''
 
     print()
-    for basic, row, dataset in zip((basic_custom, basic_lvd, basic_ned_hyper, basic_ned_nedlvs, basic_hyper),
-                                   ('ROW_CUSTOM', 'ROW_LVD', 'ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_HYPERLEDA'),
-                                   ('CUSTOM', 'LVD', 'NED-HyperLeda', 'NEDLVS', 'HyperLeda')):
-        for col in ['DIAM', 'BA', 'PA', 'MAG']:
+    # NB - prioritize LVD first
+    for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs),
+                                   ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS'),
+                                   ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS', 'HyperLeda')):
+        for col in ['DIAM_LIT', 'BA_LIT', 'PA_LIT', 'MAG_LIT']:
             I = np.where((parent[col] == -99.) * (parent[row] != -99))[0]
             if len(I) > 0:
+                # 'GALAXY' here is actually 'ROW'
                 indx_parent, indx_basic = match(parent[I][row], basic['GALAXY'])
                 G = np.where(basic[indx_basic][col] != -99.)[0]
                 if len(G) > 0:
                     print(f'Populating parent with {len(G):,d}/{len(I):,d} {col}s from {dataset}.')
                     parent[col][I[indx_parent[G]]] = basic[indx_basic[G]][col]
                     parent[f'{col}_REF'][I[indx_parent[G]]] = basic[indx_basic[G]][f'{col}_REF']
-                    if col == 'MAG':
-                        parent['BAND'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND']
+                    if col == 'MAG_LIT':
+                        parent['BAND_LIT'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND_LIT']
                     #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'BA', 'BA_REF', 'PA', 'PA_REF']
         print()
 
-        # special columns for HyperLeda geometry
-        if dataset == 'HyperLeda':
-            I = np.where(parent[row] != -99)[0]
-            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY']) # 'GALAXY' here is actually 'ROW'
-            for col in ['DIAM', 'BA', 'PA']:
-                parent[f'{col}_LEDA'][I[indx_parent]] = basic[indx_basic][col]
+    # special columns for HyperLeda and SGA2020 geometry
+    basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
+    basic_sga2020 = get_basic_geometry(sga2020, galaxy_column='ROW', verbose=verbose)
+
+    for basic, row, suffix in zip((basic_hyper, basic_sga2020), ('ROW_HYPERLEDA', 'ROW_SGA2020'), ('LEDA', 'SGA2020')):
+        for col in [f'DIAM_{suffix}', f'BA_{suffix}', f'PA_{suffix}', f'MAG_{suffix}']:
+            parent[col] = -99.
+        parent[f'BAND_{suffix}'] = ''
+
+        I = np.where(parent[row] != -99)[0]
+        if len(I) > 0:
+            # 'GALAXY' here is actually 'ROW'
+            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY']) 
+            for col in [f'DIAM_{suffix}', f'BA_{suffix}', f'PA_{suffix}', f'MAG_{suffix}']:
+                print(f'Populating parent with {len(I):,d} {col}s from {suffix}.')
+                parent[col][I[indx_parent]] = basic[indx_basic][col]
 
     # final statistics
     nobj = len(parent)
-    for col in ['DIAM', 'BA', 'PA', 'MAG']:
+    for prop in ['DIAM', 'BA', 'PA', 'MAG']:
+        col = f'{prop}_LIT'
         N = parent[col] != -99.
         refs = np.unique(parent[N][f'{col}_REF'])
         print(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
@@ -1432,31 +1535,18 @@ def build_parent_nocuts(verbose=True):
             R = parent[N][f'{col}_REF'] == ref
             print(f'  N({ref}) = {np.sum(R):,d}/{np.sum(N):,d} ({100.*np.sum(R)/np.sum(N):.1f}%)')
 
+        for ref in ['LEDA', 'SGA2020']:
+            col = f'{prop}_{ref}'
+            N = parent[col] != -99.
+            print(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
+        print()
+
     parent['PARENT_ROW'] = np.arange(len(parent))
 
     version = parent_version(nocuts=True)
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     print(f'Writing {len(parent):,d} objects to {outfile}')
     parent.write(outfile, overwrite=True)
-
-
-def read_cat(catalog):
-    """Wrapper to read one of the known external catalogs.
-
-    """
-    match catalog.lower():
-        case 'hyperleda':
-            cat = read_hyperleda()
-        case 'wxsc':
-            cat = read_wxsc()
-        case 'nedlvs':
-            cat = read_nedlvs()
-        case 'lvd':
-            cat = read_lvd()
-        case _:
-            raise ValueError(f'Unrecognized catalog name {catalog}')
-
-    return cat
 
 
 def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False):

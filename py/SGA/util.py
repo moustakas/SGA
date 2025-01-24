@@ -15,8 +15,9 @@ from astrometry.libkd.spherematch import match_radec
 
 def choose_geometry(cat, mindiam=152*0.262):
     """Choose an object's geometry, selecting between the
-    NED-assembled values (DIAM, BA, PA) and HyperLeda's values
-    (DIAM_LEDA, BA_LEDA, PA_LEDA).
+    NED-assembled (literature) values (DIAM, BA, PA), values from the
+    SGA2020 (DIAM_SGA2020, BA_SGA2020, PA_SGA2020), and HyperLeda's
+    values (DIAM_HYPERLEDA, BA_HYPERLEDA, PA_HYPERLEDA).
 
     mindiam is ~40 arcsec
 
@@ -27,24 +28,24 @@ def choose_geometry(cat, mindiam=152*0.262):
     ba = np.ones(len(cat))
     pa = np.zeros(len(cat))
 
-    I = np.logical_and(cat['DIAM'] < 0., cat['DIAM_LEDA'] > 0.)
+    I = np.logical_and(cat['DIAM'] < 0., cat['DIAM_HYPERLEDA'] > 0.)
     if np.any(I):
-        diam[I] = cat[I]['DIAM_LEDA'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LEDA']
-        pa[I] = cat[I]['PA_LEDA']
+        diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_HYPERLEDA']
+        pa[I] = cat[I]['PA_HYPERLEDA']
 
-    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_LEDA'] < 0.)
+    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_HYPERLEDA'] < 0.)
     if np.any(I):
         diam[I] = cat[I]['DIAM'] * 60. # [arcsec]
         ba[I] = cat[I]['BA']
         pa[I] = cat[I]['PA']
 
     # which one should we select??
-    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_LEDA'] > 0.)
+    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_HYPERLEDA'] > 0.)
     if np.any(I):
-        diam[I] = cat[I]['DIAM_LEDA'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LEDA']
-        pa[I] = cat[I]['PA_LEDA']
+        diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_HYPERLEDA']
+        pa[I] = cat[I]['PA_HYPERLEDA']
 
     # set a minimum floor on the diameter
     I = diam < mindiam
@@ -79,9 +80,15 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     basic = Table()
     basic['GALAXY'] = cat[galaxy_column].value
 
+    # default
+    magcol = 'MAG_LIT'
+    diamcol = 'DIAM_LIT'
+
     # HyperLeda
     if 'LOGD25' in cat.columns:
         ref = 'LEDA'
+        magcol = f'MAG_{ref}'
+        diamcol = f'DIAM_{ref}'
         for prop in ('mag', 'diam', 'ba', 'pa'):
             val = np.zeros(nobj, 'f4') - 99.
             val_ref = np.zeros(nobj, '<U7')
@@ -114,10 +121,52 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     val[I] = cat[col][I]
                     val_ref[I] = ref
 
-            basic[prop.upper()] = val
-            basic[f'{prop.upper()}_REF'] = val_ref
+            basic[f'{prop.upper()}_{ref}'] = val
+            basic[f'{prop.upper()}_{ref}_REF'] = val_ref
             if prop == 'mag':
-                basic['BAND'] = val_band
+                basic[f'BAND_{ref}'] = val_band
+            
+    # SGA2020
+    elif 'D26' in cat.columns:
+        ref = 'SGA2020'
+        magcol = f'MAG_{ref}'
+        diamcol = f'DIAM_{ref}'
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            val = np.zeros(nobj, 'f4') - 99.
+            val_ref = np.zeros(nobj, '<U7')
+            val_band = np.zeros(nobj, 'U1')
+
+            if prop == 'mag':
+                col = 'R_MAG_SB26'
+                band = 'R'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+                    val_band[I] = band
+            elif prop == 'diam':
+                col = 'D26'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+            elif prop == 'ba':
+                col = 'BA'
+                I = ~np.isnan(cat[col]) * (cat[col] != 0.)
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+            elif prop == 'pa':
+                col = 'PA'
+                I = ~np.isnan(cat[col])
+                if np.sum(I) > 0:
+                    val[I] = cat[col][I]
+                    val_ref[I] = ref
+
+            basic[f'{prop.upper()}_{ref}'] = val
+            basic[f'{prop.upper()}_{ref}_REF'] = val_ref
+            if prop == 'mag':
+                basic[f'BAND_{ref}'] = val_band
     # LVD
     elif 'RHALF' in cat.columns:
         ref = 'LVD'
@@ -153,10 +202,11 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     val[I] = cat[col][I] % 180 # put in the range [0, 180]
                     val_ref[I] = ref
 
-            basic[prop.upper()] = val
-            basic[f'{prop.upper()}_REF'] = val_ref
+            basic[f'{prop.upper()}_LIT'] = val
+            basic[f'{prop.upper()}_LIT_REF'] = val_ref
             if prop == 'mag':
-                basic['BAND'] = val_band
+                basic[f'BAND_LIT'] = val_band
+
     # custom
     elif 'DIAM' in cat.columns:
         ref = 'CUSTOM'
@@ -191,10 +241,10 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     val[I] = cat[col][I]
                     val_ref[I] = ref
 
-            basic[prop.upper()] = val
-            basic[f'{prop.upper()}_REF'] = val_ref
+            basic[f'{prop.upper()}_LIT'] = val
+            basic[f'{prop.upper()}_LIT_REF'] = val_ref
             if prop == 'mag':
-                basic['BAND'] = val_band
+                basic[f'BAND_LIT'] = val_band
     # NED
     else:
         for prop in ('mag', 'diam', 'ba', 'pa'):
@@ -224,31 +274,31 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                     val_ref[I] = ref
                     val_band[I] = band
 
-            basic[prop.upper()] = val
-            basic[f'{prop.upper()}_REF'] = val_ref
+            basic[f'{prop.upper()}_LIT'] = val
+            basic[f'{prop.upper()}_LIT_REF'] = val_ref
             if prop == 'mag':
-                basic['BAND'] = val_band
+                basic[f'BAND_LIT'] = val_band
 
         # supplement any missing values with the "BASIC" data
-        I = (basic['MAG'] <= 0.) * (cat['BASIC_MAG'] > 0.)
+        I = (basic['MAG_LIT'] <= 0.) * (cat['BASIC_MAG'] > 0.)
         if np.any(I):
-            basic['MAG'][I] = cat['BASIC_MAG'][I]
-            basic['BAND'][I] = 'V'
+            basic['MAG_LIT'][I] = cat['BASIC_MAG'][I]
+            basic['BAND_LIT'][I] = 'V'
 
-        I = (basic['DIAM'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.)
+        I = (basic['DIAM_LIT'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.)
         if np.any(I):
-            basic['DIAM'][I] = cat['BASIC_DMAJOR'][I]
-            basic['DIAM_REF'][I] = 'BASIC'
+            basic['DIAM_LIT'][I] = cat['BASIC_DMAJOR'][I]
+            basic['DIAM_LIT_REF'][I] = 'BASIC'
 
-        I = (basic['BA'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.) * (cat['BASIC_DMINOR'] > 0.)
+        I = (basic['BA_LIT'] <= 0.) * (cat['BASIC_DMAJOR'] > 0.) * (cat['BASIC_DMINOR'] > 0.)
         if np.any(I):
-            basic['BA'][I] = cat['BASIC_DMINOR'][I] / cat['BASIC_DMAJOR'][I]
-            basic['BA_REF'][I] = 'BASIC'
+            basic['BA_LIT'][I] = cat['BASIC_DMINOR'][I] / cat['BASIC_DMAJOR'][I]
+            basic['BA_LIT_REF'][I] = 'BASIC'
 
     # summarize
     if verbose:
-        M = basic['MAG'] > 0.
-        D = basic['DIAM'] > 0.
+        M = basic[magcol] > 0.
+        D = basic[diamcol] > 0.
         print(f'Derived photometry for {np.sum(M):,d}/{nobj:,d} objects and ' + \
               f'diameters for {np.sum(D):,d}/{nobj:,d} objects.')
 
@@ -264,6 +314,7 @@ def parent_datamodel(nobj):
     parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_SGA2020'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
     parent['OBJTYPE'] = np.zeros(nobj, '<U6')
     parent['MORPH'] = np.zeros(nobj, '<U20')
@@ -277,6 +328,8 @@ def parent_datamodel(nobj):
     parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
     parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
     parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_SGA2020'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_SGA2020'] = np.zeros(nobj, 'f8') -99.
     parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
     parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
 
@@ -288,22 +341,31 @@ def parent_datamodel(nobj):
     parent['PGC'] = np.zeros(nobj, '<i8') -99
     parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
 
-    parent['MAG'] = np.zeros(nobj, 'f4') -99.
-    parent['MAG_REF'] = np.zeros(nobj, '<U7')
-    parent['BAND'] = np.zeros(nobj, '<U1')
-    parent['DIAM'] = np.zeros(nobj, 'f4') -99.
-    parent['DIAM_REF'] = np.zeros(nobj, '<U7')
-    parent['BA'] = np.zeros(nobj, 'f4') -99.
-    parent['BA_REF'] = np.zeros(nobj, '<U7')
-    parent['PA'] = np.zeros(nobj, 'f4') -99.
-    parent['PA_REF'] = np.zeros(nobj, '<U7')
+    parent['MAG_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['MAG_LIT_REF'] = np.zeros(nobj, '<U7')
+    parent['BAND_LIT'] = np.zeros(nobj, '<U1')
+    parent['DIAM_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['DIAM_LIT_REF'] = np.zeros(nobj, '<U7')
+    parent['BA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_LIT_REF'] = np.zeros(nobj, '<U7')
+    parent['PA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_LIT_REF'] = np.zeros(nobj, '<U7')
 
-    parent['DIAM_LEDA'] = np.zeros(nobj, 'f4') -99.
-    parent['BA_LEDA'] = np.zeros(nobj, 'f4') -99.
-    parent['PA_LEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['MAG_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_HYPERLEDA'] = np.zeros(nobj, '<U1')
+    parent['DIAM_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+
+    parent['MAG_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_SGA2020'] = np.zeros(nobj, '<U1')
+    parent['DIAM_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_SGA2020'] = np.zeros(nobj, 'f4') -99.
 
     parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
     parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_SGA2020'] = np.zeros(nobj, '<i8') -99
     parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
     parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
 
@@ -330,7 +392,7 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
         IG = np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
 
     #IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
-    ID = np.vstack((group['DIAM'] != -99., group['DIAM_LEDA'] != -99.)).T
+    ID = np.vstack((group['DIAM_LIT'] != -99., group['DIAM_HYPERLEDA'] != -99.)).T
     IZ = group['Z'] != -99.
     IS = group['SEP'] == 0.
 
@@ -365,12 +427,12 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
     keep = np.where(mask)[0]
     drop = np.where(~mask)[0]
     if len(keep) == 1:
-        print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM', 'DIAM_LEDA', 'Z', 'PGC', 'SEP'])
+        print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'Z', 'PGC', 'SEP'])
         keep, drop = np.where(mask)[0], np.where(~mask)[0]
         return keep, drop
 
     print('Warning: choosing by prefix failed; choosing by minimum separation.')
-    print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM', 'DIAM_LEDA', 'Z', 'PGC', 'SEP'])
+    print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'Z', 'PGC', 'SEP'])
     print()
     keep = np.atleast_1d(group['SEP'].argmin())
     return keep, np.delete(np.arange(len(group)), keep)
@@ -448,14 +510,14 @@ def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
             for ii in primary:
                 print('Keep: '+'{name: <{W}}'.format(name=group[ii][objname_column], W=maxname)+': ' + \
                       '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
-                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
-                      f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, (ra,dec)={group[ii]["RA"]:.6f},' + \
+                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM_LIT"]:.2f}, ' + \
+                      f'D(LEDA)={group[ii]["DIAM_HYPERLEDA"]:.2f} arcmin, (ra,dec)={group[ii]["RA"]:.6f},' + \
                       f'{group[ii]["DEC"]:.6f}')
             for ii in drop:
                 print('Drop: '+'{name: <{W}}'.format(name=group[ii][objname_column], W=maxname)+': ' + \
                       '{typ: <{W}}'.format(typ=group[ii]["OBJTYPE"], W=maxtyp)+', ' + \
-                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM"]:.2f}, ' + \
-                      f'D(LEDA)={group[ii]["DIAM_LEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
+                      f'PGC={group[ii]["PGC"]}, z={group[ii]["Z"]:.5f}, D={group[ii]["DIAM_LIT"]:.2f}, ' + \
+                      f'D(LEDA)={group[ii]["DIAM_HYPERLEDA"]:.2f} arcmin, sep={group[ii]["SEP"]:.3f} arcsec')
 
         # check for vetos
         if allow_vetos:
