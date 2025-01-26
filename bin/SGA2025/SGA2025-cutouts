@@ -15,6 +15,12 @@ Alternatively, in production, one would do:
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=4 > \
     SGA2025-cutouts-parent-north-native-JOBID.log 2>&1 &
 
+To build the ssl-legacysurvey catalog:
+  SGA2025-shifter
+  source /global/cfs/cdirs/desi/software/desi_environment.sh main
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --ssl-legacysurvey
+
+
 """
 import pdb # for debugging
 
@@ -160,7 +166,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     plt.close()
     print(f'Wrote {pngfile}')
 
-    pdb.set_trace()
+    #pdb.set_trace()
 
 
 def do_annotate(cat, objname, commonname, diam, ba, pa, pixscale=0.262, 
@@ -454,7 +460,7 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=5.,
 
     if rescale:
         # scale the pixel scale so that larger objects "fit" in DEFAULT_WIDTH
-        pixscale = args.pixscale * 2. * diam / mindiam   # [arcsec/pixel]
+        pixscale = default_pixscale * 2. * diam / mindiam   # [arcsec/pixel]
         width = np.zeros(nobj, int) + default_width # [pixels]
     else:
         # full-mosaic, native resolution width, except for objects
@@ -471,6 +477,70 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=5.,
     width = width.astype(int)
 
     return pixscale, width
+
+
+def build_ssl_legacysurvey(objname, cat, region='north', cutoutdir='.', outdir='.', 
+                           overwrite=False, verbose=False):
+    """Build the hdf5 file needed by ssl-legacysurvey.
+
+    """
+    nobj = len(cat)
+
+    h5file = f'ssl-{region}.hdf5'
+    if os.path.isfile(h5file) and not overwrite:
+        log.warning(f'Skipping existing output file {h5file}.')
+    try:
+        F = h5py.File(h5file, 'w')
+
+        pdb.set_trace()
+
+        jpgfiles = [os.path.join(cutoutdir, get_raslice(ra), f'{objname}.jpeg') for ra in cat['RA'].value]
+
+        images = F.create_dataset('images', (nsga + nobj, nband, ssl_width, ssl_width))
+        F.create_dataset('row', data=np.hstack((sgaras, srcs['ra'].data)))
+        F.create_dataset('ra', data=np.hstack((sgaras, srcs['ra'].data)))
+        F.create_dataset('dec', data=np.hstack((sgadecs, srcs['dec'].data)))
+        #F.create_dataset('ra', data=srcs['ra'].data)
+        #F.create_dataset('dec', data=srcs['dec'].data)
+
+        for isga, (sgaid, sgara, sgadec) in enumerate(zip(sgaids, sgaras, sgadecs)):
+            coutoutfile = os.path.join(sgadir, get_raslice(sgara), f'SGA2020-{sgaid:06d}.fits')
+            images[isga, :] = fitsio.read(coutoutfile)
+    
+        for iband, band in enumerate(bands):
+            log.debug(f'Working on band {band}')
+            imgfile = os.path.join(coaddsdir, 'coadd', subdir, brickname, f'legacysurvey-{brickname}-image-{band}.fits.fz')
+            if not os.path.isfile(imgfile):
+                log.info(f'Missing {imgfile}')
+                continue
+
+            # pad the image with zeros so we can get cutouts with impunity
+            img = np.zeros((height + ssl_width, width + ssl_width), 'f4')
+            img[ssl_width//2:height+ssl_width//2, ssl_width//2:width+ssl_width//2] = fitsio.read(imgfile)            
+            
+            for isrc, src in enumerate(srcs):
+                # one-pixel offset?!?
+                y1 = src['iby'] - ssl_width//2 + ssl_width//2
+                y2 = src['iby'] + ssl_width//2 + ssl_width//2
+                x1 = src['ibx'] - ssl_width//2 + ssl_width//2
+                x2 = src['ibx'] + ssl_width//2 + ssl_width//2
+                #print(isrc, y1, y2, x1, x2)
+                cutout = img[y1:y2, x1:x2]
+                assert(cutout.shape[0] == ssl_width and cutout.shape[1] == ssl_width)
+                images[nsga + isrc, iband, :] = cutout
+                
+                #plt.clf() ; plt.imshow(np.log10(cutout), origin='lower') ; plt.savefig('/global/cfs/cdirs/desi/users/ioannis/tmp/junk2.png')
+                #pdb.set_trace()
+    except:
+        msg = f'Problem generating HDF5 dataset {h5file}!'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    F.close()
+    log.info(f'Wrote {nobj} cutout(s) to {h5file}')
+
+    #with h5py.File(h5file, 'r') as F:
+    #    print(list(F['ra']))
 
 
 def main():
@@ -492,6 +562,7 @@ def main():
     parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
+    parser.add_argument('--ssl-legacysurvey', action='store_true', help='Build the hdf5 file needed by ssl-legacysurvey.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     
@@ -516,15 +587,18 @@ def main():
     else:
         rank = comm.rank
 
-    (cat, objname, commonname, layer, indir, outdir, pixscale, width, diam, ba, pa) = [[]] * 11
+    (cat, objname, commonname, layer, indir, outdir, cutoutdir,
+     pixscale, width, diam, ba, pa) = [[]] * 12
     if rank == 0:
         if args.catalog == 'sga2025-parent':
             from SGA.util import radec_to_name, choose_geometry
 
             catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/' + \
                 f'SGA2025-parent-{args.region}-{args.version}.fits'
-            columns = ['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA', 
-                       'DIAM_LEDA', 'BA_LEDA', 'PA_LEDA', 'DIAM_REF']
+            columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'DIAM_LIT_REF', 
+                       'DIAM_LIT', 'BA_LIT', 'PA_LIT',
+                       'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA', 
+                       'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020']
 
             F = fitsio.FITS(catfile)
             N = F[1].get_nrows()
@@ -541,37 +615,40 @@ def main():
             #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
             #cat = cat[cat['DIAM'] == 60.]
             #cat = cat[cat['DIAM_LEDA'] > 5.]
-            cat = cat[cat['DIAM_REF'] == 'RC3']
-            cat = cat[cat['OBJNAME'] == 'NGC 1020']
-            #cat = cat[:128]
+            cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
+            #cat = cat[cat['OBJNAME'] == 'NGC 1020']
+            cat = cat[:128]
             print(f'Trimming to {len(cat):,d} objects')
 
             commonname = cat['OBJNAME']
             objname = np.char.replace(radec_to_name(cat['RA'], cat['DEC']), ' ', '_')
             #objname = np.char.replace(cat['OBJNAME'].value, ' ', '_')
 
-            mindiam = args.width * args.pixscale # [arcsec]
-            diam, ba, pa = choose_geometry(cat, mindiam=mindiam)
-
-            pixscale, width = get_pixscale_and_width(
-                diam, mindiam, rescale=args.rescale, 
-                default_width=args.width,
-                default_pixscale=args.pixscale)
-
-            if args.annotate:
-                indir = os.path.join(args.outdir, args.region, 'native')
-                outdir = os.path.join(args.outdir, args.region, 'annotate')
+            if args.ssl_legacysurvey:
+                cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
             else:
-                layer = f'ls-dr9-{args.region}'
-                if args.region == 'south':
-                    # FIXME - need DR10 CCDs file
-                    #layer = f'ls-dr10-{args.region}'
-                    pass
+                mindiam = args.width * args.pixscale # [arcsec]
+                diam, ba, pa = choose_geometry(cat, mindiam=mindiam)
     
-                if args.rescale:
-                    outdir = os.path.join(args.outdir, args.region, 'rescale')
+                pixscale, width = get_pixscale_and_width(
+                    diam, mindiam, rescale=args.rescale, 
+                    default_width=args.width,
+                    default_pixscale=args.pixscale)
+    
+                if args.annotate:
+                    indir = os.path.join(args.outdir, args.region, 'native')
+                    outdir = os.path.join(args.outdir, args.region, 'annotate')
                 else:
-                    outdir = os.path.join(args.outdir, args.region, 'native')
+                    layer = f'ls-dr9-{args.region}'
+                    if args.region == 'south':
+                        # FIXME - need DR10 CCDs file
+                        #layer = f'ls-dr10-{args.region}'
+                        pass
+        
+                    if args.rescale:
+                        outdir = os.path.join(args.outdir, args.region, 'rescale')
+                    else:
+                        outdir = os.path.join(args.outdir, args.region, 'native')
 
         elif args.catalog == 'sga2020':
             catfile = '/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits'
@@ -595,6 +672,7 @@ def main():
         layer = comm.bcast(layer, root=0)
         outdir = comm.bcast(outdir, root=0)
         indir = comm.bcast(indir, root=0)
+        cutoutdir = comm.bcast(cutoutdir, root=0)
         pixscale = comm.bcast(pixscale, root=0)
         width = comm.bcast(width, root=0)
         diam = comm.bcast(diam, root=0)
@@ -606,6 +684,10 @@ def main():
             plan(cat, objname, layer=layer, comm=comm, indir=indir, outdir=outdir, 
                  mp=args.mp, annotate=args.annotate, overwrite=args.overwrite, 
                  verbose=args.verbose)
+    elif args.ssl_legacysurvey:
+        if rank == 0:
+            build_ssl_legacysurvey(objname, cat, region=args.region, cutoutdir=cutoutdir, 
+                                   outdir=args.outdir, overwrite=args.overwrite, verbose=args.verbose)
     else:
         if args.annotate:
             do_annotate(cat, objname, commonname, diam, ba, pa, pixscale=pixscale, 

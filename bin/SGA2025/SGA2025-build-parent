@@ -9,6 +9,8 @@ SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
+SGA2025-build-parent --in-footprint --mp=32 --region=north
+
 salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
 srun --ntasks=32 shifter --clearenv --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
   SGA2025-build-parent --in-footprint --region=north
@@ -18,16 +20,13 @@ srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scrip
 
 
 """
-import os, sys, time, shutil, pdb
+import os, sys, time, pdb
 from importlib import resources
-from glob import glob
 from collections import Counter
 import numpy as np
 import numpy.ma as ma
 import fitsio
-from astropy.table import Table, vstack, hstack, join
-import astropy.units as u
-from astropy.coordinates import SkyCoord, match_coordinates_sky
+from astropy.table import Table, vstack
 import matplotlib.pyplot as plt
 
 from astrometry.util.starutil_numpy import arcsec_between
@@ -36,31 +35,16 @@ from astrometry.libkd.spherematch import match_radec
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.qa import qa_skypatch, multipage_skypatch
 from SGA.util import get_basic_geometry, match, choose_primary, resolve_close
-from SGA.io import (sga_dir, get_raslice, read_hyperleda, version_hyperleda,
-                    read_hyperleda_galaxies, version_hyperleda_galaxies,
-                    read_hyperleda_multiples, version_hyperleda_multiples,
-                    nedfriendly_hyperleda, read_nedlvs, version_nedlvs, read_sga2020,
-                    read_lvd, version_lvd, nedfriendly_lvd, version_custom_external,
-                    read_custom_external)
+from SGA.io import sga_dir, parent_version
 
 
-cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_HYPERLEDA',
+cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA',
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
         'MAG_LIT', 'Z', 'PGC', 'PARENT_ROW']
 
 qadir = os.path.join(sga_dir(), 'parent', 'qa')
 if not os.path.isdir(qadir):
     os.makedirs(qadir)
-
-
-def parent_version(vicuts=False, nocuts=False):
-    if nocuts:
-        version = 'v1.0'
-    elif vicuts:
-        version = 'v1.0'
-    else:
-        version = 'v1.0'
-    return version
 
 
 def drop_by_prefix(drop_prefix, allprefixes, pgc=None, diam=None, objname=None,
@@ -117,7 +101,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
         cat = cat[np.argsort(cat['PARENT_ROW'])]
         #cat = resolve_close(fullcat, fullcat, maxsep=1.5, allow_vetos=True, verbose=False)
 
-        #diam = np.max((cat['DIAM'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
+        #diam = np.max((cat['DIAM_LIT'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
 
         # Next, algorithmically identify cross-identification errors: NED will
         # (sometimes) associate the properties from HyperLeda (PGC number,
@@ -248,13 +232,13 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
         if verbose:
             print(f'Copying {newcat[m1]["OBJNAME"]} (PGC {newcat[m1]["PGC"]}, {newcat[m1]["OBJTYPE"]}) to ' + \
                   f'{newcat[m2]["OBJNAME"]} (PGC {newcat[m2]["PGC"]}, PGC {newcat[m2]["OBJTYPE"]})')
-        for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'DIAM', 'BA', 'PA',
+        for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'DIAM_LIT', 'BA_LIT', 'PA_LIT',
                     'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA', 'ROW_HYPERLEDA', 'PGC']:
             new = newcat[col][m1]
             old = newcat[col][m2]
             if new == '' and old == '':
                 raise ValueError('Special case - write me')
-            if 'DIAM' in col:
+            if 'DIAM_LIT' in col:
                 new = np.max((new, old))
             if (new != '' or new != -99) and (old == '' or old == -99):
                 if verbose:
@@ -312,6 +296,9 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                     print(f'Action: adopting HyperLeda coordinates for {len(obj):,d} object(s).')
                 for col in ['RA', 'DEC']:
                     newcat[col][I] = newcat[I][f'{col}_HYPERLEDA']
+            case _:
+                print(f'Unrecognized action {action}!')
+                raise ValueError
 
 
     # resolve close sources / duplicates (but only in the cross-ID fields)
@@ -326,7 +313,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
     newcat = newcat[~I]
 
     # sort by diameter
-    srt = np.argsort(np.max((dropcat['DIAM'].value, dropcat['DIAM_HYPERLEDA'].value), axis=0))[::-1]
+    srt = np.argsort(np.max((dropcat['DIAM_LIT'].value, dropcat['DIAM_HYPERLEDA'].value), axis=0))[::-1]
     dropcat = dropcat[srt]
 
     # add a VI bit; all these systems have been visually checked
@@ -399,7 +386,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
 
     print(f'Analyzing the prefix frequency of {len(T):,d}/{len(fullcat):,d} objects.')
 
-    diam = np.max((T['DIAM'].value, T['DIAM_HYPERLEDA'].value), axis=0)
+    diam = np.max((T['DIAM_LIT'].value, T['DIAM_HYPERLEDA'].value), axis=0)
     if merger_type is not None:
         if merger_has_diameter:
             I = np.where(diam != -99)[0]
@@ -592,7 +579,7 @@ def update_properties(cat, verbose=False):
     out = cat.copy()
 
     allnewcols = ['ra', 'dec', 'diam', 'pa', 'ba']
-    allupdatecols = ['RA', 'DEC', 'DIAM', 'PA', 'BA']
+    allupdatecols = ['RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT']
 
     for prop in props:
         objname = prop['objname_ned']
@@ -628,27 +615,26 @@ def build_parent_vicuts(verbose=False, overwrite=False):
 
     """
     version = parent_version(nocuts=True)
-    testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2025-parent-nocuts-{version}.fits')
-    if True:
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
-        origcat = Table(fitsio.read(catfile))
-        print(f'Read {len(origcat):,d} objects from {catfile}')
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
+    origcat = Table(fitsio.read(catfile))
+    print(f'Read {len(origcat):,d} objects from {catfile}')
 
-        # [1] Update individual-galaxy properties, including coordinates.
-        cat = update_properties(origcat, verbose=verbose)
+    # [1] Update individual-galaxy properties, including coordinates.
+    cat = update_properties(origcat, verbose=verbose)
 
-        # [2] Drop systems with uncommon prefixes (after VI).
-        cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
+    # [2] Drop systems with uncommon prefixes (after VI).
+    cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
-        # [3] Resolve cross-identification errors in NED/HyperLeda.
-        cat = resolve_crossid_errors(cat, verbose=False, rebuild_file=False, build_qa=False)
+    # [3] Resolve cross-identification errors in NED/HyperLeda.
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
 
-        # [4] Resolve close (1 arcsec) pairs.
-        cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
-        #cat.write(testfile, overwrite=True)
-    else:
-        cat = Table(fitsio.read(testfile))
-        print(f'Read {len(cat):,d} objects from {testfile}')
+    # [4] Resolve close (1 arcsec) pairs.
+    cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
+
+    #testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2025-parent-nocuts-{version}.fits')
+    #cat.write(testfile, overwrite=True)
+    #cat = Table(fitsio.read(testfile))
+    #print(f'Read {len(cat):,d} objects from {testfile}')
 
     # [4] Visually drop GTrpl and GPair systems with and without measured
     # diameters.
@@ -658,6 +644,9 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     # only explicitly drop mergers with diameters via VI and the VI-actions file
     remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
+
+    pdb.set_trace()
+    multipage_skypatch(cat[(cat['DIAM_LIT_REF'] == 'RC3') * (cat['OBJTYPE'] == 'GPair')], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/bb-rc3-gpair.pdf', verbose=True)
 
     # write out
     version_vicuts = parent_version(vicuts=True)
@@ -698,7 +687,7 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
         # How many sources with diam<0.1 have no other source within 10 arcsec?
         radius_isolated = 10.
     
-        diam = np.max((cat['DIAM'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
+        diam = np.max((cat['DIAM_LIT'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
         I = np.where(diam == -99.)[0]
         #I = np.where((diam > 0.) * (diam < 0.1))[0]
         #I = np.where(diam < 0.1)[0]
@@ -759,7 +748,7 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
 
     if sky:
         png = os.path.join(qadir, f'qa-sky-parent-nocuts-{version}.png')
-        #I = cat['DIAM'] > 0.2
+        #I = cat['DIAM_LIT'] > 0.2
         fig_sky(cat, racolumn='RA', deccolumn='DEC', pngfile=png,
                 clip_lo=0., clip_hi=300., mloc=50.)
 
@@ -771,7 +760,7 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
     # compare diameters
     if False:
         pngfile = os.path.join(qadir, 'qa-diamleda.png')
-        I = np.where((allcat['DIAM'] > 0.) * (allcat['DIAM_HYPERLEDA'] > mindiam))[0]
+        I = np.where((allcat['DIAM_LIT'] > 0.) * (allcat['DIAM_HYPERLEDA'] > mindiam))[0]
         print(len(I))
         lim = (-1.7, 3.)
         #lim = (np.log10(mindiam)-0.1, 3.)
@@ -782,7 +771,7 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
 
         fig, ax = plt.subplots(figsize=(7, 7))
         xx = np.log10(allcat['DIAM_HYPERLEDA'][I])
-        yy = np.log10(allcat['DIAM'][I])
+        yy = np.log10(allcat['DIAM_LIT'][I])
         J = ['IRAS' in morph for morph in allcat['MORPH'][I]]
         corner.hist2d(xx, yy, levels=[0.5, 0.75, 0.95, 0.995],
                       bins=100, smooth=True, color=colors[0], ax=ax, # mpl.cm.get_cmap('viridis'),
@@ -801,13 +790,13 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
         fig.savefig(pngfile)#, bbox_inches='tight')
         plt.close(fig)
 
-        I = np.where(allcat['DIAM'] > mindiam)[0]
+        I = np.where(allcat['DIAM_LIT'] > mindiam)[0]
         print(f'Trimming to {len(I):,d}/{len(allcat):,d} ({100.*len(I)/len(allcat):.1f}%) ' + \
-              f'objects with DIAM>{60.*mindiam:.1f} arcsec.')
+              f'objects with DIAM_LIT>{60.*mindiam:.1f} arcsec.')
         cat = allcat[I]
 
-        srt = np.argsort(cat['DIAM'])[::-1]
-        cat[srt]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'MORPH']
+        srt = np.argsort(cat['DIAM_LIT'])[::-1]
+        cat[srt]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'MORPH']
 
 
 def build_parent_nocuts(verbose=True):
@@ -815,6 +804,15 @@ def build_parent_nocuts(verbose=True):
 
     """
     import re
+    from astropy.table import join
+    from astropy.coordinates import SkyCoord, match_coordinates_sky
+    import astropy.units as u
+    from SGA.io import (read_hyperleda, version_hyperleda, read_hyperleda_galaxies, 
+                        version_hyperleda_galaxies, read_hyperleda_multiples, 
+                        version_hyperleda_multiples, nedfriendly_hyperleda, 
+                        read_nedlvs, version_nedlvs, read_sga2020, read_lvd, 
+                        version_lvd, nedfriendly_lvd, version_custom_external,
+                        read_custom_external)
 
     def readit(catalog, version, bycoord=False):
         if bycoord:
@@ -1430,8 +1428,6 @@ def build_parent_nocuts(verbose=True):
     print()
     print('#####')
     print(f'Final parent sample: N={len(parent):,d}')
-
-    pdb.set_trace()
     #parent.write('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/junk-sga2020.fits', overwrite=True)
 
     # Populate OBJNAME, RA, DEC, and Z
@@ -1504,14 +1500,16 @@ def build_parent_nocuts(verbose=True):
                     parent[f'{col}_REF'][I[indx_parent[G]]] = basic[indx_basic[G]][f'{col}_REF']
                     if col == 'MAG_LIT':
                         parent['BAND_LIT'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND_LIT']
-                    #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM', 'DIAM_REF', 'BA', 'BA_REF', 'PA', 'PA_REF']
+                    #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'BA_LIT', 'BA_LIT_REF', 'PA_LIT', 'PA_LIT_REF']
         print()
 
     # special columns for HyperLeda and SGA2020 geometry
     basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
     basic_sga2020 = get_basic_geometry(sga2020, galaxy_column='ROW', verbose=verbose)
 
-    for basic, row, suffix in zip((basic_hyper, basic_sga2020), ('ROW_HYPERLEDA', 'ROW_SGA2020'), ('LEDA', 'SGA2020')):
+    for basic, row, suffix in zip((basic_hyper, basic_sga2020), 
+                                  ('ROW_HYPERLEDA', 'ROW_SGA2020'), 
+                                  ('HYPERLEDA', 'SGA2020')):
         for col in [f'DIAM_{suffix}', f'BA_{suffix}', f'PA_{suffix}', f'MAG_{suffix}']:
             parent[col] = -99.
         parent[f'BAND_{suffix}'] = ''
@@ -1535,7 +1533,7 @@ def build_parent_nocuts(verbose=True):
             R = parent[N][f'{col}_REF'] == ref
             print(f'  N({ref}) = {np.sum(R):,d}/{np.sum(N):,d} ({100.*np.sum(R)/np.sum(N):.1f}%)')
 
-        for ref in ['LEDA', 'SGA2020']:
+        for ref in ['HYPERLEDA', 'SGA2020']:
             col = f'{prop}_{ref}'
             N = parent[col] != -99.
             print(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
@@ -1763,7 +1761,10 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
             I = rng.choice(N, size=S, replace=False)
             I = I[np.argsort(I)]
         else:
-            I = np.arange(N)
+            print('HACK TO JUST SELECT THE RC3!!')
+            ref = fitsio.read(catfile, columns='DIAM_LIT_REF')
+            I = np.where(ref == 'RC3')[0]
+            #I = np.arange(N)
 
         #I = np.array([4784167, 4784170])
 

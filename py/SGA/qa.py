@@ -21,9 +21,9 @@ import matplotlib.ticker as ticker
 #sns.set(style='ticks', font_scale=1.4, palette='Set2')
 
 
-cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM', 'DIAM_LEDA',
+cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA',
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
-        'MAG', 'Z', 'PGC', 'PARENT_ROW']
+        'MAG_LIT', 'Z', 'PGC', 'PARENT_ROW']
 
 
 def plot_style(font_scale=1.2, paper=False, talk=True):
@@ -125,6 +125,8 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
         deccenter = primary[deccol]
     if objname is None:
         objname = primary['OBJNAME']
+    if not np.isscalar(objname):
+        objname = objname[0]
 
     outname = objname.replace(' ', '_')
     pngfile = os.path.join(pngdir, f'{outname}-{pngsuffix}.png')
@@ -167,7 +169,7 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
     ax.imshow(img, origin='lower')
     for imem, (mem, yoffset) in enumerate(zip(group[decsort], (np.arange(0, N)+0.5) * width / N)):
 
-        label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
+        label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM_LIT"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_HYPERLEDA"]:.3g})'
 
         if imem % 2 == 0:
             xoffset = 0.2 * width
@@ -788,12 +790,12 @@ def fig_size_mag(sample, pngfile=None):
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
 
-    for iref, ref in enumerate(np.unique(sample['DIAM_REF'])):
-        I = np.where((sample['DIAM_REF'] == ref) * (sample['DIAM'] != -99.) * (sample['MAG'] != -99.))[0]
+    for iref, ref in enumerate(np.unique(sample['DIAM_LIT_REF'])):
+        I = np.where((sample['DIAM_LIT_REF'] == ref) * (sample['DIAM_LIT'] != -99.) * (sample['MAG_LIT'] != -99.))[0]
         if len(I) == 0:
             continue
-        mag = sample['MAG'][I]
-        logdiam = np.log10(sample['DIAM'][I])
+        mag = sample['MAG_LIT'][I]
+        logdiam = np.log10(sample['DIAM_LIT'][I])
         print(ref, len(I), min(mag), max(mag), min(logdiam), max(logdiam))
         corner.hist2d(mag, logdiam, label=ref,
                       levels=[0.5, 0.75, 0.95, 0.995],

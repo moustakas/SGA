@@ -48,7 +48,10 @@ def sga_html_dir():
 
 
 def get_raslice(ra):
-    return f'{int(ra):03d}'
+    if np.isscalar(ra):
+        return f'{int(ra):03d}'
+    else:
+        return [f'{int(onera):03d}' for onera in ra]
 
 
 def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
@@ -101,6 +104,16 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         return objs, objdirs, htmlobjdirs
     else:
         return objs, objdirs
+
+
+def parent_version(vicuts=False, nocuts=False):
+    if nocuts:
+        version = 'v1.0'
+    elif vicuts:
+        version = 'v1.0'
+    else:
+        version = 'v1.0'
+    return version
 
 
 def read_survey_bricks(survey, brickname=None, custom=False):

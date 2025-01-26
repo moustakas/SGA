@@ -28,20 +28,20 @@ def choose_geometry(cat, mindiam=152*0.262):
     ba = np.ones(len(cat))
     pa = np.zeros(len(cat))
 
-    I = np.logical_and(cat['DIAM'] < 0., cat['DIAM_HYPERLEDA'] > 0.)
+    I = np.logical_and(cat['DIAM_LIT'] < 0., cat['DIAM_HYPERLEDA'] > 0.)
     if np.any(I):
         diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
         ba[I] = cat[I]['BA_HYPERLEDA']
         pa[I] = cat[I]['PA_HYPERLEDA']
 
-    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_HYPERLEDA'] < 0.)
+    I = np.logical_and(cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.)
     if np.any(I):
-        diam[I] = cat[I]['DIAM'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA']
-        pa[I] = cat[I]['PA']
+        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_LIT']
+        pa[I] = cat[I]['PA_LIT']
 
     # which one should we select??
-    I = np.logical_and(cat['DIAM'] > 0., cat['DIAM_HYPERLEDA'] > 0.)
+    I = np.logical_and(cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] > 0.)
     if np.any(I):
         diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
         ba[I] = cat[I]['BA_HYPERLEDA']
@@ -86,7 +86,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
 
     # HyperLeda
     if 'LOGD25' in cat.columns:
-        ref = 'LEDA'
+        ref = 'HYPERLEDA'
         magcol = f'MAG_{ref}'
         diamcol = f'DIAM_{ref}'
         for prop in ('mag', 'diam', 'ba', 'pa'):
