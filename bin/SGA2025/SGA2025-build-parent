@@ -675,8 +675,12 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     print(f'Read {len(cat):,d} objects from {catfile}')
 
     pdb.set_trace()
-    obj='NGC 3938' ; cc = cat ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 75./3600.) ; cc[m1][cols]
-    qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=7., pngdir='ioannis/tmp/', overwrite_viewer=True, overwrite=True)
+    if False:
+        I = cat['DIAM_LIT'] > 25. ; srt = np.argsort(cat[I]['DIAM_LIT'])[::-1] ; cat[I][srt]['OBJNAME', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'RA', 'DEC']
+        obj='MESSIER 077' ; cc = cat ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
+        qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=5., pngdir='ioannis/tmp/', overwrite_viewer=True, overwrite=True)
+
+        multipage_skypatch(cat[I], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/aa-sdss.pdf', verbose=True)
 
     # FIXME - apply cuts based on additional external catalogs
     # (ssl-legacysurvey, Galaxy Zoo VI, etc.)

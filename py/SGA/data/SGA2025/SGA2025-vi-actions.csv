@@ -24,6 +24,55 @@ WISEA J190344.58-055427.1,drop,faint,
 WISEA J033622.88-500957.7,drop,faint,Galaxy triple but fairly compact.
 SDSS J004151.23-092955.8,drop,faint,In 'MCG -02-02-087' group.
 WISEA J120553.08+472856.2,drop,faint,In 'NGC 4096' group.
+SDSS J021049.41+000345.1,drop,faint,Likely internal reflection.
+WISEA J222036.19+132937.2,drop,faint,
+SDSS J122417.65+071910.2,drop,faint,In the envelope of 'NGC 4365'.
+SDSS J121551.57-002654.1,drop,faint,
+WISEA J151427.24+604725.4,drop,faint,
+SDSS J083605.52+020141.7,drop,faint,
+SDSS J125942.08+105609.5,drop,faint,
+SDSS J154842.21+215142.4,drop,faint,
+SDSS J021049.41+000345.1,drop,faint,
+WISEA J222036.19+132937.2,drop,faint,
+SDSS J122417.65+071910.2,drop,faint,
+SDSS J121551.57-002654.1,drop,faint,
+WISEA J151427.24+604725.4,drop,faint,
+SDSS J083605.52+020141.7,drop,faint,
+SDSS J125942.08+105609.5,drop,faint,
+WISEA J114319.07+001349.3,drop,faint,
+SDSS J171912.20+265525.2,drop,faint,
+WISEA J084425.38+124705.6,drop,faint,
+WISEA J090612.17+185427.8,drop,faint,
+WISEA J112019.93+062433.0,drop,faint,
+WISEA J154708.63+150223.8,drop,faint,
+SDSS J094511.77+470637.6,drop,faint,
+WISEA J090316.99+535714.2,drop,faint,
+WISEA J142029.08+001425.2,drop,faint,
+WISEA J083216.59+295623.1,drop,faint,
+SDSS J152000.73+213845.6,drop,faint,
+SDSS J151101.96+051747.6,drop,faint,
+WISEA J134855.69+264852.8,drop,faint,
+SDSS J120941.87+015041.9,drop,faint,
+SDSS J102240.76+383217.0,drop,faint,
+WISEA J130030.82+184304.5,drop,faint,
+SDSS J100216.12+021035.4,drop,faint,
+WISEA J083800.50+043140.0,drop,faint,
+WISEA J091807.03-000050.5,drop,faint,
+WISEA J160348.78+051011.5,drop,faint,
+SDSS J102319.29+383512.8,drop,faint,
+WISEA J150140.67+274029.6,drop,faint,
+WISEA J022614.94-000110.7,drop,faint,
+WISEA J085543.20+430450.2,drop,faint,
+WISEA J081227.57+244936.7,drop,faint,
+WISEA J095457.87-001302.5,drop,faint,
+WISEA J221909.80+005153.8,drop,faint,
+WISEA J083237.20+444947.6,drop,faint,
+SDSS J154040.33+215529.6,drop,faint,
+SDSS J163708.39+193347.6,drop,faint,
+WISEA J080017.92+163927.2,drop,faint,
+WISEA J113019.95+555856.0,drop,faint,
+WISEA J102825.28+154757.2,drop,faint,
+SDSS J141300.79+525028.0,drop,faint,
 #
 MGC 0006552,drop,compact,In 'MGC 0006552' group.
 2MASS J10225889-0010216,drop,compact,In 'MGC 0006552' group.
@@ -691,6 +740,41 @@ SDSS J101955.19+453326.8,drop,shred,Shred or part of 'NGC 3198'.
 SDSS J101951.66+453232.5,drop,shred,Shred or part of 'NGC 3198'.
 SDSS J101951.86+453228.1,drop,shred,Shred or part of 'NGC 3198'.
 SDSS J101951.35+453212.6,drop,shred,Shred or part of 'NGC 3198'.
+SDSS J024239.17+000021.7,drop,shred,Shred or part of 'MESSIER 077'.
+WISEA J024233.76+000017.0,drop,shred,Shred or part of 'MESSIER 077'.
+SDSS J024241.36-000033.4,drop,shred,Shred or part of 'MESSIER 077'.
+SDSS J024240.17-000042.0,drop,shred,Shred or part of 'MESSIER 077'.
+SDSS J024247.62-000216.0,drop,shred,Shred or part of 'MESSIER 077'.
+WISEA J024233.15-000220.8,drop,shred,Shred or part of 'MESSIER 077'.
+SDSS J024248.33-000215.9,drop,shred,Shred or part of 'MESSIER 077'.
+2MASXi J0242384-000143,drop,shred,Shred or part of 'MESSIER 077'.
+SDSS J154842.21+215142.4,drop,shred,Shred or part of 'UGC 10043'.
+SDSS J085902.29+391221.7,drop,shred,Shred or part of 'UGC 04704'.
+WISEA J085858.54+391242.3,drop,shred,Shred or part of 'UGC 04704'.
+2MASS J12041196+1826414,drop,shred,Shred or part of 'NGC 4064'.
+SDSS J143245.31+492727.2,drop,shred,Shred or part of 'NGC 5676'.
+2MASS J14324779+4927511,drop,shred,Shred or part of 'NGC 5676'.
+SDSS J121254.04+011755.8,drop,shred,Shred or part of 'NGC 4179'.
+SDSS J124718.53-024322.9,drop,shred,Shred or part of 'NGC 4684'.
+2MASS J12471741-0243523,drop,shred,Shred or part of 'NGC 4684'.
+SDSS J085723.44+025456.1,drop,shred,Shred or part of 'NGC 2713'.
+2MASX J08572571+0255101,drop,shred,Shred or part of 'NGC 2713'.
+SDSS J085724.58+025512.7,drop,shred,Shred or part of 'NGC 2713'.
+SDSS J112743.26+171303.1,drop,shred,Shred or part of 'NGC 3686'.
+WISEA J082401.66+210138.0,drop,shred,Shred or part of 'UGC 04386'.
+SDSS J223206.35+000205.4,drop,shred,Shred or part of 'UGC 12068'.
+WISEA J223205.60+000207.5,drop,shred,Shred or part of 'UGC 12068'.
+SDSS J104648.50+114908.7,drop,shred,Shred or part of 'MESSIER 096'.
+WISEA J104651.57+114937.9,drop,shred,Shred or part of 'MESSIER 096'.
+SDSS J104704.29+171642.2,drop,shred,Shred or part of 'NGC 3370'.
+SDSS J121231.86+290958.7,drop,shred,Shred or part of 'NGC 4175'.
+SDSS J121231.09+291008.0,drop,shred,Shred or part of 'NGC 4175'.
+SDSS J124742.91+134540.4,drop,shred,Shred or part of 'NGC 4689'.
+[CGH87] 1023+1359,drop,shred,Shred or part of 'MCG +02-27-013'.
+SDSS J102545.72+134256.7,drop,shred,Shred or part of 'UGC 05644'.
+WISEA J141341.77+073940.7,drop,shred,Shred or part of 'NGC 5514 NED01'.
+SDSS J154251.95+141418.7,drop,shred,Shred or part of 'NGC 5984'.
+2MASS J15425345+1413474,drop,shred,Shred or part of 'NGC 5984'.
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
