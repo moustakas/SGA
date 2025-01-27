@@ -9,10 +9,10 @@ SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
-SGA2025-build-parent --in-footprint --mp=32 --region=north
+SGA2025-build-parent --in-footprint --mp=128 --region=north
 
 salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
-srun --ntasks=32 shifter --clearenv --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
   SGA2025-build-parent --in-footprint --region=north
 
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
@@ -578,8 +578,8 @@ def update_properties(cat, verbose=False):
 
     out = cat.copy()
 
-    allnewcols = ['ra', 'dec', 'diam', 'pa', 'ba']
-    allupdatecols = ['RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT']
+    allnewcols = ['ra', 'dec', 'diam', 'pa', 'ba', 'diam_hyperleda']
+    allupdatecols = ['RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT', 'DIAM_HYPERLEDA']
 
     for prop in props:
         objname = prop['objname_ned']
@@ -626,7 +626,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -645,8 +645,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
-    pdb.set_trace()
-    multipage_skypatch(cat[(cat['DIAM_LIT_REF'] == 'RC3') * (cat['OBJTYPE'] == 'GPair')], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/bb-rc3-gpair.pdf', verbose=True)
+    #multipage_skypatch(cat[(cat['DIAM_LIT_REF'] == 'RC3') * (cat['OBJTYPE'] == 'GPair')], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/bb-rc3-gpair.pdf', verbose=True)
 
     # write out
     version_vicuts = parent_version(vicuts=True)
@@ -674,6 +673,10 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     cat = Table(fitsio.read(catfile))
     print(f'Read {len(cat):,d} objects from {catfile}')
+
+    pdb.set_trace()
+    obj='NGC 3938' ; cc = cat ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 75./3600.) ; cc[m1][cols]
+    qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=7., pngdir='ioannis/tmp/', overwrite_viewer=True, overwrite=True)
 
     # FIXME - apply cuts based on additional external catalogs
     # (ssl-legacysurvey, Galaxy Zoo VI, etc.)
@@ -1722,8 +1725,9 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         fcat = vstack(fcat)
         fccds = vstack(fccds)
 
-        fcat = fcat[np.argsort(fcat['PARENT_ROW'])]
-        fccds = fccds[np.argsort(fccds['PARENT_ROW'])]
+        if len(fcat) > 0:
+            fcat = fcat[np.argsort(fcat['PARENT_ROW'])]
+            fccds = fccds[np.argsort(fccds['PARENT_ROW'])]
         print(f'  Gathered {len(fccds):,d} CCDs for {len(fcat):,d}/{len(indx_cat):,d} ' + \
               f'objects in {time.time()-t0:.2f} sec')
 
@@ -1761,10 +1765,10 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
             I = rng.choice(N, size=S, replace=False)
             I = I[np.argsort(I)]
         else:
-            print('HACK TO JUST SELECT THE RC3!!')
-            ref = fitsio.read(catfile, columns='DIAM_LIT_REF')
-            I = np.where(ref == 'RC3')[0]
-            #I = np.arange(N)
+            #print('HACK TO JUST SELECT THE RC3!!')
+            #ref = fitsio.read(catfile, columns='DIAM_LIT_REF')
+            #I = np.where(ref == 'RC3')[0]
+            I = np.arange(N)
 
         #I = np.array([4784167, 4784170])
 

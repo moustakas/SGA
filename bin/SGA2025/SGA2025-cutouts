@@ -13,11 +13,15 @@ Alternatively, in production, one would do:
   salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=4 > \
-    SGA2025-cutouts-parent-north-native-JOBID.log 2>&1 &
+    /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-north-native-JOBID.log 2>&1 &
+
+  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=4 --rescale > \
+    /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-north-rescale-JOBID.log 2>&1 &
 
 To build the ssl-legacysurvey catalog:
   SGA2025-shifter
-  source /global/cfs/cdirs/desi/software/desi_environment.sh main
+
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --ssl-legacysurvey
 
 
@@ -30,7 +34,10 @@ import fitsio
 from astropy.table import Table
 import multiprocessing
 
+from astrometry.libkd.spherematch import match_radec
+
 from SGA.io import custom_brickname, get_raslice
+from SGA.util import radec_to_name, choose_geometry, parse_geometry
 
 
 def _get_annotate_one(args):
@@ -48,10 +55,6 @@ def get_annotate_one(obj, objname, indir, outdir, overwrite=False, verbose=False
         jpgfile = os.path.join(indir, raslice, f'{objname}.jpeg')
         pngfile = os.path.join(outdir, raslice, f'{objname}.png')
     nobj = 1
-
-    outdir = os.path.dirname(pngfile)
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir)
 
     if overwrite is False:
         if os.path.isfile(pngfile):
@@ -71,11 +74,8 @@ def _annotate_one(args):
 
 
 def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
-                 group, dry_run, rank, iobj):
+                 mosaic_diam, primary, group, dry_run, rank, iobj):
     """Annotate one image.
-
-    group is a list of [(ra, dec), diam, ba, pa] with the zeroth
-      elements belonging to the primary member
 
     """
     #from PIL import Image, ImageDraw
@@ -111,54 +111,74 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
         return WCS(hdr)
 
 
+    def draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color, linestyle):
+        semimajor = diam / pixscale # [pixels]
+        semiminor = ba * semimajor  # [pixels]
+        theta = np.radians(90.-pa)
+        x0 = xpix
+        y0 = width - ypix
+
+        ax.add_artist(Ellipse((x0, y0), semimajor, semiminor, angle=90.-pa,
+                              facecolor='none', edgecolor=color, lw=1.5, ls=linestyle, 
+                              alpha=0.9, clip_on=True))
+
+        x1, y1 = x0 + semimajor/2. * np.cos(theta), y0 + semimajor/2. * np.sin(theta)
+        x2, y2 = x0 - semimajor/2. * np.cos(theta), y0 - semimajor/2. * np.sin(theta)
+        x3, y3 = x0 + semiminor/2. * np.sin(theta), y0 - semiminor/2. * np.cos(theta)
+        x4, y4 = x0 - semiminor/2. * np.sin(theta), y0 + semiminor/2. * np.cos(theta)
+        
+        # Draw the major and minor axes
+        ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-')#ls=linestyle)
+        ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-')#ls=linestyle)
+
     #sns, colors = plot_style(talk=True, font_scale=1.0)
-
-    bbox = dict(boxstyle='round', facecolor='k', alpha=0.5)
-    ref_pixscale = 0.262
-
-    #barlen = np.ceil(30 / pixscale) # [pixels]
-    #barlabel = '' # '30 arcsec'
-
-    #leg_colors = ['red']
-    #leg_lines = ['-']
-    #leg_labels = ['Adopted']
 
     if not os.path.isfile(jpgfile):
         return
 
-    N = len(group)
-    ras, decs, diams, bas, pas = group
+    bbox = dict(boxstyle='round', facecolor='k', alpha=0.5)
+    ref_pixscale = 0.262
+    #barlen = np.ceil(30 / pixscale) # [pixels]
+    #barlabel = '' # '30 arcsec'
 
-    primary_ra, primary_dec = ras[0], decs[0]
+    N = len(group)
+    primary_ra, primary_dec = primary['RA'], primary['DEC']
 
     img = mpimg.imread(jpgfile)
     width = img.shape[0]
     wcs = get_wcs(primary_ra, primary_dec, width)
 
+    ellipse_colors = {'RC3': 'yellow', 'SGA2020': 'dodgerblue', 'HYPERLEDA': 'red', 'LIT': 'green'}
+    ellipse_linestyles = {'RC3': 'solid', 'SGA2020': 'dashed', 'HYPERLEDA': 'dashdot', 'LIT': 'dotted'}
+
+    outdir = os.path.dirname(pngfile)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.imshow(img, origin='lower')
-    for ra, dec, diam, ba, pa in zip(ras, decs, diams, bas, pas):
+    #for ra, dec, diam, ba, pa in zip(ras, decs, diams, bas, pas):
+    for onegal in group:
         #label = f'{mem["OBJNAME"]} ({mem["OBJTYPE"]}): D={mem["DIAM"]:.3g}\nPGC {mem["PGC"]}: D(LEDA)={mem["DIAM_LEDA"]:.3g})'
 
+        ra = onegal['RA']
+        dec = onegal['DEC']
         xpix, ypix = wcs.wcs_world2pix(ra, dec, 1)
         if xpix < 0 or ypix < 0 or xpix > width or ypix > width:
             continue
 
-        semimajor = diam / pixscale # [pixels]
-        semiminor = ba * semimajor  # [pixels]
-        theta = np.radians(90.-pa)
+        for ref in ['RC3', 'SGA2020', 'HYPERLEDA', 'LIT']:
+        #for ref in ['RC3', 'SGA2020']:#, 'HYPERLEDA']:
+        #for ref in ['SGA2020']:#, 'HYPERLEDA']:
+            diam, ba, pa = parse_geometry(Table(onegal), ref)
+            if diam > 0.:
+                #print(onegal['OBJNAME'], ref, xpix, ypix, diam[0], ba[0], pa[0])
+                draw_ellipse(diam[0], ba[0], pa[0], pixscale, xpix, ypix, 
+                             color=ellipse_colors[ref], linestyle=ellipse_linestyles[ref])
 
-        xymajor = [xpix+semimajor/2*np.cos(theta), width-ypix+semimajor/2*np.sin(theta),
-                   xpix+semimajor/2*np.cos(theta+np.pi), ypix+semimajor/2*np.sin(theta+np.pi)]
-        xyminor = [xpix+semiminor/2*np.cos(theta+np.pi/2.), width-ypix+semiminor/2*np.sin(theta+np.pi/2.),
-                   xpix+semiminor/2*np.cos(theta+3.*np.pi/2.), ypix+semiminor/2*np.sin(theta+3.*np.pi/2.)]
-        ax.add_artist(Ellipse((xpix, width-ypix), semimajor, semiminor, angle=90.-pa,
-                              facecolor='none', edgecolor='red', lw=3, ls='-', alpha=0.9, clip_on=True))
-        ax.plot([xymajor[0], xymajor[2]], [xymajor[1], xymajor[3]], color='red')
-        ax.plot([xyminor[0], xyminor[2]], [xyminor[1], xyminor[3]], color='red')
 
     ax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
-    print(ax.get_xlim(), ax.get_ylim())
+    #print(ax.get_xlim(), ax.get_ylim())
     ax.set_title(f'{commonname}:{objname} ({primary_ra:.8f},{primary_dec:.8f})')
     ax.axis('off')
     fig.tight_layout()
@@ -169,14 +189,12 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     #pdb.set_trace()
 
 
-def do_annotate(cat, objname, commonname, diam, ba, pa, pixscale=0.262, 
+def do_annotate(cat, objname, commonname, diam, pixscale=0.262, 
                 comm=None, mp=1, indir='.', outdir='.', overwrite=False, 
                 dry_run=False, verbose=False):
     """Wrapper to set up the full set of annotations.
 
     """
-    from astrometry.libkd.spherematch import match_radec
-
     if comm is None:
         rank, size = 0, 1
     else:
@@ -217,14 +235,18 @@ def do_annotate(cat, objname, commonname, diam, ba, pa, pixscale=0.262,
     mpargs = []
     for iobj in indx:
         # find nearby objects
+        if diam[iobj]/60 < 5.:
+            print('HACK!!')
+            continue
         m1, m2, _ = match_radec(cat[iobj]['RA'], cat[iobj]['DEC'], 
                                 cat['RA'], cat['DEC'], 2.*diam[iobj]/3600.)
         #if len(m2) == 1:
         #    continue
-        group = (cat[m2]['RA'].value, cat[m2]['DEC'].value, diam[m2], ba[m2], pa[m2])
-
+        #group = (cat[m2]['RA'].value, cat[m2]['DEC'].value, diam[m2], ba[m2], pa[m2])
+        primary = cat[iobj]
+        group = cat[m2]
         mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj], 
-                       in_pixscale[iobj], group, dry_run, rank, iobj))
+                       in_pixscale[iobj], diam[iobj], primary, group, dry_run, rank, iobj))
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_annotate_one, mpargs)
@@ -588,10 +610,11 @@ def main():
         rank = comm.rank
 
     (cat, objname, commonname, layer, indir, outdir, cutoutdir,
-     pixscale, width, diam, ba, pa) = [[]] * 12
+     pixscale, width, diam) = [[]] * 10
+    #(cat, objname, commonname, layer, indir, outdir, cutoutdir,
+    # pixscale, width, diam, ba, pa) = [[]] * 12
     if rank == 0:
         if args.catalog == 'sga2025-parent':
-            from SGA.util import radec_to_name, choose_geometry
 
             catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/' + \
                 f'SGA2025-parent-{args.region}-{args.version}.fits'
@@ -614,11 +637,15 @@ def main():
 
             #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
             #cat = cat[cat['DIAM'] == 60.]
-            #cat = cat[cat['DIAM_LEDA'] > 5.]
-            cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
+            if False:
+                refcat = cat[(cat['DIAM_HYPERLEDA'] > 5.) * (cat['FILTERS'] == 'grz')]
+                m1, m2, _ = match_radec(refcat['RA'], refcat['DEC'], cat['RA'], cat['DEC'], 5./60)
+                cat = cat[m2]
+
+            #cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
             #cat = cat[cat['OBJNAME'] == 'NGC 1020']
-            cat = cat[:128]
-            print(f'Trimming to {len(cat):,d} objects')
+            #cat = cat[:8]
+            #print(f'Trimming to {len(cat):,d} objects')
 
             commonname = cat['OBJNAME']
             objname = np.char.replace(radec_to_name(cat['RA'], cat['DEC']), ' ', '_')
@@ -628,7 +655,7 @@ def main():
                 cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
             else:
                 mindiam = args.width * args.pixscale # [arcsec]
-                diam, ba, pa = choose_geometry(cat, mindiam=mindiam)
+                diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
     
                 pixscale, width = get_pixscale_and_width(
                     diam, mindiam, rescale=args.rescale, 
@@ -676,8 +703,8 @@ def main():
         pixscale = comm.bcast(pixscale, root=0)
         width = comm.bcast(width, root=0)
         diam = comm.bcast(diam, root=0)
-        ba = comm.bcast(ba, root=0)
-        pa = comm.bcast(pa, root=0)
+        #ba = comm.bcast(ba, root=0)
+        #pa = comm.bcast(pa, root=0)
 
     if args.plan:
         if rank == 0:
@@ -690,7 +717,7 @@ def main():
                                    outdir=args.outdir, overwrite=args.overwrite, verbose=args.verbose)
     else:
         if args.annotate:
-            do_annotate(cat, objname, commonname, diam, ba, pa, pixscale=pixscale, 
+            do_annotate(cat, objname, commonname, diam, pixscale=pixscale, 
                         mp=args.mp, comm=comm, indir=indir, outdir=outdir, 
                         overwrite=args.overwrite, dry_run=args.dry_run, verbose=args.verbose)
         else:

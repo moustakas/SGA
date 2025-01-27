@@ -23,6 +23,7 @@ ESO 324-IG 022 NED02,drop,faint,In 'ESO 324-IG 022' group.
 WISEA J190344.58-055427.1,drop,faint,
 WISEA J033622.88-500957.7,drop,faint,Galaxy triple but fairly compact.
 SDSS J004151.23-092955.8,drop,faint,In 'MCG -02-02-087' group.
+WISEA J120553.08+472856.2,drop,faint,In 'NGC 4096' group.
 #
 MGC 0006552,drop,compact,In 'MGC 0006552' group.
 2MASS J10225889-0010216,drop,compact,In 'MGC 0006552' group.
@@ -656,6 +657,7 @@ SDSS J223149.55+194124.6,drop,shred,Shred or part of 'UGC 12066'.
 SDSS J155418.90+120738.0,drop,shred,Shred or part of 'UGC 10082'.
 2MASS J15541890+1207264,drop,shred,Shred or part of 'UGC 10082'.
 NGC 3566,drop,shred,Shred or part of 'NGC 3565'.
+2MASX J11074787-2001202,drop,shred,Shred or part of 'NGC 3565'.
 VV 151c,drop,shred,Shred or part of 'UGC 07891 NED01'.
 SDSS J124303.59+302251.9,drop,shred,Shred or part of 'UGC 07891 NED01'.
 PGC 3442011,drop,shred,Shred or part of 'IC 5262'.
@@ -664,6 +666,31 @@ SDSS J085824.75+062001.0,drop,shred,Shred or part of 'UGC 04703 NOTES02'.
 WISEA J085830.08+061916.9,drop,shred,Shred or part of 'UGC 04703 NOTES01'.
 WISEA J024815.18-360131.9,drop,shred,Shred or part of 'ESO 356-IG 011'.
 2dFGRS S520Z005,drop,shred,Shred or part of 'ESO 355-IG 031 NED01'.
+WISEA J233222.49+233045.9,drop,shred,Shred or part of 'VV 579'.
+WISEA J011957.12-411405.7,drop,shred,Shred or part of 'ESO 296-IG 011'.
+AM 0316-573 NED01,drop,shred,Shred or part of 'ESO 116-IG 015'.
+2MASX J00392431+0434085,drop,shred,Shred or part of 'UGC 00409'.
+SDSS J115249.03+440944.6,drop,shred,Shred or part of 'NGC 3938'.
+WISEA J115300.67+440821.7,drop,shred,Shred or part of 'NGC 3938'.
+NGC 3938:[DSS2009] 01,drop,shred,Shred or part of 'NGC 3938'.
+WISEA J115259.72+440714.5,drop,shred,Shred or part of 'NGC 3938'.
+WISEA J151546.13+562236.9,drop,shred,Shred or part of 'NGC 5907'.
+WISEA J130547.76+373757.6,drop,shred,Shred or part of 'IC 4182'.
+SDSS J130550.03+373641.7,drop,shred,Shred or part of 'IC 4182'.
+WISEA J120537.81+503304.7,drop,shred,Shred or part of 'NGC 4088'.
+2MASS J12053648+5032053,drop,shred,Shred or part of 'NGC 4088'.
+2MASS J12053242+5031473,drop,shred,Shred or part of 'NGC 4088'.
+2MASS J12053101+5031435,drop,shred,Shred or part of 'NGC 4088'.
+SDSS J115736.45+532055.6,drop,shred,Shred or part of 'MESSIER 109'.
+WISEA J115718.90+532059.1,drop,shred,Shred or part of 'MESSIER 109'.
+2MASS J11260825+4334469,drop,shred,Shred or part of 'NGC 3675'.
+WISEA J101802.63+412707.1,drop,shred,Shred or part of 'NGC 3184'.
+WISEA J102005.70+453455.4,drop,shred,Shred or part of 'NGC 3198'.
+WISEA J101958.57+453335.3,drop,shred,Shred or part of 'NGC 3198'.
+SDSS J101955.19+453326.8,drop,shred,Shred or part of 'NGC 3198'.
+SDSS J101951.66+453232.5,drop,shred,Shred or part of 'NGC 3198'.
+SDSS J101951.86+453228.1,drop,shred,Shred or part of 'NGC 3198'.
+SDSS J101951.35+453212.6,drop,shred,Shred or part of 'NGC 3198'.
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
@@ -882,7 +909,6 @@ UGC 10675,drop,no source,Galaxy pair.
 UGC 10082,drop,no source,Galaxy pair.
 ESO 074-IG 008,drop,no source,Galaxy pair.
 UGC 07891,drop,no source,Galaxy pair.
-UGC 07230,drop,no source,Galaxy pair.
 UGC 06503,drop,no source,Galaxy pair.
 ESO 406-IG 020,drop,no source,Galaxy pair.
 ESO 286-IG 020,drop,no source,Galaxy pair.
@@ -901,6 +927,7 @@ UGC 04703,drop,no source,Galaxy pair.
 ESO 163-IG 019,drop,no source,Galaxy pair.
 NGC 1128,drop,no source,Galaxy pair.
 ESO 355-IG 031,drop,no source,Galaxy pair.
+ESO 570-IG 008,drop,no source,Galaxy pair.
 #
 2MASS J01144834-0029514,drop,radio source,In 'UGC 00793' group.
 FIRST J105749.1+361443,drop,radio source,In 'VV 747' group.
@@ -1280,3 +1307,4 @@ ESO 073-IG 001,hyperleda-coords,NED incorrect,In 'ESO 073-IG 001' group.
 ESO 073-IG 001 NED02,hyperleda-coords,NED incorrect,In 'ESO 073-IG 001' group.
 ESO 381-IG 048,hyperleda-coords,NED incorrect,Galaxy pair.
 ESO 355-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 355-IG 031' group.
+UGC 00409,hyperleda-coords,NED incorrect,In 'UGC 00409' group.

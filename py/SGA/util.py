@@ -13,6 +13,49 @@ from astrometry.util.starutil_numpy import arcsec_between
 from astrometry.libkd.spherematch import match_radec
 
 
+def parse_geometry(cat, ref):
+    """Parse a specific set of elliptical geometry.
+
+    ref - choose from among SGA2020, HYPERLEDA, RC3, LIT
+
+    """
+    nobj = len(cat)
+    diam = np.zeros(nobj) - 99. # [arcsec]
+    ba = np.ones(nobj)
+    pa = np.zeros(nobj)
+
+    if ref == 'SGA2020':
+        I = cat['DIAM_SGA2020'] > 0.
+        if np.any(I):
+            diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
+            ba[I] = cat[I]['BA_SGA2020']
+            pa[I] = cat[I]['PA_SGA2020']
+    elif ref == 'RC3':
+        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'RC3')
+        if np.any(I):
+            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+            ba[I] = cat[I]['BA_LIT']
+            pa[I] = cat[I]['PA_LIT']
+    elif ref == 'LIT':
+        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] != 'RC3')
+        if np.any(I):
+            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+            ba[I] = cat[I]['BA_LIT']
+            pa[I] = cat[I]['PA_LIT']
+    elif ref == 'HYPERLEDA':
+        I = cat['DIAM_HYPERLEDA'] > 0.
+        if np.any(I):
+            diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
+            ba[I] = cat[I]['BA_HYPERLEDA']
+            pa[I] = cat[I]['PA_HYPERLEDA']
+
+    # clean up missing values of BA and PA
+    ba[ba < 0.] = 1.
+    pa[pa < 0.] = 0.
+    
+    return diam, ba, pa
+
+
 def choose_geometry(cat, mindiam=152*0.262):
     """Choose an object's geometry, selecting between the
     NED-assembled (literature) values (DIAM, BA, PA), values from the
@@ -24,28 +67,46 @@ def choose_geometry(cat, mindiam=152*0.262):
     Default values of BA and PA are 1.0 and 0.0.
 
     """
-    diam = np.zeros(len(cat)) + mindiam # [arcsec]
-    ba = np.ones(len(cat))
-    pa = np.zeros(len(cat))
+    nobj = len(cat)
+    diam = np.zeros(nobj) # [arcsec]
+    ba = np.ones(nobj)
+    pa = np.zeros(nobj)
+    ref = np.zeros(nobj, '<U9')
 
-    I = np.logical_and(cat['DIAM_LIT'] < 0., cat['DIAM_HYPERLEDA'] > 0.)
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_HYPERLEDA']
-        pa[I] = cat[I]['PA_HYPERLEDA']
-
-    I = np.logical_and(cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.)
+    # choose RC3 literature
+    I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'RC3', cat['DIAM_LIT'] > 0.))
+    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.))
     if np.any(I):
         diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
         ba[I] = cat[I]['BA_LIT']
         pa[I] = cat[I]['PA_LIT']
+        ref[I] = 'RC3'
 
-    # which one should we select??
-    I = np.logical_and(cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] > 0.)
+    # choose SGA2020
+    I = np.logical_and(diam <= 0., cat['DIAM_SGA2020'] > 0.)
+    if np.any(I):
+        diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_SGA2020']
+        pa[I] = cat[I]['PA_SGA2020']
+        ref[I] = 'SGA2020'
+
+    # choose HyperLeda
+    I = np.logical_and(diam <= 0., cat['DIAM_HYPERLEDA'] > 0.)
+    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] < 0., cat['DIAM_HYPERLEDA'] > 0.))
     if np.any(I):
         diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
         ba[I] = cat[I]['BA_HYPERLEDA']
         pa[I] = cat[I]['PA_HYPERLEDA']
+        ref[I] = 'HYPERLEDA'
+
+    # choose literature
+    I = np.logical_and(diam <= 0., cat['DIAM_LIT'] > 0.)
+    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.))
+    if np.any(I):
+        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_LIT']
+        pa[I] = cat[I]['PA_LIT']
+        ref[I] = cat[I]['DIAM_LIT_REF']
 
     # set a minimum floor on the diameter
     I = diam < mindiam
@@ -64,7 +125,7 @@ def choose_geometry(cat, mindiam=152*0.262):
     ba[ba < 0.] = 1.
     pa[pa < 0.] = 0.
 
-    return diam, ba, pa
+    return diam, ba, pa, ref
 
         
 def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
