@@ -31,14 +31,6 @@ SDSS J121551.57-002654.1,drop,faint,
 WISEA J151427.24+604725.4,drop,faint,
 SDSS J083605.52+020141.7,drop,faint,
 SDSS J125942.08+105609.5,drop,faint,
-SDSS J154842.21+215142.4,drop,faint,
-SDSS J021049.41+000345.1,drop,faint,
-WISEA J222036.19+132937.2,drop,faint,
-SDSS J122417.65+071910.2,drop,faint,
-SDSS J121551.57-002654.1,drop,faint,
-WISEA J151427.24+604725.4,drop,faint,
-SDSS J083605.52+020141.7,drop,faint,
-SDSS J125942.08+105609.5,drop,faint,
 WISEA J114319.07+001349.3,drop,faint,
 SDSS J171912.20+265525.2,drop,faint,
 WISEA J084425.38+124705.6,drop,faint,
@@ -157,6 +149,22 @@ WISEA J134052.98+262301.4,drop,compact,Companion to '2MASX J13405297+2623039'.
 2MASX J19181577-6051124,drop,compact,Compact source in the envelope of 'AM 1913-605'.
 SDSS J095851.29+020110.3,drop,compact,Galaxy pair.
 WISEA J033234.56+002030.5,drop,compact,Compact source in the envelope of 'SDSS J033234.30+002032.1'.
+WISEA J170234.83+335843.9,drop,compact,Galaxy pair.
+WISEA J003213.86-183644.6,drop,compact,Galaxy pair; in 'WISEA J003213.86-183644.6' group.
+WISEA J003213.03-183644.1,drop,compact,In 'WISEA J003213.86-183644.6' group.
+SDSS J111106.91+004244.8,drop,compact,
+WISEA J144912.01+675911.7,drop,compact,Galaxy pair.
+WISEA J130047.15+334142.4,drop,compact,Galaxy pair.
+WISEA J130918.02+215122.1,drop,compact,Galaxy pair.
+SDSS J130918.09+215121.7,drop,compact,
+WISEA J165127.01+624804.2,drop,compact,Galaxy pair.
+WISEA J095807.13+000325.1,drop,compact,Galaxy pair.
+2MASX J13203745-0138407,drop,compact,In 'WISEA J132037.50-013839.8' group.
+SDSS J014024.01-075355.0,drop,compact,In 'MCG -01-05-016' group.
+APMUKS(BJ) B000519.66-39122 ID,drop,compact,Galaxy pair.
+APMUKS(BJ) B002222.15-38183 ID,drop,compact,Galaxy pair.
+APMUKS(BJ) B011906.57-11493 ID,drop,compact,Galaxy pair.
+APMUKS(BJ) B005449.76+002745.7,drop,compact,Galaxy pair.
 #
 WISEA J042438.35-073908.8,drop,anti-shred,Many smaller galaxies in the 'APMUKS(BJ) B042212.72-07455 ID' group.
 #
@@ -270,6 +278,8 @@ SDSS J124846.31+264451.3,drop,shred,Shred of 'WISEA J124846.85+264455.7' in 'KUG
 WISEA J131047.91-012244.0,drop,shred,Shred of 'VIII Zw 253 NED01' in 'VIII Zw 253' group.
 6dF J0321552-133901,drop,shred,Shred of 'VV 491 NED01' in 'MCG -02-09-035' group.
 VV 491 NED04,drop,shred,Train wreck; in 'MCG -02-09-035' group.
+UGC 00993 NED01,drop,shred,Shred or part of galaxy pair 'UGC 00993'.
+UGC 00993 NED02,drop,shred,Shred or part of galaxy pair 'UGC 00993'.
 PGC 333592,drop,shred,Shred of 'ESO 110-IG 025 NED01' in 'ESO 110-IG 025' group.
 PGC 333589,drop,shred,Shred of 'ESO 110-IG 025 NED01' in 'ESO 110-IG 025' group.
 SDSS J111634.35+284610.3,drop,shred,Shred of 'KUG 1113+290B' in 'CGCG 156-045' group.
@@ -335,7 +345,7 @@ WISEA J044458.66-580431.9,drop,shred,Shred of 'ESO 118-IG 041 NED02'; in 'ESO 11
 6dF J2157517-424545,drop,shred,In 'ESO 288-IG 024' group.
 WISEA J231126.60-632900.8,drop,shred,Shred of '2MASS J23112647-6329047'; in 'ESO 110-IG 004' group.
 ESO 471-IG 005 NED02,drop,shred,Shred of 'ESO 471-IG 005 NED01'; in 'ESO 471-IG 005' group.
-UGC 07230 NED01,drop,shred,Shred of '2MASX J12133763+1607095'; in 'UGC 07230' group.
+2MASX J12133763+1607095,drop,shred,Shred or part of 'UGC 07230 NED01'.
 SDSS J121336.91+160659.3,drop,shred,Shred of '2MASX J12133763+1607095'; in 'UGC 07230' group.
 NGC 2744 NED01,drop,shred,Shred of 'NGC 2744 NED02'; in 'NGC 2744' group.
 SDSS J151840.32+281828.6,drop,shred,Shred of 'III Zw 071 NOTES01'; in 'III Zw 071' group.
@@ -702,8 +712,6 @@ ESO 296-IG 011 NED02,drop,shred,Shred of 'ESO 296-IG 011' merger.
 2MASS J00121167+2919188,drop,shred,Shred or part of 'CGCG 499-075 NED02'.
 SDSS J150026.43+013728.0,drop,shred,Shred or part of 'NGC 5811 NED01'.
 AM 0555-590 NED01,drop,shred,Shred or part of 'ESO 120- G 021'.
-SDSS J223149.55+194124.6,drop,shred,Shred or part of 'UGC 12066'.
-SDSS J155418.90+120738.0,drop,shred,Shred or part of 'UGC 10082'.
 2MASS J15541890+1207264,drop,shred,Shred or part of 'UGC 10082'.
 NGC 3566,drop,shred,Shred or part of 'NGC 3565'.
 2MASX J11074787-2001202,drop,shred,Shred or part of 'NGC 3565'.
@@ -775,6 +783,29 @@ SDSS J102545.72+134256.7,drop,shred,Shred or part of 'UGC 05644'.
 WISEA J141341.77+073940.7,drop,shred,Shred or part of 'NGC 5514 NED01'.
 SDSS J154251.95+141418.7,drop,shred,Shred or part of 'NGC 5984'.
 2MASS J15425345+1413474,drop,shred,Shred or part of 'NGC 5984'.
+SDSS J223149.55+194124.6,drop,shred,Shred or part of 'UGC 12066 NED02'.
+SDSS J155418.90+120738.0,drop,shred,Shred or part of 'UGC 10082 NED01'.
+SDSS J145701.54+243622.0,drop,shred,Shred or part of 'UGC 09618 NED01'.
+SDSS J145700.73+243715.6,drop,shred,Shred or part of 'UGC 09618 NED02'.
+UGC 06541 NED02,drop,shred,Shred or part of possible galaxy pair 'UGC 06541'.
+SDSS J105944.53+173855.6,drop,shred,Shred or part of 'UGC 06073 NED01'.
+SDSS J072643.58+372241.9,drop,shred,Shred or part of 'UGC 03849 NED02'.
+SDSS J115534.97+461329.7,drop,shred,Shred or part of galaxy pair 'UGC 06902'.
+SDSS J115534.27+461320.9,drop,shred,Shred or part of galaxy pair 'UGC 06902'.
+AN 0248+43B,drop,shred,Shred or part of galaxy pair 'WISEA J025135.89+431511.4'.
+2MASX J02513583+4315117,drop,shred,Shred or part of galaxy pair 'WISEA J025135.89+431511.4'.
+SDSS J235152.91+004510.7,drop,shred,Shred or part of galaxy pair 'WISEA J235152.83+004516.1'.
+SDSS J123733.94+310516.3,drop,shred,Shred or part of galaxy pair 'WISEA J123733.80+310515.5'.
+SDSS J123733.71+310515.0,drop,shred,Shred or part of galaxy pair 'WISEA J123733.80+310515.5'.
+SDSS J122754.12+283843.0,drop,shred,Shred or part of 'VV 279a NED02'.
+SDSS J122753.66+283805.7,drop,shred,Shred or part of 'VV 279b'.
+SDSS J002136.21+252931.1,drop,shred,Shred or part of galaxy pair 'CGPG 0019.0+2514'.
+SDSS J020733.92+133350.1,drop,shred,Shred or part of galaxy pair '2MASX J02073403+1333503'.
+PGC 1120304,drop,shred,Shred or part of 'CGCG 378-008 NED01'.
+2MASS J11084041+0015574,drop,shred,Shred or part of 'CGCG 011-004 NED01'.
+CGCG 134-060 NED01,drop,shred,Shred or part of 'CGCG 134-060'.
+SDSS J153222.04+033030.5,drop,shred,Shred or part of galaxy pair 'CGCG 050-016'.
+SDSS J144802.42+295447.4,drop,shred,Shred or part of '2MASX J14480252+2954511'.
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
@@ -806,6 +837,8 @@ WISEA J031158.60-551705.6,drop,star,Foreground star in 'ESO 150-IG 010' group?
 WISEA J024833.03-712334.4,drop,star,Foreground star in 'ESO 053-IG 018' group.
 2MASX J12031176+5753408,drop,star,Foreground star in 'NGC 4054 NED01'.
 2MASS J08364031-0131582,drop,star,Foreground star in 'CGCG 004-085 NED02'.
+UGC 10222 NED02,drop,star,Foreground star in 'UGC 10222'.
+CGCG 084-009 NED02,drop,star,Foreground star in 'CGCG 084-009'.
 #
 ESO 292-IG 010 NED02,drop,no source,In 'ESO 292-IG 010' group.
 ESO 193-IG 008 NED02,drop,no source,In 'ESO 193-IG 008' group.
@@ -976,7 +1009,6 @@ NGC 0520,drop,no source,Galaxy pair.
 NGC 7017,drop,no source,Galaxy pair.
 UGC 04110,drop,no source,Galaxy pair.
 NGC 0646,drop,no source,Galaxy pair.
-UGC 04748,drop,no source,Galaxy pair.
 NGC 3991,drop,no source,Galaxy pair.
 CGCG 480-048,drop,no source,Galaxy pair.
 VV 059,drop,no source,Galaxy pair.
@@ -992,7 +1024,6 @@ UGC 07070,drop,no source,Galaxy pair.
 UGC 10675,drop,no source,Galaxy pair.
 UGC 10082,drop,no source,Galaxy pair.
 ESO 074-IG 008,drop,no source,Galaxy pair.
-UGC 07891,drop,no source,Galaxy pair.
 UGC 06503,drop,no source,Galaxy pair.
 ESO 406-IG 020,drop,no source,Galaxy pair.
 ESO 286-IG 020,drop,no source,Galaxy pair.
@@ -1012,6 +1043,51 @@ ESO 163-IG 019,drop,no source,Galaxy pair.
 NGC 1128,drop,no source,Galaxy pair.
 ESO 355-IG 031,drop,no source,Galaxy pair.
 ESO 570-IG 008,drop,no source,Galaxy pair.
+UGC 12265,drop,no source,Galaxy pair.
+UGC 11671,drop,no source,Galaxy pair.
+UGC 12188,drop,no source,Galaxy pair.
+UGC 09618,drop,no source,Galaxy pair.
+UGC 09504,drop,no source,Galaxy pair.
+UGC 06073,drop,no source,Galaxy pair.
+UGC 05930,drop,no source,Galaxy pair.
+UGC 03760,drop,no source,Galaxy pair.
+UGC 03710,drop,no source,Galaxy pair.
+UGC 00702,drop,no source,Galaxy pair.
+WISEA J230544.60-073710.2,drop,no source,Galaxy pair.
+WISEA J121026.47-065242.4,drop,no source,Galaxy pair.
+WISEA J111107.02+004245.9,drop,no source,Galaxy pair.
+WISEA J164240.11-094314.8,drop,no source,Galaxy pair.
+WISEA J110903.03-003639.3,drop,no source,Galaxy pair.
+WISEA J122239.20-005849.4,drop,no source,Galaxy pair.
+WISEA J031712.80+000646.4,drop,no source,Galaxy pair.
+WISEA J143559.74-001120.2,drop,no source,Galaxy pair.
+WISEA J132037.50-013839.8,drop,no source,Galaxy pair.
+VV 287,drop,no source,Galaxy pair.
+VV 730,drop,no source,Galaxy pair.
+VV 654,drop,no source,Galaxy pair.
+VV 279,drop,no source,Galaxy pair.
+VV 279 NED01,drop,no source,In 'VV 279' group.
+VV 265,drop,no source,Galaxy pair.
+UM 185,drop,no source,Galaxy pair.
+UGC 04748,drop,no source,Galaxy pair.
+NGC 7035,drop,no source,Galaxy pair.
+NGC 0810,drop,no source,Galaxy pair.
+NGC 2807,drop,no source,Galaxy pair.
+NGC 3314,drop,no source,Galaxy pair with very close companions 'NGC 3314A' and 'NGC 3314B'.
+NGC 6692,drop,no source,Galaxy pair.
+NGC 0554,drop,no source,Galaxy pair.
+AM 1951-374,drop,no source,Galaxy pair.
+CGCG 004-018,drop,no source,Galaxy pair.
+CGCG 138-042,drop,no source,Galaxy pair.
+CGCG 378-008,drop,no source,Galaxy pair.
+CGCG 014-031,drop,no source,Galaxy pair.
+CGCG 115-020,drop,no source,Galaxy pair.
+CGCG 011-004,drop,no source,Galaxy pair.
+CGCG 156-081,drop,no source,Galaxy pair.
+CGCG 025-001,drop,no source,Galaxy pair.
+CGCG 453-025,drop,no source,Galaxy pair.
+CGCG 146-027,drop,no source,Galaxy pair.
+CGCG 264-045,drop,no source,Galaxy pair.
 #
 2MASS J01144834-0029514,drop,radio source,In 'UGC 00793' group.
 FIRST J105749.1+361443,drop,radio source,In 'VV 747' group.
@@ -1378,7 +1454,6 @@ AM 0320-600,hyperleda-coords,NED incorrect,Galaxy pair.
 VCC 1134,hyperleda-coords,NED incorrect,Galaxy pair.
 FOCA 0743,hyperleda-coords,NED incorrect,Galaxy pair.
 2MASX J12570335+2746448,hyperleda-coords,NED incorrect,In 'FOCA 0743' group.
-PKS 0651-60,hyperleda-coords,NED incorrect,Galaxy pair.
 MRK 0553,hyperleda-coords,NED incorrect,Galaxy pair.
 SARS 020.54287-37.61474,hyperleda-coords,NED incorrect,Galaxy pair.
 B2 1450+28,hyperleda-coords,NED incorrect,Galaxy pair.
@@ -1392,3 +1467,46 @@ ESO 073-IG 001 NED02,hyperleda-coords,NED incorrect,In 'ESO 073-IG 001' group.
 ESO 381-IG 048,hyperleda-coords,NED incorrect,Galaxy pair.
 ESO 355-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 355-IG 031' group.
 UGC 00409,hyperleda-coords,NED incorrect,In 'UGC 00409' group.
+UGC 12066 NED02,hyperleda-coords,NED incorrect,In 'UGC 12066' group.
+UGC 09504 NED01,hyperleda-coords,NED incorrect,In 'UGC 09504' group.
+UGC 09504 NED02,hyperleda-coords,NED incorrect,In 'UGC 09504' group.
+UGC 10789,hyperleda-coords,NED incorrect,Galaxy pair.
+UGC 03849,hyperleda-coords,NED incorrect,Galaxy pair.
+UGC 03225,hyperleda-coords,NED incorrect,Galaxy pair.
+UGC 10332,hyperleda-coords,NED incorrect,Galaxy pair.
+UGC 09633,hyperleda-coords,NED incorrect,Galaxy pair.
+UGC 06902,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J132808.35-310558.6,hyperleda-coords,NED incorrect,
+WISEA J183944.01-640208.2,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J213626.57-630745.2,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J234408.61-463818.1,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J031429.06-390507.1,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J022018.39-165212.9,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J040446.09-605949.0,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J002544.73-234702.8,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J013120.66-411431.5,hyperleda-coords,NED incorrect,Galaxy pair.
+WISEA J125609.09-063441.5,hyperleda-coords,NED incorrect,Galaxy pair.
+VV 597,hyperleda-coords,NED incorrect,Galaxy pair.
+VV 692,hyperleda-coords,NED incorrect,Galaxy pair.
+VV 579,hyperleda-coords,NED incorrect,Galaxy pair.
+VV 187,hyperleda-coords,NED incorrect,Galaxy pair.
+VV 711,hyperleda-coords,NED incorrect,Galaxy pair.
+CGPG 2319.6+0443,hyperleda-coords,NED incorrect,Galaxy pair.
+APMUKS(BJ) B050102.07-42175 ID,hyperleda-coords,NED incorrect,Galaxy pair.
+APMUKS(BJ) B035721.10-11474 ID,hyperleda-coords,NED incorrect,Galaxy pair.
+APMUKS(BJ) B022530.74-02252 ID,hyperleda-coords,NED incorrect,Galaxy pair.
+APMUKS(BJ) B032849.25-02055 ID,hyperleda-coords,NED incorrect,Galaxy pair.
+APMUKS(BJ) B041155.89-07332 ID,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 520-031,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 116-031,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 380-057,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 084-009,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 134-060,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 388-100,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 111-025,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 050-016,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 227-009,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 461-045,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 164-026,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 279-014,hyperleda-coords,NED incorrect,Galaxy pair.
+CGCG 414-010,hyperleda-coords,NED incorrect,Galaxy pair.

@@ -537,6 +537,35 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=5.,
     return pixscale, width
 
 
+
+def build_ssl_legacysurvey_refcat(cat, allcat):
+    """Build the reference catalog for use with ssl-legacysurvey
+
+    """
+    # use isolated RC3 galaxies as the reference sample
+    I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
+    #I = np.arange(20)
+    refcat = cat[I]
+    allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
+                             allcat['RA'].value, allcat['DEC'].value,
+                             60./3600., indexlist=True, notself=False)
+
+    indx, refindx = [], []
+    for ii, mm in enumerate(allmatches):
+        if len(mm) == 1:
+            refindx.append(ii)
+        else:
+            indx.append(ii)
+    indx = np.array(indx)
+    refindx = np.array(refindx)
+
+    sslcols = ['OBJNAME', 'RA', 'DEC', 'PARENT_ROW']
+    refcat = cat[refindx][sslcols]
+    cat = cat[indx][sslcols]
+
+    return refcat, cat
+
+
 def build_ssl_legacysurvey(refcat, cat, region='north', width=152, bands=['g', 'r', 'z'],
                            cutoutdir='.', outdir='.', overwrite=False, verbose=False):
     """Build the hdf5 file needed by ssl-legacysurvey.
@@ -708,7 +737,7 @@ def main():
             cat = read_catalog(catfile, columns=columns, rows=rows)
 
             # when annotating, must make a copy *before* any cuts!
-            if args.annotate:
+            if args.annotate or args.ssl_legacysurvey:
                 allcat = cat.copy()
 
             #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
@@ -753,9 +782,7 @@ def main():
 
             if args.ssl_legacysurvey:
                 # need to define a reference sample
-                sslcols = ['OBJNAME', 'RA', 'DEC', 'PARENT_ROW']
-                refcat = cat[:20][sslcols]
-                cat = cat[20:][sslcols]
+                refcat, cat = build_ssl_legacysurvey_refcat(cat, allcat)
                 cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
             else:
                 mindiam = args.width * args.pixscale # [arcsec]

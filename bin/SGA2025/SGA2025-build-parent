@@ -273,6 +273,11 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
             # drop from the sample
             case 'drop':
                 obj = actions[action == actions['action']]['objname'].value
+                uobj, cc = np.unique(obj, return_counts=True)
+                if np.max(cc) != 1:
+                    print('Warning: duplicates in actions file can cause problems!')
+                    print(uobj[cc > 1])
+                    pdb.set_trace()
                 I = np.isin(newcat['OBJNAME'].value, obj)
                 if np.sum(I) != len(obj):
                     #for oo in obj:
@@ -535,8 +540,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
         width_arcsec = 120. # 30.
         ncol, nrow = 1, 1
 
-        jpgdir = os.path.join(sga_dir(), 'parent', 'vi', f'{qasuffix}-viewer')
-        pngdir = os.path.join(sga_dir(), 'parent', 'vi', f'{qasuffix}-png')
+        jpgdir = os.path.join(sga_dir(), 'parent', 'vi2', f'{qasuffix}-viewer')
+        pngdir = os.path.join(sga_dir(), 'parent', 'vi2', f'{qasuffix}-png')
 
         qa_prefixes = [pre for pre in list(C.keys()) if pre not in drop_prefixes]
         #qa_prefixes = [pre for pre in list(C.keys()) if C[pre] <= 10 and pre not in drop_prefixes]
@@ -558,7 +563,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 print(f'No {suffix} sources with prefix {drop_prefix}')
             else:
                 print(f'Building QA for {len(Idrop):,d} {suffix} sources with prefix {drop_prefix}')
-                pdffile = os.path.join(sga_dir(), 'parent', 'vi', f'vi-{qasuffix}-{drop_prefix}.pdf')
+                pdffile = os.path.join(sga_dir(), 'parent', 'vi2', f'vi-{qasuffix}-{drop_prefix}.pdf')
                 multipage_skypatch(T[Idrop], cat=out, width_arcsec=width_arcsec, ncol=ncol, nrow=nrow,
                                    jpgdir=jpgdir, pngdir=pngdir, pngsuffix=f'{qasuffix}-{drop_prefix}',
                                    pdffile=pdffile, clip=True, verbose=verbose, overwrite=overwrite,
@@ -626,7 +631,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -642,8 +647,10 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
 
     # only explicitly drop mergers with diameters via VI and the VI-actions file
-    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
-    remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
+    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=True)
+    #cat.write('junk.fits', overwrite=True)
+    remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=True)
+    pdb.set_trace()
 
     #multipage_skypatch(cat[(cat['DIAM_LIT_REF'] == 'RC3') * (cat['OBJTYPE'] == 'GPair')], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/bb-rc3-gpair.pdf', verbose=True)
 

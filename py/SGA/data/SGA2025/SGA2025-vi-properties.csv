@@ -141,7 +141,7 @@ III Zw 007 NOTES01,6.171464076851492,3.2879030360669947,-99.,-99.,-99.,-99.,No,G
 IV Zw 060 NOTES02,-99.,-99.,0.3,0.0,1.0,-99.,No,In 'IV Zw 060' group.
 NGC 1487 NED01,58.9364445,-42.3673333,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of galaxy 'NGC 1487'.
 NGC 7587B,349.4995928295441,9.665454616114115,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
-NGC 7017 NED02,-99.,-99.,0.7,0.0,1.0,-99.,No,In 'NGC 7017' group.
+NGC 7017 NED02,-99.,-99.,0.7,0.0,1.0,-99.,No,In 'NGC 7017' group; estimated geometry.
 NGC 1487 NED01,58.9364445,-42.3673333,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of galaxy 'NGC 1487'.
 NGC 3058,148.400217,-12.482341,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of galaxy 'NGC 3058 NED02'.
 WISEA J110950.68+331807.2,-99.,-99.,-99.,-99.,-99.,0.35,No,Wrong Hyperleda diameter (10.9 arcmin).
@@ -161,3 +161,26 @@ WISEA J133748.42+022102.8,-99.,-99.,0.3,-99.,-99.,-99.,No,Wrong basic diameter.
 2MASS J07570628+4059150,-99.,-99.,0.1,-99.,-99.,-99.,No,Wrong basic diameter.
 2MASS J10254748+1343391,-99.,-99.,0.2,-99.,-99.,-99.,No,Wrong basic diameter.
 NGC 5514 NED01,213.41124999999997,7.660416666666667,-99.,-99.,-99.,-99.,Yes,Moved to the position of 'WISEA J141338.70+073937.4'.
+UGC 12188 NED02,-99.,-99.,0.3,0.0,1.0,-99.,No,Estimated diameter.
+UGC 10908,263.407089,50.373309,-99.,-99.,-99.,-99.,No,Moved to the SGA2020 position.
+UGC 07891 NED01,190.765302,30.381462,-99.,-99.,-99.,-99.,No,Moved to the position of galaxy pair 'UGC 07891'.
+UGC 03710 NED02,107.383310,28.661444,0.5,-99.,-99.,-99.,No,Moved to the position of '2MASS J07093199+2839411'.
+UGC 10222,240.36331178651002,81.86567588137831,-99.,-99.,-99.,-99.,No,Galaxy pair moved to the LS/DR9 position.
+WISEA J043501.29-410028.8,68.75540446220867,-41.009684098550274,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+WISEA J022443.20+013540.0,-99.,-99.,0.15,0.0,1.0,-99.,No,Estimated diameter.
+2MASS J16424027-0943091,-99.,-99.,0.4,0.0,1.0,-99.,No,Estimated diameter.
+UM 185E,357.951193188588,2.5158159434509564,0.4,50.,0.5,-99.,No,Moved to the LS/DR9 position with updated geometry.
+UM 185W,357.95022377616453,2.516723740985482,0.4,50.,0.5,-99.,No,Moved to the LS/DR9 position with updated geometry.
+PKS 0651-60,102.9799530644531,-60.37048070768718,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+NGC 6692 NED01,-99.,-99.,0.7,0.0,1.0,-99.,No,Estimated diameter.
+NGC 6692 NED02,-99.,-99.,0.7,0.0,1.0,-99.,No,Estimated diameter.
+MCG -01-05-016,25.106204,-7.902178,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+6dF J2305045-190827,346.2696130322597,-19.140540871926707,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+2MASX J03225574-5203087,50.73227404841316,-52.05244338195995,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B210653.75-45180 ID,317.55372851581956,-45.097873143370386,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B040747.14-42305 ID,62.3619,-42.3868,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B033512.35-41430 ID,54.2428,-41.5543,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B012537.64-07423 ID,22.0351,-7.4508,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B234311.14-45153 ID,356.456283,-44.981313,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B013055.84-39172 ID,23.285255,-39.033246,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+CGCG 461-045 NED02,-99.,-99.,0.9,0.0,1.0,-99.,No,Estimated diameter.
