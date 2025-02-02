@@ -419,6 +419,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
             VETO = None
             if merger_has_diameter:
                 drop_prefixes = []
+                drop_ignore_diam_prefixes = []
             else:
                 drop_prefixes = ['[BWH2007]', '2dFGRS', 'APMUKS(BJ)',
                                  'RSCG', 'MCG', 'LGG', 'LCLG', 'IRAS', 'PPS2', 'GALEXMSC',
@@ -433,7 +434,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
         case 'GPair':
             VETO = None
             if merger_has_diameter:
-                drop_prefixes = ['CGMW']
+                drop_prefixes = []
+                drop_ignore_diam_prefixes = ['CGMW'] # all in the MW disk
             else:
                 drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]', 
                                  '[vvd91a]', '2MASS', '2MASX', '2MASXi', '2MFGC', 'APMBGC',
@@ -631,7 +633,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -647,10 +649,8 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
 
     # only explicitly drop mergers with diameters via VI and the VI-actions file
-    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=True)
-    #cat.write('junk.fits', overwrite=True)
-    remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=True)
-    pdb.set_trace()
+    remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
+    remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
     #multipage_skypatch(cat[(cat['DIAM_LIT_REF'] == 'RC3') * (cat['OBJTYPE'] == 'GPair')], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/bb-rc3-gpair.pdf', verbose=True)
 

@@ -932,7 +932,6 @@ WISEA J024833.03-712334.4,drop,star,Foreground star in 'ESO 053-IG 018' group.
 UGC 10222 NED02,drop,star,Foreground star in 'UGC 10222'.
 CGCG 084-009 NED02,drop,star,Foreground star in 'CGCG 084-009'.
 KUG 0707+362,drop,star,Foreground star next to 'WISEA J071103.84+360823.0'.
-ESO-LV 2360021,drop,star,Foreground star next to 'ESO 236-IG 002'.
 ESO-LV 3490391,drop,star,Foreground star next to 'ESO 349- G 039'.
 ESO-LV 0300171,drop,star,
 #
@@ -1165,10 +1164,7 @@ WISEA J132037.50-013839.8,drop,no source,Galaxy pair.
 VV 287,drop,no source,Galaxy pair.
 VV 730,drop,no source,Galaxy pair.
 VV 654,drop,no source,Galaxy pair.
-VV 279,drop,no source,Galaxy pair.
-VV 279 NED01,drop,no source,In 'VV 279' group.
 VV 265,drop,no source,Galaxy pair.
-UM 185,drop,no source,Galaxy pair.
 UGC 04748,drop,no source,Galaxy pair.
 NGC 7035,drop,no source,Galaxy pair.
 NGC 0810,drop,no source,Galaxy pair.
@@ -1192,7 +1188,6 @@ GALEXASC J191528.67-261254.2,drop,no source,Galaxy pair.
 KUG 1128+207,drop,no source,Galaxy pair.
 KUG 1514+552,drop,no source,Galaxy pair.
 KUG 1003+488,drop,no source,Galaxy pair.
-KUG 1553+200,drop,no source,Galaxy pair.
 SDSS J023245.42+283318.5,drop,no source,In 'KUG 0229+283' group.
 KUG 0005+345,drop,no source,Galaxy pair.
 KUG 0950+538,drop,no source,Galaxy pair.
@@ -1232,7 +1227,6 @@ ESO 238-IG 006,drop,no source,Galaxy pair.
 ESO 404-IG 016,drop,no source,Galaxy pair.
 ESO 236-IG 010,drop,no source,Galaxy pair.
 PGC 066718,drop,no source,In 'ESO 236-IG 010' group.
-PGC 525172,drop,no source,In 'ESO 286-IG 065' group.
 ESO 286-IG 039,drop,no source,Galaxy pair.
 ESO 235-IG 041,drop,no source,Galaxy pair.
 ESO 235-IG 024,drop,no source,Galaxy pair.
