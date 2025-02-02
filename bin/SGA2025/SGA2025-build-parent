@@ -433,7 +433,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
         case 'GPair':
             VETO = None
             if merger_has_diameter:
-                drop_prefixes = []
+                drop_prefixes = ['CGMW']
             else:
                 drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]', 
                                  '[vvd91a]', '2MASS', '2MASX', '2MASXi', '2MFGC', 'APMBGC',
