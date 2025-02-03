@@ -46,7 +46,6 @@ SDSS J151101.96+051747.6,drop,faint,
 WISEA J134855.69+264852.8,drop,faint,
 SDSS J120941.87+015041.9,drop,faint,
 SDSS J102240.76+383217.0,drop,faint,
-WISEA J130030.82+184304.5,drop,faint,
 SDSS J100216.12+021035.4,drop,faint,
 WISEA J083800.50+043140.0,drop,faint,
 WISEA J091807.03-000050.5,drop,faint,
@@ -66,6 +65,7 @@ WISEA J113019.95+555856.0,drop,faint,
 WISEA J102825.28+154757.2,drop,faint,
 SDSS J141300.79+525028.0,drop,faint,
 SDSS J023220.39-054448.6,drop,faint,
+SDSS J113108.55+021309.7,drop,faint,Coincident duplicate with Leo V (LVD).
 #
 MGC 0006552,drop,compact,In 'MGC 0006552' group.
 2MASS J10225889-0010216,drop,compact,In 'MGC 0006552' group.
@@ -734,7 +734,6 @@ SDSS J085824.75+062001.0,drop,shred,Shred or part of 'UGC 04703 NOTES02'.
 WISEA J085830.08+061916.9,drop,shred,Shred or part of 'UGC 04703 NOTES01'.
 WISEA J024815.18-360131.9,drop,shred,Shred or part of 'ESO 356-IG 011'.
 2dFGRS S520Z005,drop,shred,Shred or part of 'ESO 355-IG 031 NED01'.
-WISEA J233222.49+233045.9,drop,shred,Shred or part of 'VV 579'.
 WISEA J011957.12-411405.7,drop,shred,Shred or part of 'ESO 296-IG 011'.
 AM 0316-573 NED01,drop,shred,Shred or part of 'ESO 116-IG 015'.
 2MASX J00392431+0434085,drop,shred,Shred or part of 'UGC 00409'.
@@ -898,6 +897,7 @@ PGC 064868,drop,shred,Shred or part of 'ESO 596- G?051'.
 ESO-LV 2350041,drop,shred,Shred or part of 'ESO 235-IG 004'.
 ESO 553- G 019,drop,shred,Shred or part of 'ESO-LV 5530191'.
 ESO 417- G 009,drop,shred,Shred or part of 'ESO-LV 4170091'.
+SDSS J155556.89+195656.4,drop,shred,Shred or part of 'KUG 1553+200 NED02'.
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.

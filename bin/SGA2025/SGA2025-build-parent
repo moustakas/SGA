@@ -356,7 +356,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                                verbose=verbose, overwrite=True, add_title=True, cleanup=cleanup)
 
     #newcat[match_new[np.where(dropcat['OBJNAME'] == 'CGCG 039-044')[0][0]]][cols]
-    #newcat[np.flatnonzero(np.core.defchararray.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
+    #newcat[np.flatnonzero(np.char.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
 
     #m1, m2, _ = match_radec(newcat['RA'], newcat['DEC'], 0.3728, 13.0985, 75./3600.)
     #m1, m2, _ = match_radec(newcat['RA'], newcat['DEC'], newcat[newcat['PGC'] == 680515]['RA'], newcat[newcat['PGC'] == 680515]['DEC'], 120./3600.)
@@ -368,7 +368,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
     #allprefix = np.array(list(zip(*np.char.split(fullcat['OBJNAME'].value, ' ').tolist()))[0])
     #newcat[match_new[np.where(dropcat['OBJNAME'] == 'ESO 292-IG 010')[0][0]]][cols]
     #fullcat[match_full[np.where(dropcat['OBJNAME'] == 'APMUKS(BJ) B020550.65-13135 ID')[0][0]]][cols]
-    #newcat[np.flatnonzero(np.core.defchararray.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
+    #newcat[np.flatnonzero(np.char.find(newcat['OBJNAME'].value, 'APMUKS') != -1)][cols]
 
     return newcat
 
@@ -449,7 +449,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                  'HS', 'ESO']
             drop_references = []
         case _:
-            VETO = None
+            VETO = ['HIPASS J1348-37', 'RCS 04020600360', 'NSA 142339', ] # LVD systems
             drop_prefixes = ['WINGS', 'SRGb', '[MD2000]', 'HeCS', 'ESP',
                              'SDSSCGB', 'NVSS', 'AGC', ]
             drop_ignore_diam_prefixes = [
@@ -524,7 +524,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
     # drop by reference
     if len(drop_references) > 0:
         for drop_reference in drop_references:
-            Idrop = np.flatnonzero(np.core.defchararray.find(T['OBJNAME'].value, drop_reference) != -1)
+            Idrop = np.flatnonzero(np.char.find(T['OBJNAME'].value, drop_reference) != -1)
             print(f'Dropping {len(Idrop):,d} {suffix} sources with reference {drop_reference}')
             I.append(Idrop)
 
@@ -553,7 +553,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
         #prim=1 ; qa_skypatch(cc[m1[prim]], group=cc[m1])
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == 'MGC']['RA'], T[prefix == 'MGC']['DEC'], 75./3600.)
         #m1, m2, _ = match_radec(fullcat['RA'], fullcat['DEC'], T[prefix == '[BFH91]']['RA'], T[prefix == '[BFH91]']['DEC'], 75./3600.)
-        #fullcat[np.flatnonzero(np.core.defchararray.find(fullcat['OBJNAME'].value, 'ABELL 2247') != -1)][cols]
+        #fullcat[np.flatnonzero(np.char.find(fullcat['OBJNAME'].value, 'ABELL 2247') != -1)][cols]
 
         #for drop_prefix in ['III']:
         for drop_prefix in qa_prefixes:
@@ -570,7 +570,6 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                    jpgdir=jpgdir, pngdir=pngdir, pngsuffix=f'{qasuffix}-{drop_prefix}',
                                    pdffile=pdffile, clip=True, verbose=verbose, overwrite=overwrite,
                                    cleanup=cleanup)
-        pdb.set_trace()
 
     return out
 
@@ -684,9 +683,8 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     pdb.set_trace()
     if False:
         I = cat['DIAM_LIT'] > 25. ; srt = np.argsort(cat[I]['DIAM_LIT'])[::-1] ; cat[I][srt]['OBJNAME', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'RA', 'DEC']
-        obj='MESSIER 077' ; cc = cat ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
-        qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=5., pngdir='ioannis/tmp/', overwrite_viewer=True, overwrite=True)
-
+        cc = cat ; obj='MESSIER 077' ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
+        qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=2., pngdir='ioannis/tmp/', clip=True, overwrite_viewer=True, overwrite=True)
         multipage_skypatch(cat[I], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/aa-sdss.pdf', verbose=True)
 
     # FIXME - apply cuts based on additional external catalogs
@@ -1242,6 +1240,18 @@ def build_parent_nocuts(verbose=True):
 
     parent4 = populate_parent(miss_hyper, basic_miss_hyper, verbose=verbose)
 
+    # PGC725719 and WISEA J132257.15-294417.7 (also PGC 725719 in LVD, below)
+    # are the same object in NED-LVS and HYPERLEDA, respectively, but their
+    # coordinates are 3.5 arcsec apart, so they become two entries; fix that
+    # by-hand here.
+    print('Special-casing PGC725719=WISEA J132257.15-294417.7')
+    I = np.where(parent['OBJNAME_NED'] == 'WISEA J132257.15-294417.7')[0]
+    J = np.where(parent4['OBJNAME_HYPERLEDA'] == 'PGC725719')[0]
+    for col in ['OBJNAME_HYPERLEDA', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'Z_HYPERLEDA', 'PGC', 'MAG_HYPERLEDA',
+                'BAND_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA', 'ROW_HYPERLEDA']:
+        parent[col][I] = parent4[J][col]
+    parent4.remove_row(J[0])
+
     for col in ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA']:
         assert(len(np.unique(parent4[col])) == len(parent4))
     print()
@@ -1274,12 +1284,57 @@ def build_parent_nocuts(verbose=True):
 
     indx_parent2, indx_lvd2 = match(parent['ROW_LVD'][I[indx_parent]], lvd['ROW'])
     if verbose:
-        for col in ['OBJNAME_LVD', 'RA_LVD', 'DEC_LVD']:
+        for col in ['OBJNAME_LVD', 'RA_LVD', 'DEC_LVD', 'PGC']:
             print(f'Populating {col}')
     parent['OBJNAME_LVD'][I[indx_parent[indx_parent2]]] = lvd['OBJNAME'][indx_lvd2]
     parent['RA_LVD'][I[indx_parent[indx_parent2]]] = lvd['RA'][indx_lvd2]
     parent['DEC_LVD'][I[indx_parent[indx_parent2]]] = lvd['DEC'][indx_lvd2]
+    parent['PGC'][I[indx_parent[indx_parent2]]] = lvd['PGC'][indx_lvd2]
     #parent[I[indx_parent[indx_parent2]]]['OBJNAME_NED', 'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'RA_LVD', 'DEC_LVD', 'ROW_LVD', 'PGC']
+    #join(parent[I[indx_parent[indx_parent2]]]['OBJNAME_LVD', 'OBJNAME_HYPERLEDA', 'ROW_LVD', 'PGC'], lvd[indx_lvd2]['OBJNAME', 'PGC'], keys_left='OBJNAME_LVD', keys_right='OBJNAME').pprint(max_lines=-1)
+
+    # NB: These 9 objects are not in my 'hyper' sample because they fail the
+    # f_astrom cut; but they're all in the LVD and NED-LVS samples
+
+    #  OBJNAME_LVD  OBJNAME_HYPERLEDA ROW_LVD  PGC_1     OBJNAME     PGC_2
+    #     Antlia II                         0 6775392     Antlia II 6775392
+    #    Bootes III                         5 4713562    Bootes III 4713562
+    #      Cetus II                        14 6740632      Cetus II 6740632
+    #     Crater II                        17 5742923     Crater II 5742923
+    #       Grus II                        24 6740630       Grus II 6740630
+    # Reticulum III                        44 6740628 Reticulum III 6740628
+    #   Sagittarius                        45 4689212   Sagittarius 4689212
+    #     Tucana IV                        55 6740629     Tucana IV 6740629
+    #      Tucana V                        56 6740631      Tucana V 6740631
+
+    # next, match on PGC to pick up the HyperLeda (non-NED) matches
+    # 'KK 177': 'IC 4107', # HyperLeda matches to WISEA J130241.76+215952.2
+    # 'Leo I 09': 'NGC 3368:[CVD2018] DF6', # HyperLeda matches to SDSS J104653.19+124441.4
+    # 'CenA-MM-Dw3': 'Centaurus A:[CSS2016] MM-Dw03', # HyperLeda matches to WISEA J133020.71-421130.6
+    # 'JKB142': 'WISEA J014548.01+162239.4', # NED resolves JKB142, but HyperLeda incorrectly matches to WISEA J014548.01+162239.4 by position
+
+    I = np.where((parent['ROW_LVD'] == -99) * (parent['PGC'] != -99))[0]
+    J = np.where(lvd['PGC'] > 0)[0]
+    indx_parent, indx_lvd = match(parent[I]['PGC'], lvd[J]['PGC'])
+    #parent[I[indx_parent]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'RA_LVD', 'DEC_LVD', 'ROW_LVD', 'PGC']
+    #lvd[J[indx_lvd]]['OBJNAME', 'RA', 'DEC', 'PGC']
+    print(f'Matched an additional {len(indx_lvd):,d} LVD objects to the parent sample using PGC.')
+
+    if verbose:
+        for col in ['OBJNAME_LVD', 'RA_LVD', 'DEC_LVD', 'ROW_LVD']:
+            print(f'Populating {col}')
+    parent['OBJNAME_LVD'][I[indx_parent]] = lvd['OBJNAME'][J[indx_lvd]]
+    parent['RA_LVD'][I[indx_parent]] = lvd['RA'][J[indx_lvd]]
+    parent['DEC_LVD'][I[indx_parent]] = lvd['DEC'][J[indx_lvd]]
+    parent['ROW_LVD'][I[indx_parent]] = lvd['ROW'][J[indx_lvd]]
+
+    # Drop SDSS J014548.23+162240.6=WISEA J014548.01+162239.4=JKB142. This
+    # object appears twice in the NED-LVS (rows 1827699 and 1871170), although
+    # NED resolves it as two objects. If we don't drop it then we end up with
+    # duplicate LVD entries.
+    print('Removing duplicate SDSS J014548.23+162240.6=WISEA J014548.01+162239.4=JKB142 from the parent sample.')
+    Idrop = np.where(parent['OBJNAME_NED'] == 'SDSS J014548.23+162240.6')[0]
+    parent.remove_row(Idrop[0])
 
     # ned_lvd - not in parent sample (new)
     miss_lvd = ned_lvd[~np.isin(ned_lvd['ROW'], parent['ROW_LVD'])]
@@ -1289,7 +1344,6 @@ def build_parent_nocuts(verbose=True):
           '/new/ ned_lvd objects to the parent sample.')
 
     basic_miss_lvd = get_basic_geometry(miss_lvd, galaxy_column='OBJNAME_LVD', verbose=verbose)
-
     parent5a = populate_parent(miss_lvd, basic_miss_lvd, verbose=verbose)
 
     # LVD - not in parent sample (new)
@@ -1318,7 +1372,6 @@ def build_parent_nocuts(verbose=True):
 
     print()
     print(f'Parent 5: N={len(parent5)+nexisting:,d}')
-    #pdb.set_trace()
 
     # [6] Add SGA2020
     parent = vstack((parent, parent5))
@@ -1515,8 +1568,12 @@ def build_parent_nocuts(verbose=True):
                     if col == 'MAG_LIT':
                         parent['BAND_LIT'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND_LIT']
                     #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'BA_LIT', 'BA_LIT_REF', 'PA_LIT', 'PA_LIT_REF']
+            if 'DIAM' in col:
+                pdb.set_trace()
+
         print()
 
+    pdb.set_trace()
     # special columns for HyperLeda and SGA2020 geometry
     basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
     basic_sga2020 = get_basic_geometry(sga2020, galaxy_column='ROW', verbose=verbose)

@@ -152,7 +152,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
         diamcol = f'DIAM_{ref}'
         for prop in ('mag', 'diam', 'ba', 'pa'):
             val = np.zeros(nobj, 'f4') - 99.
-            val_ref = np.zeros(nobj, '<U7')
+            val_ref = np.zeros(nobj, '<U9')
             val_band = np.zeros(nobj, 'U1')
 
             if prop == 'mag':
@@ -194,7 +194,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
         diamcol = f'DIAM_{ref}'
         for prop in ('mag', 'diam', 'ba', 'pa'):
             val = np.zeros(nobj, 'f4') - 99.
-            val_ref = np.zeros(nobj, '<U7')
+            val_ref = np.zeros(nobj, '<U9')
             val_band = np.zeros(nobj, 'U1')
 
             if prop == 'mag':
@@ -233,7 +233,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
         ref = 'LVD'
         for prop in ('mag', 'diam', 'ba', 'pa'):
             val = np.zeros(nobj, 'f4') - 99.
-            val_ref = np.zeros(nobj, '<U7')
+            val_ref = np.zeros(nobj, '<U9')
             val_band = np.zeros(nobj, 'U1')
 
             if prop == 'mag':
@@ -273,7 +273,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
         ref = 'CUSTOM'
         for prop in ('mag', 'diam', 'ba', 'pa'):
             val = np.zeros(nobj, 'f4') - 99.
-            val_ref = np.zeros(nobj, '<U7')
+            val_ref = np.zeros(nobj, '<U9')
             val_band = np.zeros(nobj, 'U1')
 
             if prop == 'mag':
@@ -318,7 +318,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             nref = len(refs)
 
             val = np.zeros(nobj, 'f4') - 99.
-            val_ref = np.zeros(nobj, '<U7')
+            val_ref = np.zeros(nobj, '<U9')
             val_band = np.zeros(nobj, 'U1')
 
             #allI = np.zeros((nobj, nref), bool)
@@ -403,14 +403,14 @@ def parent_datamodel(nobj):
     parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
 
     parent['MAG_LIT'] = np.zeros(nobj, 'f4') -99.
-    parent['MAG_LIT_REF'] = np.zeros(nobj, '<U7')
+    parent['MAG_LIT_REF'] = np.zeros(nobj, '<U9')
     parent['BAND_LIT'] = np.zeros(nobj, '<U1')
     parent['DIAM_LIT'] = np.zeros(nobj, 'f4') -99.
-    parent['DIAM_LIT_REF'] = np.zeros(nobj, '<U7')
+    parent['DIAM_LIT_REF'] = np.zeros(nobj, '<U9')
     parent['BA_LIT'] = np.zeros(nobj, 'f4') -99.
-    parent['BA_LIT_REF'] = np.zeros(nobj, '<U7')
+    parent['BA_LIT_REF'] = np.zeros(nobj, '<U9')
     parent['PA_LIT'] = np.zeros(nobj, 'f4') -99.
-    parent['PA_LIT_REF'] = np.zeros(nobj, '<U7')
+    parent['PA_LIT_REF'] = np.zeros(nobj, '<U9')
 
     parent['MAG_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
     parent['BAND_HYPERLEDA'] = np.zeros(nobj, '<U1')
