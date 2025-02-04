@@ -73,16 +73,23 @@ def choose_geometry(cat, mindiam=152*0.262):
     pa = np.zeros(nobj)
     ref = np.zeros(nobj, '<U9')
 
-    # choose RC3 literature
+    # [1] LVD
+    I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'LVD', cat['DIAM_LIT'] > 0.))
+    if np.any(I):
+        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+        ba[I] = cat[I]['BA_LIT']
+        pa[I] = cat[I]['PA_LIT']
+        ref[I] = 'LVD'
+
+    # [2] RC3
     I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'RC3', cat['DIAM_LIT'] > 0.))
-    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.))
     if np.any(I):
         diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
         ba[I] = cat[I]['BA_LIT']
         pa[I] = cat[I]['PA_LIT']
         ref[I] = 'RC3'
 
-    # choose SGA2020
+    # [3] SGA2020
     I = np.logical_and(diam <= 0., cat['DIAM_SGA2020'] > 0.)
     if np.any(I):
         diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
@@ -90,16 +97,15 @@ def choose_geometry(cat, mindiam=152*0.262):
         pa[I] = cat[I]['PA_SGA2020']
         ref[I] = 'SGA2020'
 
-    # choose HyperLeda
+    # [4] HyperLeda
     I = np.logical_and(diam <= 0., cat['DIAM_HYPERLEDA'] > 0.)
-    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] < 0., cat['DIAM_HYPERLEDA'] > 0.))
     if np.any(I):
         diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
         ba[I] = cat[I]['BA_HYPERLEDA']
         pa[I] = cat[I]['PA_HYPERLEDA']
         ref[I] = 'HYPERLEDA'
 
-    # choose literature
+    # [5] literature
     I = np.logical_and(diam <= 0., cat['DIAM_LIT'] > 0.)
     #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.))
     if np.any(I):
@@ -113,13 +119,13 @@ def choose_geometry(cat, mindiam=152*0.262):
     if np.any(I):
         diam[I] = mindiam
 
-    # special-cases - north
-    S = [
-        'WISEA J151427.24+604725.4', # not in HyperLeda; basic-data diameter is 12.11 arcmin!
-        ]
-    I = np.isin(cat['OBJNAME'], S)
-    if np.any(I):
-        diam[I] = mindiam
+    ## special-cases - north
+    #S = [
+    #    'WISEA J151427.24+604725.4', # not in HyperLeda; basic-data diameter is 12.11 arcmin!
+    #    ]
+    #I = np.isin(cat['OBJNAME'], S)
+    #if np.any(I):
+    #    diam[I] = mindiam
 
     # clean up missing values of BA and PA
     ba[ba < 0.] = 1.

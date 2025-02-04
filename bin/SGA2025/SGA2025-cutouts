@@ -21,9 +21,18 @@ Alternatively, in production, one would do:
 
 To build the ssl-legacysurvey catalog:
   SGA2025-shifter
-
+  source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --ssl-legacysurvey
 
+
+Examining the LVD sample:
+
+time srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-cutouts \
+  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=north --mp=32 --overwrite
+time srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-cutouts \
+  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=north --mp=32 --annotate --overwrite
+time srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-cutouts \
+  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=north --annotate-montage
 
 """
 import pdb # for debugging
@@ -145,12 +154,17 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
     outdir = os.path.dirname(pngfile)
     if not os.path.isdir(outdir):
-        os.makedirs(outdir)
+        os.makedirs(outdir, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     im = ax.imshow(img, origin='lower')
     ax.set_xlim(0, width)
     ax.set_ylim(0, width)
+
+    if len(group) > 5:
+        print('WARNING: Too many group members; keeping just the primary!')
+        group = Table(primary)
+
     for imem, onegal in enumerate(group):
         ra = onegal['RA']
         dec = onegal['DEC']
@@ -221,10 +235,10 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     fig.savefig(pngfile, bbox_inches=0)#, dpi=200)
     plt.close()
     print(f'Wrote {pngfile}')
-    #pdb.set_trace()
+    
 
 
-def do_annotate(allcat, cat, objname, commonname, diam, pixscale=0.262,
+def do_annotate(allcat, cat, objname, pixscale=0.262,
                 comm=None, mp=1, indir='.', outdir='.', overwrite=False, 
                 dry_run=False, verbose=False):
     """Wrapper to set up the full set of annotations.
@@ -273,16 +287,16 @@ def do_annotate(allcat, cat, objname, commonname, diam, pixscale=0.262,
                              2.*np.max(diam)/3600., indexlist=True, notself=False)
 
     mpargs = []
-    for iobj in indx:
-        primary = cat[iobj]
+    for iobj, thisindx in enumerate(indx):
+        primary = cat[thisindx]
         # refine the search to this object's diameter
         m1, m2, _ = match_radec(primary['RA'], primary['DEC'], allcat[allmatches[iobj]]['RA'],
-                                allcat[allmatches[iobj]]['DEC'], 2.*diam[iobj]/3600.)
+                                allcat[allmatches[iobj]]['DEC'], 2.*diam[thisindx]/3600.)
         group = allcat[allmatches[iobj]][m2]
         #if primary['OBJNAME'] == 'IC 1259 NED01':
         #    pdb.set_trace()
-        mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
-                       in_pixscale[iobj], diam[iobj], primary, group, dry_run, rank, iobj))
+        mpargs.append((jpgfiles[thisindx], pngfiles[thisindx], objname[thisindx], commonname[thisindx],
+                       in_pixscale[thisindx], diam[thisindx], primary, group, dry_run, rank, thisindx))
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_annotate_one, mpargs)
@@ -355,11 +369,11 @@ def get_basefiles_one(obj, objname, width, outdir, overwrite=False,
     if overwrite is False:
         if os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg'):
             # need to make sure the image is the correct size
-            width_exist = int(fitsio.read_header(basefile+'.fits')['IMAGEW'])
-            if width == width_exist:
-                nobj = 0
-                if verbose:
-                    print(f'Skipping existing cutout {basefile}.')
+            #width_exist = int(fitsio.read_header(basefile+'.fits')['IMAGEW'])
+            #if width == width_exist:
+            nobj = 0
+            if verbose:
+                print(f'Skipping existing cutout {basefile}.')
 
     return basefile, obj['RA'], obj['DEC'], nobj
 
@@ -424,6 +438,8 @@ def plan(cat, objname, width=152, layer='ls-dr9', comm=None, indir='.',
         groups = np.array_split(indices, size) # unweighted distribution
     else:
         groups = [np.array([])]
+
+    pdb.set_trace()
 
     if annotate:
         return jpgfiles, pngfiles, groups
@@ -547,25 +563,28 @@ def build_ssl_legacysurvey_refcat(cat, allcat):
 
     """
     # use isolated RC3 galaxies as the reference sample
-    I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
+    diam, _, _, ref = choose_geometry(cat)
+
+    I = np.where((cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
+    #I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
     #I = np.arange(20)
     refcat = cat[I]
     allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
                              allcat['RA'].value, allcat['DEC'].value,
                              60./3600., indexlist=True, notself=False)
 
-    indx, refindx = [], []
+    refindx = []
     for ii, mm in enumerate(allmatches):
         if len(mm) == 1:
             refindx.append(ii)
-        else:
-            indx.append(ii)
-    indx = np.array(indx)
     refindx = np.array(refindx)
 
     sslcols = ['OBJNAME', 'RA', 'DEC', 'PARENT_ROW']
-    refcat = cat[refindx][sslcols]
-    cat = cat[indx][sslcols]
+    refcat = refcat[refindx][sslcols]
+
+    print('Hack! - trimming the ssl_legacysurvey sample')
+    refcat = refcat[:2000]
+    cat = cat[:20000]
 
     return refcat, cat
 
@@ -578,7 +597,6 @@ def build_ssl_legacysurvey(refcat, cat, region='north', width=152, bands=['g', '
 
     """
     import h5py
-
 
     def get_fitsfiles(cat):
         I = []
@@ -653,9 +671,6 @@ def main():
     
     args = parser.parse_args()
 
-    #print('Hack!')
-    #sys.path.append('/global/homes/i/ioannis/code/git/SGA/py')
-
     try:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD
@@ -681,7 +696,7 @@ def main():
             from matplotlib.backends.backend_pdf import PdfPages
             from matplotlib.image import imread
 
-            pdffile = os.path.join(args.outdir, 'annotate-montage.pdf')
+            pdffile = os.path.join(args.outdir, f'annotate-montage-{args.region}.pdf')
             if os.path.isfile(pdffile) and not args.overwrite:
                 print(f'Output file {pdffile} exists.')
                 return
@@ -726,11 +741,11 @@ def main():
                     f'SGA2025-parent-{args.region}-{args.version}.fits'
             columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'DIAM_LIT_REF',
                        'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
-                       'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'PARENT_ROW']
+                       'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'PARENT_ROW']
 
             F = fitsio.FITS(catfile)
             N = F[1].get_nrows()
-            if True:#False:
+            if False:
                 S = 1000
                 rng = np.random.default_rng(seed=1)
                 rows = rng.choice(N, size=S, replace=False)
@@ -764,24 +779,24 @@ def main():
 
             commonname = cat['OBJNAME']
             objname = np.char.replace(radec_to_name(cat['RA'], cat['DEC']), ' ', '_')
-            #objname = np.char.replace(cat['OBJNAME'].value, ' ', '_')
 
-            #if True:
-            #    print('HACK!')
-            #    from glob import glob
-            #    ff = glob(os.path.join(args.outdir, args.region, 'native', '???', '*.jpeg'))
-            #    ff = np.char.replace(ff, '.jpeg', '')
-            #    I = np.isin(objname, np.vectorize(os.path.basename)(ff))
-            #    objname = objname[I]
-            #    commonname = commonname[I]
-            #    cat = cat[I]
-            #else:
-            #    I = np.isin(cat['OBJNAME'], ['UGC 05806'])
-            #    #I = np.isin(cat['OBJNAME'], ['IC 1259 NED01', 'IC 1259 NED02'])
-            #    objname = objname[I]
-            #    commonname = commonname[I]
-            #    cat = cat[I]
-            #    #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
+            if False:
+                print('HACK!')
+                from glob import glob
+                ff = glob(os.path.join(args.outdir, args.region, 'native', '???', '*.jpeg'))
+                ff = np.char.replace(ff, '.jpeg', '')
+                I = np.isin(objname, np.vectorize(os.path.basename)(ff))
+                objname = objname[I]
+                commonname = commonname[I]
+                cat = cat[I]
+            else:
+                I = cat['ROW_LVD'] != -99
+                #I = np.isin(cat['OBJNAME'], ['UGC 05806'])
+                #I = np.isin(cat['OBJNAME'], ['IC 1259 NED01', 'IC 1259 NED02'])
+                objname = objname[I]
+                commonname = commonname[I]
+                cat = cat[I]
+                #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
 
             if args.ssl_legacysurvey:
                 # need to define a reference sample
@@ -836,21 +851,21 @@ def main():
         width = comm.bcast(width, root=0)
         diam = comm.bcast(diam, root=0)
 
-    if args.plan:
-        if rank == 0:
-            plan(cat, objname, width=width, layer=layer, comm=comm, indir=indir, outdir=outdir, 
-                 mp=args.mp, annotate=args.annotate, overwrite=args.overwrite, 
-                 verbose=args.verbose)
-    elif args.ssl_legacysurvey:
+    if args.ssl_legacysurvey:
         if rank == 0:
             build_ssl_legacysurvey(refcat, cat, region=args.region, width=args.width,
                                    cutoutdir=cutoutdir, outdir=args.outdir,
                                    overwrite=args.overwrite, verbose=args.verbose)
+    elif args.plan:
+        if rank == 0:
+            plan(cat, objname, width=width, layer=layer, comm=comm, indir=indir, outdir=outdir, 
+                 mp=args.mp, annotate=args.annotate, overwrite=args.overwrite, 
+                 verbose=args.verbose)
     else:
         if args.annotate:
-            do_annotate(allcat, cat, objname, commonname, diam, pixscale=pixscale,
-                        mp=args.mp, comm=comm, indir=indir, outdir=outdir, 
-                        overwrite=args.overwrite, dry_run=args.dry_run, verbose=args.verbose)
+            do_annotate(allcat, cat, objname, pixscale=pixscale, mp=args.mp, comm=comm, 
+                        indir=indir, outdir=outdir, overwrite=args.overwrite, 
+                        dry_run=args.dry_run, verbose=args.verbose)
         else:
             do_cutouts(cat, objname, layer=layer, width=width, pixscale=pixscale, 
                        mp=args.mp, comm=comm, outdir=outdir, overwrite=args.overwrite,
