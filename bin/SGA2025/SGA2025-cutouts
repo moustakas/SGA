@@ -341,7 +341,8 @@ def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 
-def get_basefiles_one(obj, objname, outdir, overwrite=False, verbose=False):
+def get_basefiles_one(obj, objname, width, outdir, overwrite=False, 
+                      verbose=False):
     raslice = get_raslice(obj['RA'])
 
     if objname is None:
@@ -353,15 +354,18 @@ def get_basefiles_one(obj, objname, outdir, overwrite=False, verbose=False):
 
     if overwrite is False:
         if os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg'):
-            nobj = 0
-            if verbose:
-                print(f'Skipping existing cutout {basefile}.')
+            # need to make sure the image is the correct size
+            width_exist = int(fitsio.read_header(basefile+'.fits')['IMAGEW'])
+            if width == width_exist:
+                nobj = 0
+                if verbose:
+                    print(f'Skipping existing cutout {basefile}.')
 
     return basefile, obj['RA'], obj['DEC'], nobj
 
 
-def plan(cat, objname, layer='ls-dr9', comm=None, indir='.', outdir='.', 
-         mp=1, annotate=False, overwrite=False, verbose=False):
+def plan(cat, objname, width=152, layer='ls-dr9', comm=None, indir='.', 
+         outdir='.', mp=1, annotate=False, overwrite=False, verbose=False):
     """Build a plan!
 
     """
@@ -385,8 +389,8 @@ def plan(cat, objname, layer='ls-dr9', comm=None, indir='.', outdir='.',
         pngfiles = np.array(out[1], dtype=object)
         nobj = np.array(out[2], dtype=object)
     else:
-        mpargs = [(obj, objname1, outdir, overwrite, verbose) 
-                  for obj, objname1 in zip(cat, objname)]
+        mpargs = [(obj, objname1, width1, outdir, overwrite, verbose) 
+                  for obj, objname1, width1 in zip(cat, objname, width)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 out = P.map(_get_basefiles_one, mpargs)
@@ -438,7 +442,7 @@ def do_cutouts(cat, objname, layer='ls-dr9', width=152, pixscale=0.262,
 
     t0 = time.time()
     if rank == 0:
-        basefiles, allra, alldec, groups = plan(cat, objname, layer=layer, comm=comm, 
+        basefiles, allra, alldec, groups = plan(cat, objname, width=width, layer=layer, comm=comm,
                                                 outdir=outdir, overwrite=overwrite, mp=mp,
                                                 verbose=verbose)
         print(f'Planning took {time.time() - t0:.2f} sec')
@@ -714,7 +718,7 @@ def main():
 
         if args.catalog == 'sga2025-parent':
 
-            if 'NERSC' in os.environ:
+            if 'NERSC_HOST' in os.environ:
                 catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/' + \
                     f'SGA2025-parent-{args.region}-{args.version}.fits'
             else:
@@ -726,7 +730,7 @@ def main():
 
             F = fitsio.FITS(catfile)
             N = F[1].get_nrows()
-            if False:
+            if True:#False:
                 S = 1000
                 rng = np.random.default_rng(seed=1)
                 rows = rng.choice(N, size=S, replace=False)
@@ -762,23 +766,22 @@ def main():
             objname = np.char.replace(radec_to_name(cat['RA'], cat['DEC']), ' ', '_')
             #objname = np.char.replace(cat['OBJNAME'].value, ' ', '_')
 
-            if True:
-                print('HACK!')
-                from glob import glob
-                ff = glob(os.path.join(args.outdir, args.region, 'native', '???', '*.jpeg'))
-                ff = np.char.replace(ff, '.jpeg', '')
-                I = np.isin(objname, np.vectorize(os.path.basename)(ff))
-                objname = objname[I]
-                commonname = commonname[I]
-                cat = cat[I]
-            else:
-                I = np.isin(cat['OBJNAME'], ['UGC 05806'])
-                #I = np.isin(cat['OBJNAME'], ['IC 1259 NED01', 'IC 1259 NED02'])
-                objname = objname[I]
-                commonname = commonname[I]
-                cat = cat[I]
-                #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
-
+            #if True:
+            #    print('HACK!')
+            #    from glob import glob
+            #    ff = glob(os.path.join(args.outdir, args.region, 'native', '???', '*.jpeg'))
+            #    ff = np.char.replace(ff, '.jpeg', '')
+            #    I = np.isin(objname, np.vectorize(os.path.basename)(ff))
+            #    objname = objname[I]
+            #    commonname = commonname[I]
+            #    cat = cat[I]
+            #else:
+            #    I = np.isin(cat['OBJNAME'], ['UGC 05806'])
+            #    #I = np.isin(cat['OBJNAME'], ['IC 1259 NED01', 'IC 1259 NED02'])
+            #    objname = objname[I]
+            #    commonname = commonname[I]
+            #    cat = cat[I]
+            #    #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
 
             if args.ssl_legacysurvey:
                 # need to define a reference sample
@@ -816,13 +819,6 @@ def main():
 
             layer = 'ls-dr9'
 
-            #d26_pixels = cat['D26'] * 60 / args.pixscale # [pixels]
-            #d26cut_arcmin = args.width * 1.5 * args.pixscale / 60
-            #I = np.where(d26_pixels < (args.width * 1.5))[0] # no more than 50% larger than the default cutout width
-            #I = rand.choice(I, 4096, replace=False)
-            #print(f'Selecting {len(I):,d}/{len(cat):,d} SGA galaxies with cutout width < 1.5*{args.width} pixels (<{d26cut_arcmin:.2f} arcmin).')
-            #out = cat[I]
-
     if args.annotate_montage:
         return
 
@@ -842,7 +838,7 @@ def main():
 
     if args.plan:
         if rank == 0:
-            plan(cat, objname, layer=layer, comm=comm, indir=indir, outdir=outdir, 
+            plan(cat, objname, width=width, layer=layer, comm=comm, indir=indir, outdir=outdir, 
                  mp=args.mp, annotate=args.annotate, overwrite=args.overwrite, 
                  verbose=args.verbose)
     elif args.ssl_legacysurvey:
