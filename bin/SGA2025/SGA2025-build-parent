@@ -625,6 +625,17 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     origcat = Table(fitsio.read(catfile))
     print(f'Read {len(origcat):,d} objects from {catfile}')
 
+    pdb.set_trace()
+    cc = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'ROW_LVD', 'PGC', 'RA', 'DEC', 'RA_NED', 'DEC_NED']
+    bb = origcat[(origcat['ROW_LVD'] != -99) * (origcat['DIAM_LIT_REF'] != 'LVD') * (origcat['DIAM_LIT_REF'] != 'RC3')]#[cc]
+    bb = bb[np.argsort(bb['DIAM_LIT_REF'])]
+    multipage_skypatch(bb, cat=origcat, width_arcsec=180., jpgdir='tmp', pngdir='tmp', verbose=True, pdffile='tmp/qa-lvd.pdf')
+
+    from SGA.util import choose_geometry
+    mm = origcat[origcat['ROW_LVD'] != -99]
+    diam, _, _, ref = choose_geometry(mm, mindiam=-99.)
+
+
     # [1] Update individual-galaxy properties, including coordinates.
     cat = update_properties(origcat, verbose=verbose)
 
@@ -1510,8 +1521,8 @@ def build_parent_nocuts(verbose=True):
             parent['DEC'][I] = parent[I][f'DEC_{dataset}']
 
 
-    # NB - prefer NED names
-    for dataset in ['NED', 'NEDLVS', 'LVD', 'SGA2020', 'HYPERLEDA']:
+    # NB - prefer LVD then NED names
+    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
         I = np.where((parent['OBJNAME'] == '') * (parent[f'OBJNAME_{dataset}'] != ''))[0]
         if len(I) > 0:
             print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -1568,12 +1579,11 @@ def build_parent_nocuts(verbose=True):
                     if col == 'MAG_LIT':
                         parent['BAND_LIT'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND_LIT']
                     #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'BA_LIT', 'BA_LIT_REF', 'PA_LIT', 'PA_LIT_REF']
-            if 'DIAM' in col:
-                pdb.set_trace()
+            #if 'DIAM' in col:
+            #    pdb.set_trace()
 
         print()
 
-    pdb.set_trace()
     # special columns for HyperLeda and SGA2020 geometry
     basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
     basic_sga2020 = get_basic_geometry(sga2020, galaxy_column='ROW', verbose=verbose)
@@ -1641,8 +1651,6 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
         else:
             return Table()
     ccds = allccds[I]
-
-    #import pdb ; pdb.set_trace()
 
     onegal['NCCD'] = len(ccds)
     onegal['FILTERS'] = ''.join(sorted(set(ccds.filter)))

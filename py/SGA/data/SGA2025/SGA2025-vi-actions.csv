@@ -1,5 +1,12 @@
 # Object-level actions based on VI (visual inspections).
 objname,action,reason,comment
+# LVD dwarfs with no structural information; see
+A0952+69,drop,extreme lsb,From LVD sample.
+Clump III,drop,extreme lsb,From LVD sample.
+Clump I,drop,extreme lsb,From LVD sample.
+KK 35,drop,extreme lsb,From LVD sample.
+KK 208,drop,extreme lsb,From LVD sample.
+#
 SDSS J125839.45+273922.5,drop,faint,In '1256+27W01' group.
 [APS2006] J194.676010+27.66179,drop,faint,In '1256+27W01' group.
 [APS2006] J194.681305+27.66864,drop,faint,In '1256+27W01' group.
@@ -898,6 +905,10 @@ ESO-LV 2350041,drop,shred,Shred or part of 'ESO 235-IG 004'.
 ESO 553- G 019,drop,shred,Shred or part of 'ESO-LV 5530191'.
 ESO 417- G 009,drop,shred,Shred or part of 'ESO-LV 4170091'.
 SDSS J155556.89+195656.4,drop,shred,Shred or part of 'KUG 1553+200 NED02'.
+SDSS J002041.45+083701.2,drop,shred,Shred or part of 'JKB129'.
+GALEXASC J131520.11+473234.3,drop,shred,Shred or part of 'DDO 169NW'.
+SDSS J131704.45+375702.5,drop,shred,Shred or part of 'CGCG 189-050'.
+2MASX J14432661-4442199,drop,shred,Shred or part of 'ESO272-025'.
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
@@ -1823,3 +1834,4 @@ ESO-LV 2460241,hyperleda-coords,NED incorrect,
 ESO-LV 2540462,hyperleda-coords,NED incorrect,
 ESO-LV 1490251,hyperleda-coords,NED incorrect,
 ESO 149-IG 025,hyperleda-coords,NED incorrect,
+WISEA J132259.61-294324.0,hyperleda-coords,NED incorrect,
