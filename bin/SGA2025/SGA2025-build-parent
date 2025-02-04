@@ -9,7 +9,7 @@ SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
-SGA2025-build-parent --in-footprint --mp=128 --region=north
+SGA2025-build-parent --in-footprint --region=north --mp=128
 
 salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
@@ -449,7 +449,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                  'HS', 'ESO']
             drop_references = []
         case _:
-            VETO = ['HIPASS J1348-37', 'RCS 04020600360', 'NSA 142339', ] # LVD systems
+            VETO = ['HIPASS J1348-37', 'HIPASS J1131-31', 'HIPASS J1247-77', 'HIPASS J1337-39',
+                    'RCS 04020600360', 'NSA 142339', 'HIDEEP J1337-3320', ] # LVD systems
             drop_prefixes = ['WINGS', 'SRGb', '[MD2000]', 'HeCS', 'ESP',
                              'SDSSCGB', 'NVSS', 'AGC', ]
             drop_ignore_diam_prefixes = [
@@ -625,19 +626,23 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     origcat = Table(fitsio.read(catfile))
     print(f'Read {len(origcat):,d} objects from {catfile}')
 
-    pdb.set_trace()
-    cc = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'ROW_LVD', 'PGC', 'RA', 'DEC', 'RA_NED', 'DEC_NED']
-    bb = origcat[(origcat['ROW_LVD'] != -99) * (origcat['DIAM_LIT_REF'] != 'LVD') * (origcat['DIAM_LIT_REF'] != 'RC3')]#[cc]
-    bb = bb[np.argsort(bb['DIAM_LIT_REF'])]
-    multipage_skypatch(bb, cat=origcat, width_arcsec=180., jpgdir='tmp', pngdir='tmp', verbose=True, pdffile='tmp/qa-lvd.pdf')
-
-    from SGA.util import choose_geometry
-    mm = origcat[origcat['ROW_LVD'] != -99]
-    diam, _, _, ref = choose_geometry(mm, mindiam=-99.)
-
-
     # [1] Update individual-galaxy properties, including coordinates.
     cat = update_properties(origcat, verbose=verbose)
+
+    #cc = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'ROW_LVD', 'PGC', 'RA', 'DEC', 'RA_NED', 'DEC_NED']
+    #bb = cat[(cat['ROW_LVD'] != -99) * (cat['DIAM_LIT_REF'] != 'LVD') * (cat['DIAM_LIT_REF'] != 'RC3')]#[cc]
+    #bb = bb[np.argsort(bb['DIAM_LIT_REF'])]
+    #multipage_skypatch(bb, cat=cat, width_arcsec=180., jpgdir='tmp2', pngdir='tmp2', verbose=True, pdffile='tmp2/qa-lvd.pdf')
+    #
+    #mm = cat[(cat['ROW_LVD'] != -99) * (cat['RA_NED'] != -99.)] ; delta = np.int32(np.round(np.diag(arcsec_between(mm['RA'], mm['DEC'], mm['RA_NED'], mm['DEC_NED'])), 2)*100)/100
+    #I = delta>100. ; mm[I]['OBJNAME', 'RA', 'DEC', 'RA_LVD', 'DEC_LVD', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'RA_NED', 'DEC_NED', 'ROW_LVD'] ; delta[I]
+    #
+    #mm = cat[(cat['ROW_LVD'] != -99) * (cat['RA_HYPERLEDA'] != -99.)] ; delta = np.int32(np.round(np.diag(arcsec_between(mm['RA'], mm['DEC'], mm['RA_HYPERLEDA'], mm['DEC_HYPERLEDA'])), 2)*100)/100
+    #I = delta>100. ; mm[I]['OBJNAME', 'RA', 'DEC', 'RA_LVD', 'DEC_LVD', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'RA_NED', 'DEC_NED', 'ROW_LVD'] ; delta[I]
+    #
+    #from SGA.util import choose_geometry
+    #mm = cat[cat['ROW_LVD'] != -99]
+    #diam, _, _, ref = choose_geometry(mm, mindiam=-99.)
 
     # [2] Drop systems with uncommon prefixes (after VI).
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
@@ -670,8 +675,8 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.write(outfile, overwrite=True)
 
-    #pdb.set_trace()
-    #
+    pdb.set_trace()
+
     #I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
     #pdffile = 'tmp-objtype.pdf'
     #multipage_skypatch(cat[I[:50]], cat=cat, width_arcsec=30., ncol=5, nrow=5, clip=True,
@@ -1579,8 +1584,6 @@ def build_parent_nocuts(verbose=True):
                     if col == 'MAG_LIT':
                         parent['BAND_LIT'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND_LIT']
                     #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'BA_LIT', 'BA_LIT_REF', 'PA_LIT', 'PA_LIT_REF']
-            #if 'DIAM' in col:
-            #    pdb.set_trace()
 
         print()
 
@@ -1746,8 +1749,8 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         if len(work_byrank[rank]) > 0:
             cat_onerank = cat[indx_cat[work_byrank[rank]]]
             ccds_onerank = []
-            for indx_ccds_onegal in indx_ccds[work_byrank[rank]]:
-                ccds_onerank.append(allccds[indx_ccds_onegal])
+            for work_byrank_onegal in work_byrank[rank]:
+                ccds_onerank.append(allccds[indx_ccds[work_byrank_onegal]])
         else:
             cat_onerank = Table()
             ccds_onerank = Table()
@@ -1812,6 +1815,14 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         return None, None
 
 
+#def read_reference_footprint(region):
+#    """Read existing / previous catalogs of running the footprint code on an
+#    input catalog.
+#
+#    """
+
+
+
 def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=BANDS):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
@@ -1853,6 +1864,9 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
         cat['FILTERS'] = np.zeros(len(cat), '<U4')
         print(f'Read {len(cat):,d} objects from {catfile}')
 
+        # check for existing, reference catalogs from previous runs of this code
+        #read_reference_footprint(region)
+
         runs = {'north': 'north', 'south-dr9': 'south', 'south-dr10': 'south'}
         survey = get_survey(runs[region])#, allbands=BANDS)
         _ = survey.get_ccds_readonly()
@@ -1892,7 +1906,6 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
     # gather up the results and write out
     if rank == 0:
         from SGA.util import match
-
         allfcat = vstack(allfcat)
         allfccds = vstack(allfccds)
 

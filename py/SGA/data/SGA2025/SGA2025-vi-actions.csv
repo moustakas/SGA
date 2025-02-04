@@ -73,6 +73,7 @@ WISEA J102825.28+154757.2,drop,faint,
 SDSS J141300.79+525028.0,drop,faint,
 SDSS J023220.39-054448.6,drop,faint,
 SDSS J113108.55+021309.7,drop,faint,Coincident duplicate with Leo V (LVD).
+ABELL 3921_05:[PSE2006] 1203,drop,faint,In the body of 'Tucana'.
 #
 MGC 0006552,drop,compact,In 'MGC 0006552' group.
 2MASS J10225889-0010216,drop,compact,In 'MGC 0006552' group.
@@ -945,6 +946,7 @@ CGCG 084-009 NED02,drop,star,Foreground star in 'CGCG 084-009'.
 KUG 0707+362,drop,star,Foreground star next to 'WISEA J071103.84+360823.0'.
 ESO-LV 3490391,drop,star,Foreground star next to 'ESO 349- G 039'.
 ESO-LV 0300171,drop,star,
+WISEA J081944.15-850842.4,drop,star,Foreground star in 'ESO 006-001'.
 #
 ESO 292-IG 010 NED02,drop,no source,In 'ESO 292-IG 010' group.
 ESO 193-IG 008 NED02,drop,no source,In 'ESO 193-IG 008' group.
