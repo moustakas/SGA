@@ -9,14 +9,14 @@ SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
-SGA2025-build-parent --in-footprint --region=north --mp=128
+SGA2025-build-parent --in-footprint --region=dr9-north --mp=128
 
 salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-build-parent --in-footprint --region=north
+  SGA2025-build-parent --in-footprint --region=dr9-north
 
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-build-parent --in-footprint --region=south-dr9
+  SGA2025-build-parent --in-footprint --region=dr9-south
 
 
 """
@@ -1823,7 +1823,7 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
 
 
 
-def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=BANDS):
+def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, bands=BANDS):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
@@ -1867,7 +1867,7 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
         # check for existing, reference catalogs from previous runs of this code
         #read_reference_footprint(region)
 
-        runs = {'north': 'north', 'south-dr9': 'south', 'south-dr10': 'south'}
+        runs = {'dr9-north': 'north', 'dr9-south': 'south', 'dr10-south': 'south'}
         survey = get_survey(runs[region])#, allbands=BANDS)
         _ = survey.get_ccds_readonly()
         allccds = survey.ccds
@@ -1876,7 +1876,7 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
 
         # divide the parent catalog into more managable chunks, and loop
         nobj = len(cat)
-        if region == 'north':
+        if region == 'dr9-north':
             nperchunk = 100000
         else:
             nperchunk = 10000
@@ -1932,7 +1932,7 @@ def in_footprint(region='north', comm=None, radius=1., width_pixels=152, bands=B
 
     return
 
-def qa_footprint(region='north', show_fullcat=False):
+def qa_footprint(region='dr9-north', show_fullcat=False):
     """Build some simple QA of the in-footprint sample.
 
     """
@@ -1972,7 +1972,7 @@ def qa_footprint(region='north', show_fullcat=False):
         ax.set_ylim(30., 50.)
     else:
         ax.set_xlim(360., 0.)
-        if region == 'north':
+        if region == 'dr9-north':
             ax.set_ylim(-25., 90.)
         else:
             ax.set_ylim(-90., 90.)
@@ -1989,6 +1989,10 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south'], 
+                        type=str, help='Region to pass to --in-footprint.')
+
     parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned into the parent-nocuts catalog.')
     parser.add_argument('--build-parent-vicuts', action='store_true', help='Apply VI results to the parent-nocuts catalog.')
     parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned.')
@@ -1996,10 +2000,6 @@ def main():
 
     parser.add_argument('--qa-footprint', action='store_true', help='Build QA of the in-footprint samples.')
     parser.add_argument('--qa-parent', action='store_true', help='Build QA of the parent sample.')
-
-    parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
-    parser.add_argument('--region', default='north', choices=['north', 'south-dr9', 'south-dr10'], 
-                        type=str, help='Region to pass to --in-footprint.')
 
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')

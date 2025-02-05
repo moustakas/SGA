@@ -4,35 +4,40 @@
 
 Working interactively in a login node, one would do something like:
 
+  shifter --image dstndstn/cutouts:dvsro bash
+  source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
+
+    or
+
   shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro bash
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=1
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=1 --annotate
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
 
 Alternatively, in production, one would do:
 
   salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=4 > \
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 > \
     /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-north-native-JOBID.log 2>&1 &
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --mp=4 --rescale > \
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 --rescale > \
     /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-north-rescale-JOBID.log 2>&1 &
 
 To build the ssl-legacysurvey catalog:
   SGA2025-shifter
   source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=north --ssl-legacysurvey
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --ssl-legacysurvey
 
 
 Examining the LVD sample:
 
 time srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-cutouts \
-  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=north --mp=32 --overwrite
+  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=dr9-north --mp=32 --overwrite
 time srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-cutouts \
-  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=north --mp=32 --annotate --overwrite
+  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=dr9-north --mp=32 --annotate --overwrite
 time srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-cutouts \
-  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=north --annotate-montage
+  --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/lvd --catalog=sga2025-parent --region=dr9-north --annotated-montage
 
 """
 import pdb # for debugging
@@ -161,9 +166,11 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     ax.set_xlim(0, width)
     ax.set_ylim(0, width)
 
-    if len(group) > 5:
-        print('WARNING: Too many group members; keeping just the primary!')
-        group = Table(primary)
+    if len(group) > 10:
+        print('WARNING: Too many group members; keeping just the first 10 largest objects!')
+        diam, _, _, _ = choose_geometry(group)
+        srt = np.argsort(diam)[::-1]
+        group = group[srt][:10]
 
     for imem, onegal in enumerate(group):
         ra = onegal['RA']
@@ -235,10 +242,10 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     fig.savefig(pngfile, bbox_inches=0)#, dpi=200)
     plt.close()
     print(f'Wrote {pngfile}')
-    
+    #pdb.set_trace()
 
 
-def do_annotate(allcat, cat, objname, pixscale=0.262,
+def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
                 comm=None, mp=1, indir='.', outdir='.', overwrite=False, 
                 dry_run=False, verbose=False):
     """Wrapper to set up the full set of annotations.
@@ -251,18 +258,29 @@ def do_annotate(allcat, cat, objname, pixscale=0.262,
 
     t0 = time.time()
     if rank == 0:
+        mindiam = default_width * default_pixscale # [arcsec]
+        diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
+    
+        pixscale, width = get_pixscale_and_width(
+            diam, mindiam, rescale=False,
+            default_width=default_width,
+            default_pixscale=default_pixscale)
+
         jpgfiles, pngfiles, groups = plan(
-            cat, objname, comm=comm, outdir=outdir, 
+            cat, size=size, outdir=outdir, 
             indir=indir, overwrite=overwrite, mp=mp, 
             verbose=verbose, annotate=True)
         print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         jpgfiles, pngfiles, groups = [], [], []
+        pixscale, diam = [], []
 
     if comm:
         jpgfiles = comm.bcast(jpgfiles, root=0)
         pngfiles = comm.bcast(pngfiles, root=0)
         groups = comm.bcast(groups, root=0)
+        pixscale = comm.bcast(pixscale, root=0)
+        diam = comm.bcast(diam, root=0)
     sys.stdout.flush()
 
     # all done
@@ -275,28 +293,27 @@ def do_annotate(allcat, cat, objname, pixscale=0.262,
     sys.stdout.flush()
 
     indx = groups[rank]
+    if len(indx) == 0:
+        return
 
-    if np.isscalar(pixscale):
-        in_pixscale = [pixscale] * len(indx)
-    else:
-        in_pixscale = pixscale
+    commonname = cat[indx]['OBJNAME'].value
+    objname = radec_to_name(cat[indx]['RA'].value, cat[indx]['DEC'].value, unixsafe=True)
 
     # initial match
     allmatches = match_radec(cat[indx]['RA'].value, cat[indx]['DEC'].value,
-                             allcat['RA'].value, allcat['DEC'].value,
+                             fullcat['RA'].value, fullcat['DEC'].value,
                              2.*np.max(diam)/3600., indexlist=True, notself=False)
 
     mpargs = []
-    for iobj, thisindx in enumerate(indx):
-        primary = cat[thisindx]
+    for iobj in range(len(indx)):
+        primary = cat[indx[iobj]]
         # refine the search to this object's diameter
-        m1, m2, _ = match_radec(primary['RA'], primary['DEC'], allcat[allmatches[iobj]]['RA'],
-                                allcat[allmatches[iobj]]['DEC'], 2.*diam[thisindx]/3600.)
-        group = allcat[allmatches[iobj]][m2]
-        #if primary['OBJNAME'] == 'IC 1259 NED01':
-        #    pdb.set_trace()
-        mpargs.append((jpgfiles[thisindx], pngfiles[thisindx], objname[thisindx], commonname[thisindx],
-                       in_pixscale[thisindx], diam[thisindx], primary, group, dry_run, rank, thisindx))
+        m1, m2, _ = match_radec(primary['RA'], primary['DEC'], fullcat[allmatches[iobj]]['RA'],
+                                fullcat[allmatches[iobj]]['DEC'], 2.*diam[indx[iobj]]/3600.)
+        group = fullcat[allmatches[iobj]][m2]
+        mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
+                       pixscale[indx[iobj]], diam[indx[iobj]], primary, group, dry_run, 
+                       rank, indx[iobj]))
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_annotate_one, mpargs)
@@ -378,16 +395,14 @@ def get_basefiles_one(obj, objname, width, outdir, overwrite=False,
     return basefile, obj['RA'], obj['DEC'], nobj
 
 
-def plan(cat, objname, width=152, layer='ls-dr9', comm=None, indir='.', 
-         outdir='.', mp=1, annotate=False, overwrite=False, verbose=False):
+def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.', 
+         size=1, mp=1, annotate=False, overwrite=False, verbose=False):
     """Build a plan!
 
     """
     t0 = time.time()
-    if comm is None:
-        rank, size = 0, 1
-    else:
-        rank, size = comm.rank, comm.size
+
+    objname = radec_to_name(cat['RA'], cat['DEC'], unixsafe=True)
 
     if annotate:
         mpargs = [(obj, objname1, indir, outdir, overwrite, verbose) 
@@ -403,6 +418,9 @@ def plan(cat, objname, width=152, layer='ls-dr9', comm=None, indir='.',
         pngfiles = np.array(out[1], dtype=object)
         nobj = np.array(out[2], dtype=object)
     else:
+        if np.isscalar(width):
+            width = [width] * len(objname)
+
         mpargs = [(obj, objname1, width1, outdir, overwrite, verbose) 
                   for obj, objname1, width1 in zip(cat, objname, width)]
         if mp > 1:
@@ -425,21 +443,17 @@ def plan(cat, objname, width=152, layer='ls-dr9', comm=None, indir='.',
     if len(itodo) > 0:
         nobj = nobj[itodo]
         if annotate:
-            print(f'Annotating {np.sum(nobj):,d} images.')
+            print(f'Annotated images needed for {np.sum(nobj):,d} objects.')
             jpgfiles = jpgfiles[itodo]
             pngfiles = pngfiles[itodo]
         else:
-            print(f'Generating cutouts for {np.sum(nobj):,d} objects.')
+            print(f'Cutouts needed for {np.sum(nobj):,d} objects.')
             basefiles = basefiles[itodo]
             allra = allra[itodo]
             alldec = alldec[itodo]
-
-        indices = np.arange(len(nobj))
-        groups = np.array_split(indices, size) # unweighted distribution
+        groups = np.array_split(itodo, size) # unweighted distribution
     else:
         groups = [np.array([])]
-
-    pdb.set_trace()
 
     if annotate:
         return jpgfiles, pngfiles, groups
@@ -447,9 +461,9 @@ def plan(cat, objname, width=152, layer='ls-dr9', comm=None, indir='.',
         return basefiles, allra, alldec, groups
 
 
-def do_cutouts(cat, objname, layer='ls-dr9', width=152, pixscale=0.262, 
-               comm=None, mp=1, outdir='.', overwrite=False, dry_run=False,
-               verbose=False):
+def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262, 
+               comm=None, mp=1, outdir='.', rescale=False, overwrite=False, 
+               dry_run=False, verbose=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -458,18 +472,29 @@ def do_cutouts(cat, objname, layer='ls-dr9', width=152, pixscale=0.262,
 
     t0 = time.time()
     if rank == 0:
-        basefiles, allra, alldec, groups = plan(cat, objname, width=width, layer=layer, comm=comm,
-                                                outdir=outdir, overwrite=overwrite, mp=mp,
-                                                verbose=verbose)
+        mindiam = default_width * default_pixscale # [arcsec]
+        diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
+    
+        pixscale, width = get_pixscale_and_width(
+            diam, mindiam, rescale=rescale, 
+            default_width=default_width,
+            default_pixscale=default_pixscale)
+    
+        basefiles, allra, alldec, groups = plan(
+            cat, width=width, layer=layer, outdir=outdir, 
+            size=size, overwrite=overwrite, mp=mp, verbose=verbose)
         print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
+        pixscale, width = [], []
 
     if comm:
         basefiles = comm.bcast(basefiles, root=0)
         allra = comm.bcast(allra, root=0)
         alldec = comm.bcast(alldec, root=0)
         groups = comm.bcast(groups, root=0)
+        pixscale = comm.bcast(pixscale, root=0)
+        width = comm.bcast(width, root=0)
     sys.stdout.flush()
     
     # all done
@@ -482,26 +507,17 @@ def do_cutouts(cat, objname, layer='ls-dr9', width=152, pixscale=0.262,
     sys.stdout.flush()
 
     indx = groups[rank]
+    if len(indx) == 0:
+        return
 
-    if np.isscalar(pixscale):
-        in_pixscale = [pixscale] * len(indx)
-    else:
-        in_pixscale = pixscale
-
-    if np.isscalar(width):
-        in_width = [width] * len(indx)
-    else:
-        in_width = width
-
-    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], in_width[iobj], 
-               in_pixscale[iobj], layer, dry_run, rank, iobj) for iobj in indx]
+    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width[iobj], 
+               pixscale[iobj], layer, dry_run, rank, iobj) for iobj in indx]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_cutout_one, mpargs)
     else:
         [cutout_one(*mparg) for mparg in mpargs]
 
-    #print(f'  rank {rank} is done')
     sys.stdout.flush()
 
     if comm is not None:
@@ -509,23 +525,6 @@ def do_cutouts(cat, objname, layer='ls-dr9', width=152, pixscale=0.262,
 
     if rank == 0 and not dry_run:
         print(f'All done at {time.asctime()}')
-
-
-def read_catalog(catfile, ext=1, columns=None, rows=None):
-    """Simple wrapper to read an input catalog.
-
-    """
-    if not os.path.isfile(catfile):
-        print(f'Catalog {catfile} not found')
-        return
-
-    try:
-        cat = Table(fitsio.read(catfile, ext=ext, rows=rows, columns=columns))
-        print(f'Read {len(cat):,d} galaxies from {catfile}')
-        return cat
-    except:
-        msg = f'Problem reading {args.catalog}'
-        raise IOError(msg)
 
 
 def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=5.,
@@ -557,20 +556,19 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=5.,
     return pixscale, width
 
 
-
-def build_ssl_legacysurvey_refcat(cat, allcat):
+def build_ssl_legacysurvey_refcat(cat, fullcat):
     """Build the reference catalog for use with ssl-legacysurvey
 
     """
     # use isolated RC3 galaxies as the reference sample
-    diam, _, _, ref = choose_geometry(cat)
+    diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
     I = np.where((cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
     #I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
     #I = np.arange(20)
     refcat = cat[I]
     allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
-                             allcat['RA'].value, allcat['DEC'].value,
+                             fullcat['RA'].value, fullcat['DEC'].value,
                              60./3600., indexlist=True, notself=False)
 
     refindx = []
@@ -582,15 +580,15 @@ def build_ssl_legacysurvey_refcat(cat, allcat):
     sslcols = ['OBJNAME', 'RA', 'DEC', 'PARENT_ROW']
     refcat = refcat[refindx][sslcols]
 
-    print('Hack! - trimming the ssl_legacysurvey sample')
-    refcat = refcat[:2000]
-    cat = cat[:20000]
+    print('Hack! - trimming the ssl_legacysurvey sample to objects smaller than 40 arcsec!')
+    cat = cat[diam == 0.]
 
     return refcat, cat
 
 
-def build_ssl_legacysurvey(refcat, cat, region='north', width=152, bands=['g', 'r', 'z'],
-                           cutoutdir='.', outdir='.', overwrite=False, verbose=False):
+def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, 
+                           bands=['g', 'r', 'z'], cutoutdir='.', outdir='.', 
+                           overwrite=False, verbose=False):
     """Build the hdf5 file needed by ssl-legacysurvey.
 
     nband = 3 (grz)
@@ -612,10 +610,10 @@ def build_ssl_legacysurvey(refcat, cat, region='north', width=152, bands=['g', '
 
         return np.array(fitsfiles), np.array(I)
 
-
-    nrefcat = len(refcat)
-    ncat = len(cat)
     nband = len(bands)
+
+    # need to define a reference sample
+    refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat)
 
     h5file = os.path.join(outdir, f'ssl-{region}.hdf5')
     if os.path.isfile(h5file) and not overwrite:
@@ -624,6 +622,17 @@ def build_ssl_legacysurvey(refcat, cat, region='north', width=152, bands=['g', '
 
     refcatfiles, refcatindx = get_fitsfiles(refcat)
     catfiles, catindx = get_fitsfiles(cat)
+
+    print('Hack! - trimming the ssl_legacysurvey samples to 2000x20000')
+    nrefcat = 2000
+    ncat = 20000
+    #nrefcat = len(refcatindx)
+    #ncat = len(catindx)
+
+    refcatfiles = refcatfiles[:nrefcat]
+    refcatindx = refcatindx[:nrefcat]
+    catfiles = catfiles[:ncat]
+    catindx = catindx[:ncat]
 
     rows = np.hstack((refcat[refcatindx]['PARENT_ROW'].value, cat[catindx]['PARENT_ROW'].value))
     ras = np.hstack((refcat[refcatindx]['RA'].value, cat[catindx]['RA'].value))
@@ -645,6 +654,127 @@ def build_ssl_legacysurvey(refcat, cat, region='north', width=152, bands=['g', '
     print(f'Wrote {h5file} with {nrefcat:,d} reference objects and {ncat:,d} objects to classify.')
 
 
+def annotated_montage(cat, outdir='.', region='dr9-north', overwrite=False):
+    """Build a single PDF file of annotated images, to enable fast
+    visual inspection.
+
+    """
+    from glob import glob
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.image import imread
+
+    pdffile = os.path.join(outdir, f'annotate-montage-{region}.pdf')
+    if os.path.isfile(pdffile) and not overwrite:
+        print(f'Output file {pdffile} exists.')
+        return
+
+    raslices = get_raslice(cat['RA'].value)
+    objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)    
+    pngfiles = np.hstack([glob(os.path.join(outdir, region, 'annotate', raslice, f'{objname}.png') )
+                         for raslice, objname in zip(raslices, objnames)])
+
+    #pngfiles = np.array(glob(os.path.join(outdir, region, 'annotate', '???', '*.png')))
+    #pngfiles = pngfiles[np.argsort(pngfiles)]
+    #pngfiles = pngfiles[:16]
+    allindx = np.arange(len(pngfiles))
+
+    ncol = 4
+    nrow = 4
+
+    nperpage = ncol * nrow
+    npage = int(np.ceil(len(pngfiles) / nperpage))
+    print(f'Distributing {len(pngfiles):,d} annotated images to {npage:,d} pages.')
+
+    pdf = PdfPages(pdffile)
+    for ipage in range(npage):
+        print(f'Building page {ipage+1:,d}/{npage:,d}')
+        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
+        fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
+        for iax, xx in enumerate(np.atleast_1d(ax).flat):
+            if iax < len(indx):
+                xx.imshow(imread(pngfiles[indx[iax]]), interpolation='None')
+            xx.axis('off')
+        fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
+        pdf.savefig(fig, dpi=150)
+        plt.close()
+    pdf.close()
+    print(f'Wrote {pdffile}')
+
+
+def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
+    """Simple wrapper to read an input catalog.
+
+    """
+    if not os.path.isfile(catfile):
+        print(f'Catalog {catfile} not found')
+        return
+
+    try:
+        cat = Table(fitsio.read(catfile, ext=ext, rows=rows, columns=columns))
+        print(f'Read {len(cat):,d} galaxies from {catfile}')
+        return cat
+    except:
+        msg = f'Problem reading {args.catalog}'
+        raise IOError(msg)
+
+
+def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None, 
+                 annotate=False, ssl_legacysurvey=False):
+    """Simple wrapper to read a specified catalog.
+
+    """
+    if catalog == 'sga2025-parent':
+        from SGA.io import parent_version
+        version = parent_version()
+
+        columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'DIAM_LIT_REF',
+                   'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
+                   'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'PARENT_ROW']
+
+        if 'NERSC_HOST' in os.environ:
+            catdir = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent'
+        else:
+            catdir = '/Users/ioannis/research/projects/SGA/2025/parent'
+                
+        catfile = os.path.join(catdir, f'SGA2025-parent-{region}-{version}.fits')
+
+        F = fitsio.FITS(catfile)
+        N = F[1].get_nrows()
+
+        # read a test sample
+        if ntest is not None:
+            rng = np.random.default_rng(seed=1)
+            rows = rng.choice(N, size=ntest, replace=False)
+            rows = rows[np.argsort(rows)]
+        else:
+            rows = np.arange(N)
+
+        cat = read_fits_catalog(catfile, columns=columns, rows=rows)
+
+        # when annotating, must make a copy *before* any cuts!
+        if annotate or ssl_legacysurvey:
+            if ntest is not None:
+                fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
+            else:
+                fullcat = cat.copy()
+        else:
+            fullcat = None
+
+        # more testing below here
+        if False:
+            diam, ba, pa, ref = choose_geometry(cat) ; cat = cat[diam > 5.*60.]
+            #cat = cat[cat['ROW_LVD'] != -99]
+            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
+            #cat = cat[(cat['DIAM_HYPERLEDA'] > 5.) * (cat['FILTERS'] == 'grz')]
+            #cat = cat[(cat['DIAM_LIT'] < 5.) * (cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
+            #cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
+            print(f'Trimmed to {len(cat):,d} objects.')
+
+    return cat, fullcat
+
+
 def main():
     """Main wrapper.
 
@@ -652,17 +782,18 @@ def main():
     import argparse    
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--catalog', type=str, default='sga2025-parent', choices=['sga2025-parent', 'sga2020'], help='Catalog to read.')
-    parser.add_argument('--region', default='north', choices=['north', 'south'], type=str, help='Region to analyze (only for --catalog="sga2025-parent").')
+    parser.add_argument('--catalog', type=str, default='sga2025-parent', choices=['sga2025-parent'], help='Catalog to read.')
+    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south'], type=str, 
+                        help='Region to analyze (only for --catalog="sga2025-parent").')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--ntest', type=int, default=None, help='Number of test objects to read.')
     parser.add_argument('--width', type=int, default=152, help='Default cutout width [pixels].')
     parser.add_argument('--pixscale', type=float, default=0.262, help='Default pixel scale [arcsec/pixel].')
-    parser.add_argument('--version', default='v1.0', type=str, help='Version of the parent catalog to read (only for --catalog="sga2025-parent").')
     parser.add_argument('--outdir', default='./', type=str, help='Base output data directory.')
 
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
-    parser.add_argument('--annotate-montage', action='store_true', help='Generate multipage montages of annotated images.')
+    parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
     parser.add_argument('--ssl-legacysurvey', action='store_true', help='Build the hdf5 file needed by ssl-legacysurvey.')
@@ -683,193 +814,74 @@ def main():
         multiprocessing.set_start_method('spawn')
 
     if comm is None:
-        rank = 0
+        rank, size = 0, 1
     else:
-        rank = comm.rank
+        rank, size = comm.rank, comm.size
 
-    (cat, allcat, objname, commonname, layer, indir, outdir,
-     cutoutdir, pixscale, width, diam) = [[]] * 11
+    # define paths depending on the input keywords
+    if args.ssl_legacysurvey:
+        cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
+    else:
+        # annotated cutouts
+        if args.annotate:
+            indir = os.path.join(args.outdir, args.region, 'native')
+            outdir = os.path.join(args.outdir, args.region, 'annotate')
+        else:
+            # native or rescaled cutouts
+            layer = f'ls-{args.region}'
+            if args.rescale:
+                outdir = os.path.join(args.outdir, args.region, 'rescale')
+            else:
+                outdir = os.path.join(args.outdir, args.region, 'native')
+
+
+    cat, fullcat = None, None
     if rank == 0:
-        if args.annotate_montage:
-            from glob import glob
-            import matplotlib.pyplot as plt
-            from matplotlib.backends.backend_pdf import PdfPages
-            from matplotlib.image import imread
+        cat, fullcat = read_catalog(args.catalog, region=args.region, annotate=args.annotate, 
+                                    ssl_legacysurvey=args.ssl_legacysurvey, ntest=args.ntest)
 
-            pdffile = os.path.join(args.outdir, f'annotate-montage-{args.region}.pdf')
-            if os.path.isfile(pdffile) and not args.overwrite:
-                print(f'Output file {pdffile} exists.')
-                return
-
-            pngfiles = np.array(glob(os.path.join(args.outdir, args.region, 'annotate', '???', '*.png')))
-            pngfiles = pngfiles[np.argsort(pngfiles)]
-            #pngfiles = pngfiles[:16]
-            allindx = np.arange(len(pngfiles))
-
-            ncol = 4
-            nrow = 4
-
-            nperpage = ncol * nrow
-            npage = int(np.ceil(len(pngfiles) / nperpage))
-            print(f'Distributing {len(pngfiles):,d} annotated images to {npage:,d} pages.')
-
-            pdf = PdfPages(pdffile)
-            for ipage in range(npage):
-                print(f'Building page {ipage+1:,d}/{npage:,d}')
-                indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
-                fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
-                for iax, xx in enumerate(np.atleast_1d(ax).flat):
-                    if iax < len(indx):
-                        xx.imshow(imread(pngfiles[indx[iax]]), interpolation='None')
-                    xx.axis('off')
-                fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
-                pdf.savefig(fig, dpi=150)
-                plt.close()
-            pdf.close()
-            print(f'Wrote {pdffile}')
-
-            return
-
-
-        if args.catalog == 'sga2025-parent':
-
-            if 'NERSC_HOST' in os.environ:
-                catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/' + \
-                    f'SGA2025-parent-{args.region}-{args.version}.fits'
-            else:
-                catfile = '/Users/ioannis/research/projects/SGA/2025/parent/' + \
-                    f'SGA2025-parent-{args.region}-{args.version}.fits'
-            columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'DIAM_LIT_REF',
-                       'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
-                       'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'PARENT_ROW']
-
-            F = fitsio.FITS(catfile)
-            N = F[1].get_nrows()
-            if False:
-                S = 1000
-                rng = np.random.default_rng(seed=1)
-                rows = rng.choice(N, size=S, replace=False)
-                rows = rows[np.argsort(rows)]
-            else:
-                rows = np.arange(N)
-
-            cat = read_catalog(catfile, columns=columns, rows=rows)
-
-            # when annotating, must make a copy *before* any cuts!
-            if args.annotate or args.ssl_legacysurvey:
-                allcat = cat.copy()
-
-            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
-            #cat = cat[cat['DIAM'] == 60.]
-
-            #if False:
-            #    refcat = cat[(cat['DIAM_HYPERLEDA'] > 5.) * (cat['FILTERS'] == 'grz')]
-            #    m1, m2, _ = match_radec(refcat['RA'], refcat['DEC'], cat['RA'], cat['DEC'], 5./60)
-            #    cat = cat[m2]
-
-            #refcat = cat[(cat['DIAM_LIT'] < 5.) * (cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
-            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], refcat['RA'], refcat['DEC'], 120/3600.)
-            #cat = cat[m1]
-            #cat = cat[np.argsort(cat['DIAM_LIT'])[::-1]]
-
-            #cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
-            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
-            #cat = cat[:8]
-            #print(f'Trimming to {len(cat):,d} objects')
-
-            commonname = cat['OBJNAME']
-            objname = np.char.replace(radec_to_name(cat['RA'], cat['DEC']), ' ', '_')
-
-            if False:
-                print('HACK!')
-                from glob import glob
-                ff = glob(os.path.join(args.outdir, args.region, 'native', '???', '*.jpeg'))
-                ff = np.char.replace(ff, '.jpeg', '')
-                I = np.isin(objname, np.vectorize(os.path.basename)(ff))
-                objname = objname[I]
-                commonname = commonname[I]
-                cat = cat[I]
-            else:
-                I = cat['ROW_LVD'] != -99
-                #I = np.isin(cat['OBJNAME'], ['UGC 05806'])
-                #I = np.isin(cat['OBJNAME'], ['IC 1259 NED01', 'IC 1259 NED02'])
-                objname = objname[I]
-                commonname = commonname[I]
-                cat = cat[I]
-                #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
-
-            if args.ssl_legacysurvey:
-                # need to define a reference sample
-                refcat, cat = build_ssl_legacysurvey_refcat(cat, allcat)
-                cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
-            else:
-                mindiam = args.width * args.pixscale # [arcsec]
-                diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
-    
-                pixscale, width = get_pixscale_and_width(
-                    diam, mindiam, rescale=args.rescale, 
-                    default_width=args.width,
-                    default_pixscale=args.pixscale)
-    
-                if args.annotate:
-                    indir = os.path.join(args.outdir, args.region, 'native')
-                    outdir = os.path.join(args.outdir, args.region, 'annotate')
-                else:
-                    layer = f'ls-dr9-{args.region}'
-                    if args.region == 'south':
-                        # FIXME - need DR10 CCDs file
-                        #layer = f'ls-dr10-{args.region}'
-                        pass
-        
-                    if args.rescale:
-                        outdir = os.path.join(args.outdir, args.region, 'rescale')
-                    else:
-                        outdir = os.path.join(args.outdir, args.region, 'native')
-
-        elif args.catalog == 'sga2020':
-            catfile = '/global/cfs/cdirs/cosmo/data/sga/2020/SGA-2020.fits'
-            columns = ['SGA_ID', 'GALAXY', 'RA', 'DEC']
-            cat = read_catalog(catfile, ext='ELLIPSE', columns=columns)#, rows=np.arange(10))
-            objname = [f'SGA2020-{sgaid:06d}' for sgaid in cat['SGA_ID']]
-
-            layer = 'ls-dr9'
-
-    if args.annotate_montage:
-        return
-
-        
     if comm is not None:
         cat = comm.bcast(cat, root=0)
-        allcat = comm.bcast(allcat, root=0)
-        objname = comm.bcast(objname, root=0)
-        commonname = comm.bcast(commonname, root=0)
-        layer = comm.bcast(layer, root=0)
-        outdir = comm.bcast(outdir, root=0)
-        indir = comm.bcast(indir, root=0)
-        cutoutdir = comm.bcast(cutoutdir, root=0)
-        pixscale = comm.bcast(pixscale, root=0)
-        width = comm.bcast(width, root=0)
-        diam = comm.bcast(diam, root=0)
+        fullcat = comm.bcast(fullcat, root=0)
 
-    if args.ssl_legacysurvey:
-        if rank == 0:
-            build_ssl_legacysurvey(refcat, cat, region=args.region, width=args.width,
-                                   cutoutdir=cutoutdir, outdir=args.outdir,
-                                   overwrite=args.overwrite, verbose=args.verbose)
-    elif args.plan:
-        if rank == 0:
-            plan(cat, objname, width=width, layer=layer, comm=comm, indir=indir, outdir=outdir, 
-                 mp=args.mp, annotate=args.annotate, overwrite=args.overwrite, 
-                 verbose=args.verbose)
-    else:
+    if args.annotated_montage and rank == 0:
+        annotated_montage(cat, region=args.region, outdir=args.outdir, 
+                          overwrite=args.overwrite)
+        return
+        
+    if args.ssl_legacysurvey and rank == 0:
+        build_ssl_legacysurvey(cat, fullcat, region=args.region, width=args.width,
+                               cutoutdir=cutoutdir, outdir=args.outdir,
+                               overwrite=args.overwrite, verbose=args.verbose)
+        return
+
+    if args.plan and rank == 0:
         if args.annotate:
-            do_annotate(allcat, cat, objname, pixscale=pixscale, mp=args.mp, comm=comm, 
-                        indir=indir, outdir=outdir, overwrite=args.overwrite, 
-                        dry_run=args.dry_run, verbose=args.verbose)
+            width = None
         else:
-            do_cutouts(cat, objname, layer=layer, width=width, pixscale=pixscale, 
-                       mp=args.mp, comm=comm, outdir=outdir, overwrite=args.overwrite,
-                       dry_run=args.dry_run, verbose=args.verbose)
+            mindiam = args.width * args.pixscale # [arcsec]
+            diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
+
+            pixscale, width = get_pixscale_and_width(
+                diam, mindiam, rescale=args.rescale, 
+                default_width=args.width, 
+                default_pixscale=args.pixscale)
+
+        plan(cat, width=width, layer=layer, size=size, indir=indir, 
+             outdir=outdir, mp=args.mp, annotate=args.annotate, 
+             overwrite=args.overwrite, verbose=args.verbose)
+        return
+
+    if args.annotate:
+        do_annotate(cat, fullcat, default_pixscale=args.pixscale, 
+                    default_width=args.width, mp=args.mp, 
+                    comm=comm, indir=indir, outdir=outdir, overwrite=args.overwrite, 
+                    dry_run=args.dry_run, verbose=args.verbose)
+    else:
+        do_cutouts(cat, layer=layer, mp=args.mp, comm=comm, outdir=outdir, 
+                   default_pixscale=args.pixscale, default_width=args.width, 
+                   rescale=args.rescale, overwrite=args.overwrite,
+                   dry_run=args.dry_run, verbose=args.verbose)
 
 if __name__ == '__main__':
     main()

@@ -115,7 +115,7 @@ def choose_geometry(cat, mindiam=152*0.262):
         ref[I] = cat[I]['DIAM_LIT_REF']
 
     # set a minimum floor on the diameter
-    I = diam < mindiam
+    I = diam <= mindiam
     if np.any(I):
         diam[I] = mindiam
 
@@ -751,7 +751,7 @@ def weighted_partition(weights, n):
     return groups
 
 
-def radec_to_name(target_ra, target_dec, prefix='SGA2025'):
+def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
     """Convert the right ascension and declination of an object into a
     disk-friendly "name", for reference in publications.  Length of
     `target_ra` and `target_dec` must be the same if providing an
@@ -823,4 +823,10 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025'):
             name += '+' + zdec[:-precision] + '.' + zdec[-precision:]
         names.append(name)
 
-    return np.array(names)
+    names = np.array(names)
+
+    # convert spaces to underscores
+    if unixsafe:
+        names = np.char.replace(names, ' ', '_')
+
+    return names
