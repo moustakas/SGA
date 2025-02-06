@@ -14,12 +14,6 @@ BANDS = ['g', 'r', 'z']
 
 PIXSCALE = 0.262
 
-def custom_brickname(ra, dec):
-    brickname = '{:06d}{}{:05d}'.format(
-        int(1000*ra), 'm' if dec < 0 else 'p',
-        int(1000*np.abs(dec)))
-    return brickname
-
 
 def _mosaic_width(radius_mosaic, pixscale):
     """Ensure the mosaic is an odd number of pixels so the central can land on a
@@ -306,7 +300,9 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     from legacypipe.runbrick.stage_tims.
 
     """
+    from SGA.io import custom_brickname
     from legacypipe.survey import wcs_for_brick, BrickDuck
+
     brickname = f'custom-{custom_brickname(ra, dec)}'
     brick = BrickDuck(ra, dec, brickname)
 
@@ -694,6 +690,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
         with custom sky-subtraction
 
     """
+    from SGA.io import custom_brickname
     import subprocess
     
     if survey is None:

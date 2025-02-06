@@ -50,8 +50,8 @@ import multiprocessing
 
 from astrometry.libkd.spherematch import match_radec
 
-from SGA.io import custom_brickname, get_raslice
-from SGA.util import radec_to_name, choose_geometry, parse_geometry
+from SGA.io import custom_brickname, get_raslice, radec_to_name
+from SGA.ellipse import choose_geometry, parse_geometry
 
 
 def _get_annotate_one(args):
@@ -563,7 +563,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     # use isolated RC3 galaxies as the reference sample
     diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
-    I = np.where((cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
+    I = np.where((cat['FILTERS'] == 'grz') * (cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
     #I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
     #I = np.arange(20)
     refcat = cat[I]
@@ -577,21 +577,22 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
             refindx.append(ii)
     refindx = np.array(refindx)
 
-    sslcols = ['OBJNAME', 'RA', 'DEC', 'PARENT_ROW']
+    sslcols = ['OBJNAME', 'RA', 'DEC', 'ROW_PARENT']
     refcat = refcat[refindx][sslcols]
 
     print('Hack! - trimming the ssl_legacysurvey sample to objects smaller than 40 arcsec!')
-    cat = cat[diam == 0.]
+    cat = cat[(cat['FILTERS'] == 'grz') * (diam == 0.)]
 
     return refcat, cat
 
 
-def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, 
-                           bands=['g', 'r', 'z'], cutoutdir='.', outdir='.', 
-                           overwrite=False, verbose=False):
+def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=20000,
+                           suffix='v1', bands=['g', 'r', 'z'], cutoutdir='.', outdir='.', 
+                           verbose=False, overwrite=False):
     """Build the hdf5 file needed by ssl-legacysurvey.
 
     nband = 3 (grz)
+    ncatmax - maximum number of files per output catalog
 
     """
     import h5py
@@ -612,47 +613,51 @@ def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152,
 
     nband = len(bands)
 
-    # need to define a reference sample
+    # need to define a reference sample and make sure the files exist
     refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat)
-
-    h5file = os.path.join(outdir, f'ssl-{region}.hdf5')
-    if os.path.isfile(h5file) and not overwrite:
-        print(f'Skipping existing HDF5 file {h5file}')
-        return
-
     refcatfiles, refcatindx = get_fitsfiles(refcat)
     catfiles, catindx = get_fitsfiles(cat)
 
-    print('Hack! - trimming the ssl_legacysurvey samples to 2000x20000')
-    nrefcat = 2000
-    ncat = 20000
-    #nrefcat = len(refcatindx)
-    #ncat = len(catindx)
+    cat = cat[catindx]
+    refcat = refcat[refcatindx]
+    ncat = len(cat)
+    nrefcat = len(refcat)
 
-    refcatfiles = refcatfiles[:nrefcat]
-    refcatindx = refcatindx[:nrefcat]
-    catfiles = catfiles[:ncat]
-    catindx = catindx[:ncat]
+    # Ensure each output file has no more than ncatmax objects, to we
+    # don't run into memory problems at NERSC.
+    nchunk = int(np.ceil(ncat / ncatmax))
+    chunkindx = np.array_split(np.arange(ncat), nchunk)
 
-    rows = np.hstack((refcat[refcatindx]['PARENT_ROW'].value, cat[catindx]['PARENT_ROW'].value))
-    ras = np.hstack((refcat[refcatindx]['RA'].value, cat[catindx]['RA'].value))
-    decs = np.hstack((refcat[refcatindx]['DEC'].value, cat[catindx]['DEC'].value))
-    fitsfiles = np.hstack((refcatfiles, catfiles))
+    for ichunk in range(nchunk):
 
-    F = h5py.File(h5file, 'w')
-    F.create_dataset('row', data=rows)
-    F.create_dataset('ra', data=ras)
-    F.create_dataset('dec', data=decs)
+        h5file = os.path.join(outdir, f'ssl-parent-{region}-chunk{ichunk:03}-{suffix}.hdf5')
+        if os.path.isfile(h5file) and not overwrite:
+            print(f'Skipping existing HDF5 file {h5file}')
+            continue
 
-    images = F.create_dataset('images', (nrefcat + ncat, nband, width, width))
-    for iobj, fitsfile in enumerate(fitsfiles):
-        # need to deal with missing bandpasses...
-        img = fitsio.read(fitsfile)
-        images[iobj, :] = img
+        refs = np.hstack((np.ones(nrefcat, bool), np.zeros(len(chunkindx[ichunk]), bool)))
+        rows = np.hstack((refcat['ROW_PARENT'].value, cat[chunkindx[ichunk]]['ROW_PARENT'].value))
+        ras = np.hstack((refcat['RA'].value, cat[chunkindx[ichunk]]['RA'].value))
+        decs = np.hstack((refcat['DEC'].value, cat[chunkindx[ichunk]]['DEC'].value))
+        fitsfiles = np.hstack((refcatfiles, catfiles[chunkindx[ichunk]]))
+    
+        F = h5py.File(h5file, 'w')
+        F.create_dataset('ref', data=refs)
+        F.create_dataset('row', data=rows)
+        F.create_dataset('ra', data=ras)
+        F.create_dataset('dec', data=decs)
+    
+        images = F.create_dataset('images', (refs.size, nband, width, width))
+        for iobj, fitsfile in enumerate(fitsfiles):
+            # need to deal with missing bandpasses...
+            img = fitsio.read(fitsfile)
+            images[iobj, :] = img
+    
+        F.close()
+        print(f'Wrote {h5file} with {nrefcat:,d} reference objects and ' + \
+              f'{len(chunkindx[ichunk]):,d} objects to classify.')
 
-    F.close()
-    print(f'Wrote {h5file} with {nrefcat:,d} reference objects and {ncat:,d} objects to classify.')
-
+    pdb.set_trace()
 
 def annotated_montage(cat, outdir='.', region='dr9-north', overwrite=False):
     """Build a single PDF file of annotated images, to enable fast
@@ -664,7 +669,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', overwrite=False):
     from matplotlib.backends.backend_pdf import PdfPages
     from matplotlib.image import imread
 
-    pdffile = os.path.join(outdir, f'annotate-montage-{region}.pdf')
+    pdffile = os.path.join(outdir, f'annotated-montage-{region}.pdf')
     if os.path.isfile(pdffile) and not overwrite:
         print(f'Output file {pdffile} exists.')
         return
@@ -679,8 +684,8 @@ def annotated_montage(cat, outdir='.', region='dr9-north', overwrite=False):
     #pngfiles = pngfiles[:16]
     allindx = np.arange(len(pngfiles))
 
-    ncol = 4
-    nrow = 4
+    ncol, nrow = 1, 1
+    #ncol, nrow = 4, 4
 
     nperpage = ncol * nrow
     npage = int(np.ceil(len(pngfiles) / nperpage))
@@ -715,7 +720,7 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
         print(f'Read {len(cat):,d} galaxies from {catfile}')
         return cat
     except:
-        msg = f'Problem reading {args.catalog}'
+        msg = f'Problem reading {catfile}'
         raise IOError(msg)
 
 
@@ -730,7 +735,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
 
         columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'DIAM_LIT_REF',
                    'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
-                   'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'PARENT_ROW']
+                   'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_PARENT']
 
         if 'NERSC_HOST' in os.environ:
             catdir = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent'

@@ -23,7 +23,7 @@ import matplotlib.ticker as ticker
 
 cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA',
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
-        'MAG_LIT', 'Z', 'PGC', 'PARENT_ROW']
+        'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
 
 
 def plot_style(font_scale=1.2, paper=False, talk=True):

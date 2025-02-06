@@ -34,13 +34,14 @@ from astrometry.libkd.spherematch import match_radec
 
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.qa import qa_skypatch, multipage_skypatch
-from SGA.util import get_basic_geometry, match, choose_primary, resolve_close
+from SGA.ellipse import get_basic_geometry
+from SGA.util import match, choose_primary, resolve_close
 from SGA.io import sga_dir, parent_version
 
 
 cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA',
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
-        'MAG_LIT', 'Z', 'PGC', 'PARENT_ROW']
+        'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
 
 qadir = os.path.join(sga_dir(), 'parent', 'qa')
 if not os.path.isdir(qadir):
@@ -98,7 +99,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
         I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
         cat = resolve_close(fullcat[I], fullcat[I], maxsep=1.5, allow_vetos=True, verbose=False)
         cat = vstack((cat, fullcat[~I]))
-        cat = cat[np.argsort(cat['PARENT_ROW'])]
+        cat = cat[np.argsort(cat['ROW_PARENT'])]
         #cat = resolve_close(fullcat, fullcat, maxsep=1.5, allow_vetos=True, verbose=False)
 
         #diam = np.max((cat['DIAM_LIT'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
@@ -313,7 +314,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
 
     I = np.unique(np.hstack(match_new))
     dups = resolve_close(newcat[I], newcat[I], maxsep=1., allow_vetos=True, verbose=verbose, trim=False)
-    I = np.isin(newcat['PARENT_ROW'], dups[dups['PRIMARY'] == False]['PARENT_ROW'])
+    I = np.isin(newcat['ROW_PARENT'], dups[dups['PRIMARY'] == False]['ROW_PARENT'])
     print(f'Dropping {np.sum(I):,d} close pairs.')
     newcat = newcat[~I]
 
@@ -533,7 +534,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
         I = np.unique(np.hstack(I))
         if verbose:
             print(f'Removing {len(I):,d}/{len(T):,d} {suffix} sources.')
-        out = fullcat[~np.isin(fullcat['PARENT_ROW'], T[I]['PARENT_ROW'])]
+        out = fullcat[~np.isin(fullcat['ROW_PARENT'], T[I]['ROW_PARENT'])]
     else:
         out = fullcat
 
@@ -648,7 +649,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -854,7 +855,7 @@ def build_parent_nocuts(verbose=True):
 
 
     def populate_parent(input_cat, input_basic, verbose=False):
-        from SGA.util import parent_datamodel
+        from SGA.io import parent_datamodel
         parent = parent_datamodel(len(input_cat))
         for col in parent.columns:
             if col in input_cat.columns:
@@ -1352,6 +1353,14 @@ def build_parent_nocuts(verbose=True):
     Idrop = np.where(parent['OBJNAME_NED'] == 'SDSS J014548.23+162240.6')[0]
     parent.remove_row(Idrop[0])
 
+    # Also drop GALEXASC J095848.78+665057.9, which appears to be a
+    # NED-LVS shred of the LVD dwarf d0958+66=KUG 0945+670 on rows
+    # 75946 and 1822204, respectively. If we don't drop it here then
+    # SGA2020 incorrectly matches to GALEXASC J095848.78+665057.9.
+    print('Removing GALEXASC J095848.78+665057.9 from the parent sample.')
+    Idrop = np.where(parent['OBJNAME_NED'] == 'GALEXASC J095848.78+665057.9')[0]
+    parent.remove_row(Idrop[0])
+
     # ned_lvd - not in parent sample (new)
     miss_lvd = ned_lvd[~np.isin(ned_lvd['ROW'], parent['ROW_LVD'])]
     miss_lvd.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_LVD', 'ROW_LVD'])
@@ -1516,8 +1525,7 @@ def build_parent_nocuts(verbose=True):
     # Populate OBJNAME, RA, DEC, and Z
     print()
 
-    # NB - prefer LVD coordinates over NED
-    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
+    for dataset in ['NED', 'NEDLVS', 'LVD', 'SGA2020', 'HYPERLEDA']:
         I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
         if len(I) > 0:
             print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -1548,6 +1556,9 @@ def build_parent_nocuts(verbose=True):
                 parent['OBJNAME'][I] = parent[I][f'OBJNAME_{dataset}']
 
     # NB - prefer NEDLVS redshifts
+    I = np.isnan(parent['Z_HYPERLEDA'])
+    if np.any(I):
+        parent['Z_HYPERLEDA'][I] = -99.
     for dataset in ['NEDLVS', 'NED', 'HYPERLEDA']:
         I = np.where((parent['Z'] == -99.) * (parent[f'Z_{dataset}'] != -99.))[0]
         if len(I) > 0:
@@ -1570,7 +1581,7 @@ def build_parent_nocuts(verbose=True):
     # NB - prioritize LVD first
     for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs),
                                    ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS'),
-                                   ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS', 'HyperLeda')):
+                                   ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS')):
         for col in ['DIAM_LIT', 'BA_LIT', 'PA_LIT', 'MAG_LIT']:
             I = np.where((parent[col] == -99.) * (parent[row] != -99))[0]
             if len(I) > 0:
@@ -1623,7 +1634,7 @@ def build_parent_nocuts(verbose=True):
             print(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
         print()
 
-    parent['PARENT_ROW'] = np.arange(len(parent))
+    parent['ROW_PARENT'] = np.arange(len(parent))
 
     version = parent_version(nocuts=True)
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
@@ -1667,7 +1678,7 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
 
         ccds = ccds['RA', 'DEC', 'CAMERA', 'EXPNUM', 'PLVER', 'CCDNAME', 'FILTER']
         #ccds['GALAXY'] = [galaxy]
-        ccds['PARENT_ROW'] = onegal['PARENT_ROW']
+        ccds['ROW_PARENT'] = onegal['ROW_PARENT']
 
         return ccds, Table(onegal)
     else:
@@ -1805,8 +1816,8 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         fccds = vstack(fccds)
 
         if len(fcat) > 0:
-            fcat = fcat[np.argsort(fcat['PARENT_ROW'])]
-            fccds = fccds[np.argsort(fccds['PARENT_ROW'])]
+            fcat = fcat[np.argsort(fcat['ROW_PARENT'])]
+            fccds = fccds[np.argsort(fccds['ROW_PARENT'])]
         print(f'  Gathered {len(fccds):,d} CCDs for {len(fcat):,d}/{len(indx_cat):,d} ' + \
               f'objects in {time.time()-t0:.2f} sec')
 
@@ -1859,7 +1870,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
 
         #I = np.array([4784167, 4784170])
 
-        cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'PARENT_ROW'], rows=I))
+        cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
         cat['NCCD'] = np.zeros(len(cat), int)
         cat['FILTERS'] = np.zeros(len(cat), '<U4')
         print(f'Read {len(cat):,d} objects from {catfile}')
@@ -1910,14 +1921,14 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
         allfccds = vstack(allfccds)
 
         outcat = Table(fitsio.read(catfile)) # read the whole catalog
-        cat_indx, fcat_indx = match(outcat['PARENT_ROW'], allfcat['PARENT_ROW'])
+        cat_indx, fcat_indx = match(outcat['ROW_PARENT'], allfcat['ROW_PARENT'])
         outcat = outcat[cat_indx]
         allfcat = allfcat[fcat_indx]
-        assert(np.all(outcat['PARENT_ROW'] == allfcat['PARENT_ROW']))
+        assert(np.all(outcat['ROW_PARENT'] == allfcat['ROW_PARENT']))
 
         outcat['NCCD'] = allfcat['NCCD']
         outcat['FILTERS'] = allfcat['FILTERS']
-        outcat = outcat[np.argsort(outcat['PARENT_ROW'])]
+        outcat = outcat[np.argsort(outcat['ROW_PARENT'])]
 
         version = parent_version()
         outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
@@ -1944,7 +1955,7 @@ def qa_footprint(region='dr9-north', show_fullcat=False):
     version = parent_version()
 
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
-    cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'PARENT_ROW', 'FILTERS']))
+    cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'FILTERS']))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
     qafile = os.path.join(sga_dir(), 'parent', 'qa', f'qa-parent-{region}-{version}.png')
@@ -1953,7 +1964,7 @@ def qa_footprint(region='dr9-north', show_fullcat=False):
 
     if show_fullcat:
         fullcatfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
-        fullcat = Table(fitsio.read(fullcatfile, columns=['OBJNAME', 'RA', 'DEC', 'PARENT_ROW']))
+        fullcat = Table(fitsio.read(fullcatfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT']))
         print(f'Read {len(fullcat):,d} objects from {fullcatfile}')
 
         ax.scatter(fullcat['RA'], fullcat['DEC'], s=1, color='gray')

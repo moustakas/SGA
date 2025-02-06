@@ -47,11 +47,104 @@ def sga_html_dir():
     return ldir
 
 
+def custom_brickname(ra, dec, more_decimals=False):
+    if more_decimals:
+        brickname = '{:08d}{}{:07d}'.format(
+            int(100000*ra), 'm' if dec < 0 else 'p',
+            int(100000*np.abs(dec)))
+    else:
+        brickname = '{:06d}{}{:05d}'.format(
+            int(1000*ra), 'm' if dec < 0 else 'p',
+            int(1000*np.abs(dec)))
+    return brickname
+
+
 def get_raslice(ra):
     if np.isscalar(ra):
         return f'{int(ra):03d}'
     else:
         return [f'{int(onera):03d}' for onera in ra]
+
+
+def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
+    """Convert the right ascension and declination of an object into a
+    disk-friendly "name", for reference in publications.  Length of
+    `target_ra` and `target_dec` must be the same if providing an
+    array or list.
+
+    Parameters
+    ----------
+    target_ra: array of :class:`~numpy.float64`
+        Right ascension in degrees of target object(s). Can be float, double,
+        or array/list of floats or doubles.
+    target_dec: array of :class:`~numpy.float64`
+        Declination in degrees of target object(s). Can be float, double,
+        or array/list of floats or doubles.
+
+    Returns
+    -------
+    array of :class:`str`
+        Names referring to the input target RA and DEC's. Array is the
+        same length as the input arrays.
+
+    Raises
+    ------
+    ValueError
+        If any input values are out of bounds.
+
+    Notes
+    -----
+    Written by A. Kremin (LBNL) for DESI. Taken entirely from
+    desiutil.names.radec_to_desiname.
+
+    """
+    # Convert to numpy array in case inputs are scalars or lists
+    target_ra, target_dec = np.atleast_1d(target_ra), np.atleast_1d(target_dec)
+
+    base_tests = [('NaN values', np.isnan),
+                  ('Infinite values', np.isinf),]
+    inputs = {'target_ra': {'data': target_ra,
+                            'tests': base_tests + [('RA not in range [0, 360)', lambda x: (x < 0) | (x >= 360))]},
+              'target_dec': {'data': target_dec,
+                             'tests': base_tests + [('Dec not in range [-90, 90]', lambda x: (x < -90) | (x > 90))]}}
+    for coord in inputs:
+        for message, check in inputs[coord]['tests']:
+            if check(inputs[coord]['data']).any():
+                raise ValueError(f"{message} detected in {coord}!")
+
+    # Number of decimal places in final naming convention
+    precision = 4
+
+    # Truncate decimals to the given precision
+    ratrunc = np.trunc((10.**precision) * target_ra).astype(int).astype(str)
+    dectrunc = np.trunc((10.**precision) * target_dec).astype(int).astype(str)
+
+    # Loop over input values and create the name as DESINAME as: DESI JXXX.XXXX+/-YY.YYYY
+    # Here J refers to J2000, which isn't strictly correct but is the closest
+    #   IAU compliant term
+    names = []
+    for ra, dec in zip(ratrunc, dectrunc):
+        zra = ra.zfill(7)
+        name = f'{prefix} J' + zra[:-precision] + '.' + zra[-precision:]
+        # Positive numbers need an explicit "+" while negative numbers
+        #   already have a "-".
+        # zfill works properly with '-' but counts it in number of characters
+        #   so need one more
+        if dec.startswith('-'):
+            zdec = dec.zfill(7)
+            name += zdec[:-precision] + '.' + zdec[-precision:]
+        else:
+            zdec = dec.zfill(6)
+            name += '+' + zdec[:-precision] + '.' + zdec[-precision:]
+        names.append(name)
+
+    names = np.array(names)
+
+    # convert spaces to underscores
+    if unixsafe:
+        names = np.char.replace(names, ' ', '_')
+
+    return names
 
 
 def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
@@ -114,6 +207,73 @@ def parent_version(vicuts=False, nocuts=False):
     else:
         version = 'v1.0'
     return version
+
+
+def parent_datamodel(nobj):
+    """Initialize the data model for the parent-nocuts sample.
+
+    """
+    parent = Table()
+    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_SGA2020'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+    parent['MORPH'] = np.zeros(nobj, '<U20')
+    parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
+
+    parent['RA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_SGA2020'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_SGA2020'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+
+    parent['Z'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+
+    parent['PGC'] = np.zeros(nobj, '<i8') -99
+    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
+
+    parent['MAG_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['MAG_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['BAND_LIT'] = np.zeros(nobj, '<U1')
+    parent['DIAM_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['DIAM_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['BA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['PA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_LIT_REF'] = np.zeros(nobj, '<U9')
+
+    parent['MAG_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_HYPERLEDA'] = np.zeros(nobj, '<U1')
+    parent['DIAM_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+
+    parent['MAG_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_SGA2020'] = np.zeros(nobj, '<U1')
+    parent['DIAM_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_SGA2020'] = np.zeros(nobj, 'f4') -99.
+
+    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_SGA2020'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
+
+    return parent
 
 
 def read_survey_bricks(survey, brickname=None, custom=False):
@@ -521,7 +681,7 @@ def nedfriendly_lvd(old):
         'd0934+70': 'PGC1 0028630 NED026',
         'd0944+69': 'PGC1 0028630 NED036',
         'd0944+71': 'GALEXMSC J094435.06+712857.6',
-        'd0958+66': 'KUG 0945+670', # could also be GALEXASC J095848.78+665057.9??
+        'd0958+66': 'KUG 0945+670', # could also be GALEXASC J095848.78+665057.9 ??
         'd0959+68': 'PGC1 0028630 NED031',
         'd1006+67': 'PGC1 0028630 NED030',
         'd1014+68': 'WISEA J101456.37+684529.2',
@@ -1357,6 +1517,7 @@ def _missing_files_one(args):
     """Wrapper for the multiprocessing."""
     return missing_files_one(*args)
 
+
 def missing_files_one(checkfile, dependsfile, overwrite):
     """Simple support script for missing_files."""
 
@@ -1524,15 +1685,6 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
 
     return suffix, todo_indices, done_indices, fail_indices
 
-
-def custom_brickname(ra, dec):
-    brickname = '{:08d}{}{:07d}'.format(
-        int(100000*ra), 'm' if dec < 0 else 'p',
-        int(100000*np.abs(dec)))
-    #brickname = '{:06d}{}{:05d}'.format(
-    #    int(1000*ra), 'm' if dec < 0 else 'p',
-    #    int(1000*np.abs(dec)))
-    return brickname
 
 #def get_parentfile(version=None, kd=False):
 #
