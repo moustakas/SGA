@@ -1,6 +1,10 @@
 # Object-level actions based on VI (visual inspections).
 objname,action,reason,comment
 #
+NGC 2363,drop,not a galaxy,HII region in 'NGC 2366'.
+NGC 2473,drop,duplicate,Same object as 'NGC 2458'.
+BK 08N,drop,faint,Likely not real.
+#
 SDSS J125839.45+273922.5,drop,faint,In '1256+27W01' group.
 [APS2006] J194.676010+27.66179,drop,faint,In '1256+27W01' group.
 [APS2006] J194.681305+27.66864,drop,faint,In '1256+27W01' group.

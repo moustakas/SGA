@@ -649,7 +649,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -697,7 +697,6 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     cat = Table(fitsio.read(catfile))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
-    pdb.set_trace()
     if False:
         I = cat['DIAM_LIT'] > 25. ; srt = np.argsort(cat[I]['DIAM_LIT'])[::-1] ; cat[I][srt]['OBJNAME', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'RA', 'DEC']
         cc = cat ; obj='MESSIER 077' ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
@@ -712,6 +711,7 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.write(outfile, overwrite=True)
 
+    pdb.set_trace()
     if False:
         # How many sources with diam<0.1 have no other source within 10 arcsec?
         radius_isolated = 10.
@@ -1647,7 +1647,7 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
     from legacypipe.runbrick.stage_tims.
 
     """
-    from SGA.coadds import custom_brickname
+    from SGA.io import custom_brickname
     from legacypipe.survey import wcs_for_brick, BrickDuck, ccds_touching_wcs
 
     brickname = f'custom-{custom_brickname(onegal["RA"], onegal["DEC"])}'
@@ -1883,6 +1883,22 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
         _ = survey.get_ccds_readonly()
         allccds = survey.ccds
         print(f'Read {len(allccds):,d} CCDs from region={region}')
+
+        # in dr9-north, censor the CCDs in and around M31 and one failed brick around (ra,dec)=(328.8, 0.0)
+        # https://www.legacysurvey.org/viewer-desi?ra=10.6890&dec=41.2719&layer=unwise-neo7&zoom=9&ccds9n
+        # https://www.legacysurvey.org/viewer-desi?ra=328.8798&dec=0.0422&layer=ls-dr9-north&zoom=12&ccds9n&bricks
+        # 3288p000
+        if region == 'dr9-north':
+            I = (allccds.ra > 8.5) * (allccds.ra < 12.5) * (allccds.dec > 35.) * (allccds.dec < 45.)
+            print(f'Removing {np.sum(I)} CCDs around M31.')
+            allccds = allccds[~I]
+
+            B = survey.get_brick_by_name('3288p000')
+            I = (cat['RA'] > B.ra1) * (cat['RA'] < B.ra2) * (cat['DEC'] > B.dec1) * (cat['DEC'] < B.dec2)
+            if np.count_nonzero(I) > 0:
+                print(f'Removing {np.sum(I):,d} objects located in brick 3288p000')
+                cat = cat[~I]
+
         sys.stdout.flush()
 
         # divide the parent catalog into more managable chunks, and loop
@@ -1934,6 +1950,10 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
         outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
         print(f'Writing {len(outcat):,d} objects to {outfile}')
         outcat.write(outfile, overwrite=True)
+
+        # need to figure this out...
+        if 'col0' in allfccds.columns:
+            allfccds.remove_column('col0')
 
         outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
         print(f'Writing {len(allfccds):,d} CCDs to {outfile}')

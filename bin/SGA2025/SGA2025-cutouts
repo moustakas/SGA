@@ -30,6 +30,13 @@ To build the ssl-legacysurvey catalog:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --ssl-legacysurvey
 
 
+Kim's wisesize project:
+
+SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --mp=32
+SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotate --annotate-central-only --mp=32
+SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotated-montage
+
+
 Examining the LVD sample:
 
 time srun --ntasks=1 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-cutouts \
@@ -88,7 +95,7 @@ def _annotate_one(args):
 
 
 def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
-                 mosaic_diam, primary, group, dry_run, rank, iobj):
+                 mosaic_diam, primary, group):
     """Annotate one image.
 
     """
@@ -149,6 +156,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
     N = len(group)
     primary_ra, primary_dec = primary['RA'], primary['DEC']
+    row_parent = primary['ROW_PARENT']
 
     img = mpimg.imread(jpgfile)
     width = img.shape[0]
@@ -235,7 +243,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
             color='white', lw=2)
     ax.text(xpos + dx/2., ypos+0.02, barlabel, transform=ax.transAxes,
             ha='center', va='center', color='white')
-    ax.text(1-xpos, ypos, str(iobj+1), transform=ax.transAxes,
+    ax.text(1-xpos, ypos, str(row_parent), transform=ax.transAxes,
             ha='right', va='center', color='white')
 
     fig.tight_layout()
@@ -247,7 +255,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
 def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
                 comm=None, mp=1, indir='.', outdir='.', overwrite=False, 
-                dry_run=False, verbose=False):
+                annotate_central_only=False, dry_run=False, verbose=False):
     """Wrapper to set up the full set of annotations.
 
     """
@@ -307,13 +315,15 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
     mpargs = []
     for iobj in range(len(indx)):
         primary = cat[indx[iobj]]
-        # refine the search to this object's diameter
-        m1, m2, _ = match_radec(primary['RA'], primary['DEC'], fullcat[allmatches[iobj]]['RA'],
-                                fullcat[allmatches[iobj]]['DEC'], 2.*diam[indx[iobj]]/3600.)
-        group = fullcat[allmatches[iobj]][m2]
+        if annotate_central_only:
+            group = Table(primary)
+        else:
+            # refine the search to this object's diameter
+            m1, m2, _ = match_radec(primary['RA'], primary['DEC'], fullcat[allmatches[iobj]]['RA'],
+                                    fullcat[allmatches[iobj]]['DEC'], 2.*diam[indx[iobj]]/3600.)
+            group = fullcat[allmatches[iobj]][m2]
         mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
-                       pixscale[indx[iobj]], diam[indx[iobj]], primary, group, dry_run, 
-                       rank, indx[iobj]))
+                       pixscale[indx[iobj]], diam[indx[iobj]], primary, group))
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_annotate_one, mpargs)
@@ -437,7 +447,10 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
 
     iempty = np.where(nobj == 0)[0]
     if len(iempty) > 0:
-        print(f'Skipping {len(iempty):,d} objects with existing cutouts.')
+        if annotate:
+            print(f'Skipping {len(iempty):,d} objects with existing annotated images.')
+        else:
+            print(f'Skipping {len(iempty):,d} objects with existing cutouts.')
 
     itodo = np.where(nobj > 0)[0]
     if len(itodo) > 0:
@@ -510,8 +523,8 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
     if len(indx) == 0:
         return
 
-    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width[iobj], 
-               pixscale[iobj], layer, dry_run, rank, iobj) for iobj in indx]
+    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width[indx[iobj]],
+               pixscale[indx[iobj]], layer, dry_run, rank, iobj) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_cutout_one, mpargs)
@@ -527,7 +540,7 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         print(f'All done at {time.asctime()}')
 
 
-def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=5.,
+def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=20.,
                            default_width=152, default_pixscale=0.262):
     """Simple function to compute the pixel scale of the desired
     output images.
@@ -659,7 +672,7 @@ def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=
 
     pdb.set_trace()
 
-def annotated_montage(cat, outdir='.', region='dr9-north', overwrite=False):
+def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10, overwrite=False):
     """Build a single PDF file of annotated images, to enable fast
     visual inspection.
 
@@ -668,11 +681,6 @@ def annotated_montage(cat, outdir='.', region='dr9-north', overwrite=False):
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     from matplotlib.image import imread
-
-    pdffile = os.path.join(outdir, f'annotated-montage-{region}.pdf')
-    if os.path.isfile(pdffile) and not overwrite:
-        print(f'Output file {pdffile} exists.')
-        return
 
     raslices = get_raslice(cat['RA'].value)
     objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)    
@@ -683,28 +691,49 @@ def annotated_montage(cat, outdir='.', region='dr9-north', overwrite=False):
     #pngfiles = pngfiles[np.argsort(pngfiles)]
     #pngfiles = pngfiles[:16]
     allindx = np.arange(len(pngfiles))
+    nobj = len(allindx)
 
-    ncol, nrow = 1, 1
-    #ncol, nrow = 4, 4
+    if nobj > 99:
+        ncol, nrow = 10, 10
+    else:
+        ncol, nrow = 1, 1
+        ncol, nrow = 4, 4
 
     nperpage = ncol * nrow
     npage = int(np.ceil(len(pngfiles) / nperpage))
-    print(f'Distributing {len(pngfiles):,d} annotated images to {npage:,d} pages.')
 
-    pdf = PdfPages(pdffile)
-    for ipage in range(npage):
-        print(f'Building page {ipage+1:,d}/{npage:,d}')
-        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
-        fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
-        for iax, xx in enumerate(np.atleast_1d(ax).flat):
-            if iax < len(indx):
-                xx.imshow(imread(pngfiles[indx[iax]]), interpolation='None')
-            xx.axis('off')
-        fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
-        pdf.savefig(fig, dpi=150)
-        plt.close()
-    pdf.close()
-    print(f'Wrote {pdffile}')
+    # divide into multiple documents
+    npdf = int(np.ceil(npage / npagemax))
+    pdf_pngfiles = np.array_split(pngfiles, npdf)
+    pdf_allindx = np.array_split(allindx, npdf)
+
+    print(f'Distributing {len(pngfiles):,d} annotated images to {npdf:,d} ' + \
+          f'PDFs with a total of {npage:,d} pages and {npagemax} pages per file.')
+
+    for ipdf in range(npdf):
+        pdffile = os.path.join(outdir, f'annotated-montage-{region}-{ipdf:03}.pdf')
+        if os.path.isfile(pdffile) and not overwrite:
+            print(f'Output file {pdffile} exists.')
+            return
+
+        pngfiles = pdf_pngfiles[ipdf]
+        allindx = pdf_allindx[ipdf]
+        npage = int(np.ceil(len(pngfiles) / nperpage))        
+    
+        pdf = PdfPages(pdffile)
+        for ipage in range(npage):
+            print(f'Building page {ipage+1:,d}/{npage:,d}')
+            indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
+            fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
+            for iax, xx in enumerate(np.atleast_1d(ax).flat):
+                if iax < len(indx):
+                    xx.imshow(imread(pngfiles[indx[iax]]), interpolation='None')
+                xx.axis('off')
+            fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
+            pdf.savefig(fig, dpi=150)
+            plt.close()
+        pdf.close()
+        print(f'Wrote {pdffile}')
 
 
 def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
@@ -733,9 +762,9 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
         from SGA.io import parent_version
         version = parent_version()
 
-        columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'DIAM_LIT_REF',
+        columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'PGC', 'DIAM_LIT_REF',
                    'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
-                   'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_PARENT']
+                   'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_NEDLVS', 'ROW_PARENT']
 
         if 'NERSC_HOST' in os.environ:
             catdir = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent'
@@ -767,8 +796,72 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             fullcat = None
 
         # more testing below here
+        if True:
+            # Kim's wisesize project
+            # 87. < RA < 300.
+            # -10. < DEC < 85.
+            # 0.002 < z < 0.025
+            # W3 or NUV SNR > 20.   (for this, I divided  'Lum_W3'/'Lum_W3_unc' and 'Lum_NUV'/'Lum_NUV_unc', respectively)
+            # diameter > 15. arcsec OR -99., as we are including objects which do not have size measurements in your nedgeometry catalog
+            # Lastly, we removed VFS galaxies, since we already have access to those postage stamps
+            from SGA.io import read_nedlvs
+            from SGA.util import match
+
+            def get_snr(flux, ferr):
+                snr = np.zeros(len(flux))
+                J = np.isfinite(flux) * np.isfinite(ferr) * (ferr > 0.)
+                snr[J] = flux[J] / ferr[J]
+                return snr
+
+            nedlvs = read_nedlvs()
+            vfs = Table(fitsio.read('/global/homes/i/ioannis/ioannis/legacyhalos/virgofilaments/vf_north_v2_main.fits'))
+
+            cat = cat[cat['ROW_NEDLVS'] != -99]
+            indx_cat, indx_nedlvs = match(cat['ROW_NEDLVS'], nedlvs['ROW'])
+            cat = cat[indx_cat]
+            nedlvs = nedlvs[indx_nedlvs]
+
+            snrmin = 10.
+            snr_W3 = get_snr(nedlvs['LUM_W3'], nedlvs['LUM_W3_UNC'])
+            snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
+
+            mindiam = 15.
+            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+
+            I = ((cat['RA'] > 87.) * (cat['RA'] < 300.) * (cat['DEC'] > -10.) * (cat['DEC'] < 85.) * 
+                 (nedlvs['Z'] > 0.002) * (nedlvs['Z'] < 0.025) * (cat['FILTERS'] == 'grz') * 
+                 (diam > mindiam) * (snr_W3 > snrmin) * (snr_NUV > snrmin))
+            cat = cat[I]
+            nedlvs = nedlvs[I]
+            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+
+            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], vfs['RA'], vfs['DEC'], 3./3600.)
+            I = np.delete(np.arange(len(cat)), m1)
+            cat = cat[I]
+            nedlvs = nedlvs[I]
+            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+
+
         if False:
-            diam, ba, pa, ref = choose_geometry(cat) ; cat = cat[diam > 5.*60.]
+            # read Sara's ssl-legacysurvey file
+            from glob import glob
+            from astropy.table import vstack
+            #from SGA.io import sga_dir
+            chunkfiles = glob('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/ssl-legacysurvey/ssl-parent-dr9-north-chunk???-v1.txt')
+            ssl = vstack([Table.read(chunkfile, format='ascii.commented_header') for chunkfile in chunkfiles])
+
+            #cat[np.isin(cat['ROW_PARENT'], ssl['Row'])]
+            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], ssl['RA'], ssl['DEC'], 1./3600.)
+            cat = cat[m1]
+            ssl = ssl[m2]
+
+            ## annotated-montage-dr9-north-nodiam.pdf
+            #diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
+            #cat = cat[diam < 1.][:100]
+
+            # annotated--
+            #cat = cat[(diam > 10.*60.)]
+
             #cat = cat[cat['ROW_LVD'] != -99]
             #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
@@ -798,6 +891,7 @@ def main():
 
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
+    parser.add_argument('--annotate-central-only', action='store_true', help='Only annotate the central galaxy.')
     parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
@@ -829,10 +923,12 @@ def main():
     else:
         # annotated cutouts
         if args.annotate:
+            layer = None
             indir = os.path.join(args.outdir, args.region, 'native')
             outdir = os.path.join(args.outdir, args.region, 'annotate')
         else:
             # native or rescaled cutouts
+            indir = None
             layer = f'ls-{args.region}'
             if args.rescale:
                 outdir = os.path.join(args.outdir, args.region, 'rescale')
@@ -881,6 +977,7 @@ def main():
         do_annotate(cat, fullcat, default_pixscale=args.pixscale, 
                     default_width=args.width, mp=args.mp, 
                     comm=comm, indir=indir, outdir=outdir, overwrite=args.overwrite, 
+                    annotate_central_only=args.annotate_central_only,
                     dry_run=args.dry_run, verbose=args.verbose)
     else:
         do_cutouts(cat, layer=layer, mp=args.mp, comm=comm, outdir=outdir, 
