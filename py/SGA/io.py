@@ -47,6 +47,15 @@ def sga_html_dir():
     return ldir
 
 
+def set_legacysurvey_dir(region='dr9-north'):
+    if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
+        raise EnvironmentError('Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!')
+    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
+    legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
+    print(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
+    os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
+
+
 def custom_brickname(ra, dec, more_decimals=False):
     if more_decimals:
         brickname = '{:08d}{}{:07d}'.format(

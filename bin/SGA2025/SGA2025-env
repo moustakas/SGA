@@ -19,6 +19,7 @@ export SGA_DATA_DIR=$PSCRATCH/$project-data
 export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/$project-html
 
 # Pipeline variables---only change these if you know what you're doing!
+export LEGACY_SURVEY_BASEDIR=/global/cfs/cdirs/cosmo/work/legacysurvey
 export LEGACY_SURVEY_DIR=/global/cfs/cdirs/cosmo/work/legacysurvey/dr9
 export SKY_TEMPLATE_DIR=/global/cfs/cdirs/cosmo/data/legacysurvey/dr9/calib/sky_pattern
 

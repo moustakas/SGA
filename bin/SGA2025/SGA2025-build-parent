@@ -1881,6 +1881,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
 
     if rank == 0:
         from legacypipe.runs import get_survey
+        from SGA.io import set_legacysurvey_dir
 
         t0 = time.time()
 
@@ -1907,8 +1908,11 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         cat['FILTERS'] = np.zeros(len(cat), '<U4')
         print(f'Read {len(cat):,d} objects from {catfile}')
 
-        runs = {'dr9-north': 'north', 'dr9-south': 'south', 'dr10-south': 'south'}
+        runs = {'dr9-north': 'north', 'dr9-south': 'south', 'dr10-south': 'south', 
+                'dr11-south': 'south'}
+        set_legacysurvey_dir(region)
         survey = get_survey(runs[region])#, allbands=BANDS)
+
         _ = survey.get_ccds_readonly()
         allccds = survey.ccds
         print(f'Read {len(allccds):,d} CCDs from region={region}')
@@ -2066,7 +2070,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
     parser.add_argument('--ntest', type=int, default=None, help='Number of test objects to read (only with --in-footprint.')
-    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south'], 
+    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south'], 
                         type=str, help='Region to pass to --in-footprint.')
 
     parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned into the parent-nocuts catalog.')
