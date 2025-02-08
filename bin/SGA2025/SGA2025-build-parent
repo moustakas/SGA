@@ -1685,6 +1685,49 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
         return Table(onegal)
 
 
+def read_existing_footprint(cat, region, version='v1.0'):
+    """Read existing / previous catalogs of running the footprint code on an
+    input catalog.
+
+    """
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+    ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
+    if os.path.isfile(catfile) and os.path.isfile(ccdsfile):
+        refcat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'NCCD', 'FILTERS']))
+        #refcat = refcat[:1000]
+
+        print(f'Read {len(refcat):,d} objects from the existing {region} in-footprint catalog {catfile}')
+
+        # We know that objects with sep==0. are in the footprint, so
+        # we don't have to "find" them again...
+        print('WARNING: matching on RA,Dec until ROW_PARENT settles down...')
+        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], refcat['RA'], refcat['DEC'], 1./3600.)
+        I = sep == 0.
+        if np.any(I):
+            m1 = m1[I]
+            m2 = m2[I]
+            print(f'Matched {len(m1):,d}/{len(cat):,d} objects to the existing ' + \
+                  f'{region} in-footprint catalog.')
+            todo = np.delete(np.arange(len(cat)), m1)
+            cat_todo = cat[todo] # could be an empty set
+
+            refcat_done = refcat[m2]
+            cat_done = cat[m1]
+            cat_done['NCCD'] = refcat_done['NCCD']
+            cat_done['FILTERS'] = refcat_done['FILTERS']
+
+            print('Matching CCDs...but have to loop!')
+            ccds_rows = fitsio.read(ccdsfile, columns='ROW_PARENT')
+            rows = np.where(np.isin(ccds_rows, refcat_done['ROW_PARENT']))[0]
+            ccds_done = Table(fitsio.read(ccdsfile, rows=rows))
+            #ccds_done = ccds_done[:1000]
+            for ii in range(len(cat_done)):
+                ccds_done['ROW_PARENT'][refcat_done[ii]['ROW_PARENT'] == ccds_done['ROW_PARENT']] = cat_done[ii]['ROW_PARENT']
+            return cat_todo, cat_done, ccds_done
+
+    return cat, Table(), Table()
+
+
 def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
                       width_pixels=152, bands=BANDS):
     """Support routine for in_footprint.
@@ -1719,16 +1762,24 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         nccdperobj = np.array(nccdperobj)
         indx_cat = np.array(indx_cat)
 
-        if len(indx_cat) == 0:
-            print(f'  No objects with at least one CCD within {radius} degree')
-            return Table(), Table()
-        else:
+        nobj = len(indx_cat)
+        if nobj > 0:
             print(f'  Found {len(indx_cat):,d}/{len(cat):,d} objects with at ' + \
                   f'least one CCD within {radius} degree')
 
-        work_byrank = weighted_partition(nccdperobj, size)
-        print(f'  Distributing {len(np.unique(np.hstack(indx_cat))):,d} objects and ' + \
-              f'{len(np.unique(np.hstack(indx_ccds))):,d} CCDs to {size:,d} ranks')
+            work_byrank = weighted_partition(nccdperobj, size)
+            print(f'  Distributing {len(np.unique(np.hstack(indx_cat))):,d} objects and ' + \
+                  f'{len(np.unique(np.hstack(indx_ccds))):,d} CCDs to {size:,d} ranks')
+        else:
+            print(f'  No objects with at least one CCD within {radius} degree')
+    else:
+        nobj = 0
+
+    if comm:
+        nobj = comm.bcast(nobj, root=0)
+
+    if nobj == 0:
+        return Table(), Table()
 
     if comm:
         # Rank 0 sends work...
@@ -1775,9 +1826,9 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
     nobj = len(cat_onerank)
     #print(rank, nobj)
 
-    if nobj == 0:
-        print(f'Rank {rank}: all done; no work to do.')
-    else:
+    #if nobj == 0:
+    #    print(f'Rank {rank}: all done; no work to do.')
+    if nobj > 0:
         t1 = time.time()
         #print(f'Rank {rank}: gathering CCDs for {nobj:,d} objects.')
         for icat, (cat_onegal, ccds_onegal) in enumerate(zip(cat_onerank, ccds_onerank)):
@@ -1795,17 +1846,6 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
             fccds = Table()
         #print(f'Rank {rank}: all done in {(time.time()-t1)/60.:.3f} minutes')
 
-    #if comm:
-    #    # Ranks>0 send their work back to rank 0...
-    #    if rank > 0:
-    #        comm.send(fcat, dest=0, tag=3)
-    #    else:
-    #        out = list(fcat)
-    #        for onerank in range(1, size):            
-    #            out.append(comm.recv(source=0, tag=3))
-    #        if len(out) > 0:
-    #            out = vstack(out)
-         
     if comm:
         fcat = comm.gather(fcat, root=0)
         fccds = comm.gather(fccds, root=0)
@@ -1818,23 +1858,16 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         if len(fcat) > 0:
             fcat = fcat[np.argsort(fcat['ROW_PARENT'])]
             fccds = fccds[np.argsort(fccds['ROW_PARENT'])]
-        print(f'  Gathered {len(fccds):,d} CCDs for {len(fcat):,d}/{len(indx_cat):,d} ' + \
-              f'objects in {time.time()-t0:.2f} sec')
+            print(f'  Gathered {len(fccds):,d} CCDs for {len(fcat):,d}/{len(indx_cat):,d} ' + \
+                  f'objects in {time.time()-t0:.2f} sec')
 
         return fcat, fccds
     else:
-        return None, None
+        return Table(), Table()
 
 
-#def read_reference_footprint(region):
-#    """Read existing / previous catalogs of running the footprint code on an
-#    input catalog.
-#
-#    """
-
-
-
-def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, bands=BANDS):
+def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, 
+                 bands=BANDS, ntest=None):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
@@ -1857,10 +1890,9 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
 
         F = fitsio.FITS(catfile)
         N = F[1].get_nrows()
-        if False:
-            S = 100
+        if ntest is not None:
             rng = np.random.default_rng(seed=1)
-            I = rng.choice(N, size=S, replace=False)
+            I = rng.choice(N, size=ntest, replace=False)
             I = I[np.argsort(I)]
         else:
             #print('HACK TO JUST SELECT THE RC3!!')
@@ -1874,9 +1906,6 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
         cat['NCCD'] = np.zeros(len(cat), int)
         cat['FILTERS'] = np.zeros(len(cat), '<U4')
         print(f'Read {len(cat):,d} objects from {catfile}')
-
-        # check for existing, reference catalogs from previous runs of this code
-        #read_reference_footprint(region)
 
         runs = {'dr9-north': 'north', 'dr9-south': 'south', 'dr10-south': 'south'}
         survey = get_survey(runs[region])#, allbands=BANDS)
@@ -1901,13 +1930,19 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
 
         sys.stdout.flush()
 
+        # check for an existing CCDs catalog from previous runs of this code
+        cat, cat_done, ccds_done = read_existing_footprint(cat, region, version=version)
+
         # divide the parent catalog into more managable chunks, and loop
-        nobj = len(cat)
         if region == 'dr9-north':
             nperchunk = 100000
         else:
             nperchunk = 10000
-        nchunk = int(np.ceil(nobj / nperchunk))
+        nobj = len(cat)
+        if nobj == 0: # if already done
+            nchunk = 1
+        else:
+            nchunk = int(np.ceil(nobj / nperchunk))
         chunkindx = np.array_split(np.arange(nobj), nchunk)
     else:
         cat = None
@@ -1930,11 +1965,19 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
             allfcat.append(fcat)
             allfccds.append(fccds)
 
+    if comm:
+        comm.barrier()
+
     # gather up the results and write out
     if rank == 0:
         from SGA.util import match
         allfcat = vstack(allfcat)
         allfccds = vstack(allfccds)
+
+        # is there an existing catalog?
+        if len(cat_done) > 0:
+            allfcat = vstack((allfcat, cat_done))
+            allfccds = vstack((allfccds, ccds_done))
 
         outcat = Table(fitsio.read(catfile)) # read the whole catalog
         cat_indx, fcat_indx = match(outcat['ROW_PARENT'], allfcat['ROW_PARENT'])
@@ -1951,17 +1994,18 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, ban
         print(f'Writing {len(outcat):,d} objects to {outfile}')
         outcat.write(outfile, overwrite=True)
 
-        # need to figure this out...
-        if 'col0' in allfccds.columns:
-            allfccds.remove_column('col0')
+        ## need to figure this out...
+        #if 'col0' in allfccds.columns:
+        #    allfccds.remove_column('col0')
 
-        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
-        print(f'Writing {len(allfccds):,d} CCDs to {outfile}')
-        allfccds.write(outfile, overwrite=True)
+        allfccds = allfccds[np.argsort(allfccds['ROW_PARENT'])]
+
+        ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
+        print(f'Writing {len(allfccds):,d} CCDs to {ccdsfile}')
+        allfccds.write(ccdsfile, overwrite=True)
 
         print(f'All done in {(time.time()-t0)/60.:.2f} min')
 
-    return
 
 def qa_footprint(region='dr9-north', show_fullcat=False):
     """Build some simple QA of the in-footprint sample.
@@ -2021,6 +2065,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--mp', default=1, type=int, help='Number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--ntest', type=int, default=None, help='Number of test objects to read (only with --in-footprint.')
     parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south'], 
                         type=str, help='Region to pass to --in-footprint.')
 
@@ -2063,7 +2108,7 @@ def main():
         build_parent(overwrite=args.overwrite, verbose=args.verbose)
 
     if args.in_footprint:
-        in_footprint(region=args.region, comm=comm)
+        in_footprint(region=args.region, comm=comm, ntest=args.ntest)
 
     if args.qa_footprint:
         qa_footprint(region=args.region)
