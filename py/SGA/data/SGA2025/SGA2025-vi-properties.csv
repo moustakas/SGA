@@ -1,144 +1,251 @@
 # Object-level update of coordinates and other galaxy properties based on VI
 # (visual inspections). A value of -99 means that property should not be
 # updated.
-objname_ned,ra,dec,diam,pa,ba,update_hyperleda_coords,comment
-UGC 01386 NOTES01,28.748249999999995,13.46725,-99.,-99.,-99.,No,Center on the galaxy.
-NGC 4106,181.689961,-29.768386,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 406-IG 007 NED01,340.904793,-36.440937,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 074-IG 013 NED02,312.853860,-67.935307,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 235-IG 003 NED02,312.464326,-52.087964,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 192-IG 005 NED01,353.099512,-55.779419,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 355-IG 012 NED02,35.781179,-32.869500,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 355-IG 012 NED03,35.789259,-32.872562,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-VII Zw 735 NOTES01,265.296127,67.897179,0.1,-99.,-99.,No,NED and HyperLeda are both incorrect.
-NGC 1044 NED02,40.280070,8.735402,0.5,-99.,-99.,No,NED and HyperLeda are both incorrect.
-NGC 3553,167.667917,28.685639,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 481-IG 012 NED01,48.110808,-27.140094,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 190-IG 014 NED02,337.637496,-54.779187,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-ESO 151-IG 014 NED02,14.407333,-56.599556,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
-VII Zw 300 NOTES01,149.894981,81.871918,0.3,-99.,-99.,No,Moved to the position of '2MASS J09593479+8152189'.
-ESO 290-IG 047 NED03,346.442550,-42.477154,-99.,-99.,-99.,No,Moved to the position of 'MRSS 290-012872'.
-ESO 237-IG 032 NED02,330.934655,-49.089276,-99.,-99.,-99.,No,Moved to the position of 'WISEA J220344.31-490521.3'.
-ESO 288-IG 024 NED03,329.465995,-42.761460,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215751.83-424541.2'.
-ESO 284-IG 022 NED01,302.641626,-46.545368,-99.,-99.,-99.,No,Moved to the position of '2MASS J20103399-4632433'.
-ESO 118-IG 041 NED01,71.236972,-58.081389,-99.,-99.,-99.,No,Moved to the position of 'WISEA J044456.87-580453.0'.
-ESO 152-IG 023 NED02,26.448174,-56.093643,-99.,-99.,-99.,No,Moved to the position of '2MASS J01454756-5605371'.
-ESO 152-IG 023 NED01,26.445557,-56.091656,-99.,-99.,-99.,No,Moved to the position of '2MASS J01454693-5605299'.
-ESO 146-IG 003 NED03,329.614991,-58.570221,-99.,-99.,-99.,No,Moved to the position of '2MASS J21582759-5834127'.
-IC 1942 NED01,51.974051,-52.677631,-99.,-99.,-99.,No,Moved to the position of '2MASS J03275377-5240394'.
-II Zw 184 NOTES03,340.299507,1.774371,-99.,-99.,-99.,No,Moved to the position of '2MASS J22411188+0146277'.
-MCG +10-12-053 NED01,120.26882787507336,62.10243488264047,-99.,-99.,-99.,No,Not in NED or HyperLeda.
-ESO 400-IG 031 NED02,307.30554166666667,-36.96230555555556,-99.,-99.,-99.,No,Moved to the position of 'WISEA J202913.34-365744.2'.
-ESO 400-IG 031 NED01,307.2949166666666,-36.96644444444445,-99.,-99.,-99.,No,Moved to the position of 'WISEA J202910.77-365759.0'.
-ESO 384-IG 025 NED02,209.954458,-33.682152,-99.,-99.,-99.,No,Moved to the position of 'WISEA J135949.07-334055.7'.
-ESO 220-IG 010 NED01,201.74449999999996,-49.32491666666667,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132658.68-491929.3'.
-ESO 220-IG 010 NED02,201.76287499999998,-49.33388888888889,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132703.08-492001.7'.
-ESO 269-IG 074 NED02,198.610279,-46.106984,-99.,-99.,-99.,No,Moved to the position of 'WISEA J131426.46-460625.1'.
-ESO 266-IG 005 NED02,173.791,-45.39552777777778,-99.,-99.,-99.,No,Moved to the position of 'WISEA J113509.92-452344.7'.
-ESO 118-IG 039 NED02,70.888076,-61.404400,-99.,-99.,-99.,No,Coordinates on web interface does not match query results.
-ESO 118-IG 004 NED02,62.085788,-61.269773,-99.,-99.,-99.,No,Moved to the position of 'WISEA J040820.58-611611.1'.
-ESO 199-IG 023 NED02,48.130562,-51.345859,-99.,-99.,-99.,No,Moved to the position of 'WISEA J031231.33-512045.0'.
-ESO 199-IG 023 NED03,48.136970,-51.350170,-99.,-99.,-99.,No,Moved to the position of 'GALEXASC J031232.87-512100.6'.
-ESO 113-IG 054 NED02,24.100096,-60.377338,-99.,-99.,-99.,No,Moved to the position of 'WISEA J013624.02-602238.4'.
-ESO 292-IG 019 NED02,356.349167,-46.990556,-99.,-99.,-99.,No,Moved to the position of 'ESO 292-IG 019'.
-ESO 110-IG 010 NED02,351.438796,-67.058981,-99.,-99.,-99.,No,Moved to the position of 'WISEA J232545.31-670332.3'.
-ESO 077-IG 010 NED02,349.632970,-68.827921,-99.,-99.,-99.,No,Moved to the position of 'WISEA J231831.91-684940.5'.
-ESO 110-IG 003 NED01,347.598133,-66.482297,-99.,-99.,-99.,No,Moved to the position of 'WISEA J231023.55-662856.2'.
-ESO 147-IG 015 NED01,344.494289,-58.511497,-99.,-99.,-99.,No,Moved to the position of '2MASS J22575862-5830413'.
-ESO 075-IG 056 NED02,331.719877,-69.934595,-99.,-99.,-99.,No,Moved to the position of 'WISEA J220652.77-695604.5'.
-ESO 075-IG 056 NED01,331.708483,-69.938393,-99.,-99.,-99.,No,Moved to the position of '2MASS J22065003-6956182'.
-ESO 075-IG 040 NED02,329.051119,-70.136107,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215612.26-700809.9'.
-ESO 075-IG 040 NED01,329.037955,-70.137008,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215609.10-700813.2'.
-ESO 403-IG 021 NED01,326.208832,-33.846020,-99.,-99.,-99.,No,Coordinates on web interface does not match query results.
-ESO 403-IG 021 NED02,326.212091,-33.843699,-99.,-99.,-99.,No,Moved to the position of 'WISEA J214450.90-335037.3'.
-ESO 145-IG 009 NED02,324.873717,-59.252987,-99.,-99.,-99.,No,Moved to the position of '2MASS J21392969-5915107'.
-ESO 145-IG 009 NED01,324.868183,-59.254131,-99.,-99.,-99.,No,Moved to the position of '2MASS J21392836-5915148'.
-ESO 236-IG 022 NED01,323.834058,-49.933660,-99.,-99.,-99.,No,Moved to the position of 'WISEA J213520.17-495601.1'.
-ESO 599-IG 019 NED02,323.1632916666667,-19.880666666666666,-99.,-99.,-99.,No,Moved to the position of 'WISEA J213239.20-195250.9'.
-ESO 235-IG 048 NED02,316.137942,-47.834547,-99.,-99.,-99.,No,Moved to the position of 'WISEA J210433.10-475004.3'.
-ESO 047-IG 015 NED02,313.766124,-76.166562,-99.,-99.,-99.,No,Moved to the position of 'WISEA J205503.86-760959.6'.
-ESO 186-IG 070 NED01,309.974548,-54.331793,-99.,-99.,-99.,No,Moved to the position of 'WISEA J203953.89-541954.4'.
-ESO 186-IG 070 NED02,309.975085,-54.334010,-99.,-99.,-99.,No,Moved to the position of 'WISEA J203954.02-542002.4'.
-ESO 186-IG 035 NED02,305.224261,-52.682053,-99.,-99.,-99.,No,Moved to the position of '2MASS J20205382-5240553'.
-ESO 232-IG 013 NED02,294.401625,-47.59097222222223,-99.,-99.,-99.,No,Moved to the position of 'WISEA J193736.38-473526.9'.
-ESO 232-IG 003 NED02,290.6742083333333,-49.39711111111111,-99.,-99.,-99.,No,Moved to the position of 'WISEA J192241.80-492349.6'.
-ESO 072-IG 010 NED02,288.300337,-70.730784,-99.,-99.,-99.,No,Moved to the position of 'WISEA J191312.08-704350.8'.
-ESO 072-IG 010 NED01,288.291158,-70.731153,-99.,-99.,-99.,No,Moved to the position of 'WISEA J191309.87-704352.1'.
-ESO 324-IG 022 NED01,201.771155,-39.240903,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132705.07-391427.2'.
-PGC 3084880,151.734167,-30.450029,-99.,-99.,-99.,No,Moved to the position of 'WISEA J100656.20-302700.1'.
-ESO 206-IG 018 NED02,99.842067,-51.045654,-99.,-99.,-99.,No,Moved to the position of 'WISEA J063922.09-510244.3'.
-PGC 3084874,93.393086,-44.887816,-99.,-99.,-99.,No,Moved to the position of 'WISEA J061334.34-445316.1'.
-PGC 331006,90.868533,-63.592953,-99.,-99.,-99.,No,Moved to the position of 'WISEA J060328.39-633535.1'.
-ESO 159-IG 022 NED02,84.825660,-53.117139,-99.,-99.,-99.,No,Moved to the position of 'WISEA J053918.15-530701.6'.
-ESO 033-IG 027 NED01,84.384691,-75.745331,-99.,-99.,-99.,No,Moved to the position of '2MASX J05373247-7544428'.
-ESO 033-IG 027 NED02,84.392153,-75.746330,0.4,45.,0.2,No,Moved to the position of '2MASS J05373411-7544467'.
-ESO 159-IG 015 NED02,82.532179,-56.463225,-99.,-99.,-99.,No,Moved to the position of 'WISEA J053007.72-562747.6'.
-ESO 085-IG 011 NED01,73.257745,-66.456836,-99.,-99.,-99.,No,Moved to the position of 'WISEA J045301.85-662724.6'.
-ESO 085-IG 006 NED01,72.901322,-62.711265,-99.,-99.,-99.,No,Moved to the position of 'WISEA J045136.31-624240.5'.
-ESO 084-IG 025 NED01,69.037792,-65.775909,-99.,-99.,-99.,No,Moved to the position of '2MASS J04360907-6546332'.
-ESO-LV 1572401,67.903245,-53.291058,-99.,-99.,-99.,No,Moved to the position of '2MASS J04313677-5317278'.
-ESO 083-IG 008 NED02,54.902324,-65.306467,-99.,-99.,-99.,No,Moved to the position of 'WISEA J033936.55-651823.2'.
-ESO 116-IG 002 NED01,43.841893,-60.542948,-99.,-99.,-99.,No,Moved to the position of 'WISEA J025522.05-603234.6'.
-ESO 198-IG 009 NED01,35.906805,-50.851254,-99.,-99.,-99.,No,Moved to the position of '2MASS J02233763-5051045'.
-ESO 053-IG 005 NED01,35.220473,-71.179381,-99.,-99.,-99.,No,Moved to the position of 'WISEA J022052.91-711045.7'.
-ESO 153-IG 031 NED02,34.575845,-55.156819,-99.,-99.,-99.,No,Moved to the position of 'WISEA J021818.20-550924.5'.
-ESO 353-IG 043 NED01,26.547909,-32.765003,-99.,-99.,-99.,No,Moved to the position of '2MASS J01461149-3245540'.
-ESO 114-IG 006 NED02,26.545741,-59.879003,0.1,-99.,-99.,No,Moved to the position of 'WISEA J014610.97-595244.4'.
-ESO 244-IG 004 NED02,18.595565,-42.597210,-99.,-99.,-99.,No,Moved to the position of 'WISEA J011422.93-423549.9'.
-ESO 294-IG 013 NED02,6.952318,-38.686112,-99.,-99.,-99.,No,Moved to the position of 'WISEA J002748.55-384110.0'.
-ESO 193-IG 021 NED01,1.474335,-47.319094,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000553.84-471908.7'.
-ESO 149-IG 014 NED01,0.807574,-52.302841,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000313.81-521810.2'.
-ESO 114-IG 018 NED02,30.282786,-58.922952,-99.,-99.,-99.,No,Moved to the position of 'WISEA J020107.86-585522.6'.
-ESO 358-IG 068 NED02,57.267522,-35.354989,-99.,-99.,-99.,No,Moved to the position of 'WISEA J034904.20-352117.9'.
-III Zw 022 NOTES01,17.714289,8.322072,-99.,-99.,-99.,No,Moved to the position of '2MASS J01105142+0819194'.
-III Zw 022 NOTES02,17.717211,8.323111,-99.,-99.,-99.,No,Moved to the position of '2MASS J01105213+0819231'.
-NGC 0333A,14.712637,-16.472082,-99.,-99.,-99.,No,Moved to the position of '2MASS J00585103-1628194'.
-VIII Zw 060 NED02,150.697637,3.963625,0.2,-99.,-99.,No,Moved to the position of 'WISEA J100247.43+035749.0'.
-III Zw 022 NOTES03,17.719928,8.324383,-99.,-99.,-99.,No,Coordinates on web interface does not match query results.
-VIII Zw 010 NED02,3.645512,-3.092323,-99.,-99.,-99.,No,Moved to the position of 'WISEA J001434.92-030532.3'.
-ESO 194-IG 036 NED02,11.585355,-47.428328,-99.,-99.,-99.,No,Moved to the position of 'WISEA J004620.48-472541.9'.
-ESO 355-IG 003 NED02,34.426041,-37.136176,-99.,-99.,-99.,No,Moved to the position of 'WISEA J021742.24-370810.2'.
-ESO 195-IG 026 NED02,15.984350,-49.523371,-99.,-99.,-99.,No,Moved to the position of 'WISEA J010356.24-493124.1'.
-AM 1913-605,-99.,-99.,0.4,-99.,-99.,No,Flagged as a galaxy pair but centered on a nice spiral.
-WISEA J003745.01+061330.3,-99.,-99.,0.3,-99.,-99.,No,Companion to 'CGCG 409-048 NED02'.
-WISEA J072519.38+553035.0,-99.,-99.,0.3,-99.,-99.,No,Companion to 'CGCG 261-065 NED02'.
-WISEA J233224.52-554705.1,-99.,-99.,0.3,-99.,-99.,No,Companion to 'ESO 192-IG 005 NED02'.
-WISEA J062944.89-544824.5,-99.,-99.,0.2,-99.,-99.,No,Companion to 'ESO 161-IG 010 NED01'.
-ESO 488-IG 041 NED01,-99.,-99.,0.3,-99.,-99.,No,Companion to 'ESO 488-IG 041 NED02'.
-LCRS B222134.3-391730,336.12686823302886,-39.037717325141685,0.3,-99.,-99.,No,Companion to '2MASS J22243101-3902150'.
-VIII Zw 330 NED02,-99.,-99.,0.2,-99.,-99.,No,In 'VIII Zw 330' group.
-ESO 237-IG 006 NED01,327.770006,-48.809086,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215104.80-484832.7'.
-UGC 10273,243.1861666666666,28.28613888888889,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 10273 NED01'.
-UGC 11044,268.89708333333334,18.924444444444447,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 11044 NED03'.
-NGC 5745,221.25791666666666,-13.947194444444445,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'NGC 5745 NED03'.
-NGC 7018,316.85687499999995,-25.42855555555556,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'NGC 7018 NED02'.
-PRC C-59,-99.,-99.,0.5,-99.,-99.,No,
-ESO 409-IG 021 NED01,1.8366666666666667,-28.11863888888889,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000720.78-280706.9'.
-ESO 012-IG 016,5.445587,-81.117359,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J002146.94-810702.4'.
-ESO 012-IG 019,8.247833333333332,-78.21466666666667,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 012-IG 019 NED03'.
-ESO 152-IG 014,23.691374999999997,-53.41811111111111,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J013445.78-532505.9'.
-ESO 053-IG 024 NED01,45.352833,-69.614204,-99.,-99.,-99.,No,Moved to the position of '2MASS J03012467-6936511'.
-ESO 202- G 013,65.802751,-49.252654,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 202- G 013 NED03'.
-ESO 345-IG 052,341.55474999999996,-39.08338888888889,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J224613.26-390502.7'.
-ESO 194-IG 037,11.679833333333333,-51.00538888888889,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 194-IG 037 NED03'.
-CGCG 135-050 NED02,230.377882,21.192636,-99.,-99.,-99.,No,Moved to the position of '2MASS J15213069+2111334'.
-CGCG 135-050 NED01,230.376693,21.1906202,-99.,-99.,-99.,Yes,Moved to the position of galaxy triple 'CGCG 135-050'.
-CGCG 095-061 NED02,163.617441,17.7579675,-99.,-99.,-99.,No,Moved to the position of galaxy triple 'CGCG 095-061'.
-MCG -01-25-007 NED01,-99.,-99.,0.4,-99.,-99.,No,Companion to 'MCG -01-25-007 NED02'.
-MCG -03-07-023 NED01,37.409886,-17.045349,-99.,-99.,-99.,No,Moved to the position of '2MASS J02293837-1702432'.
-IC 1892,47.11345833333333,-23.055777777777777,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'IC 1892 NED01'.
-PGC 095319,329.098599,-28.075796,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215623.66-280432.8'.
-AM 2320-314 NED02,350.741652,-31.4255857,-99.,-99.,-99.,No,Moved to the position of galaxy pair 'AM 2320-314'.
-APM 004353.08-635019.4,11.501242,-63.564285,-99.,-99.,-99.,No,Moved to the position of 'WISEA J004600.29-633351.4'.
-VIII Zw 020,5.320291666666666,-8.972611111111112,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'VIII Zw 020 NED01'.
-UGCA 375,207.97370833333332,64.37244444444444,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'CGCG 317-009 NED02'.
-UGCA 166,143.508212,55.241176,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'MRK 0116 NED01'.
-APMBGC 301+087+099 NED01,50.241387,-41.740643,0.4,-99.,-99.,No,Moved to the position of '2MASS J03205793-4144263'.
-APMBGC 301+087+099 NED02,50.245625,-41.74033333333333,0.4,-99.,-99.,No,Moved to the position of 'LCRS B031911.0-415509'.
-LCRS B031911.0-415509,50.245625,-41.74033333333333,-99.,-99.,-99.,Yes,Galaxy pair moved to the (updated) position of 'APMBGC 301+087+099 NED02'.
-III Zw 015 NOTES02,13.53668766166759,16.916197820437187,-99.,-99.,-99.,No,Galaxy pair moved to LS/DR9 position.
-III Zw 007 NOTES01,6.171464076851492,3.2879030360669947,-99.,-99.,-99.,No,Galaxy pair moved to LS/DR9 position.
-IV Zw 060 NOTES02,-99.,-99.,0.3,0.0,1.0,No,In 'IV Zw 060' group.
-NGC 1487 NED01,58.9364445,-42.3673333,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of galaxy 'NGC 1487'.
-NGC 7587B,349.4995928295441,9.665454616114115,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
-NGC 7017 NED02,-99.,-99.,0.7,0.0,1.0,No,In 'NGC 7017' group.
+objname_ned,ra,dec,diam,pa,ba,diam_hyperleda,update_hyperleda_coords,comment
+UGC 01386 NOTES01,28.748249999999995,13.46725,-99.,-99.,-99.,-99.,No,Center on the galaxy.
+NGC 4106,181.689961,-29.768386,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 406-IG 007 NED01,340.904793,-36.440937,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 074-IG 013 NED02,312.853860,-67.935307,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 235-IG 003 NED02,312.464326,-52.087964,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 192-IG 005 NED01,353.099512,-55.779419,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 355-IG 012 NED02,35.781179,-32.869500,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 355-IG 012 NED03,35.789259,-32.872562,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+VII Zw 735 NOTES01,265.296127,67.897179,0.1,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+NGC 1044 NED02,40.280070,8.735402,0.5,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+NGC 3553,167.667917,28.685639,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 481-IG 012 NED01,48.110808,-27.140094,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 190-IG 014 NED02,337.637496,-54.779187,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+ESO 151-IG 014 NED02,14.407333,-56.599556,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect.
+VII Zw 300 NOTES01,149.894981,81.871918,0.3,-99.,-99.,-99.,No,Moved to the position of '2MASS J09593479+8152189'.
+ESO 290-IG 047 NED03,346.442550,-42.477154,-99.,-99.,-99.,-99.,No,Moved to the position of 'MRSS 290-012872'.
+ESO 237-IG 032 NED02,330.934655,-49.089276,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J220344.31-490521.3'.
+ESO 288-IG 024 NED03,329.465995,-42.761460,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215751.83-424541.2'.
+ESO 284-IG 022 NED01,302.641626,-46.545368,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J20103399-4632433'.
+ESO 118-IG 041 NED01,71.236972,-58.081389,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J044456.87-580453.0'.
+ESO 152-IG 023 NED02,26.448174,-56.093643,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J01454756-5605371'.
+ESO 152-IG 023 NED01,26.445557,-56.091656,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J01454693-5605299'.
+ESO 146-IG 003 NED03,329.614991,-58.570221,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J21582759-5834127'.
+IC 1942 NED01,51.974051,-52.677631,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J03275377-5240394'.
+II Zw 184 NOTES03,340.299507,1.774371,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J22411188+0146277'.
+MCG +10-12-053 NED01,120.26882787507336,62.10243488264047,-99.,-99.,-99.,-99.,No,Not in NED or HyperLeda.
+ESO 400-IG 031 NED02,307.30554166666667,-36.96230555555556,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J202913.34-365744.2'.
+ESO 400-IG 031 NED01,307.2949166666666,-36.96644444444445,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J202910.77-365759.0'.
+ESO 384-IG 025 NED02,209.954458,-33.682152,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J135949.07-334055.7'.
+ESO 220-IG 010 NED01,201.74449999999996,-49.32491666666667,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132658.68-491929.3'.
+ESO 220-IG 010 NED02,201.76287499999998,-49.33388888888889,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132703.08-492001.7'.
+ESO 269-IG 074 NED02,198.610279,-46.106984,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J131426.46-460625.1'.
+ESO 266-IG 005 NED02,173.791,-45.39552777777778,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J113509.92-452344.7'.
+ESO 118-IG 039 NED02,70.888076,-61.404400,-99.,-99.,-99.,-99.,No,Coordinates on web interface does not match query results.
+ESO 118-IG 004 NED02,62.085788,-61.269773,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J040820.58-611611.1'.
+ESO 199-IG 023 NED02,48.130562,-51.345859,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J031231.33-512045.0'.
+ESO 199-IG 023 NED03,48.136970,-51.350170,-99.,-99.,-99.,-99.,No,Moved to the position of 'GALEXASC J031232.87-512100.6'.
+ESO 113-IG 054 NED02,24.100096,-60.377338,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J013624.02-602238.4'.
+ESO 292-IG 019 NED02,356.349167,-46.990556,-99.,-99.,-99.,-99.,No,Moved to the position of 'ESO 292-IG 019'.
+ESO 110-IG 010 NED02,351.438796,-67.058981,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J232545.31-670332.3'.
+ESO 077-IG 010 NED02,349.632970,-68.827921,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J231831.91-684940.5'.
+ESO 110-IG 003 NED01,347.598133,-66.482297,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J231023.55-662856.2'.
+ESO 147-IG 015 NED01,344.494289,-58.511497,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J22575862-5830413'.
+ESO 075-IG 056 NED02,331.719877,-69.934595,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J220652.77-695604.5'.
+ESO 075-IG 056 NED01,331.708483,-69.938393,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J22065003-6956182'.
+ESO 075-IG 040 NED02,329.051119,-70.136107,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215612.26-700809.9'.
+ESO 075-IG 040 NED01,329.037955,-70.137008,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215609.10-700813.2'.
+ESO 403-IG 021 NED01,326.208832,-33.846020,-99.,-99.,-99.,-99.,No,Coordinates on web interface does not match query results.
+ESO 403-IG 021 NED02,326.212091,-33.843699,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J214450.90-335037.3'.
+ESO 145-IG 009 NED02,324.873717,-59.252987,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J21392969-5915107'.
+ESO 145-IG 009 NED01,324.868183,-59.254131,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J21392836-5915148'.
+ESO 236-IG 022 NED01,323.834058,-49.933660,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J213520.17-495601.1'.
+ESO 599-IG 019 NED02,323.1632916666667,-19.880666666666666,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J213239.20-195250.9'.
+ESO 235-IG 048 NED02,316.137942,-47.834547,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J210433.10-475004.3'.
+ESO 047-IG 015 NED02,313.766124,-76.166562,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J205503.86-760959.6'.
+ESO 186-IG 070 NED01,309.974548,-54.331793,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J203953.89-541954.4'.
+ESO 186-IG 070 NED02,309.975085,-54.334010,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J203954.02-542002.4'.
+ESO 186-IG 035 NED02,305.224261,-52.682053,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J20205382-5240553'.
+ESO 232-IG 013 NED02,294.401625,-47.59097222222223,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J193736.38-473526.9'.
+ESO 232-IG 003 NED02,290.6742083333333,-49.39711111111111,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J192241.80-492349.6'.
+ESO 072-IG 010 NED02,288.300337,-70.730784,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J191312.08-704350.8'.
+ESO 072-IG 010 NED01,288.291158,-70.731153,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J191309.87-704352.1'.
+ESO 324-IG 022 NED01,201.771155,-39.240903,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132705.07-391427.2'.
+PGC 3084880,151.734167,-30.450029,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J100656.20-302700.1'.
+ESO 206-IG 018 NED02,99.842067,-51.045654,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J063922.09-510244.3'.
+PGC 3084874,93.393086,-44.887816,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J061334.34-445316.1'.
+PGC 331006,90.868533,-63.592953,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J060328.39-633535.1'.
+ESO 159-IG 022 NED02,84.825660,-53.117139,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J053918.15-530701.6'.
+ESO 033-IG 027 NED01,84.384691,-75.745331,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASX J05373247-7544428'.
+ESO 033-IG 027 NED02,84.392153,-75.746330,0.4,45.,0.2,-99.,No,Moved to the position of '2MASS J05373411-7544467'.
+ESO 159-IG 015 NED02,82.532179,-56.463225,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J053007.72-562747.6'.
+ESO 085-IG 011 NED01,73.257745,-66.456836,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J045301.85-662724.6'.
+ESO 085-IG 006 NED01,72.901322,-62.711265,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J045136.31-624240.5'.
+ESO 084-IG 025 NED01,69.037792,-65.775909,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J04360907-6546332'.
+ESO-LV 1572401,67.903245,-53.291058,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J04313677-5317278'.
+ESO 083-IG 008 NED02,54.902324,-65.306467,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J033936.55-651823.2'.
+ESO 116-IG 002 NED01,43.841893,-60.542948,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J025522.05-603234.6'.
+ESO 198-IG 009 NED01,35.906805,-50.851254,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J02233763-5051045'.
+ESO 053-IG 005 NED01,35.220473,-71.179381,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J022052.91-711045.7'.
+ESO 153-IG 031 NED02,34.575845,-55.156819,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J021818.20-550924.5'.
+ESO 353-IG 043 NED01,26.547909,-32.765003,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J01461149-3245540'.
+ESO 114-IG 006 NED02,26.545741,-59.879003,0.1,-99.,-99.,-99.,No,Moved to the position of 'WISEA J014610.97-595244.4'.
+ESO 244-IG 004 NED02,18.595565,-42.597210,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J011422.93-423549.9'.
+ESO 294-IG 013 NED02,6.952318,-38.686112,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J002748.55-384110.0'.
+ESO 193-IG 021 NED01,1.474335,-47.319094,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000553.84-471908.7'.
+ESO 149-IG 014 NED01,0.807574,-52.302841,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000313.81-521810.2'.
+ESO 114-IG 018 NED02,30.282786,-58.922952,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J020107.86-585522.6'.
+ESO 358-IG 068 NED02,57.267522,-35.354989,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J034904.20-352117.9'.
+III Zw 022 NOTES01,17.714289,8.322072,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J01105142+0819194'.
+III Zw 022 NOTES02,17.717211,8.323111,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J01105213+0819231'.
+NGC 0333A,14.712637,-16.472082,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J00585103-1628194'.
+VIII Zw 060 NED02,150.697637,3.963625,0.2,-99.,-99.,-99.,No,Moved to the position of 'WISEA J100247.43+035749.0'.
+III Zw 022 NOTES03,17.719928,8.324383,-99.,-99.,-99.,-99.,No,Coordinates on web interface does not match query results.
+VIII Zw 010 NED02,3.645512,-3.092323,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J001434.92-030532.3'.
+ESO 194-IG 036 NED02,11.585355,-47.428328,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J004620.48-472541.9'.
+ESO 355-IG 003 NED02,34.426041,-37.136176,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J021742.24-370810.2'.
+ESO 195-IG 026 NED02,15.984350,-49.523371,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J010356.24-493124.1'.
+AM 1913-605,-99.,-99.,0.4,-99.,-99.,-99.,No,Flagged as a galaxy pair but centered on a nice spiral.
+WISEA J003745.01+061330.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Companion to 'CGCG 409-048 NED02'.
+WISEA J072519.38+553035.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Companion to 'CGCG 261-065 NED02'.
+WISEA J233224.52-554705.1,-99.,-99.,0.3,-99.,-99.,-99.,No,Companion to 'ESO 192-IG 005 NED02'.
+WISEA J062944.89-544824.5,-99.,-99.,0.2,-99.,-99.,-99.,No,Companion to 'ESO 161-IG 010 NED01'.
+ESO 488-IG 041 NED01,-99.,-99.,0.3,-99.,-99.,-99.,No,Companion to 'ESO 488-IG 041 NED02'.
+LCRS B222134.3-391730,336.12686823302886,-39.037717325141685,0.3,-99.,-99.,-99.,No,Companion to '2MASS J22243101-3902150'.
+VIII Zw 330 NED02,-99.,-99.,0.2,-99.,-99.,-99.,No,In 'VIII Zw 330' group.
+ESO 237-IG 006 NED01,327.770006,-48.809086,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215104.80-484832.7'.
+UGC 10273,243.1861666666666,28.28613888888889,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 10273 NED01'.
+UGC 11044,268.89708333333334,18.924444444444447,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'UGC 11044 NED03'.
+NGC 5745,221.25791666666666,-13.947194444444445,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'NGC 5745 NED03'.
+NGC 7018,316.85687499999995,-25.42855555555556,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'NGC 7018 NED02'.
+PRC C-59,-99.,-99.,0.5,-99.,-99.,-99.,No,
+ESO 409-IG 021 NED01,1.8366666666666667,-28.11863888888889,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000720.78-280706.9'.
+ESO 012-IG 016,5.445587,-81.117359,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J002146.94-810702.4'.
+ESO 012-IG 019,8.247833333333332,-78.21466666666667,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 012-IG 019 NED03'.
+ESO 152-IG 014,23.691374999999997,-53.41811111111111,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J013445.78-532505.9'.
+ESO 053-IG 024 NED01,45.352833,-69.614204,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J03012467-6936511'.
+ESO 202- G 013,65.802751,-49.252654,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 202- G 013 NED03'.
+ESO 345-IG 052,341.55474999999996,-39.08338888888889,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J224613.26-390502.7'.
+ESO 194-IG 037,11.679833333333333,-51.00538888888889,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 194-IG 037 NED03'.
+CGCG 135-050 NED02,230.377882,21.192636,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J15213069+2111334'.
+CGCG 135-050 NED01,230.376693,21.1906202,-99.,-99.,-99.,-99.,Yes,Moved to the position of galaxy triple 'CGCG 135-050'.
+CGCG 095-061 NED02,163.617441,17.7579675,-99.,-99.,-99.,-99.,No,Moved to the position of galaxy triple 'CGCG 095-061'.
+MCG -01-25-007 NED01,-99.,-99.,0.4,-99.,-99.,-99.,No,Companion to 'MCG -01-25-007 NED02'.
+MCG -03-07-023 NED01,37.409886,-17.045349,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J02293837-1702432'.
+IC 1892,47.11345833333333,-23.055777777777777,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'IC 1892 NED01'.
+PGC 095319,329.098599,-28.075796,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J215623.66-280432.8'.
+AM 2320-314 NED02,350.741652,-31.4255857,-99.,-99.,-99.,-99.,No,Moved to the position of galaxy pair 'AM 2320-314'.
+APM 004353.08-635019.4,11.501242,-63.564285,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J004600.29-633351.4'.
+VIII Zw 020,5.320291666666666,-8.972611111111112,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'VIII Zw 020 NED01'.
+UGCA 375,207.97370833333332,64.37244444444444,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'CGCG 317-009 NED02'.
+UGCA 166,143.508212,55.241176,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of 'MRK 0116 NED01'.
+APMBGC 301+087+099 NED01,50.241387,-41.740643,0.4,-99.,-99.,-99.,No,Moved to the position of '2MASS J03205793-4144263'.
+APMBGC 301+087+099 NED02,50.245625,-41.74033333333333,0.4,-99.,-99.,-99.,No,Moved to the position of 'LCRS B031911.0-415509'.
+LCRS B031911.0-415509,50.245625,-41.74033333333333,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the (updated) position of 'APMBGC 301+087+099 NED02'.
+III Zw 015 NOTES02,13.53668766166759,16.916197820437187,-99.,-99.,-99.,-99.,No,Galaxy pair moved to LS/DR9 position.
+III Zw 007 NOTES01,6.171464076851492,3.2879030360669947,-99.,-99.,-99.,-99.,No,Galaxy pair moved to LS/DR9 position.
+IV Zw 060 NOTES02,-99.,-99.,0.3,0.0,1.0,-99.,No,In 'IV Zw 060' group.
+NGC 1487 NED01,58.9364445,-42.3673333,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of galaxy 'NGC 1487'.
+NGC 7587B,349.4995928295441,9.665454616114115,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+NGC 7017 NED02,-99.,-99.,0.7,0.0,1.0,-99.,No,In 'NGC 7017' group; estimated geometry.
+NGC 1487 NED01,58.9364445,-42.3673333,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of galaxy 'NGC 1487'.
+NGC 3058,148.400217,-12.482341,-99.,-99.,-99.,-99.,Yes,Galaxy pair moved to the position of galaxy 'NGC 3058 NED02'.
+WISEA J110950.68+331807.2,-99.,-99.,-99.,-99.,-99.,0.35,No,Wrong Hyperleda diameter (10.9 arcmin).
+WISEA J151427.24+604725.4,-99.,-99.,0.05,-99.,-99.,-99.,No,Wrong basic diameter (12.1 arcmin).
+IRAS 14220+3138,-99.,-99.,0.4,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+WISEA J002402.56+134436.1,-99.,-99.,0.2,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+WISEA J001159.21+072956.1,-99.,-99.,0.1,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+WISEA J000624.95-203951.1,-99.,-99.,0.45,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+WISEA J083459.64-211132.2,-99.,-99.,0.1,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+IRAS 23476+1207,-99.,-99.,0.1,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+IRAS 12337+5044,-99.,-99.,0.7,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+2MFGC 04926,-99.,-99.,0.5,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+2MASXi J0032468-345652,-99.,-99.,0.5,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
+Cepheus 1,-99.,-99.,3.,-99.,-99.,-99.,No,Wrong basic diameter.
+WISEA J114851.68-020026.5,-99.,-99.,0.25,-99.,-99.,-99.,No,Wrong basic diameter.
+WISEA J133748.42+022102.8,-99.,-99.,0.3,-99.,-99.,-99.,No,Wrong basic diameter.
+2MASS J07570628+4059150,-99.,-99.,0.1,-99.,-99.,-99.,No,Wrong basic diameter.
+2MASS J10254748+1343391,-99.,-99.,0.2,-99.,-99.,-99.,No,Wrong basic diameter.
+NGC 5514 NED01,213.41124999999997,7.660416666666667,-99.,-99.,-99.,-99.,Yes,Moved to the position of 'WISEA J141338.70+073937.4'.
+UGC 12188 NED02,-99.,-99.,0.3,0.0,1.0,-99.,No,Estimated diameter.
+UGC 10908,263.407089,50.373309,-99.,-99.,-99.,-99.,No,Moved to the SGA2020 position.
+UGC 07891 NED01,190.765302,30.381462,-99.,-99.,-99.,-99.,No,Moved to the position of galaxy pair 'UGC 07891'.
+UGC 03710 NED02,107.383310,28.661444,0.5,-99.,-99.,-99.,No,Moved to the position of '2MASS J07093199+2839411'.
+UGC 10222,240.36331178651002,81.86567588137831,-99.,-99.,-99.,-99.,No,Galaxy pair moved to the LS/DR9 position.
+WISEA J043501.29-410028.8,68.75540446220867,-41.009684098550274,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+WISEA J022443.20+013540.0,-99.,-99.,0.15,0.0,1.0,-99.,No,Estimated diameter.
+2MASS J16424027-0943091,-99.,-99.,0.4,0.0,1.0,-99.,No,Estimated diameter.
+UM 185E,357.951193188588,2.5158159434509564,0.4,50.,0.5,-99.,No,Moved to the LS/DR9 position with updated geometry.
+UM 185W,357.95022377616453,2.516723740985482,0.4,50.,0.5,-99.,No,Moved to the LS/DR9 position with updated geometry.
+PKS 0651-60,102.9799530644531,-60.37048070768718,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+NGC 6692 NED01,-99.,-99.,0.7,0.0,1.0,-99.,No,Estimated diameter.
+NGC 6692 NED02,-99.,-99.,0.7,0.0,1.0,-99.,No,Estimated diameter.
+MCG -01-05-016,25.106204,-7.902178,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+6dF J2305045-190827,346.2696130322597,-19.140540871926707,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+2MASX J03225574-5203087,50.73227404841316,-52.05244338195995,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B210653.75-45180 ID,317.55372851581956,-45.097873143370386,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B040747.14-42305 ID,62.3619,-42.3868,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B033512.35-41430 ID,54.2428,-41.5543,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B012537.64-07423 ID,22.0351,-7.4508,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B234311.14-45153 ID,356.456283,-44.981313,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+APMUKS(BJ) B013055.84-39172 ID,23.285255,-39.033246,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+CGCG 461-045 NED02,-99.,-99.,0.9,0.0,1.0,-99.,No,Estimated diameter.
+LEDA 097874,201.4265,-30.7113,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+GALEXASC J132540.72-304306.5,201.4203,-30.7182,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+KUG 1553+200 NED02,238.9870,19.9490,0.2,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+KUG 0229+283,38.1944,28.5529,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+WISEA J023248.18+283253.4,-99.,-99.,0.5,135.,0.3,-99.,No,Estimated diameter.
+WISEA J223158.29+182029.7,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+CGCG 261-067 NED01,111.8106,52.9485,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+CGCG 261-067 NED02,111.8078,52.9487,0.7,0.,1.,-99.,No,Moved to the LS/DR9 position with updated geometry.
+APMUKS(BJ) B030437.41-12262 ID,46.7524,-12.2472,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 119-IG 031,75.8657,-58.2024,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 488-IG 031 NED02,87.2220,-25.6321,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 111-IG 003,357.5889,-61.5381,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 201-IG 015,60.2738,-51.4190,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 481-IG 024 NED02,50.3039,-25.4399,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 404-IG 042,333.3253,-37.0168,-99.,-99.,-99.,-99.,No,Galaxy pair moved to the LS/DR9 position.
+ESO 404-IG 042 NED02,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+2MASS J11295994-5108070,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+ESO 161-IG 007,96.5768,-53.6922,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 161-IG 007 NED01,96.5764,-53.6911,0.2,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 354-IG 013,28.8193,-33.2710,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 191-IG 005 NED01,345.4201,-52.7918,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 190-IG 008,336.411749,-55.483404,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J222538.81-552900.2'.
+ESO 286-IG 065,317.6475,-45.5826,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 185-IG 023 NED02,298.2180,-55.0654,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 140-IG 032,279.5623,-61.5804,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 365-IG 013 NED01,95.9773,-35.0225,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+2MASXi J0623052-723510,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+ESO 205-IG 030,92.6444,-47.6790,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 085-IG 022,74.4042,-64.7261,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 155-IG 016,49.4322,-54.3797,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 152-IG 022,26.3007,-55.7277,-99.,-99.,-99.,-99.,No,Galaxy pair moved to the LS/DR9 position.
+ESO 295-IG 022,13.9440,-37.4077,-99.,-99.,-99.,-99.,No,Galaxy pair moved to the LS/DR9 position.
+ESO 193-IG 028,1.7585,-48.7668,-99.,-99.,-99.,-99.,No,Galaxy pair moved to the LS/DR9 position.
+ESO-LV 2990161,41.8334,-42.1380,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 308-IG 015,98.7937,-41.5610,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 4410191,183.1605,-32.5926,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 5760152,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+ESO 184-IG 065,291.3813,-52.9996,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 4630341,313.7862,-31.0931,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 187- G 045,315.2387,-57.2292,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 5990192,323.1738,-19.8749,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 349- G 039,2.9044,-36.9370,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 4700201,354.0741,-31.6066,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 4860391,78.8385,-26.4680,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO 596- G?051 NED01,-99.,-99.,0.7,0.,1.,-99.,No,Estimated diameter.
+ESO 596- G?051,307.7789,-18.1996,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 1570281,66.559594,-53.151251,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 4170091,44.7971,-32.0752,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+ESO-LV 2360021,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+SDSS J121337.65+160710.2,-99.,-99.,0.7,0.,1.,0.7,No,Estimated diameter.
+DDO 169NW,198.833750,47.543611,-99.,-99.,-99.,-99.,No,LVD position shifted to the coordinates in 2013AJ....145..101K.
+KDG 73,163.23779166666665,69.54938888888888,-99.,-99.,-99.,-99.,No,LVD dwarf moved to NED position.
+Clump I,-99.,-99.,0.18,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
+Clump III,-99.,-99.,0.10,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
+A0952+69,-99.,-99.,1.82,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
+KK 35,-99.,-99.,2.51,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
+KK 208,-99.,-99.,5.89,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
+DDO 147,-99.,-99.,-99.,74.,-99.,-99.,No,LVD dwarf with updated position angle.
+NGC 4190,-99.,-99.,-99.,30.,-99.,-99.,No,LVD dwarf with updated position angle.
+DDO126,-99.,-99.,-99.,145.,-99.,-99.,No,LVD dwarf with updated position angle.
+DDO 133,-99.,-99.,-99.,160.,-99.,-99.,No,LVD dwarf with updated position angle.
+DDO 165,-99.,-99.,-99.,90.,-99.,-99.,No,LVD dwarf with updated position angle.
+Holmberg I,-99.,-99.,-99.,105.,-99.,-99.,No,LVD dwarf with updated position angle.
+VII Zw 197 NOTES03,-99.,-99.,0.3,0.,1.,0.7,No,Estimated diameter.
+VII Zw 463 NOTES03,-99.,-99.,0.3,0.,1.,0.7,No,Estimated diameter.

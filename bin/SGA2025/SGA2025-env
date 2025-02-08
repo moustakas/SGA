@@ -19,6 +19,7 @@ export SGA_DATA_DIR=$PSCRATCH/$project-data
 export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/$project-html
 
 # Pipeline variables---only change these if you know what you're doing!
+export LEGACY_SURVEY_BASEDIR=/global/cfs/cdirs/cosmo/work/legacysurvey
 export LEGACY_SURVEY_DIR=/global/cfs/cdirs/cosmo/work/legacysurvey/dr9
 export SKY_TEMPLATE_DIR=/global/cfs/cdirs/cosmo/data/legacysurvey/dr9/calib/sky_pattern
 
@@ -37,15 +38,14 @@ export UNWISE_COADDS_DIR=/global/cfs/cdirs/cosmo/data/unwise/neo8/unwise-coadds/
 export TYCHO2_KD_DIR=/global/cfs/cdirs/cosmo/staging/tycho2
 export PS1CAT_DIR=/global/cfs/cdirs/cosmo/work/ps1/cats/chunks-qz-star-v3
 export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
-
 export GALEX_DIR=/global/cfs/cdirs/cosmo/data/galex/images
 # Uncomment this variable if you want time-resolved unWISE photometry (generally not needed). 
 #export UNWISE_COADDS_TIMERESOLVED_DIR=/global/cfs/cdirs/cosmo/work/wise/outputs/merge/neo6
 
-export PYTHONNOUSERSITE=1
+#export PYTHONNOUSERSITE=1
+#export KMP_AFFINITY=disabled
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-export KMP_AFFINITY=disabled
 export MPICH_GNI_FORK_MODE=FULLCOPY
 
 # Config directory nonsense

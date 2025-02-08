@@ -13,27 +13,6 @@ from astropy.table import Table, vstack
 from SGA.log import get_logger#, DEBUG
 log = get_logger()
 
-## C file descriptors for stderr and stdout, used in redirection
-## context manager.
-#import ctypes
-#from contextlib import contextmanager
-#
-#libc = ctypes.CDLL(None)
-#c_stdout = None
-#c_stderr = None
-#try:
-#    # Linux systems
-#    c_stdout = ctypes.c_void_p.in_dll(libc, 'stdout')
-#    c_stderr = ctypes.c_void_p.in_dll(libc, 'stderr')
-#except:
-#    try:
-#        # Darwin
-#        c_stdout = ctypes.c_void_p.in_dll(libc, '__stdoutp')
-#        c_stderr = ctypes.c_void_p.in_dll(libc, '__stdoutp')
-#    except:
-#        # Neither!
-#        pass
-
 
 def sga_dir():
     if 'SGA_DIR' not in os.environ:
@@ -68,8 +47,113 @@ def sga_html_dir():
     return ldir
 
 
+def set_legacysurvey_dir(region='dr9-north'):
+    if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
+        raise EnvironmentError('Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!')
+    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
+    legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
+    print(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
+    os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
+
+
+def custom_brickname(ra, dec, more_decimals=False):
+    if more_decimals:
+        brickname = '{:08d}{}{:07d}'.format(
+            int(100000*ra), 'm' if dec < 0 else 'p',
+            int(100000*np.abs(dec)))
+    else:
+        brickname = '{:06d}{}{:05d}'.format(
+            int(1000*ra), 'm' if dec < 0 else 'p',
+            int(1000*np.abs(dec)))
+    return brickname
+
+
 def get_raslice(ra):
-    return f'{int(ra):03d}'
+    if np.isscalar(ra):
+        return f'{int(ra):03d}'
+    else:
+        return [f'{int(onera):03d}' for onera in ra]
+
+
+def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
+    """Convert the right ascension and declination of an object into a
+    disk-friendly "name", for reference in publications.  Length of
+    `target_ra` and `target_dec` must be the same if providing an
+    array or list.
+
+    Parameters
+    ----------
+    target_ra: array of :class:`~numpy.float64`
+        Right ascension in degrees of target object(s). Can be float, double,
+        or array/list of floats or doubles.
+    target_dec: array of :class:`~numpy.float64`
+        Declination in degrees of target object(s). Can be float, double,
+        or array/list of floats or doubles.
+
+    Returns
+    -------
+    array of :class:`str`
+        Names referring to the input target RA and DEC's. Array is the
+        same length as the input arrays.
+
+    Raises
+    ------
+    ValueError
+        If any input values are out of bounds.
+
+    Notes
+    -----
+    Written by A. Kremin (LBNL) for DESI. Taken entirely from
+    desiutil.names.radec_to_desiname.
+
+    """
+    # Convert to numpy array in case inputs are scalars or lists
+    target_ra, target_dec = np.atleast_1d(target_ra), np.atleast_1d(target_dec)
+
+    base_tests = [('NaN values', np.isnan),
+                  ('Infinite values', np.isinf),]
+    inputs = {'target_ra': {'data': target_ra,
+                            'tests': base_tests + [('RA not in range [0, 360)', lambda x: (x < 0) | (x >= 360))]},
+              'target_dec': {'data': target_dec,
+                             'tests': base_tests + [('Dec not in range [-90, 90]', lambda x: (x < -90) | (x > 90))]}}
+    for coord in inputs:
+        for message, check in inputs[coord]['tests']:
+            if check(inputs[coord]['data']).any():
+                raise ValueError(f"{message} detected in {coord}!")
+
+    # Number of decimal places in final naming convention
+    precision = 4
+
+    # Truncate decimals to the given precision
+    ratrunc = np.trunc((10.**precision) * target_ra).astype(int).astype(str)
+    dectrunc = np.trunc((10.**precision) * target_dec).astype(int).astype(str)
+
+    # Loop over input values and create the name as DESINAME as: DESI JXXX.XXXX+/-YY.YYYY
+    # Here J refers to J2000, which isn't strictly correct but is the closest
+    #   IAU compliant term
+    names = []
+    for ra, dec in zip(ratrunc, dectrunc):
+        zra = ra.zfill(7)
+        name = f'{prefix} J' + zra[:-precision] + '.' + zra[-precision:]
+        # Positive numbers need an explicit "+" while negative numbers
+        #   already have a "-".
+        # zfill works properly with '-' but counts it in number of characters
+        #   so need one more
+        if dec.startswith('-'):
+            zdec = dec.zfill(7)
+            name += zdec[:-precision] + '.' + zdec[-precision:]
+        else:
+            zdec = dec.zfill(6)
+            name += '+' + zdec[:-precision] + '.' + zdec[-precision:]
+        names.append(name)
+
+    names = np.array(names)
+
+    # convert spaces to underscores
+    if unixsafe:
+        names = np.char.replace(names, ' ', '_')
+
+    return names
 
 
 def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
@@ -122,6 +206,83 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         return objs, objdirs, htmlobjdirs
     else:
         return objs, objdirs
+
+
+def parent_version(vicuts=False, nocuts=False):
+    if nocuts:
+        version = 'v1.0'
+    elif vicuts:
+        version = 'v1.0'
+    else:
+        version = 'v1.0'
+    return version
+
+
+def parent_datamodel(nobj):
+    """Initialize the data model for the parent-nocuts sample.
+
+    """
+    parent = Table()
+    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_SGA2020'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+    parent['MORPH'] = np.zeros(nobj, '<U20')
+    parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
+
+    parent['RA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_SGA2020'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_SGA2020'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+
+    parent['Z'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+
+    parent['PGC'] = np.zeros(nobj, '<i8') -99
+    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
+
+    parent['MAG_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['MAG_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['BAND_LIT'] = np.zeros(nobj, '<U1')
+    parent['DIAM_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['DIAM_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['BA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['PA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_LIT_REF'] = np.zeros(nobj, '<U9')
+
+    parent['MAG_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_HYPERLEDA'] = np.zeros(nobj, '<U1')
+    parent['DIAM_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+
+    parent['MAG_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_SGA2020'] = np.zeros(nobj, '<U1')
+    parent['DIAM_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_SGA2020'] = np.zeros(nobj, 'f4') -99.
+
+    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_SGA2020'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
+
+    return parent
 
 
 def read_survey_bricks(survey, brickname=None, custom=False):
@@ -439,14 +600,16 @@ def nedfriendly_lvd(old):
         'Aquarius': 'Aquarius dIrr',
         'Canes Venatici I': 'CVn I dSph',
         'Canes Venatici II': 'CVn II dSph',
+        'Cassiopea dIrr 1': 'Cas 1',
+        'Cassiopeia II': 'Andromeda XXX', # NED incorrectly matches to Cas II=[MIM2013] 009 with incorrect coordinates
         'CenA-MM-Dw1': 'CenA-Dw-133013-415321',
         'CenA-MM-Dw2': 'CenA-Dw-132956-415220',
-        'CenA-MM-Dw3': 'Centaurus A:[CSS2016] MM-Dw03',
+        'CenA-MM-Dw3': 'Centaurus A:[CSS2016] MM-Dw03', # HyperLeda matches to WISEA J133020.71-421130.6
         'CenA-MM-Dw4': 'CenA-Dw-132302-414705',
         'CenA-MM-Dw5': 'CenA-Dw-131952-415938',
         'CenA-MM-Dw6': 'CenA-Dw-132557-410538',
         'CenA-MM-Dw7': 'CenA-Dw-132628-433318',
-        'Cetus': 'Cetus Dwarf Spheroidal', # NED matches Cetus to Cetus II!
+        'Cetus': 'Cetus Dwarf Spheroidal', # NED incorrectly matches Cetus to Cetus II!
         'Clump I': 'PGC1 0028630 NED040',
         'Clump III': 'PGC1 0028630 NED039',
         'Donatiello III': '[TDW2021] 300548367', # ???
@@ -455,23 +618,28 @@ def nedfriendly_lvd(old):
         'Fornax': 'Fornax Dwarf Spheroidal',
         'Hercules': 'Hercules dSph',
         'HIDEEP J1337-3320': 'GALEXASC J133700.38-332144.3',
+        #'JKB142': 'WISEA J014548.01+162239.4', # NED resolves JKB142, but HyperLeda incorrectly matches to WISEA J014548.01+162239.4 by position
+        'JKB129': 'HIPASS J0021+08',
         'HS 117': 'PGC1 0028630 NED027',
-        'KK 17': 'WISEA J020010.18+284958.9',
+        'KK 17': 'GALEXMSC J020010.17+284951.8', # WISEA J020010.18+284958.9 ??
         'KK 27': 'AM 0319-662',
         'KK 35': 'PGC1 0013826 NED006',
         'KK 77': 'F12D1',
         'KK 109': 'GALEXASC J114711.81+434018.1',
         'KK 160': 'SDSS J124357.79+433940.3',
-        'KK 177': 'IC 4107',
+        'KK 166': 'PGC1 0043495 NED005',
+        'KK 177': 'IC 4107', # HyperLeda matches to WISEA J130241.76+215952.2
         'KK 180': 'LSBC D575-08',
         'KK 182': 'PGC1 0166152 NED001',
         'KK 189': 'Centaurus A-dE1',
         'KK 195': 'GALEXASC J132108.25-313149.7',
         'KK 196': 'AM 1318-444',
+        'KK 197': '2MASS J13220203-4232074', # =[KK98] 197
         'KK 200': 'AM 1321-304',
         'KK 203': 'AM 1324-450',
         'KK 208': 'PGC1 0048082 NED002',
         'KK 211': 'AM 1339-445',
+        'KK 213': 'PGC1 0046957 NED022',
         'KK 217': 'AM 1343-452',
         'KK 218': 'Centaurus A-dE4',
         'KK 221': 'PGC1 0046957 NED025',
@@ -489,7 +657,7 @@ def nedfriendly_lvd(old):
         'KKSG 32': 'PGC1 0042407 NED015',
         'KKSG 33': 'PGC1 0042407 NED016',
         'KKSG 37': 'NSA 142339',
-        'Leo I 09': 'NGC 3368:[CVD2018] DF6',
+        'Leo I 09': 'NGC 3368:[CVD2018] DF6', # HyperLeda matches to SDSS J104653.19+124441.4
         'Leo VI': 'RCS 04020600360',
         'M101-DF1': 'PGC1 0050063 NED008',
         'M101-DF2': 'PGC1 0050063 NED007',
@@ -522,7 +690,7 @@ def nedfriendly_lvd(old):
         'd0934+70': 'PGC1 0028630 NED026',
         'd0944+69': 'PGC1 0028630 NED036',
         'd0944+71': 'GALEXMSC J094435.06+712857.6',
-        'd0958+66': 'KUG 0945+670', # could also be GALEXASC J095848.78+665057.9??
+        'd0958+66': 'KUG 0945+670', # could also be GALEXASC J095848.78+665057.9 ??
         'd0959+68': 'PGC1 0028630 NED031',
         'd1006+67': 'PGC1 0028630 NED030',
         'd1014+68': 'WISEA J101456.37+684529.2',
@@ -532,14 +700,13 @@ def nedfriendly_lvd(old):
         'dw1336-44': 'Cen A:[MJP2016] dw1336-44',
         'dw1340-30': '[KKM2018a] dw J1340-30',
         'dw1341-43': 'Cen A:[MJP2016] dw1341-43',
-        'dw1342-43': 'Cen A:[MJP2016] dw1342-43',
+        'dw1342-43': '[KKM2018a] dw J1342-43', # may also be Cen A:[MJP2016] dw1342-43
         'dw1322-39': 'Cen A:[MJP2016] dw1322-39',
         'dw0036m2828': '[CGB2022] dw J0036-2828',
         # not in NED
         #'A0952+69': '',
         #'Aquarius III': '',
         #'Bedin 1': '',
-        #'Cassiopea dIrr 1': '',
         #'Corvus A': '',
         #'Donatiello IV': '',
         #'Eridanus IV': '',
@@ -643,15 +810,18 @@ def read_lvd(rank=0, rows=None):
     # PGC2801063 = KKR73
     # PGC57522 = KKR23
     pgc = {
-		'Aquarius III': 0,
+		'Antlia': 29194,
+        'Aquarius III': 0,
+        'Canes Venatici I': 4689223,
+        'Canes Venatici II': 4713558,
 		'A0952+69': 0,
 		'AGC 239141': 5808786,
 		'BK3N': 28529,
 		'BK6N': 31286,
-		'BTS 116': 0,
-		'Camelopardalis A': 0,
-		'Camelopardalis B': 0,
-		'Cassiopea dIrr 1': 0,
+		'BTS 116': 1839154,
+		'Camelopardalis A': 166082,
+		'Camelopardalis B': 166084,
+		'Cassiopea dIrr 1': 100169,
 		'Fluffy': 0,
 		'KV19-212': 0,
 		'KV19-271': 0,
@@ -704,7 +874,7 @@ def read_lvd(rank=0, rows=None):
 		'KK 17': 166065,
 		'KK 27': 166073,
 		'KK 35': 166077,
-		'KK 77': 2815838,
+		'KK 77': 166101,
 		'KK 109': 166115,
 		'KK 160': 166142,
 		'KK 166': 166146,
@@ -719,10 +889,10 @@ def read_lvd(rank=0, rows=None):
 		'KKH 57': 2807133,
 		'KKH 78': 2807147,
 		'LV J1243+4127': 0,
-		'LV J1313+1003': 0,
-		'HS 117': 0,
-		'Clump I': 0,
-		'Clump III': 0,
+		'LV J1313+1003': 4573336,
+		'HS 117': 4689216,
+		'Clump I': 5057029,
+		'Clump III': 5057030,
 		'MAPS 1231+42': 0,
 		'MAPS 1249+44': 0,
 		'MCG +06-27-017': 38685,
@@ -731,7 +901,7 @@ def read_lvd(rank=0, rows=None):
 		'NGC 625': 5896,
 		'NGC 891': 9031,
 		'TT2009 25': 0,
-		'TT2009 30': 0,
+		'TT2009 30': 5072545,
 		'NGC 1313': 12286,
 		'NGC 1569': 15345,
 		'NGC 2366': 21102,
@@ -743,16 +913,16 @@ def read_lvd(rank=0, rows=None):
 		'NGC 4236': 39346,
 		'NGC 4244': 39422,
 		'NGC 4395': 40596,
-		'NGC 4594-DGSAT-2': 0,
-		'NGC 4594-DGSAT-3': 0,
+		'NGC 4594-DGSAT-2': 5473059,
+		'NGC 4594-DGSAT-3': 5473061,
 		'NGC 4594-DW1': 0,
-		'dw1240-1118': 0,
+		'dw1240-1118': 42428,
 		'KKSG 29': 42120,
 		'KKSG 31': 3097709,
 		'KKSG 32': 3097710,
 		'KKSG 33': 3097711,
 		'KKSG 37': 3097714,
-		'LV J1235-1104': 0,
+		'LV J1235-1104': 970397,
 		'SUCD1': 3793583,
 		'dw1300+1843': 0,
 		'NGC 5102': 46674,
@@ -836,7 +1006,6 @@ def read_lvd(rank=0, rows=None):
         'Andromeda XXVI': 5057229,
         'Andromeda XXVII': 5057230,
         'Andromeda XXVIII': 5060429,
-        'Antlia': 29194,
         'Antlia B': 5098252,
         'Antlia II': 6775392,
         'Aquarius': 65367,
@@ -848,8 +1017,6 @@ def read_lvd(rank=0, rows=None):
         'Bootes III': 4713562,
         'Bootes IV': 0,
         'Bootes V': 0,
-        'Canes Venatici I': 4689223,
-        'Canes Venatici II': 4713558,
         'Carina': 19441,
         'Carina II': 0,
         'Carina III': 0,
@@ -896,7 +1063,7 @@ def read_lvd(rank=0, rows=None):
         'Eridanus II': 5074553,
         'Eridanus IV': 0,
         'F8D1': 3097827,
-        'FM1': 0,
+        'FM1': 3097828,
         'Fornax': 10074,
         'GALFA Dw3': 5072714,
         'GALFA Dw4': 5072715,
@@ -928,12 +1095,12 @@ def read_lvd(rank=0, rows=None):
         'KK 189': 166158,
         'KK 195': 166163,
         'KK 196': 46663,
-        'KK 197': 100039,
+        'KK 197': 46680,
         'KK 200': 46885,
         'KK 203': 166167,
         'KK 208': 166170,
         'KK 211': 48515,
-        'KK 213': 100040,
+        'KK 213': 166172,
         'KK 218': 166176,
         'KK 221': 166179,
         'KK 258': 69468,
@@ -949,7 +1116,7 @@ def read_lvd(rank=0, rows=None):
         'KKs 55': 2815822,
         'KKs 57': 2815823,
         'KKs 58': 2815824,
-		'KKs 59': 0, # incorrectly matches to PGC135780
+		'KKs 59': 48937,
         'LGS 3': 3792,
         'LMC': 17223,
         'LV J0055-2310': 6740710,
@@ -970,7 +1137,7 @@ def read_lvd(rank=0, rows=None):
         'Leo V': 4713563,
         'Leo VI': 0,
         'M 32': 2555,
-        'M101 Dw9': 0,
+        'M101 Dw9': 6740596,
         'M101 DwA': 5067392,
         'M101-DF1': 5067385,
         'M101-DF2': 5067386,
@@ -1023,7 +1190,7 @@ def read_lvd(rank=0, rows=None):
         'Scl-MM-Dw4': 0,
         'Scl-MM-Dw5': 0,
         'Sculptor': 3589,
-        'Sculptor-dE1': 0,
+        'Sculptor-dE1': 3097727,
         'Segue 1': 4713559,
         'Segue 2': 4713565,
         'Sextans': 88608, # = PGC088608
@@ -1152,6 +1319,19 @@ def read_nedlvs(rank=0, rows=None):
     nedlvs['GALAXY'] = nedlvs['OBJNAME']
 
     return nedlvs
+
+
+def read_sga2020(rank=0, rows=None):
+    """Read the SGA-2020 catalog.
+
+    """
+    sga2020file = os.path.join(sga_dir(), 'parent', 'external', 'SGA-2020.fits')
+    sga2020 = Table(fitsio.read(sga2020file, ext='ELLIPSE', rows=rows))
+    sga2020['ROW'] = np.arange(len(sga2020))
+    print(f'Read {len(sga2020):,d} objects from {sga2020file}')
+    #print(f'Rank {rank:03d}: Read {len(sga2020):,d} objects from {sga2020file}')
+
+    return sga2020
 
 
 def read_wxsc(rank=0):
@@ -1346,6 +1526,7 @@ def _missing_files_one(args):
     """Wrapper for the multiprocessing."""
     return missing_files_one(*args)
 
+
 def missing_files_one(checkfile, dependsfile, overwrite):
     """Simple support script for missing_files."""
 
@@ -1514,15 +1695,6 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
     return suffix, todo_indices, done_indices, fail_indices
 
 
-#def custom_brickname(ra, dec):
-#    brickname = '{:08d}{}{:07d}'.format(
-#        int(100000*ra), 'm' if dec < 0 else 'p',
-#        int(100000*np.abs(dec)))
-#    #brickname = '{:06d}{}{:05d}'.format(
-#    #    int(1000*ra), 'm' if dec < 0 else 'p',
-#    #    int(1000*np.abs(dec)))
-#    return brickname
-#
 #def get_parentfile(version=None, kd=False):
 #
 #    if kd:
@@ -1598,241 +1770,3 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
 #    #            parent['DR'][ii] = gal2dr[gal]
 #        
 #    return parent
-#
-#def read_desi_tiles(verbose=False):
-#    """Read the latest DESI tile file.
-#    
-#    """
-#    tilefile = os.path.join(sample_dir(), 'catalogs', 'desi-tiles.fits')
-#    tiles = Table(fitsio.read(tilefile, ext=1, upper=True))
-#    tiles = tiles[tiles['IN_DESI'] > 0]
-#    
-#    if verbose:
-#        print('Read {} DESI tiles from {}'.format(len(tiles), tilefile))
-#    
-#    return tiles
-#
-#def read_tycho(magcut=99, verbose=False):
-#    """Read the Tycho 2 catalog.
-#    
-#    """
-#    tycho2 = os.path.join(sample_dir(), 'catalogs', 'tycho2.kd.fits')
-#    tycho = Table(fitsio.read(tycho2, ext=1, upper=True))
-#    tycho = tycho[np.logical_and(tycho['ISGALAXY'] == 0, tycho['MAG_BT'] <= magcut)]
-#    if verbose:
-#        print('Read {} Tycho-2 stars with B<{:.1f}.'.format(len(tycho), magcut), flush=True)
-#    
-#    # Radius of influence; see eq. 9 of https://arxiv.org/pdf/1203.6594.pdf
-#    #tycho['RADIUS'] = (0.0802*(tycho['MAG_BT'])**2 - 1.860*tycho['MAG_BT'] + 11.625) / 60 # [degree]
-#
-#    # From https://github.com/legacysurvey/legacypipe/blob/large-gals-only/py/legacypipe/runbrick.py#L1668
-#    # Note that the factor of 0.262 has nothing to do with the DECam pixel scale!
-#    tycho['RADIUS'] = np.minimum(1800., 150. * 2.5**((11. - tycho['MAG_BT']) / 4) ) * 0.262 / 3600
-#
-#    #import matplotlib.pyplot as plt
-#    #oldrad = (0.0802*(tycho['MAG_BT'])**2 - 1.860*tycho['MAG_BT'] + 11.625) / 60 # [degree]
-#    #plt.scatter(tycho['MAG_BT'], oldrad*60, s=1) ; plt.scatter(tycho['MAG_BT'], tycho['RADIUS']*60, s=1) ; plt.show()
-#    #pdb.set_trace()
-#    
-#    return tycho
-#
-#def read_hyperleda(verbose=False, allwise=False, version=None):
-#    """Read the Hyperleda catalog.
-#
-#    These are the archived versions. For DR9 we reset the counter to start at v3.0!
-#
-#    if version == 'v1.0':
-#        hyperfile = 'hyperleda-d25min10-18may13.fits'
-#    elif version == 'v2.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#    elif version == 'v3.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#    elif version == 'v4.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#    elif version == 'v5.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#    elif version == 'v6.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#    elif version == 'v7.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#    else:
-#        print('Unknown version!')
-#        raise ValueError
-#    
-#    """
-#    if version is None:
-#        version = parent_version()
-#        
-#    if version == 'v1.0':
-#        hyperfile = 'hyperleda-d25min10-18may13.fits'
-#        ref = 'LEDA-20180513'
-#    elif version == 'v2.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#        ref = 'LEDA-20181114'
-#    elif version == 'v3.0':
-#        hyperfile = 'hyperleda-d25min10-18nov14.fits'
-#        ref = 'LEDA-20181114'
-#    else:
-#        print('Unknown version!')
-#        raise ValueError
-#
-#    hyperledafile = os.path.join(sample_dir(), 'hyperleda', hyperfile)
-#    allwisefile = hyperledafile.replace('.fits', '-allwise.fits')
-#
-#    leda = Table(fitsio.read(hyperledafile, ext=1, upper=True))
-#    #leda.add_column(Column(name='GROUPID', dtype='i8', length=len(leda)))
-#    if verbose:
-#        print('Read {} objects from {}'.format(len(leda), hyperledafile), flush=True)
-#
-#    if allwise:
-#        wise = Table(fitsio.read(allwisefile, ext=1, upper=True))
-#        if verbose:
-#            print('Read {} objects from {}'.format(len(wise), allwisefile), flush=True)
-#
-#        # Merge the tables
-#        wise.rename_column('RA', 'WISE_RA')
-#        wise.rename_column('DEC', 'WISE_DEC')
-#
-#        leda = hstack( (leda, wise) )
-#        leda.add_column(Column(name='IN_WISE', data=np.zeros(len(leda)).astype(bool)))
-#
-#        haswise = np.where(wise['CNTR'] != -1)[0]
-#        #nowise = np.where(wise['CNTR'] == 0)[0]
-#        #print('unWISE match: {}/{} ({:.2f}%) galaxies.'.format(len(haswise), len(leda)))
-#
-#        #print('EXT_FLG summary:')
-#        #for flg in sorted(set(leda['EXT_FLG'][haswise])):
-#        #    nn = np.sum(flg == leda['EXT_FLG'][haswise])
-#        #    print('  {}: {}/{} ({:.2f}%)'.format(flg, nn, len(haswise), 100*nn/len(haswise)))
-#        #print('Need to think this through a bit more; look at:')
-#        #print('  http://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec4_4c.html#xsc')
-#        #leda['INWISE'] = (np.array(['NULL' not in dd for dd in wise['DESIGNATION']]) * 
-#        #                  np.isfinite(wise['W1SIGM']) * np.isfinite(wise['W2SIGM']) )
-#        leda['IN_ALLWISE'][haswise] = True
-#
-#        print('  Identified {}/{} ({:.2f}%) objects with AllWISE photometry.'.format(
-#            np.sum(leda['IN_ALLWISE']), len(leda), 100*np.sum(leda['IN_ALLWISE'])/len(leda) ))
-#
-#    # Assign a unique ID and also fix infinite PA and B/A.
-#    leda.add_column(Column(name='SGA_ID', length=len(leda), dtype='i8'), index=0)
-#    leda['SGA_ID'] = np.arange(len(leda))
-#    leda['BYHAND'] = np.zeros(len(leda), bool)
-#    leda['REF'] = ref
-#    
-#    fix = np.isnan(leda['PA'])
-#    if np.sum(fix) > 0:
-#        leda['PA'][fix] = 0.0
-#    fix = np.isnan(leda['BA'])
-#    if np.sum(fix) > 0:
-#        leda['BA'][fix] = 1.0
-#    fix = np.isnan(leda['Z'])
-#    if np.sum(fix) > 0:
-#        leda['Z'][fix] = -99.0
-#
-#    return leda
-#
-#def read_localgroup_dwarfs():
-#    """Read the sample generated by bin/SGA-localgroup-dwarfs.
-#
-#    """
-#    dwarfsfile = os.path.join(sample_dir(), 'catalogs', 'SGA-dwarfs.fits')
-#    dwarfs = Table(fitsio.read(dwarfsfile, upper=True))
-#    print('Read {} Local Group dwarfs from {}'.format(len(dwarfs), dwarfsfile))
-#
-#    return dwarfs
-#
-##def in_footprint(parent, verbose=False):
-##    """Find all galaxies in the DESI footprint.
-##
-##    """
-##    import time
-##    import healpy as hp
-##    import legacyhalos.misc
-##    
-##    tiles = read_desi_tiles(verbose=verbose)
-##    indesi = SGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
-##
-##    t0 = time.time()
-##
-##    return parent
-#
-#def in_footprint(parent, nside=2048, dr='dr9'):
-#    """Find all galaxies in the DESI footprint.
-#
-#    """
-#    import time
-#    import healpy as hp
-#    import legacyhalos.misc
-#    
-#    #tiles = SGA.io.read_desi_tiles(verbose=verbose)
-#    #indesi = SGA.misc.is_point_in_desi(tiles, parent['RA'], parent['DEC']).astype(bool)
-#
-#    parentpix = legacyhalos.misc.radec2pix(nside, parent['RA'], parent['DEC'])
-#    #parentpix = np.hstack((parentpix, hp.pixelfunc.get_all_neighbours(nside, parentpix, nest=True).flatten()))
-#
-#    drdir = os.path.join(sample_dir(), dr)
-#
-#    bands = ('g', 'r', 'z')
-#    camera = ('90prime', 'mosaic', 'decam')
-#
-#    indesi = dict()
-#    for cam in camera:
-#        for band in bands:
-#            indesi.update({'{}_{}'.format(cam, band): np.zeros(len(parent), dtype=bool)})
-#
-#    #indesi = np.zeros(len(parent), dtype=bool)
-#    t0 = time.time()
-#    for cam, radius in zip(camera, (0.44, 0.21, 0.17)):
-#        if False:
-#            from astrometry.libkd.spherematch import trees_match, tree_open
-#            kdccds = tree_open(os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr)))
-#            I, J, dd = trees_match(kdparent, kdccds, np.radians(radius))#, nearest=True)
-#        else:
-#            ccdsfile = os.path.join(drdir, 'survey-ccds-{}-{}.kd.fits'.format(cam, dr))
-#            ccds = fitsio.read(ccdsfile)
-#            ccds = ccds[ccds['ccd_cuts'] == 0]
-#            print('Read {} CCDs from {}'.format(len(ccds), ccdsfile))
-#
-#            for band in bands:
-#                ww = ccds['filter'] == band
-#                if np.sum(ww) > 0:
-#                    # add the neighboring healpixels to protect against edge effects
-#                    ccdpix = legacyhalos.misc.radec2pix(nside, ccds['ra'][ww], ccds['dec'][ww])
-#                    ccdpix = np.hstack((ccdpix, hp.pixelfunc.get_all_neighbours(nside, ccdpix, nest=True).flatten()))
-#                    if np.sum(ccdpix == -1) > 0: # remove the "no neighbors" healpixel, if it exists
-#                        ccdpix = np.delete(ccdpix, np.where(ccdpix == -1)[0])
-#                    I = np.isin(parentpix, ccdpix)
-#                    indesi['{}_{}'.format(cam, band)][I] = True
-#                else:
-#                    I = [False]
-#                #print('Found {} galaxies in {} {} footprint in {:.1f} sec'.format(np.sum(I), cam, time.time() - t0))
-#                print('  Found {} galaxies in {} {} footprint.'.format(np.sum(I), cam, band))
-#    print('Total time to find galaxies in footprint = {:.1f} sec'.format(time.time() - t0))
-#    
-#    parent['IN_FOOTPRINT_NORTH'] = indesi['90prime_g'] | indesi['90prime_r'] | indesi['mosaic_z']
-#    parent['IN_FOOTPRINT_NORTH_GRZ'] = indesi['90prime_g'] & indesi['90prime_r'] & indesi['mosaic_z']
-#
-#    parent['IN_FOOTPRINT_SOUTH'] = indesi['decam_g'] | indesi['decam_r'] | indesi['decam_z']
-#    parent['IN_FOOTPRINT_SOUTH_GRZ'] = indesi['decam_g'] & indesi['decam_r'] & indesi['decam_z']
-#    
-#    parent['IN_FOOTPRINT'] = parent['IN_FOOTPRINT_NORTH'] | parent['IN_FOOTPRINT_SOUTH']
-#    parent['IN_FOOTPRINT_GRZ'] = parent['IN_FOOTPRINT_NORTH_GRZ'] | parent['IN_FOOTPRINT_SOUTH_GRZ']
-#
-#    #plt.scatter(parent['RA'], parent['DEC'], s=1)
-#    #plt.scatter(parent['RA'][indesi], parent['DEC'][indesi], s=1)
-#    #plt.xlim(360, 0)
-#    #plt.show()
-#
-#    #bb = parent[parent['IN_FOOTPRINT_NORTH_GRZ'] & parent['IN_FOOTPRINT_SOUTH_GRZ']]
-#    #plt.scatter(bb['RA'], bb['DEC'], s=1)
-#    #plt.xlim(300, 90) ; plt.ylim(30, 36)
-#    #plt.axhline(y=32.375, color='k')
-#    #plt.xlabel('RA') ; plt.ylabel('Dec')
-#    #plt.show()
-#    
-#    print('  Identified {}/{} ({:.2f}%) galaxies inside and {}/{} ({:.2f}%) galaxies outside the DESI footprint.'.format(
-#        np.sum(parent['IN_FOOTPRINT']), len(parent), 100*np.sum(parent['IN_FOOTPRINT'])/len(parent), np.sum(~parent['IN_FOOTPRINT']),
-#        len(parent), 100*np.sum(~parent['IN_FOOTPRINT'])/len(parent)))
-#
-#    return parent
-
