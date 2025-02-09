@@ -72,7 +72,7 @@ def get_raslice(ra):
     if np.isscalar(ra):
         return f'{int(ra):03d}'
     else:
-        return [f'{int(onera):03d}' for onera in ra]
+        return np.array([f'{int(onera):03d}' for onera in ra])
 
 
 def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):

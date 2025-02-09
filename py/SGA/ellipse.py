@@ -304,64 +304,105 @@ def choose_geometry(cat, mindiam=152*0.262):
 
     """
     nobj = len(cat)
-    diam = np.zeros(nobj) # [arcsec]
-    ba = np.ones(nobj)
-    pa = np.zeros(nobj)
+
+    #diam = np.zeros(nobj) # [arcsec]
+    #ba = np.ones(nobj)
+    #pa = np.zeros(nobj)
+    #ref = np.zeros(nobj, '<U9')
+
+    diam = np.zeros(nobj) - 99.
+    ba = np.zeros(nobj) - 99.
+    pa = np.zeros(nobj) - 99.
     ref = np.zeros(nobj, '<U9')
 
-    # [1] LVD
-    I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'LVD', cat['DIAM_LIT'] > 0.))
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LIT']
-        pa[I] = cat[I]['PA_LIT']
-        ref[I] = 'LVD'
+    # take the largest diameter
+    datarefs = np.array(['SGA2020', 'HYPERLEDA', 'LIT'])
+    dataindx = np.argmax((cat['DIAM_SGA2020'].value, cat['DIAM_HYPERLEDA'].value, cat['DIAM_LIT'].value), axis=0)
 
-    # [2] RC3
-    I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'RC3', cat['DIAM_LIT'] > 0.))
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LIT']
-        pa[I] = cat[I]['PA_LIT']
-        ref[I] = 'RC3'
+    # first require all of diam, ba, pa...
+    for iref, dataref in enumerate(datarefs):
+        I = ((dataindx == iref) * (diam == -99.) * (ba == -99.) * (pa == -99.) * 
+             (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) * 
+             (cat[f'PA_{dataref}'] != -99.))
+        if np.any(I):
+            diam[I] = cat[I][f'DIAM_{dataref}']
+            ba[I] = cat[I][f'BA_{dataref}']
+            pa[I] = cat[I][f'PA_{dataref}']
+            ref[I] = datarefs[iref]
+            # special-case LVD
+            if dataref == 'LIT':
+                ilvd = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
+                if len(ilvd) > 0:
+                    ref[I][ilvd] = 'LVD'
 
-    # [3] SGA2020
-    I = np.logical_and(diam <= 0., cat['DIAM_SGA2020'] > 0.)
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_SGA2020']
-        pa[I] = cat[I]['PA_SGA2020']
-        ref[I] = 'SGA2020'
+    # ...and then just diam.
+    for iref, dataref in enumerate(datarefs):
+        I = (dataindx == iref) * (diam == -99.) * (cat[f'DIAM_{dataref}'] != -99.)
+        if np.any(I):
+            diam[I] = cat[I][f'DIAM_{dataref}']
+            ba[I] = cat[I][f'BA_{dataref}']
+            pa[I] = cat[I][f'PA_{dataref}']
+            ref[I] = datarefs[iref]
+            # special-case LVD
+            if dataref == 'LIT':
+                ilvd = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
+                if len(ilvd) > 0:
+                    ref[I][ilvd] = 'LVD'
 
-    # [4] HyperLeda
-    I = np.logical_and(diam <= 0., cat['DIAM_HYPERLEDA'] > 0.)
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_HYPERLEDA']
-        pa[I] = cat[I]['PA_HYPERLEDA']
-        ref[I] = 'HYPERLEDA'
+    #T = cat[diam<0.]
+    #prefix = np.array(list(zip(*np.char.split(T['OBJNAME'].value, ' ').tolist()))[0])
+    #T['OBJNAME', 'RA', 'DEC', 'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020']
 
-    # [5] literature
-    I = np.logical_and(diam <= 0., cat['DIAM_LIT'] > 0.)
-    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.))
+    ## [1] LVD
+    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'LVD', cat['DIAM_LIT'] > 0.))
+    #if np.any(I):
+    #    diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+    #    ba[I] = cat[I]['BA_LIT']
+    #    pa[I] = cat[I]['PA_LIT']
+    #    ref[I] = 'LVD'
+    #
+    ## [2] RC3
+    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'RC3', cat['DIAM_LIT'] > 0.))
+    #if np.any(I):
+    #    diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+    #    ba[I] = cat[I]['BA_LIT']
+    #    pa[I] = cat[I]['PA_LIT']
+    #    ref[I] = 'RC3'
+    #
+    ## [3] SGA2020
+    #I = np.logical_and(diam <= 0., cat['DIAM_SGA2020'] > 0.)
+    #if np.any(I):
+    #    diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
+    #    ba[I] = cat[I]['BA_SGA2020']
+    #    pa[I] = cat[I]['PA_SGA2020']
+    #    ref[I] = 'SGA2020'
+    #
+    ## [4] HyperLeda
+    #I = np.logical_and(diam <= 0., cat['DIAM_HYPERLEDA'] > 0.)
+    #if np.any(I):
+    #    diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
+    #    ba[I] = cat[I]['BA_HYPERLEDA']
+    #    pa[I] = cat[I]['PA_HYPERLEDA']
+    #    ref[I] = 'HYPERLEDA'
+    #
+    ## [5] literature
+    #I = np.logical_and(diam <= 0., cat['DIAM_LIT'] > 0.)
+    ##I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.))
+    #if np.any(I):
+    #    diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
+    #    ba[I] = cat[I]['BA_LIT']
+    #    pa[I] = cat[I]['PA_LIT']
+    #    ref[I] = cat[I]['DIAM_LIT_REF']
+
+    # missing diameters
+    I = diam <= 0.
     if np.any(I):
-        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LIT']
-        pa[I] = cat[I]['PA_LIT']
-        ref[I] = cat[I]['DIAM_LIT_REF']
+        ref[I] = 'NONE'
 
     # set a minimum floor on the diameter
     I = diam <= mindiam
     if np.any(I):
         diam[I] = mindiam
-
-    ## special-cases - north
-    #S = [
-    #    'WISEA J151427.24+604725.4', # not in HyperLeda; basic-data diameter is 12.11 arcmin!
-    #    ]
-    #I = np.isin(cat['OBJNAME'], S)
-    #if np.any(I):
-    #    diam[I] = mindiam
 
     # clean up missing values of BA and PA
     ba[ba < 0.] = 1.
