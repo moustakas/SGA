@@ -413,6 +413,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
 
     C = Counter(prefix)
     #print(C.most_common())
+    #multipage_skypatch(T[prefix == 'FLX'][:20], cat=T, clip=True, pngdir='/pscratch/sd/i/ioannis/tmp', jpgdir='/pscratch/sd/i/ioannis/tmp')
 
     drop_ignore_diam_prefixes = []
     match merger_type:
@@ -463,7 +464,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'Subaru-UDG', 'S-CANDELS', 'GOODS', 'TKRS', 'DEEP2', 'VVDS',
                 'GMASS', 'COMBO-17', 'CNOC2', 'RCS', 'CANDELS', 'ACS-GC',
                 'UKIDSS:[WQF2009]', 'UDF:[CBS2006]', 'FDF', 'EDCSN', 'HDF:[WBD96]',
-                'HDF:[LYF96]', 'HDF:[T2003]', 'HDFS:[RVB2005]', '[BRD2006]',
+                'HDF:[LYF96]', 'HDF:[T2003]', 'HDFS:[RVB2005]', 'HDF:[CCH2004]', '[BRD2006]',
                 'CFRS', 'UDF:[XPM2007]', 'COSMOS2015',
                 'FIREWORKS', 'UDF:[BSK2006]', 'ADBS', 'AKARI', 'Bolocam', '[CIR2010]',
                 'LH610MHz', 'RG', 'CB-19.04116', 'ISO_A2218_54', 'ISO_A2218_70',
@@ -471,7 +472,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'Lock', 'SSSG', 'LQAC', 'HSG', 'HIZSS', 'HOLM', '[KLI2009]',
                 'NSCS', 'H-KPAIR', 'KPAIR', 'HIPASS', 'ALFAZOA', 'HDF', '[MFB2005]',
                 'RR', 'RXC', 'MODS', 'BAS', 'HIZOA', 'LaCoSSPAr', 'HIJASS',
-                'AGESVC1', 'LRG', '[MLO2002]', '[H87]', '[ARN85]', ]
+                'AGESVC1', 'LRG', '[MLO2002]', '[H87]', '[ARN85]', '[LYY2017]',
+                'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:
@@ -649,7 +651,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -676,8 +678,6 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.write(outfile, overwrite=True)
 
-    pdb.set_trace()
-
     #I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
     #pdffile = 'tmp-objtype.pdf'
     #multipage_skypatch(cat[I[:50]], cat=cat, width_arcsec=30., ncol=5, nrow=5, clip=True,
@@ -686,10 +686,8 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         #pdb.set_trace()
 
 
-def build_parent(mindiam=15./60., verbose=False, overwrite=False):
+def build_parent(verbose=False, overwrite=False):
     """Build the parent catalog.
-
-    mindiam in arcmin
 
     """
     version_vicuts = parent_version(vicuts=True)
@@ -711,7 +709,6 @@ def build_parent(mindiam=15./60., verbose=False, overwrite=False):
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.write(outfile, overwrite=True)
 
-    pdb.set_trace()
     if False:
         # How many sources with diam<0.1 have no other source within 10 arcsec?
         radius_isolated = 10.
@@ -1417,11 +1414,11 @@ def build_parent_nocuts(verbose=True):
     if np.any(I):
         ra[I] = parent['RA_LVD'][I].value
         dec[I] = parent['DEC_LVD'][I].value
-    m1, m2, _ = match_radec(sga2020['RA'], sga2020['DEC'], ra, dec, 1./3600., nearest=True)
+    m1, m2, _ = match_radec(sga2020['RA'], sga2020['DEC'], ra, dec, 3./3600., nearest=True)
 
-    # Matched 360,265/383,620 (93.9%) SGA-2020 objects via a 1 arcsec radius.
+    # Matched 377,417/383,620 (98.4%) SGA-2020 objects via a 3 arcsec radius.
     print(f'Matched {len(m1):,d}/{len(sga2020):,d} ({100.*len(m1)/len(sga2020):.1f}%) ' + \
-          'SGA-2020 objects via a 1 arcsec radius.')
+          'SGA-2020 objects via a 3 arcsec radius.')
     for col, sgacol in zip(['OBJNAME_SGA2020', 'RA_SGA2020', 'DEC_SGA2020', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_SGA2020'],
                            ['GALAXY', 'RA', 'DEC', 'D26', 'BA', 'PA', 'ROW']):
         if verbose:
@@ -1436,7 +1433,7 @@ def build_parent_nocuts(verbose=True):
     J = np.where(miss_sga2020['PGC'] > 0)[0]
     indx_parent, indx_sga2020 = match(parent[I]['PGC'], miss_sga2020[J]['PGC'])
 
-    # Matched 25,296/27,585 (91.7%) SGA-2020 objects using PGC.
+    # Matched 4,142/6,212 (66.7%) SGA-2020 objects using PGC.
     print(f'Matched {len(indx_sga2020):,d}/{len(miss_sga2020):,d} ({100.*len(indx_sga2020)/len(miss_sga2020):.1f}%) ' + \
           'SGA-2020 objects using PGC.')
 
@@ -1451,7 +1448,7 @@ def build_parent_nocuts(verbose=True):
     I = np.where((parent['OBJNAME_HYPERLEDA'] != '') * (parent['ROW_SGA2020'] < 0))[0]
     indx_parent, indx_sga2020 = match(parent[I]['OBJNAME_HYPERLEDA'], miss_sga2020['GALAXY'])
 
-    # Matched 5/2,289 (0.2%) SGA-2020 objects using OBJNAME_HYPERLEDA.
+    # Matched 0/2,070 (0.0%) SGA-2020 objects using OBJNAME_HYPERLEDA.
     print(f'Matched {len(indx_parent):,d}/{len(miss_sga2020):,d} ({100.*len(indx_parent)/len(miss_sga2020):.1f}%) ' + \
           'SGA-2020 objects using OBJNAME_HYPERLEDA.')
     for col, sgacol in zip(['OBJNAME_SGA2020', 'RA_SGA2020', 'DEC_SGA2020', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_SGA2020'],
@@ -1691,16 +1688,16 @@ def read_existing_footprint(cat, region, version='v1.0'):
 
     """
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
-    ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
-    if os.path.isfile(catfile) and os.path.isfile(ccdsfile):
+    #ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
+    if os.path.isfile(catfile):# and os.path.isfile(ccdsfile):
         refcat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'NCCD', 'FILTERS']))
         #refcat = refcat[:1000]
 
-        print(f'Read {len(refcat):,d} objects from the existing {region} in-footprint catalog {catfile}')
+        print(f'Read {len(refcat):,d} objects from the existing {region} ' + \
+              f'in-footprint catalog {catfile}')
 
         # We know that objects with sep==0. are in the footprint, so
         # we don't have to "find" them again...
-        print('WARNING: matching on RA,Dec until ROW_PARENT settles down...')
         m1, m2, sep = match_radec(cat['RA'], cat['DEC'], refcat['RA'], refcat['DEC'], 1./3600.)
         I = sep == 0.
         if np.any(I):
@@ -1716,16 +1713,17 @@ def read_existing_footprint(cat, region, version='v1.0'):
             cat_done['NCCD'] = refcat_done['NCCD']
             cat_done['FILTERS'] = refcat_done['FILTERS']
 
-            print('Matching CCDs...but have to loop!')
-            ccds_rows = fitsio.read(ccdsfile, columns='ROW_PARENT')
-            rows = np.where(np.isin(ccds_rows, refcat_done['ROW_PARENT']))[0]
-            ccds_done = Table(fitsio.read(ccdsfile, rows=rows))
-            #ccds_done = ccds_done[:1000]
-            for ii in range(len(cat_done)):
-                ccds_done['ROW_PARENT'][refcat_done[ii]['ROW_PARENT'] == ccds_done['ROW_PARENT']] = cat_done[ii]['ROW_PARENT']
-            return cat_todo, cat_done, ccds_done
+            #ccds_rows = fitsio.read(ccdsfile, columns='ROW_PARENT')
+            #rows = np.where(np.isin(ccds_rows, cat_done['ROW_PARENT'].value))[0]
+            #ccds_done = Table(fitsio.read(ccdsfile, rows=rows))
 
-    return cat, Table(), Table()
+            ##ccds_done = ccds_done[:1000]
+            #print('Matching CCDs...but have to loop!')
+            #for ii in range(len(cat_done)):
+            #    ccds_done['ROW_PARENT'][refcat_done[ii]['ROW_PARENT'] == ccds_done['ROW_PARENT']] = cat_done[ii]['ROW_PARENT']
+            return cat_todo, cat_done#, ccds_done
+
+    return cat, Table()#, Table()
 
 
 def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
@@ -1908,6 +1906,9 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         cat['FILTERS'] = np.zeros(len(cat), '<U4')
         print(f'Read {len(cat):,d} objects from {catfile}')
 
+        # sort by right ascension to try to speed things up...
+        cat = cat[np.argsort(cat['RA'])]
+
         runs = {'dr9-north': 'north', 'dr9-south': 'south', 'dr10-south': 'south', 
                 'dr11-south': 'south'}
         set_legacysurvey_dir(region)
@@ -1935,7 +1936,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         sys.stdout.flush()
 
         # check for an existing CCDs catalog from previous runs of this code
-        cat, cat_done, ccds_done = read_existing_footprint(cat, region, version=version)
+        #cat, cat_done, ccds_done = read_existing_footprint(cat, allccds, region, version=version)
+        cat, cat_done = read_existing_footprint(cat, region, version=version)
 
         # divide the parent catalog into more managable chunks, and loop
         if region == 'dr9-north':
@@ -1957,7 +1959,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         chunkindx = comm.bcast(chunkindx, root=0)
 
     allfcat = []
-    allfccds = []
+    #allfccds = []
     for ichunk, indx in enumerate(chunkindx):
         if rank == 0:
             print(f'Working on chunk {ichunk+1:,d}/{nchunk:,d} with {len(indx):,d} objects')
@@ -1967,7 +1969,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
 
         if rank == 0:
             allfcat.append(fcat)
-            allfccds.append(fccds)
+            #allfccds.append(fccds)
 
     if comm:
         comm.barrier()
@@ -1976,12 +1978,12 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
     if rank == 0:
         from SGA.util import match
         allfcat = vstack(allfcat)
-        allfccds = vstack(allfccds)
+        #allfccds = vstack(allfccds)
 
         # is there an existing catalog?
         if len(cat_done) > 0:
             allfcat = vstack((allfcat, cat_done))
-            allfccds = vstack((allfccds, ccds_done))
+            #allfccds = vstack((allfccds, ccds_done))
 
         outcat = Table(fitsio.read(catfile)) # read the whole catalog
         cat_indx, fcat_indx = match(outcat['ROW_PARENT'], allfcat['ROW_PARENT'])
@@ -2002,11 +2004,10 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         #if 'col0' in allfccds.columns:
         #    allfccds.remove_column('col0')
 
-        allfccds = allfccds[np.argsort(allfccds['ROW_PARENT'])]
-
-        ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
-        print(f'Writing {len(allfccds):,d} CCDs to {ccdsfile}')
-        allfccds.write(ccdsfile, overwrite=True)
+        #allfccds = allfccds[np.argsort(allfccds['ROW_PARENT'])]
+        #ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
+        #print(f'Writing {len(allfccds):,d} CCDs to {ccdsfile}')
+        #allfccds.write(ccdsfile, overwrite=True)
 
         print(f'All done in {(time.time()-t0)/60.:.2f} min')
 

@@ -36,6 +36,10 @@ SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga20
 SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotate --annotate-central-only --mp=32
 SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotated-montage
 
+SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --mp=32
+SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotate --annotate-central-only --mp=32
+SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotated-montage
+
 
 Examining the LVD sample:
 
