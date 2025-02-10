@@ -544,7 +544,7 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         print(f'All done at {time.asctime()}')
 
 
-def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=20.,
+def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
                            default_width=152, default_pixscale=0.262):
     """Simple function to compute the pixel scale of the desired
     output images.
@@ -554,19 +554,19 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=20.,
 
     if rescale:
         # scale the pixel scale so that larger objects "fit" in DEFAULT_WIDTH
-        pixscale = default_pixscale * 2. * diam / mindiam   # [arcsec/pixel]
+        pixscale = default_pixscale * 1.5 * diam / mindiam   # [arcsec/pixel]
         width = np.zeros(nobj, int) + default_width # [pixels]
     else:
         # full-mosaic, native resolution width, except for objects
         # larger than XX arcmin
         pixscale = np.zeros(nobj) + default_pixscale # [arcsec/pixel]
-        width = 2. * diam / pixscale # [pixels]
+        width = 1.5 * diam / pixscale # [pixels]
     
-        maxdiam = maxdiam_arcmin * 60 # [arcsec]
+        maxdiam = maxdiam_arcmin * 60. # [arcsec]
         I = diam > maxdiam
         if np.any(I):
             pixscale[I] = default_pixscale * diam[I] / maxdiam
-            width[I] = 2. * diam[I] / pixscale[I]
+            width[I] = 1.5 * diam[I] / pixscale[I]
     
     width = width.astype(int)
 
@@ -818,33 +818,51 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
                 return snr
 
             nedlvs = read_nedlvs()
-            vfs = Table(fitsio.read('/global/homes/i/ioannis/ioannis/legacyhalos/virgofilaments/vf_north_v2_main.fits'))
+
+            I = cat['FILTERS'] == 'grz'
+            print(f'In {region} grz footprint: {np.sum(I):,d}')
+            cat = cat[I]
+            nobj = len(cat)
 
             cat = cat[cat['ROW_NEDLVS'] != -99]
             indx_cat, indx_nedlvs = match(cat['ROW_NEDLVS'], nedlvs['ROW'])
             cat = cat[indx_cat]
             nedlvs = nedlvs[indx_nedlvs]
+            print(f'In NED-LVS: {len(cat):,d}/{nobj:,d}')
 
-            snrmin = 10.
-            snr_W3 = get_snr(nedlvs['LUM_W3'], nedlvs['LUM_W3_UNC'])
-            snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
+            I = (cat['RA'] > 87.) * (cat['RA'] < 300.) * (cat['DEC'] > -10.) * (cat['DEC'] < 85.)
+            print(f'In 87<RA<300, -10<Dec<85: {np.sum(I):,d}/{len(cat):,d}')
+            cat = cat[I]
+            nedlvs = nedlvs[I]
+
+            I = (nedlvs['Z'] > 0.002) * (nedlvs['Z'] < 0.025)
+            print(f'In 0.002<z<0.025 range: {np.sum(I):,d}/{len(cat):,d}')
+            cat = cat[I]
+            nedlvs = nedlvs[I]
 
             mindiam = 15.
             diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
-            I = ((cat['RA'] > 87.) * (cat['RA'] < 300.) * (cat['DEC'] > -10.) * (cat['DEC'] < 85.) * 
-                 (nedlvs['Z'] > 0.002) * (nedlvs['Z'] < 0.025) * (cat['FILTERS'] == 'grz') * 
-                 (diam > mindiam) * (snr_W3 > snrmin) * (snr_NUV > snrmin))
+            I = (diam > mindiam)
+            print(f'Diameter (>15 arcsec) cut: {np.sum(I):,d}/{len(cat):,d}')
             cat = cat[I]
             nedlvs = nedlvs[I]
-            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
-            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], vfs['RA'], vfs['DEC'], 3./3600.)
-            I = np.delete(np.arange(len(cat)), m1)
-            cat = cat[I]
-            nedlvs = nedlvs[I]
-            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            snrmin = 20.
+            snr_W3 = get_snr(nedlvs['LUM_W3'], nedlvs['LUM_W3_UNC'])
+            snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
 
+            #I = (snr_W3 > snrmin) * (snr_NUV > snrmin)
+            #print(f'S/N(W3)>20, S/N(NUV)>20 cuts: {np.sum(I):,d}/{len(cat):,d}')
+            #cat = cat[I]
+            #nedlvs = nedlvs[I]
+
+            #vfs = Table(fitsio.read('/global/homes/i/ioannis/ioannis/legacyhalos/virgofilaments/vf_north_v2_main.fits'))
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], vfs['RA'], vfs['DEC'], 3./3600.)
+            #I = np.delete(np.arange(len(cat)), m1)
+            #cat = cat[I]
+            #nedlvs = nedlvs[I]
+            #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
         if False:
             # read Sara's ssl-legacysurvey file

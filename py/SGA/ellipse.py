@@ -325,29 +325,35 @@ def choose_geometry(cat, mindiam=152*0.262):
              (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) * 
              (cat[f'PA_{dataref}'] != -99.))
         if np.any(I):
-            diam[I] = cat[I][f'DIAM_{dataref}']
+            diam[I] = cat[I][f'DIAM_{dataref}'] * 60.
             ba[I] = cat[I][f'BA_{dataref}']
             pa[I] = cat[I][f'PA_{dataref}']
             ref[I] = datarefs[iref]
-            # special-case LVD
+            # special-case LVD and RC3
             if dataref == 'LIT':
-                ilvd = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
-                if len(ilvd) > 0:
-                    ref[I][ilvd] = 'LVD'
+                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'LVD'
+                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'RC3')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'RC3'
 
     # ...and then just diam.
     for iref, dataref in enumerate(datarefs):
         I = (dataindx == iref) * (diam == -99.) * (cat[f'DIAM_{dataref}'] != -99.)
         if np.any(I):
-            diam[I] = cat[I][f'DIAM_{dataref}']
+            diam[I] = cat[I][f'DIAM_{dataref}'] * 60.
             ba[I] = cat[I][f'BA_{dataref}']
             pa[I] = cat[I][f'PA_{dataref}']
             ref[I] = datarefs[iref]
             # special-case LVD
             if dataref == 'LIT':
-                ilvd = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
-                if len(ilvd) > 0:
-                    ref[I][ilvd] = 'LVD'
+                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'LVD'
+                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'RC3')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'RC3'
 
     #T = cat[diam<0.]
     #prefix = np.array(list(zip(*np.char.split(T['OBJNAME'].value, ' ').tolist()))[0])
