@@ -1275,7 +1275,8 @@ def read_custom_external(rank=0, rows=None, overwrite=False):
 
     customfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.fits')
     if not os.path.isfile(customfile) or overwrite:
-        csvfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.csv')
+        from importlib import resources
+        csvfile = resources.files('SGA').joinpath(f'data/SGA2025/custom-external_{version}.csv')
         data = Table.read(csvfile, format='csv', comment='#')
         data['mag_band'] = data['mag_band'].astype('<U1')
         data['mag_band'].fill_value = ''
