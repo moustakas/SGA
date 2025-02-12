@@ -250,5 +250,93 @@ DDO126,-99.,-99.,-99.,145.,-99.,-99.,No,LVD dwarf with updated position angle.
 DDO 133,-99.,-99.,-99.,160.,-99.,-99.,No,LVD dwarf with updated position angle.
 DDO 165,-99.,-99.,-99.,90.,-99.,-99.,No,LVD dwarf with updated position angle.
 Holmberg I,-99.,-99.,-99.,105.,-99.,-99.,No,LVD dwarf with updated position angle.
-VII Zw 197 NOTES03,-99.,-99.,0.3,0.,1.,0.7,No,Estimated diameter.
-VII Zw 463 NOTES03,-99.,-99.,0.3,0.,1.,0.7,No,Estimated diameter.
+VII Zw 197 NOTES03,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 463 NOTES03,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+V Zw 104 NOTES01,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+V Zw 104 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VI Zw 027 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+V Zw 152 NOTES02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+V Zw 152 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 071 NOTES03,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 079 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 079 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+CGCG 260-025,-99.,-99.,0.6,0.,1.,-99.,No,Estimated diameter.
+VII Zw 096,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 098,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 107,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 127,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 145 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 183 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+NGC 2458,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+VII Zw 231 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VII Zw 455 NOTES02,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+VII Zw 772 NOTES03,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+VII Zw 781 NED02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+VII Zw 117 NOTES02,106.4951,62.8915,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+VII Zw 197 NOTES01,119.8098,56.5893,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+VII Zw 206 NOTES02,120.6994,56.9831,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+VII Zw 578 NOTES01,225.4300,67.0195,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+VII Zw 772 NOTES01,272.4643,61.5556,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+LEDA 135663,41.6560,-0.2671,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+LEDA 140687,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+LEDA 101419,145.1168,48.2892,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+LEDA 167123,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+SDSS j163813.00+415623.0,249.5584,41.9388,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
+IRAS 18169+6433d,-99.,-99.,0.5,135.,0.2,-99.,No,Estimated geometry.
+NGC 6817 NED01,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+VII Zw 700,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+Hanny's Voorwerp,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+PCG J1021+3713:[DGI2005] C,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+IC 1249,-99.,-99.,0.6,0.,1.,0.6,No,Estimated diameter.
+[CGB2022] dw J1242+3224,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+KAZ 655,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+I Zw 190 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+VI Zw 027 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+CGPG 0719.8+6704 NED02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+LSBC F894-02,-99.,-99.,0.6,0.,1.,-99.,No,Estimated diameter.
+MCG +10-20-005 NED02,-99.,-99.,0.5,45.,0.2,-99.,No,Estimated geometry.
+2MASXi J0803042+345402,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+2MASXi J1234529+351911,-99.,-99.,0.4,5.,0.1,-99.,No,Estimated geometry.
+2MASXi J1831548+340357,-99.,-99.,0.7,170.,0.2,-99.,No,Estimated geometry.
+MCG +12-09-048b,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+V Zw 152 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+V Zw 104 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+V Zw 104 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+MRK 0111 NED01,-99.,-99.,0.6,0.,1.,-99.,No,Estimated diameter.
+[HKK2009] dJ1212+4237,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+[HKK2009] dJ1229+3056,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+[HKK2009] dJ1154+3635,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+[HKK2009] dJ1504+5538,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+[HKK2009] dJ1508+5515,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+W4-3+1:[DD2013] 135227,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+MATLAS 1123,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+[MSB2017b] dw J1355+51,208.7996,51.9089,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+[MSB2017b] dw J1412+56,213.0488,56.1425,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+[MSB2017b] dw J1313+46,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+[MSB2017b] dw J1327+51,201.7555,51.6858,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+[MSB2017b] dw J1340+45,205.1558,45.6981,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+[MSB2017b] dw J1303+42,195.8098,42.3735,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+[MSB2017b] dw J1305+38,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+W4+2+0:[DD2013] 100061,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+PGC1 0039600 NED021,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+CGCG 335-006 NED03,-99.,-99.,0.5,130.,0.3,-99.,No,Estimated geometry.
+PGC1 4101601 NED001,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+PGC1 0033953 NED002,166.8272,61.5225,0.5,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+PGC1 3085813 NED001,100.8843,63.7057,0.5,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+CGCG 366-015 NED02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+PGC1 0086602 NED002,108.1176,63.1927,0.5,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+CGCG 152-014 NED02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+CGCG 198-048 NED02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+CGCG 355-024 NED03,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+CGCG 355-024 NED01,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+CGCG 226-041,-99.,-99.,0.4,0.,1.,0.4,No,Estimated diameter.
+CGCG 198-032,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+CGCG 319-020,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+CGCG 260-026 NED01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
+CGCG 376-018,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+CGCG 260-025,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+CGCG 350-048,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+NGC 6166 NED02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+NGC 2458,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
+NGC 6817 NED01,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+PC 0914+4744,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.

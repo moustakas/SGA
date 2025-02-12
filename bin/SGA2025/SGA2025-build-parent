@@ -473,7 +473,9 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'NSCS', 'H-KPAIR', 'KPAIR', 'HIPASS', 'ALFAZOA', 'HDF', '[MFB2005]',
                 'RR', 'RXC', 'MODS', 'BAS', 'HIZOA', 'LaCoSSPAr', 'HIJASS',
                 'AGESVC1', 'LRG', '[MLO2002]', '[H87]', '[ARN85]', '[LYY2017]',
-                'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', ]
+                'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', 'PDCS', '[MOH2004]',
+                'MS', '[SNS2015]', '[KEC2012]', '[LPG2013]', '6C', 'SDSS-II', 
+                'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:
@@ -481,6 +483,15 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'NGC 5845:[H2009]', 'NGC 4125:[H2009]',
                 'NGC 4649:[KMZ2007]', 'NGC 3115:[KMZ2007]',
                 ###
+                'Cl J1604+4304:[PLO98]', 'Cl J1604+4303:[LPO98a]', 'Cl J1604+4321:[PLO2001]',
+                'HERC-1:[MKK97]', 'CL 1601+4253:[DG92]', 
+                'W4+0+0:[DD2013]', 'W4+0+1:[DD2013]', 'W4+0-1:[DD2013]', 'W4+0-2:[DD2013]',
+                'W4+1+0:[DD2013]', 'W4+1+1:[DD2013]', 'W4+1-1:[DD2013]', 'W4+1-2:[DD2013]',
+                'W4+2+0:[DD2013]', 'W4+2-1:[DD2013]', 'W4+2-2:[DD2013]', 'W4-1+0:[DD2013]',
+                'W4-1+1:[DD2013]', 'W4-1+2:[DD2013]', 'W4-1+3:[DD2013]', 'W4-1-1:[DD2013]',
+                'W4-1-2:[DD2013]', 'W4-2+0:[DD2013]', 'W4-2+1:[DD2013]', 'W4-2+2:[DD2013]',
+                'W4-2+3:[DD2013]', 'W4-3+0:[DD2013]', 'W4-3+1:[DD2013]', 'W4-3+2:[DD2013]',
+                'W4-3+3:[DD2013]',
                 "Stephan's Quintet:[XLC2003]", 'HCG 092:[DUM2012]', 'HCG 092:[KAG2014]',
                 'HCG 090:[ZM98]', 'HCG 090:[DMG2011]',
                 'ABELL 0671:[MK91]', 'ABELL 1656:[GMP83]', 'ABELL 3558:[KMD98]',
@@ -864,6 +875,14 @@ def build_parent_nocuts(verbose=True):
                     print(f'Populating {col}')
                 parent[col] = input_basic[col]
         return parent
+
+
+need to add from hyperleda!
+
+90820 PGC090820 FGC0712,PGC2296019,RFGC1320       G 121.6788165 47.3121221        0   Sc  17.912  6770.5    0.76   0.616  127.71        88661           -99 
+42863 NGC4656 2MASXJ12435764+3210130,AGC007907,BTS153       G 190.990431 32.1696375        0 ...   645.5    1.81    0.99   35.61        42053           -99 42198
+
+NGC 4656 NED01 should be HyperLeda's NGC4656 and PGC=42863 with a very large diameter
 
 
     print('#####')
