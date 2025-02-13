@@ -28,7 +28,7 @@ I = 2. * smdg['Re'].value > 20.
 print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with diam>20 arcsec')
 
 F = open('smudges.txt', 'w')
-for obj in smdg:
+for obj in smdg[I]:
     objname = obj['OBJNAME']
     ra = obj['RAdeg']
     dec = obj['DEdeg']
@@ -39,6 +39,3 @@ for obj in smdg:
     row = obj['ROW']
     F.write(f"{objname},{objname},{ra},{dec},{diam},{ba},{pa},{rmag},r,Row {row} in '{base_smdgfile}'\n")
 F.close()
-
-import pdb ; pdb.set_trace()
-
