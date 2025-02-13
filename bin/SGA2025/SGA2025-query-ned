@@ -12,6 +12,11 @@ SGA2025-query-ned --catalog HyperLeda-multiples --gather-byname
 SGA2025-query-ned --catalog HyperLeda-multiples-coords --query-bycoord
 SGA2025-query-ned --catalog HyperLeda-multiples-coords --gather-bycoord
 
+SGA2025-query-ned --catalog HyperLeda-noobjtype --query-byname
+SGA2025-query-ned --catalog HyperLeda-noobjtype --gather-byname
+SGA2025-query-ned --catalog HyperLeda-noobjtype-coords --query-bycoord
+SGA2025-query-ned --catalog HyperLeda-noobjtype-coords --gather-bycoord
+
 SGA2025-query-ned --catalog LVD --query-byname
 SGA2025-query-ned --catalog LVD --gather-byname
 
@@ -34,10 +39,12 @@ from astrometry.libkd.spherematch import match_radec
 from urllib.request import urlretrieve
 from urllib.error import HTTPError
 
-from SGA.util import (get_basic_geometry, match, match_to, choose_primary,
-                      resolve_close, parent_datamodel)
-from SGA.io import (sga_dir, get_raslice, read_hyperleda_galaxies, version_hyperleda_galaxies,
+from SGA.ellipse import get_basic_geometry
+from SGA.util import match, match_to, choose_primary, resolve_close
+from SGA.io import (sga_dir, get_raslice, parent_datamodel,
+                    read_hyperleda_galaxies, version_hyperleda_galaxies,
                     read_hyperleda_multiples, version_hyperleda_multiples,
+                    read_hyperleda_noobjtype, version_hyperleda_noobjtype,
                     nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
                     read_lvd, version_lvd, nedfriendly_lvd)
 
@@ -428,6 +435,26 @@ def read_catalog(catalog):
             cat = alt
             version = f'{version_hyperleda_multiples()}-byname'
 
+        case 'hyperleda-noobjtype':
+            version = version_hyperleda_noobjtype()
+            cat = read_hyperleda_noobjtype()
+
+        case 'hyperleda-noobjtype-coords':
+            # for objects for which NED could not resolve OBJNAME
+            version = version_hyperleda_noobjtype()
+            cat = read_hyperleda_noobjtype()
+
+            nedfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDbyname-HyperLeda-noobjtype_{version}.fits')
+            ned = Table(fitsio.read(nedfile))
+            print(f'Read {len(ned):,d} objects from {nedfile}')
+
+            # remove NED-duplicates
+            ned = ned[ned['OBJECT_NOTE'] == '']
+
+            alt = cat[~np.isin(cat['ROW'], ned['ROW'])] # no match
+            cat = alt
+            version = f'{version_hyperleda_noobjtype()}-byname'
+
         case 'nedlvs':
             version = version_nedlvs()
             cat = read_nedlvs()#rows=np.arange(1000))
@@ -470,7 +497,7 @@ def query_ned(catalog, maxsep=3., byname=True, bycoord=False, overwrite=False):
     #cat = cat[np.random.choice(len(cat), 1000, replace=False)]
 
     # sort into RA slices
-    raslices = np.array([get_raslice(ra) for ra in cat['RA'].value])
+    raslices = get_raslice(cat['RA'].value)
     uraslices = np.unique(raslices)
     print(f'Dividing the sample into {len(uraslices)} unique RA slices.')
 
@@ -508,7 +535,7 @@ def query_ned(catalog, maxsep=3., byname=True, bycoord=False, overwrite=False):
 
                 if byname:
                     # NED-friendly names!
-                    if catalog.lower() == 'hyperleda-galaxies' or catalog.lower() == 'hyperleda-multiples':
+                    if catalog.lower() == 'hyperleda-galaxies' or catalog.lower() == 'hyperleda-multiples' or catalog.lower() == 'hyperleda-noobjtype':
                         objnames = nedfriendly_hyperleda(objnames)#, racat1['PGC'].value)
                     if catalog.lower() == 'lvd':
                         objnames = nedfriendly_lvd(objnames)
@@ -695,6 +722,39 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         data = out
 
 
+    if catalog.lower() == 'hyperleda-noobjtype':
+        version = version_hyperleda_noobjtype()
+
+        # Any objects with OBJECT_NOTE "ERROR: Input name not recognized by NED"
+        # or which are not in 'data', were not resolved by NED.
+        keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
+        print(f'Keeping {np.sum(keep):,d}/{len(data):,d} objects resolved by NED.')
+        out = data[keep]
+
+        # reverse the nedfriendly_hyperleda business
+        out['OBJNAME'] = nedfriendly_hyperleda(out['OBJNAME'], reverse=True)
+
+        # Remove the ~2500 objects not in NED and the ~11k objects resolve to
+        # the same object in NED; choose the first one.
+        keep = out['OBJECT_NOTE'] == ''
+        print(f'Keeping {np.sum(keep):,d}/{len(out):,d} objects with no NED duplicate-object warning.')
+
+        out = out[keep]
+
+        # add ROW, PGC, and ALTNAMES
+        out['ALTNAMES'] = np.zeros(len(out), dtype=cat['ALTNAMES'].dtype)
+        out['PGC'] = np.zeros(len(out), dtype=cat['PGC'].dtype)
+        out['ROW'] = np.zeros(len(out), dtype=cat['ROW'].dtype)
+
+        indx_cat, indx_out = match(cat['OBJNAME'], out['OBJNAME'])
+        out['ALTNAMES'][indx_out] = cat[indx_cat]['ALTNAMES']
+        out['PGC'][indx_out] = cat[indx_cat]['PGC']
+        out['ROW'][indx_out] = cat[indx_cat]['ROW']
+
+        out = out[np.argsort(out['ROW'])]
+        data = out
+
+
     if catalog.lower() == 'hyperleda-galaxies-coords':
         version = version_hyperleda_galaxies()
 
@@ -769,7 +829,7 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         basic['DEC'] = data['DEC']
         basic['Z'] = data['Z']
         basic['OBJTYPE'] = data['OBJTYPE']
-        basic['DIAM_LEDA'] = -99.
+        basic['DIAM_HYPERLEDA'] = -99.
         basic['PGC'] = -99
 
         # NED returns objects that are just outside of 3 arcsec (because of
@@ -876,7 +936,50 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         basic['DEC'] = data['DEC']
         basic['Z'] = data['Z']
         basic['OBJTYPE'] = data['OBJTYPE']
-        basic['DIAM_LEDA'] = -99.
+        basic['DIAM_HYPERLEDA'] = -99.
+        basic['PGC'] = -99
+
+        # NED returns objects that are just outside of 3 arcsec (because of
+        # rounding I guess)??? Add a little margin here.
+        res = resolve_close(cat, basic, maxsep=3.1, objname_column='OBJNAME',
+                            keep_all_mergers=False, verbose=False, trim=False)
+        I = np.where(res['PRIMARY'])[0]
+        #uu, cc = np.unique(data[I]['INPUT_POSITION'], return_counts=True)
+        #data[I][np.isin(data[I]['INPUT_POSITION'], uu[cc>1])]
+
+        indx_cat, indx_data = match(ref_input, data[I]['INPUT_POSITION'])
+        out = cat[indx_cat]['OBJNAME', 'ALTNAMES', 'PGC', 'ROW']
+        out = hstack((out, data[I][indx_data]))
+        assert(len(out) == len(np.unique(out['ROW'])))
+
+        out = out[np.argsort(out['ROW'])]
+        data = out
+
+    if catalog.lower() == 'hyperleda-noobjtype-coords':
+        version = version_hyperleda_noobjtype()
+
+        # Remove XX coordinate duplicates in the input / HyperLeda catalog.
+        # E.g., PGC4586787 and PGC4586817 have the same coordinates but
+        # different properties!
+        ref_input = np.char.add(np.round(cat['RA'], 10).astype(str), [' ']*len(cat))
+        ref_input = np.char.add(ref_input, np.round(cat['DEC'], 10).astype(str))
+        #rr, cc = np.unique(ref_input, return_counts=True)
+        #dd = cat[np.isin(ref_input, rr[cc>1])]
+        #dd = dd[np.argsort(dd['RA'])]
+        _, uindx = np.unique(ref_input, return_index=True)
+        print(f'Trimmed to {len(uindx):,d} objects with unique reference coordinates.')
+
+        cat = cat[uindx]
+        ref_input = ref_input[uindx]
+
+        # choose based on object type, diameter, etc.
+        basic = get_basic_geometry(data, galaxy_column='OBJNAME_NED', verbose=True)
+        basic.rename_column('GALAXY', 'OBJNAME')
+        basic['RA'] = data['RA']
+        basic['DEC'] = data['DEC']
+        basic['Z'] = data['Z']
+        basic['OBJTYPE'] = data['OBJTYPE']
+        basic['DIAM_HYPERLEDA'] = -99.
         basic['PGC'] = -99
 
         # NED returns objects that are just outside of 3 arcsec (because of
@@ -908,7 +1011,8 @@ def main():
     import argparse
 
     catalogs = ['HyperLeda-galaxies', 'HyperLeda-galaxies-coords', 'HyperLeda-multiples',
-                'HyperLeda-multiples-coords', 'NEDLVS', 'LVD', 'custom-external']
+                'HyperLeda-multiples-coords', 'HyperLeda-noobjtype', 'HyperLeda-noobjtype-coords',
+                'NEDLVS', 'LVD', 'custom-external']
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', default='HyperLeda', choices=catalogs, type=str, help='External catalog to read.')
