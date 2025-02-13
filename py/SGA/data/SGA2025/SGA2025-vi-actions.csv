@@ -2540,7 +2540,6 @@ NGC 0646,drop,no source,Galaxy pair.
 NGC 3991,drop,no source,Galaxy pair.
 CGCG 480-048,drop,no source,Galaxy pair.
 VV 059,drop,no source,Galaxy pair.
-NGC 4656,drop,no source,Galaxy pair.
 UGC 08335,drop,no source,Galaxy pair.
 ESO 244- G 012,drop,no source,Galaxy pair.
 NGC 5811,drop,no source,Galaxy pair.
@@ -2790,6 +2789,8 @@ ESO 146-IG 004 NED03,hyperleda-coords,NED incorrect,In 'ESO 146-IG 004' group.
 ESO 146-IG 004 NED02,hyperleda-coords,NED incorrect,In 'ESO 146-IG 004' group.
 ESO 288-IG 035 NED01,hyperleda-coords,NED incorrect,In 'ESO 288-IG 035' group.
 ESO 189-IG 022 NED01,hyperleda-coords,NED incorrect,In 'ESO 189-IG 022' group.
+ESO 189-IG 022 NED02,hyperleda-coords,NED incorrect,In 'ESO 189-IG 022' group.
+ESO 189-IG 022 NED03,hyperleda-coords,NED incorrect,In 'ESO 189-IG 022' group.
 ESO 302-IG 013 NED03,hyperleda-coords,NED incorrect,In 'ESO 302-IG 013' group.
 ESO 032-IG 009 NED01,hyperleda-coords,NED incorrect,In 'ESO 032-IG 009' group.
 ESO 032-IG 009 NED02,hyperleda-coords,NED incorrect,In 'ESO 032-IG 009' group.
@@ -3271,3 +3272,4 @@ PGC1 0039600 NED021,hyperleda-coords,NED incorrect,
 CGCG 366-015 NED02,hyperleda-coords,NED incorrect,
 CGCG 226-041,hyperleda-coords,NED incorrect,
 NGC 2458,hyperleda-coords,NED incorrect,
+FGC 0712,hyperleda-coords,NED incorrect,

@@ -877,14 +877,6 @@ def build_parent_nocuts(verbose=True):
         return parent
 
 
-need to add from hyperleda!
-
-90820 PGC090820 FGC0712,PGC2296019,RFGC1320       G 121.6788165 47.3121221        0   Sc  17.912  6770.5    0.76   0.616  127.71        88661           -99 
-42863 NGC4656 2MASXJ12435764+3210130,AGC007907,BTS153       G 190.990431 32.1696375        0 ...   645.5    1.81    0.99   35.61        42053           -99 42198
-
-NGC 4656 NED01 should be HyperLeda's NGC4656 and PGC=42863 with a very large diameter
-
-
     print('#####')
     print('Input data:')
     custom = read_custom_external(overwrite=True) # always regenerate the FITS file
@@ -1421,29 +1413,50 @@ NGC 4656 NED01 should be HyperLeda's NGC4656 and PGC=42863 with a very large dia
     print('#####')
     print(f'Analyzing {len(sga2020):,d} SGA-2020 objects.')
 
-    # First match by coordinates. Don't match by PGC because there can
-    # be some pretty striking mismatches due to errors in either NED
-    # and/or HyperLeda.
-    ra, dec = parent['RA_NED'].value, parent['DEC_NED'].value
-    I = (ra == -99.) * (parent['RA_HYPERLEDA'] != -99.)
-    if np.any(I):
-        ra[I] = parent['RA_HYPERLEDA'][I].value
-        dec[I] = parent['DEC_HYPERLEDA'][I].value
-    I = (ra == -99.) * (parent['RA_LVD'] != -99.)
-    if np.any(I):
-        ra[I] = parent['RA_LVD'][I].value
-        dec[I] = parent['DEC_LVD'][I].value
-    m1, m2, _ = match_radec(sga2020['RA'], sga2020['DEC'], ra, dec, 3./3600., nearest=True)
+    # First match by HyperLeda coordinates (which is what the SGA-2020
+    # used). Don't match by PGC because there can be some pretty
+    # striking mismatches due to errors in either NED and/or
+    # HyperLeda.
 
-    # Matched 377,417/383,620 (98.4%) SGA-2020 objects via a 3 arcsec radius.
+    #ra, dec = parent['RA_HYPERLEDA'].value, parent['DEC_HYPERLEDA'].value
+    #I = (ra == -99.) * (parent['RA_NED'] != -99.)
+    #if np.any(I):
+    #    ra[I] = parent['RA_NED'][I].value
+    #    dec[I] = parent['DEC_NED'][I].value
+    #I = (ra == -99.) * (parent['RA_LVD'] != -99.)
+    #if np.any(I):
+    #    ra[I] = parent['RA_LVD'][I].value
+    #    dec[I] = parent['DEC_LVD'][I].value
+    #m1, m2, sep = match_radec(sga2020['RA_LEDA'], sga2020['DEC_LEDA'], ra, dec, 3./3600., nearest=True)
+
+    I = np.where(parent['RA_HYPERLEDA'] !=-99)[0]
+    m1, m2, sep = match_radec(sga2020['RA_LEDA'], sga2020['DEC_LEDA'], parent[I]['RA_HYPERLEDA'], 
+                              parent[I]['DEC_HYPERLEDA'], 3./3600., nearest=True)
+
+    # Matched 378,355/383,620 (98.6%) SGA-2020 objects via a 3 arcsec radius.
     print(f'Matched {len(m1):,d}/{len(sga2020):,d} ({100.*len(m1)/len(sga2020):.1f}%) ' + \
-          'SGA-2020 objects via a 3 arcsec radius.')
+          'SGA-2020 objects via a 3 arcsec radius using HyperLeda coordinates.')
     for col, sgacol in zip(['OBJNAME_SGA2020', 'RA_SGA2020', 'DEC_SGA2020', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_SGA2020'],
                            ['GALAXY', 'RA', 'DEC', 'D26', 'BA', 'PA', 'ROW']):
         if verbose:
             print(f'Populating {sgacol} --> {col}')
-        parent[col][m2] = sga2020[m1][sgacol]
+        parent[col][I[m2]] = sga2020[m1][sgacol]
     miss_sga2020 = sga2020[np.delete(np.arange(len(sga2020)), parent[parent['ROW_SGA2020'] != -99]['ROW_SGA2020'].value)]
+
+    # Next match to the NED coordinates.
+    I = np.where((parent['RA_NED'] !=-99) * (parent['ROW_SGA2020'] == -99))[0]
+    m1, m2, sep = match_radec(miss_sga2020['RA'], miss_sga2020['DEC'], parent[I]['RA_NED'], parent[I]['DEC_NED'], 3./3600., nearest=True)
+    print(f'Matched an additional {len(m1):,d}/{len(miss_sga2020):,d} ({100.*len(m1)/len(miss_sga2020):.1f}%) ' + \
+          'SGA-2020 objects via a 3 arcsec radius using NED coordinates.')
+    for col, sgacol in zip(['OBJNAME_SGA2020', 'RA_SGA2020', 'DEC_SGA2020', 'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_SGA2020'],
+                           ['GALAXY', 'RA', 'DEC', 'D26', 'BA', 'PA', 'ROW']):
+        if verbose:
+            print(f'Populating {sgacol} --> {col}')
+        parent[col][I[m2]] = miss_sga2020[m1][sgacol]
+    miss2_sga2020 = sga2020[np.delete(np.arange(len(sga2020)), parent[parent['ROW_SGA2020'] != -99]['ROW_SGA2020'].value)]
+
+
+    pdb.set_trace()
 
     # Next attempt to match by PGC but only for objects not previously
     # matched. Note that the PGC numbers may be different for objects
@@ -1488,7 +1501,7 @@ NGC 4656 NED01 should be HyperLeda's NGC4656 and PGC=42863 with a very large dia
             print(f'Duplicate {col} values!')
             pdb.set_trace()
 
-    # [7] include the custom-added objects
+    # [7] include the custom-added objects plus the SMDG sample
     print()
     print('#####')
     print(f'Adding {len(custom):,d} more objects from the custom catalog.')
@@ -1497,8 +1510,56 @@ NGC 4656 NED01 should be HyperLeda's NGC4656 and PGC=42863 with a very large dia
     basic_custom = get_basic_geometry(custom, galaxy_column='OBJNAME', verbose=verbose)
     parent6 = populate_parent(custom, basic_custom, verbose=verbose)
 
+    # There are SMUDGes objects both in the custom catalog and in the
+    # parent sample (via HyperLeda and NED-LVS); remove those
+    # duplicates here but copy over some of the relevant data.
+    pdb.set_trace()
+    m1, m2, sep = match_radec(parent6['RA_NED'], parent6['DEC_NED'], custom['RA'], custom['DEC'], 5./3600.)
+
+    print(f'Matched {len(m1):,d}/{len(custom):,d} objects to the existing parent catalog within 5 arcsec.')
+
+    smdgfile = os.path.join(sga_dir(), 'parent', 'external', 'SMUDGes_catalog.6_23.ascii')
+    smdg = Table.read(smdgfile, format='mrt')
+    print(f'Read {len(smdg):,d} objects from {smdgfile}')
+    smdg['OBJNAME'] = np.char.replace(smdg['SMDG'].value, 'SMDG', 'SMDG J')
+    smdg = smdg['OBJNAME', 'RAdeg', 'DEdeg', 'Re', 'b/a', 'PA', 'rmag', 'VC']
+    m1, m2, sep = match_radec(parent['RA_NED'], parent['DEC_NED'], smdg['RAdeg'], smdg['DEdeg'], 5./3600.)
+    print(f'Matched {len(m1):,d}/{len(smdg):,d} objects to the existing parent catalog within 5 arcsec.')
+
+    pdb.set_trace()
+
+    # add more objects from the SMDG catalog
+
+    m1, m2, sep = match_radec(parent['RA_NED'], parent['DEC_NED'], smdg['RAdeg'], smdg['DEdeg'], 5./3600.)
+    #Idrop = smdg[m2]['VC'] != 0
+
+    for col, smdgcol in zip(['RA_NED', 'DEC_NED', 'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'MAG_LIT', 'BAND_LIT'],
+                            ['RAdeg', 'DEdeg', 'Re', 'b/a', 'PA', 'rmag', 'band']):
+        print(f'Populating {smdgcol}-->{col}')
+        parent[col][m1] = smdg[m2][smdgcol]
+
+    parent['OBJNAME'][m1] = smdg[m2]['OBJNAME']
+    parent['RA'][m1] = smdg[m2]['RAdeg']
+    parent['DEC'][m1] = smdg[m2]['DEdeg']
+    parent['DIAM_LIT'][m1] = smdg[m2]['Re'] * 2. / 60. # [radius_arcsec --> diameter_arcmin]
+    parent['BA_LIT'][m1] = smdg[m2]['b/a']
+    parent['PA_LIT'][m1] = smdg[m2]['PA'] % 360 # [-90,90] --> [0,360]
+    parent['MAG_LIT'][m1] = smdg[m2]['rmag']
+    parent['BAND_LIT'][m1] = 'r'
+
+    J = np.flatnonzero(np.char.find(parent['OBJNAME_NED'].value, 'SMDG') != -1)
+
+    parent[J][~np.isin(parent[J]['OBJNAME_NED'], smdg['OBJNAME'])]
+
+    smdg[np.isin(smdg['OBJNAME'], parent[J]['OBJNAME_NED'])]
+
+    m1, m2, sep = match_radec(parent['RA_NED'], parent['DEC_NED'], smdg['RAdeg'], smdg['DEdeg'], 10./3600.)
+
+    I = np.isin(parent['OBJNAME_NED'], smdg['OBJNAME'])
+
     print()
     print(f'Parent 6: N={len(parent6):,d}')
+    pdb.set_trace()
 
     # [8] build the final sample
     parent = vstack((parent, parent6))
@@ -1538,10 +1599,11 @@ NGC 4656 NED01 should be HyperLeda's NGC4656 and PGC=42863 with a very large dia
     print(f'Final parent sample: N={len(parent):,d}')
     #parent.write('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/junk-sga2020.fits', overwrite=True)
 
-    # Populate OBJNAME, RA, DEC, and Z
+    # Populate OBJNAME, RA, DEC, and Z; NB: use SGA2020 first,
+    # otherwise we totally miss some quite famous galaxies.
     print()
 
-    for dataset in ['NED', 'NEDLVS', 'LVD', 'SGA2020', 'HYPERLEDA']:
+    for dataset in ['SGA2020', 'NED', 'NEDLVS', 'LVD', 'HYPERLEDA']:
         I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
         if len(I) > 0:
             print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -1594,7 +1656,7 @@ NGC 4656 NED01 should be HyperLeda's NGC4656 and PGC=42863 with a very large dia
     parent['BAND_LIT'] = ''
 
     print()
-    # NB - prioritize LVD first
+    # NB - prioritize LVD first, then custom (which includes SMUDGes)
     for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs),
                                    ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS'),
                                    ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS')):
