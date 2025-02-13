@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+"""Parse the SMUDGes catalog for use with the 'custom' (external) catalog.
+
+Run this script and then append (cut and paste) the results into the
+custom catalog.
+
+Read 7,070 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/SMUDGes_catalog.6_23.ascii
+Trimmed to 6,805/7,070 objects with VC==0
+Trimmed to 1,104/6,805 objects with diam>20 arcsec
+
+"""
+import os
+import numpy as np
+from astropy.table import Table
+from SGA.io import sga_dir
+
+base_smdgfile = 'SMUDGes_catalog.6_23.ascii'
+smdgfile = os.path.join(sga_dir(), 'parent', 'external', base_smdgfile)
+smdg = Table.read(smdgfile, format='mrt')
+smdg['ROW'] = np.arange(len(smdg))
+print(f'Read {len(smdg):,d} objects from {smdgfile}')
+smdg['OBJNAME'] = np.char.replace(smdg['SMDG'].value, 'SMDG', 'SMDG J')
+I = smdg['VC'] == 0
+print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with VC==0')
+smdg = smdg[I]
+
+I = 2. * smdg['Re'].value > 20.
+print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with diam>20 arcsec')
+
+F = open('smudges.txt', 'w')
+for obj in smdg:
+    objname = obj['OBJNAME']
+    ra = obj['RAdeg']
+    dec = obj['DEdeg']
+    diam = obj['Re'] * 2. / 60. # [radius in arcsec --> diameter in arcmin]
+    ba = obj['b/a']
+    pa = obj['PA'] % 360 # [-90,90] --> [0,360]
+    rmag = obj['rmag']
+    row = obj['ROW']
+    F.write(f"{objname},{objname},{ra},{dec},{diam},{ba},{pa},{rmag},r,Row {row} in '{base_smdgfile}'\n")
+F.close()
+
+import pdb ; pdb.set_trace()
+
