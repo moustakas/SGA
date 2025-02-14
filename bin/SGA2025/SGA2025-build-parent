@@ -29,7 +29,7 @@ import fitsio
 from astropy.table import Table, vstack
 import matplotlib.pyplot as plt
 
-from astrometry.util.starutil_numpy import arcsec_between
+from astrometry.util.starutil_numpy import arcsec_between, degrees_between
 from astrometry.libkd.spherematch import match_radec
 
 from SGA.coadds import PIXSCALE, BANDS
@@ -328,8 +328,8 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                           newcat['DEC'].value, width_arcsec/3600., indexlist=True, notself=False)
     matches = [mm for mm in matches if mm is not None]
     matches = np.unique(np.hstack(matches))
-    newcat['VI'] = np.zeros(len(newcat), bool)
-    newcat['VI'][matches] = True
+    #newcat['VI'] = np.zeros(len(newcat), bool)
+    #newcat['VI'][matches] = True
 
     # Build QA showing the sources at the center of each of the objects dropped
     # (in "dropcat").
@@ -647,7 +647,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -667,6 +667,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     version_vicuts = parent_version(vicuts=True)
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
+    cat.meta['EXTNAME'] = 'PARENT-VICUTS'
     cat.write(outfile, overwrite=True)
 
     #I = np.where(~np.isin(cat['OBJTYPE'], ['G', 'GPair', 'GTrpl', 'IrS', 'UvS', 'VisS']))[0]
@@ -681,25 +682,59 @@ def build_parent(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    from astrometry.util.starutil_numpy import deg2dist
+    from astrometry.libkd.spherematch import tree_build_radec, trees_match
+
     version_vicuts = parent_version(vicuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     cat = Table(fitsio.read(catfile))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
-    if False:
-        I = cat['DIAM_LIT'] > 25. ; srt = np.argsort(cat[I]['DIAM_LIT'])[::-1] ; cat[I][srt]['OBJNAME', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'RA', 'DEC']
-        cc = cat ; obj='MESSIER 077' ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
-        qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=2., pngdir='ioannis/tmp/', clip=True, overwrite_viewer=True, overwrite=True)
-        multipage_skypatch(cat[I], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/aa-sdss.pdf', verbose=True)
+    #if False:
+    #    I = cat['DIAM_LIT'] > 25. ; srt = np.argsort(cat[I]['DIAM_LIT'])[::-1] ; cat[I][srt]['OBJNAME', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'RA', 'DEC']
+    #    cc = cat ; obj='MESSIER 077' ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
+    #    qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=2., pngdir='ioannis/tmp/', clip=True, overwrite_viewer=True, overwrite=True)
+    #    multipage_skypatch(cat[I], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/aa-sdss.pdf', verbose=True)
 
     # FIXME - apply cuts based on additional external catalogs
     # (ssl-legacysurvey, Galaxy Zoo VI, etc.)
 
+    # add the Gaia mask bits
+    print(f'Adding Gaia bright-star masking bits.')
+    
+    cat['STARFDIST'] = np.zeros(len(cat), 'f4')
+
+    gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
+    gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
+    print(f'Read {len(gaia):,d} Gaia stars from {gaiafile}')
+    I = gaia['radius'] > 0.
+    print(f'Trimmed to {np.sum(I):,d}/{len(gaia):,d} stars with radius>0')
+    gaia = gaia[I]
+
+    dmag = 1.
+    bright = np.min(np.floor(gaia['mask_mag']))
+    faint = np.max(np.ceil(gaia['mask_mag']))
+    magbins = np.arange(bright, faint, dmag)
+
+    for mag in magbins:
+        I = (gaia['mask_mag'] >= mag) * (gaia['mask_mag'] < mag+dmag)
+        maxradius = np.max(gaia[I]['radius']) # [degrees]
+        print(f'Found {np.sum(I):,d} Gaia stars in magnitude bin {mag:.0f} to {mag+dmag:.0f} with max radius {maxradius:.4f} degrees.')
+
+        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], gaia[I]['ra'], gaia[I]['dec'], maxradius)
+        if len(m1) > 0:
+            dtheta = degrees_between(cat[m1]['RA'], cat[m1]['DEC'], gaia[I][m2]['ra'], gaia[I][m2]['dec'])
+            frac = np.diag(dtheta) / gaia[I][m2]['radius'].value
+            cat['STARFDIST'][m1] = frac
+
     version = parent_version()
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
+    cat.meta['EXTNAME'] = 'PARENT'
     cat.write(outfile, overwrite=True)
 
+    pdb.set_trace()
+    
     if False:
         # How many sources with diam<0.1 have no other source within 10 arcsec?
         radius_isolated = 10.
@@ -1647,6 +1682,7 @@ def build_parent_nocuts(verbose=True):
     version = parent_version(nocuts=True)
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     print(f'Writing {len(parent):,d} objects to {outfile}')
+    parent.meta['EXTNAME'] = 'PARENT-NOCUTS'
     parent.write(outfile, overwrite=True)
 
 
