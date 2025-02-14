@@ -643,21 +643,6 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     # [1] Update individual-galaxy properties, including coordinates.
     cat = update_properties(origcat, verbose=verbose)
 
-    #cc = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'ROW_LVD', 'PGC', 'RA', 'DEC', 'RA_NED', 'DEC_NED']
-    #bb = cat[(cat['ROW_LVD'] != -99) * (cat['DIAM_LIT_REF'] != 'LVD') * (cat['DIAM_LIT_REF'] != 'RC3')]#[cc]
-    #bb = bb[np.argsort(bb['DIAM_LIT_REF'])]
-    #multipage_skypatch(bb, cat=cat, width_arcsec=180., jpgdir='tmp2', pngdir='tmp2', verbose=True, pdffile='tmp2/qa-lvd.pdf')
-    #
-    #mm = cat[(cat['ROW_LVD'] != -99) * (cat['RA_NED'] != -99.)] ; delta = np.int32(np.round(np.diag(arcsec_between(mm['RA'], mm['DEC'], mm['RA_NED'], mm['DEC_NED'])), 2)*100)/100
-    #I = delta>100. ; mm[I]['OBJNAME', 'RA', 'DEC', 'RA_LVD', 'DEC_LVD', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'RA_NED', 'DEC_NED', 'ROW_LVD'] ; delta[I]
-    #
-    #mm = cat[(cat['ROW_LVD'] != -99) * (cat['RA_HYPERLEDA'] != -99.)] ; delta = np.int32(np.round(np.diag(arcsec_between(mm['RA'], mm['DEC'], mm['RA_HYPERLEDA'], mm['DEC_HYPERLEDA'])), 2)*100)/100
-    #I = delta>100. ; mm[I]['OBJNAME', 'RA', 'DEC', 'RA_LVD', 'DEC_LVD', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'RA_NED', 'DEC_NED', 'ROW_LVD'] ; delta[I]
-    #
-    #from SGA.util import choose_geometry
-    #mm = cat[cat['ROW_LVD'] != -99]
-    #diam, _, _, ref = choose_geometry(mm, mindiam=-99.)
-
     # [2] Drop systems with uncommon prefixes (after VI).
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
@@ -666,11 +651,6 @@ def build_parent_vicuts(verbose=False, overwrite=False):
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
-
-    #testfile = os.path.join(sga_dir(), 'parent', f'test-SGA2025-parent-nocuts-{version}.fits')
-    #cat.write(testfile, overwrite=True)
-    #cat = Table(fitsio.read(testfile))
-    #print(f'Read {len(cat):,d} objects from {testfile}')
 
     # [4] Visually drop GTrpl and GPair systems with and without measured
     # diameters.
@@ -1460,7 +1440,11 @@ def build_parent_nocuts(verbose=True):
     drop =['[GMG2015] G', 'SDSS J122357.73+115332.3', 'SMDG J1408411+565536']
     print('Dropping '+'.'.join(drop)+' to avoid duplicate matches to the SMUDGes catalog')
     parent.remove_rows(np.where(np.isin(parent['OBJNAME_NED'], drop))[0])
-        
+
+    print('Removing GALEXASC J092844.50+360101.8 from the parent sample.')
+    Idrop = np.where(parent['OBJNAME_NEDLVS'] == 'GALEXASC J092844.50+360101.8')[0]
+    parent.remove_row(Idrop[0])
+
     ra, dec = parent['RA_NED'].value, parent['DEC_NED'].value
     I = (ra == -99.) * (parent['RA_HYPERLEDA'] != -99.)
     if np.any(I):
@@ -1471,7 +1455,7 @@ def build_parent_nocuts(verbose=True):
         ra[I] = parent['RA_LVD'][I].value
         dec[I] = parent['DEC_LVD'][I].value
 
-    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME'].value, ' ').tolist()))[0])
+    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])
     smdg = custom[prefix == 'SMDG']
 
     m1, m2, sep = match_radec(ra, dec, smdg['RA'], smdg['DEC'], 5./3600., nearest=True)
@@ -1479,7 +1463,7 @@ def build_parent_nocuts(verbose=True):
           'parent catalog within 5 arcsec.')
     #parent[m1]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'ROW_LVD'].pprint(max_lines=-1)
 
-    basic_smdg = get_basic_geometry(smdg[m2], galaxy_column='OBJNAME', verbose=verbose)
+    basic_smdg = get_basic_geometry(smdg[m2], galaxy_column='OBJNAME_NED', verbose=verbose)
     basic_smdg.rename_column('GALAXY', 'OBJNAME_NED')
     basic_smdg['MAG_LIT_REF'] = 'SMUDGes'
     basic_smdg['DIAM_LIT_REF'] = 'SMUDGes'
@@ -1494,11 +1478,11 @@ def build_parent_nocuts(verbose=True):
 
     # Now add the rest of the 'custom' sample, making sure to change
     # the 'reference' columns for the remaining SMUDGes sources.
-    custom.remove_rows(basic_smdg['ROW_CUSTOM'].value)
-    basic_custom = get_basic_geometry(custom, galaxy_column='OBJNAME', verbose=verbose)
+    custom = custom[~np.isin(custom['ROW_CUSTOM'], basic_smdg['ROW_CUSTOM'])]
+    basic_custom = get_basic_geometry(custom, galaxy_column='OBJNAME_NED', verbose=verbose)
     parent6 = populate_parent(custom, basic_custom, verbose=verbose)
 
-    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME'].value, ' ').tolist()))[0])    
+    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])    
     parent6['MAG_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
     parent6['DIAM_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
     parent6['BA_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'

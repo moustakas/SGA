@@ -98,7 +98,6 @@ III Zw 022 NOTES03,17.719928,8.324383,-99.,-99.,-99.,-99.,No,Coordinates on web 
 VIII Zw 010 NED02,3.645512,-3.092323,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J001434.92-030532.3'.
 ESO 194-IG 036 NED02,11.585355,-47.428328,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J004620.48-472541.9'.
 ESO 355-IG 003 NED02,34.426041,-37.136176,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J021742.24-370810.2'.
-ESO 195-IG 026 NED02,15.984350,-49.523371,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J010356.24-493124.1'.
 AM 1913-605,-99.,-99.,0.4,-99.,-99.,-99.,No,Flagged as a galaxy pair but centered on a nice spiral.
 WISEA J003745.01+061330.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Companion to 'CGCG 409-048 NED02'.
 WISEA J072519.38+553035.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Companion to 'CGCG 261-065 NED02'.
@@ -281,7 +280,6 @@ LEDA 135663,41.6560,-0.2671,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and e
 LEDA 140687,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
 LEDA 101419,145.1168,48.2892,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 LEDA 167123,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
-SDSS j163813.00+415623.0,249.5584,41.9388,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
 IRAS 18169+6433d,-99.,-99.,0.5,135.,0.2,-99.,No,Estimated geometry.
 NGC 6817 NED01,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 VII Zw 700,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
@@ -303,7 +301,6 @@ V Zw 152 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
 V Zw 104 NOTES02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
 V Zw 104 NOTES01,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
 MRK 0111 NED01,-99.,-99.,0.6,0.,1.,-99.,No,Estimated diameter.
-[HKK2009] dJ1212+4237,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 [HKK2009] dJ1229+3056,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 [HKK2009] dJ1154+3635,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 [HKK2009] dJ1504+5538,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
@@ -313,7 +310,6 @@ MATLAS 1123,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
 [MSB2017b] dw J1355+51,208.7996,51.9089,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 [MSB2017b] dw J1412+56,213.0488,56.1425,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 [MSB2017b] dw J1313+46,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
-[MSB2017b] dw J1327+51,201.7555,51.6858,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 [MSB2017b] dw J1340+45,205.1558,45.6981,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 [MSB2017b] dw J1303+42,195.8098,42.3735,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 [MSB2017b] dw J1305+38,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
@@ -339,4 +335,3 @@ CGCG 350-048,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 NGC 6166 NED02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 NGC 2458,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 NGC 6817 NED01,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
-PC 0914+4744,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.

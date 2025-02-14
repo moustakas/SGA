@@ -1356,6 +1356,7 @@ def read_custom_external(rank=0, rows=None, overwrite=False):
         csvfile = str(resources.files('SGA').joinpath(f'data/SGA2025/custom-external_{version}.csv'))
         data = Table.read(csvfile, format='csv', comment='#')
         data['mag_band'] = data['mag_band'].astype('<U1')
+        data['objname'].fill_value = ''
         data['mag_band'].fill_value = ''
         data['objname_ned'].fill_value = ''
         data = data.filled()
