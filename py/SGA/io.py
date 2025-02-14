@@ -633,14 +633,23 @@ def read_hyperleda(rank=0, rows=None):
 
     if not os.path.isfile(hyperfile):
         gals = read_hyperleda_galaxies(rank=rank, rows=rows)
+
+        # The 'mult' table has objects with OBJTYPE==? (where
+        # multiple={M,M2,M3}); remove them here since we get them in
+        # the 'noobjtype' table, too.
         mult = read_hyperleda_multiples(rank=rank, rows=rows)
+        mult = mult[mult['OBJTYPE'] != '?']
+
+        noobj = read_hyperleda_noobjtype(rank=rank, rows=rows)
         #gals['ROW_GALAXIES'] = np.zeros(len(gals), np.int64) - 99
         #mult['ROW_MULTIPLES'] = np.zeros(len(mult), np.int64) - 99
         gals.rename_column('ROW', 'ROW_GALAXIES')
         mult.rename_column('ROW', 'ROW_MULTIPLES')
-        hyper = vstack((gals, mult))
+        noobj.rename_column('ROW', 'ROW_NOOBJTYPE')
+        hyper = vstack((gals, mult, noobj))
         hyper['ROW_GALAXIES'].fill_value = -99
         hyper['ROW_MULTIPLES'].fill_value = -99
+        hyper['ROW_NOOBJTYPE'].fill_value = -99
         hyper = hyper.filled()
 
         # sort by PGC number and reset ROW
