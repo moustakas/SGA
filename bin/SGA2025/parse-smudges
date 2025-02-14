@@ -5,8 +5,8 @@ Run this script and then append (cut and paste) the results into the
 custom catalog.
 
 Read 7,070 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/SMUDGes_catalog.6_23.ascii
-Trimmed to 6,805/7,070 objects with VC==0
-Trimmed to 1,104/6,805 objects with diam>20 arcsec
+Trimmed to 6,805/7,070 objects with VC==0.
+Trimmed to 2,655/6,805 objects with diam>15 arcsec.
 
 """
 import os
@@ -24,8 +24,8 @@ I = smdg['VC'] == 0
 print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with VC==0')
 smdg = smdg[I]
 
-I = 2. * smdg['Re'].value > 20.
-print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with diam>20 arcsec')
+I = (2. * smdg['Re'].value) > 15.
+print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with diam>15 arcsec')
 
 F = open('smudges.txt', 'w')
 for obj in smdg[I]:
@@ -37,5 +37,5 @@ for obj in smdg[I]:
     pa = obj['PA'] % 360 # [-90,90] --> [0,360]
     rmag = obj['rmag']
     row = obj['ROW']
-    F.write(f"{objname},{objname},{ra},{dec},{diam},{ba},{pa},{rmag},r,Row {row} in '{base_smdgfile}'\n")
+    F.write(f",{objname},{ra},{dec},{diam},{ba},{pa},{rmag},r,Row {row} in '{base_smdgfile}'\n")
 F.close()
