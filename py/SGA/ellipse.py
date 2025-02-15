@@ -259,49 +259,57 @@ def parse_geometry(cat, ref):
     diam = np.zeros(nobj) - 99. # [arcsec]
     ba = np.ones(nobj)
     pa = np.zeros(nobj)
+    outref = np.zeros(nobj, '<U9')
 
     if ref == 'SGA2020':
         I = cat['DIAM_SGA2020'] > 0.
         if np.any(I):
-            diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_SGA2020']
-            pa[I] = cat[I]['PA_SGA2020']
-    elif ref == 'RC3':
-        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'RC3')
-        if np.any(I):
-            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_LIT']
-            pa[I] = cat[I]['PA_LIT']
-    elif ref == 'LVD':
-        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'LVD')
-        if np.any(I):
-            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_LIT']
-            pa[I] = cat[I]['PA_LIT']
-    elif ref == 'SMUDGes':
-        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'SMUDGes')
-        if np.any(I):
-            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_LIT']
-            pa[I] = cat[I]['PA_LIT']
-    elif ref == 'LIT':
-        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] != 'RC3')
-        if np.any(I):
-            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_LIT']
-            pa[I] = cat[I]['PA_LIT']
+            diam[I] = cat['DIAM_SGA2020'][I] * 60. # [arcsec]
+            ba[I] = cat['BA_SGA2020'][I]
+            pa[I] = cat['PA_SGA2020'][I]
+            outref[I] = ref
     elif ref == 'HYPERLEDA':
         I = cat['DIAM_HYPERLEDA'] > 0.
         if np.any(I):
-            diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_HYPERLEDA']
-            pa[I] = cat[I]['PA_HYPERLEDA']
+            diam[I] = cat['DIAM_HYPERLEDA'][I] * 60. # [arcsec]
+            ba[I] = cat['BA_HYPERLEDA'][I]
+            pa[I] = cat['PA_HYPERLEDA'][I]
+            outref[I] = ref
+    elif ref == 'LIT':
+        I = cat['DIAM_LIT'] > 0.
+        if np.any(I):
+            diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
+            ba[I] = cat['BA_LIT'][I]
+            pa[I] = cat['PA_LIT'][I]
+            outref[I] = cat['DIAM_LIT_REF']
+
+    #elif ref == 'RC3':
+    #    I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'RC3')
+    #    if np.any(I):
+    #        diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
+    #        ba[I] = cat['BA_LIT'][I]
+    #        pa[I] = cat['PA_LIT'][I]
+    #elif ref == 'LVD':
+    #    I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'LVD')
+    #    if np.any(I):
+    #        diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
+    #        ba[I] = cat['BA_LIT'][I]
+    #        pa[I] = cat['PA_LIT'][I]
+    #elif ref == 'SMUDGes':
+    #    I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'SMUDGes')
+    #    if np.any(I):
+    #        diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
+    #        ba[I] = cat['BA_LIT'][I]
+    #        pa[I] = cat['PA_LIT'][I]
 
     # clean up missing values of BA and PA
     ba[ba < 0.] = 1.
     pa[pa < 0.] = 0.
-    
-    return diam, ba, pa
+
+    if nobj == 1:
+        return diam[0], ba[0], pa[0], outref[0]
+    else:
+        return diam, ba, pa, outref
 
 
 def choose_geometry(cat, mindiam=152*0.262):
@@ -331,19 +339,19 @@ def choose_geometry(cat, mindiam=152*0.262):
              (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) * 
              (cat[f'PA_{dataref}'] != -99.))
         if np.any(I):
-            diam[I] = cat[I][f'DIAM_{dataref}'] * 60.
-            ba[I] = cat[I][f'BA_{dataref}']
-            pa[I] = cat[I][f'PA_{dataref}']
+            diam[I] = cat[f'DIAM_{dataref}'][I] * 60.
+            ba[I] = cat[f'BA_{dataref}'][I]
+            pa[I] = cat[f'PA_{dataref}'][I]
             ref[I] = datarefs[iref]
             # special-case LVD, RC3, and SMUDGes
             if dataref == 'LIT':
-                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'SMUDGes')[0]
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'SMUDGes')[0]
                 if len(J) > 0:
                     ref[I][J] = 'SMUDGes'
-                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'LVD')[0]
                 if len(J) > 0:
                     ref[I][J] = 'LVD'
-                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'RC3')[0]
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'RC3')[0]
                 if len(J) > 0:
                     ref[I][J] = 'RC3'
 
@@ -351,19 +359,19 @@ def choose_geometry(cat, mindiam=152*0.262):
     for iref, dataref in enumerate(datarefs):
         I = (dataindx == iref) * (diam == -99.) * (cat[f'DIAM_{dataref}'] != -99.)
         if np.any(I):
-            diam[I] = cat[I][f'DIAM_{dataref}'] * 60.
-            ba[I] = cat[I][f'BA_{dataref}']
-            pa[I] = cat[I][f'PA_{dataref}']
+            diam[I] = cat[f'DIAM_{dataref}'][I] * 60.
+            ba[I] = cat[f'BA_{dataref}'][I]
+            pa[I] = cat[f'PA_{dataref}'][I]
             ref[I] = datarefs[iref]
             # special-case LVD, RC3, and SMUDGes
             if dataref == 'LIT':
-                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'SMUDGes')[0]
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'SMUDGes')[0]
                 if len(J) > 0:
                     ref[I][J] = 'SMUDGes'
-                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'LVD')[0]
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'LVD')[0]
                 if len(J) > 0:
                     ref[I][J] = 'LVD'
-                J = np.where(cat[I][f'DIAM_{dataref}_REF'] == 'RC3')[0]
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'RC3')[0]
                 if len(J) > 0:
                     ref[I][J] = 'RC3'
 

@@ -9,7 +9,7 @@ SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
-SGA2025-build-parent --in-footprint --region=dr9-north --mp=128
+SGA2025-build-parent --in-footprint --region=dr9-north
 
 salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
@@ -675,7 +675,6 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     #multipage_skypatch(cat[I[:50]], cat=cat, width_arcsec=30., ncol=5, nrow=5, clip=True,
     #                   jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
     #                   pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
-        #pdb.set_trace()
 
 
 def build_parent(verbose=False, overwrite=False):
@@ -702,7 +701,9 @@ def build_parent(verbose=False, overwrite=False):
     # add the Gaia mask bits
     print(f'Adding Gaia bright-star masking bits.')
     
-    cat['STARFDIST'] = np.zeros(len(cat), 'f4')
+    cat['STARFDIST'] = np.zeros(len(cat), 'f4') + 99.
+    cat['STARDIST'] = np.zeros(len(cat), 'f4') + 99.
+    cat['STARMAG'] = np.zeros(len(cat), 'f4') + 99.
 
     gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
     gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
@@ -717,15 +718,36 @@ def build_parent(verbose=False, overwrite=False):
     magbins = np.arange(bright, faint, dmag)
 
     for mag in magbins:
-        I = (gaia['mask_mag'] >= mag) * (gaia['mask_mag'] < mag+dmag)
-        maxradius = np.max(gaia[I]['radius']) # [degrees]
-        print(f'Found {np.sum(I):,d} Gaia stars in magnitude bin {mag:.0f} to {mag+dmag:.0f} with max radius {maxradius:.4f} degrees.')
+        # find all Gaia stars in this magnitude bin
+        I = np.where((gaia['mask_mag'] >= mag) * (gaia['mask_mag'] < mag+dmag))[0]
 
-        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], gaia[I]['ra'], gaia[I]['dec'], maxradius)
+        # search within 2 times the largest masking radius
+        maxradius = 2. * np.max(gaia['radius'][I]) # [degrees]
+        print(f'Found {len(I):,d} Gaia stars in magnitude bin {mag:.0f} to ' + \
+              f'{mag+dmag:.0f} with max radius {maxradius:.4f} degrees.')
+
+        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], gaia['ra'][I], gaia['dec'][I], maxradius, nearest=True)
         if len(m1) > 0:
-            dtheta = degrees_between(cat[m1]['RA'], cat[m1]['DEC'], gaia[I][m2]['ra'], gaia[I][m2]['dec'])
-            frac = np.diag(dtheta) / gaia[I][m2]['radius'].value
-            cat['STARFDIST'][m1] = frac
+            zero = np.where(sep == 0.)[0]
+            if len(zero) > 0:
+                cat['STARDIST'][m1[zero]] = 0.
+                cat['STARFDIST'][m1[zero]] = 0.
+                cat['STARMAG'][m1[zero]] = gaia['mask_mag'][I[m2[zero]]]
+
+            # separations can be identically zero
+            pos = np.where(sep > 0.)[0]
+            if len(pos) > 0:
+                # distance to the nearest star (in this mag bin)
+                # relative to the mask radius of that star (given its
+                # mag), capped at a factor of 2; values <1 mean the
+                # object is within the star's masking radius
+                fdist = sep[pos] / gaia['radius'][I[m2[pos]]].value
+                # only store the smallest value
+                J = np.where((fdist < 2.) * (fdist < cat['STARFDIST'][m1[pos]]))[0]
+                if len(J) > 0:
+                    cat['STARDIST'][m1[pos[J]]] = sep[pos[J]] # [degrees]
+                    cat['STARFDIST'][m1[pos[J]]] = fdist[J]
+                    cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
 
     version = parent_version()
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
@@ -733,8 +755,8 @@ def build_parent(verbose=False, overwrite=False):
     cat.meta['EXTNAME'] = 'PARENT'
     cat.write(outfile, overwrite=True)
 
-    pdb.set_trace()
-    
+
+
     if False:
         # How many sources with diam<0.1 have no other source within 10 arcsec?
         radius_isolated = 10.
@@ -765,7 +787,6 @@ def build_parent(verbose=False, overwrite=False):
                            jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
                            pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
     
-        pdb.set_trace()
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
@@ -807,7 +828,6 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
     if size_mag:
         png = os.path.join(qadir, f'qa-sizemag-parent-nocuts-{version}.png')
         fig_size_mag(cat, pngfile=png)
-    pdb.set_trace()
 
     # compare diameters
     if False:
@@ -1615,10 +1635,14 @@ def build_parent_nocuts(verbose=True):
     basic_lvd = get_basic_geometry(lvd, galaxy_column='ROW', verbose=verbose)
     basic_custom = get_basic_geometry(custom, galaxy_column='ROW_CUSTOM', verbose=verbose)
 
+    # NB: do not reset diameters for the set of SMUDGes objects which
+    # were matched from custom to the parent sample (at the point
+    # where 'custom' was added to parent, parent 6).
+    I = parent['DIAM_LIT_REF'] != 'SMUDGes'
     for col in ['DIAM_LIT', 'BA_LIT', 'PA_LIT', 'MAG_LIT']:
-        parent[col] = -99.
-        parent[f'{col}_REF'] = ''
-    parent['BAND_LIT'] = ''
+        parent[col][I] = -99.
+        parent[f'{col}_REF'][I] = ''
+    parent['BAND_LIT'][I] = ''
 
     print()
     # NB - prioritize LVD first, then custom (which includes SMUDGes)
@@ -1697,7 +1721,8 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
     brickname = f'custom-{custom_brickname(onegal["RA"], onegal["DEC"])}'
     brick = BrickDuck(onegal['RA'], onegal['DEC'], brickname)
 
-    targetwcs = wcs_for_brick(brick, W=float(width_pixels), H=float(width_pixels), pixscale=pixscale)
+    targetwcs = wcs_for_brick(brick, W=float(width_pixels),
+                              H=float(width_pixels), pixscale=pixscale)
     I = ccds_touching_wcs(targetwcs, allccds)
     #ccds = survey.ccds_touching_wcs(targetwcs)
     #print(len(I))
@@ -1745,7 +1770,8 @@ def read_existing_footprint(cat, region, version='v1.0'):
 
         # We know that objects with sep==0. are in the footprint, so
         # we don't have to "find" them again...
-        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], refcat['RA'], refcat['DEC'], 1./3600.)
+        m1, m2, sep = match_radec(cat['RA'].value, cat['DEC'].value, refcat['RA'].value, 
+                                  refcat['DEC'].value, 1./3600., nearest=True)
         I = sep == 0.
         if np.any(I):
             m1 = m1[I]
@@ -1793,8 +1819,8 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
 
         # I, which is a list of len(cat), is the variable-length of indices into
         # allccds of the matches, or None if no match (which we filter out).
-        allindx_ccds = match_radec(cat['RA'], cat['DEC'], allccds.ra, allccds.dec,
-                                   radius, indexlist=True)
+        allindx_ccds = match_radec(cat['RA'].value, cat['DEC'].value, allccds.ra, 
+                                   allccds.dec, radius, indexlist=True)
 
         indx_cat = []
         indx_ccds = []
@@ -1919,6 +1945,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
     radius in degrees
 
     """
+    from SGA.coadds import RUNS
+
     if comm is None:
         rank = 0
     else:
@@ -1956,14 +1984,15 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         # sort by right ascension to try to speed things up...
         cat = cat[np.argsort(cat['RA'])]
 
-        runs = {'dr9-north': 'north', 'dr9-south': 'south', 'dr10-south': 'south', 
-                'dr11-south': 'south'}
         set_legacysurvey_dir(region)
-        survey = get_survey(runs[region])#, allbands=BANDS)
+        survey = get_survey(RUNS[region], allbands=BANDS[region])
 
         _ = survey.get_ccds_readonly()
         allccds = survey.ccds
         print(f'Read {len(allccds):,d} CCDs from region={region}')
+        I = allccds.ccd_cuts == 0
+        print(f'Trimming to {np.sum(I):,d}/{len(allccds):,d} CCDs with ccd_cuts==0')
+        allccds = allccds[I]
 
         # in dr9-north, censor the CCDs in and around M31 and one failed brick around (ra,dec)=(328.8, 0.0)
         # https://www.legacysurvey.org/viewer-desi?ra=10.6890&dec=41.2719&layer=unwise-neo7&zoom=9&ccds9n
@@ -1977,7 +2006,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
             B = survey.get_brick_by_name('3288p000')
             I = (cat['RA'] > B.ra1) * (cat['RA'] < B.ra2) * (cat['DEC'] > B.dec1) * (cat['DEC'] < B.dec2)
             if np.count_nonzero(I) > 0:
-                print(f'Removing {np.sum(I):,d} objects located in brick 3288p000')
+                print(f'Removing {np.sum(I):,d} objects located in failed brick 3288p000')
                 cat = cat[~I]
 
         sys.stdout.flush()
@@ -2033,7 +2062,11 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
             #allfccds = vstack((allfccds, ccds_done))
 
         outcat = Table(fitsio.read(catfile)) # read the whole catalog
-        cat_indx, fcat_indx = match(outcat['ROW_PARENT'], allfcat['ROW_PARENT'])
+        # match on position not ROW_PARENT, which can change
+        cat_indx, fcat_indx, sep = match_radec(
+            outcat['RA'].value, outcat['DEC'].value, allfcat['RA'].value, 
+            allfcat['DEC'].value, 1./3600., nearest=True)
+        #cat_indx, fcat_indx = match(outcat['ROW_PARENT'], allfcat['ROW_PARENT'])
         outcat = outcat[cat_indx]
         allfcat = allfcat[fcat_indx]
         assert(np.all(outcat['ROW_PARENT'] == allfcat['ROW_PARENT']))
@@ -2059,8 +2092,10 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         print(f'All done in {(time.time()-t0)/60.:.2f} min')
 
 
-def qa_footprint(region='dr9-north', show_fullcat=False):
+def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=True):
     """Build some simple QA of the in-footprint sample.
+
+    TODO - make this a sky map
 
     """
     import matplotlib.pyplot as plt
@@ -2082,11 +2117,29 @@ def qa_footprint(region='dr9-north', show_fullcat=False):
         fullcatfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
         fullcat = Table(fitsio.read(fullcatfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT']))
         print(f'Read {len(fullcat):,d} objects from {fullcatfile}')
-
         ax.scatter(fullcat['RA'], fullcat['DEC'], s=1, color='gray')
 
+    if show_fullccds:
+        from legacypipe.runs import get_survey
+        from SGA.io import set_legacysurvey_dir
+        from SGA.coadds import RUNS
+        
+        set_legacysurvey_dir(region)
+        survey = get_survey(RUNS[region], allbands=BANDS[region])
+        _ = survey.get_ccds_readonly()
+        allccds = survey.ccds
+        print(f'Read {len(allccds):,d} CCDs from region={region}')
+        I = allccds.ccd_cuts == 0
+        print(f'Trimming to {np.sum(I):,d}/{len(allccds):,d} CCDs with ccd_cuts==0')
+        allccds = allccds[I]
+
+        ax.scatter(allccds.ra, allccds.dec, s=1, color='gray')
+
     #for bands in sorted(set(cat['FILTERS'])):
-    for iband, bands in enumerate(['grz', 'rz', 'gr', 'gz', 'g', 'r', 'z']):
+    for iband, bands in enumerate(['griz', 'gri', 'grz', 'giz', 'riz', 
+                                   'gr', 'gi', 'gz', 'ri', 'rz', 'iz',
+                                   'g', 'r', 'i', 'z']):
+    #for iband, bands in enumerate(['grz', 'rz', 'gr', 'gz', 'g', 'r', 'z']):
     #for bands in ['rz', 'gr', 'gz', 'g', 'r', 'z']:
         I = cat['FILTERS'] == bands
         if np.sum(I) > 0:
@@ -2101,9 +2154,11 @@ def qa_footprint(region='dr9-north', show_fullcat=False):
         ax.set_xlim(360., 0.)
         if region == 'dr9-north':
             ax.set_ylim(-25., 90.)
+            loc = 'lower left'
         else:
             ax.set_ylim(-90., 90.)
-    ax.legend(fontsize=9, ncols=4, markerscale=8, loc='lower left')
+            loc = 'upper left'
+    ax.legend(fontsize=9, ncols=4, markerscale=8, loc=loc)
     fig.tight_layout()
     fig.savefig(qafile)
     print(f'Wrote {qafile}')

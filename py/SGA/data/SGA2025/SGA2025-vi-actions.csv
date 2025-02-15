@@ -2194,6 +2194,7 @@ APMUKS(BJ) B220414.07+021454.2,drop,shred,
 GALEXASC J115923.87+505931.8,drop,shred,In the envelope of 'NGC 4026'
 WISEA J061810.68+782233.6,drop,shred,In the envelope of 'NGC 2146'
 2MASX J09551726+6939132,drop,shred,In the envelope of 'MESSIER 082'
+SDSS J171454.91+353121.2,drop,shred,In the envelope of 'IC 1249'
 #
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
@@ -2232,6 +2233,7 @@ ESO-LV 3490391,drop,star,Foreground star next to 'ESO 349- G 039'.
 ESO-LV 0300171,drop,star,
 WISEA J081944.15-850842.4,drop,star,Foreground star in 'ESO 006-001'.
 UGC 10638 NED01,drop,star,Foreground star.
+WISEA J014844.26+103229.7,drop,star,Foreground star?
 #
 ESO 292-IG 010 NED02,drop,no source,In 'ESO 292-IG 010' group.
 ESO 193-IG 008 NED02,drop,no source,In 'ESO 193-IG 008' group.

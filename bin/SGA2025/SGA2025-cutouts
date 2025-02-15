@@ -105,6 +105,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     """
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
+    from astropy.table import vstack
     from astropy.wcs import WCS
     from astropy.io import fits
 
@@ -136,7 +137,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
         y0 = width - ypix
 
         ax.add_artist(Ellipse((x0, y0), semimajor, semiminor, angle=90.-pa,
-                              facecolor='none', edgecolor=color, lw=1.5, ls=linestyle,
+                              facecolor='none', edgecolor=color, lw=2, ls=linestyle,
                               alpha=0.9, clip_on=True))
 
         if majorminor:
@@ -166,8 +167,14 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     width = img.shape[0]
     wcs = get_wcs(primary_ra, primary_dec, width)
 
-    ellipse_colors = {'RC3': 'yellow', 'SGA2020': 'dodgerblue', 'HYPERLEDA': 'red', 'LIT': 'green'}
-    ellipse_linestyles = {'RC3': 'solid', 'SGA2020': 'dashed', 'HYPERLEDA': 'dashdot', 'LIT': 'dotted'}
+    ellipse_colors = {'RC3': 'yellow', 'SMUDGes': 'orange', 'LVD': 'violet', 
+                      'SGA2020': 'dodgerblue', 'HYPERLEDA': 'red', 
+                      'ESO': 'pink', 'SDSS': 'pink', 'TWOMASS': 'pink', 
+                      'BASIC': 'pink', 'CUSTOM': 'pink', '': 'pink'}
+    ellipse_linestyles = {'RC3': 'solid', 'SMUDGes': 'solid', 'LVD': 'solid',
+                          'SGA2020': 'dashed', 'HYPERLEDA': 'dashdot',
+                          'ESO': 'dashed', 'SDSS': 'dashed', 'TWOMASS': 'dashed',
+                          'BASIC': 'dashed', 'CUSTOM': 'dashed', '': 'dashed'}
 
     outdir = os.path.dirname(pngfile)
     if not os.path.isdir(outdir):
@@ -179,10 +186,16 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     ax.set_ylim(0, width)
 
     if len(group) > 10:
-        print('WARNING: Too many group members; keeping just the first 10 largest objects!')
-        diam, _, _, _ = choose_geometry(group)
+        #print('WARNING: Too many group members; keeping just the 10 largest objects!')
+        # group includes primary, so we need to be sure it doesn't get removed
+        group_noprimary = group.copy()
+        group_noprimary.remove_row(np.where(primary['ROW_PARENT'] == group['ROW_PARENT'])[0][0])
+        # set mindiam=0 to prioritize existing diameter estimates
+        diam, _, _, _ = choose_geometry(group_noprimary, mindiam=0.)
         srt = np.argsort(diam)[::-1]
-        group = group[srt][:10]
+        group_noprimary = group_noprimary[srt[:10]]
+        group = vstack((Table(primary), group_noprimary))
+        del group_noprimary
 
     for imem, onegal in enumerate(group):
         ra = onegal['RA']
@@ -191,17 +204,16 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
         if xpix < 0 or ypix < 0 or xpix > width or ypix > width:
             continue
 
-        for ref in ['RC3', 'SGA2020', 'HYPERLEDA', 'LIT']:
-            diam, ba, pa = parse_geometry(Table(onegal), ref)
+        for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
+            diam, ba, pa, outref = parse_geometry(Table(onegal), ref)
             if diam > 0.:
                 #print(onegal['OBJNAME'], ref, xpix, ypix, diam[0], ba[0], pa[0])
                 if onegal['OBJNAME'] == primary['OBJNAME']:
                     majorminor = True
                 else:
                     majorminor = False
-
-                draw_ellipse(diam[0], ba[0], pa[0], pixscale, xpix, ypix, color=ellipse_colors[ref],
-                             linestyle=ellipse_linestyles[ref], majorminor=majorminor)
+                draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color=ellipse_colors[outref],
+                             linestyle=ellipse_linestyles[outref], majorminor=majorminor)
                 if onegal['OBJNAME'] != primary['OBJNAME']:
                     if imem % 2 == 0:
                         xoffset = 0.2 * width
@@ -685,11 +697,18 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10, overwrit
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     from matplotlib.image import imread
+    from SGA.io import sga_dir
+
+    qadir = os.path.join(sga_dir(), 'parent', 'qa')
 
     raslices = get_raslice(cat['RA'].value)
     objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)    
-    pngfiles = np.hstack([glob(os.path.join(outdir, region, 'annotate', raslice, f'{objname}.png') )
+    pngdir = os.path.join(outdir, region, 'annotate')
+    pngfiles = np.hstack([glob(os.path.join(pngdir, raslice, f'{objname}.png') )
                          for raslice, objname in zip(raslices, objnames)])
+    if len(pngfiles) == 0:
+        print(f'No pngfiles found in root annotate directory {pngdir}')
+        return
 
     #pngfiles = np.array(glob(os.path.join(outdir, region, 'annotate', '???', '*.png')))
     #pngfiles = pngfiles[np.argsort(pngfiles)]
@@ -715,9 +734,9 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10, overwrit
           f'PDFs with a total of {npage:,d} pages and {npagemax} pages per file.')
 
     for ipdf in range(npdf):
-        pdffile = os.path.join(outdir, f'annotated-montage-{region}-{ipdf:03}.pdf')
+        pdffile = os.path.join(qadir, f'annotated-montage-{region}-{ipdf:03}.pdf')
         if os.path.isfile(pdffile) and not overwrite:
-            print(f'Output file {pdffile} exists.')
+            print(f'Output file {pdffile} exists; use --overwrite')
             return
 
         pngfiles = pdf_pngfiles[ipdf]
@@ -800,7 +819,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             fullcat = None
 
         # more testing below here
-        if True:
+        if False:
             # Kim's wisesize project
             # 87. < RA < 300.
             # -10. < DEC < 85.
@@ -864,6 +883,30 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             #nedlvs = nedlvs[I]
             #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
+        if True:
+            # SGA-2020 missing objects
+            from SGA.io import sga_dir
+            miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
+            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
+            m1 = np.unique(m1)
+            cat = cat[m1]
+
+        if False:#True:
+            # one-by-one checks
+            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
+            cat = cat[m1]
+            print(cat['OBJNAME', 'ROW_PARENT'])
+            #pdb.set_trace()
+            #diam, ba, pa, ref = choose_geometry(cat)
+            #parse_geometry(cat, 'SMUDGes')
+
+        if False:
+            # SMUDGes
+            prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
+            cat = cat[prefix == 'SMDG'][:48]
+            diam, ba, pa, ref = choose_geometry(cat)
+            #pdb.set_trace()
+
         if False:
             # read Sara's ssl-legacysurvey file
             from glob import glob
@@ -891,6 +934,9 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             #cat = cat[(cat['DIAM_LIT'] < 5.) * (cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
             #cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
             print(f'Trimmed to {len(cat):,d} objects.')
+
+    if len(cat) == 0:
+        raise ValueError('No objects in catalog!')
 
     return cat, fullcat
 
