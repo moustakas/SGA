@@ -249,7 +249,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     return basic
 
 
-def parse_geometry(cat, ref):
+def parse_geometry(cat, ref, mindiam=152*0.262):
     """Parse a specific set of elliptical geometry.
 
     ref - choose from among SGA2020, HYPERLEDA, RC3, LVD, SMUDGes, or LIT
@@ -283,24 +283,10 @@ def parse_geometry(cat, ref):
             pa[I] = cat['PA_LIT'][I]
             outref[I] = cat['DIAM_LIT_REF']
 
-    #elif ref == 'RC3':
-    #    I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'RC3')
-    #    if np.any(I):
-    #        diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
-    #        ba[I] = cat['BA_LIT'][I]
-    #        pa[I] = cat['PA_LIT'][I]
-    #elif ref == 'LVD':
-    #    I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'LVD')
-    #    if np.any(I):
-    #        diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
-    #        ba[I] = cat['BA_LIT'][I]
-    #        pa[I] = cat['PA_LIT'][I]
-    #elif ref == 'SMUDGes':
-    #    I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'SMUDGes')
-    #    if np.any(I):
-    #        diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
-    #        ba[I] = cat['BA_LIT'][I]
-    #        pa[I] = cat['PA_LIT'][I]
+    #I = diam <= 0.
+    #if np.any(I):
+    #    diam[I] = mindiam # [arcsec]
+    #    outref[I] = 'NONE'
 
     # clean up missing values of BA and PA
     ba[ba < 0.] = 1.

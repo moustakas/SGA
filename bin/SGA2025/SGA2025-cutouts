@@ -170,11 +170,11 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     ellipse_colors = {'RC3': 'yellow', 'SMUDGes': 'orange', 'LVD': 'violet', 
                       'SGA2020': 'dodgerblue', 'HYPERLEDA': 'red', 
                       'ESO': 'pink', 'SDSS': 'pink', 'TWOMASS': 'pink', 
-                      'BASIC': 'pink', 'CUSTOM': 'pink', '': 'pink'}
+                      'BASIC': 'pink', 'CUSTOM': 'pink', 'NONE': 'pink', '': 'pink'}
     ellipse_linestyles = {'RC3': 'solid', 'SMUDGes': 'solid', 'LVD': 'solid',
                           'SGA2020': 'dashed', 'HYPERLEDA': 'dashdot',
                           'ESO': 'dashed', 'SDSS': 'dashed', 'TWOMASS': 'dashed',
-                          'BASIC': 'dashed', 'CUSTOM': 'dashed', '': 'dashed'}
+                          'BASIC': 'dashed', 'CUSTOM': 'dashed', 'NONE': 'dashed', '': 'dashed'}
 
     outdir = os.path.dirname(pngfile)
     if not os.path.isdir(outdir):
@@ -206,6 +206,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
         for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
             diam, ba, pa, outref = parse_geometry(Table(onegal), ref)
+            #print(onegal['OBJNAME'], outref, diam, ellipse_colors[outref])
             if diam > 0.:
                 #print(onegal['OBJNAME'], ref, xpix, ypix, diam[0], ba[0], pa[0])
                 if onegal['OBJNAME'] == primary['OBJNAME']:
@@ -709,6 +710,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10, overwrit
     if len(pngfiles) == 0:
         print(f'No pngfiles found in root annotate directory {pngdir}')
         return
+    pngfiles = np.unique(pngfiles)
 
     #pngfiles = np.array(glob(os.path.join(outdir, region, 'annotate', '???', '*.png')))
     #pngfiles = pngfiles[np.argsort(pngfiles)]
@@ -716,8 +718,10 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10, overwrit
     allindx = np.arange(len(pngfiles))
     nobj = len(allindx)
 
-    if nobj > 99:
+    if nobj > 199:
         ncol, nrow = 10, 10
+    elif (nobj < 199) * (nobj > 49):
+        ncol, nrow = 6, 6
     else:
         ncol, nrow = 1, 1
         ncol, nrow = 4, 4
@@ -819,7 +823,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             fullcat = None
 
         # more testing below here
-        if False:
+        if True:
             # Kim's wisesize project
             # 87. < RA < 300.
             # -10. < DEC < 85.
@@ -883,13 +887,18 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             #nedlvs = nedlvs[I]
             #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
-        if True:
+        if False:
             # SGA-2020 missing objects
             from SGA.io import sga_dir
             miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
-            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
-            m1 = np.unique(m1)
+            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 5./3600., nearest=True)
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
+            #pdb.set_trace()
+            #m1 = np.unique(m1)
             cat = cat[m1]
+            cat = cat[np.argsort(cat['RA'])]
+            #cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
+            #diam, ba, pa, ref = choose_geometry(cat)
 
         if False:#True:
             # one-by-one checks
