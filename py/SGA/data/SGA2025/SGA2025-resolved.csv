@@ -1,0 +1,65 @@
+# This file contains the set of objects that should not trigger
+# special handling in legacypipe because they are effectively
+# 'resolved' into individual stars.
+objname,comment
+A0952+69,dr9-north
+Andromeda II,
+Aquarius II,
+Bootes I,
+Bootes II,
+Bootes III,
+Bootes IV,dr9-north
+Bootes V,dr9-north
+BK3N,dr9-north
+BK6N,dr9-north
+Coma Berenices,
+Canes Venatici I,dr9-north
+Canes Venatici II,dr9-north
+Clump I,dr9-north
+Clump III,dr9-north
+d0926+70,dr9-north
+d0934+70,dr9-north
+d0939+71,dr9-north
+d0944+69,dr9-north
+d0955+70,dr9-north
+d0959+68,dr9-north
+d1006+67,dr9-north
+d1014+68,dr9-north
+d1015+69,dr9-north
+d1041+70,dr9-north
+dw1328+4703,dr9-north
+dw1330+4731,dr9-north
+DDO 169NW,dr9-north
+Draco,dr9-north
+Draco II,dr9-north
+F8D1,dr9-north
+FM1,dr9-north
+GARLAND,dr9-north
+Grus I,
+Grus II,
+Hercules,
+IKN,dr9-north
+KDG 73,dr9-north
+KK 242,dr9-north
+Leo VI,
+Leo IV,
+LV J1228+4358,dr9-north
+MADCASH-1,dr9-north
+M101 Dw9,dr9-north
+M101 DwA,dr9-north
+M101-DF1,dr9-north
+M101-DF2,dr9-north
+M101-DF3,dr9-north
+Reticulum II,
+Scl-MM-Dw2,
+Segue 1,
+Segue 2,
+Sextans,
+Sextans II,
+Tucana II,
+Tucana III,
+Tucana IV,
+Ursa Major I,dr9-north
+Ursa Major II,dr9-north
+Ursa Minor,dr9-north
+Willman 1,dr9-north

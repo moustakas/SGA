@@ -338,3 +338,7 @@ CGCG 350-048,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 NGC 6166 NED02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 NGC 2458,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 NGC 6817 NED01,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter.
+GHOSTS I,148.3070833333333,69.50073055555555,-99.,-99.,-99.,-99.,No,LVD dwarf; moved to LVD position.
+BK6N,158.632916667,66.011666667,-99.,120.,-99.,-99.,No,LVD dwarf; moved to LVD position and estimated position angle.
+UGCA 292,-99.,-99.,-99.,75.,-99.,-99.,No,LVD dwarf; estimated position angle.
+UGC 8882,-99.,-99.,1.07,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.

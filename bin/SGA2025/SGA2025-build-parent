@@ -749,6 +749,19 @@ def build_parent(verbose=False, overwrite=False):
                     cat['STARFDIST'][m1[pos[J]]] = fdist[J]
                     cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
 
+    # add the 'resolved' bit
+    resfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-resolved.csv')
+    res = Table.read(resfile, format='csv', comment='#')
+    print(f'Read {len(res)} objects from {resfile}')
+
+    cat['RESOLVED'] = np.zeros(len(cat), bool)
+    I = np.isin(cat['OBJNAME'].value, res['objname'].value)
+    if np.sum(I) != len(res):
+        print('Missing objects!')
+        pdb.set_trace()
+    cat['RESOLVED'][I] = True
+
+
     version = parent_version()
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')

@@ -704,7 +704,7 @@ def nedfriendly_lvd(old):
         'KK 77': 'F12D1',
         'KK 109': 'GALEXASC J114711.81+434018.1',
         'KK 160': 'SDSS J124357.79+433940.3',
-        'KK 166': 'PGC1 0043495 NED005',
+        'KK 166': 'SMDG J1249122+353645', # also likely 'PGC1 0043495 NED005'
         'KK 177': 'IC 4107', # HyperLeda matches to WISEA J130241.76+215952.2
         'KK 180': 'LSBC D575-08',
         'KK 182': 'PGC1 0166152 NED001',
@@ -780,8 +780,12 @@ def nedfriendly_lvd(old):
         'dw1342-43': '[KKM2018a] dw J1342-43', # may also be Cen A:[MJP2016] dw1342-43
         'dw1322-39': 'Cen A:[MJP2016] dw1322-39',
         'dw0036m2828': '[CGB2022] dw J0036-2828',
+        'A0952+69': 'AO 0952+69',
+        'KKH 78': 'SMDG J1217442+332045', # incorrect position and cross-identifications
+        'MAPS 1231+42': 'SDSS J123109.08+420533.8', # uncertain cross-identification
+        'MAPS 1249+44': 'SDSS J124931.04+442133.3', # uncertain cross-identification
+        'LV J1243+4127': 'SMDG J1243552+412727', # NED calls this object SDSS J124354.70+412724.9
         # not in NED
-        #'A0952+69': '',
         #'Aquarius III': '',
         #'Bedin 1': '',
         #'Corvus A': '',
@@ -798,8 +802,6 @@ def nedfriendly_lvd(old):
         #'Leo Minor I': '',
         #'MADCASH-1': '',
         #'MADCASH-2': '',
-        #'MAPS 1231+42':
-        #'MAPS 1249+44':
         #'Pavo': '',
         #'Sextans II': '',
         #'dw1323-40b': '[CGG2021] dw J1323-40b', # NED incorrectly cross-identifies this with [CGG2021] dw J1323-40
