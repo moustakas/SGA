@@ -45,9 +45,9 @@ LVD sample:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north -annotate --mp=32 --lvd
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north -annotated-montage --lvd
 
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-south --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-south -annotate --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-south -annotated-montage --lvd
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --mp=32 --lvd
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south -annotate --mp=32 --lvd
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south -annotated-montage --lvd
 
 
 """
@@ -360,23 +360,24 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
     if len(indx) == 0:
         return
 
-    commonname = cat[indx]['OBJNAME'].value
-    objname = radec_to_name(cat[indx]['RA'].value, cat[indx]['DEC'].value, unixsafe=True)
+    commonname = cat['OBJNAME'][indx].value
+    objname = radec_to_name(cat['RA'][indx].value, cat['DEC'][indx].value, unixsafe=True)
 
     # initial match
-    allmatches = match_radec(cat[indx]['RA'].value, cat[indx]['DEC'].value,
+    allmatches = match_radec(cat['RA'][indx].value, cat['DEC'][indx].value,
                              fullcat['RA'].value, fullcat['DEC'].value,
                              2.*np.max(diam)/3600., indexlist=True, notself=False)
 
     mpargs = []
     for iobj in range(len(indx)):
+        #print(iobj)
         primary = cat[indx[iobj]]
         if annotate_central_only:
             group = Table(primary)
         else:
             # refine the search to this object's diameter
-            m1, m2, _ = match_radec(primary['RA'], primary['DEC'], fullcat[allmatches[iobj]]['RA'],
-                                    fullcat[allmatches[iobj]]['DEC'], 2.*diam[indx[iobj]]/3600.)
+            m1, m2, _ = match_radec(primary['RA'], primary['DEC'], fullcat['RA'][allmatches[iobj]],
+                                    fullcat['DEC'][allmatches[iobj]], 2.*diam[indx[iobj]]/3600.)
             group = fullcat[allmatches[iobj]][m2]
         mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
                        pixscale[indx[iobj]], diam[indx[iobj]], primary, group))
@@ -705,9 +706,9 @@ def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=
             continue
 
         refs = np.hstack((np.ones(nrefcat, bool), np.zeros(len(chunkindx[ichunk]), bool)))
-        rows = np.hstack((refcat['ROW_PARENT'].value, cat[chunkindx[ichunk]]['ROW_PARENT'].value))
-        ras = np.hstack((refcat['RA'].value, cat[chunkindx[ichunk]]['RA'].value))
-        decs = np.hstack((refcat['DEC'].value, cat[chunkindx[ichunk]]['DEC'].value))
+        rows = np.hstack((refcat['ROW_PARENT'].value, cat['ROW_PARENT'][chunkindx[ichunk]].value))
+        ras = np.hstack((refcat['RA'].value, cat['RA'][chunkindx[ichunk]].value))
+        decs = np.hstack((refcat['DEC'].value, cat['DEC'][chunkindx[ichunk]].value))
         fitsfiles = np.hstack((refcatfiles, catfiles[chunkindx[ichunk]]))
     
         F = h5py.File(h5file, 'w')
@@ -747,6 +748,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10,
     pngdir = os.path.join(outdir, region, 'annotate')
     pngfiles = np.hstack([glob(os.path.join(pngdir, raslice, f'{objname}.png') )
                          for raslice, objname in zip(raslices, objnames)])
+
     if len(pngfiles) == 0:
         print(f'No pngfiles found in root annotate directory {pngdir}')
         return
@@ -938,6 +940,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
 
         if lvd:
             # analyze the LVD sample
+            #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            #cat = cat[(cat['ROW_LVD'] != -99) * (diam > 20.*60.)]
             cat = cat[cat['ROW_LVD'] != -99]
 
         # more testing below here
@@ -956,7 +960,9 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
         if True:
             # all the sources larger than XX arcmin
             diam, ba, pa, ref = choose_geometry(cat)
-            cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 5*60.) * (diam < 10*60.)]
+            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 15*60.)]
+            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 5*60.) * (diam < 10*60.)]
+            cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 3*60.) * (diam < 5*60.)]
             #cat = cat[cat['OBJNAME'] == 'NGC 0936']
             #pdb.set_trace()
 
@@ -1018,8 +1024,8 @@ def main():
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--catalog', type=str, default='sga2025-parent', choices=['sga2025-parent'], help='Catalog to read.')
-    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south'], type=str, 
-                        help='Region to analyze (only for --catalog="sga2025-parent").')
+    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south'], 
+                        type=str, help='Region to analyze (only for --catalog="sga2025-parent").')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--ntest', type=int, default=None, help='Number of test objects to read.')
     parser.add_argument('--width', type=int, default=152, help='Default cutout width [pixels].')

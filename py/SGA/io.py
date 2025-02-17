@@ -772,6 +772,7 @@ def nedfriendly_lvd(old):
         'd1006+67': 'PGC1 0028630 NED030',
         'd1014+68': 'WISEA J101456.37+684529.2',
         'd1015+69': 'PGC1 0028630 NED035',
+        'dw1046+1244': 'Leo dw A', # NED incorrectly resolves this to WISEA J104652.68+124431.3
         'dw1323-40a': '[CGG2021] dw J1323-40',
         'dw1329-45': 'Cen A:[MJP2016] dw1329-45',
         'dw1336-44': 'Cen A:[MJP2016] dw1336-44',
