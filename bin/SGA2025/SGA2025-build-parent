@@ -2105,12 +2105,13 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         print(f'All done in {(time.time()-t0)/60.:.2f} min')
 
 
-def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=True):
+def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=False):
     """Build some simple QA of the in-footprint sample.
 
     TODO - make this a sky map
 
     """
+    from collections import Counter
     import matplotlib.pyplot as plt
     from SGA.qa import plot_style
 
@@ -2149,11 +2150,8 @@ def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=True):
         ax.scatter(allccds.ra, allccds.dec, s=1, color='gray')
 
     #for bands in sorted(set(cat['FILTERS'])):
-    for iband, bands in enumerate(['griz', 'gri', 'grz', 'giz', 'riz', 
-                                   'gr', 'gi', 'gz', 'ri', 'rz', 'iz',
-                                   'g', 'r', 'i', 'z']):
-    #for iband, bands in enumerate(['grz', 'rz', 'gr', 'gz', 'g', 'r', 'z']):
-    #for bands in ['rz', 'gr', 'gz', 'g', 'r', 'z']:
+    C = Counter(cat['FILTERS'])
+    for iband, bands in enumerate(sorted(C, reverse=True)):
         I = cat['FILTERS'] == bands
         if np.sum(I) > 0:
             ax.scatter(cat['RA'][I], cat['DEC'][I], s=1, alpha=0.7, zorder=iband,
@@ -2169,7 +2167,7 @@ def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=True):
             ax.set_ylim(-25., 90.)
             loc = 'lower left'
         else:
-            ax.set_ylim(-90., 90.)
+            ax.set_ylim(-95., 95.)
             loc = 'upper left'
     ax.legend(fontsize=9, ncols=4, markerscale=8, loc=loc)
     fig.tight_layout()

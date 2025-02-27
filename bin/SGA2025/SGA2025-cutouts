@@ -962,7 +962,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             diam, ba, pa, ref = choose_geometry(cat)
             #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 15*60.)]
             #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 5*60.) * (diam < 10*60.)]
-            cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 3*60.) * (diam < 5*60.)]
+            cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 4*60.) * (diam < 5*60.)]
             #cat = cat[cat['OBJNAME'] == 'NGC 0936']
             #pdb.set_trace()
 
