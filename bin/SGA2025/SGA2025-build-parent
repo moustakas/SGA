@@ -10,6 +10,8 @@ SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent
 
 SGA2025-build-parent --in-footprint --region=dr9-north
+SGA2025-build-parent --in-footprint --region=dr9-south
+SGA2025-build-parent --in-footprint --region=dr11-south
 
 salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
@@ -647,7 +649,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -753,21 +755,23 @@ def build_parent(verbose=False, overwrite=False):
     resfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-resolved.csv')
     res = Table.read(resfile, format='csv', comment='#')
     print(f'Read {len(res)} objects from {resfile}')
+    oo, cc = np.unique(res['objname'].value, return_counts=True)
+    if np.any(cc > 1):
+        print('Warning: duplicates in resolve file!')
+        print(oo[cc>1])
 
     cat['RESOLVED'] = np.zeros(len(cat), bool)
     I = np.isin(cat['OBJNAME'].value, res['objname'].value)
     if np.sum(I) != len(res):
         print('Missing objects!')
-        pdb.set_trace()
+        print(res[~np.isin(res['objname'].value, cat['OBJNAME'].value)])
     cat['RESOLVED'][I] = True
-
 
     version = parent_version()
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
     cat.meta['EXTNAME'] = 'PARENT'
     cat.write(outfile, overwrite=True)
-
 
 
     if False:

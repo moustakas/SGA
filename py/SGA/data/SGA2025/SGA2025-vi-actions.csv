@@ -74,7 +74,6 @@ SDSS J023220.39-054448.6,drop,faint,
 SDSS J113108.55+021309.7,drop,faint,Coincident duplicate with Leo V (LVD).
 ABELL 3921_05:[PSE2006] 1203,drop,faint,In the body of 'Tucana'.
 #
-2MASX J10025974-2608455,drop,compact,In 'NGC 3109'
 WISEA J100359.93-271906.9,drop,compact,In 'Antlia'
 WISEA J014508.53-433621.2,drop,compact,In 'ESO 245-005'
 WISEA J012141.97+262345.0,drop,compact,
@@ -205,7 +204,145 @@ LV J1243+4127,drop,shred,Likely duplicate of 'SMDG J1243552+412727'
 PGC1 2807144 NED001,drop,shred,Likely duplicate of 'SMDG J1150056+554700'
 PGC1 0028630 NED024,drop,shred,Likely duplicate of 'A0952+69'
 PGC1 0095601 NED001,drop,shred,Likely duplicate of 'SMDG J0829119+784949'
+WISEA J005004.20-663308.9,drop,shred,Likely duplicate of 'ESO 079- G 007'
+WISEA J015942.67-055751.4,drop,shred,Likely duplicate of 'NGC 0779'
+WISEA J024117.82-095557.9,drop,shred,Likely duplicate of 'VV 423'
+2MASX J02420790-2407455,drop,shred,Likely duplicate of 'ESO 479- G 025'
+2MFGC 02221,drop,shred,Likely duplicate of 'ESO 479- G 042'
+WISEA J032735.51-211341.1,drop,shred,Likely duplicate of 'ESO 548- G 021'
+WISEA J044333.10-274009.4,drop,shred,Likely duplicate of 'ESO 421- G 013'
+CGCG 018-111 NED02,drop,shred,Likely duplicate of '2MASS J14173511+0203097'
 PGC 213079,drop,faint shred or compact,In 'NGC 1073'
+WISEA J050654.83-032036.1,drop,nebula,In 'NGC 1788' reflection nebula
+2MASX J14293625-0558175,drop,GC,In globular cluster
+WISEA J142936.69-055836.7,drop,GC,In globular cluster
+2MASS J14293798-0558389,drop,GC,In globular cluster
+2MASX J05140714-4002573,drop,GC,In globular cluster
+WISEA J004733.66-281618.2,drop,GC,In globular cluster
+WISEA J004744.73-281716.9,drop,GC,In globular cluster
+WISEA J004733.47-281547.6,drop,GC,In globular cluster
+WISEA J004723.01-281443.2,drop,GC,In globular cluster
+WISEA J004744.52-281545.6,drop,GC,In globular cluster
+LCSB S0126P,drop,GC,In globular cluster
+WISEA J005235.00-263630.3,drop,GC,In globular cluster
+2MASX J00524360-2635588,drop,GC,In globular cluster
+2MASX J00524837-2637018,drop,GC,In globular cluster
+WISEA J005302.40-263950.9,drop,GC,In globular cluster
+2MASX J00531020-2634333,drop,GC,In globular cluster
+2MASX J00525389-2635418,drop,GC,In globular cluster
+WISEA J005239.60-263733.4,drop,GC,In globular cluster
+2MASX J00523883-2635228,drop,GC,In globular cluster
+WISEA J005248.40-263707.3,drop,GC,In globular cluster
+2MASX J00525061-2635148,drop,GC,In globular cluster
+WISEA J073809.28+385245.6,drop,GC,In globular cluster
+2MASX J17170771+4309010,drop,GC,In globular cluster
+2MASX J17170084+4308267,drop,GC,In globular cluster
+2MASX J17165763+4307367,drop,GC,In globular cluster
+WISEA J171702.25+431230.0,drop,GC,In globular cluster
+WISEA J171724.66+430509.6,drop,GC,In globular cluster
+WISEA J171730.63+430529.5,drop,GC,In globular cluster
+2MASX J17171584+4308530,drop,GC,In globular cluster
+2MASX J03122133-5512149,drop,GC,In globular cluster
+WISEA J134140.42+281837.6,drop,GC,In globular cluster
+WISEA J134137.51+282145.0,drop,GC,In globular cluster
+2MASX J13421577+2822553,drop,GC,In globular cluster
+WISEA J134204.62+281801.5,drop,GC,In globular cluster
+WISEA J134223.04+281827.9,drop,GC,In globular cluster
+2MASX J13422880+2818464,drop,GC,In globular cluster
+2MASX J13420743+2820438,drop,GC,In globular cluster
+WISEA J134200.58+282210.2,drop,GC,In globular cluster
+WISEA J134237.76+282704.2,drop,GC,In globular cluster
+WISEA J134243.73+282552.4,drop,GC,In globular cluster
+WISEA J134149.49+281913.2,drop,GC,In globular cluster
+WISEA J134144.56+282015.7,drop,GC,In globular cluster
+WISEA J134153.80+282848.6,drop,GC,In globular cluster
+WISEA J213325.11-004952.9,drop,GC,In globular cluster
+WISEA J213301.32-004940.6,drop,GC,In globular cluster
+2MASX J21332748-0050160,drop,GC,In globular cluster
+2MASX J21332768-0049000,drop,GC,In globular cluster
+WISEA J213329.54-004938.8,drop,GC,In globular cluster
+GALEXMSC J213330.03-004203.1,drop,GC,In globular cluster
+WISEA J000754.32+304211.3,drop,faint shred or compact,
+WISEA J001758.70-013513.6,drop,faint shred or compact,
+WISEA J010016.04-541353.0,drop,faint shred or compact,
+2MASX J01112834-3352449,drop,faint shred or compact,
+WISEA J012453.32-043354.3,drop,faint shred or compact,
+WISEA J012615.92-134750.5,drop,faint shred or compact,
+WISEA J013659.73+225748.9,drop,faint shred or compact,
+WISEA J014809.23-151017.7,drop,faint shred or compact,
+WISEA J015501.96-260058.0,drop,faint shred or compact,
+WISEA J020241.05-110434.4,drop,faint shred or compact,
+LCRS B020749.9-441718,drop,faint shred or compact,
+WISEA J023430.06+193517.0,drop,faint shred or compact,
+WISEA J024223.93+261628.2,drop,faint shred or compact,
+WISEA J030433.87+034957.4,drop,faint shred or compact,
+WISEA J030434.51+034954.0,drop,faint shred or compact,
+WISEA J033808.69-663707.7,drop,faint shred or compact,
+WISEA J033805.25-663720.4,drop,faint shred or compact,
+WISEA J033926.83-041303.5,drop,faint shred or compact,
+2MASS J03392656-0412584,drop,faint shred or compact,
+2MFGC 03330,drop,faint shred or compact,
+2MASX J04042802-0210254,drop,faint shred or compact,
+KPG 097,drop,faint shred or compact,
+2MASX J04335902-5951487,drop,faint shred or compact,
+2MFGC 04389,drop,faint shred or compact,
+WISEA J053748.23-445754.2,drop,faint shred or compact,
+WISEA J055842.06-513306.5,drop,faint shred or compact,
+2MASX J07212674+2311006,drop,faint shred or compact,
+2MASX J07505601+2353467,drop,faint shred or compact,
+2MASX J08162021+2832319,drop,faint shred or compact,
+WISEA J081618.83+283219.6,drop,faint shred or compact,
+WISEA J084208.88+224505.7,drop,faint shred or compact,
+2MASX J09581220+1900442,drop,faint shred or compact,
+WISEA J103816.36+184836.9,drop,faint shred or compact,
+WISEA J104607.86-264126.6,drop,faint shred or compact,
+WISEA J110650.91+135458.6,drop,faint shred or compact,
+2MFGC 08662,drop,faint shred or compact,
+WISEA J112447.18+161050.8,drop,faint shred or compact,
+2MASX J11492407+1638318,drop,faint shred or compact,
+SDSS J114925.86+163836.3,drop,faint shred or compact,
+2MASX J12063891+2810272,drop,faint shred or compact,
+WISEA J120831.06+140818.2,drop,faint shred or compact,
+WISEA J135610.28+051441.1,drop,faint shred or compact,
+WISEA J213408.25+060036.2,drop,faint shred or compact,
+WISEA J213858.67+194532.7,drop,faint shred or compact,
+2MASX J21550553-5039198,drop,faint shred or compact,
+WISEA J220002.55+092046.1,drop,faint shred or compact,
+WISEA J234419.88-031534.5,drop,faint shred or compact,
+WISEA J234921.11+153059.0,drop,faint shred or compact,
+WISEA J235507.05+062335.2,drop,faint shred or compact,
+WISEA J235751.06+053509.3,drop,faint shred or compact,
+WISEA J063242.10+610823.8,drop,faint shred or compact,
+WISEA J065035.11+691154.1,drop,faint shred or compact,
+WISEA J065418.31+732142.1,drop,faint shred or compact,
+WISEA J071216.90+451617.5,drop,faint shred or compact,
+WISEA J091941.25+802134.7,drop,faint shred or compact,
+WISEA J095013.08+794914.7,drop,faint shred or compact,
+2MASX J12070684+4302482,drop,faint shred or compact,
+WISEA J145711.17+623157.1,drop,faint shred or compact,
+WISEA J162205.58+380009.8,drop,faint shred or compact,
+2MASX J17104697+4918372,drop,faint shred or compact,
+WISEA J174419.61+743034.5,drop,faint shred or compact,
+WISEA J182033.54+571703.2,drop,faint shred or compact,
+2MASX J14442068+1207425,drop,faint shred or compact,
+PKS 1443-085,drop,faint shred or compact,
+WISEA J160134.02+261451.7,drop,faint shred or compact,
+2MASX J16050228+1342068,drop,faint shred or compact,
+WISEA J170901.68+142219.0,drop,faint shred or compact,
+WISEA J171451.63+135954.0,drop,faint shred or compact,
+WISEA J171501.16+144238.1,drop,faint shred or compact,
+WISEA J171558.17+141347.2,drop,faint shred or compact,
+WISEA J180947.34+215332.7,drop,faint shred or compact,
+WISEA J182055.49+325926.8,drop,faint shred or compact,
+WISEA J202607.70+005044.4,drop,faint shred or compact,
+WISEA J204930.62+052336.8,drop,faint shred or compact,
+NGC 4656 NED01,drop,faint shred or compact,Shred of 'NGC 4656'
+2MASX J09135114+7629035,drop,faint shred or compact,Shred of 'NGC 2748'
+2MASX J09582294+3222001,drop,faint shred or compact,Shred of 'NGC 3067'
+SDSS J095819.26+322217.6,drop,faint shred or compact,Shred of 'NGC 3067'
+2MASX J11564096+3201334,drop,faint shred or compact,Shred of 'NGC 3966'
+SDSS J115644.24+320116.4,drop,faint shred or compact,Shred of 'NGC 3966'
+KUG 0723+530,drop,shred,Shred of 'CGCG 261-067 NED01' and 'CGCG 261-067 NED02'
 SDSS J123839.94+324602.0,drop,faint shred or compact,In 'UGCA 292'
 WISEA J024345.75+012309.0,drop,faint shred or compact,In 'NGC 1073'
 SDSS J024623.92-002954.9,drop,faint shred or compact,In 'NGC 1087'
@@ -221,11 +358,9 @@ SDSS J112203.26+590624.2,drop,faint shred or compact,In 'NGC 3642'
 SDSS J113351.45+530711.1,drop,faint shred or compact,In 'NGC 3729'
 WISEA J113227.17+525956.9,drop,faint shred or compact,In 'NGC 3718'
 2MASS J11365029+5416147,drop,faint shred or compact,In 'NGC 3756'
-WISEA J115040.02+514928.5,drop,faint shred or compact,In 'NGC 3917'
 MCG +08-22-006a,drop,faint shred or compact,In 'NGC 3896'
 MCG +08-22-006b,drop,faint shred or compact,In 'NGC 3896'
 WISEA J115040.02+514928.5,drop,faint shred or compact,In 'NGC 3917'
-2MASX J115564096+3201334,drop,faint shred or compact,In 'NGC 3966'
 WISEA J121005.98+395408.0,drop,faint shred or compact,In 'NGC 4145'
 SDSS J121856.17+655522.8,drop,faint shred or compact,In 'NGC 4256'
 WISEA J123947.98+613607.9,drop,faint shred or compact,In 'NGC 4605'
@@ -2273,6 +2408,7 @@ WISEA J061810.68+782233.6,drop,shred,In the envelope of 'NGC 2146'
 2MASX J09551726+6939132,drop,shred,In the envelope of 'MESSIER 082'
 SDSS J171454.91+353121.2,drop,shred,In the envelope of 'IC 1249'
 #
+2MASX J02580958+0321332,drop,star,Foreground star in 'NGC 1153'.
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
 UGC 08691 NED03,drop,star,Foreground star in 'UGC 08691 NED01'.
 2MASX J06413528+5015514,drop,star,Foreground star in 'CGCG 233-026 NED01'.
@@ -2811,7 +2947,6 @@ VII Zw 409 NOTES02,hyperleda-coords,NED incorrect,In 'VII Zw 409' group
 VII Zw 544 NOTES01,hyperleda-coords,NED incorrect,In 'VII Zw 544' group
 VII Zw 544 NOTES02,hyperleda-coords,NED incorrect,In 'VII Zw 544' group
 LCRS B023550.4-411550,hyperleda-coords,NED incorrect,
-MCG +08-22-006b,hyperleda-coords,NED incorrect,Blue irregular.
 CGCG 250-044 NED01,hyperleda-coords,NED incorrect,In 'CGCG 250-044' group
 CGCG 261-065 NED02,hyperleda-coords,NED incorrect,In 'CGCG 261-065' group
 CGCG 087-046 NED01,hyperleda-coords,NED incorrect,In 'CGCG 087-046' group
@@ -3083,7 +3218,6 @@ WISEA J103358.27+611304.3,hyperleda-coords,NED incorrect,
 KUG 0932+417,hyperleda-coords,NED incorrect,Galaxy pair
 KUG 2323+255,hyperleda-coords,NED incorrect,Galaxy pair
 KUG 2347+176,hyperleda-coords,NED incorrect,Galaxy pair
-KUG 0723+530,hyperleda-coords,NED incorrect,Galaxy pair
 KUG 1130+249A,hyperleda-coords,NED incorrect,Galaxy pair
 KUG 0152-103,hyperleda-coords,NED incorrect,Galaxy pair
 IRAS F00251-2809,hyperleda-coords,NED incorrect,Galaxy pair

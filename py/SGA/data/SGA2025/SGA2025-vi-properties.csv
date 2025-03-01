@@ -189,8 +189,8 @@ KUG 1553+200 NED02,238.9870,19.9490,0.2,-99.,-99.,-99.,No,Moved to the LS/DR9 po
 KUG 0229+283,38.1944,28.5529,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
 WISEA J023248.18+283253.4,-99.,-99.,0.5,135.,0.3,-99.,No,Estimated diameter.
 WISEA J223158.29+182029.7,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
-CGCG 261-067 NED01,111.8106,52.9485,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
-CGCG 261-067 NED02,111.8078,52.9487,0.7,0.,1.,-99.,No,Moved to the LS/DR9 position with updated geometry.
+CGCG 261-067 NED01,111.8106,52.9485,0.3,-99.,-99.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
+CGCG 261-067 NED02,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter.
 APMUKS(BJ) B030437.41-12262 ID,46.7524,-12.2472,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
 ESO 119-IG 031,75.8657,-58.2024,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
 ESO 488-IG 031 NED02,87.2220,-25.6321,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
@@ -274,7 +274,6 @@ VII Zw 781 NED02,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter.
 VII Zw 117 NOTES02,106.4951,62.8915,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
 2MASS J00015947+2059078,0.4993,20.9869,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
 2MASX J08332375-0750189,128.3478,-7.8417,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
-APMBGC 235+058-099,314.1936,-48.0883,-99.,-99.,-99.,-99.,No,Moved to the LS/DR9 position.
 VII Zw 197 NOTES01,119.8098,56.5893,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 VII Zw 206 NOTES02,120.6994,56.9831,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
 VII Zw 578 NOTES01,225.4300,67.0195,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter.
@@ -345,8 +344,27 @@ LV J0055-2310,-99.,-99.,0.47,90.,0.57,-99.,No,LVD dwarf; BA and diameter from LV
 UGC 8882,-99.,-99.,1.07,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
 Donatiello III,17.3524,-27.34707,-99.,-99.,-99.,-99.,No,LVD dwarf; moved to LVD position.
 dw1046+1244,-99.,-99.,0.14,0.,0.81,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
-AGC749235,186.04125,26.23111111,-99.,170.,-99.,No,LVD dwarf; moved to LVD position and estimated position angle.
+AGC749235,186.04125,26.23111111,-99.,170.,-99.,-99.,No,LVD dwarf; moved to LVD position and estimated position angle.
 UGC 7929,-99.,-99.,1.,94.,0.48,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
 KDG 215,-99.,-99.,1.17,45.,0.54,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
 Leo I 09,-99.,-99.,0.81,-99.,-99.,-99.,No,LVD dwarf; diameter from Carlsten et al.
 NGC 7793,-99.,-99.,14.13,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+CGCG 261-067 NED01,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter.
+NGC 6166 NED01,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+NGC 6166 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+NGC 6166 NED03,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+WISEA J162835.88+393312.8,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter.
+VII Zw 785 NOTES01,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+VII Zw 785 NOTES02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+WISEA J181932.71+661829.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+UGC 00339 NED01,8.5922,10.2051,0.4,-99.,-99.,-99.,No,Moved to the LS/DR9 position with updated geometry.
+NGC 1128 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+NGC 4759 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+NGC 4759 NED01,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+CGCG 018-111 NED01,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+IC 4473 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+2MASS J14375438+1551384,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+WISEA J144635.50-084605.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+2MASS J14463546-0846110,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+CGCG 137-040 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.
+WISEA J224615.39-524327.2,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter.

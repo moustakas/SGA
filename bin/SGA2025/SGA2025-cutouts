@@ -29,26 +29,31 @@ To build the ssl-legacysurvey catalog:
   source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --ssl-legacysurvey
 
-
 Kim's wisesize project:
-
-SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --mp=32
-SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotate --annotate-central-only --mp=32
-SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotated-montage
-
-SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --mp=32
-SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotate --annotate-central-only --mp=32
-SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotated-montage
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --mp=32
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotate --annotate-central-only --mp=32
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotated-montage
+  
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --mp=32
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotate --annotate-central-only --mp=32
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotated-montage
 
 LVD sample:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north -annotate --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north -annotated-montage --lvd
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --annotate --mp=32 --lvd
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --annotated-montage --lvd
 
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south -annotate --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south -annotated-montage --lvd
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotate --mp=32 --lvd
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotated-montage --lvd
 
+zooniverse sample:
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+    --catalog=sga2025-parent --region=dr9-north --mp=32 --zooniverse
+
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse --catalog=sga2025-parent --region=dr9-north --annotate --mp=32 --zooniverse
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse --catalog=sga2025-parent --region=dr9-north --annotated-montage --zooniverse
 
 """
 import pdb # for debugging
@@ -186,6 +191,14 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     ax.set_xlim(0, width)
     ax.set_ylim(0, width)
 
+    # only keep objects in the image
+    keep = np.ones(len(group), bool)
+    for imem, onegal in enumerate(group):
+        xpix, ypix = wcs.wcs_world2pix(onegal['RA'], onegal['DEC'], 1)
+        if xpix < 0 or ypix < 0 or xpix > width or ypix > width:
+            keep[imem] = False
+    group = group[keep]
+
     if len(group) > 10:
         #print('WARNING: Too many group members; keeping just the 10 largest objects!')
         # group includes primary, so we need to be sure it doesn't get removed
@@ -203,8 +216,8 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
         ra = onegal['RA']
         dec = onegal['DEC']
         xpix, ypix = wcs.wcs_world2pix(ra, dec, 1)
-        if xpix < 0 or ypix < 0 or xpix > width or ypix > width:
-            continue
+        #if xpix < 0 or ypix < 0 or xpix > width or ypix > width:
+        #    continue
 
         if onegal['OBJNAME'] != primary['OBJNAME']:
             objnames.append(onegal['OBJNAME'])
@@ -310,8 +323,10 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
 
 def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
-                comm=None, mp=1, indir='.', outdir='.', overwrite=False, 
-                annotate_central_only=False, dry_run=False, verbose=False):
+                comm=None, mp=1, indir='.', outdir='.', base_outdir='.', 
+                region='dr9-north', fits_cutouts=True, httpdir=None, 
+                overwrite=False, debug=False, annotate_central_only=False, 
+                dry_run=False, verbose=False):
     """Wrapper to set up the full set of annotations.
 
     """
@@ -333,8 +348,20 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
         jpgfiles, pngfiles, groups = plan(
             cat, size=size, outdir=outdir, 
             indir=indir, overwrite=overwrite, mp=mp, 
+            fits_cutouts=fits_cutouts,
             verbose=verbose, annotate=True)
         print(f'Planning took {time.time() - t0:.2f} sec')
+
+        # write out an inventory file
+        objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
+        inventoryfile = os.path.join(base_outdir, f'inventory-{region}.txt')
+        with open(inventoryfile, 'w') as F:
+            for objname, pngfile in zip(objnames, pngfiles):
+                F.write(f'{pngfile.replace(base_outdir, httpdir),{objname}}\n')
+        print(f'Wrote {inventoryfile}')
+
+        pdb.set_trace()
+
     else:
         jpgfiles, pngfiles, groups = [], [], []
         pixscale, diam = [], []
@@ -379,8 +406,19 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
             m1, m2, _ = match_radec(primary['RA'], primary['DEC'], fullcat['RA'][allmatches[iobj]],
                                     fullcat['DEC'][allmatches[iobj]], 2.*diam[indx[iobj]]/3600.)
             group = fullcat[allmatches[iobj]][m2]
-        mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
-                       pixscale[indx[iobj]], diam[indx[iobj]], primary, group))
+        if debug:
+            print(primary['OBJNAME'])
+            for one in group:
+                if one['OBJNAME'] != primary['OBJNAME']:
+                    print(one['OBJNAME'])
+            print()
+        else:
+            mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
+                           pixscale[indx[iobj]], diam[indx[iobj]], primary, group))
+
+    if debug:
+        return
+
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_annotate_one, mpargs)
@@ -401,7 +439,8 @@ def _cutout_one(args):
     return cutout_one(*args)
 
 
-def cutout_one(basefile, ra, dec, width, pixscale, layer, dry_run, rank, iobj):
+def cutout_one(basefile, ra, dec, width, pixscale, layer, 
+               dry_run, fits_cutouts, rank, iobj):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
@@ -413,9 +452,13 @@ def cutout_one(basefile, ra, dec, width, pixscale, layer, dry_run, rank, iobj):
     """
     from cutout import cutout
 
-    for suffix in ['.jpeg', '.fits']:
+    if fits_cutouts:
+        suffixes = ['.jpeg', '.fits']
+    else:
+        suffixes = ['.jpeg']
+
+    for suffix in suffixes:
         outfile = basefile+suffix
-        #outfile = f'"{basefile}{suffix}"'
         cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} ' + \
             f'--layer={layer} --pixscale={pixscale} --force'
         if dry_run:
@@ -439,8 +482,8 @@ def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 
-def get_basefiles_one(obj, objname, width, outdir, overwrite=False, 
-                      verbose=False):
+def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True, 
+                      overwrite=False, verbose=False):
     raslice = get_raslice(obj['RA'])
 
     if objname is None:
@@ -451,7 +494,11 @@ def get_basefiles_one(obj, objname, width, outdir, overwrite=False,
     nobj = 1
 
     if overwrite is False:
-        if os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg'):
+        if fits_cutouts:
+            check = os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg')
+        else:
+            check = os.path.isfile(basefile+'.jpeg')
+        if check:
             # need to make sure the image is the correct size
             #width_exist = int(fitsio.read_header(basefile+'.fits')['IMAGEW'])
             #if width == width_exist:
@@ -463,7 +510,8 @@ def get_basefiles_one(obj, objname, width, outdir, overwrite=False,
 
 
 def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.', 
-         size=1, mp=1, annotate=False, overwrite=False, verbose=False):
+         size=1, mp=1, annotate=False, fits_cutouts=True, 
+         overwrite=False, verbose=False):
     """Build a plan!
 
     """
@@ -488,7 +536,7 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
         if np.isscalar(width):
             width = [width] * len(objname)
 
-        mpargs = [(obj, objname1, width1, outdir, overwrite, verbose) 
+        mpargs = [(obj, objname1, width1, outdir, fits_cutouts, overwrite, verbose) 
                   for obj, objname1, width1 in zip(cat, objname, width)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
@@ -532,8 +580,8 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
 
 
 def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262, 
-               comm=None, mp=1, outdir='.', rescale=False, overwrite=False, 
-               dry_run=False, verbose=False):
+               comm=None, mp=1, outdir='.', base_outdir='.', rescale=False, 
+               overwrite=False, fits_cutouts=True, dry_run=False, verbose=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -552,7 +600,8 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
     
         basefiles, allra, alldec, groups = plan(
             cat, width=width, layer=layer, outdir=outdir, 
-            size=size, overwrite=overwrite, mp=mp, verbose=verbose)
+            size=size, overwrite=overwrite, mp=mp, 
+            fits_cutouts=fits_cutouts, verbose=verbose)
         print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
@@ -581,7 +630,8 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         return
 
     mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width[indx[iobj]],
-               pixscale[indx[iobj]], layer, dry_run, rank, iobj) for iobj in range(len(indx))]
+               pixscale[indx[iobj]], layer, dry_run, fits_cutouts, rank, iobj) 
+              for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_cutout_one, mpargs)
@@ -831,7 +881,7 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
 
 def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None, 
                  annotate=False, ssl_legacysurvey=False, wisesize=False,
-                 lvd=False):
+                 lvd=False, zooniverse=False):
     """Simple wrapper to read a specified catalog.
 
     """
@@ -841,7 +891,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
 
         columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'PGC', 'DIAM_LIT_REF',
                    'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
-                   'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_NEDLVS', 'ROW_PARENT']
+                   'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_NEDLVS', 'ROW_PARENT',
+                   'STARFDIST', 'STARMAG', 'RESOLVED']
 
         if 'NERSC_HOST' in os.environ:
             catdir = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent'
@@ -944,6 +995,15 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             #cat = cat[(cat['ROW_LVD'] != -99) * (diam > 20.*60.)]
             cat = cat[cat['ROW_LVD'] != -99]
 
+        if zooniverse:
+            # analyze the Zooniverse sample
+            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
+            cat = cat[I]
+
+            print('Throw away near stars and toss out small objects from fullcat!')
+            pdb.set_trace()
+
         # more testing below here
         if False:
             # SGA-2020 missing objects
@@ -957,12 +1017,15 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             #cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
             #diam, ba, pa, ref = choose_geometry(cat)
 
-        if True:
+        if False:#True:
             # all the sources larger than XX arcmin
-            diam, ba, pa, ref = choose_geometry(cat)
+            cat = cat[(cat['DIAM_LIT_REF'] == 'TWOMASS') * (cat['DIAM_LIT'] > 0.9) * (cat['DIAM_HYPERLEDA'] == -99.) * (cat['DIAM_SGA2020'] == -99.)]
+            #cat = cat[cat['OBJNAME'] == 'CGCG 018-111 NED01']
+
+            #diam, ba, pa, ref = choose_geometry(cat)
             #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 15*60.)]
             #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 5*60.) * (diam < 10*60.)]
-            cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 4*60.) * (diam < 5*60.)]
+            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 4*60.) * (diam < 5*60.)]
             #cat = cat[cat['OBJNAME'] == 'NGC 0936']
             #pdb.set_trace()
 
@@ -1010,6 +1073,10 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             #cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
             print(f'Trimmed to {len(cat):,d} objects.')
 
+
+    print('Sorting by RA')
+    cat = cat[np.argsort(cat['RA'])]
+
     if len(cat) == 0:
         raise ValueError('No objects in catalog!')
 
@@ -1031,8 +1098,10 @@ def main():
     parser.add_argument('--width', type=int, default=152, help='Default cutout width [pixels].')
     parser.add_argument('--pixscale', type=float, default=0.262, help='Default pixel scale [arcsec/pixel].')
     parser.add_argument('--outdir', default='./', type=str, help='Base output data directory.')
+    parser.add_argument('--httpdir', default=None, type=str, help='Base https output data directory.')
 
     parser.add_argument('--lvd', action='store_true', help='Analyze the LVD sample.')
+    parser.add_argument('--zooniverse', action='store_true', help='Analyze the zooniverse sample.')
     parser.add_argument('--wisesize', action='store_true', help='Analyze the wisesize sample.')
 
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
@@ -1042,6 +1111,7 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
     parser.add_argument('--ssl-legacysurvey', action='store_true', help='Build the hdf5 file needed by ssl-legacysurvey.')
+    parser.add_argument('--debug', action='store_true', help='Print out a variety of debugging messages.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     
@@ -1086,7 +1156,7 @@ def main():
     if rank == 0:
         cat, fullcat = read_catalog(args.catalog, region=args.region, annotate=args.annotate, 
                                     ssl_legacysurvey=args.ssl_legacysurvey, ntest=args.ntest,
-                                    wisesize=args.wisesize, lvd=args.lvd)
+                                    wisesize=args.wisesize, lvd=args.lvd, zooniverse=args.zooniverse)
 
     if comm is not None:
         cat = comm.bcast(cat, root=0)
@@ -1104,6 +1174,12 @@ def main():
                                overwrite=args.overwrite, verbose=args.verbose)
         return
 
+    # no FITS cutouts needed for the Zooniverse project
+    if args.zooniverse:
+        fits_cutouts = False
+    else:
+        fits_cutouts = True
+
     if args.plan and rank == 0:
         if args.annotate:
             width = None
@@ -1117,21 +1193,25 @@ def main():
                 default_pixscale=args.pixscale)
 
         plan(cat, width=width, layer=layer, size=size, indir=indir, 
-             outdir=outdir, mp=args.mp, annotate=args.annotate, 
-             overwrite=args.overwrite, verbose=args.verbose)
+             outdir=outdir, mp=args.mp, annotate=args.annotate,
+             fits_cutouts=fits_cutouts, overwrite=args.overwrite, 
+             verbose=args.verbose)
         return
 
     if args.annotate:
         do_annotate(cat, fullcat, default_pixscale=args.pixscale, 
                     default_width=args.width, mp=args.mp, 
-                    comm=comm, indir=indir, outdir=outdir, overwrite=args.overwrite, 
+                    comm=comm, indir=indir, base_outdir=args.outdir,
+                    region=args.region, httpdir=args.httpdir, outdir=outdir, 
+                    overwrite=args.overwrite, fits_cutouts=fits_cutouts,
                     annotate_central_only=args.annotate_central_only,
-                    dry_run=args.dry_run, verbose=args.verbose)
+                    debug=args.debug, dry_run=args.dry_run, verbose=args.verbose)
     else:
         do_cutouts(cat, layer=layer, mp=args.mp, comm=comm, outdir=outdir, 
-                   default_pixscale=args.pixscale, default_width=args.width, 
-                   rescale=args.rescale, overwrite=args.overwrite,
-                   dry_run=args.dry_run, verbose=args.verbose)
+                   base_outdir=args.outdir, default_pixscale=args.pixscale, 
+                   default_width=args.width, rescale=args.rescale, 
+                   overwrite=args.overwrite, dry_run=args.dry_run, 
+                   fits_cutouts=fits_cutouts, verbose=args.verbose)
 
 if __name__ == '__main__':
     main()
