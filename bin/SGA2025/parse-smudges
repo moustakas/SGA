@@ -8,6 +8,12 @@ Read 7,070 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/pare
 Trimmed to 6,805/7,070 objects with VC==0.
 Trimmed to 2,655/6,805 objects with diam>15 arcsec.
 
+# The following diameters are very wrong, so remove by hand.
+
+SMDG J2152023-642205,328.00947,-64.36812,3.652333333333333,0.51,292.05,13.14,r,Row 6671 in 'SMUDGes_catalog.6_23.ascii'
+SMDG J0052040-352127,13.01655,-35.35749,4.142,0.51,306.84000000000003,14.68,r,Row 295 in 'SMUDGes_catalog.6_23.ascii'
+
+
 """
 import os
 import numpy as np
@@ -24,7 +30,10 @@ I = smdg['VC'] == 0
 print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with VC==0')
 smdg = smdg[I]
 
-I = (2. * smdg['Re'].value) > 15.
+# see notes above
+rem = ~np.isin(smdg['OBJNAME'], ['SMDG J2152023-642205', 'SMDG J0052040-352127'])
+
+I = ((2. * smdg['Re'].value) > 15.) * rem
 print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with diam>15 arcsec')
 
 F = open('smudges.txt', 'w')

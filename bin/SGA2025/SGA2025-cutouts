@@ -16,18 +16,19 @@ Working interactively in a login node, one would do something like:
 Alternatively, in production, one would do:
 
   salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
+
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 > \
-    /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-north-native-JOBID.log 2>&1 &
+    /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-dr9-north-native-JOBID.log 2>&1 &
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 --rescale > \
-    /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-north-rescale-JOBID.log 2>&1 &
+    /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-dr9-north-rescale-JOBID.log 2>&1 &
 
 To build the ssl-legacysurvey catalog:
   SGA2025-shifter
   source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --ssl-legacysurvey
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --ssl-legacysurvey
 
 Kim's wisesize project:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --mp=32
@@ -47,13 +48,16 @@ LVD sample:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotate --mp=32 --lvd
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotated-montage --lvd
 
-zooniverse sample:
+zooniverse project:
   SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
     --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
     --catalog=sga2025-parent --region=dr9-north --mp=32 --zooniverse
-
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse --catalog=sga2025-parent --region=dr9-north --annotate --mp=32 --zooniverse
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse --catalog=sga2025-parent --region=dr9-north --annotated-montage --zooniverse
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+    --catalog=sga2025-parent --region=dr9-north --mp=32 --zooniverse --annotate
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+    --catalog=sga2025-parent --region=dr9-north --zooniverse --annotated-montage
 
 """
 import pdb # for debugging
@@ -61,7 +65,7 @@ import pdb # for debugging
 import os, re, sys, time
 import numpy as np
 import fitsio
-from astropy.table import Table
+from astropy.table import Table, vstack
 import multiprocessing
 
 from astrometry.libkd.spherematch import match_radec
@@ -104,13 +108,12 @@ def _annotate_one(args):
 
 
 def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
-                 mosaic_diam, primary, group):
+                 mosaic_diam, draw_largest_ellipse, primary, group):
     """Annotate one image.
 
     """
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
-    from astropy.table import vstack
     from astropy.wcs import WCS
     from astropy.io import fits
 
@@ -175,11 +178,13 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     ellipse_colors = {'RC3': 'yellow', 'SMUDGes': 'orange', 'LVD': 'violet', 
                       'SGA2020': 'dodgerblue', 'HYPERLEDA': 'red', 
                       'ESO': 'pink', 'SDSS': 'pink', 'TWOMASS': 'pink', 
-                      'BASIC': 'pink', 'CUSTOM': 'pink', 'NONE': 'pink', '': 'pink'}
+                      'BASIC': 'pink', 'LIT': 'pink', 'CUSTOM': 'pink', 
+                      'NONE': 'pink', '': 'pink'}
     ellipse_linestyles = {'RC3': 'solid', 'SMUDGes': 'solid', 'LVD': 'solid',
                           'SGA2020': 'dashed', 'HYPERLEDA': 'dashdot',
                           'ESO': 'dashed', 'SDSS': 'dashed', 'TWOMASS': 'dashed',
-                          'BASIC': 'dashed', 'CUSTOM': 'dashed', 'NONE': 'dashed', '': 'dashed'}
+                          'BASIC': 'dashed', 'LIT': 'dashed', 'CUSTOM': 'dashed', 
+                          'NONE': 'dashed', '': 'dashed'}
 
     outdir = os.path.dirname(pngfile)
     if not os.path.isdir(outdir):
@@ -224,17 +229,31 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
             xpixes.append(xpix)
             ypixes.append(ypix)
 
-        for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
-            diam, ba, pa, outref = parse_geometry(Table(onegal), ref)
-            #print(onegal['OBJNAME'], outref, diam, ellipse_colors[outref])
+        if draw_largest_ellipse:
+            diam, ba, pa, ref = choose_geometry(Table(onegal))
+            diam = diam[0]
+            ba = ba[0]
+            pa = pa[0]
+            ref = ref[0]
             if diam > 0.:
-                #print(onegal['OBJNAME'], ref, xpix, ypix, diam[0], ba[0], pa[0])
                 if onegal['OBJNAME'] == primary['OBJNAME']:
                     majorminor = True
                 else:
                     majorminor = False
-                draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color=ellipse_colors[outref],
-                             linestyle=ellipse_linestyles[outref], majorminor=majorminor)
+                draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color=ellipse_colors[ref],
+                             linestyle=ellipse_linestyles[ref], majorminor=majorminor)
+        else:
+            for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
+                diam, ba, pa, outref = parse_geometry(Table(onegal), ref)
+                #print(onegal['OBJNAME'], outref, diam, ellipse_colors[outref])
+                if diam > 0.:
+                    #print(onegal['OBJNAME'], ref, xpix, ypix, diam[0], ba[0], pa[0])
+                    if onegal['OBJNAME'] == primary['OBJNAME']:
+                        majorminor = True
+                    else:
+                        majorminor = False
+                    draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color=ellipse_colors[outref],
+                                 linestyle=ellipse_linestyles[outref], majorminor=majorminor)
 
     # now annotate
     if len(objnames) > 0:
@@ -319,13 +338,12 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     fig.savefig(pngfile, bbox_inches=0)#, dpi=200)
     plt.close()
     print(f'Wrote {pngfile}')
-    #pdb.set_trace()
 
 
 def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
                 comm=None, mp=1, indir='.', outdir='.', base_outdir='.', 
-                region='dr9-north', fits_cutouts=True, httpdir=None, 
-                overwrite=False, debug=False, annotate_central_only=False, 
+                region='dr9-north', fits_cutouts=True, draw_largest_ellipse=False, 
+                httpdir=None, overwrite=False, debug=False, annotate_central_only=False, 
                 dry_run=False, verbose=False):
     """Wrapper to set up the full set of annotations.
 
@@ -357,10 +375,8 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
         inventoryfile = os.path.join(base_outdir, f'inventory-{region}.txt')
         with open(inventoryfile, 'w') as F:
             for objname, pngfile in zip(objnames, pngfiles):
-                F.write(f'{pngfile.replace(base_outdir, httpdir),{objname}}\n')
+                F.write(f'{pngfile.replace(base_outdir, httpdir)},{objname}\n')
         print(f'Wrote {inventoryfile}')
-
-        pdb.set_trace()
 
     else:
         jpgfiles, pngfiles, groups = [], [], []
@@ -394,7 +410,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
     allmatches = match_radec(cat['RA'][indx].value, cat['DEC'][indx].value,
                              fullcat['RA'].value, fullcat['DEC'].value,
                              2.*np.max(diam)/3600., indexlist=True, notself=False)
-
+    
     mpargs = []
     for iobj in range(len(indx)):
         #print(iobj)
@@ -414,7 +430,8 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
             print()
         else:
             mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
-                           pixscale[indx[iobj]], diam[indx[iobj]], primary, group))
+                           pixscale[indx[iobj]], diam[indx[iobj]], draw_largest_ellipse,
+                           primary, group))
 
     if debug:
         return
@@ -680,10 +697,11 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     """Build the reference catalog for use with ssl-legacysurvey
 
     """
-    # use isolated RC3 galaxies as the reference sample
+    # define the reference sample
     diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
-    I = np.where((cat['FILTERS'] == 'grz') * (cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
+    I = np.where((diam/60. > 1.) * (diam/60. < 5.) * ~cat['RESOLVED'] * (cat['STARFDIST'] < 1.))[0]
+    #I = np.where((cat['FILTERS'] == 'grz') * (cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
     #I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
     #I = np.arange(20)
     refcat = cat[I]
@@ -696,12 +714,14 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
         if len(mm) == 1:
             refindx.append(ii)
     refindx = np.array(refindx)
+    refcat = refcat[refindx]
 
     sslcols = ['OBJNAME', 'RA', 'DEC', 'ROW_PARENT']
-    refcat = refcat[refindx][sslcols]
+    refcat = refcat[sslcols]
 
-    print('Hack! - trimming the ssl_legacysurvey sample to objects smaller than 40 arcsec!')
-    cat = cat[(cat['FILTERS'] == 'grz') * (diam == 0.)]
+    print('Trimming the ssl_legacysurvey sample to unresolved objects smaller than 15 arcsec!')
+    cat = cat[(diam < 15.) * ~cat['RESOLVED']]
+    #cat = cat[(cat['FILTERS'] == 'grz') * (diam == 0.)]
 
     return refcat, cat
 
@@ -779,8 +799,10 @@ def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=
 
     pdb.set_trace()
 
+
 def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10, 
-                      wisesize=False, lvd=False, overwrite=False):
+                      wisesize=False, lvd=False, zooniverse=False, 
+                      overwrite=False):
     """Build a single PDF file of annotated images, to enable fast
     visual inspection.
 
@@ -808,6 +830,8 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10,
         suffix = '-wisesize'
     elif lvd:
         suffix = '-lvd'
+    elif zooniverse:
+        suffix = '-zooniverse'
     else:
         suffix = ''
 
@@ -836,6 +860,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10,
     print(f'Distributing {len(pngfiles):,d} annotated images to {npdf:,d} ' + \
           f'PDFs with a total of {npage:,d} pages and {npagemax} pages per file.')
 
+    #for ipdf in [1]:
     for ipdf in range(npdf):
         pdffile = os.path.join(qadir, f'annotated-montage-{region}{suffix}-{ipdf:03}.pdf')
         if os.path.isfile(pdffile) and not overwrite:
@@ -843,7 +868,8 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10,
             return
 
         pngfiles = pdf_pngfiles[ipdf]
-        allindx = pdf_allindx[ipdf]
+        #allindx = pdf_allindx[ipdf]
+        allindx = np.arange(len(pngfiles))
         npage = int(np.ceil(len(pngfiles) / nperpage))        
     
         pdf = PdfPages(pdffile)
@@ -996,13 +1022,16 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             cat = cat[cat['ROW_LVD'] != -99]
 
         if zooniverse:
-            # analyze the Zooniverse sample
+            # analyze the Zooniverse sample; toss out by STARFDIST?
             diam, _, _, _ = choose_geometry(cat, mindiam=0.)
             I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
             cat = cat[I]
 
-            print('Throw away near stars and toss out small objects from fullcat!')
-            pdb.set_trace()
+            if annotate:
+                diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+                I = diam > 15.
+                print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
+                fullcat = fullcat[I]
 
         # more testing below here
         if False:
@@ -1048,7 +1077,6 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
         if False:
             # read Sara's ssl-legacysurvey file
             from glob import glob
-            from astropy.table import vstack
             #from SGA.io import sga_dir
             chunkfiles = glob('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/ssl-legacysurvey/ssl-parent-dr9-north-chunk???-v1.txt')
             ssl = vstack([Table.read(chunkfile, format='ascii.commented_header') for chunkfile in chunkfiles])
@@ -1154,9 +1182,16 @@ def main():
 
     cat, fullcat = None, None
     if rank == 0:
-        cat, fullcat = read_catalog(args.catalog, region=args.region, annotate=args.annotate, 
-                                    ssl_legacysurvey=args.ssl_legacysurvey, ntest=args.ntest,
-                                    wisesize=args.wisesize, lvd=args.lvd, zooniverse=args.zooniverse)
+        if args.ssl_legacysurvey:
+            cat_north, fullcat_north = read_catalog(args.catalog, ssl_legacysurvey=True, region='dr9-north')
+            cat_south, fullcat_south = read_catalog(args.catalog, ssl_legacysurvey=True, region='dr9-south')
+            cat = vstack((cat_north, cat_south))
+            fullcat = vstack((fullcat_north, fullcat_south))
+            del cat_north, fullcat_north, cat_south, fullcat_south
+        else:
+            cat, fullcat = read_catalog(args.catalog, region=args.region, annotate=args.annotate, 
+                                        ntest=args.ntest, wisesize=args.wisesize, lvd=args.lvd, 
+                                        zooniverse=args.zooniverse)
 
     if comm is not None:
         cat = comm.bcast(cat, root=0)
@@ -1165,7 +1200,7 @@ def main():
     if args.annotated_montage and rank == 0:
         annotated_montage(cat, region=args.region, outdir=args.outdir, 
                           wisesize=args.wisesize, lvd=args.lvd,
-                          overwrite=args.overwrite)
+                          zooniverse=args.zooniverse, overwrite=args.overwrite)
         return
         
     if args.ssl_legacysurvey and rank == 0:
@@ -1177,8 +1212,10 @@ def main():
     # no FITS cutouts needed for the Zooniverse project
     if args.zooniverse:
         fits_cutouts = False
+        draw_largest_ellipse = True
     else:
         fits_cutouts = True
+        draw_largest_ellipse = False
 
     if args.plan and rank == 0:
         if args.annotate:
@@ -1204,6 +1241,7 @@ def main():
                     comm=comm, indir=indir, base_outdir=args.outdir,
                     region=args.region, httpdir=args.httpdir, outdir=outdir, 
                     overwrite=args.overwrite, fits_cutouts=fits_cutouts,
+                    draw_largest_ellipse=draw_largest_ellipse,
                     annotate_central_only=args.annotate_central_only,
                     debug=args.debug, dry_run=args.dry_run, verbose=args.verbose)
     else:
