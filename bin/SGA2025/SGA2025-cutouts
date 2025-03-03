@@ -371,12 +371,13 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
         print(f'Planning took {time.time() - t0:.2f} sec')
 
         # write out an inventory file
-        objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
-        inventoryfile = os.path.join(base_outdir, f'inventory-{region}.txt')
-        with open(inventoryfile, 'w') as F:
-            for objname, pngfile in zip(objnames, pngfiles):
-                F.write(f'{pngfile.replace(base_outdir, httpdir)},{objname}\n')
-        print(f'Wrote {inventoryfile}')
+        if httpdir:
+            objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
+            inventoryfile = os.path.join(base_outdir, f'inventory-{region}.txt')
+            with open(inventoryfile, 'w') as F:
+                for objname, pngfile in zip(objnames, pngfiles):
+                    F.write(f'{pngfile.replace(base_outdir, httpdir)},{objname}\n')
+            print(f'Wrote {inventoryfile}')
 
     else:
         jpgfiles, pngfiles, groups = [], [], []
@@ -700,7 +701,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     # define the reference sample
     diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
-    I = np.where((diam/60. > 1.) * (diam/60. < 5.) * ~cat['RESOLVED'] * (cat['STARFDIST'] < 1.))[0]
+    I = np.where((diam/60. > 1.) * (diam/60. < 5.) * ~cat['RESOLVED'] * (cat['STARFDIST'] > 1.))[0]
     #I = np.where((cat['FILTERS'] == 'grz') * (cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
     #I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
     #I = np.arange(20)
@@ -769,7 +770,6 @@ def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=
     chunkindx = np.array_split(np.arange(ncat), nchunk)
 
     for ichunk in range(nchunk):
-
         h5file = os.path.join(outdir, f'ssl-parent-{region}-chunk{ichunk:03}-{suffix}.hdf5')
         if os.path.isfile(h5file) and not overwrite:
             print(f'Skipping existing HDF5 file {h5file}')
@@ -1060,9 +1060,10 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
 
         if False:#True:
             # one-by-one checks
-            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
-            cat = cat[m1]
-            print(cat['OBJNAME', 'ROW_PARENT'])
+            cat = cat[cat['OBJNAME'] == 'UGC 03214']
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
+            #cat = cat[m1]
+            #print(cat['OBJNAME', 'ROW_PARENT'])
             #pdb.set_trace()
             #diam, ba, pa, ref = choose_geometry(cat)
             #parse_geometry(cat, 'SMUDGes')
@@ -1187,7 +1188,7 @@ def main():
             cat_south, fullcat_south = read_catalog(args.catalog, ssl_legacysurvey=True, region='dr9-south')
             cat = vstack((cat_north, cat_south))
             fullcat = vstack((fullcat_north, fullcat_south))
-            del cat_north, fullcat_north, cat_south, fullcat_south
+            del cat_north, cat_south, fullcat_north, fullcat_south
         else:
             cat, fullcat = read_catalog(args.catalog, region=args.region, annotate=args.annotate, 
                                         ntest=args.ntest, wisesize=args.wisesize, lvd=args.lvd, 
