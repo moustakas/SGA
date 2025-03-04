@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 
 from astrometry.util.fits import merge_tables, fits_table
 from astrometry.util.multiproc import multiproc
+from astrometry.util.starutil_numpy import radectolb
 
 from legacypipe.survey import wcs_for_brick
 from legacypipe.reference import get_reference_sources
@@ -145,6 +146,16 @@ def main():
         os.remove(outfn)
     G.writeto(outfn, columns=cols, units=units)
 
+    # also write out an "extragalactic" version trimmed to |b|>9
+    glong, glat = radectolb(G.ra, G.dec)
+    I = np.abs(glat) > 9.
+
+    outfn = os.path.join(outdir, 'gaia-mask-dr3-galb9.fits')
+    if os.path.isfile(outfn):
+        os.remove(outfn)
+    Gb = G[I]
+    Gb.writeto(outfn, columns=cols, units=units)
+    
 
 if __name__ == '__main__':
     main()

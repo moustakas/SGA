@@ -72,7 +72,7 @@ def get_raslice(ra):
     if np.isscalar(ra):
         return f'{int(ra):03d}'
     else:
-        return [f'{int(onera):03d}' for onera in ra]
+        return np.array([f'{int(onera):03d}' for onera in ra])
 
 
 def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
@@ -385,6 +385,74 @@ def nedfriendly_hyperleda(old, reverse=False):
     #return new
 
 
+def version_hyperleda_noobjtype():
+    return 'meandata_noobjtype_1739457147'
+
+
+def read_hyperleda_noobjtype(rank=0, rows=None):
+    """Read the HyperLeda_noobjtype catalog.
+
+    """
+    version = version_hyperleda_noobjtype()
+    hyperfile = os.path.join(sga_dir(), 'parent', 'external', f'HyperLeda_{version}.fits')
+
+    if not os.path.isfile(hyperfile):
+        txtfile = hyperfile.replace('.fits', '.txt')
+
+        with open(txtfile, 'r') as F:
+            nrows = len(F.readlines())
+
+        if version == 'meandata_noobjtype_1739457147':
+            header_start = 21
+            data_start = 23
+            data_offset = 5 # 4846383-20
+            delimiter = '|'
+        else:
+            raise ValueError(f'Unknown version {version}')
+
+        hyper = Table.read(txtfile, format='ascii.csv', data_start=data_start,
+                           data_end=nrows-data_offset, header_start=header_start,
+                           delimiter=delimiter)
+
+        hyper.rename_column('hl_names(pgc)', 'ALTNAMES')
+        [hyper.rename_column(col, col.upper()) for col in hyper.colnames]
+
+        hyper['ROW'] = np.arange(len(hyper))
+
+        nhyper = len(hyper)
+        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        assert(nhyper == len(np.unique(hyper['PGC'])))
+
+        hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
+        hyper['RA'] *= 15. # [decimal degrees]
+
+        # three objects have nan coordinates
+        hyper = hyper[~hyper['RA'].mask]
+
+        # get just the first three alternate names
+        altnames = []
+        for iobj in range(len(hyper)):
+            objname = hyper['OBJNAME'][iobj]
+            names = np.array(hyper['ALTNAMES'][iobj].split(','))
+            # remove the primary name
+            names = names[~np.isin(names, objname)]
+            names = ','.join(names[:3]) # top 3
+            altnames.append(names)
+        hyper['ALTNAMES'] = altnames
+
+        # re-sort by PGC number
+        hyper = hyper[np.argsort(hyper['PGC'])]
+
+        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        hyper.write(hyperfile, overwrite=True)
+
+    hyper = Table(fitsio.read(hyperfile, rows=rows))
+    print(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+
+    return hyper
+
+
 def version_hyperleda_multiples():
     return 'meandata_multiples_1727885775'
 
@@ -565,14 +633,23 @@ def read_hyperleda(rank=0, rows=None):
 
     if not os.path.isfile(hyperfile):
         gals = read_hyperleda_galaxies(rank=rank, rows=rows)
+
+        # The 'mult' table has objects with OBJTYPE==? (where
+        # multiple={M,M2,M3}); remove them here since we get them in
+        # the 'noobjtype' table, too.
         mult = read_hyperleda_multiples(rank=rank, rows=rows)
+        mult = mult[mult['OBJTYPE'] != '?']
+
+        noobj = read_hyperleda_noobjtype(rank=rank, rows=rows)
         #gals['ROW_GALAXIES'] = np.zeros(len(gals), np.int64) - 99
         #mult['ROW_MULTIPLES'] = np.zeros(len(mult), np.int64) - 99
         gals.rename_column('ROW', 'ROW_GALAXIES')
         mult.rename_column('ROW', 'ROW_MULTIPLES')
-        hyper = vstack((gals, mult))
+        noobj.rename_column('ROW', 'ROW_NOOBJTYPE')
+        hyper = vstack((gals, mult, noobj))
         hyper['ROW_GALAXIES'].fill_value = -99
         hyper['ROW_MULTIPLES'].fill_value = -99
+        hyper['ROW_NOOBJTYPE'].fill_value = -99
         hyper = hyper.filled()
 
         # sort by PGC number and reset ROW
@@ -627,7 +704,7 @@ def nedfriendly_lvd(old):
         'KK 77': 'F12D1',
         'KK 109': 'GALEXASC J114711.81+434018.1',
         'KK 160': 'SDSS J124357.79+433940.3',
-        'KK 166': 'PGC1 0043495 NED005',
+        'KK 166': 'SMDG J1249122+353645', # also likely 'PGC1 0043495 NED005'
         'KK 177': 'IC 4107', # HyperLeda matches to WISEA J130241.76+215952.2
         'KK 180': 'LSBC D575-08',
         'KK 182': 'PGC1 0166152 NED001',
@@ -695,6 +772,7 @@ def nedfriendly_lvd(old):
         'd1006+67': 'PGC1 0028630 NED030',
         'd1014+68': 'WISEA J101456.37+684529.2',
         'd1015+69': 'PGC1 0028630 NED035',
+        'dw1046+1244': 'Leo dw A', # NED incorrectly resolves this to WISEA J104652.68+124431.3
         'dw1323-40a': '[CGG2021] dw J1323-40',
         'dw1329-45': 'Cen A:[MJP2016] dw1329-45',
         'dw1336-44': 'Cen A:[MJP2016] dw1336-44',
@@ -703,8 +781,12 @@ def nedfriendly_lvd(old):
         'dw1342-43': '[KKM2018a] dw J1342-43', # may also be Cen A:[MJP2016] dw1342-43
         'dw1322-39': 'Cen A:[MJP2016] dw1322-39',
         'dw0036m2828': '[CGB2022] dw J0036-2828',
+        'A0952+69': 'AO 0952+69',
+        'KKH 78': 'SMDG J1217442+332045', # incorrect position and cross-identifications
+        'MAPS 1231+42': 'SDSS J123109.08+420533.8', # uncertain cross-identification
+        'MAPS 1249+44': 'SDSS J124931.04+442133.3', # uncertain cross-identification
+        'LV J1243+4127': 'SMDG J1243552+412727', # NED calls this object SDSS J124354.70+412724.9
         # not in NED
-        #'A0952+69': '',
         #'Aquarius III': '',
         #'Bedin 1': '',
         #'Corvus A': '',
@@ -721,8 +803,6 @@ def nedfriendly_lvd(old):
         #'Leo Minor I': '',
         #'MADCASH-1': '',
         #'MADCASH-2': '',
-        #'MAPS 1231+42':
-        #'MAPS 1249+44':
         #'Pavo': '',
         #'Sextans II': '',
         #'dw1323-40b': '[CGG2021] dw J1323-40b', # NED incorrectly cross-identifies this with [CGG2021] dw J1323-40
@@ -1275,9 +1355,11 @@ def read_custom_external(rank=0, rows=None, overwrite=False):
 
     customfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.fits')
     if not os.path.isfile(customfile) or overwrite:
-        csvfile = os.path.join(sga_dir(), 'parent', 'external', f'custom-external_{version}.csv')
+        from importlib import resources
+        csvfile = str(resources.files('SGA').joinpath(f'data/SGA2025/custom-external_{version}.csv'))
         data = Table.read(csvfile, format='csv', comment='#')
         data['mag_band'] = data['mag_band'].astype('<U1')
+        data['objname'].fill_value = ''
         data['mag_band'].fill_value = ''
         data['objname_ned'].fill_value = ''
         data = data.filled()

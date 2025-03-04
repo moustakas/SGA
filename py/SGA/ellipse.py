@@ -249,47 +249,53 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     return basic
 
 
-def parse_geometry(cat, ref):
+def parse_geometry(cat, ref, mindiam=152*0.262):
     """Parse a specific set of elliptical geometry.
 
-    ref - choose from among SGA2020, HYPERLEDA, RC3, LIT
+    ref - choose from among SGA2020, HYPERLEDA, RC3, LVD, SMUDGes, or LIT
 
     """
     nobj = len(cat)
     diam = np.zeros(nobj) - 99. # [arcsec]
     ba = np.ones(nobj)
     pa = np.zeros(nobj)
+    outref = np.zeros(nobj, '<U9')
 
     if ref == 'SGA2020':
         I = cat['DIAM_SGA2020'] > 0.
         if np.any(I):
-            diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_SGA2020']
-            pa[I] = cat[I]['PA_SGA2020']
-    elif ref == 'RC3':
-        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] == 'RC3')
-        if np.any(I):
-            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_LIT']
-            pa[I] = cat[I]['PA_LIT']
-    elif ref == 'LIT':
-        I = (cat['DIAM_LIT'] > 0.) * (cat['DIAM_LIT_REF'] != 'RC3')
-        if np.any(I):
-            diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_LIT']
-            pa[I] = cat[I]['PA_LIT']
+            diam[I] = cat['DIAM_SGA2020'][I] * 60. # [arcsec]
+            ba[I] = cat['BA_SGA2020'][I]
+            pa[I] = cat['PA_SGA2020'][I]
+            outref[I] = ref
     elif ref == 'HYPERLEDA':
         I = cat['DIAM_HYPERLEDA'] > 0.
         if np.any(I):
-            diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
-            ba[I] = cat[I]['BA_HYPERLEDA']
-            pa[I] = cat[I]['PA_HYPERLEDA']
+            diam[I] = cat['DIAM_HYPERLEDA'][I] * 60. # [arcsec]
+            ba[I] = cat['BA_HYPERLEDA'][I]
+            pa[I] = cat['PA_HYPERLEDA'][I]
+            outref[I] = ref
+    elif ref == 'LIT':
+        I = cat['DIAM_LIT'] > 0.
+        if np.any(I):
+            diam[I] = cat['DIAM_LIT'][I] * 60. # [arcsec]
+            ba[I] = cat['BA_LIT'][I]
+            pa[I] = cat['PA_LIT'][I]
+            outref[I] = cat['DIAM_LIT_REF']
+
+    #I = diam <= 0.
+    #if np.any(I):
+    #    diam[I] = mindiam # [arcsec]
+    #    outref[I] = 'NONE'
 
     # clean up missing values of BA and PA
     ba[ba < 0.] = 1.
     pa[pa < 0.] = 0.
-    
-    return diam, ba, pa
+
+    if nobj == 1:
+        return diam[0], ba[0], pa[0], outref[0]
+    else:
+        return diam, ba, pa, outref
 
 
 def choose_geometry(cat, mindiam=152*0.262):
@@ -304,64 +310,66 @@ def choose_geometry(cat, mindiam=152*0.262):
 
     """
     nobj = len(cat)
-    diam = np.zeros(nobj) # [arcsec]
-    ba = np.ones(nobj)
-    pa = np.zeros(nobj)
+    diam = np.zeros(nobj) - 99.
+    ba = np.zeros(nobj) - 99.
+    pa = np.zeros(nobj) - 99.
     ref = np.zeros(nobj, '<U9')
 
-    # [1] LVD
-    I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'LVD', cat['DIAM_LIT'] > 0.))
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LIT']
-        pa[I] = cat[I]['PA_LIT']
-        ref[I] = 'LVD'
+    # take the largest diameter
+    datarefs = np.array(['SGA2020', 'HYPERLEDA', 'LIT'])
+    dataindx = np.argmax((cat['DIAM_SGA2020'].value, cat['DIAM_HYPERLEDA'].value, cat['DIAM_LIT'].value), axis=0)
 
-    # [2] RC3
-    I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT_REF'] == 'RC3', cat['DIAM_LIT'] > 0.))
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LIT']
-        pa[I] = cat[I]['PA_LIT']
-        ref[I] = 'RC3'
+    # first require all of diam, ba, pa...
+    for iref, dataref in enumerate(datarefs):
+        I = ((dataindx == iref) * (diam == -99.) * (ba == -99.) * (pa == -99.) * 
+             (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) * 
+             (cat[f'PA_{dataref}'] != -99.))
+        if np.any(I):
+            diam[I] = cat[f'DIAM_{dataref}'][I] * 60.
+            ba[I] = cat[f'BA_{dataref}'][I]
+            pa[I] = cat[f'PA_{dataref}'][I]
+            ref[I] = datarefs[iref]
+            # special-case LVD, RC3, and SMUDGes
+            if dataref == 'LIT':
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'SMUDGes')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'SMUDGes'
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'LVD')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'LVD'
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'RC3')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'RC3'
 
-    # [3] SGA2020
-    I = np.logical_and(diam <= 0., cat['DIAM_SGA2020'] > 0.)
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_SGA2020'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_SGA2020']
-        pa[I] = cat[I]['PA_SGA2020']
-        ref[I] = 'SGA2020'
+    # ...and then just diam.
+    for iref, dataref in enumerate(datarefs):
+        I = (dataindx == iref) * (diam == -99.) * (cat[f'DIAM_{dataref}'] != -99.)
+        if np.any(I):
+            diam[I] = cat[f'DIAM_{dataref}'][I] * 60.
+            ba[I] = cat[f'BA_{dataref}'][I]
+            pa[I] = cat[f'PA_{dataref}'][I]
+            ref[I] = datarefs[iref]
+            # special-case LVD, RC3, and SMUDGes
+            if dataref == 'LIT':
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'SMUDGes')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'SMUDGes'
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'LVD')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'LVD'
+                J = np.where(cat[f'DIAM_{dataref}_REF'][I] == 'RC3')[0]
+                if len(J) > 0:
+                    ref[I][J] = 'RC3'
 
-    # [4] HyperLeda
-    I = np.logical_and(diam <= 0., cat['DIAM_HYPERLEDA'] > 0.)
+    # missing diameters
+    I = diam <= 0.
     if np.any(I):
-        diam[I] = cat[I]['DIAM_HYPERLEDA'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_HYPERLEDA']
-        pa[I] = cat[I]['PA_HYPERLEDA']
-        ref[I] = 'HYPERLEDA'
-
-    # [5] literature
-    I = np.logical_and(diam <= 0., cat['DIAM_LIT'] > 0.)
-    #I = np.logical_and.reduce((diam <= 0., cat['DIAM_LIT'] > 0., cat['DIAM_HYPERLEDA'] < 0.))
-    if np.any(I):
-        diam[I] = cat[I]['DIAM_LIT'] * 60. # [arcsec]
-        ba[I] = cat[I]['BA_LIT']
-        pa[I] = cat[I]['PA_LIT']
-        ref[I] = cat[I]['DIAM_LIT_REF']
+        ref[I] = 'NONE'
 
     # set a minimum floor on the diameter
     I = diam <= mindiam
     if np.any(I):
         diam[I] = mindiam
-
-    ## special-cases - north
-    #S = [
-    #    'WISEA J151427.24+604725.4', # not in HyperLeda; basic-data diameter is 12.11 arcmin!
-    #    ]
-    #I = np.isin(cat['OBJNAME'], S)
-    #if np.any(I):
-    #    diam[I] = mindiam
 
     # clean up missing values of BA and PA
     ba[ba < 0.] = 1.

@@ -9,10 +9,14 @@ import numpy as np
 from SGA.log import get_logger#, DEBUG
 log = get_logger()
 
-BANDS = ['g', 'r', 'z']
-#BANDS = ['g', 'r', 'i', 'z']
-
 PIXSCALE = 0.262
+RUNS = {'dr9-north': 'north', 'dr9-south': 'south', 
+        'dr10-south': 'south', 'dr11-south': 'south'}
+
+grz = ['g', 'r', 'z']
+griz = ['g', 'r', 'i', 'z']
+BANDS = {'dr9-north': grz, 'dr9-south': grz,
+         'dr10-south': griz, 'dr11-south': griz}
 
 
 def _mosaic_width(radius_mosaic, pixscale):
