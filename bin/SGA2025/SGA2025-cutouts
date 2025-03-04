@@ -708,7 +708,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     refcat = cat[I]
     allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
                              fullcat['RA'].value, fullcat['DEC'].value,
-                             60./3600., indexlist=True, notself=False)
+                             90./3600., indexlist=True, notself=False)
 
     refindx = []
     for ii, mm in enumerate(allmatches):
@@ -717,7 +717,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     refindx = np.array(refindx)
     refcat = refcat[refindx]
 
-    sslcols = ['OBJNAME', 'RA', 'DEC', 'ROW_PARENT']
+    sslcols = ['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'REGION']
     refcat = refcat[sslcols]
 
     print('Trimming the ssl_legacysurvey sample to unresolved objects smaller than 15 arcsec!')
@@ -727,9 +727,9 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     return refcat, cat
 
 
-def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=20000,
-                           suffix='v1', bands=['g', 'r', 'z'], cutoutdir='.', outdir='.', 
-                           verbose=False, overwrite=False):
+def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=30000, suffix='v1', 
+                           bands=['g', 'r', 'z'], outdir='.', verbose=False, 
+                           overwrite=False):
     """Build the hdf5 file needed by ssl-legacysurvey.
 
     nband = 3 (grz)
@@ -738,7 +738,8 @@ def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=
     """
     import h5py
 
-    def get_fitsfiles(cat):
+    def get_fitsfiles(cat, region):
+        cutoutdir = os.path.join(outdir, region, 'rescale')
         I = []
         fitsfiles = []
         for ii, one in enumerate(cat):
@@ -756,21 +757,38 @@ def build_ssl_legacysurvey(cat, fullcat, region='dr9-north', width=152, ncatmax=
 
     # need to define a reference sample and make sure the files exist
     refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat)
-    refcatfiles, refcatindx = get_fitsfiles(refcat)
-    catfiles, catindx = get_fitsfiles(cat)
+    refcatfiles, refcatindx = [], []
+    catfiles, catindx = [], []
+    for region in ['dr9-north', 'dr9-south']:
+        R = np.where(refcat['REGION'] == region)[0]
+        C = np.where(cat['REGION'] == region)[0]
+        refcatfiles1, refcatindx1 = get_fitsfiles(refcat[R], region)
+        catfiles1, catindx1 = get_fitsfiles(cat[C], region)
+        refcatfiles.append(refcatfiles1)
+        catfiles.append(catfiles1)
+        refcatindx.append(R[refcatindx1])
+        catindx.append(C[catindx1])
+
+    refcatfiles = np.hstack(refcatfiles)
+    catfiles = np.hstack(catfiles)
+    refcatindx = np.hstack(refcatindx)
+    catindx = np.hstack(catindx)
 
     cat = cat[catindx]
     refcat = refcat[refcatindx]
     ncat = len(cat)
     nrefcat = len(refcat)
+    print(f'Reference sample: {len(refcat):,d} objects.')
+    print(f'Analysis sample: {len(cat):,d} objects.')
 
     # Ensure each output file has no more than ncatmax objects, to we
     # don't run into memory problems at NERSC.
     nchunk = int(np.ceil(ncat / ncatmax))
     chunkindx = np.array_split(np.arange(ncat), nchunk)
+    print(f'Dividing into {nchunk:,d} chunks.')
 
     for ichunk in range(nchunk):
-        h5file = os.path.join(outdir, f'ssl-parent-{region}-chunk{ichunk:03}-{suffix}.hdf5')
+        h5file = os.path.join(outdir, f'ssl-parent-chunk{ichunk:03}-{suffix}.hdf5')
         if os.path.isfile(h5file) and not overwrite:
             print(f'Skipping existing HDF5 file {h5file}')
             continue
@@ -1060,7 +1078,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
 
         if False:#True:
             # one-by-one checks
-            cat = cat[cat['OBJNAME'] == 'UGC 03214']
+            cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
+            #cat = cat[cat['OBJNAME'] == 'UGC 03214']
             #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
             #cat = cat[m1]
             #print(cat['OBJNAME', 'ROW_PARENT'])
@@ -1164,7 +1183,8 @@ def main():
 
     # define paths depending on the input keywords
     if args.ssl_legacysurvey:
-        cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
+        #cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
+        pass
     else:
         # annotated cutouts
         if args.annotate:
@@ -1186,6 +1206,10 @@ def main():
         if args.ssl_legacysurvey:
             cat_north, fullcat_north = read_catalog(args.catalog, ssl_legacysurvey=True, region='dr9-north')
             cat_south, fullcat_south = read_catalog(args.catalog, ssl_legacysurvey=True, region='dr9-south')
+            cat_north['REGION'] = 'dr9-north'
+            cat_south['REGION'] = 'dr9-south'
+            fullcat_north['REGION'] = 'dr9-north'
+            fullcat_south['REGION'] = 'dr9-south'
             cat = vstack((cat_north, cat_south))
             fullcat = vstack((fullcat_north, fullcat_south))
             del cat_north, cat_south, fullcat_north, fullcat_south
@@ -1205,9 +1229,9 @@ def main():
         return
         
     if args.ssl_legacysurvey and rank == 0:
-        build_ssl_legacysurvey(cat, fullcat, region=args.region, width=args.width,
-                               cutoutdir=cutoutdir, outdir=args.outdir,
-                               overwrite=args.overwrite, verbose=args.verbose)
+        build_ssl_legacysurvey(cat, fullcat, width=args.width, #cutoutdir=cutoutdir, 
+                               outdir=args.outdir, overwrite=args.overwrite, 
+                               verbose=args.verbose)
         return
 
     # no FITS cutouts needed for the Zooniverse project

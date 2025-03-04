@@ -454,7 +454,9 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
             drop_references = []
         case _:
             VETO = ['HIPASS J1348-37', 'HIPASS J1131-31', 'HIPASS J1247-77', 'HIPASS J1337-39',
-                    'RCS 04020600360', 'NSA 142339', 'HIDEEP J1337-3320', ] # LVD systems
+                    'RCS 04020600360', 'NSA 142339', 'HIDEEP J1337-3320', # LVD systems
+                    'ZwCl 0054.6-0127 18', 'ZwCl 0054.6-0127 16 NED02', 'ZwCl 0054.6-0127 16 NED01', # in UGC 00579 group
+                    ] 
             drop_prefixes = ['WINGS', 'SRGb', '[MD2000]', 'HeCS', 'ESP',
                              'SDSSCGB', 'NVSS', 'AGC', ]
             drop_ignore_diam_prefixes = [
@@ -637,6 +639,16 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    # quick check on duplicates
+    actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
+    actions = Table.read(actionsfile, format='csv', comment='#')
+    uobj, cc = np.unique(actions['objname'].value, return_counts=True)
+    if np.any(cc > 1):
+        print(f'The following objects are duplicates in {actionsfile}')
+        for obj in uobj[cc > 1]:
+            print(obj)
+        return
+
     version = parent_version(nocuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     origcat = Table(fitsio.read(catfile))
