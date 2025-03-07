@@ -4,18 +4,18 @@
 
 Working interactively in a login node, one would do something like:
 
-  shifter --image dstndstn/cutouts:dvsro bash
+  shifter --image dstndstn/cutouts:dvsro3 bash
   source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
     or
 
-  shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro bash
+  shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro3 bash
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
 
 Alternatively, in production, one would do:
 
-  salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
+  salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro3
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 > \
@@ -29,7 +29,7 @@ Alternatively, in production, one would do:
 To build the ssl-legacysurvey catalog:
 
   First generate the rescaled cutouts:
-    shifter --image dstndstn/cutouts:dvsro bash
+    shifter --image dstndstn/cutouts:dvsro3 bash
     source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl/v1 --catalog=sga2025-parent --region=dr9-north --rescale --mp=128
@@ -38,8 +38,7 @@ To build the ssl-legacysurvey catalog:
   Then build the HDF5 files:
     SGA2025-shifter
     source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl/v1 --catalog=sga2025-parent --ssl-legacysurvey
-
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl/v1 --catalog=sga2025-parent --ssl-legacysurvey --overwrite
 
 ###
 Kim's wisesize project:
@@ -85,6 +84,9 @@ from astrometry.libkd.spherematch import match_radec
 
 from SGA.io import custom_brickname, get_raslice, radec_to_name
 from SGA.ellipse import choose_geometry, parse_geometry
+
+GALEX_PIXSCALE = 1.5
+UNWISE_PIXSCALE = 2.75
 
 
 def _get_annotate_one(args):
@@ -470,8 +472,9 @@ def _cutout_one(args):
     return cutout_one(*args)
 
 
-def cutout_one(basefile, ra, dec, width, pixscale, layer, 
-               dry_run, fits_cutouts, rank, iobj):
+def cutout_one(basefile, ra, dec, optical_width, optical_pixscale, 
+               optical_layer, optical_bands, dry_run, fits_cutouts, 
+               ivar_cutouts, unwise_cutouts, galex_cutouts, rank, iobj):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
@@ -480,33 +483,85 @@ def cutout_one(basefile, ra, dec, width, pixscale, layer,
     shifterimg pull dstndstn/viewer-cutouts:latest
     shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
 
+    TODO - handle the invvar images
+
     """
     from cutout import cutout
 
-    if fits_cutouts:
-        suffixes = ['.jpeg', '.fits']
-    else:
-        suffixes = ['.jpeg']
+    suffixes = ['.jpeg', ]
+    layers = [optical_layer, ]
+    pixscales = [optical_pixscale, ]
+    widths = [optical_width, ]
+    allbands = [optical_bands, ]
 
-    for suffix in suffixes:
+    if fits_cutouts:
+        suffixes += ['.fits', ]
+        layers += [optical_layer, ]
+        pixscales += [optical_pixscale, ]
+        widths += [optical_width, ]
+        allbands += [optical_bands, ]
+    if unwise_cutouts:
+        unwise_width = int(optical_width * optical_pixscale / UNWISE_PIXSCALE)
+        unwise_suffixes = ['-W1W2.fits', '-W3W4.fits', ]
+        suffixes += unwise_suffixes
+        layers += ['unwise-neo7', 'unwise-w3w4', ]
+        pixscales += [UNWISE_PIXSCALE, UNWISE_PIXSCALE, ]
+        widths += [unwise_width, unwise_width, ]
+        allbands += [['1', '2'], ['3', '4'], ]
+    if galex_cutouts:
+        galex_width = int(optical_width * optical_pixscale / GALEX_PIXSCALE)
+        suffixes += ['-galex.fits', ]
+        layers += ['galex', ]
+        pixscales += [GALEX_PIXSCALE, ]
+        widths += [galex_width, ]
+        allbands += [['f', 'n'], ]
+    
+    for suffix, layer, pixscale, width, bands in zip(suffixes, layers, pixscales, widths, allbands):
         outfile = basefile+suffix
         cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} ' + \
-            f'--layer={layer} --pixscale={pixscale} --force'
+            f'--layer={layer} --pixscale={pixscale} --bands={",".join(bands)} --force'
+        if suffix == '.fits' and ivar_cutouts:
+            cmdargs += ' --invvar'
+
         if dry_run:
             if suffix == '.jpeg':
-                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')            
+                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
         else:
             if suffix == '.jpeg':
                 outdir = os.path.dirname(basefile)
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir, exist_ok=True)
             try:
-                cutout(ra, dec, outfile, size=width, layer=layer, pixscale=pixscale, force=True)
-                if suffix == '.jpeg':
-                    print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
+                cutout(ra, dec, outfile, size=width, layer=layer, pixscale=pixscale, 
+                       invvar=ivar_cutouts, bands=bands, force=True)
+                #if suffix == '.jpeg':
+                #    print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
+                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
             except:
                 if suffix == '.jpeg':
                     print(f'WARNING: Rank {rank}, object {iobj} off the footprint: cutout {cmdargs}')                
+
+    # merge the W1W2 and W3W4 files
+    if unwise_cutouts:
+        for ii, suffix in enumerate(unwise_suffixes):
+            infile = basefile+suffix
+            if ii == 0:
+                hdr = fitsio.read_header(infile)
+                hdr.delete('BANDS')
+                hdr.delete('BAND0')
+                hdr.delete('BAND1')
+                hdr.delete('COMMENT')
+                hdr['BANDS'] = '1234'
+                for band in range(4):
+                    hdr[f'BAND{band}'] = str(band+1)
+                hdr['NAXIS3'] = 4
+                img = np.zeros((4, hdr['NAXIS2'], hdr['NAXIS1']), 'f4')
+                img[:2, :, :] = fitsio.read(infile, ext=0)
+            else:
+                img[2:, :, :] = fitsio.read(infile, ext=0)
+            os.remove(infile)
+        outfile = basefile+'-unwise.fits'
+        fitsio.write(outfile, img, header=hdr, clobber=True)
 
 
 def _get_basefiles_one(args):
@@ -514,6 +569,7 @@ def _get_basefiles_one(args):
 
 
 def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True, 
+                      unwise_cutouts=False, galex_cutouts=False,
                       overwrite=False, verbose=False):
     raslice = get_raslice(obj['RA'])
 
@@ -524,12 +580,23 @@ def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True,
         basefile = os.path.join(outdir, raslice, objname)
     nobj = 1
 
+    jpeg = os.path.isfile(basefile+'.jpeg')
+
     if overwrite is False:
         if fits_cutouts:
-            check = os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg')
+            fits = os.path.isfile(basefile+'.fits')
         else:
-            check = os.path.isfile(basefile+'.jpeg')
-        if check:
+            fits = True
+        if unwise_cutouts:
+            unwise = os.path.isfile(basefile+'-unwise.fits')
+        else:
+            unwise = True
+        if galex_cutouts:
+            galex = os.path.isfile(basefile+'-galex.fits')
+        else:
+            galex = True
+
+        if jpeg and fits and unwise and galex:
             # need to make sure the image is the correct size
             #width_exist = int(fitsio.read_header(basefile+'.fits')['IMAGEW'])
             #if width == width_exist:
@@ -542,7 +609,7 @@ def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True,
 
 def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.', 
          size=1, mp=1, annotate=False, fits_cutouts=True, 
-         wise_cutouts=False, galex_cutouts=False, overwrite=False, 
+         unwise_cutouts=False, galex_cutouts=False, overwrite=False, 
          verbose=False):
     """Build a plan!
 
@@ -568,7 +635,8 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
         if np.isscalar(width):
             width = [width] * len(objname)
 
-        mpargs = [(obj, objname1, width1, outdir, fits_cutouts, overwrite, verbose) 
+        mpargs = [(obj, objname1, width1, outdir, fits_cutouts, unwise_cutouts, 
+                   galex_cutouts, overwrite, verbose)
                   for obj, objname1, width1 in zip(cat, objname, width)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
@@ -611,10 +679,11 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
         return basefiles, allra, alldec, groups
 
 
-def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262, 
-               comm=None, mp=1, outdir='.', base_outdir='.', rescale=False, 
-               overwrite=False, fits_cutouts=True, ivar_cutouts=False,
-               wise_cutouts=False, dry_run=False, verbose=False):
+def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
+               default_bands=['g', 'r', 'z'], comm=None, mp=1, outdir='.',
+               base_outdir='.', rescale=False, overwrite=False, fits_cutouts=True,
+               ivar_cutouts=False, unwise_cutouts=False, galex_cutouts=False,
+               dry_run=False, verbose=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -634,7 +703,8 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         basefiles, allra, alldec, groups = plan(
             cat, width=width, layer=layer, outdir=outdir, 
             size=size, overwrite=overwrite, mp=mp, 
-            fits_cutouts=fits_cutouts, verbose=verbose)
+            fits_cutouts=fits_cutouts, unwise_cutouts=unwise_cutouts,
+            galex_cutouts=galex_cutouts, verbose=verbose)
         print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
@@ -663,8 +733,9 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         return
 
     mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width[indx[iobj]],
-               pixscale[indx[iobj]], layer, dry_run, fits_cutouts, rank, iobj) 
-              for iobj in range(len(indx))]
+               pixscale[indx[iobj]], layer, default_bands, dry_run, 
+               fits_cutouts, ivar_cutouts, unwise_cutouts, galex_cutouts, 
+               rank, iobj) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_cutout_one, mpargs)
@@ -716,7 +787,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     # define the reference sample
     diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
-    I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] * (cat['STARFDIST'] > 1.5))[0]
+    I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] * (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
     #I = np.where((cat['FILTERS'] == 'grz') * (cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
     #I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
     #I = np.arange(20)
@@ -732,11 +803,11 @@ def build_ssl_legacysurvey_refcat(cat, fullcat):
     refindx = np.array(refindx)
     refcat = refcat[refindx]
 
-    sslcols = ['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'REGION']
-    refcat = refcat[sslcols]
+    #sslcols = ['OBJNAME', 'RA', 'DEC', 'FILTERS', 'ROW_PARENT', 'REGION']
+    #refcat = refcat[sslcols]
 
     print('Trimming the ssl_legacysurvey sample to unresolved objects smaller than 15 arcsec!')
-    cat = cat[(diam < 15.) * ~cat['RESOLVED']]
+    cat = cat[(diam < 10.) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']]
     #cat = cat[(cat['FILTERS'] == 'grz') * (diam == 0.)]
 
     return refcat, cat
@@ -809,6 +880,8 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=20000, suffix='v1',
         cat.write(outfile, overwrite=True)
         print(f'Wrote {len(cat):,d} objects to {outfile}')
 
+    pdb.set_trace()
+
     # Ensure each output file has no more than ncatmax objects, to we
     # don't run into memory problems at NERSC.
     nchunk = int(np.ceil(ncat / ncatmax))
@@ -816,7 +889,7 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=20000, suffix='v1',
     print(f'Dividing into {nchunk:,d} chunks.')
 
     for ichunk in range(nchunk):
-        h5dir = os.path.join(outdir, 'input')
+        h5dir = os.path.join(outdir, 'input2')
         if not os.path.isdir(h5dir):
             os.makedirs(h5dir, exist_ok=True)
 
@@ -1049,10 +1122,13 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             snr_W3 = get_snr(nedlvs['LUM_W3'], nedlvs['LUM_W3_UNC'])
             snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
 
-            I = (snr_W3 > snrmin) * (snr_NUV > snrmin)
+            I = np.logical_or(snr_W3 > snrmin, snr_NUV > snrmin)
             print(f'S/N(W3)>{snrmin:.0f}, S/N(NUV)>{snrmin:.0f} cuts: {np.sum(I):,d}/{len(cat):,d}')
             cat = cat[I]
             nedlvs = nedlvs[I]
+
+            #print('Hack!')
+            #cat = cat[:10]
 
             #vfs = Table(fitsio.read('/global/homes/i/ioannis/ioannis/legacyhalos/virgofilaments/vf_north_v2_main.fits'))
             #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], vfs['RA'], vfs['DEC'], 3./3600.)
@@ -1287,7 +1363,7 @@ def main():
     # no FITS cutouts needed for the Zooniverse project
     fits_cutouts = True
     ivar_cutouts = False
-    wise_cutouts = False
+    unwise_cutouts = False
     galex_cutouts = False
     draw_largest_ellipse = False
 
@@ -1296,7 +1372,7 @@ def main():
         draw_largest_ellipse = True
     elif args.wisesize:
         ivar_cutouts = True
-        wise_cutouts = True
+        unwise_cutouts = True
         galex_cutouts = True
     else:
         pass
@@ -1315,7 +1391,7 @@ def main():
 
         plan(cat, width=width, layer=layer, size=size, indir=indir, 
              outdir=outdir, mp=args.mp, annotate=args.annotate,
-             fits_cutouts=fits_cutouts, wise_cutouts=wise_cutouts, 
+             fits_cutouts=fits_cutouts, unwise_cutouts=unwise_cutouts, 
              galex_cutouts=galex_cutouts, overwrite=args.overwrite,
              verbose=args.verbose)
         return
@@ -1335,7 +1411,7 @@ def main():
                    default_width=args.width, rescale=args.rescale, 
                    overwrite=args.overwrite, dry_run=args.dry_run, 
                    fits_cutouts=fits_cutouts, ivar_cutouts=ivar_cutouts, 
-                   wise_cutouts=wise_cutouts, galex_cutouts=galex_cutouts,
+                   unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
                    verbose=args.verbose)
 
 if __name__ == '__main__':
