@@ -40,6 +40,9 @@ To build the ssl-legacysurvey catalog:
     source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl/v1 --catalog=sga2025-parent --ssl-legacysurvey --overwrite
 
+  Investigate...
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl/v1 --catalog=sga2025-parent --no-fits-cutouts --region=dr9-north --mp=4
+
 ###
 Kim's wisesize project:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-north --mp=32
@@ -1220,31 +1223,48 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             diam, ba, pa, ref = choose_geometry(cat)
             #pdb.set_trace()
 
-        if False:
+        if True:
             # read Sara's ssl-legacysurvey file
             from glob import glob
             #from SGA.io import sga_dir
-            chunkfiles = glob('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/ssl-legacysurvey/ssl-parent-dr9-north-chunk???-v1.txt')
+
+            cat = Table(fitsio.read(os.path.join(outdir, 'ssl-parent-cat-v1.fits')))
+            refcat = Table(fitsio.read(os.path.join(outdir, 'ssl-parent-refcat-v1.fits')))
+
+            cat = cat[cat['REGION'] == region]
+            refcat = refcat[refcat['REGION'] == region]
+
+            chunkfiles = glob(os.path.join(outdir, 'output2', '*.txt'))
             ssl = vstack([Table.read(chunkfile, format='ascii.commented_header') for chunkfile in chunkfiles])
+            _, I = np.unique(ssl['ROW'], return_index=True)
+            ssl = ssl[I]
 
-            #cat[np.isin(cat['ROW_PARENT'], ssl['Row'])]
-            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], ssl['RA'], ssl['DEC'], 1./3600.)
-            cat = cat[m1]
-            ssl = ssl[m2]
+            ssl_cat = ssl[np.isin(ssl['ROW'], cat['ROW_PARENT'])]
+            ssl_refcat = ssl[np.isin(ssl['ROW'], refcat['ROW_PARENT'])]
 
-            ## annotated-montage-dr9-north-nodiam.pdf
-            #diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-            #cat = cat[diam < 1.][:100]
+            ## first investigate refcat
+            #cat = refcat[np.isin(refcat['ROW_PARENT'], ssl_refcat['ROW'])]
+            #print(cat.pprint(max_lines=-1))
 
-            # annotated--
-            #cat = cat[(diam > 10.*60.)]
+            # investigate cat - look for no other sources within 30 arcsec
+            fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
+            matches = match_radec(cat['RA'].value, cat['DEC'].value, fullcat['RA'].value,
+                                  fullcat['DEC'].value, 30./3600., indexlist=True, notself=True)
+            indx_isolated = []
+            for iobj, onematch in enumerate(matches):
+                if onematch is None:
+                    continue
+                if len(onematch) == 1:
+                    indx_isolated.append(iobj)
+            indx_isolated = np.array(indx_isolated)
+            cat = cat[indx_isolated]
+            #cat = cat[:1000]
+            #pdb.set_trace()
 
-            #cat = cat[cat['ROW_LVD'] != -99]
-            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
-            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
-            #cat = cat[(cat['DIAM_HYPERLEDA'] > 5.) * (cat['FILTERS'] == 'grz')]
-            #cat = cat[(cat['DIAM_LIT'] < 5.) * (cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
-            #cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], ssl['RA'], ssl['DEC'], 1./3600.)
+            #cat = cat[m1]
+            #ssl = ssl[m2]
+
             print(f'Trimmed to {len(cat):,d} objects.')
 
 
@@ -1282,13 +1302,14 @@ def main():
     parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
     parser.add_argument('--annotate-central-only', action='store_true', help='Only annotate the central galaxy.')
     parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
+    parser.add_argument('--no-fits-cutouts', action='store_false', dest='fits_cutouts', help='Do not generate FITS cutouts.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
     parser.add_argument('--ssl-legacysurvey', action='store_true', help='Build the hdf5 file needed by ssl-legacysurvey.')
     parser.add_argument('--debug', action='store_true', help='Print out a variety of debugging messages.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
-    
+
     args = parser.parse_args()
 
     try:
@@ -1361,7 +1382,7 @@ def main():
         return
 
     # no FITS cutouts needed for the Zooniverse project
-    fits_cutouts = True
+    fits_cutouts = args.fits_cutouts
     ivar_cutouts = False
     unwise_cutouts = False
     galex_cutouts = False
