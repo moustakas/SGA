@@ -4,18 +4,18 @@
 
 Working interactively in a login node, one would do something like:
 
-  shifter --image dstndstn/cutouts:dvsro3 bash
+  shifter --image dstndstn/cutouts:dvsro4 bash
   source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
     or
 
-  shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro3 bash
+  shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro4 bash
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
 
 Alternatively, in production, one would do:
 
-  salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro3
+  salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro4
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 > \
@@ -29,7 +29,7 @@ Alternatively, in production, one would do:
 To build the ssl-legacysurvey catalog:
 
   First generate the rescaled cutouts:
-    shifter --image dstndstn/cutouts:dvsro3 bash
+    shifter --image dstndstn/cutouts:dvsro4 bash
     source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --region=dr9-north --ssl-version=v2 --rescale --mp=128
@@ -534,7 +534,7 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
         outfile = basefile+suffix
         cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} ' + \
             f'--layer={layer} --pixscale={pixscale} --bands={",".join(bands)} --force'
-        if suffix == '.fits' and ivar_cutouts:
+        if suffix != '.jpeg' and ivar_cutouts:
             cmdargs += ' --invvar'
 
         if dry_run:
@@ -561,21 +561,35 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
             infile = basefile+suffix
             if ii == 0:
                 hdr = fitsio.read_header(infile)
-                hdr.delete('BANDS')
-                hdr.delete('BAND0')
-                hdr.delete('BAND1')
-                hdr.delete('COMMENT')
+                for key in ['BANDS', 'BAND0', 'BAND1', 'COMMENT']:
+                    hdr.delete(key)
                 hdr['BANDS'] = '1234'
                 for band in range(4):
                     hdr[f'BAND{band}'] = str(band+1)
                 hdr['NAXIS3'] = 4
+                #hdr['EXTNAME'] = 'IMAGE'
                 img = np.zeros((4, hdr['NAXIS2'], hdr['NAXIS1']), 'f4')
                 img[:2, :, :] = fitsio.read(infile, ext=0)
+                if ivar_cutouts:
+                    hdr_ivar = fitsio.read_header(infile, ext=1)
+                    for key in ['BANDS', 'BAND0', 'BAND1']:
+                        hdr_ivar.delete(key)
+                    hdr_ivar['BANDS'] = '1234'
+                    for band in range(4):
+                        hdr_ivar[f'BAND{band}'] = str(band+1)
+                    hdr_ivar['NAXIS3'] = 4
+                    #hdr_ivar['EXTNAME'] = 'INVVAR'
+                    ivar = np.zeros_like(img)
+                    ivar[:2, :, :] = fitsio.read(infile, ext=1)
             else:
                 img[2:, :, :] = fitsio.read(infile, ext=0)
+                if ivar_cutouts:
+                    ivar[2:, :, :] = fitsio.read(infile, ext=1)
             os.remove(infile)
         outfile = basefile+'-unwise.fits'
         fitsio.write(outfile, img, header=hdr, clobber=True)
+        if ivar_cutouts:
+            fitsio.write(outfile, ivar, header=hdr_ivar)
 
 
 def _get_basefiles_one(args):
@@ -922,7 +936,7 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=20000, ssl_version=N
     print(f'Dividing into {nchunk:,d} chunks.')
 
     for ichunk in range(nchunk):
-        h5dir = os.path.join(outdir, 'input', ssl_version)
+        h5dir = os.path.join(outdir, ssl_version, 'input')
         if not os.path.isdir(h5dir):
             os.makedirs(h5dir, exist_ok=True)
 
@@ -1222,8 +1236,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             cat = cat[I]
             nedlvs = nedlvs[I]
 
-            #print('Hack!')
-            #cat = cat[:10]
+            print('Hack!')
+            cat = cat[:10]
 
             #vfs = Table(fitsio.read('/global/homes/i/ioannis/ioannis/legacyhalos/virgofilaments/vf_north_v2_main.fits'))
             #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], vfs['RA'], vfs['DEC'], 3./3600.)
