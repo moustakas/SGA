@@ -43,7 +43,6 @@ SDSS J094300.51+092827.7,drop,faint shred or compact,
 SDSS J094253.47+092943.5,drop,faint shred or compact,
 SDSS J094253.10+092929.9,drop,faint shred or compact,
 SDSS J022606.41-002005.3,drop,faint shred or compact,
-SDSS J123549.66+511034.1,drop,faint shred or compact,
 IC 3049,drop,no source,Galaxy pair
 SDSS J125839.45+273922.5,drop,faint,In '1256+27W01' group
 [APS2006] J194.676010+27.66179,drop,faint,In '1256+27W01' group
@@ -3866,3 +3865,4 @@ FGC 0712,hyperleda-coords,NED incorrect,
 IC 1674,hyperleda-coords,NED incorrect,NED is very wrong
 VI Zw 110,hyperleda-coords,NED incorrect,
 CGCG 111-017,hyperleda-coords,NED incorrect,
+4C +35.16,hyperleda-coords,NED incorrect,

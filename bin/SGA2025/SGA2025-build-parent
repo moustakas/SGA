@@ -695,6 +695,7 @@ def build_parent(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    from glob import glob
     from astrometry.util.starutil_numpy import deg2dist
     from astrometry.libkd.spherematch import tree_build_radec, trees_match
 
@@ -712,6 +713,22 @@ def build_parent(verbose=False, overwrite=False):
     # FIXME - apply cuts based on additional external catalogs
     # (ssl-legacysurvey, Galaxy Zoo VI, etc.)
 
+    # read the ssl-legacysurvey results (including the veto file)
+    print('Applying the ssl results')
+    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-parent-cat-v?.fits'))
+    ssl = vstack([Table(fitsio.read(sslfile)) for sslfile in sslfiles])
+
+    vetofiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-veto-v?.txt'))
+    veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
+    I = np.isin(ssl['OBJNAME'], veto['objname'])
+    if np.sum(I) != len(veto):
+        print('Missing objects in veto files!')
+        pdb.set_trace()
+    ssl = ssl[~I]
+    
+    print(f'Removing {len(ssl):,d}/{len(cat):,d} objects based on SSL results.')
+    cat = cat[~np.isin(cat['OBJNAME'], ssl['OBJNAME'])]
+    
     # add the Gaia mask bits
     print(f'Adding Gaia bright-star masking bits.')
     
