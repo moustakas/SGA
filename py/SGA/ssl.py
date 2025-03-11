@@ -52,7 +52,7 @@ import os
 import time
 
 
-def ssl_match(path, threshold=0.1, show_candidates=False):
+def ssl_match(path, threshold=0.1):
     ##### The threshold represents the maximum amount of known galaxies that can be improperly classified before determining that the clustering algorithm did not behave as intended on the dataset.
 
     # Load h5py file into dictionary
@@ -61,6 +61,12 @@ def ssl_match(path, threshold=0.1, show_candidates=False):
         nref = np.sum(F['ref'])
 
     output_name = os.path.basename(path).replace('.hdf5', '.txt')
+
+    if os.path.exists(output_name):
+        print(f"Output file for {path} already exists.")
+        return
+
+
 
     
     DDL = load_data.DecalsDataLoader(image_dir=data_path, npix_in=152)
@@ -140,7 +146,6 @@ def ssl_match(path, threshold=0.1, show_candidates=False):
     kmeans = KMeans(n_clusters=2, random_state=0).fit(umap_embedding_cos) #if you are applying the umap first, otherwise use representations or some other value here
     cluster_labels = kmeans.labels_
     cluster_centers = kmeans.cluster_centers_
-    print('Did clustering')
 
     ###### Determine which cluster label corresponds to the cluster with known galaxies in it by finding the average of the cluster label of known galaxies and seeing if that value is closer to 0 or 1. Assumes that all of the known galaxies are at the beginning of the dataset.
     average = np.mean(cluster_labels[:int(nref)])
@@ -154,13 +159,10 @@ def ssl_match(path, threshold=0.1, show_candidates=False):
         gal_cluster = 2
     
     if gal_cluster < 2:
-        print('okay')
     ##### Limit the resulting output to exclude all of the input galaxies that are known as being within the SGA so that only new candidates are shown. Also, only compute if we have determined that the known galaxies are well behaved within the clustering
         candidate_coords = []
         rows = [] #temporary storing of the rows within this file
-        print(gals['row'][:3])
         gals['row'] = gals['row'].astype(int)
-        print(gals['row'][:3])
         
         i = 0
         while i < len(cluster_labels):
@@ -175,14 +177,9 @@ def ssl_match(path, threshold=0.1, show_candidates=False):
         # Convert list to a numpy array for saving
         candidate_coords = np.array(candidate_coords)
         
-        print(candidate_coords)
-        np.savetxt(output_name, candidate_coords, delimiter=',', header='ROW, RA,DEC, REF',fmt='%d,%f,%f,%d')
 
-    if show_candidates == True:
-        
-        plt_tools.show_galaxies(gals['images'][rows[i].astype(int)],
-                            candidate_coords[1], candidate_coords[2], 
-                            nx=20, nplt=int(len(images)), npix_show=96)
+        np.savetxt(output_name, candidate_coords, delimiter=',', header='ROW, RA,DEC, REF',fmt='%d,%f,%f,%d')
+        print(output_name, 'created.')
         
     
 # def show_candidates(ra, dec, npix_show=152, ncol=10, save=False, output_filename='show_candidates_test'):
@@ -207,5 +204,3 @@ def ssl_match(path, threshold=0.1, show_candidates=False):
 #                             nx=ncol, nplt=int(len(images)), npix_show=npix_show)
 #     if save:
 #         plt.savefig('{}.png'.format(output_filename))
-
-# ssl_match(path = '/pscratch/sd/i/ioannis/SGA2025/cutouts/parent/ssl-dr9-north-v1.hdf5')
