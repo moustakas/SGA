@@ -661,7 +661,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)#False)#True)
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -715,14 +715,39 @@ def build_parent(verbose=False, overwrite=False):
 
     # read the ssl-legacysurvey results (including the veto file)
     print('Applying the ssl results')
+
+    # First read the classification results and throw out the
+    # reference sources, which are visually inspected.
+    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v?', 'output', 'ssl-parent-chunk???-v?.txt'))
+    ssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
+    _, I = np.unique(ssl['ROW'], return_index=True)
+    ssl = ssl[I]
+    ssl = ssl[ssl['REF'] == 0]
+
+    # Now, 'row' may have changed, so we need to read the parent
+    # sample(s) to get 'objname'.
     sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-parent-cat-v?.fits'))
-    ssl = vstack([Table(fitsio.read(sslfile)) for sslfile in sslfiles])
+    ssl_parent = vstack([Table(fitsio.read(sslfile)) for sslfile in sslfiles])
+    _, uindx = np.unique(ssl_parent['OBJNAME'].value, return_index=True)
+    ssl_parent = ssl_parent[uindx]
+
+    indx_parent, indx_ssl = match(ssl_parent['ROW_PARENT'], ssl['ROW'])
+    ssl_parent = ssl_parent[indx_parent]
+    ssl = ssl[indx_ssl]
+    ssl['OBJNAME'] = ssl_parent['OBJNAME']
+    ssl['REGION'] = ssl_parent['REGION']
+
+    # investigate objects with common names
+    #bb = ssl[ssl['REGION'] == 'dr9-north']
+    #bb = bb[np.argsort(bb['RA'])]
+    #bb[(prefix != 'SDSS') * (prefix != 'WISEA') * (prefix != '2MASS') * (prefix != 'GALEXMSC') * (prefix != 'GALEXASC')].pprint(max_lines=-1)
 
     vetofiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-veto-v?.txt'))
     veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
     I = np.isin(ssl['OBJNAME'], veto['objname'])
     if np.sum(I) != len(veto):
         print('Missing objects in veto files!')
+        print(veto[~np.isin(veto['objname'], ssl['OBJNAME'])])
         pdb.set_trace()
     ssl = ssl[~I]
     

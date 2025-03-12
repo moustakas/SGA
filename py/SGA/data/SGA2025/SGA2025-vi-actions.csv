@@ -6,6 +6,20 @@ NGC 2473,drop,duplicate,Same object as 'NGC 2458'.
 BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
 #
+WISEA J131310.35+342103.1,drop,faint shred or compact,
+WISEA J131310.74+342112.9,drop,faint shred or compact,
+WISEA J174443.87+335851.3,drop,faint shred or compact,
+WISEA J174444.74+335902.3,drop,faint shred or compact,
+WISEA J173830.06+501349.9,drop,faint shred or compact,
+WISEA J173830.98+501355.4,drop,faint shred or compact,
+WISEA J173500.73+525801.8,drop,faint shred or compact,
+WISEA J173500.70+525809.7,drop,faint shred or compact,
+WISEA J173319.18+333437.3,drop,faint shred or compact,
+WISEA J173327.60+333437.0,drop,faint shred or compact,
+2MASX J17332818+3334531,drop,faint shred or compact,
+2MASX J17332762+3334370,drop,faint shred or compact,
+2MASS J12055884+6208371,drop,faint shred or compact,
+WISEA J120559.84+620835.0,drop,faint shred or compact,
 SDSS J141327.12+085912.2,drop,faint shred or compact,
 2MASX J12143907+3621279,drop,faint shred or compact,
 2MASS J12143958+3621358,drop,faint shred or compact,
@@ -63,7 +77,6 @@ SDSS J094300.51+092827.7,drop,faint shred or compact,
 SDSS J094253.47+092943.5,drop,faint shred or compact,
 SDSS J094253.10+092929.9,drop,faint shred or compact,
 SDSS J022606.41-002005.3,drop,faint shred or compact,
-NGC 3447,drop,no source,Galaxy pair
 IC 3049,drop,no source,Galaxy pair
 SDSS J125839.45+273922.5,drop,faint,In '1256+27W01' group
 [APS2006] J194.676010+27.66179,drop,faint,In '1256+27W01' group
@@ -3887,7 +3900,6 @@ IC 1674,hyperleda-coords,NED incorrect,NED is very wrong
 VI Zw 110,hyperleda-coords,NED incorrect,
 CGCG 111-017,hyperleda-coords,NED incorrect,
 4C +35.16,hyperleda-coords,NED incorrect,
-UGC 04874,hyperleda-coords,NED incorrect,
-KUG 0934+353,hyperleda-coords,NED incorrect,
 FGC 0559,hyperleda-coords,NED incorrect,
 UGC 04753,hyperleda-coords,NED incorrect,
+2MASX J18063561+5136576,hyperleda-coords,NED incorrect,

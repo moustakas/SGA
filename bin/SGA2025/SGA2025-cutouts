@@ -812,30 +812,45 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
     """Build the reference catalog for use with ssl-legacysurvey
 
     """
+    def find_isolated(refcat, fullcat, radius=90.):
+        """Identify isolated sources.
+
+        radius in arcsec
+
+        """
+        allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
+                                 fullcat['RA'].value, fullcat['DEC'].value,
+                                 radius/3600., indexlist=True, notself=False)
+        refindx = []
+        for ii, mm in enumerate(allmatches):
+            if len(mm) == 1:
+                refindx.append(ii)
+        refindx = np.array(refindx)
+        return refindx
+
+
     # define the reference sample
     diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
     if ssl_version == 'v1':
         I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
                      (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
+        # no other source (of any size) within 90 arcsec
+        refindx = find_isolated(cat[I], fullcat, radius=90.)
+        refcat = refcat[refindx]
     elif ssl_version == 'v2':
         I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
                      (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
+        diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+        J = diam_full > 30.
+        # no other source smaller than 30 arcsec within 90 arcsec
+        refindx = find_isolated(cat[I], fullcat[J], radius=90.)
+        refcat = refcat[refindx]
     else:
         pdb.set_trace()
 
-    refcat = cat[I]
-    allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
-                             fullcat['RA'].value, fullcat['DEC'].value,
-                             90./3600., indexlist=True, notself=False)
 
-    refindx = []
-    for ii, mm in enumerate(allmatches):
-        if len(mm) == 1:
-            refindx.append(ii)
-    refindx = np.array(refindx)
-    refcat = refcat[refindx]
-
+    pdb.set_trace()
     #sslcols = ['OBJNAME', 'RA', 'DEC', 'FILTERS', 'ROW_PARENT', 'REGION']
     #refcat = refcat[sslcols]
 
@@ -1236,8 +1251,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             cat = cat[I]
             nedlvs = nedlvs[I]
 
-            print('Hack!')
-            cat = cat[:10]
+            #print('Hack!')
+            #cat = cat[:10]
 
             #vfs = Table(fitsio.read('/global/homes/i/ioannis/ioannis/legacyhalos/virgofilaments/vf_north_v2_main.fits'))
             #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], vfs['RA'], vfs['DEC'], 3./3600.)
@@ -1246,11 +1261,11 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #nedlvs = nedlvs[I]
             #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
-            if False:
-                if not os.path.isdir(outdir):
-                    os.makedirs(outdir, exist_ok=True)
-    
-                outfile = os.path.join(outdir, f'wiseize-parent-{region}.fits')
+            if not os.path.isdir(outdir):
+                os.makedirs(outdir, exist_ok=True)
+            outfile = os.path.join(outdir, f'wiseize-parent-{region}.fits')
+
+            if not os.path.isfile(outfile):
                 rows = np.where(np.isin(fitsio.read(catfile, columns='ROW_PARENT'), cat['ROW_PARENT'].value))[0]
                 allcat = read_fits_catalog(catfile, rows=rows)
                 indx_cat, indx_allcat = match(cat['ROW_PARENT'], allcat['ROW_PARENT'])
@@ -1297,8 +1312,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             cat = cat[cat['REGION'] == region]
             refcat = refcat[refcat['REGION'] == region]
 
-            chunkfiles = glob(os.path.join(outdir, 'output', '*.txt'))
-            allssl = vstack([Table.read(chunkfile, format='ascii.commented_header') for chunkfile in chunkfiles])
+            sslfiles = glob(os.path.join(outdir, 'output', '*.txt'))
+            allssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
             _, I = np.unique(allssl['ROW'], return_index=True)
             allssl = allssl[I]
 
@@ -1510,7 +1525,7 @@ def main():
     elif args.wisesize:
         ivar_cutouts = True
         unwise_cutouts = True
-        galex_cutouts = True
+        galex_cutouts = False # True
     else:
         pass
 
