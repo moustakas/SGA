@@ -812,13 +812,13 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
     """Build the reference catalog for use with ssl-legacysurvey
 
     """
-    def find_isolated(refcat, fullcat, radius=90.):
+    def find_isolated(cat, fullcat, radius=90.):
         """Identify isolated sources.
 
         radius in arcsec
 
         """
-        allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
+        allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                                  fullcat['RA'].value, fullcat['DEC'].value,
                                  radius/3600., indexlist=True, notself=False)
         refindx = []
@@ -837,20 +837,18 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
                      (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
         # no other source (of any size) within 90 arcsec
         refindx = find_isolated(cat[I], fullcat, radius=90.)
-        refcat = refcat[refindx]
+        refcat = cat[I[refindx]]
     elif ssl_version == 'v2':
-        I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
                      (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
         diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-        J = diam_full > 30.
+        J = (diam_full > 30.) * (fullcat['FILTERS'] == 'grz')
         # no other source smaller than 30 arcsec within 90 arcsec
         refindx = find_isolated(cat[I], fullcat[J], radius=90.)
-        refcat = refcat[refindx]
+        refcat = cat[I[refindx]]
     else:
         pdb.set_trace()
 
-
-    pdb.set_trace()
     #sslcols = ['OBJNAME', 'RA', 'DEC', 'FILTERS', 'ROW_PARENT', 'REGION']
     #refcat = refcat[sslcols]
 
@@ -870,7 +868,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
     return refcat, cat
 
 
-def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=20000, ssl_version=None,
+def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=None,
                            bands=['g', 'r', 'z'], outdir='.', verbose=False, 
                            overwrite=False):
     """Build the hdf5 file needed by ssl-legacysurvey.
