@@ -6,6 +6,8 @@ NGC 2473,drop,duplicate,Same object as 'NGC 2458'.
 BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
 #
+VV 029:[BFB2004] 0593,drop,faint shred or compact,
+2MASS J15213224+3912065,drop,faint shred or compact,
 WISEA J131310.35+342103.1,drop,faint shred or compact,
 WISEA J131310.74+342112.9,drop,faint shred or compact,
 WISEA J174443.87+335851.3,drop,faint shred or compact,
@@ -3903,3 +3905,4 @@ CGCG 111-017,hyperleda-coords,NED incorrect,
 FGC 0559,hyperleda-coords,NED incorrect,
 UGC 04753,hyperleda-coords,NED incorrect,
 2MASX J18063561+5136576,hyperleda-coords,NED incorrect,
+GALEXASC J153934.34+660524.5,hyperleda-coords,NED incorrect,

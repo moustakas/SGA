@@ -50,7 +50,8 @@ def sga_html_dir():
 def set_legacysurvey_dir(region='dr9-north'):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
         raise EnvironmentError('Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!')
-    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
+    print('WARNING: Using dr11-early temporarly directory for dr11-south!!')
+    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early'}
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
     print(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
