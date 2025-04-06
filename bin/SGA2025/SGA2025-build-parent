@@ -742,7 +742,8 @@ def build_parent(verbose=False, overwrite=False):
     #bb = bb[np.argsort(bb['RA'])]
     #bb[(prefix != 'SDSS') * (prefix != 'WISEA') * (prefix != '2MASS') * (prefix != 'GALEXMSC') * (prefix != 'GALEXASC')].pprint(max_lines=-1)
 
-    vetofiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-veto-v?.txt'))
+    vetofiles = resources.files('SGA').joinpath('data/SGA2025/ssl-veto-v?.txt')
+
     veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
     I = np.isin(ssl['OBJNAME'], veto['objname'])
     if np.sum(I) != len(veto):
