@@ -1152,7 +1152,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
     """
     if catalog == 'sga2025-parent':
         from SGA.io import parent_version
-        version = parent_version()
+        version = parent_version(archive=True)
 
         columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'PGC', 'DIAM_LIT_REF',
                    'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
@@ -1164,7 +1164,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         else:
             catdir = '/Users/ioannis/research/projects/SGA/2025/parent'
                 
-        catfile = os.path.join(catdir, f'SGA2025-parent-{region}-{version}.fits')
+        catfile = os.path.join(catdir, f'SGA2025-parent-archive-{region}-{version}.fits')
 
         F = fitsio.FITS(catfile)
         N = F[1].get_nrows()

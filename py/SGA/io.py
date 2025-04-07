@@ -209,10 +209,12 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         return objs, objdirs
 
 
-def parent_version(vicuts=False, nocuts=False):
+def parent_version(vicuts=False, nocuts=False, archive=False):
     if nocuts:
         version = 'v1.0'
     elif vicuts:
+        version = 'v1.0'
+    elif archive:
         version = 'v1.0'
     else:
         version = 'v1.0'

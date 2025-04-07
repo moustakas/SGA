@@ -7,6 +7,7 @@ source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
 SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
+SGA2025-build-parent --build-parent-archive
 SGA2025-build-parent --build-parent
 
 SGA2025-build-parent --in-footprint --region=dr9-north
@@ -691,7 +692,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     #                   pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
 
 
-def build_parent(verbose=False, overwrite=False):
+def build_parent_archive(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
@@ -718,7 +719,8 @@ def build_parent(verbose=False, overwrite=False):
 
     # First read the classification results and throw out the
     # reference sources, which are visually inspected.
-    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v?', 'output', 'ssl-parent-chunk???-v?.txt'))
+    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v1', 'output', 'ssl-parent-chunk???-v1.txt'))
+    #sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v?', 'output', 'ssl-parent-chunk???-v?.txt'))
     ssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
     _, I = np.unique(ssl['ROW'], return_index=True)
     ssl = ssl[I]
@@ -742,7 +744,8 @@ def build_parent(verbose=False, overwrite=False):
     #bb = bb[np.argsort(bb['RA'])]
     #bb[(prefix != 'SDSS') * (prefix != 'WISEA') * (prefix != '2MASS') * (prefix != 'GALEXMSC') * (prefix != 'GALEXASC')].pprint(max_lines=-1)
 
-    vetofiles = resources.files('SGA').joinpath('data/SGA2025/ssl-veto-v?.txt')
+    vetodir = str(resources.files('SGA').joinpath('data/SGA2025'))
+    vetofiles = glob(os.path.join(vetodir, 'ssl-veto-v?.txt'))
 
     veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
     I = np.isin(ssl['OBJNAME'], veto['objname'])
@@ -822,10 +825,10 @@ def build_parent(verbose=False, overwrite=False):
         print(res[~np.isin(res['objname'].value, cat['OBJNAME'].value)])
     cat['RESOLVED'][I] = True
 
-    version = parent_version()
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+    version = parent_version(archive=True)
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
-    cat.meta['EXTNAME'] = 'PARENT'
+    cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
     cat.write(outfile, overwrite=True)
 
 
@@ -859,6 +862,20 @@ def build_parent(verbose=False, overwrite=False):
                            jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
                            pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
     
+
+
+def build_parent(verbose=False, overwrite=False):
+    """Build the parent catalog.
+
+    """
+    print('Write me - use the final data model.')
+
+    pdb.set_trace()
+    version = parent_version()
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+    print(f'Writing {len(cat):,d} objects to {outfile}')
+    cat.meta['EXTNAME'] = 'PARENT'
+    cat.write(outfile, overwrite=True)
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
@@ -2031,8 +2048,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         t0 = time.time()
 
         # read the parent catalog
-        version = parent_version()
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+        version = parent_version(archive=True)
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
 
         F = fitsio.FITS(catfile)
         N = F[1].get_nrows()
@@ -2248,7 +2265,8 @@ def main():
 
     parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned into the parent-nocuts catalog.')
     parser.add_argument('--build-parent-vicuts', action='store_true', help='Apply VI results to the parent-nocuts catalog.')
-    parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned.')
+    parser.add_argument('--build-parent-archive', action='store_true', help='Apply ssl and other cuts but maintain "archive" object names and data model.')
+    parser.add_argument('--build-parent', action='store_true', help='Generate the final parent catalog with the final data model.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
 
     parser.add_argument('--qa-footprint', action='store_true', help='Build QA of the in-footprint samples.')
@@ -2280,6 +2298,9 @@ def main():
 
     if args.build_parent_vicuts:
         build_parent_vicuts(overwrite=args.overwrite, verbose=args.verbose)
+
+    if args.build_parent_archive:
+        build_parent_archive(overwrite=args.overwrite, verbose=args.verbose)
 
     if args.build_parent:
         build_parent(overwrite=args.overwrite, verbose=args.verbose)
