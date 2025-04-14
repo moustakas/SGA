@@ -1780,6 +1780,119 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
     return suffix, todo_indices, done_indices, fail_indices
 
 
+def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
+    """Simple wrapper to read an input catalog.
+
+    """
+    if not os.path.isfile(catfile):
+        print(f'Catalog {catfile} not found')
+        return
+
+    try:
+        cat = Table(fitsio.read(catfile, ext=ext, rows=rows, columns=columns))
+        print(f'Read {len(cat):,d} galaxies from {catfile}')
+        return cat
+    except:
+        msg = f'Problem reading {catfile}'
+        raise IOError(msg)
+
+
+def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north', 
+                           outdir='.', project='project1'):
+    """Read the zooniverse VI sample.
+
+    """
+    from SGA.util import match
+    from SGA.ellipse import choose_geometry
+
+    if project == 'project1':
+        # basically the wisesize sample
+
+        # 87. < RA < 300.
+        # -10. < DEC < 85.
+        # 0.002 < z < 0.025
+        # W3 or NUV SNR > 20.   (for this, I divided  'Lum_W3'/'Lum_W3_unc' and 'Lum_NUV'/'Lum_NUV_unc', respectively)
+        # diameter > 15. arcsec OR -99., as we are including objects which do not have size measurements in your nedgeometry catalog
+        # Lastly, we removed VFS galaxies, since we already have access to those postage stamps
+
+        def get_snr(flux, ferr):
+            snr = np.zeros(len(flux))
+            J = np.isfinite(flux) * np.isfinite(ferr) * (ferr > 0.)
+            snr[J] = flux[J] / ferr[J]
+            return snr
+
+        nedlvs = read_nedlvs()
+
+        I = cat['FILTERS'] == 'grz'
+        print(f'In {region} grz footprint: {np.sum(I):,d}')
+        cat = cat[I]
+        nobj = len(cat)
+
+        cat = cat[cat['ROW_NEDLVS'] != -99]
+        indx_cat, indx_nedlvs = match(cat['ROW_NEDLVS'], nedlvs['ROW'])
+        cat = cat[indx_cat]
+        nedlvs = nedlvs[indx_nedlvs]
+        print(f'In NED-LVS: {len(cat):,d}/{nobj:,d}')
+
+        I = (cat['RA'] > 87.) * (cat['RA'] < 300.) * (cat['DEC'] > -10.) * (cat['DEC'] < 85.)
+        print(f'In 87<RA<300, -10<Dec<85: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        I = (nedlvs['Z'] > 0.002) * (nedlvs['Z'] < 0.025)
+        print(f'In 0.002<z<0.025 range: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        mindiam = 30. # [arcsec] # 15.
+        diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+
+        I = (diam > mindiam)
+        print(f'Diameter (>{mindiam:.0f} arcsec) cut: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        snrmin = 3. # 20.
+        snr_W3 = get_snr(nedlvs['LUM_W3'], nedlvs['LUM_W3_UNC'])
+        snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
+
+        I = np.logical_or(snr_W3 > snrmin, snr_NUV > snrmin)
+        print(f'S/N(W3)>{snrmin:.0f}, S/N(NUV)>{snrmin:.0f} cuts: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        if fullcat is not None:
+            diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            I = diam > 15.
+            print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
+            fullcat = fullcat[I]
+
+        # optionally write out
+
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir, exist_ok=True)
+        outfile = os.path.join(outdir, f'zooniverse-{project}-{region}.fits')
+
+        if catfile and not os.path.isfile(outfile):
+            rows = np.where(np.isin(fitsio.read(catfile, columns='ROW_PARENT'), cat['ROW_PARENT'].value))[0]
+            allcat = read_fits_catalog(catfile, rows=rows)
+            indx_cat, indx_allcat = match(cat['ROW_PARENT'], allcat['ROW_PARENT'])
+
+            allcat = allcat[indx_allcat]
+            cat = cat[indx_cat]
+            nedlvs = nedlvs[indx_cat]
+
+            assert(np.all(allcat['ROW_PARENT'] == cat['ROW_PARENT']))
+            allcat.write(outfile, overwrite=True)
+            print(f'Wrote {len(allcat):,d} objects to {outfile}')
+
+            #outfile = os.path.join(outdir, f'wiseize-nedlvs-{region}.fits')
+            #nedlvs.write(outfile, overwrite=True)
+            #print(f'Wrote {len(nedlvs):,d} objects to {outfile}')
+
+        return cat, fullcat
+
+
 #def get_parentfile(version=None, kd=False):
 #
 #    if kd:

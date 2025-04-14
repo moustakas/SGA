@@ -2164,8 +2164,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         outcat['FILTERS'] = allfcat['FILTERS']
         outcat = outcat[np.argsort(outcat['ROW_PARENT'])]
 
-        version = parent_version()
-        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+        version = parent_version(archive=True)
+        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
         print(f'Writing {len(outcat):,d} objects to {outfile}')
         outcat.write(outfile, overwrite=True)
 

@@ -10,12 +10,14 @@ Working interactively in a login node, one would do something like:
     or
 
   shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro4 bash
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --photo
+
 
 Alternatively, in production, one would do:
 
-  salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro4
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro4
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 > \
@@ -39,6 +41,7 @@ To build the ssl-legacysurvey catalog:
     SGA2025-shifter
     source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v3
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v2
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v1
 
@@ -68,14 +71,14 @@ LVD sample:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotated-montage --lvd
 
 zooniverse project:
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
-    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse/project1 \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse/project1 \
     --catalog=sga2025-parent --region=dr9-north --mp=32 --zooniverse
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
-    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse/project1 \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse/project1 \
     --catalog=sga2025-parent --region=dr9-north --mp=32 --zooniverse --annotate
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
-    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse/project1 \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse/project1 \
     --catalog=sga2025-parent --region=dr9-north --zooniverse --annotated-montage
 
 """
@@ -99,6 +102,7 @@ UNWISE_PIXSCALE = 2.75
 def do_photo(cat, comm=None, indir='.', region='dr9-north',
              outdir='.', overwrite=False, dry_run=False, 
              verbose=False):
+    pdb.set_trace()
     pass
 
 
@@ -902,6 +906,7 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
 
     # need to define a reference sample and make sure the files exist
     refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=ssl_version)
+    pdb.set_trace()
 
     refcatfiles, refcatindx = [], []
     catfiles, catindx = [], []
@@ -1055,8 +1060,8 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
     elif (nobj < 199) * (nobj > 49):
         ncol, nrow = 6, 6
     else:
-        ncol, nrow = 1, 1
-        #ncol, nrow = 4, 4
+        #ncol, nrow = 1, 1
+        ncol, nrow = 4, 4
     #ncol, nrow = 10, 10
 
     nperpage = ncol * nrow
@@ -1127,29 +1132,14 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
         #pdb.set_trace()
 
 
-def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
-    """Simple wrapper to read an input catalog.
-
-    """
-    if not os.path.isfile(catfile):
-        print(f'Catalog {catfile} not found')
-        return
-
-    try:
-        cat = Table(fitsio.read(catfile, ext=ext, rows=rows, columns=columns))
-        print(f'Read {len(cat):,d} galaxies from {catfile}')
-        return cat
-    except:
-        msg = f'Problem reading {catfile}'
-        raise IOError(msg)
-
-
 def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                  read_fullcat=False, ssl_version=None, ntest=None, annotate=False,
                  ssl=False, wisesize=False, lvd=False, zooniverse=False):
     """Simple wrapper to read a specified catalog.
 
     """
+    from SGA.io import read_fits_catalog
+
     if catalog == 'sga2025-parent':
         from SGA.io import parent_version
         version = parent_version(archive=True)
@@ -1191,6 +1181,54 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                 fullcat = cat.copy()
         else:
             fullcat = None
+
+
+        if True:
+            diam, _, _, _ = choose_geometry(cat, mindiam=5.)
+            cat = cat[diam <= 5.]
+            srt = np.argsort(cat['RA'])
+            out = cat['OBJNAME', ][srt]
+            out['COMMENT'] = 'drop,faint shred or compact'
+            out.write('junk.txt', format='ascii.csv', overwrite=True)
+
+
+            pdb.set_trace()
+
+            # Find all objects larger than XX arcmin that have an SDSS source near them
+            if False:
+                fullcat = cat.copy()
+                I = (diam > 5.*60.)
+                cat = cat[I]
+    
+                allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                                         fullcat['RA'].value, fullcat['DEC'].value,
+                                         1./60., indexlist=True, notself=False)
+                refindx = []
+                for ii, mm in enumerate(allmatches):
+                    if len(mm) > 1:
+                        if np.any('SDSS' in ' '.join(fullcat['OBJNAME'][mm].value)):
+                            refindx.append(ii)
+                refindx = np.array(refindx)
+                cat = fullcat[I][refindx]
+
+
+        if False:#True:
+            # one-by-one checks
+            cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
+            #cat = cat[cat['OBJNAME'] == 'UGC 03214']
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
+            #cat = cat[m1]
+            #print(cat['OBJNAME', 'ROW_PARENT'])
+            #pdb.set_trace()
+            #diam, ba, pa, ref = choose_geometry(cat)
+            #parse_geometry(cat, 'SMUDGes')
+
+        if False:
+            # SMUDGes
+            prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
+            cat = cat[(prefix == 'SMDG') * (cat['DIAM_LIT'] > 0.)]#[:8]
+            diam, ba, pa, ref = choose_geometry(cat)
+            #pdb.set_trace()
 
         # Kim's wisesize project
         if wisesize:
@@ -1288,16 +1326,22 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             cat = cat[cat['ROW_LVD'] != -99]
 
         if zooniverse:
-            # analyze the Zooniverse sample; toss out by STARFDIST?
-            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-            I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
-            cat = cat[I]
+            # project0
+            ## analyze the Zooniverse sample; toss out by STARFDIST?
+            #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            #I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
+            #cat = cat[I]
+            #if annotate:
+            #    diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            #    I = diam > 15.
+            #    print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
+            #    fullcat = fullcat[I]
 
-            if annotate:
-                diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-                I = diam > 15.
-                print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
-                fullcat = fullcat[I]
+            # project1
+            from SGA.io import read_zooniverse_sample
+            project = 'project1'
+            cat, fullcat = read_zooniverse_sample(cat, fullcat=fullcat, catfile=catfile, 
+                                                  region=region, outdir=outdir, project=project)
 
         if ssl:
             # read Sara's ssl-legacysurvey file
@@ -1344,45 +1388,28 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
         # more testing below here
         if False:
-            # SGA-2020 missing objects
-            miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
-            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 5./3600., nearest=True)
-            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
-            #m1 = np.unique(m1)
-            cat = cat[m1]
-            cat = cat[np.argsort(cat['RA'])]
-            #cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
-            #diam, ba, pa, ref = choose_geometry(cat)
+            #try:
+            #    from importlib import resources
+            #    vetofile = os.path.join(resources.files('SGA').joinpath('data/SGA2025'), 'ssl-veto-v1.txt')
+            #except:
+            #    from pkg_resources import resource_filename
+            #    vetofile = resource_filename('SGA', 'data/SGA2025/ssl-veto-v1.txt')
+            vetofile = '/global/u2/i/ioannis/code/git/SGA/py/SGA/data/SGA2025/ssl-veto-v1.txt'
+            veto = Table.read(vetofile, format='csv', comment='#')
+            veto = veto[veto['comment'] == region]
 
-        if False:#True:
-            # all the sources larger than XX arcmin
-            cat = cat[(cat['DIAM_LIT_REF'] == 'TWOMASS') * (cat['DIAM_LIT'] > 0.9) * (cat['DIAM_HYPERLEDA'] == -99.) * (cat['DIAM_SGA2020'] == -99.)]
-            #cat = cat[cat['OBJNAME'] == 'CGCG 018-111 NED01']
+            cat = cat[np.isin(cat['OBJNAME'], veto['objname'])]
+            #veto[~np.isin(veto['objname'], cat['OBJNAME'])]
 
-            #diam, ba, pa, ref = choose_geometry(cat)
-            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 15*60.)]
-            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 5*60.) * (diam < 10*60.)]
-            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 4*60.) * (diam < 5*60.)]
-            #cat = cat[cat['OBJNAME'] == 'NGC 0936']
-            #pdb.set_trace()
-
-        if False:#True:
-            # one-by-one checks
-            cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
-            #cat = cat[cat['OBJNAME'] == 'UGC 03214']
-            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
+            ## SGA-2020 missing objects
+            #miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 5./3600., nearest=True)
+            ##m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
+            ##m1 = np.unique(m1)
             #cat = cat[m1]
-            #print(cat['OBJNAME', 'ROW_PARENT'])
-            #pdb.set_trace()
-            #diam, ba, pa, ref = choose_geometry(cat)
-            #parse_geometry(cat, 'SMUDGes')
-
-        if False:
-            # SMUDGes
-            prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-            cat = cat[(prefix == 'SMDG') * (cat['DIAM_LIT'] > 0.)]#[:8]
-            diam, ba, pa, ref = choose_geometry(cat)
-            #pdb.set_trace()
+            #cat = cat[np.argsort(cat['RA'])]
+            ##cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
+            ##diam, ba, pa, ref = choose_geometry(cat)
 
         print(f'Trimmed to {len(cat):,d} objects.')
 
@@ -1478,12 +1505,19 @@ def main():
     cat, fullcat = None, None
     if rank == 0:
         if args.build_ssl:
-            cat_north, fullcat_north = read_catalog(args.catalog, read_fullcat=True, region='dr9-north')
-            cat_south, fullcat_south = read_catalog(args.catalog, read_fullcat=True, region='dr9-south')
-            cat_north['REGION'] = 'dr9-north'
-            cat_south['REGION'] = 'dr9-south'
-            fullcat_north['REGION'] = 'dr9-north'
-            fullcat_south['REGION'] = 'dr9-south'
+            if args.ssl_version is None:
+                raise ValueError('ssl_version must be specified')
+            if args.ssl_version == 'v1' or args.ssl_version == 'v2' or args.ssl_version == 'v3':
+                cat_north, fullcat_north = read_catalog(args.catalog, read_fullcat=True, region='dr9-north')
+                cat_south, fullcat_south = read_catalog(args.catalog, read_fullcat=True, region='dr9-south')
+                cat_north['REGION'] = 'dr9-north'
+                cat_south['REGION'] = 'dr9-south'
+                fullcat_north['REGION'] = 'dr9-north'
+                fullcat_south['REGION'] = 'dr9-south'
+            #elif args.ssl_version == 'v3':
+            #  
+            else:
+                raise ValueError(f'Unsupported ssl_version {args.ssl_version}')
             cat = vstack((cat_north, cat_south))
             fullcat = vstack((fullcat_north, fullcat_south))
             del cat_north, cat_south, fullcat_north, fullcat_south
