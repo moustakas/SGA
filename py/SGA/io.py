@@ -212,6 +212,8 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
 def parent_version(vicuts=False, nocuts=False, archive=False):
     if nocuts:
         version = 'v1.0'
+        # UGC 03563 NED02 added
+        #version = 'v1.1'
     elif vicuts:
         version = 'v1.0'
     elif archive:
