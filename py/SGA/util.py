@@ -33,6 +33,7 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
         IG = np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
 
     #IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
+    #ID = np.vstack((group['DIAM_LIT'] != -99., group['DIAM_HYPERLEDA'] != -99., group['DIAM_SGA2020'] != -99.)).T
     ID = np.vstack((group['DIAM_LIT'] != -99., group['DIAM_HYPERLEDA'] != -99.)).T
     IZ = group['Z'] != -99.
     IS = group['SEP'] == 0.
@@ -68,12 +69,12 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
     keep = np.where(mask)[0]
     drop = np.where(~mask)[0]
     if len(keep) == 1:
-        print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'Z', 'PGC', 'SEP'])
+        print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'Z', 'PGC', 'SEP'])
         keep, drop = np.where(mask)[0], np.where(~mask)[0]
         return keep, drop
 
     print('Warning: choosing by prefix failed; choosing by minimum separation.')
-    print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'Z', 'PGC', 'SEP'])
+    print(group['OBJNAME', 'OBJTYPE', 'RA', 'DEC', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'Z', 'PGC', 'SEP'])
     print()
     keep = np.atleast_1d(group['SEP'].argmin())
     return keep, np.delete(np.arange(len(group)), keep)

@@ -672,11 +672,12 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=False, verbose=verbose, build_qa=False)
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
 
-    # only explicitly drop mergers with diameters via VI and the VI-actions file
+    # [5] only explicitly drop mergers with diameters via VI and the VI-actions file
     remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
-    #multipage_skypatch(cat[(cat['DIAM_LIT_REF'] == 'RC3') * (cat['OBJTYPE'] == 'GPair')], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/bb-rc3-gpair.pdf', verbose=True)
+    # [6] Remove close pairs (after extensive VI using 
+
 
     # write out
     version_vicuts = parent_version(vicuts=True)
@@ -2193,18 +2194,18 @@ def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=False):
 
     sns, colors = plot_style(talk=True, font_scale=0.9)
 
-    version = parent_version()
+    version = parent_version(archive=True)
 
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
     cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'FILTERS']))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
-    qafile = os.path.join(sga_dir(), 'parent', 'qa', f'qa-parent-{region}-{version}.png')
+    qafile = os.path.join(sga_dir(), 'parent', 'qa', f'qa-parent-archive-{region}-{version}.png')
 
     fig, ax = plt.subplots(figsize=(8, 6))
 
     if show_fullcat:
-        fullcatfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+        fullcatfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
         fullcat = Table(fitsio.read(fullcatfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT']))
         print(f'Read {len(fullcat):,d} objects from {fullcatfile}')
         ax.scatter(fullcat['RA'], fullcat['DEC'], s=1, color='gray')

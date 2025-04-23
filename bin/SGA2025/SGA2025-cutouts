@@ -30,14 +30,14 @@ Alternatively, in production, one would do:
 ###
 To build the ssl-legacysurvey catalog:
 
-  First generate the rescaled cutouts:
+  First generate the rescaled cutouts of everything:
     shifter --image dstndstn/cutouts:dvsro4 bash
     source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --region=dr9-north --ssl-version=v2 --rescale --mp=128
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --region=dr9-north --ssl-version=v1 --rescale --mp=128
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --region=dr9-north --rescale --mp=128
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --region=dr9-north --rescale --mp=128
 
-  Then build the HDF5 files:
+    source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh  Then build the HDF5 files:
     SGA2025-shifter
     source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
@@ -46,9 +46,11 @@ To build the ssl-legacysurvey catalog:
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v1
 
   Investigate...
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v1 --rescale --annotated-montage --region=dr9-north
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v3 --no-fits-cutouts --region=dr11-south --mp=32
 
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl/v1 --catalog=sga2025-parent --ssl --ssl-version=v1 --no-fits-cutouts --region=dr9-north --mp=8
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v1 --no-fits-cutouts --region=dr9-north --mp=32
+
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v1 --rescale --annotated-montage --region=dr9-north
 
 ###
 Kim's wisesize project:
@@ -815,6 +817,10 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
 def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
     """Build the reference catalog for use with ssl-legacysurvey
 
+    v1 - original dr9-north and dr9-south version; mindiam = 10.
+    v2 - like v1 but with mindiam = 30. (but did not perform well)
+    v3 - like v1 but with dr9-north and dr11-south
+
     """
     def find_isolated(cat, fullcat, radius=90.):
         """Identify isolated sources.
@@ -850,8 +856,17 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
         # no other source smaller than 30 arcsec within 90 arcsec
         refindx = find_isolated(cat[I], fullcat[J], radius=90.)
         refcat = cat[I[refindx]]
+    elif ssl_version == 'v3':
+        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+                     (cat['STARFDIST'] > 1.5) * 
+                     np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz'))[0]
+        diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+        J = (diam_full > 30.) * np.logical_or(fullcat['FILTERS'] == 'grz', fullcat['FILTERS'] == 'girz')
+        # no other source smaller than 30 arcsec within 90 arcsec
+        refindx = find_isolated(cat[I], fullcat[J], radius=90.)
+        refcat = cat[I[refindx]]
     else:
-        pdb.set_trace()
+        raise ValueError('Write me')
 
     #sslcols = ['OBJNAME', 'RA', 'DEC', 'FILTERS', 'ROW_PARENT', 'REGION']
     #refcat = refcat[sslcols]
@@ -860,14 +875,22 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
         mindiam = 10.
         print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
               f'smaller than {mindiam:.0f} arcsec.')
-        cat = cat[(diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']]
+        I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
+        cat = cat[I]
     elif ssl_version == 'v2':
         mindiam = 30.
         print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
               f'smaller than {mindiam:.0f} arcsec.')
-        cat = cat[(diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']]
+        I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
+        cat = cat[I]
+    elif ssl_version == 'v3':
+        mindiam = 10.
+        print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
+              f'smaller than {mindiam:.0f} arcsec.')
+        I = (diam < mindiam) * np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz') * ~cat['RESOLVED']
+        cat = cat[I]
     else:
-        pdb.set_trace()
+        raise ValueError('Write me')
 
     return refcat, cat
 
@@ -906,11 +929,10 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
 
     # need to define a reference sample and make sure the files exist
     refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=ssl_version)
-    pdb.set_trace()
 
     refcatfiles, refcatindx = [], []
     catfiles, catindx = [], []
-    for region in ['dr9-north', 'dr9-south']:
+    for region in sorted(set(refcat['REGION'])):
         R = np.where(refcat['REGION'] == region)[0]
         C = np.where(cat['REGION'] == region)[0]
         refcatfiles1, refcatindx1 = get_fitsfiles(refcat[R], region)
@@ -1144,7 +1166,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         from SGA.io import parent_version
         version = parent_version(archive=True)
 
-        columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'PGC', 'DIAM_LIT_REF',
+        columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'Z', 'PGC', 'DIAM_LIT_REF',
                    'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
                    'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_NEDLVS', 'ROW_PARENT',
                    'STARFDIST', 'STARMAG', 'RESOLVED']
@@ -1183,33 +1205,66 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             fullcat = None
 
 
-        if True:
-            diam, _, _, _ = choose_geometry(cat, mindiam=5.)
-            cat = cat[diam <= 5.]
-            srt = np.argsort(cat['RA'])
-            out = cat['OBJNAME', ][srt]
-            out['COMMENT'] = 'drop,faint shred or compact'
-            out.write('junk.txt', format='ascii.csv', overwrite=True)
+        #if True:
+        if False:#True:
+            def write_junk(cat):
+                out = cat['OBJNAME', ]
+                out['COMMENT'] = 'drop,faint shred or compact'
+                out.write('junk.txt', format='ascii.csv', overwrite=True)
+                print('Wrote junk.txt')
 
-
-            pdb.set_trace()
-
-            # Find all objects larger than XX arcmin that have an SDSS source near them
-            if False:
-                fullcat = cat.copy()
-                I = (diam > 5.*60.)
-                cat = cat[I]
-    
+            def find_close(cat, fullcat, rad_arcsec):
+                rad = rad_arcsec / 3600.
                 allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                                          fullcat['RA'].value, fullcat['DEC'].value,
-                                         1./60., indexlist=True, notself=False)
+                                         rad, indexlist=True, notself=False)
                 refindx = []
                 for ii, mm in enumerate(allmatches):
-                    if len(mm) > 1:
-                        if np.any('SDSS' in ' '.join(fullcat['OBJNAME'][mm].value)):
-                            refindx.append(ii)
+                    if mm and len(mm) > 1:
+                        refindx.append(ii)
+                if len(refindx) == 0:
+                    return []
                 refindx = np.array(refindx)
-                cat = fullcat[I][refindx]
+                cat = fullcat[refindx]
+                cat = cat[np.argsort(cat['RA'])]
+                return cat
+
+            #########################
+            # All objects with at least one other sources within XX arcsec.
+            from SGA.util import resolve_close
+
+            fullcat = cat.copy()
+            rad_arcsec = 5.#10.#1.5
+
+            cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
+            pdb.set_trace()
+            fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
+
+            cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
+
+
+            #########################
+            ## All objects smaller than 5 arcsec.
+            #diam, _, _, _ = choose_geometry(cat, mindiam=5.)
+            #cat = cat[diam <= 5.]
+            #write_junk(cat)
+
+            #########################
+            ## All objects larger than XX arcmin that have an SDSS source near them.
+            #fullcat = cat.copy()
+            #I = (diam > 5.*60.)
+            #cat = cat[I]
+            #
+            #allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+            #                         fullcat['RA'].value, fullcat['DEC'].value,
+            #                         1./60., indexlist=True, notself=False)
+            #refindx = []
+            #for ii, mm in enumerate(allmatches):
+            #    if len(mm) > 1:
+            #        if np.any('SDSS' in ' '.join(fullcat['OBJNAME'][mm].value)):
+            #            refindx.append(ii)
+            #refindx = np.array(refindx)
+            #cat = fullcat[I][refindx]
 
 
         if False:#True:
@@ -1354,7 +1409,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             cat = cat[cat['REGION'] == region]
             refcat = refcat[refcat['REGION'] == region]
 
-            sslfiles = glob(os.path.join(outdir, 'output', '*.txt'))
+            sslfiles = glob(os.path.join(outdir, ssl_version, 'output', '*.txt'))
             allssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
             _, I = np.unique(allssl['ROW'], return_index=True)
             allssl = allssl[I]
@@ -1362,13 +1417,13 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             ssl_cat = allssl[np.isin(allssl['ROW'], cat['ROW_PARENT'])]
             ssl_refcat = allssl[np.isin(allssl['ROW'], refcat['ROW_PARENT'])]
 
-            # first investigate refcat
-            #cat = refcat[np.isin(refcat['ROW_PARENT'], ssl_refcat['ROW'])]
-
-            # investigate cat
-            cat = cat[np.isin(cat['ROW_PARENT'], ssl_cat['ROW'])]
-            #print(cat.pprint(max_lines=-1))
-            #pdb.set_trace()
+            if False:#True:
+                # first investigate refcat
+                cat = refcat[np.isin(refcat['ROW_PARENT'], ssl_refcat['ROW'])]
+            else:
+                # investigate cat
+                cat = cat[np.isin(cat['ROW_PARENT'], ssl_cat['ROW'])]
+                #print(cat.pprint(max_lines=-1))
 
             ## test code to identify objects with no other sources within 30 arcsec
             #fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
@@ -1496,6 +1551,9 @@ def main():
             # native or rescaled cutouts
             indir = None
             layer = f'ls-{args.region}'
+            if args.region == 'dr11-south':
+                print(f"WARNING: Overriding layer={layer}-->ls-dr11-early")
+                layer = 'ls-dr11-early'
             if args.rescale:
                 outdir = os.path.join(args.outdir, args.region, 'rescale')
             else:
@@ -1507,15 +1565,20 @@ def main():
         if args.build_ssl:
             if args.ssl_version is None:
                 raise ValueError('ssl_version must be specified')
-            if args.ssl_version == 'v1' or args.ssl_version == 'v2' or args.ssl_version == 'v3':
+            if args.ssl_version == 'v1' or args.ssl_version == 'v2':
                 cat_north, fullcat_north = read_catalog(args.catalog, read_fullcat=True, region='dr9-north')
                 cat_south, fullcat_south = read_catalog(args.catalog, read_fullcat=True, region='dr9-south')
                 cat_north['REGION'] = 'dr9-north'
                 cat_south['REGION'] = 'dr9-south'
                 fullcat_north['REGION'] = 'dr9-north'
                 fullcat_south['REGION'] = 'dr9-south'
-            #elif args.ssl_version == 'v3':
-            #  
+            elif args.ssl_version == 'v3':
+                cat_north, fullcat_north = read_catalog(args.catalog, read_fullcat=True, region='dr9-north')
+                cat_south, fullcat_south = read_catalog(args.catalog, read_fullcat=True, region='dr11-south')
+                cat_north['REGION'] = 'dr9-north'
+                cat_south['REGION'] = 'dr11-south'
+                fullcat_north['REGION'] = 'dr9-north'
+                fullcat_south['REGION'] = 'dr11-south'
             else:
                 raise ValueError(f'Unsupported ssl_version {args.ssl_version}')
             cat = vstack((cat_north, cat_south))
