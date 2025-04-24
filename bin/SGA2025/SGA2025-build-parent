@@ -480,7 +480,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'AGESVC1', 'LRG', '[MLO2002]', '[H87]', '[ARN85]', '[LYY2017]',
                 'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', 'PDCS', '[MOH2004]',
                 'MS', '[SNS2015]', '[KEC2012]', '[LPG2013]', '6C', 'SDSS-II', 
-                'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', ]
+                'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', 
+                '[TGK2001]', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:

@@ -447,40 +447,52 @@ FGC 2089,252.9539,78.7537,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
 CGCG 278-010 NED01,-99.,-99.,1.2,40.,0.65,-99.,No,Estimated geometry
 UGC 11295,278.282949,75.401017,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
 KUG 0934+353,-99.,-99.,0.4,-99.,-99.,0.4,No,Estimated diameter
-WISEA J120554.39+334954.9,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J172502.75+340800.8,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J172539.16+420629.3,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-2MASS J17282982+5315049,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-2MASS J17314273+4902136,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J173232.63+403830.5,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-2MASS J17515840+5112443,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J175124.75+671949.8,-99.,-99.,0.15,-99.,-99.,0.4,No,Estimated diameter
-WISEA J175302.07+593707.0,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J180635.57+513712.2,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J180933.79+610108.1,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-VII Zw 855 NOTES02,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J193824.37+613604.4,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J191738.15+573650.4,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J184511.78+355634.8,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J192906.36+665930.5,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J191729.93+581605.9,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-2MASS J19172741+5816057,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J123311.26+480335.4,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J124209.71+421710.7,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-2MASS J13055126+6434091,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-SDSS J161750.58+400831.3,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J170427.25+403709.0,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-ABELL 2249:KYDISC 00043,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-ABELL 2249:KYDISC 00128,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J000524.79+161815.4,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J001006.44+061150.3,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J070254.76+503457.0,-99.,-99.,0.5,-99.,-99.,0.4,No,Estimated diameter
-WISEA J071637.95+552136.9,-99.,-99.,0.5,-99.,-99.,0.4,No,Estimated diameter
-WISEA J071354.14+502355.6,-99.,-99.,0.5,-99.,-99.,0.4,No,Estimated diameter
-WISEA J072024.62+325059.1,-99.,-99.,0.5,-99.,-99.,0.4,No,Estimated diameter
-VV 141a,-99.,-99.,0.5,-99.,-99.,0.4,No,Estimated diameter
-VV 662 NED02,-99.,-99.,0.3,-99.,-99.,0.4,No,Estimated diameter
-WISEA J075201.47+440059.6,-99.,-99.,0.5,-99.,-99.,0.4,No,Estimated diameter
-2MASS J07545066+4542117,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
-WISEA J080713.54+620553.0,-99.,-99.,0.5,-99.,-99.,0.4,No,Estimated diameter
-VII Zw 212 NOTES02,-99.,-99.,0.2,-99.,-99.,0.4,No,Estimated diameter
+WISEA J120554.39+334954.9,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J172502.75+340800.8,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J172539.16+420629.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J17282982+5315049,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J17314273+4902136,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J173232.63+403830.5,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J17515840+5112443,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J175124.75+671949.8,-99.,-99.,0.15,-99.,-99.,-99.,No,Estimated diameter
+WISEA J175302.07+593707.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J180635.57+513712.2,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J180933.79+610108.1,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+VII Zw 855 NOTES02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J193824.37+613604.4,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J191738.15+573650.4,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J184511.78+355634.8,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J192906.36+665930.5,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J191729.93+581605.9,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J19172741+5816057,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J123311.26+480335.4,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J124209.71+421710.7,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+2MASS J13055126+6434091,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+SDSS J161750.58+400831.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J170427.25+403709.0,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+ABELL 2249:KYDISC 00043,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+ABELL 2249:KYDISC 00128,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J000524.79+161815.4,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J001006.44+061150.3,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J070254.76+503457.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J071637.95+552136.9,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J071354.14+502355.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J072024.62+325059.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+VV 141a,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+VV 662 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J075201.47+440059.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+2MASS J07545066+4542117,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J080713.54+620553.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+VII Zw 212 NOTES02,-99.,-99.,0.2,-99.,-99.,-99.,No,Estimated diameter
+2MASS J05483292-2521535,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+GIN 337,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+GIN 338,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+GIN 046,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+2MASS J14130683-0750409,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+LCRS B150355.0-025554,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 009- G 004,252.594319,-84.050632,-99.,-99.,-99.,-99.,No,Updated position
+NGC 6684A,-99.,-99.,5.5,90.,1.,-99.,No,Updated diameter and geometry
+FGC 2277,308.756942,-7.618642,-99.,-99.,-99.,-99.,No,Updated position
+NGC 7418A,-99.,-99.,5.,-99.,-99.,-99.,No,Estimated diameter
+III Zw 112 NOTES01,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO149-010,359.823161,-55.405201,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
