@@ -5,7 +5,20 @@ NGC 2363,drop,not a galaxy,HII region in 'NGC 2366'.
 NGC 2473,drop,duplicate,Same object as 'NGC 2458'.
 BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
+Crater Cluster,drop,GC,Milky Way globular cluster
 #
+PGC 1225243,drop,faint shred or compact,
+FLASH J133041.63-313420.5,drop,faint shred or compact,
+WISEA J113653.82+175343.4,drop,faint shred or compact,
+HCC 040,drop,faint shred or compact,
+LEDA 932265,drop,faint shred or compact,
+LSBG F416-005,drop,faint shred or compact,
+APMUKS(BJ) B032030.96-245758.8,drop,faint shred or compact,
+AM 0231-335,drop,faint shred or compact,
+2dFGRS S579Z301,drop,faint shred or compact,
+LEDA 087854,drop,faint shred or compact,
+GALEXASC J025038.30-345306.3,drop,faint shred or compact,
+WISEA J013132.95-222223.1,drop,faint shred or compact,
 WISEA J153408.50-765540.7,drop,faint shred or compact,
 SDSS J154624.08+025038.4,drop,faint shred or compact,
 2MASS J16144439+2751420,drop,faint shred or compact,
@@ -28,8 +41,7 @@ SDSS J231344.41+285943.7,drop,faint shred or compact,
 SDSS J231303.10-011436.1,drop,faint shred or compact,
 ESO 469- G 021,drop,cluster,Cluster of galaxies
 SDSS J235546.13+182534.3,drop,faint shred or compact,
-
-
+SDSS J011328.34+000906.5,drop,faint shred or compact,
 WISEA J000106.93+195457.9,drop,faint shred or compact,
 IRAS F00266+3304,drop,faint shred or compact,
 WISEA J003821.49+132844.8,drop,faint shred or compact,
@@ -3231,6 +3243,7 @@ LCRS B114750.8-031249,drop,no source,In 'LCRS B114750.8-031249' group
 SCG 2203-2812,drop,no source,In 'SCG 2203-2812' group
 WINGS J132835.43-312629.9,drop,no source,In 'FLASH J132834.24-312622.6' group
 SUMSS J032127-453041,drop,no source,In 'PGC 130260' M2 group
+III Zw 065,drop,no source,Galaxy triple
 SDSS J112655.59+004047.1,drop,no source,Galaxy triple
 SDSS J084917.29+531755.8,drop,no source,Galaxy triple
 IV Zw 075 NOTES01,drop,no source,In 'IV Zw 075' group
@@ -3521,6 +3534,7 @@ ESO-LV 3450501,drop,no source,
 ESO-LV 5960511,drop,no source,
 PGC 032769,drop,no source,
 #
+LEDA 096277,drop,radio source,
 2MASS J01144834-0029514,drop,radio source,In 'UGC 00793' group
 FIRST J105749.1+361443,drop,radio source,In 'VV 747' group
 SIP 0253-1,drop,Xray source,In 'NGC 3690' group
@@ -4108,3 +4122,15 @@ UGC 04753,hyperleda-coords,NED incorrect,
 GALEXASC J153934.34+660524.5,hyperleda-coords,NED incorrect,
 FCC 105,hyperleda-coords,NED incorrect,
 ESO 119- G 056,hyperleda-coords,NED incorrect,
+GSA 107,hyperleda-coords,NED incorrect,
+2MASX J01053645-4139049,hyperleda-coords,NED incorrect,
+WISEA J011956.38+320600.7,hyperleda-coords,NED incorrect,
+UGC 01041 NED01,hyperleda-coords,NED incorrect,
+LEDA 087851,hyperleda-coords,NED incorrect,
+ESO 030-IG 007 NED01,hyperleda-coords,NED incorrect,
+2MASX J11523525-2955082,hyperleda-coords,NED incorrect,
+LEDA 083647,hyperleda-coords,NED incorrect,
+ESO 509- G 003,hyperleda-coords,NED incorrect,
+NFP J132755.6-312857,hyperleda-coords,NED incorrect,
+VIII Zw 385 NOTES03,hyperleda-coords,NED incorrect,
+IC 1015 NED03,hyperleda-coords,NED incorrect,

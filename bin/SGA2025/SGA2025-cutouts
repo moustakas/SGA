@@ -46,10 +46,11 @@ To build the ssl-legacysurvey catalog:
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v1
 
   Investigate...
-    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v3 --no-fits-cutouts --region=dr11-south --mp=32
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v3 --rescale --annotate --region=dr11-south --mp=32
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v3 --rescale --annotated-montage --region=dr11-south --mp=32
 
+    ###
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v1 --no-fits-cutouts --region=dr9-north --mp=32
-
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v1 --rescale --annotated-montage --region=dr9-north
 
 ###
@@ -1268,6 +1269,10 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
 
         if False:#True:
+            I = (cat['DIAM_LIT'] < 0.) * (np.char.find(cat['OBJNAME'].value, 'LSBG') != -1)
+            cat = cat[I]
+
+        if False:#True:
             # one-by-one checks
             cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
             #cat = cat[cat['OBJNAME'] == 'UGC 03214']
@@ -1424,6 +1429,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                 # investigate cat
                 cat = cat[np.isin(cat['ROW_PARENT'], ssl_cat['ROW'])]
                 #print(cat.pprint(max_lines=-1))
+                pdb.set_trace()
 
             ## test code to identify objects with no other sources within 30 arcsec
             #fullcat = read_fits_catalog(catfile, columns=columns, rows=None)

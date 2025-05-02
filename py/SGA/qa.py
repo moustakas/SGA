@@ -137,7 +137,7 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
 
     # check if the viewer cutout file exists
     surveys = ['ls', 'ls', 'unwise']
-    layers = ['ls-dr9', 'ls-dr10', 'unwise-neo7']
+    layers = ['ls-dr9', 'ls-dr11-early', 'ls-dr10', 'unwise-neo7']
     for survey, layer in zip(surveys, layers):
         jpgfile = os.path.join(jpgdir, f'{outname}-{suffix}-{layer}.jpeg')
         if os.path.isfile(jpgfile):

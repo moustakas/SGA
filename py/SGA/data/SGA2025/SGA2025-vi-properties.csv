@@ -2,6 +2,8 @@
 # (visual inspections). A value of -99 means that property should not be
 # updated.
 objname_ned,ra,dec,diam,pa,ba,diam_hyperleda,update_hyperleda_coords,comment
+ESO 575- G 044,195.08679166666664,-22.693694444444446,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
+ESO 575- G 044 NED02,195.08337499999996,-22.692,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
 UGC 01386 NOTES01,28.748249999999995,13.46725,-99.,-99.,-99.,-99.,No,Center on the galaxy.
 NGC 4106,181.689961,-29.768386,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect
 ESO 406-IG 007 NED01,340.904793,-36.440937,-99.,-99.,-99.,-99.,No,NED and HyperLeda are both incorrect
@@ -496,3 +498,82 @@ FGC 2277,308.756942,-7.618642,-99.,-99.,-99.,-99.,No,Updated position
 NGC 7418A,-99.,-99.,5.,-99.,-99.,-99.,No,Estimated diameter
 III Zw 112 NOTES01,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
 ESO149-010,359.823161,-55.405201,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
+UGC 12891 NED02,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+AM 2357-252 NED01,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 149- G 010,359.8231607065702,-55.40520129472012,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
+WISEA J000446.64+051502.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+III Zw 004 NED01,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+WISEA J001838.91-303332.2,4.6617,-30.5591,0.5,-99.,-99.,-99.,No,Estimated diameter and moved to HyperLeda position of '2MFGC 00225'
+2MASS J00302994+1058124,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J003504.38-674103.3,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+2MASS J00511972-0724376,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J010853.89+322349.8,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+2MASS J01115378-6450223,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J011617.29+161806.2,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J011636.41+240208.5,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J011956.38+320600.7,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J012446.84-683743.6,-99.,-99.,0.6,-99.,-99.,-99.,No,Estimated diameter
+ESO 052-IG 001 NED02,21.21945833333333,-68.60019444444444,-99.,-99.,-99.,-99.,Yes,No source at NED position; HyperLeda mismatch with 'WISEA J012452.67-683600.4'
+ESO 052-IG 001 NED03,21.26245833333333,-68.61505555555554,-99.,-99.,-99.,-99.,Yes,No source at NED position; HyperLeda mismatch with 'WISEA J012502.93-683654.5'
+ESO 052-IG 001 NED01,21.199624999999994,-68.62222222222222,-99.,-99.,-99.,-99.,Yes,No source at NED position; HyperLeda mismatch with 'WISEA J012447.91-683720.0'
+UGC 01041 NED01,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+SDSS J013510.15+215336.9,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+UGC 01191 NED02,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+PGC 011013,43.8090,-70.6864,-99.,-99.,-99.,-99.,No,Moved to LS/DR9 position
+SCG 0156-5629:[I2002] D,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J020247.01-765028.9,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J021413.99+312627.2,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+2MASS J02231672-4828437,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+2MASS J02335709-3339388,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+2MASS J02315392-3158070,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J03223988-2447211,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+LSBG F418-043,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+LSBG F359-030,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+LSBG F359-061,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J040433.15-015652.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+MCG -03-13-002 NOTES01,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J050445.64-045157.6,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+PGC 017740,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+ESO 427-IG 020 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J091123.64-125826.2,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J091435.14-272246.8,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+VV 154b,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+VV 154c,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+[OBD2005] 035,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J100914.82+323658.7,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J101335.26-135129.5,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J10165891+1500557,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J10172627-1041315,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J103738.14-273559.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+NGC 3764 NED02,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J114107.95+104445.4,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J114400.92-251110.5,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J114849.41+095943.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J114848.64+095944.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J115235.12-295455.9,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J115406.14+035515.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+2MASS J11540639+0355217,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J121225.94-420249.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+VV 759 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J12244862+3156505,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J123935.50-045623.4,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J125010.08-412335.2,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+CCC 233,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J125234.31-311618.4,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J125423.55-290504.2,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J125457.48-265710.7,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+LEDA 083647,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J125720.03-302152.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+SDSS J125722.92+272934.6,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J130612.26-373510.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J132610.35-272515.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+IC 4287 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+VV 099,208.8944,-5.9739,-99.,-99.,-99.,-99.,No,Moved to LS/DR9 position
+GIN 337,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+GIN 338,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+2MASS J14130683-0750409,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+VIII Zw 385 NOTES03,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+CGCG 018-111 NED03,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASS J14240354+0745358,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+IC 1015 NED01,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+GALEXASC J142927.80+022317.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
