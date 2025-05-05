@@ -721,7 +721,7 @@ def build_parent_archive(verbose=False, overwrite=False):
 
     # First read the classification results and throw out the
     # reference sources, which are visually inspected.
-    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v1', 'output', 'ssl-parent-chunk???-v1.txt'))
+    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v[1,3]', 'output', 'ssl-parent-chunk???-v[1,3].txt'))
     #sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v?', 'output', 'ssl-parent-chunk???-v?.txt'))
     ssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
     _, I = np.unique(ssl['ROW'], return_index=True)
@@ -730,7 +730,7 @@ def build_parent_archive(verbose=False, overwrite=False):
 
     # Now, 'row' may have changed, so we need to read the parent
     # sample(s) to get 'objname'.
-    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-parent-cat-v?.fits'))
+    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-parent-cat-v[1,3].fits'))
     ssl_parent = vstack([Table(fitsio.read(sslfile)) for sslfile in sslfiles])
     _, uindx = np.unique(ssl_parent['OBJNAME'].value, return_index=True)
     ssl_parent = ssl_parent[uindx]
@@ -747,7 +747,10 @@ def build_parent_archive(verbose=False, overwrite=False):
     #bb[(prefix != 'SDSS') * (prefix != 'WISEA') * (prefix != '2MASS') * (prefix != 'GALEXMSC') * (prefix != 'GALEXASC')].pprint(max_lines=-1)
 
     vetodir = str(resources.files('SGA').joinpath('data/SGA2025'))
-    vetofiles = glob(os.path.join(vetodir, 'ssl-veto-v?.txt'))
+    vetofiles = glob(os.path.join(vetodir, 'ssl-veto-v[1,3].txt'))
+
+
+    make sure any object in properties or non-drop actions is in the veto file!
 
     veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
     I = np.isin(ssl['OBJNAME'], veto['objname'])
