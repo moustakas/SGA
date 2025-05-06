@@ -211,15 +211,15 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
 
 def parent_version(vicuts=False, nocuts=False, archive=False):
     if nocuts:
-        #version = 'v1.0'
+        version = 'v1.0'
         # many more objects added
-        version = 'v1.1'
+        #version = 'v1.1'
     elif vicuts:
-        #version = 'v1.0'
-        version = 'v1.1'
+        version = 'v1.0'
+        #version = 'v1.1'
     elif archive:
-        #version = 'v1.0'
-        version = 'v1.1'
+        version = 'v1.0'
+        #version = 'v1.1'
     else:
         version = 'v1.0'
     return version

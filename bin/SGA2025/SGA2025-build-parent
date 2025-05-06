@@ -14,12 +14,9 @@ SGA2025-build-parent --in-footprint --region=dr9-north
 SGA2025-build-parent --in-footprint --region=dr9-south
 SGA2025-build-parent --in-footprint --region=dr11-south
 
-salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
   SGA2025-build-parent --in-footprint --region=dr9-north
-
-srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-build-parent --in-footprint --region=dr9-south
 
 
 """
@@ -748,20 +745,64 @@ def build_parent_archive(verbose=False, overwrite=False):
 
     vetodir = str(resources.files('SGA').joinpath('data/SGA2025'))
     vetofiles = glob(os.path.join(vetodir, 'ssl-veto-v[1,3].txt'))
-
-    print('make sure any object in properties or non-drop actions is in the veto file!')
-    pdb.set_trace()
-
     veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
+
     I = np.isin(ssl['OBJNAME'], veto['objname'])
     if np.sum(I) != len(veto):
         print('Missing objects in veto files!')
         print(veto[~np.isin(veto['objname'], ssl['OBJNAME'])])
         pdb.set_trace()
     ssl = ssl[~I]
-    
+
+    # Add to the veto array any objects with an entry in either the
+    # 'properties' or (non-drop) 'actions' file.
+    propfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-properties.csv')
+    props = Table.read(propfile, format='csv', comment='#')
+    I = np.isin(ssl['OBJNAME'].value, props['objname_ned'].value)
+    if np.any(I):
+        print('WARNING: need to add the following {np.sum(I):,d} objects to the appropriate veto file')
+        print(ssl[I])
+        pdb.set_trace()
+
+    actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
+    actions = Table.read(actionsfile, format='csv', comment='#')
+    actions = actions[actions['action'] == 'hyperleda-coords']
+    I = np.isin(ssl['OBJNAME'].value, actions['objname'].value)
+    if np.any(I):
+        print('WARNING: need to add the following {np.sum(I):,d} objects to the appropriate veto file')
+        print(ssl[I])
+        pdb.set_trace()
+
     print(f'Removing {len(ssl):,d}/{len(cat):,d} objects based on SSL results.')
     cat = cat[~np.isin(cat['OBJNAME'], ssl['OBJNAME'])]
+
+    # Resolve more close pairs.
+    def find_close(cat, fullcat, rad_arcsec):
+        rad = rad_arcsec / 3600.
+        allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                                 fullcat['RA'].value, fullcat['DEC'].value,
+                                 rad, indexlist=True, notself=False)
+        refindx = []
+        for ii, mm in enumerate(allmatches):
+            if mm and len(mm) > 1:
+                refindx.append(ii)
+        if len(refindx) == 0:
+            return []
+        refindx = np.array(refindx)
+        cat = fullcat[refindx]
+        cat = cat[np.argsort(cat['RA'])]
+        return cat
+
+    pdb.set_trace()
+
+    cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'OBJTYPE', 'RA', 'DEC', 'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
+    bb = find_close(cat, cat, rad_arcsec=3.)
+    bb[cols]
+
+    fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
+
+
+    pdb.set_trace()
     
     # add the Gaia mask bits
     print(f'Adding Gaia bright-star masking bits.')
@@ -1854,7 +1895,7 @@ def read_existing_footprint(cat, region, version='v1.0'):
     input catalog.
 
     """
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
     #ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
     if os.path.isfile(catfile):# and os.path.isfile(ccdsfile):
         refcat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'NCCD', 'FILTERS']))
