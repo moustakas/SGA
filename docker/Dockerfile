@@ -1,4 +1,4 @@
-FROM legacysurvey/legacypipe:DR10.3.1
+FROM legacysurvey/cutouts:v1.0
 
 RUN for x in \
   ipython \
@@ -12,13 +12,13 @@ RUN for x in \
   photutils \
   healpy \
   astroquery \
-  ; do pip --no-cache-dir install --upgrade $x; done
+  ; do pip --no-cache-dir install --upgrade $x --break-system-packages; done
 
 # Remove the policy.xml file so we do not get an 'exhausted cache resources'
 # error when we build mosaics for very large systems.
 RUN echo '<policymap></policymap>' > /etc/ImageMagick-6/policy.xml
 
-ENV IPYTHONDIR /tmp/ipython-config
+ENV IPYTHONDIR=/tmp/ipython-config
 
 # SGA and legacyhalos
 WORKDIR /src
@@ -39,7 +39,6 @@ RUN git config --global --add safe.directory /src/SGA \
 # updates
 RUN cd /src/SGA && git pull && echo 1 \
   && cd /src/legacyhalos && git pull && echo 1
-
 
 ENV PYTHONPATH=/src/SGA/py:/src/legacyhalos/py:/src/desiutil/py:$PYTHONPATH
 ENV PATH=/src/SGA/bin:/src/legacyhalos/bin:/src/desiutil/bin:$PATH
