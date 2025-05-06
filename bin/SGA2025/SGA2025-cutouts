@@ -1206,13 +1206,12 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             fullcat = None
 
 
-        #if True:
-        if False:#True:
+        if True:
             def write_junk(cat):
                 out = cat['OBJNAME', ]
-                out['COMMENT'] = 'drop,faint shred or compact'
-                out.write('junk.txt', format='ascii.csv', overwrite=True)
-                print('Wrote junk.txt')
+                #out['COMMENT'] = 'drop,faint shred or compact'
+                out.write('junk-dr9-north.txt', format='ascii.csv', overwrite=True)
+                print('Wrote junk-dr9-north.txt')
 
             def find_close(cat, fullcat, rad_arcsec):
                 rad = rad_arcsec / 3600.
@@ -1230,25 +1229,27 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                 cat = cat[np.argsort(cat['RA'])]
                 return cat
 
+            ##########################
+            ## All objects with at least one other sources within XX arcsec.
+            #from SGA.util import resolve_close
+            #
+            #fullcat = cat.copy()
+            #rad_arcsec = 5.#10.#1.5
+            #
+            #cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
+            #pdb.set_trace()
+            #fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
+            #
+            #cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
+
+
             #########################
-            # All objects with at least one other sources within XX arcsec.
-            from SGA.util import resolve_close
-
-            fullcat = cat.copy()
-            rad_arcsec = 5.#10.#1.5
-
-            cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
+            # All objects smaller than 5 arcsec.
+            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            cat = cat[diam == 0.]
+            cat = cat[np.argsort(cat['RA'])]
+            write_junk(cat)
             pdb.set_trace()
-            fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
-
-            cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
-
-
-            #########################
-            ## All objects smaller than 5 arcsec.
-            #diam, _, _, _ = choose_geometry(cat, mindiam=5.)
-            #cat = cat[diam <= 5.]
-            #write_junk(cat)
 
             #########################
             ## All objects larger than XX arcmin that have an SDSS source near them.

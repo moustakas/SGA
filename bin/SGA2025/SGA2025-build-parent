@@ -793,16 +793,13 @@ def build_parent_archive(verbose=False, overwrite=False):
         cat = cat[np.argsort(cat['RA'])]
         return cat
 
-    pdb.set_trace()
-
-    cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA', 'OBJTYPE', 'RA', 'DEC', 'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
-    bb = find_close(cat, cat, rad_arcsec=3.)
-    bb[cols]
-
-    fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
-
-
-    pdb.set_trace()
+    #pdb.set_trace()
+    #cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 
+    #        'DIAM_HYPERLEDA', 'OBJTYPE', 'RA', 'DEC', 'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
+    #bb = find_close(cat, cat, rad_arcsec=3.)
+    #bb[cols]
+    #fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
+    #pdb.set_trace()
     
     # add the Gaia mask bits
     print(f'Adding Gaia bright-star masking bits.')
