@@ -2,6 +2,7 @@
 
 """Code to build the parent SGA2025 sample based on a combination of internal and external catalogs.
 
+salloc -N 1 -C cpu -A m3592 -t 01:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
@@ -478,7 +479,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', 'PDCS', '[MOH2004]',
                 'MS', '[SNS2015]', '[KEC2012]', '[LPG2013]', '6C', 'SDSS-II', 
                 'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', 
-                '[TGK2001]', ]
+                '[TGK2001]', '[CBR2014]', 'ANTL', '[TH2002]', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:
@@ -793,7 +794,9 @@ def build_parent_archive(verbose=False, overwrite=False):
     refcat = refcat[srt]
     cat = cat[srt]
     #bb = refcat[np.isin(refcat['OBJNAME'], ['UGC 08168', '2MASS J13034084+5129425'])]
-    cat = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False, trim=True, verbose=False)
+    #bb = refcat[np.isin(refcat['OBJNAME'], ['GALEXASC J072041.35+561217.0', 'WISEA J072041.29+561218.0'])]
+    cat = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False, 
+                        ignore_objtype=True, trim=True, verbose=False)
     cat = cat[np.argsort(cat['RA'].value)]
     del refcat
     
