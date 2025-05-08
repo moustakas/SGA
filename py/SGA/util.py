@@ -13,6 +13,38 @@ from astrometry.util.starutil_numpy import arcsec_between
 from astrometry.libkd.spherematch import match_radec
 
 
+def find_close(cat, fullcat, rad_arcsec=1., isolated=False):
+
+    rad = rad_arcsec / 3600.
+    allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                             fullcat['RA'].value, fullcat['DEC'].value,
+                             rad, indexlist=True, notself=False)
+    primaryindx, groupindx = [], []
+    for ii, mm in enumerate(allmatches):
+        if mm is not None:
+            ngroup = len(mm)
+            #print(ngroup, ii, mm)
+            if isolated:
+                if ngroup == 1:
+                    primaryindx.append(ii)
+                    groupindx.append(mm)
+            else:
+                primaryindx.append(ii)
+                groupindx.append(mm)
+
+    if len(primaryindx) == 0:
+        return [], []
+    primaryindx = np.array(primaryindx)
+    primaries = cat[primaryindx]
+    primaries = primaries[np.argsort(primaries['RA'])]
+
+    groupindx = np.hstack(groupindx)
+    groups = fullcat[groupindx]
+    groups = groups[np.argsort(groups['RA'])]
+
+    return primaries, groups
+
+
 def choose_primary(group, verbose=False, keep_all_mergers=False):
     """Choose the primary member of a group.
 

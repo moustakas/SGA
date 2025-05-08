@@ -1207,27 +1207,12 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
 
         if True:
-            def write_junk(cat):
+            def write_junk(cat, region):
+                outfile = f'junk-{region}.txt'
                 out = cat['OBJNAME', ]
                 #out['COMMENT'] = 'drop,faint shred or compact'
-                out.write('junk-dr9-north.txt', format='ascii.csv', overwrite=True)
-                print('Wrote junk-dr9-north.txt')
-
-            def find_close(cat, fullcat, rad_arcsec):
-                rad = rad_arcsec / 3600.
-                allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
-                                         fullcat['RA'].value, fullcat['DEC'].value,
-                                         rad, indexlist=True, notself=False)
-                refindx = []
-                for ii, mm in enumerate(allmatches):
-                    if mm and len(mm) > 1:
-                        refindx.append(ii)
-                if len(refindx) == 0:
-                    return []
-                refindx = np.array(refindx)
-                cat = fullcat[refindx]
-                cat = cat[np.argsort(cat['RA'])]
-                return cat
+                out.write(outfile, format='ascii.csv', overwrite=True)
+                print(f'Wrote {outfile}')
 
             ##########################
             ## All objects with at least one other sources within XX arcsec.
@@ -1244,12 +1229,14 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
 
             #########################
-            # All objects smaller than 5 arcsec.
-            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-            cat = cat[diam == 0.]
-            cat = cat[np.argsort(cat['RA'])]
-            write_junk(cat)
-            pdb.set_trace()
+            # 
+            from SGA.util import find_close
+            fullcat = cat.copy()
+
+            primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
+            diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+            cat = primaries[diam == 0.]#[:128]
+            write_junk(cat, region)
 
             #########################
             ## All objects larger than XX arcmin that have an SDSS source near them.

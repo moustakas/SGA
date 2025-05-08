@@ -776,30 +776,26 @@ def build_parent_archive(verbose=False, overwrite=False):
     print(f'Removing {len(ssl):,d}/{len(cat):,d} objects based on SSL results.')
     cat = cat[~np.isin(cat['OBJNAME'], ssl['OBJNAME'])]
 
-    # Resolve more close pairs.
-    def find_close(cat, fullcat, rad_arcsec):
-        rad = rad_arcsec / 3600.
-        allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
-                                 fullcat['RA'].value, fullcat['DEC'].value,
-                                 rad, indexlist=True, notself=False)
-        refindx = []
-        for ii, mm in enumerate(allmatches):
-            if mm and len(mm) > 1:
-                refindx.append(ii)
-        if len(refindx) == 0:
-            return []
-        refindx = np.array(refindx)
-        cat = fullcat[refindx]
-        cat = cat[np.argsort(cat['RA'])]
-        return cat
+    # Resolve more close pairs -- these choices were made after
+    # investigating a bunch of QA.
+    ##from SGA.util import find_close
 
-    #pdb.set_trace()
-    #cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 
-    #        'DIAM_HYPERLEDA', 'OBJTYPE', 'RA', 'DEC', 'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
-    #bb = find_close(cat, cat, rad_arcsec=3.)
-    #bb[cols]
-    #fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
-    #pdb.set_trace()
+    # Create refcat by sorting cat by PGC, otherwise RA will be used
+    # to define the "first" group member, which is not usually what we
+    # want. E.g., UGC 08168 is dropped in favor of 2MASS
+    # J13034084+5129425 even though the latter has a larger PGC number
+    # (but has sep==0.).
+    maxsep = 5.
+    print('Resolving additional close pairs.')
+    refcat =  cat.copy()
+    refcat[refcat['PGC'] < 0]['PGC'] = np.max(cat['PGC'].value)+1
+    srt = np.argsort(refcat['PGC'])
+    refcat = refcat[srt]
+    cat = cat[srt]
+    #bb = refcat[np.isin(refcat['OBJNAME'], ['UGC 08168', '2MASS J13034084+5129425'])]
+    cat = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False, trim=True, verbose=False)
+    cat = cat[np.argsort(cat['RA'].value)]
+    del refcat
     
     # add the Gaia mask bits
     print(f'Adding Gaia bright-star masking bits.')
