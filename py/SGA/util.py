@@ -45,7 +45,7 @@ def find_close(cat, fullcat, rad_arcsec=1., isolated=False):
     return primaries, groups
 
 
-def choose_primary(group, verbose=False, keep_all_mergers=False):
+def choose_primary(group, verbose=False, keep_all_mergers=False, ignore_objtype=False):
     """Choose the primary member of a group.
 
     keep_all is helpful for returning a group catalog without dropping any
@@ -70,9 +70,14 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
     IZ = group['Z'] != -99.
     IS = group['SEP'] == 0.
 
-    mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
-    mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
-    mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
+    if ignore_objtype:
+        mask1 = np.any(ID, axis=1)      # any diameter
+        mask2 = np.all(ID, axis=1)      # both diameters
+        mask3 = np.all(ID, axis=1) * IZ # both diameters, and a redshift
+    else:
+        mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
+        mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
+        mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
     mask4 = np.all(ID, axis=1) * IZ      # both diameters and a redshift
     mask5 = np.all(ID, axis=1) * IS      # both diameters and separation=0 (usually PGC is a minimum)
     mask6 = np.all(ID, axis=1)           # both diameters
@@ -116,7 +121,7 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
 
 def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
                   keep_all_mergers=False, objname_column='OBJNAME',
-                  trim=True, verbose=False):
+                  ignore_objtype=False, trim=True, verbose=False):
     """Resolve close objects.
 
     maxsep in arcsec
@@ -176,7 +181,8 @@ def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
             primary = np.arange(ngroup)
             drop = np.array([])
         else:
-            primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers)
+            primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers,
+                                           ignore_objtype=ignore_objtype)
             refcat['PRIMARY'][indx_refcat[drop]] = False
 
         #if verbose and (np.any(group['OBJTYPE'] == 'GPair') or np.any(group['OBJTYPE'] == 'GTrpl')):
