@@ -350,7 +350,15 @@ AGC749235,186.04125,26.23111111,-99.,170.,-99.,-99.,No,LVD dwarf; moved to LVD p
 UGC 7929,-99.,-99.,1.,94.,0.48,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
 KDG 215,-99.,-99.,1.17,45.,0.54,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
 Leo I 09,-99.,-99.,0.81,-99.,-99.,-99.,No,LVD dwarf; diameter from Carlsten et al.
+Carina,-99.,-99.,24.55,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+Carina II,-99.,-99.,17.4,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+IC 1613,-99.,-99.,19.05,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+NGC 247,-99.,-99.,25.12,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+NGC 300,-99.,-99.,25.7,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+Hydrus I,-99.,-99.,14.8,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+NGC 55,-99.,-99.,37.15,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
 NGC 7793,-99.,-99.,14.13,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
+NGC 6822,-99.,-99.,19.05,0.95,0.87,-99.,No,LVD dwarf; diameter and b/a from LVGDB; PA from HyperLeda
 CGCG 261-067 NED01,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter
 NGC 6166 NED01,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 NGC 6166 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
@@ -659,4 +667,11 @@ GALEXASC J124854.06-411907.1,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 6dF J1734288-720313,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
 CGCG 141-014,-99.,-99.,0.6,-99.,-99.,-99.,No,Estimated diameter
 CGCG 425-043,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+FCCB 1169,-99.,-99.,0.8,-99.,-99.,-99.,No,Estimated diameter
 WISEA J210707.73-250232.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 339- G 037,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter; NED morphology is a galaxy cluster
+FCCB 0456,51.8552,-33.2425,-99.,-99.,-99.,-99.,No,Moved to LS/DR10 position
+FCCB 1053,54.0240,-32.9840,-99.,-99.,-99.,-99.,No,Moved to LS/DR10 position
+GALEXASC J034421.02-353151.0,56.0878,-35.5299,-99.,-99.,-99.,-99.,No,Moved to LS/DR10 position
+NGC 2784 DW01,138.0719,-24.2136,-99.,-99.,-99.,-99.,No,Estimated position
+IC 3881,-99.,-99.,-99.,-99.,-99.,0.3,No,HyperLeda cross-ID error

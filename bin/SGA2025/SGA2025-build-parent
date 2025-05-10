@@ -1586,6 +1586,13 @@ def build_parent_nocuts(verbose=True):
     print('#####')
     print(f'Analyzing {len(sga2020):,d} SGA-2020 objects.')
 
+    # cross-ID error in HyperLeda which affected the SGA-2020. IC 3881
+    # (PGC 43961) in HyperLeda is actually IC 3887, whereas IC 3881 is
+    # actually 2MASXJ12545391+1907050 (PGC 3798359) in HyperLeda. Hack
+    # the PGC number otherwise we get a grossly overestimated
+    # diameter.
+    sga2020['PGC'][sga2020['GALAXY'] == 'IC3881'] = 3798359
+
     # match by PGC; any missing objects are due to a variety of errors
     # in the SGA2020 / HyperLeda (I think...)
     I = np.where(parent['PGC'] > 0)[0]

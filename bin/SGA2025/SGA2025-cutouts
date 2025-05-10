@@ -1214,6 +1214,36 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                 out.write(outfile, format='ascii.csv', overwrite=True)
                 print(f'Wrote {outfile}')
 
+
+            #########################
+            # All sources larger than XX arcmin with at least one
+            # other object within its diameter.
+            fullcat = cat.copy()
+            fullcat_diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
+            cat = cat[I]
+            diam = fullcat_diam[I]
+
+            allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                                     fullcat['RA'].value, fullcat['DEC'].value,
+                                     2.*np.max(diam)/3600., indexlist=True, notself=False)
+            outcat, outfullcat = [], []
+            for iobj in range(len(cat)):
+                # refine the search to this object's diameter
+                m1, m2, _ = match_radec(cat['RA'][iobj], cat['DEC'][iobj], 
+                                        fullcat['RA'][allmatches[iobj]],
+                                        fullcat['DEC'][allmatches[iobj]], 
+                                        1.2*diam[iobj]/3600.)
+                if len(m2) > 1: # at least one other object
+                    outcat.append(cat[[iobj]])
+                    outfullcat.append(fullcat[allmatches[iobj]][m2])
+
+            cat = vstack(outcat)
+            _cat = vstack(outfullcat)
+            _cat = _cat[np.argsort(_cat['RA'])]
+            write_junk(_cat, region)
+            #pdb.set_trace()
+
             ##########################
             ## All objects with at least one other sources within XX arcsec.
             #from SGA.util import resolve_close
@@ -1227,16 +1257,16 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #
             #cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
 
-
-            #########################
-            # 
-            from SGA.util import find_close
-            fullcat = cat.copy()
-
-            primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
-            diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-            cat = primaries[diam == 0.]#[:128]
-            write_junk(cat, region)
+            ##########################
+            ## All objects with diameter==0 and no other source within
+            ## 30 arcsec.
+            #from SGA.util import find_close
+            #fullcat = cat.copy()
+            #
+            #primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
+            #diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+            #cat = primaries[diam == 0.]#[:128]
+            #write_junk(cat, region)
 
             #########################
             ## All objects larger than XX arcmin that have an SDSS source near them.
@@ -1465,6 +1495,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
     print('Sorting by RA')
     cat = cat[np.argsort(cat['RA'])]
+    #cat = cat[np.argsort(cat['OBJNAME'])]
 
     if len(cat) == 0:
         raise ValueError('No objects in catalog!')

@@ -4,6 +4,8 @@
 objname,comment
 A0952+69,dr9-north
 Andromeda II,dr9-south
+Andromeda XI,dr11-south
+Andromeda XII,dr11-south
 Andromeda XIII,dr9-south
 Andromeda XIV,dr9-south
 Andromeda XVI,dr9-south
@@ -11,9 +13,12 @@ Andromeda XXII,dr9-south
 Andromeda XXVIII,dr9-south
 Andromeda XXIX,dr9-south
 Antlia,dr9-south
+Antlia II,dr11-south
 Antlia B,dr9-south
+Aquarius,dr11-south
 Aquarius II,dr9-south
 Aquarius III,dr9-south
+Bedin 1,dr11-south
 Bootes I,dr9-south
 Bootes II,dr9-south
 Bootes III,dr9-south
@@ -21,13 +26,27 @@ Bootes IV,dr9-north
 Bootes V,dr9-north;dr9-south
 BK3N,dr9-north
 BK6N,dr9-north
-Coma Berenices,dr9-south
 Canes Venatici I,dr9-north;dr9-south
 Canes Venatici II,dr9-north
+Carina,dr11-south
+Carina II,dr11-south
+Carina III,dr11-south
+CenA-MM-Dw1,dr11-south
+CenA-MM-Dw2,dr11-south
+CenA-MM-Dw3,dr11-south
+CenA-MM-Dw4,dr11-south
+CenA-MM-Dw5,dr11-south
+CenA-MM-Dw6,dr11-south
+CenA-MM-Dw7,dr11-south
+Centaurus I,dr11-south
+Centaurus N,dr11-south
+Cetus,dr11-south
 Cetus II,dr9-south
 Clump I,dr9-north
 Clump III,dr9-north
-Columba I,dr9-south
+Columba I,dr9-south;dr11-south
+Coma Berenices,dr9-south;dr11-south
+Crater II,dr11-south
 d0926+70,dr9-north
 d0934+70,dr9-north
 d0939+71,dr9-north
@@ -38,43 +57,70 @@ d1006+67,dr9-north
 d1014+68,dr9-north
 d1015+69,dr9-north
 d1041+70,dr9-north
-dw0036m2828,dr9-south
-dw1046+1244,dr9-south
+dw1046+1244,dr9-south;dr11-south
 dw1328+4703,dr9-north
-dw1300+1843,dr9-south
+dw1300+1843,dr9-south;dr11-south
+dw1322-39,dr11-south
+dw1323-40a,dr11-south
+dw1323-40b,dr11-south
+dw1329-45,dr11-south
+dw1335-29,dr11-south
+dw1336-44,dr11-south
+dw1340-30,dr11-south
+dw1341-43,dr11-south
+dw1342-43,dr11-south
 dw1330+4731,dr9-north
+dw0036m2828,dr9-south;dr11-south
 DDO 169NW,dr9-north
-Donatiello III,dr9-south
-Donatiello IV,dr9-south
+Donatiello III,dr9-south;dr11-south
+Donatiello IV,dr9-south;dr11-south
 Draco,dr9-north
 Draco II,dr9-north
-Eridanus II,dr9-south
+Eridanus II,dr9-south;dr11-south
+Eridanus IV,dr11-south
+ESO 222-010,dr11-south
+ESO 269-037,dr11-south
 F8D1,dr9-north
 FM1,dr9-north
-Fornax,dr9-south
-GALFA Dw3,dr9-south
+Fornax,dr9-south;dr11-south
+GALFA Dw3,dr9-south;dr11-south
 GARLAND,dr9-north
-Grus I,dr9-south
-Grus II,dr9-south
-Hercules,dr9-south
-Horologium I,dr9-south
-Horologium II,dr9-south
+Grus I,dr9-south;dr11-south
+Grus II,dr9-south;dr11-south
+HIPASS J1247-77,dr11-south
+HIPASS J1348-37,dr11-south
+Hercules,dr9-south;dr11-south
+Horologium I,dr9-south;dr11-south
+Horologium II,dr9-southdr11-south
+Hydra II,dr11-south
+Hydrus I,dr11-south
+IC 3104,dr11-south
 IKN,dr9-north
-JKB129,dr9-south
+JKB129,dr9-south;dr11-south
 KDG 73,dr9-north
 KK 17,dr9-south
+KK 195,dr11-south
+KK 196,dr11-south
+KK 197,dr11-south
+KK 208,dr11-south
+KK 213,dr11-south
+KK 218,dr11-south
+KK 221,dr11-south
 KK 242,dr9-north
-LGS 3,dr9-south
-Leo I 09,dr9-south
-Leo K,dr9-south
-Leo M,dr9-south
-Leo P,dr9-south
-Leo T,dr9-south
-Leo Minor I,dr9-south
-Leo IV,dr9-south
-Leo V,dr9-south
-Leo VI,dr9-south
-LV J0055-2310,dr9-south
+KKs 55,dr11-south
+KV19-271,dr11-south
+LGS 3,dr9-south;dr11-south
+Leo I 09,dr9-south;dr11-south
+Leo K,dr9-south;dr11-south
+Leo M,dr9-south;dr11-south
+Leo P,dr9-south;dr11-south
+Leo T,dr9-south;dr11-south
+Leo Minor I,dr9-south;dr11-south
+Leo IV,dr9-south;dr11-south
+Leo V,dr9-south;dr11-south
+Leo VI,dr9-south;dr11-south
+LMC,dr11-south
+LV J0055-2310,dr9-south;dr11-south
 LV J1228+4358,dr9-north
 MADCASH-1,dr9-north
 M101 Dw9,dr9-north
@@ -82,35 +128,45 @@ M101 DwA,dr9-north
 M101-DF1,dr9-north
 M101-DF2,dr9-north
 M101-DF3,dr9-north
-Pegasus III,dr9-south
-Pegasus IV,dr9-south
-Pegasus V,dr9-south
-Pegasus W,dr9-south
-Phoenix,dr9-south
-Phoenix II,dr9-south
-Pictor I,dr9-south
-Pisces II,dr9-south
-Pisces VII,dr9-south
-Reticulum II,dr9-south
-Reticulum III,dr9-south
-Scl-MM-Dw1,dr9-south
-Scl-MM-Dw2,dr9-south
-Scl-MM-Dw3,dr9-south
-Scl-MM-Dw4,dr9-south
-Scl-MM-Dw5,dr9-south
-Sculptor,dr9-south
-Segue 1,dr9-south
-Segue 2,dr9-south
-Sextans,dr9-south
-Sextans II,dr9-south
-Tucana B,dr9-south
-Tucana II,dr9-south
-Tucana III,dr9-south
-Tucana IV,dr9-south
-Tucana V,dr9-south
+NGC 4594-DGSAT-2,dr11-south
+NGC 4594-DGSAT-3,dr11-south
+PGC 51659,dr11-south
+Pavo,dr11-south
+Pegasus III,dr9-south;dr11-south
+Pegasus IV,dr9-south;dr11-south
+Pegasus V,dr9-south;dr11-south
+Pegasus W,dr9-south;dr11-south
+Phoenix,dr9-south;dr11-south
+Phoenix II,dr9-south;dr11-south
+Pictor I,dr9-south;dr11-south
+Pictor II,dr11-south
+Pisces II,dr9-south;dr11-south
+Pisces VII,dr9-south;dr11-south
+Reticulum II,dr9-south;dr11-south
+Reticulum III,dr9-south;dr11-south
+SMC,dr11-south
+Sagittarius,dr11-south
+Sagittarius dIrr,dr11-south
+Scl-MM-Dw1,dr9-south;dr11-south
+Scl-MM-Dw2,dr9-south;dr11-south
+Scl-MM-Dw3,dr9-south;dr11-south
+Scl-MM-Dw4,dr9-south;dr11-south
+Scl-MM-Dw5,dr9-south;dr11-south
+Sculptor,dr9-south;dr11-south
+Sculptor-dE1,dr11-south
+Segue 1,dr9-south;dr11-south
+Segue 2,dr9-south;dr11-south
+Sextans,dr9-south;dr11-south
+Sextans II,dr9-south;dr11-south
+Tucana B,dr9-south;dr11-south
+Tucana II,dr9-south;dr11-south
+Tucana III,dr9-south;dr11-south
+Tucana IV,dr9-south;dr11-south
+Tucana V,dr9-south;dr11-south
 Ursa Major I,dr9-north
 Ursa Major II,dr9-north
 Ursa Minor,dr9-north
-Virgo I,dr9-south
-Virgo II,dr9-south
+Virgo I,dr9-south;dr11-south
+Virgo II,dr9-south;dr11-south
 Willman 1,dr9-north
+

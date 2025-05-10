@@ -741,7 +741,7 @@ def nedfriendly_lvd(old):
         'KKSG 32': 'PGC1 0042407 NED015',
         'KKSG 33': 'PGC1 0042407 NED016',
         'KKSG 37': 'NSA 142339',
-        'Leo I 09': 'NGC 3368:[CVD2018] DF6', # HyperLeda matches to SDSS J104653.19+124441.4
+        'Leo I 09': 'Leo dw A', #'NGC 3368:[CVD2018] DF6', # HyperLeda matches to SDSS J104653.19+124441.4
         'Leo VI': 'RCS 04020600360',
         'M101-DF1': 'PGC1 0050063 NED008',
         'M101-DF2': 'PGC1 0050063 NED007',
