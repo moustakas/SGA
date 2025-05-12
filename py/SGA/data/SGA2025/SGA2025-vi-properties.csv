@@ -35,7 +35,6 @@ ESO 400-IG 031 NED01,307.2949166666666,-36.96644444444445,-99.,-99.,-99.,-99.,No
 ESO 384-IG 025 NED02,209.954458,-33.682152,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J135949.07-334055.7'.
 ESO 220-IG 010 NED01,201.74449999999996,-49.32491666666667,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132658.68-491929.3'.
 ESO 220-IG 010 NED02,201.76287499999998,-49.33388888888889,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J132703.08-492001.7'.
-ESO 269-IG 074 NED02,198.610279,-46.106984,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J131426.46-460625.1'.
 ESO 266-IG 005 NED02,173.791,-45.39552777777778,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J113509.92-452344.7'.
 ESO 118-IG 039 NED02,70.888076,-61.404400,-99.,-99.,-99.,-99.,No,Coordinates on web interface does not match query results.
 ESO 118-IG 004 NED02,62.085788,-61.269773,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J040820.58-611611.1'.
@@ -674,3 +673,9 @@ FCCB 1053,54.0240,-32.9840,-99.,-99.,-99.,-99.,No,Moved to LS/DR10 position
 GALEXASC J034421.02-353151.0,56.0878,-35.5299,-99.,-99.,-99.,-99.,No,Moved to LS/DR10 position
 NGC 2784 DW01,138.0719,-24.2136,-99.,-99.,-99.,-99.,No,Estimated position
 IC 3881,-99.,-99.,-99.,-99.,-99.,0.3,No,HyperLeda cross-ID error
+IC 4277,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+GALEXASC J180728.96+353726.4,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+KUG 0222-120,36.174646,-11.775435,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 485- G 004,69.797785,-24.179891,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 161-IG 007 NED01,96.572116,-53.685568,0.5,-99.,-99.,-99.,No,Moved to SGA-2020 position; estimated diameter
+WISEA J115246.87+205754.3,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter

@@ -1220,29 +1220,33 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             # other object within its diameter.
             fullcat = cat.copy()
             fullcat_diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-            I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
+            #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
+            I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
+            #I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
             cat = cat[I]
             diam = fullcat_diam[I]
 
             allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                                      fullcat['RA'].value, fullcat['DEC'].value,
-                                     2.*np.max(diam)/3600., indexlist=True, notself=False)
+                                     np.max(diam)/3600., indexlist=True, notself=False)
             outcat, outfullcat = [], []
             for iobj in range(len(cat)):
                 # refine the search to this object's diameter
                 m1, m2, _ = match_radec(cat['RA'][iobj], cat['DEC'][iobj], 
                                         fullcat['RA'][allmatches[iobj]],
                                         fullcat['DEC'][allmatches[iobj]], 
-                                        1.2*diam[iobj]/3600.)
+                                        0.75*diam[iobj]/3600.)
                 if len(m2) > 1: # at least one other object
                     outcat.append(cat[[iobj]])
                     outfullcat.append(fullcat[allmatches[iobj]][m2])
 
             cat = vstack(outcat)
             _cat = vstack(outfullcat)
+            _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
+            _cat = _cat[uindx]
             _cat = _cat[np.argsort(_cat['RA'])]
+            pdb.set_trace()
             write_junk(_cat, region)
-            #pdb.set_trace()
 
             ##########################
             ## All objects with at least one other sources within XX arcsec.

@@ -479,7 +479,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', 'PDCS', '[MOH2004]',
                 'MS', '[SNS2015]', '[KEC2012]', '[LPG2013]', '6C', 'SDSS-II', 
                 'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', 
-                '[TGK2001]', '[CBR2014]', 'ANTL', '[TH2002]', ]
+                '[TGK2001]', '[CBR2014]', 'ANTL', '[TH2002]', '[CBR2013]', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:
@@ -1939,7 +1939,7 @@ def read_existing_footprint(cat, region, version='v1.0'):
 
 
 def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
-                      width_pixels=152, bands=BANDS):
+                      width_pixels=38, bands=BANDS):
     """Support routine for in_footprint.
 
     """
@@ -2076,12 +2076,13 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         return Table(), Table()
 
 
-def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, 
+def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152, 
                  bands=BANDS, ntest=None):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
     radius in degrees
+    width_pixels - diameter for more refined search
 
     """
     from SGA.coadds import RUNS
