@@ -4,6 +4,7 @@
 
 Working interactively in a login node, one would do something like:
 
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
   shifter --image dstndstn/cutouts:dvsro4 bash
   source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
@@ -1207,8 +1208,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
 
         if True:
-            def write_junk(cat, region):
-                outfile = f'junk-{region}.txt'
+            def writeit(cat, region, prefix='tmplist'):
+                outfile = f'{prefix}-{region}.txt'
                 out = cat['OBJNAME', ]
                 #out['COMMENT'] = 'drop,faint shred or compact'
                 out.write(outfile, format='ascii.csv', overwrite=True)
@@ -1220,9 +1221,14 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             # other object within its diameter.
             fullcat = cat.copy()
             fullcat_diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-            #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
-            I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
-            #I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
+
+            isolated = True
+            if isolated:
+                I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
+            else:
+                #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
+                I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
             cat = cat[I]
             diam = fullcat_diam[I]
 
@@ -1236,17 +1242,27 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                                         fullcat['RA'][allmatches[iobj]],
                                         fullcat['DEC'][allmatches[iobj]], 
                                         0.75*diam[iobj]/3600.)
-                if len(m2) > 1: # at least one other object
-                    outcat.append(cat[[iobj]])
-                    outfullcat.append(fullcat[allmatches[iobj]][m2])
+                if isolated:
+                    # isolated!
+                    if len(m2) == 1:
+                        prefix = 'isolated'
+                        outcat.append(cat[[iobj]])
+                        outfullcat.append(fullcat[allmatches[iobj]][m2])
+                else:
+                    # at least one other object
+                    if len(m2) > 1:
+                        prefix = 'tmplist'
+                        outcat.append(cat[[iobj]])
+                        outfullcat.append(fullcat[allmatches[iobj]][m2])
 
             cat = vstack(outcat)
+            print(len(cat))
+
             _cat = vstack(outfullcat)
             _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
             _cat = _cat[uindx]
             _cat = _cat[np.argsort(_cat['RA'])]
-            pdb.set_trace()
-            write_junk(_cat, region)
+            writeit(_cat, region, prefix=prefix)
 
             ##########################
             ## All objects with at least one other sources within XX arcsec.

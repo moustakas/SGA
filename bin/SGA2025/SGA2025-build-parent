@@ -2,7 +2,7 @@
 
 """Code to build the parent SGA2025 sample based on a combination of internal and external catalogs.
 
-salloc -N 1 -C cpu -A m3592 -t 01:00:00 --qos interactive
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
