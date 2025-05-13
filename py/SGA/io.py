@@ -830,7 +830,8 @@ def nedfriendly_lvd(old):
 
 def version_lvd():
     #ver = 'dwarf-all-b685634'
-    ver = 'v1.0.2'
+    #ver = 'v1.0.2'
+    ver = 'v1.0.4'
     return ver
 
 
