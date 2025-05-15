@@ -921,16 +921,16 @@ def nedfriendly_lvd(old):
         'dw1321+4226': '[CGB2022] dw 1321+4226',
         'dw1322-39': 'Cen A:[MJB2017] dw 1322-39',
         'dw1323-40a': '[CGG2021] dw J1323-40', # note: "40" not "40a"
-        'dw1323-40b': '[MJB2017] dw 1323-40a',
+        'dw1323-40b': '[MJB2017] dw 1323-40b',
         'dw1328+4703': '[CGB2022] dw 1328+4703',
         'dw1329-45': 'Cen A:[MJP2016] dw 1329-45',
         'dw1330+4731': '[CGB2022] dw 1330+4731',
-        'dw1335-29': 'Cen A:[MJP2016] dw 1329-45',
+        'dw1335-29': '[MJB2015] dw J1335-29',
         'dw1336-44': 'Cen A:[MJP2016] dw 1336-44',
-        'dw1340-30': '[CGB2022] dw 1340-30',
-        'dw1341-43': '[CGB2022] dw 1341-43',
-        'dw1342-43': '[CGB2022] dw 1342-43',
-        'dw1343+58': '[CGB2022] dw 1343+58',
+        'dw1340-30': '[MJB2015] dw 1340-30',
+        'dw1341-43': 'Cen A:[MJP2016] dw 1341-43',
+        'dw1342-43': 'Cen A:[MJP2016] dw 1342-43',
+        'dw1343+58': 'WISEA J134307.12+581340.2', # ??
         'Eridanus II': 'Eridanus II Dwarf',
         'Eridanus IV': 'Eridanus IV Dwarf',
         'ESO 006-001': 'ESO 006- G 001',
@@ -977,7 +977,7 @@ def nedfriendly_lvd(old):
         'Fluffy': '[OSG2024] Fluffy',
         'FM1': 'F06D1',
         'Fornax': 'Fornax Dwarf Spheroidal',
-        'FS04': 'CGCG 065-086', # maybe BST1047+1156 ??
+        'FS04': '[CGB2022] dw 1042+1220', # 'CGCG 065-086'
         'GALFA Dw3': 'GALFA-Dw3', # 'GALFA J044.7+13.6+528',
         'GALFA Dw4': 'GALFA-Dw4', # 'PGC1 5072715 NED001',
         'GARLAND': 'The Garland',
@@ -1091,7 +1091,7 @@ def nedfriendly_lvd(old):
         'KKH 78': 'KKH 78', # 'WISEA J121745.51+332035.4',
         'KKH 86': 'KKH 86', # GALEXASC J135433.63+041438.4',
         'KKH 98': 'KKH 98', # GALEXMSC J234534.33+384303.7',
-        'KKR 25': 'KKR 225', # PGC1 2801026 NED001',
+        'KKR 25': 'KKR 25', # PGC1 2801026 NED001',
         'KKR 3': 'KKR 3', # 'PGC1 0166185 NED001',
         'KKs 3': '[KK2000] 3',
         'KKs 51': '[KK2000] 51',
@@ -1131,7 +1131,7 @@ def nedfriendly_lvd(old):
         'Leo IV': 'Leo IV',
         #'Leo K': '', # not in NED
         #'Leo M': '',  # not in NED
-        #'Leo Minor I': '', not in NED
+        'Leo Minor I': 'Leo Minor I Dwarf',
         'Leo P': 'Leo P',
         'Leo T': 'Leo T',
         'Leo V': 'Leo V',
@@ -1161,8 +1161,8 @@ def nedfriendly_lvd(old):
         'M96-DF1': 'ELVES dw J1048p1158',
         'M96-DF2': 'ELVES dw J1047p1202',
         'M96-DF7': 'ELVES dw J1047p1248',
-        #'MADCASH-1': '', not in NED?
-        #'MADCASH-2': '', not in NED?
+        'MADCASH-1': 'MADCASH J074238+652501-dw',
+        #'MADCASH-2': '', not in NED?? MADCASH J121007+352635-dw maybe??
         'MAPS 1231+42': '[KMK2013] MAPS J1231+42',
         'MAPS 1249+44': '[KMK2013] MAPS 1249+44',
         'MCG -01-26-009': 'MCG -01-26-009',
@@ -1206,7 +1206,7 @@ def nedfriendly_lvd(old):
         'NGC 3384': 'NGC 3384',
         'NGC 3412': 'NGC 3412',
         'NGC 3521-dwTBG': 'NGC 3521:[KRZ2020] dwTBG',
-        #'NGC 3521-sat': '', not in NED; 'NGC 3521sat' ??
+        'NGC 3521-sat': '[CGB2022] dw 1105+0006', # 'NGC 3521sat' ??
         'NGC 3593': 'NGC 3593',
         'NGC 3623': 'NGC 3623',
         'NGC 3628': 'NGC 3628',
@@ -1255,9 +1255,9 @@ def nedfriendly_lvd(old):
         'NGC 59': 'NGC 0059',
         'NGC 625': 'NGC 0625',
         'NGC 628-dwA': '[CGB2022] dw J0137+1537',
-        #'NGC 628-dwB': '', # not in NED?
+        'NGC 628-dwB': 'dw0137+1537',
         'NGC 6503': 'NGC 6503',
-        'NGC 6744 dwTBGa': 'NGC 3521:[KRZ2020] dwTBG',
+        'NGC 6744 dwTBGa': 'NGC 6744:[KRZ2020] dwTBGa',
         'NGC 6789': 'NGC 6789',
         'NGC 6822': 'NGC 6822',
         'NGC 7793': 'NGC 7793',
@@ -1434,6 +1434,10 @@ def read_lvd(rank=0, rows=None):
         #for obj in ['KKs 3', 'KKs 51', 'KKs 53', 'KKs 54', 'KKs 55', 'KKs 57', 'KKs 58', 'KKs 59']:
         #    I = np.where(lvd['name'] == obj)[0]
         #    lvd['name'][I] = obj.upper()
+
+        if version == 'v1.0.4':
+            I = lvd['name'] == 'MADCASH-1'
+            lvd['ra'][I] = 115.6641667
 
         # drop unconfirmed systems
         print(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
