@@ -1191,7 +1191,46 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         else:
             rows = np.arange(N)
 
-        cat = read_fits_catalog(catfile, columns=columns, rows=rows)
+        #cat = read_fits_catalog(catfile, columns=columns, rows=rows)
+
+        ##################################################
+        print('HACK!!')
+        from SGA.io import read_lvd
+        from SGA.ellipse import get_basic_geometry
+        from SGA.util import match
+
+        lvd = read_lvd()
+        cat = get_basic_geometry(lvd)
+        cat.rename_column('GALAXY', 'OBJNAME')
+        cat['RA'] = lvd['RA']
+        cat['DEC'] = lvd['DEC']
+        cat['ROW_LVD'] = lvd['ROW']
+        cat['ROW_PARENT'] = lvd['ROW']
+        cat['OBJTYPE'] = 'G                '
+        cat['MORPH'] = '                             '
+        cat['DIAM_SGA2020'] = -99.
+        cat['DIAM_HYPERLEDA'] = -99.
+        cat['BA_SGA2020'] = -99.
+        cat['BA_HYPERLEDA'] = -99.
+        cat['PA_SGA2020'] = -99.
+        cat['PA_HYPERLEDA'] = -99.
+
+        catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits'
+        allrows = fitsio.read(catfile, columns='ROW_LVD')
+        I = np.where(np.isin(allrows, lvd['ROW'].value))[0]
+        lvdcat = Table(fitsio.read(catfile, rows=I))
+        indx_cat, indx_lvdcat = match(cat['OBJNAME'], lvdcat['OBJNAME'])
+
+        cat['OBJTYPE'][indx_cat] = lvdcat['OBJTYPE'][indx_lvdcat]
+        cat['MORPH'][indx_cat] = lvdcat['MORPH'][indx_lvdcat]
+        cat['DIAM_SGA2020'][indx_cat] = lvdcat['DIAM_SGA2020'][indx_lvdcat]
+        cat['DIAM_HYPERLEDA'][indx_cat] = lvdcat['DIAM_HYPERLEDA'][indx_lvdcat]
+        cat['BA_SGA2020'][indx_cat] = lvdcat['BA_SGA2020'][indx_lvdcat]
+        cat['BA_HYPERLEDA'][indx_cat] = lvdcat['BA_HYPERLEDA'][indx_lvdcat]
+        cat['PA_SGA2020'][indx_cat] = lvdcat['PA_SGA2020'][indx_lvdcat]
+        cat['PA_HYPERLEDA'][indx_cat] = lvdcat['PA_HYPERLEDA'][indx_lvdcat]
+
+        ##################################################
 
         if ssl and ssl_version is None:
             print('ssl_version must be specified')
@@ -1207,7 +1246,11 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             fullcat = None
 
 
-        if True:
+        #if True:
+        #    pdb.set_trace()
+
+
+        if False:#True:
             def writeit(cat, region, prefix='tmplist'):
                 outfile = f'{prefix}-{region}.txt'
                 out = cat['OBJNAME', ]
@@ -1222,7 +1265,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             fullcat = cat.copy()
             fullcat_diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
 
-            isolated = True
+            isolated = False#True
             if isolated:
                 I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
             else:
