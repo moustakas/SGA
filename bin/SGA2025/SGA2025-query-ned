@@ -611,7 +611,11 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         version = version_lvd()
 
         keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
-        cat[~np.isin(nedfriendly_lvd(cat['OBJNAME']), data['OBJNAME'][keep])]
+        bb = cat[~np.isin(nedfriendly_lvd(cat['OBJNAME']), data['OBJNAME'][keep])]
+        bb = bb[bb['CONFIRMED_DWARF'] == 1]
+        bb = bb[np.argsort(bb['OBJNAME'])]
+        bb.pprint(max_lines=-1)
+
         pdb.set_trace()
         data = data[keep]
 
