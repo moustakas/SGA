@@ -107,3 +107,4 @@ VIII Zw 029 NED01,dr9-south
 PGC 004081,dr9-south
 UGC 02337 NED03,dr9-south
 VI Zw 152,dr9-south
+Hydra I Dwarf,dr9-south

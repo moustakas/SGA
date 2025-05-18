@@ -155,7 +155,7 @@ IRAS 23476+1207,-99.,-99.,0.1,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin)
 IRAS 12337+5044,-99.,-99.,0.7,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
 2MFGC 04926,-99.,-99.,0.5,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
 2MASXi J0032468-345652,-99.,-99.,0.5,-99.,-99.,-99.,No,Wrong basic diameter (60 arcmin).
-Cepheus 1,-99.,-99.,3.,-99.,-99.,-99.,No,Wrong basic diameter
+Cepheus1,-99.,-99.,3.,-99.,-99.,-99.,No,Wrong basic diameter
 WISEA J114851.68-020026.5,-99.,-99.,0.25,-99.,-99.,-99.,No,Wrong basic diameter
 WISEA J133748.42+022102.8,-99.,-99.,0.3,-99.,-99.,-99.,No,Wrong basic diameter
 2MASS J07570628+4059150,-99.,-99.,0.1,-99.,-99.,-99.,No,Wrong basic diameter
@@ -246,7 +246,7 @@ KK 35,-99.,-99.,2.51,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG da
 KK 208,-99.,-99.,5.89,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
 DDO 147,-99.,-99.,-99.,74.,-99.,-99.,No,LVD dwarf with updated position angle.
 NGC 4190,-99.,-99.,-99.,30.,-99.,-99.,No,LVD dwarf with updated position angle.
-DDO126,-99.,-99.,-99.,145.,-99.,-99.,No,LVD dwarf with updated position angle.
+DDO 126,-99.,-99.,-99.,145.,-99.,-99.,No,LVD dwarf with updated position angle.
 DDO 133,-99.,-99.,-99.,160.,-99.,-99.,No,LVD dwarf with updated position angle.
 DDO 165,-99.,-99.,-99.,90.,-99.,-99.,No,LVD dwarf with updated position angle.
 Holmberg I,-99.,-99.,-99.,105.,-99.,-99.,No,LVD dwarf with updated position angle.
@@ -317,7 +317,7 @@ MATLAS 1123,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter
 [MSB2017b] dw J1303+42,195.8098,42.3735,0.3,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter
 [MSB2017b] dw J1305+38,-99.,-99.,0.4,0.,1.,-99.,No,Estimated diameter
 W4+2+0:[DD2013] 100061,-99.,-99.,0.2,0.,1.,-99.,No,Estimated diameter
-PGC1 0039600 NED021,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter
+[KKH2011]S11,-99.,-99.,0.3,0.,1.,-99.,No,Estimated diameter
 CGCG 335-006 NED03,-99.,-99.,0.5,130.,0.3,-99.,No,Estimated geometry.
 PGC1 4101601 NED001,-99.,-99.,0.5,0.,1.,-99.,No,Estimated diameter
 PGC1 0033953 NED002,166.8272,61.5225,0.5,0.,1.,-99.,No,Moved to the LS/DR9 position and estimated diameter

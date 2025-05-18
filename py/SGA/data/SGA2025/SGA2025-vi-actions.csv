@@ -1265,7 +1265,6 @@ SDSS J084636.00+190049.9,drop,faint shred or compact,
 SDSS J085239.85+212500.9,drop,faint shred or compact,
 WISEA J084929.78+293129.4,drop,faint shred or compact,
 SDSS J084837.98+010234.7,drop,faint shred or compact,
-PGC1 0024930 NED003,drop,faint shred or compact,
 PGC 302462,drop,faint shred or compact,
 2MASS J08583132-6643061,drop,faint shred or compact,
 GALEXASC J090359.97-000506.3,drop,faint shred or compact,
@@ -2935,7 +2934,6 @@ LSBC F469-02,drop,star,Star?
 SDSS J141522.82+141505.0,drop,shred,
 LV J1243+4127,drop,shred,Likely duplicate of 'SMDG J1243552+412727'
 PGC1 2807144 NED001,drop,shred,Likely duplicate of 'SMDG J1150056+554700'
-PGC1 0028630 NED024,drop,shred,Likely duplicate of 'A0952+69'
 PGC1 0095601 NED001,drop,shred,Likely duplicate of 'SMDG J0829119+784949'
 WISEA J005004.20-663308.9,drop,shred,Likely duplicate of 'ESO 079- G 007'
 WISEA J015942.67-055751.4,drop,shred,Likely duplicate of 'NGC 0779'
@@ -4640,7 +4638,6 @@ SBS 1651+607,drop,faint shred or compact,
 SBS 0747+553,drop,faint shred or compact,
 RX J0917.8+5143:[BEV98] 001,drop,faint shred or compact,
 NGC 4631 DwA,drop,faint shred or compact,
-NGC 4631:[KKM2018a] dw1,drop,faint shred or compact,
 NGC 4631:[JMK2016] DGSAT-2,drop,faint shred or compact,
 NGC 4656UV,drop,faint shred or compact,
 NGC 2683:[JMK2016] DGSAT-4,drop,faint shred or compact,
@@ -5586,7 +5583,6 @@ ESO-LV 2350041,drop,shred,Shred or part of 'ESO 235-IG 004'.
 ESO 553- G 019,drop,shred,Shred or part of 'ESO-LV 5530191'.
 ESO 417- G 009,drop,shred,Shred or part of 'ESO-LV 4170091'.
 SDSS J155556.89+195656.4,drop,shred,Shred or part of 'KUG 1553+200 NED02'.
-SDSS J002041.45+083701.2,drop,shred,Shred or part of 'JKB129'.
 GALEXASC J131520.11+473234.3,drop,shred,Shred or part of 'DDO 169NW'.
 SDSS J131704.45+375702.5,drop,shred,Shred or part of 'CGCG 189-050'.
 2MASX J14432661-4442199,drop,shred,Shred or part of 'ESO272-025'.
@@ -7023,7 +7019,6 @@ KAZ 655,hyperleda-coords,NED incorrect,
 CGPG 0719.8+6704 NED01,hyperleda-coords,NED incorrect,
 CGCG 169-036,hyperleda-coords,NED incorrect,
 2MFGC 13294,hyperleda-coords,NED incorrect,
-PGC1 0039600 NED021,hyperleda-coords,NED incorrect,
 CGCG 366-015 NED02,hyperleda-coords,NED incorrect,
 CGCG 226-041,hyperleda-coords,NED incorrect,
 FGC 0712,hyperleda-coords,NED incorrect,

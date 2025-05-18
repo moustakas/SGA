@@ -452,7 +452,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                  'HS', 'ESO']
             drop_references = []
         case _:
-            VETO = ['HIPASS J1348-37', 'HIPASS J1131-31', 'HIPASS J1247-77', 'HIPASS J1337-39',
+            VETO = ['HIPASS J1348-37', 'HIPASS J1131-31', 'HIPASS J1247-77', 'HIPASS J1337-39', # LVD systems
+                    'HIPASS J1133-32', 'HIPASS J1351-47', 'AGC 198606', # LVD systems
                     'RCS 04020600360', 'NSA 142339', 'HIDEEP J1337-3320', # LVD systems
                     'ZwCl 0054.6-0127 18', 'ZwCl 0054.6-0127 16 NED02', 'ZwCl 0054.6-0127 16 NED01', # in UGC 00579 group
                     ] 
@@ -610,6 +611,8 @@ def update_properties(cat, verbose=False):
         objname = prop['objname_ned']
         I = np.where(objname == cat['OBJNAME'].value)[0]
         if len(I) != 1:
+            print(f'Problem finding {objname}!')
+            pdb.set_trace()
             raise ValueError(f'Problem finding {objname}!')
         if verbose:
             print(f'{objname} ({cat["OBJTYPE"][I[0]]}):')
@@ -659,6 +662,17 @@ def build_parent_vicuts(verbose=False, overwrite=False):
 
     # [2] Drop systems with uncommon prefixes (after VI).
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
+
+    # make sure we still have all LVD sources (see the VETO array in remove_by_prefix)
+    from SGA.io import read_lvd
+    lvd = read_lvd()
+    lvdcat = cat[cat['ROW_LVD'] != -99]
+    try:
+        assert(len(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]) == 0)
+    except:
+        print('Missing the following LVD systems!')
+        print(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])])
+        pdb.set_trace()
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
     cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)#False)#True)
@@ -1100,13 +1114,30 @@ def build_parent_nocuts(verbose=True):
 
     # ned_nedlvs - 21 objects are duplicates, apparently because of
     # cross-identification problems in NED. Keep just the first one of each
-    # occurrance here (=10 unique objects)
+    # occurrance here (=10 unique objects); plus add 8 more duplicates discovered "by hand"
     print()
     print('#####')
     print('ned_nedlvs:')
+    #dups = ['Andromeda XXXIII', 'SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4']
+    #nedlvs = nedlvs[~np.isin(nedlvs['OBJNAME'], dups)]
+    #ned_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['OBJNAME'], dups)]
+
+    #dups = ['Andromeda XXXIII', 'PGC1 5067061 NED001', 'HIPASS J0021+08', 'SDSS J002041.45+083701.2', 'SDSS J095549.64+691957.4', 'SDSS J141708.23+134105.7', 'SDSS J104653.19+124441.4', 'Leo dw A']
+    ##nedlvs[np.isin(nedlvs['ROW'], [1869664, 1835853])]
+    ##nedlvs[np.isin(nedlvs['ROW'], [1589395, 1827949])]
+    ##nedlvs[np.isin(nedlvs['ROW'], [1742809, 328053])]
+    ##nedlvs[np.isin(nedlvs['ROW'], [1656036, 1430675])]
+    #jj = nedlvs[np.isin(nedlvs['OBJNAME'], dups)]
+    #jj[np.argsort(jj['RA'])]
+    
     col = 'OBJNAME_NED'
     rr, cc = np.unique(ned_nedlvs[col], return_counts=True)
-    dd = ned_nedlvs[np.isin(ned_nedlvs[col], rr[cc>1].value)]
+    dups = rr[cc>1].value
+    #dups = np.hstack((rr[cc>1].value, ['SDSS J141708.23+134105.7', 'Leo dw A', 'HIPASS J0021+08',
+    #                                   'SDSS J104653.19+124441.4', 'SDSS J095549.64+691957.4',
+    #                                   'SDSS J002041.45+083701.2', 'PGC1 5067061 NED001',
+    #                                   'Andromeda XXXIII']))
+    dd = ned_nedlvs[np.isin(ned_nedlvs[col], dups)]
     dd = dd[np.argsort(dd[col])]
 
     basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
@@ -1155,6 +1186,7 @@ def build_parent_nocuts(verbose=True):
     toss = np.hstack(toss)
     print(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ({100.*len(toss)/len(ned_nedlvs):.1f}%) coordinate duplicates.')
     ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
+
 
     #from pydl.pydlutils.spheregroup import spheregroup
     #ingroup, group_mult, firstgroup, nextgroup = spheregroup(ned_nedlvs['RA'], ned_nedlvs['DEC'], 1.5/60.)
@@ -1542,6 +1574,29 @@ def build_parent_nocuts(verbose=True):
     Idrop = np.where(parent['OBJNAME_NED'] == 'GALEXASC J095848.78+665057.9')[0]
     parent.remove_row(Idrop[0])
 
+    # Additional NED drops: SDSS J002041.45+083701.2 (duplicate with
+    # HIPASS J0021+08=JKB129), SDSS J104653.19+124441.4=PGC4689210
+    # (duplicate with Leo dw A=Leo I 09), PGC1 5067061 NED001
+    # (duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I), and
+    # SDSS J095549.64+691957.4 (duplicate with SDSS
+    # J141708.23+134105.7=PGC2801015=JKB83).
+    dups = ['SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4', 'PGC1 5067061 NED001', 'SDSS J095549.64+691957.4']
+    print(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
+    Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
+    parent.remove_rows(Idrop)
+
+    #dups = ['Andromeda XXXIII', 'PGC1 5067061 NED001', 'HIPASS J0021+08', 'SDSS J002041.45+083701.2', 'SDSS J095549.64+691957.4', 'SDSS J141708.23+134105.7', 'SDSS J104653.19+124441.4', 'Leo dw A']
+    #bb = parent[np.isin(parent['OBJNAME_NED'], dups)]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'RA_NED', 'RA_HYPERLEDA', 'RA_LVD', 'DEC_NED', 'DEC_HYPERLEDA', 'DEC_LVD', 'PGC']
+    #bb = bb[np.argsort(bb['PGC'])]
+
+    # HyperLeda drops: [CVD2018]M96-DF10 matches SMDG J1048359+130336
+    # in NED but not dw1048p1303 in LVD. And NGC3628DGSAT1 matches
+    # SMDG J1121369+132650 in NED but not dw1121p1326.
+    drops = ['[CVD2018]M96-DF10', 'NGC3628DGSAT1']
+    print(f'Removing {", ".join(drops)} from the OBJNAME_HYPERLEDA parent sample.')
+    Idrop = np.where(np.isin(parent['OBJNAME_HYPERLEDA'], drops))[0]
+    parent.remove_rows(Idrop)
+
     # ned_lvd - not in parent sample (new)
     miss_lvd = ned_lvd[~np.isin(ned_lvd['ROW'], parent['ROW_LVD'])]
     miss_lvd.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_LVD', 'ROW_LVD'])
@@ -1592,6 +1647,7 @@ def build_parent_nocuts(verbose=True):
     # the PGC number otherwise we get a grossly overestimated
     # diameter.
     sga2020['PGC'][sga2020['GALAXY'] == 'IC3881'] = 3798359
+    sga2020['PGC'][sga2020['GALAXY'] == '2MASXJ12545391+1907050'] = -1
 
     # match by PGC; any missing objects are due to a variety of errors
     # in the SGA2020 / HyperLeda (I think...)
@@ -1600,6 +1656,11 @@ def build_parent_nocuts(verbose=True):
     print(f'Trimmed to {len(J):,d}/{len(sga2020):,d} ({100.*len(J)/len(sga2020):.1f}%) ' + \
           'SGA-2020 objects with PGC>0.')
     sga2020 = sga2020[J]
+
+    #pdb.set_trace()
+    #pgc, cc = np.unique(parent[I]['PGC'].value, return_counts=True)
+    #dups = pgc[cc>1]
+    #parent[np.isin(parent['PGC'], dups)]['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
 
     indx_parent, indx_sga2020 = match(parent[I]['PGC'], sga2020['PGC'])
     print(f'Matched {len(indx_sga2020):,d}/{len(sga2020):,d} ({100.*len(indx_sga2020)/len(sga2020):.1f}%) ' + \

@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+"""Analyze the LVD sample.
+
+
+"""
+import os
+import numpy as np
+from astropy.table import Table
+from SGA.io import sga_dir
+
+base_smdgfile = 'SMUDGes_catalog.6_23.ascii'
+smdgfile = os.path.join(sga_dir(), 'parent', 'external', base_smdgfile)
+smdg = Table.read(smdgfile, format='mrt')
+smdg['ROW'] = np.arange(len(smdg))
+print(f'Read {len(smdg):,d} objects from {smdgfile}')
+smdg['OBJNAME'] = np.char.replace(smdg['SMDG'].value, 'SMDG', 'SMDG J')
+I = smdg['VC'] == 0
+print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with VC==0')
+smdg = smdg[I]
+
+# see notes above
+rem = ~np.isin(smdg['OBJNAME'], ['SMDG J2152023-642205', 'SMDG J0052040-352127'])
+
+I = ((2. * smdg['Re'].value) > 15.) * rem
+print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with diam>15 arcsec')
+
+F = open('smudges.txt', 'w')
+for obj in smdg[I]:
+    objname = obj['OBJNAME']
+    ra = obj['RAdeg']
+    dec = obj['DEdeg']
+    diam = obj['Re'] * 2. / 60. # [radius in arcsec --> diameter in arcmin]
+    ba = obj['b/a']
+    pa = obj['PA'] % 360 # [-90,90] --> [0,360]
+    rmag = obj['rmag']
+    row = obj['ROW']
+    F.write(f",{objname},{ra},{dec},{diam},{ba},{pa},{rmag},r,Row {row} in '{base_smdgfile}'\n")
+F.close()
