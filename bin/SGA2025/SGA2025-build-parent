@@ -456,6 +456,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                     'HIPASS J1133-32', 'HIPASS J1351-47', 'AGC 198606', # LVD systems
                     'RCS 04020600360', 'NSA 142339', 'HIDEEP J1337-3320', # LVD systems
                     'ZwCl 0054.6-0127 18', 'ZwCl 0054.6-0127 16 NED02', 'ZwCl 0054.6-0127 16 NED01', # in UGC 00579 group
+                    'ZwCl 0054.6-0127 31', # in UGC 00588 group
                     ] 
             drop_prefixes = ['WINGS', 'SRGb', '[MD2000]', 'HeCS', 'ESP',
                              'SDSSCGB', 'NVSS', 'AGC', ]
@@ -599,6 +600,10 @@ def update_properties(cat, verbose=False):
     HyperLeda.
 
     """
+    # First, update the LVD objects.
+
+    pdb.set_trace()
+
     propfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-properties.csv')
     props = Table.read(propfile, format='csv', comment='#')
 

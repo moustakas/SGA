@@ -3,36 +3,126 @@
 
 
 """
-import os
+import os, pdb
 import numpy as np
-from astropy.table import Table
-from SGA.io import sga_dir
+from astropy.table import Table, hstack, vstack
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+from astrometry.libkd.spherematch import match_radec
+from astrometry.util.starutil_numpy import arcsec_between
+import matplotlib.pyplot as plt
+from SGA.io import sga_dir, read_lvd, nedfriendly_lvd
+from SGA.util import match
 
-base_smdgfile = 'SMUDGes_catalog.6_23.ascii'
-smdgfile = os.path.join(sga_dir(), 'parent', 'external', base_smdgfile)
-smdg = Table.read(smdgfile, format='mrt')
-smdg['ROW'] = np.arange(len(smdg))
-print(f'Read {len(smdg):,d} objects from {smdgfile}')
-smdg['OBJNAME'] = np.char.replace(smdg['SMDG'].value, 'SMDG', 'SMDG J')
-I = smdg['VC'] == 0
-print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with VC==0')
-smdg = smdg[I]
+import seaborn as sns
+sns.set(style='ticks', font_scale=1.3, palette='Set2')
 
-# see notes above
-rem = ~np.isin(smdg['OBJNAME'], ['SMDG J2152023-642205', 'SMDG J0052040-352127'])
+lvd = read_lvd()
+#pdb.set_trace()
 
-I = ((2. * smdg['Re'].value) > 15.) * rem
-print(f'Trimmed to {np.sum(I):,d}/{len(smdg):,d} objects with diam>15 arcsec')
+lvd['OBJNAME_NED'] = nedfriendly_lvd(lvd['OBJNAME'])
+#lvd['RHALF'] *= 60 # [arcsec]
+lvd = lvd[np.argsort(lvd['RHALF'])]
+#lvd = lvd[np.argsort(np.char.lower(lvd['OBJNAME']))]
+lvd = lvd['OBJNAME', 'OBJNAME_NED', 'RA', 'DEC', 'RHALF', 'POSITION_ANGLE', 'ELLIPTICITY', 'REF_STRUCTURE', 'ROW']
+lvd.rename_columns(['RHALF', 'POSITION_ANGLE', 'ELLIPTICITY'], ['DIAM', 'PA', 'BA'])
+lvd['BA'] = 1. - lvd['BA']
+lvd['DIAM'] *= 2. * 1.2 # radius-->diameter and then factor of XX to get isophotal
+lvd['DIAM'] = lvd['DIAM'].astype('f4')
 
-F = open('smudges.txt', 'w')
-for obj in smdg[I]:
-    objname = obj['OBJNAME']
-    ra = obj['RAdeg']
-    dec = obj['DEdeg']
-    diam = obj['Re'] * 2. / 60. # [radius in arcsec --> diameter in arcmin]
-    ba = obj['b/a']
-    pa = obj['PA'] % 360 # [-90,90] --> [0,360]
-    rmag = obj['rmag']
-    row = obj['ROW']
-    F.write(f",{objname},{ra},{dec},{diam},{ba},{pa},{rmag},r,Row {row} in '{base_smdgfile}'\n")
-F.close()
+
+
+m1, m2, _ = match_radec(lvd['RA'], lvd['DEC'], lvg['RA_LVG'], lvg['DEC_LVG'], 30./3600., nearest=True)
+out_lvd = hstack((lvd[m1], lvg[m2]))
+
+lvg = lvg[np.delete(np.arange(len(lvg)), m2)]
+miss_lvd = lvd[np.delete(np.arange(len(lvd)), m1)]
+
+
+def modify_lvg_names(lvg_name):
+    lvg_name = np.char.replace(lvg_name, ' ', '')
+    lvg_name = np.char.replace(lvg_name, 'SagdSph', 'Sagittarius')
+    lvg_name = np.char.replace(lvg_name, 'And', 'Andromeda')
+    lvg_name = np.char.replace(lvg_name, 'Lac', 'Lacerta')
+    lvg_name = np.char.replace(lvg_name, 'UMa', 'UrsaMajor')
+    lvg_name = np.char.replace(lvg_name, 'UMin', 'UrsaMinor')
+    lvg_name = np.char.replace(lvg_name, 'Hydrus1dw', 'HydrusI')
+    lvg_name = np.char.replace(lvg_name, 'UGCA086', 'UGCA86')
+    lvg_name = np.char.replace(lvg_name, 'Antlia2', 'AntliaII')
+    lvg_name = np.char.replace(lvg_name, 'Horologium2', 'HorologiumII')
+    lvg_name = np.char.replace(lvg_name, 'ColumbiaI', 'ColumbaI')
+    #lvg_name = np.char.replace(lvg_name, 'Pegasus', 'PegasusdIrr')
+    lvg_name[lvg_name == 'Pegasus'] = 'PegasusdIrr'
+    return lvg_name
+
+#def modify_lvd_names(lvd_name):
+#    lvd_name = np.char.replace(lvd_name, ' ', '')
+#    lvd_name = np.char.replace(lvd_name, 'Pegasus', 'PegasusdIrr')
+#    return lvd_name
+#lvd_name = modify_lvd_names(miss_lvd['OBJNAME'].value)
+
+lvg_name = modify_lvg_names(lvg['NAME_LVG'].value)
+indx_lvd, indx_lvg = match(np.char.replace(miss_lvd['OBJNAME'], ' ', ''), lvg_name)
+
+out_lvd = vstack((out_lvd, hstack((miss_lvd[indx_lvd], lvg[indx_lvg]))))
+out_lvd = out_lvd[np.argsort(np.char.lower(out_lvd['OBJNAME']))]
+lvg = lvg[~np.isin(lvg['NAME_LVG'], out_lvd['NAME_LVG'])]
+
+miss_lvd = lvd[~np.isin(lvd['ROW'], out_lvd['ROW'])]
+
+near_lvg = []
+for gal in miss_lvd:
+    seps = arcsec_between(gal['RA'], gal['DEC'], lvg['RA_LVG'], lvg['DEC_LVG'])
+    I = np.argmin(seps)
+    _near_lvg = lvg[[I]]
+    _near_lvg['SEP'] = seps[I]
+    near_lvg.append(_near_lvg)
+near_lvg = vstack(near_lvg)
+
+check = hstack((miss_lvd, near_lvg))
+check = check['OBJNAME', 'OBJNAME_NED', 'NAME_LVG', 'SEP']#, 'DIAM', 'DIAM_LVG']
+
+#print(len(check))
+#check.pprint(max_lines=-1)
+
+#plt.clf()
+#plt.scatter(out_lvd['DIAM'], out_lvd['DIAM_LVG'], s=10)
+#plt.savefig('junk.png')
+
+print(np.nanmedian(np.log10(out_lvd['DIAM'])-np.log10(out_lvd['DIAM_LVG'])))
+
+# compare diameters
+
+#ax.text(0.05, 0.9, r'$R_{Holm} = 1.2\times R_{e}$', ha='left', va='center',
+#        transform=ax.transAxes)
+
+I = np.isfinite(out_lvd['DIAM'])
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+ax1.scatter(np.log10(out_lvd['DIAM'][I]), np.log10(out_lvd['DIAM_LVG'][I]),
+            s=25, marker='s', edgecolor='k', alpha=0.7)
+ax1.plot([-2, 3.5], [-2, 3.5], color='k')
+ax1.set_xlim(-2, 3.5)
+ax1.set_ylim(-2, 3.5)
+ax1.set_xlabel(r'$\log_{10}\, 1.2\times2\times R_{e}$ (LVD, arcmin)')
+ax1.set_ylabel(r'$\log_{10}\, D_{26.5}$ (LVGDB, arcmin)')
+ax1.text(0.05, 0.9, f'N={np.sum(I):,d}/{len(lvd):,d}', ha='left', va='center',
+        transform=ax1.transAxes)
+
+I = np.isfinite(out_lvd['BA'])
+
+ax2.scatter(out_lvd['BA'][I], out_lvd['BA_LVG'][I],
+            s=25, marker='s', edgecolor='k', alpha=0.7)
+ax2.plot([-0.05, 1.05], [-0.05, 1.05], color='k')
+ax2.set_xlim(-0.05, 1.05)
+ax2.set_ylim(-0.05, 1.05)
+ax2.set_xlabel('b/a (LVD)')
+ax2.set_ylabel('b/a (LVGDB)')
+ax2.text(0.05, 0.9, f'N={np.sum(I):,d}/{len(lvd):,d}', ha='left', va='center',
+        transform=ax2.transAxes)
+
+fig.tight_layout()
+fig.savefig('lvgdb_vs_lvd.png')
+
+cols = ['OBJNAME', 'OBJNAME_NED', 'NAME_LVG', 'DIAM', 'DIAM_LVG', 'BA', 'BA_LVG', 'PA', 'REF_STRUCTURE']
+out_lvd[cols][np.argsort(out_lvd['DIAM_LVG'])].pprint(max_lines=-1)

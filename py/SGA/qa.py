@@ -55,8 +55,8 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
 
 def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
                 pngsuffix=None, objname=None, racenter=None, deccenter=None,
-                add_title=True, width_arcmin=2., pngdir='.', jpgdir='.', clip=False,
-                verbose=False, overwrite_viewer=False, overwrite=False):
+                layers=None, add_title=True, width_arcmin=2., pngdir='.', jpgdir='.',
+                clip=False, verbose=False, overwrite_viewer=False, overwrite=False):
     """Build QA which shows all the objects in a ~little patch of sky.
 
     primary - parent-style catalog
@@ -140,7 +140,7 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
 
 
     # check if the viewer cutout file exists
-    surveys = ['ls', 'ls', 'unwise']
+    surveys = ['ls', 'ls', 'ls', 'unwise']
     layers = ['ls-dr9', 'ls-dr11-early', 'ls-dr10', 'unwise-neo7']
     devs = [False, True, False, False]
     for survey, layer in zip(surveys, layers):
@@ -251,9 +251,10 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
 
 
 def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=1, nrow=1,
-                       add_title=True, pngsuffix='group', jpgdir='.', pngdir='.',
-                       pdffile='multipage-skypatch.pdf', clip=True, verbose=False,
-                       overwrite_viewer=False, overwrite=True, cleanup=False):
+                       add_title=True, layers=None, pngsuffix='group', jpgdir='.',
+                       pngdir='.', pdffile='multipage-skypatch.pdf', clip=True,
+                       verbose=False, overwrite_viewer=False, overwrite=True,
+                       cleanup=False):
     """Call qa_skypatch on a table of sources.
 
     """
