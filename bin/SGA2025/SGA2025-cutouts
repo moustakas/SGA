@@ -1030,7 +1030,9 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
     if ssl:
         qadir = os.path.join(sga_dir(), 'ssl', ssl_version)
     else:
-        qadir = os.path.join(sga_dir(), 'parent', 'qa')
+        print('HACK!!')
+        qadir = os.path.join(sga_dir(), 'parent', 'qa', 'junk')
+        #qadir = os.path.join(sga_dir(), 'parent', 'qa')
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
 
@@ -1079,14 +1081,14 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
     origindx = np.arange(len(pngfiles))
     nobj = len(origindx)
 
-    if nobj > 199:
-        ncol, nrow = 10, 10
-    elif (nobj < 199) * (nobj > 49):
+    if nobj <= 10:
+        ncol, nrow = 1, 1
+    elif (nobj > 10) * (nobj <= 50):
+        ncol, nrow = 4, 4
+    elif (nobj > 50) * (nobj >= 200):
         ncol, nrow = 6, 6
     else:
-        #ncol, nrow = 1, 1
-        ncol, nrow = 4, 4
-    #ncol, nrow = 10, 10
+        ncol, nrow = 10, 10
 
     nperpage = ncol * nrow
     npage = int(np.ceil(len(pngfiles) / nperpage))
@@ -1245,7 +1247,9 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             fullcat = None
 
         #if True:
-        #    pdb.set_trace()
+        #    diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+        #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
+        #    pdb.set_trace()            
 
         if False:#True:
             def writeit(cat, region, prefix='tmplist'):
