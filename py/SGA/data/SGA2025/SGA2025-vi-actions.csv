@@ -7,6 +7,36 @@ BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
 Crater Cluster,drop,GC,Milky Way globular cluster
 #
+FCCB 0071,drop,faint shred or compact,
+WISEA J025709.45+002421.2,drop,faint shred or compact,
+SDSS J030351.47+010341.9,drop,faint shred or compact,
+ESO 357- G 002,drop,faint shred or compact,
+LEDA 094889,drop,faint shred or compact,
+WISEA J021540.78-085841.9,drop,faint shred or compact,
+SDSS J022555.26+001227.9,drop,faint shred or compact,
+WISEA J023812.22-010249.7,drop,faint shred or compact,
+WISEA J021223.91-062411.2,drop,faint shred or compact,
+MCG -01-06-008,drop,faint shred or compact,
+WISEA J015853.10-050641.9,drop,faint shred or compact,
+WISEA J015558.36-003130.1,drop,faint shred or compact,
+WISEA J014833.39+332432.9,drop,faint shred or compact,
+UGC 00060a,drop,faint shred or compact,
+SDSS J014550.37-091849.6,drop,faint shred or compact,
+WISEA J014828.86+102821.7,drop,faint shred or compact,
+WISEA J012057.84+000017.4,drop,faint shred or compact,
+LSBC F683-01,drop,faint shred or compact,
+2MASX J01264379+1140016,drop,faint shred or compact,
+WISEA J011711.56-455746.7,drop,faint shred or compact,
+SDSS J011206.28+151738.5,drop,faint shred or compact,
+SDSS J010841.47-011505.5,drop,faint shred or compact,
+WISEA J010317.27-705049.5,drop,faint shred or compact,
+SDSS J005755.17+134545.0,drop,faint shred or compact,
+SDSS J005213.41-003426.8,drop,faint shred or compact,
+2MASS J00394123+1456459,drop,faint shred or compact,
+SDSS J002732.08+160242.8,drop,faint shred or compact,
+2MASX J00265282-7132113,drop,faint shred or compact,
+PGC 260239,drop,faint shred or compact,
+IRAS 00093-5906,drop,faint shred or compact,
 WISEA J021127.30-174558.5,drop,faint shred or compact,
 LEDA 166144,drop,faint shred or compact,
 SDSS J000011.99+010718.2,drop,faint shred or compact,
@@ -2946,6 +2976,7 @@ WISEA J044333.10-274009.4,drop,shred,Likely duplicate of 'ESO 421- G 013'
 CGCG 018-111 NED02,drop,shred,Likely duplicate of '2MASS J14173511+0203097'
 PGC 213079,drop,faint shred or compact,In 'NGC 1073'
 WISEA J050654.83-032036.1,drop,nebula,In 'NGC 1788' reflection nebula
+ESO 028- G?023,drop,nebula,Reflection nebula?
 2MASX J14293625-0558175,drop,GC,In globular cluster
 WISEA J142936.69-055836.7,drop,GC,In globular cluster
 2MASS J14293798-0558389,drop,GC,In globular cluster
@@ -7143,3 +7174,17 @@ UGC 05244,hyperleda-coords,NED incorrect,
 MCG +06-33-019,hyperleda-coords,NED incorrect,
 WISEA J062622.88-534033.2,hyperleda-coords,NED incorrect,
 2MASS J03430056-5338276,hyperleda-coords,NED incorrect,Same as 'ESO 156- G 008 NED02'
+CGCG 433-038,hyperleda-coords,NED incorrect,
+UGC 00154,hyperleda-coords,NED incorrect,
+CGCG 479-054,hyperleda-coords,NED incorrect,
+CGCG 480-040,hyperleda-coords,NED incorrect,
+IRAS F01169-3316,hyperleda-coords,NED incorrect,
+FGC 015A,hyperleda-coords,NED incorrect,
+ESO 352- G 060,hyperleda-coords,NED incorrect,
+GALEXASC J013719.93-331951.1,hyperleda-coords,NED incorrect,
+AM 0146-271 NED03,hyperleda-coords,NED incorrect,
+ESO 544- G 016,hyperleda-coords,NED incorrect,
+FGC 030A,hyperleda-coords,NED incorrect,
+ESO 479- G 024,hyperleda-coords,NED incorrect,
+UGC 02296,hyperleda-coords,NED incorrect,
+FCC 015,hyperleda-coords,NED incorrect,
