@@ -928,6 +928,7 @@ def nedfriendly_lvd(old):
         'dw1335-29': '[MJB2015] dw J1335-29',
         'dw1336-44': 'Cen A:[MJP2016] dw 1336-44',
         'dw1340-30': '[MJB2015] dw 1340-30',
+        'dw1341-29': '[MPR2024] dw J1341-29',
         'dw1341-43': 'Cen A:[MJP2016] dw 1341-43',
         'dw1342-43': 'Cen A:[MJP2016] dw 1342-43',
         'dw1343+58': 'WISEA J134307.12+581340.2', # ??
@@ -1413,7 +1414,7 @@ def nedfriendly_lvd(old):
 def version_lvd():
     #ver = 'dwarf-all-b685634'
     #ver = 'v1.0.2'
-    ver = 'v1.0.4'
+    ver = 'v1.0.5'
     return ver
 
 
@@ -1435,11 +1436,6 @@ def read_lvd(rank=0, rows=None, overwrite=False):
 
         allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_dwarf_all_{version}.csv')
         lvd = Table.read(allfile)
-        ## typos
-        #lvd['name'][lvd['name'] == 'KKS53'] = 'KKS 53'
-        #for obj in ['KKs 3', 'KKs 51', 'KKs 53', 'KKs 54', 'KKs 55', 'KKs 57', 'KKs 58', 'KKs 59']:
-        #    I = np.where(lvd['name'] == obj)[0]
-        #    lvd['name'][I] = obj.upper()
 
         if version == 'v1.0.4':
             I = lvd['name'] == 'MADCASH-1'
@@ -1447,126 +1443,8 @@ def read_lvd(rank=0, rows=None, overwrite=False):
 
         # drop unconfirmed systems
         print(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
-        #print(f'Rank {rank:03d}: Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
         lvd = lvd[lvd['confirmed_real'] == 1]
         lvd.remove_columns(['key', 'confirmed_real'])
-
-
-        lvd['diam'] = np.zeros(len(lvd), 'f4') - 99.
-        lvd['pa'] = np.zeros(len(lvd), 'f4') - 99.
-        lvd['ba'] = np.zeros(len(lvd), 'f4') - 99.
-        lvd['diam_ref'] = np.zeros(len(lvd), 'U7')
-        lvd['pa_ref'] = np.zeros(len(lvd), 'U7')
-        lvd['ba_ref'] = np.zeros(len(lvd), 'U7')
-
-        I = ~lvd['rhalf'].mask
-        lvd['diam'][I] = np.float32(2. * 1.2 * lvd['rhalf'][I])
-        lvd['pa'][I] = np.float32(lvd['position_angle'][I] % 180)
-        lvd['ba'][I] = np.float32(1. - lvd['ellipticity'][I])
-        lvd['diam_ref'][I] = version
-        lvd['pa_ref'][I] = version
-        lvd['ba_ref'][I] = version
-
-        # add geometry from the LVGDB; see bin/analyze-lvd
-        lvgfile = os.path.join(sga_dir(), 'parent', 'external', 'lvg_table1_2025-01-26_trim.txt')
-        lvg = Table.read(lvgfile, format='ascii.fixed_width')
-        c_lvg = SkyCoord(ra=lvg['ra_hms'].value, dec=lvg['dec_dms'].value, unit=(u.hourangle, u.deg))
-        lvg['ra'] = c_lvg.ra.degree
-        lvg['dec'] = c_lvg.dec.degree
-        lvg.remove_columns(['ra_hms', 'dec_dms'])
-
-        #[lvg.rename_column(col, f'{col.upper()}_LVG') for col in lvg.colnames]
-        [lvg.rename_column(col, f'{col}_lvg') for col in lvg.colnames]
-
-        def modify_lvg_names(lvg_name):
-            lvg_name = np.char.replace(lvg_name, ' ', '')
-            lvg_name = np.char.replace(lvg_name, 'SagdSph', 'Sagittarius')
-            lvg_name = np.char.replace(lvg_name, 'And', 'Andromeda')
-            lvg_name = np.char.replace(lvg_name, 'Lac', 'Lacerta')
-            lvg_name = np.char.replace(lvg_name, 'UMa', 'UrsaMajor')
-            lvg_name = np.char.replace(lvg_name, 'UMin', 'UrsaMinor')
-            lvg_name = np.char.replace(lvg_name, 'Hydrus1dw', 'HydrusI')
-            lvg_name = np.char.replace(lvg_name, 'UGCA086', 'UGCA86')
-            lvg_name = np.char.replace(lvg_name, 'Antlia2', 'AntliaII')
-            lvg_name = np.char.replace(lvg_name, 'Horologium2', 'HorologiumII')
-            lvg_name = np.char.replace(lvg_name, 'ColumbiaI', 'ColumbaI')
-            #lvg_name = np.char.replace(lvg_name, 'Pegasus', 'PegasusdIrr')
-            lvg_name[lvg_name == 'Pegasus'] = 'PegasusdIrr'
-            return lvg_name
-
-        m1, m2, _ = match_radec(lvd['ra'], lvd['dec'], lvg['ra_lvg'], lvg['dec_lvg'], 30./3600., nearest=True)
-        lvd['diam_lvg'] = np.zeros(len(lvd), 'f4') - 99.
-        lvd['ba_lvg'] = np.zeros(len(lvd), 'f4') - 99.
-        #lvd['pa_lvg'] = np.zeros(len(lvd), 'f4')
-
-        lvd['diam_lvg'][m1] = lvg['diam_lvg'][m2]
-        lvd['ba_lvg'][m1] = lvg['ba_lvg'][m2]
-        #lvd['pa_lvg'][m1] = lvg['pa_lvg'][m2]
-
-        lvg_name = modify_lvg_names(lvg['name_lvg'].value)
-
-        I = np.where(lvd['diam_lvg'] == -99.)[0]
-        m1, m2 = match(np.char.replace(lvd['name'][I], ' ', ''), lvg_name)
-
-        lvd['diam_lvg'][I][m1] = lvg['diam_lvg'][m2]
-        lvd['ba_lvg'][I][m1] = lvg['ba_lvg'][m2]
-        #lvd['pa_lvg'][m1] = lvg['pa_lvg'][m2]
-
-        # missing all data - hard-code for now!
-        I = (lvd['diam'] == -99.) * (lvd['diam_lvg'] == -99.)
-        assert(np.all(lvd[I]['name'] == ['IC239', 'NGC 5194', 'UGC 7490']))
-        lvd['diam'][lvd['name'] == 'IC239'] = 4.572 # RC3 / NED
-        lvd['ba'][lvd['name'] == 'IC239'] = 0.91
-        lvd['pa'][lvd['name'] == 'IC239'] = 125.
-        lvd['diam_ref'][lvd['name'] == 'IC239'] = 'RC3'
-        lvd['ba_ref'][lvd['name'] == 'IC239'] = 'RC3'
-        lvd['pa_ref'][lvd['name'] == 'IC239'] = '2MASS'
-
-        lvd['diam'][lvd['name'] == 'NGC 5194'] = 13.527 # SGA2020
-        lvd['ba'][lvd['name'] == 'NGC 5194'] = 0.86 # SGA2020
-        lvd['pa'][lvd['name'] == 'NGC 5194'] = 28.4
-        lvd['diam_ref'][lvd['name'] == 'NGC 5194'] = 'SGA2020'
-        lvd['ba_ref'][lvd['name'] == 'NGC 5194'] = 'SGA2020'
-        lvd['pa_ref'][lvd['name'] == 'NGC 5194'] = 'SGA2020'
-
-        lvd['diam'][lvd['name'] == 'UGC 7490'] = 3.3 # SGA2020
-        lvd['ba'][lvd['name'] == 'UGC 7490'] = 0.85 # SGA2020
-        lvd['pa'][lvd['name'] == 'UGC 7490'] = 0.2
-        lvd['diam_ref'][lvd['name'] == 'UGC 7490'] = 'SGA2020'
-        lvd['ba_ref'][lvd['name'] == 'UGC 7490'] = 'SGA2020'
-        lvd['pa_ref'][lvd['name'] == 'UGC 7490'] = 'SGA2020'
-
-        # copy missing values
-        print(f'Existing diameters for {np.sum(lvd["diam"] == -99.)}/{len(lvd)} objects.')
-        I = (lvd['diam'] == -99.) * (lvd['diam_lvg'] != -99.)
-        print(f'Adding {np.sum(I)} diameters from the LVGDB.')
-        lvd['diam'][I] = lvd['diam_lvg'][I]
-        lvd['ba'][I] = lvd['ba_lvg'][I]
-        lvd['diam_ref'][I] = 'LVGDB'
-        lvd['ba_ref'][I] = 'LVGDB'
-
-        I = lvd['pa'] == -99.
-        mini = lvd['name', 'ra', 'dec', 'diam', 'pa', 'ba', 'diam_ref', 'pa_ref', 'ba_ref'][I]#, 'ref_structure'][I]
-        #mini.pprint(max_lines=-1)
-
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{parent_version(nocuts=True)}.fits')
-        rows = np.where(fitsio.read(catfile, columns='ROW_LVD') != -99)[0]
-        cols = ['OBJNAME', 'OBJNAME_LVD', 'RA', 'DEC', 'PA_LIT',
-                'PA_LIT_REF', 'PA_LIT', 'PA_LIT_REF', 'PA_SGA2020', 'PA_HYPERLEDA', 'PGC']
-        cat = Table(fitsio.read(catfile, columns=cols, rows=rows))
-        cat['OBJNAME_NED'] = nedfriendly_lvd(cat['OBJNAME_LVD'])
-        m1, m2 = match(cat['OBJNAME_LVD'], mini['name'])
-        assert(len(m1) == len(mini))
-        cat = cat[m1]
-        mini = mini[m2]
-
-        I = (cat['PA_LIT'] == -99.) * (cat['PA_HYPERLEDA'] == -99.) * (cat['PA_SGA2020'] == -99.)
-        mini = join(mini[I], cat[I], keys_left='name', keys_right='OBJNAME_LVD')
-        mini.remove_columns(['OBJNAME', 'OBJNAME_LVD'])
-        mini.rename_columns(['RA', 'DEC'], ['RA_NED', 'DEC_NED'])
-
-        pdb.set_trace()
-
 
         lvd.write(lvdfile, overwrite=True)
 
@@ -1623,8 +1501,8 @@ def read_lvd(rank=0, rows=None, overwrite=False):
 		'DDO 53': 24050,
 		'DDO 78': 30664,
 		'DDO 82': 30997,
-		'DDO126': 40791,
-		'DDO127': 41020,
+		'DDO 126': 40791,
+		'DDO 127': 41020,
 		'DDO 133': 41636,
 		'DDO 154': 43869,
 		'DDO 165': 45372,
@@ -1641,7 +1519,7 @@ def read_lvd(rank=0, rows=None, overwrite=False):
 		'ESO 245-005': 6430,
 		'ESO 269-037': 45104,
 		'ESO 269-058': 45717,
-		'ESO272-025': 52591,
+		'ESO 272-025': 52591,
 		'ESO 321-014': 39032,
 		'ESO 324-024': 47171,
 		'ESO 349-031': 621,
@@ -1736,7 +1614,7 @@ def read_lvd(rank=0, rows=None, overwrite=False):
 		'PGC 704814': 704814,
 		'PGC 725719': 725719,
 		'PGC 1059300': 1059300,
-		'UGC00064': 591,
+		'UGC 64': 591,
 		'UGC 288': 1777,
 		'UGC 685': 3974,
 		'UGC 1703': 8484,
@@ -1942,6 +1820,13 @@ def read_lvd(rank=0, rows=None, overwrite=False):
         'NGC 205': 2429,
         'NGC 247': 2758,
         'NGC 300': 3238,
+        'NGC 1042': 10122,
+        'NGC 4151': 38739,
+        'NGC 4424': 40809,
+        'NGC 5194': 47404,
+        'PGC 100170': 100170,
+        'PGC 166192': 166192,
+        'PGC 166193': 166193,
         'NGC 3109': 29128,
         'NGC 404': 4126,
         'NGC 4163': 38881,
