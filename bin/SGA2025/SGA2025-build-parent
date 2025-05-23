@@ -613,7 +613,6 @@ def update_lvd_properties(cat):
       UGC 7490          186.10375  70.334278      --
 
     """
-
     def modify_lvg_names(lvg_name):
         lvg_name = np.char.replace(lvg_name, ' ', '')
         lvg_name = np.char.replace(lvg_name, 'SagdSph', 'Sagittarius')
@@ -631,91 +630,128 @@ def update_lvd_properties(cat):
         return lvg_name
 
 
-    pdb.set_trace()
+    from astropy.table import vstack, join
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+    from astrometry.libkd.spherematch import match_radec
+    from SGA.util import match
+    from SGA.io import read_lvd, version_lvd
 
+    lvd = read_lvd()
+    version = version_lvd()
 
-    lvd['diam'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['pa'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['ba'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['diam_ref'] = np.zeros(len(lvd), 'U7')
-    lvd['pa_ref'] = np.zeros(len(lvd), 'U7')
-    lvd['ba_ref'] = np.zeros(len(lvd), 'U7')
+    print(f'Updating properties of {len(lvd)} LVD galaxies.')
 
-    I = ~lvd['rhalf'].mask
-    lvd['diam'][I] = np.float32(2. * 1.2 * lvd['rhalf'][I])
-    lvd['pa'][I] = np.float32(lvd['position_angle'][I] % 180)
-    lvd['ba'][I] = np.float32(1. - lvd['ellipticity'][I])
-    lvd['diam_ref'][I] = version
-    lvd['pa_ref'][I] = version
-    lvd['ba_ref'][I] = version
+    #indx_cat = np.where(cat['ROW_LVD'] != -99)[0]
+    #lvd = cat[indx_cat]
 
-    # add geometry from the LVGDB; see bin/analyze-lvd
-    lvgfile = os.path.join(sga_dir(), 'parent', 'external', 'lvg_table1_2025-01-26_trim.txt')
+    lvd['DIAM'] = np.zeros(len(lvd), 'f4') - 99.
+    lvd['PA'] = np.zeros(len(lvd), 'f4') - 99.
+    lvd['BA'] = np.zeros(len(lvd), 'f4') - 99.
+    lvd['DIAM_REF'] = np.zeros(len(lvd), 'U7')
+    lvd['PA_REF'] = np.zeros(len(lvd), 'U7')
+    lvd['BA_REF'] = np.zeros(len(lvd), 'U7')
+
+    I = np.isfinite(lvd['RHALF'])
+    #I = ~lvd['RHALF'].mask
+    lvd['DIAM'][I] = np.float32(2. * 1.2 * lvd['RHALF'][I])
+    lvd['PA'][I] = np.float32(lvd['POSITION_ANGLE'][I] % 180)
+    lvd['BA'][I] = np.float32(1. - lvd['ELLIPTICITY'][I])
+    lvd['DIAM_REF'][I] = version
+    lvd['PA_REF'][I] = version
+    lvd['BA_REF'][I] = version
+
+    # first, add geometry from the LVGDB; see bin/analyze-lvd
+    lvgfile = resources.files('SGA').joinpath('data/SGA2025/lvg_table1_2025-01-26_trim.txt')
     lvg = Table.read(lvgfile, format='ascii.fixed_width')
-    c_lvg = SkyCoord(ra=lvg['ra_hms'].value, dec=lvg['dec_dms'].value, unit=(u.hourangle, u.deg))
-    lvg['ra'] = c_lvg.ra.degree
-    lvg['dec'] = c_lvg.dec.degree
-    lvg.remove_columns(['ra_hms', 'dec_dms'])
+    print(f'Read the properties of {len(lvg)} galaxies from {lvgfile}')
 
-    #[lvg.rename_column(col, f'{col.upper()}_LVG') for col in lvg.colnames]
-    [lvg.rename_column(col, f'{col}_lvg') for col in lvg.colnames]
+    c_lvg = SkyCoord(ra=lvg['RA_HMS'].value, dec=lvg['DEC_DMS'].value, unit=(u.hourangle, u.deg))
+    lvg['RA'] = c_lvg.ra.degree
+    lvg['DEC'] = c_lvg.dec.degree
+    lvg.remove_columns(['RA_HMS', 'DEC_DMS'])
 
-    m1, m2, _ = match_radec(lvd['ra'], lvd['dec'], lvg['ra_lvg'], lvg['dec_lvg'], 30./3600., nearest=True)
-    lvd['diam_lvg'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['ba_lvg'] = np.zeros(len(lvd), 'f4') - 99.
-    #lvd['pa_lvg'] = np.zeros(len(lvd), 'f4')
+    [lvg.rename_column(col, f'{col}_LVG') for col in lvg.colnames]
 
-    lvd['diam_lvg'][m1] = lvg['diam_lvg'][m2]
-    lvd['ba_lvg'][m1] = lvg['ba_lvg'][m2]
-    #lvd['pa_lvg'][m1] = lvg['pa_lvg'][m2]
+    m1, m2, _ = match_radec(lvd['RA'], lvd['DEC'], lvg['RA_LVG'], lvg['DEC_LVG'], 30./3600., nearest=True)
+    lvd['DIAM_LVG'] = np.zeros(len(lvd), 'f4') - 99.
+    lvd['BA_LVG'] = np.zeros(len(lvd), 'f4') - 99.
+    #lvd['pa_LVG'] = np.zeros(len(lvd), 'f4')
 
-    lvg_name = modify_lvg_names(lvg['name_lvg'].value)
+    lvd['DIAM_LVG'][m1] = lvg['DIAM_LVG'][m2]
+    lvd['BA_LVG'][m1] = lvg['BA_LVG'][m2]
+    #lvd['PA_LVG'][m1] = lvg['PA_LVG'][m2]
 
-    I = np.where(lvd['diam_lvg'] == -99.)[0]
-    m1, m2 = match(np.char.replace(lvd['name'][I], ' ', ''), lvg_name)
+    lvg_name = modify_lvg_names(lvg['NAME_LVG'].value)
 
-    lvd['diam_lvg'][I][m1] = lvg['diam_lvg'][m2]
-    lvd['ba_lvg'][I][m1] = lvg['ba_lvg'][m2]
-    #lvd['pa_lvg'][m1] = lvg['pa_lvg'][m2]
+    I = np.where(lvd['DIAM_LVG'] == -99.)[0]
+    m1, m2 = match(np.char.replace(lvd['OBJNAME'][I], ' ', ''), lvg_name)
 
-    # missing all data - hard-code for now!
-    I = (lvd['diam'] == -99.) * (lvd['diam_lvg'] == -99.)
+    lvd['DIAM_LVG'][I][m1] = lvg['DIAM_LVG'][m2]
+    lvd['BA_LVG'][I][m1] = lvg['BA_LVG'][m2]
+    #lvd['pa_LVG'][m1] = lvg['pa_LVG'][m2]
+
+    # v1.0.5 is missing all data for 10 objects. Hard-code the properties for
+    # now...
+    I = (lvd['DIAM'] == -99.) * (lvd['DIAM_LVG'] == -99.)
+    if version != 'v1.0.5':
+        raise ValueError('Need hard-coded properties!')
+
+    gals = [
+        'IC239',
+        'NGC 1042',
+        'NGC 4151',
+        'NGC 4424',
+        'NGC 5194',
+        'PGC 100170',
+        'PGC 166192',
+        'PGC 166193',
+        'UGC 7490',
+        'dw1341-29',
+    ]
+    props = [
+        (4.57, 0.912, 125.),
+        (5.47, 0.873, 33.6),
+        (5.43, 0.879, 140.),
+        (3.63, 0.501, 95.),
+        (11.22, 0.617, 163.),
+        (),
+        (),
+        (3.30, 0.850, 0.17),
+        (),
+        ]
+    refs = [
+        ('RC3', 'RC3', '2MASS'),
+        ('SGA2020', 'SGA2020', 'SGA2020'),
+        ('SGA2020', 'SGA2020', 'SGA2020'),
+        ('RC3', 'RC3', 'RC3'),
+        ('RC3', 'RC3', 'RC3'),
+        (),
+        (),
+        (),
+        ('SGA2020', 'SGA2020', 'SGA2020'),
+        (),
+        ]
+
+
     try:
-        assert(np.all(lvd[I]['name'] == ['IC239', 'NGC 5194', 'UGC 7490']))
+        assert(np.all(lvd[I]['OBJNAME'] == ['IC239', 'NGC 5194', 'UGC 7490']))
     except:
         pdb.set_trace()
-    lvd['diam'][lvd['name'] == 'IC239'] = 4.572 # RC3 / NED
-    lvd['ba'][lvd['name'] == 'IC239'] = 0.91
-    lvd['pa'][lvd['name'] == 'IC239'] = 125.
-    lvd['diam_ref'][lvd['name'] == 'IC239'] = 'RC3'
-    lvd['ba_ref'][lvd['name'] == 'IC239'] = 'RC3'
-    lvd['pa_ref'][lvd['name'] == 'IC239'] = '2MASS'
 
-    lvd['diam'][lvd['name'] == 'NGC 5194'] = 13.527 # SGA2020
-    lvd['ba'][lvd['name'] == 'NGC 5194'] = 0.86 # SGA2020
-    lvd['pa'][lvd['name'] == 'NGC 5194'] = 28.4
-    lvd['diam_ref'][lvd['name'] == 'NGC 5194'] = 'SGA2020'
-    lvd['ba_ref'][lvd['name'] == 'NGC 5194'] = 'SGA2020'
-    lvd['pa_ref'][lvd['name'] == 'NGC 5194'] = 'SGA2020'
 
-    lvd['diam'][lvd['name'] == 'UGC 7490'] = 3.3 # SGA2020
-    lvd['ba'][lvd['name'] == 'UGC 7490'] = 0.85 # SGA2020
-    lvd['pa'][lvd['name'] == 'UGC 7490'] = 0.2
-    lvd['diam_ref'][lvd['name'] == 'UGC 7490'] = 'SGA2020'
-    lvd['ba_ref'][lvd['name'] == 'UGC 7490'] = 'SGA2020'
-    lvd['pa_ref'][lvd['name'] == 'UGC 7490'] = 'SGA2020'
 
     # copy missing values
-    print(f'Existing diameters for {np.sum(lvd["diam"] == -99.)}/{len(lvd)} objects.')
-    I = (lvd['diam'] == -99.) * (lvd['diam_lvg'] != -99.)
+    print(f'Existing diameters for {np.sum(lvd["DIAM"] == -99.)}/{len(lvd)} objects.')
+    I = (lvd['DIAM'] == -99.) * (lvd['DIAM_LVG'] != -99.)
     print(f'Adding {np.sum(I)} diameters from the LVGDB.')
-    lvd['diam'][I] = lvd['diam_lvg'][I]
-    lvd['ba'][I] = lvd['ba_lvg'][I]
-    lvd['diam_ref'][I] = 'LVGDB'
-    lvd['ba_ref'][I] = 'LVGDB'
+    lvd['DIAM'][I] = lvd['DIAM_LVG'][I]
+    lvd['BA'][I] = lvd['BA_LVG'][I]
+    lvd['DIAM_REF'][I] = 'LVGDB'
+    lvd['BA_REF'][I] = 'LVGDB'
 
-    I = lvd['pa'] == -99.
-    mini = lvd['name', 'ra', 'dec', 'diam', 'pa', 'ba', 'diam_ref', 'pa_ref', 'ba_ref'][I]#, 'ref_structure'][I]
+    I = lvd['PA'] == -99.
+    mini = lvd['OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF', 'PA_REF', 'BA_REF'][I]#, 'ref_structure'][I]
     #mini.pprint(max_lines=-1)
 
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{parent_version(nocuts=True)}.fits')
@@ -730,7 +766,7 @@ def update_lvd_properties(cat):
     mini = mini[m2]
 
     I = (cat['PA_LIT'] == -99.) * (cat['PA_HYPERLEDA'] == -99.) * (cat['PA_SGA2020'] == -99.)
-    mini = join(mini[I], cat[I], keys_left='name', keys_right='OBJNAME_LVD')
+    mini = join(mini[I], cat[I], keys_left='OBJNAME', keys_right='OBJNAME_LVD')
     mini.remove_columns(['OBJNAME', 'OBJNAME_LVD'])
     mini.rename_columns(['RA', 'DEC'], ['RA_NED', 'DEC_NED'])
 
@@ -747,7 +783,6 @@ def update_properties(cat, verbose=False):
     # First, update the LVD objects.
     # [0] Update LVD properties.
     cat = update_lvd_properties(cat)
-    pdb.set_trace()
 
     propfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-properties.csv')
     props = Table.read(propfile, format='csv', comment='#')
@@ -792,6 +827,9 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    update_lvd_properties(1)
+    pdb.set_trace()
+
     # quick check on duplicates
     actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
@@ -1724,13 +1762,15 @@ def build_parent_nocuts(verbose=True):
     Idrop = np.where(parent['OBJNAME_NED'] == 'GALEXASC J095848.78+665057.9')[0]
     parent.remove_row(Idrop[0])
 
-    # Additional NED drops: SDSS J002041.45+083701.2 (duplicate with
-    # HIPASS J0021+08=JKB129), SDSS J104653.19+124441.4=PGC4689210
-    # (duplicate with Leo dw A=Leo I 09), PGC1 5067061 NED001
-    # (duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I), and
-    # SDSS J095549.64+691957.4 (duplicate with SDSS
-    # J141708.23+134105.7=PGC2801015=JKB83).
-    dups = ['SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4', 'PGC1 5067061 NED001', 'SDSS J095549.64+691957.4']
+    # Additional NED drops:
+    #   SDSS J002041.45+083701.2 - duplicate with HIPASS J0021+08=JKB129
+    #   SDSS J104653.19+124441.4=PGC4689210 - duplicate with Leo dw A=Leo I 09
+    #   PGC1 5067061 NED001 - duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I
+    #   SDSS J095549.64+691957.4 - duplicate with SDSSJ141708.23+134105.7=PGC2801015=JKB83
+    #   SDSS J133230.32+250724.9 - duplicate with AGC 238890
+
+    dups = ['SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4', 'PGC1 5067061 NED001',
+            'SDSS J095549.64+691957.4', 'SDSS J133230.32+250724.9']
     print(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
     Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
     parent.remove_rows(Idrop)
