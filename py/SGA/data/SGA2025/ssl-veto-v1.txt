@@ -108,3 +108,5 @@ PGC 004081,dr9-south
 UGC 02337 NED03,dr9-south
 VI Zw 152,dr9-south
 Hydra I Dwarf,dr9-south
+WISEA J041642.81-121133.2,dr9-south
+WISEA J071643.09+532255.7,dr9-north

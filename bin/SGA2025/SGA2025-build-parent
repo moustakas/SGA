@@ -616,7 +616,7 @@ def update_lvd_properties(cat):
     def modify_lvg_names(lvg_name):
         lvg_name = np.char.replace(lvg_name, ' ', '')
         lvg_name = np.char.replace(lvg_name, 'SagdSph', 'Sagittarius')
-        lvg_name = np.char.replace(lvg_name, 'And', 'Andromeda')
+        lvg_name = np.char.replace(lvg_name, 'And ', 'Andromeda ')
         lvg_name = np.char.replace(lvg_name, 'Lac', 'Lacerta')
         lvg_name = np.char.replace(lvg_name, 'UMa', 'UrsaMajor')
         lvg_name = np.char.replace(lvg_name, 'UMin', 'UrsaMinor')
@@ -630,35 +630,44 @@ def update_lvd_properties(cat):
         return lvg_name
 
 
-    from astropy.table import vstack, join
+    from astropy.table import vstack, join, hstack
     from astropy.coordinates import SkyCoord
     import astropy.units as u
     from astrometry.libkd.spherematch import match_radec
     from SGA.util import match
-    from SGA.io import read_lvd, version_lvd
+    from SGA.io import read_lvd, version_lvd, nedfriendly_lvd
 
-    lvd = read_lvd()
+    _lvd = read_lvd()
     version = version_lvd()
+    nobj = len(_lvd)
 
-    print(f'Updating properties of {len(lvd)} LVD galaxies.')
+    print(f'Updating properties of {nobj} LVD galaxies.')
 
     #indx_cat = np.where(cat['ROW_LVD'] != -99)[0]
     #lvd = cat[indx_cat]
 
-    lvd['DIAM'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['PA'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['BA'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['DIAM_REF'] = np.zeros(len(lvd), 'U7')
-    lvd['PA_REF'] = np.zeros(len(lvd), 'U7')
-    lvd['BA_REF'] = np.zeros(len(lvd), 'U7')
+    lvd = Table()
+    lvd['OBJNAME'] = _lvd['OBJNAME']
+    lvd['RA'] = _lvd['RA']
+    lvd['DEC'] = _lvd['DEC']
+    lvd['ROW'] = _lvd['ROW']
+    lvd['DIAM'] = np.zeros(nobj, 'f4') - 99.
+    lvd['PA'] = np.zeros(nobj, 'f4') - 99.
+    lvd['BA'] = np.zeros(nobj, 'f4') - 99.
+    lvd['DIAM_REF'] = np.zeros(nobj, 'U9')
+    lvd['PA_REF'] = np.zeros(nobj, 'U9')
+    lvd['BA_REF'] = np.zeros(nobj, 'U9')
 
-    I = np.isfinite(lvd['RHALF'])
-    #I = ~lvd['RHALF'].mask
-    lvd['DIAM'][I] = np.float32(2. * 1.2 * lvd['RHALF'][I])
-    lvd['PA'][I] = np.float32(lvd['POSITION_ANGLE'][I] % 180)
-    lvd['BA'][I] = np.float32(1. - lvd['ELLIPTICITY'][I])
+    I = np.isfinite(_lvd['RHALF'])
+    lvd['DIAM'][I] = np.float32(2. * 1.2 * _lvd['RHALF'][I])
     lvd['DIAM_REF'][I] = version
+
+    I = np.isfinite(_lvd['POSITION_ANGLE'])
+    lvd['PA'][I] = np.float32(_lvd['POSITION_ANGLE'][I] % 180)
     lvd['PA_REF'][I] = version
+
+    I = np.isfinite(_lvd['ELLIPTICITY'])
+    lvd['BA'][I] = np.float32(1. - _lvd['ELLIPTICITY'][I])
     lvd['BA_REF'][I] = version
 
     # first, add geometry from the LVGDB; see bin/analyze-lvd
@@ -674,26 +683,41 @@ def update_lvd_properties(cat):
     [lvg.rename_column(col, f'{col}_LVG') for col in lvg.colnames]
 
     m1, m2, _ = match_radec(lvd['RA'], lvd['DEC'], lvg['RA_LVG'], lvg['DEC_LVG'], 30./3600., nearest=True)
-    lvd['DIAM_LVG'] = np.zeros(len(lvd), 'f4') - 99.
-    lvd['BA_LVG'] = np.zeros(len(lvd), 'f4') - 99.
-    #lvd['pa_LVG'] = np.zeros(len(lvd), 'f4')
+    print(f'Matched {len(m1)}/{len(lvd)} LVD objects based on coordinates.')
+    #hstack((lvd['OBJNAME', 'RA', 'DEC'][m1], lvg['NAME_LVG', 'RA_LVG', 'DEC_LVG'][m2])).pprint(max_lines=-1)
+
+    lvd['DIAM_LVG'] = np.zeros(nobj, 'f4') - 99.
+    lvd['BA_LVG'] = np.zeros(nobj, 'f4') - 99.
+    #lvd['pa_LVG'] = np.zeros(nobj, 'f4')
 
     lvd['DIAM_LVG'][m1] = lvg['DIAM_LVG'][m2]
     lvd['BA_LVG'][m1] = lvg['BA_LVG'][m2]
     #lvd['PA_LVG'][m1] = lvg['PA_LVG'][m2]
 
-    lvg_name = modify_lvg_names(lvg['NAME_LVG'].value)
-
+    # now try matching missing matches by name
     I = np.where(lvd['DIAM_LVG'] == -99.)[0]
+    lvg_name = modify_lvg_names(lvg['NAME_LVG'].value)
     m1, m2 = match(np.char.replace(lvd['OBJNAME'][I], ' ', ''), lvg_name)
+    print(f'Matched {len(m1)}/{len(lvd)} LVD objects based on object name.')
+    #hstack((lvd['OBJNAME', 'RA', 'DEC'][I][m1], lvg['NAME_LVG', 'RA_LVG', 'DEC_LVG'][m2])).pprint(max_lines=-1)
 
-    lvd['DIAM_LVG'][I][m1] = lvg['DIAM_LVG'][m2]
-    lvd['BA_LVG'][I][m1] = lvg['BA_LVG'][m2]
+    lvd['DIAM_LVG'][I[m1]] = lvg['DIAM_LVG'][m2]
+    lvd['BA_LVG'][I[m1]] = lvg['BA_LVG'][m2]
     #lvd['pa_LVG'][m1] = lvg['pa_LVG'][m2]
+
+    # copy missing values from the LVGDB (prefer LVGDB!)
+    #print(f'Existing diameters for {np.sum(lvd["DIAM"] == -99.)}/{len(lvd)} objects.')
+    #I = (lvd['DIAM'] == -99.) * (lvd['DIAM_LVG'] != -99.)
+    I = (lvd['DIAM_LVG'] != -99.)
+    print(f'Adding {np.sum(I)} diameters from the LVGDB.')
+    lvd['DIAM'][I] = lvd['DIAM_LVG'][I]
+    lvd['BA'][I] = lvd['BA_LVG'][I]
+    lvd['DIAM_REF'][I] = 'LVGDB'
+    lvd['BA_REF'][I] = 'LVGDB'
 
     # v1.0.5 is missing all data for 10 objects. Hard-code the properties for
     # now...
-    I = (lvd['DIAM'] == -99.) * (lvd['DIAM_LVG'] == -99.)
+    I = (lvd['DIAM'] == -99.)
     if version != 'v1.0.5':
         raise ValueError('Need hard-coded properties!')
 
@@ -702,75 +726,98 @@ def update_lvd_properties(cat):
         'NGC 1042',
         'NGC 4151',
         'NGC 4424',
-        'NGC 5194',
+        #'NGC 5194',
         'PGC 100170',
         'PGC 166192',
         'PGC 166193',
         'UGC 7490',
         'dw1341-29',
     ]
-    props = [
+    props = [ # diam, ba, pa
         (4.57, 0.912, 125.),
         (5.47, 0.873, 33.6),
         (5.43, 0.879, 140.),
         (3.63, 0.501, 95.),
-        (11.22, 0.617, 163.),
-        (),
-        (),
+        #(11.22, 0.617, 163.),
+        (2.58, 0.4, 117.),
+        (1.60, 0.5, 0.),
+        (0.90, 1., 0.),
         (3.30, 0.850, 0.17),
-        (),
+        (0.5, 1., 0.),
         ]
     refs = [
         ('RC3', 'RC3', '2MASS'),
         ('SGA2020', 'SGA2020', 'SGA2020'),
         ('SGA2020', 'SGA2020', 'SGA2020'),
         ('RC3', 'RC3', 'RC3'),
-        ('RC3', 'RC3', 'RC3'),
-        (),
-        (),
-        (),
+        #('RC3', 'RC3', 'RC3'),
+        ('2MASS', '2MASS', '2MASS'),
+        ('HYPERLEDA', 'HYPERLEDA', 'BASIC', ),
+        ('HYPERLEDA', 'HYPERLEDA', 'BASIC', ),
         ('SGA2020', 'SGA2020', 'SGA2020'),
-        (),
+        ('VI', 'VI', 'VI'),
         ]
+    assert(np.all(lvd[I]['OBJNAME'] == gals))
 
+    props = list(zip(*props))
+    refs = list(zip(*refs))
 
-    try:
-        assert(np.all(lvd[I]['OBJNAME'] == ['IC239', 'NGC 5194', 'UGC 7490']))
-    except:
-        pdb.set_trace()
+    for col, prop, ref in zip(('DIAM', 'BA', 'PA'), props, refs):
+        lvd[col][I] = prop
+        lvd[f'{col}_REF'][I] = ref
 
+    # at this point, all objects should have diameters and ellipticities
+    #assert(np.all((lvd['DIAM'] != -99.) * (lvd['BA'] != -99.)))
 
+    # Next, gather ellipticities and position angles from the input catalog.
+    I = np.where(cat['ROW_LVD'] != -99)[0]
+    m1, m2 = match(lvd['ROW'], cat['ROW_LVD'][I])
+    lvd = lvd[m1]
+    lvdcat = cat[I[m2]]
 
-    # copy missing values
-    print(f'Existing diameters for {np.sum(lvd["DIAM"] == -99.)}/{len(lvd)} objects.')
-    I = (lvd['DIAM'] == -99.) * (lvd['DIAM_LVG'] != -99.)
-    print(f'Adding {np.sum(I)} diameters from the LVGDB.')
-    lvd['DIAM'][I] = lvd['DIAM_LVG'][I]
-    lvd['BA'][I] = lvd['BA_LVG'][I]
-    lvd['DIAM_REF'][I] = 'LVGDB'
-    lvd['BA_REF'][I] = 'LVGDB'
+    for prop in ['BA', 'PA']:
+        for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
+            I = (lvd[prop] == -99.) * (lvdcat[f'{prop}_{ref}'] != -99.)
+            if np.any(I):
+                print(f'Adding {np.sum(I)} {prop}s from {ref}')
+                lvd[prop][I] = lvdcat[f'{prop}_{ref}'][I]
+                if ref == 'LIT':
+                    lvd[f'{prop}_REF'][I] = lvdcat[f'{prop}_{ref}_REF'][I]
+                else:
+                    lvd[f'{prop}_REF'][I] = ref
 
+    # default values for everything else
     I = lvd['PA'] == -99.
-    mini = lvd['OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF', 'PA_REF', 'BA_REF'][I]#, 'ref_structure'][I]
-    #mini.pprint(max_lines=-1)
+    if np.any(I):
+        print(f'Adopting default PAs for {np.sum(I)} objects.')
+        lvd['PA'][I] = 0.
+        lvd['PA_REF'][I] = 'default'
 
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{parent_version(nocuts=True)}.fits')
-    rows = np.where(fitsio.read(catfile, columns='ROW_LVD') != -99)[0]
-    cols = ['OBJNAME', 'OBJNAME_LVD', 'RA', 'DEC', 'PA_LIT',
-            'PA_LIT_REF', 'PA_LIT', 'PA_LIT_REF', 'PA_SGA2020', 'PA_HYPERLEDA', 'PGC']
-    cat = Table(fitsio.read(catfile, columns=cols, rows=rows))
-    cat['OBJNAME_NED'] = nedfriendly_lvd(cat['OBJNAME_LVD'])
-    m1, m2 = match(cat['OBJNAME_LVD'], mini['name'])
-    assert(len(m1) == len(mini))
-    cat = cat[m1]
-    mini = mini[m2]
+    I = lvd['BA'] == -99.
+    if np.any(I):
+        print(f'Adopting default BAs for {np.sum(I)} objects.')
+        lvd['BA'][I] = 1.
+        lvd['BA_REF'][I] = 'default'
 
-    I = (cat['PA_LIT'] == -99.) * (cat['PA_HYPERLEDA'] == -99.) * (cat['PA_SGA2020'] == -99.)
-    mini = join(mini[I], cat[I], keys_left='OBJNAME', keys_right='OBJNAME_LVD')
-    mini.remove_columns(['OBJNAME', 'OBJNAME_LVD'])
-    mini.rename_columns(['RA', 'DEC'], ['RA_NED', 'DEC_NED'])
+    # write out
+    lvd = lvd[np.argsort(lvd['ROW'])]
 
-    pdb.set_trace()
+    outfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_{version}_geometry.fits')
+    lvd.write(outfile, overwrite=True)
+    print(f'Wrote {len(lvd)} objects to {outfile}')
+
+    #if not os.path.isfile(outfile):
+    #    print(f'Wrote {len(lvd)} objects to {outfile}')
+    #    lvd.write(outfile, overwrite=True)
+    #else:
+    #    print(f'Output file {outfile} exists.')
+
+    # Finally, populate the catalog.
+    I = np.where(cat['ROW_LVD'] != -99)[0]
+    m1, m2 = match(lvd['ROW'], cat['ROW_LVD'][I])
+    for prop in ['DIAM', 'BA', 'PA']:
+        cat[f'{prop}_LIT'][I[m2]] = lvd[prop][m1]
+        cat[f'{prop}_LIT_REF'][I[m2]] = 'LVD' # lvd[f'{prop}_REF'][m1]
 
     return cat
 
@@ -827,8 +874,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
-    update_lvd_properties(1)
-    pdb.set_trace()
+    #update_lvd_properties(1)
 
     # quick check on duplicates
     actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
@@ -950,6 +996,8 @@ def build_parent_archive(verbose=False, overwrite=False):
     vetofiles = glob(os.path.join(vetodir, 'ssl-veto-v[1,3].txt'))
     veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
 
+    # Make sure that the objects we're trying to veto are actually in the ssl
+    # files.
     I = np.isin(ssl['OBJNAME'], veto['objname'])
     if np.sum(I) != len(veto):
         print('Missing objects in veto files!')
@@ -1768,9 +1816,12 @@ def build_parent_nocuts(verbose=True):
     #   PGC1 5067061 NED001 - duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I
     #   SDSS J095549.64+691957.4 - duplicate with SDSSJ141708.23+134105.7=PGC2801015=JKB83
     #   SDSS J133230.32+250724.9 - duplicate with AGC 238890
+    #   SDSS J104701.35+125737.5 - duplicate with PGC1 0032256 NED034=LeG21
+    #   SDSS J124354.70+412724.9 - duplicate with SMDG J1243552+412727=LV J1243+4127
 
     dups = ['SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4', 'PGC1 5067061 NED001',
-            'SDSS J095549.64+691957.4', 'SDSS J133230.32+250724.9']
+            'SDSS J095549.64+691957.4', 'SDSS J133230.32+250724.9',
+            'SDSS J104701.35+125737.5', 'SDSS J124354.70+412724.9']
     print(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
     Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
     parent.remove_rows(Idrop)
@@ -1847,7 +1898,6 @@ def build_parent_nocuts(verbose=True):
           'SGA-2020 objects with PGC>0.')
     sga2020 = sga2020[J]
 
-    #pdb.set_trace()
     #pgc, cc = np.unique(parent[I]['PGC'].value, return_counts=True)
     #dups = pgc[cc>1]
     #parent[np.isin(parent['PGC'], dups)]['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
@@ -2116,6 +2166,7 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
     I = ccds_touching_wcs(targetwcs, allccds)
     #ccds = survey.ccds_touching_wcs(targetwcs)
     #print(len(I))
+    pdb.set_trace()
 
     # no CCDs within width_pixels
     if len(I) == 0:
@@ -2366,6 +2417,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
             I = np.arange(N)
 
         #I = np.array([4784167, 4784170])
+        print('HACK!!')
+        I = np.array([2016776])
 
         cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
         cat['NCCD'] = np.zeros(len(cat), int)
@@ -2405,6 +2458,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         # check for an existing CCDs catalog from previous runs of this code
         #cat, cat_done, ccds_done = read_existing_footprint(cat, allccds, region, version=version)
         cat, cat_done = read_existing_footprint(cat, region, version=version)
+        print('HACK!!')
+        cat_done = []
 
         # divide the parent catalog into more managable chunks, and loop
         if region == 'dr9-north':
