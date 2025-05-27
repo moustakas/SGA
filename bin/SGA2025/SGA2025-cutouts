@@ -199,7 +199,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
         semimajor = diam / pixscale # [pixels]
         semiminor = ba * semimajor  # [pixels]
-        theta = np.radians(90.-pa)
+        theta = np.radians(90. - pa)
         x0 = xpix
         y0 = width - ypix
 
@@ -1271,7 +1271,9 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
 
-        if False:#True:
+        if True:
+            from SGA.ellipse import ellipse_mask_sky
+
             def writeit(cat, region, prefix='tmplist'):
                 outfile = f'{prefix}-{region}.txt'
                 out = cat['OBJNAME', ]
@@ -1284,35 +1286,53 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             # All sources larger than XX arcmin with at least one
             # other object within its diameter.
             fullcat = cat.copy()
-            fullcat_diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=10.)
 
-            isolated = False#True
+            isolated = True
             if isolated:
-                I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
+                I = (fullcat_diam <= 20.) * (fullcat['ROW_LVD'] == -99) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
             else:
                 #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
                 #I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
                 I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
+                #print('HACK!!')
+                #I = np.isin(cat['OBJNAME'], ['NGC 5349'])#['NGC 0019'])#, 'ESO 241- G 020'])
+
             cat = cat[I]
             diam = fullcat_diam[I]
+            ba = fullcat_ba[I]
+            pa = fullcat_pa[I]
 
             allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                                      fullcat['RA'].value, fullcat['DEC'].value,
                                      np.max(diam)/3600., indexlist=True, notself=False)
             outcat, outfullcat = [], []
             for iobj in range(len(cat)):
-                # refine the search to this object's diameter
-                m1, m2, _ = match_radec(cat['RA'][iobj], cat['DEC'][iobj], 
-                                        fullcat['RA'][allmatches[iobj]],
-                                        fullcat['DEC'][allmatches[iobj]], 
-                                        0.75*diam[iobj]/3600.)
                 if isolated:
+                    # refine the search to this object's diameter
+                    _, m2, _ = match_radec(cat['RA'][iobj], cat['DEC'][iobj],
+                                           fullcat['RA'][allmatches[iobj]],
+                                           fullcat['DEC'][allmatches[iobj]],
+                                           0.75*diam[iobj]/3600.)
                     # isolated!
                     if len(m2) == 1:
                         prefix = 'isolated'
                         outcat.append(cat[[iobj]])
                         outfullcat.append(fullcat[allmatches[iobj]][m2])
                 else:
+                    if len(allmatches[iobj]) == 1:
+                        m2 = 0
+                    else:
+                        # find neighbors within this object's elliptical aperture
+                        ras, decs = fullcat['RA'][allmatches[iobj]], fullcat['DEC'][allmatches[iobj]]
+                        racen, deccen = cat['RA'][iobj], cat['DEC'][iobj]
+        
+                        semia = diam[iobj] / 2. / 3600. # [degrees]
+                        semib = ba[iobj] * semia
+                        phi = np.radians(90. - pa[iobj])
+        
+                        m2 = np.where(ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs))[0]
                     # at least one other object
                     if len(m2) > 1:
                         prefix = 'tmplist'
@@ -1321,6 +1341,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
             cat = vstack(outcat)
             print(len(cat))
+            pdb.set_trace()
 
             _cat = vstack(outfullcat)
             _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
@@ -1581,16 +1602,16 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         print(f'Trimmed to {len(cat):,d} objects.')
 
 
-    sort_by_ra = False
+    sort_by_ra = True
     if sort_by_ra:
         print('Sorting by RA')
         cat = cat[np.argsort(cat['RA'])]
     else:
-        print('Sorting by diameter')
-        diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-        cat = cat[np.argsort(diam)[::-1]]
-        #print('Sorting by OBJNAME')
-        #cat = cat[np.argsort(cat['OBJNAME'])]
+        #print('Sorting by diameter')
+        #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+        #cat = cat[np.argsort(diam)[::-1]]
+        print('Sorting by OBJNAME')
+        cat = cat[np.argsort(cat['OBJNAME'])]
 
     if len(cat) == 0:
         raise ValueError('No objects in catalog!')
