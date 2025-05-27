@@ -66,10 +66,6 @@ Kim's wisesize project:
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-south --annotated-montage
 
 LVD sample:
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --annotate --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --annotated-montage --lvd
-
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --mp=32 --lvd
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotate --mp=32 --lvd
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotated-montage --lvd
@@ -107,8 +103,34 @@ def do_photo(cat, comm=None, indir='.', region='dr9-north',
              outdir='.', overwrite=False, dry_run=False, 
              verbose=False):
     pdb.set_trace()
-    pass
+    # https://photutils.readthedocs.io/en/stable/user_guide/segmentation.html
+    from photutils.morphology import data_properties
+    from photutils.background import Background2D, MedianBackground
+    from photutils.segmentation import detect_sources, deblend_sources, SourceCatalog
 
+    import matplotlib.pyplot as plt
+    from astropy.visualization import SqrtStretch
+    from astropy.visualization.mpl_normalize import ImageNormalize
+
+    # read the WCS and image cutouts
+    data = img[1, :, :]
+    bkg = Background2D(data, (50, 50), filter_size=(3, 3),
+                       bkg_estimator=MedianBackground)
+    thresh = 2.5 * bkg.background_rms
+    seg = detect_sources(data, thresh, npixels=10)
+
+    dseg = deblend_sources(data, seg, npixels=30, nlevels=8, contrast=0.1, progress_bar=True)
+    srcs = SourceCatalog(data, dseg, convolved_data=data)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12.5))
+    ax1.imshow(data, origin='lower', cmap='Greys_r', norm=ImageNormalize(stretch=SqrtStretch()))
+    ax2.imshow(dseg, origin='lower', cmap=dseg.cmap, interpolation='nearest')
+    _ = srcs.plot_kron_apertures(ax=ax1, color='white', lw=1.5)
+    _ = srcs.plot_kron_apertures(ax=ax2, color='white', lw=1.5)
+    fig.savefig('ioannis/tmp/junk.png')
+
+
+    pass
 
 
 def _get_annotate_one(args):
@@ -1030,9 +1052,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
     if ssl:
         qadir = os.path.join(sga_dir(), 'ssl', ssl_version)
     else:
-        print('HACK!!')
-        qadir = os.path.join(sga_dir(), 'parent', 'qa', 'junk')
-        #qadir = os.path.join(sga_dir(), 'parent', 'qa')
+        qadir = os.path.join(sga_dir(), 'parent', 'qa')
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
 
@@ -1238,7 +1258,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             return
 
         # when annotating, must make a copy *before* any cuts!
-        if read_fullcat or annotate or ssl:
+        if read_fullcat or annotate or ssl or lvd:
             if ntest is not None:
                 fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
             else:
@@ -1463,10 +1483,13 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
         if lvd:
             # analyze the LVD sample
-            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-            pdb.set_trace()
-            cat = cat[(cat['ROW_LVD'] != -99) * (diam == 0.)] # (diam > 20.*60.)]
-            #cat = cat[cat['ROW_LVD'] != -99]
+            #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            #cat = cat[(cat['ROW_LVD'] != -99) * (diam == 0.)] # (diam > 20.*60.)]
+            cat = cat[cat['ROW_LVD'] != -99]
+            cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC'])]
+
+            fulldiam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            fullcat = fullcat[fulldiam > 30./60.]
 
         if zooniverse:
             # project0
@@ -1563,8 +1586,11 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         print('Sorting by RA')
         cat = cat[np.argsort(cat['RA'])]
     else:
-        print('Sorting by OBJNAME')
-        cat = cat[np.argsort(cat['OBJNAME'])]
+        print('Sorting by diameter')
+        diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+        cat = cat[np.argsort(diam)[::-1]]
+        #print('Sorting by OBJNAME')
+        #cat = cat[np.argsort(cat['OBJNAME'])]
 
     if len(cat) == 0:
         raise ValueError('No objects in catalog!')

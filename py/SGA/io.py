@@ -1443,8 +1443,23 @@ def read_lvd(rank=0, rows=None, overwrite=False):
         lvd = Table.read(allfile)
 
         if version == 'v1.0.4':
-            I = lvd['name'] == 'MADCASH-1'
-            lvd['ra'][I] = 115.6641667
+            lvd['ra'][lvd['name'] == 'MADCASH-1'] = 115.6641667
+
+        if version == 'v1.0.5':
+            lvd['ra'][lvd['name'] == 'AGC 198606'] = 142.519635
+            lvd['ra'][lvd['name'] == 'NGC 1042'] = 40.0999125
+            lvd['ra'][lvd['name'] == 'NGC 4151'] = 182.6360025
+            lvd['ra'][lvd['name'] == 'NGC 4424'] = 186.79875
+            lvd['dec'][lvd['name'] == 'NGC 4424'] = 9.4205
+            lvd['ra'][lvd['name'] == 'PGC 100170'] = 44.2158075
+            lvd['ra'][lvd['name'] == 'PGC 166192'] = 307.6358955
+            lvd['ra'][lvd['name'] == 'PGC 166193'] = 307.8832995
+
+            I = lvd['name'] == 'KK 166'
+            lvd['rhalf'][I] = 11.97
+            lvd['ellipticity'][I] = 0.12
+            lvd['position_angle'][I] = 67.09
+            lvd['ref_structure'][I] = 'Zaritsky2023ApJS..267...27Z'
 
         # drop unconfirmed systems
         print(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
@@ -2221,6 +2236,8 @@ def read_custom_external(rank=0, rows=None, overwrite=False):
         for col in ['diam', 'ba', 'pa', 'mag']:
             data[col] = data[col].astype('f4')
         [data.rename_column(col, col.upper()) for col in data.colnames]
+        data['PA'] = data['PA'].value % 180 # put in range [0-->180]
+
         data.write(customfile, overwrite=True)
 
     F = fitsio.FITS(customfile)

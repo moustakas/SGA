@@ -7,6 +7,13 @@ BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
 Crater Cluster,drop,GC,Milky Way globular cluster
 #
+SDSS J013800.83+145857.6,drop,faint shred or compact,
+WISEA J112015.95+133240.6,drop,faint shred or compact,
+WISEA J121915.54+061803.9,drop,faint shred or compact,
+WISEA J123355.38-104047.5,drop,faint shred or compact,
+APMUKS(BJ) B122514.11+015226.2,drop,faint shred or compact,
+ESO 421-IG 002 NED01,drop,faint shred or compact,
+PGC 320426,drop,faint shred or compact,
 LEDA 166124,drop,faint shred or compact,
 PGC1 0024930 NED002,drop,faint shred or compact,
 2MASS J07401575+6743225,drop,faint shred or compact,
@@ -3165,8 +3172,12 @@ WISEA J113019.95+555856.0,drop,faint,
 WISEA J102825.28+154757.2,drop,faint,
 SDSS J141300.79+525028.0,drop,faint,
 SDSS J023220.39-054448.6,drop,faint,
-SDSS J113108.55+021309.7,drop,faint,Coincident duplicate with Leo V (LVD).
-ABELL 3921_05:[PSE2006] 1203,drop,faint,In the body of 'Tucana'.
+[HKK2009] dJ1120+1332,drop,faint,Coincident duplicate with 'dw1120p1332' (LVD)
+GALEXASC J025856.37+133749.8,drop,faint,Coincident duplicate with 'GALFA Dw3' (LVD)
+PGC 1004701,drop,faint,Coincident duplicate with 'dw1000m0821' (LVD)
+SDSS J113108.55+021309.7,drop,faint,Coincident duplicate with 'Leo V' (LVD)
+SDSS J123109.08+420533.8,drop,faint,Coincident duplicate with 'MAPS 1231+42' (LVD)
+ABELL 3921_05:[PSE2006] 1203,drop,faint,In the body of 'Tucana' (LVD)
 #
 WISEA J100359.93-271906.9,drop,compact,In 'Antlia'
 WISEA J014508.53-433621.2,drop,compact,In 'ESO 245-005'

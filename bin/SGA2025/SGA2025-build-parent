@@ -654,9 +654,12 @@ def update_lvd_properties(cat):
     lvd['DIAM'] = np.zeros(nobj, 'f4') - 99.
     lvd['PA'] = np.zeros(nobj, 'f4') - 99.
     lvd['BA'] = np.zeros(nobj, 'f4') - 99.
-    lvd['DIAM_REF'] = np.zeros(nobj, 'U9')
-    lvd['PA_REF'] = np.zeros(nobj, 'U9')
-    lvd['BA_REF'] = np.zeros(nobj, 'U9')
+    lvd['RADEC_REF'] = np.zeros(nobj, 'U19')
+    lvd['DIAM_REF'] = np.zeros(nobj, 'U19')
+    lvd['PA_REF'] = np.zeros(nobj, 'U19')
+    lvd['BA_REF'] = np.zeros(nobj, 'U19')
+
+    lvd['RADEC_REF'] = 'LVD'
 
     I = np.isfinite(_lvd['RHALF'])
     lvd['DIAM'][I] = np.float32(2. * 1.2 * _lvd['RHALF'][I])
@@ -798,6 +801,221 @@ def update_lvd_properties(cat):
         print(f'Adopting default BAs for {np.sum(I)} objects.')
         lvd['BA'][I] = 1.
         lvd['BA_REF'][I] = 'default'
+
+    # override the algorithm above based on VI
+    if version == 'v1.0.5':
+        gals = [
+            # dr9-north
+            'DDO 126',
+            'NGC 5023',
+            'A0952+69',
+            'KK 166',
+            'HS 117',
+            'UGCA 281',
+            'UGC 7298',
+            'BK6N',
+            'KKR 25',
+            'KK 17', # also in dr11-south
+            'Dw1245+6158',
+            'KK 193',
+            'NGC 4631-dw3', # also in dr11-south
+            'KK 135',
+            'KK 160',
+            'MAPS 1231+42',
+            'dw1239+3230',
+            'JKB83',
+            # dr11-south
+            'NGC 247',
+            'ESO 290-028',
+            'NGC 1792',
+            'Pegasus dIrr',
+            'NGC 4424',
+            'PGC1242',
+            'NGC 3351',
+            'DDO 133',
+            'UGCA 442',
+            'NGC 4592',
+            # count=10 above here
+            'NGC 1042',
+            'NGC 1827',
+            'NGC 1800',
+            'NGC 4562',
+            'ESO 346-007',
+            'ESO 472-015',
+            'ESO 325-011',
+            'DDO 153',
+            'NGC 3521-sat',
+            'KKs 3',
+            # count=10 above here
+            'PGC 51659',
+            'KK 218',
+            'UGC 1703',
+            'KDG 2',
+            'ESO 269-037',
+            'NGC 5011C',
+            'KK 144',
+            'KK 70',
+            'UGCA 292',
+            'MCG-04-31-038',
+            # count=10 above here
+            'UGC 2905',
+            'IC 3840',
+            'KKs 51',
+            'LeG05',
+            'HIPASS J1247-77',
+            'AM 1320-230',
+            'JKB129',
+            'dw1236+3336',
+            'GALFA Dw3',
+            'LV J0616-5745',
+            # count=10 above here
+            'dw1232p0015',
+        ]
+        props = [ # ra, dec, diam, ba, pa
+            # dr9-north
+            (-99., -99., -99., -99., 145.5),
+            (-99., -99., -99., -99., 28.22),
+            (-99., -99., 2., 0.75, 90.),
+            (192.30065, 35.61258, 1.2*0.399, 0.84, 67.09), # =SMDG J1249122+353645; factor of 1.2: Re-->RHolm
+            (-99., -99., -99., -99., 170.),
+            (186.570833, 48.494167, -99., -99., -99.),
+            (184.125699, 52.227996, -99., -99., -99.),
+            (-99., -99., -99., -99., 70.),
+            (-99., -99., -99., -99., 10.),
+            (30.042042, 28.8311692, 0.6, 0.5, 167.5),
+            (-99., -99., -99., -99., 45.),
+            (198.87417, 41.50223, 1.2*0.39866, 0.77, 119.17), # =SMDG J1315298+413008
+            (190.72097, 32.45592, 1.2*0.42333, 0.9, 81.86), # =SMDG J1242530+322721
+            (184.8944985, 58.0439485, -99., -99., -99.),
+            (190.99079166666667, 43.66122222222222, -99., -99., -99.),
+            (-99., -99., -99., -99., 167.16), # =SDSS J123109.08+420533.8
+            (189.7710, 32.5042, -99., -99., -99.),
+            (148.9569, 69.3326, -99., -99., -99.),
+            # dr11-south
+            (-99., -99., -99., -99., 167.44),
+            (-99., -99., 3.3678637, 0.2748319, 90.72542),
+            (-99., -99., 5.5590425, 0.4954502, 136.1),
+            (-99., -99., 9.068349, 0.47048086, 124.596985),
+            (186.798241, 9.420542, -99., -99., -99.),
+            (-99., -99., 3.7, -99., 10.),
+            (-99., -99., -99., -99., 10.68),
+            (-99., -99., 5.509129, 0.699842, 162.88872),
+            (355.94309250000003, -31.956949, -99., -99., -99.),
+            (-99., -99., 5.871678, -99., -99.),
+            # count=10 above here
+            (40.099892, -8.433514, -99., -99., -99.),
+            (-99., -99., 4.9642844, -99., -99.),
+            (-99., -99., 3.8072977, -99., -99.),
+            (-99., -99., 3.8088787, -99., -99.),
+            (-99., -99., 1.66, -99., -99.), # double the HyperLeda diameter
+            (-99., -99., 0.5*3.672, -99., -99.), # halve the v1.0.5 diameter
+            (206.2520833333333, -41.861111111111114, -99., -99., -99.),
+            (193.486722, -12.1054537, -99., -99., -99.),
+            (-99., -99., -99., -99., 45.),
+            (-99., -99., -99., -99., 100.),
+            # count=10 above here
+            (-99., -99., -99., -99., 120.),
+            (-99., -99., -99., -99., 150.),
+            (33.22875, 32.815, -99., -99., -99.),
+            (-99., -99., -99., -99., 99.826744),
+            (195.88829249999998, -46.586861, -99., -99., -99.),
+            (198.29949999999997, -43.26547222222222, -99., -99., -99.),
+            (186.37058399999998, 28.4845833, -99., -99., -99.),
+            (133.8470835, 33.559, -99., -99., -99.),
+            (-99., -99., -99., -99., 90.),
+            (197.40249999999997, -27.14075, -99., -99., -99.),
+            # count=10 above here
+            (59.250583333333324, 16.522444444444442, -99., -99., -99.),
+            (-99., -99., -99., -99., 40.),
+            (191.0895833333333, -42.93969444444444, -99., -99., -99.),
+            (159.92899999999997, 12.634888888888888, -99., -99., -99.),
+            (191.890842, -77.582623, -99., -99., -99.),
+            (200.8745833333333, -23.393055555555556, -99., -99., -99.),
+            (-99., -99., -99., -99., 135.),
+            (-99., -99., -99., -99., 80.),
+            (44.7343335, 13.6299722, -99., -99., -99.),
+            (94.03716666666666, -57.76461111111111, -99., -99., -99.),
+            # count=10 above here
+            (188.15054166666664 0.2624444444444444, -99., -99., -99.),
+            ]
+        refs = [
+            # dr9-north
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', 'VI', 'VI', 'VI'),
+            ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
+            ('', '', '', '', 'VI'),
+            ('2016AJ....152...50T', '2016AJ....152...50T', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA'),
+            ('', '', '', '', 'VI'),
+            ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
+            ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'HYPERLEDA'),
+            ('LS/DR9', 'LS/DR9', '', '', ''),
+            ('LS/DR9', 'LS/DR9', '', '', ''),
+            # dr11-south
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
+            ('', '', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA'),
+            ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
+            ('NED', 'NED', '', '', ''),
+            ('', '', 'VI', '', 'VI'),
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', 'SGA2020', 'HYPERLEDA', 'SGA2020'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            # count=10 above here
+            ('NED', 'NED', '', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            ('', '', 'VI', '', ''),
+            ('', '', 'VI', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            # count=10 above here
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'SGA2020'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('NED', 'NED', '', '', ''),
+            # count=10 above here
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('NED', 'NED', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            # count=10 above here
+            ('NED', 'NED', '', '', ''),
+            ]
+        props = list(zip(*props))
+        refs = list(zip(*refs))
+    
+        for col, prop, ref in zip(('RA', 'DEC', 'DIAM', 'BA', 'PA'), props, refs):
+            if prop != -99.:
+                lvd[col][I] = prop
+                if col == 'RA':
+                    lvd['RADEC_REF'][I] = ref
+                else:
+                    lvd[f'{col}_REF'][I] = ref
+        pdb.set_trace()
 
     # write out
     lvd = lvd[np.argsort(lvd['ROW'])]
@@ -1929,6 +2147,11 @@ def build_parent_nocuts(verbose=True):
 
     custom.rename_column('ROW', 'ROW_CUSTOM')
 
+    # update the smudges diameters by a factor of 1.2 to go from Re
+    # --> RHolm; this should have been in parse-smudges...
+    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])
+    custom['DIAM'][prefix == 'SMDG'] *= 1.2
+
     # pre-emptively drop three NED-LVS objects which would otherwise
     # be duplicate matches to the SMDG catalog
     drop =['[GMG2015] G', 'SDSS J122357.73+115332.3', 'SMDG J1408411+565536']
@@ -2166,7 +2389,8 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
     I = ccds_touching_wcs(targetwcs, allccds)
     #ccds = survey.ccds_touching_wcs(targetwcs)
     #print(len(I))
-    pdb.set_trace()
+    #print('HACK!!')
+    #pdb.set_trace()
 
     # no CCDs within width_pixels
     if len(I) == 0:
@@ -2416,9 +2640,9 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
             #I = np.where(ref == 'RC3')[0]
             I = np.arange(N)
 
+        #print('HACK!!')
         #I = np.array([4784167, 4784170])
-        print('HACK!!')
-        I = np.array([2016776])
+        #I = np.array([2016776])
 
         cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
         cat['NCCD'] = np.zeros(len(cat), int)
@@ -2458,8 +2682,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         # check for an existing CCDs catalog from previous runs of this code
         #cat, cat_done, ccds_done = read_existing_footprint(cat, allccds, region, version=version)
         cat, cat_done = read_existing_footprint(cat, region, version=version)
-        print('HACK!!')
-        cat_done = []
+        #print('HACK!!')
+        #cat_done = []
 
         # divide the parent catalog into more managable chunks, and loop
         if region == 'dr9-north':
