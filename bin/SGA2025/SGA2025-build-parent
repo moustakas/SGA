@@ -279,15 +279,15 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                 if np.max(cc) != 1:
                     print('Warning: duplicates in actions file can cause problems!')
                     print(uobj[cc > 1])
-                    pdb.set_trace()
+                    raise ValueError()
                 I = np.isin(newcat['OBJNAME'].value, obj)
                 if np.sum(I) != len(obj):
                     #for oo in obj:
                     #    if np.sum(np.isin(newcat['OBJNAME'], oo)) != 1:
                     #        print(oo)
-                    pdb.set_trace()
+                    print('Some objects not found in actions file!')
                     print(obj[~np.isin(obj, newcat['OBJNAME'][I].value)])
-                    raise ValueError('Some objects not found!')
+                    raise ValueError()
                 if verbose:
                     print(f'Action: dropping {len(obj):,d} objects.')
                 newcat = newcat[~I]
@@ -296,9 +296,9 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                 obj = actions[action == actions['action']]['objname'].value
                 I = np.isin(newcat['OBJNAME'].value, obj)
                 if np.sum(I) != len(obj):
-                    pdb.set_trace()
+                    print('Some objects not found in actions file!')
                     print(obj[~np.isin(obj, newcat['OBJNAME'][I].value)])
-                    raise ValueError('Some objects not found!')
+                    raise ValueError()
                 if verbose:
                     print(f'Action: adopting HyperLeda coordinates for {len(obj):,d} object(s).')
                 for col in ['RA', 'DEC']:
