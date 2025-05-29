@@ -7,6 +7,11 @@ BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
 Crater Cluster,drop,GC,Milky Way globular cluster
 #
+2MASS J14241843+2932380,drop,faint shred or compact,
+SDSS J135430.30+340939.9,drop,faint shred or compact,
+SDSS J133609.60+591230.5,drop,faint shred or compact,
+SDSS J113220.78+555514.3,drop,faint shred or compact,
+2MASS J12562634+5104492,drop,faint shred or compact,
 SHOC 249,drop,faint shred or compact,
 SDSSCGB 04800.04,drop,faint shred or compact,
 2MASS J09163660+4143091,drop,faint shred or compact,
@@ -8067,3 +8072,9 @@ WISEA J112726.74+400330.7,hyperleda-coords,NED incorrect,
 FGC 0764,hyperleda-coords,NED incorrect,
 MCG +08-16-031,hyperleda-coords,NED incorrect,
 IRAS 09122+5205,hyperleda-coords,NED incorrect,
+FGC 1255,hyperleda-coords,NED incorrect,
+WISEA J112926.58+363838.3,hyperleda-coords,NED incorrect,
+FGC 1425,hyperleda-coords,NED incorrect,
+SBS 1319+579B,hyperleda-coords,NED incorrect,
+MCG +09-22-097,hyperleda-coords,NED incorrect,
+2MASX J14303818+3524059,hyperleda-coords,NED incorrect,
