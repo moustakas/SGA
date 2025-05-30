@@ -1456,6 +1456,8 @@ def read_lvd(rank=0, rows=None, overwrite=False):
             lvd['ra'][lvd['name'] == 'PGC 166193'] = 307.8832995
 
             I = lvd['name'] == 'KK 166'
+            lvd['ra'][I] = 192.30065
+            lvd['dec'][I] = 35.61258
             lvd['rhalf'][I] = 11.97
             lvd['ellipticity'][I] = 0.12
             lvd['position_angle'][I] = 67.09
