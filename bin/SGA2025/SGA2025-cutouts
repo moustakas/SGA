@@ -1286,9 +1286,9 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             # All sources larger than XX arcmin with at least one
             # other object within its diameter.
             fullcat = cat.copy()
-            fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=10.)
+            fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
 
-            isolated = True
+            isolated = False#True
             if isolated:
                 I = (fullcat_diam <= 20.) * (fullcat['ROW_LVD'] == -99) * ~fullcat['RESOLVED']
                 #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
@@ -1306,8 +1306,15 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
 
             allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                                      fullcat['RA'].value, fullcat['DEC'].value,
-                                     np.max(diam)/3600., indexlist=True, notself=False)
+                                     np.max(diam)/3600., indexlist=True, 
+                                     notself=False, count=True)
             outcat, outfullcat = [], []
+
+            if isolated:
+                prefix = 'isolated'
+            else:
+                prefix = 'tmplist'
+
             for iobj in range(len(cat)):
                 if isolated:
                     # refine the search to this object's diameter
@@ -1317,12 +1324,13 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                                            0.75*diam[iobj]/3600.)
                     # isolated!
                     if len(m2) == 1:
-                        prefix = 'isolated'
                         outcat.append(cat[[iobj]])
                         outfullcat.append(fullcat[allmatches[iobj]][m2])
                 else:
                     if len(allmatches[iobj]) == 1:
-                        m2 = 0
+                        m2 = [0]
+                        prefix_this = ''
+                        diam_this = [-99.]
                     else:
                         # find neighbors within this object's elliptical aperture
                         ras, decs = fullcat['RA'][allmatches[iobj]], fullcat['DEC'][allmatches[iobj]]
@@ -1333,21 +1341,29 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                         phi = np.radians(90. - pa[iobj])
         
                         m2 = np.where(ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs))[0]
+
+                        # hack!
+                        prefix_this = np.array(list(zip(*np.char.split(fullcat['OBJNAME'][allmatches[iobj]][m2].value, ' ').tolist()))[0])
+                        diam_this = fullcat_diam[allmatches[iobj]][m2]
+
                     # at least one other object
-                    if len(m2) > 1:
-                        prefix = 'tmplist'
+                    if len(m2) > 1 and 'WISEA' in prefix_this and np.any(diam_this == 0.):
                         outcat.append(cat[[iobj]])
                         outfullcat.append(fullcat[allmatches[iobj]][m2])
 
             cat = vstack(outcat)
             print(len(cat))
-            pdb.set_trace()
+
+            #allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
 
             _cat = vstack(outfullcat)
+            _cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
+
             _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
             _cat = _cat[uindx]
             _cat = _cat[np.argsort(_cat['RA'])]
             writeit(_cat, region, prefix=prefix)
+            pdb.set_trace()
 
             ##########################
             ## All objects with at least one other sources within XX arcsec.
@@ -1602,14 +1618,16 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         print(f'Trimmed to {len(cat):,d} objects.')
 
 
-    sort_by_ra = True
+    sort_by_ra = True#False
+    sort_by_diameter = False#True
     if sort_by_ra:
         print('Sorting by RA')
         cat = cat[np.argsort(cat['RA'])]
+    elif sort_by_diameter:
+        print('Sorting by diameter')
+        diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+        cat = cat[np.argsort(diam)[::-1]]
     else:
-        #print('Sorting by diameter')
-        #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-        #cat = cat[np.argsort(diam)[::-1]]
         print('Sorting by OBJNAME')
         cat = cat[np.argsort(cat['OBJNAME'])]
 

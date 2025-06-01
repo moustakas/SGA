@@ -36,7 +36,7 @@ from astrometry.libkd.spherematch import match_radec
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.qa import qa_skypatch, multipage_skypatch
 from SGA.ellipse import get_basic_geometry
-from SGA.util import match, choose_primary, resolve_close
+from SGA.util import match, match_to, choose_primary, resolve_close
 from SGA.io import sga_dir, parent_version
 
 
@@ -93,6 +93,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
     # Read or, optionally, rebuild the cross-id error file.
     if rebuild_file:
         VETO = [
+            'NGC 3280', # will get dropped
             #'2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
         ]
 
@@ -724,27 +725,21 @@ def update_lvd_properties(cat):
     if version != 'v1.0.5':
         raise ValueError('Need hard-coded properties!')
 
-    gals = [
+    gals = np.array([
         'IC239',
         'NGC 1042',
         'NGC 4151',
         'NGC 4424',
-        #'NGC 5194',
         'PGC 100170',
-        'PGC 166192',
-        'PGC 166193',
         'UGC 7490',
         'dw1341-29',
-    ]
+    ])
     props = [ # diam, ba, pa
         (4.57, 0.912, 125.),
         (5.47, 0.873, 33.6),
         (5.43, 0.879, 140.),
         (3.63, 0.501, 95.),
-        #(11.22, 0.617, 163.),
         (2.58, 0.4, 117.),
-        (1.60, 0.5, 0.),
-        (0.90, 1., 0.),
         (3.30, 0.850, 0.17),
         (0.5, 1., 0.),
         ]
@@ -753,10 +748,7 @@ def update_lvd_properties(cat):
         ('SGA2020', 'SGA2020', 'SGA2020'),
         ('SGA2020', 'SGA2020', 'SGA2020'),
         ('RC3', 'RC3', 'RC3'),
-        #('RC3', 'RC3', 'RC3'),
         ('2MASS', '2MASS', '2MASS'),
-        ('HYPERLEDA', 'HYPERLEDA', 'BASIC', ),
-        ('HYPERLEDA', 'HYPERLEDA', 'BASIC', ),
         ('SGA2020', 'SGA2020', 'SGA2020'),
         ('VI', 'VI', 'VI'),
         ]
@@ -1002,17 +994,25 @@ def update_lvd_properties(cat):
             # count=10 above here
             ('NED', 'NED', '', '', ''),
             ]
-        props = list(zip(*props))
-        refs = list(zip(*refs))
-    
+        props = np.array(list(zip(*props)))
+        refs = np.array(list(zip(*refs)))
+        I = match_to(lvd['OBJNAME'].value, gals)
+        assert(np.all(lvd['OBJNAME'][I] == np.array(gals)))
+
+        print('Updating hard-coded properties:')
         for col, prop, ref in zip(('RA', 'DEC', 'DIAM', 'BA', 'PA'), props, refs):
-            if prop != -99.:
-                lvd[col][I] = prop
-                if col == 'RA':
-                    lvd['RADEC_REF'][I] = ref
+            J = np.where(prop != -99.)[0]
+            if len(J) > 0:
+                print(f'  --{len(J)} {col} values')
+                lvd[col][I[J]] = prop[J]
+                if col == 'RA' or col == 'DEC':
+                    lvd['RADEC_REF'][I[J]] = ref[J]
                 else:
-                    lvd[f'{col}_REF'][I] = ref
-        pdb.set_trace()
+                    lvd[f'{col}_REF'][I[J]] = ref[J]
+                #if col == 'RA' or col == 'DEC':
+                #    print(f'  {lvd[col][I]}-->{prop:.6f} [{ref}]')
+                #else:
+                #    print(f'  {lvd[col][I]:0g}-->{prop:.2f} [{ref}]')
 
     # write out
     lvd = lvd[np.argsort(lvd['ROW'])]
@@ -1124,7 +1124,16 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         pdb.set_trace()
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)#False)#True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
+    pdb.set_trace()
+
+    ## more general HyperLeda-NED cross-ID errors
+    #bb = cat[(cat['RA_HYPERLEDA'] != cat['RA']) * (cat['RA_HYPERLEDA'] != -99.)]
+    #m1, m2, sep = match_radec(bb['RA'], bb['DEC'], bb['RA_HYPERLEDA'], bb['DEC_HYPERLEDA'], 3./3600., notself=True)
+    #m1 = m1[m1 != m2]
+    #multipage_skypatch(bb[m1], cat=cat, width_arcsec=120., overwrite_viewer=True, overwrite=True, 
+    #                   clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
+
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
