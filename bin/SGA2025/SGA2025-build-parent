@@ -286,7 +286,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                     #for oo in obj:
                     #    if np.sum(np.isin(newcat['OBJNAME'], oo)) != 1:
                     #        print(oo)
-                    print('Some objects not found in actions file!')
+                    print('The following objects are in the actions file but do not exist!')
                     print(obj[~np.isin(obj, newcat['OBJNAME'][I].value)])
                     raise ValueError()
                 if verbose:
@@ -297,7 +297,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                 obj = actions[action == actions['action']]['objname'].value
                 I = np.isin(newcat['OBJNAME'].value, obj)
                 if np.sum(I) != len(obj):
-                    print('Some objects not found in actions file!')
+                    print('The following objects are in the actions file but do not exist!')
                     print(obj[~np.isin(obj, newcat['OBJNAME'][I].value)])
                     raise ValueError()
                 if verbose:

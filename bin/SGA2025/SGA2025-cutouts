@@ -32,6 +32,7 @@ Alternatively, in production, one would do:
 To build the ssl-legacysurvey catalog:
 
   First generate the rescaled cutouts of everything:
+    salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
     shifter --image dstndstn/cutouts:dvsro4 bash
     source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
@@ -42,6 +43,7 @@ To build the ssl-legacysurvey catalog:
     SGA2025-shifter
     source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v4
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v3
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v2
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v1
@@ -955,6 +957,7 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
 
     # need to define a reference sample and make sure the files exist
     refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=ssl_version)
+    pdb.set_trace()
 
     refcatfiles, refcatindx = [], []
     catfiles, catindx = [], []
@@ -1268,21 +1271,33 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         else:
             fullcat = None
 
+        def writeit(cat, region, prefix='tmplist'):
+            outfile = f'{prefix}-{region}.txt'
+            out = cat['OBJNAME', ]
+            #out['COMMENT'] = 'drop,faint shred or compact'
+            out.write(outfile, format='ascii.csv', overwrite=True)
+            print(f'Wrote {outfile}')
+
         #if True:
         #    diam, _, _, _ = choose_geometry(cat, mindiam=0.)
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
 
-        if True:
+        if False:
+            # All objects with diameter<30 arcsec and no other source
+            # within 30 arcsec.
+            from SGA.util import find_close
+            fullcat = cat.copy()
+            
+            primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
+            diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+            cat = primaries[diam < 30.]#[:128]
+            writeit(cat, region)
+            pdb.set_trace()
+
+
+        if False:
             from SGA.ellipse import ellipse_mask_sky
-
-            def writeit(cat, region, prefix='tmplist'):
-                outfile = f'{prefix}-{region}.txt'
-                out = cat['OBJNAME', ]
-                #out['COMMENT'] = 'drop,faint shred or compact'
-                out.write(outfile, format='ascii.csv', overwrite=True)
-                print(f'Wrote {outfile}')
-
 
             #########################
             # All sources larger than XX arcmin with at least one
@@ -1737,7 +1752,7 @@ def main():
                 cat_south['REGION'] = 'dr9-south'
                 fullcat_north['REGION'] = 'dr9-north'
                 fullcat_south['REGION'] = 'dr9-south'
-            elif args.ssl_version == 'v3':
+            elif args.ssl_version == 'v3' or args.ssl_version == 'v4':
                 cat_north, fullcat_north = read_catalog(args.catalog, read_fullcat=True, region='dr9-north')
                 cat_south, fullcat_south = read_catalog(args.catalog, read_fullcat=True, region='dr11-south')
                 cat_north['REGION'] = 'dr9-north'

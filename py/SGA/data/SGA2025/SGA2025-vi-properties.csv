@@ -2,44 +2,6 @@
 # (visual inspections). A value of -99 means that property should not be
 # updated.
 #
-# DDO 169NW,198.833750,47.543611,0.78,0.,1.,-99.,No,LVD position shifted to the coordinates in 2013AJ....145..101K and geometry from LVG database.
-# KDG 73,163.23779166666665,69.54938888888888,-99.,-99.,-99.,-99.,No,LVD dwarf moved to NED position
-# GARLAND,-99.,-99.,3.98,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# JKB129,-99.,-99.,0.66,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# JKB142,-99.,-99.,0.43,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# Clump I,-99.,-99.,0.18,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# Clump III,-99.,-99.,0.10,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# A0952+69,-99.,-99.,1.82,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# KK 35,-99.,-99.,2.51,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# KK 208,-99.,-99.,5.89,0.,1.,-99.,No,LVD dwarf with geometry taken from the LVG database.
-# DDO 147,-99.,-99.,-99.,74.,-99.,-99.,No,LVD dwarf with updated position angle.
-# NGC 4190,-99.,-99.,-99.,30.,-99.,-99.,No,LVD dwarf with updated position angle.
-# DDO 126,-99.,-99.,-99.,145.,-99.,-99.,No,LVD dwarf with updated position angle.
-# DDO 133,-99.,-99.,-99.,160.,-99.,-99.,No,LVD dwarf with updated position angle.
-# DDO 165,-99.,-99.,-99.,90.,-99.,-99.,No,LVD dwarf with updated position angle.
-# Holmberg I,-99.,-99.,-99.,105.,-99.,-99.,No,LVD dwarf with updated position angle.
-# GHOSTS I,148.3070833333333,69.50073055555555,-99.,-99.,-99.,-99.,No,LVD dwarf; moved to LVD position
-# BK6N,158.632916667,66.011666667,-99.,120.,-99.,-99.,No,LVD dwarf; moved to LVD position and estimated position angle.
-# UGCA 292,-99.,-99.,1.02,75.,-99.,-99.,No,LVD dwarf; diameter from LVGDB and estimated position angle.
-# LV J0055-2310,-99.,-99.,0.47,90.,0.57,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
-# UGC 8882,-99.,-99.,1.07,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# Donatiello III,17.3524,-27.34707,-99.,-99.,-99.,-99.,No,LVD dwarf; moved to LVD position
-# dw1046+1244,-99.,-99.,0.14,0.,0.81,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
-# AGC749235,186.04125,26.23111111,-99.,170.,-99.,-99.,No,LVD dwarf; moved to LVD position and estimated position angle.
-# UGC 7929,-99.,-99.,1.,94.,0.48,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
-# KDG 215,-99.,-99.,1.17,45.,0.54,-99.,No,LVD dwarf; BA and diameter from LVGDB; estimated position angle.
-# Leo I 09,-99.,-99.,0.81,-99.,-99.,-99.,No,LVD dwarf; diameter from Carlsten et al.
-# Carina,-99.,-99.,24.55,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# Carina II,-99.,-99.,17.4,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# IC 1613,-99.,-99.,19.05,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# NGC 247,-99.,-99.,25.12,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# NGC 300,-99.,-99.,25.7,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# Hydrus I,-99.,-99.,14.8,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# NGC 55,-99.,-99.,37.15,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# NGC 7793,-99.,-99.,14.13,-99.,-99.,-99.,No,LVD dwarf; diameter from LVGDB.
-# NGC 6822,-99.,-99.,19.05,0.95,0.87,-99.,No,LVD dwarf; diameter and b/a from LVGDB; PA from HyperLeda
-# DDO 53,128.5362,66.1771,-99.,-99.,-99.,-99.,No,LVD dwarf; moved to LVD position
-#
 objname_ned,ra,dec,diam,pa,ba,diam_hyperleda,update_hyperleda_coords,comment
 ESO 575- G 044,195.08679166666664,-22.693694444444446,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
 ESO 575- G 044 NED02,195.08337499999996,-22.692,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
@@ -787,4 +749,8 @@ SDSS J235412.57-070717.3,358.550884,-7.121599,0.5,90.,-99.,-99.,No,Moved to SGA-
 VIII Zw 490 NED02,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 2MASS J09043040+5156401,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 PGC2587196,243.7959583333333,59.15833333333333,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+IC 3277,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+IC 2155,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+IC 0400,-99.,-99.,1.,100.,0.1,-99.,No,Estimated diameter
+
 
