@@ -263,7 +263,9 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
             keep[imem] = False
     group = group[keep]
 
-    if len(group) > 10:
+    print('HACK!!!')
+    if len(group) > 500:
+    #if len(group) > 10:
         #print('WARNING: Too many group members; keeping just the 10 largest objects!')
         # group includes primary, so we need to be sure it doesn't get removed
         group_noprimary = group.copy()
@@ -1295,7 +1297,9 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             else:
                 #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
                 #I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
-                I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
+                I = (fullcat_diam > 30.) * (fullcat_diam <= 60.) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
                 #print('HACK!!')
                 #I = np.isin(cat['OBJNAME'], ['NGC 5349'])#['NGC 0019'])#, 'ESO 241- G 020'])
 
@@ -1347,23 +1351,25 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                         diam_this = fullcat_diam[allmatches[iobj]][m2]
 
                     # at least one other object
-                    if len(m2) > 1 and 'WISEA' in prefix_this and np.any(diam_this == 0.):
+                    if len(m2) > 1 and np.any(diam_this == 0.):
+                    #if len(m2) > 1 and 'WISEA' in prefix_this and np.any(diam_this == 0.):
                         outcat.append(cat[[iobj]])
                         outfullcat.append(fullcat[allmatches[iobj]][m2])
 
             cat = vstack(outcat)
             print(len(cat))
-
             #allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
 
             _cat = vstack(outfullcat)
-            _cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
-
             _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
             _cat = _cat[uindx]
+
+            print('HACK - removing central galaxy from tmplist!')
+            _cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
+
             _cat = _cat[np.argsort(_cat['RA'])]
             writeit(_cat, region, prefix=prefix)
-            pdb.set_trace()
+            #pdb.set_trace()
 
             ##########################
             ## All objects with at least one other sources within XX arcsec.

@@ -1125,7 +1125,6 @@ def build_parent_vicuts(verbose=False, overwrite=False):
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
     cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
-    pdb.set_trace()
 
     ## more general HyperLeda-NED cross-ID errors
     #bb = cat[(cat['RA_HYPERLEDA'] != cat['RA']) * (cat['RA_HYPERLEDA'] != -99.)]
