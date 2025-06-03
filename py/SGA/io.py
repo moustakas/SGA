@@ -50,7 +50,8 @@ def sga_html_dir():
 def set_legacysurvey_dir(region='dr9-north'):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
         raise EnvironmentError('Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!')
-    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
+    print('WARNING: Using dr11-early temporarly directory for dr11-south!!')
+    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early'}
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
     print(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
@@ -208,11 +209,17 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         return objs, objdirs
 
 
-def parent_version(vicuts=False, nocuts=False):
+def parent_version(vicuts=False, nocuts=False, archive=False):
     if nocuts:
         version = 'v1.0'
+        # many more objects added
+        #version = 'v1.1'
     elif vicuts:
         version = 'v1.0'
+        #version = 'v1.1'
+    elif archive:
+        version = 'v1.0'
+        #version = 'v1.1'
     else:
         version = 'v1.0'
     return version
@@ -689,7 +696,7 @@ def nedfriendly_lvd(old):
         'A0952+69': 'AO 0952+69',
         'AGC 112521': 'AGC 112521',
         'AGC 238890': 'AGC 238890',
-        'AGC 239141': 'WISEA J131740.88+352759.7',
+        'AGC 239141': 'AGC 239141',
         'AGC 749241': 'AGC 749241',
         'AGC749235': 'AGC 749235',
         'AM 1320-230': 'AM 1320-230',
@@ -848,7 +855,7 @@ def nedfriendly_lvd(old):
         'dw1004m0657': '[CGB2022] dw 1004-0657',
         'dw1004m0737': '[CGB2022] dw 1004-0737',
         'dw1006m0730': '[CGB2022] dw 1006-0730',
-        'dw1006m0730-n2': '[KMA2022] dw J1006-0730-n2',
+        'dw1006m0730-n2': '[KMA2022] dw 1006-0730-n2',
         'dw1006m0732': '[CGB2022] dw 1006-0732',
         'dw1007m0715': '[CGB2022] dw 1007-0715',
         'dw1007m0830': '[CGB2022] dw 1007-0830',
@@ -907,23 +914,24 @@ def nedfriendly_lvd(old):
         'dw1239+3251': '[CGB2022] dw 1239+3251',
         'dw1239-1159': '[CGB2022] dw 1239-1159',
         'dw1240-1118': '[CGB2022] dw 1240-1118',
-        'Dw1245+6158': 'SDSS J124551.28+615816.9', # uncertain cross-ID
-        'dw1300+1843': '[CGB2022] dw 1300+1843', #'WISEA J130030.82+184304.5',
+        'Dw1245+6158': 'SMDG J1245495+615810', # 'SDSS J124551.28+615816.9' ??
+        'dw1300+1843': '[CGB2022] dw 1300+1843', # 'WISEA J130030.82+184304.5'
         'dw1310+4153': '[CGB2022] dw 1310+4153',
         'dw1315+4123': '[CGB2022] dw 1315+4123',
         'dw1321+4226': '[CGB2022] dw 1321+4226',
         'dw1322-39': 'Cen A:[MJB2017] dw 1322-39',
-        'dw1323-40a': '[CGG2021] dw J1323-40', # note: "40" not "40a"
-        'dw1323-40b': '[MJB2017] dw 1323-40a',
+        'dw1323-40a': '[CGG2021] dw 1323-40', # note: "40" not "40a"
+        'dw1323-40b': '[MJB2017] dw 1323-40b',
         'dw1328+4703': '[CGB2022] dw 1328+4703',
         'dw1329-45': 'Cen A:[MJP2016] dw 1329-45',
         'dw1330+4731': '[CGB2022] dw 1330+4731',
-        'dw1335-29': 'Cen A:[MJP2016] dw 1329-45',
+        'dw1335-29': '[MJB2015] dw 1335-29',
         'dw1336-44': 'Cen A:[MJP2016] dw 1336-44',
-        'dw1340-30': '[CGB2022] dw 1340-30',
-        'dw1341-43': '[CGB2022] dw 1341-43',
-        'dw1342-43': '[CGB2022] dw 1342-43',
-        'dw1343+58': '[CGB2022] dw 1343+58',
+        'dw1340-30': '[MJB2015] dw 1340-30',
+        'dw1341-29': '[MPR2024] dw 1341-29',
+        'dw1341-43': 'Cen A:[MJP2016] dw 1341-43',
+        'dw1342-43': 'Cen A:[MJP2016] dw 1342-43',
+        'dw1343+58': 'WISEA J134307.12+581340.2', # ??
         'Eridanus II': 'Eridanus II Dwarf',
         'Eridanus IV': 'Eridanus IV Dwarf',
         'ESO 006-001': 'ESO 006- G 001',
@@ -970,7 +978,7 @@ def nedfriendly_lvd(old):
         'Fluffy': '[OSG2024] Fluffy',
         'FM1': 'F06D1',
         'Fornax': 'Fornax Dwarf Spheroidal',
-        'FS04': 'CGCG 065-086', # maybe BST1047+1156 ??
+        'FS04': '[CGB2022] dw 1042+1220', # 'CGCG 065-086'
         'GALFA Dw3': 'GALFA-Dw3', # 'GALFA J044.7+13.6+528',
         'GALFA Dw4': 'GALFA-Dw4', # 'PGC1 5072715 NED001',
         'GARLAND': 'The Garland',
@@ -1084,7 +1092,7 @@ def nedfriendly_lvd(old):
         'KKH 78': 'KKH 78', # 'WISEA J121745.51+332035.4',
         'KKH 86': 'KKH 86', # GALEXASC J135433.63+041438.4',
         'KKH 98': 'KKH 98', # GALEXMSC J234534.33+384303.7',
-        'KKR 25': 'KKR 225', # PGC1 2801026 NED001',
+        'KKR 25': 'KKR 25', # PGC1 2801026 NED001',
         'KKR 3': 'KKR 3', # 'PGC1 0166185 NED001',
         'KKs 3': '[KK2000] 3',
         'KKs 51': '[KK2000] 51',
@@ -1124,7 +1132,7 @@ def nedfriendly_lvd(old):
         'Leo IV': 'Leo IV',
         #'Leo K': '', # not in NED
         #'Leo M': '',  # not in NED
-        #'Leo Minor I': '', not in NED
+        'Leo Minor I': 'Leo Minor I Dwarf',
         'Leo P': 'Leo P',
         'Leo T': 'Leo T',
         'Leo V': 'Leo V',
@@ -1154,8 +1162,8 @@ def nedfriendly_lvd(old):
         'M96-DF1': 'ELVES dw J1048p1158',
         'M96-DF2': 'ELVES dw J1047p1202',
         'M96-DF7': 'ELVES dw J1047p1248',
-        #'MADCASH-1': '', not in NED?
-        #'MADCASH-2': '', not in NED?
+        'MADCASH-1': 'MADCASH J074238+652501-dw',
+        #'MADCASH-2': '', not in NED?? MADCASH J121007+352635-dw maybe??
         'MAPS 1231+42': '[KMK2013] MAPS J1231+42',
         'MAPS 1249+44': '[KMK2013] MAPS 1249+44',
         'MCG -01-26-009': 'MCG -01-26-009',
@@ -1172,8 +1180,9 @@ def nedfriendly_lvd(old):
         'N1291-DW6': 'NGC 1291:[OSG2024] DW6',
         'N1291-DW8': 'NGC 1291:[OSG2024] DW8',
         'N1291-DW9': 'NGC 1291:[OSG2024] DW9',
+        'NGC 1042': 'NGC 1042',
         'NGC 1313': 'NGC 1313',
-        'NGC 147': 'NGC 0147',
+        'NGC 147': 'NGC 147',
         'NGC 1560': 'NGC 1560',
         'NGC 1569': 'NGC 1569',
         'NGC 1592': 'NGC 1592',
@@ -1181,17 +1190,17 @@ def nedfriendly_lvd(old):
         'NGC 1792': 'NGC 1792',
         'NGC 1800': 'NGC 1800',
         'NGC 1827': 'NGC 1827',
-        'NGC 185': 'NGC 0185',
-        'NGC 205': 'MESSIER 110',
+        'NGC 185': 'NGC 185',
+        'NGC 205': 'NGC 205',
         'NGC 2188': 'NGC 2188',
         'NGC 2366': 'NGC 2366',
         'NGC 24': 'NGC 24',
-        'NGC 247': 'NGC 0247',
+        'NGC 247': 'NGC 247',
         'NGC 2683': 'NGC 2683',
-        'NGC 2683-dw1': '[CGB2022] dw J0853+3318',
+        'NGC 2683-dw1': '[CGB2022] dw 0853+3318',
         'NGC 2903-HI-1': 'NGC 2903-HI-1',
         'NGC 2915': 'NGC 2915',
-        'NGC 300': 'NGC 0300',
+        'NGC 300': 'NGC 300',
         'NGC 3077': 'NGC 3077',
         'NGC 3109': 'NGC 3109',
         'NGC 3351': 'NGC 3351',
@@ -1199,14 +1208,15 @@ def nedfriendly_lvd(old):
         'NGC 3384': 'NGC 3384',
         'NGC 3412': 'NGC 3412',
         'NGC 3521-dwTBG': 'NGC 3521:[KRZ2020] dwTBG',
-        #'NGC 3521-sat': '', not in NED; 'NGC 3521sat' ??
+        'NGC 3521-sat': '[CGB2022] dw 1105+0006', # 'NGC 3521sat' ??
         'NGC 3593': 'NGC 3593',
         'NGC 3623': 'NGC 3623',
         'NGC 3628': 'NGC 3628',
         'NGC 3738': 'NGC 3738',
         'NGC 3741': 'NGC 3741',
-        'NGC 404': 'NGC 0404',
+        'NGC 404': 'NGC 404',
         'NGC 4068': 'NGC 4068',
+        'NGC 4151': 'NGC 4151',
         'NGC 4163': 'NGC 4163',
         'NGC 4190': 'NGC 4190',
         'NGC 4214': 'NGC 4214',
@@ -1215,6 +1225,7 @@ def nedfriendly_lvd(old):
         'NGC 4244': 'NGC 4244',
         'NGC 4248': 'NGC 4248',
         'NGC 4395': 'NGC 4395',
+        'NGC 4424': 'NGC 4424',
         'NGC 4449': 'NGC 4449',
         'NGC 45': 'NGC 45',
         'NGC 4517': 'NGC 4517',
@@ -1247,10 +1258,10 @@ def nedfriendly_lvd(old):
         'NGC 5585': 'NGC 5585',
         'NGC 59': 'NGC 0059',
         'NGC 625': 'NGC 0625',
-        'NGC 628-dwA': '[CGB2022] dw J0137+1537',
-        #'NGC 628-dwB': '', # not in NED?
+        'NGC 628-dwA': '[CGB2022] dw 0137+1537',
+        'NGC 628-dwB': 'dw0137+1537',
         'NGC 6503': 'NGC 6503',
-        'NGC 6744 dwTBGa': 'NGC 3521:[KRZ2020] dwTBG',
+        'NGC 6744 dwTBGa': 'NGC 6744:[KRZ2020] dwTBGa',
         'NGC 6789': 'NGC 6789',
         'NGC 6822': 'NGC 6822',
         'NGC 7793': 'NGC 7793',
@@ -1267,8 +1278,11 @@ def nedfriendly_lvd(old):
         #'Pegasus VII': '', not in NED
         'Pegasus W': 'Pegasus W',
         'Perseus I': 'Perseus I', # 'Andromeda XXXIII'
+        'PGC 100170': 'PGC 100170',
         'PGC 1059300': 'PGC 1059300',
         'PGC 138836': 'PGC 138836',
+        'PGC 166192': 'PGC 166192',
+        'PGC 166193': 'PGC 166193',
         'PGC 170257': 'PGC 170257', # '2MASX J13292099-2110452',
         'PGC 20125': 'PGC 20125',
         'PGC 2601822': 'PGC 2601822',
@@ -1383,6 +1397,12 @@ def nedfriendly_lvd(old):
         'WLM': 'WLM',
         }
 
+    #lvd = read_lvd()
+    #with open('junk.txt', 'w') as F:
+    #    for key in ned.keys():
+    #        F.write(f"        '{key}': {lvd[key == lvd["OBJNAME"]]["PGC"][0]},'\n")
+    #return
+
     new = old.copy()
 
     maxlen = 0
@@ -1406,11 +1426,11 @@ def nedfriendly_lvd(old):
 def version_lvd():
     #ver = 'dwarf-all-b685634'
     #ver = 'v1.0.2'
-    ver = 'v1.0.4'
+    ver = 'v1.0.5'
     return ver
 
 
-def read_lvd(rank=0, rows=None):
+def read_lvd(rank=0, rows=None, overwrite=False):
     """Read the Local Volume Database (LVD) dwarf-galaxy catalog.
 
     """
@@ -1418,21 +1438,36 @@ def read_lvd(rank=0, rows=None):
 
     # combine the dwarf-all and dwarf-local-field-distant files
     lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_{version}.fits')
-    if not os.path.isfile(lvdfile):
-        from astropy.table import vstack
+    if not os.path.isfile(lvdfile) or overwrite:
         allfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_dwarf_all_{version}.csv')
         lvd = Table.read(allfile)
-        ## typos
-        #lvd['name'][lvd['name'] == 'KKS53'] = 'KKS 53'
-        #for obj in ['KKs 3', 'KKs 51', 'KKs 53', 'KKs 54', 'KKs 55', 'KKs 57', 'KKs 58', 'KKs 59']:
-        #    I = np.where(lvd['name'] == obj)[0]
-        #    lvd['name'][I] = obj.upper()
+
+        if version == 'v1.0.4':
+            lvd['ra'][lvd['name'] == 'MADCASH-1'] = 115.6641667
+
+        if version == 'v1.0.5':
+            lvd['ra'][lvd['name'] == 'AGC 198606'] = 142.519635
+            lvd['ra'][lvd['name'] == 'NGC 1042'] = 40.0999125
+            lvd['ra'][lvd['name'] == 'NGC 4151'] = 182.6360025
+            lvd['ra'][lvd['name'] == 'NGC 4424'] = 186.79875
+            lvd['dec'][lvd['name'] == 'NGC 4424'] = 9.4205
+            lvd['ra'][lvd['name'] == 'PGC 100170'] = 44.2158075
+            lvd['ra'][lvd['name'] == 'PGC 166192'] = 307.6358955
+            lvd['ra'][lvd['name'] == 'PGC 166193'] = 307.8832995
+
+            I = lvd['name'] == 'KK 166'
+            lvd['ra'][I] = 192.30065
+            lvd['dec'][I] = 35.61258
+            lvd['rhalf'][I] = 11.97
+            lvd['ellipticity'][I] = 0.12
+            lvd['position_angle'][I] = 67.09
+            lvd['ref_structure'][I] = 'Zaritsky2023ApJS..267...27Z'
 
         # drop unconfirmed systems
         print(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
-        #print(f'Rank {rank:03d}: Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
         lvd = lvd[lvd['confirmed_real'] == 1]
         lvd.remove_columns(['key', 'confirmed_real'])
+
         lvd.write(lvdfile, overwrite=True)
 
 
@@ -1458,180 +1493,15 @@ def read_lvd(rank=0, rows=None):
     # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719669736 - north
     # http://atlas.obs-hp.fr/hyperleda/fG.cgi?c=o&n=a000&s=hc1719674256 - south
 
-    # PGC1198787 = KKR53 ???
-    # PGC1330929 = KKR33 ??
-    # PGC200320 = KKR13 ??
-    # PGC2801041 = KKR43 ??
-    # PGC2801056 = KKR63
-    # PGC2801063 = KKR73
-    # PGC57522 = KKR23
     pgc = {
-		'Antlia': 29194,
-        'Aquarius III': 0,
-        'Canes Venatici I': 4689223,
-        'Canes Venatici II': 4713558,
-		'A0952+69': 0,
-		'AGC 239141': 5808786,
-		'BK3N': 28529,
-		'BK6N': 31286,
-		'BTS 116': 1839154,
-		'Camelopardalis A': 166082,
-		'Camelopardalis B': 166084,
-		'Cassiopea dIrr 1': 100169,
-		'Fluffy': 0,
-		'KV19-212': 0,
-		'KV19-271': 0,
-		'KV19-329': 0,
-		'KV19-442': 0,
-		'Centaurus N': 4689187,
-		'CGCG 189-050': 46257,
-		'DDO 53': 24050,
-		'DDO 78': 30664,
-		'DDO 82': 30997,
-		'DDO126': 40791,
-		'DDO127': 41020,
-		'DDO 133': 41636,
-		'DDO 154': 43869,
-		'DDO 165': 45372,
-		'DDO 167': 45939,
-		'DDO 168': 46039,
-		'DDO 169': 46127,
-		'DDO 169NW': 5057032,
-		'DDO 181': 48332,
-		'DDO 183': 49158,
-		'DDO 226': 2578,
-		'ESO 059-001': 21199,
-		'ESO 115-021': 9962,
-		'ESO 222-010': 52125,
-		'ESO 245-005': 6430,
-		'ESO 269-037': 45104,
-		'ESO 269-058': 45717,
-		'ESO272-025': 52591,
-		'ESO 321-014': 39032,
-		'ESO 324-024': 47171,
-		'ESO 349-031': 621,
-		'GARLAND': 29167,
-		'GHOSTS I': 5067066,
-		'HIPASS J1247-77': 3994669,
-		'Holmberg I': 27605,
-		'Holmberg II': 23324,
-		'Holmberg IX': 28757,
-		'IC 2574': 30819,
-		'IC 3687': 42656,
-		'IC 4182': 45314,
-		'JKB83': 6657020,
-		'JKB129': 4668290,
-		'JKB142': 5808737,
-		'KDG 52': 23521,
-		'KDG 63': 29257,
-		'KDG 73': 32667,
-		'KDG 74': 33305,
-		'KDG 215': 44055,
-		'KK 17': 166065,
-		'KK 27': 166073,
-		'KK 35': 166077,
-		'KK 77': 166101,
-		'KK 109': 166115,
-		'KK 160': 166142,
-		'KK 166': 166146,
-		'KK 177': 87149,
-		'KK 180': 86645,
-		'KK 217': 166175,
-		'KK 242': 4689184,
-		'KKH 6': 2807103,
-		'KKH 18': 2807110,
-		'KKH 30': 95591,
-		'KKH 37': 95597,
-		'KKH 57': 2807133,
-		'KKH 78': 2807147,
-		'LV J1243+4127': 0,
-		'LV J1313+1003': 4573336,
-		'HS 117': 4689216,
-		'Clump I': 5057029,
-		'Clump III': 5057030,
-		'MAPS 1231+42': 0,
-		'MAPS 1249+44': 0,
-		'MCG +06-27-017': 38685,
-		'MCG +09-20-131': 39228,
-		'NGC 59': 1034,
-		'NGC 625': 5896,
-		'NGC 891': 9031,
-		'TT2009 25': 0,
-		'TT2009 30': 5072545,
-		'NGC 1313': 12286,
-		'NGC 1569': 15345,
-		'NGC 2366': 21102,
-		'NGC 2915': 26761,
-		'NGC2976': 28120,
-		'NGC 3077': 29146,
-		'NGC 3741': 35878,
-		'NGC 4068': 38148,
-		'NGC 4236': 39346,
-		'NGC 4244': 39422,
-		'NGC 4395': 40596,
-		'NGC 4594-DGSAT-2': 5473059,
-		'NGC 4594-DGSAT-3': 5473061,
-		'NGC 4594-DW1': 0,
-		'dw1240-1118': 42428,
-		'KKSG 29': 42120,
-		'KKSG 31': 3097709,
-		'KKSG 32': 3097710,
-		'KKSG 33': 3097711,
-		'KKSG 37': 3097714,
-		'LV J1235-1104': 970397,
-		'SUCD1': 3793583,
-		'dw1300+1843': 0,
-		'NGC 5102': 46674,
-		'NGC 5194': 47404,
-		'dw1328+4703': 0,
-		'dw1330+4731': 0,
-		'NGC 5195': 47413,
-		'NGC 5204': 47368,
-		'NGC 5206': 47762,
-		'NGC 5237': 48139,
-		'NGC 5238': 47853,
-		'NGC 5253': 48334,
-		'NGC 6503': 60921,
-		'NGC 6789': 63000,
-		'NGC 7793': 73049,
-		'PGC 34671': 34671,
-		'PGC42730': 42730,
-		'PGC 51659': 51659,
-		'PGC 170257': 170257,
-		'PGC 704814': 704814,
-		'PGC 725719': 725719,
-		'PGC 1059300': 1059300,
-		'UGC00064': 591,
-		'UGC 288': 1777,
-		'UGC 685': 3974,
-		'UGC 1703': 8484,
-		'UGC 1807': 8947,
-		'UGC 2684': 12514,
-		'UGC 2716': 12719,
-		'UGC 3600': 19871,
-		'UGC 3698': 20264,
-		'UGC 4483': 24213,
-		'UGC 6451': 35264,
-		'UGC 6456': 35286,
-		'UGC 6541': 35684,
-		'UGC 6757': 36758,
-		'UGC 7298': 39316,
-		'UGC 7490': 40367,
-		'UGC 7596': 41036,
-		'UGC 7605': 41048,
-		'UGC 7929': 42985,
-		'UGC 8215': 45506,
-		'UGC 8245': 45546,
-		'UGC 8638': 48280,
-		'UGC 8833': 49452,
-		'UGC 11411': 62814,
-		'UGC 12894': 35,
-		'UGCA 92': 15439,
-		'UGCA 105': 16957,
-		'UGCA 287': 41743,
-		'UGCA 292': 42275,
-		'UGCA 442': 72228,
-        # older objects here
+        '[KKH2011]S11': -1,
+        '[TT2009] 25': 5061799,
+        '[TT2009] 30': 5072545,
+        'A0952+69': 0,
+        'AGC 112521': 5057055,
+        'AGC 238890': 1726175,
+        'AGC 239141': 5808786,
+        'AGC 749241': 5059213,
         'AGC749235': 5059199,
         'AM 1320-230': 3097728, # = PGC3097728
         'Andromeda I': 2666,
@@ -1662,20 +1532,32 @@ def read_lvd(rank=0, rows=None):
         'Andromeda XXVI': 5057229,
         'Andromeda XXVII': 5057230,
         'Andromeda XXVIII': 5060429,
+        'Andromeda XXXV': 0,
+        'Antlia': 29194,
         'Antlia B': 5098252,
         'Antlia II': 6775392,
         'Aquarius': 65367,
         'Aquarius II': 5953206,
-        'BK5N': 29231,
+        'Aquarius III': 0,
         'Bedin 1': 0,
+        'BK3N': 28529,
+        'BK5N': 29231,
+        'BK6N': 31286,
         'Bootes I': 4713553,
         'Bootes II': 4713552,
         'Bootes III': 4713562,
         'Bootes IV': 0,
         'Bootes V': 0,
+        'BTS 116': 1839154,
+        'BTS151': 2832120,
+        'Camelopardalis A': 166082,
+        'Camelopardalis B': 166084,
+        'Canes Venatici I': 4689223,
+        'Canes Venatici II': 4713558,
         'Carina': 19441,
         'Carina II': 0,
         'Carina III': 0,
+        'Cassiopea dIrr 1': 100169,
         'Cassiopeia II': 5065056,
         'Cassiopeia III': 5065678,
         'CenA-MM-Dw1': 5072213,
@@ -1686,28 +1568,205 @@ def read_lvd(rank=0, rows=None):
         'CenA-MM-Dw6': 5509265,
         'CenA-MM-Dw7': 5509266,
         'Centaurus I': 0,
+        'Centaurus N': 4689187,
+        'Cepheus1': 3097690,
         'Cetus': 3097691,
         'Cetus II': 6740632,
+        'CGCG 189-050': 46257,
+        'CGCG 217-018': 45889,
+        'Clump I': 5057029,
+        'Clump III': 5057030,
         'Columba I': 6740626,
         'Coma Berenices': 0,
         'Corvus A': 0,
         'Crater II': 5742923,
+        'd0926+70': 5056943,
+        'd0934+70': 5056931,
+        'd0939+71': 5056932,
+        'd0944+69': 5056933,
+        'd0944+71': 5056944,
+        'd0955+70': 5056934,
+        'd0958+66': 28826,
+        'd0959+68': 5056936,
+        'd1006+67': 5056937,
+        'd1014+68': 5056938,
+        'd1015+69': 5056947,
+        'd1028+70': 5056941,
+        'd1041+70': 5056942,
         'DDO 113': 39145,
         'DDO 125': 40904,
+        'DDO 126': 40791,
+        'DDO 127': 41020,
+        'DDO 133': 41636,
         'DDO 147': 43129,
+        'DDO 153': 43851,
+        'DDO 154': 43869,
+        'DDO 161': 45084,
+        'DDO 165': 45372,
+        'DDO 167': 45939,
+        'DDO 168': 46039,
+        'DDO 169': 46127,
+        'DDO 169NW': 5057032,
+        'DDO 181': 48332,
+        'DDO 183': 49158,
         'DDO 190': 51472,
+        'DDO 226': 2578,
         'DDO 44': 21302,
+        'DDO 53': 24050,
         'DDO 6': 2902,
+        'DDO 78': 30664,
+        'DDO 82': 30997,
         'DDO 99': 37050,
         'Donatiello III': 0,
         'Donatiello IV': 0,
         'Draco': 60095,
         'Draco II': 0,
+        'dw0036m2828': 0,
+        'dw0132+1422': -1,
+        'dw0133p1543': -1,
+        'dw0134+1438': -1,
+        'dw0134p1544': -1,
+        'dw0136p1628': -1,
+        'dw0137p1607': -1,
+        'dw0138+1458': -1,
+        'dw0139p1433': -1,
+        'dw0140p1556': -1,
+        'dw0235p3850': -1,
+        'dw0237p3836': -1,
+        'dw0237p3855': -1,
+        'dw0239p3902': -1,
+        'dw0239p3903': -1,
+        'dw0239p3926': -1,
+        'dw0240p3854': -1,
+        'dw0240p3922': -1,
+        'dw0241p3904': -1,
+        'dw0242p3838': -1,
+        'dw0506m3739': -1,
+        'dw0507m3629': -1,
+        'dw0507m3739': -1,
+        'dw0507m3744': -1,
+        'dw0507m3800': -1,
+        'dw0508m3617': -1,
+        'dw0508m3808': -1,
+        'dw0929+2213': -1,
+        'dw0932+1952': -1,
+        'dw0936+2135': -1,
+        'dw1000-0741': -1,
+        'dw1000m0821': -1,
+        'dw1000m0831': -1,
+        'dw1002m0642': -1,
+        'dw1002m0818': -1,
+        'dw1004m0657': -1,
+        'dw1004m0737': -1,
+        'dw1006m0730': -1,
+        'dw1006m0730-n2': -1,
+        'dw1006m0732': -1,
+        'dw1007m0715': -1,
+        'dw1007m0830': -1,
+        'dw1007m0835': -1,
+        'dw1042p1359': -1,
+        'dw1043p1410': -1,
+        'dw1043p1415': -1,
+        'dw1044p1351': -1,
+        'dw1044p1351b': -1,
+        'dw1044p1356': -1,
+        'dw1044p1359': -1,
+        'dw1046+1244': 0,
+        'dw1047p1153': -1,
+        'dw1047p1258': -1,
+        'dw1048p1154': -1,
+        'dw1048p1259': -1,
+        'dw1048p1303': -1,
+        'dw1048p1407': -1,
+        'dw1049p1233': -1,
+        'dw1049p1247': -1,
+        'dw1050p1213': -1,
+        'dw1050p1236': -1,
+        'dw1051p1406': -1,
+        'dw1052p1102': -1,
+        'dw1104+0004': -1,
+        'dw1104+0005': -1,
+        'dw1106-0052': -1,
+        'dw1109-0016': -1,
+        'dw1110+0037': -1,
+        'dw1111+0049': -1,
+        'dw1114p1238': -1,
+        'dw1118p1233': -1,
+        'dw1118p1348': -1,
+        'dw1119p1157': -1,
+        'dw1119p1404': -1,
+        'dw1119p1417': -1,
+        'dw1119p1419': -1,
+        'dw1120p1332': -1,
+        'dw1120p1337': -1,
+        'dw1121p1326': -1,
+        'dw1122p1258': -1,
+        'dw1123p1342': -1,
+        'dw1124p1240': -1,
+        'dw1220+4649': -1,
+        'dw1227p0136': -1,
+        'dw1231p0140': -1,
+        'dw1232p0015': -1,
+        'dw1234p2531': -1,
+        'dw1236+3336': -1,
+        'dw1236m0025': -1,
+        'dw1237p2602': -1,
+        'dw1238m0035': -1,
+        'dw1238m0105': -1,
+        'dw1238p0028': -1,
+        'dw1239+3230': -1,
+        'dw1239+3251': -1,
+        'dw1239-1159': -1,
+        'dw1240-1118': 42428,
+        'Dw1245+6158': -1,
+        'dw1300+1843': 0,
+        'dw1310+4153': -1,
+        'dw1315+4123': -1,
+        'dw1321+4226': -1,
+        'dw1322-39': 5912201, # = [MJB2016]DW1322-39
+        'dw1323-40a': 0,
+        'dw1323-40b': 0,
+        'dw1328+4703': 0,
+        'dw1329-45': 5912206, # = [MJB2016]DW1329-45
+        'dw1330+4731': 0,
+        'dw1335-29': 5477876,
+        'dw1336-44': 5912210, # = [MJB2016]DW1336-44
+        'dw1340-30': 0,
+        'dw1341-29': 0,
+        'dw1341-43': 5912213, # = [MJB2016]DW1341-43
+        'dw1342-43': 5912214, # = [MJB2016]DW1342-43
+        'dw1343+58': -1,
+        'Eridanus II': 5074553,
+        'Eridanus IV': 0,
         'ESO 006-001': 23344,
+        'ESO 059-001': 21199,
+        'ESO 115-021': 9962,
+        'ESO 121-020': 18731,
+        'ESO 137-018': 57888,
+        'ESO 154-023': 11139,
+        'ESO 199-007': 11211,
+        'ESO 215-009': 490287,
+        'ESO 222-010': 52125,
+        'ESO 245-005': 6430,
+        'ESO 269-037': 45104,
+        'ESO 269-058': 45717,
         'ESO 269-066': 45916,
+        'ESO 272-025': 52591,
+        'ESO 273-014': 53500,
         'ESO 274-001': 54392,
+        'ESO 290-028': 70089,
         'ESO 294-G010': 1641,
+        'ESO 300-016': 11842,
+        'ESO 301-007': 12586,
+        'ESO 301-010': 12676,
+        'ESO 320-014': 36014,
+        'ESO 321-014': 39032,
+        'ESO 324-024': 47171,
         'ESO 325-011': 48738,
+        'ESO 346-007': 69923,
+        'ESO 349-031': 621,
+        'ESO 379-007': 37369,
+        'ESO 379-024': 38252,
         'ESO 381-018': 42936,
         'ESO 381-020': 43048,
         'ESO 383-087': 49050,
@@ -1715,40 +1774,94 @@ def read_lvd(rank=0, rows=None):
         'ESO 410-G005': 1038,
         'ESO 443-009': 43978,
         'ESO 444-084': 48111,
+        'ESO 472-015': 513,
         'ESO 540-032': 2933,
-        'Eridanus II': 5074553,
-        'Eridanus IV': 0,
+        'ESO104-044': 62869,
+        'ESO219-010': 44110,
         'F8D1': 3097827,
+        'Fluffy': 0,
         'FM1': 3097828,
         'Fornax': 10074,
+        'FS04': 31877,
         'GALFA Dw3': 5072714,
         'GALFA Dw4': 5072715,
+        'GARLAND': 29167,
+        'GHOSTS I': 5067066,
         'GR 8': 44491,
+        'Grapes': 0,
         'Grus I': 5074558,
         'Grus II': 6740630,
+        'Hercules': 4713560,
         'HIDEEP J1337-3320': 677373,
         'HIPASS J1131-31': 5060432,
+        'HIPASS J1133-32': 683190,
+        'HIPASS J1247-77': 3994669,
         'HIPASS J1337-39': 592761,
         'HIPASS J1348-37': 4614882,
-        'Hercules': 4713560,
+        'HIPASS J1351-47': 3097113,
+        'HIZSS-021': 0,
         'Holm IV': 49448,
+        'Holmberg I': 27605,
+        'Holmberg II': 23324,
+        'Holmberg IX': 28757,
         'Horologium I': 5074554,
         'Horologium II': 5092747,
+        'HS 117': 4689216,
+        'HSC-10': 6726342,
+        'HSC-9': 6726341,
         'Hydra II': 5074546,
         'Hydrus I': 0,
         'IC 10': 1305,
         'IC 1613': 3844,
+        'IC 2574': 30819,
+        'IC 2684': 34438,
+        'IC 2782': 34934,
+        'IC 2787': 34969,
+        'IC 2791': 3542933,
         'IC 3104': 39573,
+        'IC 3687': 42656,
+        'IC 3840': 0,
+        'IC 4182': 45314,
         'IC 4247': 47073,
         'IC 4316': 48368,
         'IC 4662': 60849,
+        'IC 5052': 65603,
         'IC 5152': 67908,
+        'IC1959': 13163,
+        'IC239': 9899,
+        'IC3571': 0,
         'IKN': 4689195,
+        'JKB129': 4668290,
+        'JKB142': 5808737,
+        'JKB83': 6657020,
+        'KDG 171': 42294,
         'KDG 2': 2881,
+        'KDG 215': 44055,
+        'KDG 52': 23521,
+        'KDG 56': 26972,
         'KDG 61': 28731,
+        'KDG 63': 29257,
         'KDG 64': 29388,
+        'KDG 73': 32667,
+        'KDG 74': 33305,
+        'KDG010': 6354,
+        'KK 109': 166115,
+        'KK 132': 166127,
+        'KK 135': 166130,
+        'KK 144': 166137,
+        'KK 153': 41920,
+        'KK 16': 166064,
+        'KK 160': 166142,
+        'KK 165': 166145,
+        'KK 166': 166146,
+        'KK 17': 166065,
+        'KK 176': 44681,
+        'KK 177': 87149,
+        'KK 180': 86645,
         'KK 182': 166152,
         'KK 189': 166158,
+        'KK 191': 166159,
+        'KK 193': 166161,
         'KK 195': 166163,
         'KK 196': 46663,
         'KK 197': 46680,
@@ -1757,33 +1870,69 @@ def read_lvd(rank=0, rows=None):
         'KK 208': 166170,
         'KK 211': 48515,
         'KK 213': 166172,
+        'KK 217': 166175,
         'KK 218': 166176,
         'KK 221': 166179,
+        'KK 242': 4689184,
         'KK 258': 69468,
+        'KK 27': 166073,
+        'KK 35': 166077,
+        'KK 69': 166095,
+        'KK 70': 166096,
+        'KK 77': 166101,
+        'KK 93': 83333,
+        'KK94': 83339,
+        'KK96': 166107,
+        'KKH 11': 168300,
+        'KKH 12': 2807107,
+        'KKH 18': 2807110,
         'KKH 22': 2807114,
+        'KKH 30': 95591,
+        'KKH 34': 95594,
+        'KKH 37': 95597,
+        'KKH 5': 2807102,
+        'KKH 57': 2807133,
+        'KKH 6': 2807103,
+        'KKH 78': 2807147,
         'KKH 86': 2807150,
         'KKH 98': 2807157,
         'KKR 25': 2801026,
         'KKR 3': 166185,
         'KKs 3': 9140,
-        'KKs 53': 2815820,
         'KKs 51': 2815819,
+        'KKs 53': 2815820,
         'KKs 54': 2815821,
         'KKs 55': 2815822,
         'KKs 57': 2815823,
         'KKs 58': 2815824,
-		'KKs 59': 48937,
-        'LGS 3': 3792,
-        'LMC': 17223,
-        'LV J0055-2310': 6740710,
-        'LV J1157+5638': 2543081,
-        'LV J1157+5638 sat': 6740587,
-        'LV J1228+4358': 5057024,
+        'KKs 59': 48937,
+        'KKSG 17': 29033,
+        'KKSG 18': 29300,
+        'KKSG 20': 135770,
+        'KKSG 22': 3097701,
+        'KKSG 29': 42120,
+        'KKSG 31': 3097709,
+        'KKSG 32': 3097710,
+        'KKSG 33': 3097711,
+        'KKSG 37': 3097714,
+        'KV19-212': 0,
+        'KV19-271': 0,
+        'KV19-329': 0,
+        'KV19-442': 0,
         'Lacerta I': 5065677,
-        'Leo A': 28868,  # =Leo 3
+        'LeG05': 83286,
+        'LeG09': 83321,
+        'LeG13': 83326,
+        'LeG14': 83329,
+        'LeG16': 4689213,
+        'LeG17': 83336,
+        'LeG19': 83338,
+        'LeG21': 4689200,
+        'LeG26': 4689214,
+        'Leo A': 28868,
         'Leo I': 29488,
         'Leo I 09': 4689210,
-        'Leo II': 34176, # = Leo B
+        'Leo II': 34176,
         'Leo IV': 4713561,
         'Leo K': 0,
         'Leo M': 0,
@@ -1792,41 +1941,165 @@ def read_lvd(rank=0, rows=None):
         'Leo T': 4713564,
         'Leo V': 4713563,
         'Leo VI': 0,
+        'LGS 3': 3792,
+        'LMC': 17223,
+        'LSBC D565-09': -1,
+        'LSBC D640-11': 83364,
+        'LV J0055-2310': 6740710,
+        'LV J0616-5745': 385975,
+        'LV J1149+1715': 1528400,
+        'LV J1157+5638': 2543081,
+        'LV J1157+5638 sat': 6740587,
+        'LV J1158+1535': 1488625,
+        'LV J1218+4655': 4320422,
+        'LV J1228+4358': 5057024,
+        'LV J1235-1104': 970397,
+        'LV J1241+3251': 100707,
+        'LV J1243+4127': 5056993,
+        'LV J1313+1003': 4573336,
         'M 32': 2555,
         'M101 Dw9': 6740596,
         'M101 DwA': 5067392,
         'M101-DF1': 5067385,
         'M101-DF2': 5067386,
         'M101-DF3': 5067387,
+        'M96-DF1': -1,
+        'M96-DF2': -1,
+        'M96-DF7': -1,
         'MADCASH-1': 0,
         'MADCASH-2': 0,
+        'MAPS 1231+42': 0,
+        'MAPS 1249+44': 0,
+        'MCG -01-26-009': 29038,
+        'MCG+06-27-017': 38685,
+        'MCG+09-20-131': 39228,
         'MCG-04-31-038': 45628,
+        'N1291-DW10': -1,
+        'N1291-DW12': -1,
+        'N1291-DW13': -1,
+        'N1291-DW2': -1,
+        'N1291-DW3': -1,
+        'N1291-DW4': -1,
+        'N1291-DW5': -1,
+        'N1291-DW6': -1,
+        'N1291-DW8': -1,
+        'N1291-DW9': -1,
+        'NGC 1042': 10122,
+        'NGC 1313': 12286,
         'NGC 147': 2004,
         'NGC 1560': 15488,
+        'NGC 1569': 15345,
+        'NGC 1592': 15292,
+        'NGC 1705': 16282,
+        'NGC 1792': 16709,
+        'NGC 1800': 16744,
+        'NGC 1827': 16849,
         'NGC 185': 2329,
         'NGC 205': 2429,
+        'NGC 2188': 18536,
+        'NGC 2366': 21102,
+        'NGC 24': 701,
         'NGC 247': 2758,
+        'NGC 2683': 24930,
+        'NGC 2683-dw1': -1,
+        'NGC 2903-HI-1': -1,
+        'NGC 2915': 26761,
         'NGC 300': 3238,
+        'NGC 3077': 29146,
         'NGC 3109': 29128,
+        'NGC 3351': 32007,
+        'NGC 3377': 32249,
+        'NGC 3384': 32292,
+        'NGC 3412': 32508,
+        'NGC 3521-dwTBG': -1,
+        'NGC 3521-sat': -1,
+        'NGC 3593': 34257,
+        'NGC 3623': 34612,
+        'NGC 3628': 34697,
+        'NGC 3738': 35856,
+        'NGC 3741': 35878,
         'NGC 404': 4126,
+        'NGC 4068': 38148,
+        'NGC 4151': 38739,
         'NGC 4163': 38881,
         'NGC 4190': 39023,
         'NGC 4214': 39225,
+        'NGC 4236': 39346,
+        'NGC 4242': 39423,
+        'NGC 4244': 39422,
+        'NGC 4248': 39461,
+        'NGC 4395': 40596,
+        'NGC 4424': 40809,
         'NGC 4449': 40973,
+        'NGC 45': 930,
+        'NGC 4517': 41618,
+        'NGC 4562': 41955,
+        'NGC 4592': 42336,
+        'NGC 4594-DGSAT-2': 5473059,
+        'NGC 4594-DGSAT-3': 5473061,
+        'NGC 4594-DW1': 0,
+        'NGC 4627': 42620,
+        'NGC 4631-dw1': -1,
+        'NGC 4631-dw2': -1,
+        'NGC 4631-dw3': -1,
         'NGC 5011C': 45917,
+        'NGC 5023': 45849,
+        'NGC 5055-dwTBG1': -1,
+        'NGC 5068': 46400,
+        'NGC 5102': 46674,
+        'NGC 5194': 47404,
+        'NGC 5195': 47413,
+        'NGC 5204': 47368,
+        'NGC 5206': 47762,
+        'NGC 5237': 48139,
+        'NGC 5238': 47853,
+        'NGC 5253': 48334,
         'NGC 5264': 48467,
+        'NGC 5408': 50073,
         'NGC 5474': 50216,
         'NGC 5477': 50262,
         'NGC 55': 1014,
         'NGC 5585': 51210,
+        'NGC 59': 1034,
+        'NGC 625': 5896,
+        'NGC 628-dwA': -1,
+        'NGC 628-dwB': -1,
+        'NGC 6503': 60921,
+        'NGC 6744 dwTBGa': -1,
+        'NGC 6789': 63000,
         'NGC 6822': 63616,
+        'NGC 7793': 73049,
+        'NGC 784': 7671,
+        'NGC 891': 9031,
+        'NGC1311': 12460,
+        'NGC2976': 28120,
+        'NGC4765': 43775,
         'Pavo': 0,
+        'Pegasus dIrr': 71538,
         'Pegasus III': 5074547,
         'Pegasus IV': 0,
         'Pegasus V': 0,
-        'Pegasus W': 0, # in NED
-        'Pegasus dIrr': 71538,
+        'Pegasus VII': 0,
+        'Pegasus W': 0,
         'Perseus I': 5067061,
+        'PGC 100170': 100170,
+        'PGC 1059300': 1059300,
+        'PGC 138836': 138836,
+        'PGC 166192': 166192,
+        'PGC 166193': 166193,
+        'PGC 170257': 170257,
+        'PGC 20125': 20125,
+        'PGC 2601822': 2601822,
+        'PGC 3272767': 3272767,
+        'PGC 34671': 34671,
+        'PGC 39646': 39646,
+        'PGC 42730': 42730,
+        'PGC 4560429': 4560429,
+        'PGC 4561602': 4561602,
+        'PGC 51659': 51659,
+        'PGC 704814': 704814,
+        'PGC 725719': 725719,
+        'PGC1242': 1242,
         'Phoenix': 6830,
         'Phoenix II': 5074556,
         'Pictor I': 5074555, # =PICTORIS1
@@ -1837,9 +2110,9 @@ def read_lvd(rank=0, rows=None):
         'Pisces VII': 0,
         'Reticulum II': 5074552,
         'Reticulum III': 6740628,
-        'SMC': 3085,
         'Sagittarius': 4689212,
         'Sagittarius dIrr': 63287,
+        'SBS 1224+533': 40750,
         'Scl-MM-Dw1': 5067869,
         'Scl-MM-Dw2': 5478807,
         'Scl-MM-Dw3': 0,
@@ -1853,6 +2126,8 @@ def read_lvd(rank=0, rows=None):
         'Sextans A': 29653,
         'Sextans B': 28913,
         'Sextans II': 0,
+        'SMC': 3085,
+        'SUCD1': 3793583,
         'Triangulum II': 5074545,
         'Tucana': 69519,
         'Tucana B': 0, # = SMDG J2247005-582429
@@ -1860,51 +2135,72 @@ def read_lvd(rank=0, rows=None):
         'Tucana III': 6657034,
         'Tucana IV': 6740629,
         'Tucana V': 6740631,
+        'UGC 1104': 5761,
+        'UGC 11411': 62814,
+        'UGC 1171': 6150,
+        'UGC 1176': 6174,
+        'UGC 1281': 6699,
+        'UGC 12894': 35,
+        'UGC 1703': 8484,
+        'UGC 1807': 8947,
+        'UGC 2157': 10124,
+        'UGC 2165': 10180,
+        'UGC 2684': 12514,
+        'UGC 2716': 12719,
+        'UGC 2773': 13115,
+        'UGC 288': 1777,
+        'UGC 2905': 14149,
+        'UGC 3600': 19871,
+        'UGC 3698': 20264,
+        'UGC 4483': 24213,
         'UGC 4879': 26142,
+        'UGC 5086': 27115,
         'UGC 5497': 29735,
+        'UGC 5812': 31801,
+        'UGC 5944': 32471,
+        'UGC 64': 591,
+        'UGC 6451': 35264,
+        'UGC 6456': 35286,
+        'UGC 6541': 35684,
+        'UGC 6757': 36758,
+        'UGC 685': 3974,
+        'UGC 7242': 39058,
+        'UGC 7298': 39316,
+        'UGC 7356': 39615,
+        'UGC 7490': 40367,
+        'UGC 7596': 41036,
+        'UGC 7605': 41048,
+        'UGC 7636': 41258,
+        'UGC 7929': 42985,
+        'UGC 8215': 45506,
+        'UGC 8245': 45546,
+        'UGC 8313': 45992,
         'UGC 8508': 47495,
+        'UGC 8638': 48280,
+        'UGC 8833': 49452,
         'UGC 8882': 49636,
         'UGC 9128': 50961,
         'UGC 9405': 52142,
+        'UGCA 105': 16957,
+        'UGCA 281': 40665,
+        'UGCA 287': 41743,
+        'UGCA 292': 42275,
+        'UGCA 319': 44982,
+        'UGCA 337': 45897,
         'UGCA 365': 48029,
+        'UGCA 442': 72228,
         'UGCA 86': 14241,
+        'UGCA 92': 15439,
         'UKS 2323-326': 71431,
         'Ursa Major I': 4713554,
         'Ursa Major II': 4713555,
-        'Ursa Major III': 0, # discovered in 2024
         'Ursa Minor': 54074,
         'Virgo I': 6657032,
         'Virgo II': 0,
-        'WLM': 143,
         'Willman 1': 4713556,
-        'd0926+70': 5056943,
-        'd0939+71': 5056932,
-        'd0955+70': 5056934,
-        'd1028+70': 5056941,
-        'd1041+70': 5056942,
-        'dw1335-29': 5477876, # = [MJB2015]DW1335-29
-        'd0934+70': 5056931,
-        'd0944+69': 5056933,
-        'd0944+71': 5056944, # GALEXMSC J094435.06+712857.6??
-        'd0958+66': 28826, # KUG 0945+670??
-        'd0959+68': 5056936,
-        'd1006+67': 5056937,
-        'd1014+68': 5056938,
-        'd1015+69': 5056947,
-        'dw0036m2828': 0,
-        'dw1046+1244': 0,
-        'dw1322-39': 5912201, # = [MJB2016]DW1322-39
-        'dw1323-40a': 0,
-        'dw1323-40b': 0,
-        'dw1329-45': 5912206, # = [MJB2016]DW1329-45
-        'dw1336-44': 5912210, # = [MJB2016]DW1336-44
-        'dw1340-30': 0,
-        'dw1341-43': 5912213, # = [MJB2016]DW1341-43
-        'dw1342-43': 5912214, # = [MJB2016]DW1342-43
-        #'Cetus III': 6726344,
-        #'Virgo III': 0,
-        #'NGC 55-dw1': 0,
+        'WLM': 143,
         }
+
 
     for key in pgc.keys():
         I = np.where(lvd['OBJNAME'] == key)[0]
@@ -1942,6 +2238,8 @@ def read_custom_external(rank=0, rows=None, overwrite=False):
         for col in ['diam', 'ba', 'pa', 'mag']:
             data[col] = data[col].astype('f4')
         [data.rename_column(col, col.upper()) for col in data.colnames]
+        data['PA'] = data['PA'].value % 180 # put in range [0-->180]
+
         data.write(customfile, overwrite=True)
 
     F = fitsio.FITS(customfile)
@@ -2351,6 +2649,119 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
         todo_indices = [np.array([])]
 
     return suffix, todo_indices, done_indices, fail_indices
+
+
+def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
+    """Simple wrapper to read an input catalog.
+
+    """
+    if not os.path.isfile(catfile):
+        print(f'Catalog {catfile} not found')
+        return
+
+    try:
+        cat = Table(fitsio.read(catfile, ext=ext, rows=rows, columns=columns))
+        print(f'Read {len(cat):,d} galaxies from {catfile}')
+        return cat
+    except:
+        msg = f'Problem reading {catfile}'
+        raise IOError(msg)
+
+
+def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north', 
+                           outdir='.', project='project1'):
+    """Read the zooniverse VI sample.
+
+    """
+    from SGA.util import match
+    from SGA.ellipse import choose_geometry
+
+    if project == 'project1':
+        # basically the wisesize sample
+
+        # 87. < RA < 300.
+        # -10. < DEC < 85.
+        # 0.002 < z < 0.025
+        # W3 or NUV SNR > 20.   (for this, I divided  'Lum_W3'/'Lum_W3_unc' and 'Lum_NUV'/'Lum_NUV_unc', respectively)
+        # diameter > 15. arcsec OR -99., as we are including objects which do not have size measurements in your nedgeometry catalog
+        # Lastly, we removed VFS galaxies, since we already have access to those postage stamps
+
+        def get_snr(flux, ferr):
+            snr = np.zeros(len(flux))
+            J = np.isfinite(flux) * np.isfinite(ferr) * (ferr > 0.)
+            snr[J] = flux[J] / ferr[J]
+            return snr
+
+        nedlvs = read_nedlvs()
+
+        I = cat['FILTERS'] == 'grz'
+        print(f'In {region} grz footprint: {np.sum(I):,d}')
+        cat = cat[I]
+        nobj = len(cat)
+
+        cat = cat[cat['ROW_NEDLVS'] != -99]
+        indx_cat, indx_nedlvs = match(cat['ROW_NEDLVS'], nedlvs['ROW'])
+        cat = cat[indx_cat]
+        nedlvs = nedlvs[indx_nedlvs]
+        print(f'In NED-LVS: {len(cat):,d}/{nobj:,d}')
+
+        I = (cat['RA'] > 87.) * (cat['RA'] < 300.) * (cat['DEC'] > -10.) * (cat['DEC'] < 85.)
+        print(f'In 87<RA<300, -10<Dec<85: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        I = (nedlvs['Z'] > 0.002) * (nedlvs['Z'] < 0.025)
+        print(f'In 0.002<z<0.025 range: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        mindiam = 30. # [arcsec] # 15.
+        diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+
+        I = (diam > mindiam)
+        print(f'Diameter (>{mindiam:.0f} arcsec) cut: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        snrmin = 3. # 20.
+        snr_W3 = get_snr(nedlvs['LUM_W3'], nedlvs['LUM_W3_UNC'])
+        snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
+
+        I = np.logical_or(snr_W3 > snrmin, snr_NUV > snrmin)
+        print(f'S/N(W3)>{snrmin:.0f}, S/N(NUV)>{snrmin:.0f} cuts: {np.sum(I):,d}/{len(cat):,d}')
+        cat = cat[I]
+        nedlvs = nedlvs[I]
+
+        if fullcat is not None:
+            diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            I = diam > 15.
+            print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
+            fullcat = fullcat[I]
+
+        # optionally write out
+
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir, exist_ok=True)
+        outfile = os.path.join(outdir, f'zooniverse-{project}-{region}.fits')
+
+        if catfile and not os.path.isfile(outfile):
+            rows = np.where(np.isin(fitsio.read(catfile, columns='ROW_PARENT'), cat['ROW_PARENT'].value))[0]
+            allcat = read_fits_catalog(catfile, rows=rows)
+            indx_cat, indx_allcat = match(cat['ROW_PARENT'], allcat['ROW_PARENT'])
+
+            allcat = allcat[indx_allcat]
+            cat = cat[indx_cat]
+            nedlvs = nedlvs[indx_cat]
+
+            assert(np.all(allcat['ROW_PARENT'] == cat['ROW_PARENT']))
+            allcat.write(outfile, overwrite=True)
+            print(f'Wrote {len(allcat):,d} objects to {outfile}')
+
+            #outfile = os.path.join(outdir, f'wiseize-nedlvs-{region}.fits')
+            #nedlvs.write(outfile, overwrite=True)
+            #print(f'Wrote {len(nedlvs):,d} objects to {outfile}')
+
+        return cat, fullcat
 
 
 #def get_parentfile(version=None, kd=False):

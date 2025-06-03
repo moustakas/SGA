@@ -41,6 +41,8 @@ for obj in smdg[I]:
     objname = obj['OBJNAME']
     ra = obj['RAdeg']
     dec = obj['DEdeg']
+    # see SGA2025-build-parent (build_parent_nocuts) for one more
+    # factor of 1.2 to go from Re to RHolm
     diam = obj['Re'] * 2. / 60. # [radius in arcsec --> diameter in arcmin]
     ba = obj['b/a']
     pa = obj['PA'] % 360 # [-90,90] --> [0,360]

@@ -611,12 +611,10 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         version = version_lvd()
 
         keep = data['OBJECT_NOTE'] != 'ERROR: Input name not recognized by NED'
-        bb = cat[~np.isin(nedfriendly_lvd(cat['OBJNAME']), data['OBJNAME'][keep])]
-        bb = bb[bb['CONFIRMED_DWARF'] == 1]
-        bb = bb[np.argsort(bb['OBJNAME'])]
-        bb.pprint(max_lines=-1)
-
-        pdb.set_trace()
+        #bb = cat[~np.isin(nedfriendly_lvd(cat['OBJNAME']), data['OBJNAME'][keep])]
+        #bb = bb[bb['CONFIRMED_REAL'] == 1]
+        #bb = bb[np.argsort(bb['OBJNAME'])]
+        #bb['OBJNAME', 'RA', 'DEC', 'REF_STRUCTURE'].pprint(max_lines=-1)
         data = data[keep]
 
         miss = cat[~np.isin(nedfriendly_lvd(cat['OBJNAME'].value), data['OBJNAME'])]
@@ -628,6 +626,18 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
         assert(np.all(nedfriendly_lvd(cat['OBJNAME']) == data['OBJNAME']))
         data['ROW'] = cat['ROW']
         data = data[np.argsort(data['ROW'])]
+
+        #_cat = cat[np.argsort(cat['ROW'])]
+        #_cat['OBJNAME'] = nedfriendly_lvd(_cat['OBJNAME'])
+        #diff = np.diag(arcsec_between(data['RA'].value, data['DEC'].value, _cat['RA'].value, _cat['DEC'].value))
+        #I = diff > 5
+
+        #bb = join(data[I]['OBJNAME', 'RA', 'DEC'], _cat[I]['OBJNAME', 'RA', 'DEC'], keys='OBJNAME', table_names=['NED', 'LVD'])
+        #bb['SEP'] = diff[I]
+        #bb = bb[np.argsort(bb['SEP'])]
+        #bb.pprint(max_lines=-1)
+        #pdb.set_trace()
+
 
     if catalog.lower() == 'nedlvs':
         version = version_nedlvs()

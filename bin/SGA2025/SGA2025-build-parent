@@ -2,23 +2,22 @@
 
 """Code to build the parent SGA2025 sample based on a combination of internal and external catalogs.
 
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
 SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
+SGA2025-build-parent --build-parent-archive
 SGA2025-build-parent --build-parent
 
 SGA2025-build-parent --in-footprint --region=dr9-north
 SGA2025-build-parent --in-footprint --region=dr9-south
 SGA2025-build-parent --in-footprint --region=dr11-south
 
-salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
   SGA2025-build-parent --in-footprint --region=dr9-north
-
-srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-build-parent --in-footprint --region=dr9-south
 
 
 """
@@ -37,7 +36,7 @@ from astrometry.libkd.spherematch import match_radec
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.qa import qa_skypatch, multipage_skypatch
 from SGA.ellipse import get_basic_geometry
-from SGA.util import match, choose_primary, resolve_close
+from SGA.util import match, match_to, choose_primary, resolve_close
 from SGA.io import sga_dir, parent_version
 
 
@@ -94,6 +93,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
     # Read or, optionally, rebuild the cross-id error file.
     if rebuild_file:
         VETO = [
+            'NGC 3280', # will get dropped
             #'2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
         ]
 
@@ -280,15 +280,15 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                 if np.max(cc) != 1:
                     print('Warning: duplicates in actions file can cause problems!')
                     print(uobj[cc > 1])
-                    pdb.set_trace()
+                    raise ValueError()
                 I = np.isin(newcat['OBJNAME'].value, obj)
                 if np.sum(I) != len(obj):
                     #for oo in obj:
                     #    if np.sum(np.isin(newcat['OBJNAME'], oo)) != 1:
                     #        print(oo)
-                    pdb.set_trace()
+                    print('The following objects are in the actions file but do not exist!')
                     print(obj[~np.isin(obj, newcat['OBJNAME'][I].value)])
-                    raise ValueError('Some objects not found!')
+                    raise ValueError()
                 if verbose:
                     print(f'Action: dropping {len(obj):,d} objects.')
                 newcat = newcat[~I]
@@ -297,9 +297,9 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                 obj = actions[action == actions['action']]['objname'].value
                 I = np.isin(newcat['OBJNAME'].value, obj)
                 if np.sum(I) != len(obj):
-                    pdb.set_trace()
+                    print('The following objects are in the actions file but do not exist!')
                     print(obj[~np.isin(obj, newcat['OBJNAME'][I].value)])
-                    raise ValueError('Some objects not found!')
+                    raise ValueError()
                 if verbose:
                     print(f'Action: adopting HyperLeda coordinates for {len(obj):,d} object(s).')
                 for col in ['RA', 'DEC']:
@@ -453,9 +453,11 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                  'HS', 'ESO']
             drop_references = []
         case _:
-            VETO = ['HIPASS J1348-37', 'HIPASS J1131-31', 'HIPASS J1247-77', 'HIPASS J1337-39',
+            VETO = ['HIPASS J1348-37', 'HIPASS J1131-31', 'HIPASS J1247-77', 'HIPASS J1337-39', # LVD systems
+                    'HIPASS J1133-32', 'HIPASS J1351-47', 'AGC 198606', # LVD systems
                     'RCS 04020600360', 'NSA 142339', 'HIDEEP J1337-3320', # LVD systems
                     'ZwCl 0054.6-0127 18', 'ZwCl 0054.6-0127 16 NED02', 'ZwCl 0054.6-0127 16 NED01', # in UGC 00579 group
+                    'ZwCl 0054.6-0127 31', # in UGC 00588 group
                     ] 
             drop_prefixes = ['WINGS', 'SRGb', '[MD2000]', 'HeCS', 'ESP',
                              'SDSSCGB', 'NVSS', 'AGC', ]
@@ -479,7 +481,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'AGESVC1', 'LRG', '[MLO2002]', '[H87]', '[ARN85]', '[LYY2017]',
                 'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', 'PDCS', '[MOH2004]',
                 'MS', '[SNS2015]', '[KEC2012]', '[LPG2013]', '6C', 'SDSS-II', 
-                'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', ]
+                'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', 
+                '[TGK2001]', '[CBR2014]', 'ANTL', '[TH2002]', '[CBR2013]', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
                 # candidate globular clusters:
@@ -593,11 +596,456 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
     return out
 
 
+def update_lvd_properties(cat):
+    """Gather geometry for all LVD sources.
+
+       name            ra            dec      rhalf
+      str22         float64        float64   float64
+    ---------- ------------------ ---------- -------
+     dw1341-29 205.33416666666665   -29.5675      --
+         IC239             39.116     38.969      --
+      NGC 1042          2.6733275  -8.433591      --
+      NGC 4151         12.1757335 39.4057938      --
+      NGC 4424         12.4532467  9.4204423      --
+      NGC 5194         202.469625  47.195167      --
+    PGC 100170          2.9477205 58.9115793      --
+    PGC 166192         20.5090597 60.3540088      --
+    PGC 166193         20.5255533 60.8123555      --
+      UGC 7490          186.10375  70.334278      --
+
+    """
+    def modify_lvg_names(lvg_name):
+        lvg_name = np.char.replace(lvg_name, ' ', '')
+        lvg_name = np.char.replace(lvg_name, 'SagdSph', 'Sagittarius')
+        lvg_name = np.char.replace(lvg_name, 'And ', 'Andromeda ')
+        lvg_name = np.char.replace(lvg_name, 'Lac', 'Lacerta')
+        lvg_name = np.char.replace(lvg_name, 'UMa', 'UrsaMajor')
+        lvg_name = np.char.replace(lvg_name, 'UMin', 'UrsaMinor')
+        lvg_name = np.char.replace(lvg_name, 'Hydrus1dw', 'HydrusI')
+        lvg_name = np.char.replace(lvg_name, 'UGCA086', 'UGCA86')
+        lvg_name = np.char.replace(lvg_name, 'Antlia2', 'AntliaII')
+        lvg_name = np.char.replace(lvg_name, 'Horologium2', 'HorologiumII')
+        lvg_name = np.char.replace(lvg_name, 'ColumbiaI', 'ColumbaI')
+        #lvg_name = np.char.replace(lvg_name, 'Pegasus', 'PegasusdIrr')
+        lvg_name[lvg_name == 'Pegasus'] = 'PegasusdIrr'
+        return lvg_name
+
+
+    from astropy.table import vstack, join, hstack
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+    from astrometry.libkd.spherematch import match_radec
+    from SGA.util import match
+    from SGA.io import read_lvd, version_lvd, nedfriendly_lvd
+
+    _lvd = read_lvd()
+    version = version_lvd()
+    nobj = len(_lvd)
+
+    print(f'Updating properties of {nobj} LVD galaxies.')
+
+    #indx_cat = np.where(cat['ROW_LVD'] != -99)[0]
+    #lvd = cat[indx_cat]
+
+    lvd = Table()
+    lvd['OBJNAME'] = _lvd['OBJNAME']
+    lvd['RA'] = _lvd['RA']
+    lvd['DEC'] = _lvd['DEC']
+    lvd['ROW'] = _lvd['ROW']
+    lvd['DIAM'] = np.zeros(nobj, 'f4') - 99.
+    lvd['PA'] = np.zeros(nobj, 'f4') - 99.
+    lvd['BA'] = np.zeros(nobj, 'f4') - 99.
+    lvd['RADEC_REF'] = np.zeros(nobj, 'U19')
+    lvd['DIAM_REF'] = np.zeros(nobj, 'U19')
+    lvd['PA_REF'] = np.zeros(nobj, 'U19')
+    lvd['BA_REF'] = np.zeros(nobj, 'U19')
+
+    lvd['RADEC_REF'] = 'LVD'
+
+    I = np.isfinite(_lvd['RHALF'])
+    lvd['DIAM'][I] = np.float32(2. * 1.2 * _lvd['RHALF'][I])
+    lvd['DIAM_REF'][I] = version
+
+    I = np.isfinite(_lvd['POSITION_ANGLE'])
+    lvd['PA'][I] = np.float32(_lvd['POSITION_ANGLE'][I] % 180)
+    lvd['PA_REF'][I] = version
+
+    I = np.isfinite(_lvd['ELLIPTICITY'])
+    lvd['BA'][I] = np.float32(1. - _lvd['ELLIPTICITY'][I])
+    lvd['BA_REF'][I] = version
+
+    # first, add geometry from the LVGDB; see bin/analyze-lvd
+    lvgfile = resources.files('SGA').joinpath('data/SGA2025/lvg_table1_2025-01-26_trim.txt')
+    lvg = Table.read(lvgfile, format='ascii.fixed_width')
+    print(f'Read the properties of {len(lvg)} galaxies from {lvgfile}')
+
+    c_lvg = SkyCoord(ra=lvg['RA_HMS'].value, dec=lvg['DEC_DMS'].value, unit=(u.hourangle, u.deg))
+    lvg['RA'] = c_lvg.ra.degree
+    lvg['DEC'] = c_lvg.dec.degree
+    lvg.remove_columns(['RA_HMS', 'DEC_DMS'])
+
+    [lvg.rename_column(col, f'{col}_LVG') for col in lvg.colnames]
+
+    m1, m2, _ = match_radec(lvd['RA'], lvd['DEC'], lvg['RA_LVG'], lvg['DEC_LVG'], 30./3600., nearest=True)
+    print(f'Matched {len(m1)}/{len(lvd)} LVD objects based on coordinates.')
+    #hstack((lvd['OBJNAME', 'RA', 'DEC'][m1], lvg['NAME_LVG', 'RA_LVG', 'DEC_LVG'][m2])).pprint(max_lines=-1)
+
+    lvd['DIAM_LVG'] = np.zeros(nobj, 'f4') - 99.
+    lvd['BA_LVG'] = np.zeros(nobj, 'f4') - 99.
+    #lvd['pa_LVG'] = np.zeros(nobj, 'f4')
+
+    lvd['DIAM_LVG'][m1] = lvg['DIAM_LVG'][m2]
+    lvd['BA_LVG'][m1] = lvg['BA_LVG'][m2]
+    #lvd['PA_LVG'][m1] = lvg['PA_LVG'][m2]
+
+    # now try matching missing matches by name
+    I = np.where(lvd['DIAM_LVG'] == -99.)[0]
+    lvg_name = modify_lvg_names(lvg['NAME_LVG'].value)
+    m1, m2 = match(np.char.replace(lvd['OBJNAME'][I], ' ', ''), lvg_name)
+    print(f'Matched {len(m1)}/{len(lvd)} LVD objects based on object name.')
+    #hstack((lvd['OBJNAME', 'RA', 'DEC'][I][m1], lvg['NAME_LVG', 'RA_LVG', 'DEC_LVG'][m2])).pprint(max_lines=-1)
+
+    lvd['DIAM_LVG'][I[m1]] = lvg['DIAM_LVG'][m2]
+    lvd['BA_LVG'][I[m1]] = lvg['BA_LVG'][m2]
+    #lvd['pa_LVG'][m1] = lvg['pa_LVG'][m2]
+
+    # copy missing values from the LVGDB (prefer LVGDB!)
+    #print(f'Existing diameters for {np.sum(lvd["DIAM"] == -99.)}/{len(lvd)} objects.')
+    #I = (lvd['DIAM'] == -99.) * (lvd['DIAM_LVG'] != -99.)
+    I = (lvd['DIAM_LVG'] != -99.)
+    print(f'Adding {np.sum(I)} diameters from the LVGDB.')
+    lvd['DIAM'][I] = lvd['DIAM_LVG'][I]
+    lvd['BA'][I] = lvd['BA_LVG'][I]
+    lvd['DIAM_REF'][I] = 'LVGDB'
+    lvd['BA_REF'][I] = 'LVGDB'
+
+    # v1.0.5 is missing all data for 10 objects. Hard-code the properties for
+    # now...
+    I = (lvd['DIAM'] == -99.)
+    if version != 'v1.0.5':
+        raise ValueError('Need hard-coded properties!')
+
+    gals = np.array([
+        'IC239',
+        'NGC 1042',
+        'NGC 4151',
+        'NGC 4424',
+        'PGC 100170',
+        'UGC 7490',
+        'dw1341-29',
+    ])
+    props = [ # diam, ba, pa
+        (4.57, 0.912, 125.),
+        (5.47, 0.873, 33.6),
+        (5.43, 0.879, 140.),
+        (3.63, 0.501, 95.),
+        (2.58, 0.4, 117.),
+        (3.30, 0.850, 0.17),
+        (0.5, 1., 0.),
+        ]
+    refs = [
+        ('RC3', 'RC3', '2MASS'),
+        ('SGA2020', 'SGA2020', 'SGA2020'),
+        ('SGA2020', 'SGA2020', 'SGA2020'),
+        ('RC3', 'RC3', 'RC3'),
+        ('2MASS', '2MASS', '2MASS'),
+        ('SGA2020', 'SGA2020', 'SGA2020'),
+        ('VI', 'VI', 'VI'),
+        ]
+    assert(np.all(lvd[I]['OBJNAME'] == gals))
+
+    props = list(zip(*props))
+    refs = list(zip(*refs))
+
+    for col, prop, ref in zip(('DIAM', 'BA', 'PA'), props, refs):
+        lvd[col][I] = prop
+        lvd[f'{col}_REF'][I] = ref
+
+    # at this point, all objects should have diameters and ellipticities
+    #assert(np.all((lvd['DIAM'] != -99.) * (lvd['BA'] != -99.)))
+
+    # Next, gather ellipticities and position angles from the input catalog.
+    I = np.where(cat['ROW_LVD'] != -99)[0]
+    m1, m2 = match(lvd['ROW'], cat['ROW_LVD'][I])
+    lvd = lvd[m1]
+    lvdcat = cat[I[m2]]
+
+    for prop in ['BA', 'PA']:
+        for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
+            I = (lvd[prop] == -99.) * (lvdcat[f'{prop}_{ref}'] != -99.)
+            if np.any(I):
+                print(f'Adding {np.sum(I)} {prop}s from {ref}')
+                lvd[prop][I] = lvdcat[f'{prop}_{ref}'][I]
+                if ref == 'LIT':
+                    lvd[f'{prop}_REF'][I] = lvdcat[f'{prop}_{ref}_REF'][I]
+                else:
+                    lvd[f'{prop}_REF'][I] = ref
+
+    # default values for everything else
+    I = lvd['PA'] == -99.
+    if np.any(I):
+        print(f'Adopting default PAs for {np.sum(I)} objects.')
+        lvd['PA'][I] = 0.
+        lvd['PA_REF'][I] = 'default'
+
+    I = lvd['BA'] == -99.
+    if np.any(I):
+        print(f'Adopting default BAs for {np.sum(I)} objects.')
+        lvd['BA'][I] = 1.
+        lvd['BA_REF'][I] = 'default'
+
+    # override the algorithm above based on VI
+    if version == 'v1.0.5':
+        gals = [
+            # dr9-north
+            'DDO 126',
+            'NGC 5023',
+            'A0952+69',
+            'HS 117',
+            'UGCA 281',
+            'UGC 7298',
+            'BK6N',
+            'KKR 25',
+            'KK 17', # also in dr11-south
+            'Dw1245+6158',
+            'KK 193',
+            'NGC 4631-dw3', # also in dr11-south
+            'KK 135',
+            'KK 160',
+            'MAPS 1231+42',
+            'dw1239+3230',
+            'JKB83',
+            # dr11-south
+            'NGC 247',
+            'ESO 290-028',
+            'NGC 1792',
+            'Pegasus dIrr',
+            'NGC 4424',
+            'PGC1242',
+            'NGC 3351',
+            'DDO 133',
+            'UGCA 442',
+            'NGC 4592',
+            # count=10 above here
+            'NGC 1042',
+            'NGC 1827',
+            'NGC 1800',
+            'NGC 4562',
+            'ESO 346-007',
+            'ESO 472-015',
+            'ESO 325-011',
+            'DDO 153',
+            'NGC 3521-sat',
+            'KKs 3',
+            # count=10 above here
+            'PGC 51659',
+            'KK 218',
+            'UGC 1703',
+            'KDG 2',
+            'ESO 269-037',
+            'NGC 5011C',
+            'KK 144',
+            'KK 70',
+            'UGCA 292',
+            'MCG-04-31-038',
+            # count=10 above here
+            'UGC 2905',
+            'IC 3840',
+            'KKs 51',
+            'LeG05',
+            'HIPASS J1247-77',
+            'AM 1320-230',
+            'JKB129',
+            'dw1236+3336',
+            'GALFA Dw3',
+            'LV J0616-5745',
+            # count=10 above here
+            'dw1232p0015',
+        ]
+        props = [ # ra, dec, diam, ba, pa
+            # dr9-north
+            (-99., -99., -99., -99., 145.5),
+            (-99., -99., -99., -99., 28.22),
+            (-99., -99., 2., 0.75, 90.),
+            (-99., -99., -99., -99., 170.),
+            (186.570833, 48.494167, -99., -99., -99.),
+            (184.125699, 52.227996, -99., -99., -99.),
+            (-99., -99., -99., -99., 70.),
+            (-99., -99., -99., -99., 10.),
+            (30.042042, 28.8311692, 0.6, 0.5, 167.5),
+            (-99., -99., -99., -99., 45.),
+            (198.87417, 41.50223, 1.2*0.39866, 0.77, 119.17), # =SMDG J1315298+413008
+            (190.72097, 32.45592, 1.2*0.42333, 0.9, 81.86), # =SMDG J1242530+322721
+            (184.8944985, 58.0439485, -99., -99., -99.),
+            (190.99079166666667, 43.66122222222222, -99., -99., -99.),
+            (-99., -99., -99., -99., 167.16), # =SDSS J123109.08+420533.8
+            (189.7710, 32.5042, -99., -99., -99.),
+            (148.9569, 69.3326, -99., -99., -99.),
+            # dr11-south
+            (-99., -99., -99., -99., 167.44),
+            (-99., -99., 3.3678637, 0.2748319, 90.72542),
+            (-99., -99., 5.5590425, 0.4954502, 136.1),
+            (-99., -99., 9.068349, 0.47048086, 124.596985),
+            (186.798241, 9.420542, -99., -99., -99.),
+            (-99., -99., 3.7, -99., 10.),
+            (-99., -99., -99., -99., 10.68),
+            (-99., -99., 5.509129, 0.699842, 162.88872),
+            (355.94309250000003, -31.956949, -99., -99., -99.),
+            (-99., -99., 5.871678, -99., -99.),
+            # count=10 above here
+            (40.099892, -8.433514, -99., -99., -99.),
+            (-99., -99., 4.9642844, -99., -99.),
+            (-99., -99., 3.8072977, -99., -99.),
+            (-99., -99., 3.8088787, -99., -99.),
+            (-99., -99., 1.66, -99., -99.), # double the HyperLeda diameter
+            (-99., -99., 0.5*3.672, -99., -99.), # halve the v1.0.5 diameter
+            (206.2520833333333, -41.861111111111114, -99., -99., -99.),
+            (193.486722, -12.1054537, -99., -99., -99.),
+            (-99., -99., -99., -99., 45.),
+            (-99., -99., -99., -99., 100.),
+            # count=10 above here
+            (-99., -99., -99., -99., 120.),
+            (-99., -99., -99., -99., 150.),
+            (33.22875, 32.815, -99., -99., -99.),
+            (-99., -99., -99., -99., 99.826744),
+            (195.88829249999998, -46.586861, -99., -99., -99.),
+            (198.29949999999997, -43.26547222222222, -99., -99., -99.),
+            (186.37058399999998, 28.4845833, -99., -99., -99.),
+            (133.8470835, 33.559, -99., -99., -99.),
+            (-99., -99., -99., -99., 90.),
+            (197.40249999999997, -27.14075, -99., -99., -99.),
+            # count=10 above here
+            (59.250583333333324, 16.522444444444442, -99., -99., -99.),
+            (-99., -99., -99., -99., 40.),
+            (191.0895833333333, -42.93969444444444, -99., -99., -99.),
+            (159.92899999999997, 12.634888888888888, -99., -99., -99.),
+            (191.890842, -77.582623, -99., -99., -99.),
+            (200.8745833333333, -23.393055555555556, -99., -99., -99.),
+            (-99., -99., -99., -99., 135.),
+            (-99., -99., -99., -99., 80.),
+            (44.7343335, 13.6299722, -99., -99., -99.),
+            (94.03716666666666, -57.76461111111111, -99., -99., -99.),
+            # count=10 above here
+            (188.15054166666664, 0.2624444444444444, -99., -99., -99.),
+            ]
+        refs = [
+            # dr9-north
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', 'VI', 'VI', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('2016AJ....152...50T', '2016AJ....152...50T', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA'),
+            ('', '', '', '', 'VI'),
+            ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
+            ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'HYPERLEDA'),
+            ('LS/DR9', 'LS/DR9', '', '', ''),
+            ('LS/DR9', 'LS/DR9', '', '', ''),
+            # dr11-south
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
+            ('', '', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA'),
+            ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
+            ('NED', 'NED', '', '', ''),
+            ('', '', 'VI', '', 'VI'),
+            ('', '', '', '', 'HYPERLEDA'),
+            ('', '', 'SGA2020', 'HYPERLEDA', 'SGA2020'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            # count=10 above here
+            ('NED', 'NED', '', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            ('', '', 'SGA2020', '', ''),
+            ('', '', 'VI', '', ''),
+            ('', '', 'VI', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            # count=10 above here
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'SGA2020'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('NED', 'NED', '', '', ''),
+            # count=10 above here
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('NED', 'NED', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
+            ('NED', 'NED', '', '', ''),
+            # count=10 above here
+            ('NED', 'NED', '', '', ''),
+            ]
+        props = np.array(list(zip(*props)))
+        refs = np.array(list(zip(*refs)))
+        I = match_to(lvd['OBJNAME'].value, gals)
+        assert(np.all(lvd['OBJNAME'][I] == np.array(gals)))
+
+        print('Updating hard-coded properties:')
+        for col, prop, ref in zip(('RA', 'DEC', 'DIAM', 'BA', 'PA'), props, refs):
+            J = np.where(prop != -99.)[0]
+            if len(J) > 0:
+                print(f'  --{len(J)} {col} values')
+                lvd[col][I[J]] = prop[J]
+                if col == 'RA' or col == 'DEC':
+                    lvd['RADEC_REF'][I[J]] = ref[J]
+                else:
+                    lvd[f'{col}_REF'][I[J]] = ref[J]
+                #if col == 'RA' or col == 'DEC':
+                #    print(f'  {lvd[col][I]}-->{prop:.6f} [{ref}]')
+                #else:
+                #    print(f'  {lvd[col][I]:0g}-->{prop:.2f} [{ref}]')
+
+    # write out
+    lvd = lvd[np.argsort(lvd['ROW'])]
+
+    outfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_{version}_geometry.fits')
+    lvd.write(outfile, overwrite=True)
+    print(f'Wrote {len(lvd)} objects to {outfile}')
+
+    #if not os.path.isfile(outfile):
+    #    print(f'Wrote {len(lvd)} objects to {outfile}')
+    #    lvd.write(outfile, overwrite=True)
+    #else:
+    #    print(f'Output file {outfile} exists.')
+
+    # Finally, populate the catalog.
+    I = np.where(cat['ROW_LVD'] != -99)[0]
+    m1, m2 = match(lvd['ROW'], cat['ROW_LVD'][I])
+    for prop in ['DIAM', 'BA', 'PA']:
+        cat[f'{prop}_LIT'][I[m2]] = lvd[prop][m1]
+        cat[f'{prop}_LIT_REF'][I[m2]] = 'LVD' # lvd[f'{prop}_REF'][m1]
+
+    return cat
+
+
 def update_properties(cat, verbose=False):
     """Update properties, including incorrect coordinates, in both NED and
     HyperLeda.
 
     """
+    # First, update the LVD objects.
+    # [0] Update LVD properties.
+    cat = update_lvd_properties(cat)
+
     propfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-properties.csv')
     props = Table.read(propfile, format='csv', comment='#')
 
@@ -610,6 +1058,8 @@ def update_properties(cat, verbose=False):
         objname = prop['objname_ned']
         I = np.where(objname == cat['OBJNAME'].value)[0]
         if len(I) != 1:
+            print(f'Problem finding {objname}!')
+            pdb.set_trace()
             raise ValueError(f'Problem finding {objname}!')
         if verbose:
             print(f'{objname} ({cat["OBJTYPE"][I[0]]}):')
@@ -639,6 +1089,8 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    #update_lvd_properties(1)
+
     # quick check on duplicates
     actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
@@ -660,8 +1112,27 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     # [2] Drop systems with uncommon prefixes (after VI).
     cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
 
+    # make sure we still have all LVD sources (see the VETO array in remove_by_prefix)
+    from SGA.io import read_lvd
+    lvd = read_lvd()
+    lvdcat = cat[cat['ROW_LVD'] != -99]
+    try:
+        assert(len(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]) == 0)
+    except:
+        print('Missing the following LVD systems!')
+        print(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])])
+        pdb.set_trace()
+
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=False)#True)
+    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
+
+    ## more general HyperLeda-NED cross-ID errors
+    #bb = cat[(cat['RA_HYPERLEDA'] != cat['RA']) * (cat['RA_HYPERLEDA'] != -99.)]
+    #m1, m2, sep = match_radec(bb['RA'], bb['DEC'], bb['RA_HYPERLEDA'], bb['DEC_HYPERLEDA'], 3./3600., notself=True)
+    #m1 = m1[m1 != m2]
+    #multipage_skypatch(bb[m1], cat=cat, width_arcsec=120., overwrite_viewer=True, overwrite=True, 
+    #                   clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
+
 
     # [4] Resolve close (1 arcsec) pairs.
     cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
@@ -671,11 +1142,12 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat = remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=False, verbose=verbose, build_qa=False)
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
 
-    # only explicitly drop mergers with diameters via VI and the VI-actions file
+    # [5] only explicitly drop mergers with diameters via VI and the VI-actions file
     remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
-    #multipage_skypatch(cat[(cat['DIAM_LIT_REF'] == 'RC3') * (cat['OBJTYPE'] == 'GPair')], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/bb-rc3-gpair.pdf', verbose=True)
+    # [6] Remove close pairs (after extensive VI using 
+
 
     # write out
     version_vicuts = parent_version(vicuts=True)
@@ -691,10 +1163,11 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     #                   pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
 
 
-def build_parent(verbose=False, overwrite=False):
+def build_parent_archive(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    from glob import glob
     from astrometry.util.starutil_numpy import deg2dist
     from astrometry.libkd.spherematch import tree_build_radec, trees_match
 
@@ -712,6 +1185,94 @@ def build_parent(verbose=False, overwrite=False):
     # FIXME - apply cuts based on additional external catalogs
     # (ssl-legacysurvey, Galaxy Zoo VI, etc.)
 
+    # read the ssl-legacysurvey results (including the veto file)
+    print('Applying the ssl results')
+
+    # First read the classification results and throw out the
+    # reference sources, which are visually inspected.
+    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v[1,3]', 'output', 'ssl-parent-chunk???-v[1,3].txt'))
+    #sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'v?', 'output', 'ssl-parent-chunk???-v?.txt'))
+    ssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
+    _, I = np.unique(ssl['ROW'], return_index=True)
+    ssl = ssl[I]
+    ssl = ssl[ssl['REF'] == 0]
+
+    # Now, 'row' may have changed, so we need to read the parent
+    # sample(s) to get 'objname'.
+    sslfiles = glob(os.path.join(sga_dir(), 'ssl', 'ssl-parent-cat-v[1,3].fits'))
+    ssl_parent = vstack([Table(fitsio.read(sslfile)) for sslfile in sslfiles])
+    _, uindx = np.unique(ssl_parent['OBJNAME'].value, return_index=True)
+    ssl_parent = ssl_parent[uindx]
+
+    indx_parent, indx_ssl = match(ssl_parent['ROW_PARENT'], ssl['ROW'])
+    ssl_parent = ssl_parent[indx_parent]
+    ssl = ssl[indx_ssl]
+    ssl['OBJNAME'] = ssl_parent['OBJNAME']
+    ssl['REGION'] = ssl_parent['REGION']
+
+    # investigate objects with common names
+    #bb = ssl[ssl['REGION'] == 'dr9-north']
+    #bb = bb[np.argsort(bb['RA'])]
+    #bb[(prefix != 'SDSS') * (prefix != 'WISEA') * (prefix != '2MASS') * (prefix != 'GALEXMSC') * (prefix != 'GALEXASC')].pprint(max_lines=-1)
+
+    vetodir = str(resources.files('SGA').joinpath('data/SGA2025'))
+    vetofiles = glob(os.path.join(vetodir, 'ssl-veto-v[1,3].txt'))
+    veto = vstack([Table.read(vetofile, format='csv', comment='#') for vetofile in vetofiles])
+
+    # Make sure that the objects we're trying to veto are actually in the ssl
+    # files.
+    I = np.isin(ssl['OBJNAME'], veto['objname'])
+    if np.sum(I) != len(veto):
+        print('Missing objects in veto files!')
+        print(veto[~np.isin(veto['objname'], ssl['OBJNAME'])])
+        pdb.set_trace()
+    ssl = ssl[~I]
+
+    # Add to the veto array any objects with an entry in either the
+    # 'properties' or (non-drop) 'actions' file.
+    propfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-properties.csv')
+    props = Table.read(propfile, format='csv', comment='#')
+    I = np.isin(ssl['OBJNAME'].value, props['objname_ned'].value)
+    if np.any(I):
+        print('WARNING: need to add the following {np.sum(I):,d} objects to the appropriate veto file')
+        print(ssl[I])
+        pdb.set_trace()
+
+    actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
+    actions = Table.read(actionsfile, format='csv', comment='#')
+    actions = actions[actions['action'] == 'hyperleda-coords']
+    I = np.isin(ssl['OBJNAME'].value, actions['objname'].value)
+    if np.any(I):
+        print('WARNING: need to add the following {np.sum(I):,d} objects to the appropriate veto file')
+        print(ssl[I])
+        pdb.set_trace()
+
+    print(f'Removing {len(ssl):,d}/{len(cat):,d} objects based on SSL results.')
+    cat = cat[~np.isin(cat['OBJNAME'], ssl['OBJNAME'])]
+
+    # Resolve more close pairs -- these choices were made after
+    # investigating a bunch of QA.
+    ##from SGA.util import find_close
+
+    # Create refcat by sorting cat by PGC, otherwise RA will be used
+    # to define the "first" group member, which is not usually what we
+    # want. E.g., UGC 08168 is dropped in favor of 2MASS
+    # J13034084+5129425 even though the latter has a larger PGC number
+    # (but has sep==0.).
+    maxsep = 5.
+    print('Resolving additional close pairs.')
+    refcat =  cat.copy()
+    refcat[refcat['PGC'] < 0]['PGC'] = np.max(cat['PGC'].value)+1
+    srt = np.argsort(refcat['PGC'])
+    refcat = refcat[srt]
+    cat = cat[srt]
+    #bb = refcat[np.isin(refcat['OBJNAME'], ['UGC 08168', '2MASS J13034084+5129425'])]
+    #bb = refcat[np.isin(refcat['OBJNAME'], ['GALEXASC J072041.35+561217.0', 'WISEA J072041.29+561218.0'])]
+    cat = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False, 
+                        ignore_objtype=True, trim=True, verbose=False)
+    cat = cat[np.argsort(cat['RA'].value)]
+    del refcat
+    
     # add the Gaia mask bits
     print(f'Adding Gaia bright-star masking bits.')
     
@@ -779,10 +1340,10 @@ def build_parent(verbose=False, overwrite=False):
         print(res[~np.isin(res['objname'].value, cat['OBJNAME'].value)])
     cat['RESOLVED'][I] = True
 
-    version = parent_version()
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+    version = parent_version(archive=True)
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
-    cat.meta['EXTNAME'] = 'PARENT'
+    cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
     cat.write(outfile, overwrite=True)
 
 
@@ -816,6 +1377,20 @@ def build_parent(verbose=False, overwrite=False):
                            jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
                            pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
     
+
+
+def build_parent(verbose=False, overwrite=False):
+    """Build the parent catalog.
+
+    """
+    print('Write me - use the final data model.')
+
+    pdb.set_trace()
+    version = parent_version()
+    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+    print(f'Writing {len(cat):,d} objects to {outfile}')
+    cat.meta['EXTNAME'] = 'PARENT'
+    cat.write(outfile, overwrite=True)
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
@@ -998,13 +1573,30 @@ def build_parent_nocuts(verbose=True):
 
     # ned_nedlvs - 21 objects are duplicates, apparently because of
     # cross-identification problems in NED. Keep just the first one of each
-    # occurrance here (=10 unique objects)
+    # occurrance here (=10 unique objects); plus add 8 more duplicates discovered "by hand"
     print()
     print('#####')
     print('ned_nedlvs:')
+    #dups = ['Andromeda XXXIII', 'SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4']
+    #nedlvs = nedlvs[~np.isin(nedlvs['OBJNAME'], dups)]
+    #ned_nedlvs = ned_nedlvs[~np.isin(ned_nedlvs['OBJNAME'], dups)]
+
+    #dups = ['Andromeda XXXIII', 'PGC1 5067061 NED001', 'HIPASS J0021+08', 'SDSS J002041.45+083701.2', 'SDSS J095549.64+691957.4', 'SDSS J141708.23+134105.7', 'SDSS J104653.19+124441.4', 'Leo dw A']
+    ##nedlvs[np.isin(nedlvs['ROW'], [1869664, 1835853])]
+    ##nedlvs[np.isin(nedlvs['ROW'], [1589395, 1827949])]
+    ##nedlvs[np.isin(nedlvs['ROW'], [1742809, 328053])]
+    ##nedlvs[np.isin(nedlvs['ROW'], [1656036, 1430675])]
+    #jj = nedlvs[np.isin(nedlvs['OBJNAME'], dups)]
+    #jj[np.argsort(jj['RA'])]
+    
     col = 'OBJNAME_NED'
     rr, cc = np.unique(ned_nedlvs[col], return_counts=True)
-    dd = ned_nedlvs[np.isin(ned_nedlvs[col], rr[cc>1].value)]
+    dups = rr[cc>1].value
+    #dups = np.hstack((rr[cc>1].value, ['SDSS J141708.23+134105.7', 'Leo dw A', 'HIPASS J0021+08',
+    #                                   'SDSS J104653.19+124441.4', 'SDSS J095549.64+691957.4',
+    #                                   'SDSS J002041.45+083701.2', 'PGC1 5067061 NED001',
+    #                                   'Andromeda XXXIII']))
+    dd = ned_nedlvs[np.isin(ned_nedlvs[col], dups)]
     dd = dd[np.argsort(dd[col])]
 
     basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
@@ -1053,6 +1645,7 @@ def build_parent_nocuts(verbose=True):
     toss = np.hstack(toss)
     print(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ({100.*len(toss)/len(ned_nedlvs):.1f}%) coordinate duplicates.')
     ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
+
 
     #from pydl.pydlutils.spheregroup import spheregroup
     #ingroup, group_mult, firstgroup, nextgroup = spheregroup(ned_nedlvs['RA'], ned_nedlvs['DEC'], 1.5/60.)
@@ -1440,6 +2033,34 @@ def build_parent_nocuts(verbose=True):
     Idrop = np.where(parent['OBJNAME_NED'] == 'GALEXASC J095848.78+665057.9')[0]
     parent.remove_row(Idrop[0])
 
+    # Additional NED drops:
+    #   SDSS J002041.45+083701.2 - duplicate with HIPASS J0021+08=JKB129
+    #   SDSS J104653.19+124441.4=PGC4689210 - duplicate with Leo dw A=Leo I 09
+    #   PGC1 5067061 NED001 - duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I
+    #   SDSS J095549.64+691957.4 - duplicate with SDSSJ141708.23+134105.7=PGC2801015=JKB83
+    #   SDSS J133230.32+250724.9 - duplicate with AGC 238890
+    #   SDSS J104701.35+125737.5 - duplicate with PGC1 0032256 NED034=LeG21
+    #   SDSS J124354.70+412724.9 - duplicate with SMDG J1243552+412727=LV J1243+4127
+
+    dups = ['SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4', 'PGC1 5067061 NED001',
+            'SDSS J095549.64+691957.4', 'SDSS J133230.32+250724.9',
+            'SDSS J104701.35+125737.5', 'SDSS J124354.70+412724.9']
+    print(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
+    Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
+    parent.remove_rows(Idrop)
+
+    #dups = ['Andromeda XXXIII', 'PGC1 5067061 NED001', 'HIPASS J0021+08', 'SDSS J002041.45+083701.2', 'SDSS J095549.64+691957.4', 'SDSS J141708.23+134105.7', 'SDSS J104653.19+124441.4', 'Leo dw A']
+    #bb = parent[np.isin(parent['OBJNAME_NED'], dups)]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'RA_NED', 'RA_HYPERLEDA', 'RA_LVD', 'DEC_NED', 'DEC_HYPERLEDA', 'DEC_LVD', 'PGC']
+    #bb = bb[np.argsort(bb['PGC'])]
+
+    # HyperLeda drops: [CVD2018]M96-DF10 matches SMDG J1048359+130336
+    # in NED but not dw1048p1303 in LVD. And NGC3628DGSAT1 matches
+    # SMDG J1121369+132650 in NED but not dw1121p1326.
+    drops = ['[CVD2018]M96-DF10', 'NGC3628DGSAT1']
+    print(f'Removing {", ".join(drops)} from the OBJNAME_HYPERLEDA parent sample.')
+    Idrop = np.where(np.isin(parent['OBJNAME_HYPERLEDA'], drops))[0]
+    parent.remove_rows(Idrop)
+
     # ned_lvd - not in parent sample (new)
     miss_lvd = ned_lvd[~np.isin(ned_lvd['ROW'], parent['ROW_LVD'])]
     miss_lvd.rename_columns(['OBJNAME', 'ROW'], ['OBJNAME_LVD', 'ROW_LVD'])
@@ -1484,6 +2105,14 @@ def build_parent_nocuts(verbose=True):
     print('#####')
     print(f'Analyzing {len(sga2020):,d} SGA-2020 objects.')
 
+    # cross-ID error in HyperLeda which affected the SGA-2020. IC 3881
+    # (PGC 43961) in HyperLeda is actually IC 3887, whereas IC 3881 is
+    # actually 2MASXJ12545391+1907050 (PGC 3798359) in HyperLeda. Hack
+    # the PGC number otherwise we get a grossly overestimated
+    # diameter.
+    sga2020['PGC'][sga2020['GALAXY'] == 'IC3881'] = 3798359
+    sga2020['PGC'][sga2020['GALAXY'] == '2MASXJ12545391+1907050'] = -1
+
     # match by PGC; any missing objects are due to a variety of errors
     # in the SGA2020 / HyperLeda (I think...)
     I = np.where(parent['PGC'] > 0)[0]
@@ -1491,6 +2120,10 @@ def build_parent_nocuts(verbose=True):
     print(f'Trimmed to {len(J):,d}/{len(sga2020):,d} ({100.*len(J)/len(sga2020):.1f}%) ' + \
           'SGA-2020 objects with PGC>0.')
     sga2020 = sga2020[J]
+
+    #pgc, cc = np.unique(parent[I]['PGC'].value, return_counts=True)
+    #dups = pgc[cc>1]
+    #parent[np.isin(parent['PGC'], dups)]['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
 
     indx_parent, indx_sga2020 = match(parent[I]['PGC'], sga2020['PGC'])
     print(f'Matched {len(indx_sga2020):,d}/{len(sga2020):,d} ({100.*len(indx_sga2020)/len(sga2020):.1f}%) ' + \
@@ -1518,6 +2151,11 @@ def build_parent_nocuts(verbose=True):
     print(f'Adding {len(custom):,d} more objects from the custom catalog.')
 
     custom.rename_column('ROW', 'ROW_CUSTOM')
+
+    # update the smudges diameters by a factor of 1.2 to go from Re
+    # --> RHolm; this should have been in parse-smudges...
+    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])
+    custom['DIAM'][prefix == 'SMDG'] *= 1.2
 
     # pre-emptively drop three NED-LVS objects which would otherwise
     # be duplicate matches to the SMDG catalog
@@ -1591,6 +2229,7 @@ def build_parent_nocuts(verbose=True):
         except:
             print(f'Problem with column {col}!')
             pdb.set_trace()
+            obj, cc = np.unique(parent[col][I], return_counts=True)
 
     I = parent['PGC'] > 0
     assert(len(parent[I]) == len(np.unique(parent['PGC'][I])))
@@ -1613,11 +2252,11 @@ def build_parent_nocuts(verbose=True):
     print(f'Final parent sample: N={len(parent):,d}')
     #parent.write('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/junk-sga2020.fits', overwrite=True)
 
-    # Populate OBJNAME, RA, DEC, and Z; NB: use SGA2020 first,
-    # otherwise we totally miss some quite famous galaxies.
+    # Populate OBJNAME, RA, DEC, and Z. Prefer LVD coordinates and use SGA2020
+    # before HyperLeda, otherwise we totally miss some quite famous galaxies.
     print()
 
-    for dataset in ['NED', 'NEDLVS', 'LVD', 'SGA2020', 'HYPERLEDA']:
+    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
         I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
         if len(I) > 0:
             print(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -1755,6 +2394,8 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
     I = ccds_touching_wcs(targetwcs, allccds)
     #ccds = survey.ccds_touching_wcs(targetwcs)
     #print(len(I))
+    #print('HACK!!')
+    #pdb.set_trace()
 
     # no CCDs within width_pixels
     if len(I) == 0:
@@ -1788,7 +2429,7 @@ def read_existing_footprint(cat, region, version='v1.0'):
     input catalog.
 
     """
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
     #ccdsfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-ccds-{region}-{version}.fits')
     if os.path.isfile(catfile):# and os.path.isfile(ccdsfile):
         refcat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'NCCD', 'FILTERS']))
@@ -1829,7 +2470,7 @@ def read_existing_footprint(cat, region, version='v1.0'):
 
 
 def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
-                      width_pixels=152, bands=BANDS):
+                      width_pixels=38, bands=BANDS):
     """Support routine for in_footprint.
 
     """
@@ -1966,12 +2607,13 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
         return Table(), Table()
 
 
-def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152, 
+def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152, 
                  bands=BANDS, ntest=None):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
     radius in degrees
+    width_pixels - diameter for more refined search
 
     """
     from SGA.coadds import RUNS
@@ -1988,8 +2630,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         t0 = time.time()
 
         # read the parent catalog
-        version = parent_version()
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+        version = parent_version(archive=True)
+        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
 
         F = fitsio.FITS(catfile)
         N = F[1].get_nrows()
@@ -2003,7 +2645,9 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
             #I = np.where(ref == 'RC3')[0]
             I = np.arange(N)
 
+        #print('HACK!!')
         #I = np.array([4784167, 4784170])
+        #I = np.array([2016776])
 
         cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
         cat['NCCD'] = np.zeros(len(cat), int)
@@ -2043,6 +2687,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         # check for an existing CCDs catalog from previous runs of this code
         #cat, cat_done, ccds_done = read_existing_footprint(cat, allccds, region, version=version)
         cat, cat_done = read_existing_footprint(cat, region, version=version)
+        #print('HACK!!')
+        #cat_done = []
 
         # divide the parent catalog into more managable chunks, and loop
         if region == 'dr9-north':
@@ -2104,8 +2750,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=152,
         outcat['FILTERS'] = allfcat['FILTERS']
         outcat = outcat[np.argsort(outcat['ROW_PARENT'])]
 
-        version = parent_version()
-        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+        version = parent_version(archive=True)
+        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
         print(f'Writing {len(outcat):,d} objects to {outfile}')
         outcat.write(outfile, overwrite=True)
 
@@ -2133,18 +2779,18 @@ def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=False):
 
     sns, colors = plot_style(talk=True, font_scale=0.9)
 
-    version = parent_version()
+    version = parent_version(archive=True)
 
-    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+    catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
     cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'FILTERS']))
     print(f'Read {len(cat):,d} objects from {catfile}')
 
-    qafile = os.path.join(sga_dir(), 'parent', 'qa', f'qa-parent-{region}-{version}.png')
+    qafile = os.path.join(sga_dir(), 'parent', 'qa', f'qa-parent-archive-{region}-{version}.png')
 
     fig, ax = plt.subplots(figsize=(8, 6))
 
     if show_fullcat:
-        fullcatfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+        fullcatfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
         fullcat = Table(fitsio.read(fullcatfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT']))
         print(f'Read {len(fullcat):,d} objects from {fullcatfile}')
         ax.scatter(fullcat['RA'], fullcat['DEC'], s=1, color='gray')
@@ -2205,7 +2851,8 @@ def main():
 
     parser.add_argument('--build-parent-nocuts', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned into the parent-nocuts catalog.')
     parser.add_argument('--build-parent-vicuts', action='store_true', help='Apply VI results to the parent-nocuts catalog.')
-    parser.add_argument('--build-parent', action='store_true', help='Merge the catalogs retrieved by SGA2025-query-ned.')
+    parser.add_argument('--build-parent-archive', action='store_true', help='Apply ssl and other cuts but maintain "archive" object names and data model.')
+    parser.add_argument('--build-parent', action='store_true', help='Generate the final parent catalog with the final data model.')
     parser.add_argument('--in-footprint', action='store_true', help='Match the various external catalogs to the CCDs files.')
 
     parser.add_argument('--qa-footprint', action='store_true', help='Build QA of the in-footprint samples.')
@@ -2237,6 +2884,9 @@ def main():
 
     if args.build_parent_vicuts:
         build_parent_vicuts(overwrite=args.overwrite, verbose=args.verbose)
+
+    if args.build_parent_archive:
+        build_parent_archive(overwrite=args.overwrite, verbose=args.verbose)
 
     if args.build_parent:
         build_parent(overwrite=args.overwrite, verbose=args.verbose)

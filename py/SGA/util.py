@@ -13,7 +13,39 @@ from astrometry.util.starutil_numpy import arcsec_between
 from astrometry.libkd.spherematch import match_radec
 
 
-def choose_primary(group, verbose=False, keep_all_mergers=False):
+def find_close(cat, fullcat, rad_arcsec=1., isolated=False):
+
+    rad = rad_arcsec / 3600.
+    allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                             fullcat['RA'].value, fullcat['DEC'].value,
+                             rad, indexlist=True, notself=False)
+    primaryindx, groupindx = [], []
+    for ii, mm in enumerate(allmatches):
+        if mm is not None:
+            ngroup = len(mm)
+            #print(ngroup, ii, mm)
+            if isolated:
+                if ngroup == 1:
+                    primaryindx.append(ii)
+                    groupindx.append(mm)
+            else:
+                primaryindx.append(ii)
+                groupindx.append(mm)
+
+    if len(primaryindx) == 0:
+        return [], []
+    primaryindx = np.array(primaryindx)
+    primaries = cat[primaryindx]
+    primaries = primaries[np.argsort(primaries['RA'])]
+
+    groupindx = np.hstack(groupindx)
+    groups = fullcat[groupindx]
+    groups = groups[np.argsort(groups['RA'])]
+
+    return primaries, groups
+
+
+def choose_primary(group, verbose=False, keep_all_mergers=False, ignore_objtype=False):
     """Choose the primary member of a group.
 
     keep_all is helpful for returning a group catalog without dropping any
@@ -33,13 +65,19 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
         IG = np.logical_or(group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl')
 
     #IG = np.logical_or.reduce((group['OBJTYPE'] == 'G', group['OBJTYPE'] == 'GPair', group['OBJTYPE'] == 'GTrpl'))
+    #ID = np.vstack((group['DIAM_LIT'] != -99., group['DIAM_HYPERLEDA'] != -99., group['DIAM_SGA2020'] != -99.)).T
     ID = np.vstack((group['DIAM_LIT'] != -99., group['DIAM_HYPERLEDA'] != -99.)).T
     IZ = group['Z'] != -99.
     IS = group['SEP'] == 0.
 
-    mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
-    mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
-    mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
+    if ignore_objtype:
+        mask1 = np.any(ID, axis=1)      # any diameter
+        mask2 = np.all(ID, axis=1)      # both diameters
+        mask3 = np.all(ID, axis=1) * IZ # both diameters, and a redshift
+    else:
+        mask1 = IG * np.any(ID, axis=1)      # objtype=G and any diameter
+        mask2 = IG * np.all(ID, axis=1)      # objtype=G and both diameters
+        mask3 = IG * np.all(ID, axis=1) * IZ # objtype=G, both diameters, and a redshift
     mask4 = np.all(ID, axis=1) * IZ      # both diameters and a redshift
     mask5 = np.all(ID, axis=1) * IS      # both diameters and separation=0 (usually PGC is a minimum)
     mask6 = np.all(ID, axis=1)           # both diameters
@@ -83,7 +121,7 @@ def choose_primary(group, verbose=False, keep_all_mergers=False):
 
 def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
                   keep_all_mergers=False, objname_column='OBJNAME',
-                  trim=True, verbose=False):
+                  ignore_objtype=False, trim=True, verbose=False):
     """Resolve close objects.
 
     maxsep in arcsec
@@ -143,7 +181,8 @@ def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
             primary = np.arange(ngroup)
             drop = np.array([])
         else:
-            primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers)
+            primary, drop = choose_primary(group, verbose=verbose, keep_all_mergers=keep_all_mergers,
+                                           ignore_objtype=ignore_objtype)
             refcat['PRIMARY'][indx_refcat[drop]] = False
 
         #if verbose and (np.any(group['OBJTYPE'] == 'GPair') or np.any(group['OBJTYPE'] == 'GTrpl')):
