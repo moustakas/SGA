@@ -55,8 +55,8 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
 
 def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
                 pngsuffix=None, objname=None, racenter=None, deccenter=None,
-                add_title=True, width_arcmin=2., pngdir='.', jpgdir='.', clip=False,
-                verbose=False, overwrite_viewer=False, overwrite=False):
+                layers=None, add_title=True, width_arcmin=2., pngdir='.', jpgdir='.',
+                clip=False, verbose=False, overwrite_viewer=False, overwrite=False):
     """Build QA which shows all the objects in a ~little patch of sky.
 
     primary - parent-style catalog
@@ -99,8 +99,12 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
         return wcs, width, pixscale
 
 
-    def get_url(racenter, deccenter, width, layer):
-        url = f'https://www.legacysurvey.org/viewer/jpeg-cutout?ra={racenter}&dec=' + \
+    def get_url(racenter, deccenter, width, layer, dev=False):
+        if dev:
+            viewer = 'viewer-dev'
+        else:
+            viewer = 'viewer'
+        url = f'https://www.legacysurvey.org/{viewer}/jpeg-cutout?ra={racenter}&dec=' + \
             f'{deccenter}&width={width}&height={width}&layer={layer}'
         #print(url)
         return url
@@ -136,21 +140,22 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
 
 
     # check if the viewer cutout file exists
-    surveys = ['ls', 'ls', 'unwise']
-    layers = ['ls-dr9', 'ls-dr10', 'unwise-neo7']
+    surveys = ['ls', 'ls', 'ls', 'unwise']
+    layers = ['ls-dr9', 'ls-dr11-early', 'ls-dr10', 'unwise-neo7']
+    devs = [False, True, False, False]
     for survey, layer in zip(surveys, layers):
         jpgfile = os.path.join(jpgdir, f'{outname}-{suffix}-{layer}.jpeg')
         if os.path.isfile(jpgfile):
             surveys = [survey]
             layers = [layer]
 
-    for survey, layer in zip(surveys, layers):
+    for survey, layer, dev in zip(surveys, layers, devs):
         wcs, width, pixscale = get_wcs(racenter, deccenter, survey=survey, width_arcmin=width_arcmin)
         jpgfile = os.path.join(jpgdir, f'{outname}-{suffix}-{layer}.jpeg')
         if os.path.isfile(jpgfile) and not overwrite_viewer:
             img = mpimg.imread(jpgfile)
         else:
-            urlretrieve(get_url(racenter, deccenter, width, layer=layer), jpgfile)
+            urlretrieve(get_url(racenter, deccenter, width, layer=layer, dev=dev), jpgfile)
             img = mpimg.imread(jpgfile)
             if np.all(img == 32): # no data
                 os.remove(jpgfile)
@@ -246,9 +251,10 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
 
 
 def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=1, nrow=1,
-                       add_title=True, pngsuffix='group', jpgdir='.', pngdir='.',
-                       pdffile='multipage-skypatch.pdf', clip=True, verbose=False,
-                       overwrite_viewer=False, overwrite=True, cleanup=False):
+                       add_title=True, layers=None, pngsuffix='group', jpgdir='.',
+                       pngdir='.', pdffile='multipage-skypatch.pdf', clip=True,
+                       verbose=False, overwrite_viewer=False, overwrite=True,
+                       cleanup=False):
     """Call qa_skypatch on a table of sources.
 
     """

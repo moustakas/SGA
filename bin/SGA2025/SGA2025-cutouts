@@ -4,18 +4,21 @@
 
 Working interactively in a login node, one would do something like:
 
-  shifter --image dstndstn/cutouts:dvsro bash
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+  shifter --image dstndstn/cutouts:dvsro4 bash
   source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
     or
 
-  shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro bash
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
+  shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro4 bash
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --photo
+
 
 Alternatively, in production, one would do:
 
-  salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro4
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 > \
@@ -25,38 +28,59 @@ Alternatively, in production, one would do:
     SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --region=dr9-north --mp=4 --rescale > \
     /pscratch/sd/i/ioannis/SGA2025/cutouts/SGA2025-cutouts-parent-dr9-north-rescale-JOBID.log 2>&1 &
 
+###
 To build the ssl-legacysurvey catalog:
-  SGA2025-shifter
-  source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/cutouts/parent --catalog=sga2025-parent --ssl-legacysurvey
 
+  First generate the rescaled cutouts of everything:
+    salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+    shifter --image dstndstn/cutouts:dvsro4 bash
+    source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
+
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --region=dr9-north --rescale --mp=128
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --region=dr9-north --rescale --mp=128
+
+    source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh  Then build the HDF5 files:
+    SGA2025-shifter
+    source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
+
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v4
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v3
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v2
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --build-ssl --ssl-version=v1
+
+  Investigate...
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v3 --rescale --annotate --region=dr11-south --mp=32
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v3 --rescale --annotated-montage --region=dr11-south --mp=32
+
+    ###
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v1 --no-fits-cutouts --region=dr9-north --mp=32
+    SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/ssl --catalog=sga2025-parent --ssl --ssl-version=v1 --rescale --annotated-montage --region=dr9-north
+
+###
 Kim's wisesize project:
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --mp=32
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotate --annotate-central-only --mp=32
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-north --annotated-montage
-  
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --mp=32
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotate --annotate-central-only --mp=32
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --region=dr9-south --annotated-montage
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-north --mp=32
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-south --mp=32
+
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-north --annotate --annotate-central-only --mp=32
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-south --annotate --annotate-central-only --mp=32
+
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-north --annotated-montage
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/wisesize --catalog=sga2025-parent --wisesize --region=dr9-south --annotated-montage
 
 LVD sample:
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --annotate --mp=32 --lvd
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr9-north --annotated-montage --lvd
-
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --mp=32 --lvd
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotate --mp=32 --lvd
   SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --annotated-montage --lvd
 
 zooniverse project:
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
-    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse/project1 \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse/project1 \
     --catalog=sga2025-parent --region=dr9-north --mp=32 --zooniverse
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
-    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse/project1 \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse/project1 \
     --catalog=sga2025-parent --region=dr9-north --mp=32 --zooniverse --annotate
-  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse \
-    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse \
+  SGA2025-cutouts --outdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse/project1 \
+    --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse/project1 \
     --catalog=sga2025-parent --region=dr9-north --zooniverse --annotated-montage
 
 """
@@ -70,8 +94,45 @@ import multiprocessing
 
 from astrometry.libkd.spherematch import match_radec
 
-from SGA.io import custom_brickname, get_raslice, radec_to_name
+from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
 from SGA.ellipse import choose_geometry, parse_geometry
+
+GALEX_PIXSCALE = 1.5
+UNWISE_PIXSCALE = 2.75
+
+
+def do_photo(cat, comm=None, indir='.', region='dr9-north',
+             outdir='.', overwrite=False, dry_run=False, 
+             verbose=False):
+    pdb.set_trace()
+    # https://photutils.readthedocs.io/en/stable/user_guide/segmentation.html
+    from photutils.morphology import data_properties
+    from photutils.background import Background2D, MedianBackground
+    from photutils.segmentation import detect_sources, deblend_sources, SourceCatalog
+
+    import matplotlib.pyplot as plt
+    from astropy.visualization import SqrtStretch
+    from astropy.visualization.mpl_normalize import ImageNormalize
+
+    # read the WCS and image cutouts
+    data = img[1, :, :]
+    bkg = Background2D(data, (50, 50), filter_size=(3, 3),
+                       bkg_estimator=MedianBackground)
+    thresh = 2.5 * bkg.background_rms
+    seg = detect_sources(data, thresh, npixels=10)
+
+    dseg = deblend_sources(data, seg, npixels=30, nlevels=8, contrast=0.1, progress_bar=True)
+    srcs = SourceCatalog(data, dseg, convolved_data=data)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12.5))
+    ax1.imshow(data, origin='lower', cmap='Greys_r', norm=ImageNormalize(stretch=SqrtStretch()))
+    ax2.imshow(dseg, origin='lower', cmap=dseg.cmap, interpolation='nearest')
+    _ = srcs.plot_kron_apertures(ax=ax1, color='white', lw=1.5)
+    _ = srcs.plot_kron_apertures(ax=ax2, color='white', lw=1.5)
+    fig.savefig('ioannis/tmp/junk.png')
+
+
+    pass
 
 
 def _get_annotate_one(args):
@@ -140,7 +201,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
         semimajor = diam / pixscale # [pixels]
         semiminor = ba * semimajor  # [pixels]
-        theta = np.radians(90.-pa)
+        theta = np.radians(90. - pa)
         x0 = xpix
         y0 = width - ypix
 
@@ -204,8 +265,10 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
             keep[imem] = False
     group = group[keep]
 
+    #print('HACK!!!')
+    #if len(group) > 500:
     if len(group) > 10:
-        #print('WARNING: Too many group members; keeping just the 10 largest objects!')
+        print('WARNING: Too many group members; keeping just the 10 largest objects!')
         # group includes primary, so we need to be sure it doesn't get removed
         group_noprimary = group.copy()
         group_noprimary.remove_row(np.where(primary['ROW_PARENT'] == group['ROW_PARENT'])[0][0])
@@ -457,8 +520,9 @@ def _cutout_one(args):
     return cutout_one(*args)
 
 
-def cutout_one(basefile, ra, dec, width, pixscale, layer, 
-               dry_run, fits_cutouts, rank, iobj):
+def cutout_one(basefile, ra, dec, optical_width, optical_pixscale, 
+               optical_layer, optical_bands, dry_run, fits_cutouts, 
+               ivar_cutouts, unwise_cutouts, galex_cutouts, rank, iobj):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
@@ -467,33 +531,99 @@ def cutout_one(basefile, ra, dec, width, pixscale, layer,
     shifterimg pull dstndstn/viewer-cutouts:latest
     shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
 
+    TODO - handle the invvar images
+
     """
     from cutout import cutout
 
-    if fits_cutouts:
-        suffixes = ['.jpeg', '.fits']
-    else:
-        suffixes = ['.jpeg']
+    suffixes = ['.jpeg', ]
+    layers = [optical_layer, ]
+    pixscales = [optical_pixscale, ]
+    widths = [optical_width, ]
+    allbands = [optical_bands, ]
 
-    for suffix in suffixes:
+    if fits_cutouts:
+        suffixes += ['.fits', ]
+        layers += [optical_layer, ]
+        pixscales += [optical_pixscale, ]
+        widths += [optical_width, ]
+        allbands += [optical_bands, ]
+    if unwise_cutouts:
+        unwise_width = int(optical_width * optical_pixscale / UNWISE_PIXSCALE)
+        unwise_suffixes = ['-W1W2.fits', '-W3W4.fits', ]
+        suffixes += unwise_suffixes
+        layers += ['unwise-neo7', 'unwise-w3w4', ]
+        pixscales += [UNWISE_PIXSCALE, UNWISE_PIXSCALE, ]
+        widths += [unwise_width, unwise_width, ]
+        allbands += [['1', '2'], ['3', '4'], ]
+    if galex_cutouts:
+        galex_width = int(optical_width * optical_pixscale / GALEX_PIXSCALE)
+        suffixes += ['-galex.fits', ]
+        layers += ['galex', ]
+        pixscales += [GALEX_PIXSCALE, ]
+        widths += [galex_width, ]
+        allbands += [['f', 'n'], ]
+    
+    for suffix, layer, pixscale, width, bands in zip(suffixes, layers, pixscales, widths, allbands):
         outfile = basefile+suffix
         cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} ' + \
-            f'--layer={layer} --pixscale={pixscale} --force'
+            f'--layer={layer} --pixscale={pixscale} --bands={",".join(bands)} --force'
+        if suffix != '.jpeg' and ivar_cutouts:
+            cmdargs += ' --invvar'
+
         if dry_run:
             if suffix == '.jpeg':
-                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')            
+                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
         else:
             if suffix == '.jpeg':
                 outdir = os.path.dirname(basefile)
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir, exist_ok=True)
             try:
-                cutout(ra, dec, outfile, size=width, layer=layer, pixscale=pixscale, force=True)
-                if suffix == '.jpeg':
-                    print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
+                cutout(ra, dec, outfile, size=width, layer=layer, pixscale=pixscale, 
+                       invvar=ivar_cutouts, bands=bands, force=True)
+                #if suffix == '.jpeg':
+                #    print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
+                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
             except:
                 if suffix == '.jpeg':
                     print(f'WARNING: Rank {rank}, object {iobj} off the footprint: cutout {cmdargs}')                
+
+    # merge the W1W2 and W3W4 files
+    if unwise_cutouts:
+        for ii, suffix in enumerate(unwise_suffixes):
+            infile = basefile+suffix
+            if ii == 0:
+                hdr = fitsio.read_header(infile)
+                for key in ['BANDS', 'BAND0', 'BAND1', 'COMMENT']:
+                    hdr.delete(key)
+                hdr['BANDS'] = '1234'
+                for band in range(4):
+                    hdr[f'BAND{band}'] = str(band+1)
+                hdr['NAXIS3'] = 4
+                #hdr['EXTNAME'] = 'IMAGE'
+                img = np.zeros((4, hdr['NAXIS2'], hdr['NAXIS1']), 'f4')
+                img[:2, :, :] = fitsio.read(infile, ext=0)
+                if ivar_cutouts:
+                    hdr_ivar = fitsio.read_header(infile, ext=1)
+                    for key in ['BANDS', 'BAND0', 'BAND1']:
+                        hdr_ivar.delete(key)
+                    hdr_ivar['BANDS'] = '1234'
+                    for band in range(4):
+                        hdr_ivar[f'BAND{band}'] = str(band+1)
+                    hdr_ivar['NAXIS3'] = 4
+                    #hdr_ivar['EXTNAME'] = 'INVVAR'
+                    ivar = np.zeros_like(img)
+                    ivar[:2, :, :] = fitsio.read(infile, ext=1)
+            else:
+                img[2:, :, :] = fitsio.read(infile, ext=0)
+                if ivar_cutouts:
+                    ivar[2:, :, :] = fitsio.read(infile, ext=1)
+            os.remove(infile)
+        outfile = basefile+'-unwise.fits'
+        fitsio.write(outfile, img, header=hdr, clobber=True)
+        if ivar_cutouts:
+            fitsio.write(outfile, ivar, header=hdr_ivar)
 
 
 def _get_basefiles_one(args):
@@ -501,6 +631,7 @@ def _get_basefiles_one(args):
 
 
 def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True, 
+                      unwise_cutouts=False, galex_cutouts=False,
                       overwrite=False, verbose=False):
     raslice = get_raslice(obj['RA'])
 
@@ -511,12 +642,23 @@ def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True,
         basefile = os.path.join(outdir, raslice, objname)
     nobj = 1
 
+    jpeg = os.path.isfile(basefile+'.jpeg')
+
     if overwrite is False:
         if fits_cutouts:
-            check = os.path.isfile(basefile+'.fits') and os.path.isfile(basefile+'.jpeg')
+            fits = os.path.isfile(basefile+'.fits')
         else:
-            check = os.path.isfile(basefile+'.jpeg')
-        if check:
+            fits = True
+        if unwise_cutouts:
+            unwise = os.path.isfile(basefile+'-unwise.fits')
+        else:
+            unwise = True
+        if galex_cutouts:
+            galex = os.path.isfile(basefile+'-galex.fits')
+        else:
+            galex = True
+
+        if jpeg and fits and unwise and galex:
             # need to make sure the image is the correct size
             #width_exist = int(fitsio.read_header(basefile+'.fits')['IMAGEW'])
             #if width == width_exist:
@@ -527,9 +669,10 @@ def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True,
     return basefile, obj['RA'], obj['DEC'], nobj
 
 
-def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.', 
-         size=1, mp=1, annotate=False, fits_cutouts=True, 
-         overwrite=False, verbose=False):
+def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
+         size=1, mp=1, photo=False, annotate=False, fits_cutouts=True,
+         unwise_cutouts=False, galex_cutouts=False, overwrite=False,
+         verbose=False):
     """Build a plan!
 
     """
@@ -554,7 +697,8 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
         if np.isscalar(width):
             width = [width] * len(objname)
 
-        mpargs = [(obj, objname1, width1, outdir, fits_cutouts, overwrite, verbose) 
+        mpargs = [(obj, objname1, width1, outdir, fits_cutouts, unwise_cutouts, 
+                   galex_cutouts, overwrite, verbose)
                   for obj, objname1, width1 in zip(cat, objname, width)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
@@ -597,9 +741,11 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
         return basefiles, allra, alldec, groups
 
 
-def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262, 
-               comm=None, mp=1, outdir='.', base_outdir='.', rescale=False, 
-               overwrite=False, fits_cutouts=True, dry_run=False, verbose=False):
+def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
+               default_bands=['g', 'r', 'z'], comm=None, mp=1, outdir='.',
+               base_outdir='.', rescale=False, overwrite=False, fits_cutouts=True,
+               ivar_cutouts=False, unwise_cutouts=False, galex_cutouts=False,
+               dry_run=False, verbose=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -619,7 +765,8 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         basefiles, allra, alldec, groups = plan(
             cat, width=width, layer=layer, outdir=outdir, 
             size=size, overwrite=overwrite, mp=mp, 
-            fits_cutouts=fits_cutouts, verbose=verbose)
+            fits_cutouts=fits_cutouts, unwise_cutouts=unwise_cutouts,
+            galex_cutouts=galex_cutouts, verbose=verbose)
         print(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
@@ -648,8 +795,9 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         return
 
     mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width[indx[iobj]],
-               pixscale[indx[iobj]], layer, dry_run, fits_cutouts, rank, iobj) 
-              for iobj in range(len(indx))]
+               pixscale[indx[iobj]], layer, default_bands, dry_run, 
+               fits_cutouts, ivar_cutouts, unwise_cutouts, galex_cutouts, 
+               rank, iobj) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_cutout_one, mpargs)
@@ -694,40 +842,91 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
     return pixscale, width
 
 
-def build_ssl_legacysurvey_refcat(cat, fullcat):
+def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
     """Build the reference catalog for use with ssl-legacysurvey
 
+    v1 - original dr9-north and dr9-south version; mindiam = 10.
+    v2 - like v1 but with mindiam = 30. (but did not perform well)
+    v3 - like v1 but with dr9-north and dr11-south
+
     """
+    def find_isolated(cat, fullcat, radius=90.):
+        """Identify isolated sources.
+
+        radius in arcsec
+
+        """
+        allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                                 fullcat['RA'].value, fullcat['DEC'].value,
+                                 radius/3600., indexlist=True, notself=False)
+        refindx = []
+        for ii, mm in enumerate(allmatches):
+            if len(mm) == 1:
+                refindx.append(ii)
+        refindx = np.array(refindx)
+        return refindx
+
+
     # define the reference sample
     diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
-    I = np.where((diam/60. > 1.) * (diam/60. < 5.) * ~cat['RESOLVED'] * (cat['STARFDIST'] > 1.))[0]
-    #I = np.where((cat['FILTERS'] == 'grz') * (cat['ROW_LVD'] == -99) * (diam/60. > 1.) * (diam/60. < 5.))[0]
-    #I = np.where(cat['DIAM_LIT_REF'] == 'RC3')[0]
-    #I = np.arange(20)
-    refcat = cat[I]
-    allmatches = match_radec(refcat['RA'].value, refcat['DEC'].value,
-                             fullcat['RA'].value, fullcat['DEC'].value,
-                             90./3600., indexlist=True, notself=False)
+    if ssl_version == 'v1':
+        I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+                     (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
+        # no other source (of any size) within 90 arcsec
+        refindx = find_isolated(cat[I], fullcat, radius=90.)
+        refcat = cat[I[refindx]]
+    elif ssl_version == 'v2':
+        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+                     (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
+        diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+        J = (diam_full > 30.) * (fullcat['FILTERS'] == 'grz')
+        # no other source smaller than 30 arcsec within 90 arcsec
+        refindx = find_isolated(cat[I], fullcat[J], radius=90.)
+        refcat = cat[I[refindx]]
+    elif ssl_version == 'v3':
+        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+                     (cat['STARFDIST'] > 1.5) * 
+                     np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz'))[0]
+        diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+        J = (diam_full > 30.) * np.logical_or(fullcat['FILTERS'] == 'grz', fullcat['FILTERS'] == 'girz')
+        # no other source smaller than 30 arcsec within 90 arcsec
+        refindx = find_isolated(cat[I], fullcat[J], radius=90.)
+        refcat = cat[I[refindx]]
+    elif ssl_version == 'v4':
+        pdb.set_trace()
 
-    refindx = []
-    for ii, mm in enumerate(allmatches):
-        if len(mm) == 1:
-            refindx.append(ii)
-    refindx = np.array(refindx)
-    refcat = refcat[refindx]
+    else:
+        raise ValueError('Write me')
 
-    sslcols = ['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'REGION']
-    refcat = refcat[sslcols]
+    #sslcols = ['OBJNAME', 'RA', 'DEC', 'FILTERS', 'ROW_PARENT', 'REGION']
+    #refcat = refcat[sslcols]
 
-    print('Trimming the ssl_legacysurvey sample to unresolved objects smaller than 15 arcsec!')
-    cat = cat[(diam < 15.) * ~cat['RESOLVED']]
-    #cat = cat[(cat['FILTERS'] == 'grz') * (diam == 0.)]
+    if ssl_version == 'v1':
+        mindiam = 10.
+        print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
+              f'smaller than {mindiam:.0f} arcsec.')
+        I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
+        cat = cat[I]
+    elif ssl_version == 'v2':
+        mindiam = 30.
+        print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
+              f'smaller than {mindiam:.0f} arcsec.')
+        I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
+        cat = cat[I]
+    elif ssl_version == 'v3':
+        mindiam = 10.
+        print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
+              f'smaller than {mindiam:.0f} arcsec.')
+        I = (diam < mindiam) * np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz') * ~cat['RESOLVED']
+        cat = cat[I]
+    else:
+        raise ValueError('Write me')
 
     return refcat, cat
 
 
-def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=30000, suffix='v1', 
+def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=None,
                            bands=['g', 'r', 'z'], outdir='.', verbose=False, 
                            overwrite=False):
     """Build the hdf5 file needed by ssl-legacysurvey.
@@ -755,11 +954,17 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=30000, suffix='v1',
 
     nband = len(bands)
 
+    if ssl_version is None:
+        print('ssl_version must be specified')
+        return
+
     # need to define a reference sample and make sure the files exist
-    refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat)
+    refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=ssl_version)
+    pdb.set_trace()
+
     refcatfiles, refcatindx = [], []
     catfiles, catindx = [], []
-    for region in ['dr9-north', 'dr9-south']:
+    for region in sorted(set(refcat['REGION'])):
         R = np.where(refcat['REGION'] == region)[0]
         C = np.where(cat['REGION'] == region)[0]
         refcatfiles1, refcatindx1 = get_fitsfiles(refcat[R], region)
@@ -778,8 +983,23 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=30000, suffix='v1',
     refcat = refcat[refcatindx]
     ncat = len(cat)
     nrefcat = len(refcat)
-    print(f'Reference sample: {len(refcat):,d} objects.')
-    print(f'Analysis sample: {len(cat):,d} objects.')
+
+    catdir = os.path.join(sga_dir(), 'ssl')#, ssl_version)
+
+    refoutfile = os.path.join(catdir, f'ssl-parent-refcat-{ssl_version}.fits')
+    if os.path.isfile(refoutfile):
+        print(f'Warning: existing reference catalog {refoutfile} must be removed by-hand.')
+        return
+    outfile = os.path.join(catdir, f'ssl-parent-cat-{ssl_version}.fits')
+    if os.path.isfile(outfile):
+        print(f'Warning: existing catalog {outfile} must be removed by-hand.')
+        return
+
+    refcat.write(refoutfile, overwrite=True)
+    print(f'Wrote {len(refcat):,d} objects to {refoutfile}')
+
+    cat.write(outfile, overwrite=True)
+    print(f'Wrote {len(cat):,d} objects to {outfile}')
 
     # Ensure each output file has no more than ncatmax objects, to we
     # don't run into memory problems at NERSC.
@@ -788,7 +1008,11 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=30000, suffix='v1',
     print(f'Dividing into {nchunk:,d} chunks.')
 
     for ichunk in range(nchunk):
-        h5file = os.path.join(outdir, f'ssl-parent-chunk{ichunk:03}-{suffix}.hdf5')
+        h5dir = os.path.join(outdir, ssl_version, 'input')
+        if not os.path.isdir(h5dir):
+            os.makedirs(h5dir, exist_ok=True)
+
+        h5file = os.path.join(h5dir, f'ssl-parent-chunk{ichunk:03}-{ssl_version}.hdf5')
         if os.path.isfile(h5file) and not overwrite:
             print(f'Skipping existing HDF5 file {h5file}')
             continue
@@ -815,34 +1039,58 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=30000, suffix='v1',
         print(f'Wrote {h5file} with {nrefcat:,d} reference objects and ' + \
               f'{len(chunkindx[ichunk]):,d} objects to classify.')
 
-    pdb.set_trace()
 
-
-def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10, 
-                      wisesize=False, lvd=False, zooniverse=False, 
-                      overwrite=False):
+def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
+                      ssl_version=None, rescale=False, ssl=False, wisesize=False,
+                      lvd=False, zooniverse=False, overwrite=False):
     """Build a single PDF file of annotated images, to enable fast
     visual inspection.
 
     """
     from glob import glob
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Circle
     from matplotlib.backends.backend_pdf import PdfPages
     from matplotlib.image import imread
-    from SGA.io import sga_dir
 
-    qadir = os.path.join(sga_dir(), 'parent', 'qa')
+    if ssl and ssl_version is None:
+        print('ssl_version must be specified')
+        return
+
+    if ssl:
+        qadir = os.path.join(sga_dir(), 'ssl', ssl_version)
+    else:
+        qadir = os.path.join(sga_dir(), 'parent', 'qa')
+    if not os.path.isdir(qadir):
+        os.makedirs(qadir, exist_ok=True)
 
     raslices = get_raslice(cat['RA'].value)
-    objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)    
-    pngdir = os.path.join(outdir, region, 'annotate')
-    pngfiles = np.hstack([glob(os.path.join(pngdir, raslice, f'{objname}.png') )
-                         for raslice, objname in zip(raslices, objnames)])
+    objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
+    if rescale:
+        ext = '.jpeg'
+        prefix = 'rescale'
+        pngdir = os.path.join(outdir, region, 'rescale')
+    else:
+        ext = '.png'
+        prefix = 'annotated'
+        pngdir = os.path.join(outdir, region, 'annotate')
+
+    I, pngfiles = [], []
+    for ii, (raslice, objname) in enumerate(zip(raslices, objnames)):
+        pngfile = os.path.join(pngdir, raslice, f'{objname}{ext}')
+        if os.path.isfile(pngfile):
+            pngfiles.append(pngfile)
+            I.append(ii)
+        else:
+            print(f'Skipping missing file {pngfile}')
+    pngfiles = np.array(pngfiles)
+    I = np.array(I)
+    cat = cat[I]
 
     if len(pngfiles) == 0:
-        print(f'No pngfiles found in root annotate directory {pngdir}')
+        print(f'No color image files found in image directory {pngdir}')
         return
-    pngfiles = np.unique(pngfiles)
+    #pngfiles = np.unique(pngfiles)
 
     if wisesize:
         suffix = '-wisesize'
@@ -850,22 +1098,25 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10,
         suffix = '-lvd'
     elif zooniverse:
         suffix = '-zooniverse'
+    elif ssl:
+        suffix = f'-ssl-{ssl_version}'
     else:
         suffix = ''
 
     #pngfiles = np.array(glob(os.path.join(outdir, region, 'annotate', '???', '*.png')))
     #pngfiles = pngfiles[np.argsort(pngfiles)]
     #pngfiles = pngfiles[:16]
-    allindx = np.arange(len(pngfiles))
-    nobj = len(allindx)
+    origindx = np.arange(len(pngfiles))
+    nobj = len(origindx)
 
-    if nobj > 199:
-        ncol, nrow = 10, 10
-    elif (nobj < 199) * (nobj > 49):
+    if nobj <= 10:
+        ncol, nrow = 1, 1
+    elif (nobj > 10) * (nobj <= 50):
+        ncol, nrow = 4, 4
+    elif (nobj > 50) * (nobj >= 200):
         ncol, nrow = 6, 6
     else:
-        ncol, nrow = 1, 1
-        ncol, nrow = 4, 4
+        ncol, nrow = 10, 10
 
     nperpage = ncol * nrow
     npage = int(np.ceil(len(pngfiles) / nperpage))
@@ -873,20 +1124,21 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10,
     # divide into multiple documents
     npdf = int(np.ceil(npage / npagemax))
     pdf_pngfiles = np.array_split(pngfiles, npdf)
-    pdf_allindx = np.array_split(allindx, npdf)
+    pdf_allindx = np.array_split(origindx, npdf)
 
     print(f'Distributing {len(pngfiles):,d} annotated images to {npdf:,d} ' + \
           f'PDFs with a total of {npage:,d} pages and {npagemax} pages per file.')
 
     #for ipdf in [1]:
     for ipdf in range(npdf):
-        pdffile = os.path.join(qadir, f'annotated-montage-{region}{suffix}-{ipdf:03}.pdf')
+        pdffile = os.path.join(qadir, f'{prefix}-montage-{region}{suffix}-{ipdf:03}.pdf')
+
         if os.path.isfile(pdffile) and not overwrite:
             print(f'Output file {pdffile} exists; use --overwrite')
-            return
+            continue
 
         pngfiles = pdf_pngfiles[ipdf]
-        #allindx = pdf_allindx[ipdf]
+        orig_allindx = pdf_allindx[ipdf]
         allindx = np.arange(len(pngfiles))
         npage = int(np.ceil(len(pngfiles) / nperpage))        
     
@@ -894,46 +1146,59 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=10,
         for ipage in range(npage):
             print(f'Building page {ipage+1:,d}/{npage:,d}')
             indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
+            origindx = orig_allindx[ipage*nperpage:(ipage+1)*nperpage]
             fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
             for iax, xx in enumerate(np.atleast_1d(ax).flat):
                 if iax < len(indx):
-                    xx.imshow(imread(pngfiles[indx[iax]]), interpolation='None')
-                xx.axis('off')
+                    img = imread(pngfiles[indx[iax]])
+                    xx.imshow(img, interpolation='None')
+                    if rescale:
+                        for spine in ['bottom', 'top', 'right', 'left']:
+                            xx.spines[spine].set_color('white')
+                        xx.set_xticks([])
+                        xx.set_yticks([])
+                        xx.text(0.9, 0.1, str(cat['ROW_PARENT'][origindx[iax]]), transform=xx.transAxes,
+                                ha='right', va='center', color='white', fontsize=8)
+                        xx.text(0.05, 0.9, str(cat['OBJNAME'][origindx[iax]]), transform=xx.transAxes,
+                                ha='left', va='center', color='white', fontsize=6)
+                        sz = img.shape
+                        xx.add_artist(Circle((sz[1]/2., sz[0]/2.), radius=15./2/0.262, 
+                                             facecolor='none', edgecolor='yellow', ls='-', alpha=0.8))
+                    else:
+                        xx.axis('off')
+                else:
+                    xx.axis('off')
             fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05, top=0.95, left=0.05, right=0.95)
             pdf.savefig(fig, dpi=150)
             plt.close()
         pdf.close()
         print(f'Wrote {pdffile}')
 
+        if ssl and False:
+            print(pdffile)
+            for ipage in range(npage):
+                origindx = orig_allindx[ipage*nperpage:(ipage+1)*nperpage]
+                info = cat['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'][origindx]
+                info['PAGE'] = ipage
+                _ = print(info.pprint(max_lines=-1))
+            print()
 
-def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
-    """Simple wrapper to read an input catalog.
-
-    """
-    if not os.path.isfile(catfile):
-        print(f'Catalog {catfile} not found')
-        return
-
-    try:
-        cat = Table(fitsio.read(catfile, ext=ext, rows=rows, columns=columns))
-        print(f'Read {len(cat):,d} galaxies from {catfile}')
-        return cat
-    except:
-        msg = f'Problem reading {catfile}'
-        raise IOError(msg)
+        #pdb.set_trace()
 
 
-def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None, 
-                 annotate=False, ssl_legacysurvey=False, wisesize=False,
-                 lvd=False, zooniverse=False):
+def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
+                 read_fullcat=False, ssl_version=None, ntest=None, annotate=False,
+                 ssl=False, wisesize=False, lvd=False, zooniverse=False):
     """Simple wrapper to read a specified catalog.
 
     """
+    from SGA.io import read_fits_catalog
+
     if catalog == 'sga2025-parent':
         from SGA.io import parent_version
-        version = parent_version()
+        version = parent_version(archive=True)
 
-        columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'PGC', 'DIAM_LIT_REF',
+        columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'Z', 'PGC', 'DIAM_LIT_REF',
                    'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
                    'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_NEDLVS', 'ROW_PARENT',
                    'STARFDIST', 'STARMAG', 'RESOLVED']
@@ -943,7 +1208,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
         else:
             catdir = '/Users/ioannis/research/projects/SGA/2025/parent'
                 
-        catfile = os.path.join(catdir, f'SGA2025-parent-{region}-{version}.fits')
+        catfile = os.path.join(catdir, f'SGA2025-parent-archive-{region}-{version}.fits')
 
         F = fitsio.FITS(catfile)
         N = F[1].get_nrows()
@@ -958,14 +1223,238 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
 
         cat = read_fits_catalog(catfile, columns=columns, rows=rows)
 
+        ###################################################
+        #print('HACK!!')
+        #from SGA.io import read_lvd
+        #from SGA.ellipse import get_basic_geometry
+        #from SGA.util import match
+        #
+        #lvd = read_lvd()
+        #cat = get_basic_geometry(lvd)
+        #cat.rename_column('GALAXY', 'OBJNAME')
+        #cat['RA'] = lvd['RA']
+        #cat['DEC'] = lvd['DEC']
+        #cat['ROW_LVD'] = lvd['ROW']
+        #cat['ROW_PARENT'] = lvd['ROW']
+        #cat['OBJTYPE'] = 'G                '
+        #cat['MORPH'] = '                             '
+        #cat['DIAM_SGA2020'] = -99.
+        #cat['DIAM_HYPERLEDA'] = -99.
+        #cat['BA_SGA2020'] = -99.
+        #cat['BA_HYPERLEDA'] = -99.
+        #cat['PA_SGA2020'] = -99.
+        #cat['PA_HYPERLEDA'] = -99.
+        #
+        #catfile = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits'
+        #allrows = fitsio.read(catfile, columns='ROW_LVD')
+        #I = np.where(np.isin(allrows, lvd['ROW'].value))[0]
+        #lvdcat = Table(fitsio.read(catfile, rows=I))
+        #indx_cat, indx_lvdcat = match(cat['OBJNAME'], lvdcat['OBJNAME'])
+        #
+        #cat['OBJTYPE'][indx_cat] = lvdcat['OBJTYPE'][indx_lvdcat]
+        #cat['MORPH'][indx_cat] = lvdcat['MORPH'][indx_lvdcat]
+        #cat['DIAM_SGA2020'][indx_cat] = lvdcat['DIAM_SGA2020'][indx_lvdcat]
+        #cat['DIAM_HYPERLEDA'][indx_cat] = lvdcat['DIAM_HYPERLEDA'][indx_lvdcat]
+        #cat['BA_SGA2020'][indx_cat] = lvdcat['BA_SGA2020'][indx_lvdcat]
+        #cat['BA_HYPERLEDA'][indx_cat] = lvdcat['BA_HYPERLEDA'][indx_lvdcat]
+        #cat['PA_SGA2020'][indx_cat] = lvdcat['PA_SGA2020'][indx_lvdcat]
+        #cat['PA_HYPERLEDA'][indx_cat] = lvdcat['PA_HYPERLEDA'][indx_lvdcat]
+        ###################################################
+
+        if ssl and ssl_version is None:
+            print('ssl_version must be specified')
+            return
+
         # when annotating, must make a copy *before* any cuts!
-        if annotate or ssl_legacysurvey:
+        if read_fullcat or annotate or ssl or lvd:
             if ntest is not None:
                 fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
             else:
                 fullcat = cat.copy()
         else:
             fullcat = None
+
+        def writeit(cat, region, prefix='tmplist'):
+            outfile = f'{prefix}-{region}.txt'
+            out = cat['OBJNAME', ]
+            #out['COMMENT'] = 'drop,faint shred or compact'
+            out.write(outfile, format='ascii.csv', overwrite=True)
+            print(f'Wrote {outfile}')
+
+        #if True:
+        #    diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+        #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
+        #    pdb.set_trace()            
+
+        if False:#True:
+            # All objects with diameter<30 arcsec and no other source
+            # within 30 arcsec.
+            from SGA.util import find_close
+            fullcat = cat.copy()
+            
+            primaries, groups = find_close(cat, cat, rad_arcsec=45., isolated=True)
+            diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+            cat = primaries[diam < 30.]#[:128]
+            #writeit(cat, region)
+
+
+        if True:
+            from SGA.ellipse import ellipse_mask_sky
+
+            #########################
+            # All sources larger than XX arcmin with at least one
+            # other object within its diameter.
+            fullcat = cat.copy()
+            fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
+
+            isolated = True
+            if isolated:
+                #I = (fullcat_diam <= 20.) * (fullcat['ROW_LVD'] == -99) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
+                I = (fullcat_diam > 50.) * (fullcat_diam <= 60.) * ~fullcat['RESOLVED']
+            else:
+                #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
+                I = (fullcat_diam > 30.) * (fullcat_diam <= 60.) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
+                #print('HACK!!')
+                #I = np.isin(cat['OBJNAME'], ['NGC 5349'])#['NGC 0019'])#, 'ESO 241- G 020'])
+
+            print(np.sum(I))
+            cat = cat[I]
+            diam = fullcat_diam[I]
+            ba = fullcat_ba[I]
+            pa = fullcat_pa[I]
+
+            allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+                                     fullcat['RA'].value, fullcat['DEC'].value,
+                                     np.max(diam)/3600., indexlist=True, 
+                                     notself=False, count=True)
+            outcat, outfullcat = [], []
+
+            if isolated:
+                prefix = 'isolated'
+            else:
+                prefix = 'tmplist'
+
+            for iobj in range(len(cat)):
+                if isolated:
+                    # refine the search to this object's diameter
+                    _, m2, _ = match_radec(cat['RA'][iobj], cat['DEC'][iobj],
+                                           fullcat['RA'][allmatches[iobj]],
+                                           fullcat['DEC'][allmatches[iobj]],
+                                           0.75*diam[iobj]/3600.)
+                    # isolated!
+                    if len(m2) == 1:
+                        outcat.append(cat[[iobj]])
+                        outfullcat.append(fullcat[allmatches[iobj]][m2])
+                else:
+                    if len(allmatches[iobj]) == 1:
+                        m2 = [0]
+                        prefix_this = ''
+                        diam_this = [-99.]
+                    else:
+                        # find neighbors within this object's elliptical aperture
+                        ras, decs = fullcat['RA'][allmatches[iobj]], fullcat['DEC'][allmatches[iobj]]
+                        racen, deccen = cat['RA'][iobj], cat['DEC'][iobj]
+        
+                        semia = diam[iobj] / 2. / 3600. # [degrees]
+                        semib = ba[iobj] * semia
+                        phi = np.radians(90. - pa[iobj])
+        
+                        m2 = np.where(ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs))[0]
+
+                        # hack!
+                        prefix_this = np.array(list(zip(*np.char.split(fullcat['OBJNAME'][allmatches[iobj]][m2].value, ' ').tolist()))[0])
+                        diam_this = fullcat_diam[allmatches[iobj]][m2]
+
+                    # at least one other object
+                    if len(m2) > 1 and np.any(diam_this == 0.):
+                    #if len(m2) > 1 and 'WISEA' in prefix_this and np.any(diam_this == 0.):
+                        outcat.append(cat[[iobj]])
+                        outfullcat.append(fullcat[allmatches[iobj]][m2])
+
+            cat = vstack(outcat)
+            print(len(cat))
+            #allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
+
+            cat = cat[:100]
+
+            _cat = vstack(outfullcat)
+            _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
+            _cat = _cat[uindx]
+
+            #print('HACK - removing central galaxy from tmplist!')
+            #_cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
+
+            _cat = _cat[np.argsort(_cat['RA'])]
+            writeit(_cat, region, prefix=prefix)
+            pdb.set_trace()
+
+            ##########################
+            ## All objects with at least one other sources within XX arcsec.
+            #from SGA.util import resolve_close
+            #
+            #fullcat = cat.copy()
+            #rad_arcsec = 5.#10.#1.5
+            #
+            #cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
+            #pdb.set_trace()
+            #fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
+            #
+            #cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
+
+            ##########################
+            ## All objects with diameter==0 and no other source within
+            ## 30 arcsec.
+            #from SGA.util import find_close
+            #fullcat = cat.copy()
+            #
+            #primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
+            #diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+            #cat = primaries[diam == 0.]#[:128]
+            #write_junk(cat, region)
+
+            #########################
+            ## All objects larger than XX arcmin that have an SDSS source near them.
+            #fullcat = cat.copy()
+            #I = (diam > 5.*60.)
+            #cat = cat[I]
+            #
+            #allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
+            #                         fullcat['RA'].value, fullcat['DEC'].value,
+            #                         1./60., indexlist=True, notself=False)
+            #refindx = []
+            #for ii, mm in enumerate(allmatches):
+            #    if len(mm) > 1:
+            #        if np.any('SDSS' in ' '.join(fullcat['OBJNAME'][mm].value)):
+            #            refindx.append(ii)
+            #refindx = np.array(refindx)
+            #cat = fullcat[I][refindx]
+
+
+        if False:#True:
+            I = (cat['DIAM_LIT'] < 0.) * (np.char.find(cat['OBJNAME'].value, 'LSBG') != -1)
+            cat = cat[I]
+
+        if False:#True:
+            # one-by-one checks
+            cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
+            #cat = cat[cat['OBJNAME'] == 'UGC 03214']
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
+            #cat = cat[m1]
+            #print(cat['OBJNAME', 'ROW_PARENT'])
+            #pdb.set_trace()
+            #diam, ba, pa, ref = choose_geometry(cat)
+            #parse_geometry(cat, 'SMUDGes')
+
+        if False:
+            # SMUDGes
+            prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
+            cat = cat[(prefix == 'SMDG') * (cat['DIAM_LIT'] > 0.)]#[:8]
+            diam, ba, pa, ref = choose_geometry(cat)
+            #pdb.set_trace()
 
         # Kim's wisesize project
         if wisesize:
@@ -1007,24 +1496,25 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             cat = cat[I]
             nedlvs = nedlvs[I]
 
-            mindiam = 60. # 15.
+            mindiam = 30. # [arcsec] # 15.
             diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
             I = (diam > mindiam)
-            print(f'Diameter (>15 arcsec) cut: {np.sum(I):,d}/{len(cat):,d}')
+            print(f'Diameter (>{mindiam:.0f} arcsec) cut: {np.sum(I):,d}/{len(cat):,d}')
             cat = cat[I]
             nedlvs = nedlvs[I]
 
-            snrmin = 20.
+            snrmin = 3. # 20.
             snr_W3 = get_snr(nedlvs['LUM_W3'], nedlvs['LUM_W3_UNC'])
             snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
 
-            pdb.set_trace()
+            I = np.logical_or(snr_W3 > snrmin, snr_NUV > snrmin)
+            print(f'S/N(W3)>{snrmin:.0f}, S/N(NUV)>{snrmin:.0f} cuts: {np.sum(I):,d}/{len(cat):,d}')
+            cat = cat[I]
+            nedlvs = nedlvs[I]
 
-            #I = (snr_W3 > snrmin) * (snr_NUV > snrmin)
-            #print(f'S/N(W3)>20, S/N(NUV)>20 cuts: {np.sum(I):,d}/{len(cat):,d}')
-            #cat = cat[I]
-            #nedlvs = nedlvs[I]
+            #print('Hack!')
+            #cat = cat[:10]
 
             #vfs = Table(fitsio.read('/global/homes/i/ioannis/ioannis/legacyhalos/virgofilaments/vf_north_v2_main.fits'))
             #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], vfs['RA'], vfs['DEC'], 3./3600.)
@@ -1033,97 +1523,140 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', ntest=None,
             #nedlvs = nedlvs[I]
             #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
+            if not os.path.isdir(outdir):
+                os.makedirs(outdir, exist_ok=True)
+            outfile = os.path.join(outdir, f'wiseize-parent-{region}.fits')
+
+            if not os.path.isfile(outfile):
+                rows = np.where(np.isin(fitsio.read(catfile, columns='ROW_PARENT'), cat['ROW_PARENT'].value))[0]
+                allcat = read_fits_catalog(catfile, rows=rows)
+                indx_cat, indx_allcat = match(cat['ROW_PARENT'], allcat['ROW_PARENT'])
+    
+                allcat = allcat[indx_allcat]
+                cat = cat[indx_cat]
+                nedlvs = nedlvs[indx_cat]
+    
+                assert(np.all(allcat['ROW_PARENT'] == cat['ROW_PARENT']))
+                allcat.write(outfile, overwrite=True)
+                print(f'Wrote {len(allcat):,d} objects to {outfile}')
+    
+                outfile = os.path.join(outdir, f'wiseize-nedlvs-{region}.fits')
+                nedlvs.write(outfile, overwrite=True)
+                print(f'Wrote {len(nedlvs):,d} objects to {outfile}')
+
+
         if lvd:
             # analyze the LVD sample
             #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-            #cat = cat[(cat['ROW_LVD'] != -99) * (diam > 20.*60.)]
+            #cat = cat[(cat['ROW_LVD'] != -99) * (diam == 0.)] # (diam > 20.*60.)]
             cat = cat[cat['ROW_LVD'] != -99]
+            cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC'])]
+
+            fulldiam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            fullcat = fullcat[fulldiam > 30./60.]
 
         if zooniverse:
-            # analyze the Zooniverse sample; toss out by STARFDIST?
-            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-            I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
-            cat = cat[I]
+            # project0
+            ## analyze the Zooniverse sample; toss out by STARFDIST?
+            #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            #I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
+            #cat = cat[I]
+            #if annotate:
+            #    diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+            #    I = diam > 15.
+            #    print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
+            #    fullcat = fullcat[I]
 
-            if annotate:
-                diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-                I = diam > 15.
-                print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
-                fullcat = fullcat[I]
+            # project1
+            from SGA.io import read_zooniverse_sample
+            project = 'project1'
+            cat, fullcat = read_zooniverse_sample(cat, fullcat=fullcat, catfile=catfile, 
+                                                  region=region, outdir=outdir, project=project)
+
+        if ssl:
+            # read Sara's ssl-legacysurvey file
+            from glob import glob
+
+            catdir = os.path.join(sga_dir(), 'ssl')#, ssl_version)
+            cat = Table(fitsio.read(os.path.join(catdir, f'ssl-parent-cat-{ssl_version}.fits')))
+            refcat = Table(fitsio.read(os.path.join(catdir, f'ssl-parent-refcat-{ssl_version}.fits')))
+
+            cat = cat[cat['REGION'] == region]
+            refcat = refcat[refcat['REGION'] == region]
+
+            sslfiles = glob(os.path.join(outdir, ssl_version, 'output', '*.txt'))
+            allssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
+            _, I = np.unique(allssl['ROW'], return_index=True)
+            allssl = allssl[I]
+
+            ssl_cat = allssl[np.isin(allssl['ROW'], cat['ROW_PARENT'])]
+            ssl_refcat = allssl[np.isin(allssl['ROW'], refcat['ROW_PARENT'])]
+
+            if False:#True:
+                # first investigate refcat
+                cat = refcat[np.isin(refcat['ROW_PARENT'], ssl_refcat['ROW'])]
+            else:
+                # investigate cat
+                cat = cat[np.isin(cat['ROW_PARENT'], ssl_cat['ROW'])]
+                #print(cat.pprint(max_lines=-1))
+                pdb.set_trace()
+
+            ## test code to identify objects with no other sources within 30 arcsec
+            #fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
+            #matches = match_radec(cat['RA'].value, cat['DEC'].value, fullcat['RA'].value,
+            #                      fullcat['DEC'].value, 30./3600., indexlist=True, notself=True)
+            #indx_isolated = []
+            #for iobj, onematch in enumerate(matches):
+            #    if onematch is None:
+            #        continue
+            #    if len(onematch) == 1:
+            #        indx_isolated.append(iobj)
+            #indx_isolated = np.array(indx_isolated)
+            #cat = cat[indx_isolated]
+
+            #cat = cat[0:490] # 1000:1110]
+
 
         # more testing below here
         if False:
-            # SGA-2020 missing objects
-            from SGA.io import sga_dir
-            miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
-            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 5./3600., nearest=True)
-            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
-            #m1 = np.unique(m1)
-            cat = cat[m1]
-            cat = cat[np.argsort(cat['RA'])]
-            #cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
-            #diam, ba, pa, ref = choose_geometry(cat)
+            #try:
+            #    from importlib import resources
+            #    vetofile = os.path.join(resources.files('SGA').joinpath('data/SGA2025'), 'ssl-veto-v1.txt')
+            #except:
+            #    from pkg_resources import resource_filename
+            #    vetofile = resource_filename('SGA', 'data/SGA2025/ssl-veto-v1.txt')
+            vetofile = '/global/u2/i/ioannis/code/git/SGA/py/SGA/data/SGA2025/ssl-veto-v1.txt'
+            veto = Table.read(vetofile, format='csv', comment='#')
+            veto = veto[veto['comment'] == region]
 
-        if False:#True:
-            # all the sources larger than XX arcmin
-            cat = cat[(cat['DIAM_LIT_REF'] == 'TWOMASS') * (cat['DIAM_LIT'] > 0.9) * (cat['DIAM_HYPERLEDA'] == -99.) * (cat['DIAM_SGA2020'] == -99.)]
-            #cat = cat[cat['OBJNAME'] == 'CGCG 018-111 NED01']
+            cat = cat[np.isin(cat['OBJNAME'], veto['objname'])]
+            #veto[~np.isin(veto['objname'], cat['OBJNAME'])]
 
-            #diam, ba, pa, ref = choose_geometry(cat)
-            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 15*60.)]
-            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 5*60.) * (diam < 10*60.)]
-            #cat = cat[(cat['ROW_LVD'] == -99) * (diam >= 4*60.) * (diam < 5*60.)]
-            #cat = cat[cat['OBJNAME'] == 'NGC 0936']
-            #pdb.set_trace()
-
-        if False:#True:
-            # one-by-one checks
-            cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
-            #cat = cat[cat['OBJNAME'] == 'UGC 03214']
-            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
+            ## SGA-2020 missing objects
+            #miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
+            #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 5./3600., nearest=True)
+            ##m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
+            ##m1 = np.unique(m1)
             #cat = cat[m1]
-            #print(cat['OBJNAME', 'ROW_PARENT'])
-            #pdb.set_trace()
-            #diam, ba, pa, ref = choose_geometry(cat)
-            #parse_geometry(cat, 'SMUDGes')
+            #cat = cat[np.argsort(cat['RA'])]
+            ##cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
+            ##diam, ba, pa, ref = choose_geometry(cat)
 
-        if False:
-            # SMUDGes
-            prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-            cat = cat[(prefix == 'SMDG') * (cat['DIAM_LIT'] > 0.)]#[:8]
-            diam, ba, pa, ref = choose_geometry(cat)
-            #pdb.set_trace()
-
-        if False:
-            # read Sara's ssl-legacysurvey file
-            from glob import glob
-            #from SGA.io import sga_dir
-            chunkfiles = glob('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/ssl-legacysurvey/ssl-parent-dr9-north-chunk???-v1.txt')
-            ssl = vstack([Table.read(chunkfile, format='ascii.commented_header') for chunkfile in chunkfiles])
-
-            #cat[np.isin(cat['ROW_PARENT'], ssl['Row'])]
-            m1, m2, _ = match_radec(cat['RA'], cat['DEC'], ssl['RA'], ssl['DEC'], 1./3600.)
-            cat = cat[m1]
-            ssl = ssl[m2]
-
-            ## annotated-montage-dr9-north-nodiam.pdf
-            #diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-            #cat = cat[diam < 1.][:100]
-
-            # annotated--
-            #cat = cat[(diam > 10.*60.)]
-
-            #cat = cat[cat['ROW_LVD'] != -99]
-            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 2796', 'NGC 3104', 'Bootes IV Dwarf', 'Leo III', 'MESSIER 110'])]
-            #cat = cat[np.isin(cat['OBJNAME'], ['NGC 7318A', 'NGC 7318B'])]
-            #cat = cat[(cat['DIAM_HYPERLEDA'] > 5.) * (cat['FILTERS'] == 'grz')]
-            #cat = cat[(cat['DIAM_LIT'] < 5.) * (cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
-            #cat = cat[(cat['OBJTYPE'] != 'GPair') * (cat['OBJTYPE'] != 'GTrpl') * cat['DIAM_LIT_REF'] == 'RC3') * (cat['FILTERS'] == 'grz')]
-            print(f'Trimmed to {len(cat):,d} objects.')
+        print(f'Trimmed to {len(cat):,d} objects.')
 
 
-    print('Sorting by RA')
-    cat = cat[np.argsort(cat['RA'])]
+    sort_by_ra = True#False
+    sort_by_diameter = False#True
+    if sort_by_ra:
+        print('Sorting by RA')
+        cat = cat[np.argsort(cat['RA'])]
+    elif sort_by_diameter:
+        print('Sorting by diameter')
+        diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+        cat = cat[np.argsort(diam)[::-1]]
+    else:
+        print('Sorting by OBJNAME')
+        cat = cat[np.argsort(cat['OBJNAME'])]
 
     if len(cat) == 0:
         raise ValueError('No objects in catalog!')
@@ -1148,21 +1681,26 @@ def main():
     parser.add_argument('--outdir', default='./', type=str, help='Base output data directory.')
     parser.add_argument('--httpdir', default=None, type=str, help='Base https output data directory.')
 
+    parser.add_argument('--ssl', action='store_true', help='Analyze the ssl-legacysurvey samples.')
+    parser.add_argument('--build-ssl', action='store_true', help='Build the hdf5 files needed by ssl-legacysurvey.')
+    parser.add_argument('--ssl-version', default=None, type=str, help='Version number.')
+
     parser.add_argument('--lvd', action='store_true', help='Analyze the LVD sample.')
     parser.add_argument('--zooniverse', action='store_true', help='Analyze the zooniverse sample.')
     parser.add_argument('--wisesize', action='store_true', help='Analyze the wisesize sample.')
 
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
+    parser.add_argument('--photo', action='store_true', help='Perform photometry.')
     parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
     parser.add_argument('--annotate-central-only', action='store_true', help='Only annotate the central galaxy.')
     parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
+    parser.add_argument('--no-fits-cutouts', action='store_false', dest='fits_cutouts', help='Do not generate FITS cutouts.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
-    parser.add_argument('--ssl-legacysurvey', action='store_true', help='Build the hdf5 file needed by ssl-legacysurvey.')
     parser.add_argument('--debug', action='store_true', help='Print out a variety of debugging messages.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
-    
+
     args = parser.parse_args()
 
     try:
@@ -1182,12 +1720,16 @@ def main():
         rank, size = comm.rank, comm.size
 
     # define paths depending on the input keywords
-    if args.ssl_legacysurvey:
+    if args.build_ssl:
         #cutoutdir = os.path.join(args.outdir, args.region, 'rescale')
         pass
     else:
         # annotated cutouts
-        if args.annotate:
+        if args.photo:
+            layer = None
+            indir = os.path.join(args.outdir, args.region, 'native')
+            outdir = indir
+        elif args.annotate:
             layer = None
             indir = os.path.join(args.outdir, args.region, 'native')
             outdir = os.path.join(args.outdir, args.region, 'annotate')
@@ -1195,6 +1737,9 @@ def main():
             # native or rescaled cutouts
             indir = None
             layer = f'ls-{args.region}'
+            if args.region == 'dr11-south':
+                print(f"WARNING: Overriding layer={layer}-->ls-dr11-early")
+                layer = 'ls-dr11-early'
             if args.rescale:
                 outdir = os.path.join(args.outdir, args.region, 'rescale')
             else:
@@ -1203,47 +1748,72 @@ def main():
 
     cat, fullcat = None, None
     if rank == 0:
-        if args.ssl_legacysurvey:
-            cat_north, fullcat_north = read_catalog(args.catalog, ssl_legacysurvey=True, region='dr9-north')
-            cat_south, fullcat_south = read_catalog(args.catalog, ssl_legacysurvey=True, region='dr9-south')
-            cat_north['REGION'] = 'dr9-north'
-            cat_south['REGION'] = 'dr9-south'
-            fullcat_north['REGION'] = 'dr9-north'
-            fullcat_south['REGION'] = 'dr9-south'
+        if args.build_ssl:
+            if args.ssl_version is None:
+                raise ValueError('ssl_version must be specified')
+            if args.ssl_version == 'v1' or args.ssl_version == 'v2':
+                cat_north, fullcat_north = read_catalog(args.catalog, read_fullcat=True, region='dr9-north')
+                cat_south, fullcat_south = read_catalog(args.catalog, read_fullcat=True, region='dr9-south')
+                cat_north['REGION'] = 'dr9-north'
+                cat_south['REGION'] = 'dr9-south'
+                fullcat_north['REGION'] = 'dr9-north'
+                fullcat_south['REGION'] = 'dr9-south'
+            elif args.ssl_version == 'v3' or args.ssl_version == 'v4':
+                cat_north, fullcat_north = read_catalog(args.catalog, read_fullcat=True, region='dr9-north')
+                cat_south, fullcat_south = read_catalog(args.catalog, read_fullcat=True, region='dr11-south')
+                cat_north['REGION'] = 'dr9-north'
+                cat_south['REGION'] = 'dr11-south'
+                fullcat_north['REGION'] = 'dr9-north'
+                fullcat_south['REGION'] = 'dr11-south'
+            else:
+                raise ValueError(f'Unsupported ssl_version {args.ssl_version}')
             cat = vstack((cat_north, cat_south))
             fullcat = vstack((fullcat_north, fullcat_south))
             del cat_north, cat_south, fullcat_north, fullcat_south
         else:
             cat, fullcat = read_catalog(args.catalog, region=args.region, annotate=args.annotate, 
-                                        ntest=args.ntest, wisesize=args.wisesize, lvd=args.lvd, 
-                                        zooniverse=args.zooniverse)
+                                        outdir=args.outdir, ntest=args.ntest, wisesize=args.wisesize, 
+                                        lvd=args.lvd, zooniverse=args.zooniverse, ssl=args.ssl,
+                                        ssl_version=args.ssl_version)
 
     if comm is not None:
         cat = comm.bcast(cat, root=0)
         fullcat = comm.bcast(fullcat, root=0)
 
     if args.annotated_montage and rank == 0:
-        annotated_montage(cat, region=args.region, outdir=args.outdir, 
+        annotated_montage(cat, region=args.region, outdir=args.outdir, ssl=args.ssl,
+                          ssl_version=args.ssl_version, rescale=args.rescale, 
                           wisesize=args.wisesize, lvd=args.lvd,
                           zooniverse=args.zooniverse, overwrite=args.overwrite)
         return
         
-    if args.ssl_legacysurvey and rank == 0:
-        build_ssl_legacysurvey(cat, fullcat, width=args.width, #cutoutdir=cutoutdir, 
-                               outdir=args.outdir, overwrite=args.overwrite, 
+    if args.build_ssl and rank == 0:
+        build_ssl_legacysurvey(cat, fullcat, width=args.width, ssl_version=args.ssl_version,
+                               outdir=args.outdir, overwrite=args.overwrite,
                                verbose=args.verbose)
         return
 
     # no FITS cutouts needed for the Zooniverse project
+    fits_cutouts = args.fits_cutouts
+    ivar_cutouts = False
+    unwise_cutouts = False
+    galex_cutouts = False
+    draw_largest_ellipse = False
+
     if args.zooniverse:
         fits_cutouts = False
         draw_largest_ellipse = True
+    elif args.wisesize:
+        ivar_cutouts = True
+        unwise_cutouts = True
+        galex_cutouts = False # True
     else:
-        fits_cutouts = True
-        draw_largest_ellipse = False
+        pass
 
     if args.plan and rank == 0:
-        if args.annotate:
+        if args.photo:
+            width = None
+        elif args.annotate:
             width = None
         else:
             mindiam = args.width * args.pixscale # [arcsec]
@@ -1254,13 +1824,18 @@ def main():
                 default_width=args.width, 
                 default_pixscale=args.pixscale)
 
-        plan(cat, width=width, layer=layer, size=size, indir=indir, 
+        plan(cat, width=width, layer=layer, size=size, indir=indir,
              outdir=outdir, mp=args.mp, annotate=args.annotate,
-             fits_cutouts=fits_cutouts, overwrite=args.overwrite, 
-             verbose=args.verbose)
+             photo=args.photo, fits_cutouts=fits_cutouts,
+             unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
+             overwrite=args.overwrite, verbose=args.verbose)
         return
 
-    if args.annotate:
+    if args.photo:
+        do_photo(cat, comm=comm, indir=indir, region=args.region, 
+                 outdir=outdir, overwrite=args.overwrite, 
+                 dry_run=args.dry_run, verbose=args.verbose)
+    elif args.annotate:
         do_annotate(cat, fullcat, default_pixscale=args.pixscale, 
                     default_width=args.width, mp=args.mp, 
                     comm=comm, indir=indir, base_outdir=args.outdir,
@@ -1274,7 +1849,9 @@ def main():
                    base_outdir=args.outdir, default_pixscale=args.pixscale, 
                    default_width=args.width, rescale=args.rescale, 
                    overwrite=args.overwrite, dry_run=args.dry_run, 
-                   fits_cutouts=fits_cutouts, verbose=args.verbose)
+                   fits_cutouts=fits_cutouts, ivar_cutouts=ivar_cutouts, 
+                   unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
+                   verbose=args.verbose)
 
 if __name__ == '__main__':
     main()
