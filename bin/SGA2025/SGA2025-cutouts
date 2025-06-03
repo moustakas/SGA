@@ -265,10 +265,10 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
             keep[imem] = False
     group = group[keep]
 
-    print('HACK!!!')
-    if len(group) > 500:
-    #if len(group) > 10:
-        #print('WARNING: Too many group members; keeping just the 10 largest objects!')
+    #print('HACK!!!')
+    #if len(group) > 500:
+    if len(group) > 10:
+        print('WARNING: Too many group members; keeping just the 10 largest objects!')
         # group includes primary, so we need to be sure it doesn't get removed
         group_noprimary = group.copy()
         group_noprimary.remove_row(np.where(primary['ROW_PARENT'] == group['ROW_PARENT'])[0][0])
@@ -893,6 +893,9 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
         # no other source smaller than 30 arcsec within 90 arcsec
         refindx = find_isolated(cat[I], fullcat[J], radius=90.)
         refcat = cat[I[refindx]]
+    elif ssl_version == 'v4':
+        pdb.set_trace()
+
     else:
         raise ValueError('Write me')
 
@@ -1283,20 +1286,19 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
 
-        if False:
+        if False:#True:
             # All objects with diameter<30 arcsec and no other source
             # within 30 arcsec.
             from SGA.util import find_close
             fullcat = cat.copy()
             
-            primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
+            primaries, groups = find_close(cat, cat, rad_arcsec=45., isolated=True)
             diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
             cat = primaries[diam < 30.]#[:128]
-            writeit(cat, region)
-            pdb.set_trace()
+            #writeit(cat, region)
 
 
-        if False:
+        if True:
             from SGA.ellipse import ellipse_mask_sky
 
             #########################
@@ -1305,10 +1307,11 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             fullcat = cat.copy()
             fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
 
-            isolated = False#True
+            isolated = True
             if isolated:
-                I = (fullcat_diam <= 20.) * (fullcat['ROW_LVD'] == -99) * ~fullcat['RESOLVED']
+                #I = (fullcat_diam <= 20.) * (fullcat['ROW_LVD'] == -99) * ~fullcat['RESOLVED']
                 #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
+                I = (fullcat_diam > 50.) * (fullcat_diam <= 60.) * ~fullcat['RESOLVED']
             else:
                 #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
                 #I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
@@ -1318,6 +1321,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                 #print('HACK!!')
                 #I = np.isin(cat['OBJNAME'], ['NGC 5349'])#['NGC 0019'])#, 'ESO 241- G 020'])
 
+            print(np.sum(I))
             cat = cat[I]
             diam = fullcat_diam[I]
             ba = fullcat_ba[I]
@@ -1375,16 +1379,18 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             print(len(cat))
             #allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
 
+            cat = cat[:100]
+
             _cat = vstack(outfullcat)
             _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
             _cat = _cat[uindx]
 
-            print('HACK - removing central galaxy from tmplist!')
-            _cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
+            #print('HACK - removing central galaxy from tmplist!')
+            #_cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
 
             _cat = _cat[np.argsort(_cat['RA'])]
             writeit(_cat, region, prefix=prefix)
-            #pdb.set_trace()
+            pdb.set_trace()
 
             ##########################
             ## All objects with at least one other sources within XX arcsec.
