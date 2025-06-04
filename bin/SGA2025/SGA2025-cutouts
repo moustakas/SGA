@@ -5,7 +5,7 @@
 Working interactively in a login node, one would do something like:
 
   salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
-  shifter --image dstndstn/cutouts:dvsro4 bash
+  shifter --image legacysurvey/sga:0.3 bash
   source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
     or
@@ -90,9 +90,15 @@ import os, re, sys, time
 import numpy as np
 import fitsio
 from astropy.table import Table, vstack
+import astropy.units as u
 import multiprocessing
 
 from astrometry.libkd.spherematch import match_radec
+from astrometry.util.starutil_numpy import arcsec_between
+
+import warnings
+from astropy.io.fits.verify import VerifyWarning
+warnings.simplefilter('ignore', category=VerifyWarning)
 
 from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
 from SGA.ellipse import choose_geometry, parse_geometry
@@ -101,9 +107,226 @@ GALEX_PIXSCALE = 1.5
 UNWISE_PIXSCALE = 2.75
 
 
-def do_photo(cat, comm=None, indir='.', region='dr9-north',
-             outdir='.', overwrite=False, dry_run=False, 
+def photo_datamodel(out=None, bands=['g', 'r', 'i', 'z']):
+    if out is None:
+        out = Table()
+    for col in ['RA', 'DEC']:
+        for band in bands:
+            out[f'{col}_PHOT_{band.upper()}'] = -99.
+    for col in ['X', 'Y', 'DIAM', 'BA', 'PA']:
+        for band in bands:
+            out[f'{col}_PHOT_{band.upper()}'] = np.float32(-99.) # diam in arcsec
+    for col in ['INIT', 'PHOT']:
+        for band in bands:
+            out[f'FLUX_{col}_{band.upper()}'] = np.float32(-99.)
+    return out
+
+
+def _photo_one(args):
+    return photo_one(*args)
+
+
+def photo_one(obj, outdir, bands=['g', 'r', 'i', 'z'], verbose=False):
+    """Perform photometry on a single cutout.
+
+    """
+    from astropy.io import fits
+    from astropy.wcs import WCS
+    from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
+    from photutils.aperture import EllipticalAperture
+    from photutils.morphology import data_properties
+    from photutils.segmentation import SourceCatalog, SegmentationImage
+    from SGA.qa import draw_ellipse
+    from SGA.find_galaxy import find_galaxy
+    import matplotlib.pyplot as plt
+
+
+    ra, dec = obj['RA'], obj['DEC']
+
+    objname = radec_to_name(ra, dec, unixsafe=True)[0]
+    fitsfile = os.path.join(outdir, get_raslice(ra), objname+'.fits')
+    if not os.path.isfile(fitsfile):
+        print(f'Skipping missing file {fitsfile}')
+        return Table()
+
+    diam, ba, pa, ref = choose_geometry(Table(obj))
+    out = Table(obj['OBJNAME', 'RA', 'DEC'])
+    out['SGANAME'] = radec_to_name(ra, dec, unixsafe=False)[0]
+    out['DIAM_INIT'] = diam[0].astype('f4')
+    out['BA_INIT'] = ba[0].astype('f4')
+    out['PA_INIT'] = pa[0].astype('f4')
+    out = photo_datamodel(out, bands=bands)
+
+    #img, hdr = fitsio.read(optfits, header=True)
+    with fits.open(fitsfile) as H:
+        if len(H) != 2:
+            raise ValueError('Missing inverse variance extension!')
+        hdr = H[0].header
+        imgs = H[0].data
+        ivars = H[1].data
+
+    hdr['NAXIS'] = 2
+    hdr.pop('NAXIS3')
+    wcs = WCS(hdr, naxis=2)
+
+    nband, width, _ = imgs.shape
+    
+    # FIXME - build the Gaia mask here
+    #mask = np.zeros((width, width), bool)
+    masks = ivars == 0
+
+    pixscale = get_pixscale(wcs)[0] * 3600. # [arcsec/pixel]
+
+    xinit, yinit = wcs.wcs_world2pix(ra, dec, 1)
+    #xyinit = (xinit[0] - 1., yinit[0] - 1.)
+    xyinit = (xinit, yinit)
+    a_init = diam[0] / 2. / pixscale
+    b_init = a_init * ba[0]
+    theta_init = np.radians(90. - pa[0])
+
+    ap_init = EllipticalAperture(
+        xyinit, a=a_init, b=b_init, theta=theta_init)
+    aps_phot = []
+
+    for iband, band in enumerate(bands):
+        img = imgs[iband, :, :]
+
+        # no data
+        if np.all(img == 0.):
+            continue
+
+        mask = masks[iband, :, :]
+        error = ivars[iband, :, :]
+        I = error != 0.
+        error[I] = 1. / np.sqrt(error[I])
+
+        # aperture photometry in initial ellipse
+        flux_init, _ = ap_init.do_photometry(img, mask=mask)
+        out[f'FLUX_INIT_{band.upper()}'] = flux_init[0]
+
+        # now measure the geometry from the data themselves
+        if False:
+            src = data_properties(img, mask=mask)#, wcs=wcs)
+            #src = SourceCatalog(img, SegmentationImage(np.ones_like(img, int)), error=error, mask=mask)[0]
+            xyphot = (src.xcentroid, src.ycentroid)
+            a_phot = 1.2 * src.semimajor_sigma.value
+            b_phot = 1.2 * src.semiminor_sigma.value
+            ba_phot = src.ellipticity.value
+            pa_phot = 180. - src.orientation.value % 180.
+            theta_phot = np.radians(src.orientation.value)
+        else:        
+            mge = find_galaxy(img, quiet=True)
+            #plt.clf() ; mge = find_galaxy(img, quiet=True, plot=True) ; plt.savefig('ioannis/tmp/junk2.png')
+            #pdb.set_trace()
+            xyphot = (mge.ymed, mge.xmed) # swapped coordinates!
+            a_phot = mge.majoraxis
+            ba_phot = 1. - mge.eps
+            b_phot = a_phot * ba_phot
+            pa_phot = mge.pa
+            theta_phot = np.radians(mge.theta)
+        #pdb.set_trace()
+
+        ap_phot = EllipticalAperture(xyphot, a=a_phot, b=b_phot, theta=theta_phot)
+        flux_phot, _ = ap_phot.do_photometry(img)
+        aps_phot.append(ap_phot)
+
+        ra_phot, dec_phot = wcs.all_pix2world(xyphot[0], xyphot[1], 1)
+        #sep = arcsec_between(ra, dec, ra_phot, dec_phot)
+
+        out[f'RA_PHOT_{band.upper()}'] = ra_phot
+        out[f'DEC_PHOT_{band.upper()}'] = dec_phot
+        out[f'X_PHOT_{band.upper()}'] = xyphot[0]
+        out[f'Y_PHOT_{band.upper()}'] = xyphot[1]
+        out[f'DIAM_PHOT_{band.upper()}'] = 2. * a_phot * pixscale
+        out[f'BA_PHOT_{band.upper()}'] = ba_phot
+        out[f'PA_PHOT_{band.upper()}'] = pa_phot
+        out[f'FLUX_PHOT_{band.upper()}'] = flux_phot[0]
+
+    qaplot = True
+    if qaplot:
+        import matplotlib.pyplot as plt
+        import matplotlib.image as mpimg
+        
+        jpgfile = os.path.join(outdir, get_raslice(ra), objname+'.jpeg')
+        jpg = mpimg.imread(jpgfile)
+
+        fig, ax = plt.subplots(figsize=(8, 8))
+        #im = ax.imshow(jpg, origin='lower')
+        #ax.invert_yaxis() # JPEG is flipped relative to FITS
+        ax.imshow(np.log(img), origin='lower', cmap='viridis')
+        ax.set_xlim(0, width)
+        ax.set_ylim(0, width)
+        #ax.axis('off')
+        #ax.axhline(y=width/2., color='white')
+        #ax.axvline(x=width/2., color='white')
+        ap_init.plot(color='red', ls='-', lw=2, ax=ax)
+        draw_ellipse(ax, diam[0], ba[0], pa[0], xinit, width-yinit, pixscale=pixscale, 
+                     color='orange', linestyle='-', majorminor=True)
+        #for ap_phot in aps_phot:
+        #    ap_phot.plot(color='red', ls='-', lw=2, ax=ax)
+        for iband, band in enumerate(bands):
+            draw_ellipse(ax, out[f'DIAM_PHOT_{band.upper()}'], out[f'BA_PHOT_{band.upper()}'], 
+                         out[f'PA_PHOT_{band.upper()}'], out[f'X_PHOT_{band.upper()}'], 
+                         out[f'Y_PHOT_{band.upper()}'], pixscale=pixscale, 
+                         color='blue', linestyle='--', majorminor=True)
+
+        #_ = src.plot_kron_apertures(ax=ax[iband], color='white', lw=1.5)
+
+        fig.tight_layout()
+        fig.savefig('ioannis/tmp/junk.png')
+
+    print(out.pprint(max_width=-1))
+    pdb.set_trace()
+
+    return
+
+
+def do_photo(cat, comm=None, mp=1, indir='.', bands=['g', 'r', 'i', 'z'],
+             region='dr9-north', outdir='.', overwrite=False, dry_run=False, 
              verbose=False):
+
+    """Wrapper to set up the full set of annotations.
+
+    """
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
+    if rank == 0:
+        t0 = time.time()
+        groups = np.array_split(range(len(cat)), size) # unweighted distribution
+    else:
+        groups = [np.array([])]
+
+    if comm:
+        groups = comm.bcast(groups, root=0)
+
+    assert(len(groups) == size)
+
+    indx = groups[rank]
+    if len(indx) == 0:
+        return
+
+    mpargs = [(cat[indx[iobj]], outdir, bands) for iobj in range(len(indx))]
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            P.map(_photo_one, mpargs)
+    else:
+        [photo_one(*mparg) for mparg in mpargs]
+
+    sys.stdout.flush()
+
+    if comm is not None:
+        comm.barrier()
+
+    if rank == 0 and not dry_run:
+        print(f'All done at {time.asctime()}')
+
+
+def sandbox_photo(cat, comm=None, indir='.', region='dr9-north',
+                  outdir='.', overwrite=False, dry_run=False, 
+                  verbose=False):
     pdb.set_trace()
     # https://photutils.readthedocs.io/en/stable/user_guide/segmentation.html
     from photutils.morphology import data_properties
@@ -132,7 +355,7 @@ def do_photo(cat, comm=None, indir='.', region='dr9-north',
     fig.savefig('ioannis/tmp/junk.png')
 
 
-    pass
+
 
 
 def _get_annotate_one(args):
@@ -164,6 +387,26 @@ def get_annotate_one(obj, objname, indir, outdir, overwrite=False, verbose=False
     return jpgfile, pngfile, nobj
 
 
+def get_wcs(racenter, deccenter, width, pixscale=0.262):
+    from astropy.wcs import WCS
+    from astropy.io import fits
+    hdr = fits.Header()
+    hdr['NAXIS'] = 2
+    hdr['NAXIS1'] = width
+    hdr['NAXIS2'] = width
+    hdr['CTYPE1'] = 'RA---TAN'
+    hdr['CTYPE2'] = 'DEC--TAN'
+    hdr['CRVAL1'] = racenter
+    hdr['CRVAL2'] = deccenter
+    hdr['CRPIX1'] = width/2+0.5
+    hdr['CRPIX2'] = width/2+0.5
+    hdr['CD1_1'] = -pixscale/3600.
+    hdr['CD1_2'] = 0.0
+    hdr['CD2_1'] = 0.0
+    hdr['CD2_2'] = +pixscale/3600.
+    return WCS(hdr)
+
+
 def _annotate_one(args):
     return annotate_one(*args)
 
@@ -177,47 +420,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     import matplotlib.image as mpimg
     from astropy.wcs import WCS
     from astropy.io import fits
-
-    def get_wcs(racenter, deccenter, width):
-        hdr = fits.Header()
-        hdr['NAXIS'] = 2
-        hdr['NAXIS1'] = width
-        hdr['NAXIS2'] = width
-        hdr['CTYPE1'] = 'RA---TAN'
-        hdr['CTYPE2'] = 'DEC--TAN'
-        hdr['CRVAL1'] = racenter
-        hdr['CRVAL2'] = deccenter
-        hdr['CRPIX1'] = width/2+0.5
-        hdr['CRPIX2'] = width/2+0.5
-        hdr['CD1_1'] = -pixscale/3600.
-        hdr['CD1_2'] = 0.0
-        hdr['CD2_1'] = 0.0
-        hdr['CD2_2'] = +pixscale/3600.
-        return WCS(hdr)
-
-
-    def draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color, linestyle, majorminor=True):
-        from matplotlib.patches import Ellipse
-
-        semimajor = diam / pixscale # [pixels]
-        semiminor = ba * semimajor  # [pixels]
-        theta = np.radians(90. - pa)
-        x0 = xpix
-        y0 = width - ypix
-
-        ax.add_artist(Ellipse((x0, y0), semimajor, semiminor, angle=90.-pa,
-                              facecolor='none', edgecolor=color, lw=2, ls=linestyle,
-                              alpha=0.9, clip_on=True))
-
-        if majorminor:
-            # Draw the major and minor axes
-            x1, y1 = x0 + semimajor/2. * np.cos(theta), y0 + semimajor/2. * np.sin(theta)
-            x2, y2 = x0 - semimajor/2. * np.cos(theta), y0 - semimajor/2. * np.sin(theta)
-            x3, y3 = x0 + semiminor/2. * np.sin(theta), y0 - semiminor/2. * np.cos(theta)
-            x4, y4 = x0 - semiminor/2. * np.sin(theta), y0 + semiminor/2. * np.cos(theta)
-
-            ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-', clip_on=True)
-            ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-', clip_on=True)
+    from SGA.qa import draw_ellipse
 
 
     if not os.path.isfile(jpgfile):
@@ -234,7 +437,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
     img = mpimg.imread(jpgfile)
     width = img.shape[0]
-    wcs = get_wcs(primary_ra, primary_dec, width)
+    wcs = get_wcs(primary_ra, primary_dec, width, pixscale=pixscale)
 
     ellipse_colors = {'RC3': 'yellow', 'SMUDGes': 'orange', 'LVD': 'violet', 
                       'SGA2020': 'dodgerblue', 'HYPERLEDA': 'red', 
@@ -303,7 +506,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
                     majorminor = True
                 else:
                     majorminor = False
-                draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color=ellipse_colors[ref],
+                draw_ellipse(ax, diam, ba, pa, xpix, width-ypix, pixscale=pixscale, color=ellipse_colors[ref],
                              linestyle=ellipse_linestyles[ref], majorminor=majorminor)
         else:
             for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
@@ -315,7 +518,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
                         majorminor = True
                     else:
                         majorminor = False
-                    draw_ellipse(diam, ba, pa, pixscale, xpix, ypix, color=ellipse_colors[outref],
+                    draw_ellipse(ax, diam, ba, pa, xpix, width-ypix, pixscale=pixscale, color=ellipse_colors[outref],
                                  linestyle=ellipse_linestyles[outref], majorminor=majorminor)
 
     # now annotate
@@ -630,7 +833,7 @@ def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 
-def get_basefiles_one(obj, objname, width, outdir, fits_cutouts=True, 
+def get_basefiles_one(obj, objname, outdir, width=None, fits_cutouts=True, 
                       unwise_cutouts=False, galex_cutouts=False,
                       overwrite=False, verbose=False):
     raslice = get_raslice(obj['RA'])
@@ -697,7 +900,7 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
         if np.isscalar(width):
             width = [width] * len(objname)
 
-        mpargs = [(obj, objname1, width1, outdir, fits_cutouts, unwise_cutouts, 
+        mpargs = [(obj, objname1, outdir, width1, fits_cutouts, unwise_cutouts, 
                    galex_cutouts, overwrite, verbose)
                   for obj, objname1, width1 in zip(cat, objname, width)]
         if mp > 1:
@@ -742,7 +945,7 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
 
 
 def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
-               default_bands=['g', 'r', 'z'], comm=None, mp=1, outdir='.',
+               default_bands=['g', 'r', 'i', 'z'], comm=None, mp=1, outdir='.',
                base_outdir='.', rescale=False, overwrite=False, fits_cutouts=True,
                ivar_cutouts=False, unwise_cutouts=False, galex_cutouts=False,
                dry_run=False, verbose=False):
@@ -1031,7 +1234,7 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
     
         images = F.create_dataset('images', (refs.size, nband, width, width))
         for iobj, fitsfile in enumerate(fitsfiles):
-            # need to deal with missing bandpasses...
+            raise ValueError('need to deal with missing bandpasses...and handle i-band')
             img = fitsio.read(fitsfile)
             images[iobj, :] = img
     
@@ -1281,7 +1484,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             out.write(outfile, format='ascii.csv', overwrite=True)
             print(f'Wrote {outfile}')
 
-        #if True:
+        #if False:
         #    diam, _, _, _ = choose_geometry(cat, mindiam=0.)
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
@@ -1298,7 +1501,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #writeit(cat, region)
 
 
-        if True:
+        if False:#True:
             from SGA.ellipse import ellipse_mask_sky
 
             #########################
@@ -1438,9 +1641,16 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             I = (cat['DIAM_LIT'] < 0.) * (np.char.find(cat['OBJNAME'].value, 'LSBG') != -1)
             cat = cat[I]
 
-        if False:#True:
+        if True:
             # one-by-one checks
-            cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['MCG +00-11-011'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023242.56+005813.7'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['MCG -02-28-007'])]
+            cat = cat[np.isin(cat['OBJNAME'], ['ESO 569- G 005'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['ESO 054- G 004'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['ESO 002- G 013', 'WISEA J110416.71-003141.3'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
             #cat = cat[cat['OBJNAME'] == 'UGC 03214']
             #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
             #cat = cat[m1]
@@ -1695,6 +1905,7 @@ def main():
     parser.add_argument('--annotate-central-only', action='store_true', help='Only annotate the central galaxy.')
     parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
     parser.add_argument('--no-fits-cutouts', action='store_false', dest='fits_cutouts', help='Do not generate FITS cutouts.')
+    parser.add_argument('--ivar-cutouts', action='store_true', help='Generate ivar cutouts.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
     parser.add_argument('--debug', action='store_true', help='Print out a variety of debugging messages.')
@@ -1795,7 +2006,7 @@ def main():
 
     # no FITS cutouts needed for the Zooniverse project
     fits_cutouts = args.fits_cutouts
-    ivar_cutouts = False
+    ivar_cutouts = args.ivar_cutouts
     unwise_cutouts = False
     galex_cutouts = False
     draw_largest_ellipse = False
@@ -1832,7 +2043,7 @@ def main():
         return
 
     if args.photo:
-        do_photo(cat, comm=comm, indir=indir, region=args.region, 
+        do_photo(cat, comm=comm, mp=args.mp, indir=indir, region=args.region, 
                  outdir=outdir, overwrite=args.overwrite, 
                  dry_run=args.dry_run, verbose=args.verbose)
     elif args.annotate:

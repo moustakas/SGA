@@ -154,6 +154,10 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
     if unixsafe:
         names = np.char.replace(names, ' ', '_')
 
+    #if len(names) == 1:
+    #    return names[0]
+    #else:
+    #    return names
     return names
 
 

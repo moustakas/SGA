@@ -1383,14 +1383,47 @@ def build_parent(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
-    print('Write me - use the final data model.')
+    from SGA.ellipse import choose_geometry
+    from SGA.brick import brickname as get_brickname
+    from SGA.io import radec_to_name
+
+    version = parent_version()
+    version_archive = parent_version(archive=True)
+    outdir = os.path.join(sga_dir(), 'parent')
+
+    cols = ['OBJNAME', 'OBJTYPE', 'MORPH', 'BASIC_MORPH', 'RA', 'DEC',
+            'PGC', 'RESOLVED', 'STARFDIST', 'STARDIST', 'STARMAG', 
+            'ROW_PARENT']
+    colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
+
+    for region in ['dr9-north', 'dr11-south']:
+        catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
+        cat = Table(fitsio.read(catfile))#, rows=np.arange(60000)))
+        print(f'Read {len(cat):,d} objects from {catfile}')
+
+        # final selection and data model
+        diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=0., get_mag=True)
+
+        I = (diam > 45.)# * (diam < 120.)
+        print(f'Selecting {np.sum(I):,d}/{len(cat):,d} objects')
+
+        out = cat[cols][I]
+        ra, dec = out['RA'], out['DEC']
+
+        out.add_column(radec_to_name(ra, dec, unixsafe=False), name='SGANAME', index=0)
+        out.add_column(get_brickname(ra, dec), name='BRICKNAME', index=colindx)
+        out.add_column(diam[I].astype('f4'), name='DIAM', index=colindx+1)
+        out.add_column(ba[I].astype('f4'), name='BA', index=colindx+2)
+        out.add_column(pa[I].astype('f4'), name='PA', index=colindx+3)
+        out.add_column(mag[I].astype('f4'), name='MAG', index=colindx+4)
+        out.add_column(band[I], name='BAND', index=colindx+5)
+
+        outfile = os.path.join(outdir, f'SGA2025-parent-{region}-{version}.fits')
+        print(f'Writing {len(out):,d} objects to {outfile}')
+        out.meta['EXTNAME'] = 'PARENT'
+        out.write(outfile, overwrite=True)
 
     pdb.set_trace()
-    version = parent_version()
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
-    print(f'Writing {len(cat):,d} objects to {outfile}')
-    cat.meta['EXTNAME'] = 'PARENT'
-    cat.write(outfile, overwrite=True)
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):

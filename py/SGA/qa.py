@@ -53,6 +53,37 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
+def draw_ellipse(ax, diam, ba, pa, xpix, ypix, pixscale=0.262, color='red', 
+                 linestyle='-', majorminor=True):
+    from matplotlib.patches import Ellipse
+
+    semimajor = diam / pixscale # [pixels]
+    semiminor = ba * semimajor  # [pixels]
+    theta = np.radians(pa - 90.)
+    #theta = np.radians(90. - pa)
+    x0 = xpix
+    #y0 = width - ypix
+    y0 = ypix
+
+    # FIXME -
+    #   drawing on jpeg: need y0 = width-ypix, angle=90.-pa, and theta=90-pa
+    #   drawing on image: need y0 = ypix,angle=pa-90., and theta=pa-90
+
+    ax.add_artist(Ellipse((x0, y0), semimajor, semiminor, angle=pa-90.,#90.-pa,
+                          facecolor='none', edgecolor=color, lw=2, ls=linestyle,
+                          alpha=0.9, clip_on=True))
+
+    if majorminor:
+        # Draw the major and minor axes
+        x1, y1 = x0 + semimajor/2. * np.cos(theta), y0 + semimajor/2. * np.sin(theta)
+        x2, y2 = x0 - semimajor/2. * np.cos(theta), y0 - semimajor/2. * np.sin(theta)
+        x3, y3 = x0 + semiminor/2. * np.sin(theta), y0 - semiminor/2. * np.cos(theta)
+        x4, y4 = x0 - semiminor/2. * np.sin(theta), y0 + semiminor/2. * np.cos(theta)
+
+        ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-', clip_on=True)
+        ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-', clip_on=True)
+
+
 def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
                 pngsuffix=None, objname=None, racenter=None, deccenter=None,
                 layers=None, add_title=True, width_arcmin=2., pngdir='.', jpgdir='.',
