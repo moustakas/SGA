@@ -2768,6 +2768,255 @@ def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
         return cat, fullcat
 
 
+def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
+                final_sample=False, preselect_sample=True, region='dr9-north',
+                #customsky=False, customredux=False, 
+                d25min=0.1, d25max=100.0):
+    """Read/generate the parent SGA catalog.
+
+    d25min in arcmin
+
+    big = ss[ss['IN_FOOTPRINT'] * (ss['GROUP_DIAMETER']>5) * ss['GROUP_PRIMARY']]
+    %time bricks = np.hstack([survey.get_bricks_near(bb['GROUP_RA'], bb['GROUP_DEC'], bb['GROUP_DIAMETER']/60).brickname for bb in big])
+
+    """
+    import fitsio
+            
+    if first and last:
+        if first > last:
+            print('Index first cannot be greater than index last, {} > {}'.format(first, last))
+            raise ValueError()
+        
+    ext = 1
+
+    version = parent_version()
+    #version = SGA_version()
+    if final_sample:
+        samplefile = os.path.join(legacyhalos.io.legacyhalos_dir(), '2020', 'SGA-ellipse-{}.fits'.format(version))
+    else:
+        samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+        #samplefile = os.path.join(legacyhalos.io.legacyhalos_dir(), 'sample', version, 'SGA-parent-{}.fits'.format(version))
+
+    # the file used to be in this location for production but was moved for the data release
+    if not os.path.isfile(samplefile):
+        if final_sample:
+            samplefile = os.path.join(legacyhalos.io.legacyhalos_data_dir(), 'SGA-ellipse-{}.fits'.format(version))
+        else:
+            samplefile = os.path.join(legacyhalos.io.legacyhalos_data_dir(), 'SGA-parent-{}.fits'.format(version))
+
+    if not os.path.isfile(samplefile):
+        raise IOError('Sample file not found! {}'.format(samplefile))
+    
+    info = fitsio.FITS(samplefile)
+    nrows = info[ext].get_nrows()
+
+    if preselect_sample:
+        if final_sample:
+            cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY', 'SGA_ID', 'PREBURNED']
+            sample = fitsio.read(samplefile, columns=cols)
+            rows = np.arange(len(sample))
+
+            samplecut = np.where(
+                (sample['GROUP_DIAMETER'] > d25min) *
+                (sample['GROUP_DIAMETER'] < d25max) *
+                sample['GROUP_PRIMARY'] * 
+                sample['PREBURNED'] * 
+                (sample['SGA_ID'] > -1))[0]
+            rows = rows[samplecut]
+        else:
+            cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
+                    'GROUP_PRIMARY', 'GROUP_ID', 'IN_FOOTPRINT', 'SGA_ID', 'GALAXY', 'RA', 'DEC',
+                    'BRICKNAME']
+            sample = fitsio.read(samplefile, columns=cols)
+            rows = np.arange(len(sample))
+
+            samplecut = np.where(
+                (sample['GROUP_DIAMETER'] > d25min) *
+                (sample['GROUP_DIAMETER'] < d25max) *
+                ### custom reductions
+                #(np.array(['DR8' not in gg for gg in sample['GALAXY']])) *
+                (sample['GROUP_PRIMARY'] == True) *
+                (sample['IN_FOOTPRINT']))[0]
+            rows = rows[samplecut]
+
+            if True: # DR9 bricklist
+                nbricklist = np.loadtxt(os.path.join(legacyhalos.io.legacyhalos_dir(), 'sample', 'dr9', 'bricklist-dr9-north.txt'), dtype='str')
+                sbricklist = np.loadtxt(os.path.join(legacyhalos.io.legacyhalos_dir(), 'sample', 'dr9', 'bricklist-dr9-south.txt'), dtype='str')
+
+                bricklist = np.union1d(nbricklist, sbricklist)
+                #bricklist = nbricklist
+                #bricklist = sbricklist
+
+                # Test by Dustin--
+                #bricklist = np.array([
+                #    '2221p000', '2221p002', '2221p005', '2221p007', '2223p000', '2223p002',
+                #    '2223p005', '2223p007', '2226p000', '2226p002', '2226p005', '2226p007',
+                #    '2228p000', '2228p002', '2228p005', '2228p007'])
+
+                #bb = [692770, 232869, 51979, 405760, 1319700, 1387188, 519486, 145096]
+                #ww = np.where(np.isin(sample['SGA_ID'], bb))[0]
+                #ff = get_brickname(sample['GROUP_RA'][ww], sample['GROUP_DEC'][ww])
+
+                ## Testing subtracting galaxy halos before sky-fitting---in Virgo!
+                #bricklist = ['1877p122', '1877p125', '1875p122', '1875p125',
+                #             '2211p017', '2213p017', '2211p020', '2213p020']
+
+                ## Test sample-- 1 deg2 patch of sky
+                ##bricklist = ['0343p012']
+                #bricklist = ['1948p280', '1951p280', # Coma
+                #             '1914p307', # NGC4676/Mice
+                #             '2412p205', # NGC6052=PGC200329
+                #             '1890p112', # NGC4568 - overlapping spirals in Virgo
+                #             '0211p037', # NGC520 - train wreck
+                #             # random galaxies around bright stars
+                #             '0836m285', '3467p137',
+                #             '0228m257', '1328m022',
+                #             '3397m057', '0159m047',
+                #             '3124m097', '3160p097',
+                #             # 1 square degree of test bricks--
+                #             '0341p007', '0341p010', '0341p012', '0341p015', '0343p007', '0343p010',
+                #             '0343p012', '0343p015', '0346p007', '0346p010', '0346p012', '0346p015',
+                #             '0348p007', '0348p010', '0348p012', '0348p015',
+                #             # NGC4448 bricks
+                #             '1869p287', '1872p285', '1869p285'
+                #             # NGC2146 bricks
+                #             '0943p785', '0948p782'
+                #             ]
+
+                brickcut = np.where(np.isin(sample['BRICKNAME'][samplecut], bricklist))[0]
+                rows = rows[brickcut]
+
+            if False: # SAGA host galaxies
+                from astrometry.libkd.spherematch import match_radec
+                saga = astropy.table.Table.read(os.path.join(legacyhalos.io.legacyhalos_dir(), 'sample', 'catalogs', 'saga_hosts.csv'))
+                #fullsample = legacyhalos.SGA.read_sample(preselect_sample=False)
+                m1, m2, d12 = match_radec(sample['RA'][samplecut], sample['DEC'][samplecut],
+                                          saga['RA'], saga['DEC'], 5/3600.0, nearest=True)
+                #ww = np.where(np.isin(sample['GROUP_ID'], fullsample['GROUP_ID'][m1]))[0]
+                #ww = np.hstack([np.where(gid == sample['GROUP_ID'])[0] for gid in fullsample['GROUP_ID'][m1]])
+                rows = rows[m1]
+
+            if False: # test fitting of all the DR8 candidates
+                fullsample = read_sample(preselect_sample=False, columns=['SGA_ID', 'GALAXY', 'GROUP_ID', 'GROUP_NAME', 'GROUP_DIAMETER', 'IN_FOOTPRINT'])
+                ww = np.where(fullsample['SGA_ID'] >= 5e6)[0]
+                these = np.where(np.isin(sample['GROUP_ID'][samplecut], fullsample['GROUP_ID'][ww]))[0]
+                rows = rows[these]
+
+        nrows = len(rows)
+        print('Selecting {} galaxies in the DR9 footprint.'.format(nrows))
+
+    #elif customsky:
+    ## Select the galaxies requiring custom sky-subtraction.
+    #    sample = fitsio.read(samplefile, columns=['GROUP_NAME', 'GROUP_DIAMETER', 'GROUP_PRIMARY', 'IN_FOOTPRINT'])
+    #    rows = np.arange(len(sample))
+    #
+    #    samplecut = np.where(
+    #        #(sample['GROUP_DIAMETER'] > 5) * 
+    #        (sample['GROUP_DIAMETER'] > 5) * (sample['GROUP_DIAMETER'] < 25) *
+    #        (sample['GROUP_PRIMARY'] == True) *
+    #        (sample['IN_FOOTPRINT']))[0]
+    #    #this = np.where(sample['GROUP_NAME'] == 'NGC4448')[0]
+    #    #rows = np.hstack((rows, this))
+    #
+    #    rows = rows[samplecut]
+    #    nrows = len(rows)
+    #    print('Selecting {} custom sky galaxies.'.format(nrows))
+    #    
+    #elif customredux:
+    #    sample = fitsio.read(samplefile, columns=['GROUP_NAME', 'GROUP_DIAMETER', 'GROUP_PRIMARY', 'IN_FOOTPRINT'])
+    #    rows = np.arange(len(sample))
+    #
+    #    samplecut = np.where(
+    #        (sample['GROUP_PRIMARY'] == True) *
+    #        (sample['IN_FOOTPRINT']))[0]
+    #    rows = rows[samplecut]
+    #    
+    #    customgals = [
+    #        'NGC3034_GROUP',
+    #        'NGC3077', # maybe?
+    #        'NGC3726', # maybe?
+    #        'NGC3953_GROUP', # maybe?
+    #        'NGC3992_GROUP',
+    #        'NGC4051',
+    #        'NGC4096', # maybe?
+    #        'NGC4125_GROUP',
+    #        'UGC07698',
+    #        'NGC4736_GROUP',
+    #        'NGC5055_GROUP',
+    #        'NGC5194_GROUP',
+    #        'NGC5322_GROUP',
+    #        'NGC5354_GROUP',
+    #        'NGC5866_GROUP',
+    #        'NGC4258',
+    #        'NGC3031_GROUP',
+    #        'NGC0598_GROUP',
+    #        'NGC5457'
+    #        ]
+    #
+    #    these = np.where(np.isin(sample['GROUP_NAME'][samplecut], customgals))[0]
+    #    rows = rows[these]
+    #    nrows = len(rows)
+    #
+    #    print('Selecting {} galaxies with custom reductions.'.format(nrows))
+
+    else:
+        rows = None
+
+    if first is None:
+        first = 0
+    if last is None:
+        last = nrows
+        if rows is None:
+            rows = np.arange(first, last)
+        else:
+            rows = rows[np.arange(first, last)]
+    else:
+        if last >= nrows:
+            print('Index last cannot be greater than the number of rows, {} >= {}'.format(last, nrows))
+            raise ValueError()
+        if rows is None:
+            rows = np.arange(first, last+1)
+        else:
+            rows = rows[np.arange(first, last+1)]
+
+    sample = astropy.table.Table(info[ext].read(rows=rows, upper=True, columns=columns))
+    if verbose:
+        if len(rows) == 1:
+            print('Read galaxy index {} from {}'.format(first, samplefile))
+        else:
+            print('Read galaxy indices {} through {} (N={}) from {}'.format(
+                first, last, len(sample), samplefile))
+
+    # Add an (internal) index number:
+    sample.add_column(astropy.table.Column(name='INDEX', data=rows), index=0)
+
+    #galaxylist = np.loadtxt('/global/homes/i/ioannis/north-ellipse-outdated.txt', str)
+    #galaxylist = np.loadtxt('/global/homes/i/ioannis/north-refit-ispsf-dropped.txt', str)
+    #galaxylist = np.loadtxt('/global/homes/i/ioannis/north-refit-ispsf2.txt', str)
+
+    #galaxylist = np.loadtxt('/global/homes/i/ioannis/closepairs.txt', str)
+    #galaxylist = np.loadtxt('/global/homes/i/ioannis/south-closepairs2.txt', str)
+    #galaxylist = np.loadtxt('/global/homes/i/ioannis/south-refit-newparent.txt', str)
+    #galaxylist = np.loadtxt('/global/homes/i/ioannis/south-ispsf.txt', str)
+
+    if galaxylist is not None:
+        if verbose:
+            print('Selecting specific galaxies.')
+        these = np.isin(sample['GROUP_NAME'], galaxylist)
+        if np.count_nonzero(these) == 0:
+            print('No matching galaxies using column GROUP_NAME!')
+            these = np.isin(sample['GALAXY'], galaxylist)
+            if np.count_nonzero(these) == 0:
+                print('No matching galaxies using column GALAXY!')
+                return astropy.table.Table()
+            else:
+                sample = sample[these]
+        else:
+            sample = sample[these]
+
+    return sample
+
+
 #def get_parentfile(version=None, kd=False):
 #
 #    if kd:
