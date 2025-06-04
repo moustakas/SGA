@@ -1386,6 +1386,7 @@ def build_parent(verbose=False, overwrite=False):
     from SGA.ellipse import choose_geometry
     from SGA.brick import brickname as get_brickname
     from SGA.io import radec_to_name
+    from SGA.groups import build_group_catalog
 
     version = parent_version()
     version_archive = parent_version(archive=True)
@@ -1398,30 +1399,38 @@ def build_parent(verbose=False, overwrite=False):
 
     for region in ['dr9-north', 'dr11-south']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
-        cat = Table(fitsio.read(catfile))#, rows=np.arange(60000)))
+        cat = Table(fitsio.read(catfile, rows=np.arange(5000)))
         print(f'Read {len(cat):,d} objects from {catfile}')
 
+        # build the group catalog from the full sample
+        diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=10., get_mag=True)
+        diam /= 60. # [arcmin]
+
+        ra, dec = cat['RA'].value, cat['DEC'].value
+
+        grp = cat[cols]
+        grp.add_column(radec_to_name(ra, dec, unixsafe=False), name='SGANAME', index=0)
+        grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=colindx)
+        grp.add_column(diam.astype('f4'), name='DIAM', index=colindx+1)
+        grp.add_column(ba.astype('f4'), name='BA', index=colindx+2)
+        grp.add_column(pa.astype('f4'), name='PA', index=colindx+3)
+        grp.add_column(mag.astype('f4'), name='MAG', index=colindx+4)
+        grp.add_column(band, name='BAND', index=colindx+5)
+
+        grp = build_group_catalog(grp)
+
         # final selection and data model
-        diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=0., get_mag=True)
+        I = (diam > 45./60.)# * (diam < 2.)
+        J = np.isin(grp['GROUP_ID'], grp['GROUP_ID'][I])
+        out = grp[J]
 
-        I = (diam > 45.)# * (diam < 120.)
-        print(f'Selecting {np.sum(I):,d}/{len(cat):,d} objects')
-
-        out = cat[cols][I]
-        ra, dec = out['RA'], out['DEC']
-
-        out.add_column(radec_to_name(ra, dec, unixsafe=False), name='SGANAME', index=0)
-        out.add_column(get_brickname(ra, dec), name='BRICKNAME', index=colindx)
-        out.add_column(diam[I].astype('f4'), name='DIAM', index=colindx+1)
-        out.add_column(ba[I].astype('f4'), name='BA', index=colindx+2)
-        out.add_column(pa[I].astype('f4'), name='PA', index=colindx+3)
-        out.add_column(mag[I].astype('f4'), name='MAG', index=colindx+4)
-        out.add_column(band[I], name='BAND', index=colindx+5)
+        print(f'Selecting {np.sum(J):,d}/{len(cat):,d} objects in {len(set(out["GROUP_ID"])):,d} unique groups')
 
         outfile = os.path.join(outdir, f'SGA2025-parent-{region}-{version}.fits')
         print(f'Writing {len(out):,d} objects to {outfile}')
         out.meta['EXTNAME'] = 'PARENT'
         out.write(outfile, overwrite=True)
+        pdb.set_trace()
 
     pdb.set_trace()
 
