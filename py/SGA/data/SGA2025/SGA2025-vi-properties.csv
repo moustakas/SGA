@@ -3,6 +3,8 @@
 # updated.
 #
 objname_ned,ra,dec,diam,pa,ba,diam_hyperleda,update_hyperleda_coords,comment
+ESO 194-IG 035 NED01,11.291583333333332,-50.04022222222222,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm drops 'ESO 194-IG 035 NED02'
+ESO 194-IG 035 NED02,11.301499999999997,-50.04077777777778,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm drops 'ESO 194-IG 035 NED02'
 ESO 575- G 044,195.08679166666664,-22.693694444444446,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
 ESO 575- G 044 NED02,195.08337499999996,-22.692,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
 UGC 01386 NOTES01,28.748249999999995,13.46725,-99.,-99.,-99.,-99.,No,Center on the galaxy.
@@ -689,7 +691,6 @@ AGC 331409,348.833559,9.312457,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
 NGC 3280A,158.19324999999998,-12.634583333333333,-99.,-99.,-99.,-99.,Yes,Update HyperLeda to match NED
 NGC 3280B,158.18254166666665,-12.637305555555555,-99.,-99.,-99.,-99.,Yes,Update HyperLeda to match NED
 NGC 3280C,158.18979166666665,-12.637222222222222,-99.,-99.,-99.,-99.,Yes,Update HyperLeda to match NED
-ESO 415- G 029,37.4386875,-29.6341564,-99.,-99.,-99.,-99.,No,Moved to HyperLeda coordinates
 WISEA J215828.44-583403.6,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 WISEA J220702.36+101414.3,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
 UGC 00389,9.612066,1.976873,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
@@ -752,5 +753,11 @@ PGC2587196,243.7959583333333,59.15833333333333,-99.,90.,-99.,-99.,No,Moved to SG
 IC 3277,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 IC 2155,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 IC 0400,-99.,-99.,1.,100.,0.1,-99.,No,Estimated diameter
-
-
+WISEA J011708.90+161520.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+2MASS J14291396-0310018,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+NGC 1540B,63.792337,-28.479202,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 197-IG 031 NED01,33.1893,-49.5497,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 272-IG 013 NED02,217.906209,-44.989817,-99.,90.,-99.,-99.,No,Moved to 'WISEA J143137.49-445923.3' position
+CGMW 1-2283,122.5476,-14.8979,-99.,-99.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 160-IG 001 NED02,87.798555,-52.902694,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 107-IG 026 NED01,320.9211,-64.3033,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position

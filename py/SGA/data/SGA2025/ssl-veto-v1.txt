@@ -110,3 +110,4 @@ VI Zw 152,dr9-south
 Hydra I Dwarf,dr9-south
 WISEA J041642.81-121133.2,dr9-south
 WISEA J071643.09+532255.7,dr9-north
+WISEA J011708.90+161520.1,dr9-south
