@@ -1140,7 +1140,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         cc = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits'))
 
         #dr = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-dr9-north-v1.0.fits'))
-        #dr = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-dr11-south-v1.0.fits'))
+        dr = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-dr11-south-v1.0.fits'))
         I = np.where((dr['RA'] != dr['RA_HYPERLEDA']) * (dr['RA_HYPERLEDA'] != -99.) * ~dr['RESOLVED'] * (dr['ROW_LVD'] == -99))[0]
         mm = dr[I]
 
@@ -1150,6 +1150,8 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         srt = np.argsort(sep.value)[::-1]
         sep = sep[srt]
         mm = mm[srt]
+        diam, _, _, _ = choose_geometry(mm, mindiam=0.)
+
 
         #plt.clf() ; plt.hist(sep.value, bins=100) ; plt.savefig('junk.png')
 
@@ -1158,7 +1160,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         #bb = mm[(sep.value > 120.) * (sep.value <= 240.)]
         #bb = mm[(sep.value > 60.) * (sep.value <= 120.)]
         #bb = mm[(sep.value > 30.) * (sep.value <= 60.)]
-        bb = mm[(sep.value > 3.) * (sep.value <= 30.)]
+        bb = mm[(sep.value > 3.) * (sep.value <= 30.) * (diam > 60.)]
 
         multipage_skypatch(bb, cat=cc, width_arcsec=90., overwrite_viewer=True, overwrite=True, clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
         bb['OBJNAME', 'RA', 'DEC', 'RA_HYPERLEDA', 'DEC_HYPERLEDA'].pprint(max_lines=-1)
