@@ -436,7 +436,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                  'GALEXASC', 'VIII', 'V', 'NGC', ]
             drop_references = []
         case 'GPair':
-            VETO = None
+            VETO = ['ESO 347-IG 014', ]
             if merger_has_diameter:
                 drop_prefixes = []
                 drop_ignore_diam_prefixes = ['CGMW'] # all in the MW disk
@@ -1160,7 +1160,9 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         #bb = mm[(sep.value > 120.) * (sep.value <= 240.)]
         #bb = mm[(sep.value > 60.) * (sep.value <= 120.)]
         #bb = mm[(sep.value > 30.) * (sep.value <= 60.)]
-        bb = mm[(sep.value > 3.) * (sep.value <= 30.) * (diam > 60.)]
+        #bb = mm[(sep.value > 3.) * (sep.value <= 30.) * (diam > 60.)]
+        #bb = mm[(sep.value > 5.) * (sep.value <= 30.) * (diam > 30.) * (diam <= 60.)]
+        bb = mm[(sep.value > 5.) * (sep.value <= 30.) * (diam > 15.) * (diam <= 30.)]
 
         multipage_skypatch(bb, cat=cc, width_arcsec=90., overwrite_viewer=True, overwrite=True, clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
         bb['OBJNAME', 'RA', 'DEC', 'RA_HYPERLEDA', 'DEC_HYPERLEDA'].pprint(max_lines=-1)
@@ -1201,6 +1203,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     from glob import glob
     from astrometry.util.starutil_numpy import deg2dist
     from astrometry.libkd.spherematch import tree_build_radec, trees_match
+    from SGA.ellipse import ellipse_mask_sky, choose_geometry
 
     version_vicuts = parent_version(vicuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
@@ -1303,7 +1306,28 @@ def build_parent_archive(verbose=False, overwrite=False):
                         ignore_objtype=True, trim=True, verbose=False)
     cat = cat[np.argsort(cat['RA'].value)]
     del refcat
-    
+
+    ## trim out object in the LMC and SMC
+    #for cloud in ['LMC', 'SMC']:
+    #    gal = cat[cat['OBJNAME'] == cloud]
+    #    racen, deccen = gal['RA'].value, gal['DEC'].value
+    #
+    #    diam, ba, pa, _ = choose_geometry(gal)
+    #
+    #    semia = diam / 2. / 3600. # [degrees]
+    #    semib = ba * semia
+    #    phi = np.radians(90. - pa)
+    #
+    #    I = np.where(ellipse_mask_sky(
+    #        racen, deccen, semia, semib, phi,
+    #        cat['RA'].value, cat['DEC'].value))
+    #
+    #
+    #    alldiam, _, _, _ = choose_geometry(cat[I], mindiam=0.)
+    #    cat[I][alldiam/60>1]['OBJNAME', ].write('junk.txt', format='csv', overwrite=True)
+    #    pdb.set_trace()
+
+
     # add the Gaia mask bits
     print(f'Adding Gaia bright-star masking bits.')
     
