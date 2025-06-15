@@ -862,6 +862,20 @@ ESO 011- G 002,309.4900,-82.9467,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
 ESO 146-IG 002 NED01,329.3361,-57.5355,0.5,0.,1.,-99.,No,Moved to LS/DR10 position and estimated diameter
 ESO 081-IG 005 NED01,34.3662,-65.2757,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
 2MASS J17004910+1431026,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
-ESO 382-IG 001 NED03 195.7008015,-33.6126297,0.6,0.,1.,-99.,No,Moved to HyperLeda position and estimated diameter
-ESO 382-IG 001 NED02 195.697359,-33.6106803,-99.,90.,-99.,-99.,No,Moved to HyperLeda position
-ESO 382-IG 001 NED01 195.69704099999998,-33.6083333,-99.,90.,-99.,-99.,No,Moved to HyperLeda positionMoved to LS/DR10 position
+ESO 382-IG 001 NED03,195.7008015,-33.6126297,0.6,0.,1.,-99.,No,Moved to HyperLeda position and estimated diameter
+ESO 382-IG 001 NED02,195.697359,-33.6106803,-99.,90.,-99.,-99.,No,Moved to HyperLeda position
+ESO 382-IG 001 NED01,195.69704099999998,-33.6083333,-99.,90.,-99.,-99.,No,Moved to HyperLeda positionMoved to LS/DR10 position
+ESO 118-IG 003 NED03,62.1280,-57.5858,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 054-IG 014 NED01,54.2259,-68.8330,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 120-IG 017 NED01,87.8982,-60.9613,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 030-IG 012 NED01,33.1374,-72.4257,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J145017.59+205611.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+PGC 3098076,93.2115,-33.6429,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 051-IG 001 NED01,8.1596,-67.9658,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J183956.24-425712.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 500-IG 038 NED02,156.5355,-22.9382,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+CGMW 2-4263,130.4403,-25.6390,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 506-IG 034 NED01,190.1424,-23.2690,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 161-IG 014 NED01,97.8482,-54.8645,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+SN 2005lu HOST,39.017446,-17.263923,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+LEDA 085430,350.7400,16.8755,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position

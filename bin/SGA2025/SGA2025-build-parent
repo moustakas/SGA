@@ -1152,7 +1152,6 @@ def build_parent_vicuts(verbose=False, overwrite=False):
         mm = mm[srt]
         diam, _, _, _ = choose_geometry(mm, mindiam=0.)
 
-
         #plt.clf() ; plt.hist(sep.value, bins=100) ; plt.savefig('junk.png')
 
         #bb = mm[sep.value > 1200.]
