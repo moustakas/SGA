@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 """MPI wrapper for the Siena Galaxy Atlas 2025 project.
 
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+shifter --image legacysurvey/sga:0.3 bash
+source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
+
 SGA-mpi -h
 
 """

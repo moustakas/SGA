@@ -1446,10 +1446,11 @@ def build_parent(verbose=False, overwrite=False):
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
 
-    cols = ['OBJNAME', 'OBJTYPE', 'MORPH', 'BASIC_MORPH', 'RA', 'DEC',
-            'PGC', 'RESOLVED', 'STARFDIST', 'STARDIST', 'STARMAG', 
-            'ROW_PARENT']
-    colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
+    cols = ['OBJNAME', 
+            #'OBJTYPE', 'MORPH', 'BASIC_MORPH', 
+            'RA', 'DEC', 'PGC', 'RESOLVED', 
+            'STARFDIST', 'STARDIST', 'STARMAG']#, 'ROW_PARENT']
+    #colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
 
     for region in ['dr9-north', 'dr11-south']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
@@ -1461,17 +1462,26 @@ def build_parent(verbose=False, overwrite=False):
         diam /= 60. # [arcmin]
 
         ra, dec = cat['RA'].value, cat['DEC'].value
+        allmorph = []
+        for objtype, morph, basic_morph in zip(cat['OBJTYPE'].value, cat['MORPH'].value, cat['BASIC_MORPH'].value):
+            morph1 = np.array([objtype, morph, basic_morph])
+            morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
+            allmorph.append(morph1)
 
         grp = cat[cols]
-        grp.add_column(radec_to_name(ra, dec, unixsafe=False), name='SGANAME', index=0)
-        grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=colindx)
-        grp.add_column(diam.astype('f4'), name='DIAM', index=colindx+1)
-        grp.add_column(ba.astype('f4'), name='BA', index=colindx+2)
-        grp.add_column(pa.astype('f4'), name='PA', index=colindx+3)
-        grp.add_column(mag.astype('f4'), name='MAG', index=colindx+4)
-        grp.add_column(band, name='BAND', index=colindx+5)
+        grp.add_column(cat['ROW_PARENT'], name='SGAID', index=0)
+        grp.add_column(radec_to_name(ra, dec, unixsafe=False), name='SGANAME', index=1)
+        grp.add_column(allmorph, name='MORPH', index=3)
+        grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=6)
+        grp.add_column(diam.astype('f4'), name='DIAM', index=7)
+        grp.add_column(ba.astype('f4'), name='BA', index=8)
+        grp.add_column(pa.astype('f4'), name='PA', index=9)
+        grp.add_column(mag.astype('f4'), name='MAG', index=10)
+        grp.add_column(band, name='BAND', index=11)
 
         grp = build_group_catalog(grp)
+
+        pdb.set_trace()
 
         # final selection and data model
         I = (diam > 45./60.)# * (diam < 2.)

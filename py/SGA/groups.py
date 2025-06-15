@@ -150,7 +150,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     cat.add_column(Column(name='GROUP_PRIMARY', data=np.zeros(len(cat), dtype=bool)))
     cat.add_column(Column(name='GROUP_RA', length=len(cat), dtype='f8')) # diameter-weighted center
     cat.add_column(Column(name='GROUP_DEC', length=len(cat), dtype='f8'))
-    cat.add_column(Column(name='GROUP_DIAMETER', length=len(cat), dtype='f4'))
+    cat.add_column(Column(name='GROUP_DIAM', length=len(cat), dtype='f4'))
 
     # Initialize a unique group number for each galaxy
     gnum = np.arange(len(cat)).astype(np.int32)
@@ -216,7 +216,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     if len(I) > 0:
         cat['GROUP_RA'][I] = ra[I]
         cat['GROUP_DEC'][I] = dec[I]
-        cat['GROUP_DIAMETER'][I] = diam[I]
+        cat['GROUP_DIAM'][I] = diam[I]
         cat['GROUP_NAME'][I] = cat['SGANAME'][I]
         cat['GROUP_PRIMARY'][I] = True
 
@@ -236,8 +236,8 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
         # cap the maximum size of the group
         if gdiam > 15.:# and len(I) <= 2:
             gdiam = 1.1 * np.max(pad) * 60 # [arcmin]
-        cat['GROUP_DIAMETER'][I] = gdiam
-        if cat['GROUP_DIAMETER'][I[0]] < np.max(diam[I]):
+        cat['GROUP_DIAM'][I] = gdiam
+        if cat['GROUP_DIAM'][I[0]] < np.max(diam[I]):
             print('Should not happen!')
             raise ValueError
 
