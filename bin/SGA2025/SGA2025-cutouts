@@ -11,9 +11,9 @@ Working interactively in a login node, one would do something like:
     or
 
   shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh --image dstndstn/cutouts:dvsro4 bash
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --annotate
-  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr9-north --mp=1 --photo
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr11-south --mp=1
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr11-south --mp=1 --annotate
+  SGA2025-cutouts --outdir=/pscratch/sd/i/ioannis/SGA2025/parent --catalog=sga2025-parent --region=dr11-south --mp=1 --photo
 
 
 Alternatively, in production, one would do:
@@ -1647,7 +1647,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #cat = cat[np.isin(cat['OBJNAME'], ['MCG +00-11-011'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023242.56+005813.7'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['MCG -02-28-007'])]
-            cat = cat[np.isin(cat['OBJNAME'], ['ESO 569- G 005'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['ESO 569- G 005'])]
+            cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 054- G 004'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 002- G 013', 'WISEA J110416.71-003141.3'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
@@ -1906,6 +1907,7 @@ def main():
     parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
     parser.add_argument('--no-fits-cutouts', action='store_false', dest='fits_cutouts', help='Do not generate FITS cutouts.')
     parser.add_argument('--ivar-cutouts', action='store_true', help='Generate ivar cutouts.')
+    parser.add_argument('--invvar', dest='ivar_cutouts', action='store_true', help='Generate ivar cutouts.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
     parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
     parser.add_argument('--debug', action='store_true', help='Print out a variety of debugging messages.')
