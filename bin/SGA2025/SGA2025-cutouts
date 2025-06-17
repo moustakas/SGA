@@ -132,14 +132,14 @@ def _photo_one(args):
 
 
 def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
-              use_photutils=False, verbose=False, qaplot=False):
+              box_arcsec=5., verbose=False, qaplot=False):
     """Perform photometry on a single cutout.
 
     """
     from astropy.io import fits
     from astropy.wcs import WCS
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
-    from photutils.aperture import EllipticalAperture
+    from photutils.aperture import EllipticalAperture, CircularAperture
     from photutils.morphology import gini
 
     from legacypipe.survey import wcs_for_brick, BrickDuck
@@ -169,33 +169,31 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
     out.add_column(radec_to_name(ra, dec, unixsafe=False)[0], name='SGANAME', index=0)
     for col in ['RA', 'DEC']:
         out[f'{col}_PHOT'] = [-99.]
-    for col in ['RA', 'DEC']:
-        out[f'{col}_PHOT_ERR'] = [-99.]
+    #for col in ['RA', 'DEC']:
+    #    out[f'{col}_PHOT_ERR'] = [-99.]
     out['SEP'] = [np.float32(-99.)]
-    out['DIAM_INIT'] = diam[0].astype('f4')
+    out['DIAM_INIT'] = diam[0].astype('f4') # [arcsec]
     out['BA_INIT'] = ba[0].astype('f4')
     out['PA_INIT'] = pa[0].astype('f4') # CCW from y-axis
-    out['GINI_INIT'] = [np.float32(-99.)]
     for col in ['DIAM', 'BA', 'PA']:
         out[f'{col}_PHOT'] = [np.float32(-99.)]
-    for col in ['DIAM', 'BA', 'PA']:
-        out[f'{col}_PHOT_ERR'] = [np.float32(-99.)]
-    for col in ['GINI']:
-        out[f'{col}_PHOT'] = [np.float32(-99.)]
-        out[f'{col}_PHOT_ERR'] = [np.float32(-99.)]
+    #for col in ['DIAM', 'BA', 'PA']:
+    #    out[f'{col}_PHOT_ERR'] = [np.float32(-99.)]
     for col in ['INIT', 'PHOT']:
         for band in bands:
             out[f'FLUX_{col}_{band.upper()}'] = [np.float32(-99.)]
         for band in bands:
             out[f'FLUX_{col}_ERR_{band.upper()}'] = [np.float32(-99.)]
         for band in bands:
+            out[f'GINI_{col}_{band.upper()}'] = [np.float32(-99.)]
+        for band in bands:
             out[f'FRACMASK_{col}_{band.upper()}'] = [np.float32(-99.)]
 
-    for col in ['DIAM', 'BA', 'PA']:
-        out[f'{col}_PHOT_ERR'] = [np.float32(-99.)]
+    #for col in ['DIAM', 'BA', 'PA']:
+    #    out[f'{col}_PHOT_ERR'] = [np.float32(-99.)]
 
     #out = photo_datamodel(out, bands=bands)
-    out_perband = photo_datamodel(bands=bands)
+    #out_perband = photo_datamodel(bands=bands)
 
     # read the data
     with fits.open(fitsfile) as H:
@@ -204,6 +202,11 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
         hdr = H[0].header
         imgs = H[0].data
         ivars = H[1].data
+
+    # any data?
+    if np.all(imgs == 0.):
+        print(f'WARNING: No data for object {obj["OBJNAME"]}')
+        return out
 
     hdr['NAXIS'] = 2
     hdr.pop('NAXIS3')
@@ -215,22 +218,30 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
     nband, height, width = imgs.shape
 
     # build the Gaia/Tycho mask
-    brickname = f'custom-{custom_brickname(ra, dec)}'
-    brick = BrickDuck(ra, dec, brickname)
+    if False:#obj['STARFDIST'] == 99.:
+        gaia_mask = np.zeros((height, width), bool) # True=Gaia star(s)
+    else:
+        brickname = f'custom-{custom_brickname(ra, dec)}'
+        brick = BrickDuck(ra, dec, brickname)
+    
+        targetwcs = wcs_for_brick(brick, W=float(width), H=float(height), pixscale=pixscale)
+    
+        refstars = get_reference_sources(survey, targetwcs, pixscale, bands=bands,
+                                         tycho_stars=True, gaia_stars=True,
+                                         large_galaxies=False, star_clusters=False)
+        refstars = refstars[0]
 
-    targetwcs = wcs_for_brick(brick, W=float(width), H=float(height), pixscale=pixscale)
+        refmap = get_reference_map(targetwcs, refstars)
+        gaia_mask = refmap > 0 # True=Gaia star(s)
 
-    refstars = get_reference_sources(survey, targetwcs, pixscale, bands=bands,#None,
-                                     tycho_stars=True, gaia_stars=True,
-                                     large_galaxies=False, star_clusters=False,
-                                     gaia_margin=None)
-    refmap = get_reference_map(targetwcs, refstars[0])
-    gaia_mask = refmap > 0 # True=Gaia star(s)
+        for star in refstars[refstars.in_bounds]:
+            ap = CircularAperture((star.iby, star.ibx), star.radius_pix)
+            gaia_mask = np.logical_or(gaia_mask, ap.to_mask().to_image((height, width)) != 0.) # object mask=True
 
-    # initial ellipse geometry
+    # initial ellipse geometry and aperture
     xinit, yinit = wcs.wcs_world2pix(ra, dec, 1)
     xyinit = (xinit, yinit)
-    a_init = diam[0] / 2. / pixscale
+    a_init = diam[0] / 2. / pixscale # [pixels]
     b_init = a_init * ba[0]
     theta_init = np.radians(pa[0] - 90.) # CCW from x-axis
 
@@ -238,135 +249,102 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
     apmask_init = ap_init.to_mask().to_image((height, width)) != 0. # object mask=True
 
     # 5x5 arcsec box centered on initial position
-    box_init = EllipticalAperture(xyinit, a=5./pixscale, b=5./pixscale, theta=0.)
+    box_init = EllipticalAperture(xyinit, a=box_arcsec/2./pixscale,
+                                  b=box_arcsec/2./pixscale, theta=0.)
     boxmask_init = box_init.to_mask().to_image((height, width)) != 0. # True=object mask
 
-    aps_phot = []
+    # generate the ivar-weighted mean image; flag pixels that are
+    # masked in all bandpasses
+    
+    wivar = np.sum(ivars, axis=0)
+    wimg = np.sum(ivars * imgs, axis=0)
+    I = wivar > 0.
+    wimg[I] /= wivar[I]
+    wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask)    
 
-    good_bands = []
+    # if the center is fully masked, move on
+    if np.all(wimg[boxmask_init] == 0.) or np.all(wmask[boxmask_init]):
+        print(f'WARNING: fully masked {box_arcsec:.1f}x{box_arcsec:.1f} arcsec center for object {obj["OBJNAME"]}!')
+        return out
+
+    # compute the mean geometry
+
+    ## photutils version which does not perform as well as find_galaxy
+    #from photutils.morphology import data_properties
+    ##from photutils.segmentation import SourceCatalog, SegmentationImage
+    ##src = SourceCatalog(img, SegmentationImage(np.ones_like(img, int)), error=error, mask=mask)[0]
+    #src = data_properties(img, mask=wmask)
+    #xyphot = (src.xcentroid, src.ycentroid)
+    #ba_phot = src.ellipticity.value
+    #a_phot = src.semimajor_sigma.value # * 1.5
+    #b_phot = a_phot * ba_phot
+    #pa_phot = (360. - src.orientation.value) % 180 + 90. # CCW from y-axis
+    #theta_phot = np.radians(pa_phot - 90.) # CCW from x-axis
+
+    mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=True)#quiet=False)#level=minsb)
+    xpeak, ypeak = mge.xpeak, mge.ypeak
+
+    import matplotlib.pyplot as plt
+    plt.clf()
+    mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=True, plot=True)#level=minsb, quiet=True, plot=True)
+    plt.savefig('ioannis/tmp/junk2.png')
+
+    xyphot = (mge.ymed, mge.xmed) # swapped coordinates!
+    a_phot = mge.majoraxis # * 1.5 # multiplicative factor? hack?? [pixels]
+    ba_phot = 1. - mge.eps
+    b_phot = a_phot * ba_phot
+    pa_phot = mge.pa # CCW from y-axis
+    theta_phot = np.radians((360. - mge.theta) % 180.) # convert from CW from x-axis to CCW from x-axis
+
+    out['DIAM_PHOT'] = a_phot * pixscale # [arcsec]
+    out['BA_PHOT'] = ba_phot
+    out['PA_PHOT'] = pa_phot
+
+    # aperture photometry in photometric ellipse
+    ap_phot = EllipticalAperture(xyphot, a=a_phot, b=b_phot, theta=theta_phot)
+    apmask_phot = ap_phot.to_mask().to_image((height, width)) != 0.
+
+    ra_phot, dec_phot = wcs.all_pix2world(xyphot[0], xyphot[1], 1)
+    out['RA_PHOT'] = ra_phot
+    out['DEC_PHOT'] = dec_phot
+
+    # separation between initial and final coordinates
+    out['SEP'] = arcsec_between(ra, dec, ra_phot, dec_phot)
+
+    # next loop on each bandpass
     for iband, band in enumerate(bands):
         img = imgs[iband, :, :]
 
-        # no data or initial center (in a 5x5 arcsec box) is fully masked
-        if np.all(img == 0.) or np.all(img[boxmask_init] == 0.):
-            continue
-        good_bands.append(band)
-
         ivar = ivars[iband, :, :]
-        mask = np.logical_or(ivar <= 0., gaia_mask)
+        mask = np.logical_or(ivar <= 0., gaia_mask) # True=masked
         error = get_error(ivar)
 
-        # aperture photometry in initial ellipse and fraction of masked pixels
+        # aperture photometry, fraction of masked pixels, and Gini
+        # coefficient in the initial ellipse geometry
         flux_init, ferr_init = ap_init.do_photometry(img, error=error, mask=mask)
-        fracmask_init = np.sum(mask[apmask_init]) / apmask_init.size
+        fracmask_init = np.sum(mask[apmask_init]) / mask[apmask_init].size
         gini_init = gini(img * apmask_init, mask=mask)
 
-        out['GINI_INIT'] = gini_init
         out[f'FLUX_INIT_{band.upper()}'] = flux_init[0]
         out[f'FLUX_INIT_ERR_{band.upper()}'] = ferr_init[0]
         out[f'FRACMASK_INIT_{band.upper()}'] = fracmask_init
+        if np.isfinite(gini_init):
+            out[f'GINI_INIT_{band.upper()}'] = gini_init
 
-        #out_perband[f'FLUX_INIT_{band.upper()}'] = flux_init[0]
-        #out_perband[f'FLUX_INIT_{band.upper()}'] = 22.5 - 2.5 * np.log10(flux_init[0])
-        out_perband[f'GINI_INIT_{band.upper()}'] = gini_init
-        out_perband[f'FRACMASK_INIT_{band.upper()}'] = fracmask_init
+        # aperture photometry, fraction of masked pixels, and Gini
+        # coefficient in the derived geometry
+        flux_phot, ferr_phot = ap_phot.do_photometry(img, error=error, mask=mask)
+        fracmask_phot = np.sum(mask[apmask_phot]) / mask[apmask_phot].size
+        gini_phot = gini(img * apmask_phot, mask=mask)
 
-        # now measure the geometry from the data themselves
-        if use_photutils:
-            from photutils.morphology import data_properties
-            #from photutils.segmentation import SourceCatalog, SegmentationImage
-            src = data_properties(img, mask=mask)#, wcs=wcs)
-            #src = SourceCatalog(img, SegmentationImage(np.ones_like(img, int)), error=error, mask=mask)[0]
-            xyphot = (src.xcentroid, src.ycentroid)
-            ba_phot = src.ellipticity.value
-            a_phot = src.semimajor_sigma.value # * 1.5
-            b_phot = a_phot * ba_phot
-            pa_phot = (360. - src.orientation.value) % 180 + 90. # CCW from y-axis
-            theta_phot = np.radians(pa_phot - 90.) # CCW from x-axis
-        else:
-            mge = find_galaxy(img * ~mask, binning=3, level=minsb, quiet=True)
-            if band == refband:
-                xpeak, ypeak = mge.xpeak, mge.ypeak
-            if band == refband:
-                import matplotlib.pyplot as plt
-                plt.clf() ; mge = find_galaxy(img, quiet=True, plot=True) ; plt.savefig('ioannis/tmp/junk2.png')
-            xyphot = (mge.ymed, mge.xmed) # swapped coordinates!
-            a_phot = mge.majoraxis * 1.1 # multiplicative factor? hack??
-            ba_phot = 1. - mge.eps
-            b_phot = a_phot * ba_phot
-            pa_phot = mge.pa # CCW from y-axis
-            theta_phot = np.radians((360. - mge.theta) % 180.) # convert from CW from x-axis to CCW from x-axis
-
-        # aperture photometry in photometric ellipse
-        ap_phot = EllipticalAperture(xyphot, a=a_phot, b=b_phot, theta=theta_phot)
-        #flux_phot, ferr_phot = ap_phot.do_photometry(img, error=error, mask=mask)
-
-        # Gini coefficient in the aperture mask and fraction of masked pixels
-        apmask_phot = ap_phot.to_mask().to_image(img.shape) != 0.
-        fracmask_phot = np.sum(mask[apmask_phot]) / apmask_phot.size
-
-        ra_phot, dec_phot = wcs.all_pix2world(xyphot[0], xyphot[1], 1)
-
-        out_perband[f'RA_PHOT_{band.upper()}'] = ra_phot
-        out_perband[f'DEC_PHOT_{band.upper()}'] = dec_phot
-        #out_perband[f'X_PHOT_{band.upper()}'] = xyphot[0]
-        #out_perband[f'Y_PHOT_{band.upper()}'] = xyphot[1]
-        out_perband[f'DIAM_PHOT_{band.upper()}'] = a_phot * pixscale
-        out_perband[f'BA_PHOT_{band.upper()}'] = ba_phot
-        out_perband[f'PA_PHOT_{band.upper()}'] = pa_phot
-        #out_perband[f'FLUX_PHOT_{band.upper()}'] = flux_phot[0]
-        #out_perband[f'FLUX_PHOT_{band.upper()}'] = 22.5 - 2.5 * np.log10(flux_phot[0])
-        out_perband[f'GINI_PHOT_{band.upper()}'] = gini(img * apmask_phot, mask=mask)
-        out_perband[f'FRACMASK_PHOT_{band.upper()}'] = fracmask_phot
-
-        # also copy to 'out' structure
+        #out[f'FLUX_PHOT_{band.upper()}'] = 22.5 - 2.5 * np.log10(flux_phot[0])
+        #out[f'FLUX_PHOT_ERR_{band.upper()}'] = ferr_phot[0] / flux_phot[0] / np.log(10.)
+        out[f'FLUX_PHOT_{band.upper()}'] = flux_phot[0]
+        out[f'FLUX_PHOT_ERR_{band.upper()}'] = ferr_phot[0]
         out[f'FRACMASK_PHOT_{band.upper()}'] = fracmask_phot
+        if np.isfinite(gini_phot):
+            out[f'GINI_PHOT_{band.upper()}'] = gini_phot
 
-        if qaplot:
-            aps_phot.append(ap_phot)
-
-    # get median quantities
-    mn, sig = -99., -99.
-    for col in ['RA', 'DEC', 'DIAM', 'BA', 'PA', 'GINI']:
-        vals = np.array([out_perband[f'{col}_PHOT_{band.upper()}'].value for band in bands])
-        I = vals != -99.
-        if np.any(I):
-            #mn = np.mean(vals[I])
-            mn = np.median(vals[I])
-            sig = np.std(vals[I])
-        out[f'{col}_PHOT'] = mn
-        out[f'{col}_PHOT_ERR'] = sig
-
-    # separation between initial and final coordinates
-    out['SEP'] = arcsec_between(ra, dec, out['RA_PHOT'][0], out['DEC_PHOT'][0])
-
-    # aperture photometry in median photometric ellipse
-    if len(good_bands) > 0:
-        xphot, yphot = wcs.wcs_world2pix(out['RA_PHOT'].value, out['DEC_PHOT'].value, 1)
-        xyphot = (xphot[0], yphot[0])
-        a_phot = out['DIAM_PHOT'][0] / 2. / pixscale
-        ba_phot = out['BA_PHOT'][0]
-        b_phot = a_phot * ba_phot
-        pa_phot = out['PA_PHOT'][0]
-        theta_phot = np.radians(pa_phot - 90.)
-
-        ap_phot = EllipticalAperture(xyphot, a=a_phot, b=b_phot, theta=theta_phot)
-
-        for iband, band in enumerate(bands):
-            if not band in good_bands:
-                continue
-            img = imgs[iband, :, :]
-            ivar = ivars[iband, :, :]
-            mask = np.logical_or(ivar <= 0., gaia_mask)
-            error = get_error(ivar)
-
-            flux_phot, ferr_phot = ap_phot.do_photometry(img, error=error, mask=mask)
-            #out[f'FLUX_PHOT_{band.upper()}'] = 22.5 - 2.5 * np.log10(flux_phot[0])
-            #out[f'FLUX_PHOT_ERR_{band.upper()}'] = ferr_phot[0] / flux_phot[0] / np.log(10.)
-            out[f'FLUX_PHOT_{band.upper()}'] = flux_phot[0]
-            out[f'FLUX_PHOT_ERR_{band.upper()}'] = ferr_phot[0]
-
-    print(out.pprint(max_width=-1))
 
     render_jpeg = True
     if qaplot:
@@ -376,9 +354,8 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
         junkfile = 'ioannis/tmp/junk.png'
         #junkfile = 'junk.png'
 
-        refindx = np.where(np.array(bands) == refband)[0][0]
-        img = imgs[refindx, :] # r-band
-        apmask = aps_phot[refindx].to_mask().to_image(img.shape) != 0.
+        #refindx = np.where(np.array(bands) == refband)[0][0]
+        #img = imgs[refindx, :] # r-band
 
         fig, ax = plt.subplots(figsize=(8, 8))
         ax.set_xlim(0, width)
@@ -387,15 +364,15 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
             jpgfile = os.path.join(outdir, get_raslice(ra), objname+'.jpeg')
             jpg = mpimg.imread(jpgfile)
             jpgmask = np.flipud(~gaia_mask)[:, :, np.newaxis]
-            #jpgmask = np.flipud(apmask)[:, :, np.newaxis]
+            #jpgmask = np.flipud(apmask_phot)[:, :, np.newaxis]
             im = ax.imshow(jpg * jpgmask, origin='lower', interpolation='nearest')
             ax.invert_yaxis() # JPEG is flipped relative to FITS
         else:
-            #ax.imshow(img * apmask, origin='lower', cmap=cmap)
-            ax.imshow(np.log(img.clip(img[xpeak, ypeak]/1e4)),# * ~gaia_mask,
+            #ax.imshow(img * apmask_phot, origin='lower', cmap=cmap)
+            ax.imshow(np.log(wimg.clip(wimg[xpeak, ypeak]/1e4)) * ~gaia_mask,
                       origin='lower', cmap='inferno', interpolation='nearest')
-        #ax.set_xticks([])
-        #ax.set_yticks([])
+        ax.set_xticks([])
+        ax.set_yticks([])
         ax.margins(0)
 
         # these two sets of drawings should be identical
@@ -411,22 +388,17 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
                      pa=out['PA_PHOT'], x0=xphot, y0=yphot, height_pixels=width,
                      pixscale=pixscale, color='cyan', linestyle='-', linewidth=2, 
                      ax=ax, draw_majorminor_axes=True, jpeg=render_jpeg)
-        for iband, band in enumerate(bands):
-            xphot, yphot = wcs.wcs_world2pix(out_perband[f'RA_PHOT_{band.upper()}'],
-                                             out_perband[f'DEC_PHOT_{band.upper()}'], 1)
-            draw_ellipse(major_axis_arcsec=out_perband[f'DIAM_PHOT_{band.upper()}'],
-                         ba=out_perband[f'BA_PHOT_{band.upper()}'],
-                         pa=out_perband[f'PA_PHOT_{band.upper()}'],
-                         x0=xphot, y0=yphot, height_pixels=width, pixscale=pixscale,
-                         color='cyan', linestyle='-', linewidth=0.5, ax=ax, 
-                         draw_majorminor_axes=False, jpeg=render_jpeg)
+
+        txt = '\n'.join([out['SGANAME'][0], out['OBJNAME'][0]])#, f'{ra:.7f}, {dec:.6f}'])
+        ax.text(0.03, 0.93, txt, transform=ax.transAxes, ha='left', va='center',
+                color='white', bbox=dict(boxstyle='round', facecolor='k', alpha=0.5), 
+                linespacing=1.5, fontsize=10)
 
         fig.tight_layout()
-        fig.savefig(junkfile)
+        fig.savefig(junkfile, bbox_inches=0)#, dpi=200)
 
     print(out.pprint(max_width=-1))
     #print(out[out.colnames[-8:]])
-    pdb.set_trace()
 
     return out
 
@@ -1809,7 +1781,10 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['MCG +00-11-011'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023242.56+005813.7'])]
-            #cat = cat[np.isin(cat['OBJNAME'], ['MCG -02-28-007'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['UGCA 020'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['CGMW 5-02508'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['CGMW 5-00897'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J101736.54-075650.7'])]
             
             #print('SUPER HACK!')
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 569- G 005'])]
@@ -1817,9 +1792,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #cat['DEC'] -= 3./3600.
 
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
-
-            cat = cat[np.isin(cat['OBJNAME'], ['ESO 409- G 008'])]
-
+            cat = cat[np.isin(cat['OBJNAME'], ['KUG 1045+278'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['ESO 409- G 008'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 054- G 004'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 002- G 013', 'WISEA J110416.71-003141.3'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]

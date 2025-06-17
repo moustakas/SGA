@@ -197,7 +197,8 @@ class find_galaxy:
 
         assert img.ndim == 2, "IMG must be a two-dimensional array"
 
-        a = ndimage.median_filter(img, binning)
+        a = ndimage.gaussian_filter(img, binning)
+        #a = ndimage.median_filter(img, binning)
 
         if level is None:
             level = np.percentile(a, (1 - fraction)*100)
@@ -211,7 +212,7 @@ class find_galaxy:
         #import matplotlib.pyplot as plt
         #_img = img.copy()
         #_img[labels != j] = 0.
-        #plt.clf() ; plt.imshow(np.log(_img), origin='lower') ; plt.savefig('ioannis/tmp/junk2.png')
+        #plt.clf() ; plt.imshow(np.log(_img), origin='lower') ; plt.savefig('ioannis/tmp/junk3.png')
         #import pdb ; pdb.set_trace()
 
         self.second_moments(img)
