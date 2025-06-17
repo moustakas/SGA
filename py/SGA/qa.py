@@ -53,32 +53,57 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
-def draw_ellipse(ax, diam, ba, pa, xpix, ypix, pixscale=0.262, color='red', 
-                 linestyle='-', majorminor=True):
+def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
+                 ax=None, pixscale=0.262, color='red', linestyle='-',
+                 alpha=0.9, clip=True, jpeg=False, draw_majorminor_axes=True):
+    """Draw an ellipse on either a numpy array (e.g., FITS image) or a JPEG or
+    PNG image.
+
+    major_axis_arcsec - major axis length in arcsec
+    ba - minor-to-major axis ratio; NB: ellipticity = 1 - ba
+    pa - astronomical position angle (degrees) measured CCW from the y-axis
+    x0 - x-center of the ellipse (zero-indexed numpy coordinates)
+    y0 - y-center of the ellipse (zero-indexed numpy coordinates)
+    height_pixels - image height in pixels (required if jpeg=True)
+    ax - draw on an existing matplotlib.pyplot.Axes object
+    pixscale - pixel scale [arcsec / pixel]
+
+    NB: If jpeg=True, ycen = height_pixels-y0 and theta=90-pa; otherwise, ycen =
+    y0 and theta=pa-90.
+
+    """
     from matplotlib.patches import Ellipse
 
-    semimajor = diam / pixscale # [pixels]
-    semiminor = ba * semimajor  # [pixels]
-    theta = np.radians(pa - 90.)
-    #theta = np.radians(90. - pa)
-    x0 = xpix
-    #y0 = width - ypix
-    y0 = ypix
+    if ax is None:
+        import matplotlib.pyplot as plt
+        ax = plt.gca()
 
-    # FIXME -
-    #   drawing on jpeg: need y0 = width-ypix, angle=90.-pa, and theta=90-pa
-    #   drawing on image: need y0 = ypix,angle=pa-90., and theta=pa-90
+    major_axis_pixels = major_axis_arcsec / pixscale # [pixels]
+    minor_axis_pixels = ba * major_axis_pixels  # [pixels]
+    xcen = x0
 
-    ax.add_artist(Ellipse((x0, y0), semimajor, semiminor, angle=pa-90.,#90.-pa,
-                          facecolor='none', edgecolor=color, lw=2, ls=linestyle,
-                          alpha=0.9, clip_on=True))
+    if jpeg:
+        if height_pixels is None:
+            raise ValueError('Image `height_pixels` is mandatory when jpeg=True')
+        ycen = height_pixels - y0       # jpeg/png y-axis is flipped
+        ellipse_angle = 90. - pa # CCW from x-axis and flipped
+    else:
+        ycen = y0
+        ellipse_angle = pa - 90. # CCW from x-axis
+    theta = np.radians(ellipse_angle)
 
-    if majorminor:
-        # Draw the major and minor axes
-        x1, y1 = x0 + semimajor/2. * np.cos(theta), y0 + semimajor/2. * np.sin(theta)
-        x2, y2 = x0 - semimajor/2. * np.cos(theta), y0 - semimajor/2. * np.sin(theta)
-        x3, y3 = x0 + semiminor/2. * np.sin(theta), y0 - semiminor/2. * np.cos(theta)
-        x4, y4 = x0 - semiminor/2. * np.sin(theta), y0 + semiminor/2. * np.cos(theta)
+
+    ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels, angle=ellipse_angle,
+                  facecolor='none', edgecolor=color, lw=2, ls=linestyle,
+                  alpha=alpha, clip_on=clip)
+    ax.add_artist(ell)
+
+    # Optionally draw the major and minor axes.
+    if draw_majorminor_axes:
+        x1, y1 = xcen + major_axis_pixels/2. * np.cos(theta), ycen + major_axis_pixels/2. * np.sin(theta)
+        x2, y2 = xcen - major_axis_pixels/2. * np.cos(theta), ycen - major_axis_pixels/2. * np.sin(theta)
+        x3, y3 = xcen + minor_axis_pixels/2. * np.sin(theta), ycen - minor_axis_pixels/2. * np.cos(theta)
+        x4, y4 = xcen - minor_axis_pixels/2. * np.sin(theta), ycen + minor_axis_pixels/2. * np.cos(theta)
 
         ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-', clip_on=True)
         ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-', clip_on=True)
@@ -895,7 +920,19 @@ def fig_size_mag(sample, pngfile=None):
 
 def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
                         pixscale, color='#3388ff', linewidth=3):
-    """Write me.
+    """Draw an ellipse on a color image read using PIL. See ``qa.draw_ellipse``
+       for a more recent implementation which works with matplotlib.
+
+       Example:
+           x0 - xcen
+           y0 - im.size[1] - ycen
+           ba - minor-to-major axis ratio
+           pa - astronomical (MGE) position angle (CCW from y-axis)
+           major_axis_diameter_arcsec - major-axis diameter [arcsec]
+           pixscale - pixel scale [arcsec/pixel]
+
+           with Image.open('image.jpg') as im:
+               draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec, pixscale)
 
     """
     from PIL import Image, ImageDraw, ImageFont
