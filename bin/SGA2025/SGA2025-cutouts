@@ -1822,13 +1822,13 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #cat = cat[np.isin(cat['OBJNAME'], ['MCG +00-11-011'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023242.56+005813.7'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['MCG -02-28-007'])]
+            
+            #print('SUPER HACK!')
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 569- G 005'])]
-            print('SUPER HACK!')
-            cat = cat[np.isin(cat['OBJNAME'], ['ESO 569- G 005'])]
-            cat['RA'] += 5./3600.
-            cat['DEC'] -= 3./3600.
+            #cat['RA'] += 5./3600.
+            #cat['DEC'] -= 3./3600.
 
-            #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
+            cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
 
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 054- G 004'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 002- G 013', 'WISEA J110416.71-003141.3'])]
