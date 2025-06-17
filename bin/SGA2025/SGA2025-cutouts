@@ -131,7 +131,7 @@ def _photo_one(args):
     return photo_one(*args)
 
 
-def photo_one(obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
+def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
               use_photutils=False, verbose=False, qaplot=False):
     """Perform photometry on a single cutout.
 
@@ -141,8 +141,12 @@ def photo_one(obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
     from photutils.aperture import EllipticalAperture
     from photutils.morphology import gini
+
+    from legacypipe.survey import wcs_for_brick, BrickDuck
+    from legacypipe.reference import get_reference_sources, get_reference_map
     from SGA.qa import draw_ellipse
     from SGA.find_galaxy import find_galaxy
+    from SGA.io import custom_brickname
 
 
     def get_error(ivar):
@@ -150,7 +154,6 @@ def photo_one(obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
         I = error > 0.
         error[I] = 1. / np.sqrt(error[I])
         return error
-
 
     ra, dec = obj['RA'], obj['DEC']
 
@@ -209,6 +212,19 @@ def photo_one(obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
     nband, height, width = imgs.shape
 
     # FIXME - build the Gaia mask here
+    brickname = f'custom-{custom_brickname(ra, dec)}'
+    brick = BrickDuck(ra, dec, brickname)
+
+    targetwcs = wcs_for_brick(brick, W=float(width), H=float(height), pixscale=pixscale)
+
+    refstars = get_reference_sources(survey, targetwcs, pixscale, bands=None,
+                                     tycho_stars=True, gaia_stars=True,
+                                     large_galaxies=False, star_clusters=False,
+                                     gaia_margin=None)
+    refmap = get_reference_map(targetwcs, refstars)
+
+    pdb.set_trace()
+
     masks = ivars <= 0.
 
     # initial ellipse geometry
@@ -454,7 +470,20 @@ def do_photo(cat, comm=None, mp=1, indir='.', bands=['g', 'r', 'i', 'z'],
     if len(indx) == 0:
         return
 
-    mpargs = [(cat[indx[iobj]], outdir, bands) for iobj in range(len(indx))]
+    if rank == 0:
+        from legacypipe.runs import get_survey
+        from SGA.coadds import RUNS
+        from SGA.io import set_legacysurvey_dir
+
+        set_legacysurvey_dir(region)
+        survey = get_survey(RUNS[region])
+    else:
+        survey = None
+
+    if comm:
+        survey = comm.bcast(survey, root=0)
+
+    mpargs = [(survey, cat[indx[iobj]], outdir, bands) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_photo_one, mpargs)
