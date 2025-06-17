@@ -55,7 +55,8 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
 
 def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
                  ax=None, pixscale=0.262, color='red', linestyle='-',
-                 alpha=0.9, clip=True, jpeg=False, draw_majorminor_axes=True):
+                 linewidth=1, alpha=1.0, clip=True, jpeg=False,
+                 draw_majorminor_axes=True):
     """Draw an ellipse on either a numpy array (e.g., FITS image) or a JPEG or
     PNG image.
 
@@ -94,7 +95,7 @@ def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
 
 
     ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels, angle=ellipse_angle,
-                  facecolor='none', edgecolor=color, lw=2, ls=linestyle,
+                  facecolor='none', edgecolor=color, lw=linewidth, ls=linestyle,
                   alpha=alpha, clip_on=clip)
     ax.add_artist(ell)
 
