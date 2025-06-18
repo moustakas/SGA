@@ -166,19 +166,17 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
 
     diam, ba, pa, ref = choose_geometry(Table(obj))
     out = Table(obj['OBJNAME', 'RA', 'DEC'])
+
+    
     out.add_column(radec_to_name(ra, dec, unixsafe=False)[0], name='SGANAME', index=0)
     for col in ['RA', 'DEC']:
         out[f'{col}_PHOT'] = [-99.]
-    #for col in ['RA', 'DEC']:
-    #    out[f'{col}_PHOT_ERR'] = [-99.]
     out['SEP'] = [np.float32(-99.)]
     out['DIAM_INIT'] = diam[0].astype('f4') # [arcsec]
     out['BA_INIT'] = ba[0].astype('f4')
     out['PA_INIT'] = pa[0].astype('f4') # CCW from y-axis
     for col in ['DIAM', 'BA', 'PA']:
         out[f'{col}_PHOT'] = [np.float32(-99.)]
-    #for col in ['DIAM', 'BA', 'PA']:
-    #    out[f'{col}_PHOT_ERR'] = [np.float32(-99.)]
     for col in ['INIT', 'PHOT']:
         for band in bands:
             out[f'FLUX_{col}_{band.upper()}'] = [np.float32(-99.)]
@@ -397,7 +395,7 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
         fig.tight_layout()
         fig.savefig(junkfile, bbox_inches=0)#, dpi=200)
 
-    print(out.pprint(max_width=-1))
+    #print(out.pprint(max_width=-1))
     #print(out[out.colnames[-8:]])
 
     return out
@@ -446,9 +444,13 @@ def do_photo(cat, comm=None, mp=1, indir='.', bands=['g', 'r', 'i', 'z'],
     mpargs = [(survey, cat[indx[iobj]], outdir, bands) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
-            P.map(_photo_one, mpargs)
+            out = P.map(_photo_one, mpargs)
     else:
-        [photo_one(*mparg) for mparg in mpargs]
+        out = [photo_one(*mparg) for mparg in mpargs]
+
+    if len(out) > 0:
+        out = vstack(out)
+    pdb.set_trace()
 
     sys.stdout.flush()
 
@@ -641,8 +643,9 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
                     majorminor = True
                 else:
                     majorminor = False
-                draw_ellipse(diam, ba, pa, xpix, width-ypix, pixscale=pixscale, ax=ax, color=ellipse_colors[ref],
-                             linestyle=ellipse_linestyles[ref], majorminor=majorminor)
+                draw_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width, pixscale=pixscale,
+                             ax=ax, color=ellipse_colors[ref], linestyle=ellipse_linestyles[ref],
+                             draw_majorminor_axes=majorminor, jpeg=True)
         else:
             for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
                 diam, ba, pa, outref = parse_geometry(Table(onegal), ref)
@@ -653,8 +656,9 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
                         majorminor = True
                     else:
                         majorminor = False
-                    draw_ellipse(diam, ba, pa, xpix, width-ypix, pixscale=pixscale, ax=ax, color=ellipse_colors[outref],
-                                 linestyle=ellipse_linestyles[outref], majorminor=majorminor)
+                    draw_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width, pixscale=pixscale,
+                                 ax=ax, color=ellipse_colors[outref], linestyle=ellipse_linestyles[outref],
+                                 draw_majorminor_axes=majorminor, jpeg=True)
 
     # now annotate
     if len(objnames) > 0:
@@ -1624,15 +1628,15 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
 
-        if False:#True:
-            # All objects with diameter<30 arcsec and no other source
-            # within 30 arcsec.
+        if True:
+            # All objects with diameter<XX arcsec and no other source
+            # within XX arcsec.
             from SGA.util import find_close
             fullcat = cat.copy()
             
             primaries, groups = find_close(cat, cat, rad_arcsec=45., isolated=True)
             diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-            cat = primaries[diam < 30.]#[:128]
+            cat = primaries[diam < 10.][:2]#128]
             #writeit(cat, region)
 
 
@@ -1645,7 +1649,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             fullcat = cat.copy()
             fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
 
-            isolated = True
+            isolated = False # True
             if isolated:
                 #I = (fullcat_diam <= 20.) * (fullcat['ROW_LVD'] == -99) * ~fullcat['RESOLVED']
                 #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
@@ -1706,9 +1710,11 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
                         # hack!
                         prefix_this = np.array(list(zip(*np.char.split(fullcat['OBJNAME'][allmatches[iobj]][m2].value, ' ').tolist()))[0])
                         diam_this = fullcat_diam[allmatches[iobj]][m2]
+                        objtypes = fullcat['OBJTYPE'][allmatches[iobj]][m2].value
 
                     # at least one other object
-                    if len(m2) > 1 and np.any(diam_this == 0.):
+                    #if len(m2) > 1 and np.any(diam_this == 0.):
+                    if len(m2) > 1 and np.any(objtypes == 'g'):
                     #if len(m2) > 1 and 'WISEA' in prefix_this and np.any(diam_this == 0.):
                         outcat.append(cat[[iobj]])
                         outfullcat.append(fullcat[allmatches[iobj]][m2])
@@ -1716,19 +1722,18 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             cat = vstack(outcat)
             print(len(cat))
             #allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-
-            cat = cat[:100]
+            #cat = cat[:100]
 
             _cat = vstack(outfullcat)
             _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
             _cat = _cat[uindx]
 
-            #print('HACK - removing central galaxy from tmplist!')
-            #_cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
+            print('HACK - removing central galaxy from tmplist!')
+            _cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
 
             _cat = _cat[np.argsort(_cat['RA'])]
             writeit(_cat, region, prefix=prefix)
-            pdb.set_trace()
+            #pdb.set_trace()
 
             ##########################
             ## All objects with at least one other sources within XX arcsec.
@@ -1776,7 +1781,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             I = (cat['DIAM_LIT'] < 0.) * (np.char.find(cat['OBJNAME'].value, 'LSBG') != -1)
             cat = cat[I]
 
-        if True:
+        #if False:#True:
             # one-by-one checks
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['MCG +00-11-011'])]
@@ -1792,7 +1797,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #cat['DEC'] -= 3./3600.
 
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
-            cat = cat[np.isin(cat['OBJNAME'], ['KUG 1045+278'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['KUG 1045+278'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 409- G 008'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 054- G 004'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['ESO 002- G 013', 'WISEA J110416.71-003141.3'])]
@@ -1804,6 +1809,13 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             #pdb.set_trace()
             #diam, ba, pa, ref = choose_geometry(cat)
             #parse_geometry(cat, 'SMUDGes')
+
+            #from SGA.groups import build_group_catalog
+            #diam, _, _, _ = choose_geometry(cat, mindiam=10.)
+            #cat['DIAM'] = diam
+            #cat = cat[diam < 15.]
+            #cat['SGANAME'] = radec_to_name(cat['RA'], cat['DEC'], unixsafe=False)
+            #cat = build_group_catalog(cat)
 
         if False:
             # SMUDGes
