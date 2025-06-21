@@ -8,6 +8,7 @@ Code to generate HTML output for the various stages of the SGA analysis.
 import os
 import numpy as np
 
+
 def get_layer(onegal):
     if onegal['DR'] == 'dr6':
         layer = 'mzls+bass-dr6'
@@ -18,9 +19,11 @@ def get_layer(onegal):
         raise ValueError
     return layer
 
+
 def _get_cutouts_one(args):
     """Wrapper function for the multiprocessing."""
     return get_cutouts_one(*args)
+
 
 def get_cutouts_one(group, clobber=False):
     """Get viewer cutouts for a single galaxy."""
@@ -44,15 +47,16 @@ def get_cutouts_one(group, clobber=False):
         print(cmd)
         os.system(cmd)
 
-def get_cutouts(groupsample, use_nproc=nproc, clobber=False):
+
+def get_cutouts(groupsample, mp=1, clobber=False):
     """Get viewer cutouts of the whole sample."""
 
     cutoutargs = list()
     for gg in groupsample:
         cutoutargs.append( (gg, clobber) )
 
-    if use_nproc > 1:
-        p = multiprocessing.Pool(nproc)
+    if mp > 1:
+        p = multiprocessing.Pool(mp)
         p.map(_get_cutouts_one, cutoutargs)
         p.close()
     else:
@@ -65,7 +69,7 @@ def _add_labels_one(args):
     """Wrapper function for the multiprocessing."""
     return add_labels_one(*args)
 
-def add_labels_one(group, sample, clobber=False, nothumb=False):
+def add_labels_one(group, sample, overwrite=False, nothumb=False):
 
     jpgdir = os.path.join(SGAdir, 'cutouts', 'jpg')
     pngdir = os.path.join(SGAdir, 'cutouts', 'png')
@@ -80,7 +84,7 @@ def add_labels_one(group, sample, clobber=False, nothumb=False):
     thumbfile = os.path.join(pngdir, 'thumb-{}.png'.format(groupname))
     
     if os.path.isfile(jpgfile):
-        if os.path.isfile(pngfile) and not clobber:
+        if os.path.isfile(pngfile) and not overwrite:
             print('File {} exists...skipping.'.format(pngfile))
         else:
             im = Image.open(jpgfile)
@@ -103,12 +107,12 @@ def add_labels_one(group, sample, clobber=False, nothumb=False):
                 cmd = 'convert -thumbnail 300x300 {} {}'.format(pngfile, thumbfile)
                 os.system(cmd)
 
-def add_labels(groupsample, sample, clobber=False):
+def add_labels(groupsample, sample, overwrite=False):
     labelargs = list()
     for group in groupsample:
-        labelargs.append((group, sample, clobber))
-    if nproc > 1:
-        p = multiprocessing.Pool(nproc)
+        labelargs.append((group, sample, overwrite))
+    if mp > 1:
+        p = multiprocessing.Pool(mp)
         res = p.map(_add_labels_one, labelargs)
         p.close()
     else:
@@ -157,8 +161,9 @@ def html_rows(_groupkeep, sample, nperrow=4):
     html.write('</tbody>\n')            
     html.write('</table>\n')
 
+
 def make_plots(sample, analysisdir=None, htmldir='.', refband='r',
-               band=('g', 'r', 'z'), clobber=False, verbose=True):
+               band=('g', 'r', 'z'), overwrite=False, verbose=True):
     """Make QA plots.
 
     """
@@ -173,17 +178,17 @@ def make_plots(sample, analysisdir=None, htmldir='.', refband='r',
 
         # Build the ellipse plots.
         qa_ellipse_results(objid, objdir, htmlobjdir, band=band,
-                           clobber=clobber, verbose=verbose)
+                           overwrite=overwrite, verbose=verbose)
 
         qa_sersic_results(objid, objdir, htmlobjdir, band=band,
-                          clobber=clobber, verbose=verbose)
+                          overwrite=overwrite, verbose=verbose)
 
         # Build the montage coadds.
-        qa_montage_coadds(objid, objdir, htmlobjdir, clobber=clobber, verbose=verbose)
+        qa_montage_coadds(objid, objdir, htmlobjdir, overwrite=overwrite, verbose=verbose)
 
         # Build the MGE plots.
         #qa_mge_results(objid, objdir, htmlobjdir, refband='r', band=band,
-        #               clobber=clobber, verbose=verbose)
+        #               overwrite=overwrite, verbose=verbose)
 
 def _javastring():
     """Return a string that embeds a date in a webpage."""
@@ -216,7 +221,7 @@ def _javastring():
 
     return js
         
-def make_html(sample=None, htmldir=None, dr='dr6-dr7', makeplots=True, clobber=False,
+def make_html(sample=None, htmldir=None, dr='dr6-dr7', makeplots=True, overwrite=False,
               verbose=True):
     """Make the HTML pages.
 
@@ -284,4 +289,4 @@ def make_html(sample=None, htmldir=None, dr='dr6-dr7', makeplots=True, clobber=F
 
     if makeplots:
         make_plots(sample, analysisdir=analysisdir, htmldir=htmldir, refband=refband,
-                   band=band, clobber=clobber, verbose=verbose)
+                   band=band, overwrite=overwrite, verbose=verbose)

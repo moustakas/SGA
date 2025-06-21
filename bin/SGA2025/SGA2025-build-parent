@@ -3,6 +3,11 @@
 """Code to build the parent SGA2025 sample based on a combination of internal and external catalogs.
 
 salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+SGA2025-shifter
+source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
+
+or
+
 shifter --image legacysurvey/sga:0.3 bash
 source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
@@ -1442,20 +1447,39 @@ def build_parent(verbose=False, overwrite=False):
     from SGA.io import radec_to_name
     from SGA.groups import build_group_catalog
 
+    FITBITS = dict(
+        ignore = 2**0,   # no special behavior (e.g., resolved dwarf galaxy)
+        forcepsf = 2**1, # force PSF for source detection and photometry
+    )
+
+
     version = parent_version()
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
 
     cols = ['OBJNAME', 
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH', 
-            'RA', 'DEC', 'PGC', 'RESOLVED', 
+            'RA', 'DEC', 'PGC', #'RESOLVED', 
             'STARFDIST', 'STARDIST', 'STARMAG']#, 'ROW_PARENT']
     #colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
 
-    for region in ['dr9-north', 'dr11-south']:
+    for region in ['dr11-south']:#, 'dr9-north']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
-        cat = Table(fitsio.read(catfile, rows=np.arange(5000)))
+        cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         print(f'Read {len(cat):,d} objects from {catfile}')
+
+        #########################
+        # trim very small objects and to a specific set of test bricks
+        diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=10., get_mag=True)
+        diam /= 60. # [arcmin]
+
+        I = (diam > 45./60.)# * (diam < 2.)
+        cat = cat[I]
+
+        bricknames = get_brickname(cat['RA'].value, cat['DEC'].value)
+        I = np.where(np.isin(bricknames, ['0545m052', '0545m050', '0542m050']))[0]
+        cat = cat[I]
+        #########################
 
         # build the group catalog from the full sample
         diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=10., get_mag=True)
@@ -1468,27 +1492,30 @@ def build_parent(verbose=False, overwrite=False):
             morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
             allmorph.append(morph1)
 
+        # process the fitting behavior bits
+        fitbits = np.zeros(len(cat), np.int16)
+        fitbits[cat['RESOLVED']] = FITBITS['ignore']
+
         grp = cat[cols]
         grp.add_column(cat['ROW_PARENT'], name='SGAID', index=0)
-        grp.add_column(radec_to_name(ra, dec, unixsafe=False), name='SGANAME', index=1)
+        grp.add_column(radec_to_name(ra, dec, unixsafe=True), name='SGANAME', index=1)
         grp.add_column(allmorph, name='MORPH', index=3)
         grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=6)
-        grp.add_column(diam.astype('f4'), name='DIAM', index=7)
-        grp.add_column(ba.astype('f4'), name='BA', index=8)
-        grp.add_column(pa.astype('f4'), name='PA', index=9)
-        grp.add_column(mag.astype('f4'), name='MAG', index=10)
-        grp.add_column(band, name='BAND', index=11)
+        grp.add_column(fitbits, name='FITBIT', index=7)
+        grp.add_column(diam.astype('f4'), name='DIAM', index=8)
+        grp.add_column(ba.astype('f4'), name='BA', index=9)
+        grp.add_column(pa.astype('f4'), name='PA', index=10)
+        grp.add_column(mag.astype('f4'), name='MAG', index=11)
+        grp.add_column(band, name='BAND', index=12)
 
         grp = build_group_catalog(grp)
 
-        pdb.set_trace()
-
-        # final selection and data model
-        I = (diam > 45./60.)# * (diam < 2.)
-        J = np.isin(grp['GROUP_ID'], grp['GROUP_ID'][I])
-        out = grp[J]
-
-        print(f'Selecting {np.sum(J):,d}/{len(cat):,d} objects in {len(set(out["GROUP_ID"])):,d} unique groups')
+        ## final selection and data model
+        #I = (diam > 45./60.)# * (diam < 2.)
+        #J = np.isin(grp['GROUP_ID'], grp['GROUP_ID'][I])
+        #out = grp[J]
+        #print(f'Selecting {np.sum(J):,d}/{len(cat):,d} objects in {len(set(out["GROUP_ID"])):,d} unique groups')
+        out = grp
 
         outfile = os.path.join(outdir, f'SGA2025-parent-{region}-{version}.fits')
         print(f'Writing {len(out):,d} objects to {outfile}')
