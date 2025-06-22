@@ -219,7 +219,6 @@ def call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic, mp=1,
                        write_wise_psf=False,
                        just_coadds=False, require_grz=True, 
                        no_gaia=False, no_tycho=False,
-                       no_galex_ceres=False,
                        debug=False, logfile=None):
     """Wrapper script to build custom coadds.
 
@@ -243,8 +242,7 @@ def call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic, mp=1,
             #no_subsky=no_subsky,
             subsky_radii=subsky_radii, #ubercal_sky=ubercal_sky,
             just_coadds=just_coadds,
-            require_grz=require_grz, no_gaia=no_gaia, no_tycho=no_tycho,
-            no_galex_ceres=no_galex_ceres)
+            require_grz=require_grz, no_gaia=no_gaia, no_tycho=no_tycho)
         _done(galaxy, survey.output_dir, err, t0, 'coadds', filesuffix)
     else:
         with open(logfile, 'a') as log:
@@ -263,6 +261,5 @@ def call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic, mp=1,
                     subsky_radii=subsky_radii, #ubercal_sky=ubercal_sky,
                     just_coadds=just_coadds,
                     require_grz=require_grz, no_gaia=no_gaia, no_tycho=no_tycho,
-                    no_galex_ceres=no_galex_ceres,
                     log=log)
                 _done(galaxy, survey.output_dir, err, t0, 'coadds', filesuffix, log=log)

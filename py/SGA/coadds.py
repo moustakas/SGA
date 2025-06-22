@@ -33,9 +33,8 @@ def _mosaic_width(radius_mosaic, pixscale):
 
 
 def _rearrange_files(galaxy, output_dir, brickname, stagesuffix, run,
-                     bands=BANDS,
-                     unwise=True, galex=False, cleanup=False, just_coadds=False,
-                     clobber=False, require_grz=True, missing_ok=False,
+                     bands=BANDS, unwise=True, galex=False, cleanup=False, just_coadds=False,
+                     clobber=False, require_grz=False, missing_ok=False,
                      write_wise_psf=False):
     """Move (rename) files into the desired output directory and clean up.
 
@@ -55,10 +54,10 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix, run,
             return 1
         else:
             if missing_ok:
-                print('Warning: missing file {} but missing_ok=True'.format(infile))
+                print(f'Warning: missing file {infile} but missing_ok=True')
                 return 1
             else:
-                print('Missing file {}; please check the logfile.'.format(infile))
+                print(f'Missing file {infile}; please check the logfile.')
                 return 0
 
     def _do_cleanup():
@@ -88,17 +87,17 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix, run,
     # If we made it here and there is no CCDs file it's because legacypipe
     # exited cleanly with "No photometric CCDs touching brick."
     _ccdsfile = os.path.join(output_dir, 'coadd', 'cus', brickname,
-                            'legacysurvey-{}-ccds.fits'.format(brickname))
+                            f'legacysurvey-{brickname}-ccds.fits')
     if not os.path.isfile(_ccdsfile) and missing_ok is False:
         print('No photometric CCDs touching brick.')
         if cleanup:
             _do_cleanup()
         return 1
     
-    ccdsfile = os.path.join(output_dir, '{}-ccds-{}.fits'.format(galaxy, run))
+    ccdsfile = os.path.join(output_dir, f'{galaxy}-ccds-{run}.fits')
     ok = _copyfile(
         os.path.join(output_dir, 'coadd', 'cus', brickname,
-                     'legacysurvey-{}-ccds.fits'.format(brickname)), ccdsfile,
+                     f'legacysurvey-{brickname}-ccds.fits'), ccdsfile,
         clobber=clobber, missing_ok=missing_ok)
     if not ok:
         return ok
@@ -125,7 +124,7 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix, run,
                 os.path.join(output_dir, 'coadd', 'cus', brickname,
                              'legacysurvey-{}-{}-{}.fits.fz'.format(brickname, imtype, band)),
                              os.path.join(output_dir, '{}-{}-{}-{}.fits.fz'.format(galaxy, stagesuffix, outtype, band)),
-                clobber=clobber, missing_ok=missing_ok, update_header=True)
+                 clobber=clobber, missing_ok=missing_ok, update_header=True)
             if not ok:
                 return ok
 
@@ -673,17 +672,12 @@ def candidate_cutouts(brick, coaddsdir, ssl_width=152, pixscale=PIXSCALE, bands=
     return 0 # good
 
 
-def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
-                  nproc=1, pixscale=PIXSCALE, run='south', racolumn='RA', deccolumn='DEC',
-                  bands=BANDS,
-                  nsigma=None, 
-                  log=None, apodize=False, custom=True, unwise=True, galex=False, force=False,
-                  plots=False, verbose=False, cleanup=True, missing_ok=False,
-                  write_all_pickles=False, no_galex_ceres=False, 
-                  #no_subsky=False,
+def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None, mp=1, pixscale=PIXSCALE,
+                  run='south', racolumn='RA', deccolumn='DEC', bands=BANDS, nsigma=None, log=None,
+                  custom=True, unwise=True, galex=False, force=False, plots=False, verbose=False,
+                  cleanup=True, missing_ok=False, write_all_pickles=False,
                   subsky_radii=None, #ubercal_sky=False,
-                  just_coadds=False, require_grz=True, no_gaia=False,
-                  no_tycho=False, write_wise_psf=False):
+                  just_coadds=False, require_grz=True, no_gaia=False, no_tycho=False, write_wise_psf=False):
     """Build a custom set of large-galaxy coadds
 
     radius_mosaic in arcsec
@@ -749,15 +743,10 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
         cmd += '--no-unwise-coadds --no-wise '
     if galex:
         cmd += '--galex '
-    if apodize:
-        cmd += '--apodize '
     if no_gaia:
         cmd += '--no-gaia '
     if no_tycho:
         cmd += '--no-tycho '
-    if no_galex_ceres:
-        cmd += '--no-galex-ceres '
-        #cmd += '--no-galex-ceres --no-wise-ceres '
     if force:
         cmd += '--force-all '
         checkpointfile = '{galaxydir}/{galaxy}-{stagesuffix}-checkpoint.p'.format(
@@ -793,7 +782,7 @@ def custom_coadds(onegal, galaxy=None, survey=None, radius_mosaic=None,
 
     cmd = cmd.format(legacypipe_dir=os.getenv('LEGACYPIPE_CODE_DIR'), galaxy=galaxy,
                      ra=onegal[racolumn], dec=onegal[deccolumn], width=width,
-                     pixscale=pixscale, threads=nproc, outdir=survey.output_dir,
+                     pixscale=pixscale, threads=mp, outdir=survey.output_dir,
                      bands=','.join(bands),
                      galaxydir=survey.output_dir, survey_dir=survey.survey_dir, run=run,
                      stagesuffix=stagesuffix)

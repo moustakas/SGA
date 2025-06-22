@@ -165,8 +165,8 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
     return names
 
 
-def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
-                         htmldir=None, html=False):
+def get_galaxy_galaxydir(sample=None, bricks=None, region='dr11-south', 
+                         datadir=None, htmldir=None, html=False):
     """Retrieve the galaxy name and the (nested) directory.
 
     """
@@ -175,9 +175,9 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         raise IOError(msg)
 
     if datadir is None:
-        datadir = sga_data_dir()
+        datadir = os.path.join(sga_data_dir(), region)
     if htmldir is None:
-        htmldir = sga_html_dir()
+        htmldir = os.path.join(sga_html_dir(), region)
 
     if bricks is not None:
         objs = np.atleast_1d(bricks['BRICKNAME'])
@@ -190,7 +190,7 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
             galcolumn = 'GROUP_NAME'
             racolumn = 'GROUP_RA'
         else:
-            galcolumn = 'GALAXY'
+            galcolumn = 'SGANAME'
             racolumn = 'RA'
 
         objs = np.atleast_1d(sample[galcolumn])
@@ -215,6 +215,11 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         return objs, objdirs, htmlobjdirs
     else:
         return objs, objdirs
+
+
+def SGA_version():
+    version = 'v1.0'
+    return version
 
 
 def parent_version(vicuts=False, nocuts=False, archive=False):
@@ -2532,10 +2537,10 @@ def missing_files_one(checkfile, dependsfile, overwrite):
         return 'todo'
 
 
-def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cutouts=False,
+def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
-                  build_SGA=False, overwrite=False, verbose=False, htmldir='.',
-                  size=1, mp=1):
+                  build_catalog=False, clobber=False, clobber_overwrite=None, 
+                  verbose=False, htmldir='.', size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -2560,63 +2565,56 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
         indices = np.arange(len(bricks))
 
     dependson, dependsondir = None, None
-    if detection_coadds or candidate_cutouts:
-        galaxy, galaxydir = get_galaxy_galaxydir(bricks=bricks)
-    else:
-        if htmlplots is False and htmlindex is False:
-            if verbose:
-                t0 = time.time()
-                log.info('Getting galaxy names and directories...', end='')
-            galaxy, galaxydir = get_galaxy_galaxydir(sample)
-            if verbose:
-                log.info(f'...took {time.time() - t0:.3f} sec')
+    if htmlplots is False and htmlindex is False:
+        if verbose:
+            t0 = time.time()
+            log.info('Getting galaxy names and directories...', end='')
+        galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
+        if verbose:
+            log.info(f'...took {time.time() - t0:.3f} sec')
 
-    if detection_coadds:
-        suffix = 'detection-coadds'
-        filesuffix = '-detection-coadds.isdone'
-    elif candidate_cutouts:
-        suffix = 'candidate-cutouts'
-        filesuffix = '-candidate-cutouts.isdone'
-        dependson = '-detection-coadds.isdone'
-    elif coadds:
+    if coadds:
         suffix = 'coadds'
-        filesuffix = '-largegalaxy-coadds.isdone'
+        filesuffix = '-sga-coadds.isdone'
     elif ellipse:
         suffix = 'ellipse'
-        filesuffix = '-largegalaxy-ellipse.isdone'
-        dependson = '-largegalaxy-coadds.isdone'
-    elif build_SGA:
-        suffix = 'build-SGA'
-        filesuffix = '-largegalaxy-SGA.isdone'
-        dependson = '-largegalaxy-ellipse.isdone'
+        filesuffix = '-sga-ellipse.isdone'
+        dependson = '-sga-coadds.isdone'
+    elif build_catalog:
+        suffix = 'build-catalog'
+        filesuffix = '-sga-SGA.isdone'
+        dependson = '-sga-ellipse.isdone'
     elif htmlplots:
         suffix = 'html'
-        filesuffix = '-largegalaxy-grz-montage.png'
-        dependson = '-largegalaxy-image-grz.jpg'
-        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+        filesuffix = '-sga-grz-montage.png'
+        dependson = '-sga-image-grz.jpg'
+        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
     elif htmlindex:
         suffix = 'htmlindex'
-        filesuffix = '-largegalaxy-grz-montage.png'
-        galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+        filesuffix = '-sga-grz-montage.png'
+        galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
     else:
         raise ValueError('Need at least one keyword argument.')
 
-    # Make overwrite=False for build_SGA and htmlindex because we're not making
-    # the files here, we're just looking for them. The argument overwrite gets
-    # used downstream.
-    if htmlindex:
-        overwrite = False
+    # Make clobber=False for build_catalog and htmlindex because we're not
+    # making the files here, we're just looking for them. The argument
+    # args.clobber gets used downstream.
+    if htmlindex or build_catalog:
+        clobber = False
+
+    if clobber_overwrite is not None:
+        clobber = clobber_overwrite
 
     missargs = []
     for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir))):
         checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
         if dependson:
             if dependsondir:
-                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), overwrite])
+                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), clobber])
             else:
-                missargs.append([checkfile, os.path.join(gdir, f'{gal}{dependson}'), overwrite])
+                missargs.append([checkfile, os.path.join(gdir, f'{gal}{dependson}'), clobber])
         else:
-            missargs.append([checkfile, None, overwrite])
+            missargs.append([checkfile, None, clobber])
 
     if verbose:
         t0 = time.time()
@@ -2762,54 +2760,46 @@ def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
             nedlvs = nedlvs[indx_cat]
 
             assert(np.all(allcat['ROW_PARENT'] == cat['ROW_PARENT']))
-            allcat.write(outfile, overwrite=True)
+            allcat.write(outfile, clobber=True)
             print(f'Wrote {len(allcat):,d} objects to {outfile}')
 
             #outfile = os.path.join(outdir, f'wiseize-nedlvs-{region}.fits')
-            #nedlvs.write(outfile, overwrite=True)
+            #nedlvs.write(outfile, clobber=True)
             #print(f'Wrote {len(nedlvs):,d} objects to {outfile}')
 
         return cat, fullcat
 
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                final_sample=False, preselect_sample=True, region='dr11-south',
-                #customsky=False, customredux=False, 
-                d25min=0.1, d25max=100.0):
+                final_sample=False, preselect_sample=True, fullsample=False,
+                region='dr11-south', d25min=0.1, d25max=100.0):
     """Read/generate the parent SGA catalog.
 
     d25min in arcmin
-
-    big = ss[ss['IN_FOOTPRINT'] * (ss['GROUP_DIAM']>5) * ss['GROUP_PRIMARY']]
-    %time bricks = np.hstack([survey.get_bricks_near(bb['GROUP_RA'], bb['GROUP_DEC'], bb['GROUP_DIAM']/60).brickname for bb in big])
 
     """
     import fitsio
             
     if first and last:
         if first > last:
-            print('Index first cannot be greater than index last, {} > {}'.format(first, last))
-            raise ValueError()
+            msg = f'Index first cannot be greater than index last, {first} > {last}'
+            log.critical(msg)
+            raise ValueError(msg)
         
     ext = 1
 
-    version = parent_version()
-    #version = SGA_version()
     if final_sample:
-        samplefile = os.path.join(sga_dir(), '2025', 'SGA2025-ellipse-{}.fits'.format(version))
+        version = SGA_version()
+        samplefile = os.path.join(sga_dir(), '2025', f'SGA2025-ellipse-{version}.fits')
     else:
+        version = parent_version()
         samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
 
-    # the file used to be in this location for production but was moved for the data release
     if not os.path.isfile(samplefile):
-        if final_sample:
-            samplefile = os.path.join(sga_data_dir(), 'SGA2025-ellipse-{}.fits'.format(version))
-        else:
-            samplefile = os.path.join(sga_data_dir(), 'SGA2025-parent-{}.fits'.format(version))
+        msg = f'Sample file {samplefile} not found.'
+        log.critical(msg)
+        raise IOError(msg)
 
-    if not os.path.isfile(samplefile):
-        raise IOError('Sample file not found! {}'.format(samplefile))
-    
     info = fitsio.FITS(samplefile)
     nrows = info[ext].get_nrows()
 
@@ -2840,14 +2830,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             rows = rows[samplecut]
 
             if False: # DR9 bricklist
-                nbricklist = np.loadtxt(os.path.join(sga_dir(), 'sample', 'dr9', 'bricklist-dr9-north.txt'), dtype='str')
-                sbricklist = np.loadtxt(os.path.join(sga_dir(), 'sample', 'dr9', 'bricklist-dr9-south.txt'), dtype='str')
-
-                bricklist = np.union1d(nbricklist, sbricklist)
-                #bricklist = nbricklist
-                #bricklist = sbricklist
-
-                # Test by Dustin--
+                # Tests by Dustin--
                 #bricklist = np.array([
                 #    '2221p000', '2221p002', '2221p005', '2221p007', '2223p000', '2223p002',
                 #    '2223p005', '2223p007', '2226p000', '2226p002', '2226p005', '2226p007',
@@ -2887,8 +2870,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 rows = rows[brickcut]
 
         nrows = len(rows)
-        print(f'Selecting {nrows:,d} objects.')
-
+        log.info(f'Selecting {nrows:,d} objects.')
     else:
         rows = None
 
