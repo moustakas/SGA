@@ -9,9 +9,8 @@ import os, sys, time, pdb
 import fitsio
 import numpy as np
 from astropy.table import Table, vstack
+from SGA.logger import log
 
-from SGA.log import get_logger#, DEBUG
-log = get_logger()
 
 RACOLUMN = 'RA'
 DECCOLUMN = 'DEC'
@@ -54,10 +53,10 @@ def sga_html_dir():
 def set_legacysurvey_dir(region='dr9-north'):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
         raise EnvironmentError('Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!')
-    print('WARNING: Temporarily using dr11-early directory for dr11-south!!')
+    log.warning('Temporarily using dr11-early directory for dr11-south!!')
     dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early'}
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
-    print(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
+    log.info(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
 
 
@@ -376,9 +375,6 @@ def altnames_hyperleda(cat):
         if np.any(M):
             altname.append(altnames[M][0])
         else:
-            #C = [':' in name  for name in altnames]
-            #if np.any(C):
-            #    print(altnames)
             altname.append(altnames[0])
 
     return np.array(altname)
@@ -440,7 +436,7 @@ def read_hyperleda_noobjtype(rank=0, rows=None):
         hyper['ROW'] = np.arange(len(hyper))
 
         nhyper = len(hyper)
-        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        log.info(f'Read {nhyper:,d} objects from {hyperfile}')
         assert(nhyper == len(np.unique(hyper['PGC'])))
 
         hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
@@ -463,12 +459,11 @@ def read_hyperleda_noobjtype(rank=0, rows=None):
         # re-sort by PGC number
         hyper = hyper[np.argsort(hyper['PGC'])]
 
-        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        log.info(f'Writing {len(hyper):,d} objects to {hyperfile}')
         hyper.write(hyperfile, overwrite=True)
 
     hyper = Table(fitsio.read(hyperfile, rows=rows))
-    print(f'Read {len(hyper):,d} objects from {hyperfile}')
-    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+    log.info(f'Read {len(hyper):,d} objects from {hyperfile}')
 
     return hyper
 
@@ -508,7 +503,7 @@ def read_hyperleda_multiples(rank=0, rows=None):
         hyper['ROW'] = np.arange(len(hyper))
 
         nhyper = len(hyper)
-        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        log.info(f'Read {nhyper:,d} objects from {hyperfile}')
         assert(nhyper == len(np.unique(hyper['PGC'])))
 
         hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])

@@ -10,9 +10,7 @@ SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --debug
 """
 import os, time, pdb
 import numpy as np
-
-from desiutil.log import get_logger#, DEBUG
-log = get_logger()
+from SGA.logger import log
 
     
 def main():
