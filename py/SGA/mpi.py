@@ -11,6 +11,7 @@ from contextlib import redirect_stdout, redirect_stderr
 
 import SGA.io
 import SGA.html
+from SGA.logger import log
 
 
 def mpi_args():
@@ -155,11 +156,12 @@ def call_sky(onegal, galaxy, galaxydir, survey, seed, mp, pixscale,
                                                       mp=mp, pixscale=pixscale, seed=seed,
                                                       debug=debug, verbose=verbose, force=force)
                 _done(galaxy, err, t0, log=log)
+
                 
-def call_htmlplots(onegal, galaxy, survey, pixscale=0.262, mp=1, 
-                   verbose=False, debug=False, clobber=False, ccdqa=False,
-                   logfile=None, zcolumn='Z', galaxy_id=None,
-                   bands=['g', 'r', 'z'], SBTHRESH=None,
+def call_htmlplots(onegal, galaxy, survey, region='dr11-south', pixscale=0.262, mp=1,
+                   verbose=False, debug=False, clobber=False,
+                   logfile=None, galaxy_id=None, zcolumn='Z',
+                   bands=['g', 'r', 'i', 'z'], SBTHRESH=None,
                    datadir=None, htmldir=None, cosmo=None,
                    linear=False, plot_colors=True,
                    galex=False, unwise=False, just_coadds=False, write_donefile=True,
@@ -178,7 +180,6 @@ def call_htmlplots(onegal, galaxy, survey, pixscale=0.262, mp=1,
             radius_mosaic_arcsec=radius_mosaic_arcsec,
             bands=bands, SBTHRESH=SBTHRESH,
             linear=linear, plot_colors=plot_colors,
-            maketrends=False, ccdqa=ccdqa,
             clobber=clobber, verbose=verbose, 
             cosmo=cosmo, galex=galex, unwise=unwise, just_coadds=just_coadds,
             get_galaxy_galaxydir=get_galaxy_galaxydir,
@@ -197,7 +198,6 @@ def call_htmlplots(onegal, galaxy, survey, pixscale=0.262, mp=1,
                     radius_mosaic_arcsec=radius_mosaic_arcsec,
                     bands=bands, SBTHRESH=SBTHRESH,
                     linear=linear, plot_colors=plot_colors,
-                    maketrends=False, ccdqa=ccdqa,
                     clobber=clobber, verbose=verbose,
                     cosmo=cosmo, galex=galex, unwise=unwise, just_coadds=just_coadds,
                     get_galaxy_galaxydir=get_galaxy_galaxydir,
@@ -207,19 +207,14 @@ def call_htmlplots(onegal, galaxy, survey, pixscale=0.262, mp=1,
                     _done(galaxy, survey.output_dir, err, t0, 'html')
 
 
-def call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic, mp=1,
+def call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=1,
                        pixscale=0.262, racolumn='RA', deccolumn='DEC', nsigma=None,
-                       custom=True,
-                       bands=['g', 'r', 'z'], 
-                       apodize=False, unwise=True, galex=False, force=False, plots=False,
-                       verbose=False, cleanup=True, write_all_pickles=False,
-                       #no_subsky=False,
-                       subsky_radii=None,
-                       #ubercal_sky=False,
-                       write_wise_psf=False,
-                       just_coadds=False, require_grz=True, 
-                       no_gaia=False, no_tycho=False,
-                       debug=False, logfile=None):
+                       custom=True, bands=['g', 'r', 'i', 'z'], unwise=True, galex=True,
+                       force=False, plots=False, verbose=False, cleanup=True,
+                       write_all_pickles=False, just_coadds=False, no_gaia=False, 
+                       no_tycho=False, debug=False, logfile=None,
+                       #no_subsky=False,, ubercal_sky=False,
+                       subsky_radii=None):
     """Wrapper script to build custom coadds.
 
     radius_mosaic in arcsec
@@ -231,35 +226,26 @@ def call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic, mp=1,
     if debug:
         _start(galaxy)
         err, filesuffix = SGA.coadds.custom_coadds(
-            onegal, galaxy=galaxy, survey=survey, 
-            radius_mosaic=radius_mosaic, mp=mp, 
-            pixscale=pixscale, racolumn=racolumn, deccolumn=deccolumn,
-            nsigma=nsigma, custom=custom,
-            bands=bands,
-            run=run, apodize=apodize, unwise=unwise, galex=galex, force=force, plots=plots,
-            verbose=verbose, cleanup=cleanup, write_all_pickles=write_all_pickles,
-            write_wise_psf=write_wise_psf,
-            #no_subsky=no_subsky,
-            subsky_radii=subsky_radii, #ubercal_sky=ubercal_sky,
-            just_coadds=just_coadds,
-            require_grz=require_grz, no_gaia=no_gaia, no_tycho=no_tycho)
+            onegal, galaxy=galaxy, survey=survey, radius_mosaic_arcsec=radius_mosaic_arcsec, 
+            mp=mp, pixscale=pixscale, racolumn=racolumn, deccolumn=deccolumn,
+            nsigma=nsigma, custom=custom, bands=bands, run=run,
+            unwise=unwise, galex=galex, force=force, plots=plots, verbose=verbose, 
+            cleanup=cleanup, write_all_pickles=write_all_pickles,
+            just_coadds=just_coadds, no_gaia=no_gaia, no_tycho=no_tycho,
+            #no_subsky=no_subsky, ubercal_sky=ubercal_sky,
+            subsky_radii=subsky_radii)
         _done(galaxy, survey.output_dir, err, t0, 'coadds', filesuffix)
     else:
         with open(logfile, 'a') as log:
             with redirect_stdout(log), redirect_stderr(log):
                 _start(galaxy, log=log)
                 err, filesuffix = SGA.coadds.custom_coadds(
-                    onegal, galaxy=galaxy, survey=survey, 
-                    radius_mosaic=radius_mosaic, mp=mp, 
+                    onegal, galaxy=galaxy, survey=survey, radius_mosaic=radius_mosaic, mp=mp, 
                     pixscale=pixscale, racolumn=racolumn, deccolumn=deccolumn,
-                    nsigma=nsigma, custom=custom,
-                    bands=bands,
-                    run=run, apodize=apodize, unwise=unwise, galex=galex, force=force, plots=plots,
-                    verbose=verbose, cleanup=cleanup, write_all_pickles=write_all_pickles,
-                    write_wise_psf=write_wise_psf,
-                    #no_subsky=no_subsky,
-                    subsky_radii=subsky_radii, #ubercal_sky=ubercal_sky,
-                    just_coadds=just_coadds,
-                    require_grz=require_grz, no_gaia=no_gaia, no_tycho=no_tycho,
-                    log=log)
+                    nsigma=nsigma, custom=custom, bands=bands, run=run, unwise=unwise, 
+                    galex=galex, force=force, plots=plots, verbose=verbose, cleanup=cleanup, 
+                    write_all_pickles=write_all_pickles, log=log,
+                    just_coadds=just_coadds, no_gaia=no_gaia, no_tycho=no_tycho,
+                    #no_subsky=no_subsky, ubercal_sky=ubercal_sky,
+                    subsky_radii=subsky_radii)
                 _done(galaxy, survey.output_dir, err, t0, 'coadds', filesuffix, log=log)

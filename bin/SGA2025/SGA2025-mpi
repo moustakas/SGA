@@ -5,6 +5,8 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
+
+SGA2025-mpi --build-refcat
 SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --debug
 
 """
@@ -54,7 +56,6 @@ def main():
                                     d25min=args.d25min, d25max=args.d25max, 
                                     fullsample=False, galaxylist=args.galaxylist,
                                     region=args.region, verbose=args.verbose)
-        pdb.set_trace()
 
         if len(sample) == 0:
             return
@@ -78,7 +79,7 @@ def main():
     if rank == 0:    
         if args.htmlindex:
             SGA.html.make_html(sample, survey=None, pixscale=args.pixscale,
-                               racolumn=RACOLUMN, deccolumn=DECCOLUMN, diamcolumn=DIAMCOLUMN,
+                               racolumn=RACOLUMN, deccolumn=DECCOLUMN, #diamcolumn=DIAMCOLUMN,
                                mp=args.mp, clobber=args.clobber, region=args.region,
                                makeplots=False, verbose=args.verbose, htmldir=args.htmldir,
                                htmlhome=args.htmlhome, html_raslices=args.html_raslices,
@@ -92,7 +93,7 @@ def main():
             
             import fitsio
             from astropy.table import Table
-            version = SGA.io.parent_version()
+            version = SGA.io.SGA_version()
             ngal = len(fullsample)
 
             ref = Table()
@@ -107,16 +108,15 @@ def main():
 
             reffile = os.path.join(basedir, f'SGA2025-{version}-refcat.fits')
             kdreffile = reffile.replace('.fits', '.kd.fits')
-            print(f'Writing {ngal} galaxies to {reffile}')
+            log.info(f'Writing {ngal} galaxies to {reffile}')
 
             hdr = fitsio.FITSHDR()
-            hdrver = refcat
-            hdr['VER'] = hdrver
+            hdr['VER'] = refcat
             fitsio.write(reffile, ref.as_array(), header=hdr, clobber=True)
 
-            print(f'Writing {kdreffile}')
+            log.info(f'Writing {kdreffile}')
             cmd = f'startree -i {reffile} -o {kdreffile} -T -P -k -n stars'
-            print(cmd)
+            log.info(cmd)
             _ = os.system(cmd)
 
             cmd = f'modhead {kdreffile} SGAVER {hdrver}'
@@ -150,19 +150,18 @@ def main():
 
     if rank == 0:
         ntodo = len(np.hstack(groups))
-        print('{} left to do: {} / {} divided across {} rank(s).'.format(
-            suffix.upper(), ntodo, len(sample), size), flush=True)
+        log.info(f'{suffix.upper()} left to do: {ntodo} / {len(sample)} ' + \
+                 f'divided across {size} rank(s).')
         
     # Wait for all ranks to catch up.
     if comm is not None:
         comm.barrier()
 
     if len(groups[rank]) == 0:
-        print('{} for all {} galaxies on rank {} are complete!'.format(
-            suffix.upper(), len(sample), rank), flush=True)
+        log.info(f'{suffix.upper()} for all {len(sample)} galaxies on rank {rank} are complete!')
         return
     else:
-        print(' Rank {}: {} galaxies left to do.'.format(rank, len(groups[rank])), flush=True)
+        log.info(f' Rank {rank}: {len(groups[rank])} galaxies left to do.')
         if rank == 0 and args.count:
             if args.debug:
                 if len(fail[rank]) > 0:
@@ -218,7 +217,7 @@ def main():
 
             # Write out the individual galaxies for this mosaic.
             thissample = fullsample[np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]]
-            samplefile = os.path.join(galaxydir, '{}-sample.fits'.format(galaxy))
+            samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
             if args.clobber or not os.path.isfile(samplefile):
                 #print('Writing {} galaxy(ies) to {}'.format(len(thissample), samplefile))
                 tmpfile = samplefile+'.tmp'
@@ -227,13 +226,10 @@ def main():
 
             call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=args.mp,
                                pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                               custom=True, apodize=False, unwise=args.unwise, galex=args.galex,
-                               force=args.force, plots=False,
-                               verbose=args.verbose, cleanup=args.cleanup, write_all_pickles=True,
-                               just_coadds=args.just_coadds, no_gaia=False, no_tycho=False,
-                               require_grz=True, debug=args.debug, logfile=logfile,
-                               write_wise_psf=True)
-
+                               custom=True, unwise=args.unwise, galex=args.galex, force=args.force,
+                               bands=bands, plots=False, verbose=args.verbose, cleanup=args.cleanup, nsigma=None,
+                               write_all_pickles=True, just_coadds=args.just_coadds, no_gaia=False,
+                               no_tycho=False, debug=args.debug, logfile=logfile)
 
         if args.ellipse:
             from SGA.mpi import call_ellipse
@@ -276,14 +272,19 @@ def main():
         comm.barrier()
                 
     if rank == 0:
-        print('Finished {} {} at {} after {:.3f} minutes'.format(
-            ntodo, suffix.upper(), time.asctime(), (time.time() - tall) / 60 ), flush=True)
-        _, groups, _, _ = SGA.io.missing_files(args, sample, size, clobber_overwrite=False)
+        log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
+                 f'after {time.time():.3f} minutes')
+        _, groups, _, _ = SGA.io.missing_files(sample=sample, region=args.region, bricks=bricks,
+                                               coadds=args.coadds, ellipse=args.ellipse,
+                                               htmlplots=args.htmlplots, htmlindex=args.htmlindex,
+                                               build_catalog=args.build_catalog,
+                                               clobber=args.clobber, verbose=args.verbose,
+                                               htmldir=htmldir, size=size, mp=args.mp)
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))
         else:
             stilltodo = 0
-        print('{} left to do: {} / {}.'.format(suffix.upper(), stilltodo, ntodo), flush=True)
+        log.info(f'{suffix.upper()} left to do: {stilltodo} / {ntodo}.')
 
 
 if __name__ == '__main__':
