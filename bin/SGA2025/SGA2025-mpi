@@ -5,39 +5,52 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 
-
 SGA2025-mpi --build-refcat
 SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --debug
 
-"""
-import os, time, pdb
-import numpy as np
-from SGA.logger import log
+In production:
+salloc -N 1 -C cpu -A m3592 -t 00:30:00 --qos interactive --image=docker:legacysurvey/sga:0.3
 
-    
+source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
+SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup
+
+
+"""
 def main():
     """Top-level wrapper.
 
     """
-    import SGA.io
-    from SGA.io import get_galaxy_galaxydir, RACOLUMN, DECCOLUMN, DIAMCOLUMN
-    from SGA.coadds import RUNS, BANDS
-    from SGA.mpi import mpi_args
+    import os, time, pdb
+    import numpy as np
+    from contextlib import redirect_stdout, redirect_stderr
+
     from legacypipe.runs import get_survey
 
+    from SGA.coadds import RUNS, BANDS
+    from SGA.mpi import mpi_args
+    from SGA.io import (set_legacysurvey_dir, sga_dir, sga_data_dir, sga_html_dir, read_sample,
+                        build_catalog, missing_files, read_multiband, get_galaxy_galaxydir,
+                        RACOLUMN, DECCOLUMN, DIAMCOLUMN)
+
+    #from desiutil.log import get_logger
+    #log = get_logger()
+    from SGA.logger import log
+
     args = mpi_args()
+    set_legacysurvey_dir(args.region)
 
-    SGA.io.set_legacysurvey_dir(args.region)
+    basedir = sga_dir()
+    datadir = sga_data_dir()
+    htmldir = sga_html_dir()
 
-    basedir = SGA.io.sga_dir()
-    datadir = SGA.io.sga_data_dir()
-    htmldir = SGA.io.sga_html_dir()
+    run = RUNS[args.region]
+    bands = BANDS[args.region]
 
-    if args.mpi:
+    try:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD
         rank, size = comm.rank, comm.size
-    else:
+    except:
         comm = None
         rank, size = 0, 1
 
@@ -52,18 +65,18 @@ def main():
         log.info(f'$SGA_DATA_DIR={datadir}')
         log.info(f'$SGA_HTML_DIR={htmldir}')
 
-        sample = SGA.io.read_sample(first=args.first, last=args.last,
-                                    d25min=args.d25min, d25max=args.d25max, 
-                                    fullsample=False, galaxylist=args.galaxylist,
-                                    region=args.region, verbose=args.verbose)
-
+        sample = read_sample(first=args.first, last=args.last,
+                             d25min=args.d25min, d25max=args.d25max, 
+                             fullsample=False, galaxylist=args.galaxylist,
+                             region=args.region, verbose=args.verbose)
+        pdb.set_trace()
         if len(sample) == 0:
             return
 
         if args.coadds or args.build_catalog or args.build_refcat:
             refcat = 'L4'
             # For the custom coadds and build_catalog steps we need the full sample, too.
-            fullsample = SGA.io.read_sample(verbose=args.verbose, region=args.region, fullsample=True)
+            fullsample = read_sample(verbose=args.verbose, region=args.region, fullsample=True)
             fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
             if args.build_catalog:
@@ -93,7 +106,9 @@ def main():
             
             import fitsio
             from astropy.table import Table
-            version = SGA.io.SGA_version()
+            from SGA.io import SGA_version
+
+            version = SGA_version()
             ngal = len(fullsample)
 
             ref = Table()
@@ -125,21 +140,19 @@ def main():
 
 
         if args.build_catalog:
-            SGA.io.build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'], 
-                                 unwise=True, galex=True, mp=args.mp,
-                                 verbose=args.verbose, refcat=refcat,
-                                 clobber=args.clobber)
+            build_catalog(sample, fullsample, bands=bands, unwise=True,
+                          galex=True, mp=args.mp, verbose=args.verbose,
+                          refcat=refcat, clobber=args.clobber)
             return
 
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
     if rank == 0:    
-        suffix, groups, _, fail = SGA.io.missing_files(
-            sample=sample, region=args.region, bricks=bricks,coadds=args.coadds,
-            ellipse=args.ellipse, htmlplots=args.htmlplots, 
-            htmlindex=args.htmlindex, build_catalog=args.build_catalog, 
-            clobber=args.clobber, verbose=args.verbose, 
-            htmldir=htmldir, size=size, mp=args.mp)
+        suffix, groups, _, fail = missing_files(
+            sample=sample, region=args.region, bricks=bricks, coadds=args.coadds,
+            ellipse=args.ellipse, htmlplots=args.htmlplots, htmlindex=args.htmlindex,
+            clobber=args.clobber, verbose=args.verbose, htmldir=htmldir, size=size,
+            mp=args.mp)
 
     else:
         groups, suffix = [], ''
@@ -152,20 +165,18 @@ def main():
         ntodo = len(np.hstack(groups))
         log.info(f'{suffix.upper()} left to do: {ntodo} / {len(sample)} ' + \
                  f'divided across {size} rank(s).')
-        
-    # Wait for all ranks to catch up.
-    if comm is not None:
-        comm.barrier()
 
+        
     if len(groups[rank]) == 0:
-        log.info(f'{suffix.upper()} for all {len(sample)} galaxies on rank {rank} are complete!')
+        log.info(f'{suffix.upper()} for all {len(sample)} galaxies on rank ' + \
+                 f'{rank} are complete!')
         return
     else:
         log.info(f' Rank {rank}: {len(groups[rank])} galaxies left to do.')
         if rank == 0 and args.count:
             if args.debug:
                 if len(fail[rank]) > 0:
-                    print('{} failures: {} / {}'.format(suffix.upper(), len(fail[rank]), len(sample)), flush=True)
+                    log.info(f'{suffix.upper()} failures: {len(fail[rank])} / {len(sample)}')
                     dsrt = np.argsort(sample[fail[rank]][DIAMCOLUMN])
                     galaxy, galaxydir = get_galaxy_galaxydir(sample[fail[rank]][dsrt], region=args.region)
                     for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir), sample[fail[rank]][DIAMCOLUMN][dsrt]):
@@ -173,16 +184,15 @@ def main():
 
                 todo = np.hstack(groups)
                 if len(todo) > 0:
-                    print('{} todo: {} / {}'.format(suffix.upper(), len(todo), len(sample)), flush=True)
+                    log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
                     galaxy, galaxydir = get_galaxy_galaxydir(sample[todo], region=args.region)
                     for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir), sample[todo][DIAMCOLUMN]):
-                        print('  {} {} (d={:.3f} arcmin)'.format(ii, dd, diam))
+                        log.info(f'  {ii} {dd} (d={diam:.3f} arcmin)')
             return
         
     # Loop on the remaining objects.
-    print('Starting {} {} on rank {} with {} cores on {}'.format(
-        len(groups[rank]), suffix.upper(), rank, args.mp, time.asctime()),
-        flush=True)
+    log.info(f'Starting {len(groups[rank])} {suffix.upper()} on rank {rank} ' + \
+             f'with {args.mp} cores on {time.asctime()}')
 
     # The rest of the pipeline--
     tall = time.time()
@@ -193,7 +203,7 @@ def main():
             os.makedirs(galaxydir, exist_ok=True)
 
         #if (count+1) % 10 == 0:
-        print(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): {galaxydir} (index {ii:,d})', flush=True)
+        log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): {galaxydir} (index {ii:,d})')
 
         if args.debug:
             logfile = None
@@ -208,28 +218,54 @@ def main():
         else:
             radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2 * 2 * 60   # [arcsec]
 
-        run = RUNS[args.region]
-        bands = BANDS[args.region]
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 
         if args.coadds:
-            from SGA.mpi import call_custom_coadds
+            #from SGA.mpi import call_custom_coadds
+            from SGA.coadds import custom_coadds
 
             # Write out the individual galaxies for this mosaic.
             thissample = fullsample[np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]]
             samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
             if args.clobber or not os.path.isfile(samplefile):
-                #print('Writing {} galaxy(ies) to {}'.format(len(thissample), samplefile))
+                log.debug(f'Writing {len(thissample)} galaxy(ies) to {samplefile}')
                 tmpfile = samplefile+'.tmp'
                 thissample.write(tmpfile, overwrite=True, format='fits')
                 os.rename(tmpfile, samplefile)
 
-            call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=args.mp,
-                               pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                               custom=True, unwise=args.unwise, galex=args.galex, force=args.force,
-                               bands=bands, plots=False, verbose=args.verbose, cleanup=args.cleanup, nsigma=None,
-                               write_all_pickles=True, just_coadds=args.just_coadds, no_gaia=False,
-                               no_tycho=False, debug=args.debug, logfile=logfile)
+            if args.debug:
+                err, filesuffix = custom_coadds(
+                    onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=args.mp,
+                    pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
+                    unwise=args.unwise, galex=args.galex, force=args.force,
+                    bands=bands, plots=False, verbose=args.verbose, cleanup=args.cleanup,
+                    nsigma=None, write_all_pickles=True, just_coadds=args.just_coadds,
+                    no_gaia=False, no_tycho=False)
+            else:
+                #logfile = 'junk.txt'
+                #with stdouterr_redirected(to=logfile, overwrite=args.clobber, comm=None) as F:
+                #with redirect_stdout(L), redirect_stderr(L):
+                #import logging
+                #L = logging.FileHandler(logfile, mode='w')
+                #log.addHandler(L)
+                with open(logfile, 'a') as L:
+                    with redirect_stdout(L), redirect_stderr(L):
+                        err, filesuffix = custom_coadds(
+                            onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=args.mp,
+                            pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
+                            unwise=args.unwise, galex=args.galex, force=args.force, log=L,
+                            bands=bands, plots=False, verbose=args.verbose, cleanup=args.cleanup,
+                            nsigma=None, write_all_pickles=True, just_coadds=args.just_coadds,
+                            no_gaia=False, no_tycho=False)
+
+            #return
+            #pdb.set_trace()
+            #call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=args.mp,
+            #                   pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
+            #                   custom=True, unwise=args.unwise, galex=args.galex, force=args.force,
+            #                   bands=bands, plots=False, verbose=args.verbose, cleanup=args.cleanup, nsigma=None,
+            #                   write_all_pickles=True, just_coadds=args.just_coadds, no_gaia=False,
+            #                   no_tycho=False, debug=args.debug, logfile=logfile)
 
         if args.ellipse:
             from SGA.mpi import call_ellipse
@@ -265,7 +301,7 @@ def main():
                            #galaxy_id=onegal['VF_ID'],                           
                            galex=True, unwise=True,
                            region=args.region, get_galaxy_galaxydir=get_galaxy_galaxydir,
-                           read_multiband=SGA.io.read_multiband)                           
+                           read_multiband=read_multiband)                           
 
     # Wait for all ranks to finish.
     if comm is not None:
@@ -274,12 +310,11 @@ def main():
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
                  f'after {time.time():.3f} minutes')
-        _, groups, _, _ = SGA.io.missing_files(sample=sample, region=args.region, bricks=bricks,
-                                               coadds=args.coadds, ellipse=args.ellipse,
-                                               htmlplots=args.htmlplots, htmlindex=args.htmlindex,
-                                               build_catalog=args.build_catalog,
-                                               clobber=args.clobber, verbose=args.verbose,
-                                               htmldir=htmldir, size=size, mp=args.mp)
+        _, groups, _, _ = missing_files(sample=sample, region=args.region, bricks=bricks,
+                                        coadds=args.coadds, ellipse=args.ellipse,
+                                        htmlplots=args.htmlplots, htmlindex=args.htmlindex,
+                                        clobber=args.clobber, verbose=args.verbose,
+                                        htmldir=htmldir, size=size, mp=args.mp)
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))
         else:

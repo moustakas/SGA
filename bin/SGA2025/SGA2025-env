@@ -1,27 +1,22 @@
-#! /bin/bash
-# Shell script to set the environment variables for manga project.
+#! /bin/bash -l
 
-project=SGA2025
+# Shell script to set the environment variables for the SGA2025
+# project.
 
-#############################
-# For a power-user / testing.
 export SGA_CODE_DIR=/global/homes/i/ioannis/code/git/SGA
 export LEGACYPIPE_CODE_DIR=/global/homes/i/ioannis/code/git/legacypipe
 export PYTHONPATH=$SGA_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH
-export PATH=$SGA_CODE_DIR/bin/$project:$PATH
-#############################
+export PATH=$SGA_CODE_DIR/bin/SGA2025:$PATH
 
-# Specify the location of the input and output data.
 export SGA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025
-export SGA_DATA_DIR=$PSCRATCH/$project-data
-#export SGA_DATA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/$project-data
-export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/$project-html
+export SGA_DATA_DIR=$PSCRATCH/SGA2025-data
+#export SGA_DATA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA2025-data
+export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/SGA2025-html
 
-# Pipeline variables---only change these if you know what you're doing!
 export LEGACY_SURVEY_BASEDIR=/global/cfs/cdirs/cosmo/work/legacysurvey
 #export LEGACY_SURVEY_DIR=/global/cfs/cdirs/cosmo/work/legacysurvey/dr9
 #export SKY_TEMPLATE_DIR=/global/cfs/cdirs/cosmo/data/legacysurvey/dr9/calib/sky_pattern
-export SKY_TEMPLATE_DIR=/global/cfs/cdirs/cosmo/work/legacysurvey/dr11/sky_pattern
+export SKY_TEMPLATE_DIR=/global/cfs/cdirs/cosmo/work/legacysurvey/dr11/calib/sky_pattern
 export LARGEGALAXIES_CAT=/global/cfs/cdirs/cosmo/staging/largegalaxies/v3.0/SGA-parent-v3.0.kd.fits
 
 export GAIA_CAT_DIR=/global/cfs/cdirs/cosmo/data/gaia/dr3/healpix
@@ -39,11 +34,8 @@ export TYCHO2_KD_DIR=/global/cfs/cdirs/cosmo/staging/tycho2
 export PS1CAT_DIR=/global/cfs/cdirs/cosmo/work/ps1/cats/chunks-qz-star-v3
 export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
 export GALEX_DIR=/global/cfs/cdirs/cosmo/data/galex/images
-# Uncomment this variable if you want time-resolved unWISE photometry (generally not needed). 
-#export UNWISE_COADDS_TIMERESOLVED_DIR=/global/cfs/cdirs/cosmo/work/wise/outputs/merge/neo6
 
-#export PYTHONNOUSERSITE=1
-#export KMP_AFFINITY=disabled
+export PYTHONNOUSERSITE=1
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export MPICH_GNI_FORK_MODE=FULLCOPY
@@ -52,19 +44,15 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 export TMPCACHE=$(mktemp -d)
 mkdir $TMPCACHE/cache
 mkdir $TMPCACHE/config
-# astropy
+
 export XDG_CACHE_HOME=$TMPCACHE/cache
 export XDG_CONFIG_HOME=$TMPCACHE/config
 mkdir $XDG_CACHE_HOME/astropy
-cp -r /global/homes/i/ioannis/.astropy/cache $XDG_CACHE_HOME/astropy
 mkdir $XDG_CONFIG_HOME/astropy
+cp -r /global/homes/i/ioannis/.astropy/cache $XDG_CACHE_HOME/astropy
 cp -r /global/homes/i/ioannis/.astropy/config $XDG_CONFIG_HOME/astropy
-# matplotlib
+
 export MPLCONFIGDIR=$TMPCACHE/matplotlib
 mkdir $MPLCONFIGDIR
 cp -r /global/homes/i/ioannis/.config/matplotlib $MPLCONFIGDIR
-### ipython
-#export IPYTHONDIR=$TMPCACHE/ipython
-#mkdir $IPYTHONDIR
-#cp -r /global/homes/i/ioannis/.ipython $IPYTHONDIR  
 

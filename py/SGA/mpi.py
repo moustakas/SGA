@@ -1,13 +1,18 @@
 """
+=======
 SGA.mpi
 =======
 
 Code to deal with the MPI portion of the pipeline.
 
 """
-import os, time, subprocess, pdb
+import os, sys, time, subprocess, pdb
+import glob
 import numpy as np
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import contextmanager
+
+import desiutil.log
+from desiutil.log import get_logger
 
 import SGA.io
 import SGA.html
@@ -53,13 +58,39 @@ def mpi_args():
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
-    parser.add_argument('--mpi', action='store_true', help='Use MPI parallelism')
 
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')
     args = parser.parse_args()
 
     return args
+
+
+def backup_filename(filename):
+    """rename filename to next available filename.N
+
+    Args:
+        filename (str): full path to filename
+
+    Returns:
+        New filename.N, or filename if original file didn't already exist
+
+    if filename=='/dev/null' or filename doesn't exist, just return filename
+    """
+    if filename == '/dev/null' or not os.path.exists(filename):
+        return filename
+
+    n = 0
+    while True:
+        altfile = f'{filename}.{n}'
+        if os.path.exists(altfile):
+            n += 1
+        else:
+            break
+
+    os.rename(filename, altfile)
+
+    return altfile
 
 
 def _start(galaxy, log=None, seed=None):
@@ -207,8 +238,8 @@ def call_htmlplots(onegal, galaxy, survey, region='dr11-south', pixscale=0.262, 
                     _done(galaxy, survey.output_dir, err, t0, 'html')
 
 
-def call_custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=1,
-                       pixscale=0.262, racolumn='RA', deccolumn='DEC', nsigma=None,
+def call_custom_coadds(onegal, galaxy, survey=None, radius_mosaic_arcsec=None,
+                       mp=1, pixscale=0.262, run='dr11-south', racolumn='RA', deccolumn='DEC', nsigma=None,
                        custom=True, bands=['g', 'r', 'i', 'z'], unwise=True, galex=True,
                        force=False, plots=False, verbose=False, cleanup=True,
                        write_all_pickles=False, just_coadds=False, no_gaia=False, 

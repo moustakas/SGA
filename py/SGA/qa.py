@@ -1210,7 +1210,7 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
         # Make sure all the files exist.
         check = True
         jpgfile = []
-        for suffix in ('image-FUVNUV', 'custom-image-grz', 'image-W1W2'):
+        for suffix in ('image-FUVNUV', 'custom-image', 'image-W1W2'):
             _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
             jpgfile.append(_jpgfile)
             if not os.path.isfile(_jpgfile):
@@ -1236,9 +1236,9 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
         check = True
         jpgfile = []
         for suffix in ('image-FUVNUV', 'model-nocentral-FUVNUV', 'image-central-FUVNUV',
-                       'custom-image-grz', 'custom-model-nocentral-grz', 'custom-image-central-grz',
+                       'custom-image', 'custom-model-nocentral', 'custom-image-central',
                        'image-W1W2', 'model-nocentral-W1W2', 'image-central-W1W2'):
-            _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
+            _jpgfile = os.path.join(galaxydir, f'{galaxy}-{suffix}.jpg')
             jpgfile.append(_jpgfile)
             if not os.path.isfile(_jpgfile):
                 print('File {} not found!'.format(_jpgfile))
