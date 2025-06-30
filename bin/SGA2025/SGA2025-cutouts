@@ -102,9 +102,9 @@ warnings.simplefilter('ignore', category=VerifyWarning)
 
 from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
 from SGA.ellipse import choose_geometry, parse_geometry
+from SGA.coadds import GALEX_PIXSCALE, UNWISE_PIXSCALE
 
-GALEX_PIXSCALE = 1.5
-UNWISE_PIXSCALE = 2.75
+from SGA.logger import log
 
 
 def photo_datamodel(out=None, bands=['g', 'r', 'i', 'z']):
@@ -161,7 +161,7 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
     objname = radec_to_name(ra, dec, unixsafe=True)[0]
     fitsfile = os.path.join(outdir, get_raslice(ra), objname+'.fits')
     if not os.path.isfile(fitsfile):
-        print(f'Skipping missing file {fitsfile}')
+        log.warning(f'Skipping missing file {fitsfile}')
         return Table()
 
     diam, ba, pa, ref = choose_geometry(Table(obj))
@@ -203,7 +203,7 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
 
     # any data?
     if np.all(imgs == 0.):
-        print(f'WARNING: No data for object {obj["OBJNAME"]}')
+        log.warning(f'No data for object {obj["OBJNAME"]}')
         return out
 
     hdr['NAXIS'] = 2
@@ -262,7 +262,7 @@ def photo_one(survey, obj, outdir, bands=['g', 'r', 'i', 'z'], refband='r',
 
     # if the center is fully masked, move on
     if np.all(wimg[boxmask_init] == 0.) or np.all(wmask[boxmask_init]):
-        print(f'WARNING: fully masked {box_arcsec:.1f}x{box_arcsec:.1f} arcsec center for object {obj["OBJNAME"]}!')
+        log.warning(f'Fully masked {box_arcsec:.1f}x{box_arcsec:.1f} arcsec center for object {obj["OBJNAME"]}!')
         return out
 
     # compute the mean geometry
@@ -458,7 +458,7 @@ def do_photo(cat, comm=None, mp=1, indir='.', bands=['g', 'r', 'i', 'z'],
         comm.barrier()
 
     if rank == 0 and not dry_run:
-        print(f'All done at {time.asctime()}')
+        log.info(f'All done at {time.asctime()}')
 
 
 def sandbox_photo(cat, comm=None, indir='.', region='dr9-north',
@@ -515,11 +515,11 @@ def get_annotate_one(obj, objname, indir, outdir, overwrite=False, verbose=False
         if os.path.isfile(pngfile):
             nobj = 0
             if verbose:
-                print(f'Skipping existing annotated cutout {pngfile}')
+                log.info(f'Skipping existing annotated cutout {pngfile}')
     else:
         if not os.path.isfile(jpgfile):
             nobj = 0
-            print(f'Missing input cutout {jpgfile}')
+            log.warning(f'Missing input cutout {jpgfile}')
 
     return jpgfile, pngfile, nobj
 
@@ -608,7 +608,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     #print('HACK!!!')
     #if len(group) > 500:
     if len(group) > 10:
-        print('WARNING: Too many group members; keeping just the 10 largest objects!')
+        log.warning('Too many group members; keeping just the 10 largest objects!')
         # group includes primary, so we need to be sure it doesn't get removed
         group_noprimary = group.copy()
         group_noprimary.remove_row(np.where(primary['ROW_PARENT'] == group['ROW_PARENT'])[0][0])
@@ -742,7 +742,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     fig.tight_layout()
     fig.savefig(pngfile, bbox_inches=0)#, dpi=200)
     plt.close()
-    print(f'Wrote {pngfile}')
+    log.info(f'Wrote {pngfile}')
 
 
 def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
@@ -773,7 +773,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
             indir=indir, overwrite=overwrite, mp=mp, 
             fits_cutouts=fits_cutouts,
             verbose=verbose, annotate=True)
-        print(f'Planning took {time.time() - t0:.2f} sec')
+        log.info(f'Planning took {time.time() - t0:.2f} sec')
 
         # write out an inventory file
         if httpdir:
@@ -782,7 +782,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
             with open(inventoryfile, 'w') as F:
                 for objname, pngfile in zip(objnames, pngfiles):
                     F.write(f'{pngfile.replace(base_outdir, httpdir)},{objname}\n')
-            print(f'Wrote {inventoryfile}')
+            log.info(f'Wrote {inventoryfile}')
 
     else:
         jpgfiles, pngfiles, groups = [], [], []
@@ -802,7 +802,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
         
     assert(len(groups) == size)
 
-    print(f'Rank {rank} started at {time.asctime()}')
+    log.info(f'Rank {rank} started at {time.asctime()}')
     sys.stdout.flush()
 
     indx = groups[rank]
@@ -855,7 +855,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
         comm.barrier()
 
     if rank == 0 and not dry_run:
-        print(f'All done at {time.asctime()}')
+        log.info(f'All done at {time.asctime()}')
     
 
 def _cutout_one(args):
@@ -915,7 +915,7 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
 
         if dry_run:
             if suffix == '.jpeg':
-                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
+                log.info(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
         else:
             if suffix == '.jpeg':
                 outdir = os.path.dirname(basefile)
@@ -926,10 +926,10 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
                        invvar=ivar_cutouts, bands=bands, force=True)
                 #if suffix == '.jpeg':
                 #    print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
-                print(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
+                log.info(f'Rank {rank}, object {iobj}: cutout {cmdargs}')
             except:
                 if suffix == '.jpeg':
-                    print(f'WARNING: Rank {rank}, object {iobj} off the footprint: cutout {cmdargs}')                
+                    log.warning(f'Rank {rank}, object {iobj} off the footprint: cutout {cmdargs}')                
 
     # merge the W1W2 and W3W4 files
     if unwise_cutouts:
@@ -1006,7 +1006,7 @@ def get_basefiles_one(obj, objname, outdir, width=None, fits_cutouts=True,
             #if width == width_exist:
             nobj = 0
             if verbose:
-                print(f'Skipping existing cutout {basefile}.')
+                log.info(f'Skipping existing cutout {basefile}.')
 
     return basefile, obj['RA'], obj['DEC'], nobj
 
@@ -1057,19 +1057,19 @@ def plan(cat, width=152, layer='ls-dr9', indir='.', outdir='.',
     iempty = np.where(nobj == 0)[0]
     if len(iempty) > 0:
         if annotate:
-            print(f'Skipping {len(iempty):,d} objects with existing annotated images.')
+            log.info(f'Skipping {len(iempty):,d} objects with existing annotated images.')
         else:
-            print(f'Skipping {len(iempty):,d} objects with existing cutouts.')
+            log.info(f'Skipping {len(iempty):,d} objects with existing cutouts.')
 
     itodo = np.where(nobj > 0)[0]
     if len(itodo) > 0:
         nobj = nobj[itodo]
         if annotate:
-            print(f'Annotated images needed for {np.sum(nobj):,d} objects.')
+            log.info(f'Annotated images needed for {np.sum(nobj):,d} objects.')
             jpgfiles = jpgfiles[itodo]
             pngfiles = pngfiles[itodo]
         else:
-            print(f'Cutouts needed for {np.sum(nobj):,d} objects.')
+            log.info(f'Cutouts needed for {np.sum(nobj):,d} objects.')
             basefiles = basefiles[itodo]
             allra = allra[itodo]
             alldec = alldec[itodo]
@@ -1109,7 +1109,7 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
             size=size, overwrite=overwrite, mp=mp, 
             fits_cutouts=fits_cutouts, unwise_cutouts=unwise_cutouts,
             galex_cutouts=galex_cutouts, verbose=verbose)
-        print(f'Planning took {time.time() - t0:.2f} sec')
+        log.info(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []
         pixscale, width = [], []
@@ -1129,7 +1129,7 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         
     assert(len(groups) == size)
 
-    print(f'Rank {rank} started at {time.asctime()}')
+    log.info(f'Rank {rank} started at {time.asctime()}')
     sys.stdout.flush()
 
     indx = groups[rank]
@@ -1152,7 +1152,7 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         comm.barrier()
 
     if rank == 0 and not dry_run:
-        print(f'All done at {time.asctime()}')
+        log.info(f'All done at {time.asctime()}')
 
 
 def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
@@ -1246,20 +1246,20 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
 
     if ssl_version == 'v1':
         mindiam = 10.
-        print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
-              f'smaller than {mindiam:.0f} arcsec.')
+        log.info('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
+                 f'smaller than {mindiam:.0f} arcsec.')
         I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
         cat = cat[I]
     elif ssl_version == 'v2':
         mindiam = 30.
-        print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
-              f'smaller than {mindiam:.0f} arcsec.')
+        log.info('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
+                 f'smaller than {mindiam:.0f} arcsec.')
         I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
         cat = cat[I]
     elif ssl_version == 'v3':
         mindiam = 10.
-        print('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
-              f'smaller than {mindiam:.0f} arcsec.')
+        log.info('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
+                 f'smaller than {mindiam:.0f} arcsec.')
         I = (diam < mindiam) * np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz') * ~cat['RESOLVED']
         cat = cat[I]
     else:
@@ -1290,14 +1290,14 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
                 I.append(ii)
                 fitsfiles.append(fitsfile)
             else:
-                print(f'Missing {fitsfile}')
+                log.info(f'Missing {fitsfile}')
 
         return np.array(fitsfiles), np.array(I)
 
     nband = len(bands)
 
     if ssl_version is None:
-        print('ssl_version must be specified')
+        log.warning('ssl_version must be specified')
         return
 
     # need to define a reference sample and make sure the files exist
@@ -1330,24 +1330,24 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
 
     refoutfile = os.path.join(catdir, f'ssl-parent-refcat-{ssl_version}.fits')
     if os.path.isfile(refoutfile):
-        print(f'Warning: existing reference catalog {refoutfile} must be removed by-hand.')
+        log.warning(f'Existing reference catalog {refoutfile} must be removed by-hand.')
         return
     outfile = os.path.join(catdir, f'ssl-parent-cat-{ssl_version}.fits')
     if os.path.isfile(outfile):
-        print(f'Warning: existing catalog {outfile} must be removed by-hand.')
+        log.warning(f'Existing catalog {outfile} must be removed by-hand.')
         return
 
     refcat.write(refoutfile, overwrite=True)
-    print(f'Wrote {len(refcat):,d} objects to {refoutfile}')
+    log.info(f'Wrote {len(refcat):,d} objects to {refoutfile}')
 
     cat.write(outfile, overwrite=True)
-    print(f'Wrote {len(cat):,d} objects to {outfile}')
+    log.info(f'Wrote {len(cat):,d} objects to {outfile}')
 
     # Ensure each output file has no more than ncatmax objects, to we
     # don't run into memory problems at NERSC.
     nchunk = int(np.ceil(ncat / ncatmax))
     chunkindx = np.array_split(np.arange(ncat), nchunk)
-    print(f'Dividing into {nchunk:,d} chunks.')
+    log.info(f'Dividing into {nchunk:,d} chunks.')
 
     for ichunk in range(nchunk):
         h5dir = os.path.join(outdir, ssl_version, 'input')
@@ -1356,7 +1356,7 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
 
         h5file = os.path.join(h5dir, f'ssl-parent-chunk{ichunk:03}-{ssl_version}.hdf5')
         if os.path.isfile(h5file) and not overwrite:
-            print(f'Skipping existing HDF5 file {h5file}')
+            log.info(f'Skipping existing HDF5 file {h5file}')
             continue
 
         refs = np.hstack((np.ones(nrefcat, bool), np.zeros(len(chunkindx[ichunk]), bool)))
@@ -1378,8 +1378,8 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
             images[iobj, :] = img
     
         F.close()
-        print(f'Wrote {h5file} with {nrefcat:,d} reference objects and ' + \
-              f'{len(chunkindx[ichunk]):,d} objects to classify.')
+        log.info(f'Wrote {h5file} with {nrefcat:,d} reference objects and ' + \
+                 f'{len(chunkindx[ichunk]):,d} objects to classify.')
 
 
 def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
@@ -1396,7 +1396,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
     from matplotlib.image import imread
 
     if ssl and ssl_version is None:
-        print('ssl_version must be specified')
+        log.info('ssl_version must be specified')
         return
 
     if ssl:
@@ -1424,13 +1424,13 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
             pngfiles.append(pngfile)
             I.append(ii)
         else:
-            print(f'Skipping missing file {pngfile}')
+            log.info(f'Skipping missing file {pngfile}')
     pngfiles = np.array(pngfiles)
     I = np.array(I)
     cat = cat[I]
 
     if len(pngfiles) == 0:
-        print(f'No color image files found in image directory {pngdir}')
+        log.info(f'No color image files found in image directory {pngdir}')
         return
     #pngfiles = np.unique(pngfiles)
 
@@ -1468,15 +1468,15 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
     pdf_pngfiles = np.array_split(pngfiles, npdf)
     pdf_allindx = np.array_split(origindx, npdf)
 
-    print(f'Distributing {len(pngfiles):,d} annotated images to {npdf:,d} ' + \
-          f'PDFs with a total of {npage:,d} pages and {npagemax} pages per file.')
+    log.info(f'Distributing {len(pngfiles):,d} annotated images to {npdf:,d} ' + \
+             f'PDFs with a total of {npage:,d} pages and {npagemax} pages per file.')
 
     #for ipdf in [1]:
     for ipdf in range(npdf):
         pdffile = os.path.join(qadir, f'{prefix}-montage-{region}{suffix}-{ipdf:03}.pdf')
 
         if os.path.isfile(pdffile) and not overwrite:
-            print(f'Output file {pdffile} exists; use --overwrite')
+            log.info(f'Output file {pdffile} exists; use --overwrite')
             continue
 
         pngfiles = pdf_pngfiles[ipdf]
@@ -1486,7 +1486,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
     
         pdf = PdfPages(pdffile)
         for ipage in range(npage):
-            print(f'Building page {ipage+1:,d}/{npage:,d}')
+            log.info(f'Building page {ipage+1:,d}/{npage:,d}')
             indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
             origindx = orig_allindx[ipage*nperpage:(ipage+1)*nperpage]
             fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
@@ -1514,7 +1514,7 @@ def annotated_montage(cat, outdir='.', region='dr9-north', npagemax=100,
             pdf.savefig(fig, dpi=150)
             plt.close()
         pdf.close()
-        print(f'Wrote {pdffile}')
+        log.info(f'Wrote {pdffile}')
 
         if ssl and False:
             print(pdffile)
@@ -1604,7 +1604,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
         ###################################################
 
         if ssl and ssl_version is None:
-            print('ssl_version must be specified')
+            log.info('ssl_version must be specified')
             return
 
         # when annotating, must make a copy *before* any cuts!
@@ -1621,7 +1621,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             out = cat['OBJNAME', ]
             #out['COMMENT'] = 'drop,faint shred or compact'
             out.write(outfile, format='ascii.csv', overwrite=True)
-            print(f'Wrote {outfile}')
+            log.info(f'Wrote {outfile}')
 
         #if False:
         #    diam, _, _, _ = choose_geometry(cat, mindiam=0.)
@@ -1844,7 +1844,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             nedlvs = read_nedlvs()
 
             I = cat['FILTERS'] == 'grz'
-            print(f'In {region} grz footprint: {np.sum(I):,d}')
+            log.info(f'In {region} grz footprint: {np.sum(I):,d}')
             cat = cat[I]
             nobj = len(cat)
 
@@ -1852,15 +1852,15 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             indx_cat, indx_nedlvs = match(cat['ROW_NEDLVS'], nedlvs['ROW'])
             cat = cat[indx_cat]
             nedlvs = nedlvs[indx_nedlvs]
-            print(f'In NED-LVS: {len(cat):,d}/{nobj:,d}')
+            log.info(f'In NED-LVS: {len(cat):,d}/{nobj:,d}')
 
             I = (cat['RA'] > 87.) * (cat['RA'] < 300.) * (cat['DEC'] > -10.) * (cat['DEC'] < 85.)
-            print(f'In 87<RA<300, -10<Dec<85: {np.sum(I):,d}/{len(cat):,d}')
+            log.info(f'In 87<RA<300, -10<Dec<85: {np.sum(I):,d}/{len(cat):,d}')
             cat = cat[I]
             nedlvs = nedlvs[I]
 
             I = (nedlvs['Z'] > 0.002) * (nedlvs['Z'] < 0.025)
-            print(f'In 0.002<z<0.025 range: {np.sum(I):,d}/{len(cat):,d}')
+            log.info(f'In 0.002<z<0.025 range: {np.sum(I):,d}/{len(cat):,d}')
             cat = cat[I]
             nedlvs = nedlvs[I]
 
@@ -1868,7 +1868,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             diam, _, _, _ = choose_geometry(cat, mindiam=0.)
 
             I = (diam > mindiam)
-            print(f'Diameter (>{mindiam:.0f} arcsec) cut: {np.sum(I):,d}/{len(cat):,d}')
+            log.info(f'Diameter (>{mindiam:.0f} arcsec) cut: {np.sum(I):,d}/{len(cat):,d}')
             cat = cat[I]
             nedlvs = nedlvs[I]
 
@@ -1877,7 +1877,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             snr_NUV = get_snr(nedlvs['LUM_NUV'], nedlvs['LUM_NUV_UNC'])
 
             I = np.logical_or(snr_W3 > snrmin, snr_NUV > snrmin)
-            print(f'S/N(W3)>{snrmin:.0f}, S/N(NUV)>{snrmin:.0f} cuts: {np.sum(I):,d}/{len(cat):,d}')
+            log.info(f'S/N(W3)>{snrmin:.0f}, S/N(NUV)>{snrmin:.0f} cuts: {np.sum(I):,d}/{len(cat):,d}')
             cat = cat[I]
             nedlvs = nedlvs[I]
 
@@ -1906,11 +1906,11 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
     
                 assert(np.all(allcat['ROW_PARENT'] == cat['ROW_PARENT']))
                 allcat.write(outfile, overwrite=True)
-                print(f'Wrote {len(allcat):,d} objects to {outfile}')
+                log.info(f'Wrote {len(allcat):,d} objects to {outfile}')
     
                 outfile = os.path.join(outdir, f'wiseize-nedlvs-{region}.fits')
                 nedlvs.write(outfile, overwrite=True)
-                print(f'Wrote {len(nedlvs):,d} objects to {outfile}')
+                log.info(f'Wrote {len(nedlvs):,d} objects to {outfile}')
 
 
         if lvd:
@@ -2010,20 +2010,20 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', outdir='.',
             ##cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
             ##diam, ba, pa, ref = choose_geometry(cat)
 
-        print(f'Trimmed to {len(cat):,d} objects.')
+        log.info(f'Trimmed to {len(cat):,d} objects.')
 
 
     sort_by_ra = True#False
     sort_by_diameter = False#True
     if sort_by_ra:
-        print('Sorting by RA')
+        log.info('Sorting by RA')
         cat = cat[np.argsort(cat['RA'])]
     elif sort_by_diameter:
-        print('Sorting by diameter')
+        log.info('Sorting by diameter')
         diam, _, _, _ = choose_geometry(cat, mindiam=0.)
         cat = cat[np.argsort(diam)[::-1]]
     else:
-        print('Sorting by OBJNAME')
+        log.info('Sorting by OBJNAME')
         cat = cat[np.argsort(cat['OBJNAME'])]
 
     if len(cat) == 0:
@@ -2108,8 +2108,8 @@ def main():
             indir = None
             layer = f'ls-{args.region}'
             if args.region == 'dr11-south':
-                print(f"WARNING: Overriding layer={layer}-->ls-dr11-early")
-                layer = 'ls-dr11-early'
+                log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
+                layer = 'ls-dr11-early-v2'
             if args.rescale:
                 outdir = os.path.join(args.outdir, args.region, 'rescale')
             else:

@@ -11,6 +11,9 @@ from SGA.logger import log
 
 
 PIXSCALE = 0.262
+GALEX_PIXSCALE = 1.5
+UNWISE_PIXSCALE = 2.75
+
 RUNS = {'dr9-north': 'north', 'dr9-south': 'south', 
         'dr10-south': 'south', 'dr11-south': 'south'}
 
@@ -337,7 +340,7 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
     # Quickly read the input CCDs and check that we have all the colors we need.
     ccds = get_ccds(survey, onegal[RACOLUMN], onegal[DECCOLUMN], width, pixscale, bands=bands)
     if len(ccds) == 0:
-        print('No CCDs touching this brick; nothing to do.')
+        log.info('No CCDs touching this brick; nothing to do.')
         return 1, stagesuffix
     
     #usebands = list(sorted(set(ccds.filter)))

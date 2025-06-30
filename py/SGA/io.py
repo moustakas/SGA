@@ -54,9 +54,12 @@ def sga_html_dir():
 
 def set_legacysurvey_dir(region='dr9-north'):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
-        raise EnvironmentError('Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!')
-    log.warning('Temporarily using dr11-early directory for dr11-south!!')
-    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early'}
+        msg = 'Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!'
+        log.critical(msg)
+        raise EnvironmentError(msg)
+    #log.warning('Temporarily using dr11-early directory for dr11-south!!')
+    #dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early'}
+    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
     log.info(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
@@ -1239,31 +1242,6 @@ def read_survey_bricks(survey, brickname=None, custom=False):
         bricks = _toTable(bricks)
 
     return bricks
-
-
-def backup_filename(filename):
-    """rename filename to next available filename.N
-
-    Args:
-        filename (str): full path to filename
-
-    Returns:
-        New filename.N, or filename if original file didn't already exist
-    """
-    if filename == '/dev/null' or not os.path.exists(filename):
-        return filename
-
-    n = 0
-    while True:
-        altfile = f'{filename}.{n}'
-        if os.path.exists(altfile):
-            n += 1
-        else:
-            break
-
-    os.rename(filename, altfile)
-
-    return altfile
 
 
 def altnames_hyperleda(cat):
@@ -3617,7 +3595,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 rows = rows[brickcut]
 
         nrows = len(rows)
-        log.info(f'Pre-selecting {nrows:,d} objects.')
+        log.debug(f'Pre-selecting {nrows:,d} objects.')
     else:
         rows = None
 
@@ -3650,8 +3628,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     sample.add_column(rows, name='INDEX', index=0)
 
     if galaxylist is not None:
-        if verbose:
-            log.info('Selecting specific galaxies.')
+        log.debug('Selecting specific galaxies.')
         these = np.isin(sample['GROUP_NAME'], galaxylist)
         if np.count_nonzero(these) == 0:
             log.warning('No matching galaxies using column GROUP_NAME!')
