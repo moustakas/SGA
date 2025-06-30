@@ -332,7 +332,7 @@ def _get_psfsize_and_depth(tractor, bands, pixscale, incenter=False):
         if psfsizecol in tractor.columns():
             good = np.where(tractor.get(psfsizecol)[these] > 0)[0]
             if len(good) == 0:
-                print('  No good measurements of the PSF size in band {}!'.format(filt))
+                log.warning(f'  No good measurements of the PSF size in band {filt}!')
                 out['psfsigma_{}'.format(filt.lower())] = np.float32(0.0)
                 out['psfsize_{}'.format(filt.lower())] = np.float32(0.0)
             else:
@@ -346,7 +346,7 @@ def _get_psfsize_and_depth(tractor, bands, pixscale, incenter=False):
         if psfsizecol in tractor.columns():
             good = np.where(tractor.get(psfdepthcol)[these] > 0)[0]
             if len(good) == 0:
-                print('  No good measurements of the PSF depth in band {}!'.format(filt))
+                log.warning(f'  No good measurements of the PSF depth in band {filt}!')
                 out['psfdepth_{}'.format(filt.lower())] = np.float32(0.0)
             else:
                 psfdepth = tractor.get(psfdepthcol)[these][good] # [AB mag, 5-sigma]
@@ -387,8 +387,8 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
         # Read the data and initialize the mask with the inverse variance image,
         # if available.
         if verbose:
-            print('Reading {}'.format(filt2imfile[filt]['image']))
-            print('Reading {}'.format(filt2imfile[filt]['model']))
+            log.info(f'Reading {filt2imfile[filt]["image"]}')
+            log.info(f'Reading {filt2imfile[filt]["model"]}')
         image = fitsio.read(filt2imfile[filt]['image'])
         hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
         model = fitsio.read(filt2imfile[filt]['model'])
@@ -399,7 +399,7 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
         # Initialize the mask based on the inverse variance
         if 'invvar' in filt2imfile[filt].keys():
             if verbose:
-                print('Reading {}'.format(filt2imfile[filt]['invvar']))
+                log.info(f'Reading {filt2imfile[filt]["invvar"]}')
             invvar = fitsio.read(filt2imfile[filt]['invvar'])
             mask = invvar <= 0 # True-->bad, False-->good
         else:
@@ -430,7 +430,7 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
             data['refband_height'] = HH
             
         if verbose:
-            print('Reading {}'.format(filt2imfile[filt]['psf']))
+            log.info(f'Reading {filt2imfile[filt]["psf"]}')
         psfimg = fitsio.read(filt2imfile[filt]['psf'])
         psfimg /= psfimg.sum()
         data['{}_psf'.format(filt.lower())] = PixelizedPSF(psfimg)
@@ -494,7 +494,7 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
             data['{}_var_'.format(filt.lower())] = var # [nanomaggies**2]
             #data['{}_var'.format(filt.lower())] = var / thispixscale**4 # [nanomaggies**2/arcsec**4]
             if np.any(invvar < 0):
-                print('Warning! Negative pixels in the {}-band inverse variance map!'.format(filt))
+                log.warning(f'Negative pixels in the {filt}-band inverse variance map!')
                 #pdb.set_trace()
 
     data['residual_mask'] = residual_mask
@@ -620,8 +620,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
     # Now, loop through each 'galaxy_indx' from bright to faint.
     data['mge'] = []
     for ii, central in enumerate(galaxy_indx):
-        print('Determing the geometry for galaxy {}/{}.'.format(
-                ii+1, len(galaxy_indx)))
+        log.info(f'Determing the geometry for galaxy {ii+1}/{len(galaxy_indx)}.')
 
         #if tractor.ref_cat[galaxy_indx] == 'R1' and tractor.ref_id[galaxy_indx] == 8587006103:
         #    neighborfactor = 1.0
@@ -665,8 +664,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         mgegalaxy.ymed = dims[0] / 2
         mgegalaxy.xpeak = dims[0] / 2
         mgegalaxy.ypeak = dims[0] / 2
-        print('Enforcing galaxy centroid to the center of the mosaic: (x,y)=({:.3f},{:.3f})'.format(
-            mgegalaxy.xmed, mgegalaxy.ymed))
+        log.warning('Enforcing galaxy centroid to the center of the mosaic: (x,y)=({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})')
         
         #if True:
         #    import matplotlib.pyplot as plt
@@ -676,8 +674,8 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
 
         # Did the galaxy position move? If so, revert back to the Tractor geometry.
         if np.abs(mgegalaxy.xmed-mge.xmed) > maxshift or np.abs(mgegalaxy.ymed-mge.ymed) > maxshift:
-            print('Large centroid shift! (x,y)=({:.3f},{:.3f})-->({:.3f},{:.3f})'.format(
-                mgegalaxy.xmed, mgegalaxy.ymed, mge.xmed, mge.ymed))
+            log.warning('Large centroid shift! (x,y)=({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})-->' + \
+                        f'({mge.xmed:.3f},{mge.ymed:.3f})')
             largeshift = True
 
             # For the MaNGA project only, check to make sure the Tractor
@@ -727,7 +725,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         # [2] Create the satellite mask in all the bandpasses. Use srcs here,
         # which has had the satellites nearest to the central galaxy trimmed
         # out.
-        print('Building the satellite mask.')
+        log.info('Building the satellite mask.')
         #srcs = tractor.copy()
         satmask = np.zeros(data[refband].shape, bool)
         for filt in bands:
@@ -738,7 +736,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             cenflux = getattr(tractor, 'flux_{}'.format(filt.lower()))[central]
             satflux = getattr(srcs, 'flux_{}'.format(filt.lower()))
             if cenflux <= 0.0:
-                print('Central galaxy flux is negative! Proceed with caution...')
+                log.warning('Central galaxy flux is negative! Proceed with caution...')
                 #pdb.set_trace()
                 #raise ValueError('Central galaxy flux is negative!')
             
@@ -751,7 +749,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             #    satindx = satindx[np.logical_not(np.isin(satindx, central))]
             if len(satindx) == 0:
                 #raise ValueError('All satellites have been dropped!')
-                print('Warning! All satellites have been dropped from band {}!'.format(filt))
+                log.warning(f'Warning! All satellites have been dropped from band {filt}!')
             else:
                 satsrcs = srcs.copy()
                 #satsrcs = tractor.copy()
@@ -865,6 +863,7 @@ def _build_catalog_one(args):
     """Wrapper function for the multiprocessing."""
     return build_catalog_one(*args)
 
+
 def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS, refcat='R1', verbose=False):
     """Gather the ellipse-fitting results for a single group."""
     import fitsio
@@ -875,7 +874,7 @@ def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS, refcat='R1', verbo
 
     tractorfile = os.path.join(galaxydir, f'{galaxy}-custom-tractor.fits')
     if not os.path.isfile(tractorfile):
-        print('Missing Tractor catalog {}'.format(tractorfile))
+        log.warning(f'Missing Tractor catalog {tractorfile}')
         return None, None, None #tractor, parent, ellipse
         #return tractor, parent, ellipse
 
@@ -885,7 +884,7 @@ def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS, refcat='R1', verbo
         
         ellipsefile = os.path.join(galaxydir, f'{galaxy}-custom-ellipse-{refid}.fits')
         if not os.path.isfile(ellipsefile):
-            print('Missing ellipse file {}'.format(ellipsefile))
+            log.warning(f'Missing ellipse file {ellipsefile}')
             return None, None, None #tractor, parent, ellipse
 
         _ellipse = read_ellipsefit(galaxy, galaxydir, galaxy_id=str(refid), asTable=True,
@@ -925,7 +924,7 @@ def build_catalog(sample, fullsample, bands, galex=True, unwise=True,
     
     outfile = os.path.join(legacyhalos.io.legacyhalos_dir(), 'virgofilaments-{}-legacyphot.fits'.format(version))
     if os.path.isfile(outfile) and not clobber:
-        print('Use --clobber to overwrite existing catalog {}'.format(outfile))
+        log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
         return
 
     galaxy, galaxydir = get_galaxy_galaxydir(sample)
@@ -972,17 +971,17 @@ def build_catalog(sample, fullsample, bands, galex=True, unwise=True,
     #    if ellipse1[0][col].ndim > 1:
     #        print(col)
 
-    print('Doing an outer join on Tractor because some columns are missing from some catalogs:')
-    print("  ['mw_transmission_nuv' 'mw_transmission_fuv' 'ngood_g' 'ngood_r' 'ngood_z']")
+    log.info('Doing an outer join on Tractor because some columns are missing from some catalogs:')
+    log.info("  ['mw_transmission_nuv' 'mw_transmission_fuv' 'ngood_g' 'ngood_r' 'ngood_z']")
     tractor = vstack(tractor1, metadata_conflicts='silent')
 
     # exact join
     parent = vstack(parent1, join_type='exact', metadata_conflicts='silent')
     ellipse = vstack(ellipse1, join_type='exact', metadata_conflicts='silent')
-    print(f'Merging {len(tractor)} galaxies took {(time.time()-t0)/60.0:.2f} min.')
+    log.info(f'Merging {len(tractor):,d} galaxies took {(time.time()-t0)/60.0:.2f} min.')
 
     if len(tractor) == 0:
-        print('Something went wrong and no galaxies were fitted.')
+        log.warning('Something went wrong and no galaxies were fitted.')
         return
     assert(len(tractor) == len(parent))
     assert(np.all(tractor['REF_ID'] == parent[REFIDCOLUMN]))
@@ -1001,7 +1000,7 @@ def build_catalog(sample, fullsample, bands, galex=True, unwise=True,
     hx = fits.HDUList([hdu_primary, hdu_parent, hdu_ellipse, hdu_tractor])
     hx.writeto(outfile, overwrite=True, checksum=True)
 
-    print(f'Wrote {len(parent):,d} galaxies to {outfile}')
+    log.info(f'Wrote {len(parent):,d} galaxies to {outfile}')
 
 
 def read_multiband(galaxy, galaxydir, filesuffix='custom',
@@ -1071,7 +1070,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
                 filt2imfile[filt][imtype] = imfile
             else:
                 if verbose:
-                    print('File {} not found.'.format(imfile))
+                    log.warning(f'File {imfile} not found.')
                 missing_data = True
                 break
     
@@ -1091,7 +1090,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     # turn these catalog entries into Tractor sources later.
     tractorfile = os.path.join(galaxydir, '{}-{}.fits'.format(galaxy, filt2imfile['tractor']))
     if verbose:
-        print('Reading {}'.format(tractorfile))
+        log.info(f'Reading {tractorfile}')
         
     cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
             'sersic', 'shape_r', 'shape_e1', 'shape_e2',
@@ -1110,13 +1109,13 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     tractor = fits_table(tractorfile, columns=cols)
     hdr = fitsio.read_header(tractorfile)
     if verbose:
-        print('Read {} sources from {}'.format(len(tractor), tractorfile))
+        log.info(f'Read {len(tractor):,d} sources from {tractorfile}')
     data.update(_get_psfsize_and_depth(tractor, bands, pixscale, incenter=False))
 
     # Read the maskbits image and build the starmask.
     maskbitsfile = os.path.join(galaxydir, '{}-{}.fits.fz'.format(galaxy, filt2imfile['maskbits']))
     if verbose:
-        print('Reading {}'.format(maskbitsfile))
+        log.info(f'Reading {maskbitsfile}')
     maskbits = fitsio.read(maskbitsfile)
     # initialize the mask using the maskbits image
     starmask = ( (maskbits & MASKBITS['BRIGHT'] != 0) | (maskbits & MASKBITS['MEDIUM'] != 0) |
@@ -1153,7 +1152,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     # Find the galaxies of interest.
     samplefile = os.path.join(galaxydir, '{}-{}.fits'.format(galaxy, filt2imfile['sample']))
     sample = Table(fitsio.read(samplefile))
-    print('Read {} sources from {}'.format(len(sample), samplefile))
+    log.info(f'Read {len(sample)} sources from {samplefile}')
 
     # keep all objects
     galaxy_indx = []
@@ -1174,7 +1173,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     # Do we need to take into account the elliptical mask of each source??
     srt = np.argsort(tractor.flux_r[galaxy_indx])[::-1]
     galaxy_indx = galaxy_indx[srt]
-    print('Sort by flux! ', tractor.flux_r[galaxy_indx])
+    log.info('Sort by flux! ', tractor.flux_r[galaxy_indx])
     galaxy_id = tractor.ref_id[galaxy_indx]
 
     data['galaxy_id'] = galaxy_id
@@ -3312,10 +3311,10 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     if htmlplots is False and htmlindex is False:
         if verbose:
             t0 = time.time()
-            log.info('Getting galaxy names and directories...', end='')
+            log.debug('Getting galaxy names and directories...')
         galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
         if verbose:
-            log.info(f'...took {time.time() - t0:.3f} sec')
+            log.debug(f'...took {time.time() - t0:.3f} sec')
 
     if coadds:
         suffix = 'coadds'
@@ -3365,7 +3364,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
     if verbose:
         t0 = time.time()
-        log.info('Finding missing files...', end='')
+        log.debug('Finding missing files...')
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             todo = np.array(P.map(_missing_files_one, missargs))
@@ -3373,7 +3372,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         todo = np.array([_missing_files_one(_missargs) for _missargs in missargs])
 
     if verbose:
-        log.info(f'...took {(time.time() - t0)/60.:.3f} min')
+        log.debug(f'...took {(time.time() - t0)/60.:.3f} min')
 
     itodo = np.where(todo == 'todo')[0]
     idone = np.where(todo == 'done')[0]

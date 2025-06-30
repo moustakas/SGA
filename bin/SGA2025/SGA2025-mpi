@@ -32,8 +32,6 @@ def main():
                         build_catalog, missing_files, read_multiband, get_galaxy_galaxydir,
                         RACOLUMN, DECCOLUMN, DIAMCOLUMN)
 
-    #from desiutil.log import get_logger
-    #log = get_logger()
     from SGA.logger import log
 
     args = mpi_args()
@@ -69,7 +67,7 @@ def main():
                              d25min=args.d25min, d25max=args.d25max, 
                              fullsample=False, galaxylist=args.galaxylist,
                              region=args.region, verbose=args.verbose)
-        pdb.set_trace()
+
         if len(sample) == 0:
             return
 
@@ -221,7 +219,6 @@ def main():
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 
         if args.coadds:
-            #from SGA.mpi import call_custom_coadds
             from SGA.coadds import custom_coadds
 
             # Write out the individual galaxies for this mosaic.
@@ -235,12 +232,10 @@ def main():
 
             if args.debug:
                 err, filesuffix = custom_coadds(
-                    onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=args.mp,
-                    pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                    unwise=args.unwise, galex=args.galex, force=args.force,
-                    bands=bands, plots=False, verbose=args.verbose, cleanup=args.cleanup,
-                    nsigma=None, write_all_pickles=True, just_coadds=args.just_coadds,
-                    no_gaia=False, no_tycho=False)
+                    onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=args.pixscale,
+                    bands=bands, mp=args.mp, nsigma=args.nsigma, just_coadds=args.just_coadds,
+                    force=args.force, cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
+                    verbose=args.verbose)
             else:
                 #logfile = 'junk.txt'
                 #with stdouterr_redirected(to=logfile, overwrite=args.clobber, comm=None) as F:
@@ -251,12 +246,10 @@ def main():
                 with open(logfile, 'a') as L:
                     with redirect_stdout(L), redirect_stderr(L):
                         err, filesuffix = custom_coadds(
-                            onegal, galaxy, survey, run, radius_mosaic_arcsec, mp=args.mp,
-                            pixscale=args.pixscale, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                            unwise=args.unwise, galex=args.galex, force=args.force, log=L,
-                            bands=bands, plots=False, verbose=args.verbose, cleanup=args.cleanup,
-                            nsigma=None, write_all_pickles=True, just_coadds=args.just_coadds,
-                            no_gaia=False, no_tycho=False)
+                            onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=args.pixscale,
+                            bands=bands, mp=args.mp, nsigma=args.nsigma, just_coadds=args.just_coadds,
+                            force=args.force, cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
+                            verbose=args.verbose)
 
             #return
             #pdb.set_trace()

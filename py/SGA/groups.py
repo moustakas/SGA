@@ -8,9 +8,8 @@ Code to do construct various group catalogs.
 import os, time, pdb
 import numpy as np
 from astropy.table import Table
-
-
-PIXSCALE = 0.262
+from SGA.coadds import PIXSCALE
+from SGA.logger import log
 
 
 def fof_groups(cat, linking_length=2, verbose=True):
@@ -24,14 +23,14 @@ def fof_groups(cat, linking_length=2, verbose=True):
 
     if verbose:
         npergrp, _ = np.histogram(grp, bins=len(grp), range=(0, len(grp)))
-        print('Found {} total groups, including:'.format(ngrp), flush=True)
-        print('  {} groups with 1 member'.format(
+        log.info('Found {} total groups, including:'.format(ngrp), flush=True)
+        log.info('  {} groups with 1 member'.format(
             np.sum( (npergrp == 1) ).astype('int')), flush=True)
-        print('  {} groups with 2-5 members'.format(
+        log.info('  {} groups with 2-5 members'.format(
             np.sum( (npergrp > 1)*(npergrp <= 5) ).astype('int')), flush=True)
-        print('  {} groups with 5-10 members'.format(
+        log.info('  {} groups with 5-10 members'.format(
             np.sum( (npergrp > 5)*(npergrp <= 10) ).astype('int')), flush=True)
-        print('  {} groups with >10 members'.format(
+        log.info('  {} groups with >10 members'.format(
             np.sum( (npergrp > 10) ).astype('int')), flush=True)
         
     return (grp, mult, frst, nxt)
@@ -161,7 +160,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     # First group galaxies within dmax arcmin, setting those to have the same
     # group number
     t0 = time.time()
-    print('Spheregrouping took...', end='')
+    log.info('Spheregrouping took...')
     ingroup, group_mult, firstgroup, nextgroup = spheregroup(ra, dec, dmax)
 
     ngroup = np.count_nonzero(firstgroup != -1)
@@ -198,16 +197,16 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
                   indx = np.where(np.logical_or(gnum==gnum[ibig[ii]], gnum==gnum[inear[jj]]))[0]
                   gnum[indx] = gnum[indx[0]]
                   mgrp[indx] = len(indx)
-    print('...{:.3f} min'.format((time.time() - t0)/60))
+    log.info(f'...{(time.time() - t0)/60.:.3f} min')
 
     npergrp, _ = np.histogram(gnum, bins=len(gnum), range=(0, len(gnum)))
 
-    print(f'Found {len(set(gnum))} total groups, including:')
-    print(f'  {int(np.sum((npergrp == 1)))} groups with 1 member')
-    print(f'  {int(np.sum((npergrp == 2)))} groups with 2 members')
-    print(f'  {int(np.sum((npergrp > 2) * (npergrp <= 5)))} group(s) with 3-5 members')
-    print(f'  {int(np.sum((npergrp > 5) * (npergrp <= 10)))} group(s) with 6-10 members')
-    print(f'  {int(np.sum( (npergrp > 10)))} group(s) with >10 members')
+    log.info(f'Found {len(set(gnum))} total groups, including:')
+    log.info(f'  {int(np.sum((npergrp == 1)))} groups with 1 member')
+    log.info(f'  {int(np.sum((npergrp == 2)))} groups with 2 members')
+    log.info(f'  {int(np.sum((npergrp > 2) * (npergrp <= 5)))} group(s) with 3-5 members')
+    log.info(f'  {int(np.sum((npergrp > 5) * (npergrp <= 10)))} group(s) with 6-10 members')
+    log.info(f'  {int(np.sum( (npergrp > 10)))} group(s) with >10 members')
 
     cat['GROUP_ID'] = gnum
     cat['GROUP_MULT'] = mgrp
@@ -238,7 +237,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
             gdiam = 1.1 * np.max(pad) * 60 # [arcmin]
         cat['GROUP_DIAMETER'][I] = gdiam
         if cat['GROUP_DIAMETER'][I[0]] < np.max(diam[I]):
-            print('Should not happen!')
+            log.critical('Should not happen!')
             raise ValueError
 
         # Assign the group name based on its largest member and also make this
@@ -250,7 +249,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
         #if cat['GROUP_ID'][I][0] == 2708:
         #    pdb.set_trace()
         
-    print(f'Building a group catalog took {(time.time() - t0)/60.:.3f} min')
+    log.info(f'Building a group catalog took {(time.time() - t0)/60.:.3f} min')
         
     return cat
 
