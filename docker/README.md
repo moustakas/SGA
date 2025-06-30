@@ -5,7 +5,7 @@ Build a cross-platform docker container as documented [here](https://www.docker.
 
 First, pull the latest 
 ```
-docker pull legacysurvey/legacypipe:DR10.3.1
+docker pull legacysurvey/legacypipe:DR10.3.4b
 
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
@@ -21,7 +21,7 @@ docker buildx use SGA-build
 and then
 
 ```
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:0.2 .
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:0.3 .
 docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:latest .
 ```
 
@@ -33,7 +33,7 @@ docker run -it legacysurvey/sga:latest
 
 Or at NERSC:
 ```
-shifterimg pull docker:legacysurvey/sga:0.2
+shifterimg pull docker:legacysurvey/sga:0.3
 shifterimg pull docker:legacysurvey/sga:latest
 shifter --image docker:legacysurvey/sga:latest bash
 ```

@@ -1,4 +1,4 @@
-FROM legacysurvey/legacypipe:DR10.3.1
+FROM legacysurvey/legacypipe:DR10.3.4b
 
 RUN for x in \
   ipython \
@@ -12,11 +12,8 @@ RUN for x in \
   photutils \
   healpy \
   astroquery \
-  ; do pip --no-cache-dir install --upgrade $x; done
-
-# Remove the policy.xml file so we do not get an 'exhausted cache resources'
-# error when we build mosaics for very large systems.
-RUN echo '<policymap></policymap>' > /etc/ImageMagick-6/policy.xml
+  ; do pip3 install --break-system-packages $x; done \
+  && rm -Rf /root/.cache/pip
 
 ENV IPYTHONDIR /tmp/ipython-config
 
