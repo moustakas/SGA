@@ -16,21 +16,47 @@ SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup
 
 
 """
-import logging
+import os, time, pdb
+import numpy as np
+
 from SGA.logger import log
+
+
+def get_logfile(galaxy, galaxydir, stagesuffix):
+    from SGA.io import backup_filename
+    logfile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}.log')
+    backup_filename(logfile)
+    return logfile
+
+
+def done(galaxy, galaxydir, err, stagesuffix, debug=False):
+    import logging
+
+    donefile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}')
+    if err == 0:
+        log.warning(f'Problem processing {galaxydir}/{galaxy}; please check the log file.')
+        donefile = f'{donefile}.isfail'
+    else:
+        donefile = f'{donefile}.isdone'
+
+    # equivalent to 'touch'
+    open(donefile, 'w').close()
+        
+    # close all file handlers
+    if not debug:
+        for hh in logging.root.handlers:
+            logging.root.removeHandler(hh)
+            hh.close()
+
 
 def main():
     """Top-level wrapper.
 
     """
-    import os, time, pdb
-    import numpy as np
-    from contextlib import redirect_stdout, redirect_stderr
-
     from legacypipe.runs import get_survey
 
     from SGA.coadds import RUNS, BANDS
-    from SGA.mpi import mpi_args, backup_filename
+    from SGA.mpi import mpi_args
     from SGA.io import (set_legacysurvey_dir, sga_dir, sga_data_dir, sga_html_dir, read_sample,
                         build_catalog, missing_files, read_multiband, get_galaxy_galaxydir,
                         RACOLUMN, DECCOLUMN, DIAMCOLUMN)
@@ -206,8 +232,8 @@ def main():
         if args.debug:
             logfile = None
         else:
-            logfile = os.path.join(galaxydir, f'{galaxy}-{suffix}.log')
-            backup_filename(logfile)
+            from contextlib import redirect_stdout, redirect_stderr
+            logfile = get_logfile(galaxy, galaxydir, suffix)
             log.debug(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
@@ -246,9 +272,7 @@ def main():
                             bands=bands, mp=args.mp, nsigma=args.nsigma, just_coadds=args.just_coadds,
                             force=args.force, cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
                             verbose=args.verbose)
-                for hh in logging.root.handlers:
-                    logging.root.removeHandler(hh)
-                    hh.close()
+            done(galaxy, galaxydir, err, suffix, debug=args.debug)
 
 
         if args.ellipse:
@@ -295,7 +319,6 @@ def main():
                                         htmlplots=args.htmlplots, htmlindex=args.htmlindex,
                                         clobber=args.clobber, verbose=args.verbose,
                                         htmldir=htmldir, size=size, mp=args.mp)
-        pdb.set_trace()
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))
         else:

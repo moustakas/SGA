@@ -325,15 +325,17 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 
 
 def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCALE,
-                  bands=GRIZ, mp=1, nsigma=None, subsky_radii=None, stagesuffix='coadds',
-                  just_coadds=False, missing_ok=False, force=False, cleanup=True,
-                  unwise=True, galex=False, no_gaia=False, no_tycho=False, verbose=False):
+                  bands=GRIZ, mp=1, nsigma=None, subsky_radii=None, just_coadds=False,
+                  missing_ok=False, force=False, cleanup=True, unwise=True,
+                  galex=False, no_gaia=False, no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
 
     """
     from legacypipe.runbrick import main as runbrick
     from SGA.io import custom_brickname
-    
+
+    stagesuffix = 'coadds'
+
     width = _mosaic_width(radius_mosaic_arcsec, pixscale=pixscale)
     brickname = f'custom-{custom_brickname(onegal[RACOLUMN], onegal[DECCOLUMN])}'
 

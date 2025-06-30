@@ -67,33 +67,6 @@ def mpi_args():
     return args
 
 
-def backup_filename(filename):
-    """rename filename to next available filename.N
-
-    Args:
-        filename (str): full path to filename
-
-    Returns:
-        New filename.N, or filename if original file didn't already exist
-
-    if filename=='/dev/null' or filename doesn't exist, just return filename
-    """
-    if filename == '/dev/null' or not os.path.exists(filename):
-        return filename
-
-    n = 0
-    while True:
-        altfile = f'{filename}.{n}'
-        if os.path.exists(altfile):
-            n += 1
-        else:
-            break
-
-    os.rename(filename, altfile)
-
-    return altfile
-
-
 def _start(galaxy, log=None, seed=None):
     if seed:
         print('Random seed = {}'.format(seed), flush=True)        
@@ -101,21 +74,3 @@ def _start(galaxy, log=None, seed=None):
         galaxy, time.asctime()), flush=True, file=log)
 
 
-def _done(galaxy, galaxydir, err, t0, stage, filesuffix=None, log=None):
-    if filesuffix is None:
-        suffix = ''
-    else:
-        suffix = '-{}'.format(filesuffix)
-    if err == 0:
-        print('ERROR: galaxy {}; please check the logfile.'.format(galaxy), flush=True, file=log)
-        donefile = os.path.join(galaxydir, '{}{}-{}.isfail'.format(galaxy, suffix, stage))
-    else:
-        donefile = os.path.join(galaxydir, '{}{}-{}.isdone'.format(galaxy, suffix, stage))
-        
-    cmd = 'touch {}'.format(donefile)
-    subprocess.call(cmd.split())
-        
-    print('Finished galaxy {} in {:.3f} minutes.'.format(
-          galaxy, (time.time() - t0)/60), flush=True, file=log)
-
-    

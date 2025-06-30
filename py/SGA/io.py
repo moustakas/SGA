@@ -10,6 +10,7 @@ import fitsio
 import numpy as np
 import numpy.ma as ma
 from astropy.table import Table, vstack
+
 from SGA.logger import log
 
 
@@ -18,6 +19,7 @@ DECCOLUMN = 'DEC'
 DIAMCOLUMN = 'DIAM'
 ZCOLUMN = 'Z'
 REFIDCOLUMN = 'SGAID'
+
 
 def sga_dir():
     if 'SGA_DIR' not in os.environ:
@@ -219,6 +221,34 @@ def get_galaxy_galaxydir(sample=None, bricks=None, region='dr11-south',
         return objs, objdirs, htmlobjdirs
     else:
         return objs, objdirs
+
+
+def backup_filename(filename):
+    """rename filename to next available filename.N
+
+    Args:
+        filename (str): full path to filename
+
+    Returns:
+        New filename.N, or filename if original file didn't already exist
+
+    if filename=='/dev/null' or filename doesn't exist, just return filename
+
+    """
+    if filename == '/dev/null' or not os.path.exists(filename):
+        return filename
+
+    n = 0
+    while True:
+        altfile = f'{filename}.{n}'
+        if os.path.exists(altfile):
+            n += 1
+        else:
+            break
+
+    os.rename(filename, altfile)
+
+    return altfile
 
 
 def SGA_version():
