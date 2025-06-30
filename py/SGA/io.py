@@ -3296,23 +3296,23 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
     if coadds:
         suffix = 'coadds'
-        filesuffix = '-custom-coadds.isdone'
+        filesuffix = '-coadds.isdone'
     elif ellipse:
         suffix = 'ellipse'
-        filesuffix = '-custom-ellipse.isdone'
-        dependson = '-custom-coadds.isdone'
+        filesuffix = '-ellipse.isdone'
+        dependson = '-coadds.isdone'
     elif build_catalog:
         suffix = 'build-catalog'
-        filesuffix = '-custom-SGA.isdone'
-        dependson = '-custom-ellipse.isdone'
+        filesuffix = '-SGA.isdone'
+        dependson = '-ellipse.isdone'
     elif htmlplots:
         suffix = 'html'
-        filesuffix = '-custom-montage.png'
-        dependson = '-custom-image.jpg'
+        filesuffix = '-montage.png'
+        dependson = '-image.jpg'
         galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
     elif htmlindex:
         suffix = 'htmlindex'
-        filesuffix = '-custom-montage.png'
+        filesuffix = '-montage.png'
         galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
     else:
         msg = 'Need at least one keyword argument.'

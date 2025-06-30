@@ -16,6 +16,9 @@ SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup
 
 
 """
+import logging
+from SGA.logger import log
+
 def main():
     """Top-level wrapper.
 
@@ -31,8 +34,6 @@ def main():
     from SGA.io import (set_legacysurvey_dir, sga_dir, sga_data_dir, sga_html_dir, read_sample,
                         build_catalog, missing_files, read_multiband, get_galaxy_galaxydir,
                         RACOLUMN, DECCOLUMN, DIAMCOLUMN)
-
-    from SGA.logger import log
 
     args = mpi_args()
     set_legacysurvey_dir(args.region)
@@ -191,20 +192,23 @@ def main():
              f'with {args.mp} cores on {time.asctime()}')
 
     # The rest of the pipeline--
-    tall = time.time()
+    if rank == 0:
+        tall = time.time()
+
     for count, ii in enumerate(groups[rank]):
         onegal = sample[ii]
         galaxy, galaxydir = get_galaxy_galaxydir(onegal, region=args.region)
         if not os.path.isdir(galaxydir):
             os.makedirs(galaxydir, exist_ok=True)
 
-        #if (count+1) % 10 == 0:
         log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): {galaxydir} (index {ii:,d})')
 
         if args.debug:
             logfile = None
         else:
-            logfile = backup_filename(os.path.join(galaxydir, f'{galaxy}-{suffix}.log'))
+            logfile = os.path.join(galaxydir, f'{galaxy}-{suffix}.log')
+            backup_filename(logfile)
+            log.debug(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
         if onegal[DIAMCOLUMN] > 10:
@@ -242,6 +246,10 @@ def main():
                             bands=bands, mp=args.mp, nsigma=args.nsigma, just_coadds=args.just_coadds,
                             force=args.force, cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
                             verbose=args.verbose)
+                for hh in logging.root.handlers:
+                    logging.root.removeHandler(hh)
+                    hh.close()
+
 
         if args.ellipse:
             from SGA.mpi import call_ellipse
@@ -281,17 +289,19 @@ def main():
 
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
-                 f'after {time.time():.3f} minutes')
+                 f'after {(time.time()-tall)/60.:.3f} minutes')
         _, groups, _, _ = missing_files(sample=sample, region=args.region, bricks=bricks,
                                         coadds=args.coadds, ellipse=args.ellipse,
                                         htmlplots=args.htmlplots, htmlindex=args.htmlindex,
                                         clobber=args.clobber, verbose=args.verbose,
                                         htmldir=htmldir, size=size, mp=args.mp)
+        pdb.set_trace()
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))
         else:
             stilltodo = 0
         log.info(f'{suffix.upper()} left to do: {stilltodo} / {ntodo}.')
+
 
 
 if __name__ == '__main__':

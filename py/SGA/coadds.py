@@ -54,10 +54,10 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix,
             return 1
         else:
             if missing_ok:
-                print(f'Warning: missing file {infile} but missing_ok=True')
+                log.warning(f'Missing file {infile} but missing_ok=True')
                 return 1
             else:
-                print(f'Missing file {infile}; please check the logfile.')
+                log.warning(f'Missing file {infile}; please check the logfile.')
                 return 0
 
     def _do_cleanup():
@@ -512,4 +512,5 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
                               unwise=unwise, galex=galex, cleanup=cleanup,
                               just_coadds=just_coadds, clobber=True,
                               bands=bands, missing_ok=missing_ok)
+
         return ok, stagesuffix
