@@ -1,4 +1,4 @@
-FROM legacysurvey/cutouts:v1.0
+FROM legacysurvey/cutouts:v1.1
 
 RUN for x in \
   ipython \
@@ -20,7 +20,6 @@ RUN echo '<policymap></policymap>' > /etc/ImageMagick-6/policy.xml
 
 ENV IPYTHONDIR=/tmp/ipython-config
 
-# SGA and legacyhalos
 WORKDIR /src
 
 RUN for x in \
@@ -35,7 +34,7 @@ RUN git config --global --add safe.directory /src/SGA \
   && git config --global --add safe.directory /src/desiutil
 
 # updates
-RUN cd /src/SGA && git pull && echo 1
+RUN cd /src/SGA && git pull && echo 2
 
 ENV PYTHONPATH=/src/SGA/py:/src/desiutil/py:$PYTHONPATH
 ENV PATH=/src/SGA/bin:/src/desiutil/bin:$PATH

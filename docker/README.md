@@ -5,7 +5,7 @@ Build a cross-platform docker container as documented [here](https://www.docker.
 
 First, pull the latest 
 ```
-docker pull legacysurvey/cutouts:v1.0
+docker pull legacysurvey/cutouts:v1.1
 
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
