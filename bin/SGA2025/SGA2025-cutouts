@@ -88,6 +88,7 @@ import pdb # for debugging
 import os, re, sys, time
 import numpy as np
 import fitsio
+from glob import glob
 from astropy.table import Table, vstack
 import astropy.units as u
 import multiprocessing
@@ -101,7 +102,7 @@ warnings.simplefilter('ignore', category=VerifyWarning)
 
 from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
 from SGA.ellipse import choose_geometry, parse_geometry
-from SGA.coadds import GALEX_PIXSCALE, UNWISE_PIXSCALE
+from SGA.coadds import PIXSCALE, GALEX_PIXSCALE, UNWISE_PIXSCALE
 
 from SGA.logger import log
 
@@ -136,14 +137,19 @@ def _get_photo_filename(args):
     return get_photo_filename(*args)
 
 
-def get_photo_filename(obj, objname, cutoutdir, photodir, overwrite=False,
-                       verbose=False):
+def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
+                       overwrite=False, verbose=False):
     raslice = get_raslice(obj['RA'])
 
     fitsfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.fits')
+    jpgfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.fits')
     photfile = os.path.join(photodir, raslice, f'{objname}-phot.fits')
     qafile = os.path.join(photodir, raslice, f'{objname}-phot.png')
     nobj = 1
+
+    if gather_photo:
+        nobj = len(glob(photfile))
+        return fitsfile, jpgfile, photfile, qafile, nobj
 
     if overwrite is False:
         if os.path.isfile(photfile) and os.path.isfile(qafile):
@@ -155,15 +161,16 @@ def get_photo_filename(obj, objname, cutoutdir, photodir, overwrite=False,
             nobj = 0
             log.warning(f'Missing input FITS file {fitsfile}')
 
-    return fitsfile, photfile, qafile, nobj
+    return fitsfile, jpgfile, photfile, qafile, nobj
 
 
 def _photo_one(args):
     return photo_one(*args)
 
 
-def photo_one(fitsfile, photfile, qafile, obj, survey, bands=['g', 'r', 'i', 'z'],
-              box_arcsec=5., verbose=False, qaplot=True):
+def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
+              bands=['g', 'r', 'i', 'z'], box_arcsec=5.,
+              verbose=False, qaplot=True):
     """Perform photometry on a single cutout.
 
     """
@@ -187,14 +194,7 @@ def photo_one(fitsfile, photfile, qafile, obj, survey, bands=['g', 'r', 'i', 'z'
         return error
 
     ra, dec = obj['RA'], obj['DEC']
-
     objname = radec_to_name(ra, dec, unixsafe=True)[0]
-    pdb.set_trace()
-
-    fitsfile = os.path.join(cutoutdir, get_raslice(ra), f'{objname}.fits')
-    if not os.path.isfile(fitsfile):
-        log.warning(f'Skipping missing FITS cutout {fitsfile}')
-        return Table()
 
     diam, ba, pa, ref = choose_geometry(Table(obj), mindiam=15.)
     out = photo_datamodel(Table(obj['OBJNAME', 'RA', 'DEC']), 
@@ -368,23 +368,28 @@ def photo_one(fitsfile, photfile, qafile, obj, survey, bands=['g', 'r', 'i', 'z'
         if np.isfinite(gini_phot):
             out[f'GINI_PHOT_{band.upper()}'] = gini_phot
 
-    qafile = os.path.join(outdir, objname+'-phot.png')
-    pdb.set_trace()
-    if qaplot and not os.path.isfile(qafile):
+    #print(out.pprint(max_width=-1))
+    #print(out[out.colnames[-8:]])
+
+    out.write(photfile, overwrite=True)
+    log.info(f'Wrote {photfile}')
+
+    # build QA
+    if qaplot:
         import matplotlib.pyplot as plt
         import matplotlib.image as mpimg
-
+    
         render_jpeg = True
+    
         #junkfile = 'ioannis/tmp/junk.png' # 'junk.png'
-
+    
         barlen = 15. / pixscale # [pixels]
         barlabel = '15 arcsec'
-
+    
         fig, ax = plt.subplots(figsize=(8, 8))
         ax.set_xlim(0, width)
         ax.set_ylim(0, width)
         if render_jpeg:
-            jpgfile = os.path.join(cutoutdir, get_raslice(ra), f'{objname}.jpeg')
             jpg = mpimg.imread(jpgfile)
             jpgmask = np.flipud(~wmask)[:, :, np.newaxis]
             #jpgmask = np.flipud(~gaia_mask)[:, :, np.newaxis]
@@ -398,7 +403,7 @@ def photo_one(fitsfile, photfile, qafile, obj, survey, bands=['g', 'r', 'i', 'z'
         ax.set_xticks([])
         ax.set_yticks([])
         ax.margins(0)
-
+    
         # these two sets of drawings should be identical
         #ap_init.plot(color='red', ls='-', lw=2, ax=ax)
         #for ap_phot in aps_phot:
@@ -412,12 +417,12 @@ def photo_one(fitsfile, photfile, qafile, obj, survey, bands=['g', 'r', 'i', 'z'
                      pa=out['PA_PHOT'], x0=xphot, y0=yphot, height_pixels=width,
                      pixscale=pixscale, color='cyan', linestyle='-', linewidth=2, 
                      ax=ax, draw_majorminor_axes=True, jpeg=render_jpeg)
-
+    
         txt = '\n'.join([out['SGANAME'][0], out['OBJNAME'][0], f'{ra:.7f}, {dec:.6f}'])
         ax.text(0.03, 0.93, txt, transform=ax.transAxes, ha='left', va='center',
                 color='white', bbox=dict(boxstyle='round', facecolor='k', alpha=0.5), 
                 linespacing=1.5, fontsize=10)
-
+    
         # add the scale bar
         xpos, ypos = 0.07, 0.07
         dx = barlen / img.shape[0]
@@ -425,36 +430,48 @@ def photo_one(fitsfile, photfile, qafile, obj, survey, bands=['g', 'r', 'i', 'z'
                 color='white', lw=2)
         ax.text(xpos + dx/2., ypos+0.02, barlabel, transform=ax.transAxes,
                 ha='center', va='center', color='white')
-
+    
         fig.tight_layout()
         fig.savefig(qafile, bbox_inches=0)#, dpi=200)
         plt.close()
         log.info(f'Wrote {qafile}')
+    
 
-    #print(out.pprint(max_width=-1))
-    #print(out[out.colnames[-8:]])
-    #pdb.set_trace()
-
-    return out
+def _read_one_photfile(args):
+    return read_one_photfile(*args)
 
 
-def gather_photo(cat, mp=1, region='dr9-north', photodir='.', 
+def read_one_photfile(photfile):
+    return Table(fitsio.read(photfile))
+
+
+def gather_photo(cat, mp=1, region='dr9-north', cutoutdir='.', photodir='.', 
                  photo_version='v1.0'):
-    pdb.set_trace()
 
     catdir = os.path.join(sga_dir(), 'parent', 'photo')
     if not os.path.isdir(catdir):
         os.makedirs(catdir, exist_ok=True)
 
-    photofile = os.path.join(catdir, f'parent-photo-{region}-{photo_version}.fits')
-    if os.path.isfile(photofile):
-        log.warning(f'Existing photo catalog {photofile} must be removed by-hand.')
-        groups = [np.array([])] * size
+    catfile = os.path.join(catdir, f'parent-photo-{region}-{photo_version}.fits')
+    if os.path.isfile(catfile):
+        log.warning(f'Existing photo catalog {catfile} must be removed by-hand.')
+        #return
 
-    # FIXME - MPI here is broken; need to comm.gather()
+    _, _, photfiles, _, _ = plan(cat, size=1, photodir=photodir,
+                                 mp=mp, gather_photo=True)
+
+    # single-rank only but read in parallel
+    mpargs = [(photfile, ) for photfile in photfiles]
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            out = P.map(_read_one_photfile, mpargs)
+    else:
+        out = [read_one_photfile(*mparg) for mparg in mpargs]
+
     if len(out) > 0:
-        out.write(photofile, overwrite=True)
-        log.info(f'Wrote {len(out):,d} objects to {photofile}')
+        out = vstack(out)
+        out.write(catfile, overwrite=True)
+        log.info(f'Wrote photometry for {len(out):,d} objects to {catfile}')
 
 
 def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
@@ -472,16 +489,17 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
 
     if rank == 0:
         t0 = time.time()
-        fitsfiles, photfiles, qafiles, groups = plan(
+        fitsfiles, jpgfiles, photfiles, qafiles, groups = plan(
             cat, size=size, cutoutdir=cutoutdir, photodir=photodir,
             overwrite=overwrite, mp=mp, verbose=verbose, photo=True)
         log.info(f'Planning took {time.time() - t0:.2f} sec')
         #groups = np.array_split(range(len(cat)), size) # unweighted distribution
     else:
-        fitsfiles, photfiles, qafiles, groups = [], [], [], []
+        fitsfiles, jpgfiles, photfiles, qafiles, groups = [], [], [], [], []
 
     if comm:
         fitsfiles = comm.bcast(fitsfiles, root=0)
+        jpgfiles = comm.bcast(jpgfiles, root=0)
         photfiles = comm.bcast(photfiles, root=0)
         qafiles = comm.bcast(qafiles, root=0)
         groups = comm.bcast(groups, root=0)
@@ -513,8 +531,8 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
     if comm:
         survey = comm.bcast(survey, root=0)
 
-    mpargs = [(fitsfiles[iobj], photfiles[iobj], qafiles[iobj], cat[indx[iobj]],
-               survey, bands) for iobj in range(len(indx))]
+    mpargs = [(fitsfiles[iobj], jpgfiles[iobj], photfiles[iobj], qafiles[iobj],
+               cat[indx[iobj]], survey, bands) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_photo_one, mpargs)
@@ -1044,9 +1062,9 @@ def get_basefiles_one(obj, objname, cutoutdir, width=None, fits_cutouts=True,
 
 
 def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
-         photodir='.', size=1, mp=1, photo=False, annotate=False,
-         fits_cutouts=True, unwise_cutouts=False, galex_cutouts=False,
-         overwrite=False, verbose=False):
+         photodir='.', size=1, mp=1, photo=False, gather_photo=False,
+         annotate=False, fits_cutouts=True, unwise_cutouts=False,
+         galex_cutouts=False, overwrite=False, verbose=False):
     """Build a plan!
 
     """
@@ -1054,8 +1072,8 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
 
     objname = radec_to_name(cat['RA'], cat['DEC'], unixsafe=True)
 
-    if photo:
-        mpargs = [(obj, objname1, cutoutdir, photodir, overwrite, verbose)
+    if photo or gather_photo:
+        mpargs = [(obj, objname1, cutoutdir, photodir, gather_photo, overwrite, verbose)
                   for obj, objname1 in zip(cat, objname)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
@@ -1065,9 +1083,10 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         out = list(zip(*out))
 
         fitsfiles = np.array(out[0], dtype=object)
-        photfiles = np.array(out[1], dtype=object)
-        qafiles = np.array(out[2], dtype=object)
-        nobj = np.array(out[3], dtype=object)
+        jpgfiles = np.array(out[1], dtype=object)
+        photfiles = np.array(out[2], dtype=object)
+        qafiles = np.array(out[3], dtype=object)
+        nobj = np.array(out[4], dtype=object)
     elif annotate:
         mpargs = [(obj, objname1, cutoutdir, annotatedir, overwrite, verbose) 
                   for obj, objname1 in zip(cat, objname)]
@@ -1102,7 +1121,11 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
 
     iempty = np.where(nobj == 0)[0]
     if len(iempty) > 0:
-        if annotate:
+        if gather_photo:
+            log.info(f'Missing {len(iempty):,d} photometry file(s).')
+            pdb.set_trace()
+            
+        elif annotate:
             log.info(f'Skipping {len(iempty):,d} objects with existing annotated images.')
         else:
             log.info(f'Skipping {len(iempty):,d} objects with existing cutouts.')
@@ -1110,7 +1133,11 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
     itodo = np.where(nobj > 0)[0]
     if len(itodo) > 0:
         nobj = nobj[itodo]
-        if photo:
+        if gather_photo:
+            log.info(f'Gathered photometry files for {np.sum(nobj):,d} objects.')
+            photfiles = photfiles[itodo]
+            qafiles = qafiles[itodo]
+        elif photo:
             log.info(f'Photometry files needed for {np.sum(nobj):,d} objects.')
             photfiles = photfiles[itodo]
             qafiles = qafiles[itodo]
@@ -1127,8 +1154,8 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
     else:
         groups = [np.array([])]
 
-    if photo:
-        return fitsfiles, photfiles, qafiles, groups
+    if photo or gather_photo:
+        return fitsfiles, jpgfiles, photfiles, qafiles, groups
     elif annotate:
         return jpgfiles, pngfiles, groups
     else:
@@ -1593,8 +1620,9 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
 
 
 def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
-                 read_fullcat=False, ssl_version=None, ntest=None, annotate=False,
-                 ssl=False, wisesize=False, lvd=False, zooniverse=False):
+                 read_fullcat=False, ssl_version=None, photo_version=None, 
+                 ntest=None, annotate=False, ssl=False, wisesize=False, lvd=False,
+                 zooniverse=False):
     """Simple wrapper to read a specified catalog.
 
     """
@@ -1714,13 +1742,15 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             
             #I = ~np.logical_or.reduce((cat['FILTERS'] == 'girz', cat['FILTERS'] == 'grz'))
             #cat = cat[I][:128]
-            cat = cat[:132]
+            #cat = cat[:132]
             writeit(cat, region)
 
         # Explore a given photo sample
         if False:#True:
-            phot = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/photo/parent-photo-dr11-south-v1.0.fits'))
+            photfile = os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-{photo_version}.fits')
+            phot = Table(fitsio.read(photfile))
             I = np.logical_or.reduce((phot['NODATA'], phot['CENTERMASKED'], phot['EXCEPTION']))
+            pdb.set_trace()
             phot = phot[I]
             cat = cat[np.isin(cat['OBJNAME'], phot['OBJNAME'])]
 
@@ -2244,7 +2274,7 @@ def main():
             cat, fullcat = read_catalog(args.catalog, region=args.region, annotate=args.annotate, 
                                         cutoutdir=args.cutoutdir, ntest=args.ntest, wisesize=args.wisesize, 
                                         lvd=args.lvd, zooniverse=args.zooniverse, ssl=args.ssl,
-                                        ssl_version=args.ssl_version)
+                                        ssl_version=args.ssl_version, photo_version=args.photo_version)
 
     if comm is not None:
         cat = comm.bcast(cat, root=0)
@@ -2302,14 +2332,16 @@ def main():
              overwrite=args.overwrite, verbose=args.verbose)
         return
 
+    if args.gather_photo and rank == 0:
+        gather_photo(cat, mp=args.mp, region=args.region, cutoutdir=cutoutdir,
+                     photodir=photodir, photo_version=args.photo_version)
+        return
+
     if args.photo:
         do_photo(cat, comm=comm, mp=args.mp, region=args.region, 
                  cutoutdir=cutoutdir, photodir=photodir,
                  photo_version=args.photo_version,
                  overwrite=args.overwrite, verbose=args.verbose)
-    elif args.gather_photo:
-        gather_photo(cat, mp=args.mp, region=args.region, photodir=photodir,
-                     photo_version=args.photo_version)
     elif args.annotate:
         do_annotate(cat, fullcat, default_pixscale=args.pixscale, 
                     default_width=args.width, mp=args.mp, 
