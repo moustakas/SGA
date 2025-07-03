@@ -142,7 +142,7 @@ def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
     raslice = get_raslice(obj['RA'])
 
     fitsfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.fits')
-    jpgfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.fits')
+    jpgfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.jpeg')
     photfile = os.path.join(photodir, raslice, f'{objname}-phot.fits')
     qafile = os.path.join(photodir, raslice, f'{objname}-phot.png')
     nobj = 1
@@ -164,6 +164,69 @@ def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
     return fitsfile, jpgfile, photfile, qafile, nobj
 
 
+def qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
+                     diam, ba, pa, xyinit, wimg, wmask, wcs, xyphot=None,
+                     xypeak=None, render_jpeg=True):
+
+    import matplotlib.pyplot as plt
+    import matplotlib.image as mpimg
+    from SGA.qa import draw_ellipse
+
+    barlen = 15. / pixscale # [pixels]
+    barlabel = '15 arcsec'
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, width)
+    if render_jpeg:
+        jpg = mpimg.imread(jpgfile)
+        jpgmask = np.flipud(~wmask)[:, :, np.newaxis]
+        #jpgmask = np.flipud(~gaia_mask)[:, :, np.newaxis]
+        #jpgmask = np.flipud(apmask_phot)[:, :, np.newaxis]
+        im = ax.imshow(jpg * jpgmask, origin='lower', interpolation='nearest')
+        ax.invert_yaxis() # JPEG is flipped relative to FITS
+    else:
+        #ax.imshow(img * apmask_phot, origin='lower', cmap=cmap)
+        ax.imshow(np.log(wimg.clip(wimg[xpeak, ypeak]/1e4)) * ~wmask,
+                  origin='lower', cmap='inferno', interpolation='nearest')
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.margins(0)
+
+    # these two sets of drawings should be identical
+    #ap_init.plot(color='red', ls='-', lw=2, ax=ax)
+    #for ap_phot in aps_phot:
+    #    ap_phot.plot(color='black', ls='-', lw=2, ax=ax)
+    draw_ellipse(major_axis_arcsec=diam[0], ba=ba[0], pa=pa[0], x0=xyinit[0],
+                 y0=xyinit[1], height_pixels=width, ax=ax, pixscale=pixscale,
+                 color='yellow', linestyle='--', draw_majorminor_axes=True,
+                 jpeg=render_jpeg)
+    if xyphot is not None:
+        xphot, yphot = wcs.wcs_world2pix(out['RA_PHOT'], out['DEC_PHOT'], 1)
+        draw_ellipse(major_axis_arcsec=out[f'DIAM_PHOT'], ba=out['BA_PHOT'],
+                     pa=out['PA_PHOT'], x0=xphot, y0=yphot, height_pixels=width,
+                     pixscale=pixscale, color='cyan', linestyle='-', linewidth=2, 
+                     ax=ax, draw_majorminor_axes=True, jpeg=render_jpeg)
+
+    txt = '\n'.join([out['SGANAME'][0], out['OBJNAME'][0], f'{ra:.7f}, {dec:.6f}'])
+    ax.text(0.03, 0.93, txt, transform=ax.transAxes, ha='left', va='center',
+            color='white', bbox=dict(boxstyle='round', facecolor='k', alpha=0.5), 
+            linespacing=1.5, fontsize=10)
+
+    # add the scale bar
+    xpos, ypos = 0.07, 0.07
+    dx = barlen / wimg.shape[0]
+    ax.plot([xpos, xpos+dx], [ypos, ypos], transform=ax.transAxes,
+            color='white', lw=2)
+    ax.text(xpos + dx/2., ypos+0.02, barlabel, transform=ax.transAxes,
+            ha='center', va='center', color='white')
+
+    fig.tight_layout()
+    fig.savefig(qafile, bbox_inches=0)#, dpi=200)
+    plt.close()
+    log.info(f'Wrote {qafile}')
+
+
 def _photo_one(args):
     return photo_one(*args)
 
@@ -182,7 +245,6 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
 
     from legacypipe.survey import wcs_for_brick, BrickDuck
     from legacypipe.reference import get_reference_sources, get_reference_map
-    from SGA.qa import draw_ellipse
     from SGA.find_galaxy import find_galaxy
     from SGA.io import custom_brickname
 
@@ -192,6 +254,11 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
         I = error > 0.
         error[I] = 1. / np.sqrt(error[I])
         return error
+
+    def write_photfile(out, photfile):
+        out.write(photfile, overwrite=True)
+        log.info(f'Wrote {photfile}')
+
 
     ra, dec = obj['RA'], obj['DEC']
     objname = radec_to_name(ra, dec, unixsafe=True)[0]
@@ -214,7 +281,6 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     if np.all(imgs == 0.):
         log.warning(f'No data for object {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
         out['NODATA'] = True
-        return out
 
     hdr['NAXIS'] = 2
     hdr.pop('NAXIS3')
@@ -240,7 +306,7 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     if len(refstars) > 0:
         # remove Gaia stars within 5 arcsec of the initial coordinates
         m1, m2, _ = match_radec(refstars.ra, refstars.dec, ra, dec, 5./3600., nearest=True)
-        if len(m1) == 1:
+        if len(m1) > 0:
             out['IN_GAIA'] = True
             refstars.cut(np.delete(np.arange(len(refstars)), m1))
 
@@ -254,8 +320,11 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
             gaia_mask = np.logical_or(gaia_mask, ap.to_mask().to_image((height, width)) != 0.) # object mask=True
 
     # initial ellipse geometry and aperture
-    xinit, yinit = wcs.wcs_world2pix(ra, dec, 1)
-    xyinit = (xinit, yinit)
+    xyinit = wcs.wcs_world2pix(ra, dec, 1)
+    if np.any(np.isnan(xyinit)):
+        msg = f'WCS problem analyzing {photfile}'
+        log.critical(msg)
+        raise ValueError(msg)
     a_init = diam[0] / 2. / pixscale # [pixels]
     b_init = a_init * ba[0]
     theta_init = np.radians(pa[0] - 90.) # CCW from x-axis
@@ -270,19 +339,23 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
 
     # generate the ivar-weighted mean image; flag pixels that are
     # masked in all bandpasses
-    
     wivar = np.sum(ivars, axis=0)
     wimg = np.sum(ivars * imgs, axis=0)
     I = wivar > 0.
     wimg[I] /= wivar[I]
-    wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask)    
+    wmask = np.sum(ivars <= 0., axis=0) == nband
+    #wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask)    
 
-    # if the center is fully masked, move on
+    # if the center is fully masked, write out and move on
     if np.all(wimg[boxmask_init] == 0.) or np.all(wmask[boxmask_init]):
         log.warning(f'Fully masked {box_arcsec:.1f}x{box_arcsec:.1f} arcsec ' + \
                     f'center {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
         out['CENTERMASKED'] = True
-        return out
+
+        write_photfile(out, photfile)
+        qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
+                         diam, ba, pa, xyinit, wimg, wmask, wcs)
+        return
 
     # compute the mean geometry
 
@@ -309,10 +382,15 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
         #plt.imshow(wimg * ~wmask, origin='lower')
         #plt.savefig('ioannis/tmp/junk2.png')
         #pdb.set_trace()
-        return out
 
-    xpeak, ypeak = mge.xpeak, mge.ypeak
-    xyphot = (mge.ymed, mge.xmed) # swapped coordinates!
+        write_photfile(out, photfile)
+        qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
+                         diam, ba, pa, xyinit, wimg, wmask, wcs)
+        return
+
+
+    xypeak = (mge.xpeak, mge.ypeak) # not swapped coordinates!
+    xyphot = (mge.ymed, mge.xmed)   # swapped coordinates!
     a_phot = mge.majoraxis # * 1.5 # multiplicative factor? hack?? [pixels]
     ba_phot = 1. - mge.eps
     b_phot = a_phot * ba_phot
@@ -370,72 +448,15 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
 
     #print(out.pprint(max_width=-1))
     #print(out[out.colnames[-8:]])
-
-    out.write(photfile, overwrite=True)
-    log.info(f'Wrote {photfile}')
+    write_photfile(out, photfile)
 
     # build QA
     if qaplot:
-        import matplotlib.pyplot as plt
-        import matplotlib.image as mpimg
-    
-        render_jpeg = True
-    
-        #junkfile = 'ioannis/tmp/junk.png' # 'junk.png'
-    
-        barlen = 15. / pixscale # [pixels]
-        barlabel = '15 arcsec'
-    
-        fig, ax = plt.subplots(figsize=(8, 8))
-        ax.set_xlim(0, width)
-        ax.set_ylim(0, width)
-        if render_jpeg:
-            jpg = mpimg.imread(jpgfile)
-            jpgmask = np.flipud(~wmask)[:, :, np.newaxis]
-            #jpgmask = np.flipud(~gaia_mask)[:, :, np.newaxis]
-            #jpgmask = np.flipud(apmask_phot)[:, :, np.newaxis]
-            im = ax.imshow(jpg * jpgmask, origin='lower', interpolation='nearest')
-            ax.invert_yaxis() # JPEG is flipped relative to FITS
-        else:
-            #ax.imshow(img * apmask_phot, origin='lower', cmap=cmap)
-            ax.imshow(np.log(wimg.clip(wimg[xpeak, ypeak]/1e4)) * ~gaia_mask,
-                      origin='lower', cmap='inferno', interpolation='nearest')
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.margins(0)
-    
-        # these two sets of drawings should be identical
-        #ap_init.plot(color='red', ls='-', lw=2, ax=ax)
-        #for ap_phot in aps_phot:
-        #    ap_phot.plot(color='black', ls='-', lw=2, ax=ax)
-        draw_ellipse(major_axis_arcsec=diam[0], ba=ba[0], pa=pa[0], x0=xinit,
-                     y0=yinit, height_pixels=width, ax=ax, pixscale=pixscale,
-                     color='yellow', linestyle='--', draw_majorminor_axes=True,
-                     jpeg=render_jpeg)
-        xphot, yphot = wcs.wcs_world2pix(out['RA_PHOT'], out['DEC_PHOT'], 1)
-        draw_ellipse(major_axis_arcsec=out[f'DIAM_PHOT'], ba=out['BA_PHOT'],
-                     pa=out['PA_PHOT'], x0=xphot, y0=yphot, height_pixels=width,
-                     pixscale=pixscale, color='cyan', linestyle='-', linewidth=2, 
-                     ax=ax, draw_majorminor_axes=True, jpeg=render_jpeg)
-    
-        txt = '\n'.join([out['SGANAME'][0], out['OBJNAME'][0], f'{ra:.7f}, {dec:.6f}'])
-        ax.text(0.03, 0.93, txt, transform=ax.transAxes, ha='left', va='center',
-                color='white', bbox=dict(boxstyle='round', facecolor='k', alpha=0.5), 
-                linespacing=1.5, fontsize=10)
-    
-        # add the scale bar
-        xpos, ypos = 0.07, 0.07
-        dx = barlen / img.shape[0]
-        ax.plot([xpos, xpos+dx], [ypos, ypos], transform=ax.transAxes,
-                color='white', lw=2)
-        ax.text(xpos + dx/2., ypos+0.02, barlabel, transform=ax.transAxes,
-                ha='center', va='center', color='white')
-    
-        fig.tight_layout()
-        fig.savefig(qafile, bbox_inches=0)#, dpi=200)
-        plt.close()
-        log.info(f'Wrote {qafile}')
-    
+        qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
+                         diam, ba, pa, xyinit, wimg, wmask, wcs, xyphot=xyphot,
+                         xypeak=xypeak)
+
+    pdb.set_trace()
 
 def _read_one_photfile(args):
     return read_one_photfile(*args)
@@ -1123,8 +1144,10 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
     if len(iempty) > 0:
         if gather_photo:
             log.info(f'Missing {len(iempty):,d} photometry file(s).')
-            pdb.set_trace()
-            
+            #pdb.set_trace()
+        elif photo:
+            log.info(f'Skipping {len(iempty):,d} objects with existing photometry files.')
+            #pdb.set_trace()
         elif annotate:
             log.info(f'Skipping {len(iempty):,d} objects with existing annotated images.')
         else:
@@ -1135,10 +1158,14 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         nobj = nobj[itodo]
         if gather_photo:
             log.info(f'Gathered photometry files for {np.sum(nobj):,d} objects.')
+            fitsfiles = fitsfiles[itodo]
+            jpgfiles = jpgfiles[itodo]
             photfiles = photfiles[itodo]
             qafiles = qafiles[itodo]
         elif photo:
             log.info(f'Photometry files needed for {np.sum(nobj):,d} objects.')
+            fitsfiles = fitsfiles[itodo]
+            jpgfiles = jpgfiles[itodo]
             photfiles = photfiles[itodo]
             qafiles = qafiles[itodo]
         elif annotate:
@@ -1720,7 +1747,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
 
-        if True:
+        if False:#True:
             # All objects with diameter<XX arcsec and no other source
             # within XX arcsec.
             from SGA.util import find_close
@@ -1745,14 +1772,18 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             #cat = cat[:132]
             writeit(cat, region)
 
+        if True:
+            cat = cat[cat['OBJNAME'] == 'WISEA J000353.33-203717.1']
+
         # Explore a given photo sample
         if False:#True:
             photfile = os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-{photo_version}.fits')
             phot = Table(fitsio.read(photfile))
-            I = np.logical_or.reduce((phot['NODATA'], phot['CENTERMASKED'], phot['EXCEPTION']))
-            pdb.set_trace()
+            #I = np.logical_or.reduce((phot['NODATA'], phot['CENTERMASKED'], phot['EXCEPTION']))
+            I = phot['SEP'] > 20.
             phot = phot[I]
             cat = cat[np.isin(cat['OBJNAME'], phot['OBJNAME'])]
+            pdb.set_trace()
 
 
         if False:#True:
