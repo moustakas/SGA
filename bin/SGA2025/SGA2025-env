@@ -40,6 +40,7 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export MPICH_GNI_FORK_MODE=FULLCOPY
 
+
 # Config directory nonsense
 export TMPCACHE=$(mktemp -d)
 mkdir $TMPCACHE/cache
@@ -54,5 +55,5 @@ cp -r /global/homes/i/ioannis/.astropy/config $XDG_CONFIG_HOME/astropy
 
 export MPLCONFIGDIR=$TMPCACHE/matplotlib
 mkdir $MPLCONFIGDIR
-cp -r /global/homes/i/ioannis/.config/matplotlib $MPLCONFIGDIR
+cp -r /global/homes/i/ioannis/.cache/matplotlib $MPLCONFIGDIR
 
