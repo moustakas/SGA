@@ -114,7 +114,7 @@ def photo_datamodel(out, ra, dec, diam, ba, pa, bands=['g', 'r', 'i', 'z']):
     out['IN_GAIA'] = [False]
     out['NODATA'] = [False]
     out['CENTERMASKED'] = [False]
-    out['EXCEPTION'] = [False]
+    out['MGE_FAIL'] = [False]
     out['SEP'] = [np.float32(-99.)]
     out['DIAM_INIT'] = diam[0].astype('f4') # [arcsec]
     out['BA_INIT'] = ba[0].astype('f4')
@@ -224,7 +224,7 @@ def qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
     fig.tight_layout()
     fig.savefig(qafile, bbox_inches=0)#, dpi=200)
     plt.close()
-    log.info(f'Wrote {qafile}')
+    #log.info(f'Wrote {qafile}')
 
 
 def _photo_one(args):
@@ -256,7 +256,10 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
         return error
 
     def write_photfile(out, photfile):
-        out.write(photfile, overwrite=True)
+        # with MPI, astropy's .write in 7.0.1 hits this bug--
+        # https://github.com/astropy/astropy/issues/15350
+        #out.write(photfile, overwrite=True)
+        fitsio.write(photfile, out.as_array(), clobber=True)
         log.info(f'Wrote {photfile}')
 
 
@@ -264,9 +267,9 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     objname = radec_to_name(ra, dec, unixsafe=True)[0]
 
     diam, ba, pa, ref = choose_geometry(Table(obj), mindiam=15.)
-    out = photo_datamodel(Table(obj['OBJNAME', 'RA', 'DEC']), 
+    out = photo_datamodel(Table(obj['OBJNAME', 'STARFDIST', 'STARMAG', 'RA', 'DEC']), 
                           ra, dec, diam, ba, pa, bands=bands)
-
+    
     # read the data
     with fits.open(fitsfile) as H:
         if len(H) != 2:
@@ -316,7 +319,11 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
 
         # add fainter stars to the mask
         for star in refstars[refstars.in_bounds]:
-            ap = CircularAperture((star.ibx, star.iby), star.radius_pix) # note! (ibx,iby) not (iby,ibx)
+            if star.radius_pix <= 0.:
+                radius_pix = int(5. / pixscale)
+            else:
+                radius_pix = star.radius_pix
+            ap = CircularAperture((star.ibx, star.iby), radius_pix) # note! (ibx,iby) not (iby,ibx)
             gaia_mask = np.logical_or(gaia_mask, ap.to_mask().to_image((height, width)) != 0.) # object mask=True
 
     # initial ellipse geometry and aperture
@@ -343,8 +350,8 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     wimg = np.sum(ivars * imgs, axis=0)
     I = wivar > 0.
     wimg[I] /= wivar[I]
-    wmask = np.sum(ivars <= 0., axis=0) == nband
-    #wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask)    
+    #wmask = np.sum(ivars <= 0., axis=0) == nband
+    wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask)    
 
     # if the center is fully masked, write out and move on
     if np.all(wimg[boxmask_init] == 0.) or np.all(wmask[boxmask_init]):
@@ -371,18 +378,25 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     #pa_phot = (360. - src.orientation.value) % 180 + 90. # CCW from y-axis
     #theta_phot = np.radians(pa_phot - 90.) # CCW from x-axis
 
+    mge_fail = False
     try:
-        mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=True)#quiet=False)#level=minsb)
+        mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=True)
     except:
-        log.warning(f'Exception raised analyzing {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
-        out['EXCEPTION'] = True
-        #mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=True, plot=True)
+        mge_fail = True
+        #mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=False, plot=True)
         #import matplotlib.pyplot as plt
-        #plt.clf()
-        #plt.imshow(wimg * ~wmask, origin='lower')
-        #plt.savefig('ioannis/tmp/junk2.png')
-        #pdb.set_trace()
+        #plt.clf() ; plt.imshow(wimg * ~wmask, origin='lower') ; plt.savefig('ioannis/tmp/junk2.png')
 
+    # In rare cases, find_galaxy will return invalid parameters, e.g.,
+    # CGMW 4-1190. Capture those here and return.
+    for param in ('xpeak', 'ypeak', 'xmed', 'ymed', 'majoraxis', 'eps', 'pa', 'theta'):
+        if np.isnan(getattr(mge, param)):
+            log.warning(f'Problem determing the geometry of {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
+            mge_fail = True
+            break
+
+    if mge_fail:
+        out['MGE_FAIL'] = True
         write_photfile(out, photfile)
         qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
                          diam, ba, pa, xyinit, wimg, wmask, wcs)
@@ -456,13 +470,17 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
                          diam, ba, pa, xyinit, wimg, wmask, wcs, xyphot=xyphot,
                          xypeak=xypeak)
 
-    pdb.set_trace()
 
 def _read_one_photfile(args):
     return read_one_photfile(*args)
 
 
 def read_one_photfile(photfile):
+    #tt = Table(fitsio.read(photfile))
+    #tt.rename_column('EXCEPTION', 'MGE_FAIL')
+    #fitsio.write(photfile, tt.as_array(), clobber=True)
+    #print(f'Wrote {photfile}')
+    #return Table()
     return Table(fitsio.read(photfile))
 
 
@@ -552,8 +570,8 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
     if comm:
         survey = comm.bcast(survey, root=0)
 
-    mpargs = [(fitsfiles[iobj], jpgfiles[iobj], photfiles[iobj], qafiles[iobj],
-               cat[indx[iobj]], survey, bands) for iobj in range(len(indx))]
+    mpargs = [(fitsfiles[indx[iobj]], jpgfiles[indx[iobj]], photfiles[indx[iobj]],
+               qafiles[indx[iobj]], cat[indx[iobj]], survey, bands) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             P.map(_photo_one, mpargs)
@@ -562,8 +580,8 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
 
     sys.stdout.flush()
 
-    if comm is not None:
-        comm.barrier()
+    #if comm is not None:
+    #    comm.barrier()
 
     if rank == 0:
         log.info(f'All done at {time.asctime()}')
@@ -907,7 +925,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
                     print(one['OBJNAME'])
             print()
         else:
-            mpargs.append((jpgfiles[iobj], pngfiles[iobj], objname[iobj], commonname[iobj],
+            mpargs.append((jpgfiles[indx[iobj]], pngfiles[indx[iobj]], objname[iobj], commonname[iobj],
                            pixscale[indx[iobj]], diam[indx[iobj]], draw_largest_ellipse,
                            primary, group))
 
@@ -922,8 +940,8 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
 
     sys.stdout.flush()
 
-    if comm is not None:
-        comm.barrier()
+    #if comm is not None:
+    #    comm.barrier()
 
     if rank == 0 and not dry_run:
         log.info(f'All done at {time.asctime()}')
@@ -1144,10 +1162,8 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
     if len(iempty) > 0:
         if gather_photo:
             log.info(f'Missing {len(iempty):,d} photometry file(s).')
-            #pdb.set_trace()
         elif photo:
             log.info(f'Skipping {len(iempty):,d} objects with existing photometry files.')
-            #pdb.set_trace()
         elif annotate:
             log.info(f'Skipping {len(iempty):,d} objects with existing annotated images.')
         else:
@@ -1158,25 +1174,12 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         nobj = nobj[itodo]
         if gather_photo:
             log.info(f'Gathered photometry files for {np.sum(nobj):,d} objects.')
-            fitsfiles = fitsfiles[itodo]
-            jpgfiles = jpgfiles[itodo]
-            photfiles = photfiles[itodo]
-            qafiles = qafiles[itodo]
         elif photo:
             log.info(f'Photometry files needed for {np.sum(nobj):,d} objects.')
-            fitsfiles = fitsfiles[itodo]
-            jpgfiles = jpgfiles[itodo]
-            photfiles = photfiles[itodo]
-            qafiles = qafiles[itodo]
         elif annotate:
             log.info(f'Annotated images needed for {np.sum(nobj):,d} objects.')
-            jpgfiles = jpgfiles[itodo]
-            pngfiles = pngfiles[itodo]
         else:
             log.info(f'Cutouts needed for {np.sum(nobj):,d} objects.')
-            basefiles = basefiles[itodo]
-            allra = allra[itodo]
-            alldec = alldec[itodo]
         groups = np.array_split(itodo, size) # unweighted distribution
     else:
         groups = [np.array([])]
@@ -1242,9 +1245,9 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
     if len(indx) == 0:
         return
 
-    mpargs = [(basefiles[iobj], allra[iobj], alldec[iobj], width[indx[iobj]],
-               pixscale[indx[iobj]], layer, default_bands, dry_run, 
-               fits_cutouts, ivar_cutouts, unwise_cutouts, galex_cutouts, 
+    mpargs = [(basefiles[indx[iobj]], allra[indx[iobj]], alldec[indx[iobj]],
+               width[indx[iobj]], pixscale[indx[iobj]], layer, default_bands,
+               dry_run, fits_cutouts, ivar_cutouts, unwise_cutouts, galex_cutouts, 
                rank, iobj) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
@@ -1254,8 +1257,8 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
 
     sys.stdout.flush()
 
-    if comm is not None:
-        comm.barrier()
+    #if comm is not None:
+    #    comm.barrier()
 
     if rank == 0 and not dry_run:
         log.info(f'All done at {time.asctime()}')
@@ -1747,7 +1750,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
 
-        if False:#True:
+        if True:
             # All objects with diameter<XX arcsec and no other source
             # within XX arcsec.
             from SGA.util import find_close
@@ -1762,18 +1765,20 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             if region == 'dr11-south':
                 # photo-version=v1.0
                 #cat = primaries[(diam > 0.) * (diam < 12.)]
-                cat = primaries[(diam > 0.) * (diam < 10.)]
+                cat = primaries[(primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.)]
             elif region == 'dr9-north':
                 # photo-version=v1.0
-                cat = primaries[diam < 10.]
+                cat = primaries[(primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.)]
             
             #I = ~np.logical_or.reduce((cat['FILTERS'] == 'girz', cat['FILTERS'] == 'grz'))
             #cat = cat[I][:128]
-            #cat = cat[:132]
+            #cat = cat[:128]
             writeit(cat, region)
 
-        if True:
-            cat = cat[cat['OBJNAME'] == 'WISEA J000353.33-203717.1']
+        if False:#True:
+        # good tests for do_photo()
+            cat = cat[np.isin(cat['OBJNAME'], ['SDSS J005537.52+003627.9'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3', '6dF J1125579-114702', 'SDSS J125753.66+100506.8'])]
 
         # Explore a given photo sample
         if False:#True:
