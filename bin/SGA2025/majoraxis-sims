@@ -57,7 +57,7 @@ def build_model(nx=240, ny=240, reff=35., sersicn=1., eps=0.6, theta=22.,
     return image
 
 
-def main():
+def sims():
 
     nx = 512
     snr = 10.
@@ -99,4 +99,6 @@ def main():
     pdb.set_trace()
 
 if __name__ == '__main__':
-    main()
+    sims()
+
+

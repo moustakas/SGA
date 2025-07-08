@@ -151,15 +151,15 @@ def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
         nobj = len(glob(photfile))
         return fitsfile, jpgfile, photfile, qafile, nobj
 
-    if overwrite is False:
-        if os.path.isfile(photfile) and os.path.isfile(qafile):
-            nobj = 0
-            if verbose:
-                log.info(f'Skipping existing photometry file {photfile}')
+    if not os.path.isfile(fitsfile):
+        nobj = 0
+        log.warning(f'Missing input FITS file {fitsfile}')
     else:
-        if not os.path.isfile(fitsfile):
-            nobj = 0
-            log.warning(f'Missing input FITS file {fitsfile}')
+        if overwrite is False:
+            if os.path.isfile(photfile) and os.path.isfile(qafile):
+                nobj = 0
+                if verbose:
+                    log.info(f'Skipping existing photometry file {photfile}')
 
     return fitsfile, jpgfile, photfile, qafile, nobj
 
@@ -259,7 +259,8 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
         # with MPI, astropy's .write in 7.0.1 hits this bug--
         # https://github.com/astropy/astropy/issues/15350
         #out.write(photfile, overwrite=True)
-        fitsio.write(photfile, out.as_array(), clobber=True)
+        fitsio.write(photfile+'.tmp', out.as_array(), clobber=True)
+        os.rename(photfile+'.tmp', photfile)
         log.info(f'Wrote {photfile}')
 
 
@@ -519,6 +520,20 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
 
     """Wrapper to carry out simple photometry on all objects in the
     input catalog.
+
+    'dr11-south'
+        # photo-version=v1.0
+        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.) # N=4,434
+
+        # photo-version=v1.1
+        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 10.) * (diam < 12.) # N=434,092
+
+    'dr9-north'
+        # photo-version=v1.0
+        #I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 11.) # N=94,229
+
+        # photo-version=v1.1
+        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 11.) * (diam < 15.) # N=212,676    
 
     """
     if comm is None:
@@ -1163,11 +1178,11 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         if gather_photo:
             log.info(f'Missing {len(iempty):,d} photometry file(s).')
         elif photo:
-            log.info(f'Skipping {len(iempty):,d} objects with existing photometry files.')
+            log.info(f'Skipping {len(iempty):,d} object(s) with existing photometry files (or missing FITS cutouts).')
         elif annotate:
-            log.info(f'Skipping {len(iempty):,d} objects with existing annotated images.')
+            log.info(f'Skipping {len(iempty):,d} object(s) with existing annotated images.')
         else:
-            log.info(f'Skipping {len(iempty):,d} objects with existing cutouts.')
+            log.info(f'Skipping {len(iempty):,d} object(s) with existing cutouts.')
 
     itodo = np.where(nobj > 0)[0]
     if len(itodo) > 0:
@@ -1750,7 +1765,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()            
 
-        if True:
+        if False:#True:
             # All objects with diameter<XX arcsec and no other source
             # within XX arcsec.
             from SGA.util import find_close
@@ -1764,31 +1779,45 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
 
             if region == 'dr11-south':
                 # photo-version=v1.0
-                #cat = primaries[(diam > 0.) * (diam < 12.)]
-                cat = primaries[(primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.)]
+                #I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.) # N=4,434
+                # photo-version=v1.1
+                I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 10.) * (diam < 12.) # N=434,092
             elif region == 'dr9-north':
                 # photo-version=v1.0
-                cat = primaries[(primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.)]
-            
+                #I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 11.) # N=94,229
+                # photo-version=v1.1
+                I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 11.) * (diam < 15.) # N=212,676
+            cat = primaries[I]
+
             #I = ~np.logical_or.reduce((cat['FILTERS'] == 'girz', cat['FILTERS'] == 'grz'))
             #cat = cat[I][:128]
             #cat = cat[:128]
-            writeit(cat, region)
+            #writeit(cat, region)
 
         if False:#True:
-        # good tests for do_photo()
-            cat = cat[np.isin(cat['OBJNAME'], ['SDSS J005537.52+003627.9'])]
+            cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023340.70+345454.6'])]
+            # good tests for do_photo()
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3', '6dF J1125579-114702', 'SDSS J125753.66+100506.8'])]
 
         # Explore a given photo sample
-        if False:#True:
+        if True:
             photfile = os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-{photo_version}.fits')
             phot = Table(fitsio.read(photfile))
-            #I = np.logical_or.reduce((phot['NODATA'], phot['CENTERMASKED'], phot['EXCEPTION']))
-            I = phot['SEP'] > 20.
+            log.info(f'Read {len(phot):,d} objects from {photfile}')
+
+            #I = phot['MGE_FAIL']
+            I = (phot['DIAM_PHOT'] > 30.) * (phot['SEP'] < 5.)
+            #pdb.set_trace()
+
+            # this works well!
+            #I = np.logical_or.reduce((phot['NODATA'], phot['CENTERMASKED'], phot['MGE_FAIL']))
+
+            # test
+            #I = phot['SEP'] > 20.
+
+            print(np.sum(I))
             phot = phot[I]
             cat = cat[np.isin(cat['OBJNAME'], phot['OBJNAME'])]
-            pdb.set_trace()
 
 
         if False:#True:

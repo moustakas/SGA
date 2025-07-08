@@ -59,9 +59,11 @@ def set_legacysurvey_dir(region='dr9-north'):
         msg = 'Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!'
         log.critical(msg)
         raise EnvironmentError(msg)
-    log.warning('Temporarily using dr11-early-v2 directory for dr11-south!!')
-    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early-v2'}
-    #dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
+    if False:
+        log.warning('Temporarily using dr11-early-v2 directory for dr11-south!!')
+        dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early-v2'}
+    else:
+        dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
     log.info(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
