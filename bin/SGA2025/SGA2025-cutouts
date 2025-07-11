@@ -1142,7 +1142,7 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         qafiles = np.array(out[3], dtype=object)
         nobj = np.array(out[4], dtype=object)
     elif annotate:
-        mpargs = [(obj, objname1, cutoutdir, annotatedir, overwrite, verbose) 
+        mpargs = [(obj, objname1, cutoutdir, annotatedir, overwrite, verbose)
                   for obj, objname1 in zip(cat, objname)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
@@ -1150,7 +1150,7 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         else:
             out = [get_annotate_filename(*mparg) for mparg in mpargs]
         out = list(zip(*out))
-    
+
         jpgfiles = np.array(out[0], dtype=object)
         pngfiles = np.array(out[1], dtype=object)
         nobj = np.array(out[2], dtype=object)
@@ -1167,7 +1167,7 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         else:
             out = [get_basefiles_one(*mparg) for mparg in mpargs]
         out = list(zip(*out))
-    
+
         basefiles = np.array(out[0], dtype=object)
         allra = np.array(out[1], dtype=object)
         alldec = np.array(out[2], dtype=object)
@@ -1186,15 +1186,14 @@ def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
 
     itodo = np.where(nobj > 0)[0]
     if len(itodo) > 0:
-        nobj = nobj[itodo]
         if gather_photo:
-            log.info(f'Gathered photometry files for {np.sum(nobj):,d} objects.')
+            log.info(f'Gathered photometry files for {np.sum(nobj[itodo]):,d} objects.')
         elif photo:
-            log.info(f'Photometry files needed for {np.sum(nobj):,d} objects.')
+            log.info(f'Photometry files needed for {np.sum(nobj[itodo]):,d} objects.')
         elif annotate:
-            log.info(f'Annotated images needed for {np.sum(nobj):,d} objects.')
+            log.info(f'Annotated images needed for {np.sum(nobj[itodo]):,d} objects.')
         else:
-            log.info(f'Cutouts needed for {np.sum(nobj):,d} objects.')
+            log.info(f'Cutouts needed for {np.sum(nobj[itodo]):,d} objects.')
         groups = np.array_split(itodo, size) # unweighted distribution
     else:
         groups = [np.array([])]
@@ -1770,7 +1769,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             # within XX arcsec.
             from SGA.util import find_close
             fullcat = cat.copy()
-            
+
             primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
             diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
 
@@ -1794,13 +1793,18 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             #cat = cat[:128]
             #writeit(cat, region)
 
-        if False:#True:
-            cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023340.70+345454.6'])]
+        if True:
+            #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023340.70+345454.6'])]
+            cat = cat[np.isin(cat['OBJNAME'], ['Pictor I', 'Phoenix'])]
+            fullcat = cat.copy()
+            fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
+            fullcat = fullcat[fullcat_diam > 30.]
+
             # good tests for do_photo()
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3', '6dF J1125579-114702', 'SDSS J125753.66+100506.8'])]
 
         # Explore a given photo sample
-        if True:
+        if False:#True:
             photfile = os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-{photo_version}.fits')
             phot = Table(fitsio.read(photfile))
             log.info(f'Read {len(phot):,d} objects from {photfile}')

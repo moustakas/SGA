@@ -1428,14 +1428,14 @@ def build_parent_archive(verbose=False, overwrite=False):
         out = cat_isolated[indx_isolated]
         #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], out[0]['RA'], out[0]['DEC'], 10./3600) ; cat[m1][cols]
         #prim=0 ; qa_skypatch(cat[m1[prim]], group=cat[m1])
-    
+
         prefix = np.array(list(zip(*np.char.split(out['OBJNAME'].value, ' ').tolist()))[0])
-    
+
         pdffile = 'qa-isolated.pdf'
         multipage_skypatch(out[:50], cat=cat, width_arcsec=30., ncol=1, nrow=1, clip=True,
                            jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
                            pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
-    
+
 
 
 def build_parent(verbose=False, overwrite=False):
@@ -1457,29 +1457,34 @@ def build_parent(verbose=False, overwrite=False):
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
 
-    cols = ['OBJNAME', 
-            #'OBJTYPE', 'MORPH', 'BASIC_MORPH', 
-            'RA', 'DEC', 'PGC', #'RESOLVED', 
+    cols = ['OBJNAME',
+            #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
+            'RA', 'DEC', 'PGC', #'RESOLVED',
             'STARFDIST', 'STARDIST', 'STARMAG']#, 'ROW_PARENT']
     #colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
 
-    for region in ['dr11-south']:#, 'dr9-north']:
+    for region in ['dr11-south', 'dr9-north']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         print(f'Read {len(cat):,d} objects from {catfile}')
 
-        #########################
-        # trim very small objects and to a specific set of test bricks
-        diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=10., get_mag=True)
-        diam /= 60. # [arcmin]
-
-        I = (diam > 45./60.)# * (diam < 2.)
+        diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
+        I = (diam > 30.)# * (diam < 2.*60.)
         cat = cat[I]
+        log.info(f'Selected {np.sum(I):,d}')
 
-        bricknames = get_brickname(cat['RA'].value, cat['DEC'].value)
-        I = np.where(np.isin(bricknames, ['0545m052', '0545m050', '0542m050']))[0]
-        cat = cat[I]
-        #########################
+        ##########################
+        ## trim very small objects and to a specific set of test bricks
+        #diam, ba, pa, ref = choose_geometry(cat, mindiam=10.)
+        #diam /= 60. # [arcmin]
+        #
+        #I = (diam > 45./60.)# * (diam < 2.)
+        #cat = cat[I]
+        #
+        #bricknames = get_brickname(cat['RA'].value, cat['DEC'].value)
+        #I = np.where(np.isin(bricknames, ['0545m052', '0545m050', '0542m050']))[0]
+        #cat = cat[I]
+        ##########################
 
         # build the group catalog from the full sample
         diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=10., get_mag=True)
@@ -1508,6 +1513,7 @@ def build_parent(verbose=False, overwrite=False):
         grp.add_column(mag.astype('f4'), name='MAG', index=11)
         grp.add_column(band, name='BAND', index=12)
 
+
         grp = build_group_catalog(grp)
 
         ## final selection and data model
@@ -1521,7 +1527,6 @@ def build_parent(verbose=False, overwrite=False):
         print(f'Writing {len(out):,d} objects to {outfile}')
         out.meta['EXTNAME'] = 'PARENT'
         out.write(outfile, overwrite=True)
-        pdb.set_trace()
 
     pdb.set_trace()
 
@@ -3029,7 +3034,7 @@ def main():
 
     if args.qa_footprint:
         qa_footprint(region=args.region)
-        
+
     if args.qa_parent:
         qa_parent(nocuts=True, size_mag=True, sky=True)
 

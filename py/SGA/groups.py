@@ -14,7 +14,7 @@ from SGA.logger import log
 
 def fof_groups(cat, linking_length=2, verbose=True):
     """Find groups using a friends-of-friends algorithm.
-    
+
     """
     from pydl.pydlutils.spheregroup import spheregroup
 
@@ -32,7 +32,6 @@ def fof_groups(cat, linking_length=2, verbose=True):
             np.sum( (npergrp > 5)*(npergrp <= 10) ).astype('int')), flush=True)
         log.info('  {} groups with >10 members'.format(
             np.sum( (npergrp > 10) ).astype('int')), flush=True)
-        
     return (grp, mult, frst, nxt)
 
 
@@ -141,7 +140,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     print('Starting spheregrouping.')
 
     nchar = np.max([len(gg) for gg in cat['SGANAME']])+6 # add six characters for "_GROUP"
-    
+
     t0 = time.time()
     cat.add_column(Column(name='GROUP_ID', data=np.zeros(len(cat), dtype=np.int32)-1))
     cat.add_column(Column(name='GROUP_NAME', length=len(cat), dtype=f'<U{nchar}'))
@@ -156,7 +155,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     mgrp = np.ones(len(cat)).astype(np.int16)
 
     ra, dec, diam = cat['RA'].value, cat['DEC'].value, cat['DIAM'].value
-    
+
     # First group galaxies within dmax arcmin, setting those to have the same
     # group number
     t0 = time.time()
@@ -191,7 +190,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     if len(ibig) > 0:
         for ii in np.arange(len(ibig)):
            dd = degrees_between(ra[ibig[ii]], dec[ibig[ii]], ra, dec)
-           inear = np.where(dd < 0.5*(cat[ibig[ii]]['DIAM_INIT'] + diam) / 60.)[0]
+           inear = np.where(dd < 0.5*(cat[ibig[ii]]['DIAM'] + diam) / 60.)[0]
            if len(inear) > 0:
                for jj in np.arange(len(inear)):
                   indx = np.where(np.logical_or(gnum==gnum[ibig[ii]], gnum==gnum[inear[jj]]))[0]
