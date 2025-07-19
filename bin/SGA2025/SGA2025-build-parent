@@ -11,7 +11,6 @@ or
 shifter --image legacysurvey/sga:0.3 bash
 source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
-
 SGA2025-build-parent --build-parent-nocuts
 SGA2025-build-parent --build-parent-vicuts
 SGA2025-build-parent --build-parent-archive
@@ -802,6 +801,8 @@ def update_lvd_properties(cat):
     # override the algorithm above based on VI
     if version == 'v1.0.5':
         gals = [
+            'LMC',
+            'SMC',
             # dr9-north
             'DDO 126',
             'NGC 5023',
@@ -868,6 +869,8 @@ def update_lvd_properties(cat):
             'dw1232p0015',
         ]
         props = [ # ra, dec, diam, ba, pa
+            (80.894167, -69.756111, -99., -99., -99.),
+            (13.186667, -72.828611, -99., -99., -99.),
             # dr9-north
             (-99., -99., -99., -99., 145.5),
             (-99., -99., -99., -99., 28.22),
@@ -934,6 +937,8 @@ def update_lvd_properties(cat):
             (188.15054166666664, 0.2624444444444444, -99., -99., -99.),
             ]
         refs = [
+            ('NED', 'NED', '', '', ''),
+            ('NED', 'NED', '', '', ''),
             # dr9-north
             ('', '', '', '', 'HYPERLEDA'),
             ('', '', '', '', 'HYPERLEDA'),
@@ -1424,7 +1429,7 @@ def build_parent_archive(verbose=False, overwrite=False):
             if len(onematch) == 1:
                 indx_isolated.append(iobj)
         indx_isolated = np.array(indx_isolated)
-    
+
         out = cat_isolated[indx_isolated]
         #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], out[0]['RA'], out[0]['DEC'], 10./3600) ; cat[m1][cols]
         #prim=0 ; qa_skypatch(cat[m1[prim]], group=cat[m1])
@@ -1448,10 +1453,10 @@ def build_parent(verbose=False, overwrite=False):
     from SGA.groups import build_group_catalog
 
     FITBITS = dict(
-        ignore = 2**0,   # no special behavior (e.g., resolved dwarf galaxy)
-        forcepsf = 2**1, # force PSF for source detection and photometry
+        ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
+        forcegaia = 2**1, # only fit the SGA source and Gaia point sources
+        forcepsf = 2**2,  # force PSF for source detection and photometry
     )
-
 
     version = parent_version()
     version_archive = parent_version(archive=True)
@@ -1500,6 +1505,8 @@ def build_parent(verbose=False, overwrite=False):
         # process the fitting behavior bits
         fitbits = np.zeros(len(cat), np.int16)
         fitbits[cat['RESOLVED']] = FITBITS['ignore']
+        #fitbits[cat['IN_LMC']] = FITBITS['forcegaia']
+        #fitbits[cat['IN_SMC']] = FITBITS['forcegaia']
 
         grp = cat[cols]
         grp.add_column(cat['ROW_PARENT'], name='SGAID', index=0)
