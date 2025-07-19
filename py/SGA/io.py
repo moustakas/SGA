@@ -3528,21 +3528,20 @@ def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
 
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                final_sample=False, preselect_sample=True, fullsample=False,
-                region='dr11-south', d25min=0.1, d25max=100.0):
+                final_sample=False, region='dr11-south', d25min=0., d25max=100.0):
     """Read/generate the parent SGA catalog.
 
-    d25min in arcmin
+    d25min,d25max in arcmin
 
     """
     import fitsio
-            
+
     if first and last:
         if first > last:
             msg = f'Index first cannot be greater than index last, {first} > {last}'
             log.critical(msg)
             raise ValueError(msg)
-        
+
     ext = 1
 
     if final_sample:
@@ -3557,79 +3556,28 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.critical(msg)
         raise IOError(msg)
 
-    info = fitsio.FITS(samplefile)
-    nrows = info[ext].get_nrows()
+    if final_sample:
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY', 'SGA_ID', 'PREBURNED']
+        info = fitsio.read(samplefile, columns=cols)
 
-    if preselect_sample and not fullsample:
-        if final_sample:
-            cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY', 'SGA_ID', 'PREBURNED']
-            sample = fitsio.read(samplefile, columns=cols)
-            rows = np.arange(len(sample))
-
-            samplecut = np.where(
-                (sample['GROUP_DIAMETER'] > d25min) *
-                (sample['GROUP_DIAMETER'] < d25max) *
-                sample['GROUP_PRIMARY'] * 
-                sample['PREBURNED'] * 
-                (sample['SGA_ID'] > -1))[0]
-            rows = rows[samplecut]
-        else:
-            cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
-                    'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC',
-                    'BRICKNAME']
-            sample = fitsio.read(samplefile, columns=cols)
-            rows = np.arange(len(sample))
-
-            samplecut = np.where(
-                (sample['GROUP_DIAMETER'] > d25min) *
-                (sample['GROUP_DIAMETER'] < d25max) *
-                sample['GROUP_PRIMARY'])[0]
-            rows = rows[samplecut]
-
-            if False: # DR9 bricklist
-                # Tests by Dustin--
-                #bricklist = np.array([
-                #    '2221p000', '2221p002', '2221p005', '2221p007', '2223p000', '2223p002',
-                #    '2223p005', '2223p007', '2226p000', '2226p002', '2226p005', '2226p007',
-                #    '2228p000', '2228p002', '2228p005', '2228p007'])
-
-                #bb = [692770, 232869, 51979, 405760, 1319700, 1387188, 519486, 145096]
-                #ww = np.where(np.isin(sample['SGA_ID'], bb))[0]
-                #ff = get_brickname(sample['GROUP_RA'][ww], sample['GROUP_DEC'][ww])
-
-                ## Testing subtracting galaxy halos before sky-fitting---in Virgo!
-                #bricklist = ['1877p122', '1877p125', '1875p122', '1875p125',
-                #             '2211p017', '2213p017', '2211p020', '2213p020']
-
-                ## Test sample-- 1 deg2 patch of sky
-                ##bricklist = ['0343p012']
-                #bricklist = ['1948p280', '1951p280', # Coma
-                #             '1914p307', # NGC4676/Mice
-                #             '2412p205', # NGC6052=PGC200329
-                #             '1890p112', # NGC4568 - overlapping spirals in Virgo
-                #             '0211p037', # NGC520 - train wreck
-                #             # random galaxies around bright stars
-                #             '0836m285', '3467p137',
-                #             '0228m257', '1328m022',
-                #             '3397m057', '0159m047',
-                #             '3124m097', '3160p097',
-                #             # 1 square degree of test bricks--
-                #             '0341p007', '0341p010', '0341p012', '0341p015', '0343p007', '0343p010',
-                #             '0343p012', '0343p015', '0346p007', '0346p010', '0346p012', '0346p015',
-                #             '0348p007', '0348p010', '0348p012', '0348p015',
-                #             # NGC4448 bricks
-                #             '1869p287', '1872p285', '1869p285'
-                #             # NGC2146 bricks
-                #             '0943p785', '0948p782'
-                #             ]
-
-                brickcut = np.where(np.isin(sample['BRICKNAME'][samplecut], bricklist))[0]
-                rows = rows[brickcut]
-
-        nrows = len(rows)
-        log.debug(f'Pre-selecting {nrows:,d} objects.')
+        rows = np.where(
+            (info['GROUP_DIAMETER'] > d25min) *
+            (info['GROUP_DIAMETER'] < d25max) *
+            info['GROUP_PRIMARY'] *
+            info['PREBURNED'] *
+            (info['SGA_ID'] > -1))[0]
     else:
-        rows = None
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
+        #cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
+        #        'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC', 'BRICKNAME']
+        info = fitsio.read(samplefile, columns=cols)
+        rows = np.where(
+            (info['GROUP_DIAMETER'] > d25min) *
+            (info['GROUP_DIAMETER'] < d25max) *
+            info['GROUP_PRIMARY'])[0]
+
+    nallrows = len(info)
+    nrows = len(rows)
 
     if first is None:
         first = 0
@@ -3648,32 +3596,33 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             rows = np.arange(first, last+1)
         else:
             rows = rows[np.arange(first, last+1)]
+            if len(rows) == 1:
+                log.info(f'Selecting index {first} (N=1)')
+            else:
+                log.info(f'Selecting indices {first} through {last} (N={len(rows):,d})')
 
-    sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
-    if verbose:
-        if len(rows) == 1:
-            log.info(f'Read galaxy index {first} from {samplefile}')
-        else:
-            log.info(f'Read galaxy indices {first} through {last} (N={len(sample):,d}) from {samplefile}')
+    fullsample = Table(fitsio.read(samplefile, upper=True))
+    fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
+    sample = fullsample[rows]
 
-    # Add an (internal) index number:
-    sample.add_column(rows, name='INDEX', index=0)
+    #sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
+    log.info(f'Read {len(sample):,d}/{len(fullsample):,d} GROUP_PRIMARY objects from {samplefile}')
 
     if galaxylist is not None:
         log.debug('Selecting specific galaxies.')
-        these = np.isin(sample['GROUP_NAME'], galaxylist)
-        if np.count_nonzero(these) == 0:
+        I = np.isin(sample['GROUP_NAME'], galaxylist)
+        if np.count_nonzero(I) == 0:
             log.warning('No matching galaxies using column GROUP_NAME!')
-            these = np.isin(sample['SGANAME'], galaxylist)
-            if np.count_nonzero(these) == 0:
+            I = np.isin(sample['SGANAME'], galaxylist)
+            if np.count_nonzero(I) == 0:
                 log.warning('No matching galaxies using column SGANAME!')
-                return Table()
-            else:
-                sample = sample[these]
-        else:
-            sample = sample[these]
-
-    return sample
+                I = np.isin(sample['OBJNAME'], galaxylist)
+                if np.count_nonzero(I) == 0:
+                    log.warning('No matching galaxies using column OBJNAME!')
+                    return Table(), Table()
+            return sample[I], fullsample
+    else:
+        return sample, fullsample
 
 
 #def get_parentfile(version=None, kd=False):
@@ -3682,7 +3631,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 #        suffix = 'kd.fits'
 #    else:
 #        suffix = 'fits'
-#        
+#
 #    parentfile = os.path.join(sample_dir(version=version), 'SGA-parent-{}.{}'.format(version, suffix))
 #
 #    return parentfile

@@ -415,7 +415,7 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
         if not os.path.isfile(psffile):
             psffile = os.path.join(survey.output_dir, f'{galaxy}-{stagesuffix}-psf-r.fits.fz')
         hdr = fitsio.read_header(psffile)
-        
+
         for remcard in ('MJD', 'MJD_TAI', 'PSF_SIG', 'INPIXSC'):
             hdr.delete(remcard)
 
@@ -425,7 +425,7 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
             # FIXME
             thisgal = 0
             coadd_id = cat['wise_coadd_id'][thisgal]
-    
+
             # coadd_id can be blank in regions around, e.g., Globular Clusters,
             # where we turn off forced photometry.
             if coadd_id == '':
@@ -435,12 +435,12 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
                 targetwcs = wcs_for_brick(brick, W=float(width), H=float(width), pixscale=pixscale)            
                 tiles = unwise_tiles_touching_wcs(targetwcs)
                 coadd_id = tiles.coadd_id[0] # grab the first one
-    
+
             #hdr['PIXSCAL'] = 2.75
             hdr.delete('PIXSCAL')
             hdr.add_record(dict(name='PIXSCAL', value=2.75, comment='pixel scale (arcsec)'))
             hdr.add_record(dict(name='COADD_ID', value=coadd_id, comment='WISE coadd ID'))
-    
+
             # https://github.com/legacysurvey/legacypipe/blob/main/py/legacypipe/unwise.py#L267-L310        
             fluxrescales = {1: 1.04, 2: 1.005, 3: 1.0, 4: 1.0}
             for band in (1, 2, 3, 4):

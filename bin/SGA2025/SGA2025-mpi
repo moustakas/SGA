@@ -15,6 +15,7 @@ source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup
 
 
+
 """
 import os, time, pdb
 import numpy as np
@@ -41,7 +42,7 @@ def done(galaxy, galaxydir, err, stagesuffix, debug=False):
 
     # equivalent to 'touch'
     open(donefile, 'w').close()
-        
+
     # close all file handlers
     if not debug:
         for hh in logging.root.handlers:
@@ -85,11 +86,13 @@ def main():
         log.info(f'$SGA_DIR={basedir}')
         log.info(f'$SGA_DATA_DIR={datadir}')
         log.info(f'$SGA_HTML_DIR={htmldir}')
+        log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
-        sample = read_sample(first=args.first, last=args.last,
-                             d25min=args.d25min, d25max=args.d25max, 
-                             fullsample=False, galaxylist=args.galaxylist,
-                             region=args.region, verbose=args.verbose)
+        sample, fullsample = read_sample(
+            first=args.first, last=args.last,
+            d25min=args.d25min, d25max=args.d25max,
+            galaxylist=args.galaxylist,
+            region=args.region, verbose=args.verbose)
 
         if len(sample) == 0:
             return
@@ -97,8 +100,8 @@ def main():
         if args.coadds or args.build_catalog or args.build_refcat:
             refcat = 'L4'
             # For the custom coadds and build_catalog steps we need the full sample, too.
-            fullsample = read_sample(verbose=args.verbose, region=args.region, fullsample=True)
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            #fullsample = read_sample(verbose=args.verbose, region=args.region, fullsample=True)
+            #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
             if args.build_catalog:
                 sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
@@ -109,11 +112,11 @@ def main():
     if comm:
         sample = comm.bcast(sample, root=0)
         fullsample = comm.bcast(fullsample, root=0)
-    
+
     # Building the web-page and integrating the ellipse-fitting
     # results work on the full sample, so do that here and then
     # return.
-    if rank == 0:    
+    if rank == 0:
         if args.htmlindex:
             SGA.html.make_html(sample, survey=None, pixscale=args.pixscale,
                                racolumn=RACOLUMN, deccolumn=DECCOLUMN, #diamcolumn=DIAMCOLUMN,
@@ -127,7 +130,7 @@ def main():
             # Build a reference catalog for use with the
             # pipeline. Satellites can belong to more than one group,
             # so trim to unique IDs.
-            
+
             import fitsio
             from astropy.table import Table
             from SGA.io import SGA_version
@@ -138,7 +141,7 @@ def main():
             ref = Table()
             ref['ra'] = fullsample['RA']
             ref['dec'] = fullsample['DEC']
-            ref['id'] = fullsample['SGAID']
+            ref['ref_id'] = fullsample['INDEX']
             ref['mag'] = fullsample['MAG']
             ref['pa'] = fullsample['PA']
             ref['ba'] = fullsample['BA']
@@ -158,7 +161,7 @@ def main():
             log.info(cmd)
             _ = os.system(cmd)
 
-            cmd = f'modhead {kdreffile} SGAVER {hdrver}'
+            cmd = f'modhead {kdreffile} VER {refcat}'
             _ = os.system(cmd)
             return
 
@@ -171,7 +174,7 @@ def main():
 
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
-    if rank == 0:    
+    if rank == 0:
         suffix, groups, _, fail = missing_files(
             sample=sample, region=args.region, bricks=bricks, coadds=args.coadds,
             ellipse=args.ellipse, htmlplots=args.htmlplots, htmlindex=args.htmlindex,
@@ -179,7 +182,7 @@ def main():
             mp=args.mp)
     else:
         groups, suffix = [], ''
-    
+
     if comm:
         groups = comm.bcast(groups, root=0)
         suffix = comm.bcast(suffix, root=0)
@@ -189,7 +192,7 @@ def main():
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / {len(sample):,d} ' + \
                  f'divided across {size} rank(s).')
 
-        
+
     if len(groups[rank]) == 0:
         log.info(f'{suffix.upper()} for all {len(sample)} galaxies on rank ' + \
                  f'{rank} are complete!')
@@ -212,7 +215,7 @@ def main():
                     for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir), sample[todo][DIAMCOLUMN]):
                         log.info(f'  {ii} {dd} (d={diam:.3f} arcmin)')
             return
-        
+
     # Loop on the remaining objects.
     log.info(f'Starting {len(groups[rank])} {suffix.upper()} on rank {rank} ' + \
              f'with {args.mp} cores on {time.asctime()}')
@@ -237,12 +240,12 @@ def main():
             log.debug(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
-        if onegal[DIAMCOLUMN] > 10:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2 * 1.1 * 60 # [arcsec]
-        elif onegal[DIAMCOLUMN] > 3 and onegal[DIAMCOLUMN] <= 10:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2 * 1.5 * 60 # [arcsec]
+        if onegal[DIAMCOLUMN] > 10.:
+            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 1.1 * 60. # [arcsec]
+        elif onegal[DIAMCOLUMN] > 3. and onegal[DIAMCOLUMN] <= 10:
+            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 1.5 * 60. # [arcsec]
         else:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2 * 2 * 60   # [arcsec]
+            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 2. * 60.  # [arcsec]
 
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 
@@ -277,7 +280,7 @@ def main():
 
         if args.ellipse:
             from SGA.mpi import call_ellipse
-            
+
             call_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
                          bands=['g', 'r', 'z'], refband='r',
                          pixscale=args.pixscale, mp=args.mp,
@@ -287,10 +290,10 @@ def main():
                          clobber=args.clobber,
                          unwise=True, galex=True,
                          logfile=logfile)
-                             
+
         if args.htmlplots:
             from SGA.mpi import call_htmlplots
-            
+
             if radius_mosaic_arcsec > 6 * 60: # [>6] arcmin
                 barlabel = '2 arcmin'
                 barlen = np.ceil(120 / args.pixscale).astype(int) # [pixels]
@@ -302,7 +305,7 @@ def main():
                 barlen = np.ceil(30 / args.pixscale).astype(int) # [pixels]
             call_htmlplots(onegal, galaxy, survey, pixscale=args.pixscale, mp=args.mp,
                            verbose=args.verbose, debug=args.debug, clobber=args.clobber,
-                           logfile=logfile, 
+                           logfile=logfile,
                            htmldir=htmldir, datadir=datadir,
                            barlen=barlen, barlabel=barlabel,
                            radius_mosaic_arcsec=radius_mosaic_arcsec,

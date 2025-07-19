@@ -539,5 +539,3 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
         return diam, ba, pa, ref, mag, band
     else:
         return diam, ba, pa, ref
-
-        

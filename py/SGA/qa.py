@@ -24,7 +24,7 @@ import matplotlib.ticker as ticker
 fonttype = resources.files('SGA').joinpath('data/Georgia.ttf')
 prop = mpl.font_manager.FontProperties(fname=fonttype, size=12)
 
-# color-blind friendly color cycle: 
+# color-blind friendly color cycle:
 # https://twitter.com/rachel_kurchin/status/1229567059694170115
 cb_colors = {'blue': '#377eb8',
              'orange': '#ff7f00',
