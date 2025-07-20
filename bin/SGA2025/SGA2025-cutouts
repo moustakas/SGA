@@ -15,6 +15,8 @@ Working interactively in a login node, one would do something like:
   SGA2025-cutouts --cutoutdir=/pscratch/sd/i/ioannis/SGA2025/diamcut1 --catalog=sga2025-parent --region=dr11-south --mp=1 --gather-photo --photo-version=v1.0
   SGA2025-cutouts --cutoutdir=/pscratch/sd/i/ioannis/SGA2025/diamcut1 --catalog=sga2025-parent --region=dr11-south --mp=1 --photo --photo-version=v1.0 --annotated-montage
 
+  SGA2025-cutouts --cutoutdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --lvd --mp=32
+  SGA2025-cutouts --cutoutdir=/pscratch/sd/i/ioannis/SGA2025/lvd --catalog=sga2025-parent --region=dr11-south --lvd --mp=32 --photo --photo-version=lvd-v1.0
 
 Alternatively, in production, one would do:
 
@@ -298,6 +300,7 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
 
     # build the Gaia/Tycho mask
     gaia_mask = np.zeros((height, width), bool) # True=Gaia star(s)
+    gaia_mask_faint = np.zeros_like(gaia_mask)
 
     brickname = f'custom-{custom_brickname(ra, dec)}'
     brick = BrickDuck(ra, dec, brickname)
@@ -326,7 +329,8 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
             else:
                 radius_pix = star.radius_pix
             ap = CircularAperture((star.ibx, star.iby), radius_pix) # note! (ibx,iby) not (iby,ibx)
-            gaia_mask = np.logical_or(gaia_mask, ap.to_mask().to_image((height, width)) != 0.) # object mask=True
+            #gaia_mask = np.logical_or(gaia_mask, ap.to_mask().to_image((height, width)) != 0.) # object mask=True
+            gaia_mask_faint = np.logical_or(gaia_mask_faint, ap.to_mask().to_image((height, width)) != 0.) # object mask=True
 
     # initial ellipse geometry and aperture
     xyinit = wcs.wcs_world2pix(ra, dec, 1)
@@ -353,18 +357,23 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     I = wivar > 0.
     wimg[I] /= wivar[I]
     #wmask = np.sum(ivars <= 0., axis=0) == nband
-    wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask)    
+    wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask, gaia_mask_faint)
 
-    # if the center is fully masked, write out and move on
+    # if the center is fully masked, first try dropping the faint-Gaia
+    # mask; if still fully masked, write out and move on
     if np.all(wimg[boxmask_init] == 0.) or np.all(wmask[boxmask_init]):
-        log.warning(f'Fully masked {box_arcsec:.1f}x{box_arcsec:.1f} arcsec ' + \
-                    f'center {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
-        out['CENTERMASKED'] = True
+        wmask = np.logical_or(np.sum(ivars <= 0., axis=0) == nband, gaia_mask)
+        if np.all(wimg[boxmask_init] == 0.) or np.all(wmask[boxmask_init]):
+            wmask = np.sum(ivars <= 0., axis=0) == nband
+            if np.all(wimg[boxmask_init] == 0.) or np.all(wmask[boxmask_init]):
+                log.warning(f'Fully masked {box_arcsec:.1f}x{box_arcsec:.1f} arcsec ' + \
+                            f'center {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
+                out['CENTERMASKED'] = True
 
-        write_photfile(out, photfile)
-        qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
-                         diam, ba, pa, xyinit, wimg, wmask, wcs)
-        return
+                write_photfile(out, photfile)
+                qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
+                                 diam, ba, pa, xyinit, wimg, wmask, wcs)
+                return
 
     # compute the mean geometry
 
@@ -433,7 +442,8 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
         img = imgs[iband, :, :]
 
         ivar = ivars[iband, :, :]
-        mask = np.logical_or(ivar <= 0., gaia_mask) # True=masked
+        mask = np.logical_or(ivar <= 0., wmask) # True=masked
+        #mask = np.logical_or(ivar <= 0., gaia_mask) # True=masked
         error = get_error(ivar)
 
         # aperture photometry, fraction of masked pixels, and Gini
@@ -772,7 +782,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     # now annotate
     if len(objnames) > 0:
         def label_neighbor(objname, xy, xyname, xytext, ha='center', va='top'):
-            ax.annotate('', xy=xy, xytext=xytext, annotation_clip=True, 
+            ax.annotate('', xy=xy, xytext=xytext, annotation_clip=True,
                         arrowprops={'arrowstyle': '-', 'color': 'white'})
                         #dict(facecolor='white', edgecolor='white', width=0.5,
                         #     headwidth=2, shrink=0.005, alpha=0.75))
@@ -906,7 +916,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
     # all done
     if len(jpgfiles) == 0 or len(np.hstack(jpgfiles)) == 0:
         return
-        
+
     assert(len(groups) == size)
 
     log.info(f'Rank {rank} started at {time.asctime()}')
@@ -923,7 +933,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
     allmatches = match_radec(cat['RA'][indx].value, cat['DEC'][indx].value,
                              fullcat['RA'].value, fullcat['DEC'].value,
                              2.*np.max(diam)/3600., indexlist=True, notself=False)
-    
+
     mpargs = []
     for iobj in range(len(indx)):
         #print(iobj)
@@ -962,14 +972,14 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
 
     if rank == 0 and not dry_run:
         log.info(f'All done at {time.asctime()}')
-    
+
 
 def _cutout_one(args):
     return cutout_one(*args)
 
 
-def cutout_one(basefile, ra, dec, optical_width, optical_pixscale, 
-               optical_layer, optical_bands, dry_run, fits_cutouts, 
+def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
+               optical_layer, optical_bands, dry_run, fits_cutouts,
                ivar_cutouts, unwise_cutouts, galex_cutouts, rank, iobj):
     """
     pixscale = 0.262
@@ -1011,7 +1021,7 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
         pixscales += [GALEX_PIXSCALE, ]
         widths += [galex_width, ]
         allbands += [['f', 'n'], ]
-    
+
     for suffix, layer, pixscale, width, bands in zip(suffixes, layers, pixscales, widths, allbands):
         outfile = basefile+suffix
         cmdargs = f'--output={outfile} --ra={ra} --dec={dec} --size={width} ' + \
@@ -1078,7 +1088,7 @@ def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 
-def get_basefiles_one(obj, objname, cutoutdir, width=None, fits_cutouts=True, 
+def get_basefiles_one(obj, objname, cutoutdir, width=None, fits_cutouts=True,
                       unwise_cutouts=False, galex_cutouts=False,
                       overwrite=False, verbose=False):
     raslice = get_raslice(obj['RA'])
@@ -1247,11 +1257,11 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         pixscale = comm.bcast(pixscale, root=0)
         width = comm.bcast(width, root=0)
     sys.stdout.flush()
-    
+
     # all done
     if len(basefiles) == 0 or len(np.hstack(basefiles)) == 0:
         return
-        
+
     assert(len(groups) == size)
 
     log.info(f'Rank {rank} started at {time.asctime()}')
@@ -1297,13 +1307,13 @@ def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
         # larger than XX arcmin
         pixscale = np.zeros(nobj) + default_pixscale # [arcsec/pixel]
         width = 1.5 * diam / pixscale # [pixels]
-    
+
         maxdiam = maxdiam_arcmin * 60. # [arcsec]
         I = diam > maxdiam
         if np.any(I):
             pixscale[I] = default_pixscale * diam[I] / maxdiam
             width[I] = 1.5 * diam[I] / pixscale[I]
-    
+
     width = width.astype(int)
 
     return pixscale, width
@@ -1338,13 +1348,13 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
     diam, _, _, ref = choose_geometry(cat, mindiam=0.)
 
     if ssl_version == 'v1':
-        I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+        I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] *
                      (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
         # no other source (of any size) within 90 arcsec
         refindx = find_isolated(cat[I], fullcat, radius=90.)
         refcat = cat[I[refindx]]
     elif ssl_version == 'v2':
-        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] *
                      (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
         diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
         J = (diam_full > 30.) * (fullcat['FILTERS'] == 'grz')
@@ -1352,7 +1362,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
         refindx = find_isolated(cat[I], fullcat[J], radius=90.)
         refcat = cat[I[refindx]]
     elif ssl_version == 'v3':
-        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] * 
+        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] *
                      (cat['STARFDIST'] > 1.5) * 
                      np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz'))[0]
         diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
@@ -1394,7 +1404,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
 
 
 def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=None,
-                           bands=['g', 'r', 'z'], outdir='.', verbose=False, 
+                           bands=['g', 'r', 'z'], outdir='.', verbose=False,
                            overwrite=False):
     """Build the hdf5 file needed by ssl-legacysurvey.
 
@@ -1489,19 +1499,19 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
         ras = np.hstack((refcat['RA'].value, cat['RA'][chunkindx[ichunk]].value))
         decs = np.hstack((refcat['DEC'].value, cat['DEC'][chunkindx[ichunk]].value))
         fitsfiles = np.hstack((refcatfiles, catfiles[chunkindx[ichunk]]))
-    
+
         F = h5py.File(h5file, 'w')
         F.create_dataset('ref', data=refs)
         F.create_dataset('row', data=rows)
         F.create_dataset('ra', data=ras)
         F.create_dataset('dec', data=decs)
-    
+
         images = F.create_dataset('images', (refs.size, nband, width, width))
         for iobj, fitsfile in enumerate(fitsfiles):
             raise ValueError('need to deal with missing bandpasses...and handle i-band')
             img = fitsio.read(fitsfile)
             images[iobj, :] = img
-    
+
         F.close()
         log.info(f'Wrote {h5file} with {nrefcat:,d} reference objects and ' + \
                  f'{len(chunkindx[ichunk]):,d} objects to classify.')
@@ -1621,8 +1631,8 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
         pngfiles = pdf_pngfiles[ipdf]
         orig_allindx = pdf_allindx[ipdf]
         allindx = np.arange(len(pngfiles))
-        npage = int(np.ceil(len(pngfiles) / nperpage))        
-    
+        npage = int(np.ceil(len(pngfiles) / nperpage))
+
         pdf = PdfPages(pdffile)
         for ipage in range(npage):
             log.info(f'Building page {ipage+1:,d}/{npage:,d}')
@@ -1766,7 +1776,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
         #    #cat = cat[np.isin(cat['OBJNAME'], ['CGCG 480-040', 'MCG -01-06-008', 'ESO 297- G 033'])]
         #    pdb.set_trace()
 
-        if True:
+        if False:#True:
             # All objects with diameter<XX arcsec and no other source
             # within XX arcsec.
             from SGA.util import find_close
@@ -1865,7 +1875,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
 
             allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                                      fullcat['RA'].value, fullcat['DEC'].value,
-                                     np.max(diam)/3600., indexlist=True, 
+                                     np.max(diam)/3600., indexlist=True,
                                      notself=False, count=True)
             outcat, outfullcat = [], []
 
@@ -2095,15 +2105,15 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
                 rows = np.where(np.isin(fitsio.read(catfile, columns='ROW_PARENT'), cat['ROW_PARENT'].value))[0]
                 allcat = read_fits_catalog(catfile, rows=rows)
                 indx_cat, indx_allcat = match(cat['ROW_PARENT'], allcat['ROW_PARENT'])
-    
+
                 allcat = allcat[indx_allcat]
                 cat = cat[indx_cat]
                 nedlvs = nedlvs[indx_cat]
-    
+
                 assert(np.all(allcat['ROW_PARENT'] == cat['ROW_PARENT']))
                 allcat.write(outfile, overwrite=True)
                 log.info(f'Wrote {len(allcat):,d} objects to {outfile}')
-    
+
                 outfile = os.path.join(cutoutdir, f'wiseize-nedlvs-{region}.fits')
                 nedlvs.write(outfile, overwrite=True)
                 log.info(f'Wrote {len(nedlvs):,d} objects to {outfile}')
@@ -2114,7 +2124,21 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
             #cat = cat[(cat['ROW_LVD'] != -99) * (diam == 0.)] # (diam > 20.*60.)]
             cat = cat[cat['ROW_LVD'] != -99]
-            cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC'])]
+
+            if photo_version is not None:
+                # six galaxies with diam>40 arcmin in dr11-south (invvar cutouts very expensive!)
+                # ---------------------
+                # OBJNAME      DIAM_LIT
+                #          LMC   645.65
+                #  Sagittarius   446.68
+                #          SMC   380.19
+                #    Antlia II    151.2
+                #    Crater II     62.4
+                #   Bootes III     56.0
+                cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC', 'Antlia II', 'Crater II', 'Bootes III'])]
+            else:
+                cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC'])]
+            #cat = cat[np.isin(cat['OBJNAME'], ['KK 221'])]
 
             fulldiam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
             fullcat = fullcat[fulldiam > 30./60.]
