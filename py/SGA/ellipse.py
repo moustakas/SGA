@@ -12,22 +12,36 @@ import numpy as np
 
 
 def ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs):
-    """Simple elliptical mask (in equatorial coordinates).
+    """Return a mask for points within an elliptical region on the sky.
 
-    racen - 
-    deccen - 
-    semia - 
-    semib - 
-    phi - 
-    ras - 
-    decs - 
+    Parameters
+    ----------
+    racen, deccen : float
+        Center of the ellipse [degrees].
+    semia, semib : float
+        Major and minor axes [degrees].
+    phi : float
+        Position angle of major axis [radians, East of North].
+    ras, decs : array_like
+        Sky coordinates of the points to test [degrees].
 
+    Returns
+    -------
+    mask : ndarray of bool
+        True for points inside the ellipse.
     """
-    dra = (ras - racen) * np.cos(np.radians(deccen))
-    
-    xp = + dra * np.cos(phi) + (decs - deccen) * np.sin(phi)
-    yp = - dra * np.sin(phi) + (decs - deccen) * np.cos(phi)
-    return (xp / semia)**2. + (yp / semib)**2. <= 1
+    # Wrap delta-RA into [-180, +180] range
+    dra = (ras - racen + 180) % 360 - 180
+    dra *= np.cos(np.radians(deccen))  # account for convergence of RA near poles
+
+    ddec = decs - deccen
+
+    # Rotate into ellipse-aligned coordinates
+    xp = dra * np.cos(phi) + ddec * np.sin(phi)
+    yp = -dra * np.sin(phi) + ddec * np.cos(phi)
+
+    # Elliptical mask condition
+    return (xp / semia)**2 + (yp / semib)**2 <= 1
 
 
 def ellipse_mask(xcen, ycen, semia, semib, phi, x, y):
@@ -435,7 +449,7 @@ def parse_geometry(cat, ref, mindiam=152*0.262):
         return diam, ba, pa, outref
 
 
-def choose_geometry(cat, mindiam=152*0.262):
+def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
     """Choose an object's geometry, selecting between the
     NED-assembled (literature) values (DIAM, BA, PA), values from the
     SGA2020 (DIAM_SGA2020, BA_SGA2020, PA_SGA2020), and HyperLeda's
@@ -444,6 +458,7 @@ def choose_geometry(cat, mindiam=152*0.262):
     mindiam is ~40 arcsec
 
     Default values of BA and PA are 1.0 and 0.0.
+    Default value of mag is 18.
 
     """
     nobj = len(cat)
@@ -451,6 +466,11 @@ def choose_geometry(cat, mindiam=152*0.262):
     ba = np.zeros(nobj) - 99.
     pa = np.zeros(nobj) - 99.
     ref = np.zeros(nobj, '<U9')
+
+    # always prefer LVD because they were all visually determined and
+    # inspected
+
+
 
     # take the largest diameter
     datarefs = np.array(['SGA2020', 'HYPERLEDA', 'LIT'])
@@ -512,6 +532,29 @@ def choose_geometry(cat, mindiam=152*0.262):
     ba[ba < 0.] = 1.
     pa[pa < 0.] = 0.
 
-    return diam, ba, pa, ref
+    if get_mag:
+        mag = np.zeros(nobj) - 99.
+        band = np.zeros(nobj, '<U1')
+        for magref in ['SGA2020', 'HYPERLEDA', 'LIT']:
+            I = (mag == -99.) * (cat[f'MAG_{magref}'] != -99.)
+            #print(magref, np.sum(I))
+            if np.any(I):
+                mag[I] = cat[f'MAG_{magref}'][I]
+                band[I] = cat[f'BAND_{magref}'][I]
 
-        
+        I = (mag == -99.)
+        if np.any(I):
+            mag[I] = 18.
+            #band[I] = ''
+
+    ## return scalars
+    #if nobj == 1:
+    #    diam = diam[0]
+    #    ba = ba[0]
+    #    pa = pa[0]
+    #    ref = ref[0]
+
+    if get_mag:
+        return diam, ba, pa, ref, mag, band
+    else:
+        return diam, ba, pa, ref

@@ -120,7 +120,6 @@ Leo Minor I,dr9-south;dr11-south
 Leo IV,dr9-south;dr11-south
 Leo V,dr9-south;dr11-south
 Leo VI,dr9-south;dr11-south
-LMC,dr11-south
 LV J0055-2310,dr9-south;dr11-south
 LV J1228+4358,dr9-north
 MADCASH-1,dr9-north
@@ -145,7 +144,6 @@ Pisces II,dr9-south;dr11-south
 Pisces VII,dr9-south;dr11-south
 Reticulum II,dr9-south;dr11-south
 Reticulum III,dr9-south;dr11-south
-SMC,dr11-south
 Sagittarius,dr11-south
 Sagittarius dIrr,dr11-south
 Scl-MM-Dw1,dr9-south;dr11-south
@@ -170,4 +168,3 @@ Ursa Minor,dr9-north
 Virgo I,dr9-south;dr11-south
 Virgo II,dr9-south;dr11-south
 Willman 1,dr9-north
-

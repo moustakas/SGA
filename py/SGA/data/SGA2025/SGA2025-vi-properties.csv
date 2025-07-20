@@ -3,6 +3,8 @@
 # updated.
 #
 objname_ned,ra,dec,diam,pa,ba,diam_hyperleda,update_hyperleda_coords,comment
+ESO 194-IG 035 NED01,11.291583333333332,-50.04022222222222,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm drops 'ESO 194-IG 035 NED02'
+ESO 194-IG 035 NED02,11.301499999999997,-50.04077777777778,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm drops 'ESO 194-IG 035 NED02'
 ESO 575- G 044,195.08679166666664,-22.693694444444446,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
 ESO 575- G 044 NED02,195.08337499999996,-22.692,-99.,-99.,-99.,-99.,Yes,Cross-ID algorithm ends up dropping 'ESO 575- G 044 NED01'
 UGC 01386 NOTES01,28.748249999999995,13.46725,-99.,-99.,-99.,-99.,No,Center on the galaxy.
@@ -689,7 +691,6 @@ AGC 331409,348.833559,9.312457,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
 NGC 3280A,158.19324999999998,-12.634583333333333,-99.,-99.,-99.,-99.,Yes,Update HyperLeda to match NED
 NGC 3280B,158.18254166666665,-12.637305555555555,-99.,-99.,-99.,-99.,Yes,Update HyperLeda to match NED
 NGC 3280C,158.18979166666665,-12.637222222222222,-99.,-99.,-99.,-99.,Yes,Update HyperLeda to match NED
-ESO 415- G 029,37.4386875,-29.6341564,-99.,-99.,-99.,-99.,No,Moved to HyperLeda coordinates
 WISEA J215828.44-583403.6,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 WISEA J220702.36+101414.3,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
 UGC 00389,9.612066,1.976873,-99.,-99.,-99.,-99.,No,Moved to SGA-2020 position
@@ -752,5 +753,129 @@ PGC2587196,243.7959583333333,59.15833333333333,-99.,90.,-99.,-99.,No,Moved to SG
 IC 3277,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 IC 2155,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
 IC 0400,-99.,-99.,1.,100.,0.1,-99.,No,Estimated diameter
-
-
+WISEA J011708.90+161520.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+2MASS J14291396-0310018,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+NGC 1540B,63.792337,-28.479202,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 197-IG 031 NED01,33.1893,-49.5497,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 272-IG 013 NED02,217.906209,-44.989817,-99.,90.,-99.,-99.,No,Moved to 'WISEA J143137.49-445923.3' position
+CGMW 1-2283,122.5476,-14.8979,-99.,-99.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 160-IG 001 NED02,87.798555,-52.902694,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 107-IG 026 NED01,320.9211,-64.3033,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+WISEA J085557.69+765251.6,133.991447,76.881553,0.5,90.,-99.,-99.,No,Moved to SGA-2020 position and estimated diameter
+WISEA J175746.34+563542.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+UGC 03694,107.153102,32.681132,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+CGCG 333-009,150.314058,70.985443,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+FGC 2182,271.023137,60.401276,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+CGCG 228-004,275.747145,43.660715,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+FGC 0865,139.459662,69.869131,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+FGC 2209,277.898194,50.354682,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+CGCG 287-018,119.5485,59.2039,-99.,90.,-99.,-99.,No,Moved to LS/DR9 position
+FGC 2242,288.834595,60.708776,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+UGC 05146 NED01,144.8533,32.3630,-99.,90.,-99.,-99.,No,Moved to LS/DR9 position
+MCG -02-57-021,339.0577,-13.0897,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 366- G 030,105.0172,-32.6197,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+IC 5069,315.0431,-71.8108,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 216- G 033,175.2880,-50.3264,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+2MFGC 17182,342.7769,11.7564,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 434- G 029,146.0952,-28.7935,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 563- G 026,132.6058,-19.5299,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 281- G 009,278.4310,-46.5489,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 327- G 016,221.2666,-41.8554,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+MCG -05-33-009,207.0261,-30.5363,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+CSRG 0337,63.4148,-62.8942,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+APMBGC 189+113-125,327.3732,-52.4676,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 358-IG 047 NED01,54.8005,-33.5312,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+ESO 269- G 002,193.4859,-45.8768,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+UGCA 339,198.7341,-23.1486,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 1519,193.6023,-10.2121,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+UGCA 180,146.1937,-31.8302,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 497- G 001,135.0939,-25.8693,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 061- G 009,141.8696,-70.3984,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 0964,148.2970,-6.4817,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 563- G 020,131.5601,-19.9595,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 566- G 011,146.5996,-22.3614,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 0510,84.8844,-40.3854,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+NGC 3256A,156.4684,-43.7481,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 220- G 001,199.5594,-48.2989,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 445- G 007,205.0918,-31.7000,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+UGCA 242,175.3469,-6.4774,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 284A,350.7450,7.6743,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 545- G 035,38.4741,-20.2046,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 400- G 019,306.4283,-32.5455,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 582- G 010,231.0153333333333,-18.68252777777778,-99.,90.,-99.,-99.,No,Moved to the position of '2MASX J15240366-1840574'
+ESO 220-IG 017 NED01,203.2260,-49.4125,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 266- G 021,176.3238,-43.6588,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 273- G 022,228.3035145,-43.3423647,-99.,90.,-99.,-99.,No,Moved to the position of 'PGC 549950'
+ESO 143- G 021,305.4683,-61.9725,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 562- G 016,128.4260,-18.5318,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 060- G 017,134.0564,-69.1831,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+UGC 11151,273.0233,29.1559,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 517- G 011,249.0323,-26.2037,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 1424,300.9152,-54.7917,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 2364,331.603,17.43380555,-99.,90.,-99.,-99.,No,Moved to the position of 'WISEA J220624.56+172602.6'
+2MFGC 13572,254.4259,28.1788,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 593- G 004,288.0207,-18.2835,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 075- G 013,323.5149,-70.2896,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 087- G 050,103.4947,-63.2196,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 2306,316.4429,-8.0292,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 274- G 011,230.5766,-42.8012,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+UGC 11097,270.6027,26.0431,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+CGCG 414-007,36.0731,6.4813,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 192- G 004,352.3252,-56.8891,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 0745,140.9242,-23.2465,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+UGCA 142,128.4870,-21.8822,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+CGMW 1-2405,123.8199,-16.1453,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+2MASS J14291727-0309075,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+ESO 160-IG 006 NED01,89.2975,-56.8611,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J233717.18+270107.9,354.3254,27.0223,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 121-IG 031,96.0592,-58.7061,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+AM 0623-584 NED01,96.0510,-58.7019,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+2MASX J01511200-0443397,27.8017,-4.7293,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+IRAS 19539-0853,299.1598,-8.7621,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 386- G 037,224.0661,-35.3324,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 150-IG 012 NED02,8.8253,-52.2533,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 054-IG 011 NED01,53.1125,-69.2469,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 054-IG 011 NED02,53.1280,-69.2382,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 149- G 008,359.785625,-55.107,-99.,90.,-99.,-99.,No,Moved to the position of 'WISEA J235908.69-550626.4'
+ESO 526- G 019,300.2369,-22.7810,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+2MASX J03032138-3938539,45.8405,-39.6530,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 089A,115.65558333333333,26.616083333333336,-99.,90.,-99.,-99.,No,Moved to the position of 'WISEA J074237.27+263658.1'
+ESO 054-IG 006 NED01,48.4410,-69.0216,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 054-IG 006 NED02,48.4572,-69.0138,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 0924,181.5358,-29.5482,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 1019,196.0238,-29.4270,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 141- G 051,289.7205,-58.2984,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 1389,295.0762,-17.8191,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 0949,146.9868,-14.9554,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+VIII Zw 107 NED03,162.4605,11.7929,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 033-IG 012 NED01,76.23741666666666,-74.9568888888889,-99.,90.,-99.,-99.,No,Moved to the position of 'WISEA J050456.95-745724.6'
+AM 0204-284 NED02,31.65495833333333,-28.579944444444443,-99.,90.,-99.,-99.,No,Moved to the position of 'WISEA J020637.15-283447.7'
+ESO 084-IG 031 NED02,69.6275,-64.1139,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 088- G 007,109.5216,-67.3908,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 0886,171.0744,-19.9109,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 268- G 042,192.0801,-46.2159,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 1854,356.3033333333333,-30.91511111111111,-99.,90.,-99.,-99.,No,Moved to the position of 'WISEA J234512.78-305456.1'
+FGCE 1770,340.2241,-23.3646,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 1073,202.8674,-18.7608,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 160-IG 006 NED01,89.2975,-56.8611,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 011- G 002,309.4900,-82.9467,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 146-IG 002 NED01,329.3361,-57.5355,0.5,0.,1.,-99.,No,Moved to LS/DR10 position and estimated diameter
+ESO 081-IG 005 NED01,34.3662,-65.2757,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+2MASS J17004910+1431026,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 382-IG 001 NED03,195.7008015,-33.6126297,0.6,0.,1.,-99.,No,Moved to HyperLeda position and estimated diameter
+ESO 382-IG 001 NED02,195.697359,-33.6106803,-99.,90.,-99.,-99.,No,Moved to HyperLeda position
+ESO 382-IG 001 NED01,195.69704099999998,-33.6083333,-99.,90.,-99.,-99.,No,Moved to HyperLeda positionMoved to LS/DR10 position
+ESO 118-IG 003 NED03,62.1280,-57.5858,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 054-IG 014 NED01,54.2259,-68.8330,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 120-IG 017 NED01,87.8982,-60.9613,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 030-IG 012 NED01,33.1374,-72.4257,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J145017.59+205611.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+PGC 3098076,93.2115,-33.6429,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 051-IG 001 NED01,8.1596,-67.9658,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J183956.24-425712.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 500-IG 038 NED02,156.5355,-22.9382,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+CGMW 2-4263,130.4403,-25.6390,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 506-IG 034 NED01,190.1424,-23.2690,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 161-IG 014 NED01,97.8482,-54.8645,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+SN 2005lu HOST,39.017446,-17.263923,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+LEDA 085430,350.7400,16.8755,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position

@@ -5,13 +5,20 @@ SGA.io
 Code to read and write the various SGA files.
 
 """
-import os, sys, time, pdb
+import os, time, pdb
 import fitsio
 import numpy as np
+import numpy.ma as ma
 from astropy.table import Table, vstack
 
-from SGA.log import get_logger#, DEBUG
-log = get_logger()
+from SGA.logger import log
+
+
+RACOLUMN = 'RA'
+DECCOLUMN = 'DEC'
+DIAMCOLUMN = 'DIAM'
+ZCOLUMN = 'Z'
+REFIDCOLUMN = 'SGAID'
 
 
 def sga_dir():
@@ -49,11 +56,16 @@ def sga_html_dir():
 
 def set_legacysurvey_dir(region='dr9-north'):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
-        raise EnvironmentError('Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!')
-    print('WARNING: Using dr11-early temporarly directory for dr11-south!!')
-    dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early'}
+        msg = 'Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!'
+        log.critical(msg)
+        raise EnvironmentError(msg)
+    if False:
+        log.warning('Temporarily using dr11-early-v2 directory for dr11-south!!')
+        dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early-v2'}
+    else:
+        dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
-    print(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
+    log.info(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
 
 
@@ -154,11 +166,15 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
     if unixsafe:
         names = np.char.replace(names, ' ', '_')
 
+    #if len(names) == 1:
+    #    return names[0]
+    #else:
+    #    return names
     return names
 
 
-def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
-                         htmldir=None, html=False):
+def get_galaxy_galaxydir(sample=None, bricks=None, region='dr11-south', 
+                         datadir=None, htmldir=None, html=False):
     """Retrieve the galaxy name and the (nested) directory.
 
     """
@@ -167,9 +183,9 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         raise IOError(msg)
 
     if datadir is None:
-        datadir = sga_data_dir()
+        datadir = os.path.join(sga_data_dir(), region)
     if htmldir is None:
-        htmldir = sga_html_dir()
+        htmldir = os.path.join(sga_html_dir(), region)
 
     if bricks is not None:
         objs = np.atleast_1d(bricks['BRICKNAME'])
@@ -182,7 +198,7 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
             galcolumn = 'GROUP_NAME'
             racolumn = 'GROUP_RA'
         else:
-            galcolumn = 'GALAXY'
+            galcolumn = 'SGANAME'
             racolumn = 'RA'
 
         objs = np.atleast_1d(sample[galcolumn])
@@ -207,6 +223,39 @@ def get_galaxy_galaxydir(sample=None, bricks=None, datadir=None,
         return objs, objdirs, htmlobjdirs
     else:
         return objs, objdirs
+
+
+def backup_filename(filename):
+    """rename filename to next available filename.N
+
+    Args:
+        filename (str): full path to filename
+
+    Returns:
+        New filename.N, or filename if original file didn't already exist
+
+    if filename=='/dev/null' or filename doesn't exist, just return filename
+
+    """
+    if filename == '/dev/null' or not os.path.exists(filename):
+        return filename
+
+    n = 0
+    while True:
+        altfile = f'{filename}.{n}'
+        if os.path.exists(altfile):
+            n += 1
+        else:
+            break
+
+    os.rename(filename, altfile)
+
+    return altfile
+
+
+def SGA_version():
+    version = 'v1.0'
+    return version
 
 
 def parent_version(vicuts=False, nocuts=False, archive=False):
@@ -292,6 +341,907 @@ def parent_datamodel(nobj):
     return parent
 
 
+def _get_psfsize_and_depth(tractor, bands, pixscale, incenter=False):
+    """Support function for read_multiband. Compute the average PSF size (in arcsec)
+    and depth (in 5-sigma AB mags) in each bandpass based on the Tractor
+    catalog.
+
+    """
+    out = {}
+
+    # Optionally choose sources in the center of the field.
+    H = np.max(tractor.bx) - np.min(tractor.bx)
+    W = np.max(tractor.by) - np.min(tractor.by)
+    if incenter:
+        dH = 0.1 * H
+        these = np.where((tractor.bx >= int(H / 2 - dH)) * (tractor.bx <= int(H / 2 + dH)) *
+                         (tractor.by >= int(H / 2 - dH)) * (tractor.by <= int(H / 2 + dH)))[0]
+    else:
+        #these = np.where(tractor.get(psfdepthcol) > 0)[0]
+        these = np.arange(len(tractor))
+    
+    # Get the average PSF size and depth in each bandpass.
+    for filt in bands:
+        psfsizecol = 'psfsize_{}'.format(filt.lower())
+        psfdepthcol = 'psfdepth_{}'.format(filt.lower())
+        if psfsizecol in tractor.columns():
+            good = np.where(tractor.get(psfsizecol)[these] > 0)[0]
+            if len(good) == 0:
+                log.warning(f'  No good measurements of the PSF size in band {filt}!')
+                out['psfsigma_{}'.format(filt.lower())] = np.float32(0.0)
+                out['psfsize_{}'.format(filt.lower())] = np.float32(0.0)
+            else:
+                # Get the PSF size and image depth.
+                psfsize = tractor.get(psfsizecol)[these][good]   # [FWHM, arcsec]
+                psfsigma = psfsize / np.sqrt(8 * np.log(2)) / pixscale # [sigma, pixels]
+
+                out['psfsigma_{}'.format(filt.lower())] = np.median(psfsigma).astype('f4') 
+                out['psfsize_{}'.format(filt.lower())] = np.median(psfsize).astype('f4') 
+            
+        if psfsizecol in tractor.columns():
+            good = np.where(tractor.get(psfdepthcol)[these] > 0)[0]
+            if len(good) == 0:
+                log.warning(f'  No good measurements of the PSF depth in band {filt}!')
+                out['psfdepth_{}'.format(filt.lower())] = np.float32(0.0)
+            else:
+                psfdepth = tractor.get(psfdepthcol)[these][good] # [AB mag, 5-sigma]
+                out['psfdepth_{}'.format(filt.lower())] = (22.5-2.5*np.log10(1/np.sqrt(np.median(psfdepth)))).astype('f4') 
+        
+    return out
+
+
+def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
+                     fill_value=0.0, filt2pixscale=None, verbose=False):
+    """Helper function for the project-specific read_multiband method.
+
+    Read the multi-band images and inverse variance images and pack them into a
+    dictionary. Also create an initial pixel-level mask and handle images with
+    different pixel scales (e.g., GALEX and WISE images).
+
+    """
+    from astropy.stats import sigma_clipped_stats
+    from scipy.ndimage.morphology import binary_dilation
+    from scipy.ndimage.filters import gaussian_filter
+    from skimage.transform import resize
+
+    from tractor.psf import PixelizedPSF
+    from tractor.tractortime import TAITime
+    from astrometry.util.util import Tan
+    from legacypipe.survey import LegacySurveyWcs, ConstantFitsWcs
+
+    bands, refband = data['bands'], data['refband']
+
+    #refhdr = fitsio.read_header(filt2imfile[refband]['image'], ext=1)
+    #refsz = (refhdr['NAXIS1'], refhdr['NAXIS2'])
+
+    vega2ab = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
+
+    # Loop on each filter and return the masked data.
+    residual_mask = None
+    for filt in bands:
+        # Read the data and initialize the mask with the inverse variance image,
+        # if available.
+        if verbose:
+            log.info(f'Reading {filt2imfile[filt]["image"]}')
+            log.info(f'Reading {filt2imfile[filt]["model"]}')
+        image = fitsio.read(filt2imfile[filt]['image'])
+        hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
+        model = fitsio.read(filt2imfile[filt]['model'])
+
+        # add the header to the data dictionary
+        data['{}_header'.format(filt.lower())] = hdr
+
+        # Initialize the mask based on the inverse variance
+        if 'invvar' in filt2imfile[filt].keys():
+            if verbose:
+                log.info(f'Reading {filt2imfile[filt]["invvar"]}')
+            invvar = fitsio.read(filt2imfile[filt]['invvar'])
+            mask = invvar <= 0 # True-->bad, False-->good
+        else:
+            invvar = None
+            mask = np.zeros_like(image).astype(bool)
+
+        # convert WISE images from Vega nanomaggies to AB nanomaggies
+        # https://www.legacysurvey.org/dr9/description/#photometry
+        if filt.lower() == 'w1' or filt.lower() == 'w2' or filt.lower() == 'w3' or filt.lower() == 'w4':
+            image *= 10**(-0.4*vega2ab[filt])
+            model *= 10**(-0.4*vega2ab[filt])
+            if invvar is not None:
+                invvar /= (10**(-0.4*vega2ab[filt]))**2
+            
+        sz = image.shape
+
+        # GALEX, unWISE need to be resized. Never resize allmask, if present.
+        if starmask is not None:
+            if starmask.shape == sz:
+                doresize = False
+            else:
+                doresize = True
+
+        # Retrieve the PSF and WCS.
+        if filt == refband:
+            HH, WW = sz
+            data['refband_width'] = WW
+            data['refband_height'] = HH
+            
+        if verbose:
+            log.info(f'Reading {filt2imfile[filt]["psf"]}')
+        psfimg = fitsio.read(filt2imfile[filt]['psf'])
+        psfimg /= psfimg.sum()
+        data['{}_psf'.format(filt.lower())] = PixelizedPSF(psfimg)
+
+        wcs = Tan(filt2imfile[filt]['image'], 1)
+        if 'MJD_MEAN' in hdr:
+            mjd_tai = hdr['MJD_MEAN'] # [TAI]
+            wcs = LegacySurveyWcs(wcs, TAITime(None, mjd=mjd_tai))
+        else:
+            wcs = ConstantFitsWcs(wcs)
+        data['{}_wcs'.format(filt.lower())] = wcs
+
+        # Add in the starmask, resizing if necessary for this image/pixel
+        # scale. Never resize allmask (it's only for the optical).
+        if starmask is not None:
+            if doresize:
+                _starmask = resize(starmask, mask.shape, mode='edge', anti_aliasing=False) > 0
+                mask = np.logical_or(mask, _starmask)
+            else:
+                mask = np.logical_or(mask, starmask)
+                if allmask is not None:
+                    mask = np.logical_or(mask, allmask)
+
+        # Flag significant residual pixels after subtracting *all* the models
+        # (we will restore the pixels of the galaxies of interest later). Only
+        # consider the optical (grz) bands here.
+        resid = gaussian_filter(image - model, 2.0)
+        _, _, sig = sigma_clipped_stats(resid, sigma=3.0)
+        data['{}_sigma'.format(filt.lower())] = sig
+        if residual_mask is None:
+            residual_mask = np.abs(resid) > 5*sig
+        else:
+            _residual_mask = np.abs(resid) > 5*sig
+            # In grz, use a cumulative residual mask. In UV/IR use an
+            # individual-band mask.
+            if doresize:
+                pass
+                #residual_mask = resize(_residual_mask, residual_mask.shape, mode='reflect')
+            else:
+                residual_mask = np.logical_or(residual_mask, _residual_mask)
+
+        ## Dilate the mask, mask out a 10% border, and pack into a dictionary.
+        mask = binary_dilation(mask, iterations=2)
+        edge = int(0.02*sz[0])
+        mask[:edge, :] = True
+        mask[:, :edge] = True
+        mask[:, sz[0]-edge:] = True
+        mask[sz[0]-edge:, :] = True
+        data[filt] = ma.masked_array(image, mask) # [nanomaggies]
+        ma.set_fill_value(data[filt], fill_value)
+
+        #if filt == 'W1':
+        #    import matplotlib.pyplot as plt
+        #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-mask-{}.png'.format(filt))
+        #    pdb.set_trace()
+        
+        if invvar is not None:
+            var = np.zeros_like(invvar)
+            ok = invvar > 0
+            var[ok] = 1 / invvar[ok]
+            data['{}_var_'.format(filt.lower())] = var # [nanomaggies**2]
+            #data['{}_var'.format(filt.lower())] = var / thispixscale**4 # [nanomaggies**2/arcsec**4]
+            if np.any(invvar < 0):
+                log.warning(f'Negative pixels in the {filt}-band inverse variance map!')
+                #pdb.set_trace()
+
+    data['residual_mask'] = residual_mask
+    if starmask is not None:
+        data['starmask'] = starmask
+    if allmask is not None:
+        data['almask'] = allmask
+
+    return data
+
+
+def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
+                          threshmask=0.01, r50mask=0.05, maxshift=0.0,
+                          sigmamask=3.0, neighborfactor=1.0, verbose=False):
+    """Wrapper to mask out all sources except the galaxy we want to ellipse-fit.
+
+    r50mask - mask satellites whose r50 radius (arcsec) is > r50mask 
+
+    threshmask - mask satellites whose flux ratio is > threshmmask relative to
+    the central galaxy.
+
+    """
+    import numpy.ma as ma
+    from copy import copy
+    from skimage.transform import resize
+    from SGA.find_galaxy import find_galaxy
+    from SGA.ellipse import ellipse_mask
+    from SGA.misc import srcs2image
+
+    import matplotlib.pyplot as plt
+    from astropy.visualization import simple_norm
+
+    bands, refband = data['bands'], data['refband']
+    #residual_mask = data['residual_mask']
+
+    #nbox = 5
+    #box = np.arange(nbox)-nbox // 2
+    #box = np.meshgrid(np.arange(nbox), np.arange(nbox))[0]-nbox//2
+
+    xobj, yobj = np.ogrid[0:data['refband_height'], 0:data['refband_width']]
+    dims = data[refband].shape
+    assert(dims[0] == dims[1])
+
+    # If the row-index of the central galaxy is not provided, use the source
+    # nearest to the center of the field.
+    if 'galaxy_indx' in data.keys():
+        galaxy_indx = np.atleast_1d(data['galaxy_indx'])
+    else:
+        galaxy_indx = np.array([np.argmin((tractor.bx - data['refband_height']/2)**2 +
+                                          (tractor.by - data['refband_width']/2)**2)])
+        data['galaxy_indx'] = np.atleast_1d(galaxy_indx)
+        data['galaxy_id'] = ''
+
+    #print('Import hack!')
+    #norm = simple_norm(img, 'log', min_percent=0.05, clip=True)
+    #import matplotlib.pyplot as plt ; from astropy.visualization import simple_norm
+
+    ## Get the PSF sources.
+    #psfindx = np.where(tractor.type == 'PSF')[0]
+    #if len(psfindx) > 0:
+    #    psfsrcs = tractor.copy()
+    #    psfsrcs.cut(psfindx)
+    #else:
+    #    psfsrcs = None
+
+    def tractor2mge(indx, factor=1.0):
+    #def tractor2mge(indx, majoraxis=None):
+        # Convert a Tractor catalog entry to an MGE object.
+        class MGEgalaxy(object):
+            pass
+
+        if tractor.type[indx] == 'PSF' or tractor.shape_r[indx] < 5:
+            pa = tractor.pa_init[indx]
+            ba = tractor.ba_init[indx]
+            # take away the extra factor of 2 we put in in read_sample()
+            r50 = tractor.diam_init[indx] * 60 / 2 / 2 # [arcsec]
+            if r50 < 5:
+                r50 = 5.0 # minimum size, arcsec
+            majoraxis = factor * r50 / filt2pixscale[refband] # [pixels]
+        else:
+            ee = np.hypot(tractor.shape_e1[indx], tractor.shape_e2[indx])
+            ba = (1 - ee) / (1 + ee)
+            pa = 180 - (-np.rad2deg(np.arctan2(tractor.shape_e2[indx], tractor.shape_e1[indx]) / 2))
+            pa = pa % 180
+            #majoraxis = factor * tractor.shape_r[indx] / filt2pixscale[refband] # [pixels]
+
+            # can be zero (or very small) if fit as a PSF or REX
+            if tractor.shape_r[indx] > 1:
+                majoraxis = factor * tractor.shape_r[indx] / filt2pixscale[refband] # [pixels]
+            else:
+                majoraxis = factor * tractor.diam_init[indx] * 60 / 2 / 2 / filt2pixscale[refband] # [pixels]
+
+        mgegalaxy = MGEgalaxy()
+
+        # force the central pixels to be at the center of the mosaic because all
+        # MaNGA sources were visually inspected and we want to have consistency
+        # between the center used for the IFU and the center used for photometry.
+        mgegalaxy.xmed = dims[0] / 2
+        mgegalaxy.ymed = dims[0] / 2
+        mgegalaxy.xpeak = dims[0] / 2
+        mgegalaxy.ypeak = dims[0] / 2
+        #mgegalaxy.xmed = tractor.by[indx]
+        #mgegalaxy.ymed = tractor.bx[indx]
+        #mgegalaxy.xpeak = tractor.by[indx]
+        #mgegalaxy.ypeak = tractor.bx[indx]
+        mgegalaxy.eps = 1-ba
+        mgegalaxy.pa = pa
+        mgegalaxy.theta = (270 - pa) % 180
+        mgegalaxy.majoraxis = majoraxis
+
+        # by default, restore all the pixels within 10% of the nominal IFU
+        # footprint, assuming a circular geometry.
+        default_majoraxis = 1.1 * MANGA_RADIUS / 2 / filt2pixscale[refband] # [pixels]
+        objmask = ellipse_mask(mgegalaxy.xmed, mgegalaxy.ymed, # object pixels are True
+                               default_majoraxis, default_majoraxis, 0.0, xobj, yobj)
+        #objmask = ellipse_mask(mgegalaxy.xmed, mgegalaxy.ymed, # object pixels are True
+        #                       mgegalaxy.majoraxis,
+        #                       mgegalaxy.majoraxis * (1-mgegalaxy.eps), 
+        #                       np.radians(mgegalaxy.theta-90), xobj, yobj)
+    
+        return mgegalaxy, objmask
+
+    # Now, loop through each 'galaxy_indx' from bright to faint.
+    data['mge'] = []
+    for ii, central in enumerate(galaxy_indx):
+        log.info(f'Determing the geometry for galaxy {ii+1}/{len(galaxy_indx)}.')
+
+        #if tractor.ref_cat[galaxy_indx] == 'R1' and tractor.ref_id[galaxy_indx] == 8587006103:
+        #    neighborfactor = 1.0
+
+        # [1] Determine the non-parametricc geometry of the galaxy of interest
+        # in the reference band. First, subtract all models except the galaxy
+        # and galaxies "near" it. Also restore the original pixels of the
+        # central in case there was a poor deblend.
+        largeshift = False
+        mge, centralmask = tractor2mge(central, factor=1.0)
+        #plt.clf() ; plt.imshow(centralmask, origin='lower') ; plt.savefig('junk-mask.png') ; pdb.set_trace()
+
+        iclose = np.where([centralmask[int(by), int(bx)]
+                           for by, bx in zip(tractor.by, tractor.bx)])[0]
+        
+        srcs = tractor.copy()
+        srcs.cut(np.delete(np.arange(len(tractor)), iclose))
+        model = srcs2image(srcs, data['{}_wcs'.format(refband.lower())],
+                           band=refband.lower(),
+                           pixelized_psf=data['{}_psf'.format(refband.lower())])
+
+        img = data[refband].data - model
+        img[centralmask] = data[refband].data[centralmask]
+
+        # the "residual mask" is initialized in legacyhalos.io._read_image_data
+        # and it includes pixels which are significant residuals (data minus
+        # model), pixels with invvar==0, and pixels belonging to maskbits
+        # BRIGHT, MEDIUM, CLUSTER, or ALLMASK_[GRZ]
+        
+        mask = np.logical_or(ma.getmask(data[refband]), data['residual_mask'])
+        #mask = np.logical_or(data[refband].mask, data['residual_mask'])
+        mask[centralmask] = False
+
+        img = ma.masked_array(img, mask)
+        ma.set_fill_value(img, fill_value)
+
+        mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=False)#, plot=True) ; plt.savefig('desi-users/ioannis/tmp/debug.png')
+
+        # force the center
+        mgegalaxy.xmed = dims[0] / 2
+        mgegalaxy.ymed = dims[0] / 2
+        mgegalaxy.xpeak = dims[0] / 2
+        mgegalaxy.ypeak = dims[0] / 2
+        log.warning('Enforcing galaxy centroid to the center of the mosaic: (x,y)=({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})')
+        
+        #if True:
+        #    import matplotlib.pyplot as plt
+        #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/debug.png')
+        ##    #plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('/mnt/legacyhalos-data/debug.png')
+        #    pdb.set_trace()
+
+        # Did the galaxy position move? If so, revert back to the Tractor geometry.
+        if np.abs(mgegalaxy.xmed-mge.xmed) > maxshift or np.abs(mgegalaxy.ymed-mge.ymed) > maxshift:
+            log.warning('Large centroid shift! (x,y)=({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})-->' + \
+                        f'({mge.xmed:.3f},{mge.ymed:.3f})')
+            largeshift = True
+
+            # For the MaNGA project only, check to make sure the Tractor
+            # position isn't far from the center of the mosaic, which can happen
+            # near bright stars, e.g., 8133-12705
+            mgegalaxy = copy(mge)
+            sz = img.shape
+            if np.abs(mgegalaxy.xmed-sz[1]/2) > maxshift or np.abs(mgegalaxy.ymed-sz[0]/2) > maxshift:
+                print('Large centroid shift in Tractor coordinates! (x,y)=({:.3f},{:.3f})-->({:.3f},{:.3f})'.format(
+                    mgegalaxy.xmed, mgegalaxy.ymed, sz[1]/2, sz[0]/2))
+                mgegalaxy.xmed = sz[1]/2
+                mgegalaxy.ymed = sz[0]/2
+            
+        radec_med = data['{}_wcs'.format(refband.lower())].pixelToPosition(
+            mgegalaxy.ymed+1, mgegalaxy.xmed+1).vals
+        radec_peak = data['{}_wcs'.format(refband.lower())].pixelToPosition(
+            mgegalaxy.ypeak+1, mgegalaxy.xpeak+1).vals
+        mge = {
+            'largeshift': largeshift,
+            'ra': tractor.ra[central], 'dec': tractor.dec[central],
+            'bx': tractor.bx[central], 'by': tractor.by[central],
+            #'mw_transmission_g': tractor.mw_transmission_g[central],
+            #'mw_transmission_r': tractor.mw_transmission_r[central],
+            #'mw_transmission_z': tractor.mw_transmission_z[central],
+            'ra_moment': radec_med[0], 'dec_moment': radec_med[1],
+            #'ra_peak': radec_med[0], 'dec_peak': radec_med[1]
+            }
+
+        # add the dust
+        from SGA.dust import SFDMap, mwdust_transmission
+        ebv = SFDMap().ebv(radec_peak[0], radec_peak[1])
+        mge['ebv'] = np.float32(ebv)
+        for band in ['fuv', 'nuv', 'g', 'r', 'z', 'w1', 'w2', 'w3', 'w4']:
+            mge['mw_transmission_{}'.format(band.lower())] = mwdust_transmission(ebv, band, 'N', match_legacy_surveys=True).astype('f4')
+            
+        for key in ('eps', 'majoraxis', 'pa', 'theta', 'xmed', 'ymed', 'xpeak', 'ypeak'):
+            mge[key] = np.float32(getattr(mgegalaxy, key))
+            if key == 'pa': # put into range [0-180]
+                mge[key] = mge[key] % np.float32(180)
+        data['mge'].append(mge)
+
+        #if False:
+        #    #plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('/mnt/legacyhalos-data/debug.png')
+        #    plt.clf() ; mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=True, plot=True)
+        #    plt.savefig('/mnt/legacyhalos-data/debug.png')
+
+        # [2] Create the satellite mask in all the bandpasses. Use srcs here,
+        # which has had the satellites nearest to the central galaxy trimmed
+        # out.
+        log.info('Building the satellite mask.')
+        #srcs = tractor.copy()
+        satmask = np.zeros(data[refband].shape, bool)
+        for filt in bands:
+            # do not let GALEX and WISE contribute to the satellite mask
+            if data[filt].shape != satmask.shape:
+                continue
+            
+            cenflux = getattr(tractor, 'flux_{}'.format(filt.lower()))[central]
+            satflux = getattr(srcs, 'flux_{}'.format(filt.lower()))
+            if cenflux <= 0.0:
+                log.warning('Central galaxy flux is negative! Proceed with caution...')
+                #pdb.set_trace()
+                #raise ValueError('Central galaxy flux is negative!')
+            
+            satindx = np.where(np.logical_or(
+                (srcs.type != 'PSF') * (srcs.shape_r > r50mask) *
+                (satflux > 0.0) * ((satflux / cenflux) > threshmask),
+                srcs.ref_cat == 'R1'))[0]
+            #satindx = np.where(srcs.ref_cat == 'R1')[0]
+            #if np.isin(central, satindx):
+            #    satindx = satindx[np.logical_not(np.isin(satindx, central))]
+            if len(satindx) == 0:
+                #raise ValueError('All satellites have been dropped!')
+                log.warning(f'Warning! All satellites have been dropped from band {filt}!')
+            else:
+                satsrcs = srcs.copy()
+                #satsrcs = tractor.copy()
+                satsrcs.cut(satindx)
+                satimg = srcs2image(satsrcs, data['{}_wcs'.format(filt.lower())],
+                                    band=filt.lower(),
+                                    pixelized_psf=data['{}_psf'.format(filt.lower())])
+                thissatmask = satimg > sigmamask*data['{}_sigma'.format(filt.lower())]
+                #if filt == 'FUV':
+                #    plt.clf() ; plt.imshow(thissatmask, origin='lower') ; plt.savefig('junk-{}.png'.format(filt.lower()))
+                #    #plt.clf() ; plt.imshow(data[filt], origin='lower') ; plt.savefig('junk-{}.png'.format(filt.lower()))
+                #    pdb.set_trace()
+                if satmask.shape != satimg.shape:
+                    thissatmask = resize(thissatmask*1.0, satmask.shape, mode='reflect') > 0
+
+                satmask = np.logical_or(satmask, thissatmask)
+                #if True:
+                #    import matplotlib.pyplot as plt
+                ##    plt.clf() ; plt.imshow(np.log10(satimg), origin='lower') ; plt.savefig('debug.png')
+                #    plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/debug.png')
+                ###    #plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('/mnt/legacyhalos-data/debug.png')
+                #    pdb.set_trace()
+
+            #print(filt, np.sum(satmask), np.sum(thissatmask))
+
+        #plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('junk-satmask.png')
+        
+        # [3] Build the final image (in each filter) for ellipse-fitting. First,
+        # subtract out the PSF sources. Then update the mask (but ignore the
+        # residual mask). Finally convert to surface brightness.
+        #for filt in ['W1']:
+        for filt in bands:
+            thismask = ma.getmask(data[filt])
+            if satmask.shape != thismask.shape:
+                _satmask = (resize(satmask*1.0, thismask.shape, mode='reflect') > 0) == 1.0
+                _centralmask = (resize(centralmask*1.0, thismask.shape, mode='reflect') > 0) == 1.0
+                mask = np.logical_or(thismask, _satmask)
+                mask[_centralmask] = False
+            else:
+                mask = np.logical_or(thismask, satmask)
+                mask[centralmask] = False
+            #if filt == 'W1':
+            #    plt.imshow(_satmask, origin='lower') ; plt.savefig('junk-satmask-{}.png'.format(filt))
+            #    plt.imshow(mask, origin='lower') ; plt.savefig('junk-mask-{}.png'.format(filt))
+            #    pdb.set_trace()
+
+            varkey = '{}_var'.format(filt.lower())
+            imagekey = '{}_masked'.format(filt.lower())
+            psfimgkey = '{}_psfimg'.format(filt.lower())
+            thispixscale = filt2pixscale[filt]
+            if imagekey not in data.keys():
+                data[imagekey], data[varkey], data[psfimgkey] = [], [], []
+
+            img = ma.getdata(data[filt]).copy()
+            
+            # Get the PSF sources.
+            psfindx = np.where((tractor.type == 'PSF') * (getattr(tractor, 'flux_{}'.format(filt.lower())) / cenflux > threshmask))[0]
+            if len(psfindx) > 0 and filt.upper() != 'W3' and filt.upper() != 'W4':
+                psfsrcs = tractor.copy()
+                psfsrcs.cut(psfindx)
+            else:
+                psfsrcs = None
+            
+            if psfsrcs:
+                psfimg = srcs2image(psfsrcs, data['{}_wcs'.format(filt.lower())],
+                                    band=filt.lower(),
+                                    pixelized_psf=data['{}_psf'.format(filt.lower())])
+                if False:
+                    #import fitsio ; fitsio.write('junk-psf-{}.fits'.format(filt.lower()), data['{}_psf'.format(filt.lower())].img, clobber=True)
+                    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+                    im = ax1.imshow(np.log10(img), origin='lower') ; fig.colorbar(im, ax=ax1)
+                    im = ax2.imshow(np.log10(psfimg), origin='lower') ; fig.colorbar(im, ax=ax2)
+                    im = ax3.imshow(np.log10(data['{}_psf'.format(filt.lower())].img), origin='lower') ; fig.colorbar(im, ax=ax3)
+                    im = ax4.imshow(img-psfimg, origin='lower') ; fig.colorbar(im, ax=ax4)
+                    plt.savefig('qa-psf-{}.png'.format(filt.lower()))
+                    #if filt == 'W4':# or filt == 'r':
+                    #    pdb.set_trace()
+                img -= psfimg
+            else:
+                psfimg = np.zeros((2, 2), 'f4')
+
+            data[psfimgkey].append(psfimg)
+
+            img = ma.masked_array((img / thispixscale**2).astype('f4'), mask) # [nanomaggies/arcsec**2]
+            var = data['{}_var_'.format(filt.lower())] / thispixscale**4 # [nanomaggies**2/arcsec**4]
+
+            # Fill with zeros, for fun--
+            ma.set_fill_value(img, fill_value)
+            #if filt == 'r':# or filt == 'r':
+            #    plt.clf() ; plt.imshow(img, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-img-{}.png'.format(filt.lower()))
+            #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-mask-{}.png'.format(filt.lower()))
+            ##    plt.clf() ; plt.imshow(thismask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-thismask-{}.png'.format(filt.lower()))
+            #    pdb.set_trace()
+                
+            data[imagekey].append(img)
+            data[varkey].append(var)
+
+        #test = data['r_masked'][0]
+        #plt.clf() ; plt.imshow(np.log(test.clip(test[mgegalaxy.xpeak, mgegalaxy.ypeak]/1e4)), origin='lower') ; plt.savefig('/mnt/legacyhalos-data/debug.png')
+        #pdb.set_trace()
+
+    # Cleanup?
+    for filt in bands:
+        del data[filt]
+        del data['{}_var_'.format(filt.lower())]
+
+    return data            
+
+
+def _build_catalog_one(args):
+    """Wrapper function for the multiprocessing."""
+    return build_catalog_one(*args)
+
+
+def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS, refcat='R1', verbose=False):
+    """Gather the ellipse-fitting results for a single group."""
+    import fitsio
+    from astropy.table import Table, vstack
+    from legacyhalos.io import read_ellipsefit
+
+    tractor, parent, ellipse = [], [], []
+
+    tractorfile = os.path.join(galaxydir, f'{galaxy}-custom-tractor.fits')
+    if not os.path.isfile(tractorfile):
+        log.warning(f'Missing Tractor catalog {tractorfile}')
+        return None, None, None #tractor, parent, ellipse
+        #return tractor, parent, ellipse
+
+    for igal, onegal in enumerate(fullsample):
+        #print(f'Working on {onegal["GALAXY"]}')
+        refid = onegal[REFIDCOLUMN]
+        
+        ellipsefile = os.path.join(galaxydir, f'{galaxy}-custom-ellipse-{refid}.fits')
+        if not os.path.isfile(ellipsefile):
+            log.warning(f'Missing ellipse file {ellipsefile}')
+            return None, None, None #tractor, parent, ellipse
+
+        _ellipse = read_ellipsefit(galaxy, galaxydir, galaxy_id=str(refid), asTable=True,
+                                  filesuffix='custom', verbose=True)
+        # fix the data model
+        #_ellipse = _datarelease_table(_ellipse)
+        for col in REMCOLS:
+            #print(f'Removing {col}')
+            _ellipse.remove_column(col)
+        _ellipse['ELLIPSEBIT'] = np.zeros(1, dtype=np.int32) # we don't want -1 here
+
+        _tractor = Table(fitsio.read(tractorfile, upper=True))
+        match = np.where((_tractor['REF_CAT'] == refcat) * (_tractor['REF_ID'] == refid))[0]
+        if len(match) != 1:
+            raise ValueError('Problem here!')
+
+        ellipse.append(_ellipse)
+        tractor.append(_tractor[match])
+        parent.append(onegal)
+
+    tractor = vstack(tractor, join_type='exact', metadata_conflicts='silent')
+    parent = vstack(parent, join_type='exact', metadata_conflicts='silent')
+    ellipse = vstack(ellipse, join_type='exact', metadata_conflicts='silent')
+
+    return tractor, parent, ellipse
+
+
+def build_catalog(sample, fullsample, bands, galex=True, unwise=True,
+                  nproc=1, refcat='R1', verbose=False, clobber=False):
+    import time
+    import multiprocessing
+    from astropy.io import fits
+    from astropy.table import vstack
+    from legacyhalos.ellipse import FAILCOLS
+
+    version = get_version()
+    
+    outfile = os.path.join(legacyhalos.io.legacyhalos_dir(), 'virgofilaments-{}-legacyphot.fits'.format(version))
+    if os.path.isfile(outfile) and not clobber:
+        log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
+        return
+
+    galaxy, galaxydir = get_galaxy_galaxydir(sample)
+
+    # figure out which ndim>1 columns to drop
+    optbands = bands.copy()
+    if galex:
+        bands += ['FUV', 'NUV']
+    if unwise:
+        bands += ['W1', 'W2', 'W3', 'W4']
+    REMCOLS = ['BANDS', 'REFPIXSCALE', 'SUCCESS', 'FITGEOMETRY', 'LARGESHIFT',
+               'MAXSMA', 'MAJORAXIS', 'EPS_MOMENT', 'INTEGRMODE',
+               'INPUT_ELLIPSE', 'SCLIP', 'NCLIP',
+               'REFBAND', 'REFBAND_WIDTH', 'REFBAND_HEIGHT']
+    for band in optbands:
+        for col in ['PSFSIZE', 'PSFDEPTH']:
+            REMCOLS += [f'{col}_{band.upper()}']
+    for band in bands:
+        for col in FAILCOLS:
+            REMCOLS += [f'{col.upper()}_{band.upper()}']
+        for col in ['SMA', 'FLUX', 'FLUX_IVAR']:
+            REMCOLS += [f'COG_{col}_{band.upper()}']
+    #print(REMCOLS)
+
+    # build the mp list
+    buildargs = []
+    for gal, gdir, onegal in zip(galaxy, galaxydir, sample):
+        _fullsample = fullsample[fullsample['GROUP_ID'] == onegal['GROUP_ID']]
+        buildargs.append((gal, gdir, _fullsample, REMCOLS, refcat, verbose))
+
+    t0 = time.time()
+    if nproc > 1:
+        with multiprocessing.Pool(nproc) as P:
+            results = P.map(_build_catalog_one, buildargs)
+    else:
+        results = [build_catalog_one(*_buildargs) for _buildargs in buildargs]
+
+    results = list(zip(*results))
+    tractor1 = list(filter(None, results[0]))
+    parent1 = list(filter(None, results[1]))
+    ellipse1 = list(filter(None, results[2]))
+
+    #for col in ellipse1[0].colnames:
+    #    if ellipse1[0][col].ndim > 1:
+    #        print(col)
+
+    log.info('Doing an outer join on Tractor because some columns are missing from some catalogs:')
+    log.info("  ['mw_transmission_nuv' 'mw_transmission_fuv' 'ngood_g' 'ngood_r' 'ngood_z']")
+    tractor = vstack(tractor1, metadata_conflicts='silent')
+
+    # exact join
+    parent = vstack(parent1, join_type='exact', metadata_conflicts='silent')
+    ellipse = vstack(ellipse1, join_type='exact', metadata_conflicts='silent')
+    log.info(f'Merging {len(tractor):,d} galaxies took {(time.time()-t0)/60.0:.2f} min.')
+
+    if len(tractor) == 0:
+        log.warning('Something went wrong and no galaxies were fitted.')
+        return
+    assert(len(tractor) == len(parent))
+    assert(np.all(tractor['REF_ID'] == parent[REFIDCOLUMN]))
+
+    # write out
+    hdu_primary = fits.PrimaryHDU()
+    hdu_parent = fits.convenience.table_to_hdu(parent)
+    hdu_parent.header['EXTNAME'] = 'PARENT'
+
+    hdu_ellipse = fits.convenience.table_to_hdu(ellipse)
+    hdu_ellipse.header['EXTNAME'] = 'ELLIPSE'
+
+    hdu_tractor = fits.convenience.table_to_hdu(tractor)
+    hdu_tractor.header['EXTNAME'] = 'TRACTOR'
+        
+    hx = fits.HDUList([hdu_primary, hdu_parent, hdu_ellipse, hdu_tractor])
+    hx.writeto(outfile, overwrite=True, checksum=True)
+
+    log.info(f'Wrote {len(parent):,d} galaxies to {outfile}')
+
+
+def read_multiband(galaxy, galaxydir, filesuffix='custom',
+                   refband='r', bands=['g', 'r', 'i', 'z'], pixscale=0.262,
+                   galex_pixscale=1.5, unwise_pixscale=2.75,
+                   galaxy_id=None, galex=False, unwise=False,
+                   redshift=None, fill_value=0.0, sky_tests=False, verbose=False):
+    """Read the multi-band images (converted to surface brightness) and create a
+    masked array suitable for ellipse-fitting.
+
+    """
+    import fitsio
+    from astropy.table import Table
+    import astropy.units as u    
+    from astrometry.util.fits import fits_table
+    from legacypipe.bits import MASKBITS
+
+    # Dictionary mapping between optical filter and filename coded up in
+    # coadds.py, galex.py, and unwise.py, which depends on the project.
+    data, filt2imfile, filt2pixscale = {}, {}, {}
+
+    for band in bands:
+        filt2imfile.update({band: {'image': '{}-image'.format(filesuffix),
+                                   'model': '{}-model'.format(filesuffix),
+                                   'invvar': '{}-invvar'.format(filesuffix),
+                                   'psf': '{}-psf'.format(filesuffix),
+                                   }})
+        filt2pixscale.update({band: pixscale})
+    filt2imfile.update({'tractor': '{}-tractor'.format(filesuffix),
+                        'sample': 'sample',
+                        'maskbits': '{}-maskbits'.format(filesuffix),
+                        })
+
+    if galex:
+        galex_bands = ['FUV', 'NUV']
+        #galex_bands = ['fuv', 'nuv'] # ['FUV', 'NUV']
+        bands = bands + galex_bands
+        for band in galex_bands:
+            filt2imfile.update({band: {'image': '{}-image'.format(filesuffix),
+                                       'model': '{}-model'.format(filesuffix),
+                                       'invvar': '{}-invvar'.format(filesuffix),
+                                       'psf': '{}-psf'.format(filesuffix)}})
+            filt2pixscale.update({band: galex_pixscale})
+        
+    if unwise:
+        unwise_bands = ['W1', 'W2', 'W3', 'W4']
+        #unwise_bands = ['w1', 'w2', 'w3', 'w4'] # ['W1', 'W2', 'W3', 'W4']
+        bands = bands + unwise_bands
+        for band in unwise_bands:
+            filt2imfile.update({band: {'image': '{}-image'.format(filesuffix),
+                                       'model': '{}-model'.format(filesuffix),
+                                       'invvar': '{}-invvar'.format(filesuffix),
+                                       'psf': '{}-psf'.format(filesuffix)}})
+            filt2pixscale.update({band: unwise_pixscale})
+
+    data.update({'filt2pixscale': filt2pixscale})
+
+    # Do all the files exist? If not, bail!
+    missing_data = False
+    for filt in bands:
+        for ii, imtype in enumerate(filt2imfile[filt].keys()):
+            #if imtype == 'sky': # this is a dictionary entry
+            #    continue
+            imfile = os.path.join(galaxydir, '{}-{}-{}.fits.fz'.format(galaxy, filt2imfile[filt][imtype], filt))
+            #print(imtype, imfile)
+            if os.path.isfile(imfile):
+                filt2imfile[filt][imtype] = imfile
+            else:
+                if verbose:
+                    log.warning(f'File {imfile} not found.')
+                missing_data = True
+                break
+    
+    data['failed'] = False # be optimistic!
+    data['missingdata'] = False
+    data['filesuffix'] = filesuffix
+    if missing_data:
+        data['missingdata'] = True
+        return data, None
+
+    # Pack some preliminary info into the output dictionary.
+    data['bands'] = bands
+    data['refband'] = refband
+    data['refpixscale'] = np.float32(pixscale)
+
+    # We ~have~ to read the tractor catalog using fits_table because we will
+    # turn these catalog entries into Tractor sources later.
+    tractorfile = os.path.join(galaxydir, '{}-{}.fits'.format(galaxy, filt2imfile['tractor']))
+    if verbose:
+        log.info(f'Reading {tractorfile}')
+        
+    cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
+            'sersic', 'shape_r', 'shape_e1', 'shape_e2',
+            'flux_g', 'flux_r', 'flux_z',
+            'flux_ivar_g', 'flux_ivar_r', 'flux_ivar_z',
+            'nobs_g', 'nobs_r', 'nobs_z',
+            'mw_transmission_g', 'mw_transmission_r', 'mw_transmission_z', 
+            'psfdepth_g', 'psfdepth_r', 'psfdepth_z',
+            'psfsize_g', 'psfsize_r', 'psfsize_z']
+    if galex:
+        cols = cols+['flux_fuv', 'flux_nuv', 'flux_ivar_fuv', 'flux_ivar_nuv']
+    if unwise:
+        cols = cols+['flux_w1', 'flux_w2', 'flux_w3', 'flux_w4',
+                     'flux_ivar_w1', 'flux_ivar_w2', 'flux_ivar_w3', 'flux_ivar_w4']
+        
+    tractor = fits_table(tractorfile, columns=cols)
+    hdr = fitsio.read_header(tractorfile)
+    if verbose:
+        log.info(f'Read {len(tractor):,d} sources from {tractorfile}')
+    data.update(_get_psfsize_and_depth(tractor, bands, pixscale, incenter=False))
+
+    # Read the maskbits image and build the starmask.
+    maskbitsfile = os.path.join(galaxydir, '{}-{}.fits.fz'.format(galaxy, filt2imfile['maskbits']))
+    if verbose:
+        log.info(f'Reading {maskbitsfile}')
+    maskbits = fitsio.read(maskbitsfile)
+    # initialize the mask using the maskbits image
+    starmask = ( (maskbits & MASKBITS['BRIGHT'] != 0) | (maskbits & MASKBITS['MEDIUM'] != 0) |
+                 (maskbits & MASKBITS['CLUSTER'] != 0) | (maskbits & MASKBITS['ALLMASK_G'] != 0) |
+                 (maskbits & MASKBITS['ALLMASK_R'] != 0) | (maskbits & MASKBITS['ALLMASK_Z'] != 0) )
+
+    # Are we doing sky tests? If so, build the dictionary of sky values here.
+
+    # subsky - dictionary of additional scalar value to subtract from the imaging,
+    #   per band, e.g., {'g': -0.01, 'r': 0.002, 'z': -0.0001}
+    if sky_tests:
+        #imfile = os.path.join(galaxydir, '{}-{}-{}.fits.fz'.format(galaxy, filt2imfile[refband]['image'], refband))
+        hdr = fitsio.read_header(filt2imfile[refband]['image'], ext=1)
+        nskyaps = hdr['NSKYANN'] # number of annuli
+
+        # Add a list of dictionaries to iterate over different sky backgrounds.
+        data.update({'sky': []})
+        
+        for isky in np.arange(nskyaps):
+            subsky = {}
+            subsky['skysuffix'] = '{}-skytest{:02d}'.format(filesuffix, isky)
+            for band in bands:
+                refskymed = hdr['{}SKYMD00'.format(band.upper())]
+                skymed = hdr['{}SKYMD{:02d}'.format(band.upper(), isky)]
+                subsky[band] = refskymed - skymed # *add* the new correction
+            print(subsky)
+            data['sky'].append(subsky)
+
+    # Read the basic imaging data and masks.
+    data = _read_image_data(data, filt2imfile, starmask=starmask,
+                            filt2pixscale=filt2pixscale,
+                            fill_value=fill_value, verbose=verbose)
+    
+    # Find the galaxies of interest.
+    samplefile = os.path.join(galaxydir, '{}-{}.fits'.format(galaxy, filt2imfile['sample']))
+    sample = Table(fitsio.read(samplefile))
+    log.info(f'Read {len(sample)} sources from {samplefile}')
+
+    # keep all objects
+    galaxy_indx = []
+    galaxy_indx = np.hstack([np.where(sid == tractor.ref_id)[0] for sid in sample[REFIDCOLUMN]])
+    #if len(galaxy_indx
+
+    #sample = sample[np.searchsorted(sample['VF_ID'], tractor.ref_id[galaxy_indx])]
+    assert(np.all(sample[REFIDCOLUMN] == tractor.ref_id[galaxy_indx]))
+
+    tractor.diam_init = np.zeros(len(tractor), dtype='f4')
+    tractor.pa_init = np.zeros(len(tractor), dtype='f4')
+    tractor.ba_init = np.zeros(len(tractor), dtype='f4')
+    if 'DIAM_INIT' in sample.colnames and 'PA_INIT' in sample.colnames and 'BA_INIT' in sample.colnames:
+        tractor.diam_init[galaxy_indx] = sample['DIAM_INIT']
+        tractor.pa_init[galaxy_indx] = sample['PA_INIT']
+        tractor.ba_init[galaxy_indx] = sample['BA_INIT']
+ 
+    # Do we need to take into account the elliptical mask of each source??
+    srt = np.argsort(tractor.flux_r[galaxy_indx])[::-1]
+    galaxy_indx = galaxy_indx[srt]
+    log.info('Sort by flux! ', tractor.flux_r[galaxy_indx])
+    galaxy_id = tractor.ref_id[galaxy_indx]
+
+    data['galaxy_id'] = galaxy_id
+    data['galaxy_indx'] = galaxy_indx
+
+    # Now build the multiband mask.
+    data = _build_multiband_mask(data, tractor, filt2pixscale,
+                                 fill_value=fill_value,
+                                 verbose=verbose)
+
+    #import matplotlib.pyplot as plt
+    #plt.clf() ; plt.imshow(np.log10(data['g_masked'][0]), origin='lower') ; plt.savefig('junk1.png')
+    ##plt.clf() ; plt.imshow(np.log10(data['r_masked'][1]), origin='lower') ; plt.savefig('junk2.png')
+    ##plt.clf() ; plt.imshow(np.log10(data['r_masked'][2]), origin='lower') ; plt.savefig('junk3.png')
+    #pdb.set_trace()
+
+    # Gather some additional info that we want propagated to the output ellipse
+    # catalogs.
+    allgalaxyinfo = []
+    for igal, (galaxy_id, galaxy_indx) in enumerate(zip(data['galaxy_id'], data['galaxy_indx'])):
+        samp = sample[sample[REFIDCOLUMN] == galaxy_id]
+        galaxyinfo = {'mangaid': (str(galaxy_id), None)}
+        #for band in ['fuv', 'nuv', 'g', 'r', 'z', 'w1', 'w2', 'w3', 'w4']:
+        #    galaxyinfo['mw_transmission_{}'.format(band)] = (samp['MW_TRANSMISSION_{}'.format(band.upper())][0], None)
+        
+        #              'galaxy': (str(np.atleast_1d(samp['GALAXY'])[0]), '')}
+        #for key, unit in zip(['ra', 'dec'], [u.deg, u.deg]):
+        #    galaxyinfo[key] = (np.atleast_1d(samp[key.upper()])[0], unit)
+        allgalaxyinfo.append(galaxyinfo)
+        
+    return data, allgalaxyinfo
+
+
 def read_survey_bricks(survey, brickname=None, custom=False):
     """Read the sample of bricks corresponding to the given the run.
 
@@ -326,31 +1276,6 @@ def read_survey_bricks(survey, brickname=None, custom=False):
     return bricks
 
 
-def backup_filename(filename):
-    """rename filename to next available filename.N
-
-    Args:
-        filename (str): full path to filename
-
-    Returns:
-        New filename.N, or filename if original file didn't already exist
-    """
-    if filename == '/dev/null' or not os.path.exists(filename):
-        return filename
-
-    n = 0
-    while True:
-        altfile = f'{filename}.{n}'
-        if os.path.exists(altfile):
-            n += 1
-        else:
-            break
-
-    os.rename(filename, altfile)
-
-    return altfile
-
-
 def altnames_hyperleda(cat):
     """Retrieve the alternate name for the HyperLeda catalog.
 
@@ -363,9 +1288,6 @@ def altnames_hyperleda(cat):
         if np.any(M):
             altname.append(altnames[M][0])
         else:
-            #C = [':' in name  for name in altnames]
-            #if np.any(C):
-            #    print(altnames)
             altname.append(altnames[0])
 
     return np.array(altname)
@@ -427,7 +1349,7 @@ def read_hyperleda_noobjtype(rank=0, rows=None):
         hyper['ROW'] = np.arange(len(hyper))
 
         nhyper = len(hyper)
-        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        log.info(f'Read {nhyper:,d} objects from {hyperfile}')
         assert(nhyper == len(np.unique(hyper['PGC'])))
 
         hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
@@ -450,12 +1372,11 @@ def read_hyperleda_noobjtype(rank=0, rows=None):
         # re-sort by PGC number
         hyper = hyper[np.argsort(hyper['PGC'])]
 
-        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        log.info(f'Writing {len(hyper):,d} objects to {hyperfile}')
         hyper.write(hyperfile, overwrite=True)
 
     hyper = Table(fitsio.read(hyperfile, rows=rows))
-    print(f'Read {len(hyper):,d} objects from {hyperfile}')
-    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+    log.info(f'Read {len(hyper):,d} objects from {hyperfile}')
 
     return hyper
 
@@ -495,7 +1416,7 @@ def read_hyperleda_multiples(rank=0, rows=None):
         hyper['ROW'] = np.arange(len(hyper))
 
         nhyper = len(hyper)
-        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        log.info(f'Read {nhyper:,d} objects from {hyperfile}')
         assert(nhyper == len(np.unique(hyper['PGC'])))
 
         hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
@@ -515,12 +1436,12 @@ def read_hyperleda_multiples(rank=0, rows=None):
         # re-sort by PGC number
         hyper = hyper[np.argsort(hyper['PGC'])]
 
-        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        log.info(f'Writing {len(hyper):,d} objects to {hyperfile}')
         hyper.write(hyperfile, overwrite=True)
 
     hyper = Table(fitsio.read(hyperfile, rows=rows))
-    print(f'Read {len(hyper):,d} objects from {hyperfile}')
-    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+    log.info(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #log.info(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
 
     return hyper
 
@@ -577,7 +1498,7 @@ def read_hyperleda_galaxies(rank=0, rows=None):
         hyper['ROW'] = np.arange(len(hyper))
 
         nhyper = len(hyper)
-        print(f'Read {nhyper:,d} objects from {hyperfile}')
+        log.info(f'Read {nhyper:,d} objects from {hyperfile}')
         assert(nhyper == len(np.unique(hyper['PGC'])))
 
         # There are 87 duplicated object names. The entries are either
@@ -592,7 +1513,7 @@ def read_hyperleda_galaxies(rank=0, rows=None):
         #    print()
 
         hyper = hyper[uindx]
-        print(f'Trimming to {len(hyper):,d}/{nhyper:,d} unique objects.')
+        log.info(f'Trimming to {len(hyper):,d}/{nhyper:,d} unique objects.')
 
         hyper.rename_columns(['AL2000', 'DE2000'], ['RA', 'DEC'])
         hyper['RA'] *= 15. # [decimal degrees]
@@ -617,12 +1538,12 @@ def read_hyperleda_galaxies(rank=0, rows=None):
         # re-sort by PGC number
         hyper = hyper[np.argsort(hyper['PGC'])]
 
-        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        log.info(f'Writing {len(hyper):,d} objects to {hyperfile}')
         hyper.write(hyperfile, overwrite=True)
 
     hyper = Table(fitsio.read(hyperfile, rows=rows))
-    print(f'Read {len(hyper):,d} objects from {hyperfile}')
-    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+    log.info(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #log.info(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
 
     return hyper
 
@@ -663,12 +1584,12 @@ def read_hyperleda(rank=0, rows=None):
         hyper = hyper[np.argsort(hyper['PGC'])]
         hyper['ROW'] = np.arange(len(hyper))
 
-        print(f'Writing {len(hyper):,d} objects to {hyperfile}')
+        log.info(f'Writing {len(hyper):,d} objects to {hyperfile}')
         hyper.write(hyperfile, overwrite=True)
 
     hyper = Table(fitsio.read(hyperfile, rows=rows))
-    print(f'Read {len(hyper):,d} objects from {hyperfile}')
-    #print(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
+    log.info(f'Read {len(hyper):,d} objects from {hyperfile}')
+    #log.info(f'Rank {rank:03d}: Read {len(hyper):,d} objects from {hyperfile}')
 
     return hyper
 
@@ -1464,7 +2385,7 @@ def read_lvd(rank=0, rows=None, overwrite=False):
             lvd['ref_structure'][I] = 'Zaritsky2023ApJS..267...27Z'
 
         # drop unconfirmed systems
-        print(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
+        log.info(f'Dropping {np.sum(lvd["confirmed_real"]==0):,d}/{len(lvd):,d} unconfirmed dwarfs.')
         lvd = lvd[lvd['confirmed_real'] == 1]
         lvd.remove_columns(['key', 'confirmed_real'])
 
@@ -1478,8 +2399,8 @@ def read_lvd(rank=0, rows=None, overwrite=False):
 
     lvd = Table(F[1].read(rows=rows))
     lvd['ROW'] = row
-    print(f'Read {len(lvd):,d} objects from {lvdfile}')
-    #print(f'Rank {rank:03d}: Read {len(lvd):,d} objects from {lvdfile}')
+    log.info(f'Read {len(lvd):,d} objects from {lvdfile}')
+    #log.info(f'Rank {rank:03d}: Read {len(lvd):,d} objects from {lvdfile}')
 
     [lvd.rename_column(col, col.upper()) for col in lvd.colnames]
 
@@ -2249,7 +3170,7 @@ def read_custom_external(rank=0, rows=None, overwrite=False):
 
     data = Table(F[1].read(rows=rows))
     data['ROW'] = row
-    print(f'Read {len(data):,d} objects from {customfile}')
+    log.info(f'Read {len(data):,d} objects from {customfile}')
 
     data = data[np.argsort(data['OBJNAME'])]
     data['GALAXY'] = data['OBJNAME']
@@ -2268,8 +3189,8 @@ def read_nedlvs(rank=0, rows=None):
     nedlvsfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDLVS_{version_nedlvs()}.fits')
     nedlvs = Table(fitsio.read(nedlvsfile, rows=rows))
     nedlvs['ROW'] = np.arange(len(nedlvs))
-    print(f'Read {len(nedlvs):,d} objects from {nedlvsfile}')
-    #print(f'Rank {rank:03d}: Read {len(nedlvs):,d} objects from {nedlvsfile}')
+    log.info(f'Read {len(nedlvs):,d} objects from {nedlvsfile}')
+    #log.info(f'Rank {rank:03d}: Read {len(nedlvs):,d} objects from {nedlvsfile}')
 
     [nedlvs.rename_column(col, col.upper()) for col in nedlvs.colnames]
     nedlvs['GALAXY'] = nedlvs['OBJNAME']
@@ -2284,8 +3205,8 @@ def read_sga2020(rank=0, rows=None):
     sga2020file = os.path.join(sga_dir(), 'parent', 'external', 'SGA-2020.fits')
     sga2020 = Table(fitsio.read(sga2020file, ext='ELLIPSE', rows=rows))
     sga2020['ROW'] = np.arange(len(sga2020))
-    print(f'Read {len(sga2020):,d} objects from {sga2020file}')
-    #print(f'Rank {rank:03d}: Read {len(sga2020):,d} objects from {sga2020file}')
+    log.info(f'Read {len(sga2020):,d} objects from {sga2020file}')
+    #log.info(f'Rank {rank:03d}: Read {len(sga2020):,d} objects from {sga2020file}')
 
     return sga2020
 
@@ -2297,7 +3218,7 @@ def read_wxsc(rank=0):
     wxscfile = os.path.join(sga_dir(), 'parent', 'external', 'WXSC_Riso_W1mag_24Jun024.tbl') # 'WXSC_Riso_1arcmin_10Jun2024.tbl')
     wxsc = Table.read(wxscfile, format='ascii.ipac')
     wxsc['ROW'] = np.arange(len(wxsc))
-    print(f'Rank {rank:03d}: Read {len(wxsc):,d} objects from {wxscfile}')
+    log.info(f'Rank {rank:03d}: Read {len(wxsc):,d} objects from {wxscfile}')
 
     # toss out duplicates
     radec = np.array([f'{ra}-{dec}' for ra, dec in zip(wxsc['ra'].astype(str), wxsc['dec'].astype(str))])
@@ -2305,15 +3226,15 @@ def read_wxsc(rank=0):
 
     _, uindx = np.unique(radec, return_index=True)
 
-    print(f'Rank {rank:03d}: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on (ra,dec)')
+    log.info(f'Rank {rank:03d}: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on (ra,dec)')
     wxsc = wxsc[uindx]
 
     _, uindx = np.unique(wxsc['NED_name'], return_index=True)
-    print(f'Rank {rank:03d}: WARNING: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on NED name')
+    log.info(f'Rank {rank:03d}: WARNING: Trimming to {len(uindx):,d}/{len(wxsc):,d} unique objects based on NED name')
     wxsc = wxsc[uindx]
 
     #u, c = np.unique(wxsc['NED_name'], return_counts=True)
-    #print(np.unique(c))
+    #log.info(np.unique(c))
     #dup = vstack([wxsc[wxsc['NED_name'] == gal] for gal in u[c>1]])
     #return dup
 
@@ -2321,161 +3242,6 @@ def read_wxsc(rank=0):
     wxsc['GALAXY'] = wxsc['WXSCNAME']
 
     return wxsc
-
-
-#@contextmanager
-#def stdouterr_redirected(to=None, comm=None, overwrite=False):
-#    """
-#    Redirect stdout and stderr to a file.
-#
-#    The general technique is based on:
-#
-#    http://stackoverflow.com/questions/5081657
-#    http://eli.thegreenplace.net/2015/redirecting-all-kinds-of-stdout-in-python/
-#
-#    One difference here is that each process in the communicator
-#    redirects to a different temporary file, and the upon exit
-#    from the context the rank zero process concatenates these
-#    in order to the file result.
-#
-#    Args:
-#        to (str): The output file name.
-#        comm (mpi4py.MPI.Comm): The optional MPI communicator.
-#        overwrite (bool): if True overwrite file, otherwise backup to to.N first
-#    """
-#    nproc = 1
-#    rank = 0
-#    if comm is not None:
-#        nproc = comm.size
-#        rank = comm.rank
-#
-#    # The currently active POSIX file descriptors
-#    fd_out = sys.stdout.fileno()
-#    fd_err = sys.stderr.fileno()
-#
-#    # The DESI loggers.
-#    #desi_loggers = desiutil.log._desiutil_log_root
-#
-#    def _redirect(out_to, err_to):
-#
-#        # Flush the C-level buffers
-#        if c_stdout is not None:
-#            libc.fflush(c_stdout)
-#        if c_stderr is not None:
-#            libc.fflush(c_stderr)
-#
-#        # This closes the python file handles, and marks the POSIX
-#        # file descriptors for garbage collection- UNLESS those
-#        # are the special file descriptors for stderr/stdout.
-#        sys.stdout.close()
-#        print('HI!!!!!!!!!!!')
-#        sys.stderr.close()
-#
-#        # Close fd_out/fd_err if they are open, and copy the
-#        # input file descriptors to these.
-#        os.dup2(out_to, fd_out)
-#        os.dup2(err_to, fd_err)
-#
-#        # Create a new sys.stdout / sys.stderr that points to the
-#        # redirected POSIX file descriptors.  In Python 3, these
-#        # are actually higher level IO objects.
-#        if sys.version_info[0] < 3:
-#            sys.stdout = os.fdopen(fd_out, "wb")
-#            sys.stderr = os.fdopen(fd_err, "wb")
-#        else:
-#            # Python 3 case
-#            sys.stdout = io.TextIOWrapper(os.fdopen(fd_out, 'wb'))
-#            sys.stderr = io.TextIOWrapper(os.fdopen(fd_err, 'wb'))
-#
-#        # update DESI logging to use new stdout
-#        for name, logger in desi_loggers.items():
-#            hformat = None
-#            while len(logger.handlers) > 0:
-#                h = logger.handlers[0]
-#                if hformat is None:
-#                    hformat = h.formatter._fmt
-#                logger.removeHandler(h)
-#            # Add the current stdout.
-#            ch = logging.StreamHandler(sys.stdout)
-#            formatter = logging.Formatter(hformat, datefmt='%Y-%m-%dT%H:%M:%S')
-#            ch.setFormatter(formatter)
-#            logger.addHandler(ch)
-#
-#    # redirect both stdout and stderr to the same file
-#
-#    if to is None:
-#        to = "/dev/null"
-#
-#    if rank == 0:
-#        log = get_logger()
-#        log.info("Begin log redirection to {} at {}".format(to, time.asctime()))
-#        #print("Begin log redirection to {} at {}".format(to, time.asctime()))
-#        if not overwrite:
-#            backup_filename(to)
-#
-#    #- all ranks wait for logfile backup
-#    if comm is not None:
-#        comm.barrier()
-#
-#    # Save the original file descriptors so we can restore them later
-#    saved_fd_out = os.dup(fd_out)
-#    saved_fd_err = os.dup(fd_err)
-#
-#    try:
-#        pto = to
-#        if to != "/dev/null":
-#            pto = "{}_{}".format(to, rank)
-#
-#        # open python file, which creates low-level POSIX file
-#        # descriptor.
-#        file = open(pto, "w")
-#
-#        # redirect stdout/stderr to this new file descriptor.
-#        _redirect(out_to=file.fileno(), err_to=file.fileno())
-#
-#        yield # allow code to be run with the redirected output
-#
-#        # close python file handle, which will mark POSIX file
-#        # descriptor for garbage collection.  That is fine since
-#        # we are about to overwrite those in the finally clause.
-#        file.close()
-#    finally:
-#        print('HI!!!!!!!!!!!')
-#        import pdb ; pdb.set_trace()
-#        # flush python handles for good measure
-#        sys.stdout.flush()
-#        sys.stderr.flush()
-#
-#        # restore old stdout and stderr
-#        _redirect(out_to=saved_fd_out, err_to=saved_fd_err)
-#
-#        if nproc > 1:
-#            comm.barrier()
-#
-#        # concatenate per-process files
-#        if rank == 0 and to != "/dev/null":
-#            with open(to, "w") as outfile:
-#                for p in range(nproc):
-#                    outfile.write("================ Start of Process {} ================\n".format(p))
-#                    fname = "{}_{}".format(to, p)
-#                    with open(fname) as infile:
-#                        outfile.write(infile.read())
-#                    outfile.write("================= End of Process {} =================\n\n".format(p))
-#                    os.remove(fname)
-#
-#        if nproc > 1:
-#            comm.barrier()
-#
-#        if rank == 0:
-#            log = get_logger()
-#            log.info("End log redirection to {} at {}".format(to, time.asctime()))
-#            #print("End log redirection to {} at {}".format(to, time.asctime()))
-#
-#        # flush python handles for good measure
-#        sys.stdout.flush()
-#        sys.stderr.flush()
-#
-#    return
 
 
 def _missing_files_one(args):
@@ -2524,10 +3290,10 @@ def missing_files_one(checkfile, dependsfile, overwrite):
         return 'todo'
 
 
-def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cutouts=False,
+def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
-                  build_SGA=False, overwrite=False, verbose=False, htmldir='.',
-                  size=1, mp=1):
+                  build_catalog=False, clobber=False, clobber_overwrite=None, 
+                  verbose=False, htmldir='.', size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -2552,67 +3318,63 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
         indices = np.arange(len(bricks))
 
     dependson, dependsondir = None, None
-    if detection_coadds or candidate_cutouts:
-        galaxy, galaxydir = get_galaxy_galaxydir(bricks=bricks)
-    else:
-        if htmlplots is False and htmlindex is False:
-            if verbose:
-                t0 = time.time()
-                log.info('Getting galaxy names and directories...', end='')
-            galaxy, galaxydir = get_galaxy_galaxydir(sample)
-            if verbose:
-                log.info(f'...took {time.time() - t0:.3f} sec')
+    if htmlplots is False and htmlindex is False:
+        if verbose:
+            t0 = time.time()
+            log.debug('Getting galaxy names and directories...')
+        galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
+        if verbose:
+            log.debug(f'...took {time.time() - t0:.3f} sec')
 
-    if detection_coadds:
-        suffix = 'detection-coadds'
-        filesuffix = '-detection-coadds.isdone'
-    elif candidate_cutouts:
-        suffix = 'candidate-cutouts'
-        filesuffix = '-candidate-cutouts.isdone'
-        dependson = '-detection-coadds.isdone'
-    elif coadds:
+    if coadds:
         suffix = 'coadds'
-        filesuffix = '-largegalaxy-coadds.isdone'
+        filesuffix = '-coadds.isdone'
     elif ellipse:
         suffix = 'ellipse'
-        filesuffix = '-largegalaxy-ellipse.isdone'
-        dependson = '-largegalaxy-coadds.isdone'
-    elif build_SGA:
-        suffix = 'build-SGA'
-        filesuffix = '-largegalaxy-SGA.isdone'
-        dependson = '-largegalaxy-ellipse.isdone'
+        filesuffix = '-ellipse.isdone'
+        dependson = '-coadds.isdone'
+    elif build_catalog:
+        suffix = 'build-catalog'
+        filesuffix = '-SGA.isdone'
+        dependson = '-ellipse.isdone'
     elif htmlplots:
         suffix = 'html'
-        filesuffix = '-largegalaxy-grz-montage.png'
-        dependson = '-largegalaxy-image-grz.jpg'
-        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+        filesuffix = '-montage.png'
+        dependson = '-image.jpg'
+        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
     elif htmlindex:
         suffix = 'htmlindex'
-        filesuffix = '-largegalaxy-grz-montage.png'
-        galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, html=True)
+        filesuffix = '-montage.png'
+        galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
     else:
-        raise ValueError('Need at least one keyword argument.')
+        msg = 'Need at least one keyword argument.'
+        log.critical(msg)
+        raise ValueError(msg)
 
-    # Make overwrite=False for build_SGA and htmlindex because we're not making
-    # the files here, we're just looking for them. The argument overwrite gets
-    # used downstream.
-    if htmlindex:
-        overwrite = False
+    # Make clobber=False for build_catalog and htmlindex because we're not
+    # making the files here, we're just looking for them. The argument
+    # args.clobber gets used downstream.
+    if htmlindex or build_catalog:
+        clobber = False
+
+    if clobber_overwrite is not None:
+        clobber = clobber_overwrite
 
     missargs = []
     for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir))):
         checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
+        #print(checkfile)
         if dependson:
             if dependsondir:
-                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), overwrite])
+                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), clobber])
             else:
-                missargs.append([checkfile, os.path.join(gdir, f'{gal}{dependson}'), overwrite])
+                missargs.append([checkfile, os.path.join(gdir, f'{gal}{dependson}'), clobber])
         else:
-            missargs.append([checkfile, None, overwrite])
+            missargs.append([checkfile, None, clobber])
 
     if verbose:
         t0 = time.time()
-        log.info('Finding missing files...', end='')
+        log.debug('Finding missing files...')
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             todo = np.array(P.map(_missing_files_one, missargs))
@@ -2620,7 +3382,7 @@ def missing_files(sample=None, bricks=None, detection_coadds=False, candidate_cu
         todo = np.array([_missing_files_one(_missargs) for _missargs in missargs])
 
     if verbose:
-        log.info(f'...took {(time.time() - t0)/60.:.3f} min')
+        log.debug(f'...took {(time.time() - t0)/60.:.3f} min')
 
     itodo = np.where(todo == 'todo')[0]
     idone = np.where(todo == 'done')[0]
@@ -2656,15 +3418,16 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
 
     """
     if not os.path.isfile(catfile):
-        print(f'Catalog {catfile} not found')
+        log.warning(f'Catalog {catfile} not found')
         return
 
     try:
         cat = Table(fitsio.read(catfile, ext=ext, rows=rows, columns=columns))
-        print(f'Read {len(cat):,d} galaxies from {catfile}')
+        log.info(f'Read {len(cat):,d} galaxies from {catfile}')
         return cat
     except:
         msg = f'Problem reading {catfile}'
+        log.critical(msg)
         raise IOError(msg)
 
 
@@ -2754,14 +3517,112 @@ def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
             nedlvs = nedlvs[indx_cat]
 
             assert(np.all(allcat['ROW_PARENT'] == cat['ROW_PARENT']))
-            allcat.write(outfile, overwrite=True)
+            allcat.write(outfile, clobber=True)
             print(f'Wrote {len(allcat):,d} objects to {outfile}')
 
             #outfile = os.path.join(outdir, f'wiseize-nedlvs-{region}.fits')
-            #nedlvs.write(outfile, overwrite=True)
+            #nedlvs.write(outfile, clobber=True)
             #print(f'Wrote {len(nedlvs):,d} objects to {outfile}')
 
         return cat, fullcat
+
+
+def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
+                final_sample=False, region='dr11-south', d25min=0., d25max=100.0):
+    """Read/generate the parent SGA catalog.
+
+    d25min,d25max in arcmin
+
+    """
+    import fitsio
+
+    if first and last:
+        if first > last:
+            msg = f'Index first cannot be greater than index last, {first} > {last}'
+            log.critical(msg)
+            raise ValueError(msg)
+
+    ext = 1
+
+    if final_sample:
+        version = SGA_version()
+        samplefile = os.path.join(sga_dir(), '2025', f'SGA2025-ellipse-{version}.fits')
+    else:
+        version = parent_version()
+        samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+
+    if not os.path.isfile(samplefile):
+        msg = f'Sample file {samplefile} not found.'
+        log.critical(msg)
+        raise IOError(msg)
+
+    if final_sample:
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY', 'SGA_ID', 'PREBURNED']
+        info = fitsio.read(samplefile, columns=cols)
+
+        rows = np.where(
+            (info['GROUP_DIAMETER'] > d25min) *
+            (info['GROUP_DIAMETER'] < d25max) *
+            info['GROUP_PRIMARY'] *
+            info['PREBURNED'] *
+            (info['SGA_ID'] > -1))[0]
+    else:
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
+        #cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
+        #        'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC', 'BRICKNAME']
+        info = fitsio.read(samplefile, columns=cols)
+        rows = np.where(
+            (info['GROUP_DIAMETER'] > d25min) *
+            (info['GROUP_DIAMETER'] < d25max) *
+            info['GROUP_PRIMARY'])[0]
+
+    nallrows = len(info)
+    nrows = len(rows)
+
+    if first is None:
+        first = 0
+    if last is None:
+        last = nrows
+        if rows is None:
+            rows = np.arange(first, last)
+        else:
+            rows = rows[np.arange(first, last)]
+    else:
+        if last >= nrows:
+            msg = f'Index last cannot be greater than the number of rows, {last} >= {nrows}'
+            log.critical(msg)
+            raise ValueError(msg)
+        if rows is None:
+            rows = np.arange(first, last+1)
+        else:
+            rows = rows[np.arange(first, last+1)]
+            if len(rows) == 1:
+                log.info(f'Selecting index {first} (N=1)')
+            else:
+                log.info(f'Selecting indices {first} through {last} (N={len(rows):,d})')
+
+    fullsample = Table(fitsio.read(samplefile, upper=True))
+    fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
+    sample = fullsample[rows]
+
+    #sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
+    log.info(f'Read {len(sample):,d}/{len(fullsample):,d} GROUP_PRIMARY objects from {samplefile}')
+
+    if galaxylist is not None:
+        log.debug('Selecting specific galaxies.')
+        I = np.isin(sample['GROUP_NAME'], galaxylist)
+        if np.count_nonzero(I) == 0:
+            log.warning('No matching galaxies using column GROUP_NAME!')
+            I = np.isin(sample['SGANAME'], galaxylist)
+            if np.count_nonzero(I) == 0:
+                log.warning('No matching galaxies using column SGANAME!')
+                I = np.isin(sample['OBJNAME'], galaxylist)
+                if np.count_nonzero(I) == 0:
+                    log.warning('No matching galaxies using column OBJNAME!')
+                    return Table(), Table()
+            return sample[I], fullsample
+    else:
+        return sample, fullsample
 
 
 #def get_parentfile(version=None, kd=False):
@@ -2770,7 +3631,7 @@ def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
 #        suffix = 'kd.fits'
 #    else:
 #        suffix = 'fits'
-#        
+#
 #    parentfile = os.path.join(sample_dir(version=version), 'SGA-parent-{}.{}'.format(version, suffix))
 #
 #    return parentfile

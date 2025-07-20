@@ -1,0 +1,104 @@
+#!/usr/bin/env python
+
+"""Simple simulations to characterize the "majoraxis" inferred by mge.find_galaxy
+
+"""
+
+import os, pdb
+import numpy as np
+import matplotlib.pyplot as plt
+from astropy.convolution import convolve, Gaussian2DKernel
+from astropy.visualization import simple_norm
+from SGA.find_galaxy import find_galaxy
+
+
+def build_model(nx=240, ny=240, reff=35., sersicn=1., eps=0.6, theta=22.,
+                x0=None, y0=None, seed=1, snr=30., add_noise=True,
+                do_psf=True):
+    """
+
+    reff - pixels?
+    sersicn -
+    eps -
+    theta - degrees
+    x0, y0 - pixels
+
+    https://statmorph.readthedocs.io/en/latest/notebooks/tutorial.html#Setting-up
+
+    """
+    from astropy.modeling.models import Sersic2D
+
+    if x0 is None:
+        x0 = nx / 2.
+    if y0 is None:
+        y0 = ny / 2.
+
+    yy, xx = np.mgrid[:ny, :nx]
+
+    sersic_model = Sersic2D(amplitude=1., r_eff=reff,
+                            n=sersicn, x_0=x0, y_0=y0,
+                            ellip=eps, theta=np.radians(theta))
+    image = sersic_model(xx, yy)
+
+    # convolve with a PSF
+    if do_psf:
+        kernel = Gaussian2DKernel(3)
+        kernel.normalize()
+        psf = kernel.array
+        image = convolve(image, psf)
+
+    # background noise; snr is the S/N per pixel at the effective radius
+    if add_noise:
+        rng = np.random.default_rng(seed=seed)
+
+        sky_sigma = 1.0 / snr
+        image += sky_sigma * rng.standard_normal(size=(ny, nx))
+
+    return image
+
+
+def sims():
+
+    nx = 512
+    snr = 10.
+
+    image = build_model(reff=30., sersicn=1., snr=snr, nx=nx, ny=nx)
+    plt.clf()
+    mge = find_galaxy(image, quiet=False, plot=True)
+    #plt.imshow(np.log10(image), cmap='inferno', origin='lower')#, norm=norm)
+    plt.savefig('junk2.png')
+    #return
+
+    #fig, ax = plt.subplots()
+    #norm = simple_norm(image, stretch='log')
+    #ax.imshow(image, cmap='inferno', origin='lower', norm=norm)
+    #fig.savefig('junk2.png')
+
+    pdb.set_trace()
+
+
+    reffs = np.arange(10., 300, 5.)
+    maxis = np.zeros_like(reffs)
+
+    fig, ax = plt.subplots()
+    for sersicn in [1., 2.5, 4., 6.]:
+        print(sersicn)
+
+        for imodel, reff in enumerate(reffs):
+            image = build_model(reff=reff, sersicn=sersicn, snr=snr, nx=nx, ny=nx)
+            mge = find_galaxy(image, quiet=True)
+            maxis[imodel] = mge.majoraxis
+        #print(maxis / reffs, np.median(maxis / reffs))
+
+        ax.scatter(reffs, maxis / reffs, s=20, label=f'n={sersicn:.0g}')
+    ax.set_xscale('log')
+    #ax.set_yscale('log')
+    ax.legend(loc='upper right')
+    fig.savefig('junk.png')
+
+    pdb.set_trace()
+
+if __name__ == '__main__':
+    sims()
+
+

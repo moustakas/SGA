@@ -8,6 +8,7 @@ Code to do produce various QA (quality assurance) plots.
 import os, pdb
 import warnings
 import time, subprocess
+from importlib import resources
 import numpy as np
 from astropy.table import Table
 
@@ -17,9 +18,23 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-#import seaborn as sns
-#sns.set(style='ticks', font_scale=1.4, palette='Set2')
 
+#sns, _ = plot_style()
+
+fonttype = resources.files('SGA').joinpath('data/Georgia.ttf')
+prop = mpl.font_manager.FontProperties(fname=fonttype, size=12)
+
+# color-blind friendly color cycle:
+# https://twitter.com/rachel_kurchin/status/1229567059694170115
+cb_colors = {'blue': '#377eb8',
+             'orange': '#ff7f00',
+             'green': '#4daf4a',
+             'pink': '#f781bf',
+             'brown': '#a65628',
+             'purple': '#984ea3',
+             'gray': '#999999',
+             'red': '#e41a1c',
+             'yellow': '#dede00'}
 
 cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA',
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
@@ -51,6 +66,63 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     #sns.reset_orig()
 
     return sns, colors
+
+
+def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
+                 ax=None, pixscale=0.262, color='red', linestyle='-',
+                 linewidth=1, alpha=1.0, clip=True, jpeg=False,
+                 draw_majorminor_axes=True):
+    """Draw an ellipse on either a numpy array (e.g., FITS image) or a JPEG or
+    PNG image.
+
+    major_axis_arcsec - major axis length in arcsec
+    ba - minor-to-major axis ratio; NB: ellipticity = 1 - ba
+    pa - astronomical position angle (degrees) measured CCW from the y-axis
+    x0 - x-center of the ellipse (zero-indexed numpy coordinates)
+    y0 - y-center of the ellipse (zero-indexed numpy coordinates)
+    height_pixels - image height in pixels (required if jpeg=True)
+    ax - draw on an existing matplotlib.pyplot.Axes object
+    pixscale - pixel scale [arcsec / pixel]
+
+    NB: If jpeg=True, ycen = height_pixels-y0 and theta=90-pa; otherwise, ycen =
+    y0 and theta=pa-90.
+
+    """
+    from matplotlib.patches import Ellipse
+
+    if ax is None:
+        import matplotlib.pyplot as plt
+        ax = plt.gca()
+
+    major_axis_pixels = major_axis_arcsec / pixscale # [pixels]
+    minor_axis_pixels = ba * major_axis_pixels  # [pixels]
+    xcen = x0
+
+    if jpeg:
+        if height_pixels is None:
+            raise ValueError('Image `height_pixels` is mandatory when jpeg=True')
+        ycen = height_pixels - y0       # jpeg/png y-axis is flipped
+        ellipse_angle = 90. - pa # CCW from x-axis and flipped
+    else:
+        ycen = y0
+        ellipse_angle = pa - 90. # CCW from x-axis
+    theta = np.radians(ellipse_angle)
+
+
+    ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels, angle=ellipse_angle,
+                  facecolor='none', edgecolor=color, lw=linewidth, ls=linestyle,
+                  alpha=alpha, clip_on=clip)
+    ax.add_artist(ell)
+
+    # Optionally draw the major and minor axes.
+    if draw_majorminor_axes:
+        x1, y1 = xcen + major_axis_pixels/2. * np.cos(theta), ycen + major_axis_pixels/2. * np.sin(theta)
+        x2, y2 = xcen - major_axis_pixels/2. * np.cos(theta), ycen - major_axis_pixels/2. * np.sin(theta)
+        x3, y3 = xcen + minor_axis_pixels/2. * np.sin(theta), ycen - minor_axis_pixels/2. * np.cos(theta)
+        x4, y4 = xcen - minor_axis_pixels/2. * np.sin(theta), ycen + minor_axis_pixels/2. * np.cos(theta)
+
+        ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-', clip_on=True)
+        ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-', clip_on=True)
 
 
 def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
@@ -330,6 +402,191 @@ def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=1, nrow=1,
                 os.remove(png)
         if os.path.isfile(pngdir):
             shutil.rmtree(pngdir)
+
+
+def addbar_to_png(jpgfile, barlen, barlabel, imtype, pngfile, scaledfont=True,
+                  pixscalefactor=1.0, fntsize=20, imtype_fntsize=20):
+    """Support routine for routines in html.
+
+    fntsize - only used if scaledfont=False
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    Image.MAX_IMAGE_PIXELS = None
+
+    with Image.open(jpgfile) as im:
+        draw = ImageDraw.Draw(im)
+        sz = im.size
+        width = np.round(pixscalefactor*sz[0]/150).astype('int')
+        if scaledfont:
+            fntsize = np.round(pixscalefactor*sz[0]/50).astype('int')                
+            imtype_fntsize = np.round(pixscalefactor*sz[0]/15).astype('int')                
+            #fntsize = np.round(0.05*sz[0]).astype('int')
+            #fntsize = np.round(sz[0]/50).astype('int')
+        # Bar and label
+        if barlen:
+            #if fntsize < 56:
+            #    fntsize = 56
+            font = ImageFont.truetype(fonttype, size=fntsize)
+            # Add a scale bar and label--
+            x0, x1, y0, y1 = 0+fntsize*2, 0+fntsize*2+barlen*pixscalefactor, sz[1]-fntsize*1.5, sz[1]-fntsize*4
+            #print(sz, fntsize, x0, x1, y0, y1, barlen*pixscalefactor)
+            draw.line((x0, y1, x1, y1), fill='white', width=width)
+            ww = draw.textlength(barlabel, font=font)
+            dx = ((x1-x0) - ww)//2
+            #print(x0, x1, y0, y1, ww, x0+dx, sz)
+            draw.text((x0+dx, y0), barlabel, font=font)
+            #print('Writing {}'.format(pngfile))
+        # Image type
+        if imtype:
+            #fntsize = 20 # np.round(sz[0]/20).astype('int')
+            font = ImageFont.truetype(fonttype, size=imtype_fntsize)
+            ww = draw.textlength(imtype, font=font)
+            x0, y0, y1 = imtype_fntsize*1.2, imtype_fntsize*2, imtype_fntsize*1.2#4
+            #x0, y0, y1 = sz[0]-ww-imtype_fntsize*2, sz[1]-imtype_fntsize*2, sz[1]-imtype_fntsize*2.5#4
+            draw.text((x0, y1), imtype, font=font)
+        print('Writing {}'.format(pngfile))
+        im.save(pngfile)
+    return pngfile
+
+
+def qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=False, png=None):
+    """For the SGA, display the maskbits image with some additional information
+    about the catalog.
+
+    colorblind-friendly colors are from
+    https://twitter.com/rachel_kurchin/status/1229567059694170115
+
+    """
+    from photutils import EllipticalAperture
+    from PIL import ImageDraw, Image
+
+    from tractor.ellipses import EllipseE
+    from legacypipe.reference import get_large_galaxy_version
+    from SGA.ellipse import is_in_ellipse
+    #from legacyhalos.SGA import _get_diameter
+
+    Image.MAX_IMAGE_PIXELS = None
+    imgsz = colorimg.size
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(5*3, 5), sharey=True)
+
+    # original maskbits
+    ax2.imshow(mask, origin='lower', cmap='gray_r')#, interpolation='none')
+    ax2.set_aspect('equal')
+    ax2.get_xaxis().set_visible(False)
+    ax2.get_yaxis().set_visible(False)
+    #ax2.set_title('Original maskbits')
+    #ax2.axis('off')
+    #ax2.autoscale(False)
+    #ax2.scatter(tractor['BX'], tractor['BY'], alpha=0.3, s=10, color='#999999')
+
+    ax3.scatter(tractor['BX'], tractor['BY'], alpha=0.3, s=10, color='#999999',
+                label='All Sources')
+    ax3.set_aspect('equal')
+    sz = mask.shape
+    ax3.set_xlim(0, sz[1]-1)
+    ax3.set_ylim(0, sz[0]-1)
+    #ax3.imshow(mask*0, origin='lower', cmap='gray_r')#, interpolation='none')
+    #ax3.plot([0, sz[1]-1], [0, sz[0]-1])
+    ax3.get_xaxis().set_visible(False)
+    ax3.get_yaxis().set_visible(False)
+    ##ax3.set_title('Original maskbits')
+    #ax3.axis('off')
+
+    #refcat, _ = get_large_galaxy_version(os.getenv('LARGEGALAXIES_CAT'))
+    #ilslga = np.where(tractor['REF_CAT'] == refcat)[0]
+    #ax3.scatter(tractor['BX'][ilslga], tractor['BY'][ilslga], s=50,
+    #            edgecolor='k', color='blue')
+    
+    #ax3.autoscale(False)
+    ax3.margins(0, tight=True)
+
+    minmarker, maxmarker = 30, 300
+    for igal, ellipsefit in enumerate(ellipsefitall):
+        diam, diamref = _get_diameter(ellipsefit)
+        ragal, decgal, pa, ba = ellipsefit['ra_moment'], ellipsefit['dec_moment'], ellipsefit['pa_moment'], 1-ellipsefit['eps_moment']
+
+        reff, e1, e2 = EllipseE.fromRAbPhi(diam*60/2, ba, 180-pa) # note the 180 rotation
+        inellipse = np.where(is_in_ellipse(tractor['RA'], tractor['DEC'], ragal, decgal, reff, e1, e2))[0]
+        if len(inellipse) < 3:
+            continue
+
+        # scale the size of the marker by flux
+        minflx, maxflx = np.percentile(tractor['FLUX_R'][inellipse], [50, 95])
+        if maxflx > minflx:
+            ss = maxmarker * (tractor['FLUX_R'][inellipse] - minflx) / (maxflx - minflx)
+        else:
+            ss = np.repeat(maxmarker, len(tractor))
+        ss[ss < minmarker] = minmarker
+        ss[ss > maxmarker] = maxmarker
+
+        if igal == 0:
+            ax3.scatter(tractor['BX'][inellipse], tractor['BY'][inellipse], s=ss,
+                        marker='s', edgecolor='k', color=cb_colors['orange'], label='Frozen Sources')
+        else:
+            ax3.scatter(tractor['BX'][inellipse], tractor['BY'][inellipse], s=ss,
+                        marker='s', edgecolor='k', color=cb_colors['orange'])
+
+        # ellipse geometry
+        maxis = diam * 60 / ellipsefit['refpixscale'] / 2 # [pixels]
+        ellaper = EllipticalAperture((ellipsefit['x0_moment'], ellipsefit['y0_moment']),
+                                     maxis, maxis*(1 - ellipsefit['eps_moment']),
+                                     np.radians(ellipsefit['pa_moment']-90))
+        if igal == 0:
+            ellaper.plot(color=cb_colors['blue'], lw=2, ax=ax2, alpha=0.9, label='R(26)')
+        else:
+            ellaper.plot(color=cb_colors['blue'], lw=2, ax=ax2, alpha=0.9)
+        ellaper.plot(color=cb_colors['blue'], lw=2, ls='-', ax=ax3, alpha=0.9)
+
+        draw_ellipse_on_png(colorimg, ellipsefit['x0_moment'], imgsz[1]-ellipsefit['y0_moment'],
+                            1-ellipsefit['eps_moment'],
+                            ellipsefit['pa_moment'], 2 * maxis * ellipsefit['refpixscale'],
+                            ellipsefit['refpixscale'], color=cb_colors['blue']) # '#ffaa33')
+        if 'd25_leda' in ellipsefit.keys():
+            draw_ellipse_on_png(colorimg, ellipsefit['x0_moment'], imgsz[1]-ellipsefit['y0_moment'],
+                                ellipsefit['ba_leda'], ellipsefit['pa_leda'],
+                                ellipsefit['d25_leda'] * 60.0, ellipsefit['refpixscale'],
+                                color=cb_colors['red'])
+        
+            # Hyperleda geometry
+            maxis = ellipsefit['d25_leda'] * 60 / ellipsefit['refpixscale'] / 2 # [pixels]
+            ellaper = EllipticalAperture((ellipsefit['x0_moment'], ellipsefit['y0_moment']),
+                                         maxis, maxis * ellipsefit['ba_leda'],
+                                         np.radians(ellipsefit['pa_leda']-90))
+        if igal == 0:
+            ellaper.plot(color=cb_colors['red'], lw=2, ls='-', ax=ax2, alpha=1.0, label='Hyperleda')
+        else:
+            ellaper.plot(color=cb_colors['red'], lw=2, ls='-', ax=ax2, alpha=1.0)
+        ellaper.plot(color=cb_colors['red'], lw=2, ls='-', ax=ax3, alpha=1.0)
+
+    # color mosaic
+    draw = ImageDraw.Draw(colorimg)
+    ax1.imshow(np.flipud(colorimg), interpolation='none') # not sure why I have to flip here...
+    ax1.set_aspect('equal')
+    ax1.get_xaxis().set_visible(False)
+    ax1.get_yaxis().set_visible(False)
+    
+    #ax1.axis('off')
+    #ax1.autoscale(False)
+    #ax1.scatter(tractor['BX'], imgsz[1]-tractor['BY'], alpha=1.0, s=10, color='red')
+    #ax1.scatter(tractor['BX'], tractor['BY'], alpha=1.0, s=10, color='#999999')
+
+    hh, ll = ax2.get_legend_handles_labels()
+    if len(hh) > 0:
+        ax2.legend(loc='lower right', fontsize=12)
+        lgnd = ax3.legend(loc='lower right', fontsize=12)
+        lgnd.legendHandles[0]._sizes = [40]
+        lgnd.legendHandles[1]._sizes = [40]    
+
+    fig.subplots_adjust(wspace=0.05, right=0.9)
+
+    if png:
+        print('Writing {}'.format(png))
+        fig.savefig(png, bbox_inches='tight')#, pad_inches=0)
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 # adapted from https://github.com/desihub/desiutil/blob/5735fdc34c4e77c7fda84c92c32b9ac41158b8e1/py/desiutil/plots.py#L735-L857
@@ -864,7 +1121,19 @@ def fig_size_mag(sample, pngfile=None):
 
 def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
                         pixscale, color='#3388ff', linewidth=3):
-    """Write me.
+    """Draw an ellipse on a color image read using PIL. See ``qa.draw_ellipse``
+       for a more recent implementation which works with matplotlib.
+
+       Example:
+           x0 - xcen
+           y0 - im.size[1] - ycen
+           ba - minor-to-major axis ratio
+           pa - astronomical (MGE) position angle (CCW from y-axis)
+           major_axis_diameter_arcsec - major-axis diameter [arcsec]
+           pixscale - pixel scale [arcsec/pixel]
+
+           with Image.open('image.jpg') as im:
+               draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec, pixscale)
 
     """
     from PIL import Image, ImageDraw, ImageFont
@@ -941,7 +1210,7 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
         # Make sure all the files exist.
         check = True
         jpgfile = []
-        for suffix in ('image-FUVNUV', 'custom-image-grz', 'image-W1W2'):
+        for suffix in ('image-FUVNUV', 'custom-image', 'image-W1W2'):
             _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
             jpgfile.append(_jpgfile)
             if not os.path.isfile(_jpgfile):
@@ -967,9 +1236,9 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
         check = True
         jpgfile = []
         for suffix in ('image-FUVNUV', 'model-nocentral-FUVNUV', 'image-central-FUVNUV',
-                       'custom-image-grz', 'custom-model-nocentral-grz', 'custom-image-central-grz',
+                       'custom-image', 'custom-model-nocentral', 'custom-image-central',
                        'image-W1W2', 'model-nocentral-W1W2', 'image-central-W1W2'):
-            _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
+            _jpgfile = os.path.join(galaxydir, f'{galaxy}-{suffix}.jpg')
             jpgfile.append(_jpgfile)
             if not os.path.isfile(_jpgfile):
                 print('File {} not found!'.format(_jpgfile))
@@ -983,6 +1252,193 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
             if verbose:
                 print('Writing {}'.format(montagefile))
             subprocess.call(cmd.split())
+
+
+def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
+    """Plot up the multiwavelength SED.
+
+    """
+    from copy import deepcopy
+    import matplotlib.ticker as ticker
+    from astropy.table import Table
+    
+    if ellipsefit['success'] is False or np.atleast_1d(ellipsefit['sma_r'])[0] == -1:
+        return
+    
+    bands, refband = ellipsefit['bands'], ellipsefit['refband']
+
+    galex = 'FUV' in bands
+    unwise = 'W1' in bands
+    colors = _sbprofile_colors(galex=galex, unwise=unwise)
+        
+    if 'redshift' in ellipsefit.keys():
+        redshift = ellipsefit['redshift']
+        smascale = SGA.misc.arcsec2kpc(redshift, cosmo=cosmo) # [kpc/arcsec]
+    else:
+        redshift, smascale = None, None
+
+    # see also Morrisey+05
+    effwave_north = {'fuv': 1528.0, 'nuv': 2271.0,
+                     'w1': 34002.54044482, 'w2': 46520.07577119, 'w3': 128103.3789599, 'w4': 223752.7751558,
+                     'g': 4815.95363513, 'r': 6437.79282937, 'i': 7847.78249813, 'z': 9229.65786449}
+    effwave_south = {'fuv': 1528.0, 'nuv': 2271.0,
+                     'w1': 34002.54044482, 'w2': 46520.07577119, 'w3': 128103.3789599, 'w4': 223752.7751558,
+                     'g': 4890.03670428, 'r': 6469.62203811, 'i': 7847.78249813, 'z': 9196.46396394}
+
+    _tt = Table()
+    _tt['RA'] = [ellipsefit['ra_moment']]
+    _tt['DEC'] = [ellipsefit['dec_moment']]
+    run = SGA.io.get_run(_tt)
+
+    if run == 'north':
+        effwave = effwave_north
+    else:
+        effwave = effwave_south
+
+    # build the arrays
+    nband = len(bands)
+    bandwave = np.array([effwave[filt.lower()] for filt in bands])
+
+    _phot = {'abmag': np.zeros(nband, 'f4')-1,
+             'abmagerr': np.zeros(nband, 'f4')+0.5,
+             'lower': np.zeros(nband, bool)}
+    phot = {'mag_tot': deepcopy(_phot), 'tractor': deepcopy(_phot), 'mag_sb25': deepcopy(_phot)}
+
+    for ifilt, filt in enumerate(bands):
+        mtot = ellipsefit['cog_mtot_{}'.format(filt.lower())]
+        if mtot > 0:
+            phot['mag_tot']['abmag'][ifilt] = mtot
+            phot['mag_tot']['abmagerr'][ifilt] = 0.1
+            phot['mag_tot']['lower'][ifilt] = False
+
+        flux = ellipsefit['flux_sb25_{}'.format(filt.lower())]
+        ivar = ellipsefit['flux_ivar_sb25_{}'.format(filt.lower())]
+        #print(filt, mag)
+
+        if flux > 0 and ivar > 0:
+            mag = 22.5 - 2.5 * np.log10(flux)
+            ferr = 1.0 / np.sqrt(ivar)
+            magerr = 2.5 * ferr / flux / np.log(10)
+            phot['mag_sb25']['abmag'][ifilt] = mag
+            phot['mag_sb25']['abmagerr'][ifilt] = magerr
+            phot['mag_sb25']['lower'][ifilt] = False
+        if flux <=0 and ivar > 0:
+            ferr = 1.0 / np.sqrt(ivar)
+            mag = 22.5 - 2.5 * np.log10(ferr)
+            phot['mag_sb25']['abmag'][ifilt] = mag
+            phot['mag_sb25']['abmagerr'][ifilt] = 0.75
+            phot['mag_sb25']['lower'][ifilt] = True
+
+        if tractor is not None:
+            flux = tractor['flux_{}'.format(filt.lower())]
+            ivar = tractor['flux_ivar_{}'.format(filt.lower())]
+            #if filt == 'FUV':
+            #    pdb.set_trace()
+            if flux > 0 and ivar > 0:
+                phot['tractor']['abmag'][ifilt] = 22.5 - 2.5 * np.log10(flux)
+                phot['tractor']['abmagerr'][ifilt] = 0.1
+            if flux <= 0 and ivar > 0:
+                phot['tractor']['abmag'][ifilt] = 22.5 - 2.5 * np.log10(1/np.sqrt(ivar))
+                phot['tractor']['abmagerr'][ifilt] = 0.75
+                phot['tractor']['lower'][ifilt] = True
+
+    #print(phot['mag_tot']['abmag'])
+    #print(phot['mag_sb25']['abmag'])
+    #print(phot['tractor']['abmag'])
+
+    def _addphot(thisphot, color, marker, alpha, label):
+        good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == True))[0]
+        if len(good) > 0:
+            ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
+                        marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
+                        lolims=True, linestyle='none', alpha=alpha)#, lolims=True)
+        good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == False))[0]
+        if len(good) > 0:
+            ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
+                        marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
+                        label=label, linestyle='none', alpha=alpha)
+    
+    # make the plot
+    fig, ax = plt.subplots(figsize=(9, 7))
+
+    # get the plot limits
+    good = np.where(phot['mag_tot']['abmag'] > 0)[0]
+    ymax = np.min(phot['mag_tot']['abmag'][good])
+    ymin = np.max(phot['mag_tot']['abmag'][good])
+
+    good = np.where(phot['tractor']['abmag'] > 0)[0]
+    if np.min(phot['tractor']['abmag'][good]) < ymax:
+        ymax = np.min(phot['tractor']['abmag'][good])
+    if np.max(phot['tractor']['abmag']) > ymin:
+        ymin = np.max(phot['tractor']['abmag'][good])
+    #print(ymin, ymax)
+
+    ymin += 1.5
+    ymax -= 1.5
+
+    wavemin, wavemax = 0.1, 30
+
+    # have to set the limits before plotting since the axes are reversed
+    if np.abs(ymax-ymin) > 15:
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(5))
+    ax.set_ylim(ymin, ymax)
+    _addphot(phot['mag_tot'], color='red', marker='s', alpha=1.0, label=r'$m_{\mathrm{tot}}$')
+    _addphot(phot['mag_sb25'], color='orange', marker='^', alpha=0.9, label=r'$m(r<R_{25})$')
+    _addphot(phot['tractor'], color='blue', marker='o', alpha=0.75, label='Tractor')
+
+    #thisphot = phot['tractor']
+    #color='blue'
+    #marker='o'
+    #label='Tractor'
+
+    #good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == False))[0]
+    #if len(good) > 0:
+    #    ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
+    #                marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
+    #                markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
+    #                label=label, linestyle='none')
+    
+    #good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == True))[0]
+    ##ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=0.5, #thisphot['abmagerr'][good],
+    ##            marker='o', uplims=thisphot['lower'][good], linestyle='none')
+    #if len(good) > 0:
+    #    ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=0.5, #thisphot['abmagerr'][good][0],
+    #                marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
+    #                markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
+    #                uplims=thisphot['lower'][good], linestyle='none')#, lolims=True)
+                    
+    ax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+    ax.set_ylabel(r'Apparent Brightness (AB mag)') 
+    ax.set_xlim(wavemin, wavemax)
+    ax.set_xscale('log')
+    ax.legend(loc='lower right')
+
+    def _frmt(value, _):
+        if value < 1:
+            return '{:.1f}'.format(value)
+        else:
+            return '{:.0f}'.format(value)
+
+    #ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+    ax.set_xticks([0.1, 0.2, 0.4, 1.0, 3.0, 5.0, 10, 20])
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(_frmt))
+
+    if smascale:
+        fig.subplots_adjust(left=0.14, bottom=0.15, top=0.85, right=0.95)
+        #fig.subplots_adjust(left=0.12, bottom=0.15, top=0.85, right=0.88)
+    else:
+        fig.subplots_adjust(left=0.14, bottom=0.15, top=0.95, right=0.95)
+        #fig.subplots_adjust(left=0.12, bottom=0.15, top=0.95, right=0.88)
+
+    if png:
+        #if verbose:
+        print('Writing {}'.format(png))
+        fig.savefig(png)
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def ellipse_sbprofile(ellipsefit, minerr=0.0):

@@ -3,7 +3,7 @@ Build a Docker container for the SGA project
 
 Build a cross-platform docker container as documented [here](https://www.docker.com/blog/faster-multi-platform-builds-dockerfile-cross-compilation-guide), [here](https://blog.jaimyn.dev/how-to-build-multi-architecture-docker-images-on-an-m1-mac/), and [here](https://docs.nersc.gov/development/shifter/how-to-use/).
 
-First, pull the latest 
+First, pull the latest container:
 ```
 docker pull legacysurvey/cutouts:v1.1
 
