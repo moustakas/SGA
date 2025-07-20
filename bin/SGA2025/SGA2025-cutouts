@@ -1796,6 +1796,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
                     I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 15.) * (diam < 20.) # N=154,287
 
             cat = primaries[I]
+            #cat = cat[cat['OBJNAME'] == 'WISEA J000353.33-203717.1']
 
             #I = ~np.logical_or.reduce((cat['FILTERS'] == 'girz', cat['FILTERS'] == 'grz'))
             #cat = cat[I][:128]
