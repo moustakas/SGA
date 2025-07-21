@@ -42,7 +42,7 @@ from SGA.qa import qa_skypatch, multipage_skypatch
 from SGA.ellipse import get_basic_geometry
 from SGA.util import match, match_to, choose_primary, resolve_close
 from SGA.io import sga_dir, parent_version
-
+from SGA.logger import log
 
 cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA',
         'OBJTYPE', 'RA', 'DEC', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA',
@@ -814,6 +814,7 @@ def update_lvd_properties(cat):
             'KKR 25',
             'KK 17', # also in dr11-south
             'Dw1245+6158',
+            # count=10 above here
             'KK 193',
             'NGC 4631-dw3', # also in dr11-south
             'KK 135',
@@ -821,6 +822,12 @@ def update_lvd_properties(cat):
             'MAPS 1231+42',
             'dw1239+3230',
             'JKB83',
+            'LV J1228+4358',
+            'GARLAND',
+            'KDG 73',
+            # count=10 above here
+            'DDO 169NW',
+            'BK3N',
             # dr11-south
             'NGC 247',
             'ESO 290-028',
@@ -867,6 +874,17 @@ def update_lvd_properties(cat):
             'LV J0616-5745',
             # count=10 above here
             'dw1232p0015',
+            'Fornax',
+            'Phoenix',
+            'KK 221',
+            'Sculptor-dE1',
+            'KK 195',
+            'ESO 222-010',
+            'LV J0055-2310',
+            'HIPASS J1348-37',
+            'KK 213',
+            # count=10 above here
+            'dw1342-43',
         ]
         props = [ # ra, dec, diam, ba, pa
             (80.894167, -69.756111, -99., -99., 171.),
@@ -874,14 +892,15 @@ def update_lvd_properties(cat):
             # dr9-north
             (-99., -99., -99., -99., 145.5),
             (-99., -99., -99., -99., 28.22),
-            (-99., -99., 2., 0.75, 90.),
+            (149.3783505, 69.2777057, 2.5, 0.75, 90.),
             (-99., -99., -99., -99., 170.),
             (186.570833, 48.494167, -99., -99., -99.),
             (184.125699, 52.227996, -99., -99., -99.),
-            (-99., -99., -99., -99., 70.),
+            (-99., -99., -99., -99., 105.),
             (-99., -99., -99., -99., 10.),
             (30.042042, 28.8311692, 0.6, 0.5, 167.5),
             (-99., -99., -99., -99., 45.),
+            # count=10 above here
             (198.87417, 41.50223, 1.2*0.39866, 0.77, 119.17), # =SMDG J1315298+413008
             (190.72097, 32.45592, 1.2*0.42333, 0.9, 81.86), # =SMDG J1242530+322721
             (184.8944985, 58.0439485, -99., -99., -99.),
@@ -889,6 +908,12 @@ def update_lvd_properties(cat):
             (-99., -99., -99., -99., 167.16), # =SDSS J123109.08+420533.8
             (189.7710, 32.5042, -99., -99., -99.),
             (148.9569, 69.3326, -99., -99., -99.),
+            (-99., -99., -99., -99., 175.),
+            (-99., -99., -99., -99., 40.),
+            (163.23779166666665, 69.54938888888888, -99., -99., 148.),
+            # count=10 above here
+            (-99., -99., -99., -99., 160.),
+            (148.45459331112409, 68.96961600271591, -99., -99., 105.),
             # dr11-south
             (-99., -99., -99., -99., 167.44),
             (-99., -99., 3.3678637, 0.2748319, 90.72542),
@@ -912,7 +937,7 @@ def update_lvd_properties(cat):
             (-99., -99., -99., -99., 45.),
             (-99., -99., -99., -99., 100.),
             # count=10 above here
-            (-99., -99., -99., -99., 120.),
+            (-99., -99., 2.301442, -99., 120.),
             (-99., -99., -99., -99., 150.),
             (33.22875, 32.815, -99., -99., -99.),
             (-99., -99., -99., -99., 99.826744),
@@ -929,20 +954,31 @@ def update_lvd_properties(cat):
             (159.92899999999997, 12.634888888888888, -99., -99., -99.),
             (191.890842, -77.582623, -99., -99., -99.),
             (200.8745833333333, -23.393055555555556, -99., -99., -99.),
-            (-99., -99., -99., -99., 135.),
+            (-99., -99., -99., -99., 120.),
             (-99., -99., -99., -99., 80.),
             (44.7343335, 13.6299722, -99., -99., -99.),
             (94.03716666666666, -57.76461111111111, -99., -99., -99.),
             # count=10 above here
             (188.15054166666664, 0.2624444444444444, -99., -99., -99.),
-            ]
+            (-99., -99., 47.76, -99., -99.), # LVD rhalf*1.2*2
+            (-99., -99., 5.832, -99., -99.), # LVD rhalf*1.2*2
+            (-99., -99., -99., -99., 160.),
+            (-99., -99., -99., -99., 0.), # over-ride the SGA-2020 PA
+            (-99., -99., 1.5, 0.75, -99.),
+            (218.7615, -49.4197, 0.8933055, 0.48865235, -99.),
+            (-99., -99., -99., -99., 120.),
+            (207.1412, -37.9677, 0.6, -99., 15.),
+            (-99., -99., 0.82, -99., -99.), # LVD rhalf*1.2*2
+            # count=10 above here
+            (205.6833333333333, -43.25527777777778, -99., -99., -99.),
+        ]
         refs = [
             ('NED', 'NED', '', '', 'RC3'),
             ('NED', 'NED', '', '', 'RC3'),
             # dr9-north
             ('', '', '', '', 'HYPERLEDA'),
             ('', '', '', '', 'HYPERLEDA'),
-            ('', '', 'VI', 'VI', 'VI'),
+            ('HYPERLEDA', 'HYPERLEDA', 'VI', 'VI', 'VI'),
             ('', '', '', '', 'VI'),
             ('2016AJ....152...50T', '2016AJ....152...50T', '', '', ''),
             ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
@@ -950,6 +986,7 @@ def update_lvd_properties(cat):
             ('', '', '', '', 'VI'),
             ('HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA'),
             ('', '', '', '', 'VI'),
+            # count=10 above here
             ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
             ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
             ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
@@ -957,6 +994,12 @@ def update_lvd_properties(cat):
             ('', '', '', '', 'HYPERLEDA'),
             ('LS/DR9', 'LS/DR9', '', '', ''),
             ('LS/DR9', 'LS/DR9', '', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('NED', 'NED', '', '', 'VI'),
+            # count=10 above here
+            ('', '', '', '', 'VI'),
+            ('VI', 'VI', '', '', 'VI'),
             # dr11-south
             ('', '', '', '', 'HYPERLEDA'),
             ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
@@ -980,7 +1023,7 @@ def update_lvd_properties(cat):
             ('', '', '', '', 'VI'),
             ('', '', '', '', 'VI'),
             # count=10 above here
-            ('', '', '', '', 'VI'),
+            ('', '', 'HYPERLEDA', '', 'VI'),
             ('', '', '', '', 'VI'),
             ('NED', 'NED', '', '', ''),
             ('', '', '', '', 'SGA2020'),
@@ -1001,6 +1044,17 @@ def update_lvd_properties(cat):
             ('', '', '', '', 'VI'),
             ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
             ('NED', 'NED', '', '', ''),
+            # count=10 above here
+            ('NED', 'NED', '', '', ''),
+            ('', '', 'v1.0.5', '', ''),
+            ('', '', 'v1.0.5', '', ''),
+            ('', '', '', '', 'VI'),
+            ('', '', '', '', 'VI'),
+            ('', '', 'VI', 'VI', ''),
+            ('VI', 'VI', 'HYPERLEDA', 'HYPERLEDA', ''),
+            ('', '', '', '', 'VI'),
+            ('VI', 'VI', 'VI', '', 'VI'),
+            ('', '', 'v1.0.5', '', ''),
             # count=10 above here
             ('NED', 'NED', '', '', ''),
             ]
@@ -1444,6 +1498,24 @@ def build_parent_archive(verbose=False, overwrite=False):
         print(res[~np.isin(res['objname'].value, cat['OBJNAME'].value)])
     cat['RESOLVED'][I] = True
 
+    # add the 'FORCEGAIA' and 'FORCEPSF' bits
+    for suffix in ['gaia', 'psf']:
+        forcefile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-force{suffix}.csv')
+        force = Table.read(forcefile, format='csv', comment='#')
+        print(f'Read {len(force)} objects from {forcefile}')
+        oo, cc = np.unique(force['objname'].value, return_counts=True)
+        if np.any(cc > 1):
+            print(f'Warning: duplicates in the force{suffix} file!')
+            print(oo[cc>1])
+
+        cat[f'FORCE{suffix.upper()}'] = np.zeros(len(cat), bool)
+        I = np.isin(cat['OBJNAME'].value, force['objname'].value)
+        if np.sum(I) != len(force):
+            print('Missing objects!')
+            print(force[~np.isin(force['objname'].value, cat['OBJNAME'].value)])
+        cat[f'FORCE{suffix.upper()}'][I] = True
+
+
     version = parent_version(archive=True)
     outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
     print(f'Writing {len(cat):,d} objects to {outfile}')
@@ -1454,7 +1526,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     if False:
         # How many sources with diam<0.1 have no other source within 10 arcsec?
         radius_isolated = 10.
-    
+
         diam = np.max((cat['DIAM_LIT'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
         I = np.where(diam == -99.)[0]
         #I = np.where((diam > 0.) * (diam < 0.1))[0]
@@ -1511,10 +1583,13 @@ def build_parent(verbose=False, overwrite=False):
     for region in ['dr11-south', 'dr9-north']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
-        print(f'Read {len(cat):,d} objects from {catfile}')
+        log.info(f'Read {len(cat):,d} objects from {catfile}')
 
-        diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-        I = (diam > 30.)# * (diam < 2.*60.)
+        if False:
+            diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
+            I = (diam > 30.)# * (diam < 2.*60.)
+        else:
+            I = (cat['ROW_LVD'] != -99) * cat['RESOLVED']
         cat = cat[I]
         log.info(f'Selected {np.sum(I):,d}')
 
@@ -1545,8 +1620,10 @@ def build_parent(verbose=False, overwrite=False):
         # process the fitting behavior bits
         fitbits = np.zeros(len(cat), np.int16)
         fitbits[cat['RESOLVED']] = FITBITS['ignore']
-        #fitbits[cat['IN_LMC']] = FITBITS['forcegaia']
-        #fitbits[cat['IN_SMC']] = FITBITS['forcegaia']
+        fitbits[cat['FORCEGAIA']] = FITBITS['forcegaia']
+        fitbits[cat['FORCEPSF']] = FITBITS['forcepsf']
+        fitbits[cat['IN_LMC']] = FITBITS['forcegaia']
+        fitbits[cat['IN_SMC']] = FITBITS['forcegaia']
 
         grp = cat[cols]
         grp.add_column(cat['ROW_PARENT'], name='SGAID', index=0)
@@ -1560,7 +1637,8 @@ def build_parent(verbose=False, overwrite=False):
         grp.add_column(mag.astype('f4'), name='MAG', index=11)
         grp.add_column(band, name='BAND', index=12)
 
-
+        print('Check all the fitbits bits!')
+        pdb.set_trace()
         grp = build_group_catalog(grp)
 
         ## final selection and data model
@@ -1575,7 +1653,6 @@ def build_parent(verbose=False, overwrite=False):
         out.meta['EXTNAME'] = 'PARENT'
         out.write(outfile, overwrite=True)
 
-    pdb.set_trace()
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):

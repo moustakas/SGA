@@ -12,7 +12,7 @@ In production:
 salloc -N 1 -C cpu -A m3592 -t 00:30:00 --qos interactive --image=docker:legacysurvey/sga:0.3
 
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
-SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup
+SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup --region=dr9-south --debug --old-calibs-ok
 
 
 
@@ -246,6 +246,8 @@ def main():
             radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 1.5 * 60. # [arcsec]
         else:
             radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 2. * 60.  # [arcsec]
+        print('WARNING!! Need to tune these radii...')
+        radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 1.1 * 60. # [arcsec]
 
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 

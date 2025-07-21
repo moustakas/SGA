@@ -469,8 +469,12 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
 
     # always prefer LVD because they were all visually determined and
     # inspected
-
-
+    I = (cat['DIAM_LIT_REF'].value == 'LVD') * (diam == -99.)
+    if np.any(I):
+        diam[I] = cat['DIAM_LIT'][I] * 60.
+        ba[I] = cat['BA_LIT'][I]
+        pa[I] = cat['PA_LIT'][I]
+        ref[I] = 'LVD'
 
     # take the largest diameter
     datarefs = np.array(['SGA2020', 'HYPERLEDA', 'LIT'])

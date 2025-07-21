@@ -506,7 +506,7 @@ def gather_photo(cat, mp=1, region='dr9-north', cutoutdir='.', photodir='.',
     catfile = os.path.join(catdir, f'parent-photo-{region}-{photo_version}.fits')
     if os.path.isfile(catfile):
         log.warning(f'Existing photo catalog {catfile} must be removed by-hand.')
-        #return
+        return
 
     _, _, photfiles, _, groups = plan(cat, size=1, photodir=photodir,
                                       mp=mp, gather_photo=True)
@@ -2126,7 +2126,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             cat = cat[cat['ROW_LVD'] != -99]
 
             if photo_version is not None:
-                # six galaxies with diam>40 arcmin in dr11-south (invvar cutouts very expensive!)
+                # six galaxies with diam>40 arcmin in dr11-south (invvar cutouts not possible!)
                 # ---------------------
                 # OBJNAME      DIAM_LIT
                 #          LMC   645.65
@@ -2139,6 +2139,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             else:
                 cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['KK 221'])]
+            cat = cat[cat['RESOLVED']]
 
             fulldiam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
             fullcat = fullcat[fulldiam > 30./60.]
@@ -2234,14 +2235,16 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
         log.info(f'Trimmed to {len(cat):,d} objects.')
 
 
-    sort_by_ra = True#False
-    sort_by_diameter = False#True
+    sort_by_ra = False
+    sort_by_diameter = True
+    #if lvd and photo_version is not None:
+    #    pdb.set_trace()
     if sort_by_ra:
         log.info('Sorting by RA')
         cat = cat[np.argsort(cat['RA'])]
     elif sort_by_diameter:
         log.info('Sorting by diameter')
-        diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+        diam, _, _, ref = choose_geometry(cat, mindiam=0.)
         cat = cat[np.argsort(diam)[::-1]]
     else:
         log.info('Sorting by OBJNAME')

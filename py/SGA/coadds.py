@@ -34,14 +34,14 @@ def _mosaic_width(radius_mosaic_arcsec, pixscale=PIXSCALE):
 
 
 def _rearrange_files(galaxy, output_dir, brickname, stagesuffix,
-                     bands=GRIZ, unwise=True, galex=False, cleanup=False, 
+                     bands=GRIZ, unwise=True, galex=False, cleanup=False,
                      just_coadds=False, clobber=False, missing_ok=False):
     """Move (rename) files into the desired output directory and clean up.
 
     """
     import fitsio
     import shutil
-        
+
     def _copyfile(infile, outfile, clobber=False, update_header=False, missing_ok=False):
         if os.path.isfile(outfile) and not clobber:
             return 1
@@ -93,7 +93,7 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix,
         if cleanup:
             _do_cleanup()
         return 1
-    
+
     ccdsfile = os.path.join(output_dir, f'{galaxy}-ccds.fits')
     ok = _copyfile(
         os.path.join(output_dir, 'coadd', 'cus', brickname,
@@ -104,7 +104,7 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix,
 
     # For objects on the edge of the footprint we can sometimes lose 3-band
     # coverage if one of the bands is fully masked. Check here and write out all
-    # the files except a 
+    # the files except a
     if os.path.isfile(ccdsfile): # can be missing during testing if missing_ok=True
         allbands = fitsio.read(ccdsfile, columns='filter')
         ubands = list(sorted(set(allbands)))
@@ -400,6 +400,8 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
 
     if nsigma:
         cmdargs += f'--nsigma {nsigma:.0f} '
+    log.info(f'runbrick {cmdargs}')
+    pdb.set_trace()
 
     err = runbrick(args=cmdargs.split())
 
