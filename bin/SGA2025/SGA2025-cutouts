@@ -1691,7 +1691,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
         columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'Z', 'PGC', 'DIAM_LIT_REF',
                    'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA', 'BA_HYPERLEDA', 'PA_HYPERLEDA',
                    'DIAM_SGA2020', 'BA_SGA2020', 'PA_SGA2020', 'ROW_LVD', 'ROW_NEDLVS', 'ROW_PARENT',
-                   'STARFDIST', 'STARMAG', 'RESOLVED']
+                   'STARFDIST', 'STARMAG', 'RESOLVED', 'FORCEGAIA', 'FORCEPSF']
 
         if 'NERSC_HOST' in os.environ:
             catdir = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent'
@@ -2139,7 +2139,11 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             else:
                 cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC'])]
             #cat = cat[np.isin(cat['OBJNAME'], ['KK 221'])]
-            cat = cat[cat['RESOLVED']]
+            #cat = cat[cat['RESOLVED']]
+            diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+            #cat = cat[diam < 60.]
+            cat = cat[~np.logical_or.reduce((cat['RESOLVED'], cat['FORCEPSF'], cat['FORCEGAIA']))]
+            #pdb.set_trace()
 
             fulldiam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
             fullcat = fullcat[fulldiam > 30./60.]
