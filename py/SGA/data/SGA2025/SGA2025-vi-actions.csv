@@ -69,7 +69,6 @@ WISEA J025050.91+215111.9,drop,off-footprint,
 WISEA J025042.69+215354.9,drop,off-footprint,
 WISEA J032747.58+210554.1,drop,off-footprint,
 WISEA J025032.56+215255.9,drop,off-footprint,
-WISEA J042901.85+233153.2,drop,off-footprint,
 WISEA J043811.96+175753.2,drop,off-footprint,
 WISEA J195627.09+043112.6,drop,off-footprint,
 WISEA J203610.86+133912.8,drop,off-footprint,
@@ -91,7 +90,6 @@ WISEA J111619.53+291335.5,drop,off-footprint,
 WISEA J231912.21+011401.8,drop,off-footprint,
 WISEA J061538.85+451536.4,drop,off-footprint,
 WISEA J083502.54+292845.0,drop,off-footprint,
-WISEA J173232.22+311321.9,drop,off-footprint,
 WISEA J214912.16-013325.8,drop,off-footprint,
 WISEA J220415.14+024538.9,drop,off-footprint,
 #
@@ -106,7 +104,6 @@ CGMW 3-0959,drop,faint shred or compact
 GALEXASC J175600.73+071604.6,drop,faint shred or compact
 CGMW 3-1000,drop,faint shred or compact
 CGMW 3-1055,drop,faint shred or compact
-CGMW 3-1108,drop,faint shred or compact
 CGMW 3-1238,drop,faint shred or compact
 CGMW 3-1244,drop,faint shred or compact
 CGMW 3-1373,drop,faint shred or compact
@@ -137,7 +134,6 @@ CGMW 3-5085,drop,faint shred or compact
 CGMW 3-5152,drop,faint shred or compact
 CGMW 3-5163,drop,faint shred or compact
 GALEXASC J195358.03+013831.3,drop,faint shred or compact
-CGMW 3-5280,drop,faint shred or compact
 CGMW 4-0406,drop,faint shred or compact
 CGMW 4-0533,drop,faint shred or compact
 WISEA J182310.54-365057.4,drop,faint shred or compact
@@ -406,7 +402,6 @@ WISEA J183045.32+314342.9,drop,faint shred or compact
 WISEA J182841.01+314416.5,drop,faint shred or compact
 WISEA J065131.78+315155.7,drop,faint shred or compact
 WISEA J065153.44+315542.9,drop,faint shred or compact
-WISEA J182803.04+315711.0,drop,faint shred or compact
 WISEA J182801.92+315912.4,drop,faint shred or compact
 WISEA J065442.07+321139.4,drop,faint shred or compact
 WISEA J065332.63+321153.1,drop,faint shred or compact
@@ -420,7 +415,6 @@ WISEA J022803.54+323153.6,drop,faint shred or compact
 WISEA J065855.25+323624.3,drop,faint shred or compact
 WISEA J182103.91+324646.0,drop,faint shred or compact
 WISEA J182037.01+324708.4,drop,faint shred or compact
-WISEA J182054.08+324903.6,drop,faint shred or compact
 WISEA J182332.22+325030.7,drop,faint shred or compact
 WISEA J022827.54+325204.5,drop,faint shred or compact
 WISEA J182201.41+325630.9,drop,faint shred or compact
@@ -439,7 +433,6 @@ PGC 2032366,drop,faint shred or compact
 WISEA J094815.62+332958.4,drop,faint shred or compact
 WISEA J222935.55+333120.7,drop,faint shred or compact
 WISEA J135043.88+333122.3,drop,faint shred or compact
-WISEA J174207.69+333347.1,drop,faint shred or compact
 WISEA J114558.00+333511.6,drop,faint shred or compact
 WISEA J114537.65+333525.4,drop,faint shred or compact
 2MASS J14404926+3335256,drop,faint shred or compact
@@ -481,7 +474,6 @@ CGMW 5-00237,drop,faint shred or compact
 GALEXASC J175534.05+075209.4,drop,faint shred or compact
 GALEXASC J175606.25+123457.6,drop,faint shred or compact
 CGMW 5-00395,drop,faint shred or compact
-CGMW 5-00399,drop,faint shred or compact
 CGMW 5-00404,drop,faint shred or compact
 CGMW 5-00496,drop,faint shred or compact
 CGMW 5-00516,drop,faint shred or compact
@@ -506,8 +498,6 @@ CGMW 5-00952,drop,faint shred or compact
 CGMW 5-01002,drop,faint shred or compact
 CGMW 5-01124,drop,faint shred or compact
 CGMW 5-01154,drop,faint shred or compact
-CGMW 5-01187,drop,faint shred or compact
-CGMW 5-01222,drop,faint shred or compact
 WISEA J180940.61+094126.0,drop,faint shred or compact
 CGMW 5-01473,drop,faint shred or compact
 GALEXMSC J181113.09+142822.3,drop,faint shred or compact
@@ -516,7 +506,6 @@ GALEXASC J181244.72+083358.7,drop,faint shred or compact
 GALEXASC J181244.89+090854.3,drop,faint shred or compact
 GALEXASC J181256.80+094604.9,drop,faint shred or compact
 CGMW 5-02034,drop,faint shred or compact
-CGMW 5-02063,drop,faint shred or compact
 GALEXASC J181609.03+072533.2,drop,faint shred or compact
 CGMW 5-02471,drop,faint shred or compact
 GALEXASC J181735.27+144902.3,drop,faint shred or compact
@@ -532,8 +521,6 @@ CGMW 5-03019,drop,faint shred or compact
 CGMW 5-03025,drop,faint shred or compact
 CGMW 5-03031,drop,faint shred or compact
 CGMW 5-03048,drop,faint shred or compact
-CGMW 5-03122,drop,faint shred or compact
-CGMW 5-03146,drop,faint shred or compact
 CGMW 5-03162,drop,faint shred or compact
 CGMW 5-03190,drop,faint shred or compact
 CGMW 5-03220,drop,faint shred or compact
@@ -556,15 +543,12 @@ GALEXASC J183000.35+253722.3,drop,faint shred or compact
 2MASX J18301078+1822511,drop,faint shred or compact
 CGMW 5-04278,drop,faint shred or compact
 CGMW 5-04333,drop,faint shred or compact
-GALEXASC J183028.23+223626.1,drop,faint shred or compact
-CGMW 5-04368,drop,faint shred or compact
 CGMW 5-04375,drop,faint shred or compact
 CGMW 5-04399,drop,faint shred or compact
 CGMW 5-04405,drop,faint shred or compact
 CGMW 5-04443,drop,faint shred or compact
 CGMW 5-04444,drop,faint shred or compact
 CGMW 5-04506,drop,faint shred or compact
-GALEXASC J183112.52+242241.0,drop,faint shred or compact
 CGMW 5-04598,drop,faint shred or compact
 GALEXASC J183151.27+262922.4,drop,faint shred or compact
 CGMW 5-04680,drop,faint shred or compact
@@ -594,15 +578,12 @@ GALEXASC J183648.60+225217.4,drop,faint shred or compact
 GALEXASC J183646.73+262950.4,drop,faint shred or compact
 GALEXASC J183710.61+240527.7,drop,faint shred or compact
 CGMW 5-05871,drop,faint shred or compact
-WISEA J183735.49+232906.5,drop,faint shred or compact
 CGMW 5-05963,drop,faint shred or compact
 GALEXASC J183739.31+254603.6,drop,faint shred or compact
 CGMW 5-05997,drop,faint shred or compact
 CGMW 5-06040,drop,faint shred or compact
 CGMW 5-06043,drop,faint shred or compact
-GALEXASC J183803.60+251036.2,drop,faint shred or compact
 GALEXASC J183813.46+190408.5,drop,faint shred or compact
-GALEXMSC J183806.68+251052.5,drop,faint shred or compact
 CGMW 5-06062,drop,faint shred or compact
 CGMW 5-06072,drop,faint shred or compact
 CGMW 5-06284,drop,faint shred or compact
@@ -642,9 +623,7 @@ CGMW 5-08053,drop,faint shred or compact
 WISEA J184919.75+264415.4,drop,faint shred or compact
 CGMW 5-08059,drop,faint shred or compact
 CGMW 5-08070,drop,faint shred or compact
-CGMW 5-08242,drop,faint shred or compact
 GALEXASC J185111.38+232144.0,drop,faint shred or compact
-CGMW 5-08610,drop,faint shred or compact
 CGMW 5-08661,drop,faint shred or compact
 CGMW 5-09135,drop,faint shred or compact
 CGMW 5-09153,drop,faint shred or compact
@@ -680,8 +659,6 @@ WISEA J153924.85+343443.9,drop,faint shred or compact
 WISEA J001010.48-732117.4,drop,faint shred or compact
 WISEA J001110.04+343625.8,drop,faint shred or compact
 WISEA J003802.20+180342.9,drop,faint shred or compact
-WISEA J004931.68+341652.7,drop,faint shred or compact
-WISEA J004950.46+341912.6,drop,faint shred or compact
 WISEA J005033.56+342609.6,drop,faint shred or compact
 WISEA J005341.82-790126.4,drop,faint shred or compact
 WISEA J005745.58-670044.6,drop,faint shred or compact
@@ -701,7 +678,6 @@ WISEA J021505.60+353834.3,drop,faint shred or compact
 WISEA J021542.91+325612.1,drop,faint shred or compact
 WISEA J021544.90+333927.2,drop,faint shred or compact
 WISEA J021756.89+354002.8,drop,faint shred or compact
-WISEA J021913.55+322105.9,drop,faint shred or compact
 WISEA J021929.15+353109.5,drop,faint shred or compact
 WISEA J022117.75+341323.0,drop,faint shred or compact
 WISEA J022147.97+345102.2,drop,faint shred or compact
@@ -710,23 +686,18 @@ WISEA J022359.21+340255.8,drop,faint shred or compact
 WISEA J022632.75+322155.6,drop,faint shred or compact
 WISEA J022659.68+333155.1,drop,faint shred or compact
 WISEA J022738.78+341023.5,drop,faint shred or compact
-WISEA J023000.89+335151.4,drop,faint shred or compact
-WISEA J023132.96+355512.2,drop,faint shred or compact
 WISEA J023228.52+341851.2,drop,faint shred or compact
 WISEA J023302.83+303931.2,drop,faint shred or compact
 WISEA J023351.96+330633.9,drop,faint shred or compact
 WISEA J023359.56+304921.0,drop,faint shred or compact
-WISEA J023406.61+342058.0,drop,faint shred or compact
 WISEA J023428.40+343745.9,drop,faint shred or compact
 WISEA J023430.40+305909.6,drop,faint shred or compact
-WISEA J023431.13+342117.8,drop,faint shred or compact
 WISEA J023457.55+332641.9,drop,faint shred or compact
 WISEA J023623.56+311835.2,drop,faint shred or compact
 WISEA J023700.88+332604.9,drop,faint shred or compact
 WISEA J024115.42+251243.4,drop,faint shred or compact
 WISEA J024319.33+253513.7,drop,faint shred or compact
 WISEA J024953.25+222927.8,drop,faint shred or compact
-WISEA J025031.39+262737.1,drop,faint shred or compact
 WISEA J025540.11+122053.8,drop,faint shred or compact
 WISEA J025545.03+111333.4,drop,faint shred or compact
 WISEA J025548.21+123037.8,drop,faint shred or compact
@@ -739,7 +710,6 @@ WISEA J025910.20+163853.2,drop,faint shred or compact
 WISEA J025947.87+125732.9,drop,faint shred or compact
 WISEA J030017.94+162301.2,drop,faint shred or compact
 WISEA J030028.28+145121.3,drop,faint shred or compact
-WISEA J030048.56+201424.3,drop,faint shred or compact
 WISEA J030209.57+150707.7,drop,faint shred or compact
 WISEA J030306.53+145657.3,drop,faint shred or compact
 WISEA J030322.11+175728.3,drop,faint shred or compact
@@ -808,11 +778,9 @@ WISEA J040430.46+224822.8,drop,faint shred or compact
 WISEA J040520.89+205312.9,drop,faint shred or compact
 WISEA J040800.59+232010.6,drop,faint shred or compact
 WISEA J040820.57+164041.6,drop,faint shred or compact
-WISEA J040835.19+174742.0,drop,faint shred or compact
 WISEA J040848.81+170338.9,drop,faint shred or compact
 WISEA J040848.89+174945.8,drop,faint shred or compact
 WISEA J040944.33+182852.9,drop,faint shred or compact
-WISEA J041148.99+202648.3,drop,faint shred or compact
 WISEA J041151.51+185815.1,drop,faint shred or compact
 WISEA J041211.07+210709.0,drop,faint shred or compact
 WISEA J041211.86+185850.7,drop,faint shred or compact
@@ -823,7 +791,6 @@ WISEA J041521.78+150714.6,drop,faint shred or compact
 WISEA J041729.22+174504.1,drop,faint shred or compact
 WISEA J041751.40+180414.1,drop,faint shred or compact
 WISEA J041936.33+163726.0,drop,faint shred or compact
-WISEA J041936.65+204112.6,drop,faint shred or compact
 WISEA J042016.28+203901.4,drop,faint shred or compact
 WISEA J042020.09+175712.5,drop,faint shred or compact
 WISEA J042318.95+202134.1,drop,faint shred or compact
@@ -894,7 +861,6 @@ WISEA J073728.12+333416.2,drop,faint shred or compact
 SDSS J074627.74+341010.7,drop,faint shred or compact
 WISEA J074652.64+340902.2,drop,faint shred or compact
 WISEA J075101.21+335706.7,drop,faint shred or compact
-WISEA J075240.45+331035.6,drop,faint shred or compact
 WISEA J082410.35+344956.8,drop,faint shred or compact
 WISEA J082611.67+345923.6,drop,faint shred or compact
 WISEA J083129.17+343520.9,drop,faint shred or compact
@@ -924,12 +890,9 @@ SDSS J120229.91+063021.5,drop,faint shred or compact
 WISEA J120527.95+344441.4,drop,faint shred or compact
 SDSS J121236.73+342552.8,drop,faint shred or compact
 SDSS J124224.24+340806.5,drop,faint shred or compact
-WISEA J124239.00+334308.8,drop,faint shred or compact
 WISEA J124301.54+333042.7,drop,faint shred or compact
 WISEA J131740.01+331044.1,drop,faint shred or compact
-WISEA J133243.04+335300.9,drop,faint shred or compact
 WISEA J133245.96+331937.4,drop,faint shred or compact
-WISEA J133300.93+335050.6,drop,faint shred or compact
 WISEA J133539.45+332300.1,drop,faint shred or compact
 WISEA J133543.18+332302.4,drop,faint shred or compact
 WISEA J134522.02+333939.1,drop,faint shred or compact
@@ -967,14 +930,11 @@ WISEA J165538.89+352545.5,drop,faint shred or compact
 WISEA J165541.52+352540.0,drop,faint shred or compact
 WISEA J165603.09+343626.6,drop,faint shred or compact
 WISEA J165604.28+352310.2,drop,faint shred or compact
-WISEA J165605.60+344833.6,drop,faint shred or compact
-WISEA J165656.95+344837.3,drop,faint shred or compact
 SDSS J165820.33+332624.2,drop,faint shred or compact
 WISEA J170444.36+324511.4,drop,faint shred or compact
 WISEA J173416.75+340619.0,drop,faint shred or compact
 SDSS J173442.16+334256.1,drop,faint shred or compact
 SDSS J213620.75+114125.9,drop,faint shred or compact
-WISEA J133311.01+334954.3,drop,faint shred or compact
 WISEA J065730.38+323614.2,drop,faint shred or compact
 2MFGC 04134,drop,faint shred or compact
 WISEA J083207.09+341541.2,drop,faint shred or compact
@@ -1023,7 +983,6 @@ WISEA J130133.49+340700.2,drop,faint shred or compact
 WISEA J130402.30+341624.8,drop,faint shred or compact
 WISEA J131737.01+344406.9,drop,faint shred or compact
 WISEA J131947.44+344415.3,drop,faint shred or compact
-WISEA J133206.65+335304.8,drop,faint shred or compact
 WISEA J133254.54+335323.7,drop,faint shred or compact
 WISEA J131712.66+343501.2,drop,faint shred or compact
 WISEA J180532.50+070559.3,drop,faint shred or compact
@@ -1037,13 +996,11 @@ WISEA J175234.07+045527.1,drop,faint shred or compact
 WISEA J175302.25+040333.3,drop,faint shred or compact
 WISEA J175411.97+044557.1,drop,faint shred or compact
 WISEA J175524.05+063602.6,drop,faint shred or compact
-WISEA J175742.61+034459.6,drop,faint shred or compact
 WISEA J175809.17+062040.7,drop,faint shred or compact
 WISEA J175851.43+035936.7,drop,faint shred or compact
 WISEA J175956.01-010535.7,drop,faint shred or compact
 WISEA J180019.79+045921.3,drop,faint shred or compact
 WISEA J180305.99+013657.3,drop,faint shred or compact
-WISEA J180341.57+063153.2,drop,faint shred or compact
 WISEA J180629.07+011218.5,drop,faint shred or compact
 WISEA J180708.51+035324.3,drop,faint shred or compact
 WISEA J180915.11+063009.0,drop,faint shred or compact
@@ -1062,7 +1019,6 @@ WISEA J194647.98+020255.9,drop,faint shred or compact
 WISEA J195125.61+010442.2,drop,faint shred or compact
 WISEA J130320.24-061224.1,drop,faint shred or compact
 WISEA J232818.41-394626.1,drop,faint shred or compact
-WISEA J024204.02+281138.6,drop,faint shred or compact
 WISEA J024149.56+281452.4,drop,faint shred or compact
 WISEA J024256.31+271605.7,drop,faint shred or compact
 WISEA J012727.96+344606.8,drop,faint shred or compact
@@ -1087,7 +1043,6 @@ WISEA J031937.73+213239.8,drop,faint shred or compact
 WISEA J031945.90+210904.0,drop,faint shred or compact
 WISEA J032132.70+210210.6,drop,faint shred or compact
 WISEA J032223.35+211159.2,drop,faint shred or compact
-WISEA J032244.37+232744.6,drop,faint shred or compact
 WISEA J032322.51+221403.3,drop,faint shred or compact
 WISEA J032323.70+192821.3,drop,faint shred or compact
 WISEA J032329.49+205220.7,drop,faint shred or compact
@@ -1120,7 +1075,6 @@ WISEA J035902.20+182236.0,drop,faint shred or compact
 WISEA J035928.41+204305.2,drop,faint shred or compact
 WISEA J040000.93+230718.7,drop,faint shred or compact
 WISEA J040035.90+225914.6,drop,faint shred or compact
-WISEA J040036.86+181425.3,drop,faint shred or compact
 WISEA J040122.16+185246.7,drop,faint shred or compact
 WISEA J040138.04+192933.0,drop,faint shred or compact
 WISEA J040144.92+162027.7,drop,faint shred or compact
@@ -1139,7 +1093,6 @@ WISEA J041142.81+203324.7,drop,faint shred or compact
 WISEA J041321.23+205129.9,drop,faint shred or compact
 WISEA J041328.73+180257.9,drop,faint shred or compact
 WISEA J041346.64+194020.5,drop,faint shred or compact
-WISEA J041538.22+230244.2,drop,faint shred or compact
 WISEA J041558.12+182421.2,drop,faint shred or compact
 WISEA J041600.55+205347.3,drop,faint shred or compact
 WISEA J041711.35+192813.1,drop,faint shred or compact
@@ -1159,7 +1112,6 @@ WISEA J043007.08+244126.8,drop,faint shred or compact
 WISEA J043007.79+240408.7,drop,faint shred or compact
 WISEA J043016.15+194312.7,drop,faint shred or compact
 WISEA J043021.93+154720.6,drop,faint shred or compact
-WISEA J043147.19+141927.3,drop,faint shred or compact
 WISEA J043347.54+155301.3,drop,faint shred or compact
 WISEA J043513.82+175751.1,drop,faint shred or compact
 WISEA J044308.80+192633.9,drop,faint shred or compact
@@ -1168,7 +1120,6 @@ WISEA J044439.59+212619.7,drop,faint shred or compact
 WISEA J044958.06+205246.0,drop,faint shred or compact
 WISEA J045028.50+213319.5,drop,faint shred or compact
 WISEA J045117.73+182025.0,drop,faint shred or compact
-WISEA J045137.65+212444.2,drop,faint shred or compact
 WISEA J045229.45+193224.7,drop,faint shred or compact
 WISEA J045237.77+175907.9,drop,faint shred or compact
 WISEA J045349.87+144156.7,drop,faint shred or compact
@@ -1179,7 +1130,6 @@ WISEA J050532.68+194058.3,drop,faint shred or compact
 WISEA J050549.55+195447.5,drop,faint shred or compact
 WISEA J050551.65+202415.9,drop,faint shred or compact
 WISEA J050553.31+143217.6,drop,faint shred or compact
-WISEA J050555.78+195321.9,drop,faint shred or compact
 WISEA J050618.36+210417.1,drop,faint shred or compact
 WISEA J050710.99+144236.6,drop,faint shred or compact
 WISEA J050742.12+152820.3,drop,faint shred or compact
@@ -1264,7 +1214,6 @@ WISEA J182633.80+205521.4,drop,faint shred or compact
 WISEA J182822.11+181317.2,drop,faint shred or compact
 WISEA J182932.58+174012.5,drop,faint shred or compact
 WISEA J182958.70+182251.9,drop,faint shred or compact
-WISEA J183033.56+223604.1,drop,faint shred or compact
 WISEA J183047.88+225539.7,drop,faint shred or compact
 WISEA J183108.02+181244.8,drop,faint shred or compact
 WISEA J183201.57+221853.8,drop,faint shred or compact
@@ -1277,17 +1226,11 @@ WISEA J183524.07+200022.4,drop,faint shred or compact
 WISEA J183520.62+225058.0,drop,faint shred or compact
 WISEA J183720.26+253659.2,drop,faint shred or compact
 WISEA J183740.80+200901.5,drop,faint shred or compact
-WISEA J183756.46+180824.1,drop,faint shred or compact
-WISEA J183828.30+265329.3,drop,faint shred or compact
 WISEA J183830.61+252935.1,drop,faint shred or compact
 WISEA J184208.56+252623.1,drop,faint shred or compact
 WISEA J184237.35+254417.7,drop,faint shred or compact
-WISEA J184418.38+241744.6,drop,faint shred or compact
-WISEA J184419.46+241716.7,drop,faint shred or compact
 WISEA J184447.37+243249.8,drop,faint shred or compact
-WISEA J184450.46+255646.3,drop,faint shred or compact
 WISEA J184452.33+252218.1,drop,faint shred or compact
-WISEA J184454.63+255824.1,drop,faint shred or compact
 WISEA J184615.80+244035.7,drop,faint shred or compact
 WISEA J184654.87+263405.5,drop,faint shred or compact
 WISEA J025601.65+191834.1,drop,faint shred or compact
@@ -1311,7 +1254,6 @@ WISEA J180555.62+141256.8,drop,faint shred or compact
 WISEA J041149.03+153717.7,drop,faint shred or compact
 WISEA J052234.31+170901.8,drop,faint shred or compact
 WISEA J050353.38+141548.8,drop,faint shred or compact
-WISEA J050118.13+171244.4,drop,faint shred or compact
 WISEA J042450.00+155029.4,drop,faint shred or compact
 WISEA J041643.24+154712.9,drop,faint shred or compact
 WISEA J032458.76+162208.6,drop,faint shred or compact
@@ -1342,7 +1284,6 @@ WISEA J181038.44+134839.7,drop,faint shred or compact
 WISEA J034833.53+153430.0,drop,faint shred or compact
 WISEA J034943.55+154421.9,drop,faint shred or compact
 WISEA J043527.98+174713.6,drop,faint shred or compact
-WISEA J050739.67+162508.9,drop,faint shred or compact
 WISEA J183520.22+225017.8,drop,faint shred or compact
 WISEA J035000.89+202002.2,drop,faint shred or compact
 WISEA J034005.97+231559.9,drop,faint shred or compact
@@ -1358,14 +1299,11 @@ WISEA J034219.11+231317.7,drop,faint shred or compact
 WISEA J043959.79+212906.8,drop,faint shred or compact
 WISEA J034208.44+234524.2,drop,faint shred or compact
 WISEA J181756.67+194116.0,drop,faint shred or compact
-WISEA J035059.72+201304.5,drop,faint shred or compact
 WISEA J044039.70+223209.9,drop,faint shred or compact
 WISEA J044704.85+183652.4,drop,faint shred or compact
 WISEA J031017.80+191100.7,drop,faint shred or compact
 WISEA J180056.32+263523.1,drop,faint shred or compact
 WISEA J031002.65+191540.7,drop,faint shred or compact
-WISEA J034530.36+185731.2,drop,faint shred or compact
-WISEA J035051.24+201303.9,drop,faint shred or compact
 WISEA J034024.33+224538.3,drop,faint shred or compact
 WISEA J034907.13+183718.3,drop,faint shred or compact
 WISEA J031002.82+182255.5,drop,faint shred or compact
@@ -1437,9 +1375,7 @@ WISEA J070502.91+322120.3,drop,faint shred or compact
 WISEA J231956.32+333901.4,drop,faint shred or compact
 WISEA J065432.60+325720.6,drop,faint shred or compact
 WISEA J065923.73+340437.8,drop,faint shred or compact
-WISEA J223712.99+340508.9,drop,faint shred or compact
 WISEA J065954.39+330803.9,drop,faint shred or compact
-WISEA J173516.00+334329.4,drop,faint shred or compact
 WISEA J070055.00+350325.8,drop,faint shred or compact
 WISEA J070344.46+341437.1,drop,faint shred or compact
 WISEA J175556.16+342541.3,drop,faint shred or compact
@@ -1458,7 +1394,6 @@ WISEA J175534.91+333618.5,drop,faint shred or compact
 WISEA J082224.60+343817.9,drop,faint shred or compact
 WISEA J171532.67+333532.7,drop,faint shred or compact
 WISEA J065606.54+314211.4,drop,faint shred or compact
-WISEA J121423.40+334915.9,drop,faint shred or compact
 WISEA J182044.82+332615.9,drop,faint shred or compact
 WISEA J103048.93+345724.7,drop,faint shred or compact
 2MASX J10115068+3336094,drop,faint shred or compact
@@ -1552,7 +1487,6 @@ WISEA J044918.67+210011.1,drop,faint shred or compact
 WISEA J042342.67+163656.5,drop,faint shred or compact
 WISEA J025731.91+121106.0,drop,faint shred or compact
 WISEA J040910.91+154423.1,drop,faint shred or compact
-WISEA J025050.91+215111.9,drop,faint shred or compact
 WISEA J041821.32+141310.3,drop,faint shred or compact
 WISEA J050013.64+200955.7,drop,faint shred or compact
 WISEA J025046.56+220001.1,drop,faint shred or compact
@@ -1576,7 +1510,6 @@ WISEA J040900.88+172316.2,drop,faint shred or compact
 WISEA J045956.73+150950.8,drop,faint shred or compact
 WISEA J025043.82+220401.4,drop,faint shred or compact
 WISEA J050203.54+204857.3,drop,faint shred or compact
-WISEA J025042.69+215354.9,drop,faint shred or compact
 WISEA J041958.52+152628.4,drop,faint shred or compact
 WISEA J031155.47+164144.3,drop,faint shred or compact
 WISEA J033119.51+074723.4,drop,faint shred or compact
@@ -1604,7 +1537,6 @@ WISEA J041917.84+163719.5,drop,faint shred or compact
 WISEA J050249.27+202910.9,drop,faint shred or compact
 WISEA J034340.19+240837.9,drop,faint shred or compact
 WISEA J024924.32+223924.4,drop,faint shred or compact
-WISEA J032747.58+210554.1,drop,faint shred or compact
 2MASX J04041665+1640210,drop,faint shred or compact
 WISEA J034927.77+193939.5,drop,faint shred or compact
 WISEA J034331.48+154302.2,drop,faint shred or compact
@@ -1628,7 +1560,6 @@ WISEA J040529.67+205305.0,drop,faint shred or compact
 WISEA J043156.75+161205.5,drop,faint shred or compact
 WISEA J030315.20+154626.9,drop,faint shred or compact
 WISEA J034447.44+204908.1,drop,faint shred or compact
-WISEA J025032.56+215255.9,drop,faint shred or compact
 WISEA J040314.94+170542.8,drop,faint shred or compact
 WISEA J035713.85+165006.2,drop,faint shred or compact
 WISEA J024704.27+271344.7,drop,faint shred or compact
@@ -1655,7 +1586,6 @@ WISEA J045311.23+210752.1,drop,faint shred or compact
 WISEA J050536.59+170551.5,drop,faint shred or compact
 WISEA J025547.62+154142.3,drop,faint shred or compact
 WISEA J034220.89+233507.2,drop,faint shred or compact
-WISEA J042901.85+233153.2,drop,faint shred or compact
 WISEA J030750.20+170122.2,drop,faint shred or compact
 WISEA J041610.99+182419.0,drop,faint shred or compact
 WISEA J043038.64+160133.0,drop,faint shred or compact
@@ -1682,7 +1612,6 @@ WISEA J044029.14+195756.3,drop,faint shred or compact
 WISEA J050319.52+150505.0,drop,faint shred or compact
 WISEA J043240.21+172106.9,drop,faint shred or compact
 WISEA J041907.32+215808.1,drop,faint shred or compact
-WISEA J040359.70+200538.9,drop,faint shred or compact
 WISEA J043405.05+202104.7,drop,faint shred or compact
 WISEA J025919.81+161056.2,drop,faint shred or compact
 WISEA J042704.51+160711.0,drop,faint shred or compact
@@ -1695,7 +1624,6 @@ WISEA J043038.20+240734.7,drop,faint shred or compact
 WISEA J040522.16+191935.0,drop,faint shred or compact
 WISEA J042443.23+235812.4,drop,faint shred or compact
 WISEA J044714.98+183706.5,drop,faint shred or compact
-WISEA J043811.96+175753.2,drop,faint shred or compact
 WISEA J043633.84+225604.2,drop,faint shred or compact
 WISEA J051711.24+044847.6,drop,faint shred or compact
 WISEA J060015.66+005536.3,drop,faint shred or compact
@@ -1739,7 +1667,6 @@ WISEA J194724.51+033931.8,drop,faint shred or compact
 WISEA J173814.62+020811.5,drop,faint shred or compact
 WISEA J200153.06+020614.9,drop,faint shred or compact
 WISEA J174654.32+044119.1,drop,faint shred or compact
-WISEA J195627.09+043112.6,drop,faint shred or compact
 WISEA J173547.97+004546.7,drop,faint shred or compact
 WISEA J201352.02+010624.2,drop,faint shred or compact
 WISEA J181635.80+054450.0,drop,faint shred or compact
@@ -1753,7 +1680,6 @@ WISEA J182701.53+264349.3,drop,faint shred or compact
 WISEA J181337.22+193742.1,drop,faint shred or compact
 WISEA J201103.61+060332.0,drop,faint shred or compact
 WISEA J181232.45+240144.3,drop,faint shred or compact
-WISEA J203610.86+133912.8,drop,faint shred or compact
 WISEA J195820.53+030735.8,drop,faint shred or compact
 WISEA J212850.67+252022.1,drop,faint shred or compact
 WISEA J183234.87+131232.4,drop,faint shred or compact
@@ -1785,7 +1711,6 @@ WISEA J181735.71+063233.7,drop,faint shred or compact
 WISEA J195628.41+032417.4,drop,faint shred or compact
 WISEA J202909.99+093642.8,drop,faint shred or compact
 WISEA J182035.25+202035.9,drop,faint shred or compact
-WISEA J182338.40+233120.0,drop,faint shred or compact
 WISEA J183149.57+283043.0,drop,faint shred or compact
 WISEA J183021.93+234540.4,drop,faint shred or compact
 WISEA J195521.27+055103.3,drop,faint shred or compact
@@ -1897,7 +1822,6 @@ WISEA J022703.41+354649.3,drop,faint shred or compact
 WISEA J021606.74+352823.6,drop,faint shred or compact
 WISEA J020019.19+350814.4,drop,faint shred or compact
 WISEA J011117.56+333227.0,drop,faint shred or compact
-WISEA J000536.40+331436.5,drop,faint shred or compact
 WISEA J015938.47+352656.0,drop,faint shred or compact
 WISEA J000334.38+341421.1,drop,faint shred or compact
 WISEA J021253.80+342922.2,drop,faint shred or compact
@@ -1953,7 +1877,6 @@ WISEA J080059.32-484436.5,drop,faint shred or compact
 WISEA J070746.54-433959.8,drop,faint shred or compact
 WISEA J080026.69-483322.4,drop,faint shred or compact
 WISEA J080557.47-500459.2,drop,faint shred or compact
-WISEA J090759.53-611730.5,drop,faint shred or compact
 WISEA J084229.48-602722.0,drop,faint shred or compact
 WISEA J080304.11-495717.0,drop,faint shred or compact
 WISEA J084513.00-263142.3,drop,faint shred or compact
@@ -1984,7 +1907,6 @@ WISEA J110928.75-703316.8,drop,faint shred or compact
 WISEA J124834.86-525823.7,drop,faint shred or compact
 WISEA J114538.93-512513.3,drop,faint shred or compact
 WISEA J153051.50-450512.0,drop,faint shred or compact
-WISEA J151701.69-460446.4,drop,faint shred or compact
 WISEA J143017.95-703235.4,drop,faint shred or compact
 WISEA J152935.10-451448.2,drop,faint shred or compact
 WISEA J133859.53-493510.0,drop,faint shred or compact
@@ -2031,7 +1953,6 @@ WISEA J074344.07+335020.9,drop,faint shred or compact
 WISEA J074408.72+340039.8,drop,faint shred or compact
 WISEA J075147.36+334737.3,drop,faint shred or compact
 WISEA J075843.24+332847.6,drop,faint shred or compact
-WISEA J083256.67+335538.1,drop,faint shred or compact
 WISEA J164748.79+352819.1,drop,faint shred or compact
 WISEA J083135.28+343518.4,drop,faint shred or compact
 WISEA J083116.51+343529.2,drop,faint shred or compact
@@ -2063,10 +1984,8 @@ WISEA J102349.00+342046.2,drop,faint shred or compact
 WISEA J102807.83+345738.1,drop,faint shred or compact
 WISEA J104047.93+344343.7,drop,faint shred or compact
 WISEA J103658.90+345047.7,drop,faint shred or compact
-WISEA J121423.80+334621.4,drop,faint shred or compact
 WISEA J124314.47+332111.4,drop,faint shred or compact
 WISEA J125334.46+334033.3,drop,faint shred or compact
-WISEA J121503.73+334652.8,drop,faint shred or compact
 WISEA J132554.24+321659.5,drop,faint shred or compact
 WISEA J153845.09+343504.6,drop,faint shred or compact
 WISEA J153908.63+342457.3,drop,faint shred or compact
@@ -2087,7 +2006,6 @@ WISEA J122425.75+335522.7,drop,faint shred or compact
 WISEA J022627.28-024610.3,drop,faint shred or compact
 WISEA J024320.31-024155.9,drop,faint shred or compact
 WISEA J235502.20-013327.3,drop,faint shred or compact
-WISEA J214912.16-013325.8,drop,faint shred or compact
 WISEA J214455.78-013324.4,drop,faint shred or compact
 WISEA J003153.41-013316.9,drop,faint shred or compact
 WISEA J001948.57-012912.4,drop,faint shred or compact
@@ -2225,7 +2143,6 @@ WISEA J091719.37+301340.8,drop,faint shred or compact
 WISEA J093735.52+291347.4,drop,faint shred or compact
 WISEA J115611.74+844602.8,drop,faint shred or compact
 WISEA J123554.82+291410.2,drop,faint shred or compact
-WISEA J134111.63+291329.4,drop,faint shred or compact
 WISEA J135750.72+294938.9,drop,faint shred or compact
 WISEA J144350.00+294516.7,drop,faint shred or compact
 WISEA J162757.78+294004.5,drop,faint shred or compact
@@ -2303,7 +2220,6 @@ WISEA J110631.88+304502.5,drop,faint shred or compact
 WISEA J110834.66+304513.9,drop,faint shred or compact
 WISEA J111522.71+310325.8,drop,faint shred or compact
 WISEA J111533.75+304526.6,drop,faint shred or compact
-WISEA J111619.53+291335.5,drop,faint shred or compact
 WISEA J111648.71+294512.5,drop,faint shred or compact
 WISEA J111807.10+292909.2,drop,faint shred or compact
 WISEA J111817.68+293238.3,drop,faint shred or compact
@@ -2325,7 +2241,6 @@ WISEA J122820.73+304409.6,drop,faint shred or compact
 WISEA J123607.88+291406.0,drop,faint shred or compact
 SDSS J123915.63+302800.5,drop,faint shred or compact
 WISEA J124302.00+305107.0,drop,faint shred or compact
-WISEA J124302.27+311425.3,drop,faint shred or compact
 WISEA J124447.51+291327.1,drop,faint shred or compact
 WISEA J124507.74+302730.1,drop,faint shred or compact
 WISEA J125118.65+303347.5,drop,faint shred or compact
@@ -2512,7 +2427,6 @@ WISEA J153328.60+291623.4,drop,faint shred or compact
 WISEA J061353.00+501910.5,drop,faint shred or compact
 WISEA J003623.32+013551.9,drop,faint shred or compact
 WISEA J125953.53+291359.5,drop,faint shred or compact
-WISEA J130347.63+291314.5,drop,faint shred or compact
 WISEA J150514.70+304454.8,drop,faint shred or compact
 WISEA J112332.78+291349.4,drop,faint shred or compact
 WISEA J142744.57+304541.8,drop,faint shred or compact
@@ -2647,7 +2561,6 @@ WISEA J181812.21+300232.9,drop,faint shred or compact
 WISEA J154032.35+304437.8,drop,faint shred or compact
 WISEA J160309.61+301404.0,drop,faint shred or compact
 WISEA J091718.33+294340.4,drop,faint shred or compact
-WISEA J083502.54+292845.0,drop,faint shred or compact
 WISEA J085236.36+292853.1,drop,faint shred or compact
 WISEA J232302.43+300052.9,drop,faint shred or compact
 WISEA J150320.94+295922.5,drop,faint shred or compact
@@ -2666,7 +2579,6 @@ WISEA J062546.98+424935.1,drop,faint shred or compact
 WISEA J185621.20+400421.5,drop,faint shred or compact
 WISEA J061610.49+503928.3,drop,faint shred or compact
 WISEA J061235.35+524509.1,drop,faint shred or compact
-WISEA J061538.85+451536.4,drop,faint shred or compact
 WISEA J061543.01+470403.4,drop,faint shred or compact
 WISEA J180915.23+463712.8,drop,faint shred or compact
 WISEA J191029.90+451353.8,drop,faint shred or compact
@@ -2720,7 +2632,6 @@ WISEA J220019.81-004544.5,drop,faint shred or compact
 WISEA J221727.00+024055.9,drop,faint shred or compact
 WISEA J221541.37+001836.4,drop,faint shred or compact
 WISEA J221509.53+012739.8,drop,faint shred or compact
-WISEA J231912.21+011401.8,drop,faint shred or compact
 WISEA J221534.69+001220.4,drop,faint shred or compact
 WISEA J221343.04+002348.3,drop,faint shred or compact
 WISEA J221859.19+001141.9,drop,faint shred or compact
@@ -2763,7 +2674,6 @@ WISEA J052906.01+635715.8,drop,faint shred or compact
 WISEA J053039.45+631308.2,drop,faint shred or compact
 WISEA J085050.64+300019.6,drop,faint shred or compact
 WISEA J055528.99+580804.3,drop,faint shred or compact
-2MASX J06521594+3211071,drop,faint shred or compact
 WISEA J065239.77+592338.0,drop,faint shred or compact
 WISEA J094724.75+843450.5,drop,faint shred or compact
 WISEA J060540.25+692841.3,drop,faint shred or compact
@@ -2830,7 +2740,6 @@ WISEA J082408.51+295953.5,drop,faint shred or compact
 WISEA J082826.69+300028.0,drop,faint shred or compact
 WISEA J163748.78+310058.5,drop,faint shred or compact
 WISEA J164219.67+302519.6,drop,faint shred or compact
-2MASS J16410616+3322441,drop,faint shred or compact
 WISEA J160833.02+301414.1,drop,faint shred or compact
 WISEA J160728.67+301404.1,drop,faint shred or compact
 WISEA J160759.48+301411.6,drop,faint shred or compact
@@ -2869,8 +2778,6 @@ WISEA J141012.50+490218.6,drop,faint shred or compact
 WISEA J155408.33+304524.9,drop,faint shred or compact
 WISEA J091847.89+291412.7,drop,faint shred or compact
 WISEA J111533.40+310436.7,drop,faint shred or compact
-2MASS J11235210+3045043,drop,faint shred or compact
-2MASS J09495293+2925090,drop,faint shred or compact
 WISEA J094217.41+292853.9,drop,faint shred or compact
 WISEA J111521.32+304043.6,drop,faint shred or compact
 WISEA J093429.93+291354.3,drop,faint shred or compact
@@ -2880,7 +2787,6 @@ WISEA J111534.15+310006.8,drop,faint shred or compact
 WISEA J134053.79+291621.4,drop,faint shred or compact
 WISEA J125607.27+300003.9,drop,faint shred or compact
 WISEA J130118.51+293147.5,drop,faint shred or compact
-WISEA J132554.24+321659.5,drop,faint shred or compact
 WISEA J132143.29+291336.1,drop,faint shred or compact
 WISEA J130242.76+294459.2,drop,faint shred or compact
 SDSS J100137.41+022232.1,drop,faint shred or compact
@@ -2920,7 +2826,6 @@ WISEA J145028.89+304504.9,drop,faint shred or compact
 2MASS J13381482+2945398,drop,faint shred or compact
 WISEA J111740.29+294442.8,drop,faint shred or compact
 WISEA J091559.02+300033.7,drop,faint shred or compact
-WISEA J220415.14+024538.9,drop,faint shred or compact
 WISEA J150423.66+294428.0,drop,faint shred or compact
 SMDG J1223446+295952,drop,faint shred or compact
 CGMW 4-1023,drop,faint shred or compact,
@@ -18559,7 +18464,6 @@ CGMW 5-01380,hyperleda-coords,NED incorrect,
 ESO 325-IG 020 NED01,hyperleda-coords,NED incorrect,
 LEDA 083311,hyperleda-coords,NED incorrect,
 LEDA 074424,hyperleda-coords,NED incorrect,
-CGMW 4-6392,hyperleda-coords,NED incorrect,
 2MASX J12211685-3934407,hyperleda-coords,NED incorrect,
 LEDA 082673,hyperleda-coords,NED incorrect,
 CGMW 2-3928,hyperleda-coords,NED incorrect,

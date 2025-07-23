@@ -1823,11 +1823,19 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
                 print(f'Read {len(photo1):,d} objects from {photofile}')
                 photo.append(photo1)
             photo = vstack(photo)
-            pdb.set_trace()
+
             #I = photo['NODATA']
             #I = photo['MGE_FAIL']
-            I = photo['CENTERMASKED']
-            cat = cat[np.isin(cat['OBJNAME'], photo['OBJNAME'][I])]
+            #I = photo['CENTERMASKED']
+            #cat = cat[np.isin(cat['OBJNAME'], photo['OBJNAME'][I])]
+
+            #M = np.logical_or.reduce((photo['FRACMASK_INIT_G'] < 0.2, photo['FRACMASK_INIT_R'] < 0.2,
+            #                          photo['FRACMASK_INIT_I'] < 0.2, photo['FRACMASK_INIT_Z'] < 0.2))
+            #I = ((photo['DIAM_PHOT'] > photo['DIAM_INIT']) * (photo['DIAM_PHOT'] > 30.) * (photo['SEP'] < 5.) * M)
+            I = (photo['DIAM_PHOT'] > 45.)
+            photo = photo[I]
+            #photo = photo[:128]
+            cat = cat[np.isin(cat['OBJNAME'], photo['OBJNAME'])]
             writeit(cat, region)
 
 

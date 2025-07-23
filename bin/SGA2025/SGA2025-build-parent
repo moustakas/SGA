@@ -1484,15 +1484,28 @@ def build_parent_archive(verbose=False, overwrite=False):
 
     # apply cuts based on the photometry files
     print('Processing the photometry files')
+    photo = []
     for region in ['dr11-south', 'dr9-north']:
         photofiles = sorted(glob(os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-v?.?.fits')))
-        photo = []
         for photofile in photofiles:
             photo1 = Table(fitsio.read(photofile))
             print(f'Read {len(photo1):,d} objects from {photofile}')
             photo.append(photo1)
-        photo = vstack(photo)
-    pdb.set_trace()
+    photo = vstack(photo)
+
+   # trim to the objects still in the sample
+    photo = photo[np.isin(photo['OBJNAME'], cat['OBJNAME'])]
+
+    # the photo files are limited to objects with DIAM_INIT<20 arcsec;
+    # after significant VI, most of these are genuinely small objects,
+    # so throw them all out
+    I = np.isin(cat['OBJNAME'], photo['OBJNAME'])
+    print(f'Removing {np.sum(I):,d}/{len(cat):,d} objects with diam_init<20 arcsec based on the photometry files.')
+    cat = cat[~I]
+
+    # remove objects within globular clusters and planetary nebulae
+    
+
 
     # flag objects in the LMC and SMC
     cat['IN_LMC'] = np.zeros(len(cat), bool)
