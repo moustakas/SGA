@@ -1767,7 +1767,7 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
         def writeit(cat, region, prefix='tmplist'):
             outfile = f'{prefix}-{region}.txt'
             out = cat['OBJNAME', ]
-            #out['COMMENT'] = 'drop,faint shred or compact'
+            out['COMMENT'] = 'drop,faint shred or compact'
             out.write(outfile, format='ascii.csv', overwrite=True)
             log.info(f'Wrote {outfile}')
 
@@ -1812,6 +1812,24 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             #cat = cat[I][:128]
             #cat = cat[:128]
             #writeit(cat, region)
+
+        if False:#True:
+            from glob import glob
+            # check the photo fitting results
+            photofiles = sorted(glob(os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-v?.?.fits')))
+            photo = []
+            for photofile in photofiles:
+                photo1 = Table(fitsio.read(photofile))
+                print(f'Read {len(photo1):,d} objects from {photofile}')
+                photo.append(photo1)
+            photo = vstack(photo)
+            pdb.set_trace()
+            #I = photo['NODATA']
+            #I = photo['MGE_FAIL']
+            I = photo['CENTERMASKED']
+            cat = cat[np.isin(cat['OBJNAME'], photo['OBJNAME'][I])]
+            writeit(cat, region)
+
 
         if False:#True:
             #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023340.70+345454.6'])]
@@ -2142,7 +2160,8 @@ def read_catalog(catalog='sga20205-parent', region='dr9-north', cutoutdir='.',
             #cat = cat[cat['RESOLVED']]
             diam, _, _, _ = choose_geometry(cat, mindiam=0.)
             #cat = cat[diam < 60.]
-            cat = cat[~np.logical_or.reduce((cat['RESOLVED'], cat['FORCEPSF'], cat['FORCEGAIA']))]
+            cat = cat[cat['FORCEPSF']]
+            #cat = cat[~np.logical_or.reduce((cat['RESOLVED'], cat['FORCEPSF'], cat['FORCEGAIA']))]
             #pdb.set_trace()
 
             fulldiam, _, _, _ = choose_geometry(fullcat, mindiam=0.)

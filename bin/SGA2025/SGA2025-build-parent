@@ -1168,20 +1168,20 @@ def update_lvd_properties(cat):
                 else:
                     lvd[f'{col}_REF'][I[J]] = updates[f'{col.lower()}_ref'][J]
 
-        print('Updating hard-coded properties:')
-        for col, prop, ref in zip(('RA', 'DEC', 'DIAM', 'BA', 'PA'), props, refs):
-            J = np.where(prop != -99.)[0]
-            if len(J) > 0:
-                print(f'  --{len(J)} {col} values')
-                lvd[col][I[J]] = prop[J]
-                if col == 'RA' or col == 'DEC':
-                    lvd['RADEC_REF'][I[J]] = ref[J]
-                else:
-                    lvd[f'{col}_REF'][I[J]] = ref[J]
-                #if col == 'RA' or col == 'DEC':
-                #    print(f'  {lvd[col][I]}-->{prop:.6f} [{ref}]')
-                #else:
-                #    print(f'  {lvd[col][I]:0g}-->{prop:.2f} [{ref}]')
+        #print('Updating hard-coded properties:')
+        #for col, prop, ref in zip(('RA', 'DEC', 'DIAM', 'BA', 'PA'), props, refs):
+        #    J = np.where(prop != -99.)[0]
+        #    if len(J) > 0:
+        #        print(f'  --{len(J)} {col} values')
+        #        lvd[col][I[J]] = prop[J]
+        #        if col == 'RA' or col == 'DEC':
+        #            lvd['RADEC_REF'][I[J]] = ref[J]
+        #        else:
+        #            lvd[f'{col}_REF'][I[J]] = ref[J]
+        #        #if col == 'RA' or col == 'DEC':
+        #        #    print(f'  {lvd[col][I]}-->{prop:.6f} [{ref}]')
+        #        #else:
+        #        #    print(f'  {lvd[col][I]:0g}-->{prop:.2f} [{ref}]')
 
     # write out
     lvd = lvd[np.argsort(lvd['ROW'])]
@@ -1216,7 +1216,6 @@ def update_properties(cat, verbose=False):
     # First, update the LVD objects.
     # [0] Update LVD properties.
     cat = update_lvd_properties(cat)
-    pdb.set_trace()
 
     propfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-properties.csv')
     props = Table.read(propfile, format='csv', comment='#')
@@ -1484,18 +1483,16 @@ def build_parent_archive(verbose=False, overwrite=False):
     del refcat
 
     # apply cuts based on the photometry files
-    if False:
-        print('Processing the photometry files')
-        for region in ['dr11-south', 'dr9-north']:
-            photofiles = glob(os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-v?.?.fits'))
-            photo = []
-            for photofile in photofiles:
-                photo1 = Table(fitsio.read(photofile))
-                print(f'Read {len(photo1):,d} objects from {photofile}')
-                photo.append(photo1)
-            photo = vstack(photo)
-            pdb.set_trace()
-        pdb.set_trace()
+    print('Processing the photometry files')
+    for region in ['dr11-south', 'dr9-north']:
+        photofiles = sorted(glob(os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-v?.?.fits')))
+        photo = []
+        for photofile in photofiles:
+            photo1 = Table(fitsio.read(photofile))
+            print(f'Read {len(photo1):,d} objects from {photofile}')
+            photo.append(photo1)
+        photo = vstack(photo)
+    pdb.set_trace()
 
     # flag objects in the LMC and SMC
     cat['IN_LMC'] = np.zeros(len(cat), bool)
@@ -1686,19 +1683,15 @@ def build_parent(verbose=False, overwrite=False):
             'STARFDIST', 'STARDIST', 'STARMAG']#, 'ROW_PARENT']
     #colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
 
+    # merge the two regions
+    parent = []
     for region in ['dr11-south', 'dr9-north']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         log.info(f'Read {len(cat):,d} objects from {catfile}')
 
-        if False:
-            diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-            I = (diam > 30.)# * (diam < 2.*60.)
-        else:
-            I = (cat['ROW_LVD'] != -99) * cat['RESOLVED']
-        cat = cat[I]
-        log.info(f'Selected {np.sum(I):,d}')
-
+        diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
+        I = np.logical_or(cat['ROW_LVD'] != -99, (diam > 30.))# * (diam < 2.*60.)
         ##########################
         ## trim very small objects and to a specific set of test bricks
         #diam, ba, pa, ref = choose_geometry(cat, mindiam=10.)
@@ -1711,6 +1704,14 @@ def build_parent(verbose=False, overwrite=False):
         #I = np.where(np.isin(bricknames, ['0545m052', '0545m050', '0542m050']))[0]
         #cat = cat[I]
         ##########################
+
+        cat = cat[I]
+        log.info(f'Selected {np.sum(I):,d} objects')
+
+        pdb.set_trace()
+
+        I = (cat['ROW_LVD'] != -99) * cat['RESOLVED']
+
 
         # build the group catalog from the full sample
         diam, ba, pa, ref, mag, band = choose_geometry(cat, mindiam=10., get_mag=True)
