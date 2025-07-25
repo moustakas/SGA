@@ -1493,8 +1493,12 @@ def build_parent_archive(verbose=False, overwrite=False):
             photo.append(photo1)
     photo = vstack(photo)
 
-   # trim to the objects still in the sample
+    # trim to the objects still in the sample but remove objects that
+    # appear in the "properties" file
     photo = photo[np.isin(photo['OBJNAME'], cat['OBJNAME'])]
+    
+    pdb.set_trace()
+
 
     # the photo files are limited to objects with DIAM_INIT<20 arcsec;
     # after significant VI, most of these are genuinely small objects,
@@ -1504,7 +1508,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat = cat[~I]
 
     # remove objects within globular clusters and planetary nebulae
-    
+    actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
 
 
     # flag objects in the LMC and SMC
