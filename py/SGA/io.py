@@ -16,7 +16,7 @@ from SGA.logger import log
 
 RACOLUMN = 'RA'
 DECCOLUMN = 'DEC'
-DIAMCOLUMN = 'DIAM'
+DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
 ZCOLUMN = 'Z'
 REFIDCOLUMN = 'SGAID'
 
@@ -729,7 +729,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                     mgegalaxy.xmed, mgegalaxy.ymed, sz[1]/2, sz[0]/2))
                 mgegalaxy.xmed = sz[1]/2
                 mgegalaxy.ymed = sz[0]/2
-            
+
         radec_med = data['{}_wcs'.format(refband.lower())].pixelToPosition(
             mgegalaxy.ymed+1, mgegalaxy.xmed+1).vals
         radec_peak = data['{}_wcs'.format(refband.lower())].pixelToPosition(
@@ -897,7 +897,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         del data[filt]
         del data['{}_var_'.format(filt.lower())]
 
-    return data            
+    return data
 
 
 def _build_catalog_one(args):
@@ -922,7 +922,7 @@ def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS, refcat='R1', verbo
     for igal, onegal in enumerate(fullsample):
         #print(f'Working on {onegal["GALAXY"]}')
         refid = onegal[REFIDCOLUMN]
-        
+
         ellipsefile = os.path.join(galaxydir, f'{galaxy}-custom-ellipse-{refid}.fits')
         if not os.path.isfile(ellipsefile):
             log.warning(f'Missing ellipse file {ellipsefile}')
@@ -1085,7 +1085,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
                                        'invvar': '{}-invvar'.format(filesuffix),
                                        'psf': '{}-psf'.format(filesuffix)}})
             filt2pixscale.update({band: galex_pixscale})
-        
+
     if unwise:
         unwise_bands = ['W1', 'W2', 'W3', 'W4']
         #unwise_bands = ['w1', 'w2', 'w3', 'w4'] # ['W1', 'W2', 'W3', 'W4']
@@ -1114,7 +1114,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
                     log.warning(f'File {imfile} not found.')
                 missing_data = True
                 break
-    
+
     data['failed'] = False # be optimistic!
     data['missingdata'] = False
     data['filesuffix'] = filesuffix
@@ -1132,13 +1132,13 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     tractorfile = os.path.join(galaxydir, '{}-{}.fits'.format(galaxy, filt2imfile['tractor']))
     if verbose:
         log.info(f'Reading {tractorfile}')
-        
+
     cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
             'sersic', 'shape_r', 'shape_e1', 'shape_e2',
             'flux_g', 'flux_r', 'flux_z',
             'flux_ivar_g', 'flux_ivar_r', 'flux_ivar_z',
             'nobs_g', 'nobs_r', 'nobs_z',
-            'mw_transmission_g', 'mw_transmission_r', 'mw_transmission_z', 
+            'mw_transmission_g', 'mw_transmission_r', 'mw_transmission_z',
             'psfdepth_g', 'psfdepth_r', 'psfdepth_z',
             'psfsize_g', 'psfsize_r', 'psfsize_z']
     if galex:
@@ -1146,7 +1146,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     if unwise:
         cols = cols+['flux_w1', 'flux_w2', 'flux_w3', 'flux_w4',
                      'flux_ivar_w1', 'flux_ivar_w2', 'flux_ivar_w3', 'flux_ivar_w4']
-        
+
     tractor = fits_table(tractorfile, columns=cols)
     hdr = fitsio.read_header(tractorfile)
     if verbose:
@@ -1174,7 +1174,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
 
         # Add a list of dictionaries to iterate over different sky backgrounds.
         data.update({'sky': []})
-        
+
         for isky in np.arange(nskyaps):
             subsky = {}
             subsky['skysuffix'] = '{}-skytest{:02d}'.format(filesuffix, isky)
@@ -1189,7 +1189,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     data = _read_image_data(data, filt2imfile, starmask=starmask,
                             filt2pixscale=filt2pixscale,
                             fill_value=fill_value, verbose=verbose)
-    
+
     # Find the galaxies of interest.
     samplefile = os.path.join(galaxydir, '{}-{}.fits'.format(galaxy, filt2imfile['sample']))
     sample = Table(fitsio.read(samplefile))
@@ -1239,12 +1239,12 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
         galaxyinfo = {'mangaid': (str(galaxy_id), None)}
         #for band in ['fuv', 'nuv', 'g', 'r', 'z', 'w1', 'w2', 'w3', 'w4']:
         #    galaxyinfo['mw_transmission_{}'.format(band)] = (samp['MW_TRANSMISSION_{}'.format(band.upper())][0], None)
-        
+
         #              'galaxy': (str(np.atleast_1d(samp['GALAXY'])[0]), '')}
         #for key, unit in zip(['ra', 'dec'], [u.deg, u.deg]):
         #    galaxyinfo[key] = (np.atleast_1d(samp[key.upper()])[0], unit)
         allgalaxyinfo.append(galaxyinfo)
-        
+
     return data, allgalaxyinfo
 
 
@@ -3437,7 +3437,7 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
         raise IOError(msg)
 
 
-def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north', 
+def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
                            outdir='.', project='project1'):
     """Read the zooniverse VI sample.
 
@@ -3541,6 +3541,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 
     """
     import fitsio
+    from SGA.coadds import REGIONBITS
 
     if first and last:
         if first > last:
@@ -3555,7 +3556,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         samplefile = os.path.join(sga_dir(), '2025', f'SGA2025-ellipse-{version}.fits')
     else:
         version = parent_version()
-        samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{region}-{version}.fits')
+        samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
 
     if not os.path.isfile(samplefile):
         msg = f'Sample file {samplefile} not found.'
@@ -3608,11 +3609,17 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 log.info(f'Selecting indices {first} through {last} (N={len(rows):,d})')
 
     fullsample = Table(fitsio.read(samplefile, upper=True))
-    fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
+    #fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
     sample = fullsample[rows]
 
     #sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
     log.info(f'Read {len(sample):,d}/{len(fullsample):,d} GROUP_PRIMARY objects from {samplefile}')
+
+    # select objects in this region
+    I = sample['REGION'] & REGIONBITS[region] != 0
+    log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
+             f'region={region}')
+    sample = sample[I]
 
     if galaxylist is not None:
         log.debug('Selecting specific galaxies.')

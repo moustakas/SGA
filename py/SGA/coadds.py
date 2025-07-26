@@ -14,13 +14,24 @@ PIXSCALE = 0.262
 GALEX_PIXSCALE = 1.5
 UNWISE_PIXSCALE = 2.75
 
-RUNS = {'dr9-north': 'north', 'dr9-south': 'south', 
+RUNS = {'dr9-north': 'north', 'dr9-south': 'south',
         'dr10-south': 'south', 'dr11-south': 'south'}
 
 GRZ = ['g', 'r', 'z']
 GRIZ = ['g', 'r', 'i', 'z']
 BANDS = {'dr9-north': GRZ, 'dr9-south': GRZ,
          'dr10-south': GRIZ, 'dr11-south': GRIZ}
+
+FITBITS = dict(
+    ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
+    forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
+    forcepsf = 2**2,  # force PSF for source detection and photometry
+)
+
+REGIONBITS = {
+    'dr11-south': 2**0,
+    'dr9-north': 2**1
+}
 
 
 def _mosaic_width(radius_mosaic_arcsec, pixscale=PIXSCALE):
@@ -324,13 +335,15 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     return ccds
 
 
-def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCALE,
-                  bands=GRIZ, mp=1, nsigma=None, subsky_radii=None, just_coadds=False,
-                  missing_ok=False, force=False, cleanup=True, unwise=True,
-                  galex=False, no_gaia=False, no_tycho=False, verbose=False):
+def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec,
+                  pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
+                  subsky_radii=None, just_coadds=False,  missing_ok=False,
+                  force=False, cleanup=True, unwise=True, galex=False,
+                  no_gaia=False, no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
 
     """
+    import fitsio
     from legacypipe.runbrick import main as runbrick
     from SGA.io import custom_brickname
 
@@ -339,15 +352,19 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
     width = _mosaic_width(radius_mosaic_arcsec, pixscale=pixscale)
     brickname = f'custom-{custom_brickname(onegal[RACOLUMN], onegal[DECCOLUMN])}'
 
-    # Quickly read the input CCDs and check that we have all the colors we need.
-    ccds = get_ccds(survey, onegal[RACOLUMN], onegal[DECCOLUMN], width, pixscale, bands=bands)
+    # Quickly read the input CCDs and check that we have all the
+    # colors we need.
+    ccds = get_ccds(survey, onegal[RACOLUMN], onegal[DECCOLUMN],
+                    width, pixscale, bands=bands)
     if len(ccds) == 0:
         log.info('No CCDs touching this brick; nothing to do.')
         return 1, stagesuffix
-    
-    #usebands = list(sorted(set(ccds.filter)))
-    #these = [filt in usebands for filt in bands]
-    #print('Bands touching this brick, {}'.format(' '.join([filt for filt in usebands])))
+
+    usebands = np.array(sorted(set(ccds.filter)))
+    these = [filt in usebands for filt in bands]
+    log.info('Bands touching this brick: {" ".join([filt for filt in usebands]))}')
+    bands = usebands
+
     #if np.sum(these) < len(bands) and require_grz:
     #    print('Missing imaging in at least grz and require_grz=True; nothing to do.')
     #    ccdsfile = os.path.join(survey.output_dir, '{}-ccds-{}.fits'.format(galaxy, run))
@@ -401,21 +418,27 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
     if nsigma:
         cmdargs += f'--nsigma {nsigma:.0f} '
     log.info(f'runbrick {cmdargs}')
-    pdb.set_trace()
 
     err = runbrick(args=cmdargs.split())
+
+    # get the updated (final) set of bands
+    finalccds = fitsio.read(os.path.join(survey.output_dir, f'{galaxy}-ccds.fits'))
+    bands = np.array(sorted(set(finalccds['filter'])))
 
     # optionally write out the un WISE PSFs
     if unwise or galex:
         import fitsio
 
-        cat = fitsio.read(os.path.join(survey.output_dir, 'tractor', 'cus', f'tractor-{brickname}.fits'),
-                          columns=['brick_primary', 'ref_cat', 'ref_id', 'wise_coadd_id', 'brickname'])
+        cat = fitsio.read(os.path.join(survey.output_dir, 'tractor', 'cus',
+                                       f'tractor-{brickname}.fits'), columns=[
+                                           'brick_primary', 'ref_cat', 'ref_id',
+                                           'wise_coadd_id', 'brickname'])
         cat = cat[cat['brick_primary']]
         psffile = os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
                                f'legacysurvey-{brickname}-copsf-r.fits.fz')
         if not os.path.isfile(psffile):
-            psffile = os.path.join(survey.output_dir, f'{galaxy}-{stagesuffix}-psf-r.fits.fz')
+            psffile = os.path.join(survey.output_dir,
+                                   f'{galaxy}-{stagesuffix}-psf-r.fits.fz')
         hdr = fitsio.read_header(psffile)
 
         for remcard in ('MJD', 'MJD_TAI', 'PSF_SIG', 'INPIXSC'):
@@ -433,34 +456,38 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
             if coadd_id == '':
                 from legacypipe.unwise import unwise_tiles_touching_wcs
                 from legacypipe.survey import wcs_for_brick, BrickDuck
-                brick = BrickDuck(onegal[racolumn], onegal[deccolumn], brickname)
-                targetwcs = wcs_for_brick(brick, W=float(width), H=float(width), pixscale=pixscale)            
+                brick = BrickDuck(onegal[racolumn], onegal[deccolumn],
+                                  brickname)
+                targetwcs = wcs_for_brick(brick, W=float(width), H=float(width),
+                                          pixscale=pixscale)
                 tiles = unwise_tiles_touching_wcs(targetwcs)
                 coadd_id = tiles.coadd_id[0] # grab the first one
 
             #hdr['PIXSCAL'] = 2.75
             hdr.delete('PIXSCAL')
-            hdr.add_record(dict(name='PIXSCAL', value=2.75, comment='pixel scale (arcsec)'))
-            hdr.add_record(dict(name='COADD_ID', value=coadd_id, comment='WISE coadd ID'))
+            hdr.add_record(dict(name='PIXSCAL', value=2.75,
+                                comment='pixel scale (arcsec)'))
+            hdr.add_record(dict(name='COADD_ID', value=coadd_id,
+                                comment='WISE coadd ID'))
 
-            # https://github.com/legacysurvey/legacypipe/blob/main/py/legacypipe/unwise.py#L267-L310        
+            # https://github.com/legacysurvey/legacypipe/blob/main/py/legacypipe/unwise.py#L267-L310
             fluxrescales = {1: 1.04, 2: 1.005, 3: 1.0, 4: 1.0}
             for band in (1, 2, 3, 4):
                 wband = f'W{band}'
                 #hdr['BAND'] = wband
                 hdr.delete('BAND')
                 hdr.add_record(dict(name='BAND', value=wband, comment='Band of this coadd/PSF'))
-    
+
                 #psfimg = unwise_psf.get_unwise_psf(band, coadd_id)
                 #psfimg /= psfimg.sum()
-    
+
                 if (band == 1) or (band == 2):
                     # we only have updated PSFs for W1 and W2
                     psfimg = unwise_psf.get_unwise_psf(band, coadd_id, modelname='neo6_unwisecat')
                     #psfimg = unwise_psf.get_unwise_psf(band, coadd_id, modelname='neo7_unwisecat')
                 else:
                     psfimg = unwise_psf.get_unwise_psf(band, coadd_id)
-    
+
                 if band == 4:
                     # oversample (the unwise_psf models are at native W4 5.5"/pix,
                     # while the unWISE coadds are made at 2.75"/pix.
@@ -477,20 +504,20 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=PIXSCAL
                     dy = (yy - iy).astype(np.float32)
                     psfimg = psfimg.astype(np.float32)
                     rtn = lanczos3_interpolate(ix, iy, dx, dy, [subpsf.flat], [psfimg])
-    
+
                     psfimg = subpsf
                     del xx, yy, ix, iy, dx, dy
-    
+
                 psfimg /= psfimg.sum()
                 psfimg *= fluxrescales[band]
                 with survey.write_output('copsf', brick=brickname, band=wband) as out:
                     out.fits.write(psfimg, header=hdr)
-    
+
             hdr.delete('COADD_ID')
 
         if galex:
             from legacypipe.galex import galex_psf
-    
+
             #hdr['PIXSCAL'] = 1.50
             hdr.delete('PIXSCAL')
             hdr.add_record(dict(name='PIXSCAL', value=1.50, comment='pixel scale (arcsec)'))

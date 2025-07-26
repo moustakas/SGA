@@ -45,9 +45,9 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
 
     grp, mult, frst, nxt = fof_groups(parent, linking_length=linking_length, verbose=verbose)
 
-    ngrp = max(grp) + 1    
+    ngrp = max(grp) + 1
     groupid = np.arange(ngrp)
-    
+
     groupcat = Table()
     groupcat.add_column(Column(name='groupid', dtype='i4', length=ngrp, data=groupid)) # unique ID number
     #groupcat.add_column(Column(name='galaxy', dtype='S1000', length=ngrp))
@@ -58,14 +58,14 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
     groupcat.add_column(Column(name='d25max', dtype='f4', length=ngrp))
     groupcat.add_column(Column(name='d25min', dtype='f4', length=ngrp))
     groupcat.add_column(Column(name='fracmasked', dtype='f4', length=ngrp))
-    
+
     # Add the groupid to the input catalog.
     outparent = parent.copy()
-    
+
     #t0 = time.time()
     npergrp, _ = np.histogram(grp, bins=len(grp), range=(0, len(grp)))
     #print('Time to build the histogram = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )    
-    
+
     big = np.where( npergrp > 1 )[0]
     small = np.where( npergrp == 1 )[0]
 
@@ -77,7 +77,7 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
         groupcat['d25max'][small] = parent['d25'][grp[small]]
         groupcat['d25min'][small] = parent['d25'][grp[small]]
         groupcat['width'][small] = parent['d25'][grp[small]]
-        
+
         outparent['groupid'][grp[small]] = groupid[small]
 
     for igrp in range(len(big)):
@@ -88,39 +88,39 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
             ig.append(nxt[jj])
             jj = nxt[jj]
         ig = np.array(ig)
-        
-        ra1, dec1 = parent['ra'][ig].data, parent['dec'][ig].data        
+
+        ra1, dec1 = parent['ra'][ig].data, parent['dec'][ig].data
         ra2, dec2 = xyztoradec(np.mean(radectoxyz(ra1, dec1), axis=0))
 
         groupcat['ra'][big[igrp]] = ra2
         groupcat['dec'][big[igrp]] = dec2
-        
+
         d25min, d25max = np.min(parent['d25'][ig]), np.max(parent['d25'][ig])
 
         groupcat['d25max'][big[igrp]] = d25max
         groupcat['d25min'][big[igrp]] = d25min
-        
+
         groupcat['nmembers'][big[igrp]] = len(ig)
         outparent['groupid'][ig] = groupcat['groupid'][big[igrp]]
-        
+
         # Get the distance of each object from every other object.
         #diff = arcsec_between(ra1, dec1, ra2, dec2) / 60 # [arcmin] # group center
-        
+
         diff = list()
         for _ra, _dec in zip(ra1, dec1):
             diff.append(arcsec_between(ra1, dec1, _ra, _dec) / 60) # [arcmin]
-        
+
         #if len(ig) > 2:
         #    import pdb ; pdb.set_trace()
         diameter = np.hstack(diff).max()
         groupcat['width'][big[igrp]] = diameter
-            
+
     print('Writing {}'.format(groupcatfile))
-    groupcat.write(groupcatfile, overwrite=True)    
+    groupcat.write(groupcatfile, overwrite=True)
 
     print('Writing {}'.format(parentfile))
     outparent.write(parentfile, overwrite=True)
-    
+
     return groupcat, outparent
 
 

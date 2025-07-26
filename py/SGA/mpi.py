@@ -44,7 +44,7 @@ def mpi_args():
     parser.add_argument('--html-raslices', action='store_true',
                         help='Organize HTML pages by RA slice (use in tandem with --htmlindex).')
     parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
-    
+
     parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
@@ -69,8 +69,6 @@ def mpi_args():
 
 def _start(galaxy, log=None, seed=None):
     if seed:
-        print('Random seed = {}'.format(seed), flush=True)        
+        print('Random seed = {}'.format(seed), flush=True)
     print('Started working on galaxy {} at {}'.format(
         galaxy, time.asctime()), flush=True, file=log)
-
-
