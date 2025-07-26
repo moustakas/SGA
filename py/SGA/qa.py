@@ -978,7 +978,7 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
     sc = ax.collections[2]
     ar_sky_cbar(ax, sc, r'Galaxy Surface Density (deg$^{-2}$)',
-                extend='both', mloc=mloc, clip_lo=clip_lo)
+                extend='both', mloc=mloc)#, clip_lo=clip_lo)
 
     # AR DES, galactic, ecliptic plane
     #desfn = os.path.join(os.getenv("DESI_ROOT"), "survey", "observations", "misc", "des_footprint.txt")
@@ -1000,7 +1000,7 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
 
 
-def fig_size_mag(sample, pngfile=None):
+def fig_size_mag(sample, nocuts=False, pngfile=None):
     """D(25) vs mag from the parent sample and D(25) histogram.
 
     """
@@ -1053,23 +1053,34 @@ def fig_size_mag(sample, pngfile=None):
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
 
-    for iref, ref in enumerate(np.unique(sample['DIAM_LIT_REF'])):
-        I = np.where((sample['DIAM_LIT_REF'] == ref) * (sample['DIAM_LIT'] != -99.) * (sample['MAG_LIT'] != -99.))[0]
-        if len(I) == 0:
-            continue
-        mag = sample['MAG_LIT'][I]
-        logdiam = np.log10(sample['DIAM_LIT'][I])
-        print(ref, len(I), min(mag), max(mag), min(logdiam), max(logdiam))
-        corner.hist2d(mag, logdiam, label=ref,
+    if nocuts:
+        for iref, ref in enumerate(np.unique(sample['DIAM_LIT_REF'])):
+            I = np.where((sample['DIAM_LIT_REF'] == ref) * (sample['DIAM_LIT'] != -99.) * (sample['MAG_LIT'] != -99.))[0]
+            if len(I) == 0:
+                continue
+            mag = sample['MAG_LIT'][I]
+            logdiam = np.log10(sample['DIAM_LIT'][I])
+            print(ref, len(I), min(mag), max(mag), min(logdiam), max(logdiam))
+            corner.hist2d(mag, logdiam, label=ref,
+                          levels=[0.5, 0.75, 0.95, 0.995],
+                          bins=100, smooth=True, color=colors[iref], ax=ax1, # mpl.cm.get_cmap('viridis'),
+                          plot_density=True, fill_contours=True, range=(xlim, ylim),
+                          data_kwargs={'color': colors[iref], 'alpha': 0.2, 'ms': 4, 'alpha': 0.5},
+                          contour_kwargs={'colors': 'k'},
+                          )
+            ax1.legend(loc='upper right', fontsize=14) # frameon=False,
+    else:
+        I = (sample['MAG'] != -99.) * (sample['DIAM'] > 0.)
+        mag = sample['MAG'][I]
+        logdiam = np.log10(sample['DIAM'][I])
+        corner.hist2d(mag, logdiam,
                       levels=[0.5, 0.75, 0.95, 0.995],
-                      bins=100, smooth=True, color=colors[iref], ax=ax1, # mpl.cm.get_cmap('viridis'),
+                      bins=100, smooth=True, color=colors[0], ax=ax1,
                       plot_density=True, fill_contours=True, range=(xlim, ylim),
-                      data_kwargs={'color': colors[iref], 'alpha': 0.2, 'ms': 4, 'alpha': 0.5},
+                      data_kwargs={'color': colors[0], 'alpha': 0.2,
+                                   'ms': 4, 'alpha': 0.5},
                       contour_kwargs={'colors': 'k'},
                       )
-    ax1.legend(loc='upper right', fontsize=14) # frameon=False,
-    #ax1.scatter(mag_notleda, logdiam_notleda, s=2, color=colors[2], alpha=0.5)#
-    #            #label='Supplemental')
     ax1.yaxis.set_major_formatter(major_formatter)
     ax1.set_yticks(np.log10([0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 40]))
     #ax1.legend(loc='upper right', frameon=False)
