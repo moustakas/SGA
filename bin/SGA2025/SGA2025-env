@@ -3,8 +3,8 @@
 # Shell script to set the environment variables for the SGA2025
 # project.
 
-export SGA_CODE_DIR=/global/homes/i/ioannis/code/git/SGA
-export LEGACYPIPE_CODE_DIR=/global/homes/i/ioannis/code/git/legacypipe
+export SGA_CODE_DIR=/global/homes/i/ioannis/code/SGA
+export LEGACYPIPE_CODE_DIR=/global/common/software/desi/users/ioannis/legacypipe
 export PYTHONPATH=$SGA_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH
 export PATH=$SGA_CODE_DIR/bin/SGA2025:$PATH
 
