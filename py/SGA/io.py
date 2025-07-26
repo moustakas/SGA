@@ -88,7 +88,14 @@ def get_raslice(ra):
         return np.array([f'{int(onera):03d}' for onera in ra])
 
 
-def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
+def sga2025_name(ra, dec, unixsafe=False):
+    # simple wrapper on radec_to_name with precision=3
+    return radec_to_name(ra, dec, prefix='SGA2025', precision=3,
+                         unixsafe=unixsafe)
+
+
+def radec_to_name(target_ra, target_dec, prefix='SGA2025',
+                  precision=4, unixsafe=False):
     """Convert the right ascension and declination of an object into a
     disk-friendly "name", for reference in publications.  Length of
     `target_ra` and `target_dec` must be the same if providing an
@@ -102,6 +109,8 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
     target_dec: array of :class:`~numpy.float64`
         Declination in degrees of target object(s). Can be float, double,
         or array/list of floats or doubles.
+    precision: :class:`int`
+        Number of decimal places in final naming convention.
 
     Returns
     -------
@@ -133,9 +142,6 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025', unixsafe=False):
         for message, check in inputs[coord]['tests']:
             if check(inputs[coord]['data']).any():
                 raise ValueError(f"{message} detected in {coord}!")
-
-    # Number of decimal places in final naming convention
-    precision = 4
 
     # Truncate decimals to the given precision
     ratrunc = np.trunc((10.**precision) * target_ra).astype(int).astype(str)
