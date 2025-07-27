@@ -105,7 +105,8 @@ def main():
             sample = sample[I]
             sample = sample[np.argsort(sample[DIAMCOLUMN])]
             sample = sample[:32]
-            sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0189.832+032.861']
+            #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0189.832+032.861']
+            pdb.set_trace()
 
         if len(sample) == 0:
             return

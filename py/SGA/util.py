@@ -12,6 +12,7 @@ from astropy.table import Table
 from astrometry.util.starutil_numpy import arcsec_between
 from astrometry.libkd.spherematch import match_radec
 
+from SGA.logger import log
 
 def find_close(cat, fullcat, rad_arcsec=1., isolated=False):
 
@@ -213,9 +214,9 @@ def resolve_close(cat, refcat, maxsep=1., keep_all=False, allow_vetos=False,
     ugroup = np.unique(refcat["GROUP_ID"])
     ugroup = ugroup[ugroup != -99]
 
-    print(f'Found {len(ugroup):,d} group(s) with ' + \
-          f'({np.sum(refcat["GROUP_ID"] != -99):,d}/{len(refcat):,d} ' + \
-          f'unique objects) within {maxsep:.1f} arcsec.')
+    log.info(f'Found {len(ugroup):,d} group(s) with ' + \
+             f'({np.sum(refcat["GROUP_ID"] != -99):,d}/{len(refcat):,d} ' + \
+             f'unique objects) within {maxsep:.1f} arcsec.')
 
     #check = refcat[refcat['GROUP_ID'] != -99]
     #check = check[np.argsort(check['GROUP_ID'])]

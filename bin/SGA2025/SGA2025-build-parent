@@ -42,6 +42,7 @@ from SGA.qa import qa_skypatch, multipage_skypatch
 from SGA.ellipse import get_basic_geometry
 from SGA.util import match, match_to, choose_primary, resolve_close
 from SGA.io import sga_dir, parent_version
+
 from SGA.logger import log
 
 cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIAM_HYPERLEDA',
@@ -263,7 +264,7 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
                 log.info(f'  Replacing {col}: {old} --> {new}')
             newcat[col][m1] = new
         if verbose:
-            log.info()
+            print()
 
     drop = np.hstack(drop)
     dropcat = vstack(dropcat)
@@ -462,7 +463,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                     'RCS 04020600360', 'NSA 142339', 'HIDEEP J1337-3320', # LVD systems
                     'ZwCl 0054.6-0127 18', 'ZwCl 0054.6-0127 16 NED02', 'ZwCl 0054.6-0127 16 NED01', # in UGC 00579 group
                     'ZwCl 0054.6-0127 31', # in UGC 00588 group
-                    ] 
+                    ]
             drop_prefixes = ['WINGS', 'SRGb', '[MD2000]', 'HeCS', 'ESP',
                              'SDSSCGB', 'NVSS', 'AGC', ]
             drop_ignore_diam_prefixes = [
@@ -484,8 +485,8 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'RR', 'RXC', 'MODS', 'BAS', 'HIZOA', 'LaCoSSPAr', 'HIJASS',
                 'AGESVC1', 'LRG', '[MLO2002]', '[H87]', '[ARN85]', '[LYY2017]',
                 'SDWFS', '[DMS2015]', 'FLX', 'CDFN:[ABB2003]', 'PDCS', '[MOH2004]',
-                'MS', '[SNS2015]', '[KEC2012]', '[LPG2013]', '6C', 'SDSS-II', 
-                'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS', 
+                'MS', '[SNS2015]', '[KEC2012]', '[LPG2013]', '6C', 'SDSS-II',
+                'GNS', 'CFHIZELS-SM14', 'CASBaH', '[DYC2005]', 'WIG', 'SHELS',
                 '[TGK2001]', '[CBR2014]', 'ANTL', '[TH2002]', '[CBR2013]', ]
             drop_references = [
                 'MESSIER 087:[SRB2011]', 'ABELL 1656:[BDG95]', 'ABELL 1656:[EF2011]',
@@ -495,7 +496,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 'NGC 4649:[KMZ2007]', 'NGC 3115:[KMZ2007]',
                 ###
                 'Cl J1604+4304:[PLO98]', 'Cl J1604+4303:[LPO98a]', 'Cl J1604+4321:[PLO2001]',
-                'HERC-1:[MKK97]', 'CL 1601+4253:[DG92]', 
+                'HERC-1:[MKK97]', 'CL 1601+4253:[DG92]',
                 'W4+0+0:[DD2013]', 'W4+0+1:[DD2013]', 'W4+0-1:[DD2013]', 'W4+0-2:[DD2013]',
                 'W4+1+0:[DD2013]', 'W4+1+1:[DD2013]', 'W4+1-1:[DD2013]', 'W4+1-2:[DD2013]',
                 'W4+2+0:[DD2013]', 'W4+2-1:[DD2013]', 'W4+2-2:[DD2013]', 'W4-1+0:[DD2013]',
@@ -804,357 +805,6 @@ def update_lvd_properties(cat):
         updates = Table.read(updatefile, format='csv', comment='#')
         log.info(f'Read {len(updates)} objects from {updatefile}')
 
-        #gals = [
-        #    'LMC',
-        #    'SMC',
-        #    # dr9-north
-        #    'DDO 126',
-        #    'NGC 5023',
-        #    'A0952+69',
-        #    'HS 117',
-        #    'UGCA 281',
-        #    'UGC 7298',
-        #    'BK6N',
-        #    'KKR 25',
-        #    'KK 17', # also in dr11-south
-        #    'Dw1245+6158',
-        #    # count=10 above here
-        #    'KK 193',
-        #    'NGC 4631-dw3', # also in dr11-south
-        #    'KK 135',
-        #    'KK 160',
-        #    'MAPS 1231+42',
-        #    'dw1239+3230',
-        #    'JKB83',
-        #    'LV J1228+4358',
-        #    'GARLAND',
-        #    'KDG 73',
-        #    # count=10 above here
-        #    'DDO 169NW',
-        #    'BK3N',
-        #    # dr11-south
-        #    'NGC 247',
-        #    'ESO 290-028',
-        #    'NGC 1792',
-        #    'Pegasus dIrr',
-        #    'NGC 4424',
-        #    'PGC1242',
-        #    'NGC 3351',
-        #    'DDO 133',
-        #    'UGCA 442',
-        #    'NGC 4592',
-        #    # count=10 above here
-        #    'NGC 1042',
-        #    'NGC 1827',
-        #    'NGC 1800',
-        #    'NGC 4562',
-        #    'ESO 346-007',
-        #    'ESO 472-015',
-        #    'ESO 325-011',
-        #    'DDO 153',
-        #    'NGC 3521-sat',
-        #    'KKs 3',
-        #    # count=10 above here
-        #    'PGC 51659',
-        #    'KK 218',
-        #    'UGC 1703',
-        #    'KDG 2',
-        #    'ESO 269-037',
-        #    'NGC 5011C',
-        #    'KK 144',
-        #    'KK 70',
-        #    'UGCA 292',
-        #    'MCG-04-31-038',
-        #    # count=10 above here
-        #    'UGC 2905',
-        #    'IC 3840',
-        #    'KKs 51',
-        #    'LeG05',
-        #    'HIPASS J1247-77',
-        #    'AM 1320-230',
-        #    'JKB129',
-        #    'dw1236+3336',
-        #    'GALFA Dw3',
-        #    'LV J0616-5745',
-        #    # count=10 above here
-        #    'dw1232p0015',
-        #    'Fornax',
-        #    'Phoenix',
-        #    'KK 221',
-        #    'Sculptor-dE1',
-        #    'KK 195',
-        #    'ESO 222-010',
-        #    'LV J0055-2310',
-        #    'HIPASS J1348-37',
-        #    'KK 213',
-        #    # count=10 above here
-        #    'dw1342-43',
-        #    'dw1227p0136',
-        #    'ESO 294-G010',
-        #    'KKSG 29',
-        #    'KDG 215',
-        #    'AGC 238890',
-        #    'dw0132+1422',
-        #    'KKSG 37',
-        #    'HIPASS J1337-39',
-        #    'KKSG 22',
-        #    # count=10 above here
-        #    'dw0136p1628',
-        #    'JKB142',
-        #    'LSBC D565-09',
-        #    'LeG19',
-        #    'dw1049p1247',
-        #    'LeG14',
-        #    'dw1238m0105',
-        #    'Holmberg II',
-        #    'NGC2976',
-        #    'DDO 125',
-        #    # count=10 above here
-        #    'UGC 6451',
-        #    'KK 77',
-        #    'KDG 63',
-        #    'MCG+09-20-131',
-        #]
-        #props = [ # ra, dec, diam, ba, pa
-        #    (80.894167, -69.756111, -99., -99., 171.),
-        #    (13.186667, -72.828611, -99., -99., 45.),
-        #    # dr9-north
-        #    (-99., -99., -99., -99., 145.5),
-        #    (-99., -99., -99., -99., 28.22),
-        #    (149.3783505, 69.2777057, 2.5, 0.75, 90.),
-        #    (-99., -99., -99., -99., 170.),
-        #    (186.570833, 48.494167, -99., -99., -99.),
-        #    (184.125699, 52.227996, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 105.),
-        #    (-99., -99., -99., -99., 10.),
-        #    (30.042042, 28.8311692, 0.6, 0.5, 167.5),
-        #    (-99., -99., -99., -99., 45.),
-        #    # count=10 above here
-        #    (198.87417, 41.50223, 1.2*0.39866, 0.77, 119.17), # =SMDG J1315298+413008
-        #    (190.72097, 32.45592, 1.2*0.42333, 0.9, 81.86), # =SMDG J1242530+322721
-        #    (184.8944985, 58.0439485, -99., -99., -99.),
-        #    (190.99079166666667, 43.66122222222222, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 167.16), # =SDSS J123109.08+420533.8
-        #    (189.7710, 32.5042, -99., -99., -99.),
-        #    (148.9569, 69.3326, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 175.),
-        #    (-99., -99., -99., -99., 40.),
-        #    (163.23779166666665, 69.54938888888888, -99., -99., 148.),
-        #    # count=10 above here
-        #    (-99., -99., -99., -99., 160.),
-        #    (148.45459331112409, 68.96961600271591, -99., -99., 105.),
-        #    # dr11-south
-        #    (-99., -99., -99., -99., 167.44),
-        #    (-99., -99., 3.3678637, 0.2748319, 90.72542),
-        #    (-99., -99., 5.5590425, 0.4954502, 136.1),
-        #    (-99., -99., 9.068349, 0.47048086, 124.596985),
-        #    (186.798241, 9.420542, -99., -99., -99.),
-        #    (-99., -99., 3.7, -99., 10.),
-        #    (-99., -99., -99., -99., 10.68),
-        #    (-99., -99., 5.509129, 0.699842, 162.88872),
-        #    (355.94309250000003, -31.956949, -99., -99., -99.),
-        #    (-99., -99., 5.871678, -99., -99.),
-        #    # count=10 above here
-        #    (40.099892, -8.433514, -99., -99., -99.),
-        #    (-99., -99., 4.9642844, -99., -99.),
-        #    (-99., -99., 3.8072977, -99., -99.),
-        #    (-99., -99., 3.8088787, -99., -99.),
-        #    (-99., -99., 1.66, -99., -99.), # double the HyperLeda diameter
-        #    (-99., -99., 0.5*3.672, -99., -99.), # halve the v1.0.5 diameter
-        #    (206.2520833333333, -41.861111111111114, -99., -99., -99.),
-        #    (193.486722, -12.1054537, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 45.),
-        #    (-99., -99., -99., -99., 100.),
-        #    # count=10 above here
-        #    (-99., -99., 2.301442, -99., 120.),
-        #    (-99., -99., -99., -99., 150.),
-        #    (33.22875, 32.815, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 99.826744),
-        #    (195.88829249999998, -46.586861, -99., -99., -99.),
-        #    (198.29949999999997, -43.26547222222222, -99., -99., -99.),
-        #    (186.37058399999998, 28.4845833, -99., -99., 90.),
-        #    (133.8470835, 33.559, -99., -99., -99.),
-        #    (-99., -99., 1.3, -99., 80.),
-        #    (197.40249999999997, -27.14075, -99., -99., -99.),
-        #    # count=10 above here
-        #    (59.250583333333324, 16.522444444444442, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 40.),
-        #    (191.0895833333333, -42.93969444444444, -99., -99., -99.),
-        #    (159.92899999999997, 12.634888888888888, -99., -99., -99.),
-        #    (191.890842, -77.582623, -99., -99., -99.),
-        #    (200.8745833333333, -23.393055555555556, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 120.),
-        #    (-99., -99., -99., -99., 80.),
-        #    (44.7343335, 13.6299722, -99., -99., -99.),
-        #    (94.03716666666666, -57.76461111111111, -99., -99., -99.),
-        #    # count=10 above here
-        #    (188.15054166666664, 0.2624444444444444, -99., -99., -99.),
-        #    (-99., -99., 47.76, -99., -99.), # LVD rhalf*1.2*2
-        #    (-99., -99., 5.832, -99., -99.), # LVD rhalf*1.2*2
-        #    (-99., -99., -99., -99., 160.),
-        #    (-99., -99., -99., -99., 0.), # over-ride the SGA-2020 PA
-        #    (-99., -99., 1.5, 0.75, -99.),
-        #    (218.7615, -49.4197, 0.8933055, 0.48865235, -99.),
-        #    (-99., -99., -99., -99., 120.),
-        #    (207.1412, -37.9677, 0.6, -99., 15.),
-        #    (-99., -99., 0.82, -99., -99.), # LVD rhalf*1.2*2
-        #    # count=10 above here
-        #    (205.6833333333333, -43.25527777777778, -99., -99., -99.),
-        #    (186.9418, 1.6037, 1.8, 0.8, -99.),
-        #    (-99., -99., 2.2, -99., -99.),
-        #    (189.30624999999998, -10.49611111111111, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 54.),
-        #    (-99., -99., 1.103, 0.66, 163),
-        #    (-99., -99., -99., -99., 49.),
-        #    (-99., -99., -99., -99., 150.),
-        #    (204.35541666666663, -39.89661111111111, 0.75, -99., 0.),
-        #    (166.53224999999998, -1.4469722222222223, -99., -99., -99.),
-        #    # count=10 above here
-        #    (-99., -99., -99., -99., 122.),
-        #    (-99., -99., -99., -99., 150.),
-        #    (143.3069583333333, 20.515361111111112, 0.5, -99., 105.),
-        #    (161.72754166666667, 12.788194444444445, -99., -99., -99.),
-        #    (162.29749999999999, 12.792777777777777, -99., -99., -99.),
-        #    (161.5591665, 12.9605556, -99., -99., -99.),
-        #    (189.70878723304824, -1.0868441333076733, 0.16, 0.7, 48.),
-        #    (124.77074999999998, 70.72002777777777, -99., -99., -99.),
-        #    (-99., -99., -99., -99., 143.),
-        #    (186.9249170689504, 43.4934747726463, 4.7, -99., -99.),
-        #    # count=10 above here
-        #    (-99., -99., 1.866, -99., -99.),
-        #    (147.55449, 67.509182, -99., -99., 24.),
-        #    (151.27666666666664, 66.55888888888889, -99., -99., -99.),
-        #    (183.945437, 52.387951, 1.4, -99., -99.),
-        #]
-        #refs = [
-        #    ('NED', 'NED', '', '', 'RC3'),
-        #    ('NED', 'NED', '', '', 'RC3'),
-        #    # dr9-north
-        #    ('', '', '', '', 'HYPERLEDA'),
-        #    ('', '', '', '', 'HYPERLEDA'),
-        #    ('HYPERLEDA', 'HYPERLEDA', 'VI', 'VI', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('2016AJ....152...50T', '2016AJ....152...50T', '', '', ''),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA'),
-        #    ('', '', '', '', 'VI'),
-        #    # count=10 above here
-        #    ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
-        #    ('SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes', 'SMUDGes'),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', '', '', 'HYPERLEDA'),
-        #    ('LS/DR9', 'LS/DR9', '', '', ''),
-        #    ('LS/DR9', 'LS/DR9', '', '', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('NED', 'NED', '', '', 'VI'),
-        #    # count=10 above here
-        #    ('', '', '', '', 'VI'),
-        #    ('VI', 'VI', '', '', 'VI'),
-        #    # dr11-south
-        #    ('', '', '', '', 'HYPERLEDA'),
-        #    ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
-        #    ('', '', 'HYPERLEDA', 'HYPERLEDA', 'HYPERLEDA'),
-        #    ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', 'VI', '', 'VI'),
-        #    ('', '', '', '', 'HYPERLEDA'),
-        #    ('', '', 'SGA2020', 'HYPERLEDA', 'SGA2020'),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('', '', 'SGA2020', '', ''),
-        #    # count=10 above here
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', 'SGA2020', '', ''),
-        #    ('', '', 'SGA2020', '', ''),
-        #    ('', '', 'SGA2020', '', ''),
-        #    ('', '', 'VI', '', ''),
-        #    ('', '', 'VI', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    # count=10 above here
-        #    ('', '', 'HYPERLEDA', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', '', '', 'SGA2020'),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', 'VI'),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('', '', 'VI', '', 'VI'),
-        #    ('NED', 'NED', '', '', ''),
-        #    # count=10 above here
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    # count=10 above here
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', 'v1.0.5', '', ''),
-        #    ('', '', 'v1.0.5', '', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', 'VI', 'VI', ''),
-        #    ('VI', 'VI', 'HYPERLEDA', 'HYPERLEDA', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('VI', 'VI', 'VI', '', 'VI'),
-        #    ('', '', 'v1.0.5', '', ''),
-        #    # count=10 above here
-        #    ('NED', 'NED', '', '', ''),
-        #    ('VI', 'VI', 'VI', 'VI', ''),
-        #    ('', '', 'VI', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', 'SGA2020', 'SGA2020', 'SGA2020'),
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('NED', 'NED', 'VI', '', 'VI'),
-        #    ('NED', 'NED', '', '', ''),
-        #    # count=10 above here
-        #    ('', '', '', '', 'VI'),
-        #    ('', '', '', '', 'VI'),
-        #    ('NED', 'NED', 'VI', '', 'VI'),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', ''),
-        #    ('VI', 'VI', 'VI', 'VI', 'VI'),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('', '', '', '', 'HYPERLEDA'),
-        #    ('VI', 'VI', 'VI', '', ''),
-        #    # count=10 above here
-        #    ('', '', 'SGA2020', '', ''),
-        #    ('HYPERLEDA', 'HYPERLEDA', '', '', 'VI'),
-        #    ('NED', 'NED', '', '', ''),
-        #    ('SGA2020', 'SGA2020', 'VI', '', ''),
-        #    ]
-        #props = np.array(list(zip(*props)))
-        #refs = np.array(list(zip(*refs)))
-        #I = match_to(lvd['OBJNAME'].value, gals)
-        #bb = Table()
-        #bb['objname'] = gals
-        #bb['ra'] = props[0]
-        #bb['dec'] = props[1]
-        #bb['diam'] = props[2]
-        #bb['ba'] = props[3]
-        #bb['pa'] = props[4]
-        #bb['radec_ref'] = refs[0]
-        #bb['diam_ref'] = refs[2]
-        #bb['ba_ref'] = refs[3]
-        #bb['pa_ref'] = refs[4]
-        #pdb.set_trace()
-        #bb.write('junk.csv', format='csv', overwrite=True)
-        #assert(np.all(lvd['OBJNAME'][I] == np.array(gals)))
-
         I = match_to(lvd['OBJNAME'].value, updates['objname'].value)
         assert(np.all(lvd['OBJNAME'][I] == updates['objname'].value))
 
@@ -1168,21 +818,6 @@ def update_lvd_properties(cat):
                     lvd['RADEC_REF'][I[J]] = updates['radec_ref'][J]
                 else:
                     lvd[f'{col}_REF'][I[J]] = updates[f'{col.lower()}_ref'][J]
-
-        #log.info('Updating hard-coded properties:')
-        #for col, prop, ref in zip(('RA', 'DEC', 'DIAM', 'BA', 'PA'), props, refs):
-        #    J = np.where(prop != -99.)[0]
-        #    if len(J) > 0:
-        #        log.info(f'  --{len(J)} {col} values')
-        #        lvd[col][I[J]] = prop[J]
-        #        if col == 'RA' or col == 'DEC':
-        #            lvd['RADEC_REF'][I[J]] = ref[J]
-        #        else:
-        #            lvd[f'{col}_REF'][I[J]] = ref[J]
-        #        #if col == 'RA' or col == 'DEC':
-        #        #    log.info(f'  {lvd[col][I]}-->{prop:.6f} [{ref}]')
-        #        #else:
-        #        #    log.info(f'  {lvd[col][I]:0g}-->{prop:.2f} [{ref}]')
 
     # write out
     lvd = lvd[np.argsort(lvd['ROW'])]
@@ -1937,7 +1572,7 @@ def build_parent_nocuts(verbose=True):
     nedlvs = read_nedlvs()
     sga2020 = read_sga2020()
     hyper = read_hyperleda()
-    log.info()
+    print()
 
     ned_lvd = readit('LVD', version_lvd())
     ned_nedlvs = readit('NEDLVS', version_nedlvs())
@@ -1979,7 +1614,6 @@ def build_parent_nocuts(verbose=True):
     nobj_ned_lvd = len(ned_lvd)
     nobj_ned_nedlvs = len(ned_nedlvs)
     nobj_ned_hyper = len(ned_hyper)
-
     hyper_noned = hyper[~np.isin(hyper['ROW'], ned_hyper['ROW'])]
 
     # [0] Preprocess the data.
@@ -1987,7 +1621,7 @@ def build_parent_nocuts(verbose=True):
     # ned_nedlvs - 21 objects are duplicates, apparently because of
     # cross-identification problems in NED. Keep just the first one of each
     # occurrance here (=10 unique objects); plus add 8 more duplicates discovered "by hand"
-    log.info()
+    print()
     log.info('#####')
     log.info('ned_nedlvs:')
     #dups = ['Andromeda XXXIII', 'SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4']
@@ -2001,7 +1635,7 @@ def build_parent_nocuts(verbose=True):
     ##nedlvs[np.isin(nedlvs['ROW'], [1656036, 1430675])]
     #jj = nedlvs[np.isin(nedlvs['OBJNAME'], dups)]
     #jj[np.argsort(jj['RA'])]
-    
+
     col = 'OBJNAME_NED'
     rr, cc = np.unique(ned_nedlvs[col], return_counts=True)
     dups = rr[cc>1].value
@@ -2035,16 +1669,21 @@ def build_parent_nocuts(verbose=True):
         #I = I[np.argsort(ned_nedlvs[col][I])]
         #toss.append(I[1:]) # keep the zeroth match
     toss = np.hstack(toss)
-    log.info(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ({100.*len(toss)/len(ned_nedlvs):.1f}%) {col} duplicates.')
+    log.info(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ' + \
+             f'({100.*len(toss)/len(ned_nedlvs):.1f}%) {col} duplicates.')
     ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
 
     c_nedlvs = SkyCoord(ra=ned_nedlvs['RA']*u.deg, dec=ned_nedlvs['DEC']*u.deg)
-    indx_nedlvs, sep2d, _ = match_coordinates_sky(c_nedlvs, c_nedlvs, nthneighbor=2)
+    indx_nedlvs, sep2d, _ = match_coordinates_sky(
+        c_nedlvs, c_nedlvs, nthneighbor=2)
     dd = ned_nedlvs[sep2d.arcsec == 0.]
     dd = dd[np.argsort(dd['RA'])]
-    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
-    radecs = np.char.add(np.round(dd['RA'], 10).astype(str), np.round(dd['DEC'], 10).astype(str))
-    ref_radecs = np.char.add(np.round(ned_nedlvs['RA'], 10).astype(str), np.round(ned_nedlvs['DEC'], 10).astype(str))
+    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED',
+                                  verbose=verbose)
+    radecs = np.char.add(np.round(dd['RA'], 10).astype(str),
+                         np.round(dd['DEC'], 10).astype(str))
+    ref_radecs = np.char.add(np.round(ned_nedlvs['RA'], 10).astype(str),
+                             np.round(ned_nedlvs['DEC'], 10).astype(str))
     toss = []
     for radec in np.unique(radecs):
         I = np.where(radec == ref_radecs)[0]
@@ -2056,12 +1695,9 @@ def build_parent_nocuts(verbose=True):
             this = this[np.argsort(ned_nedlvs[I][this]['ROW'])]
             toss.append(np.delete(I, this[0]))
     toss = np.hstack(toss)
-    log.info(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ({100.*len(toss)/len(ned_nedlvs):.1f}%) coordinate duplicates.')
+    log.info(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ' + \
+             f'({100.*len(toss)/len(ned_nedlvs):.1f}%) coordinate duplicates.')
     ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
-
-
-    #from pydl.pydlutils.spheregroup import spheregroup
-    #ingroup, group_mult, firstgroup, nextgroup = spheregroup(ned_nedlvs['RA'], ned_nedlvs['DEC'], 1.5/60.)
 
     # Toss out non-galaxies in ned_nedlvs. But note:
     # * Need to make sure the individual members of the GGroup systems are
@@ -2071,7 +1707,8 @@ def build_parent_nocuts(verbose=True):
                                                     'Other', 'GGroup'#,
                                                     #'GPair', 'GTrpl'
                                                     ]))[0]
-    log.info(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ({100.*len(toss)/len(ned_nedlvs):.1f}%) non-galaxies.')
+    log.info(f'Removing {len(toss):,d}/{len(ned_nedlvs):,d} ' + \
+             f'({100.*len(toss)/len(ned_nedlvs):.1f}%) non-galaxies.')
     ned_nedlvs = ned_nedlvs[np.delete(np.arange(len(ned_nedlvs)), toss)]
 
     ## ned_hyper - 1 object (WINGSJ125256.27-152110.4) is a duplicate. As
@@ -2095,14 +1732,15 @@ def build_parent_nocuts(verbose=True):
     #toss = np.hstack(toss)
     #log.info(f'Removing {len(toss):,d}/{len(ned_hyper):,d} {col} duplicates from ned_hyper.')
     #ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
-    log.info()
+    print()
     log.info('ned_hyper:')
 
     col = 'OBJNAME_NED'
     rr, cc = np.unique(ned_hyper[col], return_counts=True)
     dd = ned_hyper[np.isin(ned_hyper[col], rr[cc>1].value)]
     dd = dd[np.argsort(dd[col])]
-    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
+    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED',
+                                  verbose=verbose)
     toss = []
     for objname in np.unique(dd[col]):
         I = np.where(ned_hyper[col] == objname)[0]
@@ -2114,14 +1752,17 @@ def build_parent_nocuts(verbose=True):
             this = this[np.argsort(ned_hyper[I][this]['ROW'])]
             toss.append(np.delete(I, this[0]))
     toss = np.hstack(toss)
-    log.info(f'Removing {len(toss):,d}/{len(ned_hyper):,d} ({100.*len(toss)/len(ned_hyper):.1f}%) {col} duplicates.')
+    log.info(f'Removing {len(toss):,d}/{len(ned_hyper):,d} ' + \
+             f'({100.*len(toss)/len(ned_hyper):.1f}%) {col} duplicates.')
     ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
 
     c_hyper = SkyCoord(ra=ned_hyper['RA']*u.deg, dec=ned_hyper['DEC']*u.deg)
-    indx_hyper, sep2d, _ = match_coordinates_sky(c_hyper, c_hyper, nthneighbor=2)
+    indx_hyper, sep2d, _ = match_coordinates_sky(c_hyper, c_hyper,
+                                                 nthneighbor=2)
     dd = ned_hyper[sep2d.arcsec == 0.]
-    dd = dd[np.argsort(dd['RA'])]
-    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED', verbose=verbose)
+    dd = dd[np.lexsort((dd['PGC'], dd['RA']))]
+    basic_dd = get_basic_geometry(dd, galaxy_column='OBJNAME_NED',
+                                  verbose=verbose)
 
     basic_dd.rename_column('GALAXY', 'OBJNAME')
     basic_dd['RA'] = dd['RA']
@@ -2173,7 +1814,7 @@ def build_parent_nocuts(verbose=True):
     ned_hyper = ned_hyper[np.delete(np.arange(len(ned_hyper)), toss)]
 
     # check
-    log.info()
+    print()
     log.info('After basic cuts:')
     for name, cat, norig in zip(['ned_lvd', 'ned_nedlvs', 'ned_hyper'],
                                 [ned_lvd, ned_nedlvs, ned_hyper],
@@ -2188,7 +1829,7 @@ def build_parent_nocuts(verbose=True):
             #bb = bb[np.argsort(bb[col])]
 
     # [1] - Match HyperLeda{-altname} to NEDLVS using OBJNAME_NED.
-    log.info()
+    print()
     log.info('#####')
 
     keys = np.array(ned_nedlvs.colnames)
@@ -2230,13 +1871,13 @@ def build_parent_nocuts(verbose=True):
 
     for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'ROW_HYPERLEDA', 'ROW_NEDLVS']:
         assert(len(np.unique(parent1[col])) == len(parent1))
-    log.info()
+    print()
     log.info(f'Parent 1: N={len(parent1):,d}')
 
     # [2] - Add as many of the remaining ned_hyper objects as possible. Special
     # case VIRGO1, which incorrectly matches (in NED) to 'Virgo I Dwarf' rather
     # than 'Virgo I'.
-    log.info()
+    print()
     log.info('#####')
     miss_hyper = ned_hyper[np.logical_and(~np.isin(ned_hyper['ROW'], parent1['ROW_HYPERLEDA']),
                                           (ned_hyper['OBJNAME'] != 'VIRGO1'))]
@@ -2259,12 +1900,11 @@ def build_parent_nocuts(verbose=True):
 
     for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA']:
         assert(len(np.unique(parent2[col])) == len(parent2))
-    log.info()
+    print()
     log.info(f'Parent 2: N={len(parent2):,d}')
-
     # [3] - Add the rest of the ned_nedlvs objects, being careful about exact
     # duplicates.
-    log.info()
+    print()
     log.info('#####')
 
     parent = vstack((parent1, parent2))
@@ -2311,13 +1951,12 @@ def build_parent_nocuts(verbose=True):
 
     for col in ['OBJNAME_NED', 'OBJNAME_NEDLVS', 'ROW_NEDLVS']:
         assert(len(np.unique(parent3[col])) == len(parent3))
-    log.info()
+    print()
     log.info(f'Parent 3: N={len(parent3):,d}')
-
     parent = vstack((parent, parent3))
 
     # [4] - Add any outstanding hyper objects with measured diameters.
-    log.info()
+    print()
     log.info('#####')
 
     miss_hyper = hyper_noned[~np.isin(hyper_noned['ROW'], parent['ROW_HYPERLEDA'])]
@@ -2356,13 +1995,13 @@ def build_parent_nocuts(verbose=True):
 
     for col in ['OBJNAME_HYPERLEDA', 'ROW_HYPERLEDA']:
         assert(len(np.unique(parent4[col])) == len(parent4))
-    log.info()
+    print()
     log.info(f'Parent 4: N={len(parent4):,d}')
 
     parent = vstack((parent, parent4))
 
     # [5] Add LVD.
-    log.info()
+    print()
     log.info('#####')
     log.info(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ' + \
           f'({100.*len(ned_lvd)/len(lvd):.1f}%) are in ned_lvd.')
@@ -2508,13 +2147,13 @@ def build_parent_nocuts(verbose=True):
     parent5['RA_LVD'][indx_parent] = lvd['RA'][indx_lvd]
     parent5['DEC_LVD'][indx_parent] = lvd['DEC'][indx_lvd]
 
-    log.info()
+    print()
     log.info(f'Parent 5: N={len(parent5)+nexisting:,d}')
 
     # [6] Add SGA2020
     parent = vstack((parent, parent5))
 
-    log.info()
+    print()
     log.info('#####')
     log.info(f'Analyzing {len(sga2020):,d} SGA-2020 objects.')
 
@@ -2559,7 +2198,7 @@ def build_parent_nocuts(verbose=True):
             pdb.set_trace()
 
     # [7] include the custom-added objects plus the SMDG sample
-    log.info()
+    print()
     log.info('#####')
     log.info(f'Adding {len(custom):,d} more objects from the custom catalog.')
 
@@ -2623,7 +2262,7 @@ def build_parent_nocuts(verbose=True):
     parent6['BA_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
     parent6['PA_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
 
-    log.info()
+    print()
     log.info(f'Parent 6: N={len(parent6):,d}')
 
     # [8] build the final sample
@@ -2660,14 +2299,14 @@ def build_parent_nocuts(verbose=True):
             log.info(f'Duplicate entries of {col}!')
             pdb.set_trace()
 
-    log.info()
+    print()
     log.info('#####')
     log.info(f'Final parent sample: N={len(parent):,d}')
     #parent.write('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/junk-sga2020.fits', overwrite=True)
 
     # Populate OBJNAME, RA, DEC, and Z. Prefer LVD coordinates and use SGA2020
     # before HyperLeda, otherwise we totally miss some quite famous galaxies.
-    log.info()
+    print()
 
     for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
         I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
@@ -2708,7 +2347,7 @@ def build_parent_nocuts(verbose=True):
         if len(I) > 0:
             log.info(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) Z values from {dataset}.')
             parent['Z'][I] = parent[I][f'Z_{dataset}']
-    log.info()
+    print()
 
     # reset the values from the literature and then prioritize
     basic_ned_hyper = get_basic_geometry(ned_hyper, galaxy_column='ROW', verbose=verbose)
@@ -2725,7 +2364,7 @@ def build_parent_nocuts(verbose=True):
         parent[f'{col}_REF'][I] = ''
     parent['BAND_LIT'][I] = ''
 
-    log.info()
+    print()
     # NB - prioritize LVD first, then custom (which includes SMUDGes)
     for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs),
                                    ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS'),
@@ -2744,7 +2383,7 @@ def build_parent_nocuts(verbose=True):
                         parent['BAND_LIT'][I[indx_parent[G]]] = basic[indx_basic[G]]['BAND_LIT']
                     #parent[I[indx_parent[G]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_LVD', 'DIAM_LIT', 'DIAM_LIT_REF', 'BA_LIT', 'BA_LIT_REF', 'PA_LIT', 'PA_LIT_REF']
 
-        log.info()
+        print()
 
     # special columns for HyperLeda and SGA2020 geometry
     basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
@@ -2780,7 +2419,7 @@ def build_parent_nocuts(verbose=True):
             col = f'{prop}_{ref}'
             N = parent[col] != -99.
             log.info(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
-        log.info()
+        print()
 
     parent['ROW_PARENT'] = np.arange(len(parent))
 
@@ -2991,7 +2630,7 @@ def in_footprint_work(allcat, chunkindx, allccds, comm=None, radius=1.,
             fccds1, fcat1 = get_ccds(ccds_onegal, cat_onegal, width_pixels,
                                      pixscale=PIXSCALE, return_ccds=True)
             fcat.append(fcat1)
-            fccds.append(fccds1)    
+            fccds.append(fccds1)
         if len(fcat) > 0:
             fcat = vstack(fcat)
             fccds = vstack(fccds)
@@ -3152,7 +2791,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         outcat = Table(fitsio.read(catfile)) # read the whole catalog
         # match on position not ROW_PARENT, which can change
         cat_indx, fcat_indx, sep = match_radec(
-            outcat['RA'].value, outcat['DEC'].value, allfcat['RA'].value, 
+            outcat['RA'].value, outcat['DEC'].value, allfcat['RA'].value,
             allfcat['DEC'].value, 1./3600., nearest=True)
         #cat_indx, fcat_indx = match(outcat['ROW_PARENT'], allfcat['ROW_PARENT'])
         outcat = outcat[cat_indx]
@@ -3212,7 +2851,7 @@ def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=False):
         from legacypipe.runs import get_survey
         from SGA.io import set_legacysurvey_dir
         from SGA.coadds import RUNS
-        
+
         set_legacysurvey_dir(region)
         survey = get_survey(RUNS[region], allbands=BANDS[region])
         _ = survey.get_ccds_readonly()

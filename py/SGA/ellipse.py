@@ -7,6 +7,8 @@ Code to perform ellipse photometry.
 """
 import numpy as np
 
+from SGA.logger import log
+
 # ndim>1 columns when ellipse-fitting fails; note, this list is used by various
 # build_catalog functions (e.g., check virgofilaments.build_catalog), so change
 # with care!
@@ -403,8 +405,8 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     if verbose:
         M = basic[magcol] > 0.
         D = basic[diamcol] > 0.
-        print(f'Derived photometry for {np.sum(M):,d}/{nobj:,d} objects and ' + \
-              f'diameters for {np.sum(D):,d}/{nobj:,d} objects.')
+        log.info(f'Derived photometry for {np.sum(M):,d}/{nobj:,d} objects and ' + \
+                 f'diameters for {np.sum(D):,d}/{nobj:,d} objects.')
 
     return basic
 
