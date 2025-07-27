@@ -247,9 +247,9 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
 
         #if cat['GROUP_ID'][I][0] == 2708:
         #    pdb.set_trace()
-        
+
     log.info(f'Building a group catalog took {(time.time() - t0)/60.:.3f} min')
-        
+
     return cat
 
 
@@ -282,4 +282,3 @@ def qa(version='v1'):
 
     fig.subplots_adjust(left=0.1, bottom=0.15, right=0.98, hspace=0.25, wspace=0.2)
     fig.savefig(os.path.join(homedir, 'qa-virgofilaments-{}-SGA.png'.format(version)))
-

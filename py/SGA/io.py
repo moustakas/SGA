@@ -179,7 +179,7 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025',
     return names
 
 
-def get_galaxy_galaxydir(sample=None, bricks=None, region='dr11-south', 
+def get_galaxy_galaxydir(sample=None, bricks=None, region='dr11-south',
                          datadir=None, htmldir=None, html=False):
     """Retrieve the galaxy name and the (nested) directory.
 
@@ -526,8 +526,6 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
         #if filt == 'W1':
         #    import matplotlib.pyplot as plt
         #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-mask-{}.png'.format(filt))
-        #    pdb.set_trace()
-        
         if invvar is not None:
             var = np.zeros_like(invvar)
             ok = invvar > 0
@@ -536,7 +534,6 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
             #data['{}_var'.format(filt.lower())] = var / thispixscale**4 # [nanomaggies**2/arcsec**4]
             if np.any(invvar < 0):
                 log.warning(f'Negative pixels in the {filt}-band inverse variance map!')
-                #pdb.set_trace()
 
     data['residual_mask'] = residual_mask
     if starmask is not None:
@@ -552,7 +549,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                           sigmamask=3.0, neighborfactor=1.0, verbose=False):
     """Wrapper to mask out all sources except the galaxy we want to ellipse-fit.
 
-    r50mask - mask satellites whose r50 radius (arcsec) is > r50mask 
+    r50mask - mask satellites whose r50 radius (arcsec) is > r50mask
 
     threshmask - mask satellites whose flux ratio is > threshmmask relative to
     the central galaxy.
@@ -653,9 +650,9 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                                default_majoraxis, default_majoraxis, 0.0, xobj, yobj)
         #objmask = ellipse_mask(mgegalaxy.xmed, mgegalaxy.ymed, # object pixels are True
         #                       mgegalaxy.majoraxis,
-        #                       mgegalaxy.majoraxis * (1-mgegalaxy.eps), 
+        #                       mgegalaxy.majoraxis * (1-mgegalaxy.eps),
         #                       np.radians(mgegalaxy.theta-90), xobj, yobj)
-    
+
         return mgegalaxy, objmask
 
     # Now, loop through each 'galaxy_indx' from bright to faint.
@@ -676,7 +673,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
 
         iclose = np.where([centralmask[int(by), int(bx)]
                            for by, bx in zip(tractor.by, tractor.bx)])[0]
-        
+
         srcs = tractor.copy()
         srcs.cut(np.delete(np.arange(len(tractor)), iclose))
         model = srcs2image(srcs, data['{}_wcs'.format(refband.lower())],
@@ -690,7 +687,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         # and it includes pixels which are significant residuals (data minus
         # model), pixels with invvar==0, and pixels belonging to maskbits
         # BRIGHT, MEDIUM, CLUSTER, or ALLMASK_[GRZ]
-        
+
         mask = np.logical_or(ma.getmask(data[refband]), data['residual_mask'])
         #mask = np.logical_or(data[refband].mask, data['residual_mask'])
         mask[centralmask] = False
@@ -706,7 +703,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         mgegalaxy.xpeak = dims[0] / 2
         mgegalaxy.ypeak = dims[0] / 2
         log.warning('Enforcing galaxy centroid to the center of the mosaic: (x,y)=({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})')
-        
+
         #if True:
         #    import matplotlib.pyplot as plt
         #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/debug.png')
@@ -751,7 +748,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         mge['ebv'] = np.float32(ebv)
         for band in ['fuv', 'nuv', 'g', 'r', 'z', 'w1', 'w2', 'w3', 'w4']:
             mge['mw_transmission_{}'.format(band.lower())] = mwdust_transmission(ebv, band, 'N', match_legacy_surveys=True).astype('f4')
-            
+
         for key in ('eps', 'majoraxis', 'pa', 'theta', 'xmed', 'ymed', 'xpeak', 'ypeak'):
             mge[key] = np.float32(getattr(mgegalaxy, key))
             if key == 'pa': # put into range [0-180]
@@ -773,14 +770,14 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             # do not let GALEX and WISE contribute to the satellite mask
             if data[filt].shape != satmask.shape:
                 continue
-            
+
             cenflux = getattr(tractor, 'flux_{}'.format(filt.lower()))[central]
             satflux = getattr(srcs, 'flux_{}'.format(filt.lower()))
             if cenflux <= 0.0:
                 log.warning('Central galaxy flux is negative! Proceed with caution...')
                 #pdb.set_trace()
                 #raise ValueError('Central galaxy flux is negative!')
-            
+
             satindx = np.where(np.logical_or(
                 (srcs.type != 'PSF') * (srcs.shape_r > r50mask) *
                 (satflux > 0.0) * ((satflux / cenflux) > threshmask),
@@ -817,7 +814,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             #print(filt, np.sum(satmask), np.sum(thissatmask))
 
         #plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('junk-satmask.png')
-        
+
         # [3] Build the final image (in each filter) for ellipse-fitting. First,
         # subtract out the PSF sources. Then update the mask (but ignore the
         # residual mask). Finally convert to surface brightness.
@@ -845,7 +842,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                 data[imagekey], data[varkey], data[psfimgkey] = [], [], []
 
             img = ma.getdata(data[filt]).copy()
-            
+
             # Get the PSF sources.
             psfindx = np.where((tractor.type == 'PSF') * (getattr(tractor, 'flux_{}'.format(filt.lower())) / cenflux > threshmask))[0]
             if len(psfindx) > 0 and filt.upper() != 'W3' and filt.upper() != 'W4':
@@ -853,7 +850,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                 psfsrcs.cut(psfindx)
             else:
                 psfsrcs = None
-            
+
             if psfsrcs:
                 psfimg = srcs2image(psfsrcs, data['{}_wcs'.format(filt.lower())],
                                     band=filt.lower(),
@@ -884,7 +881,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-mask-{}.png'.format(filt.lower()))
             ##    plt.clf() ; plt.imshow(thismask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-thismask-{}.png'.format(filt.lower()))
             #    pdb.set_trace()
-                
+
             data[imagekey].append(img)
             data[varkey].append(var)
 
@@ -900,150 +897,6 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
     return data
 
 
-def _build_catalog_one(args):
-    """Wrapper function for the multiprocessing."""
-    return build_catalog_one(*args)
-
-
-def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS, refcat='R1', verbose=False):
-    """Gather the ellipse-fitting results for a single group."""
-    import fitsio
-    from astropy.table import Table, vstack
-    from legacyhalos.io import read_ellipsefit
-
-    tractor, parent, ellipse = [], [], []
-
-    tractorfile = os.path.join(galaxydir, f'{galaxy}-custom-tractor.fits')
-    if not os.path.isfile(tractorfile):
-        log.warning(f'Missing Tractor catalog {tractorfile}')
-        return None, None, None #tractor, parent, ellipse
-        #return tractor, parent, ellipse
-
-    for igal, onegal in enumerate(fullsample):
-        #print(f'Working on {onegal["GALAXY"]}')
-        refid = onegal[REFIDCOLUMN]
-
-        ellipsefile = os.path.join(galaxydir, f'{galaxy}-custom-ellipse-{refid}.fits')
-        if not os.path.isfile(ellipsefile):
-            log.warning(f'Missing ellipse file {ellipsefile}')
-            return None, None, None #tractor, parent, ellipse
-
-        _ellipse = read_ellipsefit(galaxy, galaxydir, galaxy_id=str(refid), asTable=True,
-                                  filesuffix='custom', verbose=True)
-        # fix the data model
-        #_ellipse = _datarelease_table(_ellipse)
-        for col in REMCOLS:
-            #print(f'Removing {col}')
-            _ellipse.remove_column(col)
-        _ellipse['ELLIPSEBIT'] = np.zeros(1, dtype=np.int32) # we don't want -1 here
-
-        _tractor = Table(fitsio.read(tractorfile, upper=True))
-        match = np.where((_tractor['REF_CAT'] == refcat) * (_tractor['REF_ID'] == refid))[0]
-        if len(match) != 1:
-            raise ValueError('Problem here!')
-
-        ellipse.append(_ellipse)
-        tractor.append(_tractor[match])
-        parent.append(onegal)
-
-    tractor = vstack(tractor, join_type='exact', metadata_conflicts='silent')
-    parent = vstack(parent, join_type='exact', metadata_conflicts='silent')
-    ellipse = vstack(ellipse, join_type='exact', metadata_conflicts='silent')
-
-    return tractor, parent, ellipse
-
-
-def build_catalog(sample, fullsample, bands, galex=True, unwise=True,
-                  nproc=1, refcat='R1', verbose=False, clobber=False):
-    import time
-    import multiprocessing
-    from astropy.io import fits
-    from astropy.table import vstack
-    from legacyhalos.ellipse import FAILCOLS
-
-    version = get_version()
-    
-    outfile = os.path.join(legacyhalos.io.legacyhalos_dir(), 'virgofilaments-{}-legacyphot.fits'.format(version))
-    if os.path.isfile(outfile) and not clobber:
-        log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
-        return
-
-    galaxy, galaxydir = get_galaxy_galaxydir(sample)
-
-    # figure out which ndim>1 columns to drop
-    optbands = bands.copy()
-    if galex:
-        bands += ['FUV', 'NUV']
-    if unwise:
-        bands += ['W1', 'W2', 'W3', 'W4']
-    REMCOLS = ['BANDS', 'REFPIXSCALE', 'SUCCESS', 'FITGEOMETRY', 'LARGESHIFT',
-               'MAXSMA', 'MAJORAXIS', 'EPS_MOMENT', 'INTEGRMODE',
-               'INPUT_ELLIPSE', 'SCLIP', 'NCLIP',
-               'REFBAND', 'REFBAND_WIDTH', 'REFBAND_HEIGHT']
-    for band in optbands:
-        for col in ['PSFSIZE', 'PSFDEPTH']:
-            REMCOLS += [f'{col}_{band.upper()}']
-    for band in bands:
-        for col in FAILCOLS:
-            REMCOLS += [f'{col.upper()}_{band.upper()}']
-        for col in ['SMA', 'FLUX', 'FLUX_IVAR']:
-            REMCOLS += [f'COG_{col}_{band.upper()}']
-    #print(REMCOLS)
-
-    # build the mp list
-    buildargs = []
-    for gal, gdir, onegal in zip(galaxy, galaxydir, sample):
-        _fullsample = fullsample[fullsample['GROUP_ID'] == onegal['GROUP_ID']]
-        buildargs.append((gal, gdir, _fullsample, REMCOLS, refcat, verbose))
-
-    t0 = time.time()
-    if nproc > 1:
-        with multiprocessing.Pool(nproc) as P:
-            results = P.map(_build_catalog_one, buildargs)
-    else:
-        results = [build_catalog_one(*_buildargs) for _buildargs in buildargs]
-
-    results = list(zip(*results))
-    tractor1 = list(filter(None, results[0]))
-    parent1 = list(filter(None, results[1]))
-    ellipse1 = list(filter(None, results[2]))
-
-    #for col in ellipse1[0].colnames:
-    #    if ellipse1[0][col].ndim > 1:
-    #        print(col)
-
-    log.info('Doing an outer join on Tractor because some columns are missing from some catalogs:')
-    log.info("  ['mw_transmission_nuv' 'mw_transmission_fuv' 'ngood_g' 'ngood_r' 'ngood_z']")
-    tractor = vstack(tractor1, metadata_conflicts='silent')
-
-    # exact join
-    parent = vstack(parent1, join_type='exact', metadata_conflicts='silent')
-    ellipse = vstack(ellipse1, join_type='exact', metadata_conflicts='silent')
-    log.info(f'Merging {len(tractor):,d} galaxies took {(time.time()-t0)/60.0:.2f} min.')
-
-    if len(tractor) == 0:
-        log.warning('Something went wrong and no galaxies were fitted.')
-        return
-    assert(len(tractor) == len(parent))
-    assert(np.all(tractor['REF_ID'] == parent[REFIDCOLUMN]))
-
-    # write out
-    hdu_primary = fits.PrimaryHDU()
-    hdu_parent = fits.convenience.table_to_hdu(parent)
-    hdu_parent.header['EXTNAME'] = 'PARENT'
-
-    hdu_ellipse = fits.convenience.table_to_hdu(ellipse)
-    hdu_ellipse.header['EXTNAME'] = 'ELLIPSE'
-
-    hdu_tractor = fits.convenience.table_to_hdu(tractor)
-    hdu_tractor.header['EXTNAME'] = 'TRACTOR'
-        
-    hx = fits.HDUList([hdu_primary, hdu_parent, hdu_ellipse, hdu_tractor])
-    hx.writeto(outfile, overwrite=True, checksum=True)
-
-    log.info(f'Wrote {len(parent):,d} galaxies to {outfile}')
-
-
 def read_multiband(galaxy, galaxydir, filesuffix='custom',
                    refband='r', bands=['g', 'r', 'i', 'z'], pixscale=0.262,
                    galex_pixscale=1.5, unwise_pixscale=2.75,
@@ -1055,7 +908,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
     """
     import fitsio
     from astropy.table import Table
-    import astropy.units as u    
+    import astropy.units as u
     from astrometry.util.fits import fits_table
     from legacypipe.bits import MASKBITS
 
@@ -1210,7 +1063,7 @@ def read_multiband(galaxy, galaxydir, filesuffix='custom',
         tractor.diam_init[galaxy_indx] = sample['DIAM_INIT']
         tractor.pa_init[galaxy_indx] = sample['PA_INIT']
         tractor.ba_init[galaxy_indx] = sample['BA_INIT']
- 
+
     # Do we need to take into account the elliptical mask of each source??
     srt = np.argsort(tractor.flux_r[galaxy_indx])[::-1]
     galaxy_indx = galaxy_indx[srt]
@@ -3298,7 +3151,7 @@ def missing_files_one(checkfile, dependsfile, overwrite):
 
 def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
-                  build_catalog=False, clobber=False, clobber_overwrite=None, 
+                  build_catalog=False, clobber=False, clobber_overwrite=None,
                   verbose=False, htmldir='.', size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
 
@@ -3347,11 +3200,13 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         suffix = 'html'
         filesuffix = '-montage.png'
         dependson = '-image.jpg'
-        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
+        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
+            sample, htmldir=htmldir, region=region, html=True)
     elif htmlindex:
         suffix = 'htmlindex'
         filesuffix = '-montage.png'
-        galaxy, _, galaxydir = get_galaxy_galaxydir(sample, htmldir=htmldir, region=region, html=True)
+        galaxy, _, galaxydir = get_galaxy_galaxydir(
+            sample, htmldir=htmldir, region=region, html=True)
     else:
         msg = 'Need at least one keyword argument.'
         log.critical(msg)
@@ -3367,14 +3222,17 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         clobber = clobber_overwrite
 
     missargs = []
-    for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy), np.atleast_1d(galaxydir))):
+    for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy),
+                                           np.atleast_1d(galaxydir))):
         checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
         #print(checkfile)
         if dependson:
             if dependsondir:
-                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal], f'{gal}{dependson}'), clobber])
+                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal],
+                                                         f'{gal}{dependson}'), clobber])
             else:
-                missargs.append([checkfile, os.path.join(gdir, f'{gal}{dependson}'), clobber])
+                missargs.append([checkfile, os.path.join(
+                    gdir, f'{gal}{dependson}'), clobber])
         else:
             missargs.append([checkfile, None, clobber])
 
@@ -3385,7 +3243,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         with multiprocessing.Pool(mp) as P:
             todo = np.array(P.map(_missing_files_one, missargs))
     else:
-        todo = np.array([_missing_files_one(_missargs) for _missargs in missargs])
+        todo = np.array([_missing_files_one(_missargs)
+                         for _missargs in missargs])
 
     if verbose:
         log.debug(f'...took {(time.time() - t0)/60.:.3f} min')
@@ -3711,5 +3570,4 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 #    #    for ii, gal in enumerate(np.atleast_1d(parent['GALAXY'])):
 #    #        if gal in gal2dr.keys():
 #    #            parent['DR'][ii] = gal2dr[gal]
-#        
 #    return parent

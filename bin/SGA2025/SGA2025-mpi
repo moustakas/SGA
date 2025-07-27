@@ -3,10 +3,12 @@
 
 salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
-source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
+source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
 SGA2025-mpi --build-refcat
 SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --debug
+
+SGA2025-mpi --coadds --no-galex --no-unwise --no-cleanup --mp=32 --debug
 
 In production:
 salloc -N 1 -C cpu -A m3592 -t 00:30:00 --qos interactive --image=docker:legacysurvey/sga:0.3
@@ -58,8 +60,10 @@ def main():
 
     from SGA.coadds import RUNS, BANDS
     from SGA.mpi import mpi_args
-    from SGA.io import (set_legacysurvey_dir, sga_dir, sga_data_dir, sga_html_dir, read_sample,
-                        build_catalog, missing_files, read_multiband, get_galaxy_galaxydir,
+    from SGA.SGA import build_catalog
+    from SGA.io import (set_legacysurvey_dir, sga_dir, sga_data_dir,
+                        sga_html_dir, read_sample, missing_files,
+                        read_multiband, get_galaxy_galaxydir,
                         RACOLUMN, DECCOLUMN, DIAMCOLUMN)
 
     args = mpi_args()
@@ -94,6 +98,15 @@ def main():
             galaxylist=args.galaxylist,
             region=args.region, verbose=args.verbose)
 
+        if not args.build_catalog and not args.build_refcat:
+            log.warning('Testing subsamples!')
+            from SGA.coadds import FITBITS
+            I = sample['FITBIT'] & FITBITS['ignore'] != 0
+            sample = sample[I]
+            sample = sample[np.argsort(sample[DIAMCOLUMN])]
+            sample = sample[:32]
+            sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0189.832+032.861']
+
         if len(sample) == 0:
             return
 
@@ -119,10 +132,12 @@ def main():
     if rank == 0:
         if args.htmlindex:
             SGA.html.make_html(sample, survey=None, pixscale=args.pixscale,
-                               racolumn=RACOLUMN, deccolumn=DECCOLUMN, #diamcolumn=DIAMCOLUMN,
-                               mp=args.mp, clobber=args.clobber, region=args.region,
-                               makeplots=False, verbose=args.verbose, htmldir=args.htmldir,
-                               htmlhome=args.htmlhome, html_raslices=args.html_raslices,
+                               racolumn=RACOLUMN, deccolumn=DECCOLUMN,
+                               mp=args.mp, clobber=args.clobber,
+                               region=args.region, makeplots=False,
+                               verbose=args.verbose, htmldir=args.htmldir,
+                               htmlhome=args.htmlhome,
+                               html_raslices=args.html_raslices,
                                args=args)
             return
 
@@ -141,7 +156,7 @@ def main():
             ref = Table()
             ref['ra'] = fullsample['RA']
             ref['dec'] = fullsample['DEC']
-            ref['ref_id'] = fullsample['INDEX']
+            ref['ref_id'] = fullsample['SGAID']
             ref['mag'] = fullsample['MAG']
             ref['pa'] = fullsample['PA']
             ref['ba'] = fullsample['BA']
@@ -163,6 +178,7 @@ def main():
 
             cmd = f'modhead {kdreffile} VER {refcat}'
             _ = os.system(cmd)
+
             return
 
 
@@ -176,10 +192,11 @@ def main():
     # ranks.
     if rank == 0:
         suffix, groups, _, fail = missing_files(
-            sample=sample, region=args.region, bricks=bricks, coadds=args.coadds,
-            ellipse=args.ellipse, htmlplots=args.htmlplots, htmlindex=args.htmlindex,
-            clobber=args.clobber, verbose=args.verbose, htmldir=htmldir, size=size,
-            mp=args.mp)
+            sample=sample, region=args.region, bricks=bricks,
+            coadds=args.coadds, ellipse=args.ellipse,
+            htmlplots=args.htmlplots, htmlindex=args.htmlindex,
+            clobber=args.clobber, verbose=args.verbose,
+            htmldir=htmldir, size=size, mp=args.mp)
     else:
         groups, suffix = [], ''
 
@@ -189,9 +206,8 @@ def main():
 
     if rank == 0:
         ntodo = len(np.hstack(groups))
-        log.info(f'{suffix.upper()} left to do: {ntodo:,d} / {len(sample):,d} ' + \
-                 f'divided across {size} rank(s).')
-
+        log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
+                 f'{len(sample):,d} divided across {size} rank(s).')
 
     if len(groups[rank]) == 0:
         log.info(f'{suffix.upper()} for all {len(sample)} galaxies on rank ' + \
@@ -202,23 +218,28 @@ def main():
         if rank == 0 and args.count:
             if args.debug:
                 if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank])} / {len(sample)}')
+                    log.info(f'{suffix.upper()} failures: {len(fail[rank])} / ' + \
+                             f'{len(sample)}')
                     dsrt = np.argsort(sample[fail[rank]][DIAMCOLUMN])
-                    galaxy, galaxydir = get_galaxy_galaxydir(sample[fail[rank]][dsrt], region=args.region)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir), sample[fail[rank]][DIAMCOLUMN][dsrt]):
-                        print('  {} {} (d={:.3f} arcmin)'.format(ii, dd, diam))
+                    galaxy, galaxydir = get_galaxy_galaxydir(
+                        sample[fail[rank]][dsrt], region=args.region)
+                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                                            sample[fail[rank]][DIAMCOLUMN][dsrt]):
+                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
 
                 todo = np.hstack(groups)
                 if len(todo) > 0:
                     log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(sample[todo], region=args.region)
-                    for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir), sample[todo][DIAMCOLUMN]):
+                    galaxy, galaxydir = get_galaxy_galaxydir(
+                        sample[todo], region=args.region)
+                    for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir),
+                                            sample[todo][DIAMCOLUMN]):
                         log.info(f'  {ii} {dd} (d={diam:.3f} arcmin)')
             return
 
     # Loop on the remaining objects.
-    log.info(f'Starting {len(groups[rank])} {suffix.upper()} on rank {rank} ' + \
-             f'with {args.mp} cores on {time.asctime()}')
+    log.info(f'Starting {len(groups[rank])} {suffix.upper()} ' + \
+             f'on rank {rank} with {args.mp} cores on {time.asctime()}')
 
     # The rest of the pipeline--
     if rank == 0:
@@ -230,7 +251,8 @@ def main():
         if not os.path.isdir(galaxydir):
             os.makedirs(galaxydir, exist_ok=True)
 
-        log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): {galaxydir} (index {ii:,d})')
+        log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
+                 f'{galaxydir} (index {ii:,d})')
 
         if args.debug:
             logfile = None
@@ -240,42 +262,57 @@ def main():
             log.debug(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
-        if onegal[DIAMCOLUMN] > 10.:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 1.1 * 60. # [arcsec]
-        elif onegal[DIAMCOLUMN] > 3. and onegal[DIAMCOLUMN] <= 10:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 1.5 * 60. # [arcsec]
+        diam = onegal[DIAMCOLUMN] # [arcmin]
+        if diam < 0.5:
+            diam = 0.5
+        radius_mosaic_arcsec = 60. * diam / 2. # [arcsec]
+
+        if diam > 10.:
+            radius_mosaic_arcsec *= 1.1
+        elif diam > 3. and diam <= 10:
+            radius_mosaic_arcsec *= 1.1
         else:
-            radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 2. * 60.  # [arcsec]
-        print('WARNING!! Need to tune these radii...')
-        radius_mosaic_arcsec = onegal[DIAMCOLUMN] / 2. * 1.1 * 60. # [arcsec]
+            radius_mosaic_arcsec *= 1.1
+
+        if radius_mosaic_arcsec > 60.:
+            args.nsigma = 100.
+        else:
+            args.nsigma = None # 20.
 
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 
         if args.coadds:
             from SGA.coadds import custom_coadds
 
+            log.warning('Undo --old-calibs-ok in custom_coadds when ready!')
+
             # Write out the individual galaxies for this mosaic.
-            thissample = fullsample[np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]]
+            I = np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]
+            thissample = fullsample[I]
             samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
             if args.clobber or not os.path.isfile(samplefile):
-                log.debug(f'Writing {len(thissample)} galaxy(ies) to {samplefile}')
+                log.debug(f'Writing {len(thissample)} galaxy(ies) ' + \
+                          f'to {samplefile}')
                 tmpfile = samplefile+'.tmp'
                 thissample.write(tmpfile, overwrite=True, format='fits')
                 os.rename(tmpfile, samplefile)
 
             if args.debug:
                 err, filesuffix = custom_coadds(
-                    onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=args.pixscale,
-                    bands=bands, mp=args.mp, nsigma=args.nsigma, just_coadds=args.just_coadds,
-                    force=args.force, cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
-                    verbose=args.verbose)
+                    onegal, galaxy, survey, run, radius_mosaic_arcsec,
+                    pixscale=args.pixscale, bands=bands, mp=args.mp,
+                    nsigma=args.nsigma, just_coadds=args.just_coadds,
+                    force=args.force, cleanup=args.cleanup,
+                    unwise=args.unwise, galex=args.galex, verbose=args.verbose)
             else:
                 with open(logfile, 'w') as L:
                     with redirect_stdout(L), redirect_stderr(L):
                         err, filesuffix = custom_coadds(
-                            onegal, galaxy, survey, radius_mosaic_arcsec, pixscale=args.pixscale,
-                            bands=bands, mp=args.mp, nsigma=args.nsigma, just_coadds=args.just_coadds,
-                            force=args.force, cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
+                            onegal, galaxy, survey, radius_mosaic_arcsec,
+                            pixscale=args.pixscale, bands=bands, mp=args.mp,
+                            nsigma=args.nsigma, just_coadds=args.just_coadds,
+                            force=args.force, cleanup=args.cleanup,
+                            unwise=args.unwise, galex=args.galex,
                             verbose=args.verbose)
             done(galaxy, galaxydir, err, suffix, debug=args.debug)
 
@@ -305,25 +342,29 @@ def main():
             else:
                 barlabel = '30 arcsec'
                 barlen = np.ceil(30 / args.pixscale).astype(int) # [pixels]
-            call_htmlplots(onegal, galaxy, survey, pixscale=args.pixscale, mp=args.mp,
-                           verbose=args.verbose, debug=args.debug, clobber=args.clobber,
-                           logfile=logfile,
+            call_htmlplots(onegal, galaxy, survey, pixscale=args.pixscale,
+                           mp=args.mp, verbose=args.verbose, debug=args.debug,
+                           clobber=args.clobber, logfile=logfile,
                            htmldir=htmldir, datadir=datadir,
                            barlen=barlen, barlabel=barlabel,
                            radius_mosaic_arcsec=radius_mosaic_arcsec,
-                           #galaxy_id=onegal['VF_ID'],                           
                            galex=True, unwise=True,
-                           region=args.region, get_galaxy_galaxydir=get_galaxy_galaxydir,
-                           read_multiband=read_multiband)                           
+                           region=args.region,
+                           get_galaxy_galaxydir=get_galaxy_galaxydir,
+                           read_multiband=read_multiband)
 
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
                  f'after {(time.time()-tall)/60.:.3f} minutes')
-        _, groups, _, _ = missing_files(sample=sample, region=args.region, bricks=bricks,
-                                        coadds=args.coadds, ellipse=args.ellipse,
-                                        htmlplots=args.htmlplots, htmlindex=args.htmlindex,
-                                        clobber=args.clobber, verbose=args.verbose,
+        _, groups, _, _ = missing_files(sample=sample, region=args.region,
+                                        bricks=bricks, coadds=args.coadds,
+                                        ellipse=args.ellipse,
+                                        htmlplots=args.htmlplots,
+                                        htmlindex=args.htmlindex,
+                                        #clobber=args.clobber,
+                                        verbose=args.verbose,
                                         htmldir=htmldir, size=size, mp=args.mp)
+
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))
         else:

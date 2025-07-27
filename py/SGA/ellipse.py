@@ -7,8 +7,17 @@ Code to perform ellipse photometry.
 """
 import numpy as np
 
-#print('Try using cntrd in lieu of find_galaxy')
-#print('https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/cntrd.py')
+# ndim>1 columns when ellipse-fitting fails; note, this list is used by various
+# build_catalog functions (e.g., check virgofilaments.build_catalog), so change
+# with care!
+FAILCOLS = ['sma', 'intens', 'intens_err', 'eps', 'eps_err',
+            'pa', 'pa_err', 'x0', 'x0_err', 'y0', 'y0_err',
+            'a3', 'a3_err', 'a4', 'a4_err', 'rms', 'pix_stddev',
+            'stop_code', 'ndata', 'nflag', 'niter']
+FAILDTYPES = [np.int16, np.float32, np.float32, np.float32, np.float32,
+              np.float32, np.float32, np.float32, np.float32, np.float32, np.float32,
+              np.float32, np.float32, np.float32, np.float32, np.float32, np.float32,
+              np.int16, np.int16, np.int16, np.int16]
 
 
 def ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs):

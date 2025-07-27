@@ -683,6 +683,8 @@ WISEA J012739.00-712921.6,drop,faint shred or compact in SMC,
 WISEA J012800.83-714316.9,drop,faint shred or compact in SMC,
 WISEA J012826.16-714903.4,drop,faint shred or compact in SMC,
 WISEA J012827.96-713057.8,drop,faint shred or compact in SMC,
+2MASS J05151258-7444218,drop,faint shred or compact in LMC,
+[GC2009] J053642.29-722556.6,drop,faint shred or compact in LMC,
 WISEA J043113.43-685109.1,drop,faint shred or compact in LMC,
 2MASX J04312496-7008219,drop,faint shred or compact in LMC,
 WISEA J043151.56-693355.3,drop,faint shred or compact in LMC,
@@ -2551,7 +2553,6 @@ WISEA J061147.79-711721.4,drop,faint shred or compact in LMC,
 PGC 291925,drop,faint shred or compact in LMC,
 WISEA J061149.67-711339.2,drop,faint shred or compact in LMC,
 WISEA J061152.22-711237.6,drop,faint shred or compact in LMC,
-ESO 057-IG 073 NED01,drop,faint shred or compact in LMC,
 2MASX J06115751-6949132,drop,faint shred or compact in LMC,
 WISEA J061158.31-704159.0,drop,faint shred or compact in LMC,
 WISEA J061159.12-692704.6,drop,faint shred or compact in LMC,
@@ -7073,7 +7074,6 @@ SMDG J1251010+112904,drop,faint shred or compact,
 CGMW 5-02024,drop,faint shred or compact,
 DENIS J161242.3-645236,drop,faint shred or compact,
 WKK 7412,drop,faint shred or compact,
-ESO 206-IG 018 NED01,drop,faint shred or compact,
 LCSB S1377P,drop,faint shred or compact,
 CGMW 5-02800,drop,faint shred or compact,
 LSBC D508-02,drop,faint shred or compact,
@@ -7249,7 +7249,6 @@ B3 1255+448 NED01,drop,faint shred or compact,
 WISEA J110437.83+430249.7,drop,faint shred or compact,
 WISEA J163024.38+554852.2,drop,faint shred or compact,
 WISEA J192818.20+663534.0,drop,faint shred or compact,
-KUG 1200+385B,drop,faint shred or compact,
 WISEA J174738.17+391746.1,drop,faint shred or compact,
 WISEA J164905.29+391529.8,drop,faint shred or compact,
 B3 0703+426A NED01,drop,faint shred or compact,
@@ -8736,7 +8735,6 @@ FSM 002,drop,faint shred or compact,
 BLAST J031700-441605,drop,faint shred or compact,
 SDSS J032212.99+005629.3,drop,faint shred or compact,
 SDSS J032324.84+002644.8,drop,faint shred or compact,
-GALEXASC J033145.57-334908.1,drop,faint shred or compact,
 SDSS J033244.22-010409.7,drop,faint shred or compact,
 SDSS J033506.89-005228.5,drop,faint shred or compact,
 SDSS J033643.14+002013.7,drop,faint shred or compact,
@@ -13438,7 +13436,6 @@ HR 0232,drop,faint shred or compact,
 WISEA J004941.58-724846.7,drop,faint shred or compact,
 2MAS6W J00495158-7251428,drop,faint shred or compact,
 2MASS J00500749-7258044,drop,faint shred or compact,
-6dF J0050080-354419,drop,faint shred or compact,
 2MASS J00513865-7302398,drop,faint shred or compact,
 2MASS J00512874-7335306,drop,faint shred or compact,
 2MASS J00514443-7257584,drop,faint shred or compact,
@@ -14219,9 +14216,7 @@ SDSS J141522.82+141505.0,drop,shred,
 LV J1243+4127,drop,shred,Likely duplicate of 'SMDG J1243552+412727'
 PGC1 2807144 NED001,drop,shred,Likely duplicate of 'SMDG J1150056+554700'
 PGC1 0095601 NED001,drop,shred,Likely duplicate of 'SMDG J0829119+784949'
-WISEA J005004.20-663308.9,drop,shred,Likely duplicate of 'ESO 079- G 007'
 WISEA J015942.67-055751.4,drop,shred,Likely duplicate of 'NGC 0779'
-WISEA J024117.82-095557.9,drop,shred,Likely duplicate of 'VV 423'
 2MASX J02420790-2407455,drop,shred,Likely duplicate of 'ESO 479- G 025'
 2MFGC 02221,drop,shred,Likely duplicate of 'ESO 479- G 042'
 WISEA J032735.51-211341.1,drop,shred,Likely duplicate of 'ESO 548- G 021'
@@ -16258,7 +16253,6 @@ WISEA J222517.09-005432.9,drop,shred,Shred of '2MFGC 16892' in '2MFGC 16892' gro
 SDSS J124846.31+264451.3,drop,shred,Shred of 'WISEA J124846.85+264455.7' in 'KUG 1246+270' group
 6dF J0028517-233624,drop,shred,Shred of 'WISEA J002851.84-233622.6' in 'APMBGC 473-054-065' group
 WISEA J131047.91-012244.0,drop,shred,Shred of 'VIII Zw 253 NED01' in 'VIII Zw 253' group
-6dF J0321552-133901,drop,shred,Shred of 'VV 491 NED01' in 'MCG -02-09-035' group
 VV 491 NED04,drop,shred,Train wreck; in 'MCG -02-09-035' group
 UGC 00993 NED01,drop,shred,Shred or part of galaxy pair 'UGC 00993'.
 UGC 00993 NED02,drop,shred,Shred or part of galaxy pair 'UGC 00993'.
@@ -18028,7 +18022,6 @@ ESO 247-IG 006 NED02,hyperleda-coords,NED incorrect,In 'ESO 247-IG 006' group
 ESO 053-IG 018 NED02,hyperleda-coords,NED incorrect,In 'ESO 053-IG 018' group
 ESO 154-IG 011 NED02,hyperleda-coords,NED incorrect,In 'ESO 154-IG 011' group
 ESO 115-IG 031 NED02,hyperleda-coords,NED incorrect,In 'ESO 115-IG 031' group
-ESO 053-IG 012 NED02,hyperleda-coords,NED incorrect,In 'ESO 053-IG 012' group
 ESO 082-IG 003 NED02,hyperleda-coords,NED incorrect,In 'ESO 082-IG 003' group
 ESO 198-IG 026 NED01,hyperleda-coords,NED incorrect,In 'ESO 198-IG 026' group
 ESO 115-IG 019 NED01,hyperleda-coords,NED incorrect,In 'ESO 115-IG 019' group
@@ -20245,7 +20238,6 @@ KOSS SP6 023,hyperleda-coords,NED incorrect,
 ESO 468- G 021,hyperleda-coords,NED incorrect,
 KOSS SP6 026,hyperleda-coords,NED incorrect,
 VIII Zw 473,hyperleda-coords,NED incorrect,
-ESO 300-IG 001 NED01,hyperleda-coords,NED incorrect,
 ESO 443- G 001,hyperleda-coords,NED incorrect,
 ESO 139- G 044,hyperleda-coords,NED incorrect,
 ESO 530- G 041,hyperleda-coords,NED incorrect,

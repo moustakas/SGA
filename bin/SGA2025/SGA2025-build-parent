@@ -4,7 +4,7 @@
 
 salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
-source /global/common/software/desi/users/ioannis/SGA/bin/SGA2025/SGA2025-env
+source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
 or
 
@@ -1698,16 +1698,7 @@ def build_parent(verbose=False, overwrite=False):
     from SGA.brick import brickname as get_brickname
     from SGA.io import sga2025_name
     from SGA.groups import build_group_catalog
-
-    FITBITS = dict(
-        ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
-        forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
-        forcepsf = 2**2,  # force PSF for source detection and photometry
-    )
-    REGION = {
-        'dr11-south': 2**0,
-        'dr9-north': 2**1
-    }
+    from SGA.coadds import FITBITS, REGIONBITS
 
     version = parent_version()
     version_archive = parent_version(archive=True)
@@ -1739,7 +1730,8 @@ def build_parent(verbose=False, overwrite=False):
         #cat = cat[I]
         #
         #bricknames = get_brickname(cat['RA'].value, cat['DEC'].value)
-        #I = np.where(np.isin(bricknames, ['0545m052', '0545m050', '0542m050']))[0]
+        #I = np.where(np.isin(bricknames, ['0545m052', '0545m050',
+        #                                  '0542m050']))[0]
         #cat = cat[I]
         ##########################
 
@@ -1748,7 +1740,7 @@ def build_parent(verbose=False, overwrite=False):
                  f'{mindiam:.1f} arcsec.')
 
         # add the region bit
-        cat['REGION'] = np.int16(REGION[region])
+        cat['REGION'] = np.int16(REGIONBITS[region])
         parent.append(cat)
     parent = vstack(parent)
 
@@ -1758,7 +1750,8 @@ def build_parent(verbose=False, overwrite=False):
     dup = parent[np.isin(parent['OBJNAME'], dups[cc>1])]
     dup = dup[np.argsort(dup['OBJNAME'])]
     assert(np.all(dup['OBJNAME'][0::2] == dup['OBJNAME'][1::2]))
-    log.info(f'Found {len(dup):,d}/{len(parent):,d} objects in north-south overlap region.')
+    log.info(f'Found {len(dup):,d}/{len(parent):,d} objects ' + \
+             'in north-south overlap region.')
 
     parent = parent[~np.isin(parent['OBJNAME'], dup['OBJNAME'])]
 
@@ -1772,8 +1765,12 @@ def build_parent(verbose=False, overwrite=False):
 
     # build the group catalog from the full sample
     diam, ba, pa, ref, mag, band = choose_geometry(
-        parent, mindiam=10., get_mag=True)
+        parent, mindiam=0., get_mag=True)
     diam /= 60. # [arcmin]
+    if np.any(diam <= 0.):
+        log.warning('Some objects have zero diameter!')
+        diam[diam <= 0.] = 10./60.
+    assert(np.all(diam > 0.))
 
     ra, dec = parent['RA'].value, parent['DEC'].value
     allmorph = []

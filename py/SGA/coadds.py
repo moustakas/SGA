@@ -6,6 +6,7 @@ SGA.coadds
 """
 import os, pdb
 import numpy as np
+
 from SGA.io import RACOLUMN, DECCOLUMN
 from SGA.logger import log
 
@@ -97,9 +98,9 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix,
 
     # If we made it here and there is no CCDs file it's because legacypipe
     # exited cleanly with "No photometric CCDs touching brick."
-    _ccdsfile = os.path.join(output_dir, 'coadd', 'cus', brickname,
+    ccdsfile = os.path.join(output_dir, 'coadd', 'cus', brickname,
                             f'legacysurvey-{brickname}-ccds.fits')
-    if not os.path.isfile(_ccdsfile) and missing_ok is False:
+    if not os.path.isfile(ccdsfile) and missing_ok is False:
         print('No photometric CCDs touching brick.')
         if cleanup:
             _do_cleanup()
@@ -113,12 +114,12 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix,
     if not ok:
         return ok
 
-    # For objects on the edge of the footprint we can sometimes lose 3-band
-    # coverage if one of the bands is fully masked. Check here and write out all
-    # the files except a
-    if os.path.isfile(ccdsfile): # can be missing during testing if missing_ok=True
-        allbands = fitsio.read(ccdsfile, columns='filter')
-        ubands = list(sorted(set(allbands)))
+    ## For objects on the edge of the footprint we can sometimes lose 3-band
+    ## coverage if one of the bands is fully masked. Check here and write out all
+    ## the files except a
+    #if os.path.isfile(ccdsfile): # can be missing during testing if missing_ok=True
+    #    allbands = fitsio.read(ccdsfile, columns='filter')
+    #    ubands = list(sorted(set(allbands)))
 
     # image coadds (FITS + JPG)
     for band in bands:
@@ -182,7 +183,7 @@ def _rearrange_files(galaxy, output_dir, brickname, stagesuffix,
     # tractor catalog
     ok = _copyfile(
         os.path.join(output_dir, 'tractor', 'cus', f'tractor-{brickname}.fits'),
-        os.path.join(output_dir, f'{galaxy}-{stagesuffix}-tractor.fits'),
+        os.path.join(output_dir, f'{galaxy}-tractor.fits'),
         clobber=clobber, missing_ok=missing_ok)
     if not ok:
         return ok
@@ -335,7 +336,7 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     return ccds
 
 
-def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec,
+def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
                   subsky_radii=None, just_coadds=False,  missing_ok=False,
                   force=False, cleanup=True, unwise=True, galex=False,
@@ -360,28 +361,24 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec,
         log.info('No CCDs touching this brick; nothing to do.')
         return 1, stagesuffix
 
-    usebands = np.array(sorted(set(ccds.filter)))
-    these = [filt in usebands for filt in bands]
-    log.info('Bands touching this brick: {" ".join([filt for filt in usebands]))}')
-    bands = usebands
-
-    #if np.sum(these) < len(bands) and require_grz:
-    #    print('Missing imaging in at least grz and require_grz=True; nothing to do.')
-    #    ccdsfile = os.path.join(survey.output_dir, '{}-ccds-{}.fits'.format(galaxy, run))
-    #    # should we write out the CCDs file?
-    #    print('Writing {} CCDs to {}'.format(len(ccds), ccdsfile))
-    #    ccds.writeto(ccdsfile, overrite=True)
-    #    return 1, stagesuffix
+    #usebands = np.array(sorted(set(ccds.filter)))
+    #log.info(f'Bands touching this brick: {",".join(usebands)}')
+    #bands = usebands
 
     # Run the pipeline!
     cmdargs = f'--radec {onegal[RACOLUMN]} {onegal[DECCOLUMN]} '
     cmdargs += f'--width={width} --height={width} --pixscale={pixscale} '
     cmdargs += f'--threads={mp} --outdir={survey.output_dir} --bands={",".join(bands)} '
-    cmdargs += f'--survey-dir={survey.survey_dir} '
+    cmdargs += f'--survey-dir={survey.survey_dir} --run={run} '
+
+    if nsigma:
+        cmdargs += f'--nsigma={nsigma:.0f} '
 
     #cmdargs += '--write-stage=tims --write-stage=srcs '
     cmdargs += '--write-stage=srcs '
 
+    print('Hack!!')
+    cmdargs += '--old-calibs-ok '
     cmdargs += '--skip-calibs '
     cmdargs += f'--checkpoint={survey.output_dir}/{galaxy}-{stagesuffix}-checkpoint.p '
     cmdargs += f'--pickle={survey.output_dir}/{galaxy}-{stagesuffix}-%%(stage)s.p '
@@ -415,15 +412,16 @@ def custom_coadds(onegal, galaxy, survey, radius_mosaic_arcsec,
     # stage-specific options here--
     cmdargs += '--fit-on-coadds --no-ivar-reweighting '
 
-    if nsigma:
-        cmdargs += f'--nsigma {nsigma:.0f} '
     log.info(f'runbrick {cmdargs}')
 
     err = runbrick(args=cmdargs.split())
 
     # get the updated (final) set of bands
-    finalccds = fitsio.read(os.path.join(survey.output_dir, f'{galaxy}-ccds.fits'))
-    bands = np.array(sorted(set(finalccds['filter'])))
+    ccdsfile = os.path.join(
+        survey.output_dir, 'coadd', 'cus', brickname,
+        f'legacysurvey-{brickname}-ccds.fits')
+    if os.path.isfile(ccdsfile):
+        bands = np.array(sorted(set(fitsio.read(ccdsfile, columns='filter'))))
 
     # optionally write out the un WISE PSFs
     if unwise or galex:
