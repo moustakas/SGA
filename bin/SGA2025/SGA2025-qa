@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 
+"""QA of Tractor modeling results.
+
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+SGA2025-shifter
+source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
+
+"""
+
 import pdb # for debugging
 
 import os
@@ -9,10 +17,9 @@ from astropy.table import Table, vstack
 import fitsio
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.gridspec as gridspec
 from matplotlib.image import imread
-
 
 from SGA.io import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
                     get_raslice, read_sample, DIAMCOLUMN)
@@ -24,12 +31,14 @@ from SGA.coadds import FITBITS
 
 def read_coadds(galaxy, galaxydir):
 
+    from astropy.wcs import WCS
+
     imagefile = os.path.join(galaxydir, f'{galaxy}-coadds-image.jpg')
     modelfile = os.path.join(galaxydir, f'{galaxy}-coadds-model.jpg')
     tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
     if not os.path.isfile(tractorfile):
         log.warning(f'Missing {tractorfile}')
-        return Table(), Table(), None, None
+        return Table(), Table(), None, None, None
 
     cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
                      'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
@@ -45,18 +54,26 @@ def read_coadds(galaxy, galaxydir):
     else:
         sga = Table()
 
-    image = imread(imagefile)
-    model = imread(modelfile)
+    if os.path.isfile(imagefile):
+        image = imread(imagefile)
+    if os.path.isfile(modelfile):
+        model = imread(modelfile)
 
-    return sga, tractor, image, model
+    for band in ['g', 'r', 'i', 'z']:
+        fitsfile = os.path.join(galaxydir, f'{galaxy}-coadds-image-{band}.fits.fz')
+        if os.path.isfile(fitsfile):
+            hdr = fitsio.read_header(fitsfile, ext=1)
+            wcs = WCS(hdr, naxis=2)
+
+    return sga, tractor, image, model, wcs
 
 
 def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
               region='dr11-south'):
 
-    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
+    from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
 
-    pixscale = 0.262 # [arcsec/pixel]
+    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
 
     nobj = len(sample)
     allindx = np.arange(nobj)
@@ -69,27 +86,49 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
         log.info(f'Building page {ipage+1:,d}/{npage:,d}')
         indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
 
-        fig, ax = plt.subplots(nrow, ncol, figsize=(inches_per_panel*ncol,
-                                                    inches_per_panel*nrow))
-        for iax, xx in enumerate(np.atleast_1d(ax).flat):
+        fig, ax = plt.subplots(nrow, ncol,
+                               figsize=(inches_per_panel*ncol,
+                                        inches_per_panel*nrow),
+                               gridspec_kw={'wspace': 0.02, 'hspace': 0.02},
+                               constrained_layout=True)
+        ax = ax.ravel()
+
+        for iax, xx in enumerate(ax):
             if iax < len(indx):
-                sga, tractor, image, model = read_coadds(
+                obj = sample[indx[iax]]
+                sga, tractor, image, model, wcs = read_coadds(
                     galaxy[indx[iax]], galaxydir[indx[iax]])
                 if image is None:
+                    #xx.plot([None], [None])
+                    for spine in ['bottom', 'top', 'right', 'left']:
+                        xx.spines[spine].set_color('black')
+                    xx.set_xticks([])
+                    xx.set_yticks([])
+                    txt = '\n'.join([obj["OBJNAME"], 'No Data'])
+                    xx.text(0.03, 0.97, txt, transform=xx.transAxes,
+                            ha='left', va='top', color='white', linespacing=1.5,
+                            fontsize=9, bbox=dict(boxstyle='round', facecolor='k'))
                     continue
 
                 height, width, _ = image.shape
+                #print(galaxy[indx[iax]], height)
+                pixscale = get_pixscale(wcs)[0] * 3600. # [arcsec/pixel]
 
                 xx.imshow(image, origin='lower', interpolation='none')
                 xx.scatter(tractor['bx'], height-tractor['by'], marker='x',
                            s=10, color='red')
+                if len(sga) > 0:
+                    xx.scatter(sga['bx'], height-sga['by'], marker='s',
+                               facecolor='none', s=40, color='cyan')
 
                 for spine in ['bottom', 'top', 'right', 'left']:
                     xx.spines[spine].set_color('white')
+                xx.set_xlim(0, width)
+                xx.set_ylim(0, height)
+                xx.margins(0)
                 xx.set_xticks([])
                 xx.set_yticks([])
 
-                obj = sample[indx[iax]]
                 diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
                 tlabel0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
 
@@ -116,10 +155,11 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     else:
                         tlabel = [f'D(50)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}', tlabel0]
                     #typ = f'{typ}: {mag}'
+                    txt = '\n'.join([obj["OBJNAME"], typ, mag])
                 else:
-                    typ, mag = '', ''
+                    txt = obj["OBJNAME"]
+                    tlabel = [tlabel0]
 
-                txt = '\n'.join([obj["OBJNAME"], typ, mag])
                 xx.text(0.03, 0.97, txt, transform=xx.transAxes, ha='left',
                         va='top', color='white', linespacing=1.5, fontsize=9,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
@@ -129,32 +169,30 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                 draw_ellipse(diam0, ba0, pa0, xpix, ypix,
                              height_pixels=width, pixscale=pixscale,
                              ax=xx, color='white', linestyle='-',
-                             draw_majorminor_axes=False, jpeg=True)
+                             draw_majorminor_axes=True, jpeg=True)
+
+                xx.text(0.03, 0.03, '\n'.join(tlabel), transform=xx.transAxes,
+                        ha='left', va='bottom', color='white', linespacing=1.5,
+                        fontsize=9, bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
                 if len(sga) > 0:
-                    txt = '\n'.join(tlabel)
-                    xx.text(0.03, 0.03, txt, transform=xx.transAxes, ha='left',
-                            va='bottom', color='white', linespacing=1.5, fontsize=9,
-                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
                     # ...and the Tractor model
-                    draw_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width,
-                                 pixscale=pixscale, ax=xx, color='yellow',
-                                 linestyle='--', draw_majorminor_axes=True,
-                                 jpeg=True)
+                    (xpix, ypix) = wcs.wcs_world2pix(sga['ra'], sga['dec'], 0)
+                    draw_ellipse(diam, ba, pa, xpix, ypix,
+                                 height_pixels=height, pixscale=pixscale,
+                                 ax=xx, color='yellow', linestyle='--',
+                                 draw_majorminor_axes=True, jpeg=True)
 
             else:
                 xx.axis('off')
-        fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05,
-                            top=0.95, left=0.05, right=0.95)
-        pdf.savefig(fig, dpi=150)
+        pdf.savefig(fig, bbox_inches='tight')#, dpi=150, pad_inches=0)
         plt.close()
 
     pdf.close()
     log.info(f'Wrote {pdffile}')
 
 
-def main(region='dr11-south', mp=1):
+def qa_tractor(region='dr11-south', mp=1):
 
     sample, fullsample = read_sample(region=region)
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
@@ -164,55 +202,18 @@ def main(region='dr11-south', mp=1):
     sample = sample[I]
     fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    qadir = os.path.join(sga_dir(), 'parent', 'lvd')
-    if not os.path.isdir(qadir):
-        os.makedirs(qadir, exist_ok=True)
-    pdffile = os.path.join(qadir, 'qa-montage-tractor-lvd.pdf')
-
-    annotated(sample, pdffile, region=region)
-
-    pdb.set_trace()
-
     #I = fullsample['FITBIT'] & FITBITS['ignore'] != 0
     #sample = fullsample[I]
     #sample = sample[np.argsort(sample[DIAMCOLUMN])]
     #sample = sample[:32]
+    #sample = vstack((sample, fullsample[fullsample['OBJNAME'] == 'LV J1149+1715']))
 
-    # hack!
-    sample = vstack((sample, fullsample[fullsample['OBJNAME'] == 'LV J1149+1715']))
-    sample = sample[np.argsort(sample[DIAMCOLUMN])]
+    qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+    if not os.path.isdir(qadir):
+        os.makedirs(qadir, exist_ok=True)
+    pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
 
-    galaxy, galaxydir = get_galaxy_galaxydir(sample)
-
-    tractor, cat, imgs = [], [], []
-    for onegal, gal, gdir in zip(sample, galaxy, galaxydir):
-        tractorfile = os.path.join(gdir, f'{gal}-tractor.fits')
-        if not os.path.isfile(tractorfile):
-            log.warning(f'Missing {tractorfile}')
-            continue
-
-        rows = np.where(fitsio.read(tractorfile, columns='ref_cat') == 'LG')[0]
-        if len(rows) == 0:
-            log.warning(f'SGA source dropped from {tractorfile}')
-            continue
-
-        tractor1 = Table(fitsio.read(tractorfile, rows=rows))
-        tractor.append(tractor1)
-        cat.append(onegal)
-
-        imgfile = os.path.join(gdir, f'{gal}-coadds-model.jpg')
-        print(imgfile)
-        imgs.append(imread(imgfile))
-
-    cat = vstack(cat)
-    tractor = vstack(tractor)
-
-    print(tractor['ref_id', 'ra', 'dec', 'type', 'sersic', 'shape_r', 'flux_g', 'flux_r', 'flux_z'])
-    print(cat['SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM'])
-
-    annotated(cat, tractor, imgs, pdffile)
-    pdb.set_trace()
-
+    annotated(sample, pdffile, region=region)
 
 if __name__ == '__main__':
 
@@ -223,4 +224,4 @@ if __name__ == '__main__':
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 
-    main(mp=args.mp, region=args.region)
+    qa_tractor(mp=args.mp, region=args.region)

@@ -109,17 +109,22 @@ def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
     theta = np.radians(ellipse_angle)
 
 
-    ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels, angle=ellipse_angle,
-                  facecolor='none', edgecolor=color, lw=linewidth, ls=linestyle,
-                  alpha=alpha, clip_on=clip)
+    ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels,
+                  angle=ellipse_angle, facecolor='none', edgecolor=color,
+                  lw=linewidth, ls=linestyle, alpha=alpha, clip_on=clip)
     ax.add_artist(ell)
 
-    # Optionally draw the major and minor axes.
+    # Optionally draw the major and minor axes. FIXME -- rewrite as a
+    # matrix operation!
     if draw_majorminor_axes:
-        x1, y1 = xcen + major_axis_pixels/2. * np.cos(theta), ycen + major_axis_pixels/2. * np.sin(theta)
-        x2, y2 = xcen - major_axis_pixels/2. * np.cos(theta), ycen - major_axis_pixels/2. * np.sin(theta)
-        x3, y3 = xcen + minor_axis_pixels/2. * np.sin(theta), ycen - minor_axis_pixels/2. * np.cos(theta)
-        x4, y4 = xcen - minor_axis_pixels/2. * np.sin(theta), ycen + minor_axis_pixels/2. * np.cos(theta)
+        x1 = xcen + major_axis_pixels/2. * np.cos(theta)
+        y1 = ycen + major_axis_pixels/2. * np.sin(theta)
+        x2 = xcen - major_axis_pixels/2. * np.cos(theta)
+        y2 = ycen - major_axis_pixels/2. * np.sin(theta)
+        x3 = xcen + minor_axis_pixels/2. * np.sin(theta)
+        y3 = ycen - minor_axis_pixels/2. * np.cos(theta)
+        x4 = xcen - minor_axis_pixels/2. * np.sin(theta)
+        y4 = ycen + minor_axis_pixels/2. * np.cos(theta)
 
         ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-', clip_on=True)
         ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-', clip_on=True)
