@@ -1,0 +1,226 @@
+#!/usr/bin/env python
+
+import pdb # for debugging
+
+import os
+from glob import glob
+import numpy as np
+from astropy.table import Table, vstack
+import fitsio
+
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.image import imread
+
+
+from SGA.io import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
+                    get_raslice, read_sample, DIAMCOLUMN)
+from SGA.ellipse import get_tractor_ellipse
+from SGA.qa import draw_ellipse
+from SGA.logger import log
+from SGA.coadds import FITBITS
+
+
+def read_coadds(galaxy, galaxydir):
+
+    imagefile = os.path.join(galaxydir, f'{galaxy}-coadds-image.jpg')
+    modelfile = os.path.join(galaxydir, f'{galaxy}-coadds-model.jpg')
+    tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
+    if not os.path.isfile(tractorfile):
+        log.warning(f'Missing {tractorfile}')
+        return Table(), Table(), None, None
+
+    cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
+                     'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
+                     'flux_r', 'flux_i', 'flux_z'])
+    allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
+    cols = cols[np.isin(cols, allcols)]
+    tractor = Table(fitsio.read(tractorfile, columns=cols))
+
+    I = tractor['ref_cat'] == 'LG'
+    if np.sum(I) == 1:
+        sga = tractor[I]
+        #tractor = tractor[~I]
+    else:
+        sga = Table()
+
+    image = imread(imagefile)
+    model = imread(modelfile)
+
+    return sga, tractor, image, model
+
+
+def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
+              region='dr11-south'):
+
+    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
+
+    pixscale = 0.262 # [arcsec/pixel]
+
+    nobj = len(sample)
+    allindx = np.arange(nobj)
+
+    nperpage = ncol * nrow
+    npage = int(np.ceil(nobj / nperpage))
+
+    pdf = PdfPages(pdffile)
+    for ipage in range(npage):
+        log.info(f'Building page {ipage+1:,d}/{npage:,d}')
+        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
+
+        fig, ax = plt.subplots(nrow, ncol, figsize=(inches_per_panel*ncol,
+                                                    inches_per_panel*nrow))
+        for iax, xx in enumerate(np.atleast_1d(ax).flat):
+            if iax < len(indx):
+                sga, tractor, image, model = read_coadds(
+                    galaxy[indx[iax]], galaxydir[indx[iax]])
+                if image is None:
+                    continue
+
+                height, width, _ = image.shape
+
+                xx.imshow(image, origin='lower', interpolation='none')
+                xx.scatter(tractor['bx'], height-tractor['by'], marker='x',
+                           s=10, color='red')
+
+                for spine in ['bottom', 'top', 'right', 'left']:
+                    xx.spines[spine].set_color('white')
+                xx.set_xticks([])
+                xx.set_yticks([])
+
+                obj = sample[indx[iax]]
+                diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
+                tlabel0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+
+                if len(sga) > 0:
+                    typ, nn, r50 = sga['type'][0], sga['sersic'][0], sga['shape_r'][0]
+                    e1, e2 = sga['shape_e1'][0], sga['shape_e2'][0]
+                    diam, ba, pa = get_tractor_ellipse(r50, e1, e2)
+
+                    mag = []
+                    for band in ['g', 'r', 'i', 'z']:
+                        if f'flux_{band}' in sga.colnames:
+                            flux = sga[f'flux_{band}'][0]
+                            if flux > 0.:
+                                mag.append(f'{band}={22.5-2.5*np.log10(flux):.2f}')
+                    mag = ' '.join(mag)
+
+                    if typ == 'PSF':
+                        tlabel = [tlabel0, ]
+                    elif typ == 'REX':
+                        tlabel = [f'D(50)={diam:.1f}"', tlabel0]
+                    elif typ == 'SER':
+                        typ = f'{typ} (n={nn:.1f})'
+                        tlabel = [f'D(50)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}', tlabel0]
+                    else:
+                        tlabel = [f'D(50)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}', tlabel0]
+                    #typ = f'{typ}: {mag}'
+                else:
+                    typ, mag = '', ''
+
+                txt = '\n'.join([obj["OBJNAME"], typ, mag])
+                xx.text(0.03, 0.97, txt, transform=xx.transAxes, ha='left',
+                        va='top', color='white', linespacing=1.5, fontsize=9,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+                # draw the initial ellipse geometry...
+                xpix, ypix = (width/2., width/2.)
+                draw_ellipse(diam0, ba0, pa0, xpix, ypix,
+                             height_pixels=width, pixscale=pixscale,
+                             ax=xx, color='white', linestyle='-',
+                             draw_majorminor_axes=False, jpeg=True)
+
+                if len(sga) > 0:
+                    txt = '\n'.join(tlabel)
+                    xx.text(0.03, 0.03, txt, transform=xx.transAxes, ha='left',
+                            va='bottom', color='white', linespacing=1.5, fontsize=9,
+                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+                    # ...and the Tractor model
+                    draw_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width,
+                                 pixscale=pixscale, ax=xx, color='yellow',
+                                 linestyle='--', draw_majorminor_axes=True,
+                                 jpeg=True)
+
+            else:
+                xx.axis('off')
+        fig.subplots_adjust(wspace=0., hspace=0., bottom=0.05,
+                            top=0.95, left=0.05, right=0.95)
+        pdf.savefig(fig, dpi=150)
+        plt.close()
+
+    pdf.close()
+    log.info(f'Wrote {pdffile}')
+
+
+def main(region='dr11-south', mp=1):
+
+    sample, fullsample = read_sample(region=region)
+    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
+    I = [os.path.isdir(gdir) for gdir in galaxydir]
+    log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
+             'objects with pipeline results.')
+    sample = sample[I]
+    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
+    qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+    if not os.path.isdir(qadir):
+        os.makedirs(qadir, exist_ok=True)
+    pdffile = os.path.join(qadir, 'qa-montage-tractor-lvd.pdf')
+
+    annotated(sample, pdffile, region=region)
+
+    pdb.set_trace()
+
+    #I = fullsample['FITBIT'] & FITBITS['ignore'] != 0
+    #sample = fullsample[I]
+    #sample = sample[np.argsort(sample[DIAMCOLUMN])]
+    #sample = sample[:32]
+
+    # hack!
+    sample = vstack((sample, fullsample[fullsample['OBJNAME'] == 'LV J1149+1715']))
+    sample = sample[np.argsort(sample[DIAMCOLUMN])]
+
+    galaxy, galaxydir = get_galaxy_galaxydir(sample)
+
+    tractor, cat, imgs = [], [], []
+    for onegal, gal, gdir in zip(sample, galaxy, galaxydir):
+        tractorfile = os.path.join(gdir, f'{gal}-tractor.fits')
+        if not os.path.isfile(tractorfile):
+            log.warning(f'Missing {tractorfile}')
+            continue
+
+        rows = np.where(fitsio.read(tractorfile, columns='ref_cat') == 'LG')[0]
+        if len(rows) == 0:
+            log.warning(f'SGA source dropped from {tractorfile}')
+            continue
+
+        tractor1 = Table(fitsio.read(tractorfile, rows=rows))
+        tractor.append(tractor1)
+        cat.append(onegal)
+
+        imgfile = os.path.join(gdir, f'{gal}-coadds-model.jpg')
+        print(imgfile)
+        imgs.append(imread(imgfile))
+
+    cat = vstack(cat)
+    tractor = vstack(tractor)
+
+    print(tractor['ref_id', 'ra', 'dec', 'type', 'sersic', 'shape_r', 'flux_g', 'flux_r', 'flux_z'])
+    print(cat['SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM'])
+
+    annotated(cat, tractor, imgs, pdffile)
+    pdb.set_trace()
+
+
+if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
+    args = parser.parse_args()
+
+    main(mp=args.mp, region=args.region)

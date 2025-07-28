@@ -100,12 +100,15 @@ def main():
 
         if not args.build_catalog and not args.build_refcat:
             log.warning('Testing subsamples!')
-            from SGA.coadds import FITBITS
-            I = sample['FITBIT'] & FITBITS['ignore'] != 0
-            sample = sample[I]
-            sample = sample[np.argsort(sample[DIAMCOLUMN])]
-            sample = sample[:32]
-            #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0189.832+032.861']
+            if False:
+                from SGA.coadds import FITBITS
+                I = sample['FITBIT'] & FITBITS['ignore'] != 0
+                sample = sample[I]
+                sample = sample[np.argsort(sample[DIAMCOLUMN])]
+                sample = sample[:32]
+                #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0189.832+032.861']
+            else:
+                sample = sample[sample['OBJNAME'] == 'LV J1149+1715']
             pdb.set_trace()
 
         if len(sample) == 0:

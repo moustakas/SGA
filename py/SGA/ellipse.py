@@ -40,6 +40,7 @@ def ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs):
     -------
     mask : ndarray of bool
         True for points inside the ellipse.
+
     """
     # Wrap delta-RA into [-180, +180] range
     dra = (ras - racen + 180) % 360 - 180
@@ -172,6 +173,29 @@ def is_in_ellipse(ras, decs, RAcen, DECcen, r, e1, e2):
     return np.hypot(dx, dy) < 1
 
 
+def get_tractor_ellipse(r50, e1, e2):
+    """Convert Tractor epsilon1, epsilon2 values to ellipticity and position angle.
+
+    Taken in part from tractor.ellipses.EllipseE.
+
+    r50 in arcsec
+
+    """
+    e = np.hypot(e1, e2)
+    ba = (1. - e) / (1. + e)
+    #e = (ba + 1.) / (ba - 1.)
+
+    phi = -np.rad2deg(np.arctan2(e2, e1) / 2)
+    #angle = np.deg2rad(-2 * phi)
+    #e1 = e * np.cos(angle)
+    #e2 = e * np.sin(angle)
+
+    pa = (180. - phi) % 180
+    diam = r50 * 2. * 1.2 # [radius-->diameter then 20% higher]
+
+    return diam, ba, pa
+
+
 def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
     """From a catalog containing magnitudes, diameters, position angles, and
     ellipticities, return a "basic" value for each property.
@@ -230,7 +254,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             basic[f'{prop.upper()}_{ref}_REF'] = val_ref
             if prop == 'mag':
                 basic[f'BAND_{ref}'] = val_band
-            
+
     # SGA2020
     elif 'D26' in cat.columns:
         ref = 'SGA2020'
