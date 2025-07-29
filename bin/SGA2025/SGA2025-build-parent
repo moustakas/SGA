@@ -19,7 +19,7 @@ SGA2025-build-parent --in-footprint --region=dr11-south
 SGA2025-build-parent --build-parent
 SGA2025-build-parent --qa-parent
 
-salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.2
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
 srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
   SGA2025-build-parent --in-footprint --region=dr9-north
 

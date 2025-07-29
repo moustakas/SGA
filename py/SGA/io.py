@@ -14,8 +14,8 @@ from astropy.table import Table, vstack
 from SGA.logger import log
 
 
-RACOLUMN = 'RA'
-DECCOLUMN = 'DEC'
+RACOLUMN = 'GROUP_RA'   # 'RA'
+DECCOLUMN = 'GROUP_DEC' # 'DEC'
 DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
 ZCOLUMN = 'Z'
 REFIDCOLUMN = 'SGAID'
@@ -3159,7 +3159,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     from glob import glob
     import multiprocessing
     import astropy
-    from SGA.util import weighted_partition
+    from SGA.mpi import weighted_partition
 
     if sample is None and bricks is None:
         msg = 'Must provide either sample or bricks.'
@@ -3264,14 +3264,14 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         done_indices = [np.array([])]
 
     if len(itodo) > 0:
-        _todo_indices = indices[itodo]
-
-        if sample is not None:
-            weight = np.atleast_1d(sample[DIAMCOLUMN])[_todo_indices]
-            todo_indices = weighted_partition(weight, size)
-        else:
-            # unweighted
-            todo_indices = np.array_split(_todo_indices, size)
+        todo_indices = np.array_split(indices[itodo], size)
+        #_todo_indices = indices[itodo]
+        #if sample is not None:
+        #    weight = np.atleast_1d(sample[DIAMCOLUMN])[_todo_indices]
+        #    todo_indices = weighted_partition(weight, size)
+        #else:
+        #    # unweighted
+        #    todo_indices = np.array_split(_todo_indices, size)
     else:
         todo_indices = [np.array([])]
 

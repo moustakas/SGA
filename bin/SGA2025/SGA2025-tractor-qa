@@ -43,8 +43,9 @@ def read_coadds(galaxy, galaxydir):
     cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
                      'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
                      'flux_r', 'flux_i', 'flux_z'])
-    allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
-    cols = cols[np.isin(cols, allcols)]
+    #allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
+    #cols = cols[np.isin(cols, allcols)]
+    print(galaxydir)
     tractor = Table(fitsio.read(tractorfile, columns=cols))
 
     I = tractor['ref_cat'] == 'LG'
@@ -96,89 +97,104 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
         for iax, xx in enumerate(ax):
             if iax < len(indx):
                 obj = sample[indx[iax]]
+                diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
+                geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+
+                txt_ul = '\n'.join([obj["OBJNAME"], obj["SGANAME"],
+                                    r'$(\alpha,\delta)$='+f'({obj["RA"]:.7f},{obj["DEC"]:.6f})',
+                                    geo0])
+                xx.text(0.03, 0.97, txt_ul, transform=xx.transAxes, ha='left',
+                        va='top', color='white', linespacing=1.5, fontsize=9,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
                 sga, tractor, image, model, wcs = read_coadds(
                     galaxy[indx[iax]], galaxydir[indx[iax]])
                 if image is None:
-                    #xx.plot([None], [None])
+                    txt_ll = 'No Tractor catalog'
+                    txt_ur = None
+                else:
+                    height, width, _ = image.shape
+                    pixscale = get_pixscale(wcs)[0] * 3600. # [arcsec/pixel]
+
+                    xx.imshow(image, origin='lower', interpolation='none')
                     for spine in ['bottom', 'top', 'right', 'left']:
-                        xx.spines[spine].set_color('black')
-                    xx.set_xticks([])
-                    xx.set_yticks([])
-                    txt = '\n'.join([obj["OBJNAME"], 'No Data'])
-                    xx.text(0.03, 0.97, txt, transform=xx.transAxes,
-                            ha='left', va='top', color='white', linespacing=1.5,
-                            fontsize=9, bbox=dict(boxstyle='round', facecolor='k'))
-                    continue
+                        xx.spines[spine].set_color('white')
 
-                height, width, _ = image.shape
-                #print(galaxy[indx[iax]], height)
-                pixscale = get_pixscale(wcs)[0] * 3600. # [arcsec/pixel]
+                    I = tractor['shape_r'] > 1.
+                    if np.sum(I) > 0:
+                        if np.sum(I) > 50:
+                            alpha = 0.5
+                        else:
+                            alpha = 0.9
+                        xx.scatter(tractor['bx'][I], height-tractor['by'][I],
+                                   marker='x', s=10, color='red', alpha=alpha)
+                    if len(sga) > 0:
+                        xx.scatter(sga['bx'], height-sga['by'], marker='s',
+                                   facecolor='none', s=40, color='cyan')
+                    xx.set_xlim(0, width)
+                    xx.set_ylim(0, height)
 
-                xx.imshow(image, origin='lower', interpolation='none')
-                xx.scatter(tractor['bx'], height-tractor['by'], marker='x',
-                           s=10, color='red')
-                if len(sga) > 0:
-                    xx.scatter(sga['bx'], height-sga['by'], marker='s',
-                               facecolor='none', s=40, color='cyan')
+                    # draw the initial ellipse geometry...
+                    xpix, ypix = (width/2., width/2.)
+                    draw_ellipse(diam0, ba0, pa0, xpix, ypix,
+                                 height_pixels=width, pixscale=pixscale,
+                                 ax=xx, color='white', linestyle='-',
+                                 draw_majorminor_axes=True, jpeg=True)
 
-                for spine in ['bottom', 'top', 'right', 'left']:
-                    xx.spines[spine].set_color('white')
-                xx.set_xlim(0, width)
-                xx.set_ylim(0, height)
+                    if len(sga) > 0:
+                        typ, nn = sga['type'][0], sga['sersic'][0]
+                        ra, dec = sga['ra'][0], sga['dec'][0]
+                        r50 = sga['shape_r'][0]
+                        e1, e2 = sga['shape_e1'][0], sga['shape_e2'][0]
+                        diam, ba, pa = get_tractor_ellipse(r50, e1, e2)
+
+                        mag = []
+                        for band in ['g', 'r', 'i', 'z']:
+                            if f'flux_{band}' in sga.colnames:
+                                flux = sga[f'flux_{band}'][0]
+                                if flux > 0.:
+                                    mag.append(f'{band}={22.5-2.5*np.log10(flux):.2f}')
+                        mag = ' '.join(mag)
+
+                        if typ == 'PSF':
+                            pass
+                        elif typ == 'REX':
+                            geo = f'r(50)={r50:.1f}"'
+                        elif typ == 'SER':
+                            typ = f'{typ} (n={nn:.1f})'
+                            geo = f'r(50)={r50:.1f}" b/a={ba:.2f} PA={pa:.1f}'
+                        else:
+                            geo = f'r(50)={r50:.1f}" b/a={ba:.2f} PA={pa:.1f}'
+
+                        txt_ur = f'{typ}'
+                        if typ == 'PSF':
+                            txt_ll = '\n'.join([r'$(\alpha,\delta)$='+f'({ra:.7f},{dec:.6f})', mag])
+                        else:
+                            txt_ll = '\n'.join([geo, r'$(\alpha,\delta)$='+f'({ra:.7f},{dec:.6f})', mag])
+                    else:
+                        txt_ur = None
+                        txt_ll = 'SGA source dropped'
+
                 xx.margins(0)
                 xx.set_xticks([])
                 xx.set_yticks([])
 
-                diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
-                tlabel0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+                if txt_ll:
+                    xx.text(0.03, 0.03, txt_ll, transform=xx.transAxes,
+                            ha='left', va='bottom', color='white',
+                            linespacing=1.5, fontsize=9,
+                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
-                if len(sga) > 0:
-                    typ, nn, r50 = sga['type'][0], sga['sersic'][0], sga['shape_r'][0]
-                    e1, e2 = sga['shape_e1'][0], sga['shape_e2'][0]
-                    diam, ba, pa = get_tractor_ellipse(r50, e1, e2)
-
-                    mag = []
-                    for band in ['g', 'r', 'i', 'z']:
-                        if f'flux_{band}' in sga.colnames:
-                            flux = sga[f'flux_{band}'][0]
-                            if flux > 0.:
-                                mag.append(f'{band}={22.5-2.5*np.log10(flux):.2f}')
-                    mag = ' '.join(mag)
-
-                    if typ == 'PSF':
-                        tlabel = [tlabel0, ]
-                    elif typ == 'REX':
-                        tlabel = [f'D(50)={diam:.1f}"', tlabel0]
-                    elif typ == 'SER':
-                        typ = f'{typ} (n={nn:.1f})'
-                        tlabel = [f'D(50)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}', tlabel0]
-                    else:
-                        tlabel = [f'D(50)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}', tlabel0]
-                    #typ = f'{typ}: {mag}'
-                    txt = '\n'.join([obj["OBJNAME"], typ, mag])
-                else:
-                    txt = obj["OBJNAME"]
-                    tlabel = [tlabel0]
-
-                xx.text(0.03, 0.97, txt, transform=xx.transAxes, ha='left',
-                        va='top', color='white', linespacing=1.5, fontsize=9,
-                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
-                # draw the initial ellipse geometry...
-                xpix, ypix = (width/2., width/2.)
-                draw_ellipse(diam0, ba0, pa0, xpix, ypix,
-                             height_pixels=width, pixscale=pixscale,
-                             ax=xx, color='white', linestyle='-',
-                             draw_majorminor_axes=True, jpeg=True)
-
-                xx.text(0.03, 0.03, '\n'.join(tlabel), transform=xx.transAxes,
-                        ha='left', va='bottom', color='white', linespacing=1.5,
-                        fontsize=9, bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                if txt_ur:
+                    xx.text(0.97, 0.97, txt_ur, transform=xx.transAxes,
+                            ha='right', va='top', color='white',
+                            linespacing=1.5, fontsize=9,
+                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
                 if len(sga) > 0:
                     # ...and the Tractor model
                     (xpix, ypix) = wcs.wcs_world2pix(sga['ra'], sga['dec'], 0)
-                    draw_ellipse(diam, ba, pa, xpix, ypix,
+                    draw_ellipse(2.*r50, ba, pa, xpix, ypix,
                                  height_pixels=height, pixscale=pixscale,
                                  ax=xx, color='yellow', linestyle='--',
                                  draw_majorminor_axes=True, jpeg=True)
@@ -195,17 +211,22 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 def qa_tractor(region='dr11-south', mp=1):
 
     sample, fullsample = read_sample(region=region)
+
+    # LVD - resolved
+    I = sample['FITBIT'] & FITBITS['ignore'] != 0
+    log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
+             'objects in the "resolved" subsample.')
+    sample = sample[I]
+    sample = sample[np.argsort(sample[DIAMCOLUMN])]
+
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
     I = [os.path.isdir(gdir) for gdir in galaxydir]
     log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
              'objects with pipeline results.')
-    sample = sample[I]
+    #sample = sample[-8:]
+
     fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    #I = fullsample['FITBIT'] & FITBITS['ignore'] != 0
-    #sample = fullsample[I]
-    #sample = sample[np.argsort(sample[DIAMCOLUMN])]
-    #sample = sample[:32]
     #sample = vstack((sample, fullsample[fullsample['OBJNAME'] == 'LV J1149+1715']))
 
     qadir = os.path.join(sga_dir(), 'parent', 'lvd')

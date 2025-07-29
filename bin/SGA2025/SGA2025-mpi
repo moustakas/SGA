@@ -11,7 +11,9 @@ SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --debug
 SGA2025-mpi --coadds --no-galex --no-unwise --no-cleanup --mp=32 --debug
 
 In production:
-salloc -N 1 -C cpu -A m3592 -t 00:30:00 --qos interactive --image=docker:legacysurvey/sga:0.3
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
+srun --ntasks=4 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+  SGA2025-mpi --coadds --no-galex --no-unwise --no-cleanup --mp=32
 
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup --region=dr9-south --debug --old-calibs-ok
@@ -100,16 +102,18 @@ def main():
 
         if not args.build_catalog and not args.build_refcat:
             log.warning('Testing subsamples!')
-            if False:
+            if True:
                 from SGA.coadds import FITBITS
                 I = sample['FITBIT'] & FITBITS['ignore'] != 0
                 sample = sample[I]
                 sample = sample[np.argsort(sample[DIAMCOLUMN])]
-                sample = sample[:32]
-                #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0189.832+032.861']
+                sample = sample[sample[DIAMCOLUMN] < 10.]
+                #sample = sample[:32]
+                #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0177.310-018.413_GROUP']
             else:
-                sample = sample[sample['OBJNAME'] == 'LV J1149+1715']
-            pdb.set_trace()
+                sample = sample[sample['SGANAME'] == 'SGA2025_J0202.291-045.175']
+                #sample = sample[sample['OBJNAME'] == 'KV19-271']
+                #sample = sample[sample['OBJNAME'] == 'LV J1149+1715']
 
         if len(sample) == 0:
             return
@@ -278,7 +282,7 @@ def main():
         else:
             radius_mosaic_arcsec *= 1.1
 
-        if radius_mosaic_arcsec > 60.:
+        if radius_mosaic_arcsec > 600.:
             args.nsigma = 100.
         else:
             args.nsigma = None # 20.
@@ -312,7 +316,7 @@ def main():
                 with open(logfile, 'w') as L:
                     with redirect_stdout(L), redirect_stderr(L):
                         err, filesuffix = custom_coadds(
-                            onegal, galaxy, survey, radius_mosaic_arcsec,
+                            onegal, galaxy, survey, run, radius_mosaic_arcsec,
                             pixscale=args.pixscale, bands=bands, mp=args.mp,
                             nsigma=args.nsigma, just_coadds=args.just_coadds,
                             force=args.force, cleanup=args.cleanup,
