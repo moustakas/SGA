@@ -545,7 +545,8 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
 
 def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                           threshmask=0.01, r50mask=0.05, maxshift=0.0,
-                          sigmamask=3.0, neighborfactor=1.0, verbose=False):
+                          ref_cat='LG', sigmamask=3.0, neighborfactor=1.0,
+                          verbose=False):
     """Wrapper to mask out all sources except the galaxy we want to ellipse-fit.
 
     r50mask - mask satellites whose r50 radius (arcsec) is > r50mask
@@ -638,15 +639,14 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         #if tractor.ref_cat[galaxy_indx] == 'R1' and tractor.ref_id[galaxy_indx] == 8587006103:
         #    neighborfactor = 1.0
 
-        # [1] Determine the non-parametricc geometry of the galaxy of interest
+        # [1] Determine the non-parametric geometry of the galaxy of interest
         # in the reference band. First, subtract all models except the galaxy
         # and galaxies "near" it. Also restore the original pixels of the
         # central in case there was a poor deblend.
         largeshift = False
-        pdb.set_trace()
 
         mge, centralmask = tractor2mge(central, factor=1.0)
-        #plt.clf() ; plt.imshow(centralmask, origin='lower') ; plt.savefig('junk-mask.png') ; pdb.set_trace()
+        plt.clf() ; plt.imshow(centralmask, origin='lower') ; plt.savefig('ioannis/tmp/junk-mask.png')
 
         iclose = np.where([centralmask[int(by), int(bx)]
                            for by, bx in zip(tractor.by, tractor.bx)])[0]
@@ -672,80 +672,50 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         img = ma.masked_array(img, mask)
         ma.set_fill_value(img, fill_value)
 
-        mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=False)#, plot=True) ; plt.savefig('desi-users/ioannis/tmp/debug.png')
-
-        # force the center
-        mgegalaxy.xmed = dims[0] / 2
-        mgegalaxy.ymed = dims[0] / 2
-        mgegalaxy.xpeak = dims[0] / 2
-        mgegalaxy.ypeak = dims[0] / 2
-        log.warning('Enforcing galaxy centroid to the center of the ' + \
-                    f'mosaic: (x,y)=({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})')
-
-        #if True:
-        #    import matplotlib.pyplot as plt
-        #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/debug.png')
-        ##    #plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('/mnt/legacyhalos-data/debug.png')
-        #    pdb.set_trace()
+        #mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=False)#, plot=True) ; plt.savefig('desi-users/ioannis/tmp/debug.png')
+        mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=False, plot=True) ; plt.savefig('ioannis/tmp/junk-mge.png')
 
         # Did the galaxy position move? If so, revert back to the Tractor geometry.
         if np.abs(mgegalaxy.xmed-mge.xmed) > maxshift or np.abs(mgegalaxy.ymed-mge.ymed) > maxshift:
-            log.warning('Large centroid shift! (x,y)=({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})-->' + \
+            log.warning(f'Large centroid shift! (x,y) = ({mgegalaxy.xmed:.3f},{mgegalaxy.ymed:.3f})-->' + \
                         f'({mge.xmed:.3f},{mge.ymed:.3f})')
             largeshift = True
-
-            # For the MaNGA project only, check to make sure the Tractor
-            # position isn't far from the center of the mosaic, which can happen
-            # near bright stars, e.g., 8133-12705
             mgegalaxy = copy(mge)
-            sz = img.shape
-            if np.abs(mgegalaxy.xmed-sz[1]/2) > maxshift or np.abs(mgegalaxy.ymed-sz[0]/2) > maxshift:
-                print('Large centroid shift in Tractor coordinates! (x,y)=({:.3f},{:.3f})-->({:.3f},{:.3f})'.format(
-                    mgegalaxy.xmed, mgegalaxy.ymed, sz[1]/2, sz[0]/2))
-                mgegalaxy.xmed = sz[1]/2
-                mgegalaxy.ymed = sz[0]/2
 
         radec_med = data[f'{refband.lower()}_wcs'].pixelToPosition(
             mgegalaxy.ymed+1, mgegalaxy.xmed+1).vals
-        radec_peak = data[f'{refband.lower()}_wcs'].pixelToPosition(
-            mgegalaxy.ypeak+1, mgegalaxy.xpeak+1).vals
+        #radec_peak = data[f'{refband.lower()}_wcs'].pixelToPosition(
+        #    mgegalaxy.ypeak+1, mgegalaxy.xpeak+1).vals
         mge = {
             'largeshift': largeshift,
             'ra': tractor.ra[central], 'dec': tractor.dec[central],
             'bx': tractor.bx[central], 'by': tractor.by[central],
-            #'mw_transmission_g': tractor.mw_transmission_g[central],
-            #'mw_transmission_r': tractor.mw_transmission_r[central],
-            #'mw_transmission_z': tractor.mw_transmission_z[central],
             'ra_moment': radec_med[0], 'dec_moment': radec_med[1],
-            #'ra_peak': radec_med[0], 'dec_peak': radec_med[1]
             }
 
         # add the dust
-        ebv = SFDMap().ebv(radec_peak[0], radec_peak[1])
+        photsys = 'S'
+        ebv = SFDMap().ebv(radec_med[0], radec_med[1])
         mge['ebv'] = np.float32(ebv)
-        for band in ['fuv', 'nuv', 'g', 'r', 'z', 'w1', 'w2', 'w3', 'w4']:
-            mge[f'mw_transmission_{band.lower()}'] = mwdust_transmission(
-                ebv, band, 'N', match_legacy_surveys=True).astype('f4')
+        for band in data['bands']:
+            print('TEMPORARILY SKIPPING MW_TRANSMISSION!!')
+            #mge[f'mw_transmission_{band.lower()}'] = mwdust_transmission(
+            #    ebv, band, photsys, match_legacy_surveys=True).astype('f4')
+            mge[f'mw_transmission_{band.lower()}'] = np.float32(1.)
 
-        for key in ('eps', 'majoraxis', 'pa', 'theta', 'xmed', 'ymed', 'xpeak', 'ypeak'):
+        for key in ['eps', 'majoraxis', 'pa', 'theta', 'xmed', 'ymed', 'xpeak', 'ypeak']:
             mge[key] = np.float32(getattr(mgegalaxy, key))
             if key == 'pa': # put into range [0-180]
                 mge[key] = mge[key] % np.float32(180)
         data['mge'].append(mge)
 
-        #if False:
-        #    #plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('/mnt/legacyhalos-data/debug.png')
-        #    plt.clf() ; mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=True, plot=True)
-        #    plt.savefig('/mnt/legacyhalos-data/debug.png')
-
-        # [2] Create the satellite mask in all the bandpasses. Use srcs here,
-        # which has had the satellites nearest to the central galaxy trimmed
-        # out.
+        # [2] Create the satellite mask in all the bandpasses. Use
+        # srcs here, which has had the satellites nearest to the
+        # central galaxy trimmed out.
         log.info('Building the satellite mask.')
-        #srcs = tractor.copy()
         satmask = np.zeros(data[refband].shape, bool)
 
-        for filt in bands:
+        for filt in fit_bands:
             # do not let GALEX and WISE contribute to the satellite mask
             if data[filt].shape != satmask.shape:
                 continue
@@ -754,14 +724,12 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             satflux = getattr(srcs, f'flux_{filt.lower()}')
             if cenflux <= 0.0:
                 log.warning('Central galaxy flux is negative! Proceed with caution...')
-                #pdb.set_trace()
-                #raise ValueError('Central galaxy flux is negative!')
 
             satindx = np.where(np.logical_or(
                 (srcs.type != 'PSF') * (srcs.shape_r > r50mask) *
                 (satflux > 0.0) * ((satflux / cenflux) > threshmask),
-                srcs.ref_cat == 'R1'))[0]
-            #satindx = np.where(srcs.ref_cat == 'R1')[0]
+                srcs.ref_cat == ref_cat))[0]
+            #satindx = np.where(srcs.ref_cat == ref_cat)[0]
             #if np.isin(central, satindx):
             #    satindx = satindx[np.logical_not(np.isin(satindx, central))]
             if len(satindx) == 0:
@@ -769,7 +737,6 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                 log.warning(f'Warning! All satellites have been dropped from band {filt}!')
             else:
                 satsrcs = srcs.copy()
-                #satsrcs = tractor.copy()
                 satsrcs.cut(satindx)
                 satimg = srcs2image(satsrcs, data[f'{filt.lower()}_wcs'],
                                     band=filt.lower(),
@@ -778,7 +745,6 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                 #if filt == 'FUV':
                 #    plt.clf() ; plt.imshow(thissatmask, origin='lower') ; plt.savefig('junk-{}.png'.format(filt.lower()))
                 #    #plt.clf() ; plt.imshow(data[filt], origin='lower') ; plt.savefig('junk-{}.png'.format(filt.lower()))
-                #    pdb.set_trace()
                 if satmask.shape != satimg.shape:
                     thissatmask = resize(thissatmask*1.0, satmask.shape, mode='reflect') > 0
 
@@ -788,17 +754,14 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                 ##    plt.clf() ; plt.imshow(np.log10(satimg), origin='lower') ; plt.savefig('debug.png')
                 #    plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/debug.png')
                 ###    #plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('/mnt/legacyhalos-data/debug.png')
-                #    pdb.set_trace()
-
             #print(filt, np.sum(satmask), np.sum(thissatmask))
-
         #plt.clf() ; plt.imshow(satmask, origin='lower') ; plt.savefig('junk-satmask.png')
 
-        # [3] Build the final image (in each filter) for ellipse-fitting. First,
-        # subtract out the PSF sources. Then update the mask (but ignore the
-        # residual mask). Finally convert to surface brightness.
-        #for filt in ['W1']:
-        for filt in bands:
+        # [3] Build the final image (in each filter) for
+        # ellipse-fitting. First, subtract out the PSF sources. Then
+        # update the mask (but ignore the residual mask). Finally
+        # convert to surface brightness.  for filt in ['W1']:
+        for filt in fit_bands:
             thismask = ma.getmask(data[filt])
             if satmask.shape != thismask.shape:
                 _satmask = (resize(satmask*1.0, thismask.shape, mode='reflect') > 0) == 1.0
@@ -811,7 +774,6 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             #if filt == 'W1':
             #    plt.imshow(_satmask, origin='lower') ; plt.savefig('junk-satmask-{}.png'.format(filt))
             #    plt.imshow(mask, origin='lower') ; plt.savefig('junk-mask-{}.png'.format(filt))
-            #    pdb.set_trace()
 
             varkey = f'{filt.lower()}_var'
             imagekey = f'{filt.lower()}_masked'
@@ -822,8 +784,9 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
 
             img = ma.getdata(data[filt]).copy()
 
-            # Get the PSF sources.
-            psfindx = np.where((tractor.type == 'PSF') * (getattr(tractor, f'flux_{filt.lower()}') / cenflux > threshmask))[0]
+            # Get the PSF sources but ignore W3 and W4 (??)
+            psfindx = np.where((getattr(tractor, f'flux_{filt.lower()}') / cenflux > threshmask) *
+                               (tractor.type == 'PSF'))[0]
             if len(psfindx) > 0 and filt.upper() != 'W3' and filt.upper() != 'W4':
                 psfsrcs = tractor.copy()
                 psfsrcs.cut(psfindx)
@@ -834,16 +797,16 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                 psfimg = srcs2image(psfsrcs, data[f'{filt.lower()}_wcs'],
                                     band=filt.lower(),
                                     pixelized_psf=data[f'{filt.lower()}_psf'])
-                if False:
+                if True:
                     #import fitsio ; fitsio.write('junk-psf-{}.fits'.format(filt.lower()), data['{}_psf'.format(filt.lower())].img, clobber=True)
                     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
                     im = ax1.imshow(np.log10(img), origin='lower') ; fig.colorbar(im, ax=ax1)
                     im = ax2.imshow(np.log10(psfimg), origin='lower') ; fig.colorbar(im, ax=ax2)
                     im = ax3.imshow(np.log10(data[f'{filt.lower()}_psf'].img), origin='lower') ; fig.colorbar(im, ax=ax3)
                     im = ax4.imshow(img-psfimg, origin='lower') ; fig.colorbar(im, ax=ax4)
-                    plt.savefig(f'qa-psf-{filt.lower()}.png')
-                    #if filt == 'W4':# or filt == 'r':
-                    #    pdb.set_trace()
+                    plt.savefig(f'ioannis/tmp/qa-psf-{filt.lower()}.png')
+                    if filt == 'r':
+                        pdb.set_trace()
                 img -= psfimg
             else:
                 psfimg = np.zeros((2, 2), 'f4')
@@ -859,7 +822,6 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
             #    plt.clf() ; plt.imshow(img, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-img-{}.png'.format(filt.lower()))
             #    plt.clf() ; plt.imshow(mask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-mask-{}.png'.format(filt.lower()))
             ##    plt.clf() ; plt.imshow(thismask, origin='lower') ; plt.savefig('desi-users/ioannis/tmp/junk-thismask-{}.png'.format(filt.lower()))
-            #    pdb.set_trace()
 
             data[imagekey].append(img)
             data[varkey].append(var)
@@ -869,7 +831,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         #pdb.set_trace()
 
     # Cleanup?
-    for filt in bands:
+    for filt in fit_bands:
         del data[filt]
         del data[f'{filt.lower()}_var_']
 
@@ -1044,16 +1006,18 @@ def read_multiband(galaxy, galaxydir, filesuffix='coadds', bands=['g', 'r', 'i',
     #    tractor.pa_init[galaxy_indx] = sample['PA_INIT']
     #    tractor.ba_init[galaxy_indx] = sample['BA_INIT']
 
-    # Do we need to take into account the elliptical mask of each source??
+    # Sort by Tractor brightness (in any band).
     log.info('Sorting by flux:')
-    pdb.set_trace()
-    fluxes = [getattr(tractor, f'flux_{filt.lower()}') for filt in fit_optical_bands]
-
-    srt = np.argsort(tractor.flux_r[galaxy_indx])[::-1]
-    for indx in galaxy_indx:
-        log.info(f'flux_r={tractor.flux_r[indx]:.4f}')
+    fluxes = np.vstack([getattr(tractor[galaxy_indx], f'flux_{filt.lower()}')
+                        for filt in fit_optical_bands])
+    fluxes = np.max(fluxes, axis=0)
+    srt = np.argsort(fluxes)[::-1]
     galaxy_indx = galaxy_indx[srt]
     galaxy_id = tractor.ref_id[galaxy_indx]
+    fluxes = fluxes[srt]
+
+    for refid, flux in zip(galaxy_id, fluxes):
+        log.info(f'  ref_id={refid}: max optical flux={flux:.2f} nanomaggies')
 
     data['galaxy_id'] = galaxy_id
     data['galaxy_indx'] = galaxy_indx

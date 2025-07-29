@@ -121,7 +121,11 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     height, width, _ = image.shape
                     pixscale = get_pixscale(wcs)[0] * 3600. # [arcsec/pixel]
 
+                    xx.set_xlim(0, width)
+                    xx.set_ylim(0, height)
+
                     xx.imshow(image, origin='lower', interpolation='none')
+                    xx.invert_yaxis() # JPEG is flipped relative to FITS
                     for spine in ['bottom', 'top', 'right', 'left']:
                         xx.spines[spine].set_color('white')
 
@@ -139,8 +143,6 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     if len(sga) > 0:
                         xx.scatter(sga['bx'], height-sga['by'], marker='s',
                                    facecolor='none', s=40, color='cyan')
-                    xx.set_xlim(0, width)
-                    xx.set_ylim(0, height)
 
                     # draw the initial ellipse geometry...
                     (xpix, ypix) = wcs.wcs_world2pix(obj['RA'], obj['DEC'], 0)
