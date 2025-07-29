@@ -22,14 +22,15 @@ import matplotlib.gridspec as gridspec
 from matplotlib.image import imread
 
 from SGA.io import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
-                    get_raslice, read_sample, DIAMCOLUMN)
+                    get_raslice, read_sample, DIAMCOLUMN,
+                    REFIDCOLUMN)
 from SGA.ellipse import get_tractor_ellipse
 from SGA.qa import draw_ellipse
 from SGA.logger import log
 from SGA.coadds import FITBITS
 
 
-def read_coadds(galaxy, galaxydir):
+def read_coadds(galaxy, galaxydir, refid):
 
     from astropy.wcs import WCS
 
@@ -48,12 +49,12 @@ def read_coadds(galaxy, galaxydir):
     print(galaxydir)
     tractor = Table(fitsio.read(tractorfile, columns=cols))
 
-    I = tractor['ref_cat'] == 'LG'
-    if np.sum(I) == 1:
+    I = (tractor['ref_cat'] == 'LG') * (tractor['ref_id'] == refid)
+    if np.sum(I) == 0:
+        sga = Table()
+    else:
         sga = tractor[I]
         #tractor = tractor[~I]
-    else:
-        sga = Table()
 
     if os.path.isfile(imagefile):
         image = imread(imagefile)
@@ -69,14 +70,16 @@ def read_coadds(galaxy, galaxydir):
     return sga, tractor, image, model, wcs
 
 
-def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
-              region='dr11-south'):
+def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
+              datadir=None, region='dr11-south'):
 
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
 
-    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
+    # each group member gets its own panel
+    galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
+                                             datadir=datadir)
 
-    nobj = len(sample)
+    nobj = len(fullsample)
     allindx = np.arange(nobj)
 
     nperpage = ncol * nrow
@@ -96,7 +99,7 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
         for iax, xx in enumerate(ax):
             if iax < len(indx):
-                obj = sample[indx[iax]]
+                obj = fullsample[indx[iax]]
                 diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
                 geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
 
@@ -108,7 +111,9 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
                 sga, tractor, image, model, wcs = read_coadds(
-                    galaxy[indx[iax]], galaxydir[indx[iax]])
+                    galaxy[indx[iax]], galaxydir[indx[iax]],
+                    refid=obj[REFIDCOLUMN])
+
                 if image is None:
                     txt_ll = 'No Tractor catalog'
                     txt_ur = None
@@ -120,7 +125,10 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     for spine in ['bottom', 'top', 'right', 'left']:
                         xx.spines[spine].set_color('white')
 
-                    I = tractor['shape_r'] > 1.
+                    I = ((tractor['type'] != 'PSF') * (tractor['type'] != 'DUP') *
+                         (tractor['shape_r'] > 0.5))
+                    #I = tractor['shape_r'] >= 0.
+                    #I = tractor['shape_r'] > 1.
                     if np.sum(I) > 0:
                         if np.sum(I) > 50:
                             alpha = 0.5
@@ -135,7 +143,7 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     xx.set_ylim(0, height)
 
                     # draw the initial ellipse geometry...
-                    xpix, ypix = (width/2., width/2.)
+                    (xpix, ypix) = wcs.wcs_world2pix(obj['RA'], obj['DEC'], 0)
                     draw_ellipse(diam0, ba0, pa0, xpix, ypix,
                                  height_pixels=width, pixscale=pixscale,
                                  ax=xx, color='white', linestyle='-',
@@ -210,31 +218,36 @@ def annotated(sample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
 def qa_tractor(region='dr11-south', mp=1):
 
+    datadir = sga_data_dir()
     sample, fullsample = read_sample(region=region)
 
-    # LVD - resolved
-    I = sample['FITBIT'] & FITBITS['ignore'] != 0
-    log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
-             'objects in the "resolved" subsample.')
-    sample = sample[I]
-    sample = sample[np.argsort(sample[DIAMCOLUMN])]
+    if False:
+        # LVD - resolved
+        I = sample['FITBIT'] & FITBITS['ignore'] != 0
+        log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
+                 'objects in the "resolved" subsample.')
+        sample = sample[I]
+        sample = sample[np.argsort(sample[DIAMCOLUMN])]
 
-    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region)
+        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
+    else:
+        datadir = '/pscratch/sd/i/ioannis/SGA2025-tmp1'
+        qadir = os.path.join(sga_dir(), 'parent', 'qa')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
+
+    if not os.path.isdir(qadir):
+        os.makedirs(qadir, exist_ok=True)
+
+    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
+                                             datadir=datadir)
     I = [os.path.isdir(gdir) for gdir in galaxydir]
     log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
              'objects with pipeline results.')
-    #sample = sample[-8:]
-
+    sample = sample[I]
     fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    #sample = vstack((sample, fullsample[fullsample['OBJNAME'] == 'LV J1149+1715']))
-
-    qadir = os.path.join(sga_dir(), 'parent', 'lvd')
-    if not os.path.isdir(qadir):
-        os.makedirs(qadir, exist_ok=True)
-    pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
-
-    annotated(sample, pdffile, region=region)
+    annotated(sample, fullsample, pdffile, region=region, datadir=datadir)
 
 if __name__ == '__main__':
 
