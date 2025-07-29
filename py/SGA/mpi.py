@@ -43,11 +43,13 @@ def mpi_args():
     parser.add_argument('--htmlhome', default='index.html', type=str, help='Home page file name (use in tandem with --htmlindex).')
     parser.add_argument('--html-raslices', action='store_true',
                         help='Organize HTML pages by RA slice (use in tandem with --htmlindex).')
-    parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
 
     parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
+
+    parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
+    parser.add_argument('--htmldir', default=None, type=str, help='Override $SGA_HTML_DIR environment variable')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')

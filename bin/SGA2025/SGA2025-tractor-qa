@@ -241,7 +241,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--mp', default=1, type=int,help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 

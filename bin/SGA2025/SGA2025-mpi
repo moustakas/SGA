@@ -6,9 +6,22 @@ SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
 SGA2025-mpi --build-refcat
-SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --debug
+
+# nice isolated spiral
+https://www.legacysurvey.org/viewer-dev?ra=192.4227&dec=25.7816&layer=ls-dr9-south&zoom=14&bricks&sga
+SGA2025-mpi --galaxylist="KUG 1247+260" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
+SGA2025-mpi --galaxylist="KUG 1247+260" --ellipse --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
+
+# LVD test
+SGA2025-mpi --galaxylist="KV19-271" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
+
+# test of 2-member group
+SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1 --mp=32 --debug --no-cleanup --coadds
+SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1 --mp=32 --debug --ellipse
+
 
 SGA2025-mpi --coadds --no-galex --no-unwise --no-cleanup --mp=32 --debug
+
 
 In production:
 salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
@@ -65,15 +78,22 @@ def main():
     from SGA.SGA import build_catalog
     from SGA.io import (set_legacysurvey_dir, sga_dir, sga_data_dir,
                         sga_html_dir, read_sample, missing_files,
-                        read_multiband, get_galaxy_galaxydir,
-                        RACOLUMN, DECCOLUMN, DIAMCOLUMN)
+                        get_galaxy_galaxydir, RACOLUMN, DECCOLUMN,
+                        DIAMCOLUMN)
 
     args = mpi_args()
     set_legacysurvey_dir(args.region)
 
     basedir = sga_dir()
-    datadir = sga_data_dir()
-    htmldir = sga_html_dir()
+    if args.datadir is None:
+        datadir = sga_data_dir()
+    else:
+        datadir = args.datadir
+
+    if args.htmldir is None:
+        htmldir = sga_html_dir()
+    else:
+        htmldir = args.htmldir
 
     run = RUNS[args.region]
     bands = BANDS[args.region]
@@ -89,6 +109,11 @@ def main():
     # Read and broadcast the sample.
     bricks = None
     if rank == 0:
+        if not os.path.isdir(datadir):
+            os.makedirs(datadir, exist_ok=True)
+        if not os.path.isdir(htmldir):
+            os.makedirs(htmldir, exist_ok=True)
+
         log.info(f'$SGA_DIR={basedir}')
         log.info(f'$SGA_DATA_DIR={datadir}')
         log.info(f'$SGA_HTML_DIR={htmldir}')
@@ -102,7 +127,7 @@ def main():
 
         if not args.build_catalog and not args.build_refcat:
             log.warning('Testing subsamples!')
-            if True:
+            if False:#True:
                 from SGA.coadds import FITBITS
                 I = sample['FITBIT'] & FITBITS['ignore'] != 0
                 sample = sample[I]
@@ -111,7 +136,8 @@ def main():
                 #sample = sample[:32]
                 #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0177.310-018.413_GROUP']
             else:
-                sample = sample[sample['SGANAME'] == 'SGA2025_J0202.291-045.175']
+                pass
+                #sample = sample[sample['SGANAME'] == 'SGA2025_J0202.291-045.175']
                 #sample = sample[sample['OBJNAME'] == 'KV19-271']
                 #sample = sample[sample['OBJNAME'] == 'LV J1149+1715']
 
@@ -204,7 +230,8 @@ def main():
             coadds=args.coadds, ellipse=args.ellipse,
             htmlplots=args.htmlplots, htmlindex=args.htmlindex,
             clobber=args.clobber, verbose=args.verbose,
-            htmldir=htmldir, size=size, mp=args.mp)
+            datadir=datadir, htmldir=htmldir, size=size,
+            mp=args.mp)
     else:
         groups, suffix = [], ''
 
@@ -230,7 +257,8 @@ def main():
                              f'{len(sample)}')
                     dsrt = np.argsort(sample[fail[rank]][DIAMCOLUMN])
                     galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]][dsrt], region=args.region)
+                        sample[fail[rank]][dsrt], region=args.region,
+                        datadir=datadir, htmldir=htmldir)
                     for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
                                             sample[fail[rank]][DIAMCOLUMN][dsrt]):
                         print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
@@ -239,7 +267,8 @@ def main():
                 if len(todo) > 0:
                     log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
                     galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[todo], region=args.region)
+                        sample[todo], region=args.region,
+                        datadir=datadir, htmldir=htmldir)
                     for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir),
                                             sample[todo][DIAMCOLUMN]):
                         log.info(f'  {ii} {dd} (d={diam:.3f} arcmin)')
@@ -255,7 +284,8 @@ def main():
 
     for count, ii in enumerate(groups[rank]):
         onegal = sample[ii]
-        galaxy, galaxydir = get_galaxy_galaxydir(onegal, region=args.region)
+        galaxy, galaxydir = get_galaxy_galaxydir(onegal, region=args.region,
+                                                 datadir=datadir, htmldir=htmldir)
         if not os.path.isdir(galaxydir):
             os.makedirs(galaxydir, exist_ok=True)
 
@@ -326,13 +356,18 @@ def main():
 
 
         if args.ellipse:
-            from SGA.mpi import call_ellipse
+            from SGA.io import read_multiband
+
+            data, galaxyinfo = read_multiband(
+                galaxy, galaxydir, bands=bands,
+                pixscale=args.pixscale, unwise=args.unwise,
+                galex=args.galex, verbose=args.verbose)
+            pdb.set_trace()
 
             call_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
-                         bands=['g', 'r', 'z'], refband='r',
+                         bands=bands, refband='r',
                          pixscale=args.pixscale, mp=args.mp,
                          verbose=args.verbose, debug=args.debug,
-                         #sky_tests=args.sky_tests,
                          write_mask=True,
                          clobber=args.clobber,
                          unwise=True, galex=True,
@@ -371,7 +406,8 @@ def main():
                                         htmlindex=args.htmlindex,
                                         #clobber=args.clobber,
                                         verbose=args.verbose,
-                                        htmldir=htmldir, size=size, mp=args.mp)
+                                        datadir=datadir, htmldir=htmldir,
+                                        size=size, mp=args.mp)
 
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))

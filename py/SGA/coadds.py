@@ -18,9 +18,11 @@ UNWISE_PIXSCALE = 2.75
 RUNS = {'dr9-north': 'north', 'dr9-south': 'south',
         'dr10-south': 'south', 'dr11-south': 'south'}
 
+# although dr9-north is missing i-band imaging, there are many
+# advantages to adopting a consistent data model
 GRZ = ['g', 'r', 'z']
 GRIZ = ['g', 'r', 'i', 'z']
-BANDS = {'dr9-north': GRZ, 'dr9-south': GRZ,
+BANDS = {'dr9-north': GRIZ, 'dr9-south': GRIZ,
          'dr10-south': GRIZ, 'dr11-south': GRIZ}
 
 FITBITS = dict(
