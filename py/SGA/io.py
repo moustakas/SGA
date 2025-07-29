@@ -797,7 +797,7 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
                 psfimg = srcs2image(psfsrcs, data[f'{filt.lower()}_wcs'],
                                     band=filt.lower(),
                                     pixelized_psf=data[f'{filt.lower()}_psf'])
-                if True:
+                if False:#True:
                     #import fitsio ; fitsio.write('junk-psf-{}.fits'.format(filt.lower()), data['{}_psf'.format(filt.lower())].img, clobber=True)
                     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
                     im = ax1.imshow(np.log10(img), origin='lower') ; fig.colorbar(im, ax=ax1)
