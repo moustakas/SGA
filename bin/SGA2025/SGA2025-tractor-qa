@@ -21,25 +21,24 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.gridspec as gridspec
 from matplotlib.image import imread
 
-from SGA.io import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
-                    get_raslice, read_sample, DIAMCOLUMN,
-                    REFIDCOLUMN)
-from SGA.ellipse import get_tractor_ellipse
+from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
+                     get_raslice, read_sample, DIAMCOLUMN,
+                     REFIDCOLUMN, FITBITS)
+from SGA.geometry import get_tractor_ellipse
 from SGA.qa import draw_ellipse
 from SGA.logger import log
-from SGA.coadds import FITBITS
 
 
 def read_coadds(galaxy, galaxydir, refid):
 
     from astropy.wcs import WCS
 
-    imagefile = os.path.join(galaxydir, f'{galaxy}-coadds-image.jpg')
-    modelfile = os.path.join(galaxydir, f'{galaxy}-coadds-model.jpg')
+    imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
+    #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
     tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
     if not os.path.isfile(tractorfile):
         log.warning(f'Missing {tractorfile}')
-        return Table(), Table(), None, None, None
+        return Table(), Table(), None, None
 
     cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
                      'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
@@ -58,16 +57,15 @@ def read_coadds(galaxy, galaxydir, refid):
 
     if os.path.isfile(imagefile):
         image = imread(imagefile)
-    if os.path.isfile(modelfile):
-        model = imread(modelfile)
 
     for band in ['g', 'r', 'i', 'z']:
-        fitsfile = os.path.join(galaxydir, f'{galaxy}-coadds-image-{band}.fits.fz')
+        fitsfile = os.path.join(galaxydir, f'{galaxy}-image-{band}.fits.fz')
         if os.path.isfile(fitsfile):
             hdr = fitsio.read_header(fitsfile, ext=1)
             wcs = WCS(hdr, naxis=2)
+            break
 
-    return sga, tractor, image, model, wcs
+    return sga, tractor, image, wcs
 
 
 def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
@@ -78,6 +76,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
     # each group member gets its own panel
     galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
                                              datadir=datadir)
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
 
     nobj = len(fullsample)
     allindx = np.arange(nobj)
@@ -110,7 +110,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                         va='top', color='white', linespacing=1.5, fontsize=9,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
-                sga, tractor, image, model, wcs = read_coadds(
+                sga, tractor, image, wcs = read_coadds(
                     galaxy[indx[iax]], galaxydir[indx[iax]],
                     refid=obj[REFIDCOLUMN])
 
@@ -218,9 +218,10 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
     log.info(f'Wrote {pdffile}')
 
 
-def qa_tractor(region='dr11-south', mp=1):
+def qa_tractor(region='dr11-south', datadir=None):
 
-    datadir = sga_data_dir()
+    if datadir is None:
+        datadir = sga_data_dir()
     sample, fullsample = read_sample(region=region)
 
     if False:
@@ -238,14 +239,19 @@ def qa_tractor(region='dr11-south', mp=1):
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
 
+        print('Hack!')
+        sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260'])]
+
+
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
 
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
                                              datadir=datadir)
-    I = [os.path.isdir(gdir) for gdir in galaxydir]
+    I = [os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
     log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
              'objects with pipeline results.')
+
     sample = sample[I]
     fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
@@ -256,8 +262,8 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mp', default=1, type=int,help='number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 
-    qa_tractor(mp=args.mp, region=args.region)
+    qa_tractor(datadir=args.datadir, region=args.region)

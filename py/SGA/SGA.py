@@ -8,8 +8,365 @@ Code to build and analyze the SGA sample.
 import os, time, pdb
 import fitsio
 import numpy as np
+import numpy.ma as ma
+from astropy.table import Table, vstack
 
 from SGA.logger import log
+
+
+REFCAT = 'L4'
+RACOLUMN = 'GROUP_RA'   # 'RA'
+DECCOLUMN = 'GROUP_DEC' # 'DEC'
+DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
+ZCOLUMN = 'Z'
+REFIDCOLUMN = 'SGAID'
+
+FITBITS = dict(
+    ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
+    forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
+    forcepsf = 2**2,  # force PSF for source detection and photometry within the SGA mask
+)
+SAMPLEBITS = dict(
+    LVD = 2**0,       # LVD / local dwarfs
+)
+
+
+def SGA_version():
+    version = 'v1.0'
+    return version
+
+
+def sga_dir():
+    if 'SGA_DIR' not in os.environ:
+        msg = 'Required ${SGA_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
+    ldir = os.path.abspath(os.getenv('SGA_DIR'))
+    if not os.path.isdir(ldir):
+        os.makedirs(ldir, exist_ok=True)
+    return ldir
+
+
+def sga_data_dir():
+    if 'SGA_DATA_DIR' not in os.environ:
+        msg = 'Required ${SGA_DATA_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
+    ldir = os.path.abspath(os.getenv('SGA_DATA_DIR'))
+    if not os.path.isdir(ldir):
+        os.makedirs(ldir, exist_ok=True)
+    return ldir
+
+
+def sga_html_dir():
+    if 'SGA_HTML_DIR' not in os.environ:
+        msg = 'Required ${SGA_HTML_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
+    ldir = os.path.abspath(os.getenv('SGA_HTML_DIR'))
+    if not os.path.isdir(ldir):
+        os.makedirs(ldir, exist_ok=True)
+    return ldir
+
+
+def get_raslice(ra):
+    if np.isscalar(ra):
+        return f'{int(ra):03d}'
+    else:
+        return np.array([f'{int(onera):03d}' for onera in ra])
+
+
+def sga2025_name(ra, dec, unixsafe=False):
+    # simple wrapper on radec_to_name with precision=3
+    from SGA.io import radec_to_name
+    return radec_to_name(ra, dec, prefix='SGA2025', precision=3,
+                         unixsafe=unixsafe)
+
+
+def get_galaxy_galaxydir(sample, region='dr11-south', datadir=None,
+                         htmldir=None, html=False):
+    """Retrieve the galaxy name and the (nested) directory.
+
+    """
+    if datadir is None:
+        datadir = sga_data_dir()
+    if htmldir is None:
+        htmldir = sga_html_dir()
+    dataregiondir = os.path.join(datadir, region)
+    htmlregiondir = os.path.join(htmldir, region)
+
+    if sample is not None:
+        # Handle groups.
+        if 'GROUP_NAME' in sample.colnames:
+            galcolumn = 'GROUP_NAME'
+            racolumn = 'GROUP_RA'
+        else:
+            galcolumn = 'SGANAME'
+            racolumn = 'RA'
+
+        objs = np.atleast_1d(sample[galcolumn])
+        ras = np.atleast_1d(sample[racolumn])
+
+    objdirs, htmlobjdirs = [], []
+    for obj, ra in zip(objs, ras):
+        objdirs.append(os.path.join(dataregiondir, get_raslice(ra), obj))
+        if html:
+            htmlobjdirs.append(os.path.join(htmlregiondir, get_raslice(ra), obj))
+    objdirs = np.array(objdirs)
+    if html:
+        htmlobjdirs = np.array(htmlobjdirs)
+
+    if objdirs.size == 1:
+        objs = objs.item()
+        objdirs = objdirs.item()
+        if html:
+            htmlobjdirs = htmlobjdirs.item()
+
+    if html:
+        return objs, objdirs, htmlobjdirs
+    else:
+        return objs, objdirs
+
+
+def missing_files(sample=None, bricks=None, region='dr11-south',
+                  coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
+                  build_catalog=False, clobber=False, clobber_overwrite=None,
+                  verbose=False, datadir=None, htmldir=None, size=1, mp=1):
+    """Figure out which files are missing and still need to be processed.
+
+    """
+    from glob import glob
+    import multiprocessing
+    import astropy
+    from SGA.mpi import weighted_partition
+    from SGA.io import _missing_files_one
+
+    if sample is None and bricks is None:
+        msg = 'Must provide either sample or bricks.'
+        raise IOError(msg)
+
+    if sample is not None:
+        if type(sample) is astropy.table.row.Row:
+            msg = 'sample must be a Table not a Row'
+            raise ValueError(msg)
+        indices = np.arange(len(sample))
+    elif bricks is not None:
+        if type(bricks) is astropy.table.row.Row:
+            msg = 'bricks must be a Table not a Row'
+            raise ValueError(msg)
+        indices = np.arange(len(bricks))
+
+    dependson, dependsondir = None, None
+    if htmlplots is False and htmlindex is False:
+        if verbose:
+            t0 = time.time()
+            log.debug('Getting galaxy names and directories...')
+        galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
+                                                 datadir=datadir,
+                                                 htmldir=htmldir)
+        if verbose:
+            log.debug(f'...took {time.time() - t0:.3f} sec')
+
+    if coadds:
+        suffix = 'coadds'
+        filesuffix = '-coadds.isdone'
+    elif ellipse:
+        suffix = 'ellipse'
+        filesuffix = '-ellipse.isdone'
+        dependson = '-coadds.isdone'
+    elif build_catalog:
+        suffix = 'build-catalog'
+        filesuffix = '-SGA.isdone'
+        dependson = '-ellipse.isdone'
+    elif htmlplots:
+        suffix = 'html'
+        filesuffix = '-montage.png'
+        dependson = '-image.jpg'
+        galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
+            sample, datadir=datadir, htmldir=htmldir, region=region,
+            html=True)
+    elif htmlindex:
+        suffix = 'htmlindex'
+        filesuffix = '-montage.png'
+        galaxy, _, galaxydir = get_galaxy_galaxydir(
+            sample, datadir=datadir, htmldir=htmldir,
+            region=region, html=True)
+    else:
+        msg = 'Need at least one keyword argument.'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    # Make clobber=False for build_catalog and htmlindex because we're not
+    # making the files here, we're just looking for them. The argument
+    # args.clobber gets used downstream.
+    if htmlindex or build_catalog:
+        clobber = False
+
+    if clobber_overwrite is not None:
+        clobber = clobber_overwrite
+
+    missargs = []
+    for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy),
+                                           np.atleast_1d(galaxydir))):
+        checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
+        #print(checkfile)
+        if dependson:
+            if dependsondir:
+                missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal],
+                                                         f'{gal}{dependson}'), clobber])
+            else:
+                missargs.append([checkfile, os.path.join(
+                    gdir, f'{gal}{dependson}'), clobber])
+        else:
+            missargs.append([checkfile, None, clobber])
+
+    if verbose:
+        t0 = time.time()
+        log.debug('Finding missing files...')
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            todo = np.array(P.map(_missing_files_one, missargs))
+    else:
+        todo = np.array([_missing_files_one(_missargs)
+                         for _missargs in missargs])
+
+    if verbose:
+        log.debug(f'...took {(time.time() - t0)/60.:.3f} min')
+
+    itodo = np.where(todo == 'todo')[0]
+    idone = np.where(todo == 'done')[0]
+    ifail = np.where(todo == 'fail')[0]
+
+    if len(ifail) > 0:
+        fail_indices = [indices[ifail]]
+    else:
+        fail_indices = [np.array([])]
+
+    if len(idone) > 0:
+        done_indices = [indices[idone]]
+    else:
+        done_indices = [np.array([])]
+
+    if len(itodo) > 0:
+        todo_indices = np.array_split(indices[itodo], size)
+        #_todo_indices = indices[itodo]
+        #if sample is not None:
+        #    weight = np.atleast_1d(sample[DIAMCOLUMN])[_todo_indices]
+        #    todo_indices = weighted_partition(weight, size)
+        #else:
+        #    # unweighted
+        #    todo_indices = np.array_split(_todo_indices, size)
+    else:
+        todo_indices = [np.array([])]
+
+    return suffix, todo_indices, done_indices, fail_indices
+
+
+def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
+                final_sample=False, region='dr11-south', d25min=0., d25max=100.0):
+    """Read/generate the parent SGA catalog.
+
+    d25min,d25max in arcmin
+
+    """
+    import fitsio
+    from SGA.coadds import REGIONBITS
+    from SGA.parent import parent_version
+
+    if first and last:
+        if first > last:
+            msg = f'Index first cannot be greater than index last, {first} > {last}'
+            log.critical(msg)
+            raise ValueError(msg)
+
+    ext = 1
+
+    if final_sample:
+        version = SGA_version()
+        samplefile = os.path.join(sga_dir(), '2025', f'SGA2025-ellipse-{version}.fits')
+    else:
+        version = parent_version()
+        samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+
+    if not os.path.isfile(samplefile):
+        msg = f'Sample file {samplefile} not found.'
+        log.critical(msg)
+        raise IOError(msg)
+
+    if final_sample:
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY', 'SGA_ID', 'PREBURNED']
+        info = fitsio.read(samplefile, columns=cols)
+
+        rows = np.where(
+            (info['GROUP_DIAMETER'] > d25min) *
+            (info['GROUP_DIAMETER'] < d25max) *
+            info['GROUP_PRIMARY'] *
+            info['PREBURNED'] *
+            (info['SGA_ID'] > -1))[0]
+    else:
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
+        #cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
+        #        'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC', 'BRICKNAME']
+        info = fitsio.read(samplefile, columns=cols)
+        rows = np.where(
+            (info['GROUP_DIAMETER'] > d25min) *
+            (info['GROUP_DIAMETER'] < d25max) *
+            info['GROUP_PRIMARY'])[0]
+
+    nallrows = len(info)
+    nrows = len(rows)
+
+    if first is None:
+        first = 0
+    if last is None:
+        last = nrows
+        if rows is None:
+            rows = np.arange(first, last)
+        else:
+            rows = rows[np.arange(first, last)]
+    else:
+        if last >= nrows:
+            msg = f'Index last cannot be greater than the number of rows, {last} >= {nrows}'
+            log.critical(msg)
+            raise ValueError(msg)
+        if rows is None:
+            rows = np.arange(first, last+1)
+        else:
+            rows = rows[np.arange(first, last+1)]
+            if len(rows) == 1:
+                log.info(f'Selecting index {first} (N=1)')
+            else:
+                log.info(f'Selecting indices {first} through {last} (N={len(rows):,d})')
+
+    fullsample = Table(fitsio.read(samplefile, upper=True))
+    #fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
+    sample = fullsample[rows]
+
+    #sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
+    log.info(f'Read {len(sample):,d}/{len(fullsample):,d} GROUP_PRIMARY objects from {samplefile}')
+
+    # select objects in this region
+    I = sample['REGION'] & REGIONBITS[region] != 0
+    log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
+             f'region={region}')
+    sample = sample[I]
+
+    if galaxylist is not None:
+        log.debug('Selecting specific galaxies.')
+        I = np.isin(sample['GROUP_NAME'], galaxylist)
+        if np.count_nonzero(I) == 0:
+            log.warning('No matching galaxies using column GROUP_NAME!')
+            I = np.isin(sample['SGANAME'], galaxylist)
+            if np.count_nonzero(I) == 0:
+                log.warning('No matching galaxies using column SGANAME!')
+                I = np.isin(sample['OBJNAME'], galaxylist)
+                if np.count_nonzero(I) == 0:
+                    log.warning('No matching galaxies using column OBJNAME!')
+                    return Table(), Table()
+            return sample[I], fullsample
+    else:
+        return sample, fullsample
+
 
 def _build_catalog_one(args):
     """Wrapper function for the multiprocessing."""
@@ -20,8 +377,7 @@ def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS,
                       refcat='R1', verbose=False):
     """Gather the ellipse-fitting results for a single group."""
     import fitsio
-    from astropy.table import Table, vstack
-    from legacyhalos.io import read_ellipsefit
+    from SGA.io import read_ellipsefit
 
     tractor, parent, ellipse = [], [], []
 
@@ -70,9 +426,7 @@ def build_catalog(sample, fullsample, bands, galex=True, unwise=True,
     import time
     import multiprocessing
     from astropy.io import fits
-    from astropy.table import vstack
 
-    from SGA.io import SGA_version, sga_dir, get_galaxy_galaxydir
     from SGA.ellipse import FAILCOLS
 
     version = SGA_version()
@@ -371,8 +725,8 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
     from copy import copy
     from skimage.transform import resize
     from SGA.find_galaxy import find_galaxy
-    from SGA.ellipse import ellipse_mask
-    from SGA.misc import srcs2image
+    from SGA.geometry import ellipse_mask
+    from SGA.coadds import srcs2image
     from SGA.dust import SFDMap, mwdust_transmission
 
     import matplotlib.pyplot as plt

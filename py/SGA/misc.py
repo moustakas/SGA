@@ -48,45 +48,6 @@ def imagetool_inspect(cat, group=False):
             ff.write('{} {:.6f} {:.6f}\n'.format(gal, ra, dec))
 
 
-def srcs2image(cat, wcs, band='r', allbands='grz', pixelized_psf=None, psf_sigma=1.0):
-    """Build a model image from a Tractor catalog or a list of sources.
-
-    issrcs - if True, then cat is already a list of sources.
-
-    """
-    import tractor, legacypipe, astrometry
-    from legacypipe.catalog import read_fits_catalog
-
-    if type(wcs) is tractor.wcs.ConstantFitsWcs or type(wcs) is legacypipe.survey.LegacySurveyWcs:
-        shape = wcs.wcs.shape
-    else:
-        shape = wcs.shape
-    model = np.zeros(shape)
-    invvar = np.ones(shape)
-
-    if pixelized_psf is None:
-        vv = psf_sigma**2
-        psf = tractor.GaussianMixturePSF(1.0, 0., 0., vv, vv, 0.0)
-    else:
-        psf = pixelized_psf
-
-    tim = tractor.Image(model, invvar=invvar, wcs=wcs, psf=psf,
-                        photocal=tractor.basics.LinearPhotoCal(1.0, band=band.lower()),
-                        sky=tractor.sky.ConstantSky(0.0),
-                        name='model-{}'.format(band))
-
-    # Do we have a tractor catalog or a list of sources?
-    if type(cat) is astrometry.util.fits.tabledata:
-        srcs = legacypipe.catalog.read_fits_catalog(cat, bands=[band.lower()])
-    else:
-        srcs = cat
-
-    tr = tractor.Tractor([tim], srcs)
-    mod = tr.getModelImage(0)
-
-    return mod
-
-
 def simple_wcs(onegal, radius=None, factor=1.0, pixscale=0.262, zcolumn='Z'):
     '''Build a simple WCS object for a single galaxy.
 
@@ -99,7 +60,7 @@ def simple_wcs(onegal, radius=None, factor=1.0, pixscale=0.262, zcolumn='Z'):
             radius = 2 * cutout_radius_kpc(redshift=onegal[zcolumn], pixscale=pixscale)
         else:
             radius = 100 # hack! [pixels]
-    
+
     diam = np.ceil(factor * 2 * radius).astype('int') # [pixels]
     simplewcs = Tan(onegal['RA'], onegal['DEC'], diam/2+0.5, diam/2+0.5,
                     -pixscale/3600.0, 0.0, 0.0, pixscale/3600.0, 
@@ -211,19 +172,3 @@ def statsinbins(xx, yy, binsize=0.1, minpts=10, xmin=None, xmax=None):
             return stats[keep]
 
 
-def convert_tractor_e1e2(e1, e2):
-    """Convert Tractor epsilon1, epsilon2 values to ellipticity and position angle.
-
-    Taken from tractor.ellipses.EllipseE
-
-    """
-    e = np.hypot(e1, e2)
-    ba = (1 - e) / (1 + e)
-    #e = (ba + 1) / (ba - 1)
-
-    phi = -np.rad2deg(np.arctan2(e2, e1) / 2)
-    #angle = np.deg2rad(-2 * phi)
-    #e1 = e * np.cos(angle)
-    #e2 = e * np.sin(angle)
-
-    return ba, phi

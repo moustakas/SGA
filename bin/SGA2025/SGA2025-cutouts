@@ -6,29 +6,29 @@ Working interactively in a login node, one would do something like:
 
   salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
   SGA2025-shifter
-  source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
+  source $HOME/code/SGA/bin/SGA2025/SGA2025-env
 
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/parent --region=dr11-south --mp=1
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/parent --region=dr11-south --mp=1 --annotate
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1 --annotate
 
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/diamcut1 --region=dr11-south --mp=1 --photo --photo-version=v1.0
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/diamcut1 --region=dr11-south --mp=1 --gather-photo --photo-version=v1.0
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/diamcut1 --region=dr11-south --mp=1 --photo --photo-version=v1.0 --annotated-montage
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/diamcut1 --region=dr11-south --mp=1 --photo --photo-version=v1.0
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/diamcut1 --region=dr11-south --mp=1 --gather-photo --photo-version=v1.0
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/diamcut1 --region=dr11-south --mp=1 --photo --photo-version=v1.0 --annotated-montage
 
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/lvd --region=dr11-south --lvd --mp=32
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/lvd --region=dr11-south --lvd --mp=32 --photo --photo-version=lvd-v1.0
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/lvd --region=dr11-south --lvd --mp=32
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/lvd --region=dr11-south --lvd --mp=32 --photo --photo-version=lvd-v1.0
 
 Alternatively, in production, one would do:
 
   salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro4
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/cutouts/parent --region=dr9-north --mp=4 > \
-    $PSCRATCH/SGA2025/cutouts/SGA2025-cutouts-parent-dr9-north-native-JOBID.log 2>&1 &
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr9-north --mp=4 > \
+    $PSCRATCH/SGA2025-cutouts/cutouts/SGA2025-cutouts-parent-dr9-north-native-JOBID.log 2>&1 &
 
   time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/cutouts/parent --region=dr9-north --mp=4 --rescale > \
-    $PSCRATCH/SGA2025/cutouts/SGA2025-cutouts-parent-dr9-north-rescale-JOBID.log 2>&1 &
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr9-north --mp=4 --rescale > \
+    $PSCRATCH/SGA2025-cutouts/cutouts/SGA2025-cutouts-parent-dr9-north-rescale-JOBID.log 2>&1 &
 
 ###
 To build the ssl-legacysurvey catalog:
@@ -38,37 +38,32 @@ To build the ssl-legacysurvey catalog:
     shifter --image dstndstn/cutouts:dvsro4 bash
     source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --region=dr9-north --rescale --mp=128
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --region=dr9-north --rescale --mp=128
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr9-north --rescale --mp=128
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr9-north --rescale --mp=128
 
-    source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh  Then build the HDF5 files:
     SGA2025-shifter
-    source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
+    source $HOME/code/git/SGA/bin/SGA2025/SGA2025-env
 
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --build-ssl --ssl-version=v4
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --build-ssl --ssl-version=v3
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --build-ssl --ssl-version=v2
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --build-ssl --ssl-version=v1
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v4
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v3
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v2
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v1
 
   Investigate...
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --ssl --ssl-version=v3 --rescale --annotate --region=dr11-south --mp=32
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --ssl --ssl-version=v3 --rescale --annotated-montage --region=dr11-south --mp=32
-
-    ###
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --ssl --ssl-version=v1 --no-fits-cutouts --region=dr9-north --mp=32
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/ssl --ssl --ssl-version=v1 --rescale --annotated-montage --region=dr9-north
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --ssl --ssl-version=v3 --rescale --annotate --region=dr11-south --mp=32
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --ssl --ssl-version=v3 --rescale --annotated-montage --region=dr11-south --mp=32
 
 ###
 LVD sample:
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/lvd --region=dr11-south --mp=32 --lvd
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/lvd --region=dr11-south --annotate --mp=32 --lvd
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/lvd --region=dr11-south --annotated-montage --lvd
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/lvd --region=dr11-south --mp=32 --lvd
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/lvd --region=dr11-south --annotate --mp=32 --lvd
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/lvd --region=dr11-south --annotated-montage --lvd
 
 ###
 Kim's wisesize project:
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/wisesize --wisesize --region=dr9-north --mp=32
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/wisesize --wisesize --region=dr9-north --annotate --annotate-central-only --mp=32
-  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025/wisesize --wisesize --region=dr9-north --annotated-montage
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/wisesize --wisesize --region=dr9-north --mp=32
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/wisesize --wisesize --region=dr9-north --annotate --annotate-central-only --mp=32
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/wisesize --wisesize --region=dr9-north --annotated-montage
 
 ###
 zooniverse project:

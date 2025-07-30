@@ -13,7 +13,7 @@ from collections import Counter
 from astropy.table import Table, vstack
 from astrometry.libkd.spherematch import match_radec
 
-from SGA.io import sga_dir, parent_version
+from SGA.SGA import sga_dir
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.util import match, match_to
 from SGA.sky import choose_primary, resolve_close
@@ -22,11 +22,93 @@ from SGA.qa import qa_skypatch, multipage_skypatch
 from SGA.logger import log
 
 
+def parent_version(vicuts=False, nocuts=False, archive=False):
+    if nocuts:
+        version = 'v1.0'
+        # many more objects added
+        #version = 'v1.1'
+    elif vicuts:
+        version = 'v1.0'
+        #version = 'v1.1'
+    elif archive:
+        version = 'v1.0'
+        #version = 'v1.1'
+    else:
+        version = 'v1.0'
+    return version
+
+
+def parent_datamodel(nobj):
+    """Initialize the data model for the parent-nocuts sample.
+
+    """
+    parent = Table()
+    parent['OBJNAME'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NED'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_HYPERLEDA'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_SGA2020'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJTYPE'] = np.zeros(nobj, '<U6')
+    parent['MORPH'] = np.zeros(nobj, '<U20')
+    parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
+
+    parent['RA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_SGA2020'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_SGA2020'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+
+    parent['Z'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_HYPERLEDA'] = np.zeros(nobj, 'f8') -99.
+    parent['Z_NEDLVS'] = np.zeros(nobj, 'f8') -99.
+
+    parent['PGC'] = np.zeros(nobj, '<i8') -99
+    parent['ESSENTIAL_NOTE'] = np.zeros(nobj, '<U80')
+
+    parent['MAG_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['MAG_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['BAND_LIT'] = np.zeros(nobj, '<U1')
+    parent['DIAM_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['DIAM_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['BA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_LIT_REF'] = np.zeros(nobj, '<U9')
+    parent['PA_LIT'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_LIT_REF'] = np.zeros(nobj, '<U9')
+
+    parent['MAG_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_HYPERLEDA'] = np.zeros(nobj, '<U1')
+    parent['DIAM_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_HYPERLEDA'] = np.zeros(nobj, 'f4') -99.
+
+    parent['MAG_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BAND_SGA2020'] = np.zeros(nobj, '<U1')
+    parent['DIAM_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['BA_SGA2020'] = np.zeros(nobj, 'f4') -99.
+    parent['PA_SGA2020'] = np.zeros(nobj, 'f4') -99.
+
+    parent['ROW_HYPERLEDA'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_NEDLVS'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_SGA2020'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
+
+    return parent
+
+
 def qa_parent(nocuts=False, sky=False, size_mag=False):
     """QA of the parent sample.
 
     """
-    from SGA.io import sga_dir
     from SGA.qa import fig_sky, fig_size_mag
 
     qadir = os.path.join(sga_dir(), 'parent', 'qa')
@@ -1383,7 +1465,6 @@ def build_parent_nocuts(verbose=True):
 
 
     def populate_parent(input_cat, input_basic, verbose=False):
-        from SGA.io import parent_datamodel
         parent = parent_datamodel(len(input_cat))
         for col in parent.columns:
             if col in input_cat.columns:
@@ -2690,12 +2771,14 @@ def build_parent(verbose=False, overwrite=False):
 
     """
     from SGA.geometry import choose_geometry
-    from SGA.brick import brickname as get_brickname
-    from SGA.io import sga2025_name
+    from SGA.SGA import sga2025_name, FITBITS, SAMPLEBITS
     from SGA.groups import build_group_catalog
-    from SGA.coadds import FITBITS, REGIONBITS
+    from SGA.coadds import REGIONBITS
+    from SGA.sky import find_close
+    from SGA.brick import brickname as get_brickname
 
     version = parent_version()
+    version_nocuts = parent_version(nocuts=True)
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
 
@@ -2707,11 +2790,23 @@ def build_parent(verbose=False, overwrite=False):
 
     # merge the two regions
     mindiam = 30. # [arcsec]
+    minsep = 60.  # [arcsec]
     parent = []
     for region in ['dr11-south', 'dr9-north']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         log.info(f'Read {len(cat):,d} objects from {catfile}')
+
+        lvd_dwarfs = cat['OBJNAME'][cat['ROW_LVD'] != -99].value
+
+        # Remove all sources smaller than MINDIAM with no other source
+        # within XX arcsec.
+        primaries, groups = find_close(cat, cat, rad_arcsec=minsep, isolated=True)
+        diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+        I = ((primaries['ROW_LVD'] == -99) * ~primaries['IN_LMC'] * ~primaries['IN_SMC'] * (diam < mindiam))
+        log.info(f'Removing {np.sum(I):,d}/{len(cat):,d} isolated (separation>{minsep:.1f} arcsec) ' + \
+                 f'objects with diameter<{mindiam:.1f} arcsec.')
+        cat = cat[~np.isin(cat['OBJNAME'], primaries['OBJNAME'][I])]
 
         diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
         I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
@@ -2733,6 +2828,9 @@ def build_parent(verbose=False, overwrite=False):
         cat = cat[I]
         log.info(f'Selected {np.sum(I):,d} objects with diameter>' + \
                  f'{mindiam:.1f} arcsec.')
+
+        # make sure we haven't dropped any LVD dwarfs
+        assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
 
         # add the region bit
         cat['REGION'] = np.int16(REGIONBITS[region])
@@ -2784,6 +2882,9 @@ def build_parent(verbose=False, overwrite=False):
     fitbits[parent['IN_LMC']] = FITBITS['forcegaia']
     fitbits[parent['IN_SMC']] = FITBITS['forcegaia']
 
+    samplebits = np.zeros(len(parent), np.int16)
+    samplebits[parent['ROW_LVD'] != -99] = SAMPLEBITS['LVD']
+
     sgaid = np.arange(len(parent))
     grp = parent[cols]
 
@@ -2793,11 +2894,12 @@ def build_parent(verbose=False, overwrite=False):
     grp.add_column(allmorph, name='MORPH', index=3)
     grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=6)
     grp.add_column(fitbits, name='FITBIT', index=7)
-    grp.add_column(diam.astype('f4'), name='DIAM', index=8)
-    grp.add_column(ba.astype('f4'), name='BA', index=9)
-    grp.add_column(pa.astype('f4'), name='PA', index=10)
-    grp.add_column(mag.astype('f4'), name='MAG', index=11)
-    grp.add_column(band, name='BAND', index=12)
+    grp.add_column(fitbits, name='SAMPLEBIT', index=8)
+    grp.add_column(diam.astype('f4'), name='DIAM', index=9)
+    grp.add_column(ba.astype('f4'), name='BA', index=10)
+    grp.add_column(pa.astype('f4'), name='PA', index=11)
+    grp.add_column(mag.astype('f4'), name='MAG', index=12)
+    grp.add_column(band, name='BAND', index=13)
 
     grp = build_group_catalog(grp)
 
@@ -2807,6 +2909,8 @@ def build_parent(verbose=False, overwrite=False):
     #out = grp[J]
     #log.info(f'Selecting {np.sum(J):,d}/{len(cat):,d} objects in {len(set(out["GROUP_ID"])):,d} unique groups')
     out = grp
+
+    pdb.set_trace()
 
     outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
     log.info(f'Writing {len(out):,d} objects to {outfile}')
