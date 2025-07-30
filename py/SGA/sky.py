@@ -12,6 +12,7 @@ from astropy.table import Table
 from astrometry.util.starutil_numpy import arcsec_between
 from astrometry.libkd.spherematch import match_radec
 
+from SGA.coadds import PIXSCALE
 from SGA.logger import log
 
 
