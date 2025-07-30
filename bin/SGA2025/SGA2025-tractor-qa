@@ -140,6 +140,18 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                             alpha = 0.9
                         xx.scatter(tractor['bx'][I], height-tractor['by'][I],
                                    marker='x', s=10, color='red', alpha=alpha)
+
+                    J = np.logical_or(tractor['type'] == 'PSF', tractor['type'] == 'DUP')
+                    #print(galaxy[indx[iax]], np.sum(J))
+                    if np.sum(J) > 0:
+                        if np.sum(J) > 50:
+                            s = 1
+                            alpha = 0.5
+                        else:
+                            s = 10
+                            alpha = 0.9
+                        xx.scatter(tractor['bx'][J], height-tractor['by'][J],
+                                   marker='o', s=s, color='white', alpha=alpha)
                     if len(sga) > 0:
                         xx.scatter(sga['bx'], height-sga['by'], marker='s',
                                    facecolor='none', s=40, color='cyan')
@@ -244,20 +256,9 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
 
         qadir = os.path.join(sga_dir(), 'parent', 'lvd')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd-forcepsf.pdf')
-    elif False:
-        # LVD - resolved
-        I = sample['FITBIT'] & FITBITS['ignore'] != 0
-        log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
-                 'objects in the "resolved" subsample.')
-        sample = sample[I]
-
-        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
-        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
     else:
-        datadir = '/pscratch/sd/i/ioannis/SGA2025-tmp1'
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
-
         print('Hack!')
         sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260'])]
 

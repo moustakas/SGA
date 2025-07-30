@@ -9,9 +9,15 @@ SGA2025-mpi --build-refcat
 
 # nice isolated spiral
 https://www.legacysurvey.org/viewer-dev?ra=192.4227&dec=25.7816&layer=ls-dr9-south&zoom=14&bricks&sga
-SGA2025-mpi --galaxylist="KUG 1247+260" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
-SGA2025-mpi --galaxylist="KUG 1247+260" --ellipse --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
+SGA2025-mpi --galaxylist="KUG 1247+260" --coadds --mp=8 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
+SGA2025-mpi --galaxylist="KUG 1247+260" --ellipse --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
+
+
+# test of 2-member group
+SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds
+SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --ellipse
+
 
 # LVD tests
 SGA2025-mpi --galaxylist="KV19-271" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
@@ -25,10 +31,6 @@ srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/script
   --coadds --mp=16 --lvd --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
 
 
-
-# test of 2-member group
-SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1 --mp=32 --debug --no-cleanup --coadds
-SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1 --mp=32 --debug --ellipse
 
 ###
 LVD non
@@ -144,7 +146,8 @@ def main():
         if not args.build_catalog and not args.build_refcat:
             if args.lvd:
                 #I = sample['GROUP_DIAMETER'] < 5.
-                I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
+                #I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
+                I = (sample['GROUP_DIAMETER'] < 3.) * (sample['FITBIT'] & FITBITS['forcepsf'] != 0)
                 sample = sample[I]
             elif False:
                 log.warning('Testing subsamples!')
@@ -380,15 +383,17 @@ def main():
 
 
         if args.ellipse:
-            from SGA.SGA import read_multiband
+            from SGA.SGA import read_multiband, SBTHRESH, APERTURES
+            from SGA.ellipse import ellipsefit_multiband
 
-            data, galaxyinfo = read_multiband(
+            data = read_multiband(
                 galaxy, galaxydir, bands=bands,
                 pixscale=args.pixscale, unwise=args.unwise,
                 galex=args.galex, verbose=args.verbose)
+
             pdb.set_trace()
 
-            call_ellipse(onegal, galaxy=galaxy, galaxydir=galaxydir,
+            ellipsefit_multiband(data, galaxy=galaxy, galaxydir=galaxydir,
                          bands=bands, refband='r',
                          pixscale=args.pixscale, mp=args.mp,
                          verbose=args.verbose, debug=args.debug,

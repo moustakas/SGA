@@ -16,6 +16,7 @@ from photutils.isophote.fitter import CentralEllipseFitter
 
 from SGA.logger import log
 
+
 REF_SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
 REF_APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
 
@@ -44,7 +45,7 @@ def _unpack_isofit(ellipsefit, filt, isofit, failed=False):
         for col, dtype in zip(FAILCOLS, FAILDTYPES):
             fail[f'{col}_{filt.lower()}'] = np.array([-1]).astype(dtype)
         return fail
-    
+
     if failed:
         ellipsefit.update(_fill_failed())
     else:
@@ -382,15 +383,15 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
 
     return ellipsefit
 
-def legacyhalos_ellipse(galaxy, galaxydir, data, galaxyinfo=None,
-                        pixscale=0.262, nproc=1, refband='r',
-                        bands=['g', 'r', 'z'], integrmode='median',
-                        nclip=3, sclip=3, sbthresh=REF_SBTHRESH,
-                        apertures=REF_APERTURES,
-                        delta_sma=1.0, delta_logsma=5, maxsma=None, logsma=True,
-                        copy_mw_transmission=False,
-                        input_ellipse=None, fitgeometry=False,
-                        verbose=False, debug=False, nowrite=False, clobber=False):
+
+def ellipsefit_multiband(galaxy, galaxydir, data, galaxyinfo=None,
+                         pixscale=0.262, nproc=1,
+                         bands=['g', 'r', 'z'], integrmode='median',
+                         nclip=3, sclip=3, sbthresh=REF_SBTHRESH,
+                         apertures=REF_APERTURES,
+                         delta_sma=1.0, delta_logsma=5, maxsma=None, logsma=True,
+                         input_ellipse=None, fitgeometry=False,
+                         verbose=False, debug=False, nowrite=False, clobber=False):
     """Top-level wrapper script to do ellipse-fitting on a single galaxy.
 
     fitgeometry - fit for the ellipse parameters (do not use the mean values
@@ -398,7 +399,7 @@ def legacyhalos_ellipse(galaxy, galaxydir, data, galaxyinfo=None,
 
     """
     from legacyhalos.io import get_ellipsefit_filename
-    
+
     if bool(data):
         if data['missingdata']:
             if os.path.isfile(os.path.join(galaxydir, '{}-{}-coadds.isdone'.format(galaxy, data['filesuffix']))):
@@ -413,7 +414,7 @@ def legacyhalos_ellipse(galaxy, galaxydir, data, galaxyinfo=None,
             galaxy_id = np.atleast_1d(data['galaxy_id'])
         else:
             galaxy_id = ['']
-            
+
         for igal, galid in enumerate(galaxy_id):
             ellipsefitfile = get_ellipsefit_filename(galaxy, galaxydir, galaxy_id=str(galid),
                                                      filesuffix=data['filesuffix'])
@@ -429,7 +430,6 @@ def legacyhalos_ellipse(galaxy, galaxydir, data, galaxyinfo=None,
                                                   apertures=apertures,
                                                   integrmode=integrmode, nclip=nclip, sclip=sclip,
                                                   input_ellipse=input_ellipse,
-                                                  copy_mw_transmission=copy_mw_transmission,
                                                   verbose=verbose, fitgeometry=False,
                                                   nowrite=False)
         return 1
