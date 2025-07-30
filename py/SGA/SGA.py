@@ -263,7 +263,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                final_sample=False, region='dr11-south', d25min=0., d25max=100.0):
+                lvd=False, final_sample=False, region='dr11-south', d25min=0., d25max=100.0):
     """Read/generate the parent SGA catalog.
 
     d25min,d25max in arcmin
@@ -286,7 +286,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         samplefile = os.path.join(sga_dir(), '2025', f'SGA2025-ellipse-{version}.fits')
     else:
         version = parent_version()
-        samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+        if lvd:
+            samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-lvd-{version}.fits')
+        else:
+            samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
 
     if not os.path.isfile(samplefile):
         msg = f'Sample file {samplefile} not found.'

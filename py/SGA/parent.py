@@ -2766,7 +2766,7 @@ def build_parent_archive(verbose=False, overwrite=False):
                            pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
 
 
-def build_parent(verbose=False, overwrite=False):
+def build_parent(verbose=False, overwrite=False, lvd=False):
     """Build the parent catalog.
 
     """
@@ -2781,6 +2781,15 @@ def build_parent(verbose=False, overwrite=False):
     version_nocuts = parent_version(nocuts=True)
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
+
+    if lvd:
+        outfile = os.path.join(outdir, f'SGA2025-parent-lvd-{version}.fits')
+    else:
+        outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
+
+    if os.path.isfile(outfile) and not overwrite:
+        log.info(f'Parent catalog {outfile} exists; use --overwrite')
+        return
 
     cols = ['OBJNAME',
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
@@ -2894,25 +2903,19 @@ def build_parent(verbose=False, overwrite=False):
     grp.add_column(allmorph, name='MORPH', index=3)
     grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=6)
     grp.add_column(fitbits, name='FITBIT', index=7)
-    grp.add_column(fitbits, name='SAMPLEBIT', index=8)
+    grp.add_column(samplebits, name='SAMPLEBIT', index=8)
     grp.add_column(diam.astype('f4'), name='DIAM', index=9)
     grp.add_column(ba.astype('f4'), name='BA', index=10)
     grp.add_column(pa.astype('f4'), name='PA', index=11)
     grp.add_column(mag.astype('f4'), name='MAG', index=12)
     grp.add_column(band, name='BAND', index=13)
 
-    grp = build_group_catalog(grp)
+    out = build_group_catalog(grp)
 
-    ## final selection and data model
-    #I = (diam > 45./60.)# * (diam < 2.)
-    #J = np.isin(grp['GROUP_ID'], grp['GROUP_ID'][I])
-    #out = grp[J]
-    #log.info(f'Selecting {np.sum(J):,d}/{len(cat):,d} objects in {len(set(out["GROUP_ID"])):,d} unique groups')
-    out = grp
+    if lvd:
+        I = out['SAMPLEBIT'] == 2**0
+        out = out[np.isin(out['GROUP_ID'], out['GROUP_ID'][I])]
 
-    pdb.set_trace()
-
-    outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)

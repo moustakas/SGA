@@ -53,6 +53,8 @@ def mpi_args():
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
 
+    parser.add_argument('--lvd', action='store_true', help='Read the parent LVD sample.')
+
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')
     args = parser.parse_args()

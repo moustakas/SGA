@@ -218,19 +218,38 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
     log.info(f'Wrote {pdffile}')
 
 
-def qa_tractor(region='dr11-south', datadir=None):
+def qa_tractor(region='dr11-south', datadir=None, lvd=False,
+               lvd_forcepsf=False, lvd_ignore=False):
 
     if datadir is None:
         datadir = sga_data_dir()
-    sample, fullsample = read_sample(region=region)
 
-    if False:
+    sample, fullsample = read_sample(region=region, lvd=(lvd or lvd_ignore or lvd_forcepsf))
+
+    if lvd:
+        I = sample['FITBIT'] == 0
+        sample = sample[I]
+
+        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
+    elif lvd_ignore:
+        I = sample['FITBIT'] & FITBITS['ignore'] != 0
+        sample = sample[I]
+
+        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd-ignore.pdf')
+    elif lvd_forcepsf:
+        I = sample['FITBIT'] & FITBITS['forcepsf'] != 0
+        sample = sample[I]
+
+        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd-forcepsf.pdf')
+    elif False:
         # LVD - resolved
         I = sample['FITBIT'] & FITBITS['ignore'] != 0
         log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
                  'objects in the "resolved" subsample.')
         sample = sample[I]
-        sample = sample[np.argsort(sample[DIAMCOLUMN])]
 
         qadir = os.path.join(sga_dir(), 'parent', 'lvd')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
@@ -241,7 +260,6 @@ def qa_tractor(region='dr11-south', datadir=None):
 
         print('Hack!')
         sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260'])]
-
 
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
@@ -255,6 +273,9 @@ def qa_tractor(region='dr11-south', datadir=None):
     sample = sample[I]
     fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
+    sample = sample[np.argsort(sample[DIAMCOLUMN])]
+    fullsample = fullsample[np.argsort(fullsample[DIAMCOLUMN])]
+
     annotated(sample, fullsample, pdffile, region=region, datadir=datadir)
 
 if __name__ == '__main__':
@@ -262,8 +283,13 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--lvd', action='store_true', help='Generate QA for the non-ignore/non-forcepsf LVD sample.')
+    parser.add_argument('--lvd-ignore', action='store_true', help='Generate QA for the LVD/ignore sample.')
+    parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 
-    qa_tractor(datadir=args.datadir, region=args.region)
+    qa_tractor(datadir=args.datadir, region=args.region, lvd=args.lvd,
+               lvd_forcepsf=args.lvd_forcepsf,
+               lvd_ignore=args.lvd_ignore)

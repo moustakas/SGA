@@ -28,18 +28,6 @@ def set_legacysurvey_dir(region='dr9-north'):
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
 
 
-def custom_brickname(ra, dec, more_decimals=False):
-    if more_decimals:
-        brickname = '{:08d}{}{:07d}'.format(
-            int(100000*ra), 'm' if dec < 0 else 'p',
-            int(100000*np.abs(dec)))
-    else:
-        brickname = '{:06d}{}{:05d}'.format(
-            int(1000*ra), 'm' if dec < 0 else 'p',
-            int(1000*np.abs(dec)))
-    return brickname
-
-
 def radec_to_name(target_ra, target_dec, prefix='SGA2025',
                   precision=4, unixsafe=False):
     """Convert the right ascension and declination of an object into a
@@ -169,7 +157,7 @@ def read_survey_bricks(survey, brickname=None, custom=False):
         return bricks
 
     if custom:
-        from SGA.coadds import custom_brickname
+        from SGA.brick import custom_brickname
         # define a set of custom bricks (for testing purposes)
         bricks = Table()
         # https://www.legacysurvey.org/viewer-desi?ra=15.8232&dec=-4.6630&layer=ls-dr9&zoom=15&sga

@@ -355,8 +355,8 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     mostly taken from legacypipe.runbrick.stage_tims.
 
     """
-    from SGA.io import custom_brickname
     from legacypipe.survey import wcs_for_brick, BrickDuck
+    from SGA.brick import custom_brickname
 
     brickname = f'custom-{custom_brickname(ra, dec)}'
     brick = BrickDuck(ra, dec, brickname)
@@ -376,7 +376,8 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC',
-                  subsky_radii=None, just_coadds=False,  missing_ok=False,
+                  force_psf_detection=False, subsky_radii=None,
+                  just_coadds=False,  missing_ok=False,
                   force=False, cleanup=True, unwise=True, galex=False,
                   no_gaia=False, no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
@@ -384,7 +385,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     """
     import fitsio
     from legacypipe.runbrick import main as runbrick
-    from SGA.io import custom_brickname
+    from SGA.brick import custom_brickname
 
     stagesuffix = 'coadds'
 
@@ -449,9 +450,10 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
 
     # stage-specific options here--
     cmdargs += '--fit-on-coadds --no-ivar-reweighting '
+    if not force_psf_detection:
+        cmdargs += '--no-galaxy-forcepsf '
 
     log.info(f'runbrick {cmdargs}')
-
     err = runbrick(args=cmdargs.split())
 
     # get the updated (final) set of bands

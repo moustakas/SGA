@@ -27,8 +27,6 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mp', default=1, type=int, help='Number of ' + \
-                        'multiprocessing processes per MPI rank.')
     parser.add_argument('--ntest', type=int, default=None, help='Number of ' + \
                         'test objects to read (only with --in-footprint.')
     parser.add_argument('--region', default='dr9-north', type=str,
@@ -54,6 +52,9 @@ def main():
                         help='Build QA of the in-footprint samples.')
     parser.add_argument('--qa-parent', action='store_true',
                         help='Build QA of the parent sample.')
+
+    parser.add_argument('--lvd', action='store_true',
+                        help='Write out the LVD parent sample.')
 
     parser.add_argument('--verbose', action='store_true',
                         help='Be verbose.')
@@ -83,7 +84,8 @@ def main():
 
     if args.build_parent:
         from SGA.parent import build_parent
-        build_parent(overwrite=args.overwrite, verbose=args.verbose)
+        build_parent(overwrite=args.overwrite, verbose=args.verbose,
+                     lvd=args.lvd)
 
     if args.qa_footprint:
         from SGA.parent import qa_footprint

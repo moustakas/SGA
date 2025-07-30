@@ -13,8 +13,18 @@ SGA2025-mpi --galaxylist="KUG 1247+260" --coadds --no-cleanup --mp=32 --debug --
 SGA2025-mpi --galaxylist="KUG 1247+260" --ellipse --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
 
-# LVD test
+# LVD tests
 SGA2025-mpi --galaxylist="KV19-271" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
+
+SGA2025-mpi --lvd --coadds --mp=128 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
+
+srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-mpi \
+  --coadds --mp=16 --lvd --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
+
+
 
 # test of 2-member group
 SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1 --mp=32 --debug --no-cleanup --coadds
@@ -36,7 +46,6 @@ srun --ntasks=4 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/script
 
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup --region=dr9-south --debug --old-calibs-ok
-
 
 
 """
@@ -82,9 +91,9 @@ def main():
     from SGA.coadds import RUNS, BANDS
     from SGA.mpi import mpi_args
     from SGA.io import set_legacysurvey_dir
-    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, sga_dir,
-                         sga_data_dir, sga_html_dir, read_sample,
-                         missing_files, get_galaxy_galaxydir,
+    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, FITBITS,
+                         sga_dir, sga_data_dir, sga_html_dir,
+                         read_sample, missing_files, get_galaxy_galaxydir,
                          build_catalog)
 
     args = mpi_args()
@@ -129,12 +138,16 @@ def main():
             first=args.first, last=args.last,
             d25min=args.d25min, d25max=args.d25max,
             galaxylist=args.galaxylist,
-            region=args.region, verbose=args.verbose)
+            lvd=args.lvd, region=args.region,
+            verbose=args.verbose)
 
         if not args.build_catalog and not args.build_refcat:
-            log.warning('Testing subsamples!')
-            if False:#True:
-                from SGA.coadds import FITBITS
+            if args.lvd:
+                #I = sample['GROUP_DIAMETER'] < 5.
+                I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
+                sample = sample[I]
+            elif False:
+                log.warning('Testing subsamples!')
                 I = sample['FITBIT'] & FITBITS['ignore'] != 0
                 sample = sample[I]
                 sample = sample[np.argsort(sample[DIAMCOLUMN])]
@@ -142,6 +155,7 @@ def main():
                 #sample = sample[:32]
                 #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0177.310-018.413_GROUP']
             else:
+                log.warning('Testing subsamples!')
                 pass
                 #sample = sample[sample['SGANAME'] == 'SGA2025_J0202.291-045.175']
                 #sample = sample[sample['OBJNAME'] == 'KV19-271']
@@ -195,7 +209,8 @@ def main():
             ref['pa'] = fullsample['PA']
             ref['ba'] = fullsample['BA']
             ref['diam'] = fullsample['DIAM'] # [arcmin]
-            assert(np.all(np.isfinite(ref['mag'])))
+            for col in ['pa', 'ba', 'diam', 'mag']:
+                assert(np.all(np.isfinite(ref[col])))
 
             reffile = os.path.join(basedir, f'SGA2025-{version}-refcat.fits')
             kdreffile = reffile.replace('.fits', '.kd.fits')
@@ -335,12 +350,19 @@ def main():
                 thissample.write(tmpfile, overwrite=True, format='fits')
                 os.rename(tmpfile, samplefile)
 
+            # force PSF
+            if onegal['FITBIT'] & FITBITS['forcepsf'] != 0:
+                force_psf_detection = True
+            else:
+                force_psf_detection = False
+
             if args.debug:
                 err, filesuffix = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     pixscale=args.pixscale, bands=bands, mp=args.mp,
                     nsigma=args.nsigma, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
                     just_coadds=args.just_coadds, force=args.force,
+                    force_psf_detection=force_psf_detection,
                     cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
                     verbose=args.verbose)
             else:
@@ -350,6 +372,7 @@ def main():
                             onegal, galaxy, survey, run, radius_mosaic_arcsec,
                             pixscale=args.pixscale, bands=bands, mp=args.mp,
                             nsigma=args.nsigma, just_coadds=args.just_coadds,
+                            force_psf_detection=force_psf_detection,
                             force=args.force, cleanup=args.cleanup,
                             unwise=args.unwise, galex=args.galex,
                             verbose=args.verbose)
