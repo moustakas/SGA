@@ -571,8 +571,8 @@ def _get_psfsize_and_depth(tractor, bands, pixscale, incenter=False):
     return out
 
 
-def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
-                     fill_value=0.0, filt2pixscale=None, verbose=False):
+def _read_image_data(data, filt2imfile, fill_value=0.0, filt2pixscale=None,
+                     build_residual_mask=False, verbose=False):
     """Helper function for the project-specific read_multiband method.
 
     Read the multi-band images and inverse variance images and pack them into a
@@ -603,8 +603,10 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
         if verbose:
             log.info(f'Reading {filt2imfile[filt]["image"]}')
             log.info(f'Reading {filt2imfile[filt]["model"]}')
+            log.info(f'Reading {filt2imfile[filt]["invvar"]}')
         hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
         image = fitsio.read(filt2imfile[filt]['image'])
+        invvar = fitsio.read(filt2imfile[filt]['invvar'])
         model = fitsio.read(filt2imfile[filt]['model'])
 
         # add the header to the data dictionary
@@ -615,15 +617,9 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
             data['width'] = sz[1]
             data['height'] = sz[0]
 
-        # Initialize the mask based on the inverse variance
-        if verbose:
-            log.info(f'Reading {filt2imfile[filt]["invvar"]}')
-        invvar = fitsio.read(filt2imfile[filt]['invvar'])
-        mask = invvar <= 0 # True-->bad, False-->good
-
         # convert WISE images from Vega nanomaggies to AB nanomaggies
         # https://www.legacysurvey.org/dr9/description/#photometry
-        if filt.lower() in np.char.lower(VEGA2AB.keys()):
+        if filt.lower() in ['w1', 'w2', 'w3', 'w4']:
             image *= 10.**(-0.4 * VEGA2AB[filt])
             model *= 10.**(-0.4 * VEGA2AB[filt])
             invvar /= (10.**(-0.4 * VEGA2AB[filt]))**2.
@@ -635,7 +631,7 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
         psfimg /= psfimg.sum()
         data[f'{filt.lower()}_psf'] = PixelizedPSF(psfimg)
 
-        wcs = Tan(filt2imfile[filt]['image'], 1)
+        wcs = Tan(hdr)
         if 'MJD_MEAN' in hdr:
             mjd_tai = hdr['MJD_MEAN'] # [TAI]
             wcs = LegacySurveyWcs(wcs, TAITime(None, mjd=mjd_tai))
@@ -643,71 +639,86 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
             wcs = ConstantFitsWcs(wcs)
         data[f'{filt.lower()}_wcs'] = wcs
 
-        # Build the starmask, resizing 
-        # GALEX, unWISE need to be resized. Never resize allmask, if
-        # present, since it's only defined for the optical.
-        if starmask is not None:
-            if starmask.shape == sz:
-                doresize = False
-            else:
-                doresize = True
+        # Build the optical and UV/IR mask.
+        if np.any(invvar < 0):
+            log.warning(f'Found {np.sum(invvar<0):,d} negative pixels in the ' + \
+                        f'{filt}-band inverse variance image!')
 
+        mask = invvar <= 0 # True-->bad
+        print(filt, 'ivar', np.sum(mask))
 
-        # Add in the starmask, resizing if necessary for this image/pixel
-        # scale. Never resize allmask (it's only for the optical).
-        if starmask is not None:
-            if doresize:
-                _starmask = resize(starmask, mask.shape, mode='edge',
-                                   anti_aliasing=False) > 0
-                mask = np.logical_or(mask, _starmask)
-            else:
-                mask = np.logical_or(mask, starmask)
-                if allmask is not None:
-                    mask = np.logical_or(mask, allmask)
+        # add allmask, dilate, and then mask XX% of the image border
+        # (only in the optical)
+        if filt in fit_optical_bands:
+            mask = np.logical_or(mask, data[f'allmask_{filt.lower()}'])
+            print(filt, 'allmask', np.sum(mask))
 
-        # Flag significant residual pixels after subtracting *all* the models
-        # (we will restore the pixels of the galaxies of interest later). Only
-        # consider the optical (grz) bands here.
-        resid = gaussian_filter(image - model, 2.)
-        _, _, sig = sigma_clipped_stats(resid, sigma=3.)
-        data[f'{filt.lower()}_sigma'] = sig
-        if residual_mask is None:
-            residual_mask = np.abs(resid) > 5.*sig
-        else:
-            _residual_mask = np.abs(resid) > 5.*sig
-            # In grz, use a cumulative residual mask. In UV/IR use an
-            # individual-band mask.
-            if doresize:
-                pass
-                #residual_mask = resize(_residual_mask, residual_mask.shape, mode='reflect')
-            else:
-                residual_mask = np.logical_or(residual_mask, _residual_mask)
-
-        ## Dilate the mask, mask out a 10% border, and pack into a dictionary.
         mask = binary_dilation(mask, iterations=2)
-        edge = int(0.02*sz[0])
-        mask[:edge, :] = True
-        mask[:, :edge] = True
-        mask[:, sz[0]-edge:] = True
-        mask[sz[0]-edge:, :] = True
+        print(filt, 'dilate', np.sum(mask))
+
+        if filt in fit_optical_bands:
+            edge = int(0.02*sz[0])
+            mask[:edge, :] = True
+            mask[:, :edge] = True
+            mask[:, sz[0]-edge:] = True
+            mask[sz[0]-edge:, :] = True
+            print(filt, 'edge', np.sum(mask))
+
+        # resize the wisemask, if present, but only for W1 and W2
+        if data['wisemask'] is not None and filt.lower() in ['w1', 'w2']:
+            _wisemask = resize(data['wisemask'], mask.shape, mode='edge',
+                               anti_aliasing=False) > 0
+            mask = np.logical_or(mask, _wisemask)
+            print(filt, 'wisemask', np.sum(mask))
+
+        # get the robust sigma from the residual image
+        if filt in fit_optical_bands:
+            resid = gaussian_filter(image - model, 2.)
+            _, _, sig = sigma_clipped_stats(resid, sigma=3.)
+            data[f'{filt.lower()}_sigma'] = sig
+
+        if build_residual_mask:
+            # Optionally flag significant residual pixels after
+            # subtracting *all* the models (we will restore the pixels of
+            # the galaxies of interest later). Only consider the optical
+            # (grz) bands here.
+            if filt in fit_optical_bands:
+                _residual_mask = np.abs(resid) > 5.*sig
+                _residual_mask = binary_dilation(_residual_mask, iterations=2)
+                if residual_mask is None:
+                    residual_mask = _residual_mask
+                else:
+                    residual_mask = np.logical_or(residual_mask, _residual_mask)
+
         data[filt] = ma.masked_array(image, mask) # [nanomaggies]
         ma.set_fill_value(data[filt], fill_value)
 
-        data[f'{filt.lower()}_invvar'] = invvar # [1/nanomaggies**2]
-
         var = np.zeros_like(invvar)
         ok = invvar > 0
-        var[ok] = 1 / invvar[ok]
+        var[ok] = 1. / invvar[ok]
         data[f'{filt.lower()}_var_'] = var # [nanomaggies**2]
-        if np.any(invvar < 0):
-            log.warning(f'Found {np.sum(invvar<0):,d} negative pixels in the ' + \
-                        f'{filt}-band inverse variance map!')
+        data[f'{filt.lower()}_invvar'] = invvar # [1/nanomaggies**2]
 
-    data['residual_mask'] = residual_mask
-    if starmask is not None:
-        data['starmask'] = starmask
-    if allmask is not None:
-        data['almask'] = allmask
+    # resize starmask to get the UV/IR starmask
+    if 'W1' in fit_bands or 'NUV' in fit_bands:
+        starmask_uvir = resize(data['starmask'], data[refband].shape,
+                               mode='edge', anti_aliasing=False) > 0
+        data['starmask_uvir'] = starmask_uvir
+
+    if build_residual_mask:
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.imshow(np.log10(data['r'].data*~residual_mask), origin='lower')
+        #plt.savefig('ioannis/tmp/junk-starmask.png')
+        #pdb.set_trace()
+
+        # update the per-band optical masks with the residual mask
+        for filt in fit_optical_bands:
+            newmask = np.logical_or(data[filt].mask, residual_mask)
+            log.info(f'{filt}: {np.sum(newmask):,d}/{newmask.size:,d} ' + \
+                     f'({100.*np.sum(newmask)/newmask.size:.1f}%) masked pixels')
+            data[filt] = ma.masked_array(data[filt].data, newmask) # [nanomaggies]
+            ma.set_fill_value(data[filt], fill_value)
 
     return data
 
@@ -777,8 +788,8 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
     import numpy.ma as ma
     from copy import copy
     from skimage.transform import resize
+    #from astrometry.util.fits import merge_tables
     from SGA.find_galaxy import find_galaxy
-    from SGA.geometry import ellipse_mask
     from SGA.coadds import srcs2image
     from SGA.dust import SFDMap, mwdust_transmission
 
@@ -788,41 +799,38 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
     fit_bands = data['fit_bands']
     fit_optical_bands = data['fit_optical_bands']
 
-    #nbox = 5
-    #box = np.arange(nbox)-nbox // 2
-    #box = np.meshgrid(np.arange(nbox), np.arange(nbox))[0]-nbox//2
-
     xgrid, ygrid = np.ogrid[0:data['height'], 0:data['width']]
     dims = data[refband].shape
     assert(dims[0] == dims[1])
 
-    # Build a grid of PSF-subtracted model images in the optical
-    # bands.
-    debug = False
-    imgsnopsf = np.zeros((len(fit_optical_bands), dims[0], dims[1]), 'f4')
-    weight = np.zeros_like(imgsnopsf)
+    # Generate "clean" optical images.
+    opt_images = np.zeros((len(fit_optical_bands), dims[0], dims[1]), 'f4')
+    opt_weight = np.zeros_like(opt_images)
+    opt_masks = np.zeros(opt_images.shape, bool)
+    opt_galmasks = np.zeros_like(opt_masks)
+    opt_psfmasks = np.zeros_like(opt_masks)
 
-    galsrcs = tractor[(tractor.type != 'PSF') * (tractor.ref_cat != REFCAT)]
-    psfsrcs = tractor[(tractor.type == 'PSF') * (tractor.ref_cat != REFCAT)]
-    if len(psfsrcs) > 0:
-        for iband, filt in enumerate(fit_optical_bands):
-            psfimg = srcs2image(psfsrcs, data[f'{filt.lower()}_wcs'],
-                                band=filt.lower(),
-                                pixelized_psf=data[f'{filt.lower()}_psf'])
-            img = ma.getdata(data[filt])
-            imgsnopsf[iband, :, :] = img - psfimg
-            weight[iband, :, :] = data[f'{filt.lower()}_invvar']
-            if debug and filt == 'r':
-                fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 4))
-                ax1.imshow(np.log10(img), origin='lower')
-                ax2.imshow(np.log10(psfimg), origin='lower')
-                ax3.imshow(imgsnopsf[:, :, iband], origin='lower')
-                plt.savefig(f'ioannis/tmp/qa-psf-{filt.lower()}.png')
-    else:
-        for iband, filt in enumerate(fit_optical_bands):
-            imgsnopsf[iband, :, :] = ma.getdata(data[filt])
-
-    wivar = np.sum(weight, axis=0)
+    ## DUP??
+    #galsrcs = tractor[(tractor.type != 'PSF') * (tractor.ref_cat != REFCAT)]
+    #psfsrcs = tractor[(tractor.type == 'PSF') * (tractor.ref_cat != REFCAT)]
+    #if len(psfsrcs) > 0:
+    #    for iband, filt in enumerate(fit_optical_bands):
+    #        psfmodel = srcs2image(psfsrcs, data[f'{filt.lower()}_wcs'],
+    #                              band=filt.lower(),
+    #                              pixelized_psf=data[f'{filt.lower()}_psf'])
+    #        opt_psfmask[iband, :, :] = psfmodel > 2.5*data[f'{filt.lower()}_sigma']
+    #        opt_images[iband, :, :] = data[filt].data - psfmodel
+    #        opt_weight[iband, :, :] = data[f'{filt.lower()}_invvar'] * np.logical_not(data[filt.lower()].mask)
+    #
+    #        #fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 4))
+    #        #ax1.imshow(np.log10(img), origin='lower')
+    #        #ax2.imshow(np.log10(psfmodel), origin='lower')
+    #        #ax3.imshow(imgsnopsf[:, :, iband], origin='lower')
+    #        #plt.savefig(f'ioannis/tmp/qa-psf-{filt.lower()}.png')
+    #else:
+    #    for iband, filt in enumerate(fit_optical_bands):
+    #        opt_images[iband, :, :] = data[filt].data
+    #        opt_weight[iband, :, :] = data[f'{filt.lower()}_invvar']
 
     # Loop through each reference source (already sorted from bright
     # to faint).
@@ -841,93 +849,123 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         if obj['DROPPED']:
             print('FIXME')
             src_central = None
-            pdb.set_trace()
         else:
             src_central = tractor[obj['ROW']]
 
-        # Iteratively:
-        #   --build a mask
-        #   --subtract all extended sources outside that mask
-        #   --if another "central" is inside the mask, subtract it and
-        #     set the "blended" bit
-
+        # --build a mask from the initial or Tractor geometry
+        # --subtract all PSFs, being careful about reference sources
+        #   classified as PSF and systems where we used "force PSF"
+        # --subtract all extended sources outside that mask
+        # --if another "central" is inside the mask, subtract it and
+        #    set the "blended" bit
+        # --iterate to convergence
         for iter in range(2):
             mge, centralmask = _tractor2mge(obj, src_central, filt2pixscale,
                                             refband, xgrid, ygrid, factor=1.0)
-            # psfsrcs have already been subtracted
-            inmask = np.where([centralmask[int(by), int(bx)]
-                               for by, bx in zip(galsrcs.by, galsrcs.bx)])[0]
-            srcs = galsrcs[np.delete(np.arange(len(galsrcs)), inmask)]
+            inmask = np.array([centralmask[int(by), int(bx)]
+                               for by, bx in zip(tractor.by, tractor.bx)])
 
-            # Look for another reference source inside the same mask.
+            # Find PSFs; if we "forced PSF" then we only want to
+            # subtract sources outside the elliptical mask.
+            I = ((tractor.type == 'PSF') * (tractor.type != 'DUP') *
+                 (tractor.ref_cat != REFCAT))
+            if obj['FORCEPSF']:
+                I *= ~inmask
+            if np.any(I):
+                psfsrcs = tractor[I]
+            else:
+                psfsrcs = None
+
+            # Find extended sources *outside* the elliptical
+            # mask. (There's no way to know at this point which
+            # sources inside the elliptical mask are resolved
+            # structure vs an independent object---FIXME!)
+            I = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
+                 (tractor.ref_cat != REFCAT) * ~inmask)
+            if np.any(I):
+                galsrcs = tractor[I]
+            else:
+                galsrcs = None
+
+            # Look for another reference source inside the mask.
             refsrcs = None
             if nsample > 1:
-                Iref = []
+                I = []
                 for iref, refobj in enumerate(sample):
                     if iref == iobj:
                         continue
                     if centralmask[int(refobj['BY']), int(refobj['BX'])]:
-                        Iref.append(iref)
-                Iref = np.array(Iref)
-                if len(Iref) > 0:
-                    refsrcs = tractor[sample['ROW'][Iref]]
+                        I.append(iref)
+                I = np.array(I)
+                if len(I) > 0:
+                    refsrcs = tractor[sample['ROW'][I]]
                     sample['BLENDED'][iobj] = True
                 else:
                     sample['BLENDED'][iobj] = False # reset to False!
 
-            plt.clf()
-            plt.imshow(centralmask, origin='lower')
-            plt.scatter(srcs.bx, srcs.by, color='red')
-            plt.scatter(psfsrcs.bx, psfsrcs.by, color='white')
-            if refsrcs:
-                plt.scatter(refsrcs.bx, refsrcs.by, color='blue', s=30)
-            plt.savefig('ioannis/tmp/junk.png')
+            #plt.clf()
+            #plt.imshow(centralmask, origin='lower')
+            #plt.scatter(psfsrcs.bx, psfsrcs.by, color='white')
+            #plt.scatter(galsrcs.bx, galsrcs.by, s=5, color='red')
+            #if refsrcs:
+            #    plt.scatter(refsrcs.bx, refsrcs.by, color='blue', s=30)
+            #plt.savefig('ioannis/tmp/junk.png')
 
-            # Subtract (a) Tractor sources outside the nominal mask;
-            # and (b) any companion reference sources inside the
-            # initial mask/geometry.
-            imgs = np.zeros((len(fit_optical_bands), dims[0], dims[1]), 'f4')
+            # Iterate on each optical image and subtract (and
+            # threshold-mask) PSFs and threshold-mask extended
+            # sources. Also optionally subtract other reference
+            # sources (in the elliptical mask).
             for iband, filt in enumerate(fit_optical_bands):
-                model = srcs2image(srcs, data[f'{filt.lower()}_wcs'],
-                                   band=filt.lower(),
-                                   pixelized_psf=data[f'{filt.lower()}_psf'])
+                opt_images[iband, :, :] = data[filt].data
+                opt_weight[iband, :, :] = data[f'{filt.lower()}_invvar']
+                opt_masks[iband, :, :] = data[filt].mask
+
+                # subtract stars and also build a threshold mask
+                if psfsrcs:
+                    model = srcs2image(psfsrcs, data[f'{filt.lower()}_wcs'],
+                                       band=filt.lower(),
+                                       pixelized_psf=data[f'{filt.lower()}_psf'])
+                    opt_psfmasks[iband, :, :] = model > 2.5*data[f'{filt.lower()}_sigma']
+                    opt_images[iband, :, :] -= model
+
+                # threshold mask (but do not subtract) extended sources
+                if galsrcs:
+                    model = srcs2image(galsrcs, data[f'{filt.lower()}_wcs'],
+                                       band=filt.lower(),
+                                       pixelized_psf=data[f'{filt.lower()}_psf'])
+                    opt_galmasks[iband, :, :] = model > 2.5*data[f'{filt.lower()}_sigma']
+                    #opt_images[iband, :, :] -= model
+
+                # subtract all in-mask reference sources
                 if refsrcs:
-                    model += srcs2image(refsrcs, data[f'{filt.lower()}_wcs'],
-                                        band=filt.lower(),
-                                        pixelized_psf=data[f'{filt.lower()}_psf'])
-                imgs[iband, :, :] = imgsnopsf[iband, :, :] - model
+                    model = srcs2image(refsrcs, data[f'{filt.lower()}_wcs'],
+                                       band=filt.lower(),
+                                       pixelized_psf=data[f'{filt.lower()}_psf'])
+                    opt_images[iband, :, :] -= model
 
-                if filt == 'r':
-                    #plotimg = model
-                    plotimg = imgs[iband, :, :]
-                    plotimg = np.log(plotimg/np.median(plotimg[model>0]))
-                    plt.clf()
-                    plt.imshow(plotimg, origin='lower')
-                    plt.savefig(f'ioannis/tmp/junk-{filt.lower()}.png')
+                #plotimg = opt_images[iband, :, :] * np.logical_not(modelmask[iband, :, :])
+                #plotimg = np.log(plotimg/np.median(plotimg[model>0]))
+                #plt.clf()
+                #plt.imshow(plotimg, origin='lower')
+                #plt.savefig(f'ioannis/tmp/junk-{filt.lower()}.png')
+                #pdb.set_trace()
 
-            # generate the 
-
-
-            # build the ivar-weighted coadded image
-            wimg = np.sum(weight * imgs, axis=0)
-
-        # The "residual mask" is initialized in
-        # legacyhalos.io._read_image_data and it includes pixels which
-        # are significant residuals (data minus model), pixels with
-        # invvar==0, and pixels belonging to maskbits BRIGHT, MEDIUM,
-        # CLUSTER, or ALLMASK_[GRZ]
-
-
-            mask = np.logical_or(ma.getmask(data[refband]), data['residual_mask'])
-            mask[centralmask] = False
-
-
-            mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=False, plot=True) ; plt.savefig('ioannis/tmp/junk-mge.png')
-
-
+            # estimate the geometry from the build the ivar-weighted
+            # coadded image
             pdb.set_trace()
+            wimg = np.sum(opt_weight * opt_images, axis=0)
+            #wivar = np.sum(opt_weight, axis=0)
 
-            img[centralmask] = data[refband].data[centralmask]
+            plotimg = wimg
+            plotimg = np.log(plotimg/np.median(plotimg[plotimg>0]))
+            plt.clf()
+            plt.imshow(plotimg, origin='lower')
+            plt.savefig(f'ioannis/tmp/junk-wimg.png')
+
+            #mask = np.logical_or(ma.getmask(data[refband]), data['residual_mask'])
+            #mask[centralmask] = False
+            #mgegalaxy = find_galaxy(img, nblob=1, binning=1, quiet=False, plot=True) ; plt.savefig('ioannis/tmp/junk-mge.png')
+            #img[centralmask] = data[refband].data[centralmask]
 
             pdb.set_trace()
 
@@ -939,6 +977,8 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         largeshift = False
 
         pdb.set_trace()
+        opt_weight = np.zeros_like(opt_images)
+
 
         # Iteratively subtract satellites and determine the source
         # geometry from the PSF-cleaned images.
@@ -1280,6 +1320,7 @@ def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
 
     # special fitting bit(s) -- FIXME!
     sample['FIXGEOMETRY'] = sample['FITBIT'] & FITBITS['ignore'] != 0
+    sample['FORCEPSF'] = sample['FITBIT'] & FITBITS['forcepsf'] != 0
 
     copycols = ['RA', 'DEC', 'BX', 'BY', 'TYPE', 'SERSIC',
                 'SHAPE_R', 'SHAPE_E1', 'SHAPE_E2']
@@ -1315,38 +1356,31 @@ def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
     maskbitsfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["maskbits"]}.fits.fz')
     if verbose:
         log.info(f'Reading {maskbitsfile}')
-    maskbits = fitsio.read(maskbitsfile)
+    F = fitsio.FITS(maskbitsfile)
+    maskbits = F['MASKBITS'].read()
 
-    # initialize the mask using the maskbits image
     starmask = ( (maskbits & MASKBITS['BRIGHT'] != 0) |
                  (maskbits & MASKBITS['MEDIUM'] != 0) |
-                 (maskbits & MASKBITS['CLUSTER'] != 0) |
-                 (maskbits & MASKBITS['ALLMASK_G'] != 0) |
-                 (maskbits & MASKBITS['ALLMASK_R'] != 0) |
-                 (maskbits & MASKBITS['ALLMASK_I'] != 0) |
-                 (maskbits & MASKBITS['ALLMASK_Z'] != 0) )
+                 (maskbits & MASKBITS['CLUSTER'] != 0) )
+    data['starmask'] = starmask
+
+    # missing bands have ALLMASK_[GRIZ] == 0
+    for filt in fit_optical_bands:
+        data[f'allmask_{filt.lower()}'] = maskbits & MASKBITS[f'ALLMASK_{filt.upper()}'] != 0
+
+    if unwise and 'WISEM1' in F:
+        w1mask = F['WISEM1'].read() # same size as maskbits
+        w2mask = F['WISEM2'].read()
+        wisemask = np.logical_or(w1mask, w2mask) > 0
+    else:
+        wisemask = None
+    data['wisemask'] = wisemask
 
     # Read the basic imaging data and masks and build the multiband
     # mask.
-    data = _read_image_data(data, filt2imfile, starmask=starmask,
-                            filt2pixscale=filt2pixscale,
+    data = _read_image_data(data, filt2imfile, filt2pixscale=filt2pixscale,
                             fill_value=fill_value, verbose=verbose)
-
     data = _build_multiband_mask(data, tractor, filt2pixscale,
                                  fill_value=fill_value, verbose=verbose)
-
-    #import matplotlib.pyplot as plt
-    #plt.clf() ; plt.imshow(np.log10(data['g_masked'][0]), origin='lower') ; plt.savefig('junk1.png')
-    ##plt.clf() ; plt.imshow(np.log10(data['r_masked'][1]), origin='lower') ; plt.savefig('junk2.png')
-    ##plt.clf() ; plt.imshow(np.log10(data['r_masked'][2]), origin='lower') ; plt.savefig('junk3.png')
-    #pdb.set_trace()
-
-    ## Gather some additional info that we want propagated to the output ellipse
-    ## catalogs.
-    #allgalaxyinfo = []
-    #for igal, (galaxy_id, galaxy_indx) in enumerate(zip(data['galaxy_id'], data['galaxy_indx'])):
-    #    samp = sample[sample[REFIDCOLUMN] == galaxy_id]
-    #    galaxyinfo = {REFIDCOLUMN: (str(galaxy_id), None)}
-    #    allgalaxyinfo.append(galaxyinfo)
 
     return data
