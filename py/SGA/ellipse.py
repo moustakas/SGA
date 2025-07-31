@@ -191,9 +191,9 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
         for band in bands:
             if 'mw_transmission_{}'.format(band.lower()) in mge.keys():
                 ellipsefit['mw_transmission_{}'.format(band.lower())] = mge['mw_transmission_{}'.format(band.lower())]
-        
+
     ellipsefit['ba_moment'] = np.float32(1 - mge['eps']) # note!
-    
+
     for mgekey, ellkey in zip(['ymed', 'xmed'], ['x0_moment', 'y0_moment']):
         ellipsefit[ellkey] = mge[mgekey]
 

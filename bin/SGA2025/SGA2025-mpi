@@ -13,10 +13,13 @@ SGA2025-mpi --galaxylist="KUG 1247+260" --coadds --mp=8 --debug --datadir=/pscra
 SGA2025-mpi --galaxylist="KUG 1247+260" --ellipse --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
 
-
-# test of 2-member group
+# 2-member group
 SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds
 SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --ellipse
+
+# SGA source dropped (LVD dwarf)
+SGA2025-mpi --galaxylist="dw1239+3251" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds
+SGA2025-mpi --galaxylist="dw1239+3251" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --ellipse
 
 
 # LVD tests
@@ -145,9 +148,9 @@ def main():
 
         if not args.build_catalog and not args.build_refcat:
             if args.lvd:
-                #I = sample['GROUP_DIAMETER'] < 5.
+                I = sample['GROUP_DIAMETER'] < 3.
                 #I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
-                I = (sample['GROUP_DIAMETER'] < 3.) * (sample['FITBIT'] & FITBITS['forcepsf'] != 0)
+                #I = (sample['GROUP_DIAMETER'] < 3.) * (sample['FITBIT'] & FITBITS['forcepsf'] != 0)
                 sample = sample[I]
             elif False:
                 log.warning('Testing subsamples!')

@@ -13,8 +13,9 @@ from astropy.table import Table, vstack
 
 from SGA.logger import log
 
-
-REFCAT = 'L4'
+print('!!!!!!!!!!! Update REFCAT')
+REFCAT = 'LG'
+#REFCAT = 'L4'
 RACOLUMN = 'GROUP_RA'   # 'RA'
 DECCOLUMN = 'GROUP_DEC' # 'DEC'
 DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
@@ -689,7 +690,7 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
         data[filt] = ma.masked_array(image, mask) # [nanomaggies]
         ma.set_fill_value(data[filt], fill_value)
 
-        data[f'{filt.lower()}_invvar_'] = invvar
+        data[f'{filt.lower()}_invvar'] = invvar # [1/nanomaggies**2]
 
         var = np.zeros_like(invvar)
         ok = invvar > 0
@@ -708,42 +709,37 @@ def _read_image_data(data, filt2imfile, starmask=None, allmask=None,
     return data
 
 
-def _tractor2mge(tractor, indx, filt2pixscale, refband,
-                 xgrid, ygrid, factor=1.0):
+def _tractor2mge(tractor, filt2pixscale, refband,
+                 xgrid, ygrid, mindiam=10., factor=1.0):
     """Convert a Tractor catalog entry to an MGE object.
 
+    mindiam - minimum major-axis length in arcsec
+
     """
-    from SGA.geometry import ellipse_mask
+    from SGA.geometry import ellipse_mask, get_tractor_ellipse
 
     class MGEgalaxy(object):
         pass
 
-    if tractor.type[indx] == 'PSF' or tractor.shape_r[indx] < 5.:
-        pa = tractor.pa_init[indx]
-        ba = tractor.ba_init[indx]
-        # take away the extra factor of 2 we put in in read_sample()
-        r50 = tractor.diam_init[indx] * 60. / 2. / 2. # [arcsec]
-        if r50 < 5:
-            r50 = 5.0 # minimum size, arcsec
-        majoraxis = factor * r50 / filt2pixscale[refband] # [pixels]
+    init_diam = tractor.diam # [arcsec]
+    trac_diam = tractor.shape_r * 2. * 1.2 # r50-->D(50)-->D(26) # [arcsec]
+    #diam = max([, tractor_diam
+    if diam < mindiam: # accounts for PSF
+        pa = tractor.pa
+        ba = tractor.ba
     else:
-        ee = np.hypot(tractor.shape_e1[indx], tractor.shape_e2[indx])
-        ba = (1. - ee) / (1. + ee)
-        phi = -np.rad2deg(np.arctan2(tractor.shape_e2[indx], tractor.shape_e1[indx]) / 2.)
-        pa = (180. - phi) % 180.
-        #majoraxis = factor * tractor.shape_r[indx] / filt2pixscale[refband] # [pixels]
+        e1, e2 = tractor.shape_e1, tractor.shape_e2
+        _, ba, pa = get_tractor_ellipse(diam, e1, e2)
 
-        # can be zero (or very small) if fit as a PSF or REX
-        if tractor.shape_r[indx] > 1:
-            majoraxis = factor * tractor.shape_r[indx] / filt2pixscale[refband] # [pixels]
-        else:
-            majoraxis = factor * tractor.diam_init[indx] * 60. / 2. / 2. / filt2pixscale[refband] # [pixels]
+    if diam < mindiam:
+        diam = mindiam # minimum size [arcsec]
+    majoraxis = factor * diam / filt2pixscale[refband] # [pixels]
 
     mge = MGEgalaxy()
-    mge.xmed = tractor.by[indx]
-    mge.ymed = tractor.bx[indx]
-    mge.xpeak = tractor.by[indx]
-    mge.ypeak = tractor.bx[indx]
+    mge.xmed = tractor.by
+    mge.ymed = tractor.bx
+    mge.xpeak = tractor.by
+    mge.ypeak = tractor.bx
     mge.eps = 1. - ba
     mge.pa = pa
     mge.theta = (270. - pa) % 180.
@@ -795,44 +791,81 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
     # Build a grid of PSF-subtracted model images in the optical
     # bands.
     debug = False
-    cleanimages = np.zeros((dims[0], dims[1], len(fit_optical_bands)), 'f4')
+    imgsnopsf = np.zeros((len(fit_optical_bands), dims[0], dims[1]), 'f4')
+    weight = np.zeros_like(imgsnopsf)
 
     print('!!!!!!!!!!! Update REFCAT condition')
+    galsrcs = tractor[(tractor.type != 'PSF') * (tractor.ref_cat != 'LG')]
     psfsrcs = tractor[(tractor.type == 'PSF') * (tractor.ref_cat != 'LG')]
+    #psfsrcs = tractor[(tractor.type == 'PSF') * (tractor.ref_cat != REFCAT)]
     if len(psfsrcs) > 0:
         for iband, filt in enumerate(fit_optical_bands):
             psfimg = srcs2image(psfsrcs, data[f'{filt.lower()}_wcs'],
                                 band=filt.lower(),
                                 pixelized_psf=data[f'{filt.lower()}_psf'])
             img = ma.getdata(data[filt])
-            cleanimages[:, :, iband] = img - psfimg
+            imgsnopsf[iband, :, :] = img - psfimg
+            weight[iband, :, :] = data[f'{filt.lower()}_invvar']
             if debug and filt == 'r':
                 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 4))
                 ax1.imshow(np.log10(img), origin='lower')
                 ax2.imshow(np.log10(psfimg), origin='lower')
-                ax3.imshow(cleanimages[:, :, iband], origin='lower')
+                ax3.imshow(imgsnopsf[:, :, iband], origin='lower')
                 plt.savefig(f'ioannis/tmp/qa-psf-{filt.lower()}.png')
     else:
         for iband, filt in enumerate(fit_optical_bands):
-            cleanimages[:, :, iband] = ma.getdata(data[filt])
-
-    # Coadd the PSF-cleaned images and determine the source geometry.
-
-
-    # Iteratively determine the source geometry while subtracting
-    # sources outside the...
-
-
-
-    pdb.set_trace()
+            imgsnopsf[iband, :, :] = ma.getdata(data[filt])
 
     # Loop through each reference source (already sorted from bright
     # to faint).
-    ncentral = len(data['tractor_row'])
+    tractor_rows = data['tractor_row'].values()
+    ncentral = len(tractor_rows)
+    blended = False
 
     data['mge'] = []
-    for ii, central in enumerate(data['tractor_row'].values()):
+    for ii, tractor_row in enumerate(tractor_rows):
         log.info(f'Determing the geometry for galaxy {ii+1}/{ncentral}.')
+
+        # Consider sources dropped by Tractor (handled in read_multiband).
+        if tractor_row == -1:
+            print('FIXME')
+            src_central = None
+            pdb.set_trace()
+        else:
+            src_central = tractor[tractor_row]
+
+        # Iteratively:
+        #   --build a mask
+        #   --subtract all extended sources outside that mask
+        #   --if another "central" is inside the mask, subtract it and
+        #     set the "blended" bit
+
+        for iter in range(2):
+            mge, centralmask = _tractor2mge(src_central, filt2pixscale,
+                                            refband, xgrid, ygrid, factor=1.0)
+            # psfsrcs have already been subtracted
+            inmask = np.where([centralmask[int(by), int(bx)]
+                               for by, bx in zip(galsrcs.by, galsrcs.bx)])[0]
+            srcs = galsrcs[np.delete(np.arange(len(galsrcs)), inmask)]
+            plt.clf()
+            plt.imshow(centralmask, origin='lower')
+            plt.scatter(srcs.bx, srcs.by, color='red')
+            plt.scatter(psfsrcs.bx, psfsrcs.by, color='white')
+            plt.savefig('ioannis/tmp/junk.png')
+
+            imgs = np.zeros((len(fit_optical_bands), dims[0], dims[1]), 'f4')
+            for iband, filt in enumerate(fit_optical_bands):
+                model = srcs2image(srcs, data[f'{filt.lower()}_wcs'],
+                                   band=filt.lower(),
+                                   pixelized_psf=data[f'{filt.lower()}_psf'])
+                imgs[iband, :, :] = imgsnopsf[iband, :, :] - model
+                if filt == 'r':
+                    plt.clf() ; plt.imshow(np.log(model/model[dims[0]//2,dims[1]//2]), origin='lower') ; plt.savefig('ioannis/tmp/junk-{}.png'.format(filt.lower()))
+                    pdb.set_trace()
+
+            img[centralmask] = data[refband].data[centralmask]
+
+            pdb.set_trace()
 
         # [1] Determine the non-parametric geometry of the galaxy of
         # interest in the reference band. First, subtract all models
@@ -841,31 +874,21 @@ def _build_multiband_mask(data, tractor, filt2pixscale, fill_value=0.0,
         # deblend.
         largeshift = False
 
-        mge, centralmask = _tractor2mge(tractor, central, filt2pixscale,
-                                        refband, xgrid, ygrid, factor=1.0)
         pdb.set_trace()
-        plt.clf() ; plt.imshow(centralmask, origin='lower') ; plt.savefig('ioannis/tmp/junk-mask.png')
 
-        iclose = np.where([centralmask[int(by), int(bx)]
-                           for by, bx in zip(tractor.by, tractor.bx)])[0]
+        # Iteratively subtract satellites and determine the source
+        # geometry from the PSF-cleaned images.
+        wivar = np.sum(weight, axis=0)
+        wimg = np.sum(weight * imgsnopsf, axis=0)
+        pdb.set_trace()
 
-        srcs = tractor.copy()
-        srcs.cut(np.delete(np.arange(len(tractor)), iclose))
-        model = srcs2image(srcs, data[f'{refband.lower()}_wcs'],
-                           band=refband.lower(),
-                           pixelized_psf=data[f'{refband.lower()}_psf'])
-
-        img = data[refband].data - model
-        img[centralmask] = data[refband].data[centralmask]
 
         # The "residual mask" is initialized in
         # legacyhalos.io._read_image_data and it includes pixels which
         # are significant residuals (data minus model), pixels with
         # invvar==0, and pixels belonging to maskbits BRIGHT, MEDIUM,
         # CLUSTER, or ALLMASK_[GRZ]
-
         mask = np.logical_or(ma.getmask(data[refband]), data['residual_mask'])
-        #mask = np.logical_or(data[refband].mask, data['residual_mask'])
         mask[centralmask] = False
 
         img = ma.masked_array(img, mask)
@@ -1154,28 +1177,60 @@ def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
 
     tractor = fits_table(tractorfile, columns=cols)
     log.info(f'Read {len(tractor):,d} sources from {tractorfile}')
+    #I = tractor.type == 'DUP'
+    #if np.any(I):
+    #    log.info(f'Removing {np.sum(I):,d}/{len(tractor):,d} type=DUP sources.')
+    #    tractor.cut(I)
 
-    # read the sample catalog from custom_coadds
+    # Read the sample catalog from custom_coadds and find each source
+    # in the Tractor catalog.
     samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
-    sample = Table(fitsio.read(samplefile))
+    cols = ['SGAID', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'FITBIT']
+    sample = Table(fitsio.read(samplefile, columns=cols))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
+    for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
+        sample.rename_column(col, f'{col}_INIT')
+    sample['DIAM_INIT'] *= 60. # [arcsec]
 
-    # Find the reference source(s) in the Tractor catalog and sort by
-    # optical brightness (in any band).
-    print('!!!!!!!!!!! Update REFCAT condition')
-    data['sga_dropped'] = False
-    data['sga_psf'] = False
-    data['tractor_row'] = {}
+    sample['ROW'] = np.zeros(len(sample), int)
+    sample['RA'] = np.zeros(len(sample), 'f8')
+    sample['DEC'] = np.zeros(len(sample), 'f8')
+    sample['BX'] = np.zeros(len(sample), 'f4')
+    sample['BY'] = np.zeros(len(sample), 'f4')
+    sample['TYPE'] = np.zeros(len(sample), 'U3')
+    sample['SERSIC'] = np.zeros(len(sample), 'f4')
+    sample['SHAPE_R'] = np.zeros(len(sample), 'f4') # [arcsec]
+    sample['SHAPE_E1'] = np.zeros(len(sample), 'f4')
+    sample['SHAPE_E2'] = np.zeros(len(sample), 'f4')
+    sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
+    sample['PSF'] = np.zeros(len(sample), bool)
+    sample['DROPPED'] = np.zeros(len(sample), bool)
+    sample['LARGESHIFT'] = np.zeros(len(sample), bool)
 
-    # initial geometry
-    tractor.diam = np.zeros(len(tractor), dtype='f4')
-    tractor.pa = np.zeros(len(tractor), dtype='f4')
-    tractor.ba = np.zeros(len(tractor), dtype='f4')
+    copycols = ['RA', 'DEC', 'BX', 'BY', 'TYPE', 'SERSIC',
+                'SHAPE_R', 'SHAPE_E1', 'SHAPE_E2']
+
+    for iobj, refid in enumerate(sample[REFIDCOLUMN].value):
+        I = np.where((tractor.ref_cat == REFCAT) * (tractor.ref_id == refid))[0]
+        if len(I) == 0:
+            log.warning(f'ref_id={refid} dropped by Tractor')
+            sample['DROPPED'] = True
+        else:
+            sample['ROW'][iobj] = I
+            for col, attr in zip(copycols, np.char.lower(copycols)):
+                sample[col][iobj] = getattr(tractor[I[0]], attr)
+            if sample['TYPE'][iobj] in ['PSF', 'DUP']:
+                log.warning(f'ref_id={refid} fit by Tractor as PSF (or DUP)')
+                sample['PSF'][iobj] = True
+            sample['FLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt.lower()}')
+                                        for filt in fit_optical_bands])
+
+    pdb.set_trace()
+
 
     tractor_rows, fluxes = [], []
     for iobj, refid in enumerate(sample[REFIDCOLUMN].value):
-        tractor_row = np.where((tractor.ref_id == refid))[0]
-        #tractor_row = np.where((tractor.ref_cat == REFCAT) * (tractor.ref_id == refid))[0]
+        tractor_row = np.where((tractor.ref_cat == REFCAT) * (tractor.ref_id == refid))[0]
         if len(tractor_row) == 0:
             log.warning(f'ref_id={refid} dropped by Tractor')
             data['sga_dropped'] = True
@@ -1183,20 +1238,21 @@ def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
             fluxes.append(-99.)
         else:
             tractor_row = tractor_row[0]
-            tractor.diam[tractor_row] = sample['DIAM'][iobj]
+            tractor.diam[tractor_row] = sample['DIAM'][iobj] * 60. # [arcsec]
             tractor.pa[tractor_row] = sample['PA'][iobj]
             tractor.ba[tractor_row] = sample['BA'][iobj]
 
             if (tractor.type[tractor_row] == 'PSF' or
                 tractor.type[tractor_row] == 'DUP'):
                 log.warning(f'ref_id={refid} fit by Tractor as PSF (or DUP)')
-                data['sga_psf'] = True
+                data['sga_psf'] = True # array?
             fluxes.append(max([getattr(tractor[tractor_row], f'flux_{filt.lower()}')
                                for filt in fit_optical_bands]))
         tractor_rows.append(tractor_row)
     fluxes = np.array(fluxes)
     tractor_rows = np.array(tractor_rows)
 
+    # Sort by optical brightness (in any band).
     log.info('Sorting by flux:')
     srt = np.argsort(fluxes)[::-1]
     for refid, tractor_row, flux in zip(sample[REFIDCOLUMN].value[srt],

@@ -35,6 +35,7 @@ def read_coadds(galaxy, galaxydir, refid):
 
     imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
     #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
+    #imagefile = os.path.join(galaxydir, f'{galaxy}-resid.jpg')
     tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
     if not os.path.isfile(tractorfile):
         log.warning(f'Missing {tractorfile}')
@@ -260,7 +261,7 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
         print('Hack!')
-        sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260'])]
+        sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02'])]
 
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
