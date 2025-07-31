@@ -344,7 +344,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
                     img, _sma, ellipsefit['pa_moment'], ellipsefit['eps_moment'], x0,
                     y0, integrmode, sclip, nclip) for _sma in filtsma])
                 ellipsefit = _unpack_isofit(ellipsefit, filt, IsophoteList(isobandfit))
-    
+
         print('...{:.3f} sec'.format(time.time() - t0))
 
     print('Time for all images = {:.3f} min'.format((time.time()-tall)/60))
