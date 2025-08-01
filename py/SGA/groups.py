@@ -64,7 +64,7 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
 
     #t0 = time.time()
     npergrp, _ = np.histogram(grp, bins=len(grp), range=(0, len(grp)))
-    #print('Time to build the histogram = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )    
+    #print('Time to build the histogram = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
 
     big = np.where( npergrp > 1 )[0]
     small = np.where( npergrp == 1 )[0]
@@ -140,6 +140,12 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     print('Starting spheregrouping.')
 
     nchar = np.max([len(gg) for gg in cat['SGANAME']])+6 # add six characters for "_GROUP"
+
+    # clean up old entries
+    for col in ['GROUP_ID', 'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
+                'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER']:
+        if col in cat.colnames:
+            cat.remove_column(col)
 
     t0 = time.time()
     cat.add_column(Column(name='GROUP_ID', data=np.zeros(len(cat), dtype=np.int32)-1))
@@ -225,15 +231,15 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
         weight = diam[I]
         cat['GROUP_RA'][I] = np.sum(weight * ra[I]) / np.sum(weight)
         cat['GROUP_DEC'][I] = np.sum(weight * dec[I]) / np.sum(weight)
-        # Get the diameter of the group as the distance between the center of
-        # the group and the outermost galaxy (plus the diameter of that galaxy,
-        # in case it's a big one!).
+        # Get the diameter of the group as the distance between the
+        # center of the group and the outermost galaxy (plus the
+        # radius of that galaxy, in case it's a big one!).
         dd = degrees_between(ra[I], dec[I], cat['GROUP_RA'][I[0]], cat['GROUP_DEC'][I[0]])
-        pad = dd + diam[I] / 60.0
-        gdiam = 2 * np.max(pad) * 60 # [arcmin]
-        # cap the maximum size of the group
-        if gdiam > 15.:# and len(I) <= 2:
-            gdiam = 1.1 * np.max(pad) * 60 # [arcmin]
+        pad = dd + (diam[I] / 2. / 60.) # [degrees]
+        gdiam = 2. * np.max(pad) * 60. # [arcmin]
+        ## cap the maximum size of the group
+        #if gdiam > 15.:# and len(I) <= 2:
+        #    gdiam = 1.1 * np.max(pad) * 60. # [arcmin]
         cat['GROUP_DIAMETER'][I] = gdiam
         if cat['GROUP_DIAMETER'][I[0]] < np.max(diam[I]):
             log.critical('Should not happen!')

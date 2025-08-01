@@ -2910,6 +2910,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     grp.add_column(mag.astype('f4'), name='MAG', index=12)
     grp.add_column(band, name='BAND', index=13)
 
+    print('NEED TO REMOVE LMC,SMC FROM GROUP-FINDING!')
     out = build_group_catalog(grp)
 
     if lvd:
