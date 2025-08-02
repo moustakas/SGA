@@ -62,38 +62,46 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
         return Table(onegal)
 
 
-def ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs):
-    """Return a mask for points within an elliptical region on the sky.
+def in_ellipse_mask_sky(racen, deccen, semia, semib, pa, ras, decs):
+    """
+    Return a mask for points within an elliptical region on the sky,
+    using astronomical position‐angle convention.
 
     Parameters
     ----------
     racen, deccen : float
-        Center of the ellipse [degrees].
+        Center of the ellipse, in degrees (RA, Dec).
     semia, semib : float
-        Major and minor axes [degrees].
-    phi : float
-        Position angle of major axis [radians, East of North].
+        Semi‐major and semi‐minor axes of the ellipse, in degrees.
+    pa : float
+        Position angle of the major axis, in degrees, measured
+        counter‐clockwise from +Dec (North) toward +RA (East).
     ras, decs : array_like
-        Sky coordinates of the points to test [degrees].
+        Point coordinates to test (RA, Dec), in degrees.
 
     Returns
     -------
     mask : ndarray of bool
-        True for points inside the ellipse.
-
+        True for points inside or on the ellipse.
     """
-    # Wrap delta-RA into [-180, +180] range
+    # compute offsets in a “flat‐sky” projection
+    # wrap RA difference into [–180, +180]
     dra = (ras - racen + 180) % 360 - 180
-    dra *= np.cos(np.radians(deccen))  # account for convergence of RA near poles
-
+    # correct for convergence of meridians
+    dra *= np.cos(np.radians(deccen))
     ddec = decs - deccen
 
-    # Rotate into ellipse-aligned coordinates
-    xp = dra * np.cos(phi) + ddec * np.sin(phi)
-    yp = -dra * np.sin(phi) + ddec * np.cos(phi)
+    # convert PA to radians
+    theta = np.deg2rad(pa)
 
-    # Elliptical mask condition
-    return (xp / semia)**2 + (yp / semib)**2 <= 1
+    # project onto the ellipse axes:
+    # major‐axis unit vector = (sinθ, cosθ)
+    xp =  dra * np.sin(theta) + ddec * np.cos(theta)
+    # minor‐axis unit vector = (–cosθ, sinθ)
+    yp = -dra * np.cos(theta) + ddec * np.sin(theta)
+
+    # standard ellipse test (x'/a)^2 + (y'/b)^2 <= 1
+    return (xp/semia)**2 + (yp/semib)**2 <= 1
 
 
 def find_close(cat, fullcat, rad_arcsec=1., isolated=False):

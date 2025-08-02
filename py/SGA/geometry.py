@@ -12,11 +12,46 @@ from astropy.table import Table
 from SGA.logger import log
 
 
-def ellipse_mask(xcen, ycen, semia, semib, phi, x, y):
-    """Simple elliptical mask."""
-    xp = (x-xcen) * np.cos(phi) + (y-ycen) * np.sin(phi)
-    yp = -(x-xcen) * np.sin(phi) + (y-ycen) * np.cos(phi)
-    return (xp / semia)**2 + (yp/semib)**2 <= 1
+def in_ellipse_mask(xcen, ycen, semia, semib, pa, x, y):
+    """Simple elliptical mask using astronomical PA convention.
+
+    Parameters
+    ----------
+    xcen, ycen : float
+        Center of the ellipse.
+    semia, semib : float
+        Semi-major and semi-minor axes lengths.
+    pa : float
+        Position angle in degrees, measured CCW from the +y (north) axis.
+    x, y : array-like
+        Coordinates to test.
+
+    Returns
+    -------
+    mask : ndarray of bool
+        True for points inside or on the ellipse.
+
+    Note
+    ----
+
+    If generating an image of size `size, `x` and `y` should be
+    defined as:
+        ```
+        xgrid, ygrid = np.meshgrid(np.arange(size), np.arange(size), indexing='xy')
+        ```
+
+    """
+    # convert PA to radians
+    theta = np.deg2rad(pa)
+    dx = x - xcen
+    dy = y - ycen
+
+    # Major-axis direction vector = (sin θ, cos θ)
+    xp =  dx * np.sin(theta) + dy * np.cos(theta)
+    # Minor-axis (90° CCW from major) = (–cos θ, sin θ)
+    yp = -dx * np.cos(theta) + dy * np.sin(theta)
+
+    return (xp/semia)**2 + (yp/semib)**2 <= 1
 
 
 def get_tractor_ellipse(r50, e1, e2):

@@ -71,7 +71,7 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
 def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
                  ax=None, pixscale=0.262, color='red', linestyle='-',
                  linewidth=1, alpha=1.0, clip=True, jpeg=False,
-                 draw_majorminor_axes=True):
+                 draw_majorminor_axes=True, label=None):
     """Draw an ellipse on either a numpy array (e.g., FITS image) or a JPEG or
     PNG image.
 
@@ -101,8 +101,8 @@ def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
     if jpeg:
         if height_pixels is None:
             raise ValueError('Image `height_pixels` is mandatory when jpeg=True')
-        ycen = height_pixels - y0       # jpeg/png y-axis is flipped
-        ellipse_angle = 90. - pa # CCW from x-axis and flipped
+        ycen = height_pixels - y0 # jpeg/png y-axis is flipped
+        ellipse_angle = 90. - pa  # CCW from x-axis and flipped
     else:
         ycen = y0
         ellipse_angle = pa - 90. # CCW from x-axis
@@ -111,7 +111,8 @@ def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
 
     ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels,
                   angle=ellipse_angle, facecolor='none', edgecolor=color,
-                  lw=linewidth, ls=linestyle, alpha=alpha, clip_on=clip)
+                  lw=linewidth, ls=linestyle, alpha=alpha, clip_on=clip,
+                  label=label)
     ax.add_artist(ell)
 
     # Optionally draw the major and minor axes. FIXME -- rewrite as a

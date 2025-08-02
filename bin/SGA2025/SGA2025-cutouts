@@ -534,7 +534,7 @@ def _read_test_sample3(cat, region, isolated=False):
 
     """
     from SGA.geometry import choose_geometry
-    from SGA.sky import ellipse_mask_sky
+    from SGA.sky import in_ellipse_mask_sky
 
     fullcat = cat.copy()
     fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
@@ -592,9 +592,9 @@ def _read_test_sample3(cat, region, isolated=False):
 
                 semia = diam[iobj] / 2. / 3600. # [degrees]
                 semib = ba[iobj] * semia
-                phi = np.radians(90. - pa[iobj])
 
-                m2 = np.where(ellipse_mask_sky(racen, deccen, semia, semib, phi, ras, decs))[0]
+                m2 = np.where(in_ellipse_mask_sky(
+                    racen, deccen, semia, semib, pa[iobj], ras, decs))[0]
 
                 # hack!
                 prefix_this = np.array(list(zip(*np.char.split(fullcat['OBJNAME'][allmatches[iobj]][m2].value, ' ').tolist()))[0])

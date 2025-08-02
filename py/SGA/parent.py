@@ -2453,7 +2453,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     from glob import glob
     from SGA.external import read_custom_external
     from SGA.geometry import choose_geometry
-    from SGA.sky import ellipse_mask_sky
+    from SGA.sky import in_ellipse_mask_sky
 
     version_vicuts = parent_version(vicuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
@@ -2573,10 +2573,9 @@ def build_parent_archive(verbose=False, overwrite=False):
 
         semia = diam / 2. / 3600. # [degrees]
         semib = ba * semia
-        phi = np.radians(90. - pa)
 
-        I = np.where(ellipse_mask_sky(
-            racen, deccen, semia, semib, phi,
+        I = np.where(in_ellipse_mask_sky(
+            racen, deccen, semia, semib, pa,
             cat['RA'].value, cat['DEC'].value))
         cat[f'IN_{cloud}'][I] = True
 

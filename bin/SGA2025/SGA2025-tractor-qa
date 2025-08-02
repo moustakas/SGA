@@ -261,7 +261,7 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
         print('Hack!')
-        sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136'])]
+        sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])]
 
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
