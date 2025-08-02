@@ -788,6 +788,7 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
     fit_optical_bands = data['fit_optical_bands']
     galex_bands = data['galex_bands']
     unwise_bands = data['unwise_bands']
+    optindx = np.where(np.isin(fit_bands, fit_optical_bands))[0]
 
     refband = data['refband']
     galex_refband = data['galex_refband']
@@ -805,6 +806,7 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
     # Loop through each reference source (already sorted from bright
     # to faint).
     sample = data['sample']
+    refsrcs = data['refsrcs']
     nsample = len(sample)
     niter = 1 # 2
 
@@ -817,11 +819,18 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
     Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
             (tractor.ref_cat != REFCAT))
 
+    # Initialize the images array, the per-band masks, and the PSF
+    # masks.
+    for filt in fit_bands:
+        img = data[filt]
+
+
+    # Start building the QA
     if qaplot:
         import matplotlib.pyplot as plt
         import matplotlib.gridspec as gridspec
         from astropy.visualization import simple_norm
-        from SGA.qa import draw_ellipse
+        from SGA.qa import overplot_ellipse
 
         qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
                               f'qa-ellipsemask-{data["galaxy"]}.png')
@@ -857,11 +866,11 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
             # initial ellipse geometry
             pixfactor = filt2pixscale[refband] / filt2pixscale[ref]
             for iobj, obj in enumerate(sample):
-                draw_ellipse(obj['DIAM_INIT'], obj['BA_INIT'], obj['PA_INIT'],
-                             obj['BX_INIT']*pixfactor, obj['BY_INIT']*pixfactor,
-                             pixscale=filt2pixscale[ref], ax=xx, color='cyan',
-                             linestyle='-', draw_majorminor_axes=True,
-                             label='Initial Geometry')
+                overplot_ellipse(obj['DIAM_INIT'], obj['BA_INIT'], obj['PA_INIT'],
+                                 obj['BX_INIT']*pixfactor, obj['BY_INIT']*pixfactor,
+                                 pixscale=filt2pixscale[ref], ax=xx, color='cyan',
+                                 linestyle='-', draw_majorminor_axes=True, jpeg=False,
+                                 label='Initial Geometry')
             if iax == 0:
                 xx.legend(loc='lower left', fontsize=8,# boxstyle='round',
                           fancybox=True, framealpha=0.5)
@@ -883,6 +892,7 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
     #      set the "blended" flag.
 
     #   --Iterate to convergence.
+
 
     # Generate "clean" optical images.
     opt_images = np.zeros((len(fit_optical_bands), dims[0], dims[1]), 'f4')
@@ -913,16 +923,14 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
         if np.any(I):
             refobj = sample[I]
 
-        # Build the initial elliptical mask. (I don't understand the
-        # factor of two here...)
+        ## Build the initial elliptical mask. NB: lengths are in
+        ## semi-{major,minor} axes in pixels and the 180-degree
+        ## rotation is because origin='lower'
         centralmask = in_ellipse_mask(
-            obj['BX_INIT'], obj['BY_INIT'], obj['DIAM_INIT'],
-            obj['BA_INIT']*obj['DIAM_INIT']*2.,
-            obj['PA_INIT'], xgrid, ygrid)
-        #plt.clf()
-        #plt.imshow(centralmask, origin='lower')
-        #plt.scatter(sample['BX_INIT'], sample['BY_INIT'], s=20, color='red')
-        #plt.savefig('ioannis/tmp/junk.png')
+            obj['BX_INIT'], obj['BY_INIT'], obj['DIAM_INIT']/2./refpixscale,
+            obj['BA_INIT']*obj['DIAM_INIT']/2./refpixscale,
+            180.-obj['PA_INIT'], xgrid, ygrid)
+        #ax[0, 0].imshow(centralmask, origin='lower')
 
         # Iteratively determine the object geometry.
         for iiter in range(niter):
@@ -932,6 +940,23 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
             psfsrcs, galsrcs = None, None
             opt_galmasks = np.zeros_like(opt_masks)
             opt_psfmasks = np.zeros_like(opt_masks)
+
+            J = Ipsf
+            I = in_ellipse_mask(
+                obj['BX_INIT'], obj['BY_INIT'], obj['DIAM_INIT']/2./refpixscale,
+                obj['BA_INIT']*obj['DIAM_INIT']/2./refpixscale,
+                180.-obj['PA_INIT'], tractor.bx[J], tractor.by[J])
+            ax[0, 0].scatter(tractor.bx[J][I], tractor.by[J][I], s=100, color='cyan')
+            ax[0, 0].scatter(tractor.bx[J][~I], tractor.by[J][~I], s=100, color='red')
+
+            #xx = np.random.uniform(0, dims[0], 1200)
+            #yy = np.random.uniform(0, dims[0], 1200)
+            #I = in_ellipse_mask(
+            #    obj['BX_INIT'], obj['BY_INIT'], obj['DIAM_INIT']/2./refpixscale,
+            #    obj['BA_INIT']*obj['DIAM_INIT']/2./refpixscale,
+            #    180.-obj['PA_INIT'], xx, yy)
+            #ax[0, 0].scatter(xx[I], yy[I], s=5, color='green')
+            #ax[0, 0].scatter(xx[~I], yy[~I], s=5, color='purple')
 
             nearcentral = np.array([centralmask[int(by), int(bx)]
                                     for by, bx in zip(tractor.by, tractor.bx)])
@@ -999,8 +1024,8 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
                     for refobj1 in refobj:
                         print('Need to use mge here!!')
                         refmask = in_ellipse_mask(
-                            refobj1['BX_INIT'], refobj1['BY_INIT'], refobj1['DIAM_INIT'],
-                            refobj1['BA_INIT']*refobj1['DIAM_INIT'],
+                            refobj1['BX_INIT'], refobj1['BY_INIT'], refobj1['DIAM_INIT']/2.,
+                            refobj1['BA_INIT']*refobj1['DIAM_INIT']/2.,
                             refobj1['PA_INIT'], xgrid, ygrid)
                         opt_galmasks[iband, :, :] = np.logical_or(opt_galmasks[iband, :, :], refmask)
 
@@ -1021,12 +1046,14 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
             # plot various classes of sources on the first image
             if psfsrcs:
                 for xx in ax[0, :]:
-                    xx.scatter(psfsrcs.bx, psfsrcs.by, marker='s',
-                               s=5, color='red')
+                    pass
+                    #xx.scatter(psfsrcs.bx, psfsrcs.by, marker='s',
+                    #           s=5, color='red')
             if galsrcs:
                 for xx in ax[0, :]:
-                    xx.scatter(galsrcs.bx, galsrcs.by, marker='o',
-                               s=5, color='cyan')
+                    pass
+                    #xx.scatter(galsrcs.bx, galsrcs.by, marker='o',
+                    #           s=5, color='cyan')
 
             # now the data
             norm = simple_norm(wimg, stretch='asinh', percent=99.5, asinh_a=0.1)
@@ -1038,17 +1065,17 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
 
             for icol in range(3):
                 # redraw the initial geometry for this object/row
-                draw_ellipse(obj['DIAM_INIT'], obj['BA_INIT'], obj['PA_INIT'],
-                             obj['BX_INIT'], obj['BY_INIT'],
-                             pixscale=refpixscale, ax=ax[1+iobj, icol], color='cyan',
-                             linestyle='-', draw_majorminor_axes=True)
+                overplot_ellipse(obj['DIAM_INIT'], obj['BA_INIT'], obj['PA_INIT'],
+                                 obj['BX_INIT'], obj['BY_INIT'],
+                                 pixscale=refpixscale, ax=ax[1+iobj, icol], color='cyan',
+                                 linestyle='-', draw_majorminor_axes=True, jpeg=False)
 
                 # for the factor of XX, see
                 # https://github.com/moustakas/SGA/blob/main/science/SGA2025/SGA2020-diameters.ipynb
-                draw_ellipse(mge.majoraxis*refpixscale*2.5, (1.-mge.eps), mge.pa,
-                             mge.ymed, mge.xmed, pixscale=refpixscale,
-                             ax=ax[1+iobj, icol], color='red', linestyle='-',
-                             draw_majorminor_axes=True)
+                overplot_ellipse(mge.majoraxis*refpixscale*2.5, (1.-mge.eps), mge.pa,
+                                 mge.ymed, mge.xmed, pixscale=refpixscale,
+                                 ax=ax[1+iobj, icol], color='red', linestyle='-',
+                                 draw_majorminor_axes=True, jpeg=False)
 
             for xx in ax[1+iobj, :]:
                 xx.set_xlim(0, wimg.shape[0])
@@ -1234,7 +1261,7 @@ def _build_multiband_mask(data, tractor, maxshift=0., qaplot=True):
     return data
 
 
-def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
+def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 'z'],
                    pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
                    galaxy_id=None, galex=False, unwise=False, verbose=False):
     """Read the multi-band images (converted to surface brightness) and create a
@@ -1306,7 +1333,6 @@ def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
                 filt2imfile[filt][imtype] = imfile
                 datacount += 1
             else:
-                #if verbose:
                 log.warning(f'Missing {imfile}')
 
         if datacount > 0:
@@ -1377,18 +1403,19 @@ def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
     sample['BX_INIT'] = (x0 - 1.).astype('f4') # NB the -1!
     sample['BY_INIT'] = (y0 - 1.).astype('f4')
 
-    sample['ROW'] = np.zeros(len(sample), int) - 1
-    sample['RA'] = np.zeros(len(sample), 'f8')
-    sample['DEC'] = np.zeros(len(sample), 'f8')
-    sample['BX'] = np.zeros(len(sample), 'f4')
-    sample['BY'] = np.zeros(len(sample), 'f4')
-    sample['TYPE'] = np.zeros(len(sample), 'U3')
-    sample['SERSIC'] = np.zeros(len(sample), 'f4')
-    sample['SHAPE_R'] = np.zeros(len(sample), 'f4') # [arcsec]
-    sample['SHAPE_E1'] = np.zeros(len(sample), 'f4')
-    sample['SHAPE_E2'] = np.zeros(len(sample), 'f4')
+    #sample['ROW'] = np.zeros(len(sample), int) - 1
+    #sample['RA'] = np.zeros(len(sample), 'f8')
+    #sample['DEC'] = np.zeros(len(sample), 'f8')
+    #sample['BX'] = np.zeros(len(sample), 'f4')
+    #sample['BY'] = np.zeros(len(sample), 'f4')
+    #sample['TYPE'] = np.zeros(len(sample), 'U3')
+    #sample['SERSIC'] = np.zeros(len(sample), 'f4')
+    #sample['SHAPE_R'] = np.zeros(len(sample), 'f4') # [arcsec]
+    #sample['SHAPE_E1'] = np.zeros(len(sample), 'f4')
+    #sample['SHAPE_E2'] = np.zeros(len(sample), 'f4')
+    #sample['PSF'] = np.zeros(len(sample), bool)
+
     sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
-    sample['PSF'] = np.zeros(len(sample), bool)
     sample['DROPPED'] = np.zeros(len(sample), bool)
     sample['LARGESHIFT'] = np.zeros(len(sample), bool)
     sample['BLENDED'] = np.zeros(len(sample), bool)
@@ -1400,33 +1427,43 @@ def read_multiband(galaxy, galaxydir, bands=['g', 'r', 'i', 'z'],
     copycols = ['RA', 'DEC', 'BX', 'BY', 'TYPE', 'SERSIC',
                 'SHAPE_R', 'SHAPE_E1', 'SHAPE_E2']
 
+    refsrcs = []
     for iobj, refid in enumerate(sample[REFIDCOLUMN].value):
         I = np.where((tractor.ref_cat == REFCAT) * (tractor.ref_id == refid))[0]
         if len(I) == 0:
             log.warning(f'ref_id={refid} dropped by Tractor')
             sample['DROPPED'][iobj] = True
-            # important! set (BX,BY) to (BX_INIT,BY_INIT) because it
-            # gets used downstream
-            sample['BX'][iobj] = sample['BX_INIT'][iobj]
-            sample['BY'][iobj] = sample['BY_INIT'][iobj]
+            refsrcs.append(None)
+            ## important! set (BX,BY) to (BX_INIT,BY_INIT) because it
+            ## gets used downstream
+            #sample['BX'][iobj] = sample['BX_INIT'][iobj]
+            #sample['BY'][iobj] = sample['BY_INIT'][iobj]
         else:
-            sample['ROW'][iobj] = I
-            for col, attr in zip(copycols, np.char.lower(copycols)):
-                sample[col][iobj] = getattr(tractor[I[0]], attr)
-            if sample['TYPE'][iobj] in ['PSF', 'DUP']:
+            refsrcs.append(tractor[I])
+            #sample['ROW'][iobj] = I
+            #for col, attr in zip(copycols, np.char.lower(copycols)):
+            #    sample[col][iobj] = getattr(tractor[I[0]], attr)
+            #if sample['TYPE'][iobj] in ['PSF', 'DUP']:
+            if tractor[I[0]].type in ['PSF', 'DUP']:
                 log.warning(f'ref_id={refid} fit by Tractor as PSF (or DUP)')
-                sample['PSF'][iobj] = True
+                #sample['PSF'][iobj] = True
             sample['FLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
                                         for filt in fit_optical_bands])
 
-    # Sort by optical brightness (in any band).
-    log.info('Sorting by optical flux:')
-    srt = np.argsort(sample['FLUX'])[::-1]
+    # Sort by initial diameter or optical brightness (in any band).
+    if sort_by_flux:
+        log.info('Sorting by optical flux:')
+        srt = np.argsort(sample['FLUX'])[::-1]
+    else:
+        log.info('Sorting by initial diameter:')
+        srt = np.argsort(sample['DIAM_INIT'])[::-1]
     sample = sample[srt]
+    refsrcs = [refsrcs[I] for I in srt]
     for obj in sample:
-        log.info(f'  ref_id={obj[REFIDCOLUMN]} (row={obj["ROW"]}): ' + \
+        log.info(f'  ref_id={obj[REFIDCOLUMN]}: D(25)={obj["DIAM_INIT"]/60.:.3f} arcmin, ' + \
                  f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
     data['sample'] = sample
+    data['refsrcs'] = refsrcs
 
     # add the PSF depth and size
     data.update(_get_psfsize_and_depth(tractor, bands, pixscale, incenter=False))

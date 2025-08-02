@@ -15,7 +15,6 @@ from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib as mpl
-import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 
@@ -68,67 +67,96 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
-def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
-                 ax=None, pixscale=0.262, color='red', linestyle='-',
-                 linewidth=1, alpha=1.0, clip=True, jpeg=False,
-                 draw_majorminor_axes=True, label=None):
-    """Draw an ellipse on either a numpy array (e.g., FITS image) or a JPEG or
-    PNG image.
+def overplot_ellipse(major_axis_arcsec, ba, pa, x0, y0,
+                     height_pixels=None, ax=None,
+                     pixscale=0.262, color='red', linestyle='-',
+                     linewidth=1, alpha=1.0, clip=True,
+                     jpeg=False, draw_majorminor_axes=True,
+                     label=None):
+    """
+    Draw an ellipse with astronomical position angle on either a
+    numpy image (y-axis up) or a JPEG/PNG image (y-axis down).
 
-    major_axis_arcsec - major axis length in arcsec
-    ba - minor-to-major axis ratio; NB: ellipticity = 1 - ba
-    pa - astronomical position angle (degrees) measured CCW from the y-axis
-    x0 - x-center of the ellipse (zero-indexed numpy coordinates)
-    y0 - y-center of the ellipse (zero-indexed numpy coordinates)
-    height_pixels - image height in pixels (required if jpeg=True)
-    ax - draw on an existing matplotlib.pyplot.Axes object
-    pixscale - pixel scale [arcsec / pixel]
+    Parameters
+    ----------
+    major_axis_arcsec : float
+        Total major-axis length in arcseconds.
+    ba : float
+        Minor-to-major axis ratio (b/a).
+    pa : float
+        Position angle of the major axis in degrees, measured
+        counter-clockwise from +y (North) toward +x (East).
+    x0, y0 : float
+        Center coordinates in pixel units (zero-indexed).
+    height_pixels : int, optional
+        Height of the image in pixels; required if jpeg=True.
+    ax : matplotlib.axes.Axes, optional
+        Axes on which to draw. Defaults to current axes.
+    pixscale : float, default=0.262
+        Pixel scale in arcsec/pixel.
+    jpeg : bool, default=False
+        If True, image y-axis is inverted (origin upper). y0 will
+        be flipped using height_pixels.
+    draw_majorminor_axes : bool, default=True
+        Whether to draw lines along the major and minor axes.
+    label : str, optional
+        Label for the ellipse (for legends).
 
-    NB: If jpeg=True, ycen = height_pixels-y0 and theta=90-pa; otherwise, ycen =
-    y0 and theta=pa-90.
+    Notes
+    -----
+    This implementation uses:
+      ellipse_angle = 90 - pa
+    converting the astronomical PA (CCW from +y) into the
+    Matplotlib Ellipse `angle` (CCW from +x).
 
     """
     from matplotlib.patches import Ellipse
 
     if ax is None:
-        import matplotlib.pyplot as plt
         ax = plt.gca()
 
-    major_axis_pixels = major_axis_arcsec / pixscale # [pixels]
-    minor_axis_pixels = ba * major_axis_pixels  # [pixels]
-    xcen = x0
+    # Compute half-lengths in pixels
+    major_pix = major_axis_arcsec / pixscale
+    minor_pix = major_pix * ba
+    semia_pix = major_pix / 2.
+    semib_pix = semia_pix * ba
 
+    # Adjust center for JPEG (y-axis down)
     if jpeg:
         if height_pixels is None:
-            raise ValueError('Image `height_pixels` is mandatory when jpeg=True')
-        ycen = height_pixels - y0 # jpeg/png y-axis is flipped
-        ellipse_angle = 90. - pa  # CCW from x-axis and flipped
+            raise ValueError('`height_pixels` required when jpeg=True')
+        ycen = height_pixels - y0
+        ellipse_angle = 90. - pa
     else:
         ycen = y0
-        ellipse_angle = pa - 90. # CCW from x-axis
-    theta = np.radians(ellipse_angle)
+        ellipse_angle = pa - 90.
+    xcen = x0
 
+    # Convert astronomical PA -> Matplotlib angle
 
-    ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels,
+    # Create and add patch (width, height are full diameters)
+    ell = Ellipse((xcen, ycen), width=major_pix, height=minor_pix,
                   angle=ellipse_angle, facecolor='none', edgecolor=color,
-                  lw=linewidth, ls=linestyle, alpha=alpha, clip_on=clip,
-                  label=label)
-    ax.add_artist(ell)
+                  linewidth=linewidth, linestyle=linestyle, alpha=alpha,
+                  clip_on=clip, label=label)
+    ax.add_patch(ell)
 
-    # Optionally draw the major and minor axes. FIXME -- rewrite as a
-    # matrix operation!
+    # Optionally draw major/minor axis lines
     if draw_majorminor_axes:
-        x1 = xcen + major_axis_pixels/2. * np.cos(theta)
-        y1 = ycen + major_axis_pixels/2. * np.sin(theta)
-        x2 = xcen - major_axis_pixels/2. * np.cos(theta)
-        y2 = ycen - major_axis_pixels/2. * np.sin(theta)
-        x3 = xcen + minor_axis_pixels/2. * np.sin(theta)
-        y3 = ycen - minor_axis_pixels/2. * np.cos(theta)
-        x4 = xcen - minor_axis_pixels/2. * np.sin(theta)
-        y4 = ycen + minor_axis_pixels/2. * np.cos(theta)
+        theta = np.deg2rad(ellipse_angle)
+        dx_maj = semia_pix * np.cos(theta)
+        dy_maj = semia_pix * np.sin(theta)
+        dx_min = semib_pix * np.sin(theta)
+        dy_min = semib_pix * np.cos(theta)
 
-        ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-', clip_on=True)
-        ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-', clip_on=True)
+        # major axis line
+        ax.plot([xcen + dx_maj, xcen - dx_maj],
+                [ycen + dy_maj, ycen - dy_maj],
+                color=color, lw=0.5, ls=linestyle, clip_on=True)
+        # minor axis line
+        ax.plot([xcen + dx_min, xcen - dx_min],
+                [ycen - dy_min, ycen + dy_min],
+                color=color, lw=0.5, ls=linestyle, clip_on=True)
 
 
 def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
