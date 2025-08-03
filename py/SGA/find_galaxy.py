@@ -209,11 +209,9 @@ class find_galaxy:
         j = np.argsort(sizes)[-nblob]      # find the nblob-th largest blob
         self.ind = np.flatnonzero(labels == j)
 
-        #import matplotlib.pyplot as plt
-        #_img = img.copy()
-        #_img[labels != j] = 0.
-        #plt.clf() ; plt.imshow(np.log(_img), origin='lower') ; plt.savefig('ioannis/tmp/junk3.png')
-        #import pdb ; pdb.set_trace()
+        mask[:] = False
+        mask.flat[self.ind] = True
+        self.mask = mask
 
         self.second_moments(img)
         self.pa = np.mod(270 - self.theta, 180)  # astronomical PA
@@ -231,9 +229,7 @@ class find_galaxy:
             ax = plt.gca()
             ax.imshow(np.log(img.clip(img[self.xpeak, self.ypeak]/1e4)),
                       cmap='hot', origin='lower', interpolation='nearest')
-            mask[:] = False
-            mask.flat[self.ind] = True
-            ax.imshow(mask, cmap='binary', interpolation='nearest',
+            ax.imshow(self.mask, cmap='binary', interpolation='nearest',
                       origin='lower', alpha=0.3)
             ax.autoscale(False)  # prevents further scaling after imshow()
             mjr = 1.1*self.majoraxis
