@@ -2790,6 +2790,10 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
 
+    print('Remove objects in clusters')
+    print('Cut on starfdist < 0.5 -- not too close to bright stars!')
+    pdb.set_trace()
+
     cols = ['OBJNAME',
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
             'RA', 'DEC', 'PGC', #'RESOLVED',
