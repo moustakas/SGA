@@ -396,13 +396,13 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.debug('Selecting specific galaxies.')
         I = np.isin(sample['GROUP_NAME'], galaxylist)
         if np.count_nonzero(I) == 0:
-            log.warning('No matching galaxies using column GROUP_NAME!')
+            #log.warning('No matching galaxies using column GROUP_NAME!')
             I = np.isin(sample['SGANAME'], galaxylist)
             if np.count_nonzero(I) == 0:
-                log.warning('No matching galaxies using column SGANAME!')
+                #log.warning('No matching galaxies using column SGANAME!')
                 I = np.isin(sample['OBJNAME'], galaxylist)
                 if np.count_nonzero(I) == 0:
-                    log.warning('No matching galaxies using column OBJNAME!')
+                    log.warning('No matching galaxies found in sample.')
                     return Table(), Table()
             return sample[I], fullsample
     else:
@@ -572,9 +572,10 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
 
     # Get the average PSF size and depth in each bandpass.
     for filt in bands:
-        psfsigmacol = f'psfsigma_{filt}'
-        psfsizecol = f'psfsize_{filt}'
-        psfdepthcol = f'psfdepth_{filt}'
+        psfsigmacol = f'psfsigma_{filt.lower()}'
+        psfsizecol = f'psfsize_{filt.lower()}'
+        psfdepthcol = f'psfdepth_{filt.lower()}'
+
         if psfsizecol in tractor.columns():
             good = np.where(tractor.get(psfsizecol)[these] > 0)[0]
             if len(good) == 0:
@@ -606,7 +607,7 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
     return sample
 
 
-def _read_image_data(data, filt2imfile, verbose=False):
+def read_image_data(data, filt2imfile, verbose=False):
     """Helper function for the project-specific read_multiband method.
 
     Read the multi-band images and inverse variance images and pack them into a
@@ -715,7 +716,6 @@ def _read_image_data(data, filt2imfile, verbose=False):
         data[filt] = image # [nanomaggies]
         data[f'{filt}_invvar'] = invvar # [1/nanomaggies**2]
         data[f'{filt}_mask'] = mask
-        #print(filt, np.sum(mask))
 
         if filt in fit_optical_bands:
             resid = gaussian_filter(image - model, 2.)
@@ -848,14 +848,203 @@ def _update_masks(brightstarmask, gaiamask, refmask, galmask,
         return masks
 
 
-def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
-                          niter=2, qaplot=True):
+def qa_multiband_mask(data, geo_initial, geo_final):
+    """Diagnostic QA for the output of build_multiband_mask.
+
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+    from matplotlib.patches import Patch
+    from astropy.visualization import simple_norm
+    from SGA.util import var2ivar
+    from SGA.qa import overplot_ellipse
+
+    qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
+                          f'qa-ellipsemask-{data["galaxy"]}.png')
+
+    alpha = 0.6
+    orange = (0.9, 0.6, 0.0, alpha)   # golden-orange
+    blue   = (0.0, 0.45, 0.7, alpha)  # muted blue
+    purple = (0.8, 0.6, 0.7, alpha)   # soft violet
+    magenta = (0.85, 0.2, 0.5, alpha) # vibrant rose
+
+    fit_optical_bands = data['fit_optical_bands']
+    opt_images = data['opt_images']
+    opt_maskbits = data['opt_maskbits']
+    opt_models = data['opt_models']
+    opt_weight = var2ivar(data['opt_variance'])
+
+    filt2pixscale = data['filt2pixscale']
+    refpixscale = data['refpixscale']
+
+    sample = data['sample']
+    nsample = len(sample)
+
+    ncol = 3
+    nrow = 1 + nsample
+    inches_per_panel = 3.
+    fig, ax = plt.subplots(nrow, ncol,
+                           figsize=(inches_per_panel*ncol,
+                                    inches_per_panel*nrow),
+                           gridspec_kw={'wspace': 0.01, 'hspace': 0.01},
+                           constrained_layout=True)
+
+    #cmap = plt.cm.viridis
+    cmap = plt.cm.cividis
+    #cmap = plt.cm.twilight
+    #cmap = plt.cm.magma
+    #cmap = plt.cm.Greys_r
+    #cmap = plt.cm.hot
+    #cmap = plt.cm.inferno
+    cmap.set_bad('white')
+
+    setcolors1 = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    setcolors2 = [
+        '#4daf4a',  # green
+        '#e41a1c',  # strong red
+        '#ff7f00',  # orange
+        '#00ffff',  # cyan
+        '#984ea3',  # purple
+        '#377eb8',  # saturated blue
+        '#a65628',  # brown
+        '#f781bf',  # pink
+        '#ffff33',  # bright yellow (only on dark parts)
+    ]
+
+    sz = opt_images.shape[2:]
+    width = sz[0]
+
+    # coadded optical, IR, and UV images and initial geometry
+    imgbands = [fit_optical_bands, data['unwise_bands'], data['galex_bands']]
+    labels = [''.join(fit_optical_bands), 'unWISE', 'GALEX']
+    for iax, (xx, bands, label, ref) in enumerate(zip(
+            ax[0, :], imgbands, labels,
+            [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
+        wimgs = np.stack([data[filt] for filt in bands])
+        wivars = np.stack([data[f'{filt}_invvar'] for filt in bands])
+        wimg = np.sum(wivars * wimgs, axis=0)
+
+        norm = simple_norm(wimg, stretch='asinh', percent=99.5, asinh_a=0.1)
+        xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
+                  norm=norm, alpha=1.)
+        xx.set_xlim(0, wimg.shape[0])
+        xx.set_ylim(0, wimg.shape[1])
+
+        # initial ellipse geometry
+        pixscale = filt2pixscale[ref]
+        pixfactor = filt2pixscale[data['opt_refband']] / pixscale
+        for iobj, obj in enumerate(sample):
+            (bx, by, semia, semib, pa) = geo_initial[iobj, :]
+            overplot_ellipse(2*semia*pixfactor*pixscale, semib/semia, pa,
+                             bx*pixfactor, by*pixfactor, pixscale=pixscale,
+                             ax=xx, color=setcolors2[0], linestyle='-',
+                             linewidth=2, draw_majorminor_axes=True,
+                             jpeg=False, label=obj[REFIDCOLUMN])
+
+        xx.text(0.03, 0.97, label, transform=xx.transAxes,
+                ha='left', va='top', color='white',
+                linespacing=1.5, fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        if iax == 0:
+            xx.legend(loc='lower left', fontsize=7, ncol=2,
+                      fancybox=True, framealpha=0.5)
+        del wimgs, wivars, wimg
+
+    # one row per object
+    for iobj, obj in enumerate(sample):
+        # unpack the maskbits bitmask
+        brightstarmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['brightstar'] != 0
+        refmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['reference'] != 0
+        gaiamask = opt_maskbits[iobj, :, :] & OPTMASKBITS['gaiastar'] != 0
+        galmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['galaxy'] != 0
+        objmask = np.logical_or.reduce((brightstarmask, refmask, gaiamask, galmask))
+
+        opt_masks_obj = np.zeros((len(fit_optical_bands), *sz), bool)
+        for iband, filt in enumerate(fit_optical_bands):
+            opt_masks_obj[iband, :, :] = np.logical_or(objmask, opt_maskbits[iobj, :, :] & OPTMASKBITS[filt] != 0)
+
+        wimg = np.sum(opt_weight * np.logical_not(opt_masks_obj) * opt_images[iobj, :, :], axis=0)
+        wimg[wimg == 0.] = np.nan
+        norm = simple_norm(wimg, stretch='asinh', percent=99.5, asinh_a=0.1)
+        ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none', norm=norm)
+        #ax[1+iobj, 0].imshow(np.log(wimg.clip(wimg[int(bx), int(by)]/1e4)),
+        #                     cmap=cmap, origin='lower', interpolation='none')
+        #ax[1+iobj, 0].imshow(mge.mask, origin='lower', cmap='binary',
+        #                     interpolation='none', alpha=0.3)
+
+        wmodel = np.sum(opt_models[iobj, :, :, :], axis=0)
+        norm = simple_norm(wmodel, stretch='asinh', percent=99.5, asinh_a=0.1)
+        ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none', norm=norm)
+
+        # masks
+        leg = []
+        for msk, col, label in zip([brightstarmask, gaiamask, galmask, refmask],
+                                   [orange, blue, purple, magenta],
+                                   ['Bright Stars', 'Gaia Stars', 'Galaxies', 'Other SGA']):
+            rgba = np.zeros((*msk.shape, 4))
+            rgba[msk] = col
+            ax[1+iobj, 2].imshow(rgba, origin='lower')
+            leg.append(Patch(facecolor=col, edgecolor='none', alpha=0.6, label=label))
+        if iobj == 0:
+            ax[1+iobj, 2].legend(handles=leg, loc='lower right', fontsize=7)
+
+        for col in range(3):
+            # initial geometry
+            [bx, by, semia, semib, pa] = geo_initial[iobj, :]
+            overplot_ellipse(2*semia*refpixscale, semib/semia, pa, bx, by,
+                             pixscale=refpixscale, ax=ax[1+iobj, col],
+                             color=setcolors2[0], linestyle='-', linewidth=2,
+                             draw_majorminor_axes=True,
+                             jpeg=False, label='Initial')
+
+            # final geometry
+            [bx, by, semia, semib, pa] = geo_final[iobj, :]
+            overplot_ellipse(2*semia*refpixscale, semib/semia, pa, bx, by,
+                             pixscale=refpixscale, ax=ax[1+iobj, col],
+                             color=setcolors2[1], linestyle='--', linewidth=2,
+                             draw_majorminor_axes=True, jpeg=False, label='Final')
+            ax[1+iobj, col].set_xlim(0, width)
+            ax[1+iobj, col].set_ylim(0, width)
+            ax[1+iobj, col].margins(0)
+
+        ax[1+iobj, 0].text(0.03, 0.97, obj[REFIDCOLUMN], transform=ax[1+iobj, 0].transAxes,
+                           ha='left', va='top', color='white',
+                           linespacing=1.5, fontsize=10,
+                           bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        if iobj == 0:
+            ax[1+iobj, 1].text(0.03, 0.97, f'{"".join(fit_optical_bands)} models',
+                               transform=ax[1+iobj, 1].transAxes, ha='left', va='top',
+                               color='white', linespacing=1.5, fontsize=10,
+                               bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+            ax[1+iobj, 2].text(0.03, 0.97, f'{"".join(fit_optical_bands)} masks',
+                               transform=ax[1+iobj, 2].transAxes, ha='left', va='top',
+                               color='white', linespacing=1.5, fontsize=10,
+                               bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        ax[1+iobj, 0].legend(loc='lower left', fontsize=7, fancybox=True,
+                             framealpha=0.5)
+
+    for xx in ax.ravel():
+        xx.margins(0)
+        xx.set_xticks([])
+        xx.set_yticks([])
+
+    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    fig.savefig(qafile)
+    log.info(f'Wrote {qafile}')
+
+
+def build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
+                         niter=1, qaplot=False):
     """Wrapper to mask out all sources except the galaxy we want to ellipse-fit.
 
     """
     from SGA.geometry import in_ellipse_mask
     from SGA.find_galaxy import find_galaxy
     from SGA.dust import SFDMap, mwdust_transmission
+    from SGA.util import ivar2var
 
 
     def make_sourcemask(srcs, wcs, band, psf, sigma=None, nsigma=2.5):
@@ -902,10 +1091,10 @@ def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
         if False:
             import matplotlib.pyplot as plt
             plt.clf()
-            mge = find_galaxy(cutout, nblob=1, binning=1, plot=True)
+            mge = find_galaxy(cutout, nblob=1, binning=1, quiet=False, plot=True)
             plt.savefig('ioannis/tmp/junk.png')
         else:
-            mge = find_galaxy(cutout, nblob=1, binning=1)
+            mge = find_galaxy(cutout, nblob=1, binning=1, quiet=True)
 
         mge.xpeak += x1
         mge.ypeak += y1
@@ -943,16 +1132,34 @@ def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
 
         return np.array([bx, by, semia, semib, pa])
 
-    def ivar2var(ivar):
-        var = np.zeros_like(ivar)
-        ok = ivar > 0.
-        var[ok] = 1. / ivar[ok]
-        return var
+
+    def update_galmask(allgalsrcs, bx, by, semia, semib, pa, opt_models=None):
+        """Update the galaxy mask based on the current in-ellipse array.
+
+        """
+        opt_galmask = np.zeros(sz, bool)
+        if len(allgalsrcs) > 0:
+            I = in_ellipse_mask(bx, width-by, semia, semib, pa,
+                                allgalsrcs.bx, width-allgalsrcs.by)
+            if np.sum(~I) > 0:
+                galsrcs = allgalsrcs[~I]
+                for iband, filt in enumerate(fit_optical_bands):
+                    msk, model = make_sourcemask(
+                        galsrcs, opt_wcs, filt, data[f'{filt}_psf'],
+                        data[f'{filt}_sigma'])
+                    opt_galmask = np.logical_or(opt_galmask, msk)
+                    if opt_models is not None:
+                        opt_models[iband, :, :] += model
+            else:
+                galsrcs = None
+        else:
+            galsrcs = None
+
+        return galsrcs, opt_galmask, opt_models
 
 
     fit_bands = data['fit_bands']
     fit_optical_bands = data['fit_optical_bands']
-    #optindx = np.where(np.isin(fit_bands, fit_optical_bands))[0]
     opt_refband = data['opt_refband']
     opt_wcs = data['opt_wcs']
 
@@ -1061,24 +1268,9 @@ def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
             # bandpasses) from all extended sources outside the
             # (current) elliptical mask (but do not subtract the
             # models).
-            opt_galmask = np.zeros(sz, bool)
-            if len(allgalsrcs) > 0:
-                I = in_ellipse_mask(bx, width-by, semia, semib, pa,
-                                    allgalsrcs.bx, width-allgalsrcs.by)
-                if np.sum(~I) > 0:
-                    galsrcs = allgalsrcs[~I]
-                    for iband, filt in enumerate(fit_optical_bands):
-                        msk, model = make_sourcemask(
-                            galsrcs, opt_wcs, filt, data[f'{filt}_psf'],
-                            data[f'{filt}_sigma'])
-                        opt_galmask = np.logical_or(opt_galmask, msk)
-                        # only update the array on the last iteration
-                        if iiter == niter-1:
-                            opt_models[iobj, iband, :, :] += model
-                else:
-                    galsrcs = None
-            else:
-                galsrcs = None
+            galsrcs, opt_galmask, _ = update_galmask(
+                allgalsrcs, bx, by, semia, semib, pa,
+                opt_models=None)
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
@@ -1129,6 +1321,12 @@ def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
         # final masks
         inellipse = in_ellipse_mask(bx, width-by, semia, semib, pa,
                                     xgrid, ygrid_flip)
+
+        _, opt_galmask, opt_models_obj = update_galmask(
+            allgalsrcs, bx, by, semia, semib, pa,
+            opt_models=opt_models[iobj, :, :, :])
+        opt_models[iobj, :, :, :] = opt_models_obj
+
         opt_maskbits_obj = _update_masks(opt_brightstarmask, opt_gaiamask, opt_refmask,
                                          opt_galmask, opt_mask_perband, fit_optical_bands,
                                          sz, inellipse=inellipse, build_maskbits=True,
@@ -1146,6 +1344,7 @@ def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
     data['opt_maskbits'] = opt_maskbits
+    data['opt_models'] = opt_models
     data['opt_variance'] = ivar2var(opt_weight) # [nanomaggies**2]
 
     # Next, process the GALEX and unwise images:
@@ -1223,178 +1422,12 @@ def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
         data[f'{prefix}_images'] /= pixscale**2   # [nanomaggies/arcsec**2]
         data[f'{prefix}_variance'] /= pixscale**4 # [nanomaggies**2/arcsec**4]
 
+    data['sample'] = sample # updated
 
     # optionally build a QA figure
     if qaplot:
-        import matplotlib.pyplot as plt
-        import matplotlib.gridspec as gridspec
-        from matplotlib.patches import Patch
-        from astropy.visualization import simple_norm
-        from SGA.qa import overplot_ellipse
+        qa_multiband_mask(data, geo_initial, geo_final)
 
-        qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
-                              f'qa-ellipsemask-{data["galaxy"]}.png')
-
-        alpha = 0.6
-        orange = (0.9, 0.6, 0.0, alpha)   # golden-orange
-        blue   = (0.0, 0.45, 0.7, alpha)  # muted blue
-        purple = (0.8, 0.6, 0.7, alpha)   # soft violet
-        magenta = (0.85, 0.2, 0.5, alpha) # vibrant rose
-
-        ncol = 3
-        nrow = 1 + nsample
-        inches_per_panel = 3.
-        fig, ax = plt.subplots(nrow, ncol,
-                               figsize=(inches_per_panel*ncol,
-                                        inches_per_panel*nrow),
-                               gridspec_kw={'wspace': 0.01, 'hspace': 0.01},
-                               constrained_layout=True)
-
-        #cmap = plt.cm.viridis
-        cmap = plt.cm.cividis
-        #cmap = plt.cm.twilight
-        #cmap = plt.cm.magma
-        #cmap = plt.cm.Greys_r
-        #cmap = plt.cm.hot
-        #cmap = plt.cm.inferno
-        cmap.set_bad('white')
-
-        setcolors1 = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        setcolors2 = [
-            '#ff7f00',  # orange
-            '#e41a1c',  # strong red
-            '#377eb8',  # saturated blue
-            '#a65628',  # brown
-            '#984ea3',  # purple
-            '#4daf4a',  # green
-            '#ffff33',  # bright yellow (only on dark parts)
-            '#f781bf',  # pink
-        ]
-
-        sz = opt_images_final.shape[2:]
-
-        # coadded optical, IR, and UV images and initial geometry
-        imgbands = [fit_optical_bands, data['unwise_bands'], data['galex_bands']]
-        labels = [''.join(fit_optical_bands), 'unWISE', 'GALEX']
-        for iax, (xx, bands, label, ref) in enumerate(zip(
-                ax[0, :], imgbands, labels,
-                [opt_refband, data['unwise_refband'], data['galex_refband']])):
-            wimgs = np.stack([data[filt] for filt in bands])
-            wivars = np.stack([data[f'{filt}_invvar'] for filt in bands])
-            wimg = np.sum(wivars * wimgs, axis=0)
-
-            norm = simple_norm(wimg, stretch='asinh', percent=99.5, asinh_a=0.1)
-            xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
-                      norm=norm, alpha=1.)
-            xx.set_xlim(0, wimg.shape[0])
-            xx.set_ylim(0, wimg.shape[1])
-
-            # initial ellipse geometry
-            pixscale = filt2pixscale[ref]
-            pixfactor = filt2pixscale[opt_refband] / pixscale
-            for iobj, obj in enumerate(sample):
-                (bx, by, semia, semib, pa) = geo_initial[iobj, :]
-                overplot_ellipse(2*semia*pixfactor*pixscale, semib/semia, pa,
-                                 bx*pixfactor, by*pixfactor, pixscale=pixscale,
-                                 ax=xx, color=setcolors2[0], linestyle='-',
-                                 linewidth=2, draw_majorminor_axes=True,
-                                 jpeg=False, label=obj[REFIDCOLUMN])
-
-            xx.text(0.03, 0.97, label, transform=xx.transAxes,
-                    ha='left', va='top', color='white',
-                    linespacing=1.5, fontsize=10,
-                    bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
-            if iax == 0:
-                xx.legend(loc='lower left', fontsize=7, ncol=2,
-                          fancybox=True, framealpha=0.5)
-            del wimgs, wivars, wimg
-
-        # one row per object
-        for iobj, obj in enumerate(sample):
-            # unpack the mask bitmask
-            brightstarmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['brightstar'] != 0
-            refmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['reference'] != 0
-            gaiamask = opt_maskbits[iobj, :, :] & OPTMASKBITS['gaiastar'] != 0
-            galmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['galaxy'] != 0
-            objmask = np.logical_or.reduce((brightstarmask, refmask, gaiamask, galmask))
-
-            opt_masks_obj = np.zeros((len(fit_optical_bands), *sz), bool)
-            for iband, filt in enumerate(fit_optical_bands):
-                opt_masks_obj[iband, :, :] = np.logical_or(objmask, opt_mask_perband[iband, :, :])
-                print(iobj, np.sum(opt_masks_obj))
-
-            wimg = np.sum(opt_weight * np.logical_not(opt_masks_obj) * opt_images_final[iobj, :, :], axis=0)
-            wimg[wimg == 0.] = np.nan
-            #(bx, by, _, _, _) = geo_final[iobj, :]
-            norm = simple_norm(wimg, stretch='asinh', percent=99.5, asinh_a=0.1)
-            ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none', norm=norm)
-            #ax[1+iobj, 0].imshow(np.log(wimg.clip(wimg[int(bx), int(by)]/1e4)),
-            #                     cmap=cmap, origin='lower', interpolation='none')
-            #ax[1+iobj, 0].imshow(mge.mask, origin='lower', cmap='binary',
-            #                     interpolation='none', alpha=0.3)
-
-            wmodel = np.sum(opt_models[iobj, :, :, :], axis=0)
-            norm = simple_norm(wmodel, stretch='asinh', percent=99.5, asinh_a=0.1)
-            ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none', norm=norm)
-
-            # masks
-            leg = []
-            for msk, col, label in zip([brightstarmask, gaiamask, galmask, refmask],
-                                       [orange, blue, purple, magenta],
-                                       ['Bright Stars', 'Gaia Stars', 'Galaxies', 'Other SGA']):
-                rgba = np.zeros((*msk.shape, 4))
-                rgba[msk] = col
-                ax[1+iobj, 2].imshow(rgba, origin='lower')
-                leg.append(Patch(facecolor=col, edgecolor='none', alpha=0.6, label=label))
-            if iobj == 0:
-                ax[1+iobj, 2].legend(handles=leg, loc='lower right', fontsize=7)
-
-            for col in range(3):
-                # initial geometry
-                [bx, by, semia, semib, pa] = geo_initial[iobj, :]
-                overplot_ellipse(2*semia*refpixscale, semib/semia, pa, bx, by,
-                                 pixscale=refpixscale, ax=ax[1+iobj, col],
-                                 color=setcolors2[0], linestyle='-', linewidth=2,
-                                 draw_majorminor_axes=True,
-                                 jpeg=False, label='Initial')
-
-                # final geometry
-                [bx, by, semia, semib, pa] = geo_final[iobj, :]
-                overplot_ellipse(2*semia*refpixscale, semib/semia, pa, bx, by,
-                                 pixscale=refpixscale, ax=ax[1+iobj, col],
-                                 color=setcolors2[1], linestyle='--', linewidth=2,
-                                 draw_majorminor_axes=True, jpeg=False, label='Final')
-                ax[1+iobj, col].set_xlim(0, width)
-                ax[1+iobj, col].set_ylim(0, width)
-                ax[1+iobj, col].margins(0)
-
-            ax[1+iobj, 0].text(0.03, 0.97, obj[REFIDCOLUMN], transform=ax[1+iobj, 0].transAxes,
-                               ha='left', va='top', color='white',
-                               linespacing=1.5, fontsize=10,
-                               bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
-            if iobj == 0:
-                ax[1+iobj, 1].text(0.03, 0.97, f'{"".join(fit_optical_bands)} models',
-                                   transform=ax[1+iobj, 1].transAxes, ha='left', va='top',
-                                   color='white', linespacing=1.5, fontsize=10,
-                                   bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-                ax[1+iobj, 2].text(0.03, 0.97, f'{"".join(fit_optical_bands)} masks',
-                                   transform=ax[1+iobj, 2].transAxes, ha='left', va='top',
-                                   color='white', linespacing=1.5, fontsize=10,
-                                   bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
-            ax[1+iobj, 0].legend(loc='lower left', fontsize=7, fancybox=True,
-                                 framealpha=0.5)
-
-        for xx in ax.ravel():
-            xx.margins(0)
-            xx.set_xticks([])
-            xx.set_yticks([])
-
-        fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
-        fig.savefig(qafile)
-        log.info(f'Wrote {qafile}')
 
     # clean-up
     del data['samplesrcs']
@@ -1412,22 +1445,18 @@ def _build_multiband_mask(data, tractor, maxshift_arcsec=3.5,
         for col in ['sigma']:
             del data[f'{filt}_{col}']
 
-
-    pdb.set_trace()
-
     return data
 
 
 def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 'z'],
                    pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
-                   galaxy_id=None, galex=False, unwise=False, verbose=False):
-    """Read the multi-band images (converted to surface brightness) and create a
-    masked array suitable for ellipse-fitting.
+                   galex=False, unwise=False, verbose=False):
+    """Read the multi-band images (converted to surface brightness) in
+    preparation for ellipse-fitting.
 
     """
     import fitsio
     from astropy.table import Table
-    import astropy.units as u
     from astrometry.util.fits import fits_table
     from astrometry.util.util import Tan
     from legacypipe.bits import MASKBITS
@@ -1503,8 +1532,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 
             else:
                 msg = f'Missing one or more {filt}-band data products!'
                 log.critical(msg)
-                data['missingdata'] = True
-                return data
+                return {}
 
     log.info(f'Found complete data in bands: {",".join(fit_bands)}')
 
@@ -1661,7 +1689,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 
 
     # Read the basic imaging data and masks and build the multiband
     # mask.
-    data = _read_image_data(data, filt2imfile, verbose=verbose)
-    data = _build_multiband_mask(data, tractor)
+    data = read_image_data(data, filt2imfile, verbose=verbose)
+    data = build_multiband_mask(data, tractor, qaplot=True)
 
     return data

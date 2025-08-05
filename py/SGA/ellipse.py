@@ -5,6 +5,8 @@ SGA.ellipse
 Code to perform ellipse photometry.
 
 """
+import pdb # for debuggin
+
 import numpy as np
 from scipy.optimize import curve_fit
 import astropy.modeling
@@ -138,7 +140,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
     if galaxyinfo is not None:
         galaxyinfo = np.atleast_1d(galaxyinfo)
         assert(len(galaxyinfo)==len(data['mge']))
-    
+
     # If fitgeometry=True then fit for the geometry as a function of semimajor
     # axis, otherwise (the default) use the mean geometry of the galaxy to
     # extract the surface-brightness profile.
@@ -384,60 +386,42 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
     return ellipsefit
 
 
-def ellipsefit_multiband(galaxy, galaxydir, data, galaxyinfo=None,
-                         pixscale=0.262, nproc=1,
-                         bands=['g', 'r', 'z'], integrmode='median',
-                         nclip=3, sclip=3, sbthresh=REF_SBTHRESH,
-                         apertures=REF_APERTURES,
+def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
+                         mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=False,
+                         unwise=False, integrmode='median', nclip=3, sclip=3,
+                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
                          delta_sma=1.0, delta_logsma=5, maxsma=None, logsma=True,
-                         input_ellipse=None, fitgeometry=False,
-                         verbose=False, debug=False, nowrite=False, clobber=False):
+                         refidcolumn=None, input_ellipse=None, fitgeometry=False,
+                         verbose=False, nowrite=False, clobber=False):
     """Top-level wrapper script to do ellipse-fitting on a single galaxy.
 
     fitgeometry - fit for the ellipse parameters (do not use the mean values
       from MGE).
 
     """
-    from legacyhalos.io import get_ellipsefit_filename
+    #from legacyhalos.io import get_ellipsefit_filename
+    try:
+        data = read_multiband_function(galaxy, galaxydir, bands=bands,
+                                       pixscale=pixscale, unwise=unwise,
+                                       galex=galex, verbose=verbose)
+    except:
+        data = {}
 
-    if bool(data):
-        if data['missingdata']:
-            if os.path.isfile(os.path.join(galaxydir, '{}-{}-coadds.isdone'.format(galaxy, data['filesuffix']))):
-                return 1
-            else:
-                return 0
+    if not bool(data):
+        log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}.')
+        return 0
 
-        if data['failed']: # all galaxies dropped
-            return 1
+    for iobj, obj in enumerate(data['sample']):
+        ellipsefit = ellipsefit_multiband(galaxy, galaxydir, data,
+                                          galaxyinfo=galaxyinfo,
+                                          igal=igal, galaxy_id=str(galid),
+                                          delta_logsma=delta_logsma, maxsma=maxsma,
+                                          delta_sma=delta_sma, logsma=logsma,
+                                          refband=refband, nproc=nproc, sbthresh=sbthresh,
+                                          apertures=apertures,
+                                          integrmode=integrmode, nclip=nclip, sclip=sclip,
+                                          input_ellipse=input_ellipse,
+                                          verbose=verbose, fitgeometry=False,
+                                          nowrite=False)
 
-        if 'galaxy_id' in data.keys():
-            galaxy_id = np.atleast_1d(data['galaxy_id'])
-        else:
-            galaxy_id = ['']
-
-        for igal, galid in enumerate(galaxy_id):
-            ellipsefitfile = get_ellipsefit_filename(galaxy, galaxydir, galaxy_id=str(galid),
-                                                     filesuffix=data['filesuffix'])
-            if os.path.isfile(ellipsefitfile) and not clobber:
-                print('Skipping existing catalog {}'.format(ellipsefitfile))
-            else:
-                ellipsefit = ellipsefit_multiband(galaxy, galaxydir, data,
-                                                  galaxyinfo=galaxyinfo,
-                                                  igal=igal, galaxy_id=str(galid),
-                                                  delta_logsma=delta_logsma, maxsma=maxsma,
-                                                  delta_sma=delta_sma, logsma=logsma,
-                                                  refband=refband, nproc=nproc, sbthresh=sbthresh,
-                                                  apertures=apertures,
-                                                  integrmode=integrmode, nclip=nclip, sclip=sclip,
-                                                  input_ellipse=input_ellipse,
-                                                  verbose=verbose, fitgeometry=False,
-                                                  nowrite=False)
-        return 1
-    else:
-        # An object can get here if it's a "known" failure, e.g., if the object
-        # falls off the edge of the footprint (and therefore it will never have
-        # coadds).
-        if os.path.isfile(os.path.join(galaxydir, '{}-{}-coadds.isdone'.format(galaxy, 'custom'))):
-            return 1
-        else:
-            return 0
+    return 1 # success!

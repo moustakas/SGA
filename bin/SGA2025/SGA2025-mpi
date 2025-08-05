@@ -161,8 +161,9 @@ def main():
                 #sample = sample[:32]
                 #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0177.310-018.413_GROUP']
             else:
-                log.warning('Testing subsamples!')
                 pass
+                #log.warning('Testing subsamples!')
+                #sample = sample[sample['OBJNAME'] == 'PGC 413592']
                 #sample = sample[sample['SGANAME'] == 'SGA2025_J0202.291-045.175']
                 #sample = sample[sample['OBJNAME'] == 'KV19-271']
                 #sample = sample[sample['OBJNAME'] == 'LV J1149+1715']
@@ -386,24 +387,22 @@ def main():
 
 
         if args.ellipse:
-            from SGA.SGA import read_multiband, SBTHRESH, APERTURES
+            from SGA.SGA import read_multiband, REFIDCOLUMN, SBTHRESH, APERTURES
             from SGA.ellipse import ellipsefit_multiband
 
-            data = read_multiband(
-                galaxy, galaxydir, bands=bands,
-                pixscale=args.pixscale, unwise=args.unwise,
-                galex=args.galex, verbose=args.verbose)
+            if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
+                log.warning('Coadds must be generated before running ellipse-fitting.')
+                continue
 
-            pdb.set_trace()
-
-            ellipsefit_multiband(data, galaxy=galaxy, galaxydir=galaxydir,
-                         bands=bands, refband='r',
-                         pixscale=args.pixscale, mp=args.mp,
-                         verbose=args.verbose, debug=args.debug,
-                         write_mask=True,
-                         clobber=args.clobber,
-                         unwise=True, galex=True,
-                         logfile=logfile)
+            if args.debug:
+                err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
+                                           bands=bands, mp=args.mp, sbthresh=SBTHRESH,
+                                           apertures=APERTURES, pixscale=args.pixscale,
+                                           unwise=args.unwise, galex=args.galex,
+                                           verbose=args.verbose, clobber=args.clobber)
+            else:
+                log.critical('write me')
+                return
 
         if args.htmlplots:
             from SGA.mpi import call_htmlplots

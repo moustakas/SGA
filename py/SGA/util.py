@@ -8,6 +8,20 @@ General support utilities.
 import numpy as np
 
 
+def ivar2var(ivar):
+    var = np.zeros_like(ivar)
+    ok = ivar > 0.
+    var[ok] = 1. / ivar[ok]
+    return var
+
+
+def var2ivar(var):
+    ivar = np.zeros_like(var)
+    ok = var > 0.
+    ivar[ok] = 1. / var[ok]
+    return ivar
+
+
 def match_to(A, B, check_for_dups=True):
     """Return indexes where B matches A, holding A in place.
 
