@@ -6,7 +6,7 @@ E-mail: michele.cappellari_at_physics.ox.ac.uk
 Updated versions of the software are available from my web page
 https://purl.org/cappellari/software
 
-If you have found this software useful for your research, 
+If you have found this software useful for your research,
 I would appreciate an acknowledgement to the use of
 "the MGE fitting method and software by Cappellari (2002)".
 
@@ -144,7 +144,7 @@ class find_galaxy:
         The galaxy "average" ellipticity ``eps = 1 - b/a = 1 - q'``.
     .pa:
         Standard astronomical position angle (PA) measured counter-clockwise
-        from the image ``Y`` axis (assumed to coincide with North). 
+        from the image ``Y`` axis (assumed to coincide with North).
         Note: ``f.pa = 270 - f.theta``.
     .theta:
         Position angle measured clock-wise from the image ``X`` axis.
