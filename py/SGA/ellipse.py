@@ -7,15 +7,12 @@ Code to perform ellipse photometry.
 """
 import pdb # for debuggin
 
-import time
+import warnings
+from time import time
 import numpy as np
 #from scipy.optimize import curve_fit
 #import astropy.modeling
-
-from photutils.isophote import (EllipseGeometry, Ellipse, EllipseSample,
-                                Isophote, IsophoteList)
-from photutils.isophote.sample import CentralEllipseSample
-from photutils.isophote.fitter import CentralEllipseFitter
+from photutils.isophote import EllipseGeometry, Ellipse, IsophoteList
 
 from SGA.logger import log
 
@@ -77,40 +74,32 @@ def _integrate_isophot_one(args):
 
 def integrate_isophot_one(img, sma, theta, eps, x0, y0,
                           integrmode, sclip, nclip):
-    """Integrate the ellipse profile at a single semi-major axis.
+    """Integrate the ellipse profile at a single semi-major axis (in
+    pixels).
 
-    theta in radians
+    theta in radians, CCW from the x-axis
 
     """
-    import copy
-    #g = iso.sample.geometry # fixed geometry
-    #g = copy.deepcopy(iso.sample.geometry) # fixed geometry
-    g = EllipseGeometry(x0=x0, y0=y0, eps=eps, sma=sma, pa=theta)
+    from photutils.isophote.sample import CentralEllipseSample
+    from photutils.isophote.fitter import CentralEllipseFitter
+    from photutils.isophote import EllipseSample, Isophote
 
-    # Use the same integration mode and clipping parameters.
-    # The central pixel is a special case:
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        if g.sma == 0.0:
-            gcen = copy.deepcopy(g)
-            gcen.sma = 0.0
-            gcen.eps = 0.0
-            gcen.pa = 0.0
-            censamp = CentralEllipseSample(img, 0.0, geometry=gcen,
-                                           integrmode=integrmode, sclip=sclip, nclip=nclip)
-            out = CentralEllipseFitter(censamp).fit()
+        # central pixel is a special case; see
+        # https://github.com/astropy/photutils-datasets/blob/main/notebooks/isophote/isophote_example4.ipynb
+        if sma == 0.:
+            samp = CentralEllipseSample(img, sma=sma, x0=x0, y0=y0, eps=eps,
+                                        position_angle=theta, sclip=sclip,
+                                        nclip=nclip, integrmode=integrmode)
+            samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
+            out = CentralEllipseFitter(samp).fit()
         else:
-            #g.sma *= pixscalefactor
-            #g.x0 *= pixscalefactor
-            #g.y0 *= pixscalefactor
-
-            sample = EllipseSample(img, sma=g.sma, geometry=g, integrmode=integrmode,
-                                   sclip=sclip, nclip=nclip)
-            sample.update(fixed_parameters=True)
-            #print(filt, g.sma, sample.mean)
-
-            # Create an Isophote instance with the sample.
-            out = Isophote(sample, 0, True, 0)
+            samp = EllipseSample(img, sma=sma, x0=x0, y0=y0, eps=eps,
+                                 position_angle=theta, sclip=sclip,
+                                 nclip=nclip, integrmode=integrmode)
+            samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
+            out = Isophote(samp, 0, True, 0)
 
     return out
 
@@ -203,23 +192,21 @@ def multifit(obj, imgs, varimgs, maskbits, bands=['g', 'r', 'i', 'z'],
         aper.plot(color='white')
         plt.savefig('ioannis/tmp/junk.png')
         plt.close()
-    #ellipse = Ellipse(imgs[0, :, :], geometry=geo)
 
     # Integrate to the edge [pixels].
     if maxsma is None:
-        maxsma = 0.95 * (width / 2.) / np.cos(geo.pa % (np.pi/4.))
+        maxsma = width / np.sqrt(2.) # =sqrt(2)*(width/2)
 
-    # This algorithm can fail if there are too few points or if
-    # all the points aren't unique.
     try:
         if linearsma:
             sma = np.arange(0, np.ceil(maxsma), delta_sma)
-            log.info(f'  maxsma={maxsma:.2f} pix, delta_sma={delta_sma:.1f} pix, ' + \
+            log.info(f'maxsma={maxsma:.2f} pix, delta_sma={delta_sma:.1f} pix, ' + \
                      f'nsma={len(sma)}')
         else:
             nsma = int(np.ceil(maxsma / delta_logsma))
-            sma = logspaced_integers(maxsma, nsma)
-            log.info(f'  maxsma={maxsma:.2f} pix, delta_logsma={delta_logsma:.1f} ' + \
+            #sma = logspaced_integers(maxsma, nsma)
+            sma = np.hstack((0., np.logspace(0., np.log10(maxsma), nsma)))
+            log.info(f'maxsma={maxsma:.2f} pix, delta_logsma={delta_logsma:.1f} ' + \
                      f'log-pix, nsma={len(sma)}')
         assert(len(sma) == len(np.unique(sma)))
     except:
@@ -228,91 +215,34 @@ def multifit(obj, imgs, varimgs, maskbits, bands=['g', 'r', 'i', 'z'],
         return {}
 
     # Measure the surface-brightness profile.
-    pool = multiprocessing.Pool(mp)
+    tall = time()
     for iband, filt in enumerate(bands):
+        #log.info(f'Fitting {filt}-band...')
+        t0 = time()
+
         # account for a possible variable pixel scale
         filtx0 = geo.x0 * pixfactor
         filty0 = geo.y0 * pixfactor
         filtsma = sma * pixfactor
         filtsma = np.unique(filtsma)
 
-        isobandfit = pool.map(_integrate_isophot_one, [(
-            imgs[iband, :, :], onesma, pa, eps, filtx0, filty0,
-            integrmode, sclip, nclip) for onesma in filtsma])
-        ellipsefit = _unpack_isofit(ellipsefit, filt, IsophoteList(isobandfit))
-    pdb.set_trace()
-
-
-    tall = time.time()
-    for iband, filt in enumerate(bands):
-        filtsma = np.unique(filtsma)
-        isobandfit = pool.map(_integrate_isophot_one, [(
-            imgs[iband, :, :], onesma, pa, eps, x0*pixfactor, y0*pixfactor,
-            integrmode, sclip, nclip) for onesma in sma*pixfactor])
+        with multiprocessing.Pool(mp) as P:
+            isobandfit = P.map(_integrate_isophot_one, [(
+                imgs[iband, :, :], onesma, geo.pa, geo.eps, filtx0, filty0,
+                integrmode, sclip, nclip) for onesma in filtsma])
         ellipsefit = _unpack_isofit(ellipsefit, filt, IsophoteList(isobandfit))
 
-        #print('Fitting {}-band took...'.format(filt.lower()), end='')
-        #img = data['{}_masked'.format(filt.lower())][igal]
-        #
-        ## handle GALEX and WISE
-        #if 'filt2pixscale' in data.keys():
-        #    pixscale = data['filt2pixscale'][filt]
-        #    if np.isclose(pixscale, refpixscale): # avoid rounding issues
-        #        pixscale = refpixscale
-        #        pixscalefactor = 1.0
-        #    else:
-        #        pixscalefactor = refpixscale / pixscale
-        #else:
-        #    pixscalefactor = 1.0
-
-        x0 = pixfactor * x0
-        y0 = pixfactor * y0
-
-        filtsma = np.round(sma * pixscalefactor).astype('f4')
-        #filtsma = np.round(sma[::int(1/(pixscalefactor))] * pixscalefactor).astype('f4')
-        filtsma = np.unique(filtsma)
-        assert(len(np.unique(filtsma)) == len(filtsma))
-
-        # Loop on the reference band isophotes.
-        t0 = time.time()
-        #isobandfit = pool.map(_integrate_isophot_one, [(iso, img, pixscalefactor, integrmode, sclip, nclip)
-
-        ## In extreme cases, and despite my best effort in io.read_multiband, the
-        ## image at the central position of the galaxy can end up masked, which
-        ## always points to a deeper issue with the data (e.g., bleed trail,
-        ## extremely bright star, etc.). Capture that corner case here.
-        #imasked, val = False, []
-        #for xb in box:
-        #    for yb in box:
-        #        val.append(img.mask[int(xb+y0), int(yb+x0)])
-        #        #val.append(img.mask[int(xb+x0), int(yb+y0)])
-        #if np.any(val):
-        #    imasked = True
-
-        # corner case: no data in the image or fully masked
-        if np.sum(img.data) == 0 or np.sum(img.mask) == np.product(img.shape):
-            ellipsefit = _unpack_isofit(ellipsefit, filt, None, failed=True)
+        dt = (time() - t0) / 60.
+        if dt > 60.:
+            dt /= 60.
+            unit = 'minutes'
         else:
-            if imasked:
-                #if img.mask[int(ellipsefit['x0']), int(ellipsefit['y0'])]:
-                print(' Central pixel is masked; resorting to extreme measures!')
-                #try:
-                #    raise ValueError
-                #except:
-                #    pdb.set_trace()
-                ellipsefit = _unpack_isofit(ellipsefit, filt, None, failed=True)
-            else:
-                isobandfit = pool.map(_integrate_isophot_one, [(
-                    img, _sma, ellipsefit['pa_moment'], ellipsefit['eps_moment'], x0,
-                    y0, integrmode, sclip, nclip) for _sma in filtsma])
-                ellipsefit = _unpack_isofit(ellipsefit, filt, IsophoteList(isobandfit))
+            unit = 'seconds'
+        log.info(f'Ellipse-fitting {filt}-band took {dt:.3f} {unit}')
 
-        #print('...{:.3f} sec'.format(time.time() - t0))
+    log.info(f'Time to fit all images = {(time()-tall)/60.:.3f} minutes')
 
-    #print('Time for all images = {:.3f} min'.format((time.time()-tall)/60))
     pdb.set_trace()
-
-    ellipsefit['success'] = True
 
     # Perform elliptical aperture photometry--
     print('Performing elliptical aperture photometry.')
@@ -322,27 +252,6 @@ def multifit(obj, imgs, varimgs, maskbits, bands=['g', 'r', 'i', 'z'],
     ellipsefit.update(cog)
     del cog
     print('Time = {:.3f} min'.format( (time.time() - t0) / 60))
-
-    pool.close()
-
-    # Write out
-    if not nowrite:
-        if galaxyinfo is None:
-            outgalaxyinfo = None
-        else:
-            outgalaxyinfo = galaxyinfo[igal]
-            ellipsefit.update(galaxyinfo[igal])
-
-        legacyhalos.io.write_ellipsefit(galaxy, galaxydir, ellipsefit,
-                                        galaxy_id=galaxy_id,
-                                        galaxyinfo=outgalaxyinfo,
-                                        refband=refband,
-                                        sbthresh=sbthresh,
-                                        apertures=apertures,
-                                        bands=ellipsefit['bands'],
-                                        verbose=True,
-                                        copy_mw_transmission=copy_mw_transmission,
-                                        filesuffix=data['filesuffix'])
 
     return ellipsefit
 
@@ -404,7 +313,18 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         #    --largeshift
         #    --...
 
-
         pdb.set_trace()
+
+    if not nowrite:
+        write_ellipsefit(galaxy, galaxydir, ellipsefit,
+                         galaxy_id=galaxy_id,
+                         galaxyinfo=outgalaxyinfo,
+                         refband=refband,
+                         sbthresh=sbthresh,
+                         apertures=apertures,
+                         bands=ellipsefit['bands'],
+                         verbose=True,
+                         copy_mw_transmission=copy_mw_transmission,
+                         filesuffix=data['filesuffix'])
 
     return 1 # success!

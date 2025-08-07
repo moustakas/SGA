@@ -1287,7 +1287,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             niter_actual = niter
 
         for iiter in range(niter_actual):
-            log.info(f'  Iteration {iiter+1}/{niter_actual}')
+            log.info(f'Iteration {iiter+1}/{niter_actual}')
 
             #print(iobj, iiter, bx, by, semia, ba, pa)
             inellipse = in_ellipse_mask(bx, width-by, semia, semia*ba,
