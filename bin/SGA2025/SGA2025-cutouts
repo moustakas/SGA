@@ -91,7 +91,7 @@ from SGA.geometry import choose_geometry
 #import multiprocessing
 #
 #from astrometry.libkd.spherematch import match_radec
-#from astrometry.util.starutil_numpy import arcsec_between
+#
 #
 #import warnings
 #from astropy.io.fits.verify import VerifyWarning

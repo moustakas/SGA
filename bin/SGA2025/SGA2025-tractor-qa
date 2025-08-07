@@ -6,6 +6,12 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
+
+
 """
 
 import pdb # for debugging
@@ -25,7 +31,7 @@ from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
                      get_raslice, read_sample, DIAMCOLUMN,
                      REFIDCOLUMN, FITBITS)
 from SGA.geometry import get_tractor_ellipse
-from SGA.qa import draw_ellipse
+from SGA.qa import overplot_ellipse
 from SGA.logger import log
 
 
@@ -134,7 +140,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                          (tractor['shape_r'] > 0.5))
                     #I = tractor['shape_r'] >= 0.
                     #I = tractor['shape_r'] > 1.
-                    if np.sum(I) > 0:
+                    if np.sum(I) > 0 and False:
                         if np.sum(I) > 50:
                             alpha = 0.5
                         else:
@@ -159,10 +165,10 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
                     # draw the initial ellipse geometry...
                     (xpix, ypix) = wcs.wcs_world2pix(obj['RA'], obj['DEC'], 0)
-                    draw_ellipse(diam0, ba0, pa0, xpix, ypix,
-                                 height_pixels=width, pixscale=pixscale,
-                                 ax=xx, color='white', linestyle='-',
-                                 draw_majorminor_axes=True, jpeg=True)
+                    overplot_ellipse(diam0, ba0, pa0, xpix, ypix,
+                                     height_pixels=width, pixscale=pixscale,
+                                     ax=xx, color='white', linestyle='-',
+                                     draw_majorminor_axes=True, jpeg=True)
 
                     if len(sga) > 0:
                         typ, nn = sga['type'][0], sga['sersic'][0]
@@ -217,10 +223,10 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                 if len(sga) > 0:
                     # ...and the Tractor model
                     (xpix, ypix) = wcs.wcs_world2pix(sga['ra'], sga['dec'], 0)
-                    draw_ellipse(2.*r50, ba, pa, xpix, ypix,
-                                 height_pixels=height, pixscale=pixscale,
-                                 ax=xx, color='yellow', linestyle='--',
-                                 draw_majorminor_axes=True, jpeg=True)
+                    overplot_ellipse(2.*r50, ba, pa, xpix, ypix,
+                                     height_pixels=height, pixscale=pixscale,
+                                     ax=xx, color='yellow', linestyle='--',
+                                     draw_majorminor_axes=True, jpeg=True)
 
             else:
                 xx.axis('off')

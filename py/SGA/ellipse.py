@@ -114,36 +114,23 @@ def integrate_isophot_one(img, sma, theta, eps, x0, y0,
     return out
 
 
-def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
-                         refband='r', nproc=1,
-                         integrmode='median', nclip=3, sclip=3,
-                         maxsma=None, logsma=True, delta_logsma=5.0, delta_sma=1.0,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         copy_mw_transmission=False,
-                         galaxyinfo=None, input_ellipse=None,
-                         fitgeometry=False, nowrite=False, verbose=False):
+def multifit(sample, imgs, varimgs, maskbits, bands, pixscale,
+             delta_logsma=5., logsma=True, maxsma=None, mp=1,
+             sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+             integrmode='median', nclip=3, sclip=3,
+             input_ellipse=None, fitgeometry=False,
+             verbose=False):
     """Multi-band ellipse-fitting, broadly based on--
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
 
     Some, but not all hooks for fitgeometry=True are in here, so user beware.
 
-    galaxyinfo - additional dictionary to append to the output file
-
-    galaxy_id - add a unique ID number to the output filename (via
-      io.write_ellipsefit).
-
     """
     import multiprocessing
 
-    bands, refband, refpixscale = data['bands'], data['refband'], data['refpixscale']
-
-    if galaxyinfo is not None:
-        galaxyinfo = np.atleast_1d(galaxyinfo)
-        assert(len(galaxyinfo)==len(data['mge']))
-
-    # If fitgeometry=True then fit for the geometry as a function of semimajor
-    # axis, otherwise (the default) use the mean geometry of the galaxy to
-    # extract the surface-brightness profile.
+    # If fitgeometry=True then fit for the geometry as a function of
+    # semimajor axis, otherwise (the default) use the mean geometry of
+    # the object to extract the surface-brightness profile.
     if fitgeometry:
         maxrit = None
     else:
@@ -186,7 +173,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
                            ['largeshift', 'ra_moment', 'dec_moment', 'majoraxis', 'pa_moment', 'eps_moment']):
         if key == 'majoraxis':
             ellipsefit['sma_moment'] = mge['majoraxis'] * refpixscale # [arcsec]
-        ellipsefit[newkey] = mge[key]
+            ellipsefit[newkey] = mge[key]
 
     if copy_mw_transmission:
         ellipsefit['ebv'] = mge['ebv']
@@ -218,7 +205,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
         ellipsefit = _fitgeometry_refband(ellipsefit, geometry0, majoraxis, refband,
                                           integrmode=integrmode, sclip=sclip, nclip=nclip,
                                           verbose=verbose)
-    
+        
     # Re-initialize the EllipseGeometry object, optionally using an external set
     # of ellipticity parameters.
     if input_ellipse:
@@ -243,7 +230,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
     # Integrate to the edge [pixels].
     if maxsma is None:
         maxsma = 0.95 * (data['refband_width']/2) / np.cos(geometry.pa % (np.pi/4))
-    ellipsefit['maxsma'] = np.float32(maxsma) # [pixels]
+        ellipsefit['maxsma'] = np.float32(maxsma) # [pixels]
 
     if logsma:
         #https://stackoverflow.com/questions/12418234/logarithmically-spaced-integers
@@ -262,7 +249,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
                     # recalculate the ratio so that the remaining values will scale correctly
                     ratio = (float(limit)/result[-1]) ** (1.0/(n-len(result)))
                     #print(ratio, len(result), n)
-            # round, re-adjust to 0 indexing (i.e. minus 1) and return np.uint64 array
+                    # round, re-adjust to 0 indexing (i.e. minus 1) and return np.uint64 array
             return np.array(list(map(lambda x: round(x)-1, result)), dtype=int)
 
         # this algorithm can fail if there are too few points
@@ -312,7 +299,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
         #filtsma = np.round(sma[::int(1/(pixscalefactor))] * pixscalefactor).astype('f4')
         filtsma = np.unique(filtsma)
         assert(len(np.unique(filtsma)) == len(filtsma))
-    
+        
         # Loop on the reference band isophotes.
         t0 = time.time()
         #isobandfit = pool.map(_integrate_isophot_one, [(iso, img, pixscalefactor, integrmode, sclip, nclip)
@@ -334,7 +321,7 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
             ellipsefit = _unpack_isofit(ellipsefit, filt, None, failed=True)
         else:
             if imasked:
-            #if img.mask[int(ellipsefit['x0']), int(ellipsefit['y0'])]:
+                #if img.mask[int(ellipsefit['x0']), int(ellipsefit['y0'])]:
                 print(' Central pixel is masked; resorting to extreme measures!')
                 #try:
                 #    raise ValueError
@@ -389,17 +376,18 @@ def ellipsefit_multiband(galaxy, galaxydir, data, igal=0, galaxy_id='',
 def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
                          mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=False,
                          unwise=False, integrmode='median', nclip=3, sclip=3,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         delta_sma=1.0, delta_logsma=5, maxsma=None, logsma=True,
-                         refidcolumn=None, input_ellipse=None, fitgeometry=False,
-                         verbose=False, nowrite=False, clobber=False):
+                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, delta_logsma=5,
+                         maxsma=None, refidcolumn=None, input_ellipse=None,
+                         fitgeometry=False, verbose=False, nowrite=False, clobber=False):
     """Top-level wrapper script to do ellipse-fitting on a single galaxy.
 
     fitgeometry - fit for the ellipse parameters (do not use the mean values
       from MGE).
 
     """
-    #from legacyhalos.io import get_ellipsefit_filename
+    data = read_multiband_function(galaxy, galaxydir, bands=bands,
+                                   pixscale=pixscale, unwise=unwise,
+                                   galex=galex, verbose=verbose)
     try:
         data = read_multiband_function(galaxy, galaxydir, bands=bands,
                                        pixscale=pixscale, unwise=unwise,
@@ -408,20 +396,28 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         data = {}
 
     if not bool(data):
-        log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}.')
+        log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return 0
 
+    dataprefix = ['opt']
+    if unwise:
+        dataprefix += ['unwise']
+    if galex:
+        dataprefix += ['galex']
+
     for iobj, obj in enumerate(data['sample']):
-        ellipsefit = ellipsefit_multiband(galaxy, galaxydir, data,
-                                          galaxyinfo=galaxyinfo,
-                                          igal=igal, galaxy_id=str(galid),
-                                          delta_logsma=delta_logsma, maxsma=maxsma,
-                                          delta_sma=delta_sma, logsma=logsma,
-                                          refband=refband, nproc=nproc, sbthresh=sbthresh,
-                                          apertures=apertures,
-                                          integrmode=integrmode, nclip=nclip, sclip=sclip,
-                                          input_ellipse=input_ellipse,
-                                          verbose=verbose, fitgeometry=False,
-                                          nowrite=False)
+        refid = obj[REFIDCOLUMN]
+        for prefix in dataprefix:
+            imgs = data[f'{prefix}_images']
+            varimgs = data[f'{prefix}_variance']
+            maskbits = data[f'{prefix}_maskbits']
+            bands = data[f'{prefix}_bands']
+            pixscale = data[f'{prefix}_pixscale']
+
+            ellipsefit = multifit(obj, imgs, varimgs, maskbits, bands, pixscale,
+                                  delta_logsma=delta_logsma, maxsma=maxsma,
+                                  mp=mp, sbthresh=sbthresh, apertures=apertures,
+                                  integrmode=integrmode, nclip=nclip, sclip=sclip,
+                                  input_ellipse=input_ellipse, verbose=verbose)
 
     return 1 # success!

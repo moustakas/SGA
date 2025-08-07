@@ -9,12 +9,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from astropy.convolution import convolve, Gaussian2DKernel
 from astropy.visualization import simple_norm
+
+from SGA.geometry import EllipseProperties
 from SGA.find_galaxy import find_galaxy
 
 
-def build_model(nx=240, ny=240, reff=35., sersicn=1., eps=0.6, theta=22.,
-                x0=None, y0=None, seed=1, snr=30., add_noise=True,
-                do_psf=True):
+def build_model(nx=240, ny=240, reff=35., sersicn=1., ba=0.5, pa=0.,
+                x0=None, y0=None, seed=1, snr=30., add_noise=False,
+                do_psf=False):
     """
 
     reff - pixels?
@@ -35,9 +37,8 @@ def build_model(nx=240, ny=240, reff=35., sersicn=1., eps=0.6, theta=22.,
 
     yy, xx = np.mgrid[:ny, :nx]
 
-    sersic_model = Sersic2D(amplitude=1., r_eff=reff,
-                            n=sersicn, x_0=x0, y_0=y0,
-                            ellip=eps, theta=np.radians(theta))
+    sersic_model = Sersic2D(amplitude=1e3, r_eff=reff, n=sersicn, x_0=x0,
+                            y_0=y0, ellip=1.-ba, theta=np.radians(90.-pa))
     image = sersic_model(xx, yy)
 
     # convolve with a PSF
@@ -59,46 +60,74 @@ def build_model(nx=240, ny=240, reff=35., sersicn=1., eps=0.6, theta=22.,
 
 def sims():
 
-    nx = 512
-    snr = 10.
+    if False:#True:
+        nx = 2048 # 512
+        snr = 1e4
 
-    image = build_model(reff=30., sersicn=1., snr=snr, nx=nx, ny=nx)
-    plt.clf()
-    mge = find_galaxy(image, quiet=False, plot=True)
-    #plt.imshow(np.log10(image), cmap='inferno', origin='lower')#, norm=norm)
-    plt.savefig('junk2.png')
-    #return
+        sersicn = 4. #1.
+        ba = 0.25
+        pa = 139.
+        reff = 27. # 27.
 
-    #fig, ax = plt.subplots()
-    #norm = simple_norm(image, stretch='log')
-    #ax.imshow(image, cmap='inferno', origin='lower', norm=norm)
-    #fig.savefig('junk2.png')
+        image = build_model(reff=reff, sersicn=sersicn, ba=ba, pa=pa,
+                            snr=snr, nx=nx, ny=nx, add_noise=False,
+                            do_psf=False)
 
-    pdb.set_trace()
+        props = EllipseProperties()
+        fit = props.fit(image)
+        print('r50', reff, fit.a)
+        print('b/a', ba, fit.ba)
+        print('PA', pa, fit.pa)
+
+        fig, ax = plt.subplots()
+        norm = simple_norm(np.log10(image))#, stretch='log')
+        fit.plot(image=np.log10(image), ax=ax, show_centroid=True,
+                 imshow_kwargs={
+                     'norm': norm,
+                     'origin': 'lower'})
+        fig.savefig('ioannis/tmp/junk2.png')
+
+        pdb.set_trace()
 
 
-    reffs = np.arange(10., 300, 5.)
+    snr = 1e4
+
+    nx = 4096
+    ba = 0.25
+    pa = 139.
+
+    reffs = np.linspace(5., 50., 20)
     maxis = np.zeros_like(reffs)
+    bas = np.zeros_like(reffs)
+    pas = np.zeros_like(reffs)
+
+    props = EllipseProperties()
 
     fig, ax = plt.subplots()
     for sersicn in [1., 2.5, 4., 6.]:
         print(sersicn)
-
+        #reffs = [127.]
         for imodel, reff in enumerate(reffs):
-            image = build_model(reff=reff, sersicn=sersicn, snr=snr, nx=nx, ny=nx)
-            mge = find_galaxy(image, quiet=True)
-            maxis[imodel] = mge.majoraxis
-        #print(maxis / reffs, np.median(maxis / reffs))
+            image = build_model(reff=reff, sersicn=sersicn, ba=ba, pa=pa,
+                                snr=snr, nx=nx, ny=nx, add_noise=False,
+                                do_psf=False)
+            fit = props.fit(image)
+            print(imodel, fit.pa, fit.ba)
+            maxis[imodel] = fit.a
+            bas[imodel] = fit.ba
+            pas[imodel] = fit.pa
+            #mge = find_galaxy(image, quiet=True)
+            #maxis[imodel] = mge.majoraxis
 
-        ax.scatter(reffs, maxis / reffs, s=20, label=f'n={sersicn:.0g}')
-    ax.set_xscale('log')
-    #ax.set_yscale('log')
+        #ax.scatter(reffs, maxis / reffs, s=20, label=f'n={sersicn:.0g}')
+        #ax.scatter(reffs, pas/pa, s=20, label=f'n={sersicn:.0g}')
+        ax.scatter(reffs, bas/ba, s=20, label=f'n={sersicn:.0g}')
+        #ax.set_ylim(0.5, 1.5)
+
     ax.legend(loc='upper right')
-    fig.savefig('junk.png')
+    fig.savefig('ioannis/tmp/junk.png')
 
     pdb.set_trace()
 
 if __name__ == '__main__':
     sims()
-
-

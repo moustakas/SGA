@@ -144,7 +144,7 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
     from photutils.aperture import EllipticalAperture, CircularAperture
     from photutils.morphology import gini
-
+    from astrometry.util.starutil_numpy import arcsec_between
     from legacypipe.survey import wcs_for_brick, BrickDuck
     from legacypipe.reference import get_reference_sources, get_reference_map
     from SGA.find_galaxy import find_galaxy

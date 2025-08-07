@@ -12,6 +12,180 @@ from astropy.table import Table
 from SGA.logger import log
 
 
+import numpy as np
+from scipy import ndimage
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+
+class EllipseProperties:
+    """
+    Fit an ellipse to the flux distribution of the largest labelled blob in a 2D image.
+
+    After calling `fit(image, method, percentile, smooth_sigma)`, attributes are:
+      x0, y0         # flux-weighted centroid (pixels)
+      ba             # minor-to-major axis ratio (b/a)
+      pa             # astronomical PA (deg CCW from +y, range 0–180)
+      a              # chosen major-axis length (pixels)
+      a_rms          # RMS-based semi-major axis (pixels)
+      a_percentile   # percentile-based radius (pixels)
+      labels         # label array for all blobs
+      blob_mask      # mask of the selected largest blob
+    """
+
+    def __init__(self):
+        self.x0 = None
+        self.y0 = None
+        self.ba = None
+        self.pa = None
+        self.a = None
+        self.a_rms = None
+        self.a_percentile = None
+        self.labels = None
+        self.blob_mask = None
+
+    def fit(self, image, mask=None, method='percentile', percentile=0.95,
+            smooth_sigma=1.0):
+        """
+        Label and smooth the image, then select the largest contiguous blob
+        and compute ellipse properties using second moments.
+
+        Parameters
+        ----------
+        image : 2D ndarray
+            Pixel flux values (background should be zero or masked).
+        method : {'percentile', 'rms'}
+            Major-axis estimator:
+            - 'percentile': brightness-weighted percentile radius
+            - 'rms':        root of largest eigenvalue (second moment)
+        percentile : float
+            Fraction (0 < percentile <= 1) for percentile radius when method='percentile'.
+        smooth_sigma : float, default=1.0
+            Gaussian sigma (pixels) for smoothing before blob detection.
+
+        Returns
+        -------
+        self : EllipseProperties
+        """
+        # 1) optionally smooth for blob detection
+        if smooth_sigma and smooth_sigma > 0:
+            smoothed = ndimage.gaussian_filter(image, sigma=smooth_sigma)
+        else:
+            smoothed = image
+
+        # 2) label positive pixels in smoothed image, pick largest blob
+        if mask is None:
+            mask = (smoothed > 0)
+
+        labels, nblobs = ndimage.label(mask)
+        self.labels = labels
+        if nblobs < 1:
+            raise ValueError("No positive blobs found in image.")
+        sizes = ndimage.sum(mask, labels, index=np.arange(1, nblobs+1))
+        largest = np.argmax(sizes) + 1
+        self.blob_mask = (labels == largest)
+        blob_idx = np.flatnonzero(self.blob_mask)
+
+        # 3) pixel coordinates and smoothed fluxes for blob pixels
+        yy, xx = np.indices(image.shape)
+        x_sel = xx.flat[blob_idx]
+        y_sel = yy.flat[blob_idx]
+        flux = smoothed.flat[blob_idx]
+        if np.any(flux < 0):
+            import pdb ; pdb.set_trace()
+        F = flux.sum()
+
+        # 4) flux-weighted centroid
+        self.x0 = np.dot(flux, x_sel) / F
+        self.y0 = np.dot(flux, y_sel) / F
+
+        # 5) central second moments
+        dx = x_sel - self.x0
+        dy = y_sel - self.y0
+        Mxx = np.dot(flux, dx*dx) / F
+        Myy = np.dot(flux, dy*dy) / F
+        Mxy = np.dot(flux, dx*dy) / F
+
+        # 6) diagonalize inertia tensor
+        eigvals, eigvecs = np.linalg.eigh([[Mxx, Mxy], [Mxy, Myy]])
+        order = np.argsort(eigvals)[::-1]
+        eigvals = eigvals[order]
+        eigvecs = eigvecs[:, order]
+
+        # 7) RMS-based semi-major axis
+        self.a_rms = np.sqrt(eigvals[0])
+
+        # 8) percentile-based radius
+        r = np.sqrt(dx*dx + dy*dy)
+        order_r = np.argsort(r)
+        cumflux = np.cumsum(flux[order_r])
+        cumfrac = cumflux / cumflux[-1]
+        self.a_percentile = float(np.interp(percentile, cumfrac, r[order_r]))
+
+        # 9) select final major axis
+        if method == 'rms':
+            self.a = self.a_rms
+        elif method == 'percentile':
+            self.a = self.a_percentile
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        # 10) compute axis ratio and astronomical PA within 0-180°
+        b = np.sqrt(eigvals[1])
+        self.ba = b / self.a_rms if self.a_rms > 0 else 0
+        vx, vy = eigvecs[:, 0]
+        pa_cart = np.degrees(np.arctan2(vy, vx)) % 180.0
+        self.pa = (pa_cart - 90.) % 180.0
+
+        return self
+
+    def plot(self, image=None, ax=None, imshow_kwargs=None,
+             ellipse_kwargs=None, blob_outline_kwargs=None):
+        """
+        Display the provided image (or blob mask) with the outline of the selected largest blob
+        and overlay the fitted ellipse.
+
+        Parameters
+        ----------
+        image : 2D ndarray, optional
+            Image to display. If None, uses the blob mask.
+        ax : matplotlib.axes.Axes, optional
+            Ax for plotting. If None, a new figure/axes is created.
+        imshow_kwargs : dict, optional
+            Passed to ax.imshow (e.g., cmap, origin).
+        ellipse_kwargs : dict, optional
+            Passed to the Ellipse patch (e.g., edgecolor).
+        blob_outline_kwargs : dict, optional
+            Passed to ax.contour for the largest blob outline (e.g., colors, linewidths).
+
+        Returns
+        -------
+        ax : matplotlib.axes.Axes
+        """
+        if ax is None:
+            fig, ax = plt.subplots()
+        if imshow_kwargs is None:
+            imshow_kwargs = {'origin': 'lower', 'cmap': 'cividis'}
+        disp = image if image is not None else self.blob_mask
+        ax.imshow(disp, **imshow_kwargs)
+
+        # outline only the largest blob
+        if blob_outline_kwargs is None:
+            blob_outline_kwargs = {'colors': 'k', 'linewidths': 1, 'alpha': 0.7}
+        ax.contour(self.blob_mask, levels=[0.5], **blob_outline_kwargs)
+
+        # overlay ellipse
+        if ellipse_kwargs is None:
+            ellipse_kwargs = {'edgecolor': 'red', 'facecolor': 'none'}
+        angle = self.pa - 90.0
+        ell = Ellipse((self.x0, self.y0), 2*self.a, 2*self.a*self.ba,
+                      angle=angle, **ellipse_kwargs)
+        ax.add_patch(ell)
+
+        # centroid marker
+        ax.plot(self.x0, self.y0, marker='+', color=ellipse_kwargs.get('edgecolor','red'))
+        return ax
+
+
 def in_ellipse_mask(xcen, ycen, semia, semib, pa, x, y):
     """Simple elliptical mask using astronomical PA convention.
 

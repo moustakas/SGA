@@ -2897,21 +2897,24 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     samplebits = np.zeros(len(parent), np.int16)
     samplebits[parent['ROW_LVD'] != -99] = SAMPLEBITS['LVD']
 
+    print('ADD LMC,SMC SOURCES TO SAMPLEBITS?')
+    print('III Zw 040 NOTES02 needs  CLUSTER BIT SET!')
+
     sgaid = np.arange(len(parent))
     grp = parent[cols]
 
     grp.add_column(sgaid, name='SGAID', index=0)
     grp.add_column(sga2025_name(ra, dec, unixsafe=True),
                    name='SGANAME', index=1)
-    grp.add_column(allmorph, name='MORPH', index=3)
-    grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=6)
-    grp.add_column(fitbits, name='FITBIT', index=7)
-    grp.add_column(samplebits, name='SAMPLEBIT', index=8)
-    grp.add_column(diam.astype('f4'), name='DIAM', index=9)
-    grp.add_column(ba.astype('f4'), name='BA', index=10)
-    grp.add_column(pa.astype('f4'), name='PA', index=11)
-    grp.add_column(mag.astype('f4'), name='MAG', index=12)
-    grp.add_column(band, name='BAND', index=13)
+    grp.add_column(allmorph, name='MORPH', index=2)
+    grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=3)
+    grp.add_column(diam.astype('f4'), name='DIAM', index=4)
+    grp.add_column(ba.astype('f4'), name='BA', index=5)
+    grp.add_column(pa.astype('f4'), name='PA', index=6)
+    grp.add_column(mag.astype('f4'), name='MAG', index=7)
+    grp.add_column(band, name='BAND', index=8)
+    grp.add_column(fitbits, name='FITBIT', index=9)
+    grp.add_column(samplebits, name='SAMPLEBIT', index=10)
 
     print('NEED TO REMOVE LMC,SMC FROM GROUP-FINDING!')
     out = build_group_catalog(grp)
