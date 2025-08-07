@@ -15,6 +15,18 @@ properties:
 import numpy as np
 
 
+def custom_brickname(ra, dec, more_decimals=False):
+    if more_decimals:
+        brickname = '{:08d}{}{:07d}'.format(
+            int(100000*ra), 'm' if dec < 0 else 'p',
+            int(100000*np.abs(dec)))
+    else:
+        brickname = '{:06d}{}{:05d}'.format(
+            int(1000*ra), 'm' if dec < 0 else 'p',
+            int(1000*np.abs(dec)))
+    return brickname
+
+
 class Bricks(object):
     """The Bricks object describes bricks of a certain size.
 

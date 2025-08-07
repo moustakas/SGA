@@ -1,0 +1,303 @@
+#!/usr/bin/env python
+
+"""QA of Tractor modeling results.
+
+salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+SGA2025-shifter
+source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
+
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
+
+
+"""
+
+import pdb # for debugging
+
+import os
+from glob import glob
+import numpy as np
+from astropy.table import Table, vstack
+import fitsio
+
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.gridspec as gridspec
+from matplotlib.image import imread
+
+from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
+                     get_raslice, read_sample, DIAMCOLUMN,
+                     REFIDCOLUMN, FITBITS)
+from SGA.geometry import get_tractor_ellipse
+from SGA.qa import overplot_ellipse
+from SGA.logger import log
+
+
+def read_coadds(galaxy, galaxydir, refid):
+
+    from astropy.wcs import WCS
+
+    imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
+    #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
+    #imagefile = os.path.join(galaxydir, f'{galaxy}-resid.jpg')
+    tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
+    if not os.path.isfile(tractorfile):
+        log.warning(f'Missing {tractorfile}')
+        return Table(), Table(), None, None
+
+    cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
+                     'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
+                     'flux_r', 'flux_i', 'flux_z'])
+    #allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
+    #cols = cols[np.isin(cols, allcols)]
+    print(galaxydir)
+    tractor = Table(fitsio.read(tractorfile, columns=cols))
+
+    I = (tractor['ref_cat'] == 'LG') * (tractor['ref_id'] == refid)
+    if np.sum(I) == 0:
+        sga = Table()
+    else:
+        sga = tractor[I]
+        #tractor = tractor[~I]
+
+    if os.path.isfile(imagefile):
+        image = imread(imagefile)
+
+    for band in ['g', 'r', 'i', 'z']:
+        fitsfile = os.path.join(galaxydir, f'{galaxy}-image-{band}.fits.fz')
+        if os.path.isfile(fitsfile):
+            hdr = fitsio.read_header(fitsfile, ext=1)
+            wcs = WCS(hdr, naxis=2)
+            break
+
+    return sga, tractor, image, wcs
+
+
+def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
+              datadir=None, region='dr11-south'):
+
+    from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
+
+    # each group member gets its own panel
+    galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
+                                             datadir=datadir)
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
+
+    nobj = len(fullsample)
+    allindx = np.arange(nobj)
+
+    nperpage = ncol * nrow
+    npage = int(np.ceil(nobj / nperpage))
+
+    pdf = PdfPages(pdffile)
+    for ipage in range(npage):
+        log.info(f'Building page {ipage+1:,d}/{npage:,d}')
+        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
+
+        fig, ax = plt.subplots(nrow, ncol,
+                               figsize=(inches_per_panel*ncol,
+                                        inches_per_panel*nrow),
+                               gridspec_kw={'wspace': 0.02, 'hspace': 0.02},
+                               constrained_layout=True)
+        ax = ax.ravel()
+
+        for iax, xx in enumerate(ax):
+            if iax < len(indx):
+                obj = fullsample[indx[iax]]
+                diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
+                geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+
+                txt_ul = '\n'.join([obj["OBJNAME"], obj["SGANAME"],
+                                    r'$(\alpha,\delta)$='+f'({obj["RA"]:.7f},{obj["DEC"]:.6f})',
+                                    geo0])
+                xx.text(0.03, 0.97, txt_ul, transform=xx.transAxes, ha='left',
+                        va='top', color='white', linespacing=1.5, fontsize=9,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+                sga, tractor, image, wcs = read_coadds(
+                    galaxy[indx[iax]], galaxydir[indx[iax]],
+                    refid=obj[REFIDCOLUMN])
+
+                if image is None:
+                    txt_ll = 'No Tractor catalog'
+                    txt_ur = None
+                else:
+                    height, width, _ = image.shape
+                    pixscale = get_pixscale(wcs)[0] * 3600. # [arcsec/pixel]
+
+                    xx.set_xlim(0, width)
+                    xx.set_ylim(0, height)
+
+                    xx.imshow(image, origin='lower', interpolation='none')
+                    xx.invert_yaxis() # JPEG is flipped relative to FITS
+                    for spine in ['bottom', 'top', 'right', 'left']:
+                        xx.spines[spine].set_color('white')
+
+                    I = ((tractor['type'] != 'PSF') * (tractor['type'] != 'DUP') *
+                         (tractor['shape_r'] > 0.5))
+                    #I = tractor['shape_r'] >= 0.
+                    #I = tractor['shape_r'] > 1.
+                    if np.sum(I) > 0 and False:
+                        if np.sum(I) > 50:
+                            alpha = 0.5
+                        else:
+                            alpha = 0.9
+                        xx.scatter(tractor['bx'][I], height-tractor['by'][I],
+                                   marker='x', s=10, color='red', alpha=alpha)
+
+                    J = np.logical_or(tractor['type'] == 'PSF', tractor['type'] == 'DUP')
+                    #print(galaxy[indx[iax]], np.sum(J))
+                    if np.sum(J) > 0:
+                        if np.sum(J) > 50:
+                            s = 1
+                            alpha = 0.5
+                        else:
+                            s = 10
+                            alpha = 0.9
+                        xx.scatter(tractor['bx'][J], height-tractor['by'][J],
+                                   marker='o', s=s, color='white', alpha=alpha)
+                    if len(sga) > 0:
+                        xx.scatter(sga['bx'], height-sga['by'], marker='s',
+                                   facecolor='none', s=40, color='cyan')
+
+                    # draw the initial ellipse geometry...
+                    (xpix, ypix) = wcs.wcs_world2pix(obj['RA'], obj['DEC'], 0)
+                    overplot_ellipse(diam0, ba0, pa0, xpix, ypix,
+                                     height_pixels=width, pixscale=pixscale,
+                                     ax=xx, color='white', linestyle='-',
+                                     draw_majorminor_axes=True, jpeg=True)
+
+                    if len(sga) > 0:
+                        typ, nn = sga['type'][0], sga['sersic'][0]
+                        ra, dec = sga['ra'][0], sga['dec'][0]
+                        r50 = sga['shape_r'][0]
+                        e1, e2 = sga['shape_e1'][0], sga['shape_e2'][0]
+                        diam, ba, pa = get_tractor_ellipse(r50, e1, e2)
+
+                        mag = []
+                        for band in ['g', 'r', 'i', 'z']:
+                            if f'flux_{band}' in sga.colnames:
+                                flux = sga[f'flux_{band}'][0]
+                                if flux > 0.:
+                                    mag.append(f'{band}={22.5-2.5*np.log10(flux):.2f}')
+                        mag = ' '.join(mag)
+
+                        if typ == 'PSF':
+                            pass
+                        elif typ == 'REX':
+                            geo = f'r(50)={r50:.1f}"'
+                        elif typ == 'SER':
+                            typ = f'{typ} (n={nn:.1f})'
+                            geo = f'r(50)={r50:.1f}" b/a={ba:.2f} PA={pa:.1f}'
+                        else:
+                            geo = f'r(50)={r50:.1f}" b/a={ba:.2f} PA={pa:.1f}'
+
+                        txt_ur = f'{typ}'
+                        if typ == 'PSF':
+                            txt_ll = '\n'.join([r'$(\alpha,\delta)$='+f'({ra:.7f},{dec:.6f})', mag])
+                        else:
+                            txt_ll = '\n'.join([geo, r'$(\alpha,\delta)$='+f'({ra:.7f},{dec:.6f})', mag])
+                    else:
+                        txt_ur = None
+                        txt_ll = 'SGA source dropped'
+
+                xx.margins(0)
+                xx.set_xticks([])
+                xx.set_yticks([])
+
+                if txt_ll:
+                    xx.text(0.03, 0.03, txt_ll, transform=xx.transAxes,
+                            ha='left', va='bottom', color='white',
+                            linespacing=1.5, fontsize=9,
+                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+                if txt_ur:
+                    xx.text(0.97, 0.97, txt_ur, transform=xx.transAxes,
+                            ha='right', va='top', color='white',
+                            linespacing=1.5, fontsize=9,
+                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+                if len(sga) > 0:
+                    # ...and the Tractor model
+                    (xpix, ypix) = wcs.wcs_world2pix(sga['ra'], sga['dec'], 0)
+                    overplot_ellipse(2.*r50, ba, pa, xpix, ypix,
+                                     height_pixels=height, pixscale=pixscale,
+                                     ax=xx, color='yellow', linestyle='--',
+                                     draw_majorminor_axes=True, jpeg=True)
+
+            else:
+                xx.axis('off')
+        pdf.savefig(fig, bbox_inches='tight')#, dpi=150, pad_inches=0)
+        plt.close()
+
+    pdf.close()
+    log.info(f'Wrote {pdffile}')
+
+
+def qa_tractor(region='dr11-south', datadir=None, lvd=False,
+               lvd_forcepsf=False, lvd_ignore=False):
+
+    if datadir is None:
+        datadir = sga_data_dir()
+
+    sample, fullsample = read_sample(region=region, lvd=(lvd or lvd_ignore or lvd_forcepsf))
+
+    if lvd:
+        I = sample['FITBIT'] == 0
+        sample = sample[I]
+
+        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
+    elif lvd_ignore:
+        I = sample['FITBIT'] & FITBITS['ignore'] != 0
+        sample = sample[I]
+
+        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd-ignore.pdf')
+    elif lvd_forcepsf:
+        I = sample['FITBIT'] & FITBITS['forcepsf'] != 0
+        sample = sample[I]
+
+        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd-forcepsf.pdf')
+    else:
+        qadir = os.path.join(sga_dir(), 'parent', 'qa')
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
+        print('Hack!')
+        sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])]
+
+    if not os.path.isdir(qadir):
+        os.makedirs(qadir, exist_ok=True)
+
+    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
+                                             datadir=datadir)
+    I = [os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
+    log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
+             'objects with pipeline results.')
+
+    sample = sample[I]
+    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
+    sample = sample[np.argsort(sample[DIAMCOLUMN])]
+    fullsample = fullsample[np.argsort(fullsample[DIAMCOLUMN])]
+
+    annotated(sample, fullsample, pdffile, region=region, datadir=datadir)
+
+if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--lvd', action='store_true', help='Generate QA for the non-ignore/non-forcepsf LVD sample.')
+    parser.add_argument('--lvd-ignore', action='store_true', help='Generate QA for the LVD/ignore sample.')
+    parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
+    parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
+    parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
+    args = parser.parse_args()
+
+    qa_tractor(datadir=args.datadir, region=args.region, lvd=args.lvd,
+               lvd_forcepsf=args.lvd_forcepsf,
+               lvd_ignore=args.lvd_ignore)

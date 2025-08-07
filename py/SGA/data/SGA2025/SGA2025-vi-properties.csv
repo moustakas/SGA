@@ -803,7 +803,7 @@ FGC 284A,350.7450,7.6743,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
 ESO 545- G 035,38.4741,-20.2046,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
 ESO 400- G 019,306.4283,-32.5455,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
 ESO 582- G 010,231.0153333333333,-18.68252777777778,-99.,90.,-99.,-99.,No,Moved to the position of '2MASX J15240366-1840574'
-ESO 220-IG 017 NED01,203.2260,-49.4125,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 220-IG 017,203.2260,-49.4125,1.0,176.,0.35,-99.,No,Moved to LS/DR10 position and estimated diameter
 ESO 266- G 021,176.3238,-43.6588,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
 ESO 273- G 022,228.3035145,-43.3423647,-99.,90.,-99.,-99.,No,Moved to the position of 'PGC 549950'
 ESO 143- G 021,305.4683,-61.9725,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
@@ -879,3 +879,9 @@ ESO 506-IG 034 NED01,190.1424,-23.2690,-99.,90.,-99.,-99.,No,Moved to LS/DR10 po
 ESO 161-IG 014 NED01,97.8482,-54.8645,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
 SN 2005lu HOST,39.017446,-17.263923,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
 LEDA 085430,350.7400,16.8755,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+PGC 177904,72.5445,-66.5983,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+2MASX J05091536-7423479,77.3167,-74.3993,1.,0.7,0.,-99.,No,Moved to LS/DR10 position and estimated diameter
+WISEA J055809.16-713448.9,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J060602.41-704200.7,-99.,-99.,1.0,-99.,-99.,-99.,No,Estimated diameter
+WISEA J012853.13-195720.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+UGC 10873,262.3166,16.1628,-99.,90.,-99.,-99.,No,Moved to LS/DR9 position

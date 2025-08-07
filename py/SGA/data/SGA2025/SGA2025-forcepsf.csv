@@ -1,0 +1,21 @@
+# This file contains the set of objects that should trigger "force
+# PSF" in legacypipe.
+objname,region,comment
+Andromeda VI,dr11-south,
+Antlia,dr9-south,
+Antlia B,dr9-south,
+Aquarius,dr11-south,
+Cetus,dr11-south,
+ESO 269-037,dr11-south,
+ESO 443-009,dr11-south,
+Fornax,dr9-south;dr11-south,
+HIPASS J1351-47,dr11-south,
+HIPASS J1337-39,dr11-south,
+KK 221,dr11-south,
+KKs 58,dr11-south,
+LGS 3,dr9-south;dr11-south,
+Phoenix,dr9-south;dr11-south,
+Sagittarius dIrr,dr11-south,
+Sculptor,dr9-south;dr11-south,
+Sculptor-dE1,dr11-south,
+UGCA 292,dr11-south,

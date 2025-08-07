@@ -6,17 +6,8 @@ SGA.mpi
 Code to deal with the MPI portion of the pipeline.
 
 """
-import os, sys, time, subprocess, pdb
-import glob
+import os
 import numpy as np
-from contextlib import contextmanager
-
-import desiutil.log
-from desiutil.log import get_logger
-
-import SGA.io
-import SGA.html
-from SGA.logger import log
 
 
 def mpi_args():
@@ -43,11 +34,13 @@ def mpi_args():
     parser.add_argument('--htmlhome', default='index.html', type=str, help='Home page file name (use in tandem with --htmlindex).')
     parser.add_argument('--html-raslices', action='store_true',
                         help='Organize HTML pages by RA slice (use in tandem with --htmlindex).')
-    parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
-    
+
     parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
+
+    parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
+    parser.add_argument('--htmldir', default=None, type=str, help='Override $SGA_HTML_DIR environment variable')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
@@ -58,7 +51,9 @@ def mpi_args():
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
-    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')                                
+    parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
+
+    parser.add_argument('--lvd', action='store_true', help='Read the parent LVD sample.')
 
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')
@@ -67,10 +62,38 @@ def mpi_args():
     return args
 
 
-def _start(galaxy, log=None, seed=None):
-    if seed:
-        print('Random seed = {}'.format(seed), flush=True)        
-    print('Started working on galaxy {} at {}'.format(
-        galaxy, time.asctime()), flush=True, file=log)
+def weighted_partition(weights, n):
+    '''
+    Partition `weights` into `n` groups with approximately same sum(weights)
 
+    Args:
+        weights: array-like weights
+        n: number of groups
 
+    Returns list of lists of indices of weights for each group
+
+    Notes:
+        compared to `dist_discrete_all`, this function allows non-contiguous
+        items to be grouped together which allows better balancing.
+
+    '''
+    #- sumweights will track the sum of the weights that have been assigned
+    #- to each group so far
+    sumweights = np.zeros(n, dtype=float)
+
+    #- Initialize list of lists of indices for each group
+    groups = list()
+    for i in range(n):
+        groups.append(list())
+
+    #- Assign items from highest weight to lowest weight, always assigning
+    #- to whichever group currently has the fewest weights
+    weights = np.asarray(weights)
+    for i in np.argsort(-weights):
+        j = np.argmin(sumweights)
+        groups[j].append(i)
+        sumweights[j] += weights[i]
+
+    assert len(groups) == n
+
+    return groups

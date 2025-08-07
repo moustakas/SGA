@@ -15,7 +15,6 @@ from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib as mpl
-import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 
@@ -68,61 +67,96 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
-def draw_ellipse(major_axis_arcsec, ba, pa, x0, y0, height_pixels=None,
-                 ax=None, pixscale=0.262, color='red', linestyle='-',
-                 linewidth=1, alpha=1.0, clip=True, jpeg=False,
-                 draw_majorminor_axes=True):
-    """Draw an ellipse on either a numpy array (e.g., FITS image) or a JPEG or
-    PNG image.
+def overplot_ellipse(major_axis_arcsec, ba, pa, x0, y0,
+                     height_pixels=None, ax=None,
+                     pixscale=0.262, color='red', linestyle='-',
+                     linewidth=1, alpha=1.0, clip=True,
+                     jpeg=False, draw_majorminor_axes=True,
+                     label=None):
+    """
+    Draw an ellipse with astronomical position angle on either a
+    numpy image (y-axis up) or a JPEG/PNG image (y-axis down).
 
-    major_axis_arcsec - major axis length in arcsec
-    ba - minor-to-major axis ratio; NB: ellipticity = 1 - ba
-    pa - astronomical position angle (degrees) measured CCW from the y-axis
-    x0 - x-center of the ellipse (zero-indexed numpy coordinates)
-    y0 - y-center of the ellipse (zero-indexed numpy coordinates)
-    height_pixels - image height in pixels (required if jpeg=True)
-    ax - draw on an existing matplotlib.pyplot.Axes object
-    pixscale - pixel scale [arcsec / pixel]
+    Parameters
+    ----------
+    major_axis_arcsec : float
+        Total major-axis length in arcseconds.
+    ba : float
+        Minor-to-major axis ratio (b/a).
+    pa : float
+        Position angle of the major axis in degrees, measured
+        counter-clockwise from +y (North) toward +x (East).
+    x0, y0 : float
+        Center coordinates in pixel units (zero-indexed).
+    height_pixels : int, optional
+        Height of the image in pixels; required if jpeg=True.
+    ax : matplotlib.axes.Axes, optional
+        Axes on which to draw. Defaults to current axes.
+    pixscale : float, default=0.262
+        Pixel scale in arcsec/pixel.
+    jpeg : bool, default=False
+        If True, image y-axis is inverted (origin upper). y0 will
+        be flipped using height_pixels.
+    draw_majorminor_axes : bool, default=True
+        Whether to draw lines along the major and minor axes.
+    label : str, optional
+        Label for the ellipse (for legends).
 
-    NB: If jpeg=True, ycen = height_pixels-y0 and theta=90-pa; otherwise, ycen =
-    y0 and theta=pa-90.
+    Notes
+    -----
+    This implementation uses:
+      ellipse_angle = 90 - pa
+    converting the astronomical PA (CCW from +y) into the
+    Matplotlib Ellipse `angle` (CCW from +x).
 
     """
     from matplotlib.patches import Ellipse
 
     if ax is None:
-        import matplotlib.pyplot as plt
         ax = plt.gca()
 
-    major_axis_pixels = major_axis_arcsec / pixscale # [pixels]
-    minor_axis_pixels = ba * major_axis_pixels  # [pixels]
-    xcen = x0
+    # Compute half-lengths in pixels
+    major_pix = major_axis_arcsec / pixscale
+    minor_pix = major_pix * ba
+    semia_pix = major_pix / 2.
+    semib_pix = semia_pix * ba
 
+    # Adjust center for JPEG (y-axis down)
     if jpeg:
         if height_pixels is None:
-            raise ValueError('Image `height_pixels` is mandatory when jpeg=True')
-        ycen = height_pixels - y0       # jpeg/png y-axis is flipped
-        ellipse_angle = 90. - pa # CCW from x-axis and flipped
+            raise ValueError('`height_pixels` required when jpeg=True')
+        ycen = height_pixels - y0
+        ellipse_angle = 90. - pa
     else:
         ycen = y0
-        ellipse_angle = pa - 90. # CCW from x-axis
-    theta = np.radians(ellipse_angle)
+        ellipse_angle = pa - 90.
+    xcen = x0
 
+    # Convert astronomical PA -> Matplotlib angle
 
-    ell = Ellipse((xcen, ycen), major_axis_pixels, minor_axis_pixels, angle=ellipse_angle,
-                  facecolor='none', edgecolor=color, lw=linewidth, ls=linestyle,
-                  alpha=alpha, clip_on=clip)
-    ax.add_artist(ell)
+    # Create and add patch (width, height are full diameters)
+    ell = Ellipse((xcen, ycen), width=major_pix, height=minor_pix,
+                  angle=ellipse_angle, facecolor='none', edgecolor=color,
+                  linewidth=linewidth, linestyle=linestyle, alpha=alpha,
+                  clip_on=clip, label=label)
+    ax.add_patch(ell)
 
-    # Optionally draw the major and minor axes.
+    # Optionally draw major/minor axis lines
     if draw_majorminor_axes:
-        x1, y1 = xcen + major_axis_pixels/2. * np.cos(theta), ycen + major_axis_pixels/2. * np.sin(theta)
-        x2, y2 = xcen - major_axis_pixels/2. * np.cos(theta), ycen - major_axis_pixels/2. * np.sin(theta)
-        x3, y3 = xcen + minor_axis_pixels/2. * np.sin(theta), ycen - minor_axis_pixels/2. * np.cos(theta)
-        x4, y4 = xcen - minor_axis_pixels/2. * np.sin(theta), ycen + minor_axis_pixels/2. * np.cos(theta)
+        theta = np.deg2rad(ellipse_angle)
+        dx_maj = semia_pix * np.cos(theta)
+        dy_maj = semia_pix * np.sin(theta)
+        dx_min = semib_pix * np.sin(theta)
+        dy_min = semib_pix * np.cos(theta)
 
-        ax.plot([x1, x2], [y1, y2], lw=0.5, color=color, ls='-', clip_on=True)
-        ax.plot([x3, x4], [y3, y4], lw=0.5, color=color, ls='-', clip_on=True)
+        # major axis line
+        ax.plot([xcen + dx_maj, xcen - dx_maj],
+                [ycen + dy_maj, ycen - dy_maj],
+                color=color, lw=0.5, ls=linestyle, clip_on=True)
+        # minor axis line
+        ax.plot([xcen + dx_min, xcen - dx_min],
+                [ycen - dy_min, ycen + dy_min],
+                color=color, lw=0.5, ls=linestyle, clip_on=True)
 
 
 def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',
@@ -978,7 +1012,7 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
     sc = ax.collections[2]
     ar_sky_cbar(ax, sc, r'Galaxy Surface Density (deg$^{-2}$)',
-                extend='both', mloc=mloc, clip_lo=clip_lo)
+                extend='both', mloc=mloc)#, clip_lo=clip_lo)
 
     # AR DES, galactic, ecliptic plane
     #desfn = os.path.join(os.getenv("DESI_ROOT"), "survey", "observations", "misc", "des_footprint.txt")
@@ -1000,7 +1034,7 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
 
 
-def fig_size_mag(sample, pngfile=None):
+def fig_size_mag(sample, nocuts=False, pngfile=None):
     """D(25) vs mag from the parent sample and D(25) histogram.
 
     """
@@ -1053,23 +1087,34 @@ def fig_size_mag(sample, pngfile=None):
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
 
-    for iref, ref in enumerate(np.unique(sample['DIAM_LIT_REF'])):
-        I = np.where((sample['DIAM_LIT_REF'] == ref) * (sample['DIAM_LIT'] != -99.) * (sample['MAG_LIT'] != -99.))[0]
-        if len(I) == 0:
-            continue
-        mag = sample['MAG_LIT'][I]
-        logdiam = np.log10(sample['DIAM_LIT'][I])
-        print(ref, len(I), min(mag), max(mag), min(logdiam), max(logdiam))
-        corner.hist2d(mag, logdiam, label=ref,
+    if nocuts:
+        for iref, ref in enumerate(np.unique(sample['DIAM_LIT_REF'])):
+            I = np.where((sample['DIAM_LIT_REF'] == ref) * (sample['DIAM_LIT'] != -99.) * (sample['MAG_LIT'] != -99.))[0]
+            if len(I) == 0:
+                continue
+            mag = sample['MAG_LIT'][I]
+            logdiam = np.log10(sample['DIAM_LIT'][I])
+            print(ref, len(I), min(mag), max(mag), min(logdiam), max(logdiam))
+            corner.hist2d(mag, logdiam, label=ref,
+                          levels=[0.5, 0.75, 0.95, 0.995],
+                          bins=100, smooth=True, color=colors[iref], ax=ax1, # mpl.cm.get_cmap('viridis'),
+                          plot_density=True, fill_contours=True, range=(xlim, ylim),
+                          data_kwargs={'color': colors[iref], 'alpha': 0.2, 'ms': 4, 'alpha': 0.5},
+                          contour_kwargs={'colors': 'k'},
+                          )
+            ax1.legend(loc='upper right', fontsize=14) # frameon=False,
+    else:
+        I = (sample['MAG'] != -99.) * (sample['DIAM'] > 0.)
+        mag = sample['MAG'][I]
+        logdiam = np.log10(sample['DIAM'][I])
+        corner.hist2d(mag, logdiam,
                       levels=[0.5, 0.75, 0.95, 0.995],
-                      bins=100, smooth=True, color=colors[iref], ax=ax1, # mpl.cm.get_cmap('viridis'),
+                      bins=100, smooth=True, color=colors[0], ax=ax1,
                       plot_density=True, fill_contours=True, range=(xlim, ylim),
-                      data_kwargs={'color': colors[iref], 'alpha': 0.2, 'ms': 4, 'alpha': 0.5},
+                      data_kwargs={'color': colors[0], 'alpha': 0.2,
+                                   'ms': 4, 'alpha': 0.5},
                       contour_kwargs={'colors': 'k'},
                       )
-    ax1.legend(loc='upper right', fontsize=14) # frameon=False,
-    #ax1.scatter(mag_notleda, logdiam_notleda, s=2, color=colors[2], alpha=0.5)#
-    #            #label='Supplemental')
     ax1.yaxis.set_major_formatter(major_formatter)
     ax1.set_yticks(np.log10([0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 40]))
     #ax1.legend(loc='upper right', frameon=False)

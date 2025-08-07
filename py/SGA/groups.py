@@ -45,9 +45,9 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
 
     grp, mult, frst, nxt = fof_groups(parent, linking_length=linking_length, verbose=verbose)
 
-    ngrp = max(grp) + 1    
+    ngrp = max(grp) + 1
     groupid = np.arange(ngrp)
-    
+
     groupcat = Table()
     groupcat.add_column(Column(name='groupid', dtype='i4', length=ngrp, data=groupid)) # unique ID number
     #groupcat.add_column(Column(name='galaxy', dtype='S1000', length=ngrp))
@@ -58,14 +58,14 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
     groupcat.add_column(Column(name='d25max', dtype='f4', length=ngrp))
     groupcat.add_column(Column(name='d25min', dtype='f4', length=ngrp))
     groupcat.add_column(Column(name='fracmasked', dtype='f4', length=ngrp))
-    
+
     # Add the groupid to the input catalog.
     outparent = parent.copy()
-    
+
     #t0 = time.time()
     npergrp, _ = np.histogram(grp, bins=len(grp), range=(0, len(grp)))
-    #print('Time to build the histogram = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )    
-    
+    #print('Time to build the histogram = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
+
     big = np.where( npergrp > 1 )[0]
     small = np.where( npergrp == 1 )[0]
 
@@ -77,7 +77,7 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
         groupcat['d25max'][small] = parent['d25'][grp[small]]
         groupcat['d25min'][small] = parent['d25'][grp[small]]
         groupcat['width'][small] = parent['d25'][grp[small]]
-        
+
         outparent['groupid'][grp[small]] = groupid[small]
 
     for igrp in range(len(big)):
@@ -88,39 +88,39 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
             ig.append(nxt[jj])
             jj = nxt[jj]
         ig = np.array(ig)
-        
-        ra1, dec1 = parent['ra'][ig].data, parent['dec'][ig].data        
+
+        ra1, dec1 = parent['ra'][ig].data, parent['dec'][ig].data
         ra2, dec2 = xyztoradec(np.mean(radectoxyz(ra1, dec1), axis=0))
 
         groupcat['ra'][big[igrp]] = ra2
         groupcat['dec'][big[igrp]] = dec2
-        
+
         d25min, d25max = np.min(parent['d25'][ig]), np.max(parent['d25'][ig])
 
         groupcat['d25max'][big[igrp]] = d25max
         groupcat['d25min'][big[igrp]] = d25min
-        
+
         groupcat['nmembers'][big[igrp]] = len(ig)
         outparent['groupid'][ig] = groupcat['groupid'][big[igrp]]
-        
+
         # Get the distance of each object from every other object.
         #diff = arcsec_between(ra1, dec1, ra2, dec2) / 60 # [arcmin] # group center
-        
+
         diff = list()
         for _ra, _dec in zip(ra1, dec1):
             diff.append(arcsec_between(ra1, dec1, _ra, _dec) / 60) # [arcmin]
-        
+
         #if len(ig) > 2:
         #    import pdb ; pdb.set_trace()
         diameter = np.hstack(diff).max()
         groupcat['width'][big[igrp]] = diameter
-            
+
     print('Writing {}'.format(groupcatfile))
-    groupcat.write(groupcatfile, overwrite=True)    
+    groupcat.write(groupcatfile, overwrite=True)
 
     print('Writing {}'.format(parentfile))
     outparent.write(parentfile, overwrite=True)
-    
+
     return groupcat, outparent
 
 
@@ -140,6 +140,12 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     print('Starting spheregrouping.')
 
     nchar = np.max([len(gg) for gg in cat['SGANAME']])+6 # add six characters for "_GROUP"
+
+    # clean up old entries
+    for col in ['GROUP_ID', 'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
+                'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER']:
+        if col in cat.colnames:
+            cat.remove_column(col)
 
     t0 = time.time()
     cat.add_column(Column(name='GROUP_ID', data=np.zeros(len(cat), dtype=np.int32)-1))
@@ -225,15 +231,15 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
         weight = diam[I]
         cat['GROUP_RA'][I] = np.sum(weight * ra[I]) / np.sum(weight)
         cat['GROUP_DEC'][I] = np.sum(weight * dec[I]) / np.sum(weight)
-        # Get the diameter of the group as the distance between the center of
-        # the group and the outermost galaxy (plus the diameter of that galaxy,
-        # in case it's a big one!).
+        # Get the diameter of the group as the distance between the
+        # center of the group and the outermost galaxy (plus the
+        # radius of that galaxy, in case it's a big one!).
         dd = degrees_between(ra[I], dec[I], cat['GROUP_RA'][I[0]], cat['GROUP_DEC'][I[0]])
-        pad = dd + diam[I] / 60.0
-        gdiam = 2 * np.max(pad) * 60 # [arcmin]
-        # cap the maximum size of the group
-        if gdiam > 15.:# and len(I) <= 2:
-            gdiam = 1.1 * np.max(pad) * 60 # [arcmin]
+        pad = dd + (diam[I] / 2. / 60.) # [degrees]
+        gdiam = 2. * np.max(pad) * 60. # [arcmin]
+        ## cap the maximum size of the group
+        #if gdiam > 15.:# and len(I) <= 2:
+        #    gdiam = 1.1 * np.max(pad) * 60. # [arcmin]
         cat['GROUP_DIAMETER'][I] = gdiam
         if cat['GROUP_DIAMETER'][I[0]] < np.max(diam[I]):
             log.critical('Should not happen!')
@@ -247,9 +253,9 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
 
         #if cat['GROUP_ID'][I][0] == 2708:
         #    pdb.set_trace()
-        
+
     log.info(f'Building a group catalog took {(time.time() - t0)/60.:.3f} min')
-        
+
     return cat
 
 
@@ -282,4 +288,3 @@ def qa(version='v1'):
 
     fig.subplots_adjust(left=0.1, bottom=0.15, right=0.98, hspace=0.25, wspace=0.2)
     fig.savefig(os.path.join(homedir, 'qa-virgofilaments-{}-SGA.png'.format(version)))
-
