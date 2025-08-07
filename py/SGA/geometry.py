@@ -30,8 +30,8 @@ class EllipseProperties:
       a_percentile   # percentile-based radius (pixels)
       labels         # label array for all blobs
       blob_mask      # mask of the selected largest blob
-    """
 
+    """
     def __init__(self):
         self.x0 = None
         self.y0 = None
@@ -65,6 +65,7 @@ class EllipseProperties:
         Returns
         -------
         self : EllipseProperties
+
         """
         # 1) optionally smooth for blob detection
         if smooth_sigma and smooth_sigma > 0:
@@ -176,7 +177,7 @@ class EllipseProperties:
         # overlay ellipse
         if ellipse_kwargs is None:
             ellipse_kwargs = {'edgecolor': 'red', 'facecolor': 'none'}
-        angle = self.pa - 90.0
+        angle = self.pa - 90.
         ell = Ellipse((self.x0, self.y0), 2*self.a, 2*self.a*self.ba,
                       angle=angle, **ellipse_kwargs)
         ax.add_patch(ell)

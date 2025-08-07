@@ -906,8 +906,8 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         # initial ellipse geometry
         pixfactor = data['opt_pixscale'] / pixscale
         for iobj, obj in enumerate(sample):
-            (bx, by, semia, semib, pa) = geo_initial[iobj, :]
-            overplot_ellipse(2*semia*pixfactor*pixscale, semib/semia, pa,
+            (bx, by, semia, ba, pa) = geo_initial[iobj, :]
+            overplot_ellipse(2*semia*pixfactor*pixscale, ba, pa,
                              bx*pixfactor, by*pixfactor, pixscale=pixscale,
                              ax=xx, color=colors1[iobj], linestyle='-',
                              linewidth=2, draw_majorminor_axes=True,
@@ -964,16 +964,16 @@ def qa_multiband_mask(data, geo_initial, geo_final):
 
         for col in range(3):
             # initial geometry
-            [bx, by, semia, semib, pa] = geo_initial[iobj, :]
-            overplot_ellipse(2*semia*opt_pixscale, semib/semia, pa, bx, by,
+            [bx, by, semia, ba, pa] = geo_initial[iobj, :]
+            overplot_ellipse(2*semia*opt_pixscale, ba, pa, bx, by,
                              pixscale=opt_pixscale, ax=ax[1+iobj, col],
-                             color=colors2[0], linestyle='-', linewidth=2,
-                             draw_majorminor_axes=True,
+                             color=colors2[0], linestyle='-',
+                             linewidth=2, draw_majorminor_axes=True,
                              jpeg=False, label='Initial')
 
             # final geometry
-            [bx, by, semia, semib, pa] = geo_final[iobj, :]
-            overplot_ellipse(2*semia*opt_pixscale, semib/semia, pa, bx, by,
+            [bx, by, semia, ba, pa] = geo_final[iobj, :]
+            overplot_ellipse(2*semia*opt_pixscale, ba, pa, bx, by,
                              pixscale=opt_pixscale, ax=ax[1+iobj, col],
                              color=colors2[1], linestyle='--', linewidth=2,
                              draw_majorminor_axes=True, jpeg=False, label='Final')
@@ -1041,7 +1041,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         return mask, model
 
 
-    def find_galaxy_in_cutout(img, bx, by, semia, semib, pa, fraction=0.5,
+    def find_galaxy_in_cutout(img, bx, by, semia, ba, pa, fraction=0.5,
                               factor=2., skysigma=None, use_mge=False):
         """Run find_galaxy in a cutout centered on the object of
         interest.
@@ -1064,7 +1064,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             y2 = W
         cutout = img[y1:y2, x1:x2]
 
-        debug = False # True
+        debug = False#True
         if use_mge:
             if debug:
                 mge = find_galaxy(cutout, nblob=1, binning=3, fraction=fraction, quiet=False, plot=True)
@@ -1118,34 +1118,33 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         if table is not None:
             bx, by = table['BX_INIT'], table['BY_INIT']
             semia = table['DIAM_INIT'] / 2. / pixscale # [pixels]
-            semib = semia * table['BA_INIT']           # [pixels]
+            ba = table['BA_INIT']                      # [pixels]
             pa = table['PA_INIT']
         elif tractor is not None:
             from SGA.geometry import get_tractor_ellipse
             (bx, by) = tractor.bx, tractor.by
             semia = tractor.shape_r / pixscale # [pixels]
             _, ba, pa = get_tractor_ellipse(semia, tractor.shape_e1, tractor.shape_e2)
-            semib = semia * ba
         elif props is not None:
             bx = props.x0
             by = props.y0
             semia = props.a # [pixels]
-            semib = semia * props.ba
+            ba = props.ba
             pa = props.pa
         elif mge is not None:
             bx = mge.ymed # NB bx-->ymed!
             by = mge.xmed
             semia = 1.2 * mge.majoraxis # [pixels]
-            semib = semia * (1. - mge.eps)
+            ba = (1. - mge.eps)
             pa = mge.pa
 
         bx *= pixfactor
         by *= pixfactor
 
-        return np.array([bx, by, semia, semib, pa])
+        return np.array([bx, by, semia, ba, pa])
 
 
-    def update_galmask(allgalsrcs, bx, by, semia, semib, pa, opt_models=None,
+    def update_galmask(allgalsrcs, bx, by, semia, ba, pa, opt_models=None,
                        mask_allgals=False):
         """Update the galaxy mask based on the current in-ellipse array.
 
@@ -1156,7 +1155,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             if mask_allgals:
                 I = np.zeros(len(allgalsrcs), bool)
             else:
-                I = in_ellipse_mask(bx, width-by, semia, semib, pa,
+                I = in_ellipse_mask(bx, width-by, semia, semia*ba, pa,
                                     allgalsrcs.bx, width-allgalsrcs.by)
             if np.sum(~I) > 0:
                 galsrcs = allgalsrcs[~I]
@@ -1229,7 +1228,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         else:
             opt_images[iband, :, :] = data[filt]
 
-    geo_initial = np.zeros((nsample, 5)) # [bx,by,semia,semib,pa]
+    geo_initial = np.zeros((nsample, 5)) # [bx,by,semia,ba,pa]
     geo_final = np.zeros_like(geo_initial)
 
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
@@ -1258,12 +1257,12 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             # for *previously* completed objects, use the final, not
             # initial geometry
             if (iobj > 0):
-                [bx, by, semia, semib, pa] = geo_final[indx, :]
+                [bx, by, semia, ba, pa] = geo_final[indx, :]
             else:
-                [bx, by, semia, semib, pa] = \
+                [bx, by, semia, ba, pa] = \
                     get_geometry(opt_pixscale, table=refsample)
-            opt_refmask1 = in_ellipse_mask(bx, width-by, semia,
-                                           semib, pa, xgrid, ygrid_flip)
+            opt_refmask1 = in_ellipse_mask(bx, width-by, semia, semia*ba,
+                                           pa, xgrid, ygrid_flip)
             opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
 
             for iband, filt in enumerate(opt_bands):
@@ -1276,7 +1275,9 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         # Initial geometry and elliptical mask.
         geo_init  = get_geometry(opt_pixscale, table=obj)
         geo_initial[iobj, :] = geo_init
-        [bx, by, semia, semib, pa] = geo_init
+        [bx, by, semia, ba, pa] = geo_init
+
+        print('Need to make sure the object is not over-masked in at least one band!')
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
@@ -1288,8 +1289,8 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         for iiter in range(niter_actual):
             log.info(f'  Iteration {iiter+1}/{niter_actual}')
 
-            #print(iobj, iiter, bx, by, semia, semib, pa)
-            inellipse = in_ellipse_mask(bx, width-by, semia, semib,
+            #print(iobj, iiter, bx, by, semia, ba, pa)
+            inellipse = in_ellipse_mask(bx, width-by, semia, semia*ba,
                                         pa, xgrid, ygrid_flip)
 
             # If there are other reference sources, double the
@@ -1299,7 +1300,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
                 #c_default = SkyCoord(mm['RA'].value*u.deg, mm['DEC'].value*u.deg)
                 #c_hyper = SkyCoord(mm['RA_HYPERLEDA'].value*u.deg, mm['DEC_HYPERLEDA'].value*u.deg)
                 #sep = c_default.separation(c_hyper).to(u.arcsec)
-                inellipse2 = in_ellipse_mask(bx, width-by, 2*semia, 2*semib,
+                inellipse2 = in_ellipse_mask(bx, width-by, 2*semia, 2*semia*ba,
                                              pa, xgrid, ygrid_flip)
             else:
                 inellipse2 = None
@@ -1309,7 +1310,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             # (current) elliptical mask (but do not subtract the
             # models).
             galsrcs, opt_galmask, _ = update_galmask(
-                allgalsrcs, bx, by, semia, semib, pa,
+                allgalsrcs, bx, by, semia, ba, pa,
                 opt_models=None, mask_allgals=mask_allgals)
             #import matplotlib.pyplot as plt
             #plt.clf()
@@ -1332,17 +1333,17 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             else:
                 wimg = np.sum(opt_weight * np.logical_not(opt_masks_obj) * opt_images_obj, axis=0)
                 if use_mge:
-                    mge = find_galaxy_in_cutout(wimg, bx, by, semia, semib, pa)
+                    mge = find_galaxy_in_cutout(wimg, bx, by, semia, ba, pa)
                     geo_iter = get_geometry(opt_pixscale, mge=mge)
                 else:
                     skysig = min([obj[f'PSFDEPTH_{filt.upper()}'] for filt in opt_bands])
                     skysig = 1e9*10.**(-0.4*(skysig)) # AB mag-->nanomaggies
-                    props = find_galaxy_in_cutout(wimg, bx, by, semia, semib, pa,
+                    props = find_galaxy_in_cutout(wimg, bx, by, semia, ba, pa,
                                                   skysigma=skysig)
                     geo_iter = get_geometry(opt_pixscale, props=props)
             #pdb.set_trace()
 
-            dshift_arcsec = opt_pixscale * np.hypot(bx-geo_iter[0], by-geo_iter[1])
+            dshift_arcsec = opt_pixscale * np.hypot(geo_init[0]-geo_iter[0], geo_init[1]-geo_iter[1])
             if dshift_arcsec > maxshift_arcsec:
                 log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' + \
                             f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
@@ -1355,29 +1356,31 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
                     geo_iter[0] = geo_init[0]
                     geo_iter[1] = geo_init[1]
 
-            # update the geometry
-            [bx, by, semia, semib, pa] = geo_iter
-            #print(iobj, iiter, bx, by, semia, semib, pa)
+            # update the geometry for the next iteration
+            [bx, by, semia, ba, pa] = geo_iter
+            #print(iobj, iiter, bx, by, semia, ba, pa)
 
-        # Set the blended bit and dshift.
+        # Set the blended bit and (final) dshift.
         if len(refsamples) > 0:
-            Iclose = in_ellipse_mask(bx, width-by, semia, semib, pa,
+            Iclose = in_ellipse_mask(bx, width-by, semia, semia*ba, pa,
                                      refsamples['BX_INIT'],
                                      width-refsamples['BY_INIT'])
             if np.any(Iclose):
                 sample['BLENDED'][iobj] = True
-        sample['DSHIFT'][iobj] = dshift_arcsec
+
+        sample['DSHIFT'][iobj] = opt_pixscale * np.hypot(
+            geo_init[0]-geo_iter[0], geo_init[1]-geo_iter[1])
 
         # final images and geometry
         opt_images_final[iobj, :, :, :] = opt_images_obj
         geo_final[iobj, :] = geo_iter # last iteration
 
         # final masks
-        inellipse = in_ellipse_mask(bx, width-by, semia, semib, pa,
+        inellipse = in_ellipse_mask(bx, width-by, semia, semia*ba, pa,
                                     xgrid, ygrid_flip)
 
         _, opt_galmask, opt_models_obj = update_galmask(
-            allgalsrcs, bx, by, semia, semib, pa,
+            allgalsrcs, bx, by, semia, ba, pa,
             opt_models=opt_models[iobj, :, :, :],
             mask_allgals=mask_allgals)
         opt_models[iobj, :, :, :] = opt_models_obj
@@ -1480,11 +1483,12 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
 
     # final geometry
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
-    for icol, col in enumerate(['BX', 'BY', 'SEMIA', 'SEMIB', 'PA']):
+    for icol, col in enumerate(['BX', 'BY', 'SEMIA', 'BA', 'PA']):
         sample[col] = geo_final[:, icol].astype('f4')
 
     sample['RA'] = ra
     sample['DEC'] = dec
+    print('NEED TO ADD MW_TRANSMISSION!')
 
     data['sample'] = sample # updated
 
@@ -1695,7 +1699,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 
     sample['BX'] = np.zeros(len(sample), 'f4')
     sample['BY'] = np.zeros(len(sample), 'f4')
     sample['SEMIA'] = np.zeros(len(sample), 'f4')
-    sample['SEMIB'] = np.zeros(len(sample), 'f4')
+    sample['BA'] = np.zeros(len(sample), 'f4')
     sample['PA'] = np.zeros(len(sample), 'f4')
 
     samplesrcs = []

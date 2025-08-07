@@ -7,9 +7,10 @@ Code to perform ellipse photometry.
 """
 import pdb # for debuggin
 
+import time
 import numpy as np
-from scipy.optimize import curve_fit
-import astropy.modeling
+#from scipy.optimize import curve_fit
+#import astropy.modeling
 
 from photutils.isophote import (EllipseGeometry, Ellipse, EllipseSample,
                                 Isophote, IsophoteList)
@@ -114,207 +115,179 @@ def integrate_isophot_one(img, sma, theta, eps, x0, y0,
     return out
 
 
-def multifit(sample, imgs, varimgs, maskbits, bands, pixscale,
-             delta_logsma=5., logsma=True, maxsma=None, mp=1,
-             sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-             integrmode='median', nclip=3, sclip=3,
-             input_ellipse=None, fitgeometry=False,
+def multifit(obj, imgs, varimgs, maskbits, bands=['g', 'r', 'i', 'z'],
+             pixscale=0.262, pixfactor=1., delta_logsma=5., delta_sma=5.,
+             mp=1, maxsma=None, integrmode='median', nclip=3, sclip=3,
+             linearsma=False, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
              verbose=False):
     """Multi-band ellipse-fitting, broadly based on--
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
 
-    Some, but not all hooks for fitgeometry=True are in here, so user beware.
-
     """
     import multiprocessing
 
-    # If fitgeometry=True then fit for the geometry as a function of
-    # semimajor axis, otherwise (the default) use the mean geometry of
-    # the object to extract the surface-brightness profile.
-    if fitgeometry:
-        maxrit = None
-    else:
-        maxrit = -1
+    def logspaced_integers(limit, n):
+        #https://stackoverflow.com/questions/12418234/logarithmically-spaced-integers
+        result = [1]
+        if n > 1:  # just a check to avoid ZeroDivisionError
+            ratio = (float(limit)/result[-1]) ** (1.0/(n-len(result)))
+        while len(result) < n:
+            next_value = result[-1]*ratio
+            if next_value - result[-1] >= 1:
+                # safe zone. next_value will be a different integer
+                result.append(next_value)
+            else:
+                # problem! same integer. we need to find
+                # next_value by artificially incrementing previous
+                # value
+                result.append(result[-1]+1)
+                # recalculate the ratio so that the remaining
+                # values will scale correctly
+                ratio = (float(limit)/result[-1]) ** (1.0/(n-len(result)))
+                #print(ratio, len(result), n)
+                # round, re-adjust to 0 indexing (i.e. minus 1) and return np.uint64 array
+        return np.array(list(map(lambda x: round(x)-1, result)), dtype=int)
+
 
     # Initialize the output dictionary, starting from the galaxy geometry in the
     # 'data' dictionary.
     ellipsefit = dict()
-    ellipsefit['integrmode'] = integrmode
-    ellipsefit['sclip'] = np.int16(sclip)
-    ellipsefit['nclip'] = np.int16(nclip)
-    ellipsefit['fitgeometry'] = fitgeometry
+    nband, width, _ = imgs.shape
+    assert(nband == len(bands))
 
-    if input_ellipse:
-        ellipsefit['input_ellipse'] = True
-    else:
-        ellipsefit['input_ellipse'] = False
-
-    # This is fragile, but copy over a specific set of keys from the data dictionary--
-    copykeys = ['bands', 'refband', 'refpixscale',
-                'refband_width', 'refband_height',
-                #'psfsigma_g', 'psfsigma_r', 'psfsigma_z',
-                'psfsize_g', #'psfsize_min_g', 'psfsize_max_g',
-                'psfdepth_g', #'psfdepth_min_g', 'psfdepth_max_g', 
-                'psfsize_r', #'psfsize_min_r', 'psfsize_max_r',
-                'psfdepth_r', #'psfdepth_min_r', 'psfdepth_max_r',
-                'psfsize_z', #'psfsize_min_z', 'psfsize_max_z',
-                'psfdepth_z'] #'psfdepth_min_z', 'psfdepth_max_z']
-    for key in copykeys:
-        if key in data.keys():
-            ellipsefit[key] = data[key]
-
-    img = data['{}_masked'.format(refband)][igal]
-    mge = data['mge'][igal]
-
-    # Fix the center to be the peak (pixel) values. Could also use bx,by here
-    # from Tractor.  Also initialize the geometry with the moment-derived
-    # values.  Note that (x,y) are switched between MGE and photutils!!
-    for key, newkey in zip(['largeshift', 'ra_moment', 'dec_moment', 'majoraxis', 'pa', 'eps'],
-                           ['largeshift', 'ra_moment', 'dec_moment', 'majoraxis', 'pa_moment', 'eps_moment']):
-        if key == 'majoraxis':
-            ellipsefit['sma_moment'] = mge['majoraxis'] * refpixscale # [arcsec]
-            ellipsefit[newkey] = mge[key]
-
-    if copy_mw_transmission:
-        ellipsefit['ebv'] = mge['ebv']
-        for band in bands:
-            if 'mw_transmission_{}'.format(band.lower()) in mge.keys():
-                ellipsefit['mw_transmission_{}'.format(band.lower())] = mge['mw_transmission_{}'.format(band.lower())]
-
-    ellipsefit['ba_moment'] = np.float32(1 - mge['eps']) # note!
-
-    for mgekey, ellkey in zip(['ymed', 'xmed'], ['x0_moment', 'y0_moment']):
-        ellipsefit[ellkey] = mge[mgekey]
-
-    majoraxis = mge['majoraxis'] # [pixel]
+    ## Fix the center to be the peak (pixel) values. Could also use bx,by here
+    ## from Tractor.  Also initialize the geometry with the moment-derived
+    ## values.  Note that (x,y) are switched between MGE and photutils!!
+    #for key, newkey in zip(['largeshift', 'ra_moment', 'dec_moment', 'majoraxis', 'pa', 'eps'],
+    #                       ['largeshift', 'ra_moment', 'dec_moment', 'majoraxis', 'pa_moment', 'eps_moment']):
+    #    if key == 'majoraxis':
+    #        ellipsefit['sma_moment'] = mge['majoraxis'] * refpixscale # [arcsec]
+    #        ellipsefit[newkey] = mge[key]
+    #
+    #if copy_mw_transmission:
+    #    ellipsefit['ebv'] = mge['ebv']
+    #    for band in bands:
+    #        if 'mw_transmission_{}'.format(band.lower()) in mge.keys():
+    #            ellipsefit['mw_transmission_{}'.format(band.lower())] = mge['mw_transmission_{}'.format(band.lower())]
+    #
+    #ellipsefit['ba_moment'] = np.float32(1 - mge['eps']) # note!
+    #
+    #for mgekey, ellkey in zip(['ymed', 'xmed'], ['x0_moment', 'y0_moment']):
+    #    ellipsefit[ellkey] = mge[mgekey]
+    #
+    #majoraxis = mge['majoraxis'] # [pixel]
 
     # Get the mean geometry of the system by ellipse-fitting the inner part and
     # taking the mean values of everything.
 
-    # http://photutils.readthedocs.io/en/stable/isophote_faq.html#isophote-faq
-    # Note: position angle in photutils is measured counter-clockwise from the
-    # x-axis, while .pa in MGE measured counter-clockwise from the y-axis.
-    geometry0 = EllipseGeometry(x0=ellipsefit['x0_moment'], y0=ellipsefit['y0_moment'],
-                                eps=ellipsefit['eps_moment'], sma=0.5*majoraxis, 
-                                pa=np.radians(ellipsefit['pa_moment']-90))
-    ellipse0 = Ellipse(img, geometry=geometry0)
-    #import matplotlib.pyplot as plt
-    #plt.imshow(img, origin='lower') ; plt.scatter(ellipsefit['y0'], ellipsefit['x0'], s=50, color='red') ; plt.savefig('junk.png')
 
-    if fitgeometry:
-        ellipsefit = _fitgeometry_refband(ellipsefit, geometry0, majoraxis, refband,
-                                          integrmode=integrmode, sclip=sclip, nclip=nclip,
-                                          verbose=verbose)
-        
-    # Re-initialize the EllipseGeometry object, optionally using an external set
-    # of ellipticity parameters.
-    if input_ellipse:
-        print('Using input ellipse parameters.')
-        ellipsefit['input_ellipse'] = True
-        input_eps, input_pa = input_ellipse['eps'], input_ellipse['pa'] % 180
-        geometry = EllipseGeometry(x0=ellipsefit['x0_moment'], y0=ellipsefit['y0_moment'],
-                                   eps=input_eps, sma=majoraxis, 
-                                   pa=np.radians(input_pa-90))
-    else:
-        # Note: we use the MGE, not fitted geometry here because it's more
-        # reliable based on visual inspection.
-        geometry = EllipseGeometry(x0=ellipsefit['x0_moment'], y0=ellipsefit['y0_moment'],
-                                   eps=ellipsefit['eps_moment'], sma=majoraxis, 
-                                   pa=np.radians(ellipsefit['pa_moment']-90))
+    # https://photutils.readthedocs.io/en/latest/user_guide/isophote.html
+    # NB: (x,y) are switched in photutils and PA is measured CCW from
+    # the x-axis while out PA is CCW from the y-axis!
+    [bx, by, semia, ba, pa] = list(obj['BX', 'BY', 'SEMIA', 'BA', 'PA'].values())
+    eps = 1. - ba
 
-    geometry_cen = EllipseGeometry(x0=ellipsefit['x0_moment'], y0=ellipsefit['y0_moment'],
-                                   eps=0.0, sma=0.0, pa=0.0)
-    #ellipsefit['geometry'] = geometry # can't save an object in an .asdf file
-    ellipse = Ellipse(img, geometry=geometry)
+    geo = EllipseGeometry(x0=by, y0=bx, eps=eps, sma=0.5*semia,
+                          pa=np.radians(pa-90.))
+    geo_cen = EllipseGeometry(x0=by, y0=bx, eps=0., sma=0., pa=0.)
+
+    debug = False#True
+    if debug:
+        import matplotlib.pyplot as plt
+        from photutils.aperture import EllipticalAperture
+        aper = EllipticalAperture(
+            (geo.x0, geo.y0), geo.sma,
+            geo.sma * (1 - geo.eps), geo.pa)
+        plt.clf()
+        plt.imshow(np.log10(imgs[0, :, :]), origin='lower')
+        aper.plot(color='white')
+        plt.savefig('ioannis/tmp/junk.png')
+        plt.close()
+    #ellipse = Ellipse(imgs[0, :, :], geometry=geo)
 
     # Integrate to the edge [pixels].
     if maxsma is None:
-        maxsma = 0.95 * (data['refband_width']/2) / np.cos(geometry.pa % (np.pi/4))
-        ellipsefit['maxsma'] = np.float32(maxsma) # [pixels]
+        maxsma = 0.95 * (width / 2.) / np.cos(geo.pa % (np.pi/4.))
 
-    if logsma:
-        #https://stackoverflow.com/questions/12418234/logarithmically-spaced-integers
-        def _mylogspace(limit, n):
-            result = [1]
-            if n > 1:  # just a check to avoid ZeroDivisionError
-                ratio = (float(limit)/result[-1]) ** (1.0/(n-len(result)))
-            while len(result) < n:
-                next_value = result[-1]*ratio
-                if next_value - result[-1] >= 1:
-                    # safe zone. next_value will be a different integer
-                    result.append(next_value)
-                else:
-                    # problem! same integer. we need to find next_value by artificially incrementing previous value
-                    result.append(result[-1]+1)
-                    # recalculate the ratio so that the remaining values will scale correctly
-                    ratio = (float(limit)/result[-1]) ** (1.0/(n-len(result)))
-                    #print(ratio, len(result), n)
-                    # round, re-adjust to 0 indexing (i.e. minus 1) and return np.uint64 array
-            return np.array(list(map(lambda x: round(x)-1, result)), dtype=int)
-
-        # this algorithm can fail if there are too few points
-        nsma = np.ceil(maxsma / delta_logsma).astype('int')
-        sma = _mylogspace(maxsma, nsma).astype('f4')
+    # This algorithm can fail if there are too few points or if
+    # all the points aren't unique.
+    try:
+        if linearsma:
+            sma = np.arange(0, np.ceil(maxsma), delta_sma)
+            log.info(f'  maxsma={maxsma:.2f} pix, delta_sma={delta_sma:.1f} pix, ' + \
+                     f'nsma={len(sma)}')
+        else:
+            nsma = int(np.ceil(maxsma / delta_logsma))
+            sma = logspaced_integers(maxsma, nsma)
+            log.info(f'  maxsma={maxsma:.2f} pix, delta_logsma={delta_logsma:.1f} ' + \
+                     f'log-pix, nsma={len(sma)}')
         assert(len(sma) == len(np.unique(sma)))
+    except:
+        msg = 'There was a problem generating the sma vector.'
+        log.critical(msg)
+        return {}
 
-        #sma = np.hstack((0, np.logspace(0, np.ceil(np.log10(maxsma)).astype('int'), nsma, dtype=int))).astype('f4')
-        print('  maxsma={:.2f} pix, delta_logsma={:.1f} log-pix, nsma={}'.format(maxsma, delta_logsma, len(sma)))
-    else:
-        sma = np.arange(0, np.ceil(maxsma), delta_sma).astype('f4')
-        #ellipsefit['sma'] = np.arange(np.ceil(maxsma)).astype('f4')
-        print('  maxsma={:.2f} pix, delta_sma={:.1f} pix, nsma={}'.format(maxsma, delta_sma, len(sma)))
+    # Measure the surface-brightness profile.
+    pool = multiprocessing.Pool(mp)
+    for iband, filt in enumerate(bands):
+        # account for a possible variable pixel scale
+        filtx0 = geo.x0 * pixfactor
+        filty0 = geo.y0 * pixfactor
+        filtsma = sma * pixfactor
+        filtsma = np.unique(filtsma)
 
-    # this assert will fail when integrating the curve of growth using
-    # integrate.simps because the x-axis values have to be unique.
-    assert(len(np.unique(sma)) == len(sma))
+        isobandfit = pool.map(_integrate_isophot_one, [(
+            imgs[iband, :, :], onesma, pa, eps, filtx0, filty0,
+            integrmode, sclip, nclip) for onesma in filtsma])
+        ellipsefit = _unpack_isofit(ellipsefit, filt, IsophoteList(isobandfit))
+    pdb.set_trace()
 
-    nbox = 3
-    box = np.arange(nbox)-nbox // 2
-    
-    refpixscale = data['refpixscale']
-
-    # Now get the surface brightness profile.  Need some more code for this to
-    # work with fitgeometry=True...
-    pool = multiprocessing.Pool(nproc)
 
     tall = time.time()
-    for filt in bands:
-        print('Fitting {}-band took...'.format(filt.lower()), end='')
-        img = data['{}_masked'.format(filt.lower())][igal]
+    for iband, filt in enumerate(bands):
+        filtsma = np.unique(filtsma)
+        isobandfit = pool.map(_integrate_isophot_one, [(
+            imgs[iband, :, :], onesma, pa, eps, x0*pixfactor, y0*pixfactor,
+            integrmode, sclip, nclip) for onesma in sma*pixfactor])
+        ellipsefit = _unpack_isofit(ellipsefit, filt, IsophoteList(isobandfit))
 
-        # handle GALEX and WISE
-        if 'filt2pixscale' in data.keys():
-            pixscale = data['filt2pixscale'][filt]            
-            if np.isclose(pixscale, refpixscale): # avoid rounding issues
-                pixscale = refpixscale                
-                pixscalefactor = 1.0
-            else:
-                pixscalefactor = refpixscale / pixscale
-        else:
-            pixscalefactor = 1.0
+        #print('Fitting {}-band took...'.format(filt.lower()), end='')
+        #img = data['{}_masked'.format(filt.lower())][igal]
+        #
+        ## handle GALEX and WISE
+        #if 'filt2pixscale' in data.keys():
+        #    pixscale = data['filt2pixscale'][filt]
+        #    if np.isclose(pixscale, refpixscale): # avoid rounding issues
+        #        pixscale = refpixscale
+        #        pixscalefactor = 1.0
+        #    else:
+        #        pixscalefactor = refpixscale / pixscale
+        #else:
+        #    pixscalefactor = 1.0
 
-        x0 = pixscalefactor * ellipsefit['x0_moment']
-        y0 = pixscalefactor * ellipsefit['y0_moment']
+        x0 = pixfactor * x0
+        y0 = pixfactor * y0
+
         filtsma = np.round(sma * pixscalefactor).astype('f4')
         #filtsma = np.round(sma[::int(1/(pixscalefactor))] * pixscalefactor).astype('f4')
         filtsma = np.unique(filtsma)
         assert(len(np.unique(filtsma)) == len(filtsma))
-        
+
         # Loop on the reference band isophotes.
         t0 = time.time()
         #isobandfit = pool.map(_integrate_isophot_one, [(iso, img, pixscalefactor, integrmode, sclip, nclip)
 
-        # In extreme cases, and despite my best effort in io.read_multiband, the
-        # image at the central position of the galaxy can end up masked, which
-        # always points to a deeper issue with the data (e.g., bleed trail,
-        # extremely bright star, etc.). Capture that corner case here.
-        imasked, val = False, []
-        for xb in box:
-            for yb in box:
-                val.append(img.mask[int(xb+y0), int(yb+x0)])
-                #val.append(img.mask[int(xb+x0), int(yb+y0)])
-        if np.any(val):
-            imasked = True
+        ## In extreme cases, and despite my best effort in io.read_multiband, the
+        ## image at the central position of the galaxy can end up masked, which
+        ## always points to a deeper issue with the data (e.g., bleed trail,
+        ## extremely bright star, etc.). Capture that corner case here.
+        #imasked, val = False, []
+        #for xb in box:
+        #    for yb in box:
+        #        val.append(img.mask[int(xb+y0), int(yb+x0)])
+        #        #val.append(img.mask[int(xb+x0), int(yb+y0)])
+        #if np.any(val):
+        #    imasked = True
 
         # corner case: no data in the image or fully masked
         if np.sum(img.data) == 0 or np.sum(img.mask) == np.product(img.shape):
@@ -334,9 +307,10 @@ def multifit(sample, imgs, varimgs, maskbits, bands, pixscale,
                     y0, integrmode, sclip, nclip) for _sma in filtsma])
                 ellipsefit = _unpack_isofit(ellipsefit, filt, IsophoteList(isobandfit))
 
-        print('...{:.3f} sec'.format(time.time() - t0))
+        #print('...{:.3f} sec'.format(time.time() - t0))
 
-    print('Time for all images = {:.3f} min'.format((time.time()-tall)/60))
+    #print('Time for all images = {:.3f} min'.format((time.time()-tall)/60))
+    pdb.set_trace()
 
     ellipsefit['success'] = True
 
@@ -377,25 +351,19 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=False,
                          unwise=False, integrmode='median', nclip=3, sclip=3,
                          sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, delta_logsma=5,
-                         maxsma=None, refidcolumn=None, input_ellipse=None,
-                         fitgeometry=False, verbose=False, nowrite=False, clobber=False):
+                         maxsma=None, refidcolumn=None, verbose=False, nowrite=False,
+                         clobber=False):
     """Top-level wrapper script to do ellipse-fitting on a single galaxy.
 
     fitgeometry - fit for the ellipse parameters (do not use the mean values
       from MGE).
 
     """
-    data = read_multiband_function(galaxy, galaxydir, bands=bands,
-                                   pixscale=pixscale, unwise=unwise,
-                                   galex=galex, verbose=verbose)
     try:
         data = read_multiband_function(galaxy, galaxydir, bands=bands,
                                        pixscale=pixscale, unwise=unwise,
                                        galex=galex, verbose=verbose)
     except:
-        data = {}
-
-    if not bool(data):
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return 0
 
@@ -405,19 +373,38 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     if galex:
         dataprefix += ['galex']
 
-    for iobj, obj in enumerate(data['sample']):
-        refid = obj[REFIDCOLUMN]
-        for prefix in dataprefix:
-            imgs = data[f'{prefix}_images']
-            varimgs = data[f'{prefix}_variance']
-            maskbits = data[f'{prefix}_maskbits']
-            bands = data[f'{prefix}_bands']
-            pixscale = data[f'{prefix}_pixscale']
+    for prefix in dataprefix:
+        maskbits = data[f'{prefix}_maskbits']
+        bands = data[f'{prefix}_bands']
+        pixscale = data[f'{prefix}_pixscale']
+        pixfactor = data['opt_pixscale'] / pixscale
+        varimgs = data[f'{prefix}_variance']
+        for iobj, obj in enumerate(data['sample']):
+            refid = obj[REFIDCOLUMN]
+            imgs = data[f'{prefix}_images'][iobj, :, :, :]
 
-            ellipsefit = multifit(obj, imgs, varimgs, maskbits, bands, pixscale,
-                                  delta_logsma=delta_logsma, maxsma=maxsma,
-                                  mp=mp, sbthresh=sbthresh, apertures=apertures,
+            ellipsefit = multifit(obj, imgs, varimgs, maskbits, bands, pixscale=pixscale,
+                                  pixfactor=pixfactor, delta_logsma=delta_logsma,
+                                  maxsma=maxsma, mp=mp, sbthresh=sbthresh, apertures=apertures,
                                   integrmode=integrmode, nclip=nclip, sclip=sclip,
-                                  input_ellipse=input_ellipse, verbose=verbose)
+                                  verbose=verbose)
+
+        # merge all the ellipse-fitting results and write out
+        # add to header:
+        #  --integrmode
+        #  --sclip
+        #  --nclip
+        #  --fitgeometry
+
+        # output data model:
+        #  --use all_bands but do not write to table
+        #  --psfdepth, etc.
+        #  --maxsma
+        #  --combine masking and ellipse-fitting bits into a single bitmask
+        #    --largeshift
+        #    --...
+
+
+        pdb.set_trace()
 
     return 1 # success!
