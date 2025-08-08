@@ -387,7 +387,9 @@ def main():
 
 
         if args.ellipse:
-            from SGA.SGA import read_multiband, REFIDCOLUMN, SBTHRESH, APERTURES
+            from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
+                                 OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
+                                 read_multiband, unpack_maskbits)
             from SGA.ellipse import ellipsefit_multiband
 
             if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
@@ -396,6 +398,7 @@ def main():
 
             if args.debug:
                 err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
+                                           unpack_maskbits, (OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,),
                                            bands=bands, mp=args.mp, sbthresh=SBTHRESH,
                                            apertures=APERTURES, pixscale=args.pixscale,
                                            unwise=args.unwise, galex=args.galex,
