@@ -7,7 +7,7 @@ Code to perform ellipse photometry.
 """
 import pdb # for debuggin
 
-import warnings
+import os, warnings
 from time import time
 import numpy as np
 #from scipy.optimize import curve_fit
@@ -119,7 +119,7 @@ def logspaced_integers(limit, n):
     return np.array(list(map(lambda x: round(x)-1, result)), dtype=int)
 
 
-def multifit(obj, imgs, varimgs, maskbits, sma, bands=['g', 'r', 'i', 'z'],
+def multifit(obj, images, masks, varimages, sma_array, bands=['g', 'r', 'i', 'z'],
              pixscale=0.262, pixfactor=1., mp=1, integrmode='median', nclip=3,
              sclip=3, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
              debug=False):
@@ -149,7 +149,7 @@ def multifit(obj, imgs, varimgs, maskbits, sma, bands=['g', 'r', 'i', 'z'],
                                   geo.sma * (1 - geo.eps),
                                   geo.pa)
         plt.clf()
-        plt.imshow(np.log10(np.sum(imgs, axis=0)), origin='lower')
+        plt.imshow(np.log10(np.sum(images, axis=0)), origin='lower')
         aper.plot(color='white')
         plt.savefig('ioannis/tmp/junk.png')
         plt.close()
@@ -163,12 +163,12 @@ def multifit(obj, imgs, varimgs, maskbits, sma, bands=['g', 'r', 'i', 'z'],
         # account for a possible variable pixel scale
         filtx0 = geo.x0 * pixfactor
         filty0 = geo.y0 * pixfactor
-        filtsma = sma * pixfactor
-        #print(filt, sma)
+        filtsma = sma_array * pixfactor
+        #print(filt, filtsma)
 
         with multiprocessing.Pool(mp) as P:
             isobandfit = P.map(_integrate_isophot_one, [(
-                imgs[iband, :, :], onesma, geo.pa, geo.eps, filtx0, filty0,
+                images[iband, :, :], onesma, geo.pa, geo.eps, filtx0, filty0,
                 integrmode, sclip, nclip) for onesma in filtsma])
         out.update(unpack_isofit(filt, IsophoteList(isobandfit)))
 
@@ -223,7 +223,7 @@ def build_sma(width, maxsma=None, delta_logsma=4., delta_sma=1.,
     return sma
 
 
-def qa_ellipsefit(data, ellipsefit, dataprefix=['opt'], title=None):
+def qa_ellipsefit(data, ellipsefit, datasets=['opt'], title=None):
     """Simple QA.
 
     """
@@ -232,7 +232,7 @@ def qa_ellipsefit(data, ellipsefit, dataprefix=['opt'], title=None):
     import matplotlib.pyplot as plt
 
     qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
-                          f'qa-ellipsemask-{data["galaxy"]}.png')
+                          f'qa-ellipsefit-{data["galaxy"]}.png')
 
     refband = data['opt_refband']
     pixscale = data['opt_pixscale']
@@ -262,18 +262,18 @@ def qa_ellipsefit(data, ellipsefit, dataprefix=['opt'], title=None):
         ap.plot(color='k', lw=1, ax=ax1)
     refap.plot(color='cyan', lw=2, ls='--', ax=ax1)
 
-    for prefix in dataprefix:
-        bands = data[f'{prefix}_bands']
-        pixscale = data[f'{prefix}_pixscale']
+    for dataset in datasets:
+        bands = data[f'{dataset}_bands']
+        pixscale = data[f'{dataset}_pixscale']
         for filt in bands:
             ax2.scatter(pixscale*ellipsefit[f'sma_{filt}'],
                         ellipsefit[f'intens_{filt}'], label=filt)
     ax2.set_yscale('log')
     ax2.legend(loc='upper right', ncol=2, fontsize=8)
 
-    for prefix in dataprefix:
-        bands = data[f'{prefix}_bands']
-        pixscale = data[f'{prefix}_pixscale']
+    for dataset in datasets:
+        bands = data[f'{dataset}_bands']
+        pixscale = data[f'{dataset}_pixscale']
         for filt in bands:
             ax3.scatter(pixscale*ellipsefit[f'sma_{filt}'],
                         ellipsefit[f'intens_{filt}'])
@@ -291,9 +291,10 @@ def qa_ellipsefit(data, ellipsefit, dataprefix=['opt'], title=None):
         xx.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
 
 
-    fig.suptitle(title)
+    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
     fig.tight_layout()
-    fig.savefig('ioannis/tmp/junk.png')
+    fig.savefig(qafile)
+    log.info(f'Wrote {qafile}')
 
 
 def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
@@ -318,7 +319,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         return 0
 
     # Build the semimajor axis array.
-    sma = build_sma(data['width'], maxsma=maxsma, delta_logsma=delta_logsma)
+    sma_array = build_sma(data['width'], maxsma=maxsma, delta_logsma=delta_logsma)
 
     # iterate over datasetss
     datasets = ['opt']
@@ -330,30 +331,27 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     # we need as many MASKBITS bit-masks as datasetss
     assert(len(MASKBITS) == len(datasets))
 
+    # Iterate on objects then datasets (even though some work is
+    # duplicated).
     ellipsefit = []
     for iobj, obj in enumerate(data['sample']):
         refid = obj[REFIDCOLUMN]
 
         fit = {}
-        for idata, dataset in datasets:
-            imgs = data[f'{dataset}_images'][iobj, :, :, :]
+        for idata, dataset in enumerate(datasets):
+            images = data[f'{dataset}_images'][iobj, :, :, :]
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
             pixfactor = data['opt_pixscale'] / pixscale
-            varimgs = data[f'{dataset}_variance']
+            varimages = data[f'{dataset}_variance']
 
             # unpack the maskbits image to generate a per-band mask
-            maskbits = data[f'{dataset}_maskbits']
-            masks = unpack_maskbits(maskbits, imgs.shape, bands=bands,
-                                    BITS=MASKBITS[idata])
-
-
-            pdb.set_trace()
-
+            masks = unpack_maskbits_function(data[f'{dataset}_maskbits'],
+                                             bands=bands, BITS=MASKBITS[idata])
+            masks = masks[iobj, :, :, :]
 
             print('####### Adjust sma by pixfactor')
-
-            out = multifit(obj, imgs, varimgs, maskbits, sma, bands,
+            out = multifit(obj, images, masks, varimages, sma_array, bands,
                            pixscale=pixscale, pixfactor=pixfactor,
                            mp=mp, sbthresh=sbthresh, apertures=apertures,
                            integrmode=integrmode, nclip=nclip, sclip=sclip)
@@ -377,7 +375,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     #    --...
 
     if qaplot:
-        qa_ellipsefit(data, ellipsefit, datasets=datasets)
+        qa_ellipsefit(data, ellipsefit[0], datasets=['opt'])
+        #qa_ellipsefit(data, ellipsefit, datasets=datasets)
 
     pdb.set_trace()
 

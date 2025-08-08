@@ -2898,7 +2898,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     samplebits[parent['ROW_LVD'] != -99] = SAMPLEBITS['LVD']
 
     print('ADD LMC,SMC SOURCES TO SAMPLEBITS?')
-    print('III Zw 040 NOTES02 needs  CLUSTER BIT SET!')
+    print('Need a new CLUSTER bit! e.g., III Zw 040 NOTES02')
 
     sgaid = np.arange(len(parent))
     grp = parent[cols]

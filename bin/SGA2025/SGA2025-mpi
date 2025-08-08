@@ -398,7 +398,7 @@ def main():
 
             if args.debug:
                 err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                           unpack_maskbits, (OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,),
+                                           unpack_maskbits, (OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS),
                                            bands=bands, mp=args.mp, sbthresh=SBTHRESH,
                                            apertures=APERTURES, pixscale=args.pixscale,
                                            unwise=args.unwise, galex=args.galex,

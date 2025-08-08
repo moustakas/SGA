@@ -731,7 +731,7 @@ def read_image_data(data, filt2imfile, verbose=False):
 
 
 def unpack_maskbits(maskbits, bands=['g', 'r', 'i', 'z'],
-                    BITS=OPTMASKBITS):
+                    BITS=OPTMASKBITS, allmasks=False):
     """Unpack the maskbits bitmask, which has shape [nobj, width,
     width], to include the per-band data with resulting shape
     [nobj,nband,width,width].
@@ -744,11 +744,23 @@ def unpack_maskbits(maskbits, bands=['g', 'r', 'i', 'z'],
     nobj, width, _ = maskbits.shape
     masks_perband = np.zeros((nobj, nband, width, width), bool) # True=masked
 
+    if allmasks:
+        brightstarmasks = np.zeros_like(maskbits, bool)
+        refmasks = np.zeros_like(maskbits, bool)
+        gaiamasks = np.zeros_like(maskbits, bool)
+        galmasks = np.zeros_like(maskbits, bool)
+
     for iobj in range(nobj):
         brightstarmask = maskbits[iobj, :, :] & BITS['brightstar'] != 0
         refmask = maskbits[iobj, :, :] & BITS['reference'] != 0
         gaiamask = maskbits[iobj, :, :] & BITS['gaiastar'] != 0
         galmask = maskbits[iobj, :, :] & BITS['galaxy'] != 0
+
+        if allmasks:
+            brightstarmasks[iobj, :, :] = brightstarmask
+            refmasks[iobj, :, :] = refmask
+            gaiamasks[iobj, :, :] = gaiamask
+            galmasks[iobj, :, :] = galmask
 
         objmask = np.logical_or.reduce((brightstarmask, refmask, gaiamask, galmask))
 
@@ -756,13 +768,15 @@ def unpack_maskbits(maskbits, bands=['g', 'r', 'i', 'z'],
             masks_perband[iobj, iband, :, :] = np.logical_or(
                 objmask, maskbits[iobj, :, :] & BITS[filt] != 0)
 
-    return masks_perband
+    if allmasks:
+        return masks_perband, brightstarmasks, refmasks, gaiamasks, galmasks
+    else:
+        return masks_perband
 
 
 def _update_masks(brightstarmask, gaiamask, refmask, galmask, mask_perband,
-                  bands, sz, inellipse=None, inellipse2=None, MASKDICT=None,
-                  mask_allgals=False, build_maskbits=False, do_resize=False,
-                  verbose=False):
+                  bands, sz, MASKDICT=None, build_maskbits=False,
+                  do_resize=False, verbose=False):
     """Update the masks.
 
     """
@@ -793,29 +807,10 @@ def _update_masks(brightstarmask, gaiamask, refmask, galmask, mask_perband,
             maskbits[mask_perband[iband, :, :]] += MASKDICT[filt]
         return maskbits
     else:
-        # Combine brightstarmask, gaiamask, refmask, and galmask for this
-        # objects with the per-band masks.
-        brightstarmask2 = brightstarmask.copy()
-        refmask2 = refmask.copy()
-        galmask2 = galmask.copy()
-
-        if inellipse is not None:
-            # Zero out bright-star and reference pixels within the ellipse
-            # mask of the current object.
-            brightstarmask2[inellipse] = False
-            refmask2[inellipse] = False
-            # do not veto inside the mask if we're subtracting other
-            # extended sources
-            if not mask_allgals:
-                galmask2[inellipse] = False
-
-        if inellipse2 is not None:
-            refmask2[inellipse2] = False
-
-        objmask = np.logical_or.reduce((brightstarmask2, refmask2, galmask2, gaiamask))
+        objmask = np.logical_or.reduce((brightstarmask, refmask, galmask, gaiamask))
         if verbose:
             for label, msk in zip(['bright-star', 'reference', 'gaia', 'galaxy', 'total'],
-                                  [brightstarmask2, refmask2, galmask2, gaiamask, objmask]):
+                                  [brightstarmask, refmask, galmask, gaiamask, objmask]):
                 print('  ', label, np.sum(msk)/sz[0]**2)
 
         masks = np.zeros((len(bands), *sz), bool)
@@ -952,25 +947,17 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         del wimgs, wivars, wimg
 
     # unpack the maskbits bitmask
-    print('FIXME!!')
-    opt_masks = unpack_maskbits(opt_maskbits, bands=opt_bands, # [nobj,nband,width,width]
-                                BITS=OPTMASKBITS)
+    opt_masks, brightstarmasks, refmasks, gaiamasks, galmasks = \
+        unpack_maskbits(opt_maskbits, bands=opt_bands, # [nobj,nband,width,width]
+                        BITS=OPTMASKBITS, allmasks=True)
 
     # one row per object
     for iobj, obj in enumerate(sample):
-        #opt_masks_obj = opt_masks[iobj, :, :, :]
-
-        # unpack the maskbits bitmask
-        brightstarmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['brightstar'] != 0
-        refmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['reference'] != 0
-        gaiamask = opt_maskbits[iobj, :, :] & OPTMASKBITS['gaiastar'] != 0
-        galmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['galaxy'] != 0
-        objmask = np.logical_or.reduce((brightstarmask, refmask, gaiamask, galmask))
-
-        opt_masks_obj = np.zeros((len(opt_bands), *sz), bool)
-        for iband, filt in enumerate(opt_bands):
-            opt_masks_obj[iband, :, :] = np.logical_or(objmask, opt_maskbits[iobj, :, :] & OPTMASKBITS[filt] != 0)
-        #pdb.set_trace()
+        opt_masks_obj = opt_masks[iobj, :, :, :]
+        brightstarmask = brightstarmasks[iobj, :, :]
+        gaiamask = gaiamasks[iobj, :, :]
+        galmask = galmasks[iobj, :, :]
+        refmask = refmasks[iobj, :, :]
 
         wimg = np.sum(opt_weight * np.logical_not(opt_masks_obj) * opt_images[iobj, :, :], axis=0)
         wimg[wimg == 0.] = np.nan
@@ -1047,7 +1034,8 @@ def qa_multiband_mask(data, geo_initial, geo_final):
 
 def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
                          use_mge=False, qaplot=True):#False):
-    """Wrapper to mask out all sources except the galaxy we want to ellipse-fit.
+    """Wrapper to mask out all sources except the galaxy we want to
+    ellipse-fit.
 
     """
     from SGA.geometry import in_ellipse_mask
@@ -1110,10 +1098,10 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             else:
                 mge = find_galaxy(cutout, nblob=1, binning=1, fraction=fraction,
                                   quiet=True)
-            mge.xmed += x1
-            mge.ymed += y1
-            mge.xpeak += x1
-            mge.ypeak += y1
+                mge.xmed += x1
+                mge.ymed += y1
+                mge.xpeak += x1
+                mge.ypeak += y1
             return mge
         else:
             #from photutils.morphology import gini
@@ -1272,10 +1260,10 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         # If the CLUSTER bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
         if obj['CLUSTER']:
+            log.info('CLUSTER flag set; masking all extended sources.')
             mask_allgals = True
-            log.info('CLUSTER flag set; masking all galaxies.')
         else:
-            mask_allgals = True
+            mask_allgals = False
 
         # Find all reference sources (not dropped by Tractor) except
         # the one we're working on.
@@ -1295,9 +1283,9 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             else:
                 [bx, by, semia, ba, pa] = \
                     get_geometry(opt_pixscale, table=refsample)
-            opt_refmask1 = in_ellipse_mask(bx, width-by, semia, semia*ba,
-                                           pa, xgrid, ygrid_flip)
-            opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
+                opt_refmask1 = in_ellipse_mask(bx, width-by, semia, semia*ba,
+                                               pa, xgrid, ygrid_flip)
+                opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
 
             for iband, filt in enumerate(opt_bands):
                 _, model = make_sourcemask(
@@ -1311,8 +1299,6 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         geo_initial[iobj, :] = geo_init
         [bx, by, semia, ba, pa] = geo_init
 
-        print('################ Need to make sure the object is not over-masked in at least one band!')
-
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
         if obj['FIXGEO']:
@@ -1322,42 +1308,48 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
 
         for iiter in range(niter_actual):
             log.info(f'Iteration {iiter+1}/{niter_actual}')
-
             #print(iobj, iiter, bx, by, semia, ba, pa)
+
+            # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, semia, semia*ba,
                                         pa, xgrid, ygrid_flip)
 
-            # If there are other reference sources, double the
-            # opt_refmask inellipse veto mask on the first iteration
-            # so that the derived geometry can grow, if necessary.
-            if iobj > 0:# and iiter == 0:
-                #c_default = SkyCoord(mm['RA'].value*u.deg, mm['DEC'].value*u.deg)
-                #c_hyper = SkyCoord(mm['RA_HYPERLEDA'].value*u.deg, mm['DEC_HYPERLEDA'].value*u.deg)
-                #sep = c_default.separation(c_hyper).to(u.arcsec)
-                inellipse2 = in_ellipse_mask(bx, width-by, 2*semia, 2*semia*ba,
-                                             pa, xgrid, ygrid_flip)
-            else:
-                inellipse2 = None
+            # Zero out bright-star and reference pixels within the
+            # current ellipse mask of the current object...
+            iter_brightstarmask = np.copy(opt_brightstarmask)
+            iter_refmask = np.copy(opt_refmask)
+            iter_brightstarmask[inellipse] = False
+            iter_refmask[inellipse] = False
 
-            # Build a galaxy mask (logical_or over all optical
-            # bandpasses) from all extended sources outside the
-            # (current) elliptical mask (but do not subtract the
-            # models).
+            # Build a galaxy mask from all extended sources outside
+            # the (current) elliptical mask (but do not subtract the
+            # models). By default, galaxy pixels inside the elliptical
+            # mask, unless we're masking *all* galaxies (e.g., in
+            # cluster fields).
             galsrcs, opt_galmask, _ = update_galmask(
                 allgalsrcs, bx, by, semia, ba, pa,
                 opt_models=None, mask_allgals=mask_allgals)
-            #import matplotlib.pyplot as plt
-            #plt.clf()
-            #plt.imshow(opt_galmask, origin='lower')
-            #plt.savefig('ioannis/tmp/junk2.png')
+            if not mask_allgals:
+                opt_galmask[inellipse] = False
+                #import matplotlib.pyplot as plt
+                #plt.clf()
+                #plt.imshow(opt_galmask, origin='lower')
+                #plt.savefig('ioannis/tmp/junk2.png')
+
+            # Hack! If there are other reference sources, double the
+            # opt_refmask inellipse veto mask so that the derived
+            # geometry can grow, if necessary.
+            if iobj > 0:
+                inellipse2 = in_ellipse_mask(bx, width-by, 2*semia, 2*semia*ba,
+                                             pa, xgrid, ygrid_flip)
+                iter_refmask[inellipse2] = False
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
-            opt_masks_obj = _update_masks(
-                opt_brightstarmask, opt_gaiamask, opt_refmask,
-                opt_galmask, opt_mask_perband, opt_bands,
-                sz, inellipse=inellipse, inellipse2=inellipse2,
-                mask_allgals=mask_allgals, verbose=False)
+            opt_masks_obj = _update_masks(iter_brightstarmask, opt_gaiamask,
+                                          iter_refmask, opt_galmask,
+                                          opt_mask_perband, opt_bands,
+                                          sz, verbose=False)
 
             # Optionally update the geometry from the masked, coadded
             # optical image.
@@ -1375,7 +1367,6 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
                     props = find_galaxy_in_cutout(wimg, bx, by, semia, ba, pa,
                                                   skysigma=skysig)
                     geo_iter = get_geometry(opt_pixscale, props=props)
-            #pdb.set_trace()
 
             dshift_arcsec = opt_pixscale * np.hypot(geo_init[0]-geo_iter[0], geo_init[1]-geo_iter[1])
             if dshift_arcsec > maxshift_arcsec:
@@ -1412,26 +1403,34 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         # final masks
         inellipse = in_ellipse_mask(bx, width-by, semia, semia*ba, pa,
                                     xgrid, ygrid_flip)
+        final_brightstarmask = np.copy(opt_brightstarmask)
+        final_refmask = np.copy(opt_refmask)
+        final_brightstarmask[inellipse] = False
+        final_refmask[inellipse] = False
 
         _, opt_galmask, opt_models_obj = update_galmask(
             allgalsrcs, bx, by, semia, ba, pa,
             opt_models=opt_models[iobj, :, :, :],
             mask_allgals=mask_allgals)
-        opt_models[iobj, :, :, :] = opt_models_obj
+        if not mask_allgals:
+            opt_galmask[inellipse] = False
 
-        opt_maskbits_obj = _update_masks(opt_brightstarmask, opt_gaiamask, opt_refmask,
+        if iobj > 0:
+            inellipse2 = in_ellipse_mask(bx, width-by, 2*semia, 2*semia*ba,
+                                         pa, xgrid, ygrid_flip)
+            final_refmask[inellipse2] = False
+
+        opt_maskbits_obj = _update_masks(final_brightstarmask, opt_gaiamask, final_refmask,
                                          opt_galmask, opt_mask_perband, opt_bands,
-                                         sz, inellipse=inellipse, build_maskbits=True,
-                                         mask_allgals=mask_allgals,
-                                         MASKDICT=OPTMASKBITS)
+                                         sz, build_maskbits=True, MASKDICT=OPTMASKBITS)
+        opt_models[iobj, :, :, :] = opt_models_obj
         opt_maskbits[iobj, :, :] = opt_maskbits_obj
 
-        import matplotlib.pyplot as plt
-        plt.clf()
-        plt.imshow(np.log10(opt_images_final[iobj, 0, :, :]*(opt_maskbits[iobj, :, :]==0)), origin='lower')
-        plt.savefig('ioannis/tmp/junk.png')
-        plt.close()
-        pdb.set_trace()
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.imshow(np.log10(opt_images_final[iobj, 0, :, :]*(opt_maskbits[iobj, :, :]==0)), origin='lower')
+        #plt.savefig('ioannis/tmp/junk.png')
+        #plt.close()
 
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
@@ -1492,12 +1491,11 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
                 bands, sz, build_maskbits=True, MASKDICT=MASKDICT,
                 do_resize=True)
 
-            import matplotlib.pyplot as plt
-            plt.clf()
-            plt.imshow(maskbits[iobj, :, :], origin='lower')
-            plt.savefig('ioannis/tmp/junk.png')
-            plt.close()
-            pdb.set_trace()
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(maskbits[iobj, :, :], origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
+            #plt.close()
 
         data[f'{prefix}_images'] = images_final # [nanomaggies]
         data[f'{prefix}_maskbits'] = maskbits
@@ -1542,7 +1540,6 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
         for col in ['sigma']:
             del data[f'{filt}_{col}']
 
-    pdb.set_trace()
     return data
 
 
@@ -1681,7 +1678,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 
     # Read the sample catalog from custom_coadds and find each source
     # in the Tractor catalog.
     samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
-    cols = ['SGAID', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'FITBIT']
+    cols = ['SGAID', 'SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'FITBIT']
     sample = Table(fitsio.read(samplefile, columns=cols))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
     for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
@@ -1715,8 +1712,11 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 
     # special fitting bit(s) -- FIXME!
     sample['FIXGEO'] = sample['FITBIT'] & FITBITS['ignore'] != 0
     sample['FORCEPSF'] = sample['FITBIT'] & FITBITS['forcepsf'] != 0
-    print('Need a new CLUSTER bit for objects like III Zw 040 NOTES02')
     sample['CLUSTER'] = np.zeros(len(sample), bool)
+
+    print('########### HACK! Setting cluster bit for III Zw 040 NOTES02!')
+    if np.any(np.isin(sample['OBJNAME'], 'III Zw 040 NOTES02')):
+        sample['CLUSTER'] = True
 
     sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
     sample['DROPPED'] = np.zeros(len(sample), bool)
