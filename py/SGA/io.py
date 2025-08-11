@@ -239,3 +239,103 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
         raise IOError(msg)
 
 
+def write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sbthresh=None,
+                     apertures=None, add_datamodel_cols=None, verbose=False):
+    """Write out a FITS file based on the output of
+    ellipse.ellipsefit_multiband..
+
+    ellipsefit - input dictionary
+
+    """
+    from astropy.io import fits
+    from astropy.table import Table
+
+    ellipsefitfile = get_ellipsefit_filename(galaxy, galaxydir, filesuffix=filesuffix, galaxy_id=galaxy_id)
+
+    if sbthresh is None:
+        from SGA.ellipse import REF_SBTHRESH as sbthresh
+    if apertures is None:
+        from SGA.ellipse import REF_APERTURES as apertures
+
+    # Turn the ellipsefit dictionary into a FITS table, starting with the
+    # galaxyinfo dictionary (if provided).
+    out = Table()
+    if galaxyinfo:
+        for key in galaxyinfo.keys():
+            data = galaxyinfo[key][0]
+            if np.isscalar(data):
+                data = np.atleast_1d(data)
+            else:
+                data = np.atleast_2d(data)
+            unit = galaxyinfo[key][1] # add units
+            col = Column(name=key, data=data, dtype=data.dtype, unit=unit)
+            #if type(unit) is str:
+            #else:
+            #    #data *= unit
+            #    #data = u.Quantity(value=data, unit=unit, dtype=data.dtype)
+            #    col = Column(name=key, data=data, dtype=data.dtype)
+            out.add_column(col)
+
+    # First, unpack the nested dictionaries.
+    datadict = {}
+    for key in ellipsefit.keys():
+        #if type(ellipsefit[key]) is dict: # obsolete
+        #    for key2 in ellipsefit[key].keys():
+        #        datadict['{}_{}'.format(key, key2)] = ellipsefit[key][key2]
+        #else:
+        #    datadict[key] = ellipsefit[key]
+        datadict[key] = ellipsefit[key]
+    del ellipsefit
+
+    # Add to the data table
+    datakeys = datadict.keys()
+    for key, unit in _get_ellipse_datamodel(sbthresh, apertures, bands=bands, add_datamodel_cols=add_datamodel_cols,
+                                            copy_mw_transmission=copy_mw_transmission):
+        if key not in datakeys:
+            raise ValueError('Data model change -- no column {} for galaxy {}!'.format(key, galaxy))
+        data = datadict[key]
+        if np.isscalar(data):# or len(np.array(data)) > 1:
+            data = np.atleast_1d(data)
+        #elif len(data) == 0:
+        #    data = np.atleast_1d(data)
+        else:
+            data = np.atleast_2d(data)
+        #if type(unit) is not str:
+        #    data = u.Quantity(value=data, unit=unit, dtype=data.dtype)
+        #col = Column(name=key, data=data)
+        col = Column(name=key, data=data, dtype=data.dtype, unit=unit)
+        #if 'z_cog' in key:
+        #    print(key)
+        #    pdb.set_trace()
+        out.add_column(col)
+
+    if np.logical_not(np.all(np.isin([*datakeys], out.colnames))):
+        raise ValueError('Data model change -- non-documented columns have been added to ellipsefit dictionary!')
+
+    # uppercase!
+    for col in out.colnames:
+        out.rename_column(col, col.upper())
+
+    hdr = legacyhalos_header()
+
+    #for col in out.colnames:
+    #    print(col, out[col])
+
+    hdu = fits.convenience.table_to_hdu(out)
+    hdu.header['EXTNAME'] = 'ELLIPSE'
+    hdu.header.update(hdr)
+    hdu.add_checksum()
+
+    hdu0 = fits.PrimaryHDU()
+    hdu0.header['EXTNAME'] = 'PRIMARY'
+    hx = fits.HDUList([hdu0, hdu])
+
+    if verbose:
+        print('Writing {}'.format(ellipsefitfile))
+    tmpfile = ellipsefitfile+'.tmp'
+    hx.writeto(tmpfile, overwrite=True, checksum=True)
+    os.rename(tmpfile, ellipsefitfile)
+    #hx.writeto(ellipsefitfile, overwrite=True, checksum=True)
+
+    #out.write(ellipsefitfile, overwrite=True)
+    #fitsio.write(ellipsefitfile, out.as_array(), extname='ELLIPSE', header=hdr, clobber=True)

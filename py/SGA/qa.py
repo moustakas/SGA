@@ -67,6 +67,24 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
+def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
+             n_samples=1000):
+    #from astropy.visualization import simple_norm
+    from astropy.visualization import AsinhStretch
+    from astropy.visualization import ImageNormalize
+    from astropy.visualization import PercentileInterval
+    #from astropy.visualization import ZScaleInterval
+
+    stretch = AsinhStretch(a=a)
+    interval = PercentileInterval(percentile, n_samples=n_samples)
+    #interval = ZScaleInterval(contrast=contrast, n_samples=n_samples)
+
+    #norm = simple_norm(img, stretch=stretch, percent=percent, asinh_a=asinh_a)
+    #norm = ImageNormalize(img, interval=ZScaleInterval(), stretch=AsinhStretch(a=0.5))
+    norm = ImageNormalize(img, interval=interval, stretch=stretch)
+    return norm
+
+
 def overplot_ellipse(major_axis_arcsec, ba, pa, x0, y0,
                      height_pixels=None, ax=None,
                      pixscale=0.262, color='red', linestyle='-',

@@ -13,13 +13,10 @@ from astropy.table import Table, vstack
 
 from SGA.logger import log
 
-print('!!!!!!!!!!! Update REFCAT')
-REFCAT = 'LG'
-#REFCAT = 'L4'
+REFCAT = 'L4'
 RACOLUMN = 'GROUP_RA'   # 'RA'
 DECCOLUMN = 'GROUP_DEC' # 'DEC'
 DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
-ZCOLUMN = 'Z'
 REFIDCOLUMN = 'SGAID'
 
 FITBITS = dict(
@@ -27,6 +24,7 @@ FITBITS = dict(
     forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
     forcepsf = 2**2,  # force PSF for source detection and photometry within the SGA mask
 )
+
 SAMPLEBITS = dict(
     LVD = 2**0,       # LVD / local dwarfs
 )
@@ -421,6 +419,8 @@ def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS,
     from SGA.io import read_ellipsefit
 
     tractor, parent, ellipse = [], [], []
+
+    print('######## Be sure to remove ref_cat==G3 and type==DUP sources from the ellipse catalog passed to legacypipe!')
 
     tractorfile = os.path.join(galaxydir, f'{galaxy}-custom-tractor.fits')
     if not os.path.isfile(tractorfile):
@@ -829,7 +829,7 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     from matplotlib.patches import Patch
 
     from SGA.util import var2ivar
-    from SGA.qa import overplot_ellipse
+    from SGA.qa import overplot_ellipse, get_norm
 
     qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
                           f'qa-ellipsemask-{data["galaxy"]}.png')
@@ -845,7 +845,6 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     opt_maskbits = data['opt_maskbits']
     opt_models = data['opt_models']
     opt_weight = var2ivar(data['opt_variance'])
-
     opt_pixscale = data['opt_pixscale']
 
     sample = data['sample']
@@ -875,23 +874,6 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     cmap2 = get_cmap('Dark2')
     colors2 = [cmap2(i) for i in range(5)]
 
-    def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
-                 n_samples=1000):
-        #from astropy.visualization import simple_norm
-        from astropy.visualization import AsinhStretch
-        from astropy.visualization import ImageNormalize
-        from astropy.visualization import PercentileInterval
-        #from astropy.visualization import ZScaleInterval
-
-        stretch = AsinhStretch(a=a)
-        interval = PercentileInterval(percentile, n_samples=n_samples)
-        #interval = ZScaleInterval(contrast=contrast, n_samples=n_samples)
-
-        #norm = simple_norm(img, stretch=stretch, percent=percent, asinh_a=asinh_a)
-        #norm = ImageNormalize(img, interval=ZScaleInterval(), stretch=AsinhStretch(a=0.5))
-        norm = ImageNormalize(img, interval=interval, stretch=stretch)
-        return norm
-
     #setcolors1 = [
     #    '#4daf4a',  # green
     #    '#e41a1c',  # strong red
@@ -918,13 +900,12 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         wimgs = np.stack([data[filt] for filt in bands])
         wivars = np.stack([data[f'{filt}_invvar'] for filt in bands])
         wimg = np.sum(wivars * wimgs, axis=0)
-        #if label == 'GALEX':
-        #    pdb.set_trace()
 
         xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
                   norm=get_norm(wimg), alpha=1.)
-        xx.set_xlim(0, wimg.shape[0])
-        xx.set_ylim(0, wimg.shape[1])
+        xx.set_xlim(0, wimg.shape[0]-1)
+        xx.set_ylim(0, wimg.shape[1]-1)
+        xx.margins(0)
 
         # initial ellipse geometry
         pixfactor = data['opt_pixscale'] / pixscale
@@ -1000,8 +981,8 @@ def qa_multiband_mask(data, geo_initial, geo_final):
                              pixscale=opt_pixscale, ax=ax[1+iobj, col],
                              color=colors2[1], linestyle='--', linewidth=2,
                              draw_majorminor_axes=True, jpeg=False, label='Final')
-            ax[1+iobj, col].set_xlim(0, width)
-            ax[1+iobj, col].set_ylim(0, width)
+            ax[1+iobj, col].set_xlim(0, width-1)
+            ax[1+iobj, col].set_ylim(0, width-1)
             ax[1+iobj, col].margins(0)
 
         ax[1+iobj, 0].text(0.03, 0.97, obj[REFIDCOLUMN], transform=ax[1+iobj, 0].transAxes,
@@ -1027,7 +1008,7 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         xx.set_xticks([])
         xx.set_yticks([])
 
-    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
     fig.savefig(qafile)
     log.info(f'Wrote {qafile}')
 
@@ -1218,9 +1199,10 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
     #skysig = [sample[f'PSFDEPTH_{filt.upper()}'] for filt in opt_bands]
 
     Ipsf = ((tractor.type == 'PSF') * (tractor.type != 'DUP') *
-            (tractor.ref_cat == 'GE')) # (tractor.ref_cat != REFCAT)
+            (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG') *
+            np.logical_or(tractor.ref_cat == 'GE', tractor.ref_cat == 'G3'))
     Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
-            (tractor.ref_cat != REFCAT))
+            (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
     psfsrcs = tractor[Ipsf]
     allgalsrcs = tractor[Igal]
 
@@ -1283,9 +1265,14 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
             else:
                 [bx, by, semia, ba, pa] = \
                     get_geometry(opt_pixscale, table=refsample)
-                opt_refmask1 = in_ellipse_mask(bx, width-by, semia, semia*ba,
-                                               pa, xgrid, ygrid_flip)
-                opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
+            opt_refmask1 = in_ellipse_mask(bx, width-by, semia, semia*ba,
+                                           pa, xgrid, ygrid_flip)
+            opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
+
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(opt_refmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk2.png')
 
             for iband, filt in enumerate(opt_bands):
                 _, model = make_sourcemask(
@@ -1343,6 +1330,10 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
                 inellipse2 = in_ellipse_mask(bx, width-by, 2*semia, 2*semia*ba,
                                              pa, xgrid, ygrid_flip)
                 iter_refmask[inellipse2] = False
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(iter_refmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk2.png')
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
@@ -1511,13 +1502,14 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
 
     # final geometry
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
-    for icol, col in enumerate(['BX', 'BY', 'SEMIA', 'BA', 'PA']):
+    for icol, col in enumerate(['BX_MOMENT', 'BY_MOMENT', 'SEMIA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
         sample[col] = geo_final[:, icol].astype('f4')
 
-    sample['RA'] = ra
-    sample['DEC'] = dec
+    sample['RA_MOMENT'] = ra
+    sample['DEC_MOMENT'] = dec
     print('NEED TO ADD MW_TRANSMISSION!')
 
+    pdb.set_trace()
     data['sample'] = sample # updated
 
     # optionally build a QA figure
@@ -1543,7 +1535,7 @@ def build_multiband_mask(data, tractor, maxshift_arcsec=3.5, niter=2,
     return data
 
 
-def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 'z'],
+def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', 'z'],
                    pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
                    galex=False, unwise=False, verbose=False):
     """Read the multi-band images (converted to surface brightness) in
@@ -1692,24 +1684,12 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 
     sample['BX_INIT'] = (x0 - 1.).astype('f4') # NB the -1!
     sample['BY_INIT'] = (y0 - 1.).astype('f4')
 
-    #sample['ROW'] = np.zeros(len(sample), int) - 1
-    #sample['RA'] = np.zeros(len(sample), 'f8')
-    #sample['DEC'] = np.zeros(len(sample), 'f8')
-    #sample['BX'] = np.zeros(len(sample), 'f4')
-    #sample['BY'] = np.zeros(len(sample), 'f4')
-    #sample['TYPE'] = np.zeros(len(sample), 'U3')
-    #sample['SERSIC'] = np.zeros(len(sample), 'f4')
-    #sample['SHAPE_R'] = np.zeros(len(sample), 'f4') # [arcsec]
-    #sample['SHAPE_E1'] = np.zeros(len(sample), 'f4')
-    #sample['SHAPE_E2'] = np.zeros(len(sample), 'f4')
-    #sample['PSF'] = np.zeros(len(sample), bool)
-
     for filt in opt_bands:
         sample[f'PSFSIZE_{filt.upper()}'] = np.zeros(len(sample), 'f4')
     for filt in bands:
         sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
-    # special fitting bit(s) -- FIXME!
+    print('FIXME - special fitting bit(s)')
     sample['FIXGEO'] = sample['FITBIT'] & FITBITS['ignore'] != 0
     sample['FORCEPSF'] = sample['FITBIT'] & FITBITS['forcepsf'] != 0
     sample['CLUSTER'] = np.zeros(len(sample), bool)
@@ -1724,14 +1704,14 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=False, bands=['g', 'r', 'i', 
     sample['BLENDED'] = np.zeros(len(sample), bool)
     sample['DSHIFT'] = np.zeros(len(sample), 'f4')
 
-    # final geometry
-    sample['RA'] = np.zeros(len(sample), 'f8')
-    sample['DEC'] = np.zeros(len(sample), 'f8')
-    sample['BX'] = np.zeros(len(sample), 'f4')
-    sample['BY'] = np.zeros(len(sample), 'f4')
-    sample['SEMIA'] = np.zeros(len(sample), 'f4')
-    sample['BA'] = np.zeros(len(sample), 'f4')
-    sample['PA'] = np.zeros(len(sample), 'f4')
+    # moment geometry
+    sample['RA_MOMENT'] = np.zeros(len(sample), 'f8')
+    sample['DEC_MOMENT'] = np.zeros(len(sample), 'f8')
+    sample['BX_MOMENT'] = np.zeros(len(sample), 'f4')
+    sample['BY_MOMENT'] = np.zeros(len(sample), 'f4')
+    sample['SEMIA_MOMENT'] = np.zeros(len(sample), 'f4')
+    sample['BA_MOMENT'] = np.zeros(len(sample), 'f4')
+    sample['PA_MOMENT'] = np.zeros(len(sample), 'f4')
 
     samplesrcs = []
     for iobj, refid in enumerate(sample[REFIDCOLUMN].value):
