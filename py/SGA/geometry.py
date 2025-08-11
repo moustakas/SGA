@@ -12,11 +12,6 @@ from astropy.table import Table
 from SGA.logger import log
 
 
-import numpy as np
-from scipy import ndimage
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
-
 class EllipseProperties:
     """
     Fit an ellipse to the flux distribution of the largest labelled blob in a 2D image.
@@ -67,6 +62,8 @@ class EllipseProperties:
         self : EllipseProperties
 
         """
+        from scipy import ndimage
+
         # 1) optionally smooth for blob detection
         if smooth_sigma and smooth_sigma > 0:
             smoothed = ndimage.gaussian_filter(image, sigma=smooth_sigma)
@@ -161,7 +158,11 @@ class EllipseProperties:
         Returns
         -------
         ax : matplotlib.axes.Axes
+
         """
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Ellipse
+
         if ax is None:
             fig, ax = plt.subplots()
         if imshow_kwargs is None:
