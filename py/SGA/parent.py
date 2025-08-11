@@ -2769,6 +2769,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     """Build the parent catalog.
 
     """
+    from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
     from SGA.SGA import sga2025_name, FITBITS, SAMPLEBITS
     from SGA.groups import build_group_catalog
@@ -2868,6 +2869,10 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
+    # Add SFD dust
+    SFD = SFDMap(scaling=1.0)
+    ebv = SFD.ebv(parent['RA'].value, parent['DEC'].value)
+
     # build the group catalog from the full sample
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=0., get_mag=True)
@@ -2915,6 +2920,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     grp.add_column(band, name='BAND', index=8)
     grp.add_column(fitbits, name='FITBIT', index=9)
     grp.add_column(samplebits, name='SAMPLEBIT', index=10)
+    grp.add_column(ebv, name='EBV', index=11)
 
     print('NEED TO REMOVE LMC,SMC FROM GROUP-FINDING!')
     out = build_group_catalog(grp)

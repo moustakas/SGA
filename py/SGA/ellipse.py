@@ -576,7 +576,7 @@ def get_dt(t0):
     return dt, unit
 
 
-def multifit(obj, images, varimages, masks, sma_array, bands=['g', 'r', 'i', 'z'],
+def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'],
              pixscale=0.262, pixfactor=1., mp=1, integrmode='median', nclip=3,
              sclip=3, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
              debug=False):
@@ -630,7 +630,7 @@ def multifit(obj, images, varimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         filtsma = sma_array * pixfactor
         #print(filt, filtsma)
 
-        sig = np.sqrt(varimages[iband, :, :])
+        sig = sigimages[iband, :, :]
         msk = masks[iband, :, :] # True=masked
         mimg = np.ma.array(images[iband, :, :], mask=msk)
 
@@ -1082,10 +1082,8 @@ def ellipsefit_datamodel(nsma, bands):
     return out
 
 
-
-
 def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
-                         unpack_maskbits_function, MASKBITS, mp=1,
+                         unpack_maskbits_function, MASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=False,
                          unwise=False, integrmode='median', nclip=3, sclip=3,
                          sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, delta_logsma=7.,
@@ -1097,15 +1095,16 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
       from MGE).
 
     """
-    #data = read_multiband_function(galaxy, galaxydir, bands=bands,
-    #                               pixscale=pixscale, unwise=unwise,
-    #                               galex=galex, verbose=verbose)
-    #pdb.set_trace()
+    data = read_multiband_function(galaxy, galaxydir, bands=bands,
+                                   pixscale=pixscale, unwise=unwise,
+                                   galex=galex, verbose=verbose)
+    pdb.set_trace()
 
     try:
         data = read_multiband_function(galaxy, galaxydir, bands=bands,
-                                       pixscale=pixscale, unwise=unwise,
-                                       galex=galex, verbose=verbose)
+                                       run=run, pixscale=pixscale,
+                                       unwise=unwise, galex=galex,
+                                       verbose=verbose)
     except:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return 0
@@ -1149,7 +1148,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
             pixfactor = data['opt_pixscale'] / pixscale
-            varimages = data[f'{dataset}_variance']
+            sigimages = data[f'{dataset}_sigma']
 
             # unpack the maskbits image to generate a per-band mask
             masks = unpack_maskbits_function(data[f'{dataset}_maskbits'],
@@ -1182,7 +1181,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             #print(sma_array)
             debug = True
-            multifit(obj, images, varimages, masks, sma_array, bands,
+            multifit(obj, images, sigimages, masks, sma_array, bands,
                      out_dataset, pixscale=pixscale, pixfactor=pixfactor,
                      mp=mp, sbthresh=sbthresh, apertures=apertures,
                      integrmode=integrmode, nclip=nclip, sclip=sclip,

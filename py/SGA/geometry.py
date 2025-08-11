@@ -89,6 +89,7 @@ class EllipseProperties:
         y_sel = yy.flat[blob_idx]
         flux = smoothed.flat[blob_idx]
         if np.any(flux < 0):
+            log.warning('Negative flux in image!')
             import pdb ; pdb.set_trace()
         F = flux.sum()
 
