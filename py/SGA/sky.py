@@ -16,6 +16,26 @@ from SGA.coadds import PIXSCALE
 from SGA.logger import log
 
 
+def simple_wcs(racenter, deccenter, width, pixscale=0.262):
+    from astropy.wcs import WCS
+    from astropy.io import fits
+    hdr = fits.Header()
+    hdr['NAXIS'] = 2
+    hdr['NAXIS1'] = width
+    hdr['NAXIS2'] = width
+    hdr['CTYPE1'] = 'RA---TAN'
+    hdr['CTYPE2'] = 'DEC--TAN'
+    hdr['CRVAL1'] = racenter
+    hdr['CRVAL2'] = deccenter
+    hdr['CRPIX1'] = width/2+0.5
+    hdr['CRPIX2'] = width/2+0.5
+    hdr['CD1_1'] = -pixscale/3600.
+    hdr['CD1_2'] = 0.0
+    hdr['CD2_1'] = 0.0
+    hdr['CD2_2'] = +pixscale/3600.
+    return WCS(hdr)
+
+
 def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False):
     """Quickly get the CCDs touching this custom brick.  This code is mostly taken
     from legacypipe.runbrick.stage_tims.

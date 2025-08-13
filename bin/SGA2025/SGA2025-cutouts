@@ -96,26 +96,6 @@ from SGA.geometry import choose_geometry
 from SGA.logger import log
 
 
-def get_wcs(racenter, deccenter, width, pixscale=0.262):
-    from astropy.wcs import WCS
-    from astropy.io import fits
-    hdr = fits.Header()
-    hdr['NAXIS'] = 2
-    hdr['NAXIS1'] = width
-    hdr['NAXIS2'] = width
-    hdr['CTYPE1'] = 'RA---TAN'
-    hdr['CTYPE2'] = 'DEC--TAN'
-    hdr['CRVAL1'] = racenter
-    hdr['CRVAL2'] = deccenter
-    hdr['CRPIX1'] = width/2+0.5
-    hdr['CRPIX2'] = width/2+0.5
-    hdr['CD1_1'] = -pixscale/3600.
-    hdr['CD1_2'] = 0.0
-    hdr['CD2_1'] = 0.0
-    hdr['CD2_2'] = +pixscale/3600.
-    return WCS(hdr)
-
-
 def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
     """Build the reference catalog for use with ssl-legacysurvey
 
@@ -811,7 +791,7 @@ def main():
     """
     import argparse
     from SGA.photo import do_photo
-    from SGA.cutouts import get_pixscale_and_width, cutouts_plan, do_cutouts, do_annotate
+    from SGA.cutouts import get_pixscale_and_width, cutouts_plan
 
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -940,6 +920,7 @@ def main():
         fullcat = comm.bcast(fullcat, root=0)
 
     if args.annotated_montage and rank == 0:
+        from SGA.cutouts import annotated_montage
         annotated_montage(cat, region=args.region, cutoutdir=args.cutoutdir, annotatedir=annotatedir,
                           photodir=photodir, ssl=args.ssl, ssl_version=args.ssl_version,
                           rescale=args.rescale, photo=args.photo, photo_version=args.photo_version,
@@ -997,11 +978,13 @@ def main():
         return
 
     if args.photo:
+        from SGA.photo import do_photo
         do_photo(cat, comm=comm, mp=args.mp, region=args.region,
                  cutoutdir=cutoutdir, photodir=photodir,
                  photo_version=args.photo_version,
                  overwrite=args.overwrite, verbose=args.verbose)
     elif args.annotate:
+        from SGA.cutouts import do_annotate
         do_annotate(cat, fullcat, default_pixscale=args.pixscale,
                     default_width=args.width, mp=args.mp,
                     comm=comm, base_cutoutdir=args.cutoutdir, cutoutdir=cutoutdir,
@@ -1011,6 +994,7 @@ def main():
                     annotate_central_only=args.annotate_central_only,
                     debug=args.debug, dry_run=args.dry_run, verbose=args.verbose)
     else:
+        from SGA.cutouts import do_cutouts
         do_cutouts(cat, layer=layer, mp=args.mp, comm=comm, cutoutdir=cutoutdir,
                    base_cutoutdir=args.cutoutdir, default_pixscale=args.pixscale,
                    default_width=args.width, rescale=args.rescale,

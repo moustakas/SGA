@@ -7,9 +7,10 @@ Utilities for generating large numbers of (annotated) cutouts.
 """
 import pdb
 
-import os, sys, time
+import os, sys, re, time
 import numpy as np
 import multiprocessing
+from astropy.table import Table, vstack
 
 from SGA.geometry import choose_geometry
 from SGA.SGA import get_raslice, sga2025_name
@@ -138,6 +139,37 @@ def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         return basefiles, allra, alldec, groups
 
 
+def _get_photo_filename(args):
+    return get_photo_filename(*args)
+
+
+def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
+                       overwrite=False, verbose=False):
+    raslice = get_raslice(obj['RA'])
+
+    fitsfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.fits')
+    jpgfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.jpeg')
+    photfile = os.path.join(photodir, raslice, f'{objname}-phot.fits')
+    qafile = os.path.join(photodir, raslice, f'{objname}-phot.png')
+    nobj = 1
+
+    if gather_photo:
+        nobj = len(glob(photfile))
+        return fitsfile, jpgfile, photfile, qafile, nobj
+
+    if not os.path.isfile(fitsfile):
+        nobj = 0
+        log.warning(f'Missing input FITS file {fitsfile}')
+    else:
+        if overwrite is False:
+            if os.path.isfile(photfile) and os.path.isfile(qafile):
+                nobj = 0
+                if verbose:
+                    log.info(f'Skipping existing photometry file {photfile}')
+
+    return fitsfile, jpgfile, photfile, qafile, nobj
+
+
 def _get_annotate_filename(args):
     return get_annotate_filename(*args)
 
@@ -181,6 +213,9 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     import matplotlib.image as mpimg
     from astropy.wcs import WCS
     from astropy.io import fits
+
+    from SGA.sky import simple_wcs
+    from SGA.geometry import parse_geometry
     from SGA.qa import overplot_ellipse
 
 
@@ -198,7 +233,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
 
     img = mpimg.imread(jpgfile)
     width = img.shape[0]
-    wcs = get_wcs(primary_ra, primary_dec, width, pixscale=pixscale)
+    wcs = simple_wcs(primary_ra, primary_dec, width, pixscale=pixscale)
 
     ellipse_colors = {'RC3': 'yellow', 'SMUDGes': 'orange', 'LVD': 'violet',
                       'SGA2020': 'dodgerblue', 'HYPERLEDA': 'red',
@@ -720,6 +755,7 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
     from matplotlib.patches import Circle
     from matplotlib.backends.backend_pdf import PdfPages
     from matplotlib.image import imread
+    from SGA.SGA import sga_dir
 
     if ssl and ssl_version is None:
         log.info('ssl_version must be specified')
@@ -735,6 +771,7 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
         qadir = os.path.join(sga_dir(), 'ssl', ssl_version)
     else:
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
+
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
 
@@ -771,17 +808,21 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
     #pngfiles = np.unique(pngfiles)
 
     if wisesize:
-        suffix = '-wisesize'
+        #suffix = '-wisesize'
+        pass
     elif lvd:
-        suffix = '-lvd'
+        #suffix = '-lvd'
+        pass
     elif zooniverse:
-        suffix = '-zooniverse'
+        #suffix = '-zooniverse'
+        pass
     elif ssl:
         suffix = f'-ssl-{ssl_version}'
     elif photo:
         suffix = f'-photo-{photo_version}'
     else:
-        suffix = ''
+        # attach the cutoutsdir basename to all output filenames
+        suffix = f'-{os.path.basename(cutoutdir)}'
 
     #pngfiles = np.array(glob(os.path.join(outdir, region, 'annotate', '???', '*.png')))
     #pngfiles = pngfiles[np.argsort(pngfiles)]
