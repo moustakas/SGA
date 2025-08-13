@@ -6,7 +6,7 @@ E-mail: michele.cappellari_at_physics.ox.ac.uk
 Updated versions of the software are available from my web page
 https://purl.org/cappellari/software
 
-If you have found this software useful for your research,
+If you have found this software useful for your research, 
 I would appreciate an acknowledgement to the use of
 "the MGE fitting method and software by Cappellari (2002)".
 
@@ -144,7 +144,7 @@ class find_galaxy:
         The galaxy "average" ellipticity ``eps = 1 - b/a = 1 - q'``.
     .pa:
         Standard astronomical position angle (PA) measured counter-clockwise
-        from the image ``Y`` axis (assumed to coincide with North).
+        from the image ``Y`` axis (assumed to coincide with North). 
         Note: ``f.pa = 270 - f.theta``.
     .theta:
         Position angle measured clock-wise from the image ``X`` axis.
@@ -197,33 +197,16 @@ class find_galaxy:
 
         assert img.ndim == 2, "IMG must be a two-dimensional array"
 
-        a = ndimage.gaussian_filter(img, binning)
-        #a = ndimage.median_filter(img, binning)
+        a = ndimage.median_filter(img, binning)
 
         if level is None:
             level = np.percentile(a, (1 - fraction)*100)
 
-        # JM - exclude masked pixels
-        mask = (a > level) & (a != 0.)
+        mask = a > level
         labels, nb = ndimage.label(mask)   # Get blob indices
         sizes = ndimage.sum(mask, labels, np.arange(nb + 1))
         j = np.argsort(sizes)[-nblob]      # find the nblob-th largest blob
         self.ind = np.flatnonzero(labels == j)
-
-        ## JM - exclude masked pixels
-        #ind = np.flatnonzero(labels == j)
-        #ind = ind[a.flat[ind] != 0]
-        #self.ind = ind
-        mask[:] = False
-        mask.flat[self.ind] = True
-
-        # JM - add the mask for output analysis
-        self.mask = mask
-
-        #plt.clf()
-        #plt.imshow(mask, origin='lower', cmap='binary')
-        #plt.savefig('ioannis/tmp/junk2.png')
-        #import pdb ; pdb.set_trace()
 
         self.second_moments(img)
         self.pa = np.mod(270 - self.theta, 180)  # astronomical PA
@@ -241,7 +224,9 @@ class find_galaxy:
             ax = plt.gca()
             ax.imshow(np.log(img.clip(img[self.xpeak, self.ypeak]/1e4)),
                       cmap='hot', origin='lower', interpolation='nearest')
-            ax.imshow(self.mask, cmap='binary', interpolation='nearest',
+            mask[:] = False
+            mask.flat[self.ind] = True
+            ax.imshow(mask, cmap='binary', interpolation='nearest',
                       origin='lower', alpha=0.3)
             ax.autoscale(False)  # prevents further scaling after imshow()
             mjr = 1.1*self.majoraxis
@@ -263,17 +248,9 @@ class find_galaxy:
         # Restrict the computation of the first and second moments to
         # the region containing the galaxy, defined by vector IND.
 
-        # JM -
         img1 = img.flat[self.ind]
         s = img.shape
         x, y = np.unravel_index(self.ind, s)
-
-        
-        dx = x1.flat[self.ind]
-        dy = y1.flat[self.ind]
-
-
-
 
         # Compute coefficients of the moment of inertia tensor.
         #
@@ -294,11 +271,7 @@ class find_galaxy:
         a = (x2 + y2)/2
         b = np.sqrt(((x2 - y2)/2)**2 + xy**2)
         self.eps = 1. - np.sqrt((a - b)/(a + b))
-
         self.majoraxis = np.sqrt(np.max(x1**2 + y1**2))
-        ## JM -- compute the eigenvalues of the tensor
-        #self.majoraxis = np.sqrt(a + b)
-        #self.minoraxis = np.sqrt(a - b)
 
         # If the image has many pixels, then compute the coordinates of the
         # highest pixel value inside a 40x40 pixels region centered on the
