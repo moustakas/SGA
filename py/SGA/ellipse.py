@@ -909,7 +909,7 @@ def qa_sma_grid():
 
 
 
-def qa_ellipsefit(data, ellipsefit, unpack_maskbits_function, MASKBITS,
+def qa_ellipsefit(sample, data, results, unpack_maskbits_function, MASKBITS,
                   datasets=['opt', 'unwise', 'galex'], title=None):
     """Simple QA.
 
@@ -922,7 +922,6 @@ def qa_ellipsefit(data, ellipsefit, unpack_maskbits_function, MASKBITS,
     qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
                           f'qa-ellipsefit-{data["galaxy"]}.png')
 
-    sample = data['sample']
     nsample = len(sample)
     ndataset = len(datasets)
 
@@ -1107,72 +1106,22 @@ def ellipsefit_datamodel(sma, bands, dataset='opt'):
     return out
 
 
-def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
-                         unpack_maskbits_function, MASKBITS, run='south', mp=1,
-                         bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=False,
-                         unwise=False, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         refidcolumn=None, verbose=False, nowrite=False,
-                         clobber=False, qaplot=True):
-    """Top-level wrapper script to do ellipse-fitting on a single galaxy.
-
-    fitgeometry - fit for the ellipse parameters (do not use the mean values
-      from MGE).
+def wrap_multifit(sample, datasets, data, unpack_maskbits_function,
+                  sbthresh, apertures, REFIDCOLUMN, MASKBITS, mp=1,
+                  debug=False):
+    """Simple wrapper on multifit.
 
     """
-    #import astropy.units as u
-    #from astropy.table import Table, Column
-
-    #data = read_multiband_function(galaxy, galaxydir, bands=bands,
-    #                               pixscale=pixscale, unwise=unwise,
-    #                               galex=galex, verbose=verbose)
-    #pdb.set_trace()
-
-    try:
-        data = read_multiband_function(galaxy, galaxydir, bands=bands,
-                                       run=run, pixscale=pixscale,
-                                       unwise=unwise, galex=galex,
-                                       verbose=verbose)
-    except:
-        log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
-        return 0
-
-    # Build the semimajor axis array.
-    #sma_array = build_sma(data['width'], maxsma=maxsma, delta_logsma=delta_logsma)
-
-    ## Build optical grid once (edges in *optical pixels*)
-    ## UV (1.5"/px): keep overlap but thin aggressively
-    #a_edges_px = thin_to_band_from_optical(
-    #    sma_array,
-    #    s_opt_arcsec=opt_pixscale, s_tgt_arcsec=pixscale,
-    #    q_ax=ba,
-    #    min_step_pixels=1.0,              # at least 1 UV pixel wide
-    #    min_pixels_per_annulus=150,       # ~constant S/N per annulus
-    #    a_min_tgt_px=1.0)                 # e.g., start ≥ 1 pixel
-
-    # iterate over datasetss
-    datasets = ['opt']
-    if unwise:
-        datasets += ['unwise']
-    if galex:
-        datasets += ['galex']
-
-    opt_pixscale = data['opt_pixscale']
-
-    # we need as many MASKBITS bit-masks as datasetss
-    assert(len(MASKBITS) == len(datasets))
-
     # Iterate on objects then datasets (even though some work is
     # duplicated).
-    #data['sample'] = data['sample'][[0]] # test
 
     res_obj = []
-    for iobj, obj in enumerate(data['sample']):
+    for iobj, obj in enumerate(sample):
         refid = obj[REFIDCOLUMN]
 
         res_dataset = []
         for idata, dataset in enumerate(datasets):
             images = data[f'{dataset}_images'][iobj, :, :, :]
-            allbands = data[f'{dataset}_bands']
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
             pixfactor = data['opt_pixscale'] / pixscale
@@ -1199,7 +1148,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 allbands = bands
 
                 sma_array = thin_to_band_from_optical(
-                    sma_array_opt, s_opt_arcsec=opt_pixscale,
+                    sma_array_opt, s_opt_arcsec=data['opt_pixscale'],
                     s_tgt_arcsec=pixscale, q_ax=ba,
                     min_step_pixels=1.0,            # at least 1 UV/IR pixel wide
                     min_pixels_per_annulus=5,       # ~constant S/N per annulus
@@ -1207,14 +1156,64 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                     a_max_tgt_px=max(sma_array_opt)*pixfactor)
 
             #print(sma_array)
-            debug = False
             res = multifit(obj, images, sigimages, masks, sma_array, bands,
                            pixscale=pixscale, pixfactor=pixfactor, mp=mp,
                            sbthresh=sbthresh, apertures=apertures, debug=debug)
             res_dataset.append(res)
         res_obj.append(res_dataset)
 
-    pdb.set_trace()
+    # unpack
+    out = list(zip(*res_obj))
+
+    return out
+
+
+
+def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
+                         unpack_maskbits_function, MASKBITS, run='south', mp=1,
+                         bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=False,
+                         unwise=False, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+                         refidcolumn=None, verbose=False, nowrite=False,
+                         clobber=False, qaplot=True):
+    """Top-level wrapper script to do ellipse-fitting on a single galaxy.
+
+    fitgeometry - fit for the ellipse parameters (do not use the mean values
+      from MGE).
+
+    """
+    datasets = ['opt']
+    if unwise:
+        datasets += ['unwise']
+    if galex:
+        datasets += ['galex']
+
+    # we need as many MASKBITS bit-masks as datasetss
+    assert(len(MASKBITS) == len(datasets))
+
+    #data = read_multiband_function(galaxy, galaxydir, bands=bands,
+    #                               pixscale=pixscale, unwise=unwise,
+    #                               galex=galex, verbose=verbose)
+    #pdb.set_trace()
+
+    try:
+        data = read_multiband_function(
+            galaxy, galaxydir, bands=bands, run=run, pixscale=pixscale,
+            unwise=unwise, galex=galex, verbose=verbose)
+    except:
+        log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
+        return 0
+
+    sample = data['sample']
+    #sample = data['sample'][[0]] # test
+
+    # ellipse-fit over objects and then datasets
+    results = wrap_multifit(sample, datasets, data, unpack_maskbits_function,
+                            sbthresh, apertures, REFIDCOLUMN, MASKBITS, mp=mp,
+                            debug=False)
+
+    #if qaplot:
+    #    qa_ellipsefit(sample, data, results, unpack_maskbits_function,
+    #                  MASKBITS, datasets=datasets)
 
     # merge all the ellipse-fitting results and write out
     # add to header:
@@ -1233,18 +1232,26 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     #    --largeshift
     #    --...
 
-    if qaplot:
-        qa_ellipsefit(data, ellipsefit, unpack_maskbits_function, MASKBITS,
-                      datasets=datasets)
-
-
-    # write out
     import fitsio
-    outfile = os.path.join(data["galaxydir"], f'{data["galaxydir"]}-ellipse-images.fits')
-    for dataset in datasets:
-        pdb.set_trace()
 
+    for idata, dataset in enumerate(datasets):
+        if dataset == 'opt':
+            suffix = ''.join(data['all_opt_bands']).upper() # always griz in north & south
+        else:
+            suffix = dataset.upper()
+        outfile = os.path.join(data["galaxydir"], f'{data["galaxydir"]}-ellipse-{suffix}.fits')
 
+        for iobj, obj in enumerate(sample):
+            res = results[idata][iobj]
+            images = data[f'{dataset}_images'][iobj, :, :, :]
+            models = data[f'{dataset}_models'][iobj, :, :, :]
+            maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
+
+            fitsio.write(outfile, images, clobber=True, ext=f'IMAGES-{suffix}')
+            fitsio.write(outfile, models, ext=f'MODELS-{suffix}')
+            fitsio.write(outfile, maskbits, ext=f'MASKBITS-{suffix}')
+            fitsio.write(outfile, res.as_array(), ext=f'ELLIPSE-{suffix}')
+            log.info(f'Wrote {outfile}')
 
     pdb.set_trace()
 

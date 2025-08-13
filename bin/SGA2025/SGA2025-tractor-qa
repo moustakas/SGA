@@ -242,6 +242,7 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
 
     if datadir is None:
         datadir = sga_data_dir()
+    cutoutdir = os.path.join(datadir, 'cutouts')
 
     sample, fullsample = read_sample(region=region, lvd=(lvd or lvd_ignore or lvd_forcepsf))
 
@@ -274,9 +275,23 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
 
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
                                              datadir=datadir)
-    I = [os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
-    log.info(f'Trimming to {np.sum(I):,d}/{len(sample):,d} ' + \
+    I = np.array([os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)])
+    log.info(f'Found {np.sum(I):,d}/{len(sample):,d} ' + \
              'objects with pipeline results.')
+
+    # check for cutouts and, if missing, generating them
+    if np.sum(~I) > 0:
+        csample = sample[~I]
+        galaxy, galaxydir = get_galaxy_galaxydir(csample, region=region,
+                                                 datadir=cutoutdir)
+        M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
+        log.info(f'Generating cutouts for {np.sum(M):,d}/{len(csample):,d} ' + \
+                 'objects with missing pipeline results.')
+        
+
+
+    pdb.set_trace()
+
 
     sample = sample[I]
     fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]

@@ -6,7 +6,137 @@ Utilities for generating large numbers of (annotated) cutouts.
 
 """
 import pdb
+
+import os, sys, time
 import numpy as np
+import multiprocessing
+
+from SGA.geometry import choose_geometry
+from SGA.SGA import get_raslice, sga2025_name
+from SGA.logger import log
+
+
+def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
+                           default_width=152, default_pixscale=0.262):
+    """Simple function to compute the pixel scale of the desired
+    output images.
+
+    """
+    nobj = len(diam)
+
+    if rescale:
+        # scale the pixel scale so that larger objects "fit" in DEFAULT_WIDTH
+        pixscale = default_pixscale * 1.5 * diam / mindiam   # [arcsec/pixel]
+        width = np.zeros(nobj, int) + default_width # [pixels]
+    else:
+        # full-mosaic, native resolution width, except for objects
+        # larger than XX arcmin
+        pixscale = np.zeros(nobj) + default_pixscale # [arcsec/pixel]
+        width = 1.5 * diam / pixscale # [pixels]
+
+        maxdiam = maxdiam_arcmin * 60. # [arcsec]
+        I = diam > maxdiam
+        if np.any(I):
+            pixscale[I] = default_pixscale * diam[I] / maxdiam
+            width[I] = 1.5 * diam[I] / pixscale[I]
+
+    width = width.astype(int)
+
+    return pixscale, width
+
+
+def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
+                 photodir='.', size=1, mp=1, photo=False, gather_photo=False,
+                 annotate=False, fits_cutouts=True, unwise_cutouts=False,
+                 galex_cutouts=False, overwrite=False, verbose=False):
+    """Build a plan for generating (annotated) cutouts and basic photometry.
+
+    """
+    import multiprocessing
+
+    t0 = time.time()
+
+    objname = sga2025_name(cat['RA'], cat['DEC'], unixsafe=True)
+
+    if photo or gather_photo:
+        mpargs = [(obj, objname1, cutoutdir, photodir, gather_photo, overwrite, verbose)
+                  for obj, objname1 in zip(cat, objname)]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                out = P.map(_get_photo_filename, mpargs)
+        else:
+            out = [get_photo_filename(*mparg) for mparg in mpargs]
+        out = list(zip(*out))
+
+        fitsfiles = np.array(out[0], dtype=object)
+        jpgfiles = np.array(out[1], dtype=object)
+        photfiles = np.array(out[2], dtype=object)
+        qafiles = np.array(out[3], dtype=object)
+        nobj = np.array(out[4], dtype=object)
+    elif annotate:
+        mpargs = [(obj, objname1, cutoutdir, annotatedir, overwrite, verbose)
+                  for obj, objname1 in zip(cat, objname)]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                out = P.map(_get_annotate_filename, mpargs)
+        else:
+            out = [get_annotate_filename(*mparg) for mparg in mpargs]
+        out = list(zip(*out))
+
+        jpgfiles = np.array(out[0], dtype=object)
+        pngfiles = np.array(out[1], dtype=object)
+        nobj = np.array(out[2], dtype=object)
+    else:
+        if np.isscalar(width):
+            width = [width] * len(objname)
+
+        mpargs = [(obj, objname1, cutoutdir, width1, fits_cutouts, unwise_cutouts,
+                   galex_cutouts, overwrite, verbose)
+                  for obj, objname1, width1 in zip(cat, objname, width)]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                out = P.map(_get_basefiles_one, mpargs)
+        else:
+            out = [get_basefiles_one(*mparg) for mparg in mpargs]
+        out = list(zip(*out))
+
+        basefiles = np.array(out[0], dtype=object)
+        allra = np.array(out[1], dtype=object)
+        alldec = np.array(out[2], dtype=object)
+        nobj = np.array(out[3], dtype=object)
+
+    iempty = np.where(nobj == 0)[0]
+    if len(iempty) > 0:
+        if gather_photo:
+            log.info(f'Missing {len(iempty):,d} photometry file(s).')
+        elif photo:
+            log.info(f'Skipping {len(iempty):,d} object(s) with existing photometry files (or missing FITS cutouts).')
+        elif annotate:
+            log.info(f'Skipping {len(iempty):,d} object(s) with existing annotated images.')
+        else:
+            log.info(f'Skipping {len(iempty):,d} object(s) with existing cutouts.')
+
+    itodo = np.where(nobj > 0)[0]
+    if len(itodo) > 0:
+        if gather_photo:
+            log.info(f'Gathered photometry file names for {np.sum(nobj[itodo]):,d} objects.')
+        elif photo:
+            log.info(f'Photometry files needed for {np.sum(nobj[itodo]):,d} objects.')
+        elif annotate:
+            log.info(f'Annotated images needed for {np.sum(nobj[itodo]):,d} objects.')
+        else:
+            log.info(f'Cutouts needed for {np.sum(nobj[itodo]):,d} objects.')
+        groups = np.array_split(itodo, size) # unweighted distribution
+    else:
+        groups = [np.array([])]
+
+    if photo or gather_photo:
+        return fitsfiles, jpgfiles, photfiles, qafiles, groups
+    elif annotate:
+        return jpgfiles, pngfiles, groups
+    else:
+        return basefiles, allra, alldec, groups
+
 
 def _get_annotate_filename(args):
     return get_annotate_filename(*args)
@@ -51,7 +181,7 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
     import matplotlib.image as mpimg
     from astropy.wcs import WCS
     from astropy.io import fits
-    from SGA.qa import draw_ellipse
+    from SGA.qa import overplot_ellipse
 
 
     if not os.path.isfile(jpgfile):
@@ -137,9 +267,10 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
                     majorminor = True
                 else:
                     majorminor = False
-                draw_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width, pixscale=pixscale,
-                             ax=ax, color=ellipse_colors[ref], linestyle=ellipse_linestyles[ref],
-                             draw_majorminor_axes=majorminor, jpeg=True)
+                overplot_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width,
+                                 pixscale=pixscale, ax=ax, color=ellipse_colors[ref],
+                                 linestyle=ellipse_linestyles[ref],
+                                 draw_majorminor_axes=majorminor, jpeg=True)
         else:
             for ref in ['SGA2020', 'HYPERLEDA', 'LIT']:
                 diam, ba, pa, outref = parse_geometry(Table(onegal), ref)
@@ -150,9 +281,10 @@ def annotate_one(jpgfile, pngfile, objname, commonname, pixscale,
                         majorminor = True
                     else:
                         majorminor = False
-                    draw_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width, pixscale=pixscale,
-                                 ax=ax, color=ellipse_colors[outref], linestyle=ellipse_linestyles[outref],
-                                 draw_majorminor_axes=majorminor, jpeg=True)
+                    overplot_ellipse(diam, ba, pa, xpix, ypix, height_pixels=width,
+                                     pixscale=pixscale, ax=ax, color=ellipse_colors[outref],
+                                     linestyle=ellipse_linestyles[outref],
+                                     draw_majorminor_axes=majorminor, jpeg=True)
 
     # now annotate
     if len(objnames) > 0:
@@ -247,6 +379,8 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
     """Wrapper to set up the full set of annotations.
 
     """
+    from astrometry.libkd.spherematch import match_radec
+
     if comm is None:
         rank, size = 0, 1
     else:
@@ -262,7 +396,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
             default_width=default_width,
             default_pixscale=default_pixscale)
 
-        jpgfiles, pngfiles, groups = plan(
+        jpgfiles, pngfiles, groups = cutouts_plan(
             cat, size=size, cutoutdir=cutoutdir, annotatedir=annotatedir,
             overwrite=overwrite, mp=mp, fits_cutouts=fits_cutouts,
             verbose=verbose, annotate=True)
@@ -270,7 +404,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
 
         # write out an inventory file
         if httpdir:
-            objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
+            objnames = sga2025_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
             inventoryfile = os.path.join(base_cutoutdir, f'inventory-{region}.txt')
             with open(inventoryfile, 'w') as F:
                 for objname, pngfile in zip(objnames, pngfiles):
@@ -302,7 +436,7 @@ def do_annotate(cat, fullcat=None, default_width=152, default_pixscale=0.262,
         return
 
     commonname = cat['OBJNAME'][indx].value
-    objname = radec_to_name(cat['RA'][indx].value, cat['DEC'][indx].value, unixsafe=True)
+    objname = sga2025_name(cat['RA'][indx].value, cat['DEC'][indx].value, unixsafe=True)
 
     # initial match
     allmatches = match_radec(cat['RA'][indx].value, cat['DEC'][indx].value,
@@ -521,7 +655,7 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
             default_width=default_width,
             default_pixscale=default_pixscale)
 
-        basefiles, allra, alldec, groups = plan(
+        basefiles, allra, alldec, groups = cutouts_plan(
             cat, width=width, layer=layer, cutoutdir=cutoutdir,
             size=size, overwrite=overwrite, mp=mp,
             fits_cutouts=fits_cutouts, unwise_cutouts=unwise_cutouts,
@@ -605,7 +739,7 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
         os.makedirs(qadir, exist_ok=True)
 
     raslices = get_raslice(cat['RA'].value)
-    objnames = radec_to_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
+    objnames = sga2025_name(cat['RA'].value, cat['DEC'].value, unixsafe=True)
     if rescale:
         ext = '.jpeg'
         prefix = 'rescale'

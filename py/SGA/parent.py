@@ -5,7 +5,7 @@ SGA.parent
 Code for defining the SGA parent sample.
 
 """
-import os, time, sys, pdb
+import os, time, sys, re, pdb
 import numpy as np
 import fitsio
 from importlib import resources

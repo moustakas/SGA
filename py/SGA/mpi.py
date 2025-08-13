@@ -6,8 +6,10 @@ SGA.mpi
 Code to deal with the MPI portion of the pipeline.
 
 """
-import os
+import os, time
 import numpy as np
+
+from SGA.logger import log
 
 
 def mpi_args():

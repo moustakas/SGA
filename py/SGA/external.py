@@ -2080,6 +2080,20 @@ def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
     """Read the zooniverse VI sample.
 
     """
+def _read_zooniverse_sample(cat):
+
+    # project0
+    ## analyze the Zooniverse sample; toss out by STARFDIST?
+    #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+    #I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
+    #cat = cat[I]
+    #if annotate:
+    #    diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
+    #    I = diam > 15.
+    #    print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
+    #    fullcat = fullcat[I]
+
+    # project1
     if project == 'project1':
         cat, fullcat = read_wisesize_sample(cat, fullcat=fullcat, catfile=catfile,
                                             region=region, cutoutdir=cutoutdir)

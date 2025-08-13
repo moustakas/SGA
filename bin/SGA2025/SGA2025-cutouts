@@ -79,24 +79,16 @@ zooniverse project:
 
 """
 import pdb # for debugging
-import os, re, sys, time
+import os
 from glob import glob
 import numpy as np
 import fitsio
 
+from astropy.table import Table, vstack
+from astrometry.libkd.spherematch import match_radec
+
 from SGA.geometry import choose_geometry
 
-#from astropy.table import Table, vstack
-#import astropy.units as u
-#import multiprocessing
-#
-#from astrometry.libkd.spherematch import match_radec
-#
-#
-#import warnings
-#from astropy.io.fits.verify import VerifyWarning
-#warnings.simplefilter('ignore', category=VerifyWarning)
-#
 #from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
 #from SGA.ellipse import choose_geometry, parse_geometry
 #from SGA.coadds import PIXSCALE, GALEX_PIXSCALE, UNWISE_PIXSCALE
@@ -122,126 +114,6 @@ def get_wcs(racenter, deccenter, width, pixscale=0.262):
     hdr['CD2_1'] = 0.0
     hdr['CD2_2'] = +pixscale/3600.
     return WCS(hdr)
-
-
-def plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
-         photodir='.', size=1, mp=1, photo=False, gather_photo=False,
-         annotate=False, fits_cutouts=True, unwise_cutouts=False,
-         galex_cutouts=False, overwrite=False, verbose=False):
-    """Build a plan!
-
-    """
-    t0 = time.time()
-
-    objname = radec_to_name(cat['RA'], cat['DEC'], unixsafe=True)
-
-    if photo or gather_photo:
-        mpargs = [(obj, objname1, cutoutdir, photodir, gather_photo, overwrite, verbose)
-                  for obj, objname1 in zip(cat, objname)]
-        if mp > 1:
-            with multiprocessing.Pool(mp) as P:
-                out = P.map(_get_photo_filename, mpargs)
-        else:
-            out = [get_photo_filename(*mparg) for mparg in mpargs]
-        out = list(zip(*out))
-
-        fitsfiles = np.array(out[0], dtype=object)
-        jpgfiles = np.array(out[1], dtype=object)
-        photfiles = np.array(out[2], dtype=object)
-        qafiles = np.array(out[3], dtype=object)
-        nobj = np.array(out[4], dtype=object)
-    elif annotate:
-        mpargs = [(obj, objname1, cutoutdir, annotatedir, overwrite, verbose)
-                  for obj, objname1 in zip(cat, objname)]
-        if mp > 1:
-            with multiprocessing.Pool(mp) as P:
-                out = P.map(_get_annotate_filename, mpargs)
-        else:
-            out = [get_annotate_filename(*mparg) for mparg in mpargs]
-        out = list(zip(*out))
-
-        jpgfiles = np.array(out[0], dtype=object)
-        pngfiles = np.array(out[1], dtype=object)
-        nobj = np.array(out[2], dtype=object)
-    else:
-        if np.isscalar(width):
-            width = [width] * len(objname)
-
-        mpargs = [(obj, objname1, cutoutdir, width1, fits_cutouts, unwise_cutouts,
-                   galex_cutouts, overwrite, verbose)
-                  for obj, objname1, width1 in zip(cat, objname, width)]
-        if mp > 1:
-            with multiprocessing.Pool(mp) as P:
-                out = P.map(_get_basefiles_one, mpargs)
-        else:
-            out = [get_basefiles_one(*mparg) for mparg in mpargs]
-        out = list(zip(*out))
-
-        basefiles = np.array(out[0], dtype=object)
-        allra = np.array(out[1], dtype=object)
-        alldec = np.array(out[2], dtype=object)
-        nobj = np.array(out[3], dtype=object)
-
-    iempty = np.where(nobj == 0)[0]
-    if len(iempty) > 0:
-        if gather_photo:
-            log.info(f'Missing {len(iempty):,d} photometry file(s).')
-        elif photo:
-            log.info(f'Skipping {len(iempty):,d} object(s) with existing photometry files (or missing FITS cutouts).')
-        elif annotate:
-            log.info(f'Skipping {len(iempty):,d} object(s) with existing annotated images.')
-        else:
-            log.info(f'Skipping {len(iempty):,d} object(s) with existing cutouts.')
-
-    itodo = np.where(nobj > 0)[0]
-    if len(itodo) > 0:
-        if gather_photo:
-            log.info(f'Gathered photometry file names for {np.sum(nobj[itodo]):,d} objects.')
-        elif photo:
-            log.info(f'Photometry files needed for {np.sum(nobj[itodo]):,d} objects.')
-        elif annotate:
-            log.info(f'Annotated images needed for {np.sum(nobj[itodo]):,d} objects.')
-        else:
-            log.info(f'Cutouts needed for {np.sum(nobj[itodo]):,d} objects.')
-        groups = np.array_split(itodo, size) # unweighted distribution
-    else:
-        groups = [np.array([])]
-
-    if photo or gather_photo:
-        return fitsfiles, jpgfiles, photfiles, qafiles, groups
-    elif annotate:
-        return jpgfiles, pngfiles, groups
-    else:
-        return basefiles, allra, alldec, groups
-
-
-def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
-                           default_width=152, default_pixscale=0.262):
-    """Simple function to compute the pixel scale of the desired
-    output images.
-
-    """
-    nobj = len(diam)
-
-    if rescale:
-        # scale the pixel scale so that larger objects "fit" in DEFAULT_WIDTH
-        pixscale = default_pixscale * 1.5 * diam / mindiam   # [arcsec/pixel]
-        width = np.zeros(nobj, int) + default_width # [pixels]
-    else:
-        # full-mosaic, native resolution width, except for objects
-        # larger than XX arcmin
-        pixscale = np.zeros(nobj) + default_pixscale # [arcsec/pixel]
-        width = 1.5 * diam / pixscale # [pixels]
-
-        maxdiam = maxdiam_arcmin * 60. # [arcsec]
-        I = diam > maxdiam
-        if np.any(I):
-            pixscale[I] = default_pixscale * diam[I] / maxdiam
-            width[I] = 1.5 * diam[I] / pixscale[I]
-
-    width = width.astype(int)
-
-    return pixscale, width
 
 
 def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
@@ -441,8 +313,6 @@ def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=N
                  f'{len(chunkindx[ichunk]):,d} objects to classify.')
 
 
-
-
 def _write_objlist(cat, region, prefix='tmplist'):
     outfile = f'{prefix}-{region}.txt'
     out = cat['OBJNAME', ]
@@ -626,22 +496,6 @@ def _read_test_sample3(cat, region, isolated=False):
     return cat, fullcat
 
 
-def _read_zooniverse_sample(cat):
-
-    # project0
-    ## analyze the Zooniverse sample; toss out by STARFDIST?
-    #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-    #I = (diam > 3.*60.) * ~cat['RESOLVED']# * (cat['FILTERS'] == 'grz')
-    #cat = cat[I]
-    #if annotate:
-    #    diam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-    #    I = diam > 15.
-    #    print(f'Trimmed fullcat to {np.sum(I):,d}/{len(fullcat):,d} objects with diam>15 arcsec')
-    #    fullcat = fullcat[I]
-
-    # project1
-
-
 def _read_ssl_results(region, ssl_version):
     """Check Sara's the ssl results.
 
@@ -695,7 +549,8 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
     """Simple wrapper to read a specified catalog.
 
     """
-    from SGA.io import parent_version, read_fits_catalog
+    from SGA.io import read_fits_catalog
+    from SGA.parent import parent_version
 
     version = parent_version(archive=True)
     columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'Z', 'PGC',
@@ -740,11 +595,9 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
     # read various samples / projects
     #cat, fullcat = _read_test_sample1(cat, region, photo_version)
     #cat = _read_test_sample2(cat, region, photo_version)
-    cat = _read_test_sample3(cat, region, isolated=False)
+    #cat = _read_test_sample3(cat, region, isolated=False)
 
-
-    pdb.set_trace()
-
+    #pdb.set_trace()
 
     if False:#True:
         #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023340.70+345454.6'])]
@@ -777,7 +630,7 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
         cat = cat[np.isin(cat['OBJNAME'], phot['OBJNAME'])]
 
 
-    if False:#True:
+    #if False:#True:
         ##########################
         ## All objects with at least one other sources within XX arcsec.
         #from SGA.util import resolve_close
@@ -916,7 +769,7 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
         _read_ssl_results(region, ssl_version)
 
     # more testing below here
-    if False:
+    #if False:
         ## SGA-2020 missing objects
         #miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
         #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 5./3600., nearest=True)
@@ -957,6 +810,9 @@ def main():
 
     """
     import argparse
+    from SGA.photo import do_photo
+    from SGA.cutouts import get_pixscale_and_width, cutouts_plan, do_cutouts, do_annotate
+
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south'],
@@ -1128,7 +984,7 @@ def main():
                 default_width=args.width,
                 default_pixscale=args.pixscale)
 
-        plan(cat, width=width, layer=layer, size=size, cutoutdir=cutoutdir,
+        cutouts_plan(cat, width=width, layer=layer, size=size, cutoutdir=cutoutdir,
              annotatedir=annotatedir, photodir=photodir, mp=args.mp,
              annotate=args.annotate, photo=args.photo, fits_cutouts=fits_cutouts,
              unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
