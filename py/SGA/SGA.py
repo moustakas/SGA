@@ -1542,6 +1542,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
     for icol, col in enumerate(['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
         sample[col] = geo_final[:, icol].astype('f4')
+    #sample['DIAM_MOMENT'] *= opt_pixscale # [pixels-->arcsec]
 
     sample['RA_MOMENT'] = ra
     sample['DEC_MOMENT'] = dec
@@ -1571,8 +1572,6 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
         for col in ['skysigma']:
             del data[f'{filt}_{col}']
 
-    pdb.set_trace()
-
     return data
 
 
@@ -1594,11 +1593,10 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     data = {}
     data['galaxy'] = galaxy
     data['galaxydir'] = galaxydir
+    data['all_opt_bands'] = bands # needed to standardize the north/south data model
 
-    all_opt_bands = bands
+    all_opt_bands = bands # initialize
     all_bands = np.copy(bands)
-
-    #opt_pixscale = pixscale
 
     galex_bands, unwise_bands = None, None
     galex_refband, unwise_refband = None, None
@@ -1818,6 +1816,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
 
     # Read the basic imaging data and masks and build the multiband
     # mask.
+
     data = read_image_data(data, filt2imfile, verbose=verbose)
     data = build_multiband_mask(data, tractor, run=run, qaplot=True)
 
