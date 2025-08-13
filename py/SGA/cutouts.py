@@ -9,6 +9,7 @@ import pdb
 
 import os, sys, re, time
 import numpy as np
+from glob import glob
 import multiprocessing
 from astropy.table import Table, vstack
 
@@ -17,12 +18,15 @@ from SGA.SGA import get_raslice, sga2025_name
 from SGA.logger import log
 
 
-def get_pixscale_and_width(diam, mindiam, rescale=False, maxdiam_arcmin=25.,
+def get_pixscale_and_width(diam, mindiam=None, rescale=False, maxdiam_arcmin=25.,
                            default_width=152, default_pixscale=0.262):
     """Simple function to compute the pixel scale of the desired
     output images.
 
     """
+    if mindiam is None:
+        mindiam = default_width * default_pixscale # [arcsec]
+
     nobj = len(diam)
 
     if rescale:
@@ -683,7 +687,11 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
     if rank == 0:
         t0 = time.time()
         mindiam = default_width * default_pixscale # [arcsec]
-        diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
+        # Is this a parent / sphere-grouped catalog?
+        if 'GROUP_DIAMETER' in cat.colnames:
+            diam = cat['GROUP_DIAMETER'].value * 60. # [arcsec]
+        else:
+            diam, _, _, _ = choose_geometry(cat, mindiam=mindiam)
 
         pixscale, width = get_pixscale_and_width(
             diam, mindiam, rescale=rescale,
@@ -750,7 +758,6 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
     visual inspection.
 
     """
-    from glob import glob
     import matplotlib.pyplot as plt
     from matplotlib.patches import Circle
     from matplotlib.backends.backend_pdf import PdfPages

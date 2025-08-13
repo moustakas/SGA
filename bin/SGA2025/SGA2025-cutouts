@@ -790,7 +790,6 @@ def main():
 
     """
     import argparse
-    from SGA.photo import do_photo
     from SGA.cutouts import get_pixscale_and_width, cutouts_plan
 
 
@@ -973,6 +972,7 @@ def main():
         return
 
     if args.gather_photo and rank == 0:
+        from SGA.photo import gather_photo
         gather_photo(cat, mp=args.mp, region=args.region, cutoutdir=cutoutdir,
                      photodir=photodir, photo_version=args.photo_version)
         return

@@ -2,6 +2,10 @@
 
 """QA of Tractor modeling results.
 
+NB: This diagnostic routine should be used for a relatively small
+number of objects (~hundreds).
+
+
 salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
@@ -10,7 +14,6 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
-
 
 """
 
@@ -35,9 +38,24 @@ from SGA.qa import overplot_ellipse
 from SGA.logger import log
 
 
-def read_coadds(galaxy, galaxydir, refid):
+def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None,
+                diam=None, cutout=False):
 
     from astropy.wcs import WCS
+
+    if cutout:
+        from SGA.sky import simple_wcs
+        from SGA.cutouts import get_pixscale_and_width
+
+        pixscale, width = get_pixscale_and_width(np.atleast_1d(diam))
+        wcs = simple_wcs(ra, dec, width[0], pixscale[0])
+
+        # strip the galaxy subdirectory
+        imagefile = os.path.join(os.path.dirname(galaxydir), f'{galaxy}.jpeg')
+        image = imread(imagefile)
+        pdb.set_trace()
+        assert(image.shape[0] == width[0])
+
 
     imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
     #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
@@ -76,13 +94,19 @@ def read_coadds(galaxy, galaxydir, refid):
 
 
 def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
-              datadir=None, region='dr11-south'):
+              datadir=None, cutoutdir=None, region='dr11-south'):
 
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
 
     # each group member gets its own panel
     galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
                                              datadir=datadir)
+    I = fullsample['CUTOUT']
+    if np.any(I):
+        _, cgalaxydir = get_galaxy_galaxydir(fullsample[I], region=region,
+                                                   datadir=cutoutdir)
+        galaxydir[I] = cgalaxydir
+
     galaxy = np.atleast_1d(galaxy)
     galaxydir = np.atleast_1d(galaxydir)
 
@@ -119,7 +143,9 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
                 sga, tractor, image, wcs = read_coadds(
                     galaxy[indx[iax]], galaxydir[indx[iax]],
-                    refid=obj[REFIDCOLUMN])
+                    diam=obj['GROUP_DIAMETER'] * 60., # [arcsec]
+                    refid=obj[REFIDCOLUMN], ra=obj['GROUP_RA'],
+                    dec=obj['GROUP_DEC'], cutout=obj['CUTOUT'])
 
                 if image is None:
                     txt_ll = 'No Tractor catalog'
@@ -270,6 +296,9 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
         print('Hack!')
         sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])]
 
+    # trim
+    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
 
@@ -280,26 +309,40 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
              'objects with pipeline results.')
 
     # check for cutouts and, if missing, generating them
+    sample['CUTOUT'] = np.zeros(len(sample), bool)
+    fullsample['CUTOUT'] = np.zeros(len(fullsample), bool)
     if np.sum(~I) > 0:
-        csample = sample[~I]
-        galaxy, galaxydir = get_galaxy_galaxydir(csample, region=region,
+        if np.sum(~I) > 500:
+            log.warning('Are you sure you want to generate cutouts for more than 500 objects!!')
+
+        sample['CUTOUT'][~I] = True
+        fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
+
+        galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
                                                  datadir=cutoutdir)
         M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
-        log.info(f'Generating cutouts for {np.sum(M):,d}/{len(csample):,d} ' + \
+        log.info(f'Generating cutouts for {np.sum(M):,d}/{np.sum(~I):,d} ' + \
                  'objects with missing pipeline results.')
-        
 
+        if np.sum(M) > 0:
+            from SGA.cutouts import do_cutouts
 
-    pdb.set_trace()
+            layer = f'ls-{region}'
+            if region == 'dr11-south':
+                log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
+                layer = 'ls-dr11-early-v2'
 
+            do_cutouts(sample[~I][M], layer=layer, mp=1, fits_cutouts=False,
+                       cutoutdir=os.path.join(cutoutdir, region))
 
-    sample = sample[I]
-    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+    #sample = sample[I]
+    #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
     sample = sample[np.argsort(sample[DIAMCOLUMN])]
     fullsample = fullsample[np.argsort(fullsample[DIAMCOLUMN])]
 
-    annotated(sample, fullsample, pdffile, region=region, datadir=datadir)
+    annotated(sample, fullsample, pdffile, region=region,
+              datadir=datadir, cutoutdir=cutoutdir)
 
 if __name__ == '__main__':
 
