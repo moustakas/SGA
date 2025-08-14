@@ -51,9 +51,10 @@ def get_pixscale_and_width(diam, mindiam=None, rescale=False, maxdiam_arcmin=25.
 
 
 def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
-                 photodir='.', size=1, mp=1, photo=False, gather_photo=False,
-                 annotate=False, fits_cutouts=True, unwise_cutouts=False,
-                 galex_cutouts=False, overwrite=False, verbose=False):
+                 photodir='.', size=1, mp=1, group=False, photo=False,
+                 gather_photo=False, annotate=False, fits_cutouts=True,
+                 unwise_cutouts=False, galex_cutouts=False, overwrite=False,
+                 verbose=False):
     """Build a plan for generating (annotated) cutouts and basic photometry.
 
     """
@@ -61,7 +62,10 @@ def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
 
     t0 = time.time()
 
-    objname = sga2025_name(cat['RA'], cat['DEC'], unixsafe=True)
+    if group:
+        objname = cat['GROUP_NAME']
+    else:
+        objname = sga2025_name(cat['RA'], cat['DEC'], unixsafe=True)
 
     if photo or gather_photo:
         mpargs = [(obj, objname1, cutoutdir, photodir, gather_photo, overwrite, verbose)
@@ -95,8 +99,8 @@ def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         if np.isscalar(width):
             width = [width] * len(objname)
 
-        mpargs = [(obj, objname1, cutoutdir, width1, fits_cutouts, unwise_cutouts,
-                   galex_cutouts, overwrite, verbose)
+        mpargs = [(obj, objname1, cutoutdir, width1, group, fits_cutouts,
+                   unwise_cutouts, galex_cutouts, overwrite, verbose)
                   for obj, objname1, width1 in zip(cat, objname, width)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
@@ -634,13 +638,21 @@ def _get_basefiles_one(args):
     return get_basefiles_one(*args)
 
 
-def get_basefiles_one(obj, objname, cutoutdir, width=None, fits_cutouts=True,
-                      unwise_cutouts=False, galex_cutouts=False,
+def get_basefiles_one(obj, objname, cutoutdir, width=None, group=False,
+                      fits_cutouts=True, unwise_cutouts=False, galex_cutouts=False,
                       overwrite=False, verbose=False):
-    raslice = get_raslice(obj['RA'])
+
+    if group:
+        racolumn = 'GROUP_RA'
+        deccolumn = 'GROUP_DEC'
+    else:
+        racolumn = 'RA'
+        deccolumn = 'DEC'
+
+    raslice = get_raslice(obj[racolumn])
 
     if objname is None:
-        brick = custom_brickname(obj['RA'], obj['DEC'])
+        brick = custom_brickname(obj[racolumn], obj[deccolumn])
         basefile = os.path.join(cutoutdir, raslice, brick[:6], brick)
     else:
         basefile = os.path.join(cutoutdir, raslice, objname)
@@ -670,14 +682,15 @@ def get_basefiles_one(obj, objname, cutoutdir, width=None, fits_cutouts=True,
             if verbose:
                 log.info(f'Skipping existing cutout {basefile}.')
 
-    return basefile, obj['RA'], obj['DEC'], nobj
+    return basefile, obj[racolumn], obj[deccolumn], nobj
 
 
 def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
-               default_bands=['g', 'r', 'i', 'z'], comm=None, mp=1, cutoutdir='.',
-               base_cutoutdir='.', rescale=False, overwrite=False, fits_cutouts=True,
-               ivar_cutouts=False, unwise_cutouts=False, galex_cutouts=False,
-               dry_run=False, verbose=False):
+               default_bands=['g', 'r', 'i', 'z'], comm=None, mp=1, group=False,
+               cutoutdir='.', base_cutoutdir='.', maxdiam_arcmin=25., rescale=False,
+               overwrite=False, fits_cutouts=True, ivar_cutouts=False,
+               unwise_cutouts=False, galex_cutouts=False, dry_run=False,
+               verbose=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -688,19 +701,20 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         t0 = time.time()
         mindiam = default_width * default_pixscale # [arcsec]
         # Is this a parent / sphere-grouped catalog?
-        if 'GROUP_DIAMETER' in cat.colnames:
+        if group:
             diam = cat['GROUP_DIAMETER'].value * 60. # [arcsec]
         else:
             diam, _, _, _ = choose_geometry(cat, mindiam=mindiam)
 
         pixscale, width = get_pixscale_and_width(
             diam, mindiam, rescale=rescale,
+            maxdiam_arcmin=maxdiam_arcmin,
             default_width=default_width,
             default_pixscale=default_pixscale)
 
         basefiles, allra, alldec, groups = cutouts_plan(
             cat, width=width, layer=layer, cutoutdir=cutoutdir,
-            size=size, overwrite=overwrite, mp=mp,
+            size=size, group=group, overwrite=overwrite, mp=mp,
             fits_cutouts=fits_cutouts, unwise_cutouts=unwise_cutouts,
             galex_cutouts=galex_cutouts, verbose=verbose)
         log.info(f'Planning took {time.time() - t0:.2f} sec')
