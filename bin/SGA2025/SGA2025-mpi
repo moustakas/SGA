@@ -25,7 +25,7 @@ SGA2025-mpi --galaxylist="dw1239+3251" --datadir=/pscratch/sd/i/ioannis/SGA2025-
 # LVD tests
 SGA2025-mpi --galaxylist="KV19-271" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
 
-SGA2025-mpi --lvd --coadds --mp=128 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
+SGA2025-mpi --lvd --coadds --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf

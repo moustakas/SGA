@@ -60,10 +60,10 @@ UNWISEMASKBITS = dict(
     W4 = 2**7,         #
 )
 
-
 VEGA2AB = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
 
-SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
+SBTHRESH = [23, 24, 25, 26] # surface brightness thresholds
+#SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
 APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
 
 
@@ -1487,6 +1487,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
 
         images = np.zeros((len(bands), *sz), 'f4')
         images_final = np.zeros((nsample, len(bands), *sz), 'f4')
+        models = np.zeros((nsample, len(bands), *sz), 'f4')
 
         # Subtract Gaia stars.
         for iband, filt in enumerate(bands):
@@ -1494,6 +1495,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
                 _, model = make_sourcemask(
                     psfsrcs, wcs, filt, data[f'{filt}_psf'],
                     sigma=None)
+                models[:, iband, :, :] += model[np.newaxis, :, :]
                 images[iband, :, :] = data[filt] - model
             else:
                 images[iband, :, :] = data[filt]
@@ -1509,6 +1511,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
                             refsrc, wcs, filt, data[f'{filt}_psf'],
                             sigma=None)
                         images_final[iobj, iband, :, :] = images[iband, :, :] - model
+                        models[iobj, iband, :, :] += model
             else:
                 images_final[iobj, :, :, :] = images
 
@@ -1535,6 +1538,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
 
         data[f'{prefix}_images'] = images_final # [nanomaggies]
         data[f'{prefix}_maskbits'] = maskbits
+        data[f'{prefix}_models'] = models
         ivar = np.stack([data[f'{filt}_invvar'] for filt in bands])
         sig, _ = ivar2var(ivar, sigma=True) # [nanomaggies]
         data[f'{prefix}_sigma'] = sig

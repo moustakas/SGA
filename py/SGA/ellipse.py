@@ -587,29 +587,42 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     https://photutils.readthedocs.io/en/latest/user_guide/isophote.html
 
     """
-    def datamodel(sma, bands):
+    def sbprofiles_datamodel(sma, bands):
         import astropy.units as u
         from astropy.table import Table, Column
         nsma = len(sma)
 
-        res = Table()
-        res.add_column(Column(name='sma', unit=u.arcsec, data=sma.astype('f4')))
+        sbprofiles = Table()
+        sbprofiles.add_column(Column(name='sma', unit=u.arcsec, data=sma.astype('f4')))
         for filt in bands:
-            res.add_column(Column(name=f'sb_{filt}', unit=u.nanomaggy/u.arcsec**2,
+            sbprofiles.add_column(Column(name=f'sb_{filt}', unit=u.nanomaggy/u.arcsec**2,
                                   data=np.zeros(nsma, 'f4')))
         for filt in bands:
-            res.add_column(Column(name=f'sb_err_{filt}', unit=u.nanomaggy/u.arcsec**2,
+            sbprofiles.add_column(Column(name=f'sb_err_{filt}', unit=u.nanomaggy/u.arcsec**2,
                                   data=np.zeros(nsma, 'f4')))
         for filt in bands:
-            res.add_column(Column(name=f'flux_{filt}', unit=u.nanomaggy,
+            sbprofiles.add_column(Column(name=f'flux_{filt}', unit=u.nanomaggy,
                                   data=np.zeros(nsma, 'f4')))
         for filt in bands:
-            res.add_column(Column(name=f'flux_err_{filt}', unit=u.nanomaggy,
+            sbprofiles.add_column(Column(name=f'flux_err_{filt}', unit=u.nanomaggy,
                                   data=np.zeros(nsma, 'f4')))
         for filt in bands:
-            res.add_column(Column(name=f'fmasked_{filt}', data=np.zeros(nsma, 'f4')))
-        return res
+            sbprofiles.add_column(Column(name=f'fmasked_{filt}', data=np.zeros(nsma, 'f4')))
+        return sbprofiles
 
+
+    def results_datamodel(obj, bands):
+        import astropy.units as u
+        from astropy.table import Table, Column
+
+        # FIXME - copy everything?
+        cols = obj.colnames
+        results = Table(obj[cols])
+        for thresh in np.array(sbthresh).astype(str):
+            for filt in bands:
+                results.add_column(Column(name=f'D{thresh}_{filt.upper()}',
+                                          unit=u.arcsec, data=np.zeros(1, 'f4')))
+        return results
 
     import multiprocessing
     from photutils.isophote import EllipseGeometry, IsophoteList
@@ -617,7 +630,9 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     # Initialize the output table
     if allbands is None:
         allbands = bands
-    results = datamodel(sma_array*pixscale, allbands)
+
+    results = results_datamodel(obj, allbands)
+    sbprofiles = sbprofiles_datamodel(sma_array*pixscale, allbands)
 
     # Initialize the object geometry. NB: (x,y) are switched in
     # photutils and PA is measured CCW from the x-axis while PA is CCW
@@ -679,14 +694,17 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
         apfmasked = np.hstack(out[3])
 
+        # diameters...
+        # results[]
+
         # populate the output table
         I = np.isfinite(isobandfit.intens) * np.isfinite(isobandfit.int_err)
         if np.sum(I) > 0:
-            results[f'sb_{filt}'][I] = isobandfit.intens[I]
-            results[f'sb_err_{filt}'][I] = isobandfit.int_err[I]
-        results[f'flux_{filt}'] = apflux
-        results[f'flux_err_{filt}'] = apferr
-        results[f'fmasked_{filt}'] = apfmasked
+            sbprofiles[f'sb_{filt}'][I] = isobandfit.intens[I]
+            sbprofiles[f'sb_err_{filt}'][I] = isobandfit.int_err[I]
+        sbprofiles[f'flux_{filt}'] = apflux
+        sbprofiles[f'flux_err_{filt}'] = apferr
+        sbprofiles[f'fmasked_{filt}'] = apfmasked
 
         if debug:
             I = apflux > 0.
@@ -712,7 +730,7 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     #results.update(cog)
     #log.info('Time = {:.3f} min'.format( (time() - t0) / 60))
 
-    return results
+    return results, sbprofiles
 
 
 def build_sma_deprecated(width, maxsma=None, delta_logsma=4.,
@@ -1111,15 +1129,17 @@ def wrap_multifit(sample, datasets, data, unpack_maskbits_function,
                   debug=False):
     """Simple wrapper on multifit.
 
-    """
-    # Iterate on objects then datasets (even though some work is
-    # duplicated).
+    Iterate on objects then datasets (even though some work is
+    duplicated).
 
-    res_obj = []
+    """
+    results_obj = []
+    sbprofiles_obj = []
     for iobj, obj in enumerate(sample):
         refid = obj[REFIDCOLUMN]
 
-        res_dataset = []
+        results_dataset = []
+        sbprofiles_dataset = []
         for idata, dataset in enumerate(datasets):
             images = data[f'{dataset}_images'][iobj, :, :, :]
             bands = data[f'{dataset}_bands']
@@ -1156,16 +1176,21 @@ def wrap_multifit(sample, datasets, data, unpack_maskbits_function,
                     a_max_tgt_px=max(sma_array_opt)*pixfactor)
 
             #print(sma_array)
-            res = multifit(obj, images, sigimages, masks, sma_array, bands,
-                           pixscale=pixscale, pixfactor=pixfactor, mp=mp,
-                           sbthresh=sbthresh, apertures=apertures, debug=debug)
-            res_dataset.append(res)
-        res_obj.append(res_dataset)
+            results_dataset1, sbprofiles_dataset1 = multifit(
+                obj, images, sigimages, masks, sma_array, bands,
+                pixscale=pixscale, pixfactor=pixfactor, mp=mp,
+                sbthresh=sbthresh, apertures=apertures, debug=debug)
+            results_dataset.append(results_dataset1)
+            sbprofiles_dataset.append(sbprofiles_dataset1)
 
-    # unpack
-    out = list(zip(*res_obj))
+        results_obj.append(results_dataset)
+        sbprofiles_obj.append(sbprofiles_dataset)
 
-    return out
+    # unpack the SB profiles and results tables
+    results = list(zip(*results_obj))
+    sbprofiles = list(zip(*sbprofiles_obj))
+
+    return results, sbprofiles
 
 
 
@@ -1207,13 +1232,14 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     #sample = data['sample'][[0]] # test
 
     # ellipse-fit over objects and then datasets
-    results = wrap_multifit(sample, datasets, data, unpack_maskbits_function,
-                            sbthresh, apertures, REFIDCOLUMN, MASKBITS, mp=mp,
-                            debug=False)
+    results, sbprofiles = wrap_multifit(
+        sample, datasets, data, unpack_maskbits_function,
+        sbthresh, apertures, REFIDCOLUMN, MASKBITS, mp=mp,
+        debug=False)
 
-    #if qaplot:
-    #    qa_ellipsefit(sample, data, results, unpack_maskbits_function,
-    #                  MASKBITS, datasets=datasets)
+    if qaplot and False:
+        qa_ellipsefit(sample, data, results, unpack_maskbits_function,
+                      MASKBITS, datasets=datasets)
 
     # merge all the ellipse-fitting results and write out
     # add to header:
@@ -1239,18 +1265,20 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             suffix = ''.join(data['all_opt_bands']).upper() # always griz in north & south
         else:
             suffix = dataset.upper()
-        outfile = os.path.join(data["galaxydir"], f'{data["galaxydir"]}-ellipse-{suffix}.fits')
+        outfile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-ellipse-{suffix}.fits')
 
         for iobj, obj in enumerate(sample):
-            res = results[idata][iobj]
+            results_obj = results[idata][iobj]
+            sbprofiles_obj = sbprofiles[idata][iobj]
             images = data[f'{dataset}_images'][iobj, :, :, :]
             models = data[f'{dataset}_models'][iobj, :, :, :]
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
-            fitsio.write(outfile, images, clobber=True, ext=f'IMAGES-{suffix}')
-            fitsio.write(outfile, models, ext=f'MODELS-{suffix}')
-            fitsio.write(outfile, maskbits, ext=f'MASKBITS-{suffix}')
-            fitsio.write(outfile, res.as_array(), ext=f'ELLIPSE-{suffix}')
+            fitsio.write(outfile, images, clobber=True, extname=f'IMAGES-{suffix}')
+            fitsio.write(outfile, models, extname=f'MODELS-{suffix}')
+            fitsio.write(outfile, maskbits, extname=f'MASKBITS-{suffix}')
+            fitsio.write(outfile, results_obj.as_array(), extname=f'ELLIPSE-{suffix}')
+            fitsio.write(outfile, sbprofiles_obj.as_array(), extname=f'SBPROFILES-{suffix}')
             log.info(f'Wrote {outfile}')
 
     pdb.set_trace()
