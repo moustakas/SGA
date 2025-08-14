@@ -11,7 +11,7 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
-from SGA.io import sga_dir
+from SGA.SGA import sga_dir
 from SGA.logger import log
 
 
