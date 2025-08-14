@@ -32,12 +32,13 @@ from matplotlib.image import imread
 
 from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
                      get_raslice, read_sample, DIAMCOLUMN,
-                     REFIDCOLUMN, FITBITS)
+                     REFIDCOLUMN, FITBITS, REFCAT)
 from SGA.geometry import get_tractor_ellipse
 from SGA.qa import overplot_ellipse
 from SGA.logger import log
 
 MAXDIAM = 3. # [arcmin]
+
 
 def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None,
                 diam=None, cutout=False):
@@ -75,10 +76,11 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None,
                      'flux_r', 'flux_i', 'flux_z'])
     #allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
     #cols = cols[np.isin(cols, allcols)]
-    print(galaxydir)
+    #print(galaxydir)
     tractor = Table(fitsio.read(tractorfile, columns=cols))
 
-    I = (tractor['ref_cat'] == 'LG') * (tractor['ref_id'] == refid)
+    I = (np.logical_or(tractor['ref_cat'] == 'LG', tractor['ref_cat'] == REFCAT) * \
+         (tractor['ref_id'] == refid))
     if np.sum(I) == 0:
         sga = Table()
     else:
@@ -106,14 +108,14 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
     # each group member gets its own panel
     galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
                                              datadir=datadir)
-    I = fullsample['CUTOUT']
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
+
+    I = fullsample['CUTOUT'].value
     if np.any(I):
         _, cgalaxydir = get_galaxy_galaxydir(fullsample[I], region=region,
                                                    datadir=cutoutdir)
         galaxydir[I] = cgalaxydir
-
-    galaxy = np.atleast_1d(galaxy)
-    galaxydir = np.atleast_1d(galaxydir)
 
     nobj = len(fullsample)
     allindx = np.arange(nobj)
@@ -136,6 +138,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
         for iax, xx in enumerate(ax):
             if iax < len(indx):
                 obj = fullsample[indx[iax]]
+                #print(obj['OBJNAME'])
                 diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
                 geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
 
@@ -182,7 +185,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
                         J = np.logical_or(tractor['type'] == 'PSF', tractor['type'] == 'DUP')
                         #print(galaxy[indx[iax]], np.sum(J))
-                        if np.sum(J) > 0:
+                        if np.sum(J) > 0 and False:
                             if np.sum(J) > 50:
                                 s = 1
                                 alpha = 0.5
@@ -234,8 +237,12 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                         else:
                             txt_ll = '\n'.join([geo, r'$(\alpha,\delta)$='+f'({ra:.7f},{dec:.6f})', mag])
                     else:
-                        txt_ur = None
-                        txt_ll = 'SGA source dropped'
+                        if len(tractor) > 0:
+                            txt_ur = None
+                            txt_ll = 'SGA source dropped'
+                        else:
+                            txt_ur = None
+                            txt_ll = 'Missing Tractor catalog'
 
                 xx.margins(0)
                 xx.set_xticks([])
@@ -277,34 +284,35 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
         datadir = sga_data_dir()
     cutoutdir = os.path.join(datadir, 'cutouts')
 
-    sample, fullsample = read_sample(region=region, lvd=(lvd or lvd_ignore or lvd_forcepsf))
+    any_lvd = lvd or lvd_ignore or lvd_forcepsf
+    sample, fullsample = read_sample(region=region, lvd=any_lvd)
 
-    if lvd:
-        I = sample['FITBIT'] == 0
-        sample = sample[I]
-
+    if any_lvd:
         qadir = os.path.join(sga_dir(), 'parent', 'lvd')
-        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd.pdf')
-    elif lvd_ignore:
-        I = sample['FITBIT'] & FITBITS['ignore'] != 0
+        if lvd:
+            #I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
+            I = sample['FITBIT'] == 0
+            suffix = ''
+        elif lvd_ignore:
+            I = sample['FITBIT'] & FITBITS['ignore'] != 0
+            suffix = '-ignore'
+        elif lvd_forcepsf:
+            I = sample['FITBIT'] & FITBITS['forcepsf'] != 0
+            suffix = '-forcepsf'
         sample = sample[I]
-
-        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
-        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd-ignore.pdf')
-    elif lvd_forcepsf:
-        I = sample['FITBIT'] & FITBITS['forcepsf'] != 0
-        sample = sample[I]
-
-        qadir = os.path.join(sga_dir(), 'parent', 'lvd')
-        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd-forcepsf.pdf')
+        # do not include group members
+        fullsample = sample
+        diamcolumn = 'DIAM'
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd{suffix}.pdf')
     else:
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
         print('Hack!')
-        sample = sample[np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])]
-
-    # trim
-    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+        I = np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])
+        I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
+        sample = sample[I]
+        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+        diamcolumn = DIAMCOLUMN
 
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
@@ -321,6 +329,7 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
     if np.sum(~I) > 0:
         if np.sum(~I) > 500:
             log.warning('Are you sure you want to generate cutouts for more than 500 objects!!')
+            raise ValueError()
 
         sample['CUTOUT'][~I] = True
         fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
@@ -345,8 +354,8 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
     #sample = sample[I]
     #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    sample = sample[np.argsort(sample[DIAMCOLUMN])]
-    fullsample = fullsample[np.argsort(fullsample[DIAMCOLUMN])]
+    sample = sample[np.argsort(sample[diamcolumn])]
+    fullsample = fullsample[np.argsort(fullsample[diamcolumn])]
 
     annotated(sample, fullsample, pdffile, region=region,
               datadir=datadir, cutoutdir=cutoutdir)

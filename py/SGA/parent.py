@@ -2793,6 +2793,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
 
     print('Remove objects in clusters')
     print('Cut on starfdist < 0.5 -- not too close to bright stars!')
+    print('When building groups, do not use the LVD ignore category, e.g., Ursa Minor is gigantic! Except maybe Antlia-B (south,forcepsf)')
     pdb.set_trace()
 
     cols = ['OBJNAME',

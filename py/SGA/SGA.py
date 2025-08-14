@@ -284,14 +284,22 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         done_indices = [np.array([])]
 
     if len(itodo) > 0:
-        todo_indices = np.array_split(indices[itodo], size)
-        #_todo_indices = indices[itodo]
-        #if sample is not None:
-        #    weight = np.atleast_1d(sample[DIAMCOLUMN])[_todo_indices]
-        #    todo_indices = weighted_partition(weight, size)
-        #else:
-        #    # unweighted
-        #    todo_indices = np.array_split(_todo_indices, size)
+        #todo_indices = np.array_split(indices[itodo], size)
+
+        # Assign the sample to ranks to make the diameter distribution
+        # per rank ~flat.
+        # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
+        _todo_indices = indices[itodo]
+        weight = np.atleast_1d(sample[DIAMCOLUMN])[_todo_indices]
+        cumuweight = weight.cumsum() / weight.sum()
+        idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
+        if len(idx) < size: # can happen in corner cases or with 1 rank
+            todo_indices = np.array_split(_todo_indices, size) # unweighted
+        else:
+            todo_indices = np.array_split(_todo_indices, idx) # weighted
+        for ii in range(size): # sort by weight
+            srt = np.argsort(sample[DIAMCOLUMN][todo_indices[ii]])
+            todo_indices[ii] = todo_indices[ii][srt]
     else:
         todo_indices = [np.array([])]
 
@@ -402,7 +410,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 if np.count_nonzero(I) == 0:
                     log.warning('No matching galaxies found in sample.')
                     return Table(), Table()
-            return sample[I], fullsample
+        return sample[I], fullsample
     else:
         return sample, fullsample
 

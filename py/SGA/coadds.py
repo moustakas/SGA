@@ -70,24 +70,6 @@ def srcs2image(cat, wcs, band='r', allbands='grz', pixelized_psf=None, psf_sigma
     return mod
 
 
-def convert_tractor_e1e2(e1, e2):
-    """Convert Tractor epsilon1, epsilon2 values to ellipticity and position angle.
-
-    Taken from tractor.ellipses.EllipseE
-
-    """
-    e = np.hypot(e1, e2)
-    ba = (1 - e) / (1 + e)
-    #e = (ba + 1) / (ba - 1)
-
-    phi = -np.rad2deg(np.arctan2(e2, e1) / 2)
-    #angle = np.deg2rad(-2 * phi)
-    #e1 = e * np.cos(angle)
-    #e2 = e * np.sin(angle)
-
-    return ba, phi
-
-
 def _mosaic_width(radius_mosaic_arcsec, pixscale=PIXSCALE):
     """Ensure the mosaic is an odd number of pixels so the central can
     land on a whole pixel (important for ellipse-fitting).
@@ -235,29 +217,6 @@ def _rearrange_files(galaxy, output_dir, brickname, bands=GRIZ, unwise=True,
         clobber=clobber, missing_ok=missing_ok)
     if not ok:
         return ok
-
-    #ok = _copyfile(
-    #    os.path.join(output_dir, 'metrics', 'cus', f'blobs-{brickname}.fits.gz'),
-    #    os.path.join(output_dir, f'{galaxy}-blobs.fits.gz'),
-    #    clobber=clobber, missing_ok=missing_ok)
-    #if not ok:
-    #    return ok
-
-    #ok = _copyfile(
-    #    os.path.join(output_dir, 'metrics', 'cus', f'outlier-mask-{brickname}.fits.fz'),
-    #    os.path.join(output_dir, f'{galaxy}-outlier-mask.fits.fz'),
-    #    clobber=clobber, missing_ok=missing_ok)
-    #if not ok:
-    #    return ok
-
-    #for band in bands:
-    #    ok = _copyfile(
-    #        os.path.join(output_dir, 'coadd', 'cus', brickname,
-    #                     f'legacysurvey-{brickname}-depth-{band}.fits.fz'),
-    #        os.path.join(output_dir, f'{galaxy}-depth-{band}.fits.fz'),
-    #        clobber=clobber, missing_ok=missing_ok)
-    #    if not ok:
-    #        return ok
 
     # model coadds
     for band in bands:
@@ -416,8 +375,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     #cmdargs += '--write-stage=tims --write-stage=srcs '
     cmdargs += '--write-stage=srcs '
 
-    print('Hack!!')
-    cmdargs += '--old-calibs-ok '
+    #cmdargs += '--old-calibs-ok '
     cmdargs += '--skip-calibs '
     cmdargs += f'--checkpoint={survey.output_dir}/{galaxy}-checkpoint.p '
     cmdargs += f'--pickle={survey.output_dir}/{galaxy}-%%(stage)s.p '
@@ -427,8 +385,11 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         cmdargs += '--stage=image_coadds '
     if not unwise:
         cmdargs += '--no-unwise-coadds --no-wise '
+    else:
+        cmdargs += '--save-unwise-psf '
     if galex:
         cmdargs += '--galex '
+        cmdargs += '--save-galex-psf '
     if no_gaia:
         cmdargs += '--no-gaia '
     if no_tycho:
@@ -449,7 +410,9 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     #    cmdargs += '--no-subsky --ubercal-sky '
 
     # stage-specific options here--
-    cmdargs += '--fit-on-coadds --no-ivar-reweighting '
+    #cmdargs += '--fit-on-coadds --no-ivar-reweighting '
+    cmdargs += '--save-coadd-psf '
+
     if not force_psf_detection:
         cmdargs += '--no-galaxy-forcepsf '
 
@@ -462,114 +425,6 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         f'legacysurvey-{brickname}-ccds.fits')
     if os.path.isfile(ccdsfile):
         bands = np.array(sorted(set(fitsio.read(ccdsfile, columns='filter'))))
-
-    # optionally write out the un WISE PSFs
-    if unwise or galex:
-        import fitsio
-
-        cat = fitsio.read(os.path.join(survey.output_dir, 'tractor', 'cus',
-                                       f'tractor-{brickname}.fits'), columns=[
-                                           'brick_primary', 'ref_cat', 'ref_id',
-                                           'wise_coadd_id', 'brickname'])
-        cat = cat[cat['brick_primary']]
-        psffile = glob(os.path.join(survey.output_dir, 'coadd', 'cus', brickname,
-                                    f'legacysurvey-{brickname}-copsf-[{"".join(bands)}].fits.fz'))[0]
-        if not os.path.isfile(psffile):
-            msg = 'Missing all optical PSF files!'
-            log.critical(msg)
-            raise ValueError(msg)
-        hdr = fitsio.read_header(psffile)
-
-        for remcard in ('MJD', 'MJD_TAI', 'PSF_SIG', 'INPIXSC'):
-            hdr.delete(remcard)
-
-        if unwise:
-            import unwise_psf.unwise_psf as unwise_psf
-
-            # FIXME
-            thisgal = 0
-            coadd_id = cat['wise_coadd_id'][thisgal]
-
-            # coadd_id can be blank in regions around, e.g., Globular Clusters,
-            # where we turn off forced photometry.
-            if coadd_id == '':
-                from legacypipe.unwise import unwise_tiles_touching_wcs
-                from legacypipe.survey import wcs_for_brick, BrickDuck
-                brick = BrickDuck(onegal[racolumn], onegal[deccolumn],
-                                  brickname)
-                targetwcs = wcs_for_brick(brick, W=float(width), H=float(width),
-                                          pixscale=pixscale)
-                tiles = unwise_tiles_touching_wcs(targetwcs)
-                coadd_id = tiles.coadd_id[0] # grab the first one
-
-            #hdr['PIXSCAL'] = 2.75
-            hdr.delete('PIXSCAL')
-            hdr.add_record(dict(name='PIXSCAL', value=2.75,
-                                comment='pixel scale (arcsec)'))
-            hdr.add_record(dict(name='COADD_ID', value=coadd_id,
-                                comment='WISE coadd ID'))
-
-            # https://github.com/legacysurvey/legacypipe/blob/main/py/legacypipe/unwise.py#L267-L310
-            fluxrescales = {1: 1.04, 2: 1.005, 3: 1.0, 4: 1.0}
-            for band in (1, 2, 3, 4):
-                wband = f'W{band}'
-                #hdr['BAND'] = wband
-                hdr.delete('BAND')
-                hdr.add_record(dict(name='BAND', value=wband, comment='Band of this coadd/PSF'))
-
-                #psfimg = unwise_psf.get_unwise_psf(band, coadd_id)
-                #psfimg /= psfimg.sum()
-
-                if (band == 1) or (band == 2):
-                    # we only have updated PSFs for W1 and W2
-                    psfimg = unwise_psf.get_unwise_psf(band, coadd_id, modelname='neo6_unwisecat')
-                    #psfimg = unwise_psf.get_unwise_psf(band, coadd_id, modelname='neo7_unwisecat')
-                else:
-                    psfimg = unwise_psf.get_unwise_psf(band, coadd_id)
-
-                if band == 4:
-                    # oversample (the unwise_psf models are at native W4 5.5"/pix,
-                    # while the unWISE coadds are made at 2.75"/pix.
-                    ph,pw = psfimg.shape
-                    subpsf = np.zeros((ph*2-1, pw*2-1), np.float32)
-                    from astrometry.util.util import lanczos3_interpolate
-                    xx,yy = np.meshgrid(np.arange(0., pw-0.51, 0.5, dtype=np.float32),
-                                        np.arange(0., ph-0.51, 0.5, dtype=np.float32))
-                    xx = xx.ravel()
-                    yy = yy.ravel()
-                    ix = xx.astype(np.int32)
-                    iy = yy.astype(np.int32)
-                    dx = (xx - ix).astype(np.float32)
-                    dy = (yy - iy).astype(np.float32)
-                    psfimg = psfimg.astype(np.float32)
-                    rtn = lanczos3_interpolate(ix, iy, dx, dy, [subpsf.flat], [psfimg])
-
-                    psfimg = subpsf
-                    del xx, yy, ix, iy, dx, dy
-
-                psfimg /= psfimg.sum()
-                psfimg *= fluxrescales[band]
-                with survey.write_output('copsf', brick=brickname, band=wband) as out:
-                    out.fits.write(psfimg, header=hdr)
-
-            hdr.delete('COADD_ID')
-
-        if galex:
-            from legacypipe.galex import galex_psf
-
-            #hdr['PIXSCAL'] = 1.50
-            hdr.delete('PIXSCAL')
-            hdr.add_record(dict(name='PIXSCAL', value=1.50, comment='pixel scale (arcsec)'))
-            gband = {'f': 'FUV', 'n': 'NUV'}
-            for band in ('f', 'n'):
-                #hdr['BAND'] = gband[band]
-                hdr.delete('BAND')
-                hdr.add_record(dict(name='BAND', value=gband[band], comment='Band of this coadd/PSF'))
-                psfimg = galex_psf(band, os.getenv('GALEX_DIR'))
-                psfimg /= psfimg.sum()
-                with survey.write_output('copsf', brick=brickname, band=gband[band]) as out:
-                    out.fits.write(psfimg, header=hdr)
-
 
     if err != 0:
         log.warning('Something went wrong; please check the logfile.')
