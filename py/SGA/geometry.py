@@ -553,6 +553,22 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
     Default value of mag is 18.
 
     """
+    # Is this a parent catalog with only one set of geometry
+    # measurements? If so, take the values and run!
+    if 'DIAM' in cat.colnames and 'BA' in cat.colnames and 'PA' in cat.colnames:
+        diam = cat['DIAM'].value * 60.
+        ba = cat['BA'].value
+        pa = cat['PA'].value
+        ref = np.array(['parent'] * len(cat))
+        if get_mag:
+            if 'MAG' in cat.colnames and 'BAND':
+                mag = cat['MAG'].value
+                band = cat['BAND'].value
+            return diam, ba, pa, ref, mag, band
+        else:
+            return diam, ba, pa, ref
+
+
     nobj = len(cat)
     diam = np.zeros(nobj) - 99.
     ba = np.zeros(nobj) - 99.
@@ -574,8 +590,8 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
 
     # first require all of diam, ba, pa...
     for iref, dataref in enumerate(datarefs):
-        I = ((dataindx == iref) * (diam == -99.) * (ba == -99.) * (pa == -99.) * 
-             (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) * 
+        I = ((dataindx == iref) * (diam == -99.) * (ba == -99.) * (pa == -99.) *
+             (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) *
              (cat[f'PA_{dataref}'] != -99.))
         if np.any(I):
             diam[I] = cat[f'DIAM_{dataref}'][I] * 60.

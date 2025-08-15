@@ -21,27 +21,21 @@ SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/S
 SGA2025-mpi --galaxylist="dw1239+3251" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds
 SGA2025-mpi --galaxylist="dw1239+3251" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --ellipse
 
+# some other LVD dwarfs
+SGA2025-mpi --galaxylist="IKN" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds --region=dr9-north
+SGA2025-mpi --galaxylist="KK 70" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds --region=dr9-north
+
 
 # LVD tests
 SGA2025-mpi --galaxylist="KV19-271" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
 
-SGA2025-mpi --lvd --coadds --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
+SGA2025-mpi --lvd --coadds --no-groups --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
 
 srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-mpi \
   --coadds --mp=16 --lvd --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
-
-
-
-###
-LVD non
-
-
-
-###
-SGA2025-mpi --coadds --no-galex --no-unwise --no-cleanup --mp=32 --debug
 
 
 In production:
@@ -104,6 +98,11 @@ def main():
     args = mpi_args()
     set_legacysurvey_dir(args.region)
 
+    if args.no_groups:
+        RACOLUMN = 'RA'
+        DECCOLUMN = 'DEC'
+        DIAMCOLUMN = 'DIAM'
+
     basedir = sga_dir()
     if args.datadir is None:
         datadir = sga_data_dir()
@@ -148,7 +147,13 @@ def main():
 
         if not args.build_catalog and not args.build_refcat:
             if args.lvd:
-                I = sample['GROUP_DIAMETER'] < 3.
+                from SGA.coadds import REGIONBITS
+                from SGA.SGA import SAMPLEBITS
+                sample = fullsample[(fullsample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0) *
+                                    (fullsample['REGION'] & REGIONBITS[args.region] != 0)]
+                I = sample[DIAMCOLUMN] < 3.
+                #I = sample['GROUP_DIAMETER'] < 3.
+                #I = np.isin(sample['OBJNAME'], ['KK 77', 'IKN'])
                 #I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
                 #I = (sample['GROUP_DIAMETER'] < 3.) * (sample['FITBIT'] & FITBITS['forcepsf'] != 0)
                 sample = sample[I]
@@ -251,9 +256,9 @@ def main():
             sample=sample, region=args.region, bricks=bricks,
             coadds=args.coadds, ellipse=args.ellipse,
             htmlplots=args.htmlplots, htmlindex=args.htmlindex,
-            clobber=args.clobber, verbose=args.verbose,
-            datadir=datadir, htmldir=htmldir, size=size,
-            mp=args.mp)
+            no_groups=args.no_groups, clobber=args.clobber,
+            verbose=args.verbose, datadir=datadir, htmldir=htmldir,
+            size=size, mp=args.mp)
     else:
         groups, suffix = [], ''
 
@@ -280,7 +285,7 @@ def main():
                     dsrt = np.argsort(sample[fail[rank]][DIAMCOLUMN])
                     galaxy, galaxydir = get_galaxy_galaxydir(
                         sample[fail[rank]][dsrt], region=args.region,
-                        datadir=datadir, htmldir=htmldir)
+                        group=not args.no_groups, datadir=datadir, htmldir=htmldir)
                     for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
                                             sample[fail[rank]][DIAMCOLUMN][dsrt]):
                         print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
@@ -290,10 +295,12 @@ def main():
                     log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
                     galaxy, galaxydir = get_galaxy_galaxydir(
                         sample[todo], region=args.region,
+                        group=not args.no_groups,
                         datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(todo, np.atleast_1d(galaxydir),
-                                            sample[todo][DIAMCOLUMN]):
-                        log.info(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+                    for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
+                                                 sample[todo]['OBJNAME'],
+                                                 sample[todo][DIAMCOLUMN]):
+                        log.info(f'  {ii} {dd} ({obj}; d={diam:.3f} arcmin)')
             return
 
     # Loop on the remaining objects.
@@ -307,6 +314,7 @@ def main():
     for count, ii in enumerate(groups[rank]):
         onegal = sample[ii]
         galaxy, galaxydir = get_galaxy_galaxydir(onegal, region=args.region,
+                                                 group=not args.no_groups,
                                                  datadir=datadir, htmldir=htmldir)
         if not os.path.isdir(galaxydir):
             os.makedirs(galaxydir, exist_ok=True)
@@ -439,6 +447,7 @@ def main():
                                         htmlplots=args.htmlplots,
                                         htmlindex=args.htmlindex,
                                         #clobber=args.clobber,
+                                        no_groups=args.no_groups,
                                         verbose=args.verbose,
                                         datadir=datadir, htmldir=htmldir,
                                         size=size, mp=args.mp)

@@ -24,17 +24,13 @@ from SGA.logger import log
 
 def parent_version(vicuts=False, nocuts=False, archive=False):
     if nocuts:
-        version = 'v1.0'
-        # many more objects added
-        #version = 'v1.1'
+        version = 'v1.0' # 'v0.2'
     elif vicuts:
-        version = 'v1.0'
-        #version = 'v1.1'
+        version = 'v1.0' # 'v0.2'
     elif archive:
-        version = 'v1.0'
-        #version = 'v1.1'
+        version = 'v1.0' # 'v0.2'
     else:
-        version = 'v1.0'
+        version = 'v1.0' # 'v0.2'
     return version
 
 
@@ -2927,7 +2923,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     out = build_group_catalog(grp)
 
     if lvd:
-        I = out['SAMPLEBIT'] == 2**0
+        I = out['SAMPLEBIT'] & 2**0 != 0
         out = out[np.isin(out['GROUP_ID'], out['GROUP_ID'][I])]
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')

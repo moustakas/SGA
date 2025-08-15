@@ -40,8 +40,8 @@ from SGA.logger import log
 MAXDIAM = 3. # [arcmin]
 
 
-def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None,
-                diam=None, cutout=False):
+def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
+                cutout_galaxy=None, cutout_galaxydir=None, cutout=False):
 
     from astropy.wcs import WCS
 
@@ -53,13 +53,22 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None,
             np.atleast_1d(diam), maxdiam_arcmin=MAXDIAM)
         wcs = simple_wcs(ra, dec, width[0], pixscale[0])
 
-        # strip the galaxy subdirectory and try adding GROUP
-        imagefile = os.path.join(os.path.dirname(galaxydir), f'{galaxy}.jpeg')
-        #if not os.path.isfile(imagefile):
-        #    imagefile = imagefile.replace('.jpeg', '_GROUP.jpeg')
-
+        # strip the galaxy subdirectory
+        imagefile = os.path.join(os.path.dirname(cutout_galaxydir), f'{cutout_galaxy}.jpeg')
+        if not os.path.isfile(imagefile):
+            msg = f'Cutout for {cutout_galaxydir} not found'
+            log.warning(msg)
+            raise ValueError(msg)
         image = imread(imagefile)
         assert(image.shape[0] == width[0])
+
+        # if this object had GROUP_PRIMARY=False then there's also a
+        # Tractor catalog
+        if os.path.isdir(galaxydir):
+        #if cutout_galaxy == 'SGA2025_J0150.925+068.693':
+            print('WRITE ME!!')
+            pdb.set_trace()
+
         return Table(), Table(), image, wcs
 
 
@@ -113,9 +122,15 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
     I = fullsample['CUTOUT'].value
     if np.any(I):
-        _, cgalaxydir = get_galaxy_galaxydir(fullsample[I], region=region,
-                                                   datadir=cutoutdir)
-        galaxydir[I] = cgalaxydir
+        cutout_galaxy = np.copy(galaxy)
+        cutout_galaxydir = np.copy(galaxydir)
+        cgalaxy, cgalaxydir = get_galaxy_galaxydir(fullsample[I], region=region,
+                                                   group=False, datadir=cutoutdir)
+        cutout_galaxy[I] = cgalaxy
+        cutout_galaxydir[I] = cgalaxydir
+    else:
+        cutout_galaxy = None
+        cutout_galaxydir = None
 
     nobj = len(fullsample)
     allindx = np.arange(nobj)
@@ -149,11 +164,20 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                         va='top', color='white', linespacing=1.5, fontsize=9,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
+                if obj['CUTOUT']:
+                    diam = obj['DIAM'] * 60., # [arcsec]
+                    ra = obj['RA']
+                    dec = obj['DEC']
+                else:
+                    diam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
+                    ra = obj['GROUP_RA']
+                    dec = obj['GROUP_DEC']
                 sga, tractor, image, wcs = read_coadds(
                     galaxy[indx[iax]], galaxydir[indx[iax]],
-                    diam=obj['GROUP_DIAMETER'] * 60., # [arcsec]
-                    refid=obj[REFIDCOLUMN], ra=obj['GROUP_RA'],
-                    dec=obj['GROUP_DEC'], cutout=obj['CUTOUT'])
+                    refid=obj[REFIDCOLUMN], ra=ra, dec=dec, diam=diam,
+                    cutout_galaxy=cutout_galaxy[indx[iax]],
+                    cutout_galaxydir=cutout_galaxydir[indx[iax]],
+                    cutout=obj['CUTOUT'])
 
                 if image is None:
                     txt_ll = 'No Tractor catalog'
@@ -196,6 +220,9 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                                        marker='o', s=s, color='white', alpha=alpha)
 
                     if len(sga) > 0:
+                        from SGA.geometry import get_tractor_ellipse
+                        _, ba, pa = get_tractor_ellipse(sga['shape_r'][0], sga['shape_e1'][0], sga['shape_e2'][0])
+                        print(f"{obj['OBJNAME']:30} {obj['RA']:.7f} {obj['DEC']:.7f} {sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba:.3f} {pa:.1f}")
                         xx.scatter(sga['bx'], height-sga['by'], marker='s',
                                    facecolor='none', s=40, color='cyan')
 
@@ -277,7 +304,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
     log.info(f'Wrote {pdffile}')
 
 
-def qa_tractor(region='dr11-south', datadir=None, lvd=False,
+def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd=False,
                lvd_forcepsf=False, lvd_ignore=False):
 
     if datadir is None:
@@ -288,7 +315,15 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
     sample, fullsample = read_sample(region=region, lvd=any_lvd)
 
     if any_lvd:
+        from SGA.SGA import SAMPLEBITS
+        from SGA.coadds import REGIONBITS
+
         qadir = os.path.join(sga_dir(), 'parent', 'lvd')
+        # not all LVD are primary, so re-select them here
+
+        sample = fullsample[(fullsample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0) *
+                            (fullsample['REGION'] & REGIONBITS[region] != 0)]
+
         if lvd:
             #I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
             I = sample['FITBIT'] == 0
@@ -323,7 +358,7 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
     log.info(f'Found {np.sum(I):,d}/{len(sample):,d} ' + \
              'objects with pipeline results.')
 
-    # check for cutouts and, if missing, generating them
+    # check for cutouts and, if missing, generate them
     sample['CUTOUT'] = np.zeros(len(sample), bool)
     fullsample['CUTOUT'] = np.zeros(len(fullsample), bool)
     if np.sum(~I) > 0:
@@ -335,7 +370,7 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
         fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
 
         galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
-                                                 datadir=cutoutdir)
+                                                 group=False, datadir=cutoutdir)
         M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
         log.info(f'Generating cutouts for {np.sum(M):,d}/{np.sum(~I):,d} ' + \
                  'objects with missing pipeline results.')
@@ -348,8 +383,9 @@ def qa_tractor(region='dr11-south', datadir=None, lvd=False,
                 log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
                 layer = 'ls-dr11-early-v2'
 
-            do_cutouts(sample[~I][M], layer=layer, group=True, fits_cutouts=False,
-                       maxdiam_arcmin=MAXDIAM, cutoutdir=os.path.join(cutoutdir, region))
+            do_cutouts(sample[~I][M], layer=layer, group=False, fits_cutouts=False,
+                       maxdiam_arcmin=MAXDIAM, cutoutdir=os.path.join(cutoutdir, region),
+                       mp=mp)
 
     #sample = sample[I]
     #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
@@ -365,6 +401,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--lvd', action='store_true', help='Generate QA for the non-ignore/non-forcepsf LVD sample.')
     parser.add_argument('--lvd-ignore', action='store_true', help='Generate QA for the LVD/ignore sample.')
     parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
@@ -372,6 +409,6 @@ if __name__ == '__main__':
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 
-    qa_tractor(datadir=args.datadir, region=args.region, lvd=args.lvd,
-               lvd_forcepsf=args.lvd_forcepsf,
+    qa_tractor(datadir=args.datadir, region=args.region, mp=args.mp,
+               lvd=args.lvd, lvd_forcepsf=args.lvd_forcepsf,
                lvd_ignore=args.lvd_ignore)

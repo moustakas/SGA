@@ -19,14 +19,26 @@ DECCOLUMN = 'GROUP_DEC' # 'DEC'
 DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
 REFIDCOLUMN = 'SGAID'
 
+print('FITBITS is deprecated!')
 FITBITS = dict(
     ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
     forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
     forcepsf = 2**2,  # force PSF for source detection and photometry within the SGA mask
 )
 
+#SAMPLEBITS = dict(
+#    LVD = 2**0,       # LVD / local dwarfs
+#)
+
+SGAFITMODE = dict(
+    fixgeo = 2**0,    # fix ellipse geometry
+    forcepsf = 2**1,  # force PSF for source detection and photometry within the SGA mask
+    cluster = 2**2,   # less aggressive source-masking due to cluster environment
+)
+
 SAMPLEBITS = dict(
     LVD = 2**0,       # LVD / local dwarfs
+    RESOLVED = 2**1,  # all objects in the -resolved.csv file
 )
 
 OPTMASKBITS = dict(
@@ -119,8 +131,8 @@ def sga2025_name(ra, dec, unixsafe=False):
                          unixsafe=unixsafe)
 
 
-def get_galaxy_galaxydir(sample, region='dr11-south', datadir=None,
-                         htmldir=None, html=False):
+def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
+                         datadir=None, htmldir=None, html=False):
     """Retrieve the galaxy name and the (nested) directory.
 
     """
@@ -131,17 +143,16 @@ def get_galaxy_galaxydir(sample, region='dr11-south', datadir=None,
     dataregiondir = os.path.join(datadir, region)
     htmlregiondir = os.path.join(htmldir, region)
 
-    if sample is not None:
-        # Handle groups.
-        if 'GROUP_NAME' in sample.colnames:
-            galcolumn = 'GROUP_NAME'
-            racolumn = 'GROUP_RA'
-        else:
-            galcolumn = 'SGANAME'
-            racolumn = 'RA'
+    # Handle groups.
+    if group and 'GROUP_NAME' in sample.colnames:
+        galcolumn = 'GROUP_NAME'
+        racolumn = 'GROUP_RA'
+    else:
+        galcolumn = 'SGANAME'
+        racolumn = 'RA'
 
-        objs = np.atleast_1d(sample[galcolumn])
-        ras = np.atleast_1d(sample[racolumn])
+    objs = np.atleast_1d(sample[galcolumn])
+    ras = np.atleast_1d(sample[racolumn])
 
     objdirs, htmlobjdirs = [], []
     for obj, ra in zip(objs, ras):
@@ -167,7 +178,8 @@ def get_galaxy_galaxydir(sample, region='dr11-south', datadir=None,
 def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
                   build_catalog=False, clobber=False, clobber_overwrite=None,
-                  verbose=False, datadir=None, htmldir=None, size=1, mp=1):
+                  no_groups=False, verbose=False, datadir=None, htmldir=None,
+                  size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -192,12 +204,19 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
             raise ValueError(msg)
         indices = np.arange(len(bricks))
 
+    if no_groups:
+        group = False
+        DIAMCOL = 'DIAM'
+    else:
+        DIAMCOL = DIAMCOLUMN
+
     dependson, dependsondir = None, None
     if htmlplots is False and htmlindex is False:
         if verbose:
             t0 = time.time()
             log.debug('Getting galaxy names and directories...')
         galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
+                                                 group=group,
                                                  datadir=datadir,
                                                  htmldir=htmldir)
         if verbose:
@@ -220,13 +239,13 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         dependson = '-image.jpg'
         galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir, region=region,
-            html=True)
+            group=group, html=True)
     elif htmlindex:
         suffix = 'htmlindex'
         filesuffix = '-montage.png'
         galaxy, _, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir,
-            region=region, html=True)
+            region=region, group=group, html=True)
     else:
         msg = 'Need at least one keyword argument.'
         log.critical(msg)
@@ -290,7 +309,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         # per rank ~flat.
         # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
         _todo_indices = indices[itodo]
-        weight = np.atleast_1d(sample[DIAMCOLUMN])[_todo_indices]
+        weight = np.atleast_1d(sample[DIAMCOL])[_todo_indices]
         cumuweight = weight.cumsum() / weight.sum()
         idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
         if len(idx) < size: # can happen in corner cases or with 1 rank
@@ -298,7 +317,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         else:
             todo_indices = np.array_split(_todo_indices, idx) # weighted
         for ii in range(size): # sort by weight
-            srt = np.argsort(sample[DIAMCOLUMN][todo_indices[ii]])
+            srt = np.argsort(sample[DIAMCOL][todo_indices[ii]])
             todo_indices[ii] = todo_indices[ii][srt]
     else:
         todo_indices = [np.array([])]
@@ -307,7 +326,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                lvd=False, final_sample=False, region='dr11-south', d25min=0., d25max=100.0):
+                lvd=False, final_sample=False, region='dr11-south', d25min=0.,
+                d25max=200.):
     """Read/generate the parent SGA catalog.
 
     d25min,d25max in arcmin
@@ -1744,7 +1764,8 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
         sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
     print('FIXME - special fitting bit(s)')
-    sample['FIXGEO'] = sample['FITBIT'] & FITBITS['ignore'] != 0
+    sample['FIXGEO'] = np.zeros(len(sample), bool)
+    #sample['FIXGEO'] = sample['FITBIT'] & FITBITS['ignore'] != 0
     sample['FORCEPSF'] = sample['FITBIT'] & FITBITS['forcepsf'] != 0
     sample['CLUSTER'] = np.zeros(len(sample), bool)
 
