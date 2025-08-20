@@ -170,11 +170,11 @@ def overplot_ellipse(major_axis_arcsec, ba, pa, x0, y0,
         # major axis line
         ax.plot([xcen + dx_maj, xcen - dx_maj],
                 [ycen + dy_maj, ycen - dy_maj],
-                color=color, lw=0.5, ls=linestyle, clip_on=True)
+                color=color, lw=1, ls=linestyle, clip_on=True)
         # minor axis line
         ax.plot([xcen + dx_min, xcen - dx_min],
                 [ycen - dy_min, ycen + dy_min],
-                color=color, lw=0.5, ls=linestyle, clip_on=True)
+                color=color, lw=1, ls=linestyle, clip_on=True)
 
 
 def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='group',

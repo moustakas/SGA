@@ -375,7 +375,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     #cmdargs += '--write-stage=tims --write-stage=srcs '
     cmdargs += '--write-stage=srcs '
 
-    #cmdargs += '--old-calibs-ok '
+    cmdargs += '--old-calibs-ok '
     cmdargs += '--skip-calibs '
     cmdargs += f'--checkpoint={survey.output_dir}/{galaxy}-checkpoint.p '
     cmdargs += f'--pickle={survey.output_dir}/{galaxy}-%%(stage)s.p '

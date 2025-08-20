@@ -26,23 +26,21 @@ FITBITS = dict(
     forcepsf = 2**2,  # force PSF for source detection and photometry within the SGA mask
 )
 
-#SAMPLEBITS = dict(
-#    LVD = 2**0,       # LVD / local dwarfs
-#)
-
 SGAFITMODE = dict(
-    fixgeo = 2**0,    # fix ellipse geometry
-    forcepsf = 2**1,  # force PSF for source detection and photometry within the SGA mask
-    cluster = 2**2,   # less aggressive source-masking due to cluster environment
+    fixgeo = 2**0,     # fix ellipse geometry
+    forcepsf = 2**1,   # force PSF for source detection and photometry within the SGA mask
+    galcluster = 2**2, # less aggressive source-masking due to cluster environment
+    resolved = 2**3,
 )
 
 SAMPLEBITS = dict(
-    LVD = 2**0,       # LVD / local dwarfs
-    RESOLVED = 2**1,  # all objects in the -resolved.csv file
+    LVD = 2**0,    # Local Volume Database dwarfs
+    clouds = 2**1, # in the Magellanic Clouds
+    GCPNe = 2**2,  # in a globular cluster or PNe mask (turn off Gaia-only source detection)
 )
 
 OPTMASKBITS = dict(
-    brightstar = 2**0, # BRIGHT, MEDIUM, or CLUSTER MASKBITS
+    brightstar = 2**0, # BRIGHT or MEDIUM legacypipe MASKBITS
     gaiastar = 2**1,   # Gaia (type=PSF) stars
     galaxy = 2**2,     # galaxy (extended, non-reference) sources
     reference = 2**3,  # SGA (reference) sources
@@ -428,7 +426,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 #log.warning('No matching galaxies using column SGANAME!')
                 I = np.isin(sample['OBJNAME'], galaxylist)
                 if np.count_nonzero(I) == 0:
-                    log.warning('No matching galaxies found in sample.')
+                    log.warning('No matching galaxies found in sample; try a different region?')
                     return Table(), Table()
         return sample[I], fullsample
     else:
@@ -743,8 +741,11 @@ def read_image_data(data, filt2imfile, verbose=False):
         if filt in opt_bands:
             threshold = detect_threshold(image, nsigma=3., background=0.)
             segment_img = detect_sources(image, threshold, npixels=10)
-            msk = segment_img.make_source_mask()
-            msk *= ~mask # exclude "bad" pixels
+            if segment_img is not None:
+                msk = segment_img.make_source_mask()
+                msk *= ~mask # exclude "bad" pixels
+            else:
+                msk = ~mask
             mn, med, skysigma = sigma_clipped_stats(image, sigma=2.5, mask=msk)
 
             #import matplotlib.pyplot as plt
@@ -945,8 +946,12 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         wnorm = np.sum(wivars, axis=0)
         wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
 
+        try:
+            norm = get_norm(wimg)
+        except:
+            norm = None
         xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
-                  norm=get_norm(wimg), alpha=1.)
+                  norm=norm, alpha=1.)
         xx.set_xlim(0, wimg.shape[0]-1)
         xx.set_ylim(0, wimg.shape[1]-1)
         xx.margins(0)
@@ -990,8 +995,12 @@ def qa_multiband_mask(data, geo_initial, geo_final):
 
         wimg[wimg == 0.] = np.nan
 
+        try:
+            norm = get_norm(wimg)
+        except:
+            norm = None
         ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
-                             norm=get_norm(wimg))
+                             norm=norm)
         #ax[1+iobj, 0].imshow(np.log(wimg.clip(wimg[int(bx), int(by)]/1e4)),
         #                     cmap=cmap, origin='lower', interpolation='none')
         #ax[1+iobj, 0].imshow(mge.mask, origin='lower', cmap='binary',
@@ -1355,9 +1364,11 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
             iter_brightstarmask[inellipse] = False
             iter_refmask[inellipse] = False
 
-            #import matplotlib.pyplot as plt
+            import matplotlib.pyplot as plt
+            iter_gaiamask = np.copy(opt_gaiamask)
+            iter_gaiamask[inellipse] = False
             #plt.clf()
-            #plt.imshow(iter_refmask, origin='lower')
+            #plt.imshow(iter_gaiamask, origin='lower')
             #plt.savefig('ioannis/tmp/junk2.png')
 
             # Build a galaxy mask from all extended sources outside
@@ -1472,7 +1483,8 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
 
         #import matplotlib.pyplot as plt
         #plt.clf()
-        #plt.imshow(final_refmask, origin='lower')
+        #plt.imshow(opt_gaiamask, origin='lower')
+        ##plt.imshow(final_refmask, origin='lower')
         #plt.savefig('ioannis/tmp/junk2.png')
 
         opt_maskbits_obj = _update_masks(final_brightstarmask, opt_gaiamask, final_refmask,
@@ -1560,7 +1572,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
         data[f'{prefix}_maskbits'] = maskbits
         data[f'{prefix}_models'] = models
         ivar = np.stack([data[f'{filt}_invvar'] for filt in bands])
-        sig, _ = ivar2var(ivar, sigma=True) # [nanomaggies]
+        sig, _ = ivar2var(ivar, sigma=True, allmasked_ok=True) # [nanomaggies]
         data[f'{prefix}_sigma'] = sig
 
 
@@ -1717,7 +1729,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     # turn these catalog entries into Tractor sources later.
     tractorfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["tractor"]}.fits')
 
-    cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
+    cols = ['brick_primary', 'ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
             'sersic', 'shape_r', 'shape_e1', 'shape_e2']
     cols += [f'flux_{filt}' for filt in opt_bands]
     cols += [f'flux_ivar_{filt}' for filt in opt_bands]
@@ -1831,8 +1843,8 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     maskbits = F['MASKBITS'].read()
 
     brightstarmask = ( (maskbits & MASKBITS['BRIGHT'] != 0) |
-                       (maskbits & MASKBITS['MEDIUM'] != 0) |
-                       (maskbits & MASKBITS['CLUSTER'] != 0) )
+                       (maskbits & MASKBITS['MEDIUM'] != 0) )
+                       #(maskbits & MASKBITS['CLUSTER'] != 0) )
     data['brightstarmask'] = brightstarmask
 
     # missing bands have ALLMASK_[GRIZ] == 0

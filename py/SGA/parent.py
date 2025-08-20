@@ -2770,7 +2770,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     from SGA.SGA import sga2025_name, FITBITS, SAMPLEBITS
     from SGA.groups import build_group_catalog
     from SGA.coadds import REGIONBITS
-    from SGA.sky import find_close
+    from SGA.sky import find_close, in_ellipse_mask_sky
     from SGA.brick import brickname as get_brickname
 
     version = parent_version()
@@ -2787,10 +2787,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
 
-    print('Remove objects in clusters')
-    print('Cut on starfdist < 0.5 -- not too close to bright stars!')
-    print('When building groups, do not use the LVD ignore category, e.g., Ursa Minor is gigantic! Except maybe Antlia-B (south,forcepsf)')
-    pdb.set_trace()
+    print('Consider removing sources that are too close to bright stars, maybe starfdist < 0.5?')
 
     cols = ['OBJNAME',
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
@@ -2807,6 +2804,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         log.info(f'Read {len(cat):,d} objects from {catfile}')
 
+        # need to make sure we keep all LVD dwarfs
         lvd_dwarfs = cat['OBJNAME'][cat['ROW_LVD'] != -99].value
 
         # Remove all sources smaller than MINDIAM with no other source
@@ -2821,6 +2819,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
         I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
                                   cat['IN_SMC'], diam > mindiam))
+
         ##########################
         ## trim very small objects and to a specific set of test bricks
         #diam, ba, pa, ref = choose_geometry(cat, mindiam=10.)
@@ -2866,10 +2865,6 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
-    # Add SFD dust
-    SFD = SFDMap(scaling=1.0)
-    ebv = SFD.ebv(parent['RA'].value, parent['DEC'].value)
-
     # build the group catalog from the full sample
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=0., get_mag=True)
@@ -2879,7 +2874,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         diam[diam <= 0.] = 10./60.
     assert(np.all(diam > 0.))
 
-    ra, dec = parent['RA'].value, parent['DEC'].value
+    # Pre-process the morphology column.
     allmorph = []
     for objtype, morph, basic_morph in zip(
             parent['OBJTYPE'].value, parent['MORPH'].value,
@@ -2887,6 +2882,31 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         morph1 = np.array([objtype, morph, basic_morph])
         morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
         allmorph.append(morph1)
+
+    # Process the SAMPLE bits.
+    samplebits = np.zeros(len(parent), np.int16)
+
+    # LVD dwarfs
+    samplebits[parent['ROW_LVD'] != -99] += SAMPLEBITS['LVD']
+
+    # GC/PNe
+    gcl = Table(fitsio.read(str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))))
+    for cl in gcl:
+        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
+                                cl['pa'], parent['RA'].value, parent['DEC'].value)
+        if np.any(I):
+            samplebits[I] += SAMPLEBITS['GCPNe']
+            #for gal in parent['OBJNAME'][I].value:
+            #    if cl['type'] == 'GCl':
+            #        print(f"{gal},drop,cluster,in GCl '{cl["name"]}'")
+            #    elif cl['type'] == 'PNe':
+            #        print(f"{gal},drop,cluster,in PNe '{cl["name"]}'")
+    #bb = parent[samplebits & SAMPLEBITS['GCPNe'] != 0]
+    #bb.write('junk.fits', overwrite=True)
+
+    # Magellanic Clouds
+    samplebits[parent['IN_LMC']] += SAMPLEBITS['clouds']
+    samplebits[parent['IN_SMC']] += SAMPLEBITS['clouds']
 
     # process the fitting behavior bits
     fitbits = np.zeros(len(parent), np.int16)
@@ -2896,14 +2916,17 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     fitbits[parent['IN_LMC']] = FITBITS['forcegaia']
     fitbits[parent['IN_SMC']] = FITBITS['forcegaia']
 
-    samplebits = np.zeros(len(parent), np.int16)
-    samplebits[parent['ROW_LVD'] != -99] = SAMPLEBITS['LVD']
 
-    print('ADD LMC,SMC SOURCES TO SAMPLEBITS?')
+    # Add SFD dust
+    SFD = SFDMap(scaling=1.0)
+    ebv = SFD.ebv(parent['RA'].value, parent['DEC'].value)
+
     print('Need a new CLUSTER bit! e.g., III Zw 040 NOTES02')
 
     sgaid = np.arange(len(parent))
     grp = parent[cols]
+
+    ra, dec = grp['RA'].value, grp['DEC'].value
 
     grp.add_column(sgaid, name='SGAID', index=0)
     grp.add_column(sga2025_name(ra, dec, unixsafe=True),
@@ -2920,6 +2943,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     grp.add_column(ebv, name='EBV', index=11)
 
     print('NEED TO REMOVE LMC,SMC FROM GROUP-FINDING!')
+    print('When building groups, do not use the LVD ignore category, e.g., Ursa Minor is gigantic! Except maybe Antlia-B (south,forcepsf)')
     out = build_group_catalog(grp)
 
     if lvd:

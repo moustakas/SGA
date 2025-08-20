@@ -116,6 +116,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
     # each group member gets its own panel
     galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
+                                             group=False,
                                              datadir=datadir)
     galaxy = np.atleast_1d(galaxy)
     galaxydir = np.atleast_1d(galaxydir)
@@ -225,6 +226,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                         print(f"{obj['OBJNAME']:30} {obj['RA']:.7f} {obj['DEC']:.7f} {sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba:.3f} {pa:.1f}")
                         xx.scatter(sga['bx'], height-sga['by'], marker='s',
                                    facecolor='none', s=40, color='cyan')
+                    else:
+                        print(f"{obj['OBJNAME']:30} {obj['RA']:.7f} {obj['DEC']:.7f}")
 
                     # draw the initial ellipse geometry...
                     (xpix, ypix) = wcs.wcs_world2pix(obj['RA'], obj['DEC'], 0)
@@ -353,6 +356,7 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd=False,
         os.makedirs(qadir, exist_ok=True)
 
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
+                                             group=False,
                                              datadir=datadir)
     I = np.array([os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)])
     log.info(f'Found {np.sum(I):,d}/{len(sample):,d} ' + \
@@ -367,7 +371,7 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd=False,
             raise ValueError()
 
         sample['CUTOUT'][~I] = True
-        fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
+        #fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
 
         galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
                                                  group=False, datadir=cutoutdir)
@@ -387,6 +391,7 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd=False,
                        maxdiam_arcmin=MAXDIAM, cutoutdir=os.path.join(cutoutdir, region),
                        mp=mp)
 
+    #SGA2025_J0170.067+013.549
     #sample = sample[I]
     #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 

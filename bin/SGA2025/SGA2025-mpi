@@ -27,8 +27,6 @@ SGA2025-mpi --galaxylist="KK 70" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 
 
 
 # LVD tests
-SGA2025-mpi --galaxylist="KV19-271" --coadds --no-cleanup --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-tmp1
-
 SGA2025-mpi --lvd --coadds --no-groups --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
@@ -149,13 +147,21 @@ def main():
             if args.lvd:
                 from SGA.coadds import REGIONBITS
                 from SGA.SGA import SAMPLEBITS
+                _, fullsample = read_sample(region=args.region)
                 sample = fullsample[(fullsample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0) *
                                     (fullsample['REGION'] & REGIONBITS[args.region] != 0)]
-                I = sample[DIAMCOLUMN] < 3.
-                #I = sample['GROUP_DIAMETER'] < 3.
-                #I = np.isin(sample['OBJNAME'], ['KK 77', 'IKN'])
-                #I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
-                #I = (sample['GROUP_DIAMETER'] < 3.) * (sample['FITBIT'] & FITBITS['forcepsf'] != 0)
+                if args.galaxylist is not None:
+                    # a little hacky...
+                    I = np.isin(sample['OBJNAME'], args.galaxylist)
+                    if np.sum(I) == 0:
+                        I = np.isin(sample['SGANAME'], args.galaxylist)
+                else:
+                    I = sample[DIAMCOLUMN] < 3.
+                    #pdb.set_trace()
+                    #I = sample['GROUP_DIAMETER'] < 3.
+                    #I = np.isin(sample['OBJNAME'], ['KK 77', 'IKN'])
+                    #I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
+                    #I = (sample['GROUP_DIAMETER'] < 3.) * (sample['FITBIT'] & FITBITS['forcepsf'] != 0)
                 sample = sample[I]
             elif False:
                 log.warning('Testing subsamples!')
@@ -351,12 +357,17 @@ def main():
 
         if args.coadds:
             from SGA.coadds import custom_coadds
+            from astropy.table import Table
 
             log.warning('Undo --old-calibs-ok in custom_coadds when ready!')
 
             # Write out the individual galaxies for this mosaic.
-            I = np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]
-            thissample = fullsample[I]
+            if args.no_groups:
+                thissample = Table(onegal)
+            else:
+                I = np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]
+                thissample = fullsample[I]
+
             samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
             if args.clobber or not os.path.isfile(samplefile):
                 log.debug(f'Writing {len(thissample)} galaxy(ies) ' + \
@@ -370,6 +381,9 @@ def main():
                 force_psf_detection = True
             else:
                 force_psf_detection = False
+
+            print('If in_cluster sample bit is set, turn off Gaia-only photometry.')
+            pdb.set_trace()
 
             if args.debug:
                 err, filesuffix = custom_coadds(

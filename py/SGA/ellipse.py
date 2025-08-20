@@ -1215,10 +1215,10 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     # we need as many MASKBITS bit-masks as datasetss
     assert(len(MASKBITS) == len(datasets))
 
-    #data = read_multiband_function(galaxy, galaxydir, bands=bands,
-    #                               pixscale=pixscale, unwise=unwise,
-    #                               galex=galex, verbose=verbose)
-    #pdb.set_trace()
+    data = read_multiband_function(galaxy, galaxydir, bands=bands,
+                                   pixscale=pixscale, unwise=unwise,
+                                   galex=galex, verbose=verbose)
+    pdb.set_trace()
 
     try:
         data = read_multiband_function(

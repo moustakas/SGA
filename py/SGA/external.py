@@ -1096,6 +1096,9 @@ def read_lvd(rank=0, rows=None, overwrite=False):
     """
     version = version_lvd()
 
+    print('Remove Sagittarius')
+    pdb.set_trace()
+
     # combine the dwarf-all and dwarf-local-field-distant files
     lvdfile = os.path.join(sga_dir(), 'parent', 'external', f'LVD_{version}.fits')
     if not os.path.isfile(lvdfile) or overwrite:
