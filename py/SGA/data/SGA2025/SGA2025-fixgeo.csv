@@ -5,152 +5,105 @@
 # These objects all get the 'FIXGEO' SGAFITMODE and FITMODE bit set.
 #
 objname,region,comment
-
-UGCA 292,dr9-north,LVD ~resolved ~forcepsf
-
-
-
-BK3N,dr9-north,LVD ~resolve ~forcepsf
-KK 17,dr9-north,LVD ~resolve ~forcepsf
-DDO 169NW,dr9-north,LVD ~resolve ~forcepsf
-d0959+68,dr9-north,LVD ~resolve ~forcepsf
-BK6N,dr9-north,LVD ~resolve ~forcepsf
-KK 77,dr9-north,LVD ~resolve ~forcepsf
-A0952+69,dr9-north,LVD ~resolve ~forcepsf
-
-
-Clump III,dr9-north,LVD resolve ~forcepsf
-Clump I,dr9-north,LVD resolve ~forcepsf
-d1014+68,dr9-north,LVD resolve ~forcepsf
-d0944+69,dr9-north,LVD resolve ~forcepsf
-d1015+69,dr9-north,LVD resolve ~forcepsf
-dw1315+4123,dr9-north,LVD resolve ~forcepsf
-M101 Dw9,dr9-north,LVD resolve ~forcepsf
-[KKH2011]S11,dr9-north,LVD resolve ~forcepsf
-d1006+67,dr9-north,LVD resolve ~forcepsf
-d1041+70,dr9-north,LVD resolve ~forcepsf
-d0939+71,dr9-north,LVD resolve ~forcepsf
-MADCASH-1,dr9-north,LVD resolve ~forcepsf
-d0955+70,dr9-north,LVD resolve ~forcepsf
-d0926+70,dr9-north,LVD resolve ~forcepsf
-dw1330+4731,dr9-north,LVD resolve ~forcepsf
-NGC 4631-dw3,dr9-north,LVD resolve ~forcepsf
-NGC 5055-dwTBG1,dr9-north,LVD resolve ~forcepsf
-d0934+70,dr9-north,LVD resolve ~forcepsf
-NGC 4631-dw2,dr9-north,LVD resolve ~forcepsf
-M101-DF3,dr9-north,LVD resolve ~forcepsf
-KK 69,dr9-north,LVD resolve ~forcepsf
-Bootes V,dr9-north,LVD resolve ~forcepsf
-F8D1,dr9-north,LVD resolve ~forcepsf
-NGC 4631-dw1,dr9-north,LVD resolve ~forcepsf
-Canes Venatici II,dr9-north,LVD resolve ~forcepsf
-Willman 1,dr9-north,LVD resolve ~forcepsf
-LV J1228+4358,dr9-north,LVD resolve ~forcepsf
-GARLAND,dr9-north,LVD resolve ~forcepsf
-Draco II,dr9-north,LVD resolve ~forcepsf
-Canes Venatici I,dr9-north,LVD resolve ~forcepsf
-Bootes IV,dr9-north,LVD resolve ~forcepsf
-Ursa Major I,dr9-north,LVD resolve ~forcepsf
-Ursa Major II,dr9-north,LVD resolve ~forcepsf
-Ursa Minor,dr9-north,LVD resolve ~forcepsf
-Draco,dr9-north,LVD resolve ~forcepsf
-
-
-Bedin 1,dr11-south,LVD resolve forcepsf
-
-
-dw1109-0016,dr11-south,LVD resolve ~forcepsf
-dw1300+1843,dr11-south,LVD resolve ~forcepsf
-CenA-MM-Dw5,dr11-south,LVD resolve ~forcepsf
-dw1004m0657,dr11-south,LVD resolve ~forcepsf
-LV J0055-2310,dr11-south,LVD resolve ~forcepsf
-dw1341-29,dr11-south,LVD resolve ~forcepsf
-NGC 4631-dw3,dr11-south,LVD resolve ~forcepsf
-dw1340-30,dr11-south,LVD resolve ~forcepsf
-dw1004m0737,dr11-south,LVD resolve ~forcepsf
-dw1323-40b,dr11-south,LVD resolve ~forcepsf
-CenA-MM-Dw6,dr11-south,LVD resolve ~forcepsf
-dw1323-40a,dr11-south,LVD resolve ~forcepsf
-CenA-MM-Dw4,dr11-south,LVD resolve ~forcepsf
-Pegasus V,dr11-south,LVD resolve ~forcepsf
-Scl-MM-Dw5,dr11-south,LVD resolve ~forcepsf
-dw1124p1240,dr11-south,LVD resolve ~forcepsf
-dw1335-29,dr11-south,LVD resolve ~forcepsf
-CenA-MM-Dw2,dr11-south,LVD resolve ~forcepsf
-dw1322-39,dr11-south,LVD resolve ~forcepsf
-Scl-MM-Dw1,dr11-south,LVD resolve ~forcepsf
-M96-DF2,dr11-south,LVD resolve ~forcepsf
-CenA-MM-Dw7,dr11-south,LVD resolve ~forcepsf
-N1291-DW13,dr11-south,LVD resolve ~forcepsf
-Leo K,dr11-south,LVD resolve ~forcepsf
-Pisces VII,dr11-south,LVD resolve ~forcepsf
-Pegasus W,dr11-south,LVD resolve ~forcepsf
-Leo M,dr11-south,LVD resolve ~forcepsf
-Andromeda XI,dr11-south,LVD resolve ~forcepsf
-KK 69,dr11-south,LVD resolve ~forcepsf
-Andromeda XIII,dr11-south,LVD resolve ~forcepsf
-Andromeda XXVIII,dr11-south,LVD resolve ~forcepsf
-Virgo II,dr11-south,LVD resolve ~forcepsf
-Pictor I,dr11-south,LVD resolve ~forcepsf
-Pisces II,dr11-south,LVD resolve ~forcepsf
-Andromeda XXII,dr11-south,LVD resolve ~forcepsf
-Bootes V,dr11-south,LVD resolve ~forcepsf
-Pegasus VII,dr11-south,LVD resolve ~forcepsf
-Leo T,dr11-south,LVD resolve ~forcepsf
-Phoenix II,dr11-south,LVD resolve ~forcepsf
-NGC 4631-dw1,dr11-south,LVD resolve ~forcepsf
-Pavo,dr11-south,LVD resolve ~forcepsf
-NGC 3521-sat,dr11-south,LVD resolve ~forcepsf
-Horologium I,dr11-south,LVD resolve ~forcepsf
-CenA-MM-Dw1,dr11-south,LVD resolve ~forcepsf
-Leo Minor I,dr11-south,LVD resolve ~forcepsf
-Andromeda XXIX,dr11-south,LVD resolve ~forcepsf
-Andromeda XIV,dr11-south,LVD resolve ~forcepsf
-Virgo I,dr11-south,LVD resolve ~forcepsf
-Eridanus II,dr11-south,LVD resolve ~forcepsf
-Hydra II,dr11-south,LVD resolve ~forcepsf
-Grus I,dr11-south,LVD resolve ~forcepsf
-Andromeda XII,dr11-south,LVD resolve ~forcepsf
-Pegasus III,dr11-south,LVD resolve ~forcepsf
-Pegasus IV,dr11-south,LVD resolve ~forcepsf
-Columba I,dr11-south,LVD resolve ~forcepsf
-Leo V,dr11-south,LVD resolve ~forcepsf
-Horologium II,dr11-south,LVD resolve ~forcepsf
-CenA-MM-Dw3,dr11-south,LVD resolve ~forcepsf
-Cetus II,dr11-south,LVD resolve ~forcepsf
-Tucana V,dr11-south,LVD resolve ~forcepsf
-Aquarius III,dr11-south,LVD resolve ~forcepsf
-Segue 2,dr11-south,LVD resolve ~forcepsf
-Leo VI,dr11-south,LVD resolve ~forcepsf
-Reticulum III,dr11-south,LVD resolve ~forcepsf
-KK 208,dr11-south,LVD resolve ~forcepsf
-Centaurus I,dr11-south,LVD resolve ~forcepsf
-Scl-MM-Dw2,dr11-south,LVD resolve ~forcepsf
-Bootes II,dr11-south,LVD resolve ~forcepsf
-Segue 1,dr11-south,LVD resolve ~forcepsf
-Pictor II,dr11-south,LVD resolve ~forcepsf
-Reticulum II,dr11-south,LVD resolve ~forcepsf
-Leo IV,dr11-south,LVD resolve ~forcepsf
-Carina III,dr11-south,LVD resolve ~forcepsf
-Eridanus IV,dr11-south,LVD resolve ~forcepsf
-Sextans II,dr11-south,LVD resolve ~forcepsf
-Coma Berenices,dr11-south,LVD resolve ~forcepsf
-Aquarius II,dr11-south,LVD resolve ~forcepsf
-Tucana III,dr11-south,LVD resolve ~forcepsf
-Andromeda II,dr11-south,LVD resolve ~forcepsf
-Hercules,dr11-south,LVD resolve ~forcepsf
-Grus II,dr11-south,LVD resolve ~forcepsf
-Canes Venatici I,dr11-south,LVD resolve ~forcepsf
-Hydrus I,dr11-south,LVD resolve ~forcepsf
-Carina II,dr11-south,LVD resolve ~forcepsf
-Tucana II,dr11-south,LVD resolve ~forcepsf
-Bootes I,dr11-south,LVD resolve ~forcepsf
-Tucana IV,dr11-south,LVD resolve ~forcepsf
-Carina,dr11-south,LVD resolve ~forcepsf
-Sextans,dr11-south,LVD resolve ~forcepsf
-Bootes III,dr11-south,LVD resolve ~forcepsf
-Crater II,dr11-south,LVD resolve ~forcepsf
-Antlia II,dr11-south,LVD resolve ~forcepsf
-
-
-dw1342-43,dr11-south,LVD ~forcepsf SGA Tractor source too far from center
+#
+# LVD - dr9-north
+#
+UGCA 292,dr9-north,LVD
+Clump III,dr9-north,LVD
+Clump I,dr9-north,LVD
+d1014+68,dr9-north,LVD
+d0944+69,dr9-north,LVD
+dw1315+4123,dr9-north,LVD
+M101 Dw9,dr9-north,LVD
+[KKH2011]S11,dr9-north,LVD
+d1006+67,dr9-north,LVD
+BK3N,dr9-north,LVD
+d1041+70,dr9-north,LVD
+d0939+71,dr9-north,LVD
+MADCASH-1,dr9-north,LVD
+d0955+70,dr9-north,LVD
+d0926+70,dr9-north,LVD
+dw1330+4731,dr9-north,LVD
+NGC 4631-dw3,dr9-north,LVD
+NGC 5055-dwTBG1,dr9-north,LVD
+d0934+70,dr9-north,LVD
+KK 17,dr9-north,LVD
+DDO 169NW,dr9-north,LVD
+d0959+68,dr9-north,LVD
+NGC 4631-dw2,dr9-north,LVD
+M101-DF3,dr9-north,LVD
+d0959+68,dr9-north,LVD
+KK 69,dr9-north,LVD
+Bootes V,dr9-north,LVD
+F8D1,dr9-north,LVD
+NGC 4631-dw1,dr9-north,LVD
+Canes Venatici II,dr9-north,LVD
+A0952+69,dr9-north,LVD
+Willman 1,dr9-north,LVD
+GARLAND,dr9-north,LVD
+#
+# LVD - dr11-south
+#
+dw1046+1244,dr11-south,LVD
+dw1048p1259,dr11-south,LVD
+Scl-MM-Dw4,dr11-south,LVD
+dw1109-0016,dr11-south,LVD
+dw1300+1843,dr11-south,LVD
+CenA-MM-Dw5,dr11-south,LVD
+NGC 4631-dw3,dr11-south,LVD
+dw1340-30,dr11-south,LVD
+dw1004m0737,dr11-south,LVD
+dw1323-40b,dr11-south,LVD
+CenA-MM-Dw6,dr11-south,LVD
+dw1323-40a,dr11-south,LVD
+CenA-MM-Dw4,dr11-south,LVD
+Pegasus V,dr11-south,LVD
+dw1124p1240,dr11-south,LVD
+dw1335-29,dr11-south,LVD
+CenA-MM-Dw2,dr11-south,LVD
+dw1322-39,dr11-south,LVD
+Scl-MM-Dw1,dr11-south,LVD
+M96-DF2,dr11-south,LVD
+CenA-MM-Dw7,dr11-south,LVD
+Leo K,dr11-south,LVD
+Pisces VII,dr11-south,LVD
+NGC 4631-dw2,dr11-south,LVD
+Pegasus W,dr11-south,LVD
+Leo M,dr11-south,LVD
+KK 69,dr11-south,LVD
+Andromeda XIII,dr11-south,LVD
+Virgo II,dr11-south,LVD
+Pictor I,dr11-south,LVD
+Pisces II,dr11-south,LVD
+Andromeda XXII,dr11-south,LVD
+Bootes V,dr11-south,LVD
+Pegasus VII,dr11-south,LVD
+Andromeda XVI,dr11-south,LVD
+Leo T,dr11-south,LVD
+Phoenix II,dr11-south,LVD
+NGC 4631-dw1,dr11-south,LVD
+Horologium I,dr11-south,LVD
+CenA-MM-Dw1,dr11-south,LVD
+Leo Minor I,dr11-south,LVD
+Andromeda XXIX,dr11-south,LVD
+Andromeda XIV,dr11-south,LVD
+Virgo I,dr11-south,LVD
+Eridanus II,dr11-south,LVD
+Hydra II,dr11-south,LVD
+Grus I,dr11-south,LVD
+Andromeda XII,dr11-south,LVD
+Pegasus III,dr11-south,LVD
+Pegasus IV,dr11-south,LVD
+Columba I,dr11-south,LVD
+Leo V,dr11-south,LVD
+Horologium II,dr11-south,LVD
+CenA-MM-Dw3,dr11-south,LVD
+Cetus II,dr11-south,LVD
+Tucana V,dr11-south,LVD
+Aquarius III,dr11-south,LVD
+Segue 2,dr11-south,LVD
+Leo VI,dr11-south,LVD
+Reticulum III,dr11-south,LVD
+Centaurus I,dr11-south,LVD
+Scl-MM-Dw2,dr11-south,LVD
+Bootes II,dr11-south,LVD

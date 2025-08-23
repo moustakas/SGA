@@ -7,8 +7,33 @@ BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
 Crater Cluster,drop,GC,Milky Way globular cluster
 #
-PGC353660,drop,faint shred or compact
-WISEA J013647.55+034316.7,drop,faint shred or compact
+WISEA J044827.65-683154.4,drop,cluster,in GCl 'NGC 1697'
+2MASX J04555175-7416433,drop,cluster,in GCl 'NGC 1777'
+NGC 2120,drop,cluster,in GCl 'NGC 2120'
+PGC 329958,drop,cluster,in GCl 'NGC 2162'
+PGC 682045,drop,cluster,in GCl 'NGC 5824'
+PGC 681800,drop,cluster,in GCl 'NGC 5824'
+2MASX J15172611-2101049,drop,cluster,in GCl 'NGC 5897'
+PGC 616807,drop,cluster,in GCl 'NGC 5986'
+WISEA J154603.45-375038.9,drop,cluster,in GCl 'NGC 5986'
+WISEA J162629.84-721024.9,drop,cluster,in GCl 'NGC 6101'
+2MASX J16323015-1303456,drop,cluster,in GCl 'NGC 6171'
+WISEA J163231.19-130322.3,drop,cluster,in GCl 'NGC 6171'
+WISEA J164702.00-020231.3,drop,cluster,in GCl 'NGC 6218'
+2MASS J16474012-0158037,drop,cluster,in GCl 'NGC 6218'
+WISEA J172321.36-174858.5,drop,cluster,in GCl 'NGC 6356'
+2MASS J17232531-1749092,drop,cluster,in GCl 'NGC 6356'
+2MASS J17273686-0502089,drop,cluster,in GCl 'NGC 6366'
+PGC 298931,drop,cluster,in GCl 'NGC 6362'
+CGMW 4-6132,drop,cluster,in PNe 'We 4-5'
+WISEA J193743.74-135125.6,drop,cluster,in PNe 'Kn 56'
+WISEA J193941.58-305401.4,drop,cluster,in GCl 'NGC 6809'
+2MASX J19395485-3055152,drop,cluster,in GCl 'NGC 6809'
+2MASX J19395857-3054301,drop,cluster,in GCl 'NGC 6809'
+2MASX J20055952-2155121,drop,cluster,in GCl 'NGC 6864'
+WISEA J200605.39-215640.6,drop,cluster,in GCl 'NGC 6864'
+V0395 Aqr,drop,cluster,in GCl 'NGC 6981'
+2MASS J21400265-2311199,drop,cluster,in GCl 'NGC 7099'
 #
 PGC 250236,drop,faint shred or compact in SMC,
 PGC 250174,drop,faint shred or compact in SMC,
@@ -2821,6 +2846,14 @@ WISEA J083502.54+292845.0,drop,off-footprint,
 WISEA J214912.16-013325.8,drop,off-footprint,
 WISEA J220415.14+024538.9,drop,off-footprint,
 #
+WISEA J164720.83-020006.5,drop,faint shred or compact
+WISEA J164703.58-020016.0,drop,faint shred or compact
+WISEA J164235.94+362509.1,drop,faint shred or compact
+WISEA J151600.56-000944.3,drop,faint shred or compact
+SDSS J085357.03+085401.1 FG,drop,faint shred or compact
+PGC 268046,drop,faint shred or compact
+PGC353660,drop,faint shred or compact
+WISEA J013647.55+034316.7,drop,faint shred or compact
 KUG 0125+336,drop,faint shred or compact
 WISEA J083738.85-234758.3,drop,faint shred or compact
 CGMW 3-0187,drop,faint shred or compact
