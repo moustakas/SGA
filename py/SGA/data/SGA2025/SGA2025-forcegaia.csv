@@ -1,6 +1,0 @@
-# The objects in this file contains the set of objects that should only measure Gaia
-# stars; all other source detection and photometry should be turned
-# off.
-objname,region,comment
-LMC,dr11-south,LVD
-SMC,dr11-south,LVD
