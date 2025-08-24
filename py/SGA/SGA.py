@@ -1035,10 +1035,6 @@ def qa_multiband_mask(data, geo_initial, geo_final):
             norm = None
         ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
                              norm=norm)
-        #ax[1+iobj, 0].imshow(np.log(wimg.clip(wimg[int(bx), int(by)]/1e4)),
-        #                     cmap=cmap, origin='lower', interpolation='none')
-        #ax[1+iobj, 0].imshow(mge.mask, origin='lower', cmap='binary',
-        #                     interpolation='none', alpha=0.3)
 
         wmodel = np.sum(opt_models[iobj, :, :, :], axis=0)
         ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
@@ -1104,7 +1100,7 @@ def qa_multiband_mask(data, geo_initial, geo_final):
 
 
 def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
-                         niter=2, use_mge=False, qaplot=True):#False):
+                         niter=2, qaplot=True):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
@@ -1133,7 +1129,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
 
 
     def find_galaxy_in_cutout(img, bx, by, diam, ba, pa, fraction=0.5,
-                              factor=1., wmask=None, use_mge=False):
+                              factor=1., wmask=None):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
 
@@ -1153,6 +1149,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
             y1 = 0
         if y2 > W:
             y2 = W
+
         cutout = img[y1:y2, x1:x2]
         if wmask is not None:
             cutout_mask = wmask[y1:y2, x1:x2]
@@ -1160,52 +1157,34 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
             cutout_mask = np.ones(cutout.shape, bool)
 
         debug = False # True
-        if use_mge:
-            from SGA.find_galaxy import find_galaxy
-            if debug:
-                mge = find_galaxy(cutout, nblob=1, binning=3, fraction=fraction, quiet=False, plot=True)
-                import matplotlib.pyplot as plt
-                plt.clf()
-                mge = find_galaxy(cutout, nblob=1, binning=3, fraction=0.75, quiet=False, plot=True)
-                plt.savefig('ioannis/tmp/junk.png')
-                plt.close()
-            else:
-                mge = find_galaxy(cutout, nblob=1, binning=1, fraction=fraction,
-                                  quiet=True)
-                mge.xmed += x1
-                mge.ymed += y1
-                mge.xpeak += x1
-                mge.ypeak += y1
-            return mge
-        else:
-            #from photutils.morphology import gini
-            from SGA.geometry import EllipseProperties
+        #from photutils.morphology import gini
+        from SGA.geometry import EllipseProperties
 
-            P = EllipseProperties()
-            perc = 0.95
-            method = 'percentile'
-            #method = 'rms'
-            P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, smooth_sigma=0.)
+        P = EllipseProperties()
+        perc = 0.95
+        method = 'percentile'
+        #method = 'rms'
+        P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, smooth_sigma=0.)
 
-            if debug:
-                import matplotlib.pyplot as plt
-                fig, (ax1, ax2) = plt.subplots()
-                P.plot(image=np.log10(cutout), ax=ax1)
-                ax2.imshow(cutout_mask, origin='lower')
-                fig.savefig('ioannis/tmp/junk.png')
-                plt.close()
-                pdb.set_trace()
+        if debug:
+            import matplotlib.pyplot as plt
+            fig, (ax1, ax2) = plt.subplots()
+            P.plot(image=np.log10(cutout), ax=ax1)
+            ax2.imshow(cutout_mask, origin='lower')
+            fig.savefig('ioannis/tmp/junk.png')
+            plt.close()
+            pdb.set_trace()
 
-            P.x0 += x1
-            P.y0 += y1
+        P.x0 += x1
+        P.y0 += y1
 
-            return P
+        return P
 
 
-    def get_geometry(pixscale, pixfactor=1., table=None, tractor=None, mge=None,
+    def get_geometry(pixscale, pixfactor=1., table=None, tractor=None,
                      props=None):
         """Extract elliptical geometry from either an astropy Table
-        (sample), a tractor catalog, or an mge object.
+        (sample), a tractor catalog, or an ellipse_properties object.
 
         """
         if table is not None:
@@ -1224,12 +1203,6 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
             diam = 2. * 1.2 * props.a # [pixels]
             ba = props.ba
             pa = props.pa
-        elif mge is not None:
-            bx = mge.ymed # NB bx-->ymed!
-            by = mge.xmed
-            semia = 1.2 * mge.majoraxis # [pixels]
-            ba = (1. - mge.eps)
-            pa = mge.pa
 
         bx *= pixfactor
         by *= pixfactor
@@ -1469,13 +1442,8 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
                 # can become ill-defined).
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-                # weighted coadd
-                if use_mge:
-                    mge = find_galaxy_in_cutout(wimg, bx, by, diam, ba, pa)
-                    geo_iter = get_geometry(opt_pixscale, mge=mge)
-                else:
-                    props = find_galaxy_in_cutout(wimg, bx, by, diam, ba, pa, wmask=wmask)
-                    geo_iter = get_geometry(opt_pixscale, props=props)
+                props = find_galaxy_in_cutout(wimg, bx, by, diam, ba, pa, wmask=wmask)
+                geo_iter = get_geometry(opt_pixscale, props=props)
 
             dshift_arcsec = opt_pixscale * np.hypot(geo_init[0]-geo_iter[0], geo_init[1]-geo_iter[1])
             if dshift_arcsec > maxshift_arcsec:
