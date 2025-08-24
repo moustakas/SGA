@@ -8,7 +8,6 @@ objname,region,comment
 #
 # LVD - dr9-north
 #
-UGCA 292,dr9-north,LVD
 Clump III,dr9-north,LVD
 Clump I,dr9-north,LVD
 d1014+68,dr9-north,LVD
@@ -27,14 +26,11 @@ dw1330+4731,dr9-north,LVD
 NGC 4631-dw3,dr9-north,LVD
 NGC 5055-dwTBG1,dr9-north,LVD
 d0934+70,dr9-north,LVD
-KK 17,dr9-north,LVD
 DDO 169NW,dr9-north,LVD
 d0959+68,dr9-north,LVD
 NGC 4631-dw2,dr9-north,LVD
 M101-DF3,dr9-north,LVD
 d0959+68,dr9-north,LVD
-KK 69,dr9-north,LVD
-Bootes V,dr9-north,LVD
 F8D1,dr9-north,LVD
 NGC 4631-dw1,dr9-north,LVD
 Canes Venatici II,dr9-north,LVD
@@ -76,7 +72,6 @@ Virgo II,dr11-south,LVD
 Pictor I,dr11-south,LVD
 Pisces II,dr11-south,LVD
 Andromeda XXII,dr11-south,LVD
-Bootes V,dr11-south,LVD
 Pegasus VII,dr11-south,LVD
 Andromeda XVI,dr11-south,LVD
 Leo T,dr11-south,LVD
@@ -107,3 +102,10 @@ Reticulum III,dr11-south,LVD
 Centaurus I,dr11-south,LVD
 Scl-MM-Dw2,dr11-south,LVD
 Bootes II,dr11-south,LVD
+#
+# LVD - dr9-north & dr11-south
+#
+UGCA 292,dr9-north;dr11-south,LVD
+KK 17,dr9-north;dr11-south,LVD
+KK 69,dr9-north;dr11-south,LVD
+Bootes V,dr9-north;dr11-south,LVD
