@@ -206,6 +206,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         group = False
         DIAMCOL = 'DIAM'
     else:
+        group = True
         DIAMCOL = DIAMCOLUMN
 
     dependson, dependsondir = None, None
@@ -1403,7 +1404,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
 
             # Expand the brightstarmask veto if STARFDIST<1.2
             if obj['STARFDIST'] < 1.2:
-                inellipse2 = in_ellipse_mask(bx, width-by, 2.*diam, ba*2.*diam,
+                inellipse2 = in_ellipse_mask(bx, width-by, diam, ba*diam,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
 
@@ -1517,7 +1518,7 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
         final_refmask[inellipse] = False
 
         if sample['STARFDIST'][iobj] < 1.2:
-            inellipse2 = in_ellipse_mask(bx, width-by, 2.*diam, ba*2.*diam,
+            inellipse2 = in_ellipse_mask(bx, width-by, diam, ba*diam,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
 
