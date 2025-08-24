@@ -8,6 +8,7 @@ Code for defining the SGA parent sample.
 import os, time, sys, re, pdb
 import numpy as np
 import fitsio
+from glob import glob
 from importlib import resources
 from collections import Counter
 from astropy.table import Table, vstack
@@ -24,13 +25,13 @@ from SGA.logger import log
 
 def parent_version(vicuts=False, nocuts=False, archive=False):
     if nocuts:
-        version = 'v1.0' # 'v0.2'
+        version = 'v0.1'
     elif vicuts:
-        version = 'v1.0' # 'v0.2'
+        version = 'v0.1'
     elif archive:
-        version = 'v1.0' # 'v0.2'
+        version = 'v0.1'
     else:
-        version = 'v1.0' # 'v0.2'
+        version = 'v0.1'
     return version
 
 
@@ -97,6 +98,7 @@ def parent_datamodel(nobj):
     parent['ROW_SGA2020'] = np.zeros(nobj, '<i8') -99
     parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
     parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_DR910'] = np.zeros(nobj, '<i8') -99
 
     return parent
 
@@ -329,7 +331,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                  '[ALB2009]', 'WBL', 'KTS', 'ARP',
                                  'AM', 'V1CG', 'KTG', 'UGC', 'VII', 'VV', 'WISEA',
                                  'CGCG', 'LDCE', 'HDCE', 'USGC', 'UZC-CG', 'ESO', 'MLCG',
-                                 'PM2GC', 'V1CG', '[SPS2007]', 'UZC-CG', 'FLASH', 
+                                 'PM2GC', 'V1CG', '[SPS2007]', 'UZC-CG', 'FLASH',
                                  'USGC', 'CB-20.07763', 'SSRS', 'APMBGC', 'WAS', 'VCC',
                                  '2MASS', 'CGPG', 'II', 'VI', 'I', 'IC', 'IV', 'SDSS',
                                  'GALEXASC', 'VIII', 'V', 'NGC', ]
@@ -340,7 +342,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 drop_prefixes = []
                 drop_ignore_diam_prefixes = ['CGMW'] # all in the MW disk
             else:
-                drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]', 
+                drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]',
                                  '[vvd91a]', '2MASS', '2MASX', '2MASXi', '2MFGC', 'APMBGC',
                                  'CGPG', 'Cocoon', 'CSL', 'CTS', 'FCCB', 'FLASH', 'MESSIER', 'GIN',
                                  'VPCX', 'WAS', 'TOLOLO', 'SGC', 'KOS', 'PKS', 'PGC1', 'SARS',
@@ -1245,7 +1247,7 @@ def _read_existing_footprint(cat, region, version='v1.0'):
 
         # We know that objects with sep==0. are in the footprint, so
         # we don't have to "find" them again...
-        m1, m2, sep = match_radec(cat['RA'].value, cat['DEC'].value, refcat['RA'].value, 
+        m1, m2, sep = match_radec(cat['RA'].value, cat['DEC'].value, refcat['RA'].value,
                                   refcat['DEC'].value, 1./3600., nearest=True)
         I = sep == 0.
         if np.any(I):
@@ -1381,7 +1383,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
     for ichunk, indx in enumerate(chunkindx):
         if rank == 0:
             log.info(f'Working on chunk {ichunk+1:,d}/{nchunk:,d} with {len(indx):,d} objects')
-        fcat, fccds = in_footprint_work(cat, indx, allccds, comm=comm, radius=radius, 
+        fcat, fccds = in_footprint_work(cat, indx, allccds, comm=comm, radius=radius,
                                         width_pixels=width_pixels, bands=bands)
         sys.stdout.flush()
 
@@ -1434,7 +1436,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         log.info(f'All done in {(time.time()-t0)/60.:.2f} min')
 
 
-def build_parent_nocuts(verbose=True):
+def build_parent_nocuts(verbose=True, overwrite=False):
     """Merge the external catalogs from SGA2025-query-ned.
 
     """
@@ -1449,8 +1451,8 @@ def build_parent_nocuts(verbose=True):
                               read_hyperleda_multiples, version_hyperleda_multiples,
                               read_hyperleda_noobjtype, version_hyperleda_noobjtype,
                               read_nedlvs, version_nedlvs, read_sga2020, read_lvd,
-                              version_lvd, nedfriendly_lvd, version_custom_external,
-                              read_custom_external)
+                              read_dr910, read_custom_external, version_lvd, nedfriendly_lvd)
+
 
     def readit(catalog, version, bycoord=False):
         if bycoord:
@@ -1476,9 +1478,16 @@ def build_parent_nocuts(verbose=True):
                 parent[col] = input_basic[col]
         return parent
 
+    version_nocuts = parent_version(nocuts=True)
+    final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version_nocuts}.fits')
+    if os.path.isfile(final_outfile) and not overwrite:
+        log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
+        return
+
 
     log.info('#####')
     log.info('Input data:')
+    dr910 = read_dr910()
     custom = read_custom_external(overwrite=True) # always regenerate the FITS file
     lvd = read_lvd()
     nedlvs = read_nedlvs()
@@ -2109,7 +2118,7 @@ def build_parent_nocuts(verbose=True):
             log.info(f'Duplicate {col} values!')
             pdb.set_trace()
 
-    # [7] include the custom-added objects plus the SMDG sample
+    # [7] include the custom-added objects plus the SMDGes sample
     print()
     log.info('#####')
     log.info(f'Adding {len(custom):,d} more objects from the custom catalog.')
@@ -2168,7 +2177,7 @@ def build_parent_nocuts(verbose=True):
     basic_custom = get_basic_geometry(custom, galaxy_column='OBJNAME_NED', verbose=verbose)
     parent6 = populate_parent(custom, basic_custom, verbose=verbose)
 
-    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])    
+    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])
     parent6['MAG_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
     parent6['DIAM_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
     parent6['BA_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
@@ -2177,12 +2186,22 @@ def build_parent_nocuts(verbose=True):
     print()
     log.info(f'Parent 6: N={len(parent6):,d}')
 
-    # [8] build the final sample
+    # [8] include the DR9/DR10 supplemental objects
+    print()
+    log.info('#####')
+    log.info(f'Adding {len(custom):,d} more objects from the DR9/DR10 supplemental catalog.')
+
+    dr910.rename_column('ROW', 'ROW_DR910')
+
+    pdb.set_trace()
+
+
+    # [9] build the final sample
     parent = vstack((parent, parent6))
 
     # sort, check for uniqueness, and then write out
     srt = np.lexsort((parent['ROW_HYPERLEDA'].value, parent['ROW_NEDLVS'].value,
-                      parent['ROW_SGA2020'].value, parent['ROW_LVD'].value, 
+                      parent['ROW_SGA2020'].value, parent['ROW_LVD'].value,
                       parent['ROW_CUSTOM'].value))
     parent = parent[srt]
 
@@ -2301,8 +2320,8 @@ def build_parent_nocuts(verbose=True):
     basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
     basic_sga2020 = get_basic_geometry(sga2020, galaxy_column='ROW', verbose=verbose)
 
-    for basic, row, suffix in zip((basic_hyper, basic_sga2020), 
-                                  ('ROW_HYPERLEDA', 'ROW_SGA2020'), 
+    for basic, row, suffix in zip((basic_hyper, basic_sga2020),
+                                  ('ROW_HYPERLEDA', 'ROW_SGA2020'),
                                   ('HYPERLEDA', 'SGA2020')):
         for col in [f'DIAM_{suffix}', f'BA_{suffix}', f'PA_{suffix}', f'MAG_{suffix}']:
             parent[col] = -99.
@@ -2311,7 +2330,7 @@ def build_parent_nocuts(verbose=True):
         I = np.where(parent[row] != -99)[0]
         if len(I) > 0:
             # 'GALAXY' here is actually 'ROW'
-            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY']) 
+            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY'])
             for col in [f'DIAM_{suffix}', f'BA_{suffix}', f'PA_{suffix}', f'MAG_{suffix}']:
                 log.info(f'Populating parent with {len(I):,d} {col}s from {suffix}.')
                 parent[col][I[indx_parent]] = basic[indx_basic][col]
@@ -2333,19 +2352,40 @@ def build_parent_nocuts(verbose=True):
             log.info(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
         print()
 
-    parent['ROW_PARENT'] = np.arange(len(parent))
+    # ROW_PARENT must be unique across versions
+    rowfiles = glob(os.path.join(sga_dir(), 'parent', f'SGA2025-parent-row-*.fits'))
+    if len(rowfiles) > 0:
+        log.warning('FIXME!')
+        pdb.set_trace()
+        # adjust ROWS so they're unique
+    else:
+        rows = np.arange(len(parent))
 
-    version = parent_version(nocuts=True)
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
-    log.info(f'Writing {len(parent):,d} objects to {outfile}')
+    parent['ROW_PARENT'] = rows
+
+
+    rowfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-rows-{version_nocuts}.fits')
+    rowcat = parent['OBJNAME', 'ROW_PARENT', ]
+    log.info(f'Writing {len(rowcat):,d} objects to {rowfile}')
+    rowcat.write(rowfile, overwrite=True)
+
+
+    log.info(f'Writing {len(parent):,d} objects to {final_outfile}')
     parent.meta['EXTNAME'] = 'PARENT-NOCUTS'
-    parent.write(outfile, overwrite=True)
+    parent.write(final_outfile, overwrite=True)
 
 
 def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog with VI cuts.
 
     """
+    version_vicuts = parent_version(vicuts=True)
+    final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
+    if os.path.isfile(final_outfile) and not overwrite:
+        log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
+        return
+
+
     # quick check on duplicates
     actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
@@ -2386,7 +2426,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     #bb = cat[(cat['RA_HYPERLEDA'] != cat['RA']) * (cat['RA_HYPERLEDA'] != -99.)]
     #m1, m2, sep = match_radec(bb['RA'], bb['DEC'], bb['RA_HYPERLEDA'], bb['DEC_HYPERLEDA'], 3./3600., notself=True)
     #m1 = m1[m1 != m2]
-    #multipage_skypatch(bb[m1], cat=cat, width_arcsec=120., overwrite_viewer=True, overwrite=True, 
+    #multipage_skypatch(bb[m1], cat=cat, width_arcsec=120., overwrite_viewer=True, overwrite=True,
     #                   clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
 
     if False:
@@ -2434,15 +2474,10 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
-    # [6] Remove close pairs (after extensive VI using
-
-
     # write out
-    version_vicuts = parent_version(vicuts=True)
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
-    log.info(f'Writing {len(cat):,d} objects to {outfile}')
+    log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-VICUTS'
-    cat.write(outfile, overwrite=True)
+    cat.write(final_outfile, overwrite=True)
 
 
 def build_parent_archive(verbose=False, overwrite=False):
@@ -2453,6 +2488,13 @@ def build_parent_archive(verbose=False, overwrite=False):
     from SGA.external import read_custom_external
     from SGA.geometry import choose_geometry
     from SGA.sky import in_ellipse_mask_sky
+
+    version_archive = parent_version(archive=True)
+    final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version_archive}.fits')
+    if os.path.isfile(final_outfile) and not overwrite:
+        log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
+        return
+
 
     version_vicuts = parent_version(vicuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
@@ -2726,45 +2768,12 @@ def build_parent_archive(verbose=False, overwrite=False):
                     cat['STARFDIST'][m1[pos[J]]] = fdist[J]
                     cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
 
-    version = parent_version(archive=True)
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
-    log.info(f'Writing {len(cat):,d} objects to {outfile}')
+    log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
-    cat.write(outfile, overwrite=True)
+    cat.write(final_outfile, overwrite=True)
 
 
-    if False:
-        # How many sources with diam<0.1 have no other source within 10 arcsec?
-        radius_isolated = 10.
-
-        diam = np.max((cat['DIAM_LIT'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
-        I = np.where(diam == -99.)[0]
-        #I = np.where((diam > 0.) * (diam < 0.1))[0]
-        #I = np.where(diam < 0.1)[0]
-        cat_isolated = cat[I]
-        matches = match_radec(cat_isolated['RA'].value, cat_isolated['DEC'].value, cat['RA'].value,
-                              cat['DEC'].value, radius_isolated/3600., indexlist=True, notself=True)
-        indx_isolated = []
-        for iobj, onematch in enumerate(matches):
-            if onematch is None:
-                continue
-            if len(onematch) == 1:
-                indx_isolated.append(iobj)
-        indx_isolated = np.array(indx_isolated)
-
-        out = cat_isolated[indx_isolated]
-        #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], out[0]['RA'], out[0]['DEC'], 10./3600) ; cat[m1][cols]
-        #prim=0 ; qa_skypatch(cat[m1[prim]], group=cat[m1])
-
-        prefix = np.array(list(zip(*np.char.split(out['OBJNAME'].value, ' ').tolist()))[0])
-
-        pdffile = 'qa-isolated.pdf'
-        multipage_skypatch(out[:50], cat=cat, width_arcsec=30., ncol=1, nrow=1, clip=True,
-                           jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
-                           pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
-
-
-def build_parent(verbose=False, overwrite=False, lvd=False):
+def build_parent(verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
@@ -2781,11 +2790,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
 
-    if lvd:
-        outfile = os.path.join(outdir, f'SGA2025-parent-lvd-{version}.fits')
-    else:
-        outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
-
+    outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
@@ -2959,10 +2964,6 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     print('NEED TO REMOVE LMC,SMC FROM GROUP-FINDING!')
     print('When building groups, do not use the LVD ignore category, e.g., Ursa Minor is gigantic! Except maybe Antlia-B (south,forcepsf)')
     out = build_group_catalog(grp)
-
-    if lvd:
-        I = out['SAMPLEBIT'] & 2**0 != 0
-        out = out[np.isin(out['GROUP_ID'], out['GROUP_ID'][I])]
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'

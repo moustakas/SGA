@@ -137,7 +137,8 @@ zmag = 22.5-2.5*np.log10(cat['FLUX_Z'])
 rz = rmag-zmag
 gr = gmag-rmag
 
-pngfile = os.path.join(sga_dir(), 'parent', 'external', 'dr9-dr10-supplement.png')
+version = 'v1.0'
+pngfile = os.path.join(sga_dir(), 'parent', 'external', f'dr910-supplement-{version}.png')
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 4))
 
 for dr in ['DR9', 'DR10']:
@@ -169,8 +170,6 @@ fig.tight_layout()
 fig.savefig(pngfile)
 print(f'Wrote {pngfile}')
 
-outfile = os.path.join(sga_dir(), 'parent', 'external', 'dr9-dr10-supplement.fits')
+outfile = os.path.join(sga_dir(), 'parent', 'external', f'dr910-supplement-{version}.fits')
 print(f'Wrote {len(cat):,d} objects to {outfile}')
 cat.write(outfile, overwrite=True)
-
-pdb.set_trace()

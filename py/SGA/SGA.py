@@ -19,12 +19,12 @@ DECCOLUMN = 'GROUP_DEC' # 'DEC'
 DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
 REFIDCOLUMN = 'SGAID'
 
-print('FITBITS is deprecated!')
-FITBITS = dict(
-    ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
-    forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
-    forcepsf = 2**2,  # force PSF for source detection and photometry within the SGA mask
-)
+#print('FITBITS is deprecated!')
+#FITBITS = dict(
+#    ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
+#    forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
+#    forcepsf = 2**2,  # force PSF for source detection and photometry within the SGA mask
+#)
 
 SGAFITMODE = dict(
     fixgeo = 2**0,     # fix ellipse geometry
@@ -78,7 +78,7 @@ APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJ
 
 
 def SGA_version():
-    version = 'v1.0'
+    version = 'v0.1'
     return version
 
 

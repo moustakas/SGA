@@ -33,15 +33,15 @@ def main():
                         choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south'],
                         help='Region to pass to --in-footprint.')
 
-    parser.add_argument('--build-parent-nocuts', action='store_true',
+    parser.add_argument('--nocuts', action='store_true',
                         help='Merge the catalogs retrieved by SGA2025-query-ned ' + \
                         'into the parent-nocuts catalog.')
-    parser.add_argument('--build-parent-vicuts', action='store_true',
+    parser.add_argument('--vicuts', action='store_true',
                         help='Apply VI results to the parent-nocuts catalog.')
-    parser.add_argument('--build-parent-archive', action='store_true',
+    parser.add_argument('--archive', action='store_true',
                         help='Apply ssl and other cuts but maintain "archive" ' + \
                         'object names and data model.')
-    parser.add_argument('--build-parent', action='store_true',
+    parser.add_argument('--parent', action='store_true',
                         help='Generate the final parent catalog ' + \
                         'with the final data model.')
     parser.add_argument('--in-footprint', action='store_true',
@@ -62,15 +62,15 @@ def main():
                         help='Overwrite existing files.')
     args = parser.parse_args()
 
-    if args.build_parent_nocuts:
+    if args.nocuts:
         from SGA.parent import build_parent_nocuts
-        build_parent_nocuts()
+        build_parent_nocuts(overwrite=args.overwrite, verbose=args.verbose)
 
-    if args.build_parent_vicuts:
+    if args.vicuts:
         from SGA.parent import build_parent_vicuts
         build_parent_vicuts(overwrite=args.overwrite, verbose=args.verbose)
 
-    if args.build_parent_archive:
+    if args.archive:
         from SGA.parent import build_parent_archive
         build_parent_archive(overwrite=args.overwrite, verbose=args.verbose)
 
@@ -82,7 +82,7 @@ def main():
         comm = pkl5.Intracomm(MPI.COMM_WORLD)
         in_footprint(region=args.region, comm=comm, ntest=args.ntest)
 
-    if args.build_parent:
+    if args.parent:
         from SGA.parent import build_parent
         build_parent(overwrite=args.overwrite, verbose=args.verbose,
                      lvd=args.lvd)
