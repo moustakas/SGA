@@ -40,6 +40,9 @@ GARLAND,dr9-north,LVD
 #
 # LVD - dr11-south
 #
+LeG21,dr11-south,LVD
+dw1111+0049,dr11-south,LVD
+dw1000m0831,dr11-south,LVD
 dw1046+1244,dr11-south,LVD
 dw1048p1259,dr11-south,LVD
 Scl-MM-Dw4,dr11-south,LVD
