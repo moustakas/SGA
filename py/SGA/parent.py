@@ -924,6 +924,9 @@ def update_lvd_properties(cat):
     if version != 'v1.0.5':
         raise ValueError('Need hard-coded properties!')
 
+    print('Add these properties to the spreadsheet!')
+    pdb.set_trace()
+
     gals = np.array([
         'IC239',
         'NGC 1042',
@@ -2787,7 +2790,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
 
-    print('Consider removing sources that are too close to bright stars, maybe starfdist < 0.5?')
+    log.warning('Consider removing sources that are too close to bright stars, maybe starfdist < 0.5?')
 
     cols = ['OBJNAME',
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
@@ -2886,10 +2889,14 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     # Process the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int16)
 
-    # LVD dwarfs
+    # 0 - LVD dwarfs
     samplebits[parent['ROW_LVD'] != -99] += SAMPLEBITS['LVD']
 
-    # GC/PNe
+    # 1 - Magellanic Clouds
+    samplebits[parent['IN_LMC']] += SAMPLEBITS['clouds']
+    samplebits[parent['IN_SMC']] += SAMPLEBITS['clouds']
+
+    # 2 - GC/PNe
     gcl = Table(fitsio.read(str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))))
     for cl in gcl:
         I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
@@ -2904,17 +2911,24 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     #bb = parent[samplebits & SAMPLEBITS['GCPNe'] != 0]
     #bb.write('junk.fits', overwrite=True)
 
-    # Magellanic Clouds
-    samplebits[parent['IN_LMC']] += SAMPLEBITS['clouds']
-    samplebits[parent['IN_SMC']] += SAMPLEBITS['clouds']
-
     # process the fitting behavior bits
-    fitbits = np.zeros(len(parent), np.int16)
-    fitbits[parent['RESOLVED']] = FITBITS['ignore']
-    fitbits[parent['FORCEGAIA']] = FITBITS['forcegaia']
-    fitbits[parent['FORCEPSF']] = FITBITS['forcepsf']
-    fitbits[parent['IN_LMC']] = FITBITS['forcegaia']
-    fitbits[parent['IN_SMC']] = FITBITS['forcegaia']
+    sgafitmode = np.zeros(len(parent), np.int16)
+
+    # 0 - fix geometry
+    sgafitmode[parent['FIXGEO']] += SGAFITMODE['fixgeo']
+
+    # 1 - generate coadds but no Tractor or ellipse-fitting; always
+    # implies FIXGEO
+    sgafitmode[parent['RESOLVED']] += SGAFITMODE['resolved']
+    sgafitmode[parent['RESOLVED']] += SGAFITMODE['fixgeo']
+
+    pdb.set_trace()
+
+    sgafitmode[parent['RESOLVED']] = SGAFITMODE['ignore']
+    sgafitmode[parent['FORCEGAIA']] = SGAFITMODE['forcegaia']
+    sgafitmode[parent['FORCEPSF']] = SGAFITMODE['forcepsf']
+    sgafitmode[parent['IN_LMC']] = SGAFITMODE['forcegaia']
+    sgafitmode[parent['IN_SMC']] = SGAFITMODE['forcegaia']
 
 
     # Add SFD dust
@@ -2938,7 +2952,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     grp.add_column(pa.astype('f4'), name='PA', index=6)
     grp.add_column(mag.astype('f4'), name='MAG', index=7)
     grp.add_column(band, name='BAND', index=8)
-    grp.add_column(fitbits, name='FITBIT', index=9)
+    grp.add_column(sgafitmode, name='FITBIT', index=9)
     grp.add_column(samplebits, name='SAMPLEBIT', index=10)
     grp.add_column(ebv, name='EBV', index=11)
 

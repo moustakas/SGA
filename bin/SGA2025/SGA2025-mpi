@@ -27,7 +27,7 @@ SGA2025-mpi --galaxylist="KK 70" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 
 
 
 # LVD tests
-SGA2025-mpi --lvd --coadds --no-groups --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
+SGA2025-mpi --lvd --coadds --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
@@ -96,7 +96,12 @@ def main():
     args = mpi_args()
     set_legacysurvey_dir(args.region)
 
-    if args.no_groups:
+    if args.lvd:
+        no_groups = True
+    else:
+        no_groups = args.no_groups
+
+    if no_groups:
         RACOLUMN = 'RA'
         DECCOLUMN = 'DEC'
         DIAMCOLUMN = 'DIAM'
@@ -139,45 +144,17 @@ def main():
         sample, fullsample = read_sample(
             first=args.first, last=args.last,
             d25min=args.d25min, d25max=args.d25max,
-            galaxylist=args.galaxylist,
+            galaxylist=args.galaxylist, no_groups=no_groups,
             lvd=args.lvd, region=args.region,
             verbose=args.verbose)
 
-        if not args.build_catalog and not args.build_refcat:
-            if args.lvd:
-                from SGA.coadds import REGIONBITS
-                from SGA.SGA import SAMPLEBITS
-                _, fullsample = read_sample(region=args.region)
-                sample = fullsample[(fullsample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0) *
-                                    (fullsample['REGION'] & REGIONBITS[args.region] != 0)]
-                if args.galaxylist is not None:
-                    # a little hacky...
-                    I = np.isin(sample['OBJNAME'], args.galaxylist)
-                    if np.sum(I) == 0:
-                        I = np.isin(sample['SGANAME'], args.galaxylist)
-                else:
-                    I = sample[DIAMCOLUMN] < 3.
-                    #pdb.set_trace()
-                    #I = sample['GROUP_DIAMETER'] < 3.
-                    #I = np.isin(sample['OBJNAME'], ['KK 77', 'IKN'])
-                    #I = (sample['GROUP_DIAMETER'] < 3.)# * (sample['OBJNAME'] == 'UGCA 292')
-                    #I = (sample['GROUP_DIAMETER'] < 3.) * (sample['FITBIT'] & FITBITS['forcepsf'] != 0)
-                sample = sample[I]
-            elif False:
-                log.warning('Testing subsamples!')
-                I = sample['FITBIT'] & FITBITS['ignore'] != 0
-                sample = sample[I]
-                sample = sample[np.argsort(sample[DIAMCOLUMN])]
-                sample = sample[sample[DIAMCOLUMN] < 10.]
-                #sample = sample[:32]
-                #sample = sample[sample['GROUP_NAME'] == 'SGA2025_J0177.310-018.413_GROUP']
-            else:
-                pass
-                #log.warning('Testing subsamples!')
-                #sample = sample[sample['OBJNAME'] == 'PGC 413592']
-                #sample = sample[sample['SGANAME'] == 'SGA2025_J0202.291-045.175']
-                #sample = sample[sample['OBJNAME'] == 'KV19-271']
-                #sample = sample[sample['OBJNAME'] == 'LV J1149+1715']
+        #if not args.build_catalog and not args.build_refcat:
+        #    log.warning('Testing subsamples!')
+        #    I = sample['FITBIT'] & FITBITS['ignore'] != 0
+        #    sample = sample[I]
+        #    sample = sample[np.argsort(sample[DIAMCOLUMN])]
+        #    sample = sample[sample[DIAMCOLUMN] < 10.]
+        #    #sample = sample[sample['OBJNAME'] == 'PGC 413592']
 
         if len(sample) == 0:
             return
@@ -262,7 +239,7 @@ def main():
             sample=sample, region=args.region, bricks=bricks,
             coadds=args.coadds, ellipse=args.ellipse,
             htmlplots=args.htmlplots, htmlindex=args.htmlindex,
-            no_groups=args.no_groups, clobber=args.clobber,
+            no_groups=no_groups, clobber=args.clobber,
             verbose=args.verbose, datadir=datadir, htmldir=htmldir,
             size=size, mp=args.mp)
     else:
@@ -291,7 +268,7 @@ def main():
                     dsrt = np.argsort(sample[fail[rank]][DIAMCOLUMN])
                     galaxy, galaxydir = get_galaxy_galaxydir(
                         sample[fail[rank]][dsrt], region=args.region,
-                        group=not args.no_groups, datadir=datadir, htmldir=htmldir)
+                        group=not no_groups, datadir=datadir, htmldir=htmldir)
                     for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
                                             sample[fail[rank]][DIAMCOLUMN][dsrt]):
                         print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
@@ -301,7 +278,7 @@ def main():
                     log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
                     galaxy, galaxydir = get_galaxy_galaxydir(
                         sample[todo], region=args.region,
-                        group=not args.no_groups,
+                        group=not no_groups,
                         datadir=datadir, htmldir=htmldir)
                     for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
                                                  sample[todo]['OBJNAME'],
@@ -320,7 +297,7 @@ def main():
     for count, ii in enumerate(groups[rank]):
         onegal = sample[ii]
         galaxy, galaxydir = get_galaxy_galaxydir(onegal, region=args.region,
-                                                 group=not args.no_groups,
+                                                 group=not no_groups,
                                                  datadir=datadir, htmldir=htmldir)
         if not os.path.isdir(galaxydir):
             os.makedirs(galaxydir, exist_ok=True)
@@ -362,7 +339,7 @@ def main():
             log.warning('Undo --old-calibs-ok in custom_coadds when ready!')
 
             # Write out the individual galaxies for this mosaic.
-            if args.no_groups:
+            if no_groups:
                 thissample = Table(onegal)
             else:
                 I = np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]
@@ -382,8 +359,7 @@ def main():
             else:
                 force_psf_detection = False
 
-            print('If in_cluster sample bit is set, turn off Gaia-only photometry.')
-            pdb.set_trace()
+            print('########## If GCPNe samplebit is set, turn off Gaia-only photometry.')
 
             if args.debug:
                 err, filesuffix = custom_coadds(
@@ -461,7 +437,7 @@ def main():
                                         htmlplots=args.htmlplots,
                                         htmlindex=args.htmlindex,
                                         #clobber=args.clobber,
-                                        no_groups=args.no_groups,
+                                        no_groups=no_groups,
                                         verbose=args.verbose,
                                         datadir=datadir, htmldir=htmldir,
                                         size=size, mp=args.mp)

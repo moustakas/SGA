@@ -28,9 +28,9 @@ FITBITS = dict(
 
 SGAFITMODE = dict(
     fixgeo = 2**0,     # fix ellipse geometry
-    forcepsf = 2**1,   # force PSF for source detection and photometry within the SGA mask
-    galcluster = 2**2, # less aggressive source-masking due to cluster environment
-    resolved = 2**3,
+    resolved = 2**1,   # no Tractor catalogs or ellipse-fitting
+    forcepsf = 2**2,   # force PSF for source detection and photometry within the SGA mask
+    galcluster = 2**3, # less aggressive source-masking due to cluster environment
 )
 
 SAMPLEBITS = dict(
@@ -324,8 +324,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                lvd=False, final_sample=False, region='dr11-south', d25min=0.,
-                d25max=200.):
+                no_groups=False, lvd=False, final_sample=False, gaia_density=False,
+                region='dr11-south', d25min=0., d25max=200.):
     """Read/generate the parent SGA catalog.
 
     d25min,d25max in arcmin
@@ -334,6 +334,9 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     import fitsio
     from SGA.coadds import REGIONBITS
     from SGA.parent import parent_version
+
+    if lvd:
+        no_groups = True # NB
 
     if first and last:
         if first > last:
@@ -348,10 +351,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         samplefile = os.path.join(sga_dir(), '2025', f'SGA2025-ellipse-{version}.fits')
     else:
         version = parent_version()
-        if lvd:
-            samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-lvd-{version}.fits')
-        else:
-            samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
+        samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
 
     if not os.path.isfile(samplefile):
         msg = f'Sample file {samplefile} not found.'
@@ -369,14 +369,22 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             info['PREBURNED'] *
             (info['SGA_ID'] > -1))[0]
     else:
-        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
         #cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
         #        'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC', 'BRICKNAME']
+        if no_groups:
+            cols = ['DIAM']
+        else:
+            cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
         info = fitsio.read(samplefile, columns=cols)
-        rows = np.where(
-            (info['GROUP_DIAMETER'] > d25min) *
-            (info['GROUP_DIAMETER'] < d25max) *
-            info['GROUP_PRIMARY'])[0]
+        if no_groups:
+            rows = np.where(
+                (info['DIAM'] > d25min) *
+                (info['DIAM'] < d25max))[0]
+        else:
+            rows = np.where(
+                (info['GROUP_DIAMETER'] > d25min) *
+                (info['GROUP_DIAMETER'] < d25max) *
+                info['GROUP_PRIMARY'])[0]
 
     nallrows = len(info)
     nrows = len(rows)
@@ -412,9 +420,32 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 
     # select objects in this region
     I = sample['REGION'] & REGIONBITS[region] != 0
+    J = fullsample['REGION'] & REGIONBITS[region] != 0
     log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
              f'region={region}')
     sample = sample[I]
+    fullsample = fullsample[J]
+
+    ## estimate the Gaia stellar density within the mosaic
+    #if gaia_density:
+    #    from astrometry.libkd.spherematch import tree_build_radec, trees_match
+    #
+    #    gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
+    #    gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
+    #    log.info(f'Read {len(gaia):,d} Gaia stars from {gaiafile}')
+    #
+    #    kd_gaia = tree_build_radec(ra=['RA_HYPERLEDA'], dec=cat[M]['DEC_HYPERLEDA'])
+    #    kd = tree_build_radec(ra=cat['RA'], dec=cat['DEC'])
+    #    I, J, _ = trees_match(kd_hyper, kd, deg2dist(1.5/3600.), notself=True, nearest=False)
+    #
+    #    density = np.zeros(len(sample), 'f4')
+    #    for ii, ss in enumerate(sample):
+    #        m1, m2, sep = match_radec(ss['RA'], ss['DEC'], gaia['ra'][I], gaia['dec'][I], maxradius, nearest=True)
+
+    # select the LVD sample; remember that --lvd always implies --no-groups
+    if lvd:
+        sample = sample[sample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0]
+        fullsample = fullsample[fullsample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0]
 
     if galaxylist is not None:
         log.debug('Selecting specific galaxies.')
@@ -427,10 +458,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 I = np.isin(sample['OBJNAME'], galaxylist)
                 if np.count_nonzero(I) == 0:
                     log.warning('No matching galaxies found in sample; try a different region?')
-                    return Table(), Table()
-        return sample[I], fullsample
-    else:
-        return sample, fullsample
+                    sample, fullsample = Table(), Table()
+        sample = sample[I]
+
+    return sample, fullsample
 
 
 def _build_catalog_one(args):
@@ -447,6 +478,8 @@ def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS,
     tractor, parent, ellipse = [], [], []
 
     print('######## Be sure to remove ref_cat==G3 and type==DUP sources from the ellipse catalog passed to legacypipe!')
+    print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
+    print('E.g., ESO 050- G 010 is on the edge of NGC104 and we want the sources to match the DR11 maskbits')
 
     tractorfile = os.path.join(galaxydir, f'{galaxy}-custom-tractor.fits')
     if not os.path.isfile(tractorfile):
@@ -1278,9 +1311,13 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
 
     # Bright-star mask.
     opt_brightstarmask = data['brightstarmask']
+    #opt_brightstarmask[:, :] = False
 
     # Subtract Gaia stars from all optical images and generate the
     # threshold gaiamask.
+    print('##########')
+    print('########## CHANGE FITBIT TO SGAFITMODE AND IF GCLPNe SAMPLEBIT is set, do not mask Gaia stars, e.g., Bedin 1 also LMC/SMC')
+    print('##########')
     opt_gaiamask = np.zeros(sz, bool)
     for iband, filt in enumerate(opt_bands):
         if len(psfsrcs) > 0:
@@ -1364,9 +1401,15 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
             iter_brightstarmask[inellipse] = False
             iter_refmask[inellipse] = False
 
-            import matplotlib.pyplot as plt
-            iter_gaiamask = np.copy(opt_gaiamask)
-            iter_gaiamask[inellipse] = False
+            # Expand the brightstarmask veto if STARFDIST<1.2
+            if obj['STARFDIST'] < 1.2:
+                inellipse2 = in_ellipse_mask(bx, width-by, 2.*diam, ba*2.*diam,
+                                             pa, xgrid, ygrid_flip)
+                iter_brightstarmask[inellipse2] = False
+
+            #iter_gaiamask = np.copy(opt_gaiamask)
+            #iter_gaiamask[inellipse] = False
+            #import matplotlib.pyplot as plt
             #plt.clf()
             #plt.imshow(iter_gaiamask, origin='lower')
             #plt.savefig('ioannis/tmp/junk2.png')
@@ -1472,6 +1515,11 @@ def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
         final_refmask = np.copy(opt_refmask)
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
+
+        if sample['STARFDIST'][iobj] < 1.2:
+            inellipse2 = in_ellipse_mask(bx, width-by, 2.*diam, ba*2.*diam,
+                                         pa, xgrid, ygrid_flip)
+            final_brightstarmask[inellipse2] = False
 
         _, opt_galmask, opt_models_obj = update_galmask(
             allgalsrcs, bx, by, diam, ba, pa,
@@ -1753,11 +1801,13 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     # Read the sample catalog from custom_coadds and find each source
     # in the Tractor catalog.
     samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
-    cols = ['SGAID', 'SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'FITBIT']
+    cols = ['SGAID', 'SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'FITBIT', 'SAMPLEBIT', 'STARFDIST']
     sample = Table(fitsio.read(samplefile, columns=cols))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
     for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
         sample.rename_column(col, f'{col}_INIT')
+
+    print('########## CHANGE FITBIT TO SGAFITMODE AND IF GCLPNe SAMPLEBIT is set, do not mask Gaia stars, e.g., Bedin 1')
 
     print('#######Add EBV to columns once parent sample has been rebuilt!!')
     sample['EBV'] = np.zeros(len(sample), 'f4') + 0.02 # [mag]

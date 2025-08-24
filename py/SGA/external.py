@@ -1096,7 +1096,7 @@ def read_lvd(rank=0, rows=None, overwrite=False):
     """
     version = version_lvd()
 
-    print('Remove Sagittarius')
+    print('Remove Sagittarius!')
     pdb.set_trace()
 
     # combine the dwarf-all and dwarf-local-field-distant files

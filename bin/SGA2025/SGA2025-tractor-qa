@@ -223,11 +223,11 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     if len(sga) > 0:
                         from SGA.geometry import get_tractor_ellipse
                         _, ba, pa = get_tractor_ellipse(sga['shape_r'][0], sga['shape_e1'][0], sga['shape_e2'][0])
-                        print(f"{obj['OBJNAME']:30} {obj['RA']:.7f} {obj['DEC']:.7f} {sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba:.3f} {pa:.1f}")
+                        print(f"{obj['OBJNAME']:20} {diam0:05.0f} arcsec   {obj['RA']:.7f} {obj['DEC']:.7f} {sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba:.3f} {pa:.1f}")
                         xx.scatter(sga['bx'], height-sga['by'], marker='s',
                                    facecolor='none', s=40, color='cyan')
                     else:
-                        print(f"{obj['OBJNAME']:30} {obj['RA']:.7f} {obj['DEC']:.7f}")
+                        print(f"{obj['OBJNAME']:20} {diam0:05.0f} arcsec   {obj['RA']:.7f} {obj['DEC']:.7f}")
 
                     # draw the initial ellipse geometry...
                     (xpix, ypix) = wcs.wcs_world2pix(obj['RA'], obj['DEC'], 0)
