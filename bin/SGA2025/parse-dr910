@@ -94,6 +94,7 @@ cat.remove_columns(['NOBS_G', 'NOBS_R', 'NOBS_Z', 'REF_CAT'])
 # match against the current parent catalog
 
 version = parent_version(archive=True)
+version = 'v1.0'
 parentfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
 parent = Table(fitsio.read(parentfile, columns=['OBJNAME', 'RA', 'DEC']))
 print(f'Read {len(parent):,d} objects from {parentfile}')
@@ -101,10 +102,10 @@ m1, m2, _ = match_radec(cat['RA'], cat['DEC'], parent['RA'], parent['DEC'], 10./
 print(f'Trimming {len(m2):,d}/{len(cat):,d} objects which match version={version} parent catalog.')
 cat = cat[np.delete(np.arange(len(cat)), m1)]
 
-_, ba, pa = get_tractor_ellipse(cat['SHAPE_R'], cat['SHAPE_E1'], cat['SHAPE_E2'])
-cat['DIAM'] = cat['SHAPE_R'] * 2. / 60.
-cat['BA'] = ba
-cat['PA'] = pa
+#_, ba, pa = get_tractor_ellipse(cat['SHAPE_R'], cat['SHAPE_E1'], cat['SHAPE_E2'])
+#cat['DIAM'] = cat['SHAPE_R'] * 2. / 60.
+#cat['BA'] = ba
+#cat['PA'] = pa
 
 I = cat['FITBITS'] == 0
 print(f'Trimming {np.sum(~I):,d}/{len(cat):,d} objects with FITBITS>0')
@@ -145,7 +146,7 @@ for dr in ['DR9', 'DR10']:
     I = cat['DR'] == dr
 
     ax1.scatter(cat['RA'][I], cat['DEC'][I], s=1, alpha=0.5)
-    ax2.scatter(rmag[I], cat['DIAM'][I], s=1, alpha=0.5, label=dr)
+    ax2.scatter(rmag[I], 2.*cat['SHAPE_R'][I], s=1, alpha=0.5, label=dr)
     ax3.scatter(rz[I], gr[I], alpha=0.5, s=1)
     #ax3.axhline(y=-2, color='k')
     #ax3.axhline(y=2.5, color='k')

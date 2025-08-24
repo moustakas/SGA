@@ -353,6 +353,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             basic[f'{prop.upper()}_{ref}_REF'] = val_ref
             if prop == 'mag':
                 basic[f'BAND_{ref}'] = val_band
+
     # LVD
     elif 'RHALF' in cat.columns:
         ref = 'LVD'
@@ -393,6 +394,46 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             basic[f'{prop.upper()}_LIT_REF'] = val_ref
             if prop == 'mag':
                 basic[f'BAND_LIT'] = val_band
+
+    # DR9/DR10 supplement
+    elif 'SHAPE_R' in cat.columns:
+        ref = 'DR910'
+        magcol = f'MAG_{ref}'
+        diamcol = f'DIAM_{ref}'
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            val = np.zeros(nobj, 'f4') - 99.
+            val_ref = np.zeros(nobj, '<U9')
+            val_band = np.zeros(nobj, 'U1')
+
+            if prop == 'mag':
+                col = 'FLUX_R'
+                band = 'R'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = 22.5 - 2.5 * np.log10(cat[col][I])
+                    val_ref[I] = ref
+                    val_band[I] = band
+            elif prop == 'diam':
+                col = 'SHAPE_R'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = 2. * cat[col][I] / 60. # [arcmin]
+                    val_ref[I] = ref
+            elif prop == 'ba' or prop == 'pa':
+                I = ~np.isnan(cat['SHAPE_E1']) * ~np.isnan(cat['SHAPE_E2'])
+                if np.sum(I) > 0:
+                    from SGA.geometry import get_tractor_ellipse
+                    _, ba, pa = get_tractor_ellipse(cat['SHAPE_R'][I], cat['SHAPE_E1'][I], cat['SHAPE_E2'][I])
+                    if prop == 'ba':
+                        val[I] = ba
+                    else:
+                        val[I] = pa
+                    val_ref[I] = ref
+
+            basic[f'{prop.upper()}_{ref}'] = val
+            basic[f'{prop.upper()}_{ref}_REF'] = val_ref
+            if prop == 'mag':
+                basic[f'BAND_{ref}'] = val_band
 
     # custom
     elif 'DIAM' in cat.columns:

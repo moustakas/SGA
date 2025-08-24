@@ -11,7 +11,7 @@ import fitsio
 from glob import glob
 from importlib import resources
 from collections import Counter
-from astropy.table import Table, vstack
+from astropy.table import Table, vstack, hstack
 from astrometry.libkd.spherematch import match_radec
 
 from SGA.SGA import sga_dir
@@ -32,6 +32,7 @@ def parent_version(vicuts=False, nocuts=False, archive=False):
         version = 'v0.1'
     else:
         version = 'v0.1'
+        #version = 'v1.0'
     return version
 
 
@@ -1927,6 +1928,15 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     log.info(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ' + \
           f'({100.*len(ned_lvd)/len(lvd):.1f}%) are in ned_lvd.')
 
+    #miss_lvd = lvd[~np.isin(lvd['ROW'], ned_lvd['ROW'])
+
+    #####
+    #I = np.where(lvd['PGC'] > 0)[0]
+    #pgc, cc = np.unique(lvd['PGC'][I].value, return_counts=True)
+    #check = lvd[I][cc>1]
+    #check = check[np.argsort(check['PGC'])]
+    ####
+
     # ned_lvd - already in parent sample
     I = np.where(parent['OBJNAME_NED'] != '')[0]
     #oo, cc = np.unique(parent[I]['OBJNAME_NED'], return_counts=True)
@@ -1952,8 +1962,31 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     parent['RA_LVD'][I[indx_parent[indx_parent2]]] = lvd['RA'][indx_lvd2]
     parent['DEC_LVD'][I[indx_parent[indx_parent2]]] = lvd['DEC'][indx_lvd2]
     parent['PGC'][I[indx_parent[indx_parent2]]] = lvd['PGC'][indx_lvd2]
+
+    #oldpgc = parent['PGC'][I[indx_parent[indx_parent2]]].value
+    #newpgc = lvd['PGC'][indx_lvd2].value
+    #_check = (oldpgc != -99) * (newpgc != 0) * (newpgc != -1)
+    #check = hstack((parent[I[indx_parent[indx_parent2]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'PGC'][_check], lvd[indx_lvd2]['OBJNAME', 'OBJNAME_NED', 'RA', 'DEC', 'PGC'][_check]))
+
     #parent[I[indx_parent[indx_parent2]]]['OBJNAME_NED', 'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'RA_LVD', 'DEC_LVD', 'ROW_LVD', 'PGC']
     #join(parent[I[indx_parent[indx_parent2]]]['OBJNAME_LVD', 'OBJNAME_HYPERLEDA', 'ROW_LVD', 'PGC'], lvd[indx_lvd2]['OBJNAME', 'PGC'], keys_left='OBJNAME_LVD', keys_right='OBJNAME').plog.info(max_lines=-1)
+
+    ####
+    #I = np.where(parent['PGC'] > 0)[0]
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
+    #if np.any(cc>1):
+    #    log.warning('Duplicate PGC values!!')
+    #    check = parent[I][np.isin(parent['PGC'][I], pgc[cc>1])]
+    #    check = check[np.argsort(check['PGC'])]
+    #    check = check['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
+    #
+    #    pdb.set_trace()
+    #
+    #K = np.isin(parent['PGC'][I], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
+    #check = check[np.argsort(check['PGC'])]
+    #pdb.set_trace()
+    ####
 
     # NB: These 9 objects are not in my 'hyper' sample because they fail the
     # f_astrom cut; but they're all in the LVD and NED-LVS samples
@@ -1965,7 +1998,6 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     #     Crater II                        17 5742923     Crater II 5742923
     #       Grus II                        24 6740630       Grus II 6740630
     # Reticulum III                        44 6740628 Reticulum III 6740628
-    #   Sagittarius                        45 4689212   Sagittarius 4689212
     #     Tucana IV                        55 6740629     Tucana IV 6740629
     #      Tucana V                        56 6740631      Tucana V 6740631
 
@@ -1990,13 +2022,30 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     parent['DEC_LVD'][I[indx_parent]] = lvd['DEC'][J[indx_lvd]]
     parent['ROW_LVD'][I[indx_parent]] = lvd['ROW'][J[indx_lvd]]
 
-    # Drop SDSS J014548.23+162240.6=WISEA J014548.01+162239.4=JKB142. This
-    # object appears twice in the NED-LVS (rows 1827699 and 1871170), although
-    # NED resolves it as two objects. If we don't drop it then we end up with
-    # duplicate LVD entries.
-    log.info('Removing duplicate SDSS J014548.23+162240.6=WISEA J014548.01+162239.4=JKB142 from the parent sample.')
-    Idrop = np.where(parent['OBJNAME_NED'] == 'SDSS J014548.23+162240.6')[0]
-    parent.remove_row(Idrop[0])
+    # Drop duplicates / incorrect matches.
+    #I = np.where(parent['PGC'] > 0)[0]
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
+    #dups = pgc[cc>1]
+    #K = np.isin(parent['PGC'][I], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
+    #check = check[np.argsort(check['PGC'])]
+    #
+    #   SDSS J133230.32+250724.9 - duplicate with AGC 238890
+    #   SDSS J002041.45+083701.2 - duplicate with HIPASS J0021+08=JKB129
+    #   SDSS J104701.35+125737.5 - duplicate with PGC1 0032256 NED034=LeG21
+    #   SDSS J104653.19+124441.4=PGC4689210 - duplicate with Leo dw A=Leo I 09
+    #   SDSS J124354.70+412724.9 - duplicate with SMDG J1243552+412727=LV J1243+4127
+    #   PGC1 5067061 NED001 - duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I
+    #   SDSS J014548.23+162240.6 - duplicate with WISEA J014548.01+162239.4=JKB142
+    #   SDSS J095549.64+691957.4 - duplicate with SDSSJ141708.23+134105.7=PGC2801015=JKB83
+    dups = ['SDSS J133230.32+250724.9', 'SDSS J002041.45+083701.2',
+            'SDSS J104701.35+125737.5', 'SDSS J104653.19+124441.4',
+            'SDSS J124354.70+412724.9', 'PGC1 5067061 NED001',
+            'SDSS J014548.23+162240.6', 'SDSS J095549.64+691957.4',
+            ]
+    log.info(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
+    Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
+    parent.remove_rows(Idrop)
 
     # Also drop GALEXASC J095848.78+665057.9, which appears to be a
     # NED-LVS shred of the LVD dwarf d0958+66=KUG 0945+670 on rows
@@ -2006,33 +2055,35 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     Idrop = np.where(parent['OBJNAME_NED'] == 'GALEXASC J095848.78+665057.9')[0]
     parent.remove_row(Idrop[0])
 
-    # Additional NED drops:
-    #   SDSS J002041.45+083701.2 - duplicate with HIPASS J0021+08=JKB129
-    #   SDSS J104653.19+124441.4=PGC4689210 - duplicate with Leo dw A=Leo I 09
-    #   PGC1 5067061 NED001 - duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I
-    #   SDSS J095549.64+691957.4 - duplicate with SDSSJ141708.23+134105.7=PGC2801015=JKB83
-    #   SDSS J133230.32+250724.9 - duplicate with AGC 238890
-    #   SDSS J104701.35+125737.5 - duplicate with PGC1 0032256 NED034=LeG21
-    #   SDSS J124354.70+412724.9 - duplicate with SMDG J1243552+412727=LV J1243+4127
-
-    dups = ['SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4', 'PGC1 5067061 NED001',
-            'SDSS J095549.64+691957.4', 'SDSS J133230.32+250724.9',
-            'SDSS J104701.35+125737.5', 'SDSS J124354.70+412724.9']
-    log.info(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
-    Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
-    parent.remove_rows(Idrop)
+    ## Additional NED drops:
+    ##   PGC1 0040904 NED002 - duplicate with LV J1243+4127
+    ##   SDSS J104654.61+124717.5 - duplicate with LeG21
+    #dups = [, 'PGC1 0040904 NED002', 'SDSS J104654.61+124717.5']
+    #log.info(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
+    #Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
+    #parent.remove_rows(Idrop)
 
     #dups = ['Andromeda XXXIII', 'PGC1 5067061 NED001', 'HIPASS J0021+08', 'SDSS J002041.45+083701.2', 'SDSS J095549.64+691957.4', 'SDSS J141708.23+134105.7', 'SDSS J104653.19+124441.4', 'Leo dw A']
     #bb = parent[np.isin(parent['OBJNAME_NED'], dups)]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'RA_NED', 'RA_HYPERLEDA', 'RA_LVD', 'DEC_NED', 'DEC_HYPERLEDA', 'DEC_LVD', 'PGC']
     #bb = bb[np.argsort(bb['PGC'])]
 
-    # HyperLeda drops: [CVD2018]M96-DF10 matches SMDG J1048359+130336
-    # in NED but not dw1048p1303 in LVD. And NGC3628DGSAT1 matches
-    # SMDG J1121369+132650 in NED but not dw1121p1326.
+    # HyperLeda drops:
+    #   [CVD2018]M96-DF10 matches SMDG J1048359+130336 in NED but not dw1048p1303 in LVD
+    #   NGC3628DGSAT1 matches SMDG J1121369+132650 in NED but not dw1121p1326
     drops = ['[CVD2018]M96-DF10', 'NGC3628DGSAT1']
     log.info(f'Removing {", ".join(drops)} from the OBJNAME_HYPERLEDA parent sample.')
     Idrop = np.where(np.isin(parent['OBJNAME_HYPERLEDA'], drops))[0]
     parent.remove_rows(Idrop)
+
+    ####
+    #I = np.where(parent['PGC'] > 0)[0]
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
+    #dups = pgc[cc>1]
+    #K = np.isin(parent['PGC'][I], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
+    #check = check[np.argsort(check['PGC'])]
+    #pdb.set_trace()
+    ####
 
     # ned_lvd - not in parent sample (new)
     miss_lvd = ned_lvd[~np.isin(ned_lvd['ROW'], parent['ROW_LVD'])]
@@ -2094,9 +2145,13 @@ def build_parent_nocuts(verbose=True, overwrite=False):
           'SGA-2020 objects with PGC>0.')
     sga2020 = sga2020[J]
 
-    #pgc, cc = np.unique(parent[I]['PGC'].value, return_counts=True)
+    ####
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
     #dups = pgc[cc>1]
-    #parent[np.isin(parent['PGC'], dups)]['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
+    #K = np.isin(parent['PGC'], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][K]
+    #check = check[np.argsort(check['PGC'])]
+    ####
 
     indx_parent, indx_sga2020 = match(parent[I]['PGC'], sga2020['PGC'])
     log.info(f'Matched {len(indx_sga2020):,d}/{len(sga2020):,d} ({100.*len(indx_sga2020)/len(sga2020):.1f}%) ' + \
@@ -2189,9 +2244,15 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     # [8] include the DR9/DR10 supplemental objects
     print()
     log.info('#####')
-    log.info(f'Adding {len(custom):,d} more objects from the DR9/DR10 supplemental catalog.')
+    log.info(f'Adding {len(dr910):,d} more objects from the DR9/DR10 supplemental catalog.')
 
     dr910.rename_column('ROW', 'ROW_DR910')
+    basic_dr910 = get_basic_geometry(dr910, galaxy_column='SGANAME', verbose=verbose)
+    for col in basic_dr910.colnames:
+        if verbose:
+            log.info(f'Populating {col}')
+        parent[col][m1] = basic_dr910[col]
+    parent7 = populate_parent(dr910, basic_dr910, verbose=verbose)
 
     pdb.set_trace()
 
