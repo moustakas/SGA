@@ -5,6 +5,18 @@ by DJS by looping over all sweep catalogs.
 See /global/cfs/cdirs/cosmo/work/users/djschleg/sga/README for
 details.
 
+Read 245,706 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/biggals-dr9.fits
+Read 522,607 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/biggals-dr10.fits
+Trimming 202,044/768,313 ref_cat!="" and NOBS_[GRZ]>0 objects from the combined catalog.
+Resolving 181,304 duplicates.
+Unique catalog has 475,316 objects
+Read 1,154,637 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits
+Trimming 13,881/475,316 objects which match version=v1.0 parent catalog.
+Trimming 416,646/461,435 objects with FITBITS>0
+Trimming 582/44,789 objects with -1<g-r<2 and -2<r-z<2.5
+Wrote /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/dr910-supplement-v1.0.png
+Wrote 44,207 objects to /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/dr910-supplement-v1.0.fits
+
 """
 import os, pdb
 import numpy as np
@@ -13,6 +25,7 @@ from astropy.table import Table, vstack
 from astrometry.libkd.spherematch import match_radec
 import matplotlib.pyplot as plt
 
+from SGA.io import radec_to_name
 from SGA.parent import parent_version
 from SGA.SGA import sga_dir, sga2025_name
 from SGA.geometry import get_tractor_ellipse
@@ -27,10 +40,12 @@ dr10file = os.path.join(sga_dir(), 'parent', 'external', 'biggals-dr10.fits')
 
 dr9 = Table(fitsio.read(dr9file, columns=cols))
 dr9['DR'] = 'DR9'
+dr9['ROW'] = np.arange(len(dr9))
 print(f'Read {len(dr9):,d} objects from {dr9file}')
 
 dr10 = Table(fitsio.read(dr10file, columns=cols))
 dr10['DR'] = 'DR10'
+dr10['ROW'] = np.arange(len(dr10))
 print(f'Read {len(dr10):,d} objects from {dr10file}')
 
 # stack and apply some basic cuts
@@ -51,7 +66,8 @@ print(f'Trimming {np.sum(~I):,d}/{len(dr):,d} ref_cat!="" ' + \
       'and NOBS_[GRZ]>0 objects from the combined catalog.')
 dr = dr[I]
 
-# resolve duplicates -- choose based on NOBS
+# resolve duplicates using SGANAME, which is precise to ~3.5 arcsec,
+# but then choose based on NOBS
 dr['NOBS'] = dr['NOBS_G'].value + dr['NOBS_R'].value + dr['NOBS_Z'].value
 dr['SGANAME'] = sga2025_name(dr['RA'].value, dr['DEC'])
 uname, uindx, cc = np.unique(dr['SGANAME'].value, return_counts=True, return_index=True)
@@ -138,15 +154,25 @@ zmag = 22.5-2.5*np.log10(cat['FLUX_Z'])
 rz = rmag-zmag
 gr = gmag-rmag
 
+# generate a fully-populated catalog
+out = []
+for dr, drfile in zip(['DR9', 'DR10'], [dr9file, dr10file]):
+    rows = cat['ROW'][cat['DR'] == dr]
+    out.append(Table(fitsio.read(drfile, rows=rows)))
+out = vstack(out)
+out.add_column(sga2025_name(out['RA'].value, out['DEC'].value), name='SGANAME', index=0)
+out.add_column(radec_to_name(out['RA'].value, out['DEC'].value, prefix='DESI'), name='DESINAME', index=0)
+cat = out
+
 version = 'v1.0'
 pngfile = os.path.join(sga_dir(), 'parent', 'external', f'dr910-supplement-{version}.png')
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 4))
 
-for dr in ['DR9', 'DR10']:
-    I = cat['DR'] == dr
+for drpre, dr in zip([9, 10], ['DR9', 'DR10']):
+    I = cat['RELEASE']//1000 == drpre
 
     ax1.scatter(cat['RA'][I], cat['DEC'][I], s=1, alpha=0.5)
-    ax2.scatter(rmag[I], 2.*cat['SHAPE_R'][I], s=1, alpha=0.5, label=dr)
+    ax2.scatter(rmag[I], 2.*1.2*cat['SHAPE_R'][I]/60., s=1, alpha=0.5, label=dr)
     ax3.scatter(rz[I], gr[I], alpha=0.5, s=1)
     #ax3.axhline(y=-2, color='k')
     #ax3.axhline(y=2.5, color='k')
@@ -159,8 +185,8 @@ ax1.set_ylim(-90, 90)
 ax1.set_xlim(360, 0)
 
 ax2.set_xlabel('r (AB mag)')
-ax2.set_ylabel(r'$2\times$shape_r (arcmin)')
-ax2.axhline(y=20./60., color='k')
+ax2.set_ylabel(r'$1.2\times2\times$shape_r (arcmin)')
+ax2.axhline(y=1.2*2*10./60., color='k')
 
 ax3.set_xlabel('r - z')
 ax3.set_ylabel('g - r')

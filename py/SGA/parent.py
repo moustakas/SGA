@@ -31,8 +31,8 @@ def parent_version(vicuts=False, nocuts=False, archive=False):
     elif archive:
         version = 'v0.1'
     else:
-        version = 'v0.1'
-        #version = 'v1.0'
+        #version = 'v0.1'
+        version = 'v1.0'
     return version
 
 
@@ -47,6 +47,8 @@ def parent_datamodel(nobj):
     parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_SGA2020'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_DR910'] = np.zeros(nobj, '<U30')
+
     parent['OBJTYPE'] = np.zeros(nobj, '<U6')
     parent['MORPH'] = np.zeros(nobj, '<U20')
     parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
@@ -63,6 +65,8 @@ def parent_datamodel(nobj):
     parent['DEC_SGA2020'] = np.zeros(nobj, 'f8') -99.
     parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
     parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_DR910'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_DR910'] = np.zeros(nobj, 'f8') -99.
 
     parent['Z'] = np.zeros(nobj, 'f8') -99.
     parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
@@ -844,6 +848,9 @@ def update_lvd_properties(cat):
     version = version_lvd()
     nobj = len(_lvd)
 
+    if version != 'v1.0.5':
+        log.warning('Be sure to review hard-coded properties before proceeding!')
+
     log.info(f'Updating properties of {nobj} LVD galaxies.')
 
     #indx_cat = np.where(cat['ROW_LVD'] != -99)[0]
@@ -921,54 +928,6 @@ def update_lvd_properties(cat):
     lvd['DIAM_REF'][I] = 'LVGDB'
     lvd['BA_REF'][I] = 'LVGDB'
 
-    # v1.0.5 is missing all data for 10 objects. Hard-code the properties for
-    # now...
-    I = (lvd['DIAM'] == -99.)
-    if version != 'v1.0.5':
-        raise ValueError('Need hard-coded properties!')
-
-    print('Add these properties to the spreadsheet!')
-    pdb.set_trace()
-
-    gals = np.array([
-        'IC239',
-        'NGC 1042',
-        'NGC 4151',
-        'NGC 4424',
-        'PGC 100170',
-        'UGC 7490',
-        'dw1341-29',
-    ])
-    props = [ # diam, ba, pa
-        (4.57, 0.912, 125.),
-        (5.47, 0.873, 33.6),
-        (5.43, 0.879, 140.),
-        (3.63, 0.501, 95.),
-        (2.58, 0.4, 117.),
-        (3.30, 0.850, 0.17),
-        (0.5, 1., 0.),
-        ]
-    refs = [
-        ('RC3', 'RC3', '2MASS'),
-        ('SGA2020', 'SGA2020', 'SGA2020'),
-        ('SGA2020', 'SGA2020', 'SGA2020'),
-        ('RC3', 'RC3', 'RC3'),
-        ('2MASS', '2MASS', '2MASS'),
-        ('SGA2020', 'SGA2020', 'SGA2020'),
-        ('VI', 'VI', 'VI'),
-        ]
-    assert(np.all(lvd[I]['OBJNAME'] == gals))
-
-    props = list(zip(*props))
-    refs = list(zip(*refs))
-
-    for col, prop, ref in zip(('DIAM', 'BA', 'PA'), props, refs):
-        lvd[col][I] = prop
-        lvd[f'{col}_REF'][I] = ref
-
-    # at this point, all objects should have diameters and ellipticities
-    #assert(np.all((lvd['DIAM'] != -99.) * (lvd['BA'] != -99.)))
-
     # Next, gather ellipticities and position angles from the input catalog.
     I = np.where(cat['ROW_LVD'] != -99)[0]
     m1, m2 = match(lvd['ROW'], cat['ROW_LVD'][I])
@@ -1018,6 +977,9 @@ def update_lvd_properties(cat):
                     lvd['RADEC_REF'][I[J]] = updates['radec_ref'][J]
                 else:
                     lvd[f'{col}_REF'][I[J]] = updates[f'{col.lower()}_ref'][J]
+
+    assert(np.all((lvd['DIAM'] != -99.) * (lvd['BA'] != -99.)))
+    #lvd[lvd['PA_REF'] == 'default']
 
     # write out
     lvd = lvd[np.argsort(lvd['ROW'])]
@@ -2242,31 +2204,27 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     log.info(f'Parent 6: N={len(parent6):,d}')
 
     # [8] include the DR9/DR10 supplemental objects
+    parent = vstack((parent, parent6))
+
     print()
     log.info('#####')
     log.info(f'Adding {len(dr910):,d} more objects from the DR9/DR10 supplemental catalog.')
 
-    dr910.rename_column('ROW', 'ROW_DR910')
-    basic_dr910 = get_basic_geometry(dr910, galaxy_column='SGANAME', verbose=verbose)
-    for col in basic_dr910.colnames:
-        if verbose:
-            log.info(f'Populating {col}')
-        parent[col][m1] = basic_dr910[col]
-    parent7 = populate_parent(dr910, basic_dr910, verbose=verbose)
-
-    pdb.set_trace()
-
+    basic_dr910 = get_basic_geometry(dr910, galaxy_column='DESINAME', verbose=verbose)
+    dr910.rename_columns(['ROW', 'DESINAME', 'RA', 'DEC'],
+                         ['ROW_DR910', 'OBJNAME_DR910', 'RA_DR910', 'DEC_DR910'])
+    parent7 = populate_parent(dr910, basic_dr910, verbose=True)#verbose)
 
     # [9] build the final sample
-    parent = vstack((parent, parent6))
+    parent = vstack((parent, parent7))
 
     # sort, check for uniqueness, and then write out
     srt = np.lexsort((parent['ROW_HYPERLEDA'].value, parent['ROW_NEDLVS'].value,
                       parent['ROW_SGA2020'].value, parent['ROW_LVD'].value,
-                      parent['ROW_CUSTOM'].value))
+                      parent['ROW_CUSTOM'].value, parent['ROW_DR910']))
     parent = parent[srt]
 
-    for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_SGA2020', 'OBJNAME_LVD']:
+    for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_SGA2020', 'OBJNAME_LVD', 'OBJNAME_DR910']:
         I = parent[col] != ''
         try:
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
@@ -2283,7 +2241,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     #                                                        'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'PGC', 'ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD']
     #bb = bb[np.argsort(bb['PGC'])]
 
-    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_SGA2020', 'ROW_LVD', 'ROW_CUSTOM']:
+    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_SGA2020', 'ROW_LVD', 'ROW_CUSTOM', 'ROW_DR910']:
         I = parent[col] != -99
         try:
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
@@ -2300,7 +2258,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     # before HyperLeda, otherwise we totally miss some quite famous galaxies.
     print()
 
-    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
+    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA', 'DR910']:
         I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
         if len(I) > 0:
             log.info(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -2310,7 +2268,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
 
     # NB - prefer LVD then NED names
-    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
+    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA', 'DR910']:
         I = np.where((parent['OBJNAME'] == '') * (parent[f'OBJNAME_{dataset}'] != ''))[0]
         if len(I) > 0:
             log.info(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -2346,6 +2304,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     basic_ned_nedlvs = get_basic_geometry(ned_nedlvs, galaxy_column='ROW', verbose=verbose)
     basic_lvd = get_basic_geometry(lvd, galaxy_column='ROW', verbose=verbose)
     basic_custom = get_basic_geometry(custom, galaxy_column='ROW_CUSTOM', verbose=verbose)
+    basic_dr910 = get_basic_geometry(dr910, galaxy_column='ROW_DR910', verbose=verbose)
 
     # NB: do not reset diameters for the set of SMUDGes objects which
     # were matched from custom to the parent sample (at the point
@@ -2358,9 +2317,9 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
     print()
     # NB - prioritize LVD first, then custom (which includes SMUDGes)
-    for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs),
-                                   ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS'),
-                                   ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS')):
+    for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs, basic_dr910),
+                                   ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_DR910'),
+                                   ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS', 'DR910')):
         for col in ['DIAM_LIT', 'BA_LIT', 'PA_LIT', 'MAG_LIT']:
             I = np.where((parent[col] == -99.) * (parent[row] != -99))[0]
             if len(I) > 0:
@@ -2413,6 +2372,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
             log.info(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
         print()
 
+
     # ROW_PARENT must be unique across versions
     rowfiles = glob(os.path.join(sga_dir(), 'parent', f'SGA2025-parent-row-*.fits'))
     if len(rowfiles) > 0:
@@ -2424,12 +2384,10 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
     parent['ROW_PARENT'] = rows
 
-
     rowfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-rows-{version_nocuts}.fits')
     rowcat = parent['OBJNAME', 'ROW_PARENT', ]
     log.info(f'Writing {len(rowcat):,d} objects to {rowfile}')
     rowcat.write(rowfile, overwrite=True)
-
 
     log.info(f'Writing {len(parent):,d} objects to {final_outfile}')
     parent.meta['EXTNAME'] = 'PARENT-NOCUTS'
@@ -2840,7 +2798,7 @@ def build_parent(verbose=False, overwrite=False):
     """
     from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
-    from SGA.SGA import sga2025_name, FITBITS, SAMPLEBITS
+    from SGA.SGA import sga2025_name, SGAFITMODE, SAMPLEBITS
     from SGA.groups import build_group_catalog
     from SGA.coadds import REGIONBITS
     from SGA.sky import find_close, in_ellipse_mask_sky
