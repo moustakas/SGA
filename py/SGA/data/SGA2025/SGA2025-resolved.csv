@@ -11,7 +11,6 @@ objname,region,comment
 # LVD - dr9-north
 #
 Draco II,dr9-north,LVD
-Canes Venatici I,dr9-north,LVD
 Bootes IV,dr9-north,LVD
 Ursa Major I,dr9-north,LVD
 Ursa Major II,dr9-north,LVD
@@ -33,7 +32,6 @@ Tucana III,dr11-south,LVD
 Andromeda II,dr11-south,LVD
 Hercules,dr11-south,LVD
 Grus II,dr11-south,LVD
-Canes Venatici I,dr11-south,LVD
 Hydrus I,dr11-south,LVD
 Carina II,dr11-south,LVD
 Tucana II,dr11-south,LVD
@@ -44,3 +42,7 @@ Sextans,dr11-south,LVD
 Bootes III,dr11-south,LVD
 Crater II,dr11-south,LVD
 Antlia II,dr11-south,LVD
+#
+# LVD - dr9-north & dr11-south
+#
+Canes Venatici I,dr9-north;dr11-south,LVD

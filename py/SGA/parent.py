@@ -2664,7 +2664,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Read {len(gcl):,d} objects from {gclfile}')
     for cl in gcl:
         I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
-                                cl['pa'], parent['RA'].value, parent['DEC'].value)
+                                cl['pa'], cat['RA'].value, cat['DEC'].value)
         if np.any(I):
             cat['IN_GCLPNE'][I] = True
             #for gal in cat['OBJNAME'][I].value:
@@ -2721,46 +2721,36 @@ def build_parent_archive(verbose=False, overwrite=False):
         log.info(lvdmiss)
         pdb.set_trace()
 
-    # Set the
-    pdb.set_trace()
+    # For convenience, add dedicated Boolean columns for each external
+    # file (which may be different than the SGAFITMODE and SAMPLE bits
+    # which will be populated in build_parent).
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+        actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
+        if not os.path.isfile(actfile):
+            log.warning(f'No action file {actfile} found; skipping.')
+            continue
 
+        # read the file and check for duplicates
+        act = Table.read(actfile, format='csv', comment='#')
+        log.info(f'Read {len(act)} objects from {actfile}')
 
-    # add the 'resolved' bit
-    resfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-resolved.csv')
-    res = Table.read(resfile, format='csv', comment='#')
-    log.info(f'Read {len(res)} objects from {resfile}')
-    oo, cc = np.unique(res['objname'].value, return_counts=True)
-    if np.any(cc > 1):
-        log.info('Warning: duplicates in resolve file!')
-        pdb.set_trace()
-        log.info(oo[cc>1])
-
-    cat['RESOLVED'] = np.zeros(len(cat), bool)
-    I = np.isin(cat['OBJNAME'].value, res['objname'].value)
-    if np.sum(I) != len(res):
-        log.info('Missing objects!')
-        pdb.set_trace()
-        log.info(res[~np.isin(res['objname'].value, cat['OBJNAME'].value)])
-    cat['RESOLVED'][I] = True
-
-    # add the 'FORCEGAIA' and 'FORCEPSF' bits
-    for suffix in ['gaia', 'psf']:
-        forcefile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-force{suffix}.csv')
-        force = Table.read(forcefile, format='csv', comment='#')
-        log.info(f'Read {len(force)} objects from {forcefile}')
-        oo, cc = np.unique(force['objname'].value, return_counts=True)
+        oo, cc = np.unique(act['objname'].value, return_counts=True)
         if np.any(cc > 1):
-            log.info(f'Warning: duplicates in the force{suffix} file!')
+            log.warning(f'duplicates in action file {actfile}')
             log.info(oo[cc>1])
             pdb.set_trace()
 
-        cat[f'FORCE{suffix.upper()}'] = np.zeros(len(cat), bool)
-        I = np.isin(cat['OBJNAME'].value, force['objname'].value)
-        if np.sum(I) != len(force):
-            log.info('Missing objects!')
+        # make sure every object is in the current catalog
+        I = np.isin(cat['OBJNAME'].value, act['objname'].value)
+        if np.sum(I) != len(act):
+            log.warning(f'The parent catalog is missing the following objects in {actfile}')
+            log.info(act[~np.isin(act['objname'].value, cat['OBJNAME'].value)])
             pdb.set_trace()
-            log.info(force[~np.isin(force['objname'].value, cat['OBJNAME'].value)])
-        cat[f'FORCE{suffix.upper()}'][I] = True
+
+        # finally add a Boolean flag
+        col = f'IN_{action.upper()}'
+        cat[col] = np.zeros(len(cat), bool)
+        cat[col][I] = True
 
     # add the Gaia mask bits
     log.info(f'Adding Gaia bright-star masking bits.')

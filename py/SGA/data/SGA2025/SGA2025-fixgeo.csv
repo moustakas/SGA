@@ -23,16 +23,12 @@ MADCASH-1,dr9-north,LVD
 d0955+70,dr9-north,LVD
 d0926+70,dr9-north,LVD
 dw1330+4731,dr9-north,LVD
-NGC 4631-dw3,dr9-north,LVD
 NGC 5055-dwTBG1,dr9-north,LVD
 d0934+70,dr9-north,LVD
 DDO 169NW,dr9-north,LVD
-d0959+68,dr9-north,LVD
-NGC 4631-dw2,dr9-north,LVD
 M101-DF3,dr9-north,LVD
 d0959+68,dr9-north,LVD
 F8D1,dr9-north,LVD
-NGC 4631-dw1,dr9-north,LVD
 Canes Venatici II,dr9-north,LVD
 A0952+69,dr9-north,LVD
 Willman 1,dr9-north,LVD
@@ -49,7 +45,6 @@ Scl-MM-Dw4,dr11-south,LVD
 dw1109-0016,dr11-south,LVD
 dw1300+1843,dr11-south,LVD
 CenA-MM-Dw5,dr11-south,LVD
-NGC 4631-dw3,dr11-south,LVD
 dw1340-30,dr11-south,LVD
 dw1004m0737,dr11-south,LVD
 dw1323-40b,dr11-south,LVD
@@ -66,10 +61,8 @@ M96-DF2,dr11-south,LVD
 CenA-MM-Dw7,dr11-south,LVD
 Leo K,dr11-south,LVD
 Pisces VII,dr11-south,LVD
-NGC 4631-dw2,dr11-south,LVD
 Pegasus W,dr11-south,LVD
 Leo M,dr11-south,LVD
-KK 69,dr11-south,LVD
 Andromeda XI,dr11-south,LVD
 Andromeda XIII,dr11-south,LVD
 Virgo II,dr11-south,LVD
@@ -80,7 +73,6 @@ Pegasus VII,dr11-south,LVD
 Andromeda XVI,dr11-south,LVD
 Leo T,dr11-south,LVD
 Phoenix II,dr11-south,LVD
-NGC 4631-dw1,dr11-south,LVD
 Horologium I,dr11-south,LVD
 CenA-MM-Dw1,dr11-south,LVD
 Leo Minor I,dr11-south,LVD
@@ -113,3 +105,6 @@ UGCA 292,dr9-north;dr11-south,LVD
 KK 17,dr9-north;dr11-south,LVD
 KK 69,dr9-north;dr11-south,LVD
 Bootes V,dr9-north;dr11-south,LVD
+NGC 4631-dw1,dr9-north;dr11-south,LVD
+NGC 4631-dw2,dr9-north;dr11-south,LVD
+NGC 4631-dw3,dr9-north;dr11-south,LVD

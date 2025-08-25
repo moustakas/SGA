@@ -32,15 +32,17 @@ SGAFITMODE = dict(
     RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting
     FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
                         # subtract but do not threshold-mask Gaia stars
-    LESSMASKING = 2**3, # subtract but do not threshold-mask Gaia stars
-    MOREMASKING = 2**4, # threshold-mask extended sources even within the SGA
+    FORCEGAIA = 2**3,   # force PSF source detection and photometry within the SGA mask;
+    LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
+    MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
                         # mask (e.g., within a cluster environment)
 )
 
 SAMPLE = dict(
-    LVD = 2**0,    # Local Volume Database dwarfs
-    CLOUDS = 2**1, # in the Magellanic Clouds
-    GCPNE = 2**2,  # in a globular cluster or PNe mask (implies --no-force-gaia)
+    LVD = 2**0,      # Local Volume Database dwarfs
+    CLOUDS = 2**1,   # in the Magellanic Clouds
+    GCPNE = 2**2,    # in a globular cluster or PNe mask (implies --no-force-gaia)
+    NEARSTAR = 2**3, # near a bright or medium star
 )
 
 OPTMASKBITS = dict(
