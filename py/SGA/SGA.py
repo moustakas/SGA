@@ -11,6 +11,7 @@ import numpy as np
 import numpy.ma as ma
 from astropy.table import Table, vstack
 
+from SGA.ellipse import MAXSHIFT_ARCSEC
 from SGA.logger import log
 
 REFCAT = 'L4'
@@ -27,16 +28,19 @@ REFIDCOLUMN = 'SGAID'
 #)
 
 SGAFITMODE = dict(
-    fixgeo = 2**0,     # fix ellipse geometry
-    resolved = 2**1,   # no Tractor catalogs or ellipse-fitting
-    forcepsf = 2**2,   # force PSF for source detection and photometry within the SGA mask
-    galcluster = 2**3, # less aggressive source-masking due to cluster environment
+    FIXGEO = 2**0,      # fix ellipse geometry
+    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting
+    FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
+                        # subtract but do not threshold-mask Gaia stars
+    LESSMASKING = 2**3, # subtract but do not threshold-mask Gaia stars
+    MOREMASKING = 2**4, # threshold-mask extended sources even within the SGA
+                        # mask (e.g., within a cluster environment)
 )
 
-SAMPLEBITS = dict(
+SAMPLE = dict(
     LVD = 2**0,    # Local Volume Database dwarfs
-    clouds = 2**1, # in the Magellanic Clouds
-    GCPNe = 2**2,  # in a globular cluster or PNe mask (turn off Gaia-only source detection)
+    CLOUDS = 2**1, # in the Magellanic Clouds
+    GCPNE = 2**2,  # in a globular cluster or PNe mask (implies --no-force-gaia)
 )
 
 OPTMASKBITS = dict(
@@ -1099,8 +1103,8 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     log.info(f'Wrote {qafile}')
 
 
-def build_multiband_mask(data, tractor, run='south', maxshift_arcsec=3.5,
-                         niter=2, qaplot=True):
+def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
+                         maxshift_arcsec=MAXSHIFT_ARCSEC):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 

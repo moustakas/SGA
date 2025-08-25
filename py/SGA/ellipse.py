@@ -15,6 +15,14 @@ import astropy.modeling
 from SGA.logger import log
 
 
+MAXSHIFT_ARCSEC = 3.5
+
+ELLIPSEBIT = dict(
+    NOTRACTOR = 2**0,  # SGA source has no corresponding Tractor source
+    LARGESHIFT = 2**1, # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
+    BLENDED = 2**2,    # SGA center is located within the elliptical mask of another SGA source
+)
+
 REF_SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
 REF_APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
 

@@ -31,8 +31,8 @@ def parent_version(vicuts=False, nocuts=False, archive=False):
     elif archive:
         version = 'v0.1'
     else:
-        #version = 'v0.1'
-        version = 'v1.0'
+        version = 'v0.1'
+        #version = 'v1.0'
     return version
 
 
@@ -106,6 +106,19 @@ def parent_datamodel(nobj):
     parent['ROW_DR910'] = np.zeros(nobj, '<i8') -99
 
     return parent
+
+
+def check_lvd(cat):
+    from SGA.external import read_lvd
+    lvd = read_lvd(verbose=False)
+    lvdcat = cat[cat['ROW_LVD'] != -99]
+    lvdmiss = None
+    try:
+        assert(len(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]) == 0)
+    except:
+        log.info('Missing the following LVD systems!')
+        lvdmiss = lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]
+    return lvdmiss
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
@@ -523,8 +536,9 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
             #'2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
         ]
 
-        # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
-        I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
+        # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl
+        # systems and LVD sources.
+        I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl') * (fullcat['ROW_LVD'] == -99)
         cat = resolve_close(fullcat[I], fullcat[I], maxsep=1.5, allow_vetos=True, verbose=False)
         cat = vstack((cat, fullcat[~I]))
         cat = cat[np.argsort(cat['ROW_PARENT'])]
@@ -960,7 +974,7 @@ def update_lvd_properties(cat):
 
     # override the algorithm above based on VI
     if version == 'v1.0.5':
-        updatefile = resources.files('SGA').joinpath('data/SGA2025/LVD-geometry-updates.csv')
+        updatefile = resources.files('SGA').joinpath(f'data/SGA2025/LVD-geometry-updates-{version}.csv')
         updates = Table.read(updatefile, format='csv', comment='#')
         log.info(f'Read {len(updates)} objects from {updatefile}')
 
@@ -2397,6 +2411,9 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog with VI cuts.
 
+    Always make sure we still have all LVD sources (see the VETO array
+    in remove_by_prefix)!
+
     """
     version_vicuts = parent_version(vicuts=True)
     final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
@@ -2419,75 +2436,47 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     origcat = Table(fitsio.read(catfile))
     log.info(f'Read {len(origcat):,d} objects from {catfile}')
-
-    # [1] Update individual-galaxy properties, including coordinates.
-    cat = update_properties(origcat, verbose=verbose)
-    #cat[np.isin(cat['OBJNAME'], ['LMC', 'SMC'])]['OBJNAME', 'OBJNAME_LVD', 'RA', 'DEC', 'RA_LVD', 'DEC_LVD', 'RA_NED', 'DEC_NED']
-
-    # [2] Drop systems with uncommon prefixes (after VI).
-    cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
-
-    # make sure we still have all LVD sources (see the VETO array in remove_by_prefix)
-    from SGA.external import read_lvd
-    lvd = read_lvd()
-    lvdcat = cat[cat['ROW_LVD'] != -99]
-    try:
-        assert(len(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]) == 0)
-    except:
-        log.info('Missing the following LVD systems!')
-        log.info(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])])
+    lvdmiss = check_lvd(origcat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
         pdb.set_trace()
 
+    # [1] Update individual-galaxy properties, including coordinates.
+    cat1 = update_properties(origcat, verbose=verbose)
+    lvdmiss = check_lvd(cat1)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+
+    # [2] Drop systems with uncommon prefixes (after VI).
+    cat2 = remove_by_prefix(cat1, merger_type=None, verbose=verbose, build_qa=False)
+    lvdmiss = check_lvd(cat2)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    del cat1
+
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
-
-    ## more general HyperLeda-NED cross-ID errors
-    #bb = cat[(cat['RA_HYPERLEDA'] != cat['RA']) * (cat['RA_HYPERLEDA'] != -99.)]
-    #m1, m2, sep = match_radec(bb['RA'], bb['DEC'], bb['RA_HYPERLEDA'], bb['DEC_HYPERLEDA'], 3./3600., notself=True)
-    #m1 = m1[m1 != m2]
-    #multipage_skypatch(bb[m1], cat=cat, width_arcsec=120., overwrite_viewer=True, overwrite=True,
-    #                   clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
-
-    if False:
-        from astropy.coordinates import SkyCoord
-        import astropy.units as u
-
-        cc = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits'))
-
-        #dr = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-dr9-north-v1.0.fits'))
-        dr = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-dr11-south-v1.0.fits'))
-        I = np.where((dr['RA'] != dr['RA_HYPERLEDA']) * (dr['RA_HYPERLEDA'] != -99.) * ~dr['RESOLVED'] * (dr['ROW_LVD'] == -99))[0]
-        mm = dr[I]
-
-        c_default = SkyCoord(mm['RA'].value*u.deg, mm['DEC'].value*u.deg)
-        c_hyper = SkyCoord(mm['RA_HYPERLEDA'].value*u.deg, mm['DEC_HYPERLEDA'].value*u.deg)
-        sep = c_default.separation(c_hyper).to(u.arcsec)
-        srt = np.argsort(sep.value)[::-1]
-        sep = sep[srt]
-        mm = mm[srt]
-        diam, _, _, _ = choose_geometry(mm, mindiam=0.)
-
-        #plt.clf() ; plt.hist(sep.value, bins=100) ; plt.savefig('junk.png')
-
-        #bb = mm[sep.value > 1200.]
-        #bb = mm[(sep.value > 240.) * (sep.value <= 1200.)]
-        #bb = mm[(sep.value > 120.) * (sep.value <= 240.)]
-        #bb = mm[(sep.value > 60.) * (sep.value <= 120.)]
-        #bb = mm[(sep.value > 30.) * (sep.value <= 60.)]
-        #bb = mm[(sep.value > 3.) * (sep.value <= 30.) * (diam > 60.)]
-        #bb = mm[(sep.value > 5.) * (sep.value <= 30.) * (diam > 30.) * (diam <= 60.)]
-        bb = mm[(sep.value > 5.) * (sep.value <= 30.) * (diam > 15.) * (diam <= 30.)]
-
-        multipage_skypatch(bb, cat=cc, width_arcsec=90., overwrite_viewer=True, overwrite=True, clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
-        bb['OBJNAME', 'RA', 'DEC', 'RA_HYPERLEDA', 'DEC_HYPERLEDA'].plog.info(max_lines=-1)
+    cat3 = resolve_crossid_errors(cat2, verbose=False, build_qa=False, rebuild_file=True)
+    lvdmiss = check_lvd(cat3)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    del cat2
 
     # [4] Resolve close (1 arcsec) pairs.
-    cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
+    cat4 = resolve_close(cat3, cat3, maxsep=1., allow_vetos=True, verbose=False)
+    lvdmiss = check_lvd(cat4)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    del cat3
 
     # [4] Visually drop GTrpl and GPair systems with and without measured
     # diameters.
-    cat = remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=False, verbose=verbose, build_qa=False)
+    cat = remove_by_prefix(cat4, merger_type='GTrpl', merger_has_diameter=False, verbose=verbose, build_qa=False)
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
+    del cat4
 
     # [5] only explicitly drop mergers with diameters via VI and the VI-actions file
     remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
@@ -2497,6 +2486,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-VICUTS'
     cat.write(final_outfile, overwrite=True)
+
 
 
 def build_parent_archive(verbose=False, overwrite=False):
@@ -2520,14 +2510,10 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat = Table(fitsio.read(catfile))
     log.info(f'Read {len(cat):,d} objects from {catfile}')
 
-    #if False:
-    #    I = cat['DIAM_LIT'] > 25. ; srt = np.argsort(cat[I]['DIAM_LIT'])[::-1] ; cat[I][srt]['OBJNAME', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'RA', 'DEC']
-    #    cc = cat ; obj='MESSIER 077' ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
-    #    qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=2., pngdir='ioannis/tmp/', clip=True, overwrite_viewer=True, overwrite=True)
-    #    multipage_skypatch(cat[I], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/aa-sdss.pdf', verbose=True)
-
-    # FIXME - apply cuts based on additional external catalogs
-    # (ssl-legacysurvey, Galaxy Zoo VI, etc.)
+    lvdmiss = check_lvd(cat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
 
     # read the ssl-legacysurvey results (including the veto file)
     log.info('Applying the ssl results')
@@ -2598,9 +2584,13 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Removing {len(ssl):,d}/{len(cat):,d} objects based on SSL results.')
     cat = cat[~np.isin(cat['OBJNAME'], ssl['OBJNAME'])]
 
+    lvdmiss = check_lvd(cat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+
     # Resolve more close pairs -- these choices were made after
     # investigating a bunch of QA.
-    ##from SGA.util import find_close
 
     # Create refcat by sorting cat by PGC, otherwise RA will be used
     # to define the "first" group member, which is not usually what we
@@ -2616,8 +2606,13 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat = cat[srt]
     #bb = refcat[np.isin(refcat['OBJNAME'], ['UGC 08168', '2MASS J13034084+5129425'])]
     #bb = refcat[np.isin(refcat['OBJNAME'], ['GALEXASC J072041.35+561217.0', 'WISEA J072041.29+561218.0'])]
-    cat = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False,
-                        ignore_objtype=True, trim=True, verbose=False)
+    cat2 = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False,
+                         ignore_objtype=True, trim=True, verbose=False)
+    lvdmiss = check_lvd(cat2)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    cat = cat2
     cat = cat[np.argsort(cat['RA'].value)]
     del refcat
 
@@ -2661,6 +2656,25 @@ def build_parent_archive(verbose=False, overwrite=False):
         #out.write('ioannis/tmp/junk2.fits', overwrite=True)
         #cat[I][alldiam/60>1]['OBJNAME', ].write('junk.txt', format='csv', overwrite=True)
 
+    # flag objects in GCl / PNe
+    cat['IN_GCLPNE'] = np.zeros(len(cat), bool)
+
+    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
+    gcl = Table(fitsio.read(gclfile))
+    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
+    for cl in gcl:
+        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
+                                cl['pa'], parent['RA'].value, parent['DEC'].value)
+        if np.any(I):
+            cat['IN_GCLPNE'][I] = True
+            #for gal in cat['OBJNAME'][I].value:
+            #    if cl['type'] == 'GCl':
+            #        print(f"{gal},drop,cluster,in GCl '{cl["name"]}'")
+            #    elif cl['type'] == 'PNe':
+            #        print(f"{gal},drop,cluster,in PNe '{cl["name"]}'")
+    #cat['IN_GCLPNE']write('junk.fits', overwrite=True)
+
+
     # apply cuts based on the photometry files
     #log.info('Processing the photometry files')
     photo, nphoto = [], 0
@@ -2680,7 +2694,7 @@ def build_parent_archive(verbose=False, overwrite=False):
           'that are still in the current parent sample.')
     photo = photo[I]
 
-    # Do not throw out objects in the properties, actions, and
+    # Do not throw out objects in the properties, actions, or
     # 'custom' catalogs, which were added by-hand!
     custom = read_custom_external()
     I = np.logical_or.reduce((np.isin(photo['OBJNAME'], props['objname_ned']),
@@ -2689,6 +2703,8 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Removing {np.sum(I):,d}/{len(photo):,d} photometry rows of ' + \
           'objects in the custom or properties tables.')
     photo = photo[~I]
+
+    # FIXME - we may want to keep these...
 
     # The photo files are limited to objects with DIAM_INIT<20 arcsec;
     # after significant VI, most of these are genuinely small objects,
@@ -2699,6 +2715,15 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Removing {np.sum(J):,d}/{len(cat):,d} objects with diam_init<20 ' + \
           'arcsec (not in the SMC,LMC) based on the photometry files.')
     cat = cat[J]
+
+    lvdmiss = check_lvd(cat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+
+    # Set the
+    pdb.set_trace()
+
 
     # add the 'resolved' bit
     resfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-resolved.csv')

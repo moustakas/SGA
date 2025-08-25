@@ -1090,7 +1090,7 @@ def version_lvd():
     return ver
 
 
-def read_lvd(rank=0, rows=None, overwrite=False):
+def read_lvd(rank=0, rows=None, overwrite=False, verbose=True):
     """Read the Local Volume Database (LVD) dwarf-galaxy catalog.
 
     """
@@ -1140,8 +1140,8 @@ def read_lvd(rank=0, rows=None, overwrite=False):
 
     lvd = Table(F[1].read(rows=rows))
     lvd['ROW'] = row
-    log.info(f'Read {len(lvd):,d} objects from {lvdfile}')
-    #log.info(f'Rank {rank:03d}: Read {len(lvd):,d} objects from {lvdfile}')
+    if verbose:
+        log.info(f'Read {len(lvd):,d} objects from {lvdfile}')
 
     [lvd.rename_column(col, col.upper()) for col in lvd.colnames]
 

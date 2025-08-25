@@ -11245,7 +11245,6 @@ SDSS J080314.68+243353.2,drop,faint shred or compact,
 WISEA J080745.89+224854.6,drop,faint shred or compact,
 WISEA J080919.22-002421.9,drop,faint shred or compact,
 2MASS J08134201+1637177,drop,faint shred or compact,
-ESO 006-001,drop,faint shred or compact,
 2MASS J08215308+1447585,drop,faint shred or compact,
 SDSS J082159.63+283224.6,drop,faint shred or compact,
 WISEA J082834.34+065557.0,drop,faint shred or compact,
@@ -13676,7 +13675,6 @@ SDSS J083356.71+265804.5,drop,faint shred or compact,
 WISEA J023337.44-390158.4,drop,faint shred or compact,
 SDSS J083437.18+590535.9,drop,faint shred or compact,
 SDSS J083436.93+590535.0,drop,faint shred or compact,
-HIPASS J1131-31,drop,faint shred or compact,
 WISEA J143504.26-023619.8,drop,faint shred or compact,
 PGC1 4532577 NED001,drop,faint shred or compact,
 WISEA J085844.78+072637.3,drop,faint shred or compact,
@@ -14116,8 +14114,15 @@ WISEA J093313.66+203054.2,drop,faint,Coincident duplicate with 'LSBC D565-09' (L
 [HKK2009] dJ1120+1332,drop,faint,Coincident duplicate with 'dw1120p1332' (LVD)
 GALEXASC J025856.37+133749.8,drop,faint,Coincident duplicate with 'GALFA Dw3' (LVD)
 PGC 1004701,drop,faint,Coincident duplicate with 'dw1000m0821' (LVD)
+[MSB2017b] dw J1343+58,drop,faint,Coincident duplicate with 'dw1343+58' (LVD)
+LSBG F301-064,drop,faint,Coincident duplicate with 'N1291-DW8' (LVD)
+SDSS J093039.96+214324.7,drop,faint,Coincident duplicate with 'NGC 2903-HI-1' (LVD)
 SDSS J113108.55+021309.7,drop,faint,Coincident duplicate with 'Leo V' (LVD)
 SDSS J123109.08+420533.8,drop,faint,Coincident duplicate with 'MAPS 1231+42' (LVD)
+SMDG J1217442+332045,drop,faint,Coincident duplicate with 'KKH 78' (LVD)
+WISEA J111029.09+003653.8,drop,faint,Coincident duplicate with 'dw1110+0037' (LVD)
+2dFGRS N369Z036,drop,faint,Coincident duplicate with 'dw1110+0037' (LVD)
+SDSS J111912.66+141940.0,drop,faint,Coincident duplicate with 'dw1119p1419' (LVD)
 ABELL 3921_05:[PSE2006] 1203,drop,faint,In the body of 'Tucana' (LVD)
 #
 WISEA J100359.93-271906.9,drop,compact,In 'Antlia'
@@ -14254,7 +14259,6 @@ GIN 191,drop,star,
 2MASS J22343145-4702545,drop,star,
 LSBC F469-02,drop,star,Star?
 SDSS J141522.82+141505.0,drop,shred,
-LV J1243+4127,drop,shred,Likely duplicate of 'SMDG J1243552+412727'
 PGC1 2807144 NED001,drop,shred,Likely duplicate of 'SMDG J1150056+554700'
 PGC1 0095601 NED001,drop,shred,Likely duplicate of 'SMDG J0829119+784949'
 WISEA J015942.67-055751.4,drop,shred,Likely duplicate of 'NGC 0779'
@@ -17705,7 +17709,6 @@ PGC1 1440937 NED001,drop,radio source,
 WISEA J011308.03+101215.9,drop,radio source,
 LEDA 1217411,drop,radio source,
 87GB 155054.2+200337,drop,radio source,
-AGC749235,drop,radio source,
 LEDA 096277,drop,radio source,
 2MASS J01144834-0029514,drop,radio source,In 'UGC 00793' group
 FIRST J105749.1+361443,drop,radio source,In 'VV 747' group
