@@ -1003,11 +1003,11 @@ def qa_multiband_mask(data, geo_initial, geo_final):
 
         xx.text(0.03, 0.97, label, transform=xx.transAxes,
                 ha='left', va='top', color='white',
-                linespacing=1.5, fontsize=10,
+                linespacing=1.5, fontsize=8,
                 bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
         if iax == 0:
-            xx.legend(loc='lower left', fontsize=7, ncol=2,
+            xx.legend(loc='lower left', fontsize=8, ncol=2,
                       fancybox=True, framealpha=0.5)
         del wimgs, wivars, wimg
 
@@ -1050,7 +1050,7 @@ def qa_multiband_mask(data, geo_initial, geo_final):
             ax[1+iobj, 2].imshow(rgba, origin='lower')
             leg.append(Patch(facecolor=col, edgecolor='none', alpha=0.6, label=label))
         if iobj == 0:
-            ax[1+iobj, 2].legend(handles=leg, loc='lower right', fontsize=7)
+            ax[1+iobj, 2].legend(handles=leg, loc='lower right', fontsize=8)
 
         for col in range(3):
             # initial geometry
@@ -1071,22 +1071,23 @@ def qa_multiband_mask(data, geo_initial, geo_final):
             ax[1+iobj, col].set_ylim(0, width-1)
             ax[1+iobj, col].margins(0)
 
-        ax[1+iobj, 0].text(0.03, 0.97, obj[REFIDCOLUMN], transform=ax[1+iobj, 0].transAxes,
+        ax[1+iobj, 0].text(0.03, 0.97, f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})',
+                           transform=ax[1+iobj, 0].transAxes,
                            ha='left', va='top', color='white',
-                           linespacing=1.5, fontsize=10,
+                           linespacing=1.5, fontsize=8,
                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
         if iobj == 0:
             ax[1+iobj, 1].text(0.03, 0.97, f'{"".join(opt_bands)} models',
                                transform=ax[1+iobj, 1].transAxes, ha='left', va='top',
-                               color='white', linespacing=1.5, fontsize=10,
+                               color='white', linespacing=1.5, fontsize=8,
                                bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
             ax[1+iobj, 2].text(0.03, 0.97, f'{"".join(opt_bands)} masks',
                                transform=ax[1+iobj, 2].transAxes, ha='left', va='top',
-                               color='white', linespacing=1.5, fontsize=10,
+                               color='white', linespacing=1.5, fontsize=8,
                                bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
-        ax[1+iobj, 0].legend(loc='lower left', fontsize=7, fancybox=True,
+        ax[1+iobj, 0].legend(loc='lower left', fontsize=8, fancybox=True,
                              framealpha=0.5)
 
     for xx in ax.ravel():
@@ -1094,8 +1095,9 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         xx.set_xticks([])
         xx.set_yticks([])
 
-    #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    fig.suptitle(data['galaxy'].replace('_', ' '))
     fig.savefig(qafile)
+    plt.close()
     log.info(f'Wrote {qafile}')
 
 
@@ -1360,6 +1362,9 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         geo_initial[iobj, :] = geo_init
         [bx, by, diam, ba, pa] = geo_init
 
+        #print('HACK!')
+        #obj['SGAFITMODE'] += 2**0
+
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
         if obj['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0:
@@ -1382,9 +1387,10 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
             iter_brightstarmask[inellipse] = False
             iter_refmask[inellipse] = False
 
-            # Expand the brightstarmask veto if the NEARSTAR bit is
-            # set (factor of 2).
-            if obj['SAMPLE'] & SAMPLE['NEARSTAR'] != 0:
+            # Expand the brightstarmask veto if the NEARSTAR or GCLPNE
+            # bits are set (factor of 2).
+            if (obj['SAMPLE'] & SAMPLE['NEARSTAR'] != 0 or \
+                obj['SAMPLE'] & SAMPLE['GCLPNE'] != 0):
                 inellipse2 = in_ellipse_mask(bx, width-by, diam, ba*diam,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
@@ -1503,7 +1509,8 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
 
-        if sample['SAMPLE'][iobj] & SAMPLE['NEARSTAR'] != 0:
+        if (sample['SAMPLE'][iobj] & SAMPLE['NEARSTAR'] != 0 or \
+            sample['SAMPLE'][iobj] & SAMPLE['GCLPNE'] != 0):
             inellipse2 = in_ellipse_mask(bx, width-by, diam, ba*diam,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
@@ -1747,7 +1754,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
         all_bands = np.hstack((all_bands, unwise_bands))
     if galex:
         all_bands = np.hstack((all_bands, galex_bands))
-    log.info(f'Found complete data in bands: {"".join(all_bands)}')
+    log.info(f'Found complete data in bands: {",".join(all_bands)}')
 
     # Pack some preliminary info into the output dictionary.
     data['all_bands'] = all_bands
@@ -1809,22 +1816,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     for filt in bands:
         sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
-    #print('FIXME - special fitting bit(s)')
-    #sample['FIXGEO'] = np.zeros(len(sample), bool)
-    ##sample['FIXGEO'] = sample['FITBIT'] & FITBITS['ignore'] != 0
-    #sample['FORCEPSF'] = sample['FITBIT'] & FITBITS['forcepsf'] != 0
-    #sample['CLUSTER'] = np.zeros(len(sample), bool)
-    #
-    #print('########### HACK! Setting cluster bit for III Zw 040 NOTES02!')
-    #if np.any(np.isin(sample['OBJNAME'], 'III Zw 040 NOTES02')):
-    #    sample['CLUSTER'] = True
-
     sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
-
-    #sample['DROPPED'] = np.zeros(len(sample), bool)
-    #sample['LARGESHIFT'] = np.zeros(len(sample), bool)
-    #sample['BLENDED'] = np.zeros(len(sample), bool)
-    #sample['DSHIFT'] = np.zeros(len(sample), 'f4')
 
     # moment geometry
     sample['RA_MOMENT'] = np.zeros(len(sample), 'f8')
@@ -1884,8 +1876,8 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     maskbits = F['MASKBITS'].read()
 
     brightstarmask = ( (maskbits & MASKBITS['BRIGHT'] != 0) |
-                       (maskbits & MASKBITS['MEDIUM'] != 0) )
-                       #(maskbits & MASKBITS['CLUSTER'] != 0) )
+                       (maskbits & MASKBITS['MEDIUM'] != 0) |
+                       (maskbits & MASKBITS['CLUSTER'] != 0) )
     data['brightstarmask'] = brightstarmask
 
     # missing bands have ALLMASK_[GRIZ] == 0

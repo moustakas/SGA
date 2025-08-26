@@ -110,3 +110,7 @@ Bootes V,dr9-north;dr11-south,LVD
 NGC 4631-dw1,dr9-north;dr11-south,LVD
 NGC 4631-dw2,dr9-north;dr11-south,LVD
 NGC 4631-dw3,dr9-north;dr11-south,LVD
+#
+# dr11-south
+#
+WISEA J203133.10-070501.5,dr11-south,In 'PN A66 70'

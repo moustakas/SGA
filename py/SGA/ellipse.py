@@ -547,7 +547,6 @@ def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
         #ap.plot(ax=ax)
         #fig.savefig('ioannis/tmp/junk.png')
         #plt.close()
-        #pdb.set_trace()
 
     return iso, np.float32(flux), np.float32(ferr), np.float32(fracmasked)
 
@@ -740,35 +739,6 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     #log.info('Time = {:.3f} min'.format( (time() - t0) / 60))
 
     return results, sbprofiles
-
-
-def build_sma_deprecated(width, maxsma=None, delta_logsma=4.,
-                         delta_sma=1., linearsma=False):
-    """Build the semimajor axis array. By default, integrate to the
-    edge of the mosaic (in pixels).
-
-    """
-    if maxsma is None:
-        maxsma = width / np.sqrt(2.) # =sqrt(2)*(width/2)
-
-    try:
-        if linearsma:
-            sma = np.arange(0, np.ceil(maxsma), delta_sma)
-            log.info(f'maxsma={maxsma:.2f} pix, delta_sma={delta_sma:.1f} pix, ' + \
-                     f'nsma={len(sma)}')
-        else:
-            #sma = logspaced_integers(maxsma, nsma)
-            nsma = int(np.ceil(maxsma / delta_logsma))
-            sma = np.hstack((0., np.logspace(0., np.log10(maxsma), nsma)))
-            log.info(f'maxsma={maxsma:.2f} pix, delta_logsma={delta_logsma:.1f} ' + \
-                     f'log-pix, nsma={len(sma)}')
-        assert(len(sma) == len(np.unique(sma)))
-    except:
-        msg = 'There was a problem generating the sma vector.'
-        log.critical(msg)
-        raise ValueError(msg)
-
-    return sma
 
 
 def thin_to_band_from_optical(
@@ -1224,10 +1194,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     # we need as many MASKBITS bit-masks as datasetss
     assert(len(MASKBITS) == len(datasets))
 
-    data = read_multiband_function(galaxy, galaxydir, bands=bands,
-                                   pixscale=pixscale, unwise=unwise,
-                                   galex=galex, verbose=verbose)
-    pdb.set_trace()
+    #data = read_multiband_function(galaxy, galaxydir, bands=bands,
+    #                               pixscale=pixscale, unwise=unwise,
+    #                               galex=galex, verbose=verbose)
 
     try:
         data = read_multiband_function(
@@ -1246,7 +1215,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         sbthresh, apertures, REFIDCOLUMN, MASKBITS, mp=mp,
         debug=False)
 
-    if qaplot and False:
+    if qaplot:
         qa_ellipsefit(sample, data, results, unpack_maskbits_function,
                       MASKBITS, datasets=datasets)
 
