@@ -1,0 +1,24 @@
+# This file contains galaxies in a region with a very high density of
+# stellar sources, e.g., within a globular cluster, the Magellanic
+# Clouds, or close to the Galactic plane.
+#
+# No threshold-masking of PSF or Gaia sources within the elliptical mask.
+#
+# These objects all get the 'LESSMASKING' SGAFITMODE bits.
+#
+objname,region,comment
+#
+# dr9-north
+#
+# -
+#
+# dr11-south
+#
+Bedin 1,dr11-south,LVD; in GC 'NGC 6752'
+WISEA J002359.45-723254.3,dr11-south,in GC 'NGC 104'
+ESO 050- G 010,dr11-south,in GC 'NGC 104'
+2MASX J00261720-7233033,dr11-south,in GC 'NGC 104'
+WISEA J002619.16-722846.8,dr11-south,in GC 'NGC 104'
+#
+# dr9-north & dr11-south
+#

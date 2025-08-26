@@ -1,0 +1,20 @@
+# This file contains galaxies in a denser-than-average environment
+# with many close and potentially relatively bright satellites like a
+# galaxy cluster.
+#
+# Subtract Gaia stars as usual and threshold-mask galaxies even inside the mask.
+#
+# These objects all get the 'MOREMASKING' SGAFITMODE bits.
+#
+objname,region,comment
+#
+# dr9-north
+#
+# -
+#
+# dr11-south
+#
+III Zw 040 NOTES02,dr11-south,
+#
+# dr9-north & dr11-south
+#
