@@ -41,8 +41,9 @@ SGAFITMODE = dict(
 SAMPLE = dict(
     LVD = 2**0,      # Local Volume Database dwarfs
     CLOUDS = 2**1,   # in the Magellanic Clouds
-    GCPNE = 2**2,    # in a globular cluster or PNe mask (implies --no-force-gaia)
-    NEARSTAR = 2**3, # near a bright or medium star
+    GCLPNE = 2**2,   # in a globular cluster or PNe mask (implies --no-force-gaia)
+    NEARSTAR = 2**3, # STARFDIST < 1.2
+    INSTAR = 2**4,   # STARFDIST < 0.5
 )
 
 OPTMASKBITS = dict(

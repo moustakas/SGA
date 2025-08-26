@@ -41,7 +41,7 @@ def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False
     from legacypipe.runbrick.stage_tims.
 
     """
-    from SGA.io import custom_brickname
+    from SGA.brick import custom_brickname
     from legacypipe.survey import wcs_for_brick, BrickDuck, ccds_touching_wcs
 
     brickname = f'custom-{custom_brickname(onegal["RA"], onegal["DEC"])}'

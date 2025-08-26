@@ -1,6 +1,7 @@
 # Object-level actions based on VI (visual inspections).
 objname,action,reason,comment
 #
+Sagittarius Dwarf Spheroidal,drop,tidal-dwarf,dropped from LVD sample as well
 NGC 2363,drop,not a galaxy,HII region in 'NGC 2366'.
 NGC 2473,drop,duplicate,Same object as 'NGC 2458'.
 BK 08N,drop,faint,Likely not real.

@@ -2488,7 +2488,6 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
-
 def build_parent_archive(verbose=False, overwrite=False):
     """Build the parent catalog.
 
@@ -2807,13 +2806,13 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
-def build_parent(verbose=False, overwrite=False):
+def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
     from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
-    from SGA.SGA import sga2025_name, SGAFITMODE, SAMPLEBITS
+    from SGA.SGA import sga2025_name, SGAFITMODE, SAMPLE
     from SGA.groups import build_group_catalog
     from SGA.coadds import REGIONBITS
     from SGA.sky import find_close, in_ellipse_mask_sky
@@ -2829,13 +2828,11 @@ def build_parent(verbose=False, overwrite=False):
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
 
-    log.warning('Consider removing sources that are too close to bright stars, maybe starfdist < 0.5?')
-
     cols = ['OBJNAME',
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
             'RA', 'DEC', 'PGC', #'RESOLVED',
-            'STARFDIST', 'STARDIST', 'STARMAG', 'REGION']#, 'ROW_PARENT']
-    #colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
+            #'STARFDIST', 'STARDIST', 'STARMAG',
+            'REGION']#, 'ROW_PARENT']
 
     # merge the two regions
     mindiam = 30. # [arcsec]
@@ -2877,8 +2874,8 @@ def build_parent(verbose=False, overwrite=False):
         ##########################
 
         cat = cat[I]
-        log.info(f'Selected {np.sum(I):,d} objects with diameter>' + \
-                 f'{mindiam:.1f} arcsec.')
+        log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
+                 f'diameter > {mindiam:.1f} arcsec.')
 
         # make sure we haven't dropped any LVD dwarfs
         assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
@@ -2886,6 +2883,7 @@ def build_parent(verbose=False, overwrite=False):
         # add the region bit
         cat['REGION'] = np.int16(REGIONBITS[region])
         parent.append(cat)
+
     parent = vstack(parent)
 
     # merge north-south duplicates
@@ -2907,7 +2905,7 @@ def build_parent(verbose=False, overwrite=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
-    # build the group catalog from the full sample
+    # sanity check on initial diameters
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=0., get_mag=True)
     diam /= 60. # [arcmin]
@@ -2925,80 +2923,95 @@ def build_parent(verbose=False, overwrite=False):
         morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
         allmorph.append(morph1)
 
-    # Process the SAMPLE bits.
-    samplebits = np.zeros(len(parent), np.int16)
+    log.warning('Consider removing sources that are too close to bright stars.')
 
-    # 0 - LVD dwarfs
-    samplebits[parent['ROW_LVD'] != -99] += SAMPLEBITS['LVD']
+    # Assign the SAMPLE bits.
+    samplebits = np.zeros(len(parent), np.int32)
+    samplebits[parent['ROW_LVD'] != -99] += SAMPLE['LVD']       # 2^0 - LVD dwarfs
+    for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
+        samplebits[parent[f'IN_{cloud}']] += SAMPLE['CLOUDS']
+    samplebits[parent['IN_GCLPNE']] += SAMPLE['GCLPNE']         # 2^2 - GC/PNe
+    samplebits[parent['STARFDIST'] < 1.2] += SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
+    samplebits[parent['STARFDIST'] < 0.5] += SAMPLE['INSTAR']   # 2^4 - INSTAR
 
-    # 1 - Magellanic Clouds
-    samplebits[parent['IN_LMC']] += SAMPLEBITS['clouds']
-    samplebits[parent['IN_SMC']] += SAMPLEBITS['clouds']
+    # Assign the SGAFITMODE bits. Rederive the set of objects in each
+    # file so those files can be updated without having to rerun
+    # build_parent_archive.
+    sgafitmode = np.zeros(len(parent), np.int32)
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+        actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
+        if not os.path.isfile(actfile):
+            log.warning(f'No action file {actfile} found; skipping.')
+            continue
 
-    # 2 - GC/PNe
-    gcl = Table(fitsio.read(str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))))
-    for cl in gcl:
-        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
-                                cl['pa'], parent['RA'].value, parent['DEC'].value)
-        if np.any(I):
-            samplebits[I] += SAMPLEBITS['GCPNe']
-            #for gal in parent['OBJNAME'][I].value:
-            #    if cl['type'] == 'GCl':
-            #        print(f"{gal},drop,cluster,in GCl '{cl["name"]}'")
-            #    elif cl['type'] == 'PNe':
-            #        print(f"{gal},drop,cluster,in PNe '{cl["name"]}'")
-    #bb = parent[samplebits & SAMPLEBITS['GCPNe'] != 0]
-    #bb.write('junk.fits', overwrite=True)
+        # read the file and check for duplicates
+        act = Table.read(actfile, format='csv', comment='#')
+        log.info(f'Read {len(act)} objects from {actfile}')
 
-    # process the fitting behavior bits
-    sgafitmode = np.zeros(len(parent), np.int16)
+        oo, cc = np.unique(act['objname'].value, return_counts=True)
+        if np.any(cc > 1):
+            log.warning(f'duplicates in action file {actfile}')
+            log.info(oo[cc>1])
+            pdb.set_trace()
 
-    # 0 - fix geometry
-    sgafitmode[parent['FIXGEO']] += SGAFITMODE['fixgeo']
+        # make sure every object is in the current catalog
+        I = np.isin(parent['OBJNAME'].value, act['objname'].value)
+        if np.sum(I) != len(act):
+            log.warning(f'The parent catalog is missing the following objects in {actfile}')
+            log.info(act[~np.isin(act['objname'].value, parent['OBJNAME'].value)])
+            pdb.set_trace()
 
-    # 1 - generate coadds but no Tractor or ellipse-fitting; always
-    # implies FIXGEO
-    sgafitmode[parent['RESOLVED']] += SGAFITMODE['resolved']
-    sgafitmode[parent['RESOLVED']] += SGAFITMODE['fixgeo']
+        sgafitmode[I] += SGAFITMODE[action.upper()]
 
-    pdb.set_trace()
+    # build the final catalog.
+    grp = parent[cols]
+    ra, dec = grp['RA'].value, grp['DEC'].value
 
-    sgafitmode[parent['RESOLVED']] = SGAFITMODE['ignore']
-    sgafitmode[parent['FORCEGAIA']] = SGAFITMODE['forcegaia']
-    sgafitmode[parent['FORCEPSF']] = SGAFITMODE['forcepsf']
-    sgafitmode[parent['IN_LMC']] = SGAFITMODE['forcegaia']
-    sgafitmode[parent['IN_SMC']] = SGAFITMODE['forcegaia']
-
+    grp.add_column(sga2025_name(ra, dec, unixsafe=True),
+                   name='SGANAME', index=0)
+    grp.add_column(allmorph, name='MORPH', index=1)
+    grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=2)
+    grp.add_column(diam.astype('f4'), name='DIAM', index=3)
+    grp.add_column(ba.astype('f4'), name='BA', index=4)
+    grp.add_column(pa.astype('f4'), name='PA', index=5)
+    grp.add_column(mag.astype('f4'), name='MAG', index=6)
+    grp.add_column(band, name='BAND', index=7)
+    grp.add_column(sgafitmode, name='SGAFITMODE', index=8)
+    grp.add_column(samplebits, name='SAMPLE', index=9)
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
-    ebv = SFD.ebv(parent['RA'].value, parent['DEC'].value)
+    grp.add_column(SFD.ebv(ra, dec), name='EBV', index=10)
 
-    print('Need a new CLUSTER bit! e.g., III Zw 040 NOTES02')
+    log.info('Reserse-sorting by diameter')
+    srt = np.argsort(diam)[::-1]
+    grp = grp[srt]
 
-    sgaid = np.arange(len(parent))
-    grp = parent[cols]
-
-    ra, dec = grp['RA'].value, grp['DEC'].value
-
+    if reset_sgaid:
+        log.info('Resetting SGAID')
+        sgaid = np.arange(len(grp))
+    else:
+        log.info('Adopting ROW_PARENT for SGAID')
+        sgaid = parent['ROW_PARENT'][srt].value
     grp.add_column(sgaid, name='SGAID', index=0)
-    grp.add_column(sga2025_name(ra, dec, unixsafe=True),
-                   name='SGANAME', index=1)
-    grp.add_column(allmorph, name='MORPH', index=2)
-    grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=3)
-    grp.add_column(diam.astype('f4'), name='DIAM', index=4)
-    grp.add_column(ba.astype('f4'), name='BA', index=5)
-    grp.add_column(pa.astype('f4'), name='PA', index=6)
-    grp.add_column(mag.astype('f4'), name='MAG', index=7)
-    grp.add_column(band, name='BAND', index=8)
-    grp.add_column(sgafitmode, name='FITBIT', index=9)
-    grp.add_column(samplebits, name='SAMPLEBIT', index=10)
-    grp.add_column(ebv, name='EBV', index=11)
 
-    print('NEED TO REMOVE LMC,SMC FROM GROUP-FINDING!')
-    print('When building groups, do not use the LVD ignore category, e.g., Ursa Minor is gigantic! Except maybe Antlia-B (south,forcepsf)')
-    out = build_group_catalog(grp)
+    # Build the group catalog but without the RESOLVED sample (e.g.,
+    # SMC, LMC).
+    I = grp['SGAFITMODE'] & SGAFITMODE['RESOLVED'] != 0
+    out1 = build_group_catalog(grp[I])
+    #srt = np.argsort(out1['GROUP_DIAMETER'])[::-1]
+    #out1['OBJNAME', 'GROUP_DIAMETER', 'GROUP_MULT', 'GROUP_PRIMARY', 'GROUP_ID', 'SAMPLE', 'REGION', 'SGAFITMODE'][srt]
+    pdb.set_trace()
+    out2 = build_group_catalog(grp[~I])
+    out = out2[out2['GROUP_PRIMARY']]
+    srt = np.argsort(out['GROUP_DIAMETER'])[::-1]
+    out['OBJNAME', 'GROUP_DIAMETER', 'GROUP_MULT', 'GROUP_PRIMARY', 'GROUP_ID', 'SAMPLE', 'REGION', 'SGAFITMODE'][srt[:35]]
+
+
+    out = vstack((out1, out2))
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
+
+    pdb.set_trace()

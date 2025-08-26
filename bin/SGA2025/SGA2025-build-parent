@@ -12,12 +12,12 @@ SGA2025-build-parent --vicuts
 SGA2025-build-parent --archive
 SGA2025-build-parent --in-footprint --region=dr9-north
 SGA2025-build-parent --in-footprint --region=dr11-south
-SGA2025-build-parent --build-parent
+SGA2025-build-parent --parent [--reset-sgaid]
 SGA2025-build-parent --qa-parent
 
-salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
-srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-build-parent --in-footprint --region=dr9-north
+salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
+srun --ntasks=64 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+  SGA2025-build-parent --in-footprint --region=dr11-south
 
 """
 def main():
@@ -53,9 +53,6 @@ def main():
     parser.add_argument('--qa-parent', action='store_true',
                         help='Build QA of the parent sample.')
 
-    parser.add_argument('--lvd', action='store_true',
-                        help='Write out the LVD parent sample.')
-
     parser.add_argument('--verbose', action='store_true',
                         help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true',
@@ -84,8 +81,7 @@ def main():
 
     if args.parent:
         from SGA.parent import build_parent
-        build_parent(overwrite=args.overwrite, verbose=args.verbose,
-                     lvd=args.lvd)
+        build_parent(overwrite=args.overwrite, verbose=args.verbose)
 
     if args.qa_footprint:
         from SGA.parent import qa_footprint
