@@ -1292,10 +1292,8 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
     #opt_brightstarmask[:, :] = False
 
     # Subtract Gaia stars from all optical images and generate the
-    # threshold gaiamask.
-    print('##########')
-    print('########## CHANGE FITBIT TO SGAFITMODE AND IF GCLPNe SAMPLEBIT is set, do not mask Gaia stars, e.g., Bedin 1 also LMC/SMC')
-    print('##########')
+    # threshold gaiamask (which will be used unless the LESSMASKING
+    # bit is set).
     opt_gaiamask = np.zeros(sz, bool)
     for iband, filt in enumerate(opt_bands):
         if len(psfsrcs) > 0:
@@ -1315,10 +1313,17 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         log.info('Determining the geometry for galaxy ' + \
                  f'{iobj+1}/{nsample}.')
 
+        # If the LESSMASKING bit is set, do not use the Gaia threshold
+        # mask.
+        opt_gaiamask_obj = np.copy(opt_gaiamask)
+        if obj['SGAFITMODE'] & SGAFITMODE['LESSMASKING'] != 0:
+            log.info('LESSMASKING bit set; no Gaia threshold-masking.')
+            opt_gaiamask_obj[:, :] = False
+
         # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
         if obj['SGAFITMODE'] & SGAFITMODE['MOREMASKING'] != 0:
-            log.info('MOREMASKING flag set; masking all extended sources.')
+            log.info('MOREMASKING bit set; masking all extended sources.')
             mask_allgals = True
         else:
             mask_allgals = False
@@ -1386,11 +1391,11 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
 
-            #iter_gaiamask = np.copy(opt_gaiamask)
+            #iter_gaiamask = np.copy(opt_gaiamask_obj)
             #iter_gaiamask[inellipse] = False
             #import matplotlib.pyplot as plt
             #plt.clf()
-            #plt.imshow(iter_gaiamask, origin='lower')
+            #plt.imshow(opt_models[0, 0, :, :], origin='lower')
             #plt.savefig('ioannis/tmp/junk2.png')
 
             # Build a galaxy mask from all extended sources outside
@@ -1423,7 +1428,7 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
-            opt_masks_obj = _update_masks(iter_brightstarmask, opt_gaiamask,
+            opt_masks_obj = _update_masks(iter_brightstarmask, opt_gaiamask_obj,
                                           iter_refmask, opt_galmask,
                                           opt_mask_perband, opt_bands,
                                           sz, verbose=False)
@@ -1515,14 +1520,15 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
 
         #import matplotlib.pyplot as plt
         #plt.clf()
-        #plt.imshow(opt_gaiamask, origin='lower')
+        #plt.imshow(opt_gaiamask_obj, origin='lower')
         ##plt.imshow(final_refmask, origin='lower')
         #plt.savefig('ioannis/tmp/junk2.png')
 
         opt_maskbits_obj = _update_masks(
-            final_brightstarmask, opt_gaiamask, final_refmask,
-            opt_galmask, opt_mask_perband, opt_bands,
-            sz, build_maskbits=True, MASKDICT=OPTMASKBITS)
+            final_brightstarmask, opt_gaiamask_obj,
+            final_refmask, opt_galmask, opt_mask_perband,
+            opt_bands, sz, build_maskbits=True,
+            MASKDICT=OPTMASKBITS)
         opt_models[iobj, :, :, :] = opt_models_obj
         opt_maskbits[iobj, :, :] = opt_maskbits_obj
 

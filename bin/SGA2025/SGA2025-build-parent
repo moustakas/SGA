@@ -7,12 +7,12 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
-SGA2025-build-parent --nocuts
-SGA2025-build-parent --vicuts
-SGA2025-build-parent --archive
+SGA2025-build-parent --nocuts [--overwrite]
+SGA2025-build-parent --vicuts [--overwrite]
+SGA2025-build-parent --archive [--overwrite]
 SGA2025-build-parent --in-footprint --region=dr9-north
 SGA2025-build-parent --in-footprint --region=dr11-south
-SGA2025-build-parent --parent [--reset-sgaid]
+SGA2025-build-parent --parent [--reset-sgaid] [--overwrite]
 SGA2025-build-parent --qa-parent
 
 salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3

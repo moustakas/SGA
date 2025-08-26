@@ -31,16 +31,19 @@ REGIONBITS = {
 }
 
 
-def srcs2image(cat, wcs, band='r', allbands='grz', pixelized_psf=None, psf_sigma=1.0):
+def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
     """Build a model image from a Tractor catalog or a list of sources.
 
-    issrcs - if True, then cat is already a list of sources.
-
     """
-    import tractor, legacypipe, astrometry
+    from astrometry.util.fits import tabledata
+    from tractor import Image, GaussianMixturePSF, Tractor
+    from tractor.basics import LinearPhotoCal
+    from tractor.wcs import ConstantFitsWcs
+    from tractor.sky import ConstantSky
     from legacypipe.catalog import read_fits_catalog
+    from legacypipe.survey import LegacySurveyWcs
 
-    if type(wcs) is tractor.wcs.ConstantFitsWcs or type(wcs) is legacypipe.survey.LegacySurveyWcs:
+    if type(wcs) is ConstantFitsWcs or type(wcs) is LegacySurveyWcs:
         shape = wcs.wcs.shape
     else:
         shape = wcs.shape
@@ -48,24 +51,23 @@ def srcs2image(cat, wcs, band='r', allbands='grz', pixelized_psf=None, psf_sigma
     invvar = np.ones(shape)
 
     if pixelized_psf is None:
-        vv = psf_sigma**2
-        psf = tractor.GaussianMixturePSF(1.0, 0., 0., vv, vv, 0.0)
+        vv = psf_sigma**2.
+        psf = GaussianMixturePSFGaussianMixturePSF(1., 0., 0., vv, vv, 0.)
     else:
         psf = pixelized_psf
 
-    tim = tractor.Image(model, invvar=invvar, wcs=wcs, psf=psf,
-                        photocal=tractor.basics.LinearPhotoCal(1.0, band=band.lower()),
-                        sky=tractor.sky.ConstantSky(0.0),
-                        name='model-{}'.format(band))
+    photocal = LinearPhotoCal(1., band=band.lower())
+    tim = Image(model, invvar=invvar, wcs=wcs, psf=psf,
+                photocal=photocal, sky=ConstantSky(0.),
+                name=f'model-{band}')
 
     # Do we have a tractor catalog or a list of sources?
-    if type(cat) is astrometry.util.fits.tabledata:
-        srcs = legacypipe.catalog.read_fits_catalog(cat, bands=[band.lower()])
+    if type(cat) is tabledata:
+        srcs = read_fits_catalog(cat, bands=[band.lower()])
     else:
         srcs = cat
 
-    tr = tractor.Tractor([tim], srcs)
-    mod = tr.getModelImage(0)
+    mod = Tractor([tim], srcs).getModelImage(0)
 
     return mod
 
