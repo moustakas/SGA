@@ -795,8 +795,7 @@ def read_image_data(data, filt2imfile, verbose=False):
             data[f'{filt}_skysigma'] = skysigma
 
         # set invvar of masked pixels to zero.
-        print('Not sure we should be setting the pixel values to zero...')
-        image[mask] = 0.
+        log.debug('Setting invvar of masked pixels to zero.')
         invvar[mask] = 0.
 
         data[filt] = image # [nanomaggies]
@@ -1028,7 +1027,6 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images[iobj, :, :], axis=0)
         wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
         wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
-
         wimg[wimg == 0.] = np.nan
 
         try:
@@ -1749,7 +1747,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
         all_bands = np.hstack((all_bands, unwise_bands))
     if galex:
         all_bands = np.hstack((all_bands, galex_bands))
-    log.info(f'Found complete data in bands: {",".join(all_bands)}')
+    log.info(f'Found complete data in bands: {"".join(all_bands)}')
 
     # Pack some preliminary info into the output dictionary.
     data['all_bands'] = all_bands

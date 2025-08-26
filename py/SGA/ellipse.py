@@ -685,7 +685,7 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
 
         sig = sigimages[iband, :, :]
         msk = masks[iband, :, :] # True=masked
-        mimg = np.ma.array(images[iband, :, :], mask=msk)
+        mimg = np.ma.array(images[iband, :, :], mask=msk) # ignore masked pixels
 
         mpargs = [(mimg, sig, msk, onesma, geo.pa, geo.eps, filtx0, filty0,
                    integrmode, sclip, nclip) for onesma in filtsma]
