@@ -18,9 +18,10 @@ from SGA.logger import log
 MAXSHIFT_ARCSEC = 3.5
 
 ELLIPSEBIT = dict(
-    NOTRACTOR = 2**0,  # SGA source has no corresponding Tractor source
-    LARGESHIFT = 2**1, # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
-    BLENDED = 2**2,    # SGA center is located within the elliptical mask of another SGA source
+    NOTRACTOR = 2**0,          # SGA source has no corresponding Tractor source
+    BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
+    LARGESHIFT = 2**2,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
+    LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
 )
 
 REF_SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds

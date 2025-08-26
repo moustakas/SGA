@@ -32,7 +32,7 @@ from matplotlib.image import imread
 
 from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
                      get_raslice, read_sample, DIAMCOLUMN,
-                     REFIDCOLUMN, FITBITS, REFCAT)
+                     REFIDCOLUMN, SGAFITMODE, SAMPLE, REFCAT)
 from SGA.geometry import get_tractor_ellipse
 from SGA.qa import overplot_ellipse
 from SGA.logger import log
@@ -130,8 +130,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
         cutout_galaxy[I] = cgalaxy
         cutout_galaxydir[I] = cgalaxydir
     else:
-        cutout_galaxy = None
-        cutout_galaxydir = None
+        cutout_galaxy = [None] * len(fullsample)
+        cutout_galaxydir = [None] * len(fullsample)
 
     nobj = len(fullsample)
     allindx = np.arange(nobj)
@@ -307,35 +307,43 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
     log.info(f'Wrote {pdffile}')
 
 
-def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd=False,
-               lvd_forcepsf=False, lvd_ignore=False):
+def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
+               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False):
 
     if datadir is None:
         datadir = sga_data_dir()
     cutoutdir = os.path.join(datadir, 'cutouts')
 
-    any_lvd = lvd or lvd_ignore or lvd_forcepsf
+    any_lvd = lvd or lvd_resolved or lvd_fixgeo or lvd_forcepsf
     sample, fullsample = read_sample(region=region, lvd=any_lvd)
 
     if any_lvd:
-        from SGA.SGA import SAMPLEBITS
+        from SGA.SGA import SAMPLE
         from SGA.coadds import REGIONBITS
 
         qadir = os.path.join(sga_dir(), 'parent', 'lvd')
-        # not all LVD are primary, so re-select them here
 
-        sample = fullsample[(fullsample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0) *
+        # not all LVD are primary, so re-select them here
+        sample = fullsample[(fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) *
                             (fullsample['REGION'] & REGIONBITS[region] != 0)]
 
         if lvd:
-            #I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
-            I = sample['FITBIT'] == 0
+            I = sample['SGAFITMODE'] == 0
+            gals = ['AGC749235', 'ESO 006-001', 'HIPASS J1131-31', 'LV J1243+4127', 'N1291-DW8',
+                    'NGC 2903-HI-1', 'dw1343+58', 'KV19-212', 'KV19-329', 'KV19-442', 'SUCD1',
+                    'dw1110+0037', 'dw1119p1419']
+            I = np.isin(sample['OBJNAME'], gals)
             suffix = ''
-        elif lvd_ignore:
-            I = sample['FITBIT'] & FITBITS['ignore'] != 0
-            suffix = '-ignore'
+        elif lvd_resolved:
+            I = sample['SGAFITMODE'] & SGAFITMODE['RESOLVED'] != 0
+            suffix = '-resolved'
+        elif lvd_fixgeo:
+            # don't double-count / show the RESOLVED sources
+            I = ((sample['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0) *
+                 (sample['SGAFITMODE'] & SGAFITMODE['RESOLVED'] == 0))
+            suffix = '-fixgeo'
         elif lvd_forcepsf:
-            I = sample['FITBIT'] & FITBITS['forcepsf'] != 0
+            I = sample['SGAFITMODE'] & SGAFITMODE['FORCEPSF'] != 0
             suffix = '-forcepsf'
         sample = sample[I]
         # do not include group members
@@ -407,13 +415,14 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
-    parser.add_argument('--lvd', action='store_true', help='Generate QA for the non-ignore/non-forcepsf LVD sample.')
-    parser.add_argument('--lvd-ignore', action='store_true', help='Generate QA for the LVD/ignore sample.')
+    parser.add_argument('--lvd-resolved', action='store_true', help='Generate QA for the LVD/resolved sample.')
+    parser.add_argument('--lvd-fixgeo', action='store_true', help='Generate QA for the LVD/fixgeo sample.')
     parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
+    parser.add_argument('--lvd', action='store_true', help='Generate QA for the remaining LVD sample.')
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 
     qa_tractor(datadir=args.datadir, region=args.region, mp=args.mp,
-               lvd=args.lvd, lvd_forcepsf=args.lvd_forcepsf,
-               lvd_ignore=args.lvd_ignore)
+               lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
+               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd)

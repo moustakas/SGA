@@ -17,29 +17,27 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
 SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds
 SGA2025-mpi --galaxylist="III Zw 040 NOTES02" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --ellipse
 
-# SGA source dropped (LVD dwarf)
+# LVD dwarfs
 SGA2025-mpi --galaxylist="dw1239+3251" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds
-SGA2025-mpi --galaxylist="dw1239+3251" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --ellipse
-
-# some other LVD dwarfs
 SGA2025-mpi --galaxylist="IKN" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds --region=dr9-north
 SGA2025-mpi --galaxylist="KK 70" --datadir=/pscratch/sd/i/ioannis/SGA2025-test1 --mp=32 --debug --coadds --region=dr9-north
 
 
 # LVD tests
-SGA2025-mpi --lvd --coadds --mp=32 --debug --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd-v0.1 --lvd --debug --mp=8 --d25max=3 --coadds
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd-v0.1 --lvd
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd-v0.1 --lvd-resolved
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd-v0.1 --lvd-fixgeo
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd-v0.1 --lvd-forcepsf
 
 srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh SGA2025-mpi \
   --coadds --mp=16 --lvd --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd
 
 
 In production:
-salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
-srun --ntasks=4 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-mpi --coadds --no-galex --no-unwise --no-cleanup --mp=32
+salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
+srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+  SGA2025-mpi --coadds --no-cleanup --mp=32
 
 source /global/homes/i/ioannis/code/git/SGA/bin/SGA2025/SGA2025-env
 SGA2025-mpi --galaxylist=SGA2025_J054.4909-05.0002 --coadds --mp=32 --no-cleanup --region=dr9-south --debug --old-calibs-ok
@@ -88,8 +86,8 @@ def main():
     from SGA.coadds import RUNS, BANDS
     from SGA.mpi import mpi_args
     from SGA.io import set_legacysurvey_dir
-    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, FITBITS,
-                         sga_dir, sga_data_dir, sga_html_dir,
+    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE,
+                         SGAFITMODE, sga_dir, sga_data_dir, sga_html_dir,
                          read_sample, missing_files, get_galaxy_galaxydir,
                          build_catalog)
 
@@ -353,13 +351,21 @@ def main():
                 thissample.write(tmpfile, overwrite=True, format='fits')
                 os.rename(tmpfile, samplefile)
 
-            # force PSF
-            if onegal['FITBIT'] & FITBITS['forcepsf'] != 0:
+            # SGA fitting modes
+            # FIXGEO
+            #   ...
+            # FORCEGAIA
+            #   ...
+
+            # FORCEPSF
+            if onegal['SGAFITMODE'] & SGAFITMODE['FORCEPSF'] != 0:
                 force_psf_detection = True
             else:
                 force_psf_detection = False
 
-            print('########## If GCPNe samplebit is set, turn off Gaia-only photometry.')
+            if onegal['SAMPLE'] & SAMPLE['GCLPNE'] != 0:
+                # FIXME - set --no-clusters or --no-force-gaia
+                pass
 
             if args.debug:
                 err, filesuffix = custom_coadds(

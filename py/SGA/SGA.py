@@ -14,18 +14,12 @@ from astropy.table import Table, vstack
 from SGA.ellipse import MAXSHIFT_ARCSEC
 from SGA.logger import log
 
+
 REFCAT = 'L4'
 RACOLUMN = 'GROUP_RA'   # 'RA'
 DECCOLUMN = 'GROUP_DEC' # 'DEC'
 DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
 REFIDCOLUMN = 'SGAID'
-
-#print('FITBITS is deprecated!')
-#FITBITS = dict(
-#    ignore = 2**0,    # no special behavior (e.g., resolved dwarf galaxy)
-#    forcegaia = 2**1, # only fit Gaia point sources (and any SGA galaxies), e.g., LMC
-#    forcepsf = 2**2,  # force PSF for source detection and photometry within the SGA mask
-#)
 
 SGAFITMODE = dict(
     FIXGEO = 2**0,      # fix ellipse geometry
@@ -452,10 +446,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 
     # select the LVD sample; remember that --lvd always implies --no-groups
     if lvd:
-        sample = sample[sample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0]
-        fullsample = fullsample[fullsample['SAMPLEBIT'] & SAMPLEBITS['LVD'] != 0]
+        sample = sample[sample['SAMPLE'] & SAMPLE['LVD'] != 0]
+        fullsample = fullsample[fullsample['SAMPLE'] & SAMPLE['LVD'] != 0]
 
     if galaxylist is not None:
+        galaxylist = np.array(galaxylist.split(','))
         log.debug('Selecting specific galaxies.')
         I = np.isin(sample['GROUP_NAME'], galaxylist)
         if np.count_nonzero(I) == 0:
@@ -1112,8 +1107,10 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
     ellipse-fit.
 
     """
+    from astrometry.util.starutil_numpy import arcsec_between
     from SGA.geometry import in_ellipse_mask
     from SGA.util import ivar2var, mwdust_transmission
+    from SGA.ellipse import ELLIPSEBIT
 
 
     def make_sourcemask(srcs, wcs, band, psf, sigma=None, nsigma=1.5):
@@ -1318,10 +1315,10 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         log.info('Determining the geometry for galaxy ' + \
                  f'{iobj+1}/{nsample}.')
 
-        # If the CLUSTER bit is set, mask all extended sources,
+        # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
-        if obj['CLUSTER']:
-            log.info('CLUSTER flag set; masking all extended sources.')
+        if obj['SGAFITMODE'] & SGAFITMODE['MOREMASKING'] != 0:
+            log.info('MOREMASKING flag set; masking all extended sources.')
             mask_allgals = True
         else:
             mask_allgals = False
@@ -1362,7 +1359,7 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
-        if obj['FIXGEO']:
+        if obj['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0:
             niter_actual = 1
         else:
             niter_actual = niter
@@ -1382,8 +1379,9 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
             iter_brightstarmask[inellipse] = False
             iter_refmask[inellipse] = False
 
-            # Expand the brightstarmask veto if STARFDIST<1.2
-            if obj['STARFDIST'] < 1.2:
+            # Expand the brightstarmask veto if the NEARSTAR bit is
+            # set (factor of 2).
+            if obj['SAMPLE'] & SAMPLE['NEARSTAR'] != 0:
                 inellipse2 = in_ellipse_mask(bx, width-by, diam, ba*diam,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
@@ -1432,8 +1430,8 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
 
             # Optionally update the geometry from the masked, coadded
             # optical image.
-            if obj['FIXGEO']:
-                log.info('FIXGEO flag set; not updating geometry.')
+            if obj['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0:
+                log.info('FIXGEO bit set; not updating geometry.')
                 geo_iter = geo_init
             else:
                 # generate a detection image and pixel mask for use with find_galaxy_in_cutout
@@ -1452,12 +1450,12 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
                 props = find_galaxy_in_cutout(wimg, bx, by, diam, ba, pa, wmask=wmask)
                 geo_iter = get_geometry(opt_pixscale, props=props)
 
-            dshift_arcsec = opt_pixscale * np.hypot(geo_init[0]-geo_iter[0], geo_init[1]-geo_iter[1])
+            ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
+            dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
             if dshift_arcsec > maxshift_arcsec:
                 log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' + \
                             f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
-                sample['LARGESHIFT'][iobj] = True
-                # revert to the Tractor position
+                # revert to the Tractor position or the initial position
                 if objsrc is not None:
                     geo_iter[0] = objsrc.bx
                     geo_iter[1] = objsrc.by
@@ -1469,16 +1467,26 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
             [bx, by, diam, ba, pa] = geo_iter
             #print(iobj, iiter, bx, by, diam, ba, pa)
 
-        # Set the blended bit and (final) dshift.
+        # Set the blended bit and largeshift bits, as needed.
         if len(refsamples) > 0:
             Iclose = in_ellipse_mask(bx, width-by, diam/2., ba*diam/2., pa,
                                      refsamples['BX_INIT'],
                                      width-refsamples['BY_INIT'])
             if np.any(Iclose):
-                sample['BLENDED'][iobj] = True
+                sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['BLENDED']
 
-        sample['DSHIFT'][iobj] = opt_pixscale * np.hypot(
-            geo_init[0]-geo_iter[0], geo_init[1]-geo_iter[1])
+        ra_final, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
+        dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
+        if dshift_arcsec > maxshift_arcsec:
+            sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['LARGESHIFT']
+        #sample['DSHIFT'][iobj] = dshift_arcsec
+
+        # Was there a large shift between the Tractor and final position?
+        if objsrc is not None:
+            dshift_tractor_arcsec = arcsec_between(objsrc.ra, objsrc.dec, ra_iter, dec_iter)
+            if dshift_tractor_arcsec > maxshift_arcsec:
+                sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['LARGESHIFT_TRACTOR']
+            #sample['DSHIFT_TRACTOR'][iobj] = dshift_tractor_arcsec
 
         # final images and geometry
         opt_images_final[iobj, :, :, :] = opt_images_obj
@@ -1492,7 +1500,7 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
 
-        if sample['STARFDIST'][iobj] < 1.2:
+        if sample['SAMPLE'][iobj] & SAMPLE['NEARSTAR'] != 0:
             inellipse2 = in_ellipse_mask(bx, width-by, diam, ba*diam,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
@@ -1511,9 +1519,10 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         ##plt.imshow(final_refmask, origin='lower')
         #plt.savefig('ioannis/tmp/junk2.png')
 
-        opt_maskbits_obj = _update_masks(final_brightstarmask, opt_gaiamask, final_refmask,
-                                         opt_galmask, opt_mask_perband, opt_bands,
-                                         sz, build_maskbits=True, MASKDICT=OPTMASKBITS)
+        opt_maskbits_obj = _update_masks(
+            final_brightstarmask, opt_gaiamask, final_refmask,
+            opt_galmask, opt_mask_perband, opt_bands,
+            sz, build_maskbits=True, MASKDICT=OPTMASKBITS)
         opt_models[iobj, :, :, :] = opt_models_obj
         opt_maskbits[iobj, :, :] = opt_maskbits_obj
 
@@ -1655,6 +1664,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     from astrometry.util.fits import fits_table
     from astrometry.util.util import Tan
     from legacypipe.bits import MASKBITS
+    from SGA.ellipse import ELLIPSEBIT
 
     # Dictionary mapping between optical filter and filename coded up in
     # coadds.py, galex.py, and unwise.py, which depends on the project.
@@ -1777,17 +1787,11 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     # Read the sample catalog from custom_coadds and find each source
     # in the Tractor catalog.
     samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
-    cols = ['SGAID', 'SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'FITBIT', 'SAMPLEBIT', 'STARFDIST']
+    cols = ['SGAID', 'SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'EBV', 'SAMPLE', 'SGAFITMODE']
     sample = Table(fitsio.read(samplefile, columns=cols))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
     for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
         sample.rename_column(col, f'{col}_INIT')
-
-    print('########## CHANGE FITBIT TO SGAFITMODE AND IF GCLPNe SAMPLEBIT is set, do not mask Gaia stars, e.g., Bedin 1')
-
-    print('#######Add EBV to columns once parent sample has been rebuilt!!')
-    sample['EBV'] = np.zeros(len(sample), 'f4') + 0.02 # [mag]
-
     sample['DIAM_INIT'] *= 60. # [arcsec]
 
     # populate (BX,BY)_INIT by quickly building the WCS
@@ -1801,21 +1805,22 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     for filt in bands:
         sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
-    print('FIXME - special fitting bit(s)')
-    sample['FIXGEO'] = np.zeros(len(sample), bool)
-    #sample['FIXGEO'] = sample['FITBIT'] & FITBITS['ignore'] != 0
-    sample['FORCEPSF'] = sample['FITBIT'] & FITBITS['forcepsf'] != 0
-    sample['CLUSTER'] = np.zeros(len(sample), bool)
-
-    print('########### HACK! Setting cluster bit for III Zw 040 NOTES02!')
-    if np.any(np.isin(sample['OBJNAME'], 'III Zw 040 NOTES02')):
-        sample['CLUSTER'] = True
+    #print('FIXME - special fitting bit(s)')
+    #sample['FIXGEO'] = np.zeros(len(sample), bool)
+    ##sample['FIXGEO'] = sample['FITBIT'] & FITBITS['ignore'] != 0
+    #sample['FORCEPSF'] = sample['FITBIT'] & FITBITS['forcepsf'] != 0
+    #sample['CLUSTER'] = np.zeros(len(sample), bool)
+    #
+    #print('########### HACK! Setting cluster bit for III Zw 040 NOTES02!')
+    #if np.any(np.isin(sample['OBJNAME'], 'III Zw 040 NOTES02')):
+    #    sample['CLUSTER'] = True
 
     sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
-    sample['DROPPED'] = np.zeros(len(sample), bool)
-    sample['LARGESHIFT'] = np.zeros(len(sample), bool)
-    sample['BLENDED'] = np.zeros(len(sample), bool)
-    sample['DSHIFT'] = np.zeros(len(sample), 'f4')
+
+    #sample['DROPPED'] = np.zeros(len(sample), bool)
+    #sample['LARGESHIFT'] = np.zeros(len(sample), bool)
+    #sample['BLENDED'] = np.zeros(len(sample), bool)
+    #sample['DSHIFT'] = np.zeros(len(sample), 'f4')
 
     # moment geometry
     sample['RA_MOMENT'] = np.zeros(len(sample), 'f8')
@@ -1826,13 +1831,16 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     sample['BA_MOMENT'] = np.zeros(len(sample), 'f4')
     sample['PA_MOMENT'] = np.zeros(len(sample), 'f4')
 
+    # initialize the ELLIPSEBIT bitmask
+    sample['ELLIPSEBIT'] = np.zeros(len(sample), np.int32)
+
     samplesrcs = []
     for iobj, refid in enumerate(sample[REFIDCOLUMN].value):
         I = np.where(np.logical_or(tractor.ref_cat == REFCAT, tractor.ref_cat == 'LG') *
                      (tractor.ref_id == refid))[0]
         if len(I) == 0:
             log.warning(f'ref_id={refid} dropped by Tractor')
-            sample['DROPPED'][iobj] = True
+            sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['NOTRACTOR']
             samplesrcs.append(None)
         else:
             samplesrcs.append(tractor[I])
@@ -1849,11 +1857,14 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     else:
         log.info('Sorting by initial diameter:')
         srt = np.argsort(sample['DIAM_INIT'])[::-1]
+
     sample = sample[srt]
     samplesrcs = [samplesrcs[I] for I in srt]
     for obj in sample:
         log.info(f'  ref_id={obj[REFIDCOLUMN]}: D(25)={obj["DIAM_INIT"]/60.:.3f} arcmin, ' + \
                  f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
+    sample.remove_column('FLUX')
+
     data['sample'] = sample
     data['samplesrcs'] = samplesrcs
 

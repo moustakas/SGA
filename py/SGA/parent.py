@@ -108,10 +108,11 @@ def parent_datamodel(nobj):
     return parent
 
 
-def check_lvd(cat):
+def check_lvd(cat, lvdcat=None):
     from SGA.external import read_lvd
     lvd = read_lvd(verbose=False)
-    lvdcat = cat[cat['ROW_LVD'] != -99]
+    if lvdcat is None:
+        lvdcat = cat[cat['ROW_LVD'] != -99]
     lvdmiss = None
     try:
         assert(len(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]) == 0)
@@ -2751,6 +2752,9 @@ def build_parent_archive(verbose=False, overwrite=False):
         cat[col] = np.zeros(len(cat), bool)
         cat[col][I] = True
 
+    # RESOLVED always implies FIXGEO!
+    cat['IN_FIXGEO'][cat['IN_RESOLVED']] = True
+
     # add the Gaia mask bits
     log.info(f'Adding Gaia bright-star masking bits.')
     cat['STARFDIST'] = np.zeros(len(cat), 'f4') + 99.
@@ -2963,6 +2967,9 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
 
         sgafitmode[I] += SGAFITMODE[action.upper()]
 
+    # RESOLVED always implies FIXGEO!
+    sgafitmode[sgafitmode & SGAFITMODE['RESOLVED'] != 0] += SGAFITMODE['FIXGEO']
+
     # build the final catalog.
     grp = parent[cols]
     ra, dec = grp['RA'].value, grp['DEC'].value
@@ -2999,19 +3006,41 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     # SMC, LMC).
     I = grp['SGAFITMODE'] & SGAFITMODE['RESOLVED'] != 0
     out1 = build_group_catalog(grp[I])
-    #srt = np.argsort(out1['GROUP_DIAMETER'])[::-1]
-    #out1['OBJNAME', 'GROUP_DIAMETER', 'GROUP_MULT', 'GROUP_PRIMARY', 'GROUP_ID', 'SAMPLE', 'REGION', 'SGAFITMODE'][srt]
-    pdb.set_trace()
-    out2 = build_group_catalog(grp[~I])
-    out = out2[out2['GROUP_PRIMARY']]
-    srt = np.argsort(out['GROUP_DIAMETER'])[::-1]
-    out['OBJNAME', 'GROUP_DIAMETER', 'GROUP_MULT', 'GROUP_PRIMARY', 'GROUP_ID', 'SAMPLE', 'REGION', 'SGAFITMODE'][srt[:35]]
-
-
+    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1)
     out = vstack((out1, out2))
+    del out1, out2
+
+    #cols = ['OBJNAME', 'RA', 'DEC', 'DIAM', 'GROUP_DIAMETER', 'GROUP_MULT', 'GROUP_PRIMARY', 'GROUP_ID', 'SAMPLE', 'REGION', 'SGAFITMODE']
+    #out[out['GROUP_PRIMARY']][cols]
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
 
-    pdb.set_trace()
+    ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
+    ## objects within (outside) the DR11 imaging footprint.
+    #import matplotlib.pyplot as plt
+    #from SGA.external import read_lvd
+    #lvd = read_lvd(verbose=False)
+    #
+    #lvdcat = out[out['SAMPLE'] & SAMPLE['LVD'] != 0]
+    #lvdmiss = check_lvd(lvdcat=lvdcat)
+    #fig, ax = plt.subplots(figsize=(8, 6))
+    #ax.scatter(out['RA'], out['DEC'], s=1)
+    #ax.scatter(lvdmiss['RA'], lvdmiss['DEC'], s=20, alpha=0.5, marker='s')
+    #fig.savefig('ioannis/tmp/junk.png')
+    #
+    #nn = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-dr9-north-v0.1.fits'))
+    #ss = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-dr11-south-v0.1.fits'))
+    #nnlvdmiss = check_lvd(nn)
+    #sslvdmiss = check_lvd(ss)
+    #miss = lvd[np.isin(lvd['OBJNAME'], np.intersect1d(nnlvdmiss['OBJNAME'], sslvdmiss['OBJNAME']))]
+    #
+    #fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    #ax1.scatter(nn['RA'], nn['DEC'], s=1)
+    #ax1.scatter(nnlvdmiss['RA'], nnlvdmiss['DEC'], s=20, alpha=0.5, marker='s')
+    #ax1.scatter(miss['RA'], miss['DEC'], s=20, alpha=0.5, marker='x', color='k')
+    #ax2.scatter(ss['RA'], ss['DEC'], s=1)
+    #ax2.scatter(sslvdmiss['RA'], sslvdmiss['DEC'], s=20, alpha=0.5, marker='s')
+    #ax2.scatter(miss['RA'], miss['DEC'], s=20, alpha=0.5, marker='x', color='k')
+    #fig.savefig('ioannis/tmp/junk.png')
