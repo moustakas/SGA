@@ -666,8 +666,6 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     #    plt.close()
 
     # Measure the surface-brightness profile in each bandpass.
-    log.info(f'Ellipse-fitting {len(bands)} bandpasses in a {width}x{width} mosaic.')
-
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
@@ -724,7 +722,8 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
 
     dt, unit = get_dt(tall)
-    log.info(f'Ellipse-fitting all bandpasses took {dt:.3f} {unit}')
+    log.info(f'Ellipse-fitting {len(bands)} bandpasses in a ' + \
+             f'{width}x{width} mosaic took {dt:.3f} {unit}')
 
     if debug:
         ax.invert_yaxis()
@@ -906,32 +905,34 @@ def qa_sma_grid():
 
 
 
-def qa_ellipsefit(sample, data, results, unpack_maskbits_function, MASKBITS,
-                  datasets=['opt', 'unwise', 'galex'], title=None):
+def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
+                  REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'], title=None):
     """Simple QA.
 
     """
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
     from photutils.isophote import EllipseGeometry
     from photutils.aperture import EllipticalAperture
     from SGA.qa import overplot_ellipse, get_norm
 
-    qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
-                          f'qa-ellipsefit-{data["galaxy"]}.png')
 
+    def kill_left_y(ax):
+        ax.yaxis.set_major_locator(ticker.NullLocator())
+        ax.yaxis.set_minor_locator(ticker.NullLocator())
+        ax.tick_params(axis='y', which='both', left=False, labelleft=False)
+        ax.spines['left'].set_visible(False)  # optional
+
+
+    sample = data['sample']
     nsample = len(sample)
     ndataset = len(datasets)
 
     optbands = ''.join(data['opt_bands']) # not general
 
     ncol = 2
-    nrow =  ndataset * nsample
+    nrow = ndataset
     inches_per_panel = 3.
-    fig, ax = plt.subplots(nrow, ncol,
-                           figsize=(inches_per_panel*(1+ncol),
-                                    inches_per_panel*nrow),
-                           #gridspec_kw={'wspace': 0.01, 'hspace': 0.01},
-                           gridspec_kw={'width_ratios': [1., 2.]})
 
     cmap = plt.cm.cividis
     cmap.set_bad('white')
@@ -940,31 +941,49 @@ def qa_ellipsefit(sample, data, results, unpack_maskbits_function, MASKBITS,
 
     for iobj, obj in enumerate(sample):
 
-        fit = ellipsefit[iobj]
-        [bx, by, diam, ba, pa] = list(obj[cols].values())
-        semia = diam / 2. # [optical pixels]
+        qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
+                              f'qa-ellipsefit-{obj["SGANAME"]}.png')
 
+        fig, ax = plt.subplots(nrow, ncol,
+                               figsize=(inches_per_panel * (1+ncol),
+                                        inches_per_panel * nrow),
+                               #gridspec_kw={'wspace': 0.01, 'hspace': 0.01},
+                               gridspec_kw={'width_ratios': [1., 2.]})
+
+        # one row per dataset
         for idata, (dataset, label) in enumerate(zip(datasets, [optbands, 'unWISE', 'GALEX'])):
+            #if idata > 1:
+            #    continue
+
+            results_obj = results[idata][iobj]
+            sbprofiles_obj = sbprofiles[idata][iobj]
+            images = data[f'{dataset}_images'][iobj, :, :, :]
+            models = data[f'{dataset}_models'][iobj, :, :, :]
+            maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
+
             refband = data[f'{dataset}_refband']
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
             pixfactor = data['opt_pixscale'] / pixscale
+
+            [bx, by, diam, ba, pa] = list(obj[cols].values())
+            semia = diam / 2. # [optical pixels]
 
             refg = EllipseGeometry(x0=by*pixfactor, y0=bx*pixfactor, eps=1.-ba, # note bx,by swapped
                                    pa=np.radians(pa-90.), sma=pixfactor*semia) # sma in pixels
             refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
                                        refg.sma*(1. - refg.eps), refg.pa)
 
-            # column 0 - image
-            images = data[f'{dataset}_images'][iobj, :, :, :]
-            masks = unpack_maskbits_function(data[f'{dataset}_maskbits'],
-                                             bands=bands, BITS=MASKBITS[idata])
+            # a little wasteful...
+            masks = unpack_maskbits_function(data[f'{dataset}_maskbits'], bands=bands,
+                                             BITS=MASKBITS[idata])
             masks = masks[iobj, :, :, :]
 
             wimg = np.sum(images * np.logical_not(masks), axis=0)
             wimg[wimg == 0.] = np.nan
 
-            xx = ax[idata+iobj*ndataset, 0]
+            # images
+            xx = ax[idata, 0]
             #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
             xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
                       norm=get_norm(wimg), alpha=1.)
@@ -978,47 +997,65 @@ def qa_ellipsefit(sample, data, results, unpack_maskbits_function, MASKBITS,
             xx.set_xticks([])
             xx.set_yticks([])
 
-            smas = fit[f'sma_{refband}'] # [pixels]
+            smas = sbprofiles_obj['sma'] / pixscale # [pixels]
             for sma in smas: # sma in pixels
                 if sma == 0.:
                     continue
                 ap = EllipticalAperture((refg.x0, refg.y0), sma,
-                                        pixfactor*sma*(1. - refg.eps), refg.pa)
+                                        sma*(1. - refg.eps), refg.pa)
                 ap.plot(color='k', lw=1, ax=xx)
             refap.plot(color='red', lw=2, ls='--', ax=xx)
 
-            # column 1 - full SB profile
-            xx = ax[idata+iobj*ndataset, 1]
+            # SB profiles
+            xx = ax[idata, 1]
             for filt in bands:
-                xx.fill_between((pixscale*fit[f'sma_{filt}'])**0.25,
-                                fit[f'intens_{filt}']-fit[f'intens_err_{filt}'],
-                                fit[f'intens_{filt}']+fit[f'intens_err_{filt}'],
+                xx.fill_between(sbprofiles_obj['sma']**1,#0.25,
+                                sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
+                                sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
                                 label=filt, alpha=0.6)
-            xx.set_yscale('log')
-            xx.set_yticks([])
-
-            xx_twin = xx.twinx()
-            xx_twin.set_ylim(xx.get_ylim())
-            xx_twin.set_yscale('log')
-            if idata == 1:
-                xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
-
-            xx.axvline(x=(pixscale*pixfactor*semia)**0.25, color='red', lw=2, ls='--')#,
-                       #label='Second-Moment Diameter')
-            xx.legend(loc='upper right', fontsize=8)
+            xx.set_xlim(ax[0, 1].get_xlim())
             if idata == ndataset-1:
                 xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
             else:
                 xx.set_xticks([])
 
-            #last = np.abs(fit[f'intens_{refband}'][-1])
-            #ax3.set_ylim(-3*last, 10*last)
-            #ax3.set_ylim(-0.01, 0.1)
+            xx.set_yscale('log')
+            xx.relim()
+            xx.autoscale_view()
 
-    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
-    fig.tight_layout()
-    fig.savefig(qafile, bbox_inches='tight')
-    log.info(f'Wrote {qafile}')
+            xx_twin = xx.twinx()
+            xx_twin.set_yscale('log')
+            xx_twin.set_ylim(xx.get_ylim())
+
+            y0, y1 = xx.get_ylim()
+            span_dec = abs(np.log10(y1) - np.log10(y0))
+            if span_dec < 1.:
+                # within ~one decade: 1–2–5 per decade
+                xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
+                xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+                xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
+            else:
+                # multiple decades: decades only
+                xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
+                xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+                xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
+            kill_left_y(xx)
+
+            if idata == 1:
+                xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
+
+            xx.axvline(x=(pixfactor*pixscale*semia), color='red', lw=2, ls='--')#,
+                       #label='Second-Moment Diameter')
+            xx.legend(loc='upper right', fontsize=8)
+
+
+        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
+                     f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})')
+        #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+        fig.tight_layout()
+        fig.savefig(qafile, bbox_inches='tight')
+        plt.close()
+        log.info(f'Wrote {qafile}')
 
 
 def ellipsefit_datamodel(sma, bands, dataset='opt'):
@@ -1175,8 +1212,8 @@ def wrap_multifit(sample, datasets, data, unpack_maskbits_function,
 
 def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
                          unpack_maskbits_function, MASKBITS, run='south', mp=1,
-                         bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=False,
-                         unwise=False, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+                         bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex=True,
+                         unwise=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
                          refidcolumn=None, verbose=False, nowrite=False,
                          clobber=False, qaplot=True):
     """Top-level wrapper script to do ellipse-fitting on a single galaxy.
@@ -1216,10 +1253,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         debug=False)
 
     if qaplot:
-        qa_ellipsefit(sample, data, results, unpack_maskbits_function,
-                      MASKBITS, datasets=datasets)
+        qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function,
+                      MASKBITS, REFIDCOLUMN, datasets=datasets)
 
-    # merge all the ellipse-fitting results and write out
     # add to header:
     #  --bands
     #  --pixscale(s)
@@ -1232,34 +1268,29 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     #  --use all_bands but do not write to table
     #  --psfdepth, etc.
     #  --maxsma
-    #  --combine masking and ellipse-fitting bits into a single bitmask
-    #    --largeshift
-    #    --...
 
     import fitsio
-
     for idata, dataset in enumerate(datasets):
         if dataset == 'opt':
-            suffix = ''.join(data['all_opt_bands']).upper() # always griz in north & south
+            suffix = ''.join(data['all_opt_bands']) # always griz in north & south
         else:
-            suffix = dataset.upper()
-        outfile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-ellipse-{suffix}.fits')
+            suffix = dataset
 
         for iobj, obj in enumerate(sample):
+            ellipsefile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-ellipse-{obj[REFIDCOLUMN]}-{suffix}.fits')
+
             results_obj = results[idata][iobj]
             sbprofiles_obj = sbprofiles[idata][iobj]
             images = data[f'{dataset}_images'][iobj, :, :, :]
             models = data[f'{dataset}_models'][iobj, :, :, :]
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
-            fitsio.write(outfile, images, clobber=True, extname=f'IMAGES-{suffix}')
-            fitsio.write(outfile, models, extname=f'MODELS-{suffix}')
-            fitsio.write(outfile, maskbits, extname=f'MASKBITS-{suffix}')
-            fitsio.write(outfile, results_obj.as_array(), extname=f'ELLIPSE-{suffix}')
-            fitsio.write(outfile, sbprofiles_obj.as_array(), extname=f'SBPROFILES-{suffix}')
-            log.info(f'Wrote {outfile}')
-
-    pdb.set_trace()
+            fitsio.write(ellipsefile, images, clobber=True, extname='IMAGES')
+            fitsio.write(ellipsefile, models, extname='MODELS')
+            fitsio.write(ellipsefile, maskbits, extname='MASKBITS')
+            fitsio.write(ellipsefile, results_obj.as_array(), extname='ELLIPSE')
+            fitsio.write(ellipsefile, sbprofiles_obj.as_array(), extname='SBPROFILES')
+            log.info(f'Wrote {ellipsefile}')
 
     #if not nowrite:
     #    from SGA.io import write_ellipsefit

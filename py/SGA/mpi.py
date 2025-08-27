@@ -22,8 +22,8 @@ def mpi_args():
     parser.add_argument('--last', type=int, help='Index of last object to process.')
     parser.add_argument('--galaxylist', type=str, default=None, help='Comma-separated list of galaxy names to process.')
 
-    parser.add_argument('--d25min', default=0.0, type=float, help='Minimum diameter (arcmin).')
-    parser.add_argument('--d25max', default=100.0, type=float, help='Maximum diameter (arcmin).')
+    parser.add_argument('--mindiam', default=0., type=float, help='Minimum diameter (arcmin).')
+    parser.add_argument('--maxdiam', default=100., type=float, help='Maximum diameter (arcmin).')
 
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
     parser.add_argument('--customsky', action='store_true', help='Build the largest large-galaxy coadds with custom sky-subtraction.')

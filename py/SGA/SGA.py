@@ -327,10 +327,10 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
                 no_groups=False, lvd=False, final_sample=False, gaia_density=False,
-                region='dr11-south', d25min=0., d25max=200.):
+                region='dr11-south', mindiam=0., maxdiam=200.):
     """Read/generate the parent SGA catalog.
 
-    d25min,d25max in arcmin
+    mindiam,maxdiam in arcmin
 
     """
     import fitsio
@@ -365,8 +365,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         info = fitsio.read(samplefile, columns=cols)
 
         rows = np.where(
-            (info['GROUP_DIAMETER'] > d25min) *
-            (info['GROUP_DIAMETER'] < d25max) *
+            (info['GROUP_DIAMETER'] > mindiam) *
+            (info['GROUP_DIAMETER'] < maxdiam) *
             info['GROUP_PRIMARY'] *
             info['PREBURNED'] *
             (info['SGA_ID'] > -1))[0]
@@ -380,12 +380,12 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         info = fitsio.read(samplefile, columns=cols)
         if no_groups:
             rows = np.where(
-                (info['DIAM'] > d25min) *
-                (info['DIAM'] < d25max))[0]
+                (info['DIAM'] > mindiam) *
+                (info['DIAM'] < maxdiam))[0]
         else:
             rows = np.where(
-                (info['GROUP_DIAMETER'] > d25min) *
-                (info['GROUP_DIAMETER'] < d25max) *
+                (info['GROUP_DIAMETER'] > mindiam) *
+                (info['GROUP_DIAMETER'] < maxdiam) *
                 info['GROUP_PRIMARY'])[0]
 
     nallrows = len(info)
@@ -1095,7 +1095,7 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         xx.set_xticks([])
         xx.set_yticks([])
 
-    fig.suptitle(data['galaxy'].replace('_', ' '))
+    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
     fig.savefig(qafile)
     plt.close()
     log.info(f'Wrote {qafile}')
@@ -1899,3 +1899,37 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     data = build_multiband_mask(data, tractor, run=run, qaplot=True)
 
     return data
+
+
+def get_radius_mosaic(diam, mindiam=0.5, pixscale=0.262, get_barlen=False):
+    """Get the mosaic radius.
+
+    diam in arcmin
+
+    """
+    if diam < mindiam:
+        diam = mindiam
+
+    radius_mosaic_arcsec = 60. * diam / 2. # [arcsec]
+    if diam > 10.:
+        radius_mosaic_arcsec *= 1.1
+    elif diam > 3. and diam <= 10:
+        radius_mosaic_arcsec *= 1.3
+    elif diam > 1. and diam <= 3.:
+        radius_mosaic_arcsec *= 1.5
+    else:
+        radius_mosaic_arcsec *= 2.
+
+    if get_barlen:
+        if radius_mosaic_arcsec > 6. * 60.: # [>6] arcmin
+            barlabel = '2 arcmin'
+            barlen = np.ceil(120. / pixscale).astype(int) # [pixels]
+        elif (radius_mosaic_arcsec > 3. * 60.) & (radius_mosaic_arcsec < 6. * 60.): # [3-6] arcmin
+            barlabel = '1 arcmin'
+            barlen = np.ceil(60. / pixscale).astype(int) # [pixels]
+        else:
+            barlabel = '30 arcsec'
+            barlen = np.ceil(30. / pixscale).astype(int) # [pixels]
+        return radius_mosaic_arcsec, barlen, barlabel
+    else:
+        return radius_mosaic_arcsec

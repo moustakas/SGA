@@ -5,12 +5,14 @@ SGA.html
 Code to generate HTML content.
 
 """
-import os, subprocess, pdb
-import numpy as np
-import astropy.table
+import pdb
 
-import SGA.io
-from SGA.io import RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN, ZCOLUMN
+import os, subprocess
+import numpy as np
+from astropy.table import Table
+
+from SGA.SGA import RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
+from SGA.logger import log
 
 
 def _get_cutouts_one(args):
@@ -23,13 +25,13 @@ def get_cutouts_one(group, clobber=False):
 
     layer = get_layer(group)
     groupname = get_groupname(group)
-        
+
     diam = group_diameter(group) # [arcmin]
     size = np.ceil(diam * 60 / PIXSCALE).astype('int') # [pixels]
 
     imageurl = '{}/?ra={:.8f}&dec={:.8f}&pixscale={:.3f}&size={:g}&layer={}'.format(
         cutouturl, group['ra'], group['dec'], PIXSCALE, size, layer)
-        
+
     jpgfile = os.path.join(jpgdir, '{}.jpg'.format(groupname))
     cmd = 'wget --continue -O {:s} "{:s}"' .format(jpgfile, imageurl)
     if os.path.isfile(jpgfile) and not clobber:
@@ -90,9 +92,9 @@ def html_javadate():
     """)
 
     return js
-    
-    
-def make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=None, 
+
+
+def make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=None,
                         barlabel=None, just_coadds=False, clobber=False,
                         verbose=False):
     """Montage the coadds into a nice QAplot.
@@ -121,7 +123,7 @@ def make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=None,
 
             # Image coadd with the scale bar label--
             barpngfile = os.path.join(htmlgalaxydir, '{}-{}.png'.format(galaxy, coaddfiles[0]))
-                
+
             # Make sure all the files exist.
             check, _just_coadds = True, just_coadds
             jpgfile = []
@@ -159,7 +161,7 @@ def make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=None,
                     os.remove(thumb2file)
                 print('Writing {}'.format(thumb2file))
                 subprocess.call(cmd.split())
-                    
+
                 # Add a bar and label to the first image.
                 if _just_coadds:
                     if resize:
@@ -205,10 +207,10 @@ def make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=None,
                 cmd = 'convert -thumbnail {0} {1} {2}'.format(thumbsz, montagefile, thumbfile)
                 #print(cmd)
                 if os.path.isfile(thumbfile):
-                    os.remove(thumbfile)                
+                    os.remove(thumbfile)
                 print('Writing {}'.format(thumbfile))
                 subprocess.call(cmd.split())
-                    
+
                 ## Create a couple smaller thumbnail images
                 #for tf, sz in zip((thumbfile, thumb2file), (512, 96)):
                 #    cmd = 'convert -thumbnail {}x{} {} {}'.format(sz, sz, montagefile, tf)
@@ -375,7 +377,6 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
     """
     import fitsio
     from PIL import Image
-    from astropy.table import Table
     from SGA.qa import (display_multiband, display_ellipsefit,
                         display_ellipse_sbprofile, qa_curveofgrowth,
                         qa_maskbits)
@@ -514,50 +515,43 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
     #        qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=True, png=maskbitsfile)
 
 
-def make_plots(sample, datadir=None, htmldir=None, survey=None, refband='r',
-               bands=['g', 'r', 'i', 'z'], pixscale=0.262, zcolumn='Z', galaxy_id=None,
-               mp=1, barlen=None, barlabel=None, SBTHRESH=None,
-               radius_mosaic_arcsec=None, linear=False, plot_colors=True,
-               clobber=False, verbose=True, get_galaxy_galaxydir=None,
-               read_multiband=None, qa_multiwavelength_sed=None,
-               cosmo=None, galex=False, unwise=False,
-               just_coadds=False, scaledfont=False):
+def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_function,
+               unpack_maskbits_function, MASKBITS, run='south', mp=1,
+               bands=['g', 'r', 'i', 'z'], radius_mosaic_arcsec=None,
+               pixscale=0.262, barlen=None, barlabel=None, galex=True,
+               unwise=True, verbose=False, clobber=False):
+
+#sample, datadir=None, htmldir=None, survey=None, refband='r',
+#               bands=['g', 'r', 'i', 'z'], pixscale=0.262, zcolumn='Z', galaxy_id=None,
+#               mp=1, barlen=None, barlabel=None, SBTHRESH=None,
+#               radius_mosaic_arcsec=None, linear=False, plot_colors=True,
+#               clobber=False, verbose=True, get_galaxy_galaxydir=None,
+#               read_multiband=None, qa_multiwavelength_sed=None,
+#               cosmo=None, galex=False, unwise=False,
+#               just_coadds=False, scaledfont=False):
     """Make QA plots.
 
     """
-    from SGA.coadds import _mosaic_width
-    
-    if datadir is None:
-        datadir = SGA.io.SGA_data_dir()
-    if htmldir is None:
-        htmldir = SGA.io.SGA_html_dir()
+    import fitsio
 
-    if survey is None:
-        from legacypipe.survey import LegacySurveyData
-        survey = LegacySurveyData()
+    # Read the sample catalog for this group.
+    samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
+    sample = Table(fitsio.read(samplefile, columns=['SGAID', 'SGANAME']))
+    log.info(f'Read {len(sample)} source(s) from {samplefile}')
 
-    barlen_kpc = 100
-    if barlabel is None:
-        barlabel = '100 kpc'
+    # Read the per-object ellipse-fitting results.
+    for iobj, obj in enumerate(sample):
+        suffix = ''.join(bands)
+        ellipsefile = os.path.join(galaxydir, f'{galaxy}-ellipse-{obj[REFIDCOLUMN]}-{suffix}.fits')
+        log.info(f'Reading {ellipsefile}')
 
-    if get_galaxy_galaxydir is None:
-        get_galaxy_galaxydir = SGA.io.get_galaxy_galaxydir
+        images = fitsio.read(ellipsefile, 'IMAGES')
+        models = fitsio.read(ellipsefile, 'MODELS')
+        maskbits = fitsio.read(ellipsefile, 'MASKBITS')
+        ellipse = Table(fitsio.read(ellipsefile, 'ELLIPSE'))
+        sbprofiles = Table(fitsio.read(ellipsefile, 'SBPROFILES'))
 
-    if type(sample) is astropy.table.row.Row:
-        sample = astropy.table.Table(sample)
-        
-    # Loop on each galaxy.
-    for ii, onegal in enumerate(sample):
-        galaxy, galaxydir, htmlgalaxydir = SGA.io.get_galaxy_galaxydir(onegal, html=True)
-            
-        if not os.path.isdir(htmlgalaxydir):
-            os.makedirs(htmlgalaxydir, exist_ok=True, mode=0o775)
-
-        if barlen is None and zcolumn in onegal.colnames:
-            barlen = np.round(barlen_kpc / SGA.misc.arcsec2kpc(
-                onegal[zcolumn], cosmo=cosmo) / pixscale).astype('int') # [kpc]
-
-        radius_mosaic_pixels = _mosaic_width(radius_mosaic_arcsec, pixscale) / 2
+        pdb.set_trace()
 
         # Build the ellipse and photometry plots.
         if not just_coadds:
@@ -582,7 +576,7 @@ def make_plots(sample, datadir=None, htmldir=None, survey=None, refband='r',
         make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=barlen,
                             barlabel=barlabel, clobber=clobber, verbose=verbose,
                             just_coadds=just_coadds)
-            
+
         # Build the maskbits figure.
         #make_maskbits_qa(galaxy, galaxydir, htmlgalaxydir, clobber=clobber, verbose=verbose)
 
@@ -1196,16 +1190,16 @@ def make_html(sample=None, datadir=None, htmldir=None, bands=['g', 'r', 'i', 'z'
 
     if type(sample) is astropy.table.row.Row:
         sample = astropy.table.Table(sample)
-        
+
     # Only create pages for the set of galaxies with a montage.
     keep = np.arange(len(sample))
-    _, missing, done, _ = SGA.io.missing_files(sample=sample, region=region, htmldir=htmldir, 
+    _, missing, done, _ = SGA.io.missing_files(sample=sample, region=region, htmldir=htmldir,
                                                htmlindex=True)
 
     if len(done[0]) == 0:
         print('No galaxies with complete montages!')
         return
-    
+
     print('Keeping {}/{} galaxies with complete montages.'.format(len(done[0]), len(sample)))
     sample = sample[done[0]]
     #galaxy, galaxydir, htmlgalaxydir = get_galaxy_galaxydir(sample, html=True)
@@ -1238,5 +1232,5 @@ def make_html(sample=None, datadir=None, htmldir=None, bands=['g', 'r', 'i', 'z'
                      prevgalaxy, nexthtmlgalaxydir, prevhtmlgalaxydir, verbose,
                      clobber])
     ok = mp.map(_build_htmlpage_one, args)
-    
+
     return 1

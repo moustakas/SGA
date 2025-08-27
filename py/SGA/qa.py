@@ -618,7 +618,7 @@ def qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=False, png=N
     ax1.set_aspect('equal')
     ax1.get_xaxis().set_visible(False)
     ax1.get_yaxis().set_visible(False)
-    
+
     #ax1.axis('off')
     #ax1.autoscale(False)
     #ax1.scatter(tractor['BX'], imgsz[1]-tractor['BY'], alpha=1.0, s=10, color='red')
@@ -629,7 +629,7 @@ def qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=False, png=N
         ax2.legend(loc='lower right', fontsize=12)
         lgnd = ax3.legend(loc='lower right', fontsize=12)
         lgnd.legendHandles[0]._sizes = [40]
-        lgnd.legendHandles[1]._sizes = [40]    
+        lgnd.legendHandles[1]._sizes = [40]
 
     fig.subplots_adjust(wspace=0.05, right=0.9)
 
@@ -956,7 +956,7 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
         """
         frame: "galactic" or "barycentricmeanecliptic"
 
-        """ 
+        """
         cs =  SkyCoord(
             np.linspace(0, 360, npt) * units.degree,
             np.zeros(npt) * units.degree,

@@ -74,7 +74,7 @@ def main():
     from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE,
                          SGAFITMODE, sga_dir, sga_data_dir, sga_html_dir,
                          read_sample, missing_files, get_galaxy_galaxydir,
-                         build_catalog)
+                         build_catalog, get_radius_mosaic)
 
     args = mpi_args()
     set_legacysurvey_dir(args.region)
@@ -126,7 +126,7 @@ def main():
 
         sample, fullsample = read_sample(
             first=args.first, last=args.last,
-            d25min=args.d25min, d25max=args.d25max,
+            mindiam=args.mindiam, maxdiam=args.maxdiam,
             galaxylist=args.galaxylist, no_groups=no_groups,
             lvd=args.lvd, region=args.region,
             verbose=args.verbose)
@@ -279,9 +279,9 @@ def main():
 
     for count, ii in enumerate(groups[rank]):
         onegal = sample[ii]
-        galaxy, galaxydir = get_galaxy_galaxydir(onegal, region=args.region,
-                                                 group=not no_groups,
-                                                 datadir=datadir, htmldir=htmldir)
+        galaxy, galaxydir, htmlgalaxydir = get_galaxy_galaxydir(
+            onegal, region=args.region, group=not no_groups,
+            html=True, datadir=datadir, htmldir=htmldir)
         if not os.path.isdir(galaxydir):
             os.makedirs(galaxydir, exist_ok=True)
 
@@ -293,33 +293,16 @@ def main():
         else:
             from contextlib import redirect_stdout, redirect_stderr
             logfile = get_logfile(galaxy, galaxydir, suffix)
-            log.debug(f'Logging output to {logfile}')
+            log.info(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
-        diam = onegal[DIAMCOLUMN] # [arcmin]
-        if diam < 0.5:
-            diam = 0.5
-        radius_mosaic_arcsec = 60. * diam / 2. # [arcsec]
-
-        if diam > 10.:
-            radius_mosaic_arcsec *= 1.1
-        elif diam > 3. and diam <= 10:
-            radius_mosaic_arcsec *= 1.1
-        else:
-            radius_mosaic_arcsec *= 1.1
-
-        if radius_mosaic_arcsec > 600.:
-            args.nsigma = None # 100.
-        else:
-            args.nsigma = None # 20.
+        radius_mosaic_arcsec = get_radius_mosaic(onegal[DIAMCOLUMN]) # diam in arcmin
 
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 
         if args.coadds:
             from SGA.coadds import custom_coadds
             from astropy.table import Table
-
-            log.warning('Undo --old-calibs-ok in custom_coadds when ready!')
 
             # Write out the individual galaxies for this mosaic.
             if no_groups:
@@ -353,7 +336,7 @@ def main():
                 pass
 
             if args.debug:
-                err, filesuffix = custom_coadds(
+                err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     pixscale=args.pixscale, bands=bands, mp=args.mp,
                     nsigma=args.nsigma, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
@@ -364,7 +347,7 @@ def main():
             else:
                 with open(logfile, 'w') as L:
                     with redirect_stdout(L), redirect_stderr(L):
-                        err, filesuffix = custom_coadds(
+                        err, _ = custom_coadds(
                             onegal, galaxy, survey, run, radius_mosaic_arcsec,
                             pixscale=args.pixscale, bands=bands, mp=args.mp,
                             nsigma=args.nsigma, just_coadds=args.just_coadds,
@@ -393,31 +376,51 @@ def main():
                                            unwise=args.unwise, galex=args.galex,
                                            verbose=args.verbose, clobber=args.clobber)
             else:
-                log.critical('write me')
-                return
+                with open(logfile, 'w') as L:
+                    with redirect_stdout(L), redirect_stderr(L):
+                        err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
+                                                   unpack_maskbits, (OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS),
+                                                   run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
+                                                   apertures=APERTURES, pixscale=args.pixscale,
+                                                   unwise=args.unwise, galex=args.galex,
+                                                   verbose=args.verbose, clobber=args.clobber)
+            done(galaxy, galaxydir, err, suffix, debug=args.debug)
+
 
         if args.htmlplots:
-            from SGA.mpi import call_htmlplots
+            from SGA.html import make_plots
+            from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
+                                 OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
+                                 read_multiband, unpack_maskbits)
 
-            if radius_mosaic_arcsec > 6 * 60: # [>6] arcmin
-                barlabel = '2 arcmin'
-                barlen = np.ceil(120 / args.pixscale).astype(int) # [pixels]
-            elif (radius_mosaic_arcsec > 3 * 60) & (radius_mosaic_arcsec < 6 * 60): # [3-6] arcmin
-                barlabel = '1 arcmin'
-                barlen = np.ceil(60 / args.pixscale).astype(int) # [pixels]
-            else:
-                barlabel = '30 arcsec'
-                barlen = np.ceil(30 / args.pixscale).astype(int) # [pixels]
-            call_htmlplots(onegal, galaxy, survey, pixscale=args.pixscale,
-                           mp=args.mp, verbose=args.verbose, debug=args.debug,
-                           clobber=args.clobber, logfile=logfile,
-                           htmldir=htmldir, datadir=datadir,
-                           barlen=barlen, barlabel=barlabel,
-                           radius_mosaic_arcsec=radius_mosaic_arcsec,
-                           galex=True, unwise=True,
-                           region=args.region,
-                           get_galaxy_galaxydir=get_galaxy_galaxydir,
-                           read_multiband=read_multiband)
+            if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-ellipse.isdone')):
+                log.warning('Ellipse-fitting must be done before generating plots.')
+                continue
+
+            if not os.path.isdir(htmlgalaxydir):
+                os.makedirs(htmlgalaxydir, exist_ok=True)
+
+            radius_mosaic_arcsec, barlen, barlabel = get_radius_mosaic(
+                onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True)
+
+            err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
+                             unpack_maskbits, (OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS),
+                             radius_mosaic_arcsec=radius_mosaic_arcsec,
+                             barlen=barlen, barlabel=barlabel, run=run,
+                             bands=bands, mp=args.mp, pixscale=args.pixscale,
+                             unwise=args.unwise, galex=args.galex,
+                             verbose=args.verbose, clobber=args.clobber)
+
+                    #onegal, galaxy, pixscale=args.pixscale,
+                    #mp=args.mp, verbose=args.verbose, debug=args.debug,
+                    #clobber=args.clobber,
+                    #htmldir=htmldir, datadir=datadir,
+                    #barlen=barlen, barlabel=barlabel,
+                    #galex=args.galex, unwise=args.unwise,
+                    #region=args.region,
+                    #get_galaxy_galaxydir=get_galaxy_galaxydir,
+                    #read_multiband=read_multiband)
+
 
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
