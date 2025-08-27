@@ -71,8 +71,6 @@ UNWISEMASKBITS = dict(
     W4 = 2**7,         #
 )
 
-VEGA2AB = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
-
 SBTHRESH = [23, 24, 25, 26] # surface brightness thresholds
 #SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
 APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
@@ -669,145 +667,6 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
     return sample
 
 
-def read_image_data(data, filt2imfile, verbose=False):
-    """Helper function for the project-specific read_multiband method.
-
-    Read the multi-band images and inverse variance images and pack them into a
-    dictionary. Also create an initial pixel-level mask and handle images with
-    different pixel scales (e.g., GALEX and WISE images).
-
-    """
-    from scipy.ndimage.morphology import binary_dilation
-    from skimage.transform import resize
-    from astropy.stats import sigma_clipped_stats
-    from photutils.segmentation import detect_threshold, detect_sources
-    from photutils.utils import circular_footprint
-
-    from tractor.psf import PixelizedPSF
-    from tractor.tractortime import TAITime
-    from astrometry.util.util import Tan
-    from legacypipe.survey import LegacySurveyWcs, ConstantFitsWcs
-
-    all_bands = data['all_bands']
-    opt_bands = data['opt_bands']
-    unwise_bands = data['unwise_bands']
-
-    opt_refband = data['opt_refband']
-    galex_refband = data['galex_refband']
-    unwise_refband = data['unwise_refband']
-
-    # Read the per-filter images and generate an optical and UV/IR
-    # mask.
-    for filt in all_bands:
-        # Read the data and initialize the mask with the inverse
-        # variance image.
-        if verbose:
-            log.info(f'Reading {filt2imfile[filt]["image"]}')
-            log.info(f'Reading {filt2imfile[filt]["model"]}')
-            log.info(f'Reading {filt2imfile[filt]["invvar"]}')
-        hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
-        image = fitsio.read(filt2imfile[filt]['image'])
-        invvar = fitsio.read(filt2imfile[filt]['invvar'])
-        model = fitsio.read(filt2imfile[filt]['model'])
-
-        if np.any(invvar < 0):
-            log.warning(f'Found {np.sum(invvar<0):,d} negative pixels in the ' + \
-                        f'{filt}-band inverse variance image!')
-
-        sz = image.shape
-        assert(sz[0] == sz[1])
-        if filt == opt_refband or filt == galex_refband or filt == unwise_refband:
-            if filt == opt_refband:
-                data['width'] = sz[0]
-
-            wcs = Tan(hdr)
-            if 'MJD_MEAN' in hdr:
-                mjd_tai = hdr['MJD_MEAN'] # [TAI]
-                wcs = LegacySurveyWcs(wcs, TAITime(None, mjd=mjd_tai))
-            else:
-                wcs = ConstantFitsWcs(wcs)
-
-            if filt == opt_refband:
-                data['opt_wcs'] = wcs
-            elif filt == galex_refband:
-                data['galex_wcs'] = wcs
-            elif filt == unwise_refband:
-                data['unwise_wcs'] = wcs
-
-        # convert WISE images from Vega nanomaggies to AB nanomaggies
-        # https://www.legacysurvey.org/dr9/description/#photometry
-        if filt in unwise_bands:
-            image *= 10.**(-0.4 * VEGA2AB[filt])
-            invvar /= (10.**(-0.4 * VEGA2AB[filt]))**2.
-            model *= 10.**(-0.4 * VEGA2AB[filt])
-
-        if verbose:
-            log.info(f'Reading {filt2imfile[filt]["psf"]}')
-        psfimg = fitsio.read(filt2imfile[filt]['psf'])
-        psfimg /= psfimg.sum()
-        data[f'{filt}_psf'] = PixelizedPSF(psfimg)
-
-        # Generate a basic per-band mask, including allmask for the
-        # optical bands and wisemask for the unwise bands. In the
-        # optical bands, also mask XX% of the border.
-        mask = invvar <= 0 # True-->bad
-
-        if filt in opt_bands:
-            mask = np.logical_or(mask, data[f'allmask_{filt}'])
-            del data[f'allmask_{filt}']
-
-        # add wisemask for W1/W2, if present, but we have to resize
-        if data['wisemask'] is not None and filt in unwise_bands[:2]:
-            _wisemask = resize(data['wisemask'], mask.shape, mode='edge',
-                               anti_aliasing=False) > 0
-            mask = np.logical_or(mask, _wisemask)
-
-        mask = binary_dilation(mask, iterations=2)
-
-        #if filt in opt_bands:
-        #    edge = int(0.02*sz[0])
-        #    mask[:edge, :] = True
-        #    mask[:, :edge] = True
-        #    mask[:, sz[0]-edge:] = True
-        #    mask[sz[0]-edge:, :] = True
-
-        # Robustly estimate the sky-sigma; we do our own source
-        # detection and segmentation here because the Tractor model
-        # can sometimes be quite poor, e.g., UGC 05688.
-        if filt in opt_bands:
-            threshold = detect_threshold(image, nsigma=3., background=0.)
-            segment_img = detect_sources(image, threshold, npixels=10)
-            if segment_img is not None:
-                msk = segment_img.make_source_mask()
-                msk *= ~mask # exclude "bad" pixels
-            else:
-                msk = ~mask
-            mn, med, skysigma = sigma_clipped_stats(image, sigma=2.5, mask=msk)
-
-            #import matplotlib.pyplot as plt
-            #plt.clf() ; plt.imshow(msk, origin='lower') ; plt.savefig('ioannis/tmp/junk2.png') ; plt.close()
-            #plt.clf() ; plt.imshow(np.log10(image-model),origin='lower') ; plt.savefig('ioannis/tmp/junk2.png') ; plt.close()
-
-            #from scipy.ndimage.filters import gaussian_filter
-            #resid = gaussian_filter(image - model, 2.)
-            #_, _, sig = sigma_clipped_stats(resid[~mask], sigma=2.5)
-            #_, _, skysigma = sigma_clipped_stats(image - model, sigma=1.5)
-            data[f'{filt}_skysigma'] = skysigma
-
-        # set invvar of masked pixels to zero.
-        log.debug('Setting invvar of masked pixels to zero.')
-        invvar[mask] = 0.
-
-        data[filt] = image # [nanomaggies]
-        data[f'{filt}_invvar'] = invvar # [1/nanomaggies**2]
-        data[f'{filt}_mask'] = mask
-
-    if 'wisemask' in data:
-        del data['wisemask']
-
-    return data
-
-
 def unpack_maskbits(maskbits, bands=['g', 'r', 'i', 'z'],
                     BITS=OPTMASKBITS, allmasks=False):
     """Unpack the maskbits bitmask, which has shape [nobj, width,
@@ -897,7 +756,7 @@ def _update_masks(brightstarmask, gaiamask, refmask, galmask, mask_perband,
         return masks
 
 
-def qa_multiband_mask(data, geo_initial, geo_final):
+def qa_multiband_mask(data, sample):
     """Diagnostic QA for the output of build_multiband_mask.
 
     """
@@ -907,7 +766,9 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     from matplotlib.patches import Patch
 
     from SGA.util import var2ivar
+    from SGA.sky import map_bxby
     from SGA.qa import overplot_ellipse, get_norm
+
 
     qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
                           f'qa-ellipsemask-{data["galaxy"]}.png')
@@ -918,6 +779,8 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     purple = (0.8, 0.6, 0.7, alpha)   # soft violet
     magenta = (0.85, 0.2, 0.5, alpha) # vibrant rose
 
+    nsample = len(sample)
+
     opt_bands = data['opt_bands']
     opt_images = data['opt_images']
     opt_maskbits = data['opt_maskbits']
@@ -925,8 +788,9 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     opt_invvar = var2ivar(data['opt_sigma'], sigma=True)
     opt_pixscale = data['opt_pixscale']
 
-    sample = data['sample']
-    nsample = len(sample)
+    opt_wcs = data['opt_wcs']
+    unwise_wcs = data['unwise_wcs']
+    galex_wcs = data['galex_wcs']
 
     ncol = 3
     nrow = 1 + nsample
@@ -968,11 +832,15 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     width = data['width']
     sz = (width, width)
 
+    GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'DIAM_INIT', 'BA_INIT', 'PA_INIT']
+    GEOFINALCOLS = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+
     # coadded optical, IR, and UV images and initial geometry
     imgbands = [opt_bands, data['unwise_bands'], data['galex_bands']]
     labels = [''.join(opt_bands), 'unWISE', 'GALEX']
-    for iax, (xx, bands, label, pixscale, refband) in enumerate(zip(
+    for iax, (xx, bands, label, wcs, pixscale, refband) in enumerate(zip(
             ax[0, :], imgbands, labels,
+            [opt_wcs, unwise_wcs, galex_wcs],
             [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
             [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
         wimgs = np.stack([data[filt] for filt in bands])
@@ -992,14 +860,14 @@ def qa_multiband_mask(data, geo_initial, geo_final):
         xx.margins(0)
 
         # initial ellipse geometry
-        pixfactor = data['opt_pixscale'] / pixscale
+        #pixfactor = data['opt_pixscale'] / pixscale
         for iobj, obj in enumerate(sample):
-            (bx, by, diam, ba, pa) = geo_initial[iobj, :]
-            overplot_ellipse(diam*pixfactor*pixscale, ba, pa,
-                             bx*pixfactor, by*pixfactor, pixscale=pixscale,
-                             ax=xx, color=colors1[iobj], linestyle='-',
-                             linewidth=2, draw_majorminor_axes=True,
-                             jpeg=False, label=obj[REFIDCOLUMN])
+            [bx, by, diam, ba, pa] = list(obj[GEOINITCOLS].values())
+            bx, by = map_bxby(bx, by, from_wcs=opt_wcs, to_wcs=wcs)
+            overplot_ellipse(diam, ba, pa, bx, by, pixscale=pixscale, ax=xx,
+                             color=colors1[iobj], linestyle='-', linewidth=2,
+                             draw_majorminor_axes=True, jpeg=False,
+                             label=obj[REFIDCOLUMN])
 
         xx.text(0.03, 0.97, label, transform=xx.transAxes,
                 ha='left', va='top', color='white',
@@ -1054,19 +922,18 @@ def qa_multiband_mask(data, geo_initial, geo_final):
 
         for col in range(3):
             # initial geometry
-            [bx, by, diam, ba, pa] = geo_initial[iobj, :]
-            overplot_ellipse(diam*opt_pixscale, ba, pa, bx, by,
-                             pixscale=opt_pixscale, ax=ax[1+iobj, col],
-                             color=colors2[0], linestyle='-',
+            [bx, by, diam, ba, pa] = list(obj[GEOINITCOLS].values())
+            overplot_ellipse(diam, ba, pa, bx, by, pixscale=opt_pixscale,
+                             ax=ax[1+iobj, col], color=colors2[0], linestyle='-',
                              linewidth=2, draw_majorminor_axes=True,
                              jpeg=False, label='Initial')
 
             # final geometry
-            [bx, by, diam, ba, pa] = geo_final[iobj, :]
-            overplot_ellipse(diam*opt_pixscale, ba, pa, bx, by,
-                             pixscale=opt_pixscale, ax=ax[1+iobj, col],
-                             color=colors2[1], linestyle='--', linewidth=2,
-                             draw_majorminor_axes=True, jpeg=False, label='Final')
+            [bx, by, diam, ba, pa] = list(obj[GEOFINALCOLS].values())
+            overplot_ellipse(diam, ba, pa, bx, by, pixscale=opt_pixscale,
+                             ax=ax[1+iobj, col], color=colors2[1], linestyle='--',
+                             linewidth=2, draw_majorminor_axes=True,
+                             jpeg=False, label='Final')
             ax[1+iobj, col].set_xlim(0, width-1)
             ax[1+iobj, col].set_ylim(0, width-1)
             ax[1+iobj, col].margins(0)
@@ -1101,8 +968,8 @@ def qa_multiband_mask(data, geo_initial, geo_final):
     log.info(f'Wrote {qafile}')
 
 
-def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
-                         maxshift_arcsec=MAXSHIFT_ARCSEC):
+def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
+                         qaplot=False, maxshift_arcsec=MAXSHIFT_ARCSEC):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
@@ -1138,6 +1005,9 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         of the object of interest.
 
         """
+        from SGA.geometry import EllipseProperties
+        #from photutils.morphology import gini
+
         W = img.shape[1]
 
         x1 = int(bx-factor*diam)
@@ -1160,16 +1030,13 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         else:
             cutout_mask = np.ones(cutout.shape, bool)
 
-        debug = False # True
-        #from photutils.morphology import gini
-        from SGA.geometry import EllipseProperties
-
         P = EllipseProperties()
-        perc = 0.95
+        perc = 0.975
         method = 'percentile'
         #method = 'rms'
         P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, smooth_sigma=0.)
 
+        debug = False # True
         if debug:
             import matplotlib.pyplot as plt
             fig, (ax1, ax2) = plt.subplots()
@@ -1177,7 +1044,6 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
             ax2.imshow(cutout_mask, origin='lower')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         P.x0 += x1
         P.y0 += y1
@@ -1204,7 +1070,8 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         elif props is not None:
             bx = props.x0
             by = props.y0
-            diam = 2. * 1.2 * props.a # [pixels]
+            diam = 2. * props.a # semimajor-->major then 1.2 factor [pixels]
+            #diam = 1.2 * 2. * props.a # semimajor-->major then 1.2 factor [pixels]
             ba = props.ba
             pa = props.pa
 
@@ -1247,11 +1114,14 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
         return galsrcs, opt_galmask, opt_models
 
 
+    nsample = len(sample)
+
     all_bands = data['all_bands']
     opt_bands = data['opt_bands']
     opt_refband = data['opt_refband']
     opt_pixscale = data['opt_pixscale']
     opt_wcs = data['opt_wcs']
+    REFIDCOLUMN = data['REFIDCOLUMN']
 
     sz = data[opt_refband].shape
     width = sz[0]
@@ -1260,10 +1130,6 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
                                np.arange(width),
                                indexing='xy')
     ygrid_flip = width - ygrid
-
-    sample = data['sample']
-    samplesrcs = data['samplesrcs']
-    nsample = len(sample)
 
     opt_skysigmas = {}
     for filt in opt_bands:
@@ -1630,43 +1496,37 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
     for icol, col in enumerate(['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
         sample[col] = geo_final[:, icol].astype('f4')
-    #sample['DIAM_MOMENT'] *= opt_pixscale # [pixels-->arcsec]
+    sample['DIAM_MOMENT'] *= opt_pixscale # [pixels-->arcsec]
 
     sample['RA_MOMENT'] = ra
     sample['DEC_MOMENT'] = dec
     for filt in all_bands:
         sample[f'MW_TRANSMISSION_{filt.upper()}'] = mwdust_transmission(
-            sample['EBV'], band=filt, run=run)
-
-    data['sample'] = sample # updated
+            sample['EBV'], band=filt, run=data['run'])
 
     # optionally build a QA figure
     if qaplot:
-        qa_multiband_mask(data, geo_initial, geo_final)
+        #print('HACK!!')
+        #sample['BY_INIT'] += 30.
+        qa_multiband_mask(data, sample)
 
     # clean-up
-    del data['samplesrcs']
     del data['brightstarmask']
-
-    for prefix in ['opt', 'unwise', 'galex']:
-        del data[f'{prefix}_wcs']
-
     for filt in all_bands:
         del data[filt]
         for col in ['psf', 'invvar', 'mask']:
             del data[f'{filt}_{col}']
-
     for filt in opt_bands:
         for col in ['skysigma']:
             del data[f'{filt}_{col}']
 
-    return data
+    return data, sample
 
 
 def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                    sort_by_flux=True, run='south', pixscale=0.262,
                    galex_pixscale=1.5, unwise_pixscale=2.75,
-                   galex=True, unwise=True, verbose=False):
+                   galex=True, unwise=True, verbose=False, qaplot=False):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
 
@@ -1676,6 +1536,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     from astrometry.util.fits import fits_table
     from astrometry.util.util import Tan
     from legacypipe.bits import MASKBITS
+
+    from SGA.io import _read_image_data
     from SGA.ellipse import ELLIPSEBIT
 
     # Dictionary mapping between optical filter and filename coded up in
@@ -1825,7 +1687,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     sample['DEC_MOMENT'] = np.zeros(len(sample), 'f8')
     sample['BX_MOMENT'] = np.zeros(len(sample), 'f4')
     sample['BY_MOMENT'] = np.zeros(len(sample), 'f4')
-    sample['DIAM_MOMENT'] = np.zeros(len(sample), 'f4')
+    sample['DIAM_MOMENT'] = np.zeros(len(sample), 'f4') # arcsec
     sample['BA_MOMENT'] = np.zeros(len(sample), 'f4')
     sample['PA_MOMENT'] = np.zeros(len(sample), 'f4')
 
@@ -1863,8 +1725,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                  f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
     sample.remove_column('FLUX')
 
-    data['sample'] = sample
-    data['samplesrcs'] = samplesrcs
+    #data['sample'] = sample
+    #data['samplesrcs'] = samplesrcs
 
     # add the PSF depth and size
     _get_psfsize_and_depth(sample, tractor, bands,
@@ -1895,11 +1757,11 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     data['wisemask'] = wisemask
 
     # Read the basic imaging data and masks and build the multiband
-    # mask.
-    data = read_image_data(data, filt2imfile, verbose=verbose)
-    data = build_multiband_mask(data, tractor, run=run, qaplot=True)
+    # masks.
+    data = _read_image_data(data, filt2imfile, verbose=verbose)
+    data, sample = build_multiband_mask(data, tractor, sample, samplesrcs, qaplot=qaplot)
 
-    return data, 1
+    return data, sample, 1
 
 
 def get_radius_mosaic(diam, mindiam=0.5, pixscale=0.262, get_barlen=False):

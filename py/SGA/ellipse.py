@@ -585,9 +585,9 @@ def get_dt(t0):
 
 
 def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'],
-             allbands=None, pixscale=0.262, pixfactor=1., mp=1, integrmode='median',
-             nclip=3, sclip=3, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-             debug=False):
+             opt_wcs=None, wcs=None, opt_pixscale=0.262, pixscale=0.262, mp=1,
+             allbands=None, integrmode='median', nclip=3, sclip=3,
+             sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, debug=False):
     """Multi-band ellipse-fitting, broadly based on--
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
 
@@ -595,6 +595,11 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     https://photutils.readthedocs.io/en/latest/user_guide/isophote.html
 
     """
+    import multiprocessing
+    from photutils.isophote import EllipseGeometry, IsophoteList
+    from SGA.sky import map_bxby
+
+
     def sbprofiles_datamodel(sma, bands):
         import astropy.units as u
         from astropy.table import Table, Column
@@ -632,8 +637,6 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
                                           unit=u.arcsec, data=np.zeros(1, 'f4')))
         return results
 
-    import multiprocessing
-    from photutils.isophote import EllipseGeometry, IsophoteList
 
     # Initialize the output table
     if allbands is None:
@@ -642,16 +645,17 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     results = results_datamodel(obj, allbands)
     sbprofiles = sbprofiles_datamodel(sma_array*pixscale, allbands)
 
-    # Initialize the object geometry. NB: (x,y) are switched in
-    # photutils and PA is measured CCW from the x-axis while PA is CCW
-    # from the y-axis!
-    cols = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
-    [bx, by, diam, ba, pa] = list(obj[cols].values())
-    semia = diam / 2. # [optical pixels]
+    ## Initialize the object geometry. NB: (x,y) are switched in
+    ## photutils and PA is measured CCW from the x-axis while PA is CCW
+    ## from the y-axis!
+    #cols = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+    #[opt_bx, opt_by, opt_diam_arcsec, ba, pa] = list(obj[cols].values())
 
-    geo = EllipseGeometry(x0=by, y0=bx, eps=1.-ba, sma=semia,
-                          pa=np.radians(pa-90.))
-    nbands, width, _ = images.shape
+    opt_bx = obj['BX_MOMENT']
+    opt_by = obj['BY_MOMENT']
+    ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
+    ellipse_eps = 1 - obj['BA_MOMENT']
+    #opt_semia_pix = obj['DIAM_MOMENT'] / 2. / opt_pixscale # [optical pixels]
 
     #if debug:
     #    import matplotlib.pyplot as plt
@@ -665,7 +669,10 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     #    plt.savefig('ioannis/tmp/junk.png')
     #    plt.close()
 
+    nbands, width, _ = images.shape
+
     # Measure the surface-brightness profile in each bandpass.
+    debug = True
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
@@ -674,18 +681,14 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     for iband, filt in enumerate(bands):
         t0 = time()
 
-        # account for a possible variable pixel scale
-        filtx0 = geo.x0 * pixfactor
-        filty0 = geo.y0 * pixfactor
-        filtsma = sma_array * pixfactor
-        #print(filt, filtsma)
+        bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
 
         sig = sigimages[iband, :, :]
         msk = masks[iband, :, :] # True=masked
         mimg = np.ma.array(images[iband, :, :], mask=msk) # ignore masked pixels
 
-        mpargs = [(mimg, sig, msk, onesma, geo.pa, geo.eps, filtx0, filty0,
-                   integrmode, sclip, nclip) for onesma in filtsma]
+        mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
+                   by, integrmode, sclip, nclip) for onesma in sma_array]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 out = P.map(_integrate_isophot_one, mpargs)
@@ -740,21 +743,21 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     return results, sbprofiles
 
 
-def thin_to_band_from_optical(
-    a_edges_opt_px,          # optical edges (pixels)
-    s_opt_arcsec=0.262,      # optical pixel scale
-    s_tgt_arcsec=1.5,        # target band pixel scale (e.g., 1.5 UV, 2.75 IR)
-    q_ax=1.0,                # axis ratio b/a for area calc
-    min_step_pixels=1.0,     # min annulus width in *target* pixels
-    min_pixels_per_annulus=150,  # min target-band pixels per annulus
-    a_min_tgt_px=None,       # optional start radius in target pixels (e.g., 0.5*PSF FWHM)
-    a_max_tgt_px=None):      # optional stop radius in target pixels
+def build_sma_band(
+    opt_sma_array,       # optical edges (pixels)
+    opt_pixscale=0.262,  # optical pixel scale
+    pixscale=1.5,        # target band pixel scale (e.g., 1.5 UV, 2.75 IR)
+    ba=1.0,              # axis ratio b/a for area calc
+    min_step_pixels=1.0, # min annulus width in *target* pixels
+    min_pixels_per_annulus=150, # min target-band pixels per annulus
+    a_min_tgt_px=None,   # optional start radius in target pixels (e.g., 0.5*PSF FWHM)
+    a_max_tgt_px=None):  # optional stop radius in target pixels
 
     # 1) put optical edges in arcsec (common currency)
-    a_edges_arcsec = np.asarray(a_edges_opt_px, float) * s_opt_arcsec
+    a_edges_arcsec = np.asarray(opt_sma_array, float) * opt_pixscale
 
     # 2) candidate list for the target band (convert to target pixels)
-    a_edges_tgt_px_cand = a_edges_arcsec / s_tgt_arcsec
+    a_edges_tgt_px_cand = a_edges_arcsec / pixscale
 
     # optional clamp of start/stop
     if a_min_tgt_px is not None:
@@ -772,7 +775,7 @@ def thin_to_band_from_optical(
         # width constraint
         ok_width = (a_out - a_in) >= min_step_pixels
         # area constraint: ΔA = π q (a_out^2 - a_in^2)
-        deltaA = np.pi * max(q_ax, 1e-6) * (a_out*a_out - a_in*a_in)
+        deltaA = np.pi * max(ba, 1e-6) * (a_out*a_out - a_in*a_in)
         ok_area = deltaA >= min_pixels_per_annulus
         if ok_width and ok_area:
             out.append(a_out)
@@ -781,16 +784,16 @@ def thin_to_band_from_optical(
     if out[-1] < a_edges_tgt_px_cand[-1]:
         # add last edge if it satisfies width OR area (relax to include outer overlap)
         a_in, a_out_last = out[-1], a_edges_tgt_px_cand[-1]
-        npix_annulus = np.pi * max(q_ax, 1e-6) * (a_out_last*a_out_last - a_in*a_in)
+        npix_annulus = np.pi * max(ba, 1e-6) * (a_out_last*a_out_last - a_in*a_in)
         if (a_out_last - a_in) >= min_step_pixels or (npix_annulus >= min_pixels_per_annulus):
             out.append(a_out_last)
 
     return np.asarray(out)
 
 
-def build_sma_grid(s95_pix, q_ax=1.0, amax_factor=2.0, amax_pix=None,
-                   psf_fwhm_pix=None, inner_step_pix=1.0, frac_step=0.15,
-                   min_pixels_per_annulus=150, transition_mult=1.5):
+def build_sma_opt(s95_pix, ba=1.0, amax_factor=2.0, amax_pix=None,
+                  psf_fwhm_pix=None, inner_step_pix=1.0, frac_step=0.15,
+                  min_pixels_per_annulus=150, transition_mult=1.5):
     """
     Build a semi-major-axis array for elliptical isophotes.
 
@@ -838,7 +841,7 @@ def build_sma_grid(s95_pix, q_ax=1.0, amax_factor=2.0, amax_pix=None,
         # enforce minimum pixels in annulus: ΔA = π q (a_out^2 - a_in^2)
         area_limited = False
         if min_pixels_per_annulus and min_pixels_per_annulus > 0:
-            need = min_pixels_per_annulus / (np.pi * max(q_ax, 1e-6))
+            need = min_pixels_per_annulus / (np.pi * max(ba, 1e-6))
             a_needed = np.sqrt(a*a + need)
             if a_next < a_needed:
                 a_next = a_needed
@@ -879,7 +882,7 @@ def qa_sma_grid():
     import matplotlib.pyplot as plt
 
     a_edges, info = build_sma_grid(
-        s95_pix=80.0, q_ax=0.6, psf_fwhm_pix=3.0,
+        s95_pix=80.0, ba=0.6, psf_fwhm_pix=3.0,
         inner_step_pix=1.0, frac_step=0.15,
         min_pixels_per_annulus=200, amax_factor=2.5
     )
@@ -905,15 +908,18 @@ def qa_sma_grid():
 
 
 
-def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
+def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, MASKBITS,
                   REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'], title=None):
     """Simple QA.
 
     """
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
+    from matplotlib.cm import get_cmap
     from photutils.isophote import EllipseGeometry
     from photutils.aperture import EllipticalAperture
+
+    from SGA.sky import map_bxby
     from SGA.qa import overplot_ellipse, get_norm
 
 
@@ -924,11 +930,12 @@ def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
         ax.spines['left'].set_visible(False)  # optional
 
 
-    sample = data['sample']
     nsample = len(sample)
     ndataset = len(datasets)
 
-    optbands = ''.join(data['opt_bands']) # not general
+    opt_wcs = data['opt_wcs']
+    opt_pixscale = data['opt_pixscale']
+    opt_bands = ''.join(data['opt_bands']) # not general
 
     ncol = 2
     nrow = ndataset
@@ -937,7 +944,8 @@ def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
     cmap = plt.cm.cividis
     cmap.set_bad('white')
 
-    cols = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+    cmap2 = get_cmap('Dark2')
+    colors2 = [cmap2(i) for i in range(5)]
 
     for iobj, obj in enumerate(sample):
 
@@ -951,7 +959,7 @@ def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
                                gridspec_kw={'width_ratios': [1., 2.]})
 
         # one row per dataset
-        for idata, (dataset, label) in enumerate(zip(datasets, [optbands, 'unWISE', 'GALEX'])):
+        for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
             #if idata > 1:
             #    continue
 
@@ -964,13 +972,17 @@ def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
             refband = data[f'{dataset}_refband']
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
-            pixfactor = data['opt_pixscale'] / pixscale
+            wcs = data[f'{dataset}_wcs']
 
-            [bx, by, diam, ba, pa] = list(obj[cols].values())
-            semia = diam / 2. # [optical pixels]
+            opt_bx = obj['BX_MOMENT']
+            opt_by = obj['BY_MOMENT']
+            ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
+            ellipse_eps = 1 - obj['BA_MOMENT']
+            semia = obj['DIAM_MOMENT'] / 2. # [arcsec]
 
-            refg = EllipseGeometry(x0=by*pixfactor, y0=bx*pixfactor, eps=1.-ba, # note bx,by swapped
-                                   pa=np.radians(pa-90.), sma=pixfactor*semia) # sma in pixels
+            bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
+            refg = EllipseGeometry(x0=by, y0=bx, eps=ellipse_eps, # note bx,by swapped
+                                   pa=ellipse_pa, sma=semia/pixscale) # sma in pixels
             refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
                                        refg.sma*(1. - refg.eps), refg.pa)
 
@@ -1004,12 +1016,12 @@ def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
                 ap = EllipticalAperture((refg.x0, refg.y0), sma,
                                         sma*(1. - refg.eps), refg.pa)
                 ap.plot(color='k', lw=1, ax=xx)
-            refap.plot(color='red', lw=2, ls='--', ax=xx)
+            refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
 
             # SB profiles
             xx = ax[idata, 1]
             for filt in bands:
-                xx.fill_between(sbprofiles_obj['sma']**1,#0.25,
+                xx.fill_between(sbprofiles_obj['sma']**0.25,
                                 sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
                                 sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
                                 label=filt, alpha=0.6)
@@ -1044,7 +1056,7 @@ def qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function, MASKBITS,
             if idata == 1:
                 xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
 
-            xx.axvline(x=(pixfactor*pixscale*semia), color='red', lw=2, ls='--')#,
+            xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')#,
                        #label='Second-Moment Diameter')
             xx.legend(loc='upper right', fontsize=8)
 
@@ -1140,15 +1152,19 @@ def ellipsefit_datamodel(sma, bands, dataset='opt'):
     return out
 
 
-def wrap_multifit(sample, datasets, data, unpack_maskbits_function,
-                  sbthresh, apertures, REFIDCOLUMN, MASKBITS, mp=1,
-                  debug=False):
+def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
+                  sbthresh, apertures, SGAMASKBITS, mp=1, debug=False):
     """Simple wrapper on multifit.
 
     Iterate on objects then datasets (even though some work is
     duplicated).
 
     """
+    REFIDCOLUMN = data['REFIDCOLUMN']
+
+    opt_wcs = data['opt_wcs']
+    opt_pixscale = data['opt_pixscale']
+
     results_obj = []
     sbprofiles_obj = []
     for iobj, obj in enumerate(sample):
@@ -1157,45 +1173,43 @@ def wrap_multifit(sample, datasets, data, unpack_maskbits_function,
         results_dataset = []
         sbprofiles_dataset = []
         for idata, dataset in enumerate(datasets):
-            images = data[f'{dataset}_images'][iobj, :, :, :]
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
-            pixfactor = data['opt_pixscale'] / pixscale
+            wcs = data[f'{dataset}_wcs']
+            images = data[f'{dataset}_images'][iobj, :, :, :]
             sigimages = data[f'{dataset}_sigma']
 
             # unpack the maskbits image to generate a per-band mask
             masks = unpack_maskbits_function(data[f'{dataset}_maskbits'],
-                                             bands=bands, BITS=MASKBITS[idata])
+                                             bands=bands, BITS=SGAMASKBITS[idata])
             masks = masks[iobj, :, :, :]
 
             # build the sma vector
             if dataset == 'opt':
                 ba = obj['BA_MOMENT']
-                semia = obj['DIAM_MOMENT'] / 2.  # [pixels]
-                psf_fwhm_pix = 1.1 / pixscale    # [pixels]
+                semia = obj['DIAM_MOMENT'] / 2. / pixscale # [pixels]
+                psf_fwhm_pix = 1.1 / pixscale              # [pixels]
                 allbands = data['all_opt_bands'] # always griz in north & south
 
-                sma_array_opt, info = build_sma_grid(
-                    s95_pix=semia, q_ax=ba, psf_fwhm_pix=psf_fwhm_pix,
+                opt_sma_array, info = build_sma_opt(
+                    s95_pix=semia, ba=ba, psf_fwhm_pix=psf_fwhm_pix,
                     inner_step_pix=1., min_pixels_per_annulus=25,
                     frac_step=0.15, amax_factor=3.)
-                sma_array = np.copy(sma_array_opt)
+                sma_array = np.copy(opt_sma_array)
             else:
                 allbands = bands
-
-                sma_array = thin_to_band_from_optical(
-                    sma_array_opt, s_opt_arcsec=data['opt_pixscale'],
-                    s_tgt_arcsec=pixscale, q_ax=ba,
-                    min_step_pixels=1.0,            # at least 1 UV/IR pixel wide
-                    min_pixels_per_annulus=5,       # ~constant S/N per annulus
-                    a_min_tgt_px=1.,                # e.g., start ≥ 1 pixel
-                    a_max_tgt_px=max(sma_array_opt)*pixfactor)
+                sma_array = build_sma_band(
+                    opt_sma_array, opt_pixscale=opt_pixscale,
+                    pixscale=pixscale, ba=ba,
+                    min_pixels_per_annulus=5) # ~constant S/N per annulus
 
             #print(sma_array)
             results_dataset1, sbprofiles_dataset1 = multifit(
                 obj, images, sigimages, masks, sma_array, bands,
-                pixscale=pixscale, pixfactor=pixfactor, mp=mp,
-                sbthresh=sbthresh, apertures=apertures, debug=debug)
+                opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
+                pixscale=pixscale, mp=mp, sbthresh=sbthresh,
+                apertures=apertures, debug=debug)
+
             results_dataset.append(results_dataset1)
             sbprofiles_dataset.append(sbprofiles_dataset1)
 
@@ -1234,29 +1248,26 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     #    unwise_pixscale=unwise_pixscale, unwise=unwise,
     #    galex=galex, verbose=verbose)
 
-    data, err = read_multiband_function(
+    data, sample, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, verbose=verbose)
-
+        galex=galex, verbose=verbose, qaplot=qaplot)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
 
-    sample = data['sample']
-    #sample = data['sample'][[0]] # test
-
     # ellipse-fit over objects and then datasets
     results, sbprofiles = wrap_multifit(
-        sample, datasets, data, unpack_maskbits_function,
-        sbthresh, apertures, REFIDCOLUMN, SGAMASKBITS, mp=mp,
+        data, sample, datasets, unpack_maskbits_function,
+        sbthresh, apertures, SGAMASKBITS, mp=mp,
         debug=False)
 
     if qaplot:
-        qa_ellipsefit(data, results, sbprofiles, unpack_maskbits_function,
+        qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                       SGAMASKBITS, REFIDCOLUMN, datasets=datasets)
 
+    pdb.set_trace()
     if not nowrite:
         from SGA.io import write_ellipsefit
         err = write_ellipsefit(data, datasets, results, sbprofiles, verbose=verbose)

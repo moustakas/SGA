@@ -16,6 +16,16 @@ from SGA.coadds import PIXSCALE
 from SGA.logger import log
 
 
+def map_bxby(bx, by, from_wcs, to_wcs):
+    """Map, (bx, by) coordinates from one WCS to another (e.g.,
+    optical-->GALEX).
+
+    """
+    ra, dec = from_wcs.wcs.pixelxy2radec(bx+1., by+1)
+    (_, to_bx, to_by) = to_wcs.wcs.radec2pixelxy(ra, dec)
+    return to_bx-1., to_by-1.
+
+
 def simple_wcs(racenter, deccenter, width, pixscale=0.262):
     from astropy.wcs import WCS
     from astropy.io import fits
