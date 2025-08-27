@@ -67,16 +67,22 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
-def _sbprofile_colors():
-    """Return an iterator of colors good for the surface brightness profile plots.
-    https://seaborn.pydata.org/generated/seaborn.color_palette.html#seaborn.color_palette
+def sbprofile_colors():
+    """Return per-band surface brightness profile colors.
 
     """
-    _colors = sns.color_palette('Set1', n_colors=11, desat=0.75)
-    colors = iter([ _colors[1], _colors[2], _colors[0], _colors[3], _colors[4],
-                    _colors[5], _colors[6], _colors[7], _colors[8],
-                    _colors[9], _colors[10]])
-    return colors
+    import seaborn as sns
+
+    optcolors = sns.color_palette('Set1', n_colors=14, desat=0.75)
+    morecolors = sns.color_palette('Set2', n_colors=8, desat=0.75)
+
+    sbcolors = {
+        'g': optcolors[1], 'r': optcolors[2], 'i': optcolors[4], 'z': optcolors[0],
+        'FUV': morecolors[0], 'NUV': morecolors[1],
+        'W1': morecolors[2], 'W2': morecolors[3], 'W3': morecolors[6], 'W4': morecolors[7],
+    }
+
+    return sbcolors
 
 
 def get_norm(img, a=0.9, contrast=0.25, percentile=95.,

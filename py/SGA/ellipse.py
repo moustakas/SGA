@@ -909,7 +909,7 @@ def qa_sma_grid():
 
 
 def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, MASKBITS,
-                  REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'], title=None):
+                  REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'], linear=False):
     """Simple QA.
 
     """
@@ -920,7 +920,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
     from photutils.aperture import EllipticalAperture
 
     from SGA.sky import map_bxby
-    from SGA.qa import overplot_ellipse, get_norm
+    from SGA.qa import overplot_ellipse, get_norm, sbprofile_colors
 
 
     def kill_left_y(ax):
@@ -937,12 +937,14 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
     opt_pixscale = data['opt_pixscale']
     opt_bands = ''.join(data['opt_bands']) # not general
 
-    ncol = 2
+    ncol = 2 # 3
     nrow = ndataset
     inches_per_panel = 3.
 
     cmap = plt.cm.cividis
     cmap.set_bad('white')
+
+    sbcolors = sbprofile_colors()
 
     cmap2 = get_cmap('Dark2')
     colors2 = [cmap2(i) for i in range(5)]
@@ -955,13 +957,15 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
         fig, ax = plt.subplots(nrow, ncol,
                                figsize=(inches_per_panel * (1+ncol),
                                         inches_per_panel * nrow),
-                               #gridspec_kw={'wspace': 0.01, 'hspace': 0.01},
-                               gridspec_kw={'width_ratios': [1., 2.]})
+                               gridspec_kw={
+                                   'height_ratios': [1., 1., 1.],
+                                   'width_ratios': [1., 2.],
+                                   #'width_ratios': [1., 2., 2.],
+                                   #'wspace': 0
+                               })
 
         # one row per dataset
         for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
-            #if idata > 1:
-            #    continue
 
             results_obj = results[idata][iobj]
             sbprofiles_obj = sbprofiles[idata][iobj]
@@ -994,7 +998,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
             wimg = np.sum(images * np.logical_not(masks), axis=0)
             wimg[wimg == 0.] = np.nan
 
-            # images
+            # col 0 - images
             xx = ax[idata, 0]
             #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
             xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
@@ -1018,46 +1022,110 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
                 ap.plot(color='k', lw=1, ax=xx)
             refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
 
-            # SB profiles
+            ## col 1 - linear SB profiles
+            #xx = ax[idata, 1]
+            #for filt in bands:
+            #    xx.fill_between(sbprofiles_obj['sma']**0.25,
+            #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
+            #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
+            #                    label=filt, alpha=0.6)
+            #xx.set_xlim(ax[0, 1].get_xlim())
+            #if idata == ndataset-1:
+            #    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+            #else:
+            #    xx.set_xticks([])
+            #
+            #xx.relim()
+            #xx.autoscale_view()
+            #
+            #xx_twin = xx.twinx()
+            #xx_twin.set_ylim(xx.get_ylim())
+            #kill_left_y(xx)
+            #
+            #if idata == 1:
+            #    xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
+            #
+            #xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+
+            # col 1 - mag SB profiles
+            if linear:
+                yminmax = [1e8, -1e8]
+            else:
+                yminmax = [40, 0]
+
             xx = ax[idata, 1]
             for filt in bands:
-                xx.fill_between(sbprofiles_obj['sma']**0.25,
-                                sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
-                                sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
-                                label=filt, alpha=0.6)
+                I = (sbprofiles_obj[f'sb_{filt}'].value > 0.) * (sbprofiles_obj[f'sb_err_{filt}'].value > 0.)
+                if np.any(I):
+                    mu = 22.5 - 2.5 * np.log10(sbprofiles_obj[f'sb_{filt}'][I].value)
+                    muerr = 2.5 * sbprofiles_obj[f'sb_err_{filt}'][I].value / sbprofiles_obj[f'sb_{filt}'][I].value / np.log(10.)
+
+                    col = sbcolors[filt]
+                    xx.plot(sbprofiles_obj['sma'][I].value**0.25, mu-muerr, color=col, alpha=0.8)
+                    xx.plot(sbprofiles_obj['sma'][I].value**0.25, mu+muerr, color=col, alpha=0.8)
+                    xx.fill_between(sbprofiles_obj['sma'][I].value**0.25, mu-muerr, mu+muerr,
+                                    label=filt, color=col, alpha=0.7)
+
+                    # robust limits
+                    mulo = (mu - muerr)[mu / muerr > 10.]
+                    muhi = (mu + muerr)[mu / muerr > 10.]
+                    #print(filt, np.min(mulo), np.max(muhi))
+                    if len(mulo) > 0:
+                        mn = np.min(mulo)
+                        if mn < yminmax[0]:
+                            yminmax[0] = mn
+                    if len(muhi) > 0:
+                        mx = np.max(muhi)
+                        if mx > yminmax[1]:
+                            yminmax[1] = mx
+                #print(filt, yminmax[0], yminmax[1])
+
+            xx.margins(x=0)
             xx.set_xlim(ax[0, 1].get_xlim())
+
             if idata == ndataset-1:
                 xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
             else:
                 xx.set_xticks([])
 
-            xx.set_yscale('log')
-            xx.relim()
-            xx.autoscale_view()
+            #xx.relim()
+            #xx.autoscale_view()
+            if linear:
+                ylim = [yminmax[0], yminmax[1]]
+            else:
+                ylim = [yminmax[0]-0.75, yminmax[1]+0.5]
+                if ylim[0] < 13:
+                    ylim[0] = 13
+                if ylim[1] > 34:
+                    ylim[1] = 34
+            #print(idata, yminmax, ylim)
+            xx.set_ylim(ylim)
 
             xx_twin = xx.twinx()
-            xx_twin.set_yscale('log')
-            xx_twin.set_ylim(xx.get_ylim())
-
-            y0, y1 = xx.get_ylim()
-            span_dec = abs(np.log10(y1) - np.log10(y0))
-            if span_dec < 1.:
-                # within ~one decade: 1–2–5 per decade
-                xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
-                xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-                xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
-            else:
-                # multiple decades: decades only
-                xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
-                xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-                xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
+            xx_twin.set_ylim(ylim)
             kill_left_y(xx)
 
-            if idata == 1:
-                xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
+            xx.invert_yaxis()
+            xx_twin.invert_yaxis()
 
-            xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')#,
-                       #label='Second-Moment Diameter')
+            #y0, y1 = xx.get_ylim()
+            #span_dec = abs(np.log10(y1) - np.log10(y0))
+            #if span_dec < 1.:
+            #    # within ~one decade: 1–2–5 per decade
+            #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
+            #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+            #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
+            #else:
+            #    # multiple decades: decades only
+            #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
+            #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+            #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
+
+            if idata == 1:
+                xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
+
+            xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+
             xx.legend(loc='upper right', fontsize=8)
 
 

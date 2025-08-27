@@ -329,10 +329,10 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
 
         if lvd:
             I = sample['SGAFITMODE'] == 0
-            gals = ['AGC749235', 'ESO 006-001', 'HIPASS J1131-31', 'LV J1243+4127', 'N1291-DW8',
-                    'NGC 2903-HI-1', 'dw1343+58', 'KV19-212', 'KV19-329', 'KV19-442', 'SUCD1',
-                    'dw1110+0037', 'dw1119p1419']
-            I = np.isin(sample['OBJNAME'], gals)
+            #gals = ['AGC749235', 'ESO 006-001', 'HIPASS J1131-31', 'LV J1243+4127', 'N1291-DW8',
+            #        'NGC 2903-HI-1', 'dw1343+58', 'KV19-212', 'KV19-329', 'KV19-442', 'SUCD1',
+            #        'dw1110+0037', 'dw1119p1419']
+            #I = np.isin(sample['OBJNAME'], gals)
             suffix = ''
         elif lvd_resolved:
             I = sample['SGAFITMODE'] & SGAFITMODE['RESOLVED'] != 0
@@ -353,9 +353,9 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
     else:
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
-        print('Hack!')
-        I = np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])
-        I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
+        #print('Hack!')
+        #I = np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])
+        #I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
         diamcolumn = DIAMCOLUMN
