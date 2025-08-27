@@ -239,7 +239,7 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
         raise IOError(msg)
 
 
-def write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sbthresh=None,
+def deprecated_write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sbthresh=None,
                      apertures=None, add_datamodel_cols=None, verbose=False):
     """Write out a FITS file based on the output of
     ellipse.ellipsefit_multiband..
@@ -339,3 +339,42 @@ def write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sbthresh=None
 
     #out.write(ellipsefitfile, overwrite=True)
     #fitsio.write(ellipsefitfile, out.as_array(), extname='ELLIPSE', header=hdr, clobber=True)
+
+
+def write_ellipsefit(data, datasets, results, sbprofiles, verbose=False):
+    # add to header:
+    #  --bands
+    #  --pixscale(s)
+    #  --integrmode
+    #  --sclip
+    #  --nclip
+    #  --width,height
+
+    # output data model:
+    #  --use all_bands but do not write to table
+    #  --psfdepth, etc.
+    #  --maxsma
+
+    for idata, dataset in enumerate(datasets):
+        if dataset == 'opt':
+            suffix = ''.join(data['all_opt_bands']) # always griz in north & south
+        else:
+            suffix = dataset
+
+        for iobj, obj in enumerate(sample):
+            ellipsefile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-ellipse-{obj[REFIDCOLUMN]}-{suffix}.fits')
+
+            results_obj = results[idata][iobj]
+            sbprofiles_obj = sbprofiles[idata][iobj]
+            images = data[f'{dataset}_images'][iobj, :, :, :]
+            models = data[f'{dataset}_models'][iobj, :, :, :]
+            maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
+
+            fitsio.write(ellipsefile, images, clobber=True, extname='IMAGES')
+            fitsio.write(ellipsefile, models, extname='MODELS')
+            fitsio.write(ellipsefile, maskbits, extname='MASKBITS')
+            fitsio.write(ellipsefile, results_obj.as_array(), extname='ELLIPSE')
+            fitsio.write(ellipsefile, sbprofiles_obj.as_array(), extname='SBPROFILES')
+            log.info(f'Wrote {ellipsefile}')
+
+    return 1

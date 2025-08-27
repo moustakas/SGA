@@ -67,6 +67,18 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
+def _sbprofile_colors():
+    """Return an iterator of colors good for the surface brightness profile plots.
+    https://seaborn.pydata.org/generated/seaborn.color_palette.html#seaborn.color_palette
+
+    """
+    _colors = sns.color_palette('Set1', n_colors=11, desat=0.75)
+    colors = iter([ _colors[1], _colors[2], _colors[0], _colors[3], _colors[4],
+                    _colors[5], _colors[6], _colors[7], _colors[8],
+                    _colors[9], _colors[10]])
+    return colors
+
+
 def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
              n_samples=1000):
     #from astropy.visualization import simple_norm
@@ -817,6 +829,7 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
     else:
         return ax
 
+
 def plot_healpix_map(data, nest=False, cmap='viridis', colorbar=True,
                      label=None, ax=None, **kwargs):
     """Plot a healpix map using an all-sky projection.
@@ -1220,18 +1233,6 @@ def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
     im.paste(rotated, (paste_shift_x, paste_shift_y), rotated)
 
 
-def _sbprofile_colors():
-    """Return an iterator of colors good for the surface brightness profile plots.
-    https://seaborn.pydata.org/generated/seaborn.color_palette.html#seaborn.color_palette
-
-    """
-    _colors = sns.color_palette('Set1', n_colors=11, desat=0.75)
-    colors = iter([ _colors[1], _colors[2], _colors[0], _colors[3], _colors[4],
-                    _colors[5], _colors[6], _colors[7], _colors[8],
-                    _colors[9], _colors[10]])
-    return colors
-
-
 def qa_binned_radec(cat, nside=64, png=None):
     import warnings
     import healpy as hp
@@ -1251,7 +1252,7 @@ def qa_binned_radec(cat, nside=64, png=None):
 
         warnings.simplefilter('ignore')
         basemap = init_sky(galactic_plane_color='k', ax=ax);
-        plot_sky_binned(ra, dec, weights=weight, 
+        plot_sky_binned(ra, dec, weights=weight,
                         max_bin_area=hp.nside2pixarea(nside, degrees=True),
                         verbose=False, clip_lo='!1', cmap='viridis',
                         plot_type='healpix', basemap=basemap,
@@ -1324,16 +1325,16 @@ def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
     from copy import deepcopy
     import matplotlib.ticker as ticker
     from astropy.table import Table
-    
+
     if ellipsefit['success'] is False or np.atleast_1d(ellipsefit['sma_r'])[0] == -1:
         return
-    
+
     bands, refband = ellipsefit['bands'], ellipsefit['refband']
 
     galex = 'FUV' in bands
     unwise = 'W1' in bands
     colors = _sbprofile_colors(galex=galex, unwise=unwise)
-        
+
     if 'redshift' in ellipsefit.keys():
         redshift = ellipsefit['redshift']
         smascale = SGA.misc.arcsec2kpc(redshift, cosmo=cosmo) # [kpc/arcsec]
@@ -1422,7 +1423,7 @@ def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
                         marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
                         markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
                         label=label, linestyle='none', alpha=alpha)
-    
+
     # make the plot
     fig, ax = plt.subplots(figsize=(9, 7))
 
@@ -1462,7 +1463,7 @@ def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
     #                marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
     #                markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
     #                label=label, linestyle='none')
-    
+
     #good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == True))[0]
     ##ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=0.5, #thisphot['abmagerr'][good],
     ##            marker='o', uplims=thisphot['lower'][good], linestyle='none')
@@ -1471,9 +1472,9 @@ def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
     #                marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
     #                markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
     #                uplims=thisphot['lower'][good], linestyle='none')#, lolims=True)
-                    
-    ax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
-    ax.set_ylabel(r'Apparent Brightness (AB mag)') 
+
+    ax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+    ax.set_ylabel(r'Apparent Brightness (AB mag)')
     ax.set_xlim(wavemin, wavemax)
     ax.set_xscale('log')
     ax.legend(loc='lower right')
@@ -1647,7 +1648,7 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
         xlim = [xminmax[0], xminmax[1]*1.01]
         #ax1.set_xlim(xmin=0)
         #ax1.margins(xmargin=0)
-        
+
         #ax1.set_ylabel(r'$\mu$ (mag arcsec$^{-2}$)')
         #ax1.set_ylim(31.99, 18)
 
@@ -1736,7 +1737,7 @@ def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
         #ax1.set_ylim(0, 0.5)
         ax1.xaxis.set_major_formatter(ScalarFormatter())
 
-        ax2.fill_between(ellipsefit[refband].sma[good] * pixscale, 
+        ax2.fill_between(ellipsefit[refband].sma[good] * pixscale,
                          np.degrees(ellipsefit[refband].pa[good]-ellipsefit[refband].pa_err[good]),
                          np.degrees(ellipsefit[refband].pa[good]+ellipsefit[refband].pa_err[good]))#,
                          #edgecolor='k', lw=2)
@@ -1979,64 +1980,3 @@ def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=No
         plt.close(fig)
     else:
         plt.show()
-
-
-def display_ccdpos(onegal, ccds, radius=None, pixscale=0.262,
-                   png=None, verbose=False):
-    """Visualize the position of all the CCDs contributing to the image stack of a
-    single galaxy.
-
-    """
-    if radius is None:
-        radius = 100 # [pixels]
-
-    wcs = SGA.misc.simple_wcs(onegal, radius=radius, pixscale=pixscale)
-    width, height = wcs.get_width() * pixscale / 3600, wcs.get_height() * pixscale / 3600 # [degrees]
-    bb, bbcc = wcs.radec_bounds(), wcs.radec_center() # [degrees]
-    pad = 0.2 # [degrees]
-
-    fig, allax = plt.subplots(1, 3, figsize=(12, 5), sharey=True, sharex=True)
-
-    for ax, band in zip(allax, ('g', 'r', 'z')):
-        ax.set_aspect('equal')
-        ax.set_xlim(bb[0]+width+pad, bb[0]-pad)
-        ax.set_ylim(bb[2]-pad, bb[2]+height+pad)
-        ax.set_xlabel('RA (deg)')
-        ax.text(0.9, 0.05, band, ha='center', va='bottom',
-                transform=ax.transAxes, fontsize=18)
-
-        if band == 'g':
-            ax.set_ylabel('Dec (deg)')
-        ax.get_xaxis().get_major_formatter().set_useOffset(False)
-        #ax.add_patch(patches.Rectangle((bb[0], bb[2]), bb[1]-bb[0], bb[3]-bb[2],
-        #                               fill=False, edgecolor='black', lw=3, ls='--'))
-        ax.add_patch(patches.Circle((bbcc[0], bbcc[1]), radius * pixscale / 3600,
-                                    fill=False, edgecolor='black', lw=2))
-        ax.add_patch(patches.Circle((bbcc[0], bbcc[1]), 2*radius * pixscale / 3600, # inner sky annulus
-                                    fill=False, edgecolor='black', lw=1))
-        ax.add_patch(patches.Circle((bbcc[0], bbcc[1]), 5*radius * pixscale / 3600, # outer sky annulus
-                                    fill=False, edgecolor='black', lw=1))
-
-        these = np.where(ccds.filter == band)[0]
-        col = plt.cm.Set1(np.linspace(0, 1, len(ccds)))
-        for ii, ccd in enumerate(ccds[these]):
-            #print(ccd.expnum, ccd.ccdname, ccd.filter)
-            W, H, ccdwcs = SGA.misc.ccdwcs(ccd)
-
-            cc = ccdwcs.radec_bounds()
-            ax.add_patch(patches.Rectangle((cc[0], cc[2]), cc[1]-cc[0],
-                                           cc[3]-cc[2], fill=False, lw=2, 
-                                           edgecolor=col[these[ii]],
-                                           label='ccd{:02d}'.format(these[ii])))
-            ax.legend(ncol=2, frameon=False, loc='upper left', fontsize=10)
-
-    plt.subplots_adjust(bottom=0.15, wspace=0.05, left=0.1, right=0.97, top=0.95)
-
-    if png:
-        if verbose:
-            print('Writing {}'.format(png))
-        fig.savefig(png)
-        plt.close(fig)
-    else:
-        plt.show()
-

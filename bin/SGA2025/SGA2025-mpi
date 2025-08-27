@@ -368,22 +368,30 @@ def main():
                 log.warning('Coadds must be generated before running ellipse-fitting.')
                 continue
 
+            SGAMASKBITS = [OPTMASKBITS, ]
+            if args.unwise:
+                SGAMASKBITS += [UNWISEMASKBITS]
+            if args.galex:
+                SGAMASKBITS += [GALEXMASKBITS]
+
             if args.debug:
                 err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                           unpack_maskbits, (OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS),
-                                           run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
-                                           apertures=APERTURES, pixscale=args.pixscale,
-                                           unwise=args.unwise, galex=args.galex,
-                                           verbose=args.verbose, clobber=args.clobber)
+                                           unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
+                                           mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
+                                           pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
+                                           galex_pixscale=args.galex_pixscale, unwise=args.unwise,
+                                           galex=args.galex, qaplot=args.debug, verbose=args.verbose,
+                                           clobber=args.clobber)
             else:
                 with open(logfile, 'w') as L:
                     with redirect_stdout(L), redirect_stderr(L):
                         err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                                   unpack_maskbits, (OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS),
-                                                   run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
-                                                   apertures=APERTURES, pixscale=args.pixscale,
-                                                   unwise=args.unwise, galex=args.galex,
-                                                   verbose=args.verbose, clobber=args.clobber)
+                                                   unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
+                                                   mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
+                                                   pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
+                                                   galex_pixscale=args.galex_pixscale, unwise=args.unwise,
+                                                   galex=args.galex, qaplot=args.debug, verbose=args.verbose,
+                                                   clobber=args.clobber)
             done(galaxy, galaxydir, err, suffix, debug=args.debug)
 
 

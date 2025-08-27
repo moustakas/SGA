@@ -38,6 +38,9 @@ def mpi_args():
                         help='Organize HTML pages by RA slice (use in tandem with --htmlindex).')
 
     parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
+    parser.add_argument('--unwise-pixscale', default=2.75, type=float, help='unWISE pixel scale (arcsec/pix).')
+    parser.add_argument('--galex-pixscale', default=1.5, type=float, help='GALEX pixel scale (arcsec/pix).')
+
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
 

@@ -1663,9 +1663,10 @@ def build_multiband_mask(data, tractor, run='south', niter=2, qaplot=True,
     return data
 
 
-def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', 'z'],
-                   run='south', pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
-                   galex=False, unwise=False, verbose=False):
+def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
+                   sort_by_flux=True, run='south', pixscale=0.262,
+                   galex_pixscale=1.5, unwise_pixscale=2.75,
+                   galex=True, unwise=True, verbose=False):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
 
@@ -1682,7 +1683,9 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     data = {}
     data['galaxy'] = galaxy
     data['galaxydir'] = galaxydir
-    data['all_opt_bands'] = bands # needed to standardize the north/south data model
+    data['run'] = run
+    data['REFIDCOLUMN'] = REFIDCOLUMN
+    data['all_opt_bands'] = bands
 
     all_opt_bands = bands # initialize
     all_bands = np.copy(bands)
@@ -1746,7 +1749,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
             else:
                 msg = f'Missing one or more {filt}-band data products!'
                 log.critical(msg)
-                return {}
+                return {}, 0
 
     # update all_bands
     all_bands = opt_bands
@@ -1785,8 +1788,7 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
     if galex:
         cols += [f'flux_{filt.lower()}' for filt in galex_bands]
         cols += [f'flux_ivar_{filt.lower()}' for filt in galex_bands]
-        # after https://github.com/legacysurvey/legacypipe/issues/751 is addressed
-        #cols += [f'psfdepth_{filt}' for filt in galex_bands]
+        cols += [f'psfdepth_{filt}' for filt in galex_bands]
     if unwise:
         cols += [f'flux_{filt.lower()}' for filt in unwise_bands]
         cols += [f'flux_ivar_{filt.lower()}' for filt in unwise_bands]
@@ -1894,11 +1896,10 @@ def read_multiband(galaxy, galaxydir, sort_by_flux=True, bands=['g', 'r', 'i', '
 
     # Read the basic imaging data and masks and build the multiband
     # mask.
-
     data = read_image_data(data, filt2imfile, verbose=verbose)
     data = build_multiband_mask(data, tractor, run=run, qaplot=True)
 
-    return data
+    return data, 1
 
 
 def get_radius_mosaic(diam, mindiam=0.5, pixscale=0.262, get_barlen=False):
