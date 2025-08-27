@@ -5,12 +5,13 @@ SGA.parent
 Code for defining the SGA parent sample.
 
 """
-import os, time, sys, pdb
+import os, time, sys, re, pdb
 import numpy as np
 import fitsio
+from glob import glob
 from importlib import resources
 from collections import Counter
-from astropy.table import Table, vstack
+from astropy.table import Table, vstack, hstack
 from astrometry.libkd.spherematch import match_radec
 
 from SGA.SGA import sga_dir
@@ -24,17 +25,14 @@ from SGA.logger import log
 
 def parent_version(vicuts=False, nocuts=False, archive=False):
     if nocuts:
-        version = 'v1.0'
-        # many more objects added
-        #version = 'v1.1'
+        version = 'v0.1'
     elif vicuts:
-        version = 'v1.0'
-        #version = 'v1.1'
+        version = 'v0.1'
     elif archive:
-        version = 'v1.0'
-        #version = 'v1.1'
+        version = 'v0.1'
     else:
-        version = 'v1.0'
+        version = 'v0.1'
+        #version = 'v1.0'
     return version
 
 
@@ -49,6 +47,8 @@ def parent_datamodel(nobj):
     parent['OBJNAME_NEDLVS'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_SGA2020'] = np.zeros(nobj, '<U30')
     parent['OBJNAME_LVD'] = np.zeros(nobj, '<U30')
+    parent['OBJNAME_DR910'] = np.zeros(nobj, '<U30')
+
     parent['OBJTYPE'] = np.zeros(nobj, '<U6')
     parent['MORPH'] = np.zeros(nobj, '<U20')
     parent['BASIC_MORPH'] = np.zeros(nobj, '<U40')
@@ -65,6 +65,8 @@ def parent_datamodel(nobj):
     parent['DEC_SGA2020'] = np.zeros(nobj, 'f8') -99.
     parent['RA_LVD'] = np.zeros(nobj, 'f8') -99.
     parent['DEC_LVD'] = np.zeros(nobj, 'f8') -99.
+    parent['RA_DR910'] = np.zeros(nobj, 'f8') -99.
+    parent['DEC_DR910'] = np.zeros(nobj, 'f8') -99.
 
     parent['Z'] = np.zeros(nobj, 'f8') -99.
     parent['Z_NED'] = np.zeros(nobj, 'f8') -99.
@@ -101,8 +103,23 @@ def parent_datamodel(nobj):
     parent['ROW_SGA2020'] = np.zeros(nobj, '<i8') -99
     parent['ROW_LVD'] = np.zeros(nobj, '<i8') -99
     parent['ROW_CUSTOM'] = np.zeros(nobj, '<i8') -99
+    parent['ROW_DR910'] = np.zeros(nobj, '<i8') -99
 
     return parent
+
+
+def check_lvd(cat, lvdcat=None):
+    from SGA.external import read_lvd
+    lvd = read_lvd(verbose=False)
+    if lvdcat is None:
+        lvdcat = cat[cat['ROW_LVD'] != -99]
+    lvdmiss = None
+    try:
+        assert(len(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]) == 0)
+    except:
+        log.info('Missing the following LVD systems!')
+        lvdmiss = lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]
+    return lvdmiss
 
 
 def qa_parent(nocuts=False, sky=False, size_mag=False):
@@ -333,7 +350,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                                  '[ALB2009]', 'WBL', 'KTS', 'ARP',
                                  'AM', 'V1CG', 'KTG', 'UGC', 'VII', 'VV', 'WISEA',
                                  'CGCG', 'LDCE', 'HDCE', 'USGC', 'UZC-CG', 'ESO', 'MLCG',
-                                 'PM2GC', 'V1CG', '[SPS2007]', 'UZC-CG', 'FLASH', 
+                                 'PM2GC', 'V1CG', '[SPS2007]', 'UZC-CG', 'FLASH',
                                  'USGC', 'CB-20.07763', 'SSRS', 'APMBGC', 'WAS', 'VCC',
                                  '2MASS', 'CGPG', 'II', 'VI', 'I', 'IC', 'IV', 'SDSS',
                                  'GALEXASC', 'VIII', 'V', 'NGC', ]
@@ -344,7 +361,7 @@ def remove_by_prefix(fullcat, merger_type=None, merger_has_diameter=False, build
                 drop_prefixes = []
                 drop_ignore_diam_prefixes = ['CGMW'] # all in the MW disk
             else:
-                drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]', 
+                drop_prefixes = ['[PCM2000]', '[ATS2004]', '[BFH91]', '[PPC2002]',
                                  '[vvd91a]', '2MASS', '2MASX', '2MASXi', '2MFGC', 'APMBGC',
                                  'CGPG', 'Cocoon', 'CSL', 'CTS', 'FCCB', 'FLASH', 'MESSIER', 'GIN',
                                  'VPCX', 'WAS', 'TOLOLO', 'SGC', 'KOS', 'PKS', 'PGC1', 'SARS',
@@ -520,8 +537,9 @@ def resolve_crossid_errors(fullcat, verbose=False, cleanup=False,
             #'2MASS J04374625-2711389', # 2MASS J04374625-2711389 and WISEA J043745.83-271135.1 are distinct.
         ]
 
-        # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl systems.
-        I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl')
+        # First, resolve 1-arcsec pairs **excluding** GPair and GTrpl
+        # systems and LVD sources.
+        I = (fullcat['OBJTYPE'] != 'GPair') * (fullcat['OBJTYPE'] != 'GTrpl') * (fullcat['ROW_LVD'] == -99)
         cat = resolve_close(fullcat[I], fullcat[I], maxsep=1.5, allow_vetos=True, verbose=False)
         cat = vstack((cat, fullcat[~I]))
         cat = cat[np.argsort(cat['ROW_PARENT'])]
@@ -845,6 +863,9 @@ def update_lvd_properties(cat):
     version = version_lvd()
     nobj = len(_lvd)
 
+    if version != 'v1.0.5':
+        log.warning('Be sure to review hard-coded properties before proceeding!')
+
     log.info(f'Updating properties of {nobj} LVD galaxies.')
 
     #indx_cat = np.where(cat['ROW_LVD'] != -99)[0]
@@ -922,51 +943,6 @@ def update_lvd_properties(cat):
     lvd['DIAM_REF'][I] = 'LVGDB'
     lvd['BA_REF'][I] = 'LVGDB'
 
-    # v1.0.5 is missing all data for 10 objects. Hard-code the properties for
-    # now...
-    I = (lvd['DIAM'] == -99.)
-    if version != 'v1.0.5':
-        raise ValueError('Need hard-coded properties!')
-
-    gals = np.array([
-        'IC239',
-        'NGC 1042',
-        'NGC 4151',
-        'NGC 4424',
-        'PGC 100170',
-        'UGC 7490',
-        'dw1341-29',
-    ])
-    props = [ # diam, ba, pa
-        (4.57, 0.912, 125.),
-        (5.47, 0.873, 33.6),
-        (5.43, 0.879, 140.),
-        (3.63, 0.501, 95.),
-        (2.58, 0.4, 117.),
-        (3.30, 0.850, 0.17),
-        (0.5, 1., 0.),
-        ]
-    refs = [
-        ('RC3', 'RC3', '2MASS'),
-        ('SGA2020', 'SGA2020', 'SGA2020'),
-        ('SGA2020', 'SGA2020', 'SGA2020'),
-        ('RC3', 'RC3', 'RC3'),
-        ('2MASS', '2MASS', '2MASS'),
-        ('SGA2020', 'SGA2020', 'SGA2020'),
-        ('VI', 'VI', 'VI'),
-        ]
-    assert(np.all(lvd[I]['OBJNAME'] == gals))
-
-    props = list(zip(*props))
-    refs = list(zip(*refs))
-
-    for col, prop, ref in zip(('DIAM', 'BA', 'PA'), props, refs):
-        lvd[col][I] = prop
-        lvd[f'{col}_REF'][I] = ref
-
-    # at this point, all objects should have diameters and ellipticities
-    #assert(np.all((lvd['DIAM'] != -99.) * (lvd['BA'] != -99.)))
-
     # Next, gather ellipticities and position angles from the input catalog.
     I = np.where(cat['ROW_LVD'] != -99)[0]
     m1, m2 = match(lvd['ROW'], cat['ROW_LVD'][I])
@@ -999,7 +975,7 @@ def update_lvd_properties(cat):
 
     # override the algorithm above based on VI
     if version == 'v1.0.5':
-        updatefile = resources.files('SGA').joinpath('data/SGA2025/LVD-geometry-updates.csv')
+        updatefile = resources.files('SGA').joinpath(f'data/SGA2025/LVD-geometry-updates-{version}.csv')
         updates = Table.read(updatefile, format='csv', comment='#')
         log.info(f'Read {len(updates)} objects from {updatefile}')
 
@@ -1016,6 +992,9 @@ def update_lvd_properties(cat):
                     lvd['RADEC_REF'][I[J]] = updates['radec_ref'][J]
                 else:
                     lvd[f'{col}_REF'][I[J]] = updates[f'{col.lower()}_ref'][J]
+
+    assert(np.all((lvd['DIAM'] != -99.) * (lvd['BA'] != -99.)))
+    #lvd[lvd['PA_REF'] == 'default']
 
     # write out
     lvd = lvd[np.argsort(lvd['ROW'])]
@@ -1246,7 +1225,7 @@ def _read_existing_footprint(cat, region, version='v1.0'):
 
         # We know that objects with sep==0. are in the footprint, so
         # we don't have to "find" them again...
-        m1, m2, sep = match_radec(cat['RA'].value, cat['DEC'].value, refcat['RA'].value, 
+        m1, m2, sep = match_radec(cat['RA'].value, cat['DEC'].value, refcat['RA'].value,
                                   refcat['DEC'].value, 1./3600., nearest=True)
         I = sep == 0.
         if np.any(I):
@@ -1382,7 +1361,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
     for ichunk, indx in enumerate(chunkindx):
         if rank == 0:
             log.info(f'Working on chunk {ichunk+1:,d}/{nchunk:,d} with {len(indx):,d} objects')
-        fcat, fccds = in_footprint_work(cat, indx, allccds, comm=comm, radius=radius, 
+        fcat, fccds = in_footprint_work(cat, indx, allccds, comm=comm, radius=radius,
                                         width_pixels=width_pixels, bands=bands)
         sys.stdout.flush()
 
@@ -1435,7 +1414,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         log.info(f'All done in {(time.time()-t0)/60.:.2f} min')
 
 
-def build_parent_nocuts(verbose=True):
+def build_parent_nocuts(verbose=True, overwrite=False):
     """Merge the external catalogs from SGA2025-query-ned.
 
     """
@@ -1450,8 +1429,8 @@ def build_parent_nocuts(verbose=True):
                               read_hyperleda_multiples, version_hyperleda_multiples,
                               read_hyperleda_noobjtype, version_hyperleda_noobjtype,
                               read_nedlvs, version_nedlvs, read_sga2020, read_lvd,
-                              version_lvd, nedfriendly_lvd, version_custom_external,
-                              read_custom_external)
+                              read_dr910, read_custom_external, version_lvd, nedfriendly_lvd)
+
 
     def readit(catalog, version, bycoord=False):
         if bycoord:
@@ -1477,9 +1456,16 @@ def build_parent_nocuts(verbose=True):
                 parent[col] = input_basic[col]
         return parent
 
+    version_nocuts = parent_version(nocuts=True)
+    final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version_nocuts}.fits')
+    if os.path.isfile(final_outfile) and not overwrite:
+        log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
+        return
+
 
     log.info('#####')
     log.info('Input data:')
+    dr910 = read_dr910()
     custom = read_custom_external(overwrite=True) # always regenerate the FITS file
     lvd = read_lvd()
     nedlvs = read_nedlvs()
@@ -1919,6 +1905,15 @@ def build_parent_nocuts(verbose=True):
     log.info(f'Analyzing {len(lvd):,d} LVD objects, of which {len(ned_lvd):,d} ' + \
           f'({100.*len(ned_lvd)/len(lvd):.1f}%) are in ned_lvd.')
 
+    #miss_lvd = lvd[~np.isin(lvd['ROW'], ned_lvd['ROW'])
+
+    #####
+    #I = np.where(lvd['PGC'] > 0)[0]
+    #pgc, cc = np.unique(lvd['PGC'][I].value, return_counts=True)
+    #check = lvd[I][cc>1]
+    #check = check[np.argsort(check['PGC'])]
+    ####
+
     # ned_lvd - already in parent sample
     I = np.where(parent['OBJNAME_NED'] != '')[0]
     #oo, cc = np.unique(parent[I]['OBJNAME_NED'], return_counts=True)
@@ -1944,8 +1939,31 @@ def build_parent_nocuts(verbose=True):
     parent['RA_LVD'][I[indx_parent[indx_parent2]]] = lvd['RA'][indx_lvd2]
     parent['DEC_LVD'][I[indx_parent[indx_parent2]]] = lvd['DEC'][indx_lvd2]
     parent['PGC'][I[indx_parent[indx_parent2]]] = lvd['PGC'][indx_lvd2]
+
+    #oldpgc = parent['PGC'][I[indx_parent[indx_parent2]]].value
+    #newpgc = lvd['PGC'][indx_lvd2].value
+    #_check = (oldpgc != -99) * (newpgc != 0) * (newpgc != -1)
+    #check = hstack((parent[I[indx_parent[indx_parent2]]]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'RA_NED', 'DEC_NED', 'RA_HYPERLEDA', 'DEC_HYPERLEDA', 'PGC'][_check], lvd[indx_lvd2]['OBJNAME', 'OBJNAME_NED', 'RA', 'DEC', 'PGC'][_check]))
+
     #parent[I[indx_parent[indx_parent2]]]['OBJNAME_NED', 'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'RA_LVD', 'DEC_LVD', 'ROW_LVD', 'PGC']
     #join(parent[I[indx_parent[indx_parent2]]]['OBJNAME_LVD', 'OBJNAME_HYPERLEDA', 'ROW_LVD', 'PGC'], lvd[indx_lvd2]['OBJNAME', 'PGC'], keys_left='OBJNAME_LVD', keys_right='OBJNAME').plog.info(max_lines=-1)
+
+    ####
+    #I = np.where(parent['PGC'] > 0)[0]
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
+    #if np.any(cc>1):
+    #    log.warning('Duplicate PGC values!!')
+    #    check = parent[I][np.isin(parent['PGC'][I], pgc[cc>1])]
+    #    check = check[np.argsort(check['PGC'])]
+    #    check = check['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
+    #
+    #    pdb.set_trace()
+    #
+    #K = np.isin(parent['PGC'][I], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
+    #check = check[np.argsort(check['PGC'])]
+    #pdb.set_trace()
+    ####
 
     # NB: These 9 objects are not in my 'hyper' sample because they fail the
     # f_astrom cut; but they're all in the LVD and NED-LVS samples
@@ -1957,7 +1975,6 @@ def build_parent_nocuts(verbose=True):
     #     Crater II                        17 5742923     Crater II 5742923
     #       Grus II                        24 6740630       Grus II 6740630
     # Reticulum III                        44 6740628 Reticulum III 6740628
-    #   Sagittarius                        45 4689212   Sagittarius 4689212
     #     Tucana IV                        55 6740629     Tucana IV 6740629
     #      Tucana V                        56 6740631      Tucana V 6740631
 
@@ -1982,13 +1999,30 @@ def build_parent_nocuts(verbose=True):
     parent['DEC_LVD'][I[indx_parent]] = lvd['DEC'][J[indx_lvd]]
     parent['ROW_LVD'][I[indx_parent]] = lvd['ROW'][J[indx_lvd]]
 
-    # Drop SDSS J014548.23+162240.6=WISEA J014548.01+162239.4=JKB142. This
-    # object appears twice in the NED-LVS (rows 1827699 and 1871170), although
-    # NED resolves it as two objects. If we don't drop it then we end up with
-    # duplicate LVD entries.
-    log.info('Removing duplicate SDSS J014548.23+162240.6=WISEA J014548.01+162239.4=JKB142 from the parent sample.')
-    Idrop = np.where(parent['OBJNAME_NED'] == 'SDSS J014548.23+162240.6')[0]
-    parent.remove_row(Idrop[0])
+    # Drop duplicates / incorrect matches.
+    #I = np.where(parent['PGC'] > 0)[0]
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
+    #dups = pgc[cc>1]
+    #K = np.isin(parent['PGC'][I], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
+    #check = check[np.argsort(check['PGC'])]
+    #
+    #   SDSS J133230.32+250724.9 - duplicate with AGC 238890
+    #   SDSS J002041.45+083701.2 - duplicate with HIPASS J0021+08=JKB129
+    #   SDSS J104701.35+125737.5 - duplicate with PGC1 0032256 NED034=LeG21
+    #   SDSS J104653.19+124441.4=PGC4689210 - duplicate with Leo dw A=Leo I 09
+    #   SDSS J124354.70+412724.9 - duplicate with SMDG J1243552+412727=LV J1243+4127
+    #   PGC1 5067061 NED001 - duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I
+    #   SDSS J014548.23+162240.6 - duplicate with WISEA J014548.01+162239.4=JKB142
+    #   SDSS J095549.64+691957.4 - duplicate with SDSSJ141708.23+134105.7=PGC2801015=JKB83
+    dups = ['SDSS J133230.32+250724.9', 'SDSS J002041.45+083701.2',
+            'SDSS J104701.35+125737.5', 'SDSS J104653.19+124441.4',
+            'SDSS J124354.70+412724.9', 'PGC1 5067061 NED001',
+            'SDSS J014548.23+162240.6', 'SDSS J095549.64+691957.4',
+            ]
+    log.info(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
+    Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
+    parent.remove_rows(Idrop)
 
     # Also drop GALEXASC J095848.78+665057.9, which appears to be a
     # NED-LVS shred of the LVD dwarf d0958+66=KUG 0945+670 on rows
@@ -1998,33 +2032,35 @@ def build_parent_nocuts(verbose=True):
     Idrop = np.where(parent['OBJNAME_NED'] == 'GALEXASC J095848.78+665057.9')[0]
     parent.remove_row(Idrop[0])
 
-    # Additional NED drops:
-    #   SDSS J002041.45+083701.2 - duplicate with HIPASS J0021+08=JKB129
-    #   SDSS J104653.19+124441.4=PGC4689210 - duplicate with Leo dw A=Leo I 09
-    #   PGC1 5067061 NED001 - duplicate with Andromeda XXXIII=ANDROMEDA33=Perseus I
-    #   SDSS J095549.64+691957.4 - duplicate with SDSSJ141708.23+134105.7=PGC2801015=JKB83
-    #   SDSS J133230.32+250724.9 - duplicate with AGC 238890
-    #   SDSS J104701.35+125737.5 - duplicate with PGC1 0032256 NED034=LeG21
-    #   SDSS J124354.70+412724.9 - duplicate with SMDG J1243552+412727=LV J1243+4127
-
-    dups = ['SDSS J002041.45+083701.2', 'SDSS J104653.19+124441.4', 'PGC1 5067061 NED001',
-            'SDSS J095549.64+691957.4', 'SDSS J133230.32+250724.9',
-            'SDSS J104701.35+125737.5', 'SDSS J124354.70+412724.9']
-    log.info(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
-    Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
-    parent.remove_rows(Idrop)
+    ## Additional NED drops:
+    ##   PGC1 0040904 NED002 - duplicate with LV J1243+4127
+    ##   SDSS J104654.61+124717.5 - duplicate with LeG21
+    #dups = [, 'PGC1 0040904 NED002', 'SDSS J104654.61+124717.5']
+    #log.info(f'Removing {", ".join(dups)} from the OBJNAME_NED parent sample.')
+    #Idrop = np.where(np.isin(parent['OBJNAME_NED'], dups))[0]
+    #parent.remove_rows(Idrop)
 
     #dups = ['Andromeda XXXIII', 'PGC1 5067061 NED001', 'HIPASS J0021+08', 'SDSS J002041.45+083701.2', 'SDSS J095549.64+691957.4', 'SDSS J141708.23+134105.7', 'SDSS J104653.19+124441.4', 'Leo dw A']
     #bb = parent[np.isin(parent['OBJNAME_NED'], dups)]['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_LVD', 'RA_NED', 'RA_HYPERLEDA', 'RA_LVD', 'DEC_NED', 'DEC_HYPERLEDA', 'DEC_LVD', 'PGC']
     #bb = bb[np.argsort(bb['PGC'])]
 
-    # HyperLeda drops: [CVD2018]M96-DF10 matches SMDG J1048359+130336
-    # in NED but not dw1048p1303 in LVD. And NGC3628DGSAT1 matches
-    # SMDG J1121369+132650 in NED but not dw1121p1326.
+    # HyperLeda drops:
+    #   [CVD2018]M96-DF10 matches SMDG J1048359+130336 in NED but not dw1048p1303 in LVD
+    #   NGC3628DGSAT1 matches SMDG J1121369+132650 in NED but not dw1121p1326
     drops = ['[CVD2018]M96-DF10', 'NGC3628DGSAT1']
     log.info(f'Removing {", ".join(drops)} from the OBJNAME_HYPERLEDA parent sample.')
     Idrop = np.where(np.isin(parent['OBJNAME_HYPERLEDA'], drops))[0]
     parent.remove_rows(Idrop)
+
+    ####
+    #I = np.where(parent['PGC'] > 0)[0]
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
+    #dups = pgc[cc>1]
+    #K = np.isin(parent['PGC'][I], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
+    #check = check[np.argsort(check['PGC'])]
+    #pdb.set_trace()
+    ####
 
     # ned_lvd - not in parent sample (new)
     miss_lvd = ned_lvd[~np.isin(ned_lvd['ROW'], parent['ROW_LVD'])]
@@ -2086,9 +2122,13 @@ def build_parent_nocuts(verbose=True):
           'SGA-2020 objects with PGC>0.')
     sga2020 = sga2020[J]
 
-    #pgc, cc = np.unique(parent[I]['PGC'].value, return_counts=True)
+    ####
+    #pgc, cc = np.unique(parent['PGC'][I].value, return_counts=True)
     #dups = pgc[cc>1]
-    #parent[np.isin(parent['PGC'], dups)]['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
+    #K = np.isin(parent['PGC'], dups)
+    #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][K]
+    #check = check[np.argsort(check['PGC'])]
+    ####
 
     indx_parent, indx_sga2020 = match(parent[I]['PGC'], sga2020['PGC'])
     log.info(f'Matched {len(indx_sga2020):,d}/{len(sga2020):,d} ({100.*len(indx_sga2020)/len(sga2020):.1f}%) ' + \
@@ -2110,7 +2150,7 @@ def build_parent_nocuts(verbose=True):
             log.info(f'Duplicate {col} values!')
             pdb.set_trace()
 
-    # [7] include the custom-added objects plus the SMDG sample
+    # [7] include the custom-added objects plus the SMDGes sample
     print()
     log.info('#####')
     log.info(f'Adding {len(custom):,d} more objects from the custom catalog.')
@@ -2169,7 +2209,7 @@ def build_parent_nocuts(verbose=True):
     basic_custom = get_basic_geometry(custom, galaxy_column='OBJNAME_NED', verbose=verbose)
     parent6 = populate_parent(custom, basic_custom, verbose=verbose)
 
-    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])    
+    prefix = np.array(list(zip(*np.char.split(custom['OBJNAME_NED'].value, ' ').tolist()))[0])
     parent6['MAG_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
     parent6['DIAM_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
     parent6['BA_LIT_REF'][prefix == 'SMDG'] = 'SMUDGes'
@@ -2178,16 +2218,28 @@ def build_parent_nocuts(verbose=True):
     print()
     log.info(f'Parent 6: N={len(parent6):,d}')
 
-    # [8] build the final sample
+    # [8] include the DR9/DR10 supplemental objects
     parent = vstack((parent, parent6))
+
+    print()
+    log.info('#####')
+    log.info(f'Adding {len(dr910):,d} more objects from the DR9/DR10 supplemental catalog.')
+
+    basic_dr910 = get_basic_geometry(dr910, galaxy_column='DESINAME', verbose=verbose)
+    dr910.rename_columns(['ROW', 'DESINAME', 'RA', 'DEC'],
+                         ['ROW_DR910', 'OBJNAME_DR910', 'RA_DR910', 'DEC_DR910'])
+    parent7 = populate_parent(dr910, basic_dr910, verbose=True)#verbose)
+
+    # [9] build the final sample
+    parent = vstack((parent, parent7))
 
     # sort, check for uniqueness, and then write out
     srt = np.lexsort((parent['ROW_HYPERLEDA'].value, parent['ROW_NEDLVS'].value,
-                      parent['ROW_SGA2020'].value, parent['ROW_LVD'].value, 
-                      parent['ROW_CUSTOM'].value))
+                      parent['ROW_SGA2020'].value, parent['ROW_LVD'].value,
+                      parent['ROW_CUSTOM'].value, parent['ROW_DR910']))
     parent = parent[srt]
 
-    for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_SGA2020', 'OBJNAME_LVD']:
+    for col in ['OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'OBJNAME_NEDLVS', 'OBJNAME_SGA2020', 'OBJNAME_LVD', 'OBJNAME_DR910']:
         I = parent[col] != ''
         try:
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
@@ -2204,7 +2256,7 @@ def build_parent_nocuts(verbose=True):
     #                                                        'OBJNAME_LVD', 'RA_NED', 'DEC_NED', 'PGC', 'ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD']
     #bb = bb[np.argsort(bb['PGC'])]
 
-    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_SGA2020', 'ROW_LVD', 'ROW_CUSTOM']:
+    for col in ['ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_SGA2020', 'ROW_LVD', 'ROW_CUSTOM', 'ROW_DR910']:
         I = parent[col] != -99
         try:
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
@@ -2221,7 +2273,7 @@ def build_parent_nocuts(verbose=True):
     # before HyperLeda, otherwise we totally miss some quite famous galaxies.
     print()
 
-    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
+    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA', 'DR910']:
         I = np.where((parent['RA'] == -99.) * (parent[f'RA_{dataset}'] != -99.))[0]
         if len(I) > 0:
             log.info(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -2231,7 +2283,7 @@ def build_parent_nocuts(verbose=True):
 
 
     # NB - prefer LVD then NED names
-    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA']:
+    for dataset in ['LVD', 'NED', 'NEDLVS', 'SGA2020', 'HYPERLEDA', 'DR910']:
         I = np.where((parent['OBJNAME'] == '') * (parent[f'OBJNAME_{dataset}'] != ''))[0]
         if len(I) > 0:
             log.info(f'Adopting {len(I):,d}/{len(parent):,d} ({100.*len(I)/len(parent):.1f}%) ' + \
@@ -2267,6 +2319,7 @@ def build_parent_nocuts(verbose=True):
     basic_ned_nedlvs = get_basic_geometry(ned_nedlvs, galaxy_column='ROW', verbose=verbose)
     basic_lvd = get_basic_geometry(lvd, galaxy_column='ROW', verbose=verbose)
     basic_custom = get_basic_geometry(custom, galaxy_column='ROW_CUSTOM', verbose=verbose)
+    basic_dr910 = get_basic_geometry(dr910, galaxy_column='ROW_DR910', verbose=verbose)
 
     # NB: do not reset diameters for the set of SMUDGes objects which
     # were matched from custom to the parent sample (at the point
@@ -2279,9 +2332,9 @@ def build_parent_nocuts(verbose=True):
 
     print()
     # NB - prioritize LVD first, then custom (which includes SMUDGes)
-    for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs),
-                                   ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS'),
-                                   ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS')):
+    for basic, row, dataset in zip((basic_lvd, basic_custom, basic_ned_hyper, basic_ned_nedlvs, basic_dr910),
+                                   ('ROW_LVD', 'ROW_CUSTOM', 'ROW_HYPERLEDA', 'ROW_NEDLVS', 'ROW_DR910'),
+                                   ('LVD', 'CUSTOM', 'NED-HyperLeda', 'NEDLVS', 'DR910')):
         for col in ['DIAM_LIT', 'BA_LIT', 'PA_LIT', 'MAG_LIT']:
             I = np.where((parent[col] == -99.) * (parent[row] != -99))[0]
             if len(I) > 0:
@@ -2302,8 +2355,8 @@ def build_parent_nocuts(verbose=True):
     basic_hyper = get_basic_geometry(hyper, galaxy_column='ROW', verbose=verbose)
     basic_sga2020 = get_basic_geometry(sga2020, galaxy_column='ROW', verbose=verbose)
 
-    for basic, row, suffix in zip((basic_hyper, basic_sga2020), 
-                                  ('ROW_HYPERLEDA', 'ROW_SGA2020'), 
+    for basic, row, suffix in zip((basic_hyper, basic_sga2020),
+                                  ('ROW_HYPERLEDA', 'ROW_SGA2020'),
                                   ('HYPERLEDA', 'SGA2020')):
         for col in [f'DIAM_{suffix}', f'BA_{suffix}', f'PA_{suffix}', f'MAG_{suffix}']:
             parent[col] = -99.
@@ -2312,7 +2365,7 @@ def build_parent_nocuts(verbose=True):
         I = np.where(parent[row] != -99)[0]
         if len(I) > 0:
             # 'GALAXY' here is actually 'ROW'
-            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY']) 
+            indx_parent, indx_basic = match(parent[I][row], basic['GALAXY'])
             for col in [f'DIAM_{suffix}', f'BA_{suffix}', f'PA_{suffix}', f'MAG_{suffix}']:
                 log.info(f'Populating parent with {len(I):,d} {col}s from {suffix}.')
                 parent[col][I[indx_parent]] = basic[indx_basic][col]
@@ -2334,19 +2387,42 @@ def build_parent_nocuts(verbose=True):
             log.info(f'N({col}) = {np.sum(N):,d}/{nobj:,d} ({100.*np.sum(N)/nobj:.1f}%)')
         print()
 
-    parent['ROW_PARENT'] = np.arange(len(parent))
 
-    version = parent_version(nocuts=True)
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
-    log.info(f'Writing {len(parent):,d} objects to {outfile}')
+    # ROW_PARENT must be unique across versions
+    rowfiles = glob(os.path.join(sga_dir(), 'parent', f'SGA2025-parent-row-*.fits'))
+    if len(rowfiles) > 0:
+        log.warning('FIXME!')
+        pdb.set_trace()
+        # adjust ROWS so they're unique
+    else:
+        rows = np.arange(len(parent))
+
+    parent['ROW_PARENT'] = rows
+
+    rowfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-rows-{version_nocuts}.fits')
+    rowcat = parent['OBJNAME', 'ROW_PARENT', ]
+    log.info(f'Writing {len(rowcat):,d} objects to {rowfile}')
+    rowcat.write(rowfile, overwrite=True)
+
+    log.info(f'Writing {len(parent):,d} objects to {final_outfile}')
     parent.meta['EXTNAME'] = 'PARENT-NOCUTS'
-    parent.write(outfile, overwrite=True)
+    parent.write(final_outfile, overwrite=True)
 
 
 def build_parent_vicuts(verbose=False, overwrite=False):
     """Build the parent catalog with VI cuts.
 
+    Always make sure we still have all LVD sources (see the VETO array
+    in remove_by_prefix)!
+
     """
+    version_vicuts = parent_version(vicuts=True)
+    final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
+    if os.path.isfile(final_outfile) and not overwrite:
+        log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
+        return
+
+
     # quick check on duplicates
     actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
@@ -2361,89 +2437,56 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     origcat = Table(fitsio.read(catfile))
     log.info(f'Read {len(origcat):,d} objects from {catfile}')
-
-    # [1] Update individual-galaxy properties, including coordinates.
-    cat = update_properties(origcat, verbose=verbose)
-    #cat[np.isin(cat['OBJNAME'], ['LMC', 'SMC'])]['OBJNAME', 'OBJNAME_LVD', 'RA', 'DEC', 'RA_LVD', 'DEC_LVD', 'RA_NED', 'DEC_NED']
-
-    # [2] Drop systems with uncommon prefixes (after VI).
-    cat = remove_by_prefix(cat, merger_type=None, verbose=verbose, build_qa=False)
-
-    # make sure we still have all LVD sources (see the VETO array in remove_by_prefix)
-    from SGA.external import read_lvd
-    lvd = read_lvd()
-    lvdcat = cat[cat['ROW_LVD'] != -99]
-    try:
-        assert(len(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])]) == 0)
-    except:
-        log.info('Missing the following LVD systems!')
-        log.info(lvd[~np.isin(lvd['ROW'], lvdcat['ROW_LVD'])])
+    lvdmiss = check_lvd(origcat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
         pdb.set_trace()
 
+    # [1] Update individual-galaxy properties, including coordinates.
+    cat1 = update_properties(origcat, verbose=verbose)
+    lvdmiss = check_lvd(cat1)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+
+    # [2] Drop systems with uncommon prefixes (after VI).
+    cat2 = remove_by_prefix(cat1, merger_type=None, verbose=verbose, build_qa=False)
+    lvdmiss = check_lvd(cat2)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    del cat1
+
     # [3] Resolve cross-identification errors in NED/HyperLeda.
-    cat = resolve_crossid_errors(cat, verbose=False, build_qa=False, rebuild_file=True)
-
-    ## more general HyperLeda-NED cross-ID errors
-    #bb = cat[(cat['RA_HYPERLEDA'] != cat['RA']) * (cat['RA_HYPERLEDA'] != -99.)]
-    #m1, m2, sep = match_radec(bb['RA'], bb['DEC'], bb['RA_HYPERLEDA'], bb['DEC_HYPERLEDA'], 3./3600., notself=True)
-    #m1 = m1[m1 != m2]
-    #multipage_skypatch(bb[m1], cat=cat, width_arcsec=120., overwrite_viewer=True, overwrite=True, 
-    #                   clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
-
-    if False:
-        from astropy.coordinates import SkyCoord
-        import astropy.units as u
-
-        cc = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits'))
-
-        #dr = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-dr9-north-v1.0.fits'))
-        dr = Table(fitsio.read('/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-archive-dr11-south-v1.0.fits'))
-        I = np.where((dr['RA'] != dr['RA_HYPERLEDA']) * (dr['RA_HYPERLEDA'] != -99.) * ~dr['RESOLVED'] * (dr['ROW_LVD'] == -99))[0]
-        mm = dr[I]
-
-        c_default = SkyCoord(mm['RA'].value*u.deg, mm['DEC'].value*u.deg)
-        c_hyper = SkyCoord(mm['RA_HYPERLEDA'].value*u.deg, mm['DEC_HYPERLEDA'].value*u.deg)
-        sep = c_default.separation(c_hyper).to(u.arcsec)
-        srt = np.argsort(sep.value)[::-1]
-        sep = sep[srt]
-        mm = mm[srt]
-        diam, _, _, _ = choose_geometry(mm, mindiam=0.)
-
-        #plt.clf() ; plt.hist(sep.value, bins=100) ; plt.savefig('junk.png')
-
-        #bb = mm[sep.value > 1200.]
-        #bb = mm[(sep.value > 240.) * (sep.value <= 1200.)]
-        #bb = mm[(sep.value > 120.) * (sep.value <= 240.)]
-        #bb = mm[(sep.value > 60.) * (sep.value <= 120.)]
-        #bb = mm[(sep.value > 30.) * (sep.value <= 60.)]
-        #bb = mm[(sep.value > 3.) * (sep.value <= 30.) * (diam > 60.)]
-        #bb = mm[(sep.value > 5.) * (sep.value <= 30.) * (diam > 30.) * (diam <= 60.)]
-        bb = mm[(sep.value > 5.) * (sep.value <= 30.) * (diam > 15.) * (diam <= 30.)]
-
-        multipage_skypatch(bb, cat=cc, width_arcsec=90., overwrite_viewer=True, overwrite=True, clip=True, pngdir='vi', jpgdir='vi', pdffile='vi/vi4.pdf', verbose=True)
-        bb['OBJNAME', 'RA', 'DEC', 'RA_HYPERLEDA', 'DEC_HYPERLEDA'].plog.info(max_lines=-1)
+    cat3 = resolve_crossid_errors(cat2, verbose=False, build_qa=False, rebuild_file=True)
+    lvdmiss = check_lvd(cat3)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    del cat2
 
     # [4] Resolve close (1 arcsec) pairs.
-    cat = resolve_close(cat, cat, maxsep=1., allow_vetos=True, verbose=False)
+    cat4 = resolve_close(cat3, cat3, maxsep=1., allow_vetos=True, verbose=False)
+    lvdmiss = check_lvd(cat4)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    del cat3
 
     # [4] Visually drop GTrpl and GPair systems with and without measured
     # diameters.
-    cat = remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=False, verbose=verbose, build_qa=False)
+    cat = remove_by_prefix(cat4, merger_type='GTrpl', merger_has_diameter=False, verbose=verbose, build_qa=False)
     cat = remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=False, verbose=verbose, build_qa=False)
+    del cat4
 
     # [5] only explicitly drop mergers with diameters via VI and the VI-actions file
     remove_by_prefix(cat, merger_type='GTrpl', merger_has_diameter=True, verbose=verbose, build_qa=False)
     remove_by_prefix(cat, merger_type='GPair', merger_has_diameter=True, verbose=verbose, build_qa=False)
 
-    # [6] Remove close pairs (after extensive VI using
-
-
     # write out
-    version_vicuts = parent_version(vicuts=True)
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
-    log.info(f'Writing {len(cat):,d} objects to {outfile}')
+    log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-VICUTS'
-    cat.write(outfile, overwrite=True)
+    cat.write(final_outfile, overwrite=True)
 
 
 def build_parent_archive(verbose=False, overwrite=False):
@@ -2455,19 +2498,22 @@ def build_parent_archive(verbose=False, overwrite=False):
     from SGA.geometry import choose_geometry
     from SGA.sky import in_ellipse_mask_sky
 
+    version_archive = parent_version(archive=True)
+    final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version_archive}.fits')
+    if os.path.isfile(final_outfile) and not overwrite:
+        log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
+        return
+
+
     version_vicuts = parent_version(vicuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     cat = Table(fitsio.read(catfile))
     log.info(f'Read {len(cat):,d} objects from {catfile}')
 
-    #if False:
-    #    I = cat['DIAM_LIT'] > 25. ; srt = np.argsort(cat[I]['DIAM_LIT'])[::-1] ; cat[I][srt]['OBJNAME', 'DIAM_LIT', 'DIAM_LIT_REF', 'DIAM_HYPERLEDA', 'DIAM_SGA2020', 'RA', 'DEC']
-    #    cc = cat ; obj='MESSIER 077' ; I=cc['OBJNAME'] == obj ; m1, m2, _ = match_radec(cc['RA'], cc['DEC'], cc[I]['RA'], cc[I]['DEC'], 240./3600.) ; cc[m1][cols]
-    #    qa_skypatch(cc[I][0], group=cc[m1], width_arcmin=2., pngdir='ioannis/tmp/', clip=True, overwrite_viewer=True, overwrite=True)
-    #    multipage_skypatch(cat[I], cat=cat, width_arcsec=180., pdffile='ioannis/tmp/aa-sdss.pdf', verbose=True)
-
-    # FIXME - apply cuts based on additional external catalogs
-    # (ssl-legacysurvey, Galaxy Zoo VI, etc.)
+    lvdmiss = check_lvd(cat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
 
     # read the ssl-legacysurvey results (including the veto file)
     log.info('Applying the ssl results')
@@ -2538,9 +2584,13 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Removing {len(ssl):,d}/{len(cat):,d} objects based on SSL results.')
     cat = cat[~np.isin(cat['OBJNAME'], ssl['OBJNAME'])]
 
+    lvdmiss = check_lvd(cat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+
     # Resolve more close pairs -- these choices were made after
     # investigating a bunch of QA.
-    ##from SGA.util import find_close
 
     # Create refcat by sorting cat by PGC, otherwise RA will be used
     # to define the "first" group member, which is not usually what we
@@ -2556,8 +2606,13 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat = cat[srt]
     #bb = refcat[np.isin(refcat['OBJNAME'], ['UGC 08168', '2MASS J13034084+5129425'])]
     #bb = refcat[np.isin(refcat['OBJNAME'], ['GALEXASC J072041.35+561217.0', 'WISEA J072041.29+561218.0'])]
-    cat = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False,
-                        ignore_objtype=True, trim=True, verbose=False)
+    cat2 = resolve_close(cat, refcat, maxsep=maxsep, allow_vetos=False,
+                         ignore_objtype=True, trim=True, verbose=False)
+    lvdmiss = check_lvd(cat2)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
+        pdb.set_trace()
+    cat = cat2
     cat = cat[np.argsort(cat['RA'].value)]
     del refcat
 
@@ -2601,6 +2656,25 @@ def build_parent_archive(verbose=False, overwrite=False):
         #out.write('ioannis/tmp/junk2.fits', overwrite=True)
         #cat[I][alldiam/60>1]['OBJNAME', ].write('junk.txt', format='csv', overwrite=True)
 
+    # flag objects in GCl / PNe
+    cat['IN_GCLPNE'] = np.zeros(len(cat), bool)
+
+    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
+    gcl = Table(fitsio.read(gclfile))
+    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
+    for cl in gcl:
+        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
+                                cl['pa'], cat['RA'].value, cat['DEC'].value)
+        if np.any(I):
+            cat['IN_GCLPNE'][I] = True
+            #for gal in cat['OBJNAME'][I].value:
+            #    if cl['type'] == 'GCl':
+            #        print(f"{gal},drop,cluster,in GCl '{cl["name"]}'")
+            #    elif cl['type'] == 'PNe':
+            #        print(f"{gal},drop,cluster,in PNe '{cl["name"]}'")
+    #cat['IN_GCLPNE']write('junk.fits', overwrite=True)
+
+
     # apply cuts based on the photometry files
     #log.info('Processing the photometry files')
     photo, nphoto = [], 0
@@ -2620,7 +2694,7 @@ def build_parent_archive(verbose=False, overwrite=False):
           'that are still in the current parent sample.')
     photo = photo[I]
 
-    # Do not throw out objects in the properties, actions, and
+    # Do not throw out objects in the properties, actions, or
     # 'custom' catalogs, which were added by-hand!
     custom = read_custom_external()
     I = np.logical_or.reduce((np.isin(photo['OBJNAME'], props['objname_ned']),
@@ -2629,6 +2703,8 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Removing {np.sum(I):,d}/{len(photo):,d} photometry rows of ' + \
           'objects in the custom or properties tables.')
     photo = photo[~I]
+
+    # FIXME - we may want to keep these...
 
     # The photo files are limited to objects with DIAM_INIT<20 arcsec;
     # after significant VI, most of these are genuinely small objects,
@@ -2640,42 +2716,44 @@ def build_parent_archive(verbose=False, overwrite=False):
           'arcsec (not in the SMC,LMC) based on the photometry files.')
     cat = cat[J]
 
-    # add the 'resolved' bit
-    resfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-resolved.csv')
-    res = Table.read(resfile, format='csv', comment='#')
-    log.info(f'Read {len(res)} objects from {resfile}')
-    oo, cc = np.unique(res['objname'].value, return_counts=True)
-    if np.any(cc > 1):
-        log.info('Warning: duplicates in resolve file!')
+    lvdmiss = check_lvd(cat)
+    if lvdmiss is not None:
+        log.info(lvdmiss)
         pdb.set_trace()
-        log.info(oo[cc>1])
 
-    cat['RESOLVED'] = np.zeros(len(cat), bool)
-    I = np.isin(cat['OBJNAME'].value, res['objname'].value)
-    if np.sum(I) != len(res):
-        log.info('Missing objects!')
-        pdb.set_trace()
-        log.info(res[~np.isin(res['objname'].value, cat['OBJNAME'].value)])
-    cat['RESOLVED'][I] = True
+    # For convenience, add dedicated Boolean columns for each external
+    # file (which may be different than the SGAFITMODE and SAMPLE bits
+    # which will be populated in build_parent).
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+        actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
+        if not os.path.isfile(actfile):
+            log.warning(f'No action file {actfile} found; skipping.')
+            continue
 
-    # add the 'FORCEGAIA' and 'FORCEPSF' bits
-    for suffix in ['gaia', 'psf']:
-        forcefile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-force{suffix}.csv')
-        force = Table.read(forcefile, format='csv', comment='#')
-        log.info(f'Read {len(force)} objects from {forcefile}')
-        oo, cc = np.unique(force['objname'].value, return_counts=True)
+        # read the file and check for duplicates
+        act = Table.read(actfile, format='csv', comment='#')
+        log.info(f'Read {len(act)} objects from {actfile}')
+
+        oo, cc = np.unique(act['objname'].value, return_counts=True)
         if np.any(cc > 1):
-            log.info(f'Warning: duplicates in the force{suffix} file!')
+            log.warning(f'duplicates in action file {actfile}')
             log.info(oo[cc>1])
             pdb.set_trace()
 
-        cat[f'FORCE{suffix.upper()}'] = np.zeros(len(cat), bool)
-        I = np.isin(cat['OBJNAME'].value, force['objname'].value)
-        if np.sum(I) != len(force):
-            log.info('Missing objects!')
+        # make sure every object is in the current catalog
+        I = np.isin(cat['OBJNAME'].value, act['objname'].value)
+        if np.sum(I) != len(act):
+            log.warning(f'The parent catalog is missing the following objects in {actfile}')
+            log.info(act[~np.isin(act['objname'].value, cat['OBJNAME'].value)])
             pdb.set_trace()
-            log.info(force[~np.isin(force['objname'].value, cat['OBJNAME'].value)])
-        cat[f'FORCE{suffix.upper()}'][I] = True
+
+        # finally add a Boolean flag
+        col = f'IN_{action.upper()}'
+        cat[col] = np.zeros(len(cat), bool)
+        cat[col][I] = True
+
+    # RESOLVED always implies FIXGEO!
+    cat['IN_FIXGEO'][cat['IN_RESOLVED']] = True
 
     # add the Gaia mask bits
     log.info(f'Adding Gaia bright-star masking bits.')
@@ -2727,53 +2805,21 @@ def build_parent_archive(verbose=False, overwrite=False):
                     cat['STARFDIST'][m1[pos[J]]] = fdist[J]
                     cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
 
-    version = parent_version(archive=True)
-    outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
-    log.info(f'Writing {len(cat):,d} objects to {outfile}')
+    log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
-    cat.write(outfile, overwrite=True)
+    cat.write(final_outfile, overwrite=True)
 
 
-    if False:
-        # How many sources with diam<0.1 have no other source within 10 arcsec?
-        radius_isolated = 10.
-
-        diam = np.max((cat['DIAM_LIT'].value, cat['DIAM_HYPERLEDA'].value), axis=0)
-        I = np.where(diam == -99.)[0]
-        #I = np.where((diam > 0.) * (diam < 0.1))[0]
-        #I = np.where(diam < 0.1)[0]
-        cat_isolated = cat[I]
-        matches = match_radec(cat_isolated['RA'].value, cat_isolated['DEC'].value, cat['RA'].value,
-                              cat['DEC'].value, radius_isolated/3600., indexlist=True, notself=True)
-        indx_isolated = []
-        for iobj, onematch in enumerate(matches):
-            if onematch is None:
-                continue
-            if len(onematch) == 1:
-                indx_isolated.append(iobj)
-        indx_isolated = np.array(indx_isolated)
-
-        out = cat_isolated[indx_isolated]
-        #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], out[0]['RA'], out[0]['DEC'], 10./3600) ; cat[m1][cols]
-        #prim=0 ; qa_skypatch(cat[m1[prim]], group=cat[m1])
-
-        prefix = np.array(list(zip(*np.char.split(out['OBJNAME'].value, ' ').tolist()))[0])
-
-        pdffile = 'qa-isolated.pdf'
-        multipage_skypatch(out[:50], cat=cat, width_arcsec=30., ncol=1, nrow=1, clip=True,
-                           jpgdir='tmp-jpeg', pngdir='tmp-objtype', pngsuffix='objtype',
-                           pdffile=pdffile, verbose=False, overwrite=True, cleanup=True)
-
-
-def build_parent(verbose=False, overwrite=False, lvd=False):
+def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
-    from SGA.SGA import sga2025_name, FITBITS, SAMPLEBITS
+    from SGA.SGA import sga2025_name, SGAFITMODE, SAMPLE
     from SGA.groups import build_group_catalog
     from SGA.coadds import REGIONBITS
-    from SGA.sky import find_close
+    from SGA.sky import find_close, in_ellipse_mask_sky
     from SGA.brick import brickname as get_brickname
 
     version = parent_version()
@@ -2781,24 +2827,16 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
 
-    if lvd:
-        outfile = os.path.join(outdir, f'SGA2025-parent-lvd-{version}.fits')
-    else:
-        outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
-
+    outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
 
-    print('Remove objects in clusters')
-    print('Cut on starfdist < 0.5 -- not too close to bright stars!')
-    pdb.set_trace()
-
     cols = ['OBJNAME',
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
             'RA', 'DEC', 'PGC', #'RESOLVED',
-            'STARFDIST', 'STARDIST', 'STARMAG', 'REGION']#, 'ROW_PARENT']
-    #colindx = np.where(np.array(cols)=='DEC')[0][0] + 1
+            #'STARFDIST', 'STARDIST', 'STARMAG',
+            'REGION']#, 'ROW_PARENT']
 
     # merge the two regions
     mindiam = 30. # [arcsec]
@@ -2809,6 +2847,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         log.info(f'Read {len(cat):,d} objects from {catfile}')
 
+        # need to make sure we keep all LVD dwarfs
         lvd_dwarfs = cat['OBJNAME'][cat['ROW_LVD'] != -99].value
 
         # Remove all sources smaller than MINDIAM with no other source
@@ -2823,6 +2862,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
         I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
                                   cat['IN_SMC'], diam > mindiam))
+
         ##########################
         ## trim very small objects and to a specific set of test bricks
         #diam, ba, pa, ref = choose_geometry(cat, mindiam=10.)
@@ -2838,8 +2878,8 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         ##########################
 
         cat = cat[I]
-        log.info(f'Selected {np.sum(I):,d} objects with diameter>' + \
-                 f'{mindiam:.1f} arcsec.')
+        log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
+                 f'diameter > {mindiam:.1f} arcsec.')
 
         # make sure we haven't dropped any LVD dwarfs
         assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
@@ -2847,6 +2887,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         # add the region bit
         cat['REGION'] = np.int16(REGIONBITS[region])
         parent.append(cat)
+
     parent = vstack(parent)
 
     # merge north-south duplicates
@@ -2868,7 +2909,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
-    # build the group catalog from the full sample
+    # sanity check on initial diameters
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=0., get_mag=True)
     diam /= 60. # [arcmin]
@@ -2877,7 +2918,7 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         diam[diam <= 0.] = 10./60.
     assert(np.all(diam > 0.))
 
-    ra, dec = parent['RA'].value, parent['DEC'].value
+    # Pre-process the morphology column.
     allmorph = []
     for objtype, morph, basic_morph in zip(
             parent['OBJTYPE'].value, parent['MORPH'].value,
@@ -2886,43 +2927,120 @@ def build_parent(verbose=False, overwrite=False, lvd=False):
         morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
         allmorph.append(morph1)
 
-    # process the fitting behavior bits
-    fitbits = np.zeros(len(parent), np.int16)
-    fitbits[parent['RESOLVED']] = FITBITS['ignore']
-    fitbits[parent['FORCEGAIA']] = FITBITS['forcegaia']
-    fitbits[parent['FORCEPSF']] = FITBITS['forcepsf']
-    fitbits[parent['IN_LMC']] = FITBITS['forcegaia']
-    fitbits[parent['IN_SMC']] = FITBITS['forcegaia']
+    log.warning('Consider removing sources that are too close to bright stars.')
 
-    samplebits = np.zeros(len(parent), np.int16)
-    samplebits[parent['ROW_LVD'] != -99] = SAMPLEBITS['LVD']
+    # Assign the SAMPLE bits.
+    samplebits = np.zeros(len(parent), np.int32)
+    samplebits[parent['ROW_LVD'] != -99] += SAMPLE['LVD']       # 2^0 - LVD dwarfs
+    for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
+        samplebits[parent[f'IN_{cloud}']] += SAMPLE['CLOUDS']
+    samplebits[parent['IN_GCLPNE']] += SAMPLE['GCLPNE']         # 2^2 - GC/PNe
+    samplebits[parent['STARFDIST'] < 1.2] += SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
+    samplebits[parent['STARFDIST'] < 0.5] += SAMPLE['INSTAR']   # 2^4 - INSTAR
 
-    print('ADD LMC,SMC SOURCES TO SAMPLEBITS?')
-    print('III Zw 040 NOTES02 needs  CLUSTER BIT SET!')
+    # Assign the SGAFITMODE bits. Rederive the set of objects in each
+    # file so those files can be updated without having to rerun
+    # build_parent_archive.
+    sgafitmode = np.zeros(len(parent), np.int32)
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+        actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
+        if not os.path.isfile(actfile):
+            log.warning(f'No action file {actfile} found; skipping.')
+            continue
 
-    sgaid = np.arange(len(parent))
+        # read the file and check for duplicates
+        act = Table.read(actfile, format='csv', comment='#')
+        log.info(f'Read {len(act)} objects from {actfile}')
+
+        oo, cc = np.unique(act['objname'].value, return_counts=True)
+        if np.any(cc > 1):
+            log.warning(f'duplicates in action file {actfile}')
+            log.info(oo[cc>1])
+            pdb.set_trace()
+
+        # make sure every object is in the current catalog
+        I = np.isin(parent['OBJNAME'].value, act['objname'].value)
+        if np.sum(I) != len(act):
+            log.warning(f'The parent catalog is missing the following objects in {actfile}')
+            log.info(act[~np.isin(act['objname'].value, parent['OBJNAME'].value)])
+            pdb.set_trace()
+
+        sgafitmode[I] += SGAFITMODE[action.upper()]
+
+    # RESOLVED always implies FIXGEO!
+    sgafitmode[sgafitmode & SGAFITMODE['RESOLVED'] != 0] += SGAFITMODE['FIXGEO']
+
+    # build the final catalog.
     grp = parent[cols]
+    ra, dec = grp['RA'].value, grp['DEC'].value
 
-    grp.add_column(sgaid, name='SGAID', index=0)
     grp.add_column(sga2025_name(ra, dec, unixsafe=True),
-                   name='SGANAME', index=1)
-    grp.add_column(allmorph, name='MORPH', index=2)
-    grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=3)
-    grp.add_column(diam.astype('f4'), name='DIAM', index=4)
-    grp.add_column(ba.astype('f4'), name='BA', index=5)
-    grp.add_column(pa.astype('f4'), name='PA', index=6)
-    grp.add_column(mag.astype('f4'), name='MAG', index=7)
-    grp.add_column(band, name='BAND', index=8)
-    grp.add_column(fitbits, name='FITBIT', index=9)
-    grp.add_column(samplebits, name='SAMPLEBIT', index=10)
+                   name='SGANAME', index=0)
+    grp.add_column(allmorph, name='MORPH', index=1)
+    grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=2)
+    grp.add_column(diam.astype('f4'), name='DIAM', index=3)
+    grp.add_column(ba.astype('f4'), name='BA', index=4)
+    grp.add_column(pa.astype('f4'), name='PA', index=5)
+    grp.add_column(mag.astype('f4'), name='MAG', index=6)
+    grp.add_column(band, name='BAND', index=7)
+    grp.add_column(sgafitmode, name='SGAFITMODE', index=8)
+    grp.add_column(samplebits, name='SAMPLE', index=9)
 
-    print('NEED TO REMOVE LMC,SMC FROM GROUP-FINDING!')
-    out = build_group_catalog(grp)
+    # Add SFD dust
+    SFD = SFDMap(scaling=1.0)
+    grp.add_column(SFD.ebv(ra, dec), name='EBV', index=10)
 
-    if lvd:
-        I = out['SAMPLEBIT'] == 2**0
-        out = out[np.isin(out['GROUP_ID'], out['GROUP_ID'][I])]
+    log.info('Reserse-sorting by diameter')
+    srt = np.argsort(diam)[::-1]
+    grp = grp[srt]
+
+    if reset_sgaid:
+        log.info('Resetting SGAID')
+        sgaid = np.arange(len(grp))
+    else:
+        log.info('Adopting ROW_PARENT for SGAID')
+        sgaid = parent['ROW_PARENT'][srt].value
+    grp.add_column(sgaid, name='SGAID', index=0)
+
+    # Build the group catalog but without the RESOLVED sample (e.g.,
+    # SMC, LMC).
+    I = grp['SGAFITMODE'] & SGAFITMODE['RESOLVED'] != 0
+    out1 = build_group_catalog(grp[I])
+    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1)
+    out = vstack((out1, out2))
+    del out1, out2
+
+    #cols = ['OBJNAME', 'RA', 'DEC', 'DIAM', 'GROUP_DIAMETER', 'GROUP_MULT', 'GROUP_PRIMARY', 'GROUP_ID', 'SAMPLE', 'REGION', 'SGAFITMODE']
+    #out[out['GROUP_PRIMARY']][cols]
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
+
+    ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
+    ## objects within (outside) the DR11 imaging footprint.
+    #import matplotlib.pyplot as plt
+    #from SGA.external import read_lvd
+    #lvd = read_lvd(verbose=False)
+    #
+    #lvdcat = out[out['SAMPLE'] & SAMPLE['LVD'] != 0]
+    #lvdmiss = check_lvd(lvdcat=lvdcat)
+    #fig, ax = plt.subplots(figsize=(8, 6))
+    #ax.scatter(out['RA'], out['DEC'], s=1)
+    #ax.scatter(lvdmiss['RA'], lvdmiss['DEC'], s=20, alpha=0.5, marker='s')
+    #fig.savefig('ioannis/tmp/junk.png')
+    #
+    #nn = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-dr9-north-v0.1.fits'))
+    #ss = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-dr11-south-v0.1.fits'))
+    #nnlvdmiss = check_lvd(nn)
+    #sslvdmiss = check_lvd(ss)
+    #miss = lvd[np.isin(lvd['OBJNAME'], np.intersect1d(nnlvdmiss['OBJNAME'], sslvdmiss['OBJNAME']))]
+    #
+    #fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    #ax1.scatter(nn['RA'], nn['DEC'], s=1)
+    #ax1.scatter(nnlvdmiss['RA'], nnlvdmiss['DEC'], s=20, alpha=0.5, marker='s')
+    #ax1.scatter(miss['RA'], miss['DEC'], s=20, alpha=0.5, marker='x', color='k')
+    #ax2.scatter(ss['RA'], ss['DEC'], s=1)
+    #ax2.scatter(sslvdmiss['RA'], sslvdmiss['DEC'], s=20, alpha=0.5, marker='s')
+    #ax2.scatter(miss['RA'], miss['DEC'], s=20, alpha=0.5, marker='x', color='k')
+    #fig.savefig('ioannis/tmp/junk.png')

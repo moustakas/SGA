@@ -6,11 +6,19 @@ Utilities for performing simple photometry.
 
 """
 import pdb
+import os, time, sys
 import numpy as np
+import fitsio
+import multiprocessing
+from astropy.table import Table, vstack
+
+from SGA.cutouts import cutouts_plan
+from SGA.SGA import sga2025_name
+from SGA.logger import log
 
 
 def photo_datamodel(out, ra, dec, diam, ba, pa, bands=['g', 'r', 'i', 'z']):
-    out.add_column(radec_to_name(ra, dec, unixsafe=False)[0], name='SGANAME', index=0)
+    out.add_column(sga2025_name(ra, dec, unixsafe=False)[0], name='SGANAME', index=0)
     for col in ['RA', 'DEC']:
         out[f'{col}_PHOT'] = [-99.]
     out['IN_GAIA'] = [False]
@@ -35,44 +43,13 @@ def photo_datamodel(out, ra, dec, diam, ba, pa, bands=['g', 'r', 'i', 'z']):
     return out
 
 
-def _get_photo_filename(args):
-    return get_photo_filename(*args)
-
-
-def get_photo_filename(obj, objname, cutoutdir, photodir, gather_photo=False,
-                       overwrite=False, verbose=False):
-    raslice = get_raslice(obj['RA'])
-
-    fitsfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.fits')
-    jpgfile = os.path.join(cutoutdir, get_raslice(obj['RA']), f'{objname}.jpeg')
-    photfile = os.path.join(photodir, raslice, f'{objname}-phot.fits')
-    qafile = os.path.join(photodir, raslice, f'{objname}-phot.png')
-    nobj = 1
-
-    if gather_photo:
-        nobj = len(glob(photfile))
-        return fitsfile, jpgfile, photfile, qafile, nobj
-
-    if not os.path.isfile(fitsfile):
-        nobj = 0
-        log.warning(f'Missing input FITS file {fitsfile}')
-    else:
-        if overwrite is False:
-            if os.path.isfile(photfile) and os.path.isfile(qafile):
-                nobj = 0
-                if verbose:
-                    log.info(f'Skipping existing photometry file {photfile}')
-
-    return fitsfile, jpgfile, photfile, qafile, nobj
-
-
 def qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
                      diam, ba, pa, xyinit, wimg, wmask, wcs, xyphot=None,
                      xypeak=None, render_jpeg=True):
 
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
-    from SGA.qa import draw_ellipse
+    from SGA.qa import overplot_ellipse
 
     barlen = 15. / pixscale # [pixels]
     barlabel = '15 arcsec'
@@ -99,16 +76,16 @@ def qaplot_photo_one(qafile, jpgfile, out, ra, dec, pixscale, width,
     #ap_init.plot(color='red', ls='-', lw=2, ax=ax)
     #for ap_phot in aps_phot:
     #    ap_phot.plot(color='black', ls='-', lw=2, ax=ax)
-    draw_ellipse(major_axis_arcsec=diam[0], ba=ba[0], pa=pa[0], x0=xyinit[0],
-                 y0=xyinit[1], height_pixels=width, ax=ax, pixscale=pixscale,
-                 color='yellow', linestyle='--', draw_majorminor_axes=True,
-                 jpeg=render_jpeg)
+    overplot_ellipse(major_axis_arcsec=diam[0], ba=ba[0], pa=pa[0], x0=xyinit[0],
+                     y0=xyinit[1], height_pixels=width, ax=ax, pixscale=pixscale,
+                     color='yellow', linestyle='--', draw_majorminor_axes=True,
+                     jpeg=render_jpeg)
     if xyphot is not None:
         xphot, yphot = wcs.wcs_world2pix(out['RA_PHOT'], out['DEC_PHOT'], 1)
-        draw_ellipse(major_axis_arcsec=out[f'DIAM_PHOT'], ba=out['BA_PHOT'],
-                     pa=out['PA_PHOT'], x0=xphot, y0=yphot, height_pixels=width,
-                     pixscale=pixscale, color='cyan', linestyle='-', linewidth=2,
-                     ax=ax, draw_majorminor_axes=True, jpeg=render_jpeg)
+        overplot_ellipse(major_axis_arcsec=out[f'DIAM_PHOT'], ba=out['BA_PHOT'],
+                         pa=out['PA_PHOT'], x0=xphot, y0=yphot, height_pixels=width,
+                         pixscale=pixscale, color='cyan', linestyle='-', linewidth=2,
+                         ax=ax, draw_majorminor_axes=True, jpeg=render_jpeg)
 
     txt = '\n'.join([out['SGANAME'][0], out['OBJNAME'][0], f'{ra:.7f}, {dec:.6f}'])
     ax.text(0.03, 0.93, txt, transform=ax.transAxes, ha='left', va='center',
@@ -144,11 +121,14 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
     from photutils.aperture import EllipticalAperture, CircularAperture
     from photutils.morphology import gini
+    from astrometry.libkd.spherematch import match_radec
     from astrometry.util.starutil_numpy import arcsec_between
     from legacypipe.survey import wcs_for_brick, BrickDuck
     from legacypipe.reference import get_reference_sources, get_reference_map
+
+    from SGA.geometry import choose_geometry
     from SGA.find_galaxy import find_galaxy
-    from SGA.io import custom_brickname
+    from SGA.brick import custom_brickname
 
 
     def get_error(ivar):
@@ -167,7 +147,7 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
 
 
     ra, dec = obj['RA'], obj['DEC']
-    objname = radec_to_name(ra, dec, unixsafe=True)[0]
+    objname = sga2025_name(ra, dec, unixsafe=True)[0]
 
     diam, ba, pa, ref = choose_geometry(Table(obj), mindiam=15.)
     out = photo_datamodel(Table(obj['OBJNAME', 'STARFDIST', 'STARMAG', 'RA', 'DEC']),
@@ -291,19 +271,19 @@ def photo_one(fitsfile, jpgfile, photfile, qafile, obj, survey,
     mge_fail = False
     try:
         mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=True)
+
+        # In rare cases, find_galaxy will return invalid parameters, e.g.,
+        # CGMW 4-1190. Capture those here and return.
+        for param in ('xpeak', 'ypeak', 'xmed', 'ymed', 'majoraxis', 'eps', 'pa', 'theta'):
+            if np.isnan(getattr(mge, param)):
+                log.warning(f'Problem determing the geometry of {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
+                mge_fail = True
+                break
     except:
         mge_fail = True
         #mge = find_galaxy(wimg * ~wmask, binning=5, level=minsb, quiet=False, plot=True)
         #import matplotlib.pyplot as plt
         #plt.clf() ; plt.imshow(wimg * ~wmask, origin='lower') ; plt.savefig('ioannis/tmp/junk2.png')
-
-    # In rare cases, find_galaxy will return invalid parameters, e.g.,
-    # CGMW 4-1190. Capture those here and return.
-    for param in ('xpeak', 'ypeak', 'xmed', 'ymed', 'majoraxis', 'eps', 'pa', 'theta'):
-        if np.isnan(getattr(mge, param)):
-            log.warning(f'Problem determing the geometry of {out["OBJNAME"][0]} = {out["SGANAME"][0]}')
-            mge_fail = True
-            break
 
     if mge_fail:
         out['MGE_FAIL'] = True
@@ -396,6 +376,7 @@ def read_one_photfile(photfile):
 
 def gather_photo(cat, mp=1, region='dr9-north', cutoutdir='.', photodir='.',
                  photo_version='v1.0'):
+    from SGA.SGA import sga_dir
 
     catdir = os.path.join(sga_dir(), 'parent', 'photo')
     if not os.path.isdir(catdir):
@@ -406,8 +387,8 @@ def gather_photo(cat, mp=1, region='dr9-north', cutoutdir='.', photodir='.',
         log.warning(f'Existing photo catalog {catfile} must be removed by-hand.')
         return
 
-    _, _, photfiles, _, groups = plan(cat, size=1, photodir=photodir,
-                                      mp=mp, gather_photo=True)
+    _, _, photfiles, _, groups = cutouts_plan(cat, size=1, photodir=photodir,
+                                              mp=mp, gather_photo=True)
     indx = groups[0]
 
     # single-rank only but read in parallel
@@ -427,7 +408,6 @@ def gather_photo(cat, mp=1, region='dr9-north', cutoutdir='.', photodir='.',
 def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
              region='dr9-north', cutoutdir='.', photodir='.',
              photo_version='v1.0', overwrite=False, verbose=False):
-
     """Wrapper to carry out simple photometry on all objects in the
     input catalog.
 
@@ -443,7 +423,7 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
         #I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 11.) # N=94,229
 
         # photo-version=v1.1
-        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 11.) * (diam < 15.) # N=212,676    
+        I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 11.) * (diam < 15.) # N=212,676
 
     """
     if comm is None:
@@ -453,7 +433,7 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
 
     if rank == 0:
         t0 = time.time()
-        fitsfiles, jpgfiles, photfiles, qafiles, groups = plan(
+        fitsfiles, jpgfiles, photfiles, qafiles, groups = cutouts_plan(
             cat, size=size, cutoutdir=cutoutdir, photodir=photodir,
             overwrite=overwrite, mp=mp, verbose=verbose, photo=True)
         log.info(f'Planning took {time.time() - t0:.2f} sec')
@@ -467,7 +447,7 @@ def do_photo(cat, comm=None, mp=1, bands=['g', 'r', 'i', 'z'],
         photfiles = comm.bcast(photfiles, root=0)
         qafiles = comm.bcast(qafiles, root=0)
         groups = comm.bcast(groups, root=0)
-    sys.stdout.flush()
+        sys.stdout.flush()
 
     # all done
     if len(photfiles) == 0 or len(np.hstack(photfiles)) == 0:

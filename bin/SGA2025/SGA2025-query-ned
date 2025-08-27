@@ -39,14 +39,16 @@ from astrometry.libkd.spherematch import match_radec
 from urllib.request import urlretrieve
 from urllib.error import HTTPError
 
-from SGA.ellipse import get_basic_geometry
-from SGA.util import match, match_to, choose_primary, resolve_close
-from SGA.io import (sga_dir, get_raslice, parent_datamodel,
-                    read_hyperleda_galaxies, version_hyperleda_galaxies,
-                    read_hyperleda_multiples, version_hyperleda_multiples,
-                    read_hyperleda_noobjtype, version_hyperleda_noobjtype,
-                    nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
-                    read_lvd, version_lvd, nedfriendly_lvd)
+from SGA.geometry import get_basic_geometry
+from SGA.util import match, match_to
+from SGA.sky import choose_primary, resolve_close
+from SGA.SGA import sga_dir, get_raslice
+from SGA.external import (read_hyperleda_galaxies, version_hyperleda_galaxies,
+                          read_hyperleda_multiples, version_hyperleda_multiples,
+                          read_hyperleda_noobjtype, version_hyperleda_noobjtype,
+                          nedfriendly_hyperleda, read_nedlvs, version_nedlvs,
+                          read_lvd, version_lvd, nedfriendly_lvd)
+from SGA.parent import parent_datamodel
 
 
 def readone_byname(queryfile):

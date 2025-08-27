@@ -6,8 +6,10 @@ SGA.mpi
 Code to deal with the MPI portion of the pipeline.
 
 """
-import os
+import os, time
 import numpy as np
+
+from SGA.logger import log
 
 
 def mpi_args():
@@ -18,10 +20,10 @@ def mpi_args():
 
     parser.add_argument('--first', type=int, help='Index of first object to process.')
     parser.add_argument('--last', type=int, help='Index of last object to process.')
-    parser.add_argument('--galaxylist', type=str, nargs='*', default=None, help='List of galaxy names to process.')
+    parser.add_argument('--galaxylist', type=str, default=None, help='Comma-separated list of galaxy names to process.')
 
-    parser.add_argument('--d25min', default=0.0, type=float, help='Minimum diameter (arcmin).')
-    parser.add_argument('--d25max', default=100.0, type=float, help='Maximum diameter (arcmin).')
+    parser.add_argument('--mindiam', default=0., type=float, help='Minimum diameter (arcmin).')
+    parser.add_argument('--maxdiam', default=100., type=float, help='Maximum diameter (arcmin).')
 
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
     parser.add_argument('--customsky', action='store_true', help='Build the largest large-galaxy coadds with custom sky-subtraction.')
@@ -36,17 +38,22 @@ def mpi_args():
                         help='Organize HTML pages by RA slice (use in tandem with --htmlindex).')
 
     parser.add_argument('--pixscale', default=0.262, type=float, help='pixel scale (arcsec/pix).')
+    parser.add_argument('--unwise-pixscale', default=2.75, type=float, help='unWISE pixel scale (arcsec/pix).')
+    parser.add_argument('--galex-pixscale', default=1.5, type=float, help='GALEX pixel scale (arcsec/pix).')
+
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
 
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
     parser.add_argument('--htmldir', default=None, type=str, help='Override $SGA_HTML_DIR environment variable')
 
+    parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
+
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
     parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
 
-    parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
+    #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')

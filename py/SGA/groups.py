@@ -124,7 +124,7 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
     return groupcat, outparent
 
 
-def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
+def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
     """dmax in degrees
 
     Group SGA galaxies together where their circular radii would overlap.  Use
@@ -213,7 +213,7 @@ def build_group_catalog(cat, mfac=1.5, dmax=3.0/60.0):
     log.info(f'  {int(np.sum((npergrp > 5) * (npergrp <= 10)))} group(s) with 6-10 members')
     log.info(f'  {int(np.sum( (npergrp > 10)))} group(s) with >10 members')
 
-    cat['GROUP_ID'] = gnum
+    cat['GROUP_ID'] = gnum + group_id_start
     cat['GROUP_MULT'] = mgrp
 
     I = np.where(cat['GROUP_MULT'] == 1)[0]

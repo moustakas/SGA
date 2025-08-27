@@ -7,19 +7,113 @@ General support utilities.
 """
 import numpy as np
 
-
-def ivar2var(ivar):
-    var = np.zeros_like(ivar)
-    ok = ivar > 0.
-    var[ok] = 1. / ivar[ok]
-    return var
+from SGA.logger import log
 
 
-def var2ivar(var):
+TINY = np.nextafter(0, 1, dtype=np.float32)
+SQTINY = np.sqrt(TINY)
+F32MAX = np.finfo(np.float32).max
+
+
+def mwdust_transmission(ebv=0., band='r', run='south'):
+    """Convert SFD E(B-V) value to dust transmission 0-1 given the
+    bandpass.
+
+    Args:
+        ebv (float or array-like): SFD E(B-V) value(s)
+        band (str): Bandpass name, e.g., 'r'.
+        run (str): Photometric system (e.g., 'south').
+
+    Returns:
+        Scalar or array (same as ebv input), Milky Way dust
+        transmission 0-1.
+
+    Notes:
+        Based on `desiutil.dust.mwdust_transmission`.
+
+    """
+    k_X = {
+        # GALEX - https://github.com/dstndstn/tractor/issues/99
+        'FUV': 6.793,
+        'NUV': 6.620,
+        # WISE - https://github.com/dstndstn/tractor/blob/main/tractor/sfd.py#L23-L35
+        'W1': 0.184,
+        'W2': 0.113,
+        'W3': 0.0241,
+        'W4': 0.00910,
+        }
+
+    # LS/DR9 - https://desi.lbl.gov/trac/wiki/ImagingStandardBandpass
+    if run == 'south':
+        k_X.update({
+            'g': 3.212, # DECam
+            'r': 2.164,
+            'i': 1.591,
+            'z': 1.211,
+        })
+    elif run == 'north':
+        k_X.update({
+            'g': 3.258, # BASS
+            'r': 2.176, # BASS
+            'z': 1.199, # MzLS
+        })
+    else:
+        msg = f'Unrecognized run {run}'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    if band not in k_X:
+        msg = f'Bandpass {band} is missing from dictionary of known bandpasses!'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    A_X = k_X[band] * ebv
+    transmission = 10.**(-0.4 * A_X)
+
+    return transmission
+
+
+def var2ivar(var, sigma=False):
+    """Simple function to safely turn a variance into an inverse
+    variance.
+
+    if sigma=True then assume that `var` is a standard deviation
+
+    """
     ivar = np.zeros_like(var)
-    ok = var > 0.
-    ivar[ok] = 1. / var[ok]
+    if sigma:
+        power = 2.
+        ISTINY = SQTINY
+    else:
+        power = 1.
+        ISTINY = TINY
+
+    I = var > ISTINY
+    if np.any(I):
+        ivar[I] = 1. / var[I]**power
+
     return ivar
+
+
+def ivar2var(ivar, clip=0., sigma=False, allmasked_ok=False):
+    """Safely convert an inverse variance to a variance.
+
+    """
+    var = np.zeros_like(ivar)
+    goodmask = ivar > clip # True is good
+    if np.count_nonzero(goodmask) == 0:
+        # Try clipping at zero.
+        goodmask = ivar > 0. # True is good
+        if np.count_nonzero(goodmask) == 0:
+            if allmasked_ok:
+                return var, goodmask
+            errmsg = 'All values are masked!'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+    var[goodmask] = 1. / ivar[goodmask]
+    if sigma:
+        var = np.sqrt(var) # return a sigma
+    return var, goodmask
 
 
 def match_to(A, B, check_for_dups=True):

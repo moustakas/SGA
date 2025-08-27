@@ -7,17 +7,17 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
-SGA2025-build-parent --build-parent-nocuts
-SGA2025-build-parent --build-parent-vicuts
-SGA2025-build-parent --build-parent-archive
+SGA2025-build-parent --nocuts [--overwrite]
+SGA2025-build-parent --vicuts [--overwrite]
+SGA2025-build-parent --archive [--overwrite]
 SGA2025-build-parent --in-footprint --region=dr9-north
 SGA2025-build-parent --in-footprint --region=dr11-south
-SGA2025-build-parent --build-parent
+SGA2025-build-parent --parent [--reset-sgaid] [--overwrite]
 SGA2025-build-parent --qa-parent
 
-salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
-srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-build-parent --in-footprint --region=dr9-north
+salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
+srun --ntasks=64 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+  SGA2025-build-parent --in-footprint --region=dr11-south
 
 """
 def main():
@@ -33,15 +33,15 @@ def main():
                         choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south'],
                         help='Region to pass to --in-footprint.')
 
-    parser.add_argument('--build-parent-nocuts', action='store_true',
+    parser.add_argument('--nocuts', action='store_true',
                         help='Merge the catalogs retrieved by SGA2025-query-ned ' + \
                         'into the parent-nocuts catalog.')
-    parser.add_argument('--build-parent-vicuts', action='store_true',
+    parser.add_argument('--vicuts', action='store_true',
                         help='Apply VI results to the parent-nocuts catalog.')
-    parser.add_argument('--build-parent-archive', action='store_true',
+    parser.add_argument('--archive', action='store_true',
                         help='Apply ssl and other cuts but maintain "archive" ' + \
                         'object names and data model.')
-    parser.add_argument('--build-parent', action='store_true',
+    parser.add_argument('--parent', action='store_true',
                         help='Generate the final parent catalog ' + \
                         'with the final data model.')
     parser.add_argument('--in-footprint', action='store_true',
@@ -53,24 +53,21 @@ def main():
     parser.add_argument('--qa-parent', action='store_true',
                         help='Build QA of the parent sample.')
 
-    parser.add_argument('--lvd', action='store_true',
-                        help='Write out the LVD parent sample.')
-
     parser.add_argument('--verbose', action='store_true',
                         help='Be verbose.')
     parser.add_argument('--overwrite', action='store_true',
                         help='Overwrite existing files.')
     args = parser.parse_args()
 
-    if args.build_parent_nocuts:
+    if args.nocuts:
         from SGA.parent import build_parent_nocuts
-        build_parent_nocuts()
+        build_parent_nocuts(overwrite=args.overwrite, verbose=args.verbose)
 
-    if args.build_parent_vicuts:
+    if args.vicuts:
         from SGA.parent import build_parent_vicuts
         build_parent_vicuts(overwrite=args.overwrite, verbose=args.verbose)
 
-    if args.build_parent_archive:
+    if args.archive:
         from SGA.parent import build_parent_archive
         build_parent_archive(overwrite=args.overwrite, verbose=args.verbose)
 
@@ -82,10 +79,9 @@ def main():
         comm = pkl5.Intracomm(MPI.COMM_WORLD)
         in_footprint(region=args.region, comm=comm, ntest=args.ntest)
 
-    if args.build_parent:
+    if args.parent:
         from SGA.parent import build_parent
-        build_parent(overwrite=args.overwrite, verbose=args.verbose,
-                     lvd=args.lvd)
+        build_parent(overwrite=args.overwrite, verbose=args.verbose)
 
     if args.qa_footprint:
         from SGA.parent import qa_footprint

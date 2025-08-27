@@ -1,14 +1,40 @@
 # Object-level actions based on VI (visual inspections).
 objname,action,reason,comment
 #
+Sagittarius Dwarf Spheroidal,drop,tidal-dwarf,dropped from LVD sample as well
 NGC 2363,drop,not a galaxy,HII region in 'NGC 2366'.
 NGC 2473,drop,duplicate,Same object as 'NGC 2458'.
 BK 08N,drop,faint,Likely not real.
 kkh 089,drop,faint,Likely not real.
 Crater Cluster,drop,GC,Milky Way globular cluster
 #
-PGC353660,drop,faint shred or compact
-WISEA J013647.55+034316.7,drop,faint shred or compact
+WISEA J044827.65-683154.4,drop,cluster,in GCl 'NGC 1697'
+2MASX J04555175-7416433,drop,cluster,in GCl 'NGC 1777'
+NGC 2120,drop,cluster,in GCl 'NGC 2120'
+PGC 329958,drop,cluster,in GCl 'NGC 2162'
+PGC 682045,drop,cluster,in GCl 'NGC 5824'
+PGC 681800,drop,cluster,in GCl 'NGC 5824'
+2MASX J15172611-2101049,drop,cluster,in GCl 'NGC 5897'
+PGC 616807,drop,cluster,in GCl 'NGC 5986'
+WISEA J154603.45-375038.9,drop,cluster,in GCl 'NGC 5986'
+WISEA J162629.84-721024.9,drop,cluster,in GCl 'NGC 6101'
+2MASX J16323015-1303456,drop,cluster,in GCl 'NGC 6171'
+WISEA J163231.19-130322.3,drop,cluster,in GCl 'NGC 6171'
+WISEA J164702.00-020231.3,drop,cluster,in GCl 'NGC 6218'
+2MASS J16474012-0158037,drop,cluster,in GCl 'NGC 6218'
+WISEA J172321.36-174858.5,drop,cluster,in GCl 'NGC 6356'
+2MASS J17232531-1749092,drop,cluster,in GCl 'NGC 6356'
+2MASS J17273686-0502089,drop,cluster,in GCl 'NGC 6366'
+PGC 298931,drop,cluster,in GCl 'NGC 6362'
+CGMW 4-6132,drop,cluster,in PNe 'We 4-5'
+WISEA J193743.74-135125.6,drop,cluster,in PNe 'Kn 56'
+WISEA J193941.58-305401.4,drop,cluster,in GCl 'NGC 6809'
+2MASX J19395485-3055152,drop,cluster,in GCl 'NGC 6809'
+2MASX J19395857-3054301,drop,cluster,in GCl 'NGC 6809'
+2MASX J20055952-2155121,drop,cluster,in GCl 'NGC 6864'
+WISEA J200605.39-215640.6,drop,cluster,in GCl 'NGC 6864'
+V0395 Aqr,drop,cluster,in GCl 'NGC 6981'
+2MASS J21400265-2311199,drop,cluster,in GCl 'NGC 7099'
 #
 PGC 250236,drop,faint shred or compact in SMC,
 PGC 250174,drop,faint shred or compact in SMC,
@@ -2821,6 +2847,19 @@ WISEA J083502.54+292845.0,drop,off-footprint,
 WISEA J214912.16-013325.8,drop,off-footprint,
 WISEA J220415.14+024538.9,drop,off-footprint,
 #
+SDSS J155921.60+420051.1,drop,faint shred or compact
+WISEA J071853.12+585506.2,drop,faint shred or compact
+LEDA 170565,drop,faint shred or compact
+MRK 1120,drop,faint shred or compact
+PGC390789,drop,faint shred or compact
+WISEA J164720.83-020006.5,drop,faint shred or compact
+WISEA J164703.58-020016.0,drop,faint shred or compact
+WISEA J164235.94+362509.1,drop,faint shred or compact
+WISEA J151600.56-000944.3,drop,faint shred or compact
+SDSS J085357.03+085401.1 FG,drop,faint shred or compact
+PGC 268046,drop,faint shred or compact
+PGC353660,drop,faint shred or compact
+WISEA J013647.55+034316.7,drop,faint shred or compact
 KUG 0125+336,drop,faint shred or compact
 WISEA J083738.85-234758.3,drop,faint shred or compact
 CGMW 3-0187,drop,faint shred or compact
@@ -11207,7 +11246,6 @@ SDSS J080314.68+243353.2,drop,faint shred or compact,
 WISEA J080745.89+224854.6,drop,faint shred or compact,
 WISEA J080919.22-002421.9,drop,faint shred or compact,
 2MASS J08134201+1637177,drop,faint shred or compact,
-ESO 006-001,drop,faint shred or compact,
 2MASS J08215308+1447585,drop,faint shred or compact,
 SDSS J082159.63+283224.6,drop,faint shred or compact,
 WISEA J082834.34+065557.0,drop,faint shred or compact,
@@ -13638,7 +13676,6 @@ SDSS J083356.71+265804.5,drop,faint shred or compact,
 WISEA J023337.44-390158.4,drop,faint shred or compact,
 SDSS J083437.18+590535.9,drop,faint shred or compact,
 SDSS J083436.93+590535.0,drop,faint shred or compact,
-HIPASS J1131-31,drop,faint shred or compact,
 WISEA J143504.26-023619.8,drop,faint shred or compact,
 PGC1 4532577 NED001,drop,faint shred or compact,
 WISEA J085844.78+072637.3,drop,faint shred or compact,
@@ -14078,8 +14115,15 @@ WISEA J093313.66+203054.2,drop,faint,Coincident duplicate with 'LSBC D565-09' (L
 [HKK2009] dJ1120+1332,drop,faint,Coincident duplicate with 'dw1120p1332' (LVD)
 GALEXASC J025856.37+133749.8,drop,faint,Coincident duplicate with 'GALFA Dw3' (LVD)
 PGC 1004701,drop,faint,Coincident duplicate with 'dw1000m0821' (LVD)
+[MSB2017b] dw J1343+58,drop,faint,Coincident duplicate with 'dw1343+58' (LVD)
+LSBG F301-064,drop,faint,Coincident duplicate with 'N1291-DW8' (LVD)
+SDSS J093039.96+214324.7,drop,faint,Coincident duplicate with 'NGC 2903-HI-1' (LVD)
 SDSS J113108.55+021309.7,drop,faint,Coincident duplicate with 'Leo V' (LVD)
 SDSS J123109.08+420533.8,drop,faint,Coincident duplicate with 'MAPS 1231+42' (LVD)
+SMDG J1217442+332045,drop,faint,Coincident duplicate with 'KKH 78' (LVD)
+WISEA J111029.09+003653.8,drop,faint,Coincident duplicate with 'dw1110+0037' (LVD)
+2dFGRS N369Z036,drop,faint,Coincident duplicate with 'dw1110+0037' (LVD)
+SDSS J111912.66+141940.0,drop,faint,Coincident duplicate with 'dw1119p1419' (LVD)
 ABELL 3921_05:[PSE2006] 1203,drop,faint,In the body of 'Tucana' (LVD)
 #
 WISEA J100359.93-271906.9,drop,compact,In 'Antlia'
@@ -14216,7 +14260,6 @@ GIN 191,drop,star,
 2MASS J22343145-4702545,drop,star,
 LSBC F469-02,drop,star,Star?
 SDSS J141522.82+141505.0,drop,shred,
-LV J1243+4127,drop,shred,Likely duplicate of 'SMDG J1243552+412727'
 PGC1 2807144 NED001,drop,shred,Likely duplicate of 'SMDG J1150056+554700'
 PGC1 0095601 NED001,drop,shred,Likely duplicate of 'SMDG J0829119+784949'
 WISEA J015942.67-055751.4,drop,shred,Likely duplicate of 'NGC 0779'
@@ -17667,7 +17710,6 @@ PGC1 1440937 NED001,drop,radio source,
 WISEA J011308.03+101215.9,drop,radio source,
 LEDA 1217411,drop,radio source,
 87GB 155054.2+200337,drop,radio source,
-AGC749235,drop,radio source,
 LEDA 096277,drop,radio source,
 2MASS J01144834-0029514,drop,radio source,In 'UGC 00793' group
 FIRST J105749.1+361443,drop,radio source,In 'VV 747' group

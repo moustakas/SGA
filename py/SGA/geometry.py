@@ -12,11 +12,6 @@ from astropy.table import Table
 from SGA.logger import log
 
 
-import numpy as np
-from scipy import ndimage
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
-
 class EllipseProperties:
     """
     Fit an ellipse to the flux distribution of the largest labelled blob in a 2D image.
@@ -30,8 +25,8 @@ class EllipseProperties:
       a_percentile   # percentile-based radius (pixels)
       labels         # label array for all blobs
       blob_mask      # mask of the selected largest blob
-    """
 
+    """
     def __init__(self):
         self.x0 = None
         self.y0 = None
@@ -65,7 +60,10 @@ class EllipseProperties:
         Returns
         -------
         self : EllipseProperties
+
         """
+        from scipy import ndimage
+
         # 1) optionally smooth for blob detection
         if smooth_sigma and smooth_sigma > 0:
             smoothed = ndimage.gaussian_filter(image, sigma=smooth_sigma)
@@ -91,6 +89,7 @@ class EllipseProperties:
         y_sel = yy.flat[blob_idx]
         flux = smoothed.flat[blob_idx]
         if np.any(flux < 0):
+            log.warning('Negative flux in image!')
             import pdb ; pdb.set_trace()
         F = flux.sum()
 
@@ -160,7 +159,11 @@ class EllipseProperties:
         Returns
         -------
         ax : matplotlib.axes.Axes
+
         """
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Ellipse
+
         if ax is None:
             fig, ax = plt.subplots()
         if imshow_kwargs is None:
@@ -176,7 +179,7 @@ class EllipseProperties:
         # overlay ellipse
         if ellipse_kwargs is None:
             ellipse_kwargs = {'edgecolor': 'red', 'facecolor': 'none'}
-        angle = self.pa - 90.0
+        angle = self.pa - 90.
         ell = Ellipse((self.x0, self.y0), 2*self.a, 2*self.a*self.ba,
                       angle=angle, **ellipse_kwargs)
         ax.add_patch(ell)
@@ -350,6 +353,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             basic[f'{prop.upper()}_{ref}_REF'] = val_ref
             if prop == 'mag':
                 basic[f'BAND_{ref}'] = val_band
+
     # LVD
     elif 'RHALF' in cat.columns:
         ref = 'LVD'
@@ -384,6 +388,44 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
                 I = ~np.isnan(cat[col])
                 if np.sum(I) > 0:
                     val[I] = cat[col][I] % 180 # put in the range [0, 180]
+                    val_ref[I] = ref
+
+            basic[f'{prop.upper()}_LIT'] = val
+            basic[f'{prop.upper()}_LIT_REF'] = val_ref
+            if prop == 'mag':
+                basic[f'BAND_LIT'] = val_band
+
+    # DR9/DR10 supplement
+    elif 'SHAPE_R' in cat.columns:
+        ref = 'DR910'
+        for prop in ('mag', 'diam', 'ba', 'pa'):
+            val = np.zeros(nobj, 'f4') - 99.
+            val_ref = np.zeros(nobj, '<U9')
+            val_band = np.zeros(nobj, 'U1')
+
+            if prop == 'mag':
+                col = 'FLUX_R'
+                band = 'r'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = 22.5 - 2.5 * np.log10(cat[col][I])
+                    val_ref[I] = ref
+                    val_band[I] = band
+            elif prop == 'diam':
+                col = 'SHAPE_R'
+                I = cat[col] > 0.
+                if np.sum(I) > 0:
+                    val[I] = 2. * 1.2 * cat[col][I] / 60. # [arcmin]
+                    val_ref[I] = ref
+            elif prop == 'ba' or prop == 'pa':
+                I = ~np.isnan(cat['SHAPE_E1']) * ~np.isnan(cat['SHAPE_E2'])
+                if np.sum(I) > 0:
+                    from SGA.geometry import get_tractor_ellipse
+                    _, ba, pa = get_tractor_ellipse(cat['SHAPE_R'][I], cat['SHAPE_E1'][I], cat['SHAPE_E2'][I])
+                    if prop == 'ba':
+                        val[I] = ba
+                    elif prop == 'pa':
+                        val[I] = pa
                     val_ref[I] = ref
 
             basic[f'{prop.upper()}_LIT'] = val
@@ -550,6 +592,22 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
     Default value of mag is 18.
 
     """
+    # Is this a parent catalog with only one set of geometry
+    # measurements? If so, take the values and run!
+    if 'DIAM' in cat.colnames and 'BA' in cat.colnames and 'PA' in cat.colnames:
+        diam = cat['DIAM'].value * 60.
+        ba = cat['BA'].value
+        pa = cat['PA'].value
+        ref = np.array(['parent'] * len(cat))
+        if get_mag:
+            if 'MAG' in cat.colnames and 'BAND':
+                mag = cat['MAG'].value
+                band = cat['BAND'].value
+            return diam, ba, pa, ref, mag, band
+        else:
+            return diam, ba, pa, ref
+
+
     nobj = len(cat)
     diam = np.zeros(nobj) - 99.
     ba = np.zeros(nobj) - 99.
@@ -571,8 +629,8 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
 
     # first require all of diam, ba, pa...
     for iref, dataref in enumerate(datarefs):
-        I = ((dataindx == iref) * (diam == -99.) * (ba == -99.) * (pa == -99.) * 
-             (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) * 
+        I = ((dataindx == iref) * (diam == -99.) * (ba == -99.) * (pa == -99.) *
+             (cat[f'DIAM_{dataref}'] != -99.) * (cat[f'BA_{dataref}'] != -99.) *
              (cat[f'PA_{dataref}'] != -99.))
         if np.any(I):
             diam[I] = cat[f'DIAM_{dataref}'][I] * 60.

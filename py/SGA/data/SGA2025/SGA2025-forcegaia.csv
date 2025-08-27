@@ -1,5 +1,0 @@
-# This file contains the set of objects that should trigger "force
-# Gaia" in legacypipe because the density of sources is too large.
-objname,region,comment
-LMC,dr11-south,
-SMC,dr11-south,

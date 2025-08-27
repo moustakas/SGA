@@ -1,0 +1,116 @@
+# This file lists objects whose elliptical geometry should be kept
+# fixed in both the SGA pipeline and in legacypipe because they do not
+# have a well-defined center.
+#
+# These objects all get the 'FIXGEO' SGAFITMODE and FITMODE bit set.
+#
+objname,region,comment
+#
+# LVD - dr9-north
+#
+Clump III,dr9-north,LVD
+Clump I,dr9-north,LVD
+d1014+68,dr9-north,LVD
+d0944+69,dr9-north,LVD
+dw1315+4123,dr9-north,LVD
+M101 Dw9,dr9-north,LVD
+[KKH2011]S11,dr9-north,LVD
+d1006+67,dr9-north,LVD
+BK3N,dr9-north,LVD
+d1041+70,dr9-north,LVD
+d0939+71,dr9-north,LVD
+MADCASH-1,dr9-north,LVD
+d0955+70,dr9-north,LVD
+d0926+70,dr9-north,LVD
+dw1330+4731,dr9-north,LVD
+NGC 5055-dwTBG1,dr9-north,LVD
+d0934+70,dr9-north,LVD
+DDO 169NW,dr9-north,LVD
+M101-DF3,dr9-north,LVD
+d0959+68,dr9-north,LVD
+F8D1,dr9-north,LVD
+Canes Venatici II,dr9-north,LVD
+A0952+69,dr9-north,LVD
+Willman 1,dr9-north,LVD
+GARLAND,dr9-north,LVD
+#
+# LVD - dr11-south
+#
+dw1110+0037,dr11-south,LVD
+Bedin 1,dr11-south,LVD
+LeG21,dr11-south,LVD
+dw1111+0049,dr11-south,LVD
+dw1000m0831,dr11-south,LVD
+dw1046+1244,dr11-south,LVD
+dw1048p1259,dr11-south,LVD
+Scl-MM-Dw4,dr11-south,LVD
+dw1109-0016,dr11-south,LVD
+dw1300+1843,dr11-south,LVD
+CenA-MM-Dw5,dr11-south,LVD
+dw1340-30,dr11-south,LVD
+dw1004m0737,dr11-south,LVD
+dw1323-40b,dr11-south,LVD
+CenA-MM-Dw6,dr11-south,LVD
+dw1323-40a,dr11-south,LVD
+CenA-MM-Dw4,dr11-south,LVD
+Pegasus V,dr11-south,LVD
+dw1124p1240,dr11-south,LVD
+dw1335-29,dr11-south,LVD
+CenA-MM-Dw2,dr11-south,LVD
+dw1322-39,dr11-south,LVD
+Scl-MM-Dw1,dr11-south,LVD
+M96-DF2,dr11-south,LVD
+CenA-MM-Dw7,dr11-south,LVD
+Leo K,dr11-south,LVD
+Pisces VII,dr11-south,LVD
+Pegasus W,dr11-south,LVD
+Leo M,dr11-south,LVD
+Andromeda XI,dr11-south,LVD
+Andromeda XIII,dr11-south,LVD
+Virgo II,dr11-south,LVD
+Pictor I,dr11-south,LVD
+Pisces II,dr11-south,LVD
+Andromeda XXII,dr11-south,LVD
+Pegasus VII,dr11-south,LVD
+Andromeda XVI,dr11-south,LVD
+Leo T,dr11-south,LVD
+Phoenix II,dr11-south,LVD
+Horologium I,dr11-south,LVD
+CenA-MM-Dw1,dr11-south,LVD
+Leo Minor I,dr11-south,LVD
+Andromeda XXIX,dr11-south,LVD
+Andromeda XIV,dr11-south,LVD
+Virgo I,dr11-south,LVD
+Eridanus II,dr11-south,LVD
+Hydra II,dr11-south,LVD
+Grus I,dr11-south,LVD
+Andromeda XII,dr11-south,LVD
+Pegasus III,dr11-south,LVD
+Pegasus IV,dr11-south,LVD
+Columba I,dr11-south,LVD
+Leo V,dr11-south,LVD
+Horologium II,dr11-south,LVD
+CenA-MM-Dw3,dr11-south,LVD
+Cetus II,dr11-south,LVD
+Tucana V,dr11-south,LVD
+Aquarius III,dr11-south,LVD
+Segue 2,dr11-south,LVD
+Leo VI,dr11-south,LVD
+Reticulum III,dr11-south,LVD
+Centaurus I,dr11-south,LVD
+Scl-MM-Dw2,dr11-south,LVD
+Bootes II,dr11-south,LVD
+#
+# LVD - dr9-north & dr11-south
+#
+UGCA 292,dr9-north;dr11-south,LVD
+KK 17,dr9-north;dr11-south,LVD
+KK 69,dr9-north;dr11-south,LVD
+Bootes V,dr9-north;dr11-south,LVD
+NGC 4631-dw1,dr9-north;dr11-south,LVD
+NGC 4631-dw2,dr9-north;dr11-south,LVD
+NGC 4631-dw3,dr9-north;dr11-south,LVD
+#
+# dr11-south
+#
+WISEA J203133.10-070501.5,dr11-south,In 'PN A66 70'

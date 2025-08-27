@@ -16,12 +16,42 @@ from SGA.coadds import PIXSCALE
 from SGA.logger import log
 
 
+def map_bxby(bx, by, from_wcs, to_wcs):
+    """Map, (bx, by) coordinates from one WCS to another (e.g.,
+    optical-->GALEX).
+
+    """
+    ra, dec = from_wcs.wcs.pixelxy2radec(bx+1., by+1)
+    (_, to_bx, to_by) = to_wcs.wcs.radec2pixelxy(ra, dec)
+    return to_bx-1., to_by-1.
+
+
+def simple_wcs(racenter, deccenter, width, pixscale=0.262):
+    from astropy.wcs import WCS
+    from astropy.io import fits
+    hdr = fits.Header()
+    hdr['NAXIS'] = 2
+    hdr['NAXIS1'] = width
+    hdr['NAXIS2'] = width
+    hdr['CTYPE1'] = 'RA---TAN'
+    hdr['CTYPE2'] = 'DEC--TAN'
+    hdr['CRVAL1'] = racenter
+    hdr['CRVAL2'] = deccenter
+    hdr['CRPIX1'] = width/2+0.5
+    hdr['CRPIX2'] = width/2+0.5
+    hdr['CD1_1'] = -pixscale/3600.
+    hdr['CD1_2'] = 0.0
+    hdr['CD2_1'] = 0.0
+    hdr['CD2_2'] = +pixscale/3600.
+    return WCS(hdr)
+
+
 def get_ccds(allccds, onegal, width_pixels, pixscale=PIXSCALE, return_ccds=False):
     """Quickly get the CCDs touching this custom brick.  This code is mostly taken
     from legacypipe.runbrick.stage_tims.
 
     """
-    from SGA.io import custom_brickname
+    from SGA.brick import custom_brickname
     from legacypipe.survey import wcs_for_brick, BrickDuck, ccds_touching_wcs
 
     brickname = f'custom-{custom_brickname(onegal["RA"], onegal["DEC"])}'
