@@ -488,16 +488,22 @@ def write_ellipsefit(data, datasets, results, sbprofiles, verbose=False):
     #  --psfdepth, etc.
     #  --maxsma
 
+    REFIDCOLUMN = data['REFIDCOLUMN']
+
     for idata, dataset in enumerate(datasets):
         if dataset == 'opt':
             suffix = ''.join(data['all_opt_bands']) # always griz in north & south
         else:
             suffix = dataset
 
-        for iobj, obj in enumerate(sample):
-            ellipsefile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-ellipse-{obj[REFIDCOLUMN]}-{suffix}.fits')
+        for iobj, results_obj in enumerate(results[idata]):
 
-            results_obj = results[idata][iobj]
+            sganame = results_obj['SGANAME'][0]
+            #sganame = results_obj[REFIDCOLUMN][0]
+            ellipsefile = os.path.join(data["galaxydir"], f'{sganame}-ellipse-{suffix}.fits')
+            #ellipsefile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-' + \
+            #                           f'ellipse-{results_obj[REFIDCOLUMN][0]}-{suffix}.fits')
+
             sbprofiles_obj = sbprofiles[idata][iobj]
             images = data[f'{dataset}_images'][iobj, :, :, :]
             models = data[f'{dataset}_models'][iobj, :, :, :]

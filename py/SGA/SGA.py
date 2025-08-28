@@ -1197,7 +1197,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
         # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
-        if obj['SGAFITMODE'] & SGAFITMODE['MOREMASKING'] != 0 or True:
+        if obj['SGAFITMODE'] & SGAFITMODE['MOREMASKING'] != 0:# or True:
             log.info('  MOREMASKING bit set; masking all extended sources.')
             mask_allgals = True
         else:

@@ -725,8 +725,8 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
 
     dt, unit = get_dt(tall)
-    log.info(f'Ellipse-fitting {len(bands)} bandpasses in a ' + \
-             f'{width}x{width} mosaic took {dt:.3f} {unit}')
+    log.info(f'  Fit {"".join(bands)} in a ' + \
+             f'{width}x{width} mosaic in {dt:.3f} {unit}')
 
     if debug:
         ax.invert_yaxis()
@@ -1232,11 +1232,14 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 
     opt_wcs = data['opt_wcs']
     opt_pixscale = data['opt_pixscale']
+    nsample = len(sample)
 
     results_obj = []
     sbprofiles_obj = []
     for iobj, obj in enumerate(sample):
         refid = obj[REFIDCOLUMN]
+
+        log.info(f'Ellipse-fitting galaxy {iobj+1}/{nsample}.')
 
         results_dataset = []
         sbprofiles_dataset = []
@@ -1335,7 +1338,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                       SGAMASKBITS, REFIDCOLUMN, datasets=datasets)
 
-    pdb.set_trace()
     if not nowrite:
         from SGA.io import write_ellipsefit
         err = write_ellipsefit(data, datasets, results, sbprofiles, verbose=verbose)
