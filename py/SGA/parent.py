@@ -14,26 +14,13 @@ from collections import Counter
 from astropy.table import Table, vstack, hstack
 from astrometry.libkd.spherematch import match_radec
 
-from SGA.SGA import sga_dir
+from SGA.SGA import sga_dir, SGA_version
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.util import match, match_to
 from SGA.sky import choose_primary, resolve_close
 from SGA.qa import qa_skypatch, multipage_skypatch
 
 from SGA.logger import log
-
-
-def parent_version(vicuts=False, nocuts=False, archive=False):
-    if nocuts:
-        version = 'v0.1'
-    elif vicuts:
-        version = 'v0.1'
-    elif archive:
-        version = 'v0.1'
-    else:
-        version = 'v0.1'
-        #version = 'v1.0'
-    return version
 
 
 def parent_datamodel(nobj):
@@ -133,10 +120,10 @@ def qa_parent(nocuts=False, sky=False, size_mag=False):
         os.makedirs(qadir)
 
     if nocuts:
-        version = parent_version(nocuts=True)
+        version = SGA_version(nocuts=True)
         suffix = '-nocuts'
     else:
-        version = parent_version()
+        version = SGA_version(parent=True)
         suffix = ''
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent{suffix}-{version}.fits')
 
@@ -207,7 +194,7 @@ def qa_footprint(region='dr9-north', show_fullcat=False, show_fullccds=False):
 
     sns, colors = plot_style(talk=True, font_scale=0.9)
 
-    version = parent_version(archive=True)
+    version = SGA_version(archive=True)
 
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
     cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT', 'FILTERS']))
@@ -1277,7 +1264,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         t0 = time.time()
 
         # read the parent catalog
-        version = parent_version(archive=True)
+        version = SGA_version(archive=True)
         catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
 
         F = fitsio.FITS(catfile)
@@ -1397,7 +1384,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         outcat['FILTERS'] = allfcat['FILTERS']
         outcat = outcat[np.argsort(outcat['ROW_PARENT'])]
 
-        version = parent_version(archive=True)
+        version = SGA_version(archive=True)
         outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
         log.info(f'Writing {len(outcat):,d} objects to {outfile}')
         outcat.write(outfile, overwrite=True)
@@ -1456,7 +1443,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
                 parent[col] = input_basic[col]
         return parent
 
-    version_nocuts = parent_version(nocuts=True)
+    version_nocuts = SGA_version(nocuts=True)
     final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version_nocuts}.fits')
     if os.path.isfile(final_outfile) and not overwrite:
         log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
@@ -2416,7 +2403,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     in remove_by_prefix)!
 
     """
-    version_vicuts = parent_version(vicuts=True)
+    version_vicuts = SGA_version(vicuts=True)
     final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     if os.path.isfile(final_outfile) and not overwrite:
         log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
@@ -2433,7 +2420,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
             log.info(obj)
         return
 
-    version = parent_version(nocuts=True)
+    version = SGA_version(nocuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version}.fits')
     origcat = Table(fitsio.read(catfile))
     log.info(f'Read {len(origcat):,d} objects from {catfile}')
@@ -2498,14 +2485,14 @@ def build_parent_archive(verbose=False, overwrite=False):
     from SGA.geometry import choose_geometry
     from SGA.sky import in_ellipse_mask_sky
 
-    version_archive = parent_version(archive=True)
+    version_archive = SGA_version(archive=True)
     final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version_archive}.fits')
     if os.path.isfile(final_outfile) and not overwrite:
         log.info(f'Parent catalog {final_outfile} exists; use --overwrite')
         return
 
 
-    version_vicuts = parent_version(vicuts=True)
+    version_vicuts = SGA_version(vicuts=True)
     catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-vicuts-{version_vicuts}.fits')
     cat = Table(fitsio.read(catfile))
     log.info(f'Read {len(cat):,d} objects from {catfile}')
@@ -2822,7 +2809,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     from SGA.sky import find_close, in_ellipse_mask_sky
     from SGA.brick import brickname as get_brickname
 
-    version = parent_version()
+    version = SGA_version(parent=True)
     version_nocuts = parent_version(nocuts=True)
     version_archive = parent_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
@@ -2839,8 +2826,6 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
             'REGION']#, 'ROW_PARENT']
 
     # merge the two regions
-    mindiam = 30. # [arcsec]
-    minsep = 60.  # [arcsec]
     parent = []
     for region in ['dr11-south', 'dr9-north']:
         catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
@@ -2852,34 +2837,24 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
 
         # Remove all sources smaller than MINDIAM with no other source
         # within XX arcsec.
-        primaries, groups = find_close(cat, cat, rad_arcsec=minsep, isolated=True)
-        diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-        I = ((primaries['ROW_LVD'] == -99) * ~primaries['IN_LMC'] * ~primaries['IN_SMC'] * (diam < mindiam))
-        log.info(f'Removing {np.sum(I):,d}/{len(cat):,d} isolated (separation>{minsep:.1f} arcsec) ' + \
-                 f'objects with diameter<{mindiam:.1f} arcsec.')
-        cat = cat[~np.isin(cat['OBJNAME'], primaries['OBJNAME'][I])]
+        if False:
+            mindiam = 30. # [arcsec]
+            minsep = 60.  # [arcsec]
 
-        diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-        I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
-                                  cat['IN_SMC'], diam > mindiam))
+            primaries, groups = find_close(cat, cat, rad_arcsec=minsep, isolated=True)
+            diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+            I = ((primaries['ROW_LVD'] == -99) * ~primaries['IN_LMC'] * ~primaries['IN_SMC'] * (diam < mindiam))
+            log.info(f'Removing {np.sum(I):,d}/{len(cat):,d} isolated (separation>{minsep:.1f} arcsec) ' + \
+                     f'objects with diameter<{mindiam:.1f} arcsec.')
+            cat = cat[~np.isin(cat['OBJNAME'], primaries['OBJNAME'][I])]
 
-        ##########################
-        ## trim very small objects and to a specific set of test bricks
-        #diam, ba, pa, ref = choose_geometry(cat, mindiam=10.)
-        #diam /= 60. # [arcmin]
-        #
-        #I = (diam > 45./60.)# * (diam < 2.)
-        #cat = cat[I]
-        #
-        #bricknames = get_brickname(cat['RA'].value, cat['DEC'].value)
-        #I = np.where(np.isin(bricknames, ['0545m052', '0545m050',
-        #                                  '0542m050']))[0]
-        #cat = cat[I]
-        ##########################
+            diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
+            I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
+                                      cat['IN_SMC'], diam > mindiam))
 
-        cat = cat[I]
-        log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
-                 f'diameter > {mindiam:.1f} arcsec.')
+            cat = cat[I]
+            log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
+                     f'diameter > {mindiam:.1f} arcsec.')
 
         # make sure we haven't dropped any LVD dwarfs
         assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
@@ -2910,12 +2885,13 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
     # sanity check on initial diameters
+    mindiam = 20. # [arcsec]
     diam, ba, pa, ref, mag, band = choose_geometry(
-        parent, mindiam=0., get_mag=True)
+        parent, mindiam=mindiam, get_mag=True)
+    I = diam == mindiam
+    if np.any(I):
+        log.warning(f'Setting mindiam={mindiam:.1f} arcsec for {np.sum(I):,d} objects.')
     diam /= 60. # [arcmin]
-    if np.any(diam <= 0.):
-        log.warning('Some objects have zero diameter!')
-        diam[diam <= 0.] = 10./60.
     assert(np.all(diam > 0.))
 
     # Pre-process the morphology column.
@@ -2933,7 +2909,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     samplebits = np.zeros(len(parent), np.int32)
     samplebits[parent['ROW_LVD'] != -99] += SAMPLE['LVD']       # 2^0 - LVD dwarfs
     for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
-        samplebits[parent[f'IN_{cloud}']] += SAMPLE['CLOUDS']
+        samplebits[parent[f'IN_{cloud}']] += SAMPLE['MCLOUDS']
     samplebits[parent['IN_GCLPNE']] += SAMPLE['GCLPNE']         # 2^2 - GC/PNe
     samplebits[parent['STARFDIST'] < 1.2] += SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
     samplebits[parent['STARFDIST'] < 0.5] += SAMPLE['INSTAR']   # 2^4 - INSTAR
@@ -2978,7 +2954,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
                    name='SGANAME', index=0)
     grp.add_column(allmorph, name='MORPH', index=1)
     grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=2)
-    grp.add_column(diam.astype('f4'), name='DIAM', index=3)
+    grp.add_column(diam.astype('f4'), name='DIAM', index=3) # [arcmin]
     grp.add_column(ba.astype('f4'), name='BA', index=4)
     grp.add_column(pa.astype('f4'), name='PA', index=5)
     grp.add_column(mag.astype('f4'), name='MAG', index=6)

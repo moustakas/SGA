@@ -969,11 +969,11 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
 
             results_obj = results[idata][iobj]
             sbprofiles_obj = sbprofiles[idata][iobj]
+
             images = data[f'{dataset}_images'][iobj, :, :, :]
             models = data[f'{dataset}_models'][iobj, :, :, :]
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
-            refband = data[f'{dataset}_refband']
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
             wcs = data[f'{dataset}_wcs']
@@ -985,7 +985,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
             semia = obj['DIAM_MOMENT'] / 2. # [arcsec]
 
             bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
-            refg = EllipseGeometry(x0=by, y0=bx, eps=ellipse_eps, # note bx,by swapped
+            refg = EllipseGeometry(x0=bx, y0=by, eps=ellipse_eps,
                                    pa=ellipse_pa, sma=semia/pixscale) # sma in pixels
             refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
                                        refg.sma*(1. - refg.eps), refg.pa)
@@ -1285,8 +1285,8 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
         sbprofiles_obj.append(sbprofiles_dataset)
 
     # unpack the SB profiles and results tables
-    results = list(zip(*results_obj))
-    sbprofiles = list(zip(*sbprofiles_obj))
+    results = list(zip(*results_obj))       # [ndatasets][nobj]
+    sbprofiles = list(zip(*sbprofiles_obj)) # [ndatasets][nobj]
 
     return results, sbprofiles
 

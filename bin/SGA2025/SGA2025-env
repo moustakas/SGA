@@ -20,7 +20,7 @@ export LEGACY_SURVEY_BASEDIR=$COSMO/work/legacysurvey
 #export SKY_TEMPLATE_DIR=$COSMO/data/legacysurvey/dr9/calib/sky_pattern
 export SKY_TEMPLATE_DIR=$COSMO/work/legacysurvey/dr11/calib/sky_pattern
 #export LARGEGALAXIES_CAT=$COSMO/staging/largegalaxies/v3.0/SGA-parent-v3.0.kd.fits
-export LARGEGALAXIES_CAT=/global/cfs/cdirs/desi/users/ioannis/SGA/2025/SGA2025-v0.1-refcat.kd.fits
+export LARGEGALAXIES_CAT=/global/cfs/cdirs/desi/users/ioannis/SGA/2025/SGA2025-v0.11-refcat.kd.fits
 #echo "LARGEGALAXIES_CAT="$LARGEGALAXIES_CAT
 
 export GAIA_CAT_DIR=$COSMO/data/gaia/dr3/healpix

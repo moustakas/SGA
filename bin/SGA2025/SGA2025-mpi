@@ -176,8 +176,12 @@ def main():
             from astropy.table import Table
             from SGA.SGA import SGA_version, REFCAT
 
-            version = SGA_version()
+            version = SGA_version(parent=True)
+            #version = 'v0.1'
+            #fullsample = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-v0.1.fits'))
             ngal = len(fullsample)
+
+            assert(ngal == len(np.unique(fullsample['SGAID'])))
 
             ref = Table()
             ref['ra'] = fullsample['RA']

@@ -34,7 +34,7 @@ SGAFITMODE = dict(
 
 SAMPLE = dict(
     LVD = 2**0,      # Local Volume Database dwarfs
-    CLOUDS = 2**1,   # in the Magellanic Clouds
+    MCLOUDS = 2**1,  # in the Magellanic Clouds
     GCLPNE = 2**2,   # in a globular cluster or PNe mask (implies --no-force-gaia)
     NEARSTAR = 2**3, # STARFDIST < 1.2
     INSTAR = 2**4,   # STARFDIST < 0.5
@@ -76,8 +76,18 @@ SBTHRESH = [23, 24, 25, 26] # surface brightness thresholds
 APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
 
 
-def SGA_version():
-    version = 'v0.1'
+def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
+    if nocuts:
+        version = 'v0.1'
+    elif vicuts:
+        version = 'v0.1'
+    elif archive:
+        version = 'v0.1'
+    elif parent:
+        #version = 'v0.1'
+        version = 'v0.11' # no mindiam/minsep cuts
+    else:
+        version = 'v0.1'
     return version
 
 
@@ -333,7 +343,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     """
     import fitsio
     from SGA.coadds import REGIONBITS
-    from SGA.parent import parent_version
 
     if lvd:
         no_groups = True # NB
@@ -350,7 +359,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         version = SGA_version()
         samplefile = os.path.join(sga_dir(), '2025', f'SGA2025-ellipse-{version}.fits')
     else:
-        version = parent_version()
+        version = SGA_version(parent=True)
         samplefile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-{version}.fits')
 
     if not os.path.isfile(samplefile):
@@ -1036,14 +1045,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         #method = 'rms'
         P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, smooth_sigma=0.)
 
-        debug = False # True
-        if debug:
+        if False:
             import matplotlib.pyplot as plt
-            fig, (ax1, ax2) = plt.subplots()
+            fig, (ax1, ax2) = plt.subplots(1, 2)
             P.plot(image=np.log10(cutout), ax=ax1)
             ax2.imshow(cutout_mask, origin='lower')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
+            #pdb.set_trace()
 
         P.x0 += x1
         P.y0 += y1
@@ -1183,13 +1192,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         # mask.
         opt_gaiamask_obj = np.copy(opt_gaiamask)
         if obj['SGAFITMODE'] & SGAFITMODE['LESSMASKING'] != 0:
-            log.info('LESSMASKING bit set; no Gaia threshold-masking.')
+            log.info('  LESSMASKING bit set; no Gaia threshold-masking.')
             opt_gaiamask_obj[:, :] = False
 
         # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
-        if obj['SGAFITMODE'] & SGAFITMODE['MOREMASKING'] != 0:
-            log.info('MOREMASKING bit set; masking all extended sources.')
+        if obj['SGAFITMODE'] & SGAFITMODE['MOREMASKING'] != 0 or True:
+            log.info('  MOREMASKING bit set; masking all extended sources.')
             mask_allgals = True
         else:
             mask_allgals = False
@@ -1207,11 +1216,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         for indx, refsrc, refsample in zip(refindx, refsrcs, refsamples):
             # for *previously* completed objects, use the final, not
             # initial geometry
-            if (iobj > 0):
+            if indx < iobj:
                 [bx, by, diam, ba, pa] = geo_final[indx, :]
             else:
                 [bx, by, diam, ba, pa] = \
                     get_geometry(opt_pixscale, table=refsample)
+            #if diam <= 0.:
+            #    pdb.set_trace()
             opt_refmask1 = in_ellipse_mask(bx, width-by, diam/2., ba*diam/2.,
                                            pa, xgrid, ygrid_flip)
             opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
@@ -1239,7 +1250,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
             niter_actual = niter
 
         for iiter in range(niter_actual):
-            log.info(f'Iteration {iiter+1}/{niter_actual}')
+            log.debug(f'Iteration {iiter+1}/{niter_actual}')
             #print(iobj, iiter, bx, by, diam, ba, pa)
 
             # initialize (or update) the in-ellipse mask
@@ -1306,7 +1317,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
             # Optionally update the geometry from the masked, coadded
             # optical image.
             if obj['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0:
-                log.info('FIXGEO bit set; not updating geometry.')
+                log.info('  FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
             else:
                 # generate a detection image and pixel mask for use with find_galaxy_in_cutout
@@ -1767,7 +1778,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 def get_radius_mosaic(diam, mindiam=0.5, pixscale=0.262, get_barlen=False):
     """Get the mosaic radius.
 
-    diam in arcmin
+    diam, mindiam in arcmin
 
     """
     if diam < mindiam:
@@ -1777,9 +1788,9 @@ def get_radius_mosaic(diam, mindiam=0.5, pixscale=0.262, get_barlen=False):
     if diam > 10.:
         radius_mosaic_arcsec *= 1.1
     elif diam > 3. and diam <= 10:
-        radius_mosaic_arcsec *= 1.3
-    elif diam > 1. and diam <= 3.:
         radius_mosaic_arcsec *= 1.5
+    elif diam > 1. and diam <= 3.:
+        radius_mosaic_arcsec *= 1.8
     else:
         radius_mosaic_arcsec *= 2.
 

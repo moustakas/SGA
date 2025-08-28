@@ -137,7 +137,7 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
     from pydl.pydlutils.spheregroup import spheregroup
     from astrometry.util.starutil_numpy import degrees_between
 
-    print('Starting spheregrouping.')
+    log.info('Starting spheregrouping with {len(cat):,d} objects.')
 
     nchar = np.max([len(gg) for gg in cat['SGANAME']])+6 # add six characters for "_GROUP"
 
@@ -165,7 +165,6 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
     # First group galaxies within dmax arcmin, setting those to have the same
     # group number
     t0 = time.time()
-    log.info('Spheregrouping took...')
     ingroup, group_mult, firstgroup, nextgroup = spheregroup(ra, dec, dmax)
 
     ngroup = np.count_nonzero(firstgroup != -1)
@@ -202,7 +201,6 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
                   indx = np.where(np.logical_or(gnum==gnum[ibig[ii]], gnum==gnum[inear[jj]]))[0]
                   gnum[indx] = gnum[indx[0]]
                   mgrp[indx] = len(indx)
-    log.info(f'...{(time.time() - t0)/60.:.3f} min')
 
     npergrp, _ = np.histogram(gnum, bins=len(gnum), range=(0, len(gnum)))
 
