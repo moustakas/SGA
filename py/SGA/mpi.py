@@ -48,6 +48,7 @@ def mpi_args():
     parser.add_argument('--htmldir', default=None, type=str, help='Override $SGA_HTML_DIR environment variable')
 
     parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
+    parser.add_argument('--test-bricks', action='store_true', help='Read the sample of test bricks.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')

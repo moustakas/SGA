@@ -28,6 +28,24 @@ def set_legacysurvey_dir(region='dr9-north'):
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
 
 
+def get_raslice(ra):
+    if np.isscalar(ra):
+        return f'{int(ra):03d}'
+    else:
+        return np.array([f'{int(onera):03d}' for onera in ra])
+
+
+def radec_to_groupname(ra, dec, prefix=''):
+    # 36-arcsec precision (0.01 degrees)
+    group_name = []
+    for ra1, dec1 in zip(np.atleast_1d(ra), np.atleast_1d(dec)):
+        group_name.append('{}{:05d}{}{:04d}'.format(
+            prefix, int(100*ra1), 'm' if dec1 < 0 else 'p',
+            int(100*np.abs(dec1))))
+    group_name = np.array(group_name)
+    return group_name
+
+
 def radec_to_name(target_ra, target_dec, prefix='SGA2025',
                   precision=4, unixsafe=False):
     """Convert the right ascension and declination of an object into a
@@ -498,7 +516,7 @@ def write_ellipsefit(data, datasets, results, sbprofiles, verbose=False):
 
         for iobj, results_obj in enumerate(results[idata]):
 
-            sganame = results_obj['SGANAME'][0]
+            sganame = results_obj['SGANAME'][0].replace(' ', '_')
             #sganame = results_obj[REFIDCOLUMN][0]
             ellipsefile = os.path.join(data["galaxydir"], f'{sganame}-ellipse-{suffix}.fits')
             #ellipsefile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-' + \

@@ -124,8 +124,11 @@ def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='gro
     return groupcat, outparent
 
 
-def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
-    """dmax in degrees
+def build_group_catalog(cat, group_id_start=0, mfac=1.5,
+                        dmin=36./3600., dmax=3./60.):
+    """dmin, dmax in degrees
+
+    dmin = 36 arcsec is set by the precision (0.01 deg) of radec_to_groupname
 
     Group SGA galaxies together where their circular radii would overlap.  Use
     the catalog D25 diameters (in arcmin) multiplied by a scaling factor MFAC.
@@ -136,10 +139,11 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
     from astropy.table import Column
     from pydl.pydlutils.spheregroup import spheregroup
     from astrometry.util.starutil_numpy import degrees_between
+    from SGA.io import radec_to_groupname
 
-    log.info('Starting spheregrouping with {len(cat):,d} objects.')
+    log.info(f'Starting spheregrouping with {len(cat):,d} objects.')
 
-    nchar = np.max([len(gg) for gg in cat['SGANAME']])+6 # add six characters for "_GROUP"
+    #nchar = np.max([len(gg) for gg in cat['SGANAME']])+6 # add six characters for "_GROUP"
 
     # clean up old entries
     for col in ['GROUP_ID', 'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
@@ -149,7 +153,8 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
 
     t0 = time.time()
     cat.add_column(Column(name='GROUP_ID', data=np.zeros(len(cat), dtype=np.int32)-1))
-    cat.add_column(Column(name='GROUP_NAME', length=len(cat), dtype=f'<U{nchar}'))
+    cat.add_column(Column(name='GROUP_NAME', length=len(cat), dtype=f'<U10'))
+    #cat.add_column(Column(name='GROUP_NAME', length=len(cat), dtype=f'<U{nchar}'))
     cat.add_column(Column(name='GROUP_MULT', data=np.zeros(len(cat), dtype=np.int16)))
     cat.add_column(Column(name='GROUP_PRIMARY', data=np.zeros(len(cat), dtype=bool)))
     cat.add_column(Column(name='GROUP_RA', length=len(cat), dtype='f8')) # diameter-weighted center
@@ -161,6 +166,10 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
     mgrp = np.ones(len(cat)).astype(np.int16)
 
     ra, dec, diam = cat['RA'].value, cat['DEC'].value, cat['DIAM'].value
+    I = diam/60. < dmin
+    if np.any(I):
+        log.info(f'Using mindiam={dmin*3600.:.0f} arcsec for {np.sum(I):,d} objects.')
+        diam[I] = dmin * 60.
 
     # First group galaxies within dmax arcmin, setting those to have the same
     # group number
@@ -204,12 +213,12 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
 
     npergrp, _ = np.histogram(gnum, bins=len(gnum), range=(0, len(gnum)))
 
-    log.info(f'Found {len(set(gnum))} total groups, including:')
-    log.info(f'  {int(np.sum((npergrp == 1)))} groups with 1 member')
-    log.info(f'  {int(np.sum((npergrp == 2)))} groups with 2 members')
-    log.info(f'  {int(np.sum((npergrp > 2) * (npergrp <= 5)))} group(s) with 3-5 members')
-    log.info(f'  {int(np.sum((npergrp > 5) * (npergrp <= 10)))} group(s) with 6-10 members')
-    log.info(f'  {int(np.sum( (npergrp > 10)))} group(s) with >10 members')
+    log.info(f'Found {len(set(gnum)):,d} total groups, including:')
+    log.info(f'  {int(np.sum((npergrp == 1))):,d} groups with 1 member')
+    log.info(f'  {int(np.sum((npergrp == 2))):,d} groups with 2 members')
+    log.info(f'  {int(np.sum((npergrp > 2) * (npergrp <= 5))):,d} group(s) with 3-5 members')
+    log.info(f'  {int(np.sum((npergrp > 5) * (npergrp <= 10))):,d} group(s) with 6-10 members')
+    log.info(f'  {int(np.sum( (npergrp > 10))):,d} group(s) with >10 members')
 
     cat['GROUP_ID'] = gnum + group_id_start
     cat['GROUP_MULT'] = mgrp
@@ -219,7 +228,8 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
         cat['GROUP_RA'][I] = ra[I]
         cat['GROUP_DEC'][I] = dec[I]
         cat['GROUP_DIAMETER'][I] = diam[I]
-        cat['GROUP_NAME'][I] = cat['SGANAME'][I]
+        cat['GROUP_NAME'][I] = radec_to_groupname(cat['GROUP_RA'][I], cat['GROUP_DEC'][I])
+        #cat['GROUP_NAME'][I] = cat['SGANAME'][I]
         cat['GROUP_PRIMARY'][I] = True
 
     more = np.where(cat['GROUP_MULT'] > 1)[0]
@@ -246,7 +256,9 @@ def build_group_catalog(cat, group_id_start=0, mfac=1.5, dmax=3./60.):
         # Assign the group name based on its largest member and also make this
         # galaxy "primary".
         primary = np.argmax(diam[I])
-        cat['GROUP_NAME'][I] = f'{cat["SGANAME"][I][primary]}_GROUP'
+        cat['GROUP_NAME'][I] = radec_to_groupname(
+            cat['GROUP_RA'][I][primary], cat['GROUP_DEC'][I][primary])
+        #cat['GROUP_NAME'][I] = f'{cat["SGANAME"][I][primary]}_GROUP'
         cat['GROUP_PRIMARY'][I[primary]] = True
 
         #if cat['GROUP_ID'][I][0] == 2708:

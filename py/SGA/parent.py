@@ -2709,7 +2709,7 @@ def build_parent_archive(verbose=False, overwrite=False):
         pdb.set_trace()
 
     # For convenience, add dedicated Boolean columns for each external
-    # file (which may be different than the SGAFITMODE and SAMPLE bits
+    # file (which may be different than the ELLIPSEMODE and SAMPLE bits
     # which will be populated in build_parent).
     for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
@@ -2803,15 +2803,17 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     """
     from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
-    from SGA.SGA import sga2025_name, SGAFITMODE, SAMPLE
+    from SGA.SGA import sga2025_name, SAMPLE, SGA_version
+    from SGA.ellipse import ELLIPSEMODE, FITMODE
+    from SGA.io import radec_to_groupname
     from SGA.groups import build_group_catalog
     from SGA.coadds import REGIONBITS
     from SGA.sky import find_close, in_ellipse_mask_sky
-    from SGA.brick import brickname as get_brickname
+    #from SGA.brick import brickname as get_brickname
 
     version = SGA_version(parent=True)
-    version_nocuts = parent_version(nocuts=True)
-    version_archive = parent_version(archive=True)
+    version_nocuts = SGA_version(nocuts=True)
+    version_archive = SGA_version(archive=True)
     outdir = os.path.join(sga_dir(), 'parent')
 
     outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
@@ -2914,10 +2916,10 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     samplebits[parent['STARFDIST'] < 1.2] += SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
     samplebits[parent['STARFDIST'] < 0.5] += SAMPLE['INSTAR']   # 2^4 - INSTAR
 
-    # Assign the SGAFITMODE bits. Rederive the set of objects in each
+    # Assign the ELLIPSEMODE bits. Rederive the set of objects in each
     # file so those files can be updated without having to rerun
     # build_parent_archive.
-    sgafitmode = np.zeros(len(parent), np.int32)
+    ellipsemode = np.zeros(len(parent), np.int32)
     for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
@@ -2941,30 +2943,46 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
             log.info(act[~np.isin(act['objname'].value, parent['OBJNAME'].value)])
             pdb.set_trace()
 
-        sgafitmode[I] += SGAFITMODE[action.upper()]
+        ellipsemode[I] += ELLIPSEMODE[action.upper()]
 
     # RESOLVED always implies FIXGEO!
-    sgafitmode[sgafitmode & SGAFITMODE['RESOLVED'] != 0] += SGAFITMODE['FIXGEO']
+    ellipsemode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] += ELLIPSEMODE['FIXGEO']
+
+    # FITMODE is used by legacypipe
+    fitmode = np.zeros(len(parent), np.int32)
+    fitmode[ellipsemode & ELLIPSEMODE['FIXGEO'] != 0] += FITMODE['FIXGEO']
+    fitmode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] += FITMODE['RESOLVED']
 
     # build the final catalog.
-    grp = parent[cols]
-    ra, dec = grp['RA'].value, grp['DEC'].value
+    grp = parent['REGION', 'OBJNAME', 'PGC']
+    grp['SAMPLE'] = samplebits
+    grp['ELLIPSEMODE'] = ellipsemode
+    grp['FITMODE'] = fitmode
+    grp['RA'] = parent['RA']
+    grp['DEC'] = parent['DEC']
+    grp['DIAM'] = diam.astype('f4') # [arcmin]
+    grp['BA'] = ba.astype('f4')
+    grp['PA'] = pa.astype('f4')
+    grp['MAG'] = mag.astype('f4')
+    grp['BAND'] = band
 
-    grp.add_column(sga2025_name(ra, dec, unixsafe=True),
-                   name='SGANAME', index=0)
-    grp.add_column(allmorph, name='MORPH', index=1)
-    grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=2)
-    grp.add_column(diam.astype('f4'), name='DIAM', index=3) # [arcmin]
-    grp.add_column(ba.astype('f4'), name='BA', index=4)
-    grp.add_column(pa.astype('f4'), name='PA', index=5)
-    grp.add_column(mag.astype('f4'), name='MAG', index=6)
-    grp.add_column(band, name='BAND', index=7)
-    grp.add_column(sgafitmode, name='SGAFITMODE', index=8)
-    grp.add_column(samplebits, name='SAMPLE', index=9)
+    #ra, dec = grp['RA'].value, grp['DEC'].value
+    #grp.add_column(sga2025_name(ra, dec, unixsafe=True),
+    #               name='SGANAME', index=0)
+    #grp.add_column(allmorph, name='MORPH', index=1)
+    #grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=2)
+    #grp.add_column(samplebits, name='SAMPLE')#, index=9)
+    #grp.add_column(ellipsemode, name='ELLIPSEMODE')#, index=8)
+    #grp.add_column(diam.astype('f4'), name='DIAM')#, index=3) # [arcmin]
+    #grp.add_column(ba.astype('f4'), name='BA')#, index=4)
+    #grp.add_column(pa.astype('f4'), name='PA')#, index=5)
+    #grp.add_column(mag.astype('f4'), name='MAG')#, index=6)
+    #grp.add_column(band, name='BAND', index=7)
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
-    grp.add_column(SFD.ebv(ra, dec), name='EBV', index=10)
+    #grp.add_column(SFD.ebv(grp['RA'].value, grp['DEC'].value), name='EBV', index=10)
+    grp['EBV'] = SFD.ebv(grp['RA'].value, grp['DEC'].value).astype('f4')
 
     log.info('Reserse-sorting by diameter')
     srt = np.argsort(diam)[::-1]
@@ -2978,16 +2996,21 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
         sgaid = parent['ROW_PARENT'][srt].value
     grp.add_column(sgaid, name='SGAID', index=0)
 
-    # Build the group catalog but without the RESOLVED sample (e.g.,
-    # SMC, LMC).
-    I = grp['SGAFITMODE'] & SGAFITMODE['RESOLVED'] != 0
+    # Build the group catalog but without the RESOLVED or FORCEPSF
+    # samples (e.g., SMC, LMC).
+    I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
+                      grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
     out1 = build_group_catalog(grp[I])
+    #out = out1
     out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1)
     out = vstack((out1, out2))
     del out1, out2
 
-    #cols = ['OBJNAME', 'RA', 'DEC', 'DIAM', 'GROUP_DIAMETER', 'GROUP_MULT', 'GROUP_PRIMARY', 'GROUP_ID', 'SAMPLE', 'REGION', 'SGAFITMODE']
-    #out[out['GROUP_PRIMARY']][cols]
+    # assign groupdir and groupname
+    #groupdir = radec_to_groupname(out['GROUP_RA'].value, out['GROUP_DEC'].value)
+    groupname = sga2025_name(out['GROUP_RA'].value, out['GROUP_DEC'].value, group_name=True)
+    #out.add_column(groupdir, name='GROUPDIR', index=1)
+    out.add_column(groupname, name='SGAGROUP', index=1)
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'

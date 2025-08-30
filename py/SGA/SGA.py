@@ -21,17 +21,6 @@ DECCOLUMN = 'GROUP_DEC' # 'DEC'
 DIAMCOLUMN = 'GROUP_DIAMETER' # 'DIAM'
 REFIDCOLUMN = 'SGAID'
 
-SGAFITMODE = dict(
-    FIXGEO = 2**0,      # fix ellipse geometry
-    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting
-    FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
-                        # subtract but do not threshold-mask Gaia stars
-    FORCEGAIA = 2**3,   # force PSF source detection and photometry within the SGA mask;
-    LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
-    MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
-                        # mask (e.g., within a cluster environment)
-)
-
 SAMPLE = dict(
     LVD = 2**0,      # Local Volume Database dwarfs
     MCLOUDS = 2**1,  # in the Magellanic Clouds
@@ -124,29 +113,16 @@ def sga_html_dir():
     return ldir
 
 
-def get_raslice(ra):
-    if np.isscalar(ra):
-        return f'{int(ra):03d}'
-    else:
-        return np.array([f'{int(onera):03d}' for onera in ra])
-
-
 def sga2025_name(ra, dec, group_name=False, unixsafe=False):
     # simple wrapper on radec_to_name with precision=3
-    from SGA.io import radec_to_name
+    from SGA.io import radec_to_name, radec_to_groupname
     if group_name:
         # 36-arcsec precision (0.01 degrees)
-        group_name = np.array(['{:05d}{}{:04d}'.format(
-            int(100*ra1), 'm' if dec1 < 0 else 'p',
-            int(100*np.abs(dec1))) for ra1, dec1 in zip(ra, dec)])
-        return group_name
+        return radec_to_groupname(ra, dec, prefix='SGA2025_')
     else:
         # 3.6-arcsec precision (0.001 degrees)
-        prefix = 'SGA2025'
-        sganame = radec_to_name(ra, dec, prefix=prefix,
-                                precision=3,
-                                unixsafe=unixsafe)
-        return sganame
+        return radec_to_name(ra, dec, prefix='SGA2025',
+                             precision=3, unixsafe=unixsafe)
 
 
 def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
@@ -154,6 +130,8 @@ def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
     """Retrieve the galaxy name and the (nested) directory.
 
     """
+    from SGA.io import get_raslice
+
     if datadir is None:
         datadir = sga_data_dir()
     if htmldir is None:
@@ -162,21 +140,32 @@ def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
     htmlregiondir = os.path.join(htmldir, region)
 
     # Handle groups.
-    if group and 'GROUP_NAME' in sample.colnames:
-        galcolumn = 'GROUP_NAME'
+    if group:# and 'SGAGROUP' in sample.colnames:
+        galcolumn = 'SGAGROUP'
+        groupcolumn = 'GROUP_NAME'
         racolumn = 'GROUP_RA'
+        grps = np.atleast_1d(sample[groupcolumn])
     else:
-        galcolumn = 'SGANAME'
+        prefix = ''
+        galcolumn = 'OBJNAME'
+        #galcolumn = 'SGANAME'
         racolumn = 'RA'
+        grps = [None] * len(np.atleast_1d(sample))
 
     objs = np.atleast_1d(sample[galcolumn])
     ras = np.atleast_1d(sample[racolumn])
 
     objdirs, htmlobjdirs = [], []
-    for obj, ra in zip(objs, ras):
-        objdirs.append(os.path.join(dataregiondir, get_raslice(ra), obj))
+    for obj, ra, grp in zip(objs, ras, grps):
+        if group:
+            objdirs.append(os.path.join(dataregiondir, get_raslice(ra), grp))
+        else:
+            objdirs.append(os.path.join(dataregiondir, get_raslice(ra), obj))
         if html:
             htmlobjdirs.append(os.path.join(htmlregiondir, get_raslice(ra), obj))
+        else:
+            htmlobjdirs.append(os.path.join(htmlregiondir, get_raslice(ra), grp))
+
     objdirs = np.array(objdirs)
     if html:
         htmlobjdirs = np.array(htmlobjdirs)
@@ -345,7 +334,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                no_groups=False, lvd=False, final_sample=False, gaia_density=False,
+                no_groups=False, lvd=False, final_sample=False, test_bricks=False,
                 region='dr11-south', mindiam=0., maxdiam=200.):
     """Read/generate the parent SGA catalog.
 
@@ -382,12 +371,12 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY', 'SGA_ID', 'PREBURNED']
         info = fitsio.read(samplefile, columns=cols)
 
-        rows = np.where(
-            (info['GROUP_DIAMETER'] > mindiam) *
-            (info['GROUP_DIAMETER'] < maxdiam) *
-            info['GROUP_PRIMARY'] *
-            info['PREBURNED'] *
-            (info['SGA_ID'] > -1))[0]
+        #rows = np.where(
+        #    (info['GROUP_DIAMETER'] > mindiam) *
+        #    (info['GROUP_DIAMETER'] < maxdiam) *
+        #    info['GROUP_PRIMARY'] *
+        #    info['PREBURNED'] *
+        #    (info['SGA_ID'] > -1))[0]
     else:
         #cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
         #        'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC', 'BRICKNAME']
@@ -440,32 +429,33 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 
     # select objects in this region
     I = sample['REGION'] & REGIONBITS[region] != 0
-    J = fullsample['REGION'] & REGIONBITS[region] != 0
+    #J = fullsample['REGION'] & REGIONBITS[region] != 0
     log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
              f'region={region}')
     sample = sample[I]
-    fullsample = fullsample[J]
+    if no_groups:
+        fullsample = sample
+    else:
+        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    ## estimate the Gaia stellar density within the mosaic
-    #if gaia_density:
-    #    from astrometry.libkd.spherematch import tree_build_radec, trees_match
-    #
-    #    gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
-    #    gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
-    #    log.info(f'Read {len(gaia):,d} Gaia stars from {gaiafile}')
-    #
-    #    kd_gaia = tree_build_radec(ra=['RA_HYPERLEDA'], dec=cat[M]['DEC_HYPERLEDA'])
-    #    kd = tree_build_radec(ra=cat['RA'], dec=cat['DEC'])
-    #    I, J, _ = trees_match(kd_hyper, kd, deg2dist(1.5/3600.), notself=True, nearest=False)
-    #
-    #    density = np.zeros(len(sample), 'f4')
-    #    for ii, ss in enumerate(sample):
-    #        m1, m2, sep = match_radec(ss['RA'], ss['DEC'], gaia['ra'][I], gaia['dec'][I], maxradius, nearest=True)
+    # select objects in the set of test bricks
+    if test_bricks:
+        from SGA.brick import brickname as get_brickname
+        testbricksfile = os.path.join(sga_dir(), 'dr11-testbricks.csv')
+        testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
+        log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
+        allbricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
+        sample = sample[np.isin(allbricks, testbricks)]
+        if no_groups:
+            fullsample = sample
+        else:
+            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
 
     # select the LVD sample; remember that --lvd always implies --no-groups
     if lvd:
         sample = sample[sample['SAMPLE'] & SAMPLE['LVD'] != 0]
-        fullsample = fullsample[fullsample['SAMPLE'] & SAMPLE['LVD'] != 0]
+        fullsample = sample
 
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
@@ -473,7 +463,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         I = np.isin(sample['GROUP_NAME'], galaxylist)
         if np.count_nonzero(I) == 0:
             #log.warning('No matching galaxies using column GROUP_NAME!')
-            I = np.isin(sample['SGANAME'], galaxylist)
+            #I = np.isin(sample['SGANAME'], galaxylist)
+            I = np.isin(sample['SGAID'], galaxylist)
             if np.count_nonzero(I) == 0:
                 #log.warning('No matching galaxies using column SGANAME!')
                 I = np.isin(sample['OBJNAME'], galaxylist)
@@ -853,7 +844,7 @@ def qa_multiband_mask(data, sample):
     sz = (width, width)
 
     GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'DIAM_INIT', 'BA_INIT', 'PA_INIT']
-    GEOFINALCOLS = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+    GEOFINALCOLS = ['BX', 'BY', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
 
     # coadded optical, IR, and UV images and initial geometry
     imgbands = [opt_bands, data['unwise_bands'], data['galex_bands']]
@@ -997,7 +988,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
     from astrometry.util.starutil_numpy import arcsec_between
     from SGA.geometry import in_ellipse_mask
     from SGA.util import ivar2var, mwdust_transmission
-    from SGA.ellipse import ELLIPSEBIT
+    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
 
 
     def make_sourcemask(srcs, wcs, band, psf, sigma=None, nsigma=1.5):
@@ -1202,13 +1193,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         # If the LESSMASKING bit is set, do not use the Gaia threshold
         # mask.
         opt_gaiamask_obj = np.copy(opt_gaiamask)
-        if obj['SGAFITMODE'] & SGAFITMODE['LESSMASKING'] != 0:
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['LESSMASKING'] != 0:
             log.info('  LESSMASKING bit set; no Gaia threshold-masking.')
             opt_gaiamask_obj[:, :] = False
 
         # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
-        if obj['SGAFITMODE'] & SGAFITMODE['MOREMASKING'] != 0:# or True:
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0:# or True:
             log.info('  MOREMASKING bit set; masking all extended sources.')
             mask_allgals = True
         else:
@@ -1251,11 +1242,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         [bx, by, diam, ba, pa] = geo_init
 
         #print('HACK!')
-        #obj['SGAFITMODE'] += 2**0
+        #obj['ELLIPSEMODE'] += 2**0
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
-        if obj['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0:
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
             niter_actual = 1
         else:
             niter_actual = niter
@@ -1327,7 +1318,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
             # Optionally update the geometry from the masked, coadded
             # optical image.
-            if obj['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0:
+            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
                 log.info('  FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
             else:
@@ -1516,12 +1507,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
     # final geometry
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
-    for icol, col in enumerate(['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
+    #for icol, col in enumerate(['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
+    for icol, col in enumerate(['BX', 'BY', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
         sample[col] = geo_final[:, icol].astype('f4')
     sample['DIAM_MOMENT'] *= opt_pixscale # [pixels-->arcsec]
 
-    sample['RA_MOMENT'] = ra
-    sample['DEC_MOMENT'] = dec
+    sample['RA'] = ra
+    sample['DEC'] = dec
+    sample['SGANAME'] = sga2025_name(ra, dec)
+    #sample['RA_MOMENT'] = ra
+    #sample['DEC_MOMENT'] = dec
     for filt in all_bands:
         sample[f'MW_TRANSMISSION_{filt.upper()}'] = mwdust_transmission(
             sample['EBV'], band=filt, run=data['run'])
@@ -1661,7 +1656,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     # turn these catalog entries into Tractor sources later.
     tractorfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["tractor"]}.fits')
 
-    cols = ['brick_primary', 'ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
+    cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
             'sersic', 'shape_r', 'shape_e1', 'shape_e2']
     cols += [f'flux_{filt}' for filt in opt_bands]
     cols += [f'flux_ivar_{filt}' for filt in opt_bands]
@@ -1678,40 +1673,50 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         cols += [f'flux_ivar_{filt.lower()}' for filt in unwise_bands]
         cols += [f'psfdepth_{filt}' for filt in unwise_bands]
 
-    tractor = fits_table(tractorfile, columns=cols)
-    log.info(f'Read {len(tractor):,d} sources from {tractorfile}')
+    prim = fitsio.read(tractorfile, columns='brick_primary')
+    tractor = fits_table(tractorfile, rows=np.where(prim)[0], columns=cols)
+    log.info(f'Read {len(tractor):,d} brick_primary sources from {tractorfile}')
 
     # Read the sample catalog from custom_coadds and find each source
     # in the Tractor catalog.
     samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
-    cols = ['SGAID', 'SGANAME', 'OBJNAME', 'RA', 'DEC', 'DIAM', 'PA', 'BA', 'EBV', 'SAMPLE', 'SGAFITMODE']
-    sample = Table(fitsio.read(samplefile, columns=cols))
+    #cols = ['SGAID', 'SGAGROUP', 'RA', 'DEC', 'OBJNAME', 'SAMPLE',
+    #        'ELLIPSEMODE', 'DIAM', 'PA', 'BA', 'EBV']
+    sample = Table(fitsio.read(samplefile))#, columns=cols))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
     for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
         sample.rename_column(col, f'{col}_INIT')
     sample['DIAM_INIT'] *= 60. # [arcsec]
 
-    # populate (BX,BY)_INIT by quickly building the WCS
-    wcs = Tan(filt2imfile[opt_refband]['image'], 1)
-    (_, x0, y0) = wcs.radec2pixelxy(sample['RA_INIT'].value, sample['DEC_INIT'].value)
-    sample['BX_INIT'] = (x0 - 1.).astype('f4') # NB the -1!
-    sample['BY_INIT'] = (y0 - 1.).astype('f4')
-
+    # PSF size and depth
     for filt in opt_bands:
         sample[f'PSFSIZE_{filt.upper()}'] = np.zeros(len(sample), 'f4')
     for filt in bands:
         sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
+    # populate (BX,BY)_INIT by quickly building the WCS
+    wcs = Tan(filt2imfile[opt_refband]['image'], 1)
+    (_, x0, y0) = wcs.radec2pixelxy(sample['RA_INIT'].value, sample['DEC_INIT'].value)
+
+    sample.add_column((x0 - 1.).astype('f4'), name='BX_INIT',
+                      index=np.where(np.array(sample.colnames) == 'FITMODE')[0][0]+1)  # NB the -1!
+    sample.add_column((y0 - 1.).astype('f4'), name='BY_INIT',
+                      index=np.where(np.array(sample.colnames) == 'BX_INIT')[0][0]+1)  # NB the -1!
+    #sample['BY_INIT'] = (y0 - 1.).astype('f4')
+
     sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
 
     # moment geometry
-    sample['RA_MOMENT'] = np.zeros(len(sample), 'f8')
-    sample['DEC_MOMENT'] = np.zeros(len(sample), 'f8')
-    sample['BX_MOMENT'] = np.zeros(len(sample), 'f4')
-    sample['BY_MOMENT'] = np.zeros(len(sample), 'f4')
+    sample['SGANAME'] = np.zeros(len(sample), '<U25')
+    sample['RA'] = np.zeros(len(sample), 'f8')
+    sample['DEC'] = np.zeros(len(sample), 'f8')
+    sample['BX'] = np.zeros(len(sample), 'f4')
+    sample['BY'] = np.zeros(len(sample), 'f4')
     sample['DIAM_MOMENT'] = np.zeros(len(sample), 'f4') # arcsec
     sample['BA_MOMENT'] = np.zeros(len(sample), 'f4')
     sample['PA_MOMENT'] = np.zeros(len(sample), 'f4')
+    sample['RA_TRACTOR'] = np.zeros(len(sample), 'f8')
+    sample['DEC_TRACTOR'] = np.zeros(len(sample), 'f8')
 
     # initialize the ELLIPSEBIT bitmask
     sample['ELLIPSEBIT'] = np.zeros(len(sample), np.int32)
@@ -1731,6 +1736,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                 #sample['PSF'][iobj] = True
             sample['FLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
                                         for filt in opt_bands])
+            sample['RA_TRACTOR'][iobj] = tractor[I[0]].ra
+            sample['DEC_TRACTOR'][iobj] = tractor[I[0]].dec
 
     # Sort by initial diameter or optical brightness (in any band).
     if sort_by_flux:

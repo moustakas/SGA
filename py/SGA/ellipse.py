@@ -17,6 +17,25 @@ from SGA.logger import log
 
 MAXSHIFT_ARCSEC = 3.5
 
+# legacypipe fitting modes
+FITMODE = dict(
+    FREEZE = 2**0,      # freeze Tractor parameters
+    FIXGEO = 2**1,      # fix ellipse geometry
+    RESOLVED = 2**2,    # no Tractor catalogs or ellipse-fitting
+)
+
+# SGA fitting modes
+ELLIPSEMODE = dict(
+    FIXGEO = 2**0,      # fix ellipse geometry
+    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting
+    FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
+                        # subtract but do not threshold-mask Gaia stars
+    FORCEGAIA = 2**3,   # force PSF source detection and photometry within the SGA mask;
+    LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
+    MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
+                        # mask (e.g., within a cluster environment)
+)
+
 ELLIPSEBIT = dict(
     NOTRACTOR = 2**0,          # SGA source has no corresponding Tractor source
     BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
@@ -651,8 +670,8 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     #cols = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
     #[opt_bx, opt_by, opt_diam_arcsec, ba, pa] = list(obj[cols].values())
 
-    opt_bx = obj['BX_MOMENT']
-    opt_by = obj['BY_MOMENT']
+    opt_bx = obj['BX']
+    opt_by = obj['BY']
     ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
     ellipse_eps = 1 - obj['BA_MOMENT']
     #opt_semia_pix = obj['DIAM_MOMENT'] / 2. / opt_pixscale # [optical pixels]
@@ -978,8 +997,8 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
             pixscale = data[f'{dataset}_pixscale']
             wcs = data[f'{dataset}_wcs']
 
-            opt_bx = obj['BX_MOMENT']
-            opt_by = obj['BY_MOMENT']
+            opt_bx = obj['BX']
+            opt_by = obj['BY']
             ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
             ellipse_eps = 1 - obj['BA_MOMENT']
             semia = obj['DIAM_MOMENT'] / 2. # [arcsec]

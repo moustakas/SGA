@@ -71,8 +71,9 @@ def main():
     from SGA.coadds import RUNS, BANDS
     from SGA.mpi import mpi_args
     from SGA.io import set_legacysurvey_dir
+    from SGA.ellipse import ELLIPSEMODE
     from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE,
-                         SGAFITMODE, sga_dir, sga_data_dir, sga_html_dir,
+                         sga_dir, sga_data_dir, sga_html_dir,
                          read_sample, missing_files, get_galaxy_galaxydir,
                          build_catalog, get_radius_mosaic)
 
@@ -129,6 +130,7 @@ def main():
             mindiam=args.mindiam, maxdiam=args.maxdiam,
             galaxylist=args.galaxylist, no_groups=no_groups,
             lvd=args.lvd, region=args.region,
+            test_bricks=args.test_bricks,
             verbose=args.verbose)
 
         #if not args.build_catalog and not args.build_refcat:
@@ -330,7 +332,7 @@ def main():
             #   ...
 
             # FORCEPSF
-            if onegal['SGAFITMODE'] & SGAFITMODE['FORCEPSF'] != 0:
+            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0:
                 force_psf_detection = True
             else:
                 force_psf_detection = False
