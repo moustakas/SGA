@@ -131,11 +131,21 @@ def get_raslice(ra):
         return np.array([f'{int(onera):03d}' for onera in ra])
 
 
-def sga2025_name(ra, dec, unixsafe=False):
+def sga2025_name(ra, dec, group_name=False, unixsafe=False):
     # simple wrapper on radec_to_name with precision=3
     from SGA.io import radec_to_name
-    return radec_to_name(ra, dec, prefix='SGA2025', precision=3,
-                         unixsafe=unixsafe)
+    if group_name:
+        group_name = np.array(['{:05d}{}{:04d}'.format(
+            int(100*ra1), 'm' if dec1 < 0 else 'p',
+            int(100*np.abs(dec1))) for ra1, dec1 in zip(ra, dec)])
+        return group_name
+    else:
+        prefix = 'SGA2025'
+        precision = 3
+        sganame = radec_to_name(ra, dec, prefix=prefix,
+                                precision=precision,
+                                unixsafe=unixsafe)
+        return sganame
 
 
 def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
