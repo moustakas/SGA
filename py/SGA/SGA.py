@@ -135,15 +135,16 @@ def sga2025_name(ra, dec, group_name=False, unixsafe=False):
     # simple wrapper on radec_to_name with precision=3
     from SGA.io import radec_to_name
     if group_name:
+        # 36-arcsec precision (0.01 degrees)
         group_name = np.array(['{:05d}{}{:04d}'.format(
             int(100*ra1), 'm' if dec1 < 0 else 'p',
             int(100*np.abs(dec1))) for ra1, dec1 in zip(ra, dec)])
         return group_name
     else:
+        # 3.6-arcsec precision (0.001 degrees)
         prefix = 'SGA2025'
-        precision = 3
         sganame = radec_to_name(ra, dec, prefix=prefix,
-                                precision=precision,
+                                precision=3,
                                 unixsafe=unixsafe)
         return sganame
 
