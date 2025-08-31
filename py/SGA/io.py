@@ -501,11 +501,6 @@ def write_ellipsefit(data, datasets, results, sbprofiles, verbose=False):
     #  --nclip
     #  --width,height
 
-    # output data model:
-    #  --use all_bands but do not write to table
-    #  --psfdepth, etc.
-    #  --maxsma
-
     REFIDCOLUMN = data['REFIDCOLUMN']
 
     for idata, dataset in enumerate(datasets):

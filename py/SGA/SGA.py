@@ -767,7 +767,7 @@ def _update_masks(brightstarmask, gaiamask, refmask, galmask, mask_perband,
         return masks
 
 
-def qa_multiband_mask(data, sample):
+def qa_multiband_mask(data, sample, htmlgalaxydir):
     """Diagnostic QA for the output of build_multiband_mask.
 
     """
@@ -780,9 +780,7 @@ def qa_multiband_mask(data, sample):
     from SGA.sky import map_bxby
     from SGA.qa import overplot_ellipse, get_norm
 
-
-    qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
-                          f'qa-ellipsemask-{data["galaxy"]}.png')
+    qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
 
     alpha = 0.6
     orange = (0.9, 0.6, 0.0, alpha)   # golden-orange
@@ -980,7 +978,8 @@ def qa_multiband_mask(data, sample):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
-                         qaplot=False, maxshift_arcsec=MAXSHIFT_ARCSEC):
+                         qaplot=False, maxshift_arcsec=MAXSHIFT_ARCSEC,
+                         htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
@@ -1525,7 +1524,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
     if qaplot:
         #print('HACK!!')
         #sample['BY_INIT'] += 30.
-        qa_multiband_mask(data, sample)
+        qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
 
     # clean-up
     del data['brightstarmask']
@@ -1543,7 +1542,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                    sort_by_flux=True, run='south', pixscale=0.262,
                    galex_pixscale=1.5, unwise_pixscale=2.75,
-                   galex=True, unwise=True, verbose=False, qaplot=False):
+                   galex=True, unwise=True, verbose=False, qaplot=False,
+                   htmlgalaxydir=None):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
 
@@ -1788,7 +1788,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     # Read the basic imaging data and masks and build the multiband
     # masks.
     data = _read_image_data(data, filt2imfile, verbose=verbose)
-    data, sample = build_multiband_mask(data, tractor, sample, samplesrcs, qaplot=qaplot)
+    data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
+                                        qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
 
     return data, sample, 1
 

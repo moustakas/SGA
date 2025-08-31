@@ -380,6 +380,10 @@ def main():
             if args.galex:
                 SGAMASKBITS += [GALEXMASKBITS]
 
+            print('Temporarily make htmlgalaxydir here')
+            if not os.path.isdir(htmlgalaxydir):
+                os.makedirs(htmlgalaxydir, exist_ok=True)
+
             if args.debug:
                 err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
                                            unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
@@ -387,7 +391,7 @@ def main():
                                            pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                            galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                            galex=args.galex, qaplot=args.debug, verbose=args.verbose,
-                                           clobber=args.clobber)
+                                           clobber=args.clobber, htmlgalaxydir=htmlgalaxydir)
             else:
                 with open(logfile, 'w') as L:
                     with redirect_stdout(L), redirect_stderr(L):

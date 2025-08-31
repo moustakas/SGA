@@ -6,6 +6,7 @@ General support utilities.
 
 """
 import numpy as np
+from time import time
 
 from SGA.logger import log
 
@@ -13,6 +14,16 @@ from SGA.logger import log
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
 F32MAX = np.finfo(np.float32).max
+
+
+def get_dt(t0):
+    dt = time() - t0
+    if dt > 60.:
+        dt /= 60.
+        unit = 'minutes'
+    else:
+        unit = 'seconds'
+    return dt, unit
 
 
 def mwdust_transmission(ebv=0., band='r', run='south'):
