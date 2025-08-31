@@ -492,7 +492,7 @@ def deprecated_write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sb
     #fitsio.write(ellipsefitfile, out.as_array(), extname='ELLIPSE', header=hdr, clobber=True)
 
 
-def write_ellipsefit(data, datasets, results, sbprofiles, verbose=False):
+def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False):
     # add to header:
     #  --bands
     #  --pixscale(s)
@@ -511,19 +511,28 @@ def write_ellipsefit(data, datasets, results, sbprofiles, verbose=False):
 
         for iobj, results_obj in enumerate(results[idata]):
 
-            sganame = results_obj['SGANAME'][0].replace(' ', '_')
-            #sganame = results_obj[REFIDCOLUMN][0]
+            sganame = sample['SGANAME'][0].replace(' ', '_')
             ellipsefile = os.path.join(data["galaxydir"], f'{sganame}-ellipse-{suffix}.fits')
-            #ellipsefile = os.path.join(data["galaxydir"], f'{data["galaxy"]}-' + \
-            #                           f'ellipse-{results_obj[REFIDCOLUMN][0]}-{suffix}.fits')
 
             sbprofiles_obj = sbprofiles[idata][iobj]
-            images = data[f'{dataset}_images'][iobj, :, :, :]
             models = data[f'{dataset}_models'][iobj, :, :, :]
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
-            fitsio.write(ellipsefile, images, clobber=True, extname='IMAGES')
-            fitsio.write(ellipsefile, models, extname='MODELS')
+            #results_obj['SMA_AP01', 'SMA50_R', 'R22_R', 'R23_R', 'R24_R', 'R25_R', 'R26_R']
+
+            if False:
+                imfile = os.path.join(data["galaxydir"], f'{results_obj["SGAGROUP"][0]}-image-r.fits.fz')
+                images = data[f'{dataset}_images'][iobj, :, :, :]
+                invvar = data[f'{dataset}_invvar']
+                import matplotlib.pyplot as plt
+                fig, (ax1, ax2) = plt.subplots(1, 2)
+                ax1.imshow(np.logical_not(maskbits) * np.log10(im/0.262**2 - models[1, :, :]), origin='lower')
+                ax2.imshow(np.logical_not(maskbits) * np.log10(images[1, :, :]), origin='lower')
+                fig.savefig('ioannis/tmp/junk.png')
+                plt.close()
+
+            #fitsio.write(ellipsefile, images, clobber=True, extname='IMAGES')
+            fitsio.write(ellipsefile, models, clobber=True, extname='MODELS')
             fitsio.write(ellipsefile, maskbits, extname='MASKBITS')
             fitsio.write(ellipsefile, results_obj.as_array(), extname='ELLIPSE')
             fitsio.write(ellipsefile, sbprofiles_obj.as_array(), extname='SBPROFILES')

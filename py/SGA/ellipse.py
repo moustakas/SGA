@@ -499,7 +499,9 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
 
         ubands = np.char.upper(bands)
 
-        results = Table()
+        cols = ['SGAID', 'SGAGROUP']
+        results = Table(obj[cols])
+        #results = Table()
 
         # curve of growth model parameters
         for param, unit in zip(['MTOT', 'M0', 'ALPHA1', 'ALPHA2', 'SMA50'],
@@ -556,15 +558,15 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     ## Initialize the object geometry. NB: (x,y) are switched in
     ## photutils and PA is measured CCW from the x-axis while PA is CCW
     ## from the y-axis!
-    #cols = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+    #cols = ['BX_MOMENT', 'BY_MOMENT', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
     #[opt_bx, opt_by, opt_diam_arcsec, ba, pa] = list(obj[cols].values())
 
     opt_bx = obj['BX']
     opt_by = obj['BY']
     ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
     ellipse_eps = 1 - obj['BA_MOMENT']
-    semia_arcsec = obj['DIAM_MOMENT'] / 2. # [arcsec]
-    #opt_semia_pix = obj['DIAM_MOMENT'] / 2. / opt_pixscale # [optical pixels]
+    semia_arcsec = obj['SMA_MOMENT'] # [arcsec]
+    #opt_semia_pix = obj['SMA_MOMENT'] / opt_pixscale # [optical pixels]
 
     #if debug:
     #    import matplotlib.pyplot as plt
@@ -872,9 +874,9 @@ def qa_sma_grid():
 
 
 
-def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, MASKBITS,
-                  REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'], linear=False,
-                  htmlgalaxydir=None):
+def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
+                  MASKBITS, REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
+                  linear=False, htmlgalaxydir=None):
     """Simple QA.
 
     """
@@ -947,7 +949,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
             opt_by = obj['BY']
             ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
             ellipse_eps = 1 - obj['BA_MOMENT']
-            semia = obj['DIAM_MOMENT'] / 2. # [arcsec]
+            semia = obj['SMA_MOMENT'] # [arcsec]
 
             bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
             refg = EllipseGeometry(x0=bx, y0=by, eps=ellipse_eps,
@@ -978,7 +980,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
             xx.set_xticks([])
             xx.set_yticks([])
 
-            smas = sbprofiles_obj['sma'] / pixscale # [pixels]
+            smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
             for sma in smas: # sma in pixels
                 if sma == 0.:
                     continue
@@ -990,7 +992,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
             ## col 1 - linear SB profiles
             #xx = ax[idata, 1]
             #for filt in bands:
-            #    xx.fill_between(sbprofiles_obj['sma']**0.25,
+            #    xx.fill_between(sbprofiles_obj['SMA']**0.25,
             #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
             #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
             #                    label=filt, alpha=0.6)
@@ -1020,15 +1022,19 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
 
             xx = ax[idata, 1]
             for filt in bands:
-                I = (sbprofiles_obj[f'sb_{filt}'].value > 0.) * (sbprofiles_obj[f'sb_err_{filt}'].value > 0.)
+                I = ((sbprofiles_obj[f'SB_{filt.upper()}'].value > 0.) *
+                     (sbprofiles_obj[f'SB_ERR_{filt.upper()}'].value > 0.))
                 if np.any(I):
-                    mu = 22.5 - 2.5 * np.log10(sbprofiles_obj[f'sb_{filt}'][I].value)
-                    muerr = 2.5 * sbprofiles_obj[f'sb_err_{filt}'][I].value / sbprofiles_obj[f'sb_{filt}'][I].value / np.log(10.)
+                    sma = sbprofiles_obj['SMA'][I].value**0.25
+                    sb = sbprofiles_obj[f'SB_{filt.upper()}'][I].value
+                    sberr = sbprofiles_obj[f'SB_ERR_{filt.upper()}'][I].value
+                    mu = 22.5 - 2.5 * np.log10(sb)
+                    muerr = 2.5 * sberr / sb / np.log(10.)
 
                     col = sbcolors[filt]
-                    xx.plot(sbprofiles_obj['sma'][I].value**0.25, mu-muerr, color=col, alpha=0.8)
-                    xx.plot(sbprofiles_obj['sma'][I].value**0.25, mu+muerr, color=col, alpha=0.8)
-                    xx.fill_between(sbprofiles_obj['sma'][I].value**0.25, mu-muerr, mu+muerr,
+                    xx.plot(sma, mu-muerr, color=col, alpha=0.8)
+                    xx.plot(sma, mu+muerr, color=col, alpha=0.8)
+                    xx.fill_between(sma, mu-muerr, mu+muerr,
                                     label=filt, color=col, alpha=0.7)
 
                     # robust limits
@@ -1142,9 +1148,8 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
             # build the sma vector
             if dataset == 'opt':
                 ba = obj['BA_MOMENT']
-                semia_arcsec = obj['DIAM_MOMENT'] / 2. # [arsec]
+                semia_arcsec = obj['SMA_MOMENT']  # [arsec]
                 semia_pix = semia_arcsec / pixscale    # [pixels]
-                #semia = obj['DIAM_MOMENT'] / 2. / pixscale # [pixels]
                 psf_fwhm_pix = 1.1 / pixscale          # [pixels]
                 allbands = data['all_opt_bands'] # always griz in north & south
 
@@ -1234,6 +1239,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
     if not nowrite:
         from SGA.io import write_ellipsefit
-        err = write_ellipsefit(data, datasets, results, sbprofiles, verbose=verbose)
+        err = write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=verbose)
 
     return err
