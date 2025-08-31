@@ -240,6 +240,125 @@ def _integrate_isophot_one(args):
     return integrate_isophot_one(*args)
 
 
+def _boxcar(y, w):
+    if w is None or w < 2:
+        return y
+    w = int(w)
+    if w % 2 == 0:
+        w += 1
+    k = np.ones(w, float) / w
+    # reflect at edges to avoid edge dips
+    return np.convolve(y, k, mode='same')
+
+
+def _outer_isophotal_radius(a, mu, mu_iso, smooth_win=None):
+    """
+    Single-pass outer crossing on a single (a, mu) profile.
+    - Assumes a increasing.
+    - Enforces non-decreasing mu with radius via running max.
+    - Returns np.nan if level is outside data range.
+    """
+    # optional light smoothing
+    mu_work = _boxcar(mu, smooth_win)
+
+    # monotone non-decreasing envelope (magnitudes get fainter outward)
+    mu_env = np.maximum.accumulate(mu_work)
+
+    mu_min, mu_max = mu_env[0], mu_env[-1]
+    if mu_iso < mu_min:     # level brighter than innermost point → inside first bin
+        return np.nan
+    if mu_iso > mu_max:     # level fainter than outermost point → beyond last bin
+        return np.nan
+
+    # piecewise-linear monotone interpolation: a(mu_iso)
+    # np.interp expects ascending x; mu_env is non-decreasing
+    return float(np.interp(mu_iso, mu_env, a))
+
+
+def isophotal_radius_mc(
+    a,                # semi-major axis array
+    mu,               # surface brightness [mag/arcsec^2]
+    mu_err,           # 1σ uncertainties (same shape as mu)
+    mu_iso,           # target isophote (e.g., 25.0)
+    n_draws=100,
+    sky_sigma=None,   # optional global sky mag error (additive, per draw)
+    smooth_win=3,     # odd window for gentle pre-smoothing; set None/1 to disable
+    random_state=None,
+    return_samples=False):
+
+    """
+    Monte Carlo isophotal radius with a monotone outer envelope.
+
+    Returns
+    -------
+    out : dict with keys
+        'a_iso'         : median isophotal radius [same units as a]
+        'a_lo','a_hi'   : 16th/84th percentiles
+        'success_rate'  : fraction of MC draws with a valid crossing
+        'n_success'     : number of valid draws
+        'n_draws'       : total draws
+        'lower_limit'   : True if even the *nominal* profile never reaches mu_iso outward
+        'upper_limit'   : True if the nominal profile is already fainter than mu_iso at innermost bin
+        'samples'       : (optional) array of successful radii
+    """
+    rng = np.random.default_rng(random_state)
+
+    # sanitize + sort by increasing radius
+    a = np.asarray(a, float)
+    mu = np.asarray(mu, float)
+    mu_err = np.asarray(mu_err, float)
+    m = np.isfinite(a) & np.isfinite(mu) & np.isfinite(mu_err)
+    a, mu, mu_err = a[m], mu[m], mu_err[m]
+    order = np.argsort(a)
+    a, mu, mu_err = a[order], mu[order], mu_err[order]
+
+    if a.size < 2:
+        raise ValueError("Need at least two points in profile.")
+
+    # Quick diagnosis on the *nominal* profile (for limit flags only)
+    mu_env_nom = np.maximum.accumulate(_boxcar(mu, smooth_win))
+    lower_limit = (mu_iso > mu_env_nom[-1])   # target fainter than outermost measured
+    upper_limit = (mu_iso < mu_env_nom[0])    # target brighter than innermost measured
+
+    # Monte Carlo draws
+    samples = []
+    for _ in range(int(n_draws)):
+        draw = mu + rng.normal(0.0, mu_err)
+        if sky_sigma and sky_sigma > 0:
+            draw = draw + rng.normal(0.0, sky_sigma)  # shared offset per draw
+
+        a_iso = _outer_isophotal_radius(a, draw, mu_iso, smooth_win=smooth_win)
+        if np.isfinite(a_iso):
+            samples.append(a_iso)
+
+    samples = np.array(samples, float)
+    n_success = int(np.isfinite(samples).sum())
+    success_rate = n_success / float(n_draws)
+
+    out = dict(
+        n_draws=int(n_draws),
+        n_success=n_success,
+        success_rate=success_rate,
+        lower_limit=bool(lower_limit),
+        upper_limit=bool(upper_limit),
+    )
+
+    if n_success == 0:
+        # No valid crossings in MC → report limits only
+        out.update(a_iso=np.nan, a_lo=np.nan, a_hi=np.nan)
+        if return_samples:
+            out["samples"] = samples
+        return out
+
+    med = np.nanmedian(samples)
+    lo, hi = np.nanpercentile(samples, [16, 84])
+
+    out.update(a_iso=float(med), a_lo=float(lo), a_hi=float(hi))
+    if return_samples:
+        out["samples"] = samples
+    return out
+
+
 def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
                           integrmode, sclip, nclip):
     """Integrate the ellipse profile at a single semi-major axis (in
@@ -318,7 +437,7 @@ def logspaced_integers(limit, n):
 
 def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'],
              opt_wcs=None, wcs=None, opt_pixscale=0.262, pixscale=0.262, mp=1,
-             allbands=None, integrmode='median', nclip=3, sclip=3,
+             allbands=None, integrmode='median', nclip=3, sclip=3, seed=42,
              sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, debug=False):
     """Multi-band ellipse-fitting, broadly based on--
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
@@ -420,6 +539,7 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     #    plt.close()
 
     nbands, width, _ = images.shape
+    sma_array_arcsec = sma_array * pixscale
 
     # Measure the surface-brightness profile in each bandpass.
     debug = True
@@ -448,12 +568,34 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         out = list(zip(*out))
         isobandfit = IsophoteList(out[0])
 
+        # populate the output table
+        I = np.isfinite(isobandfit.intens) * np.isfinite(isobandfit.int_err)
+        if np.sum(I) > 0:
+            sbprofiles[f'SB_{filt.upper()}'][I] = isobandfit.intens[I]
+            sbprofiles[f'SB_ERR_{filt.upper()}'][I] = isobandfit.int_err[I]
+
+            # diameters...
+            mu = 22.5 - 2.5 * np.log10(isobandfit.intens[I])
+            mu_err = 2.5 * isobandfit.int_err[I] / isobandfit.intens[I] / np.log(10.)
+
+            res = isophotal_radius_mc(
+                a=sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=26.,
+                n_draws=50, sky_sigma=0.03, smooth_win=3, random_state=seed)
+            log.info(f"a_25 = {res['a_iso']:.2f} (+{res['a_hi']-res['a_iso']:.2f}/-{res['a_iso']-res['a_lo']:.2f}) "
+                     f"[success={res['success_rate']:.2%}]")
+            if res['lower_limit']:
+                log.info("→ Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
+
         # stack and fit the curve of growth
         apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
         apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
         apfmasked = np.hstack(out[3])
 
-        popt, perr, _, cov = fit_cog(sma_array*pixscale, apflux, apferr, r0=semia_arcsec)
+        sbprofiles[f'FLUX_{filt.upper()}'] = apflux
+        sbprofiles[f'FLUX_ERR_{filt.upper()}'] = apferr
+        sbprofiles[f'FMASKED_{filt.upper()}'] = apfmasked
+
+        popt, perr, _, cov = fit_cog(sma_array_arcsec, apflux, apferr, r0=semia_arcsec)
         for key in popt.keys():
             results[f'{key.upper()}_{filt.upper()}'] = popt[key]
             results[f'{key.upper()}_ERR_{filt.upper()}'] = perr[key]
@@ -467,26 +609,13 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
         results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
 
-        # diameters...
-        # results[]
-
-        # populate the output table
-        I = np.isfinite(isobandfit.intens) * np.isfinite(isobandfit.int_err)
-        if np.sum(I) > 0:
-            sbprofiles[f'SB_{filt.upper()}'][I] = isobandfit.intens[I]
-            sbprofiles[f'SB_ERR_{filt.upper()}'][I] = isobandfit.int_err[I]
-        sbprofiles[f'FLUX_{filt.upper()}'] = apflux
-        sbprofiles[f'FLUX_ERR_{filt.upper()}'] = apferr
-        sbprofiles[f'FMASKED_{filt.upper()}'] = apfmasked
-
         if debug:
             I = apflux > 0.
             mag = 22.5-2.5*np.log10(apflux[I])
             dm = 2.5*apferr[I]/apflux[I]/np.log(10.)
-            ax.scatter(sma_array[I]*pixscale, mag, label=filt)
+            ax.scatter(sma_array_arcsec[I], mag, label=filt)
 
-            sma = sma_array * pixscale
-            rgrid = np.linspace(min(sma), max(sma), 50)
+            rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
             mfit = cog_model(rgrid, **popt, r0=semia_arcsec)
             ax.plot(rgrid, mfit, color='k')
 
