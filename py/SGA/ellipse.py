@@ -43,8 +43,8 @@ ELLIPSEBIT = dict(
     LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
 )
 
-REF_SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
-REF_APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
+REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
+REF_APERTURES = [0.5, 1., 1.25, 1.5, 2., 3.] # multiples of SMA_MOMENT
 
 
 def cog_model(radius, mtot, m0, alpha1, alpha2, r0=10.):
@@ -366,7 +366,7 @@ def isophotal_radius_mc(
 
 
 def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
-                          integrmode, sclip, nclip):
+                          integrmode, sclip, nclip, measure_sb):
     """Integrate the ellipse profile at a single semi-major axis (in
     pixels).
 
@@ -384,19 +384,25 @@ def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
         # central pixel is a special case; see
         # https://github.com/astropy/photutils-datasets/blob/main/notebooks/isophote/isophote_example4.ipynb
         if sma == 0.:
-            samp = CentralEllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
-                                        position_angle=theta, sclip=sclip,
-                                        nclip=nclip, integrmode=integrmode)
-            samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
-            iso = CentralEllipseFitter(samp).fit()
+            if measure_sb:
+                samp = CentralEllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
+                                            position_angle=theta, sclip=sclip,
+                                            nclip=nclip, integrmode=integrmode)
+                samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
+                iso = CentralEllipseFitter(samp).fit()
+            else:
+                iso = None
 
             flux, ferr, fracmasked = 0., 0., 0.
         else:
-            samp = EllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
-                                 position_angle=theta, sclip=sclip,
-                                 nclip=nclip, integrmode=integrmode)
-            samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
-            iso = Isophote(samp, 0, True, 0)
+            if measure_sb:
+                samp = EllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
+                                     position_angle=theta, sclip=sclip,
+                                     nclip=nclip, integrmode=integrmode)
+                samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
+                iso = Isophote(samp, 0, True, 0)
+            else:
+                iso = None
 
             # aperture photometry
             ap = EllipticalAperture((x0, y0), a=sma, b=sma*(1.-eps), theta=theta)
@@ -445,13 +451,14 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
              bands=['g', 'r', 'i', 'z'], opt_wcs=None, wcs=None,
              opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=100,
              allbands=None, integrmode='median', nclip=3, sclip=3,
-             seed=42, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+             seed=42, sbthresh=REF_SBTHRESH, sma_apertures_arcsec=None,
              debug=False):
     """Multi-band ellipse-fitting, broadly based on--
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
-
-    See also:
     https://photutils.readthedocs.io/en/latest/user_guide/isophote.html
+
+    sma_array in pixels
+    sma_apertures_pix in pixels
 
     """
     import multiprocessing
@@ -492,9 +499,6 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
 
         ubands = np.char.upper(bands)
 
-        ## FIXME - copy everything?
-        #cols = obj.colnames
-        #results = Table(obj[cols])
         results = Table()
 
         # curve of growth model parameters
@@ -507,15 +511,38 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                 results.add_column(Column(name=f'{param}_ERR_{filt}',
                                           unit=unit, data=np.zeros(1, 'f4')))
 
+        # flux within apertures that are multiples of sma_moment
+        for iap, ap in enumerate(sma_apertures_arcsec):
+            results.add_column(Column(name=f'SMA_AP{iap:02}',
+                                      unit=u.arcsec, data=np.float32(ap)))
+        for iap in range(len(sma_apertures_arcsec)):
+            for filt in ubands:
+                results.add_column(Column(name=f'FLUX_AP{iap:02}_{filt}',
+                                          unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+            for filt in ubands:
+                results.add_column(Column(name=f'FLUX_ERR_AP{iap:02}_{filt}',
+                                          unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+            for filt in ubands:
+                results.add_column(Column(name=f'FMASKED_AP{iap:02}_{filt}',
+                                          unit=None, data=np.zeros(1, 'f4')))
+
+        # optical isophotal radii
         if dataset == 'opt':
-            # isophotal radii
-            for thresh in np.array(sbthresh).astype(str):
+            for thresh in sbthresh:
                 for filt in ubands:
-                    results.add_column(Column(name=f'R{thresh}_{filt}',
+                    results.add_column(Column(name=f'R{thresh:.0f}_{filt}',
                                               unit=u.arcsec, data=np.zeros(1, 'f4')))
                 for filt in ubands:
-                    results.add_column(Column(name=f'R{thresh}_ERR_{filt}',
+                    results.add_column(Column(name=f'R{thresh:.0f}_ERR_{filt}',
                                               unit=u.arcsec, data=np.zeros(1, 'f4')))
+                # flux within apertures based on the optical isophotal radii (deprecated)
+                #for filt in ubands:
+                #    results.add_column(Column(name=f'FLUX_R{thresh:.0f}_{filt}',
+                #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+                #for filt in ubands:
+                #    results.add_column(Column(name=f'FLUX_ERR_R{thresh:.0f}_{filt}',
+                #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+
         return results
 
 
@@ -569,18 +596,63 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         msk = masks[iband, :, :] # True=masked
         mimg = np.ma.array(images[iband, :, :], mask=msk) # ignore masked pixels
 
+        # surface-brightness profile and aperture photometry
         mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
-                   by, integrmode, sclip, nclip) for onesma in sma_array]
+                   by, integrmode, sclip, nclip, True)
+                  for onesma in sma_array]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 out = P.map(_integrate_isophot_one, mpargs)
         else:
             out = [integrate_isophot_one(*mparg) for mparg in mpargs]
-
         out = list(zip(*out))
         isobandfit = IsophoteList(out[0])
 
-        # populate the output table and measure the isophotal radii
+        # curve of growth
+        apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
+        apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
+        apfmasked = np.hstack(out[3])
+
+        sbprofiles[f'FLUX_{filt.upper()}'] = apflux
+        sbprofiles[f'FLUX_ERR_{filt.upper()}'] = apferr
+        sbprofiles[f'FMASKED_{filt.upper()}'] = apfmasked
+
+        # model
+        popt, perr, _, cov = fit_cog(sma_array_arcsec, apflux, apferr, r0=semia_arcsec)
+        for key in popt.keys():
+            results[f'{key.upper()}_{filt.upper()}'] = popt[key]
+            results[f'{key.upper()}_ERR_{filt.upper()}'] = perr[key]
+
+        # half-light radius and uncertainty
+        r50, r50_err = half_light_radius_with_uncertainty(
+            (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
+            cov, r0=semia_arcsec)
+        log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
+
+        results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
+        results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
+
+        # aperture photometry within the reference apertures
+        mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
+                   by, integrmode, sclip, nclip, False)
+                  for onesma in sma_apertures_arcsec / pixscale]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                refout = P.map(_integrate_isophot_one, mpargs)
+        else:
+            refout = [integrate_isophot_one(*mparg) for mparg in mpargs]
+        refout = list(zip(*refout))
+
+        refapflux = np.hstack(refout[1]) * pixscale**2. # [nanomaggies]
+        refapferr = np.hstack(refout[2]) * pixscale**2. # [nanomaggies]
+        refapfmasked = np.hstack(refout[3])
+
+        for iap in range(len(sma_apertures_arcsec)):
+            results[f'FLUX_AP{iap:02}_{filt.upper()}'] = refapflux[iap]
+            results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'] = refapferr[iap]
+            results[f'FMASKED_AP{iap:02}_{filt.upper()}'] = refapfmasked[iap]
+
+        # isophotal radii
         I = np.isfinite(isobandfit.intens) * np.isfinite(isobandfit.int_err)
         if np.sum(I) > 0:
             sbprofiles[f'SB_{filt.upper()}'][I] = isobandfit.intens[I]
@@ -602,39 +674,22 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                     results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
                     results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
 
-
-        # stack and fit the curve of growth
-        apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
-        apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
-        apfmasked = np.hstack(out[3])
-
-        sbprofiles[f'FLUX_{filt.upper()}'] = apflux
-        sbprofiles[f'FLUX_ERR_{filt.upper()}'] = apferr
-        sbprofiles[f'FMASKED_{filt.upper()}'] = apfmasked
-
-        popt, perr, _, cov = fit_cog(sma_array_arcsec, apflux, apferr, r0=semia_arcsec)
-        for key in popt.keys():
-            results[f'{key.upper()}_{filt.upper()}'] = popt[key]
-            results[f'{key.upper()}_ERR_{filt.upper()}'] = perr[key]
-
-        # half-light radius and uncertainty
-        r50, r50_err = half_light_radius_with_uncertainty(
-            (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
-            cov, r0=semia_arcsec)
-        log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
-
-        results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
-        results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
-
         if debug:
             I = apflux > 0.
             mag = 22.5-2.5*np.log10(apflux[I])
             dm = 2.5*apferr[I]/apflux[I]/np.log(10.)
             ax.scatter(sma_array_arcsec[I], mag, label=filt)
 
+            refsmas = np.hstack([results[f'SMA_AP{iap:02}'] for iap in range(len(sma_apertures_arcsec))])
+            refflux = np.hstack([results[f'FLUX_AP{iap:02}_{filt.upper()}'] for iap in range(len(sma_apertures_arcsec))])
+            I = (refflux > 0.)
+            if np.any(I):
+                refmag = 22.5-2.5*np.log10(refflux[I])
+                ax.scatter(refsmas[I], refmag, marker='s', s=100, facecolor='none')
+
             rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
             mfit = cog_model(rgrid, **popt, r0=semia_arcsec)
-            ax.plot(rgrid, mfit, color='k')
+            ax.plot(rgrid, mfit, color='k', alpha=0.8)
 
         dt, unit = get_dt(t0)
         log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
@@ -1048,88 +1103,6 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
         log.info(f'Wrote {qafile}')
 
 
-def ellipsefit_datamodel(sma, bands, dataset='opt'):
-    """Initialize the ellipsefit data model.
-
-    """
-    import astropy.units as u
-    from astropy.table import Table, Column
-
-    nsma = len(sma)
-
-    out = Table()
-    out.add_column(Column(name=f'sma_{dataset}', unit=u.arcsec, data=sma.astype('f4')))
-    for filt in bands:
-        out.add_column(Column(name=f'sb_{filt}', unit=u.nanomaggy/u.arcsec**2,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'sb_err_{filt}', unit=u.nanomaggy/u.arcsec**2,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'flux_{filt}', unit=u.nanomaggy,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'flux_err_{filt}', unit=u.nanomaggy,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'fmasked_{filt}', data=np.zeros((1, nsma), 'f4')))
-
-    #for band in bands:
-    #    cols.append(('mw_transmission_{}'.format(band.lower()), None))
-    #    cols.append(('sma_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('intens_{}'.format(band.lower()), 'nanomaggies arcsec-2'))#1e-9*u.maggy/u.arcsec**2))
-    #    cols.append(('intens_err_{}'.format(band.lower()), 'nanomaggies arcsec-2'))#1e-9*u.maggy/u.arcsec**2))
-    #    cols.append(('eps_{}'.format(band.lower()), None))
-    #    cols.append(('eps_err_{}'.format(band.lower()), None))
-    #    cols.append(('pa_{}'.format(band.lower()), u.degree))
-    #    cols.append(('pa_err_{}'.format(band.lower()), u.degree))
-    #    cols.append(('x0_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('x0_err_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('y0_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('y0_err_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('a3_{}'.format(band.lower()), None)) # units?
-    #    cols.append(('a3_err_{}'.format(band.lower()), None))
-    #    cols.append(('a4_{}'.format(band.lower()), None))
-    #    cols.append(('a4_err_{}'.format(band.lower()), None))
-    #
-    #for thresh in sbthresh:
-    #    cols.append(('sma_sb{:0g}'.format(thresh), u.arcsec))
-    #for thresh in sbthresh:
-    #    cols.append(('sma_ivar_sb{:0g}'.format(thresh), 1/u.arcsec**2))
-    #for band in bands:
-    #    for thresh in sbthresh:
-    #        cols.append(('flux_sb{:0g}_{}'.format(thresh, band.lower()), 'nanomaggies'))#1e-9*u.maggy))
-    #    for thresh in sbthresh:
-    #        cols.append(('flux_ivar_sb{:0g}_{}'.format(thresh, band.lower()), 'nanomaggies-2'))#1e18/u.maggy**2))
-    #    for thresh in sbthresh:
-    #        cols.append(('fracmasked_sb{:0g}_{}'.format(thresh, band.lower()), None))
-    #
-    #for iap, ap in enumerate(apertures):
-    #    cols.append(('sma_ap{:02d}'.format(iap+1), u.arcsec))
-    #for band in bands:
-    #    for iap, ap in enumerate(apertures):
-    #        cols.append(('flux_ap{:02d}_{}'.format(iap+1, band.lower()), 'nanomaggies'))#1e-9*u.maggy))
-    #    for iap, ap in enumerate(apertures):
-    #        cols.append(('flux_ivar_ap{:02d}_{}'.format(iap+1, band.lower()), 'nanomaggies-2'))#1e18/u.maggy**2))
-    #    for iap, ap in enumerate(apertures):
-    #        cols.append(('fracmasked_ap{:02d}_{}'.format(iap+1, band.lower()), None))
-    #
-    #for band in bands:
-    #    cols.append(('cog_sma_{}'.format(band.lower()), u.arcsec))
-    #    cols.append(('cog_flux_{}'.format(band.lower()), 'nanomaggies'))#1e-9*u.maggy))
-    #    cols.append(('cog_flux_ivar_{}'.format(band.lower()), 'nanomaggies-2'))#1e18/u.maggy**2))
-    #
-    #for band in bands:
-    #    cols.append(('cog_mtot_{}'.format(band.lower()), u.mag))
-    #    cols.append(('cog_mtot_ivar_{}'.format(band.lower()), 1/u.mag**2))
-    #    cols.append(('cog_m0_{}'.format(band.lower()), u.mag))
-    #    cols.append(('cog_m0_ivar_{}'.format(band.lower()), 1/u.mag**2))
-    #    cols.append(('cog_alpha1_{}'.format(band.lower()), None))
-    #    cols.append(('cog_alpha1_ivar_{}'.format(band.lower()), None))
-    #    cols.append(('cog_alpha2_{}'.format(band.lower()), None))
-    #    cols.append(('cog_alpha2_ivar_{}'.format(band.lower()), None))
-    #    cols.append(('cog_chi2_{}'.format(band.lower()), None))
-    #    cols.append(('cog_sma50_{}'.format(band.lower()), u.arcsec))
-
-    return out
-
-
 def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
                   sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=100,
                   seed=42, debug=False):
@@ -1169,28 +1142,35 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
             # build the sma vector
             if dataset == 'opt':
                 ba = obj['BA_MOMENT']
-                semia = obj['DIAM_MOMENT'] / 2. / pixscale # [pixels]
-                psf_fwhm_pix = 1.1 / pixscale              # [pixels]
+                semia_arcsec = obj['DIAM_MOMENT'] / 2. # [arsec]
+                semia_pix = semia_arcsec / pixscale    # [pixels]
+                #semia = obj['DIAM_MOMENT'] / 2. / pixscale # [pixels]
+                psf_fwhm_pix = 1.1 / pixscale          # [pixels]
                 allbands = data['all_opt_bands'] # always griz in north & south
 
-                opt_sma_array, info = build_sma_opt(
-                    s95_pix=semia, ba=ba, psf_fwhm_pix=psf_fwhm_pix,
+                # reference apertures
+                sma_apertures_arcsec = semia_arcsec * np.array(apertures) # [arcsec]
+
+                opt_sma_array_pix, info = build_sma_opt(
+                    s95_pix=semia_pix, ba=ba, psf_fwhm_pix=psf_fwhm_pix,
                     inner_step_pix=1., min_pixels_per_annulus=25,
                     frac_step=0.15, amax_factor=3.)
-                sma_array = np.copy(opt_sma_array)
+                sma_array_pix = np.copy(opt_sma_array_pix)
             else:
                 allbands = bands
-                sma_array = build_sma_band(
-                    opt_sma_array, opt_pixscale=opt_pixscale,
+
+                sma_array_pix = build_sma_band( # [pixels]
+                    opt_sma_array_pix, opt_pixscale=opt_pixscale,
                     pixscale=pixscale, ba=ba,
                     min_pixels_per_annulus=5) # ~constant S/N per annulus
 
-            #print(sma_array)
+            #print(sma_array_pix)
             results_dataset1, sbprofiles_dataset1 = multifit(
-                obj, images, sigimages, masks, sma_array, dataset,
+                obj, images, sigimages, masks, sma_array_pix, dataset,
                 bands, opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
                 pixscale=pixscale, mp=mp, nmonte=nmonte, seed=seed,
-                sbthresh=sbthresh, apertures=apertures, debug=debug)
+                sbthresh=sbthresh, sma_apertures_arcsec=sma_apertures_arcsec,
+                debug=debug)
 
             results_dataset.append(results_dataset1)
             sbprofiles_dataset.append(sbprofiles_dataset1)
@@ -1245,7 +1225,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     results, sbprofiles = wrap_multifit(
         data, sample, datasets, unpack_maskbits_function,
         sbthresh, apertures, SGAMASKBITS, mp=mp,
-        nmonte=nmonte, seed=seed, debug=debug)
+        nmonte=nmonte, seed=seed, debug=qaplot)
 
     if qaplot:
         qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,

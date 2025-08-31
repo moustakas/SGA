@@ -60,9 +60,8 @@ UNWISEMASKBITS = dict(
     W4 = 2**7,         #
 )
 
-SBTHRESH = [23, 24, 25, 26] # surface brightness thresholds
-#SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
-APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
+SBTHRESH = [22., 23., 24., 25., 26.] # surface brightness thresholds
+APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
 
 def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
