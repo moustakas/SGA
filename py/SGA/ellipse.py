@@ -46,13 +46,14 @@ ELLIPSEBIT = dict(
 REF_SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
 REF_APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
 
-def cog_model(radius, mtot, m0, alpha1, alpha2, r0=10.0):
+
+def cog_model(radius, mtot, m0, alpha1, alpha2, r0=10.):
     """Curve-of-growth model in magnitudes."""
     x = (radius / r0)**(-alpha2)
     return mtot + m0 * (1.0 - np.exp(-alpha1 * x))
 
 
-def fit_cog(sma_arcsec, apflux, apferr=None, r0=10.0, p0=None,
+def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
             bounds=None, robust=True, f_scale=1.):
     """
     Fit mtot, m0, alpha1, alpha2 in:
@@ -257,6 +258,7 @@ def _outer_isophotal_radius(a, mu, mu_iso, smooth_win=None):
     - Assumes a increasing.
     - Enforces non-decreasing mu with radius via running max.
     - Returns np.nan if level is outside data range.
+
     """
     # optional light smoothing
     mu_work = _boxcar(mu, smooth_win)
@@ -265,9 +267,9 @@ def _outer_isophotal_radius(a, mu, mu_iso, smooth_win=None):
     mu_env = np.maximum.accumulate(mu_work)
 
     mu_min, mu_max = mu_env[0], mu_env[-1]
-    if mu_iso < mu_min:     # level brighter than innermost point → inside first bin
+    if mu_iso < mu_min: # level brighter than innermost point → inside first bin
         return np.nan
-    if mu_iso > mu_max:     # level fainter than outermost point → beyond last bin
+    if mu_iso > mu_max: # level fainter than outermost point → beyond last bin
         return np.nan
 
     # piecewise-linear monotone interpolation: a(mu_iso)
@@ -280,7 +282,7 @@ def isophotal_radius_mc(
     mu,               # surface brightness [mag/arcsec^2]
     mu_err,           # 1σ uncertainties (same shape as mu)
     mu_iso,           # target isophote (e.g., 25.0)
-    n_draws=100,
+    nmonte=100,
     sky_sigma=None,   # optional global sky mag error (additive, per draw)
     smooth_win=3,     # odd window for gentle pre-smoothing; set None/1 to disable
     random_state=None,
@@ -296,7 +298,7 @@ def isophotal_radius_mc(
         'a_lo','a_hi'   : 16th/84th percentiles
         'success_rate'  : fraction of MC draws with a valid crossing
         'n_success'     : number of valid draws
-        'n_draws'       : total draws
+        'nmonte'       : total draws
         'lower_limit'   : True if even the *nominal* profile never reaches mu_iso outward
         'upper_limit'   : True if the nominal profile is already fainter than mu_iso at innermost bin
         'samples'       : (optional) array of successful radii
@@ -322,7 +324,7 @@ def isophotal_radius_mc(
 
     # Monte Carlo draws
     samples = []
-    for _ in range(int(n_draws)):
+    for _ in range(int(nmonte)):
         draw = mu + rng.normal(0.0, mu_err)
         if sky_sigma and sky_sigma > 0:
             draw = draw + rng.normal(0.0, sky_sigma)  # shared offset per draw
@@ -333,10 +335,10 @@ def isophotal_radius_mc(
 
     samples = np.array(samples, float)
     n_success = int(np.isfinite(samples).sum())
-    success_rate = n_success / float(n_draws)
+    success_rate = n_success / float(nmonte)
 
     out = dict(
-        n_draws=int(n_draws),
+        nmonte=int(nmonte),
         n_success=n_success,
         success_rate=success_rate,
         lower_limit=bool(lower_limit),
@@ -351,11 +353,15 @@ def isophotal_radius_mc(
         return out
 
     med = np.nanmedian(samples)
-    lo, hi = np.nanpercentile(samples, [16, 84])
+    lo, hi = np.nanpercentile(samples, [25., 75.])
+    #lo, hi = np.nanpercentile(samples, [16, 84])
+    sig = (hi - lo) / 1.349 # robust sigma
 
-    out.update(a_iso=float(med), a_lo=float(lo), a_hi=float(hi))
+    out.update(a_iso=float(med), a_iso_err=float(sig),
+               a_lo=float(lo), a_hi=float(hi))
     if return_samples:
         out["samples"] = samples
+
     return out
 
 
@@ -435,10 +441,12 @@ def logspaced_integers(limit, n):
     return np.array(list(map(lambda x: round(x)-1, result)), dtype=int)
 
 
-def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'],
-             opt_wcs=None, wcs=None, opt_pixscale=0.262, pixscale=0.262, mp=1,
-             allbands=None, integrmode='median', nclip=3, sclip=3, seed=42,
-             sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, debug=False):
+def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
+             bands=['g', 'r', 'i', 'z'], opt_wcs=None, wcs=None,
+             opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=100,
+             allbands=None, integrmode='median', nclip=3, sclip=3,
+             seed=42, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+             debug=False):
     """Multi-band ellipse-fitting, broadly based on--
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
 
@@ -478,7 +486,7 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         return sbprofiles
 
 
-    def results_datamodel(obj, bands):
+    def results_datamodel(obj, bands, dataset):
         import astropy.units as u
         from astropy.table import Table, Column
 
@@ -488,6 +496,8 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         #cols = obj.colnames
         #results = Table(obj[cols])
         results = Table()
+
+        # curve of growth model parameters
         for param, unit in zip(['MTOT', 'M0', 'ALPHA1', 'ALPHA2', 'SMA50'],
                                [u.ABmag, u.ABmag, None, None, u.arcsec]):
             for filt in ubands:
@@ -496,13 +506,16 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
             for filt in ubands:
                 results.add_column(Column(name=f'{param}_ERR_{filt}',
                                           unit=unit, data=np.zeros(1, 'f4')))
-        for thresh in np.array(sbthresh).astype(str):
-            for filt in ubands:
-                results.add_column(Column(name=f'D{thresh}_{filt}',
-                                          unit=u.arcsec, data=np.zeros(1, 'f4')))
-            for filt in ubands:
-                results.add_column(Column(name=f'D{thresh}_ERR_{filt}',
-                                          unit=u.arcsec, data=np.zeros(1, 'f4')))
+
+        if dataset == 'opt':
+            # isophotal radii
+            for thresh in np.array(sbthresh).astype(str):
+                for filt in ubands:
+                    results.add_column(Column(name=f'R{thresh}_{filt}',
+                                              unit=u.arcsec, data=np.zeros(1, 'f4')))
+                for filt in ubands:
+                    results.add_column(Column(name=f'R{thresh}_ERR_{filt}',
+                                              unit=u.arcsec, data=np.zeros(1, 'f4')))
         return results
 
 
@@ -510,7 +523,7 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     if allbands is None:
         allbands = bands
 
-    results = results_datamodel(obj, allbands)
+    results = results_datamodel(obj, allbands, dataset)
     sbprofiles = sbprofiles_datamodel(sma_array*pixscale, allbands)
 
     ## Initialize the object geometry. NB: (x,y) are switched in
@@ -542,7 +555,6 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     sma_array_arcsec = sma_array * pixscale
 
     # Measure the surface-brightness profile in each bandpass.
-    debug = True
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
@@ -568,23 +580,28 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         out = list(zip(*out))
         isobandfit = IsophoteList(out[0])
 
-        # populate the output table
+        # populate the output table and measure the isophotal radii
         I = np.isfinite(isobandfit.intens) * np.isfinite(isobandfit.int_err)
         if np.sum(I) > 0:
             sbprofiles[f'SB_{filt.upper()}'][I] = isobandfit.intens[I]
             sbprofiles[f'SB_ERR_{filt.upper()}'][I] = isobandfit.int_err[I]
 
-            # diameters...
-            mu = 22.5 - 2.5 * np.log10(isobandfit.intens[I])
-            mu_err = 2.5 * isobandfit.int_err[I] / isobandfit.intens[I] / np.log(10.)
+            # isophotal radii
+            if dataset == 'opt':
+                mu = 22.5 - 2.5 * np.log10(isobandfit.intens[I])
+                mu_err = 2.5 * isobandfit.int_err[I] / isobandfit.intens[I] / np.log(10.)
 
-            res = isophotal_radius_mc(
-                a=sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=26.,
-                n_draws=50, sky_sigma=0.03, smooth_win=3, random_state=seed)
-            log.info(f"a_25 = {res['a_iso']:.2f} (+{res['a_hi']-res['a_iso']:.2f}/-{res['a_iso']-res['a_lo']:.2f}) "
-                     f"[success={res['success_rate']:.2%}]")
-            if res['lower_limit']:
-                log.info("→ Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
+                for thresh in sbthresh:
+                    res = isophotal_radius_mc(
+                        sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
+                        nmonte=nmonte, sky_sigma=0.03, smooth_win=3, random_state=seed)
+                    if res['lower_limit']:
+                        log.critical("→ Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
+                    log.info(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                             f"{res['a_iso_err']:.2f} [success={res['success_rate']:.2%}]")
+                    results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
+                    results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
+
 
         # stack and fit the curve of growth
         apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
@@ -604,7 +621,7 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         r50, r50_err = half_light_radius_with_uncertainty(
             (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
             cov, r0=semia_arcsec)
-        log.info(f"{filt}-band: r(50) = {r50:.3f} ± {r50_err:.3f}")
+        log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
 
         results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
         results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
@@ -631,7 +648,6 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
         ax.legend()
         fig.savefig('ioannis/tmp/junk.png')
         plt.close()
-    pdb.set_trace()
 
     return results, sbprofiles
 
@@ -1115,7 +1131,8 @@ def ellipsefit_datamodel(sma, bands, dataset='opt'):
 
 
 def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
-                  sbthresh, apertures, SGAMASKBITS, mp=1, debug=False):
+                  sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=100,
+                  seed=42, debug=False):
     """Simple wrapper on multifit.
 
     Iterate on objects then datasets (even though some work is
@@ -1170,10 +1187,10 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 
             #print(sma_array)
             results_dataset1, sbprofiles_dataset1 = multifit(
-                obj, images, sigimages, masks, sma_array, bands,
-                opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
-                pixscale=pixscale, mp=mp, sbthresh=sbthresh,
-                apertures=apertures, debug=debug)
+                obj, images, sigimages, masks, sma_array, dataset,
+                bands, opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
+                pixscale=pixscale, mp=mp, nmonte=nmonte, seed=seed,
+                sbthresh=sbthresh, apertures=apertures, debug=debug)
 
             results_dataset.append(results_dataset1)
             sbprofiles_dataset.append(sbprofiles_dataset1)
@@ -1193,8 +1210,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, galex=True, unwise=True,
                          sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         verbose=False, nowrite=False, clobber=False, qaplot=False,
-                         htmlgalaxydir=None):
+                         nmonte=100, seed=42, verbose=False, nowrite=False,
+                         clobber=False, qaplot=False, htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
 
@@ -1228,7 +1245,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     results, sbprofiles = wrap_multifit(
         data, sample, datasets, unpack_maskbits_function,
         sbthresh, apertures, SGAMASKBITS, mp=mp,
-        debug=False)
+        nmonte=nmonte, seed=seed, debug=debug)
 
     if qaplot:
         qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,

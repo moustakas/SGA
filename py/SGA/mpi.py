@@ -42,6 +42,8 @@ def mpi_args():
     parser.add_argument('--galex-pixscale', default=1.5, type=float, help='GALEX pixel scale (arcsec/pix).')
 
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
+    parser.add_argument('--nmonte', default=100, type=int, help='Number of Monte Carlo draws (ellipsefit_multiband)')
+    parser.add_argument('--seed', default=42, type=int, help='Random seed for Monte Carlo draws (ellipsefit_multiband)')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
 
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
