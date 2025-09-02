@@ -332,10 +332,11 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
                 no_groups=False, lvd=False, final_sample=False, test_bricks=False,
-                region='dr11-south', mindiam=0., maxdiam=200.):
+                region='dr11-south', mindiam=0., maxdiam=200., maxmult=None):
     """Read/generate the parent SGA catalog.
 
     mindiam,maxdiam in arcmin
+    maxmult - maximum number of group members (ignored if --no-groups is set)
 
     """
     import fitsio
@@ -381,16 +382,20 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             cols = ['DIAM']
         else:
             cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
+            if maxmult is not None:
+                cols += ['GROUP_MULT']
         info = fitsio.read(samplefile, columns=cols)
         if no_groups:
             rows = np.where(
                 (info['DIAM'] > mindiam) *
                 (info['DIAM'] < maxdiam))[0]
         else:
-            rows = np.where(
-                (info['GROUP_DIAMETER'] > mindiam) *
-                (info['GROUP_DIAMETER'] < maxdiam) *
-                info['GROUP_PRIMARY'])[0]
+            I = ((info['GROUP_DIAMETER'] > mindiam) *
+                 (info['GROUP_DIAMETER'] < maxdiam) *
+                 info['GROUP_PRIMARY'])
+            if maxmult is not None:
+                I *= info['GROUP_MULT'] <= maxmult
+            rows = np.where(I)[0]
 
     nallrows = len(info)
     nrows = len(rows)

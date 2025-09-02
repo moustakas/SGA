@@ -23,7 +23,7 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd-v0.1 --lvd [--lv
 
 In production:
 
-salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
+salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.4
 srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
   SGA2025-mpi --coadds --mp=32
 
@@ -77,8 +77,16 @@ def main():
                          read_sample, missing_files, get_galaxy_galaxydir,
                          build_catalog, get_radius_mosaic)
 
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        rank, size = comm.rank, comm.size
+    except:
+        comm = None
+        rank, size = 0, 1
+
     args = mpi_args()
-    set_legacysurvey_dir(args.region)
+    set_legacysurvey_dir(args.region, rank=rank)
 
     if args.lvd:
         no_groups = True
@@ -104,14 +112,6 @@ def main():
     run = RUNS[args.region]
     bands = BANDS[args.region]
 
-    try:
-        from mpi4py import MPI
-        comm = MPI.COMM_WORLD
-        rank, size = comm.rank, comm.size
-    except:
-        comm = None
-        rank, size = 0, 1
-
     # Read and broadcast the sample.
     bricks = None
     if rank == 0:
@@ -126,12 +126,11 @@ def main():
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
         sample, fullsample = read_sample(
-            first=args.first, last=args.last,
-            mindiam=args.mindiam, maxdiam=args.maxdiam,
+            first=args.first, last=args.last, mindiam=args.mindiam,
+            maxdiam=args.maxdiam, maxmult=args.maxmult,
             galaxylist=args.galaxylist, no_groups=no_groups,
             lvd=args.lvd, region=args.region,
-            test_bricks=args.test_bricks,
-            verbose=args.verbose)
+            test_bricks=args.test_bricks, verbose=args.verbose)
 
         #if not args.build_catalog and not args.build_refcat:
         #    log.warning('Testing subsamples!')

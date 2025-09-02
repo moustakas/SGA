@@ -144,8 +144,13 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
         dof = max(1, len(r) - len(res.x))
         s2 = (res.fun @ res.fun) / dof
         cov = np.linalg.inv(J.T @ J) * s2
-        sig = np.sqrt(np.diag(cov))
-        perr = dict(zip(popt.keys(), sig))
+        var = np.diag(cov)
+        if np.all(var > 0.):
+            sig = np.sqrt(var)
+            perr = dict(zip(popt.keys(), sig))
+        else:
+            perr = {k: np.nan for k in popt.keys()}
+            cov = None
     except np.linalg.LinAlgError:
         perr = {k: np.nan for k in popt.keys()}
         cov = None
@@ -584,6 +589,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     sma_array_arcsec = sma_array * pixscale
 
     # Measure the surface-brightness profile in each bandpass.
+    debug = False
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
@@ -626,13 +632,18 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
             results[f'{key.upper()}_ERR_{filt.upper()}'] = perr[key]
 
         # half-light radius and uncertainty
-        r50, r50_err = half_light_radius_with_uncertainty(
-            (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
-            cov, r0=semia_arcsec)
-        log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
+        if cov is not None:
+            try:
+                r50, r50_err = half_light_radius_with_uncertainty(
+                    (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
+                    cov, r0=semia_arcsec)
+                log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
 
-        results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
-        results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
+                results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
+                results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
+            except:
+                pass
+                #pdb.set_trace()
 
         # aperture photometry within the reference apertures
         mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
@@ -662,36 +673,38 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
 
             # isophotal radii
             if dataset == 'opt':
-                mu = 22.5 - 2.5 * np.log10(isobandfit.intens[I])
-                mu_err = 2.5 * isobandfit.int_err[I] / isobandfit.intens[I] / np.log(10.)
-
-                for thresh in sbthresh:
-                    res = isophotal_radius_mc(
-                        sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
-                        nmonte=nmonte, sky_sigma=0.03, smooth_win=3, random_state=seed)
-                    if res['lower_limit']:
-                        log.critical("→ Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
-                    log.info(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
-                             f"{res['a_iso_err']:.2f} [success={res['success_rate']:.2%}]")
-                    results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
-                    results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
+                I = (isobandfit.intens > 0.) * (isobandfit.int_err > 0.)
+                if np.sum(I) > 2: # need at least 2 points
+                    mu = 22.5 - 2.5 * np.log10(isobandfit.intens[I])
+                    mu_err = 2.5 * isobandfit.int_err[I] / isobandfit.intens[I] / np.log(10.)
+                    for thresh in sbthresh:
+                        res = isophotal_radius_mc(
+                            sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
+                            nmonte=nmonte, sky_sigma=0.03, smooth_win=3, random_state=seed)
+                        if res['lower_limit']:
+                            log.critical("→ Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
+                        log.info(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                 f"{res['a_iso_err']:.2f} [success={res['success_rate']:.2%}]")
+                        results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
+                        results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
 
         if debug:
             I = apflux > 0.
-            mag = 22.5-2.5*np.log10(apflux[I])
-            dm = 2.5*apferr[I]/apflux[I]/np.log(10.)
-            ax.scatter(sma_array_arcsec[I], mag, label=filt)
-
-            refsmas = np.hstack([results[f'SMA_AP{iap:02}'] for iap in range(len(sma_apertures_arcsec))])
-            refflux = np.hstack([results[f'FLUX_AP{iap:02}_{filt.upper()}'] for iap in range(len(sma_apertures_arcsec))])
-            I = (refflux > 0.)
             if np.any(I):
-                refmag = 22.5-2.5*np.log10(refflux[I])
-                ax.scatter(refsmas[I], refmag, marker='s', s=100, facecolor='none')
+                mag = 22.5-2.5*np.log10(apflux[I])
+                dm = 2.5*apferr[I]/apflux[I]/np.log(10.)
+                ax.scatter(sma_array_arcsec[I], mag, label=filt)
 
-            rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
-            mfit = cog_model(rgrid, **popt, r0=semia_arcsec)
-            ax.plot(rgrid, mfit, color='k', alpha=0.8)
+                refsmas = np.hstack([results[f'SMA_AP{iap:02}'] for iap in range(len(sma_apertures_arcsec))])
+                refflux = np.hstack([results[f'FLUX_AP{iap:02}_{filt.upper()}'] for iap in range(len(sma_apertures_arcsec))])
+                I = (refflux > 0.)
+                if np.any(I):
+                    refmag = 22.5-2.5*np.log10(refflux[I])
+                    ax.scatter(refsmas[I], refmag, marker='s', s=100, facecolor='none')
+
+                rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
+                mfit = cog_model(rgrid, **popt, r0=semia_arcsec)
+                ax.plot(rgrid, mfit, color='k', alpha=0.8)
 
         dt, unit = get_dt(t0)
         log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')

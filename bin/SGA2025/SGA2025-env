@@ -5,6 +5,8 @@
 
 export COSMO=/dvs_ro/cfs/cdirs/cosmo
 
+export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/desi/users/ioannis/SGA/2025/SGA2025-v0.11-refcat.kd.fits
+
 export SGA_CODE_DIR=/global/homes/i/ioannis/code/SGA
 export LEGACYPIPE_CODE_DIR=/global/common/software/desi/users/ioannis/legacypipe
 export PYTHONPATH=$SGA_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH
@@ -12,15 +14,15 @@ export PATH=$SGA_CODE_DIR/bin/SGA2025:$PATH
 
 export SGA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025
 export SGA_DATA_DIR=$PSCRATCH/SGA2025-data
+export SGA_HTML_DIR=/pscratch/sd/i/ioannis/SGA2025-html
 #export SGA_DATA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA2025-data
-export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/SGA2025-html
+#export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/SGA2025-html
 
 export LEGACY_SURVEY_BASEDIR=$COSMO/work/legacysurvey
 #export LEGACY_SURVEY_DIR=$COSMO/work/legacysurvey/dr9
 #export SKY_TEMPLATE_DIR=$COSMO/data/legacysurvey/dr9/calib/sky_pattern
 export SKY_TEMPLATE_DIR=$COSMO/work/legacysurvey/dr11/calib/sky_pattern
 #export LARGEGALAXIES_CAT=$COSMO/staging/largegalaxies/v3.0/SGA-parent-v3.0.kd.fits
-export LARGEGALAXIES_CAT=/global/cfs/cdirs/desi/users/ioannis/SGA/2025/SGA2025-v0.11-refcat.kd.fits
 #echo "LARGEGALAXIES_CAT="$LARGEGALAXIES_CAT
 
 export GAIA_CAT_DIR=$COSMO/data/gaia/dr3/healpix

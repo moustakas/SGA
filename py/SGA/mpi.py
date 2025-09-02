@@ -24,6 +24,7 @@ def mpi_args():
 
     parser.add_argument('--mindiam', default=0., type=float, help='Minimum diameter (arcmin).')
     parser.add_argument('--maxdiam', default=100., type=float, help='Maximum diameter (arcmin).')
+    parser.add_argument('--maxmult', default=None, type=int, help='Only read primary groups with up to maxmult members.')
 
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
     parser.add_argument('--customsky', action='store_true', help='Build the largest large-galaxy coadds with custom sky-subtraction.')

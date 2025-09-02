@@ -13,7 +13,7 @@ from astropy.table import Table, vstack
 from SGA.logger import log
 
 
-def set_legacysurvey_dir(region='dr9-north'):
+def set_legacysurvey_dir(region='dr9-north', rank=None):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
         msg = 'Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!'
         log.critical(msg)
@@ -24,7 +24,11 @@ def set_legacysurvey_dir(region='dr9-north'):
     else:
         dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
-    log.info(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
+    if rank is not None:
+        pre = f'Rank {rank}: '
+    else:
+        pre = ''
+    log.info(f'{pre}Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
 
 
