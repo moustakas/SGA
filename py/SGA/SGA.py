@@ -138,31 +138,29 @@ def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
     dataregiondir = os.path.join(datadir, region)
     htmlregiondir = os.path.join(htmldir, region)
 
-    # Handle groups.
-    if group:# and 'SGAGROUP' in sample.colnames:
-        galcolumn = 'SGAGROUP'
-        groupcolumn = 'GROUP_NAME'
-        racolumn = 'GROUP_RA'
-        grps = np.atleast_1d(sample[groupcolumn])
-    else:
-        prefix = ''
-        galcolumn = 'OBJNAME'
-        #galcolumn = 'SGANAME'
-        racolumn = 'RA'
-        grps = [None] * len(np.atleast_1d(sample))
-
-    objs = np.atleast_1d(sample[galcolumn])
-    ras = np.atleast_1d(sample[racolumn])
+    sample = Table(sample) # can't be a Row
 
     objdirs, htmlobjdirs = [], []
-    for obj, ra, grp in zip(objs, ras, grps):
-        if group:
-            objdirs.append(os.path.join(dataregiondir, get_raslice(ra), grp))
-        else:
-            objdirs.append(os.path.join(dataregiondir, get_raslice(ra), obj))
+    if group:# and 'SGAGROUP' in sample.colnames:
+        racolumn = 'GROUP_RA'
+        galcolumn = 'SGAGROUP'
+        groupcolumn = 'GROUP_NAME'
+
+        ras = np.atleast_1d(sample[racolumn].value)
+        objs = np.atleast_1d(sample[galcolumn].value)
+        grps = np.atleast_1d(sample[groupcolumn].value)
+    else:
+        racolumn = 'RA'
+        #galcolumn = 'OBJNAME'
+        #galcolumn = 'SGANAME'
+
+        ras = np.atleast_1d(sample[racolumn].value)
+        objs = sga2025_name(sample['RA'].value, sample['DEC'].value, unixsafe=True)
+        grps = objs
+
+    for ra, grp in zip(ras, grps):
+        objdirs.append(os.path.join(dataregiondir, get_raslice(ra), grp))
         if html:
-            htmlobjdirs.append(os.path.join(htmlregiondir, get_raslice(ra), obj))
-        else:
             htmlobjdirs.append(os.path.join(htmlregiondir, get_raslice(ra), grp))
 
     objdirs = np.array(objdirs)

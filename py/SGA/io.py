@@ -8,7 +8,7 @@ General I/O functions.
 import os, time, pdb
 import fitsio
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table, vstack
 
 from SGA.logger import log
 
@@ -509,10 +509,14 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
         else:
             suffix = dataset
 
-        for iobj, results_obj in enumerate(results[idata]):
+        for iobj, (obj, results_obj) in enumerate(zip(sample, results[idata])):
 
             sganame = sample['SGANAME'][0].replace(' ', '_')
             ellipsefile = os.path.join(data["galaxydir"], f'{sganame}-ellipse-{suffix}.fits')
+
+            # add the sample catalog to the optical ellipse file
+            if dataset == 'opt':
+                results_obj = vstack((obj, results_obj))
 
             sbprofiles_obj = sbprofiles[idata][iobj]
             models = data[f'{dataset}_models'][iobj, :, :, :]

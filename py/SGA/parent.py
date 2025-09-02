@@ -1053,6 +1053,16 @@ def update_properties(cat, verbose=False):
             if newval != -99.:
                 out[col][I] = newval
 
+    # some SGA2020 diameters are grossly overestimated; fix those here
+    objs = ['NGC 0134', 'NGC 4157']
+    diams = [16., 12.] # [arcmin
+    for obj, diam in zip(objs, diams):
+        I = cat['OBJNAME'] == obj
+        if np.sum(I) == 1:
+            old = out['DIAM_SGA2020'][I][0]
+            log.info(f'Updating the SGA2020 diameter: {obj}: {old:.3f}-->{diam:.3f} arcmin')
+            out['DIAM_SGA2020'][I] = diam
+
     return out
 
 

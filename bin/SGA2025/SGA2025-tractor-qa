@@ -10,7 +10,7 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
@@ -31,8 +31,10 @@ import matplotlib.gridspec as gridspec
 from matplotlib.image import imread
 
 from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
-                     get_raslice, read_sample, DIAMCOLUMN,
-                     REFIDCOLUMN, SGAFITMODE, SAMPLE, REFCAT)
+                     read_sample, DIAMCOLUMN, REFIDCOLUMN, SAMPLE,
+                     REFCAT)
+from SGA.ellipse import ELLIPSEMODE
+from SGA.io import get_raslice
 from SGA.geometry import get_tractor_ellipse
 from SGA.qa import overplot_ellipse
 from SGA.logger import log
@@ -66,8 +68,7 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
         # Tractor catalog
         if os.path.isdir(galaxydir):
         #if cutout_galaxy == 'SGA2025_J0150.925+068.693':
-            print('WRITE ME!!')
-            pdb.set_trace()
+            raise ValueError('WRITE ME!!')
 
         return Table(), Table(), image, wcs
 
@@ -110,30 +111,36 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
 
 
 def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
-              datadir=None, cutoutdir=None, region='dr11-south'):
+              datadir=None, cutoutdir=None, region='dr11-south', no_groups=False):
 
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
 
-    # each group member gets its own panel
-    galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
-                                             group=False,
-                                             datadir=datadir)
-    galaxy = np.atleast_1d(galaxy)
-    galaxydir = np.atleast_1d(galaxydir)
+    if no_groups:
+        showsample = sample
+    else:
+        # each group member gets its own panel
+        showsample = fullsample
 
-    I = fullsample['CUTOUT'].value
+    galaxy, galaxydir = get_galaxy_galaxydir(showsample, region=region,
+                                             group=not no_groups,
+                                             datadir=datadir)
+    I = showsample['CUTOUT'].value
     if np.any(I):
         cutout_galaxy = np.copy(galaxy)
         cutout_galaxydir = np.copy(galaxydir)
-        cgalaxy, cgalaxydir = get_galaxy_galaxydir(fullsample[I], region=region,
-                                                   group=False, datadir=cutoutdir)
+        cgalaxy, cgalaxydir = get_galaxy_galaxydir(showsample[I], region=region,
+                                                   group=not no_groups,
+                                                   datadir=cutoutdir)
         cutout_galaxy[I] = cgalaxy
         cutout_galaxydir[I] = cgalaxydir
     else:
-        cutout_galaxy = [None] * len(fullsample)
-        cutout_galaxydir = [None] * len(fullsample)
+        cutout_galaxy = [None] * len(showsample)
+        cutout_galaxydir = [None] * len(showsample)
 
-    nobj = len(fullsample)
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
+
+    nobj = len(showsample)
     allindx = np.arange(nobj)
 
     nperpage = ncol * nrow
@@ -153,19 +160,19 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
         for iax, xx in enumerate(ax):
             if iax < len(indx):
-                obj = fullsample[indx[iax]]
+                obj = showsample[indx[iax]]
                 #print(obj['OBJNAME'])
                 diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
                 geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
 
-                txt_ul = '\n'.join([obj["OBJNAME"], obj["SGANAME"],
+                txt_ul = '\n'.join([obj["OBJNAME"], #obj["SGANAME"],
                                     r'$(\alpha,\delta)$='+f'({obj["RA"]:.7f},{obj["DEC"]:.6f})',
                                     geo0])
                 xx.text(0.03, 0.97, txt_ul, transform=xx.transAxes, ha='left',
                         va='top', color='white', linespacing=1.5, fontsize=9,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
-                if obj['CUTOUT']:
+                if obj['CUTOUT'] or no_groups:
                     diam = obj['DIAM'] * 60., # [arcsec]
                     ra = obj['RA']
                     dec = obj['DEC']
@@ -223,7 +230,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     if len(sga) > 0:
                         from SGA.geometry import get_tractor_ellipse
                         _, ba, pa = get_tractor_ellipse(sga['shape_r'][0], sga['shape_e1'][0], sga['shape_e2'][0])
-                        print(f"{obj['OBJNAME']:20} {diam0:05.0f} arcsec   {obj['RA']:.7f} {obj['DEC']:.7f} {sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba:.3f} {pa:.1f}")
+                        print(f"{obj['OBJNAME']:20} {diam0:05.0f} arcsec   {obj['RA']:.7f} {obj['DEC']:.7f} " + \
+                              f"{sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba:.3f} {pa:.1f}")
                         xx.scatter(sga['bx'], height-sga['by'], marker='s',
                                    facecolor='none', s=40, color='cyan')
                     else:
@@ -274,6 +282,18 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                             txt_ur = None
                             txt_ll = 'Missing Tractor catalog'
 
+                # label the other objects in the group
+                if no_groups:
+                    for otherobj in fullsample:
+                        if otherobj[REFIDCOLUMN] == obj[REFIDCOLUMN]:
+                            continue
+                        (xpix, ypix) = wcs.wcs_world2pix(otherobj['RA'], otherobj['DEC'], 0)
+                        diam0, ba0, pa0 = otherobj['DIAM']*60., otherobj['BA'], otherobj['PA']
+                        overplot_ellipse(diam0, ba0, pa0, xpix, ypix,
+                                         height_pixels=width, pixscale=pixscale,
+                                         ax=xx, color='white', linestyle='-',
+                                         draw_majorminor_axes=False, jpeg=True)
+
                 xx.margins(0)
                 xx.set_xticks([])
                 xx.set_yticks([])
@@ -308,14 +328,20 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
 
 def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
-               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False):
+               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False, no_groups=False,
+               mindiam=0., maxdiam=200.):
 
     if datadir is None:
         datadir = sga_data_dir()
     cutoutdir = os.path.join(datadir, 'cutouts')
 
     any_lvd = lvd or lvd_resolved or lvd_fixgeo or lvd_forcepsf
-    sample, fullsample = read_sample(region=region, lvd=any_lvd)
+    if any_lvd:
+        no_groups = True
+
+    sample, fullsample = read_sample(region=region, lvd=any_lvd,
+                                     no_groups=no_groups,
+                                     mindiam=mindiam, maxdiam=maxdiam)
 
     if any_lvd:
         from SGA.SGA import SAMPLE
@@ -328,43 +354,70 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
                             (fullsample['REGION'] & REGIONBITS[region] != 0)]
 
         if lvd:
-            I = sample['SGAFITMODE'] == 0
+            I = sample['ELLIPSEMODE'] == 0
             #gals = ['AGC749235', 'ESO 006-001', 'HIPASS J1131-31', 'LV J1243+4127', 'N1291-DW8',
             #        'NGC 2903-HI-1', 'dw1343+58', 'KV19-212', 'KV19-329', 'KV19-442', 'SUCD1',
             #        'dw1110+0037', 'dw1119p1419']
             #I = np.isin(sample['OBJNAME'], gals)
             suffix = ''
         elif lvd_resolved:
-            I = sample['SGAFITMODE'] & SGAFITMODE['RESOLVED'] != 0
+            I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0
             suffix = '-resolved'
         elif lvd_fixgeo:
             # don't double-count / show the RESOLVED sources
-            I = ((sample['SGAFITMODE'] & SGAFITMODE['FIXGEO'] != 0) *
-                 (sample['SGAFITMODE'] & SGAFITMODE['RESOLVED'] == 0))
+            I = ((sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) *
+                 (sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0))
             suffix = '-fixgeo'
         elif lvd_forcepsf:
-            I = sample['SGAFITMODE'] & SGAFITMODE['FORCEPSF'] != 0
+            I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0
             suffix = '-forcepsf'
         sample = sample[I]
-        # do not include group members
+
+        # for the various LVD samples, do not include group members
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd{suffix}.pdf')
         fullsample = sample
         diamcolumn = 'DIAM'
-        pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd{suffix}.pdf')
     else:
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
-        pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample.pdf')
-        #print('Hack!')
+        if no_groups:
+            suffix = '-no-groups'
+        else:
+            suffix = ''
+        pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample{suffix}.pdf')
+
+        print('Hack!')
+        #I = sample['SAMPLE'] == 0
+
+        srt = np.argsort(sample['GROUP_MULT'])[::-1]
+        sample = sample[srt]
+        I = (sample['SAMPLE'] == 0) * (sample['GROUP_MULT'] > 50)
+
         #I = np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])
         #I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
+
         sample = sample[I]
+
+        # We still want to see and label nearby companions in
+        # 'fullsample', i.e., without any diameter cuts.
+        if no_groups:
+            diamcolumn = 'DIAM'
+            _, fullsample = read_sample(region=region)
+        else:
+            diamcolumn = DIAMCOLUMN
+
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
-        diamcolumn = DIAMCOLUMN
+
+        #from collections import Counter
+        #C = Counter(fullsample['GROUP_ID'])
+        #C.most_common()
+        #for key in C.keys():
+        #    print(key, C[key], np.sum(fullsample['GROUP_ID'] == key))
 
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
 
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
-                                             group=False,
+                                             group=not no_groups,
                                              datadir=datadir)
     I = np.array([os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)])
     log.info(f'Found {np.sum(I):,d}/{len(sample):,d} ' + \
@@ -379,10 +432,10 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
             raise ValueError()
 
         sample['CUTOUT'][~I] = True
-        #fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
+        fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
 
         galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
-                                                 group=False, datadir=cutoutdir)
+                                                 group=not no_groups, datadir=cutoutdir)
         M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
         log.info(f'Generating cutouts for {np.sum(M):,d}/{np.sum(~I):,d} ' + \
                  'objects with missing pipeline results.')
@@ -395,19 +448,19 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
                 log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
                 layer = 'ls-dr11-early-v2'
 
-            do_cutouts(sample[~I][M], layer=layer, group=False, fits_cutouts=False,
-                       maxdiam_arcmin=MAXDIAM, cutoutdir=os.path.join(cutoutdir, region),
-                       mp=mp)
+            do_cutouts(sample[~I][M], layer=layer, group=not no_groups,
+                       fits_cutouts=False, maxdiam_arcmin=MAXDIAM, mp=mp,
+                       cutoutdir=os.path.join(cutoutdir, region))
 
     #SGA2025_J0170.067+013.549
     #sample = sample[I]
     #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
-
     sample = sample[np.argsort(sample[diamcolumn])]
     fullsample = fullsample[np.argsort(fullsample[diamcolumn])]
 
     annotated(sample, fullsample, pdffile, region=region,
-              datadir=datadir, cutoutdir=cutoutdir)
+              datadir=datadir, cutoutdir=cutoutdir,
+              no_groups=no_groups)
 
 if __name__ == '__main__':
 
@@ -415,14 +468,19 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
+    parser.add_argument('--mindiam', default=0., type=float, help='minimum diameter')
+    parser.add_argument('--maxdiam', default=200., type=float, help='minimum diameter')
     parser.add_argument('--lvd-resolved', action='store_true', help='Generate QA for the LVD/resolved sample.')
     parser.add_argument('--lvd-fixgeo', action='store_true', help='Generate QA for the LVD/fixgeo sample.')
     parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
     parser.add_argument('--lvd', action='store_true', help='Generate QA for the remaining LVD sample.')
+    parser.add_argument('--no-groups', action='store_true', help='Do not show group cutouts.')
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 
     qa_tractor(datadir=args.datadir, region=args.region, mp=args.mp,
                lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
-               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd)
+               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd,
+               no_groups=args.no_groups, mindiam=args.mindiam,
+               maxdiam=args.maxdiam)

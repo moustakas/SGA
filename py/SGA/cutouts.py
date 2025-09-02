@@ -14,7 +14,8 @@ import multiprocessing
 from astropy.table import Table, vstack
 
 from SGA.geometry import choose_geometry
-from SGA.SGA import get_raslice, sga2025_name
+from SGA.io import get_raslice
+from SGA.SGA import sga2025_name
 from SGA.logger import log
 
 
@@ -63,7 +64,8 @@ def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
     t0 = time.time()
 
     if group:
-        objname = cat['GROUP_NAME']
+        objname = cat['SGAGROUP']
+        #objname = cat['GROUP_NAME']
     else:
         objname = sga2025_name(cat['RA'], cat['DEC'], unixsafe=True)
 
