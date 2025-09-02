@@ -395,45 +395,28 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     nallrows = len(info)
     nrows = len(rows)
 
-    if first is None:
-        first = 0
-    if last is None:
-        last = nrows
-        if rows is None:
-            rows = np.arange(first, last)
-        else:
-            rows = rows[np.arange(first, last)]
-    else:
-        if last >= nrows:
-            msg = f'Index last cannot be greater than the number of rows, {last} >= {nrows}'
-            log.critical(msg)
-            raise ValueError(msg)
-        if rows is None:
-            rows = np.arange(first, last+1)
-        else:
-            rows = rows[np.arange(first, last+1)]
-            if len(rows) == 1:
-                log.info(f'Selecting index {first} (N=1)')
-            else:
-                log.info(f'Selecting indices {first} through {last} (N={len(rows):,d})')
-
     fullsample = Table(fitsio.read(samplefile, upper=True))
     #fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
     sample = fullsample[rows]
 
     #sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
     log.info(f'Read {len(sample):,d}/{len(fullsample):,d} GROUP_PRIMARY objects from {samplefile}')
+    if len(sample) == 0:
+        return sample, fullsample
 
     # select objects in this region
     I = sample['REGION'] & REGIONBITS[region] != 0
     #J = fullsample['REGION'] & REGIONBITS[region] != 0
     log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
              f'region={region}')
+
     sample = sample[I]
     if no_groups:
         fullsample = sample
     else:
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+    if len(sample) == 0:
+        return sample, fullsample
 
     # select objects in the set of test bricks
     if test_bricks:
@@ -447,12 +430,37 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             fullsample = sample
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
-
+        if len(sample) == 0:
+            return sample, fullsample
 
     # select the LVD sample; remember that --lvd always implies --no-groups
     if lvd:
         sample = sample[sample['SAMPLE'] & SAMPLE['LVD'] != 0]
         fullsample = sample
+        if len(sample) == 0:
+            return sample, fullsample
+
+    # select a subset of objects
+    if first is not None or last is not None:
+        nsample = len(sample)
+        if first is None:
+            first = 0
+        if last is None:
+            last = nsample
+        if last > nsample:
+            log.warning('Index last is greater than the number of ' + \
+                        f'objects in sample, {last} >= {nsample}')
+            last = nsample
+        I = np.arange(first, last)
+        if nsample == 1:
+            log.info(f'Selecting index {first} (N=1)')
+        else:
+            log.info(f'Selecting indices {first} through {last} (N={nsample:,d})')
+        sample = sample[I]
+        if no_groups:
+            fullsample = sample
+        else:
+            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
