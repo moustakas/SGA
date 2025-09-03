@@ -90,9 +90,11 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
     """
     from scipy.optimize import least_squares
 
+    nfree = 4 # 4 free parameters
     I = (sma_arcsec > 0.) * (apflux > 0.) * (apferr > 0.)
-    if np.sum(I) == 0:
-        return
+    if np.sum(I) < 5:
+        log.warning('Need at least 5 independent points to attempt a fit.')
+        return {}, {}, None, 0., 0.
     r = sma_arcsec[I]
     y = 22.5 - 2.5 * np.log10(apflux[I])
 
@@ -109,15 +111,15 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
         y_large = np.nanmedian(y[order[-max(3, len(y)//10):]])
         y_small = np.nanmedian(y[order[:max(3, len(y)//10)]])
         mtot0 = y_large
-        m00   = max(y_small - mtot0, 0.1)   # positive amplitude
-        a10   = 1.
-        a20   = 1.
+        m00 = max(y_small - mtot0, 0.1)   # positive amplitude
+        a10 = 1.
+        a20 = 1.
         p0 = (mtot0, m00, a10, a20)
 
     # bounds
     if bounds is None:
         lb = (-np.inf, 0.0, 1e-8, 1e-8)  # mtot free; others positive
-        ub = ( np.inf, np.inf, np.inf, np.inf)
+        ub = (np.inf, np.inf, np.inf, np.inf)
         bounds = (lb, ub)
 
     def residuals(p):
@@ -128,10 +130,14 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
             res = res / w
         return res
 
+
     res = least_squares(
         residuals, x0=np.array(p0, float), bounds=bounds,
         method='trf', loss=('soft_l1' if robust else 'linear'),
         f_scale=f_scale)
+
+    chi2 = float(np.sum(res.fun**2))   # sum of squared (weighted) residuals
+    ndof = max(1, r.size - res.x.size) # degrees of freedom
 
     # best-fit
     mtot, m0, a1, a2 = res.x
@@ -155,7 +161,7 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
         perr = {k: np.nan for k in popt.keys()}
         cov = None
 
-    return popt, perr, res, cov
+    return popt, perr, cov, chi2, ndof
 
 
 def radius_for_fraction(f, m0, alpha1, alpha2, r0=10.0):
@@ -509,14 +515,17 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         #results = Table()
 
         # curve of growth model parameters
-        for param, unit in zip(['MTOT', 'M0', 'ALPHA1', 'ALPHA2', 'SMA50'],
-                               [u.ABmag, u.ABmag, None, None, u.arcsec]):
+        for param, unit, dtype in zip(
+                ['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+                [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
+                ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
             for filt in ubands:
                 results.add_column(Column(name=f'{param}_{filt}',
-                                          unit=unit, data=np.zeros(1, 'f4')))
-            for filt in ubands:
-                results.add_column(Column(name=f'{param}_ERR_{filt}',
-                                          unit=unit, data=np.zeros(1, 'f4')))
+                                          unit=unit, data=np.zeros(1, dtype)))
+            if not ('CHI2' in param or 'NDOF' in param):
+                for filt in ubands:
+                    results.add_column(Column(name=f'{param}_ERR_{filt}',
+                                              unit=unit, data=np.zeros(1, dtype)))
 
         # flux within apertures that are multiples of sma_moment
         for iap, ap in enumerate(sma_apertures_arcsec):
@@ -626,13 +635,17 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         sbprofiles[f'FMASKED_{filt.upper()}'] = apfmasked
 
         # model
-        popt, perr, _, cov = fit_cog(sma_array_arcsec, apflux, apferr, r0=semia_arcsec)
-        for key in popt.keys():
-            results[f'{key.upper()}_{filt.upper()}'] = popt[key]
-            results[f'{key.upper()}_ERR_{filt.upper()}'] = perr[key]
+        popt, perr, cov, chi2, ndof = fit_cog(
+            sma_array_arcsec, apflux, apferr, r0=semia_arcsec)
+        if bool(popt):
+            for key in popt.keys():
+                results[f'COG_{key.upper()}_{filt.upper()}'] = popt[key]
+                results[f'COG_{key.upper()}_ERR_{filt.upper()}'] = perr[key]
+            results[f'COG_CHI2_{filt.upper()}'] = chi2
+            results[f'COG_NDOF_{filt.upper()}'] = ndof
 
         # half-light radius and uncertainty
-        if cov is not None:
+        if bool(popt) and cov is not None:
             try:
                 r50, r50_err = half_light_radius_with_uncertainty(
                     (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
@@ -682,11 +695,12 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                             sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
                             nmonte=nmonte, sky_sigma=0.03, smooth_win=3, random_state=seed)
                         if res['lower_limit']:
-                            log.critical("→ Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
-                        log.info(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
-                                 f"{res['a_iso_err']:.2f} [success={res['success_rate']:.2%}]")
-                        results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
-                        results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
+                            log.warning("Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
+                        else:
+                            log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                      f"{res['a_iso_err']:.2f} [success={res['success_rate']:.2%}]")
+                            results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
+                            results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
 
         if debug:
             I = apflux > 0.
@@ -947,10 +961,15 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
         # one row per dataset
         for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
 
+            images = data[f'{dataset}_images'][iobj, :, :, :]
+            if np.all(images == 0.):
+                have_data = False
+            else:
+                have_data = True
+
             results_obj = results[idata][iobj]
             sbprofiles_obj = sbprofiles[idata][iobj]
 
-            images = data[f'{dataset}_images'][iobj, :, :, :]
             models = data[f'{dataset}_models'][iobj, :, :, :]
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
@@ -964,153 +983,174 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
             ellipse_eps = 1 - obj['BA_MOMENT']
             semia = obj['SMA_MOMENT'] # [arcsec]
 
-            bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
-            refg = EllipseGeometry(x0=bx, y0=by, eps=ellipse_eps,
-                                   pa=ellipse_pa, sma=semia/pixscale) # sma in pixels
-            refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
-                                       refg.sma*(1. - refg.eps), refg.pa)
+            if have_data:
+                bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
+                refg = EllipseGeometry(x0=bx, y0=by, eps=ellipse_eps,
+                                       pa=ellipse_pa, sma=semia/pixscale) # sma in pixels
+                refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
+                                           refg.sma*(1. - refg.eps), refg.pa)
 
-            # a little wasteful...
-            masks = unpack_maskbits_function(data[f'{dataset}_maskbits'], bands=bands,
-                                             BITS=MASKBITS[idata])
-            masks = masks[iobj, :, :, :]
+                # a little wasteful...
+                masks = unpack_maskbits_function(data[f'{dataset}_maskbits'], bands=bands,
+                                                 BITS=MASKBITS[idata])
+                masks = masks[iobj, :, :, :]
 
-            wimg = np.sum(images * np.logical_not(masks), axis=0)
-            wimg[wimg == 0.] = np.nan
+                wimg = np.sum(images * np.logical_not(masks), axis=0)
+                wimg[wimg == 0.] = np.nan
+                try:
+                    norm = get_norm(wimg)
+                except:
+                    norm = None
 
-            # col 0 - images
-            xx = ax[idata, 0]
-            #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
-            xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
-                      norm=get_norm(wimg), alpha=1.)
-            xx.text(0.03, 0.97, label, transform=xx.transAxes,
-                    ha='left', va='top', color='white',
-                    linespacing=1.5, fontsize=10,
-                    bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-            xx.set_xlim(0, wimg.shape[0]-1)
-            xx.set_ylim(0, wimg.shape[0]-1)
-            xx.margins(0)
-            xx.set_xticks([])
-            xx.set_yticks([])
-
-            smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
-            for sma in smas: # sma in pixels
-                if sma == 0.:
-                    continue
-                ap = EllipticalAperture((refg.x0, refg.y0), sma,
-                                        sma*(1. - refg.eps), refg.pa)
-                ap.plot(color='k', lw=1, ax=xx)
-            refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
-
-            ## col 1 - linear SB profiles
-            #xx = ax[idata, 1]
-            #for filt in bands:
-            #    xx.fill_between(sbprofiles_obj['SMA']**0.25,
-            #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
-            #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
-            #                    label=filt, alpha=0.6)
-            #xx.set_xlim(ax[0, 1].get_xlim())
-            #if idata == ndataset-1:
-            #    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
-            #else:
-            #    xx.set_xticks([])
-            #
-            #xx.relim()
-            #xx.autoscale_view()
-            #
-            #xx_twin = xx.twinx()
-            #xx_twin.set_ylim(xx.get_ylim())
-            #kill_left_y(xx)
-            #
-            #if idata == 1:
-            #    xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
-            #
-            #xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
-
-            # col 1 - mag SB profiles
-            if linear:
-                yminmax = [1e8, -1e8]
-            else:
-                yminmax = [40, 0]
-
-            xx = ax[idata, 1]
-            for filt in bands:
-                I = ((sbprofiles_obj[f'SB_{filt.upper()}'].value > 0.) *
-                     (sbprofiles_obj[f'SB_ERR_{filt.upper()}'].value > 0.))
-                if np.any(I):
-                    sma = sbprofiles_obj['SMA'][I].value**0.25
-                    sb = sbprofiles_obj[f'SB_{filt.upper()}'][I].value
-                    sberr = sbprofiles_obj[f'SB_ERR_{filt.upper()}'][I].value
-                    mu = 22.5 - 2.5 * np.log10(sb)
-                    muerr = 2.5 * sberr / sb / np.log(10.)
-
-                    col = sbcolors[filt]
-                    xx.plot(sma, mu-muerr, color=col, alpha=0.8)
-                    xx.plot(sma, mu+muerr, color=col, alpha=0.8)
-                    xx.fill_between(sma, mu-muerr, mu+muerr,
-                                    label=filt, color=col, alpha=0.7)
-
-                    # robust limits
-                    mulo = (mu - muerr)[mu / muerr > 10.]
-                    muhi = (mu + muerr)[mu / muerr > 10.]
-                    #print(filt, np.min(mulo), np.max(muhi))
-                    if len(mulo) > 0:
-                        mn = np.min(mulo)
-                        if mn < yminmax[0]:
-                            yminmax[0] = mn
-                    if len(muhi) > 0:
-                        mx = np.max(muhi)
-                        if mx > yminmax[1]:
-                            yminmax[1] = mx
-                #print(filt, yminmax[0], yminmax[1])
-
-            xx.margins(x=0)
-            xx.set_xlim(ax[0, 1].get_xlim())
-
-            if idata == ndataset-1:
-                xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
-            else:
+                # col 0 - images
+                xx = ax[idata, 0]
+                #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
+                xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
+                          norm=norm, alpha=1.)
+                xx.text(0.03, 0.97, label, transform=xx.transAxes,
+                        ha='left', va='top', color='white',
+                        linespacing=1.5, fontsize=10,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                xx.set_xlim(0, wimg.shape[0]-1)
+                xx.set_ylim(0, wimg.shape[0]-1)
+                xx.margins(0)
                 xx.set_xticks([])
+                xx.set_yticks([])
 
-            #xx.relim()
-            #xx.autoscale_view()
-            if linear:
-                ylim = [yminmax[0], yminmax[1]]
+                smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
+                for sma in smas: # sma in pixels
+                    if sma == 0.:
+                        continue
+                    ap = EllipticalAperture((refg.x0, refg.y0), sma,
+                                            sma*(1. - refg.eps), refg.pa)
+                    ap.plot(color='k', lw=1, ax=xx)
+                refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
+
+                ## col 1 - linear SB profiles
+                #xx = ax[idata, 1]
+                #for filt in bands:
+                #    xx.fill_between(sbprofiles_obj['SMA']**0.25,
+                #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
+                #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
+                #                    label=filt, alpha=0.6)
+                #xx.set_xlim(ax[0, 1].get_xlim())
+                #if idata == ndataset-1:
+                #    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                #else:
+                #    xx.set_xticks([])
+                #
+                #xx.relim()
+                #xx.autoscale_view()
+                #
+                #xx_twin = xx.twinx()
+                #xx_twin.set_ylim(xx.get_ylim())
+                #kill_left_y(xx)
+                #
+                #if idata == 1:
+                #    xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
+                #
+                #xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+
+                # col 1 - mag SB profiles
+                if linear:
+                    yminmax = [1e8, -1e8]
+                else:
+                    yminmax = [40, 0]
+
+                xx = ax[idata, 1]
+                for filt in bands:
+                    I = ((sbprofiles_obj[f'SB_{filt.upper()}'].value > 0.) *
+                         (sbprofiles_obj[f'SB_ERR_{filt.upper()}'].value > 0.))
+                    if np.any(I):
+                        sma = sbprofiles_obj['SMA'][I].value**0.25
+                        sb = sbprofiles_obj[f'SB_{filt.upper()}'][I].value
+                        sberr = sbprofiles_obj[f'SB_ERR_{filt.upper()}'][I].value
+                        mu = 22.5 - 2.5 * np.log10(sb)
+                        muerr = 2.5 * sberr / sb / np.log(10.)
+
+                        col = sbcolors[filt]
+                        xx.plot(sma, mu-muerr, color=col, alpha=0.8)
+                        xx.plot(sma, mu+muerr, color=col, alpha=0.8)
+                        xx.fill_between(sma, mu-muerr, mu+muerr,
+                                        label=filt, color=col, alpha=0.7)
+
+                        # robust limits
+                        mulo = (mu - muerr)[mu / muerr > 10.]
+                        muhi = (mu + muerr)[mu / muerr > 10.]
+                        #print(filt, np.min(mulo), np.max(muhi))
+                        if len(mulo) > 0:
+                            mn = np.min(mulo)
+                            if mn < yminmax[0]:
+                                yminmax[0] = mn
+                        if len(muhi) > 0:
+                            mx = np.max(muhi)
+                            if mx > yminmax[1]:
+                                yminmax[1] = mx
+                    #print(filt, yminmax[0], yminmax[1])
+
+                xx.margins(x=0)
+                xx.set_xlim(ax[0, 1].get_xlim())
+
+                if idata == ndataset-1:
+                    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    xx.set_xticks([])
+
+                #xx.relim()
+                #xx.autoscale_view()
+                if linear:
+                    ylim = [yminmax[0], yminmax[1]]
+                else:
+                    ylim = [yminmax[0]-0.75, yminmax[1]+0.5]
+                    if ylim[0] < 13:
+                        ylim[0] = 13
+                    if ylim[1] > 34:
+                        ylim[1] = 34
+                #print(idata, yminmax, ylim)
+                xx.set_ylim(ylim)
+
+                xx_twin = xx.twinx()
+                xx_twin.set_ylim(ylim)
+                kill_left_y(xx)
+
+                xx.invert_yaxis()
+                xx_twin.invert_yaxis()
+
+                #y0, y1 = xx.get_ylim()
+                #span_dec = abs(np.log10(y1) - np.log10(y0))
+                #if span_dec < 1.:
+                #    # within ~one decade: 1–2–5 per decade
+                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
+                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
+                #else:
+                #    # multiple decades: decades only
+                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
+                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
+
+                if idata == 1:
+                    xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
+
+                xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+                xx.legend(loc='upper right', fontsize=8)
             else:
-                ylim = [yminmax[0]-0.75, yminmax[1]+0.5]
-                if ylim[0] < 13:
-                    ylim[0] = 13
-                if ylim[1] > 34:
-                    ylim[1] = 34
-            #print(idata, yminmax, ylim)
-            xx.set_ylim(ylim)
+                ax[idata, 0].text(0.03, 0.97, f'{label} - No Data',
+                                  transform=ax[idata, 0].transAxes,
+                                  ha='left', va='top', color='white',
+                                  linespacing=1.5, fontsize=10,
+                                  bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                ax[idata, 0].set_xticks([])
+                ax[idata, 0].set_yticks([])
 
-            xx_twin = xx.twinx()
-            xx_twin.set_ylim(ylim)
-            kill_left_y(xx)
+                ax[idata, 1].set_yticks([])
+                ax[idata, 1].margins(x=0)
+                ax[idata, 1].set_xlim(ax[0, 1].get_xlim())
 
-            xx.invert_yaxis()
-            xx_twin.invert_yaxis()
-
-            #y0, y1 = xx.get_ylim()
-            #span_dec = abs(np.log10(y1) - np.log10(y0))
-            #if span_dec < 1.:
-            #    # within ~one decade: 1–2–5 per decade
-            #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
-            #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-            #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
-            #else:
-            #    # multiple decades: decades only
-            #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
-            #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-            #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
-
-            if idata == 1:
-                xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
-
-            xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
-
-            xx.legend(loc='upper right', fontsize=8)
+                if idata == ndataset-1:
+                    ax[idata, 1].set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    ax[idata, 1].set_xticks([])
 
 
         fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \

@@ -8,7 +8,7 @@ General I/O functions.
 import os, time, pdb
 import fitsio
 import numpy as np
-from astropy.table import Table, vstack
+from astropy.table import Table, vstack, join
 
 from SGA.logger import log
 
@@ -520,7 +520,7 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
 
             # add the sample catalog to the optical ellipse file
             if dataset == 'opt':
-                results_obj = vstack((obj, results_obj))
+                results_obj = join(obj, results_obj)
 
             sbprofiles_obj = sbprofiles[idata][iobj]
             models = data[f'{dataset}_models'][iobj, :, :, :]
