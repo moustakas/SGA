@@ -474,9 +474,10 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     """
     import multiprocessing
     from photutils.isophote import EllipseGeometry, IsophoteList
+    from photutils.aperture import EllipticalAperture
+    from photutils.morphology import gini
     from SGA.util import get_dt
     from SGA.sky import map_bxby
-
 
     def sbprofiles_datamodel(sma, bands):
         import astropy.units as u
@@ -513,6 +514,10 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         cols = ['SGAID', 'SGAGROUP']
         results = Table(obj[cols])
         #results = Table()
+
+        # Gini coefficient within the MOMENT aperture
+        for filt in ubands:
+            results.add_column(Column(name=f'GINI_{filt}', data=np.zeros(1, 'f4')))
 
         # curve of growth model parameters
         for param, unit, dtype in zip(
@@ -569,30 +574,13 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     results = results_datamodel(obj, allbands, dataset)
     sbprofiles = sbprofiles_datamodel(sma_array*pixscale, allbands)
 
-    ## Initialize the object geometry. NB: (x,y) are switched in
-    ## photutils and PA is measured CCW from the x-axis while PA is CCW
-    ## from the y-axis!
-    #cols = ['BX_MOMENT', 'BY_MOMENT', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
-    #[opt_bx, opt_by, opt_diam_arcsec, ba, pa] = list(obj[cols].values())
-
+    # Initialize the moment geometry.
     opt_bx = obj['BX']
     opt_by = obj['BY']
     ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
     ellipse_eps = 1 - obj['BA_MOMENT']
-    semia_arcsec = obj['SMA_MOMENT'] # [arcsec]
-    #opt_semia_pix = obj['SMA_MOMENT'] / opt_pixscale # [optical pixels]
-
-    #if debug:
-    #    import matplotlib.pyplot as plt
-    #    from photutils.aperture import EllipticalAperture
-    #    aper = EllipticalAperture((geo.x0, geo.y0), geo.sma,
-    #                              geo.sma * (1 - geo.eps),
-    #                              geo.pa)
-    #    plt.clf()
-    #    plt.imshow(np.log10(np.sum(images, axis=0)), origin='lower')
-    #    aper.plot(color='white')
-    #    plt.savefig('ioannis/tmp/junk.png')
-    #    plt.close()
+    sma_moment_arcsec = obj['SMA_MOMENT'] # [arcsec]
+    sma_moment_pix = sma_moment_arcsec / pixscale # [pixels]
 
     nbands, width, _ = images.shape
     sma_array_arcsec = sma_array * pixscale
@@ -611,7 +599,22 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
 
         sig = sigimages[iband, :, :]
         msk = masks[iband, :, :] # True=masked
-        mimg = np.ma.array(images[iband, :, :], mask=msk) # ignore masked pixels
+        img = images[iband, :, :]
+        mimg = np.ma.array(img, mask=msk) # ignore masked pixels
+
+        # Gini coefficient in the MOMENT ellipse
+        ap_moment = EllipticalAperture((bx, by), a=sma_moment_pix, theta=ellipse_pa,
+                                       b=sma_moment_pix*(1.-ellipse_eps))
+        apmask_moment = ap_moment.to_mask().to_image((width, width)) != 0. # object mask=True
+        results[f'GINI_{filt.upper()}'] = gini(img, mask=np.logical_or(msk, np.logical_not(apmask_moment)))
+
+        #import matplotlib.pyplot as plt
+        #fig, ax = plt.subplots()
+        #ax.imshow(np.log10(img*np.logical_or(msk, apmask_moment)), origin='lower')
+        #ax.imshow(np.log10(img), origin='lower')
+        #ax.imshow(, origin='lower')
+        #ap_moment.plot(ax=ax)
+        #fig.savefig('ioannis/tmp/junk.png')
 
         # surface-brightness profile and aperture photometry
         mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
@@ -636,7 +639,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
 
         # model
         popt, perr, cov, chi2, ndof = fit_cog(
-            sma_array_arcsec, apflux, apferr, r0=semia_arcsec)
+            sma_array_arcsec, apflux, apferr, r0=sma_moment_arcsec)
         if bool(popt):
             for key in popt.keys():
                 results[f'COG_{key.upper()}_{filt.upper()}'] = popt[key]
@@ -649,7 +652,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
             try:
                 r50, r50_err = half_light_radius_with_uncertainty(
                     (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
-                    cov, r0=semia_arcsec)
+                    cov, r0=sma_moment_arcsec)
                 log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
 
                 results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
@@ -717,7 +720,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                     ax.scatter(refsmas[I], refmag, marker='s', s=100, facecolor='none')
 
                 rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
-                mfit = cog_model(rgrid, **popt, r0=semia_arcsec)
+                mfit = cog_model(rgrid, **popt, r0=sma_moment_arcsec)
                 ax.plot(rgrid, mfit, color='k', alpha=0.8)
 
         dt, unit = get_dt(t0)
@@ -1201,13 +1204,13 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
             # build the sma vector
             if dataset == 'opt':
                 ba = obj['BA_MOMENT']
-                semia_arcsec = obj['SMA_MOMENT']  # [arsec]
-                semia_pix = semia_arcsec / pixscale    # [pixels]
+                sma_moment_arcsec = obj['SMA_MOMENT']  # [arsec]
+                semia_pix = sma_moment_arcsec / pixscale    # [pixels]
                 psf_fwhm_pix = 1.1 / pixscale          # [pixels]
                 allbands = data['all_opt_bands'] # always griz in north & south
 
                 # reference apertures
-                sma_apertures_arcsec = semia_arcsec * np.array(apertures) # [arcsec]
+                sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures) # [arcsec]
 
                 opt_sma_array_pix, info = build_sma_opt(
                     s95_pix=semia_pix, ba=ba, psf_fwhm_pix=psf_fwhm_pix,

@@ -664,6 +664,10 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     ubands = np.char.upper(bands)
     uall_bands = np.char.upper(all_bands)
 
+    for filt in uall_bands:
+        col = f'GINI_{filt}'
+        outellipse.add_column(Column(name=col, data=ellipse[col].value))
+
     for param, unit, dtype in zip(
             ['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
             [u.mag, u.ABmag, None, None, None, None, u.arcsec],
@@ -1125,7 +1129,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
         """
         from SGA.geometry import EllipseProperties
-        #from photutils.morphology import gini
 
         W = img.shape[1]
 
