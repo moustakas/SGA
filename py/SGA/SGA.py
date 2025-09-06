@@ -631,9 +631,10 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     #log.info("  ['mw_transmission_nuv' 'mw_transmission_fuv' 'ngood_g' 'ngood_r' 'ngood_z']")
     #tractor = vstack(tractor1, metadata_conflicts='silent')
 
-    allellipse = vstack(allellipse)
-    alltractor = vstack(alltractor)
-    log.info(f'Merging {len(alltractor):,d} objects took {(time.time()-t0)/60.0:.2f} min.')
+    ellipse = vstack(allellipse)
+    tractor = vstack(alltractor)
+    del allellipse, alltractor
+    log.info(f'Merging {len(tractor):,d} objects took {(time.time()-t0)/60.0:.2f} min.')
 
     try:
         assert(np.all(tractor['ref_id'] == ellipse[REFIDCOLUMN]))
@@ -646,6 +647,7 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     # re-organize the ellipse table to match the datamodel and assign units
     print('TOTAL HACK!!!')
     outellipse = ellipse[ellipse.colnames[:54]]
+    outellipse['DIAM_INIT'] /= 60.
 
     def choose_geometry(ellipse):
         diam = 2. * ellipse['R26_R'].value / 60. # [arcmin]
@@ -664,15 +666,16 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
 
     for param, unit, dtype in zip(
             ['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-            [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
+            [u.mag, u.ABmag, None, None, None, None, u.arcsec],
             ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
         for filt in uall_bands:
             col = f'{param}_{filt}'
             outellipse.add_column(Column(name=col, unit=unit, data=ellipse[col].value))
         if not ('CHI2' in param or 'NDOF' in param):
-            for filt in all_bands:
+            for filt in uall_bands:
+                col = f'{param}_{filt}'
                 outellipse.add_column(Column(name=f'{param}_ERR_{filt}',
-                                          unit=unit, data=np.zeros(1, dtype)))
+                                          unit=unit, data=ellipse[col].value))
 
     # flux within apertures that are multiples of sma_moment
     for iap in range(len(APERTURES)):

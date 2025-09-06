@@ -528,6 +528,8 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
 
             #results_obj['SMA_AP01', 'SMA50_R', 'R22_R', 'R23_R', 'R24_R', 'R25_R', 'R26_R']
 
+            pdb.set_trace()
+
             if False:
                 imfile = os.path.join(data["galaxydir"], f'{results_obj["SGAGROUP"][0]}-image-r.fits.fz')
                 images = data[f'{dataset}_images'][iobj, :, :, :]

@@ -186,6 +186,7 @@ def main():
             ref['diam'] = fullsample['DIAM'] # [arcmin]
             for col in ['pa', 'ba', 'diam', 'mag']:
                 assert(np.all(np.isfinite(ref[col])))
+            ref['fitmode'] = fullsample['FITMODE']
 
             reffile = os.path.join(basedir, f'SGA2025-{version}-refcat.fits')
             kdreffile = reffile.replace('.fits', '.kd.fits')

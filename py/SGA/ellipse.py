@@ -517,7 +517,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         # curve of growth model parameters
         for param, unit, dtype in zip(
                 ['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-                [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
+                [u.mag, u.ABmag, None, None, None, None, u.arcsec],
                 ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
             for filt in ubands:
                 results.add_column(Column(name=f'{param}_{filt}',
