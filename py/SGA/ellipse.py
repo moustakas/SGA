@@ -103,9 +103,8 @@ def cog_model(radius, mtot, dmag, lnalpha1, lnalpha2, r0=10.):
     return mtot + dmag * (-np.expm1(-z))
 
 
-def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
-            ndrop=0, bounds=None, robust=True, minerr=0.02,
-            f_scale=1.):
+def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
+            bounds=None, robust=True, minerr=0.02, f_scale=1.):
     """
     Fit (mtot, dmag, lnalpha1, lnalpha2) in:
 
@@ -125,67 +124,6 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
         Degrees of freedom = N - 4 (clamped to ≥1)
 
     """
-    from scipy.optimize import least_squares
-
-    sma = np.asarray(sma_arcsec, float)
-    flx = np.asarray(apflux, float)
-    nall = np.arange(len(sma))
-
-    # check for good values and also ignore the first N inner points,
-    # where the PSF dominates (especially in GALEX and WISE)
-    if apferr is not None:
-        ferr = np.asarray(apferr, float)
-        ok = (np.isfinite(sma) & np.isfinite(flx) & (sma > 0) &
-              (flx > 0) & np.isfinite(ferr) & (ferr > 0) &
-              (nall > (ndrop-1)))
-    else:
-        ok = (np.isfinite(sma) & np.isfinite(flx) & (sma > 0) &
-              (flx > 0) & (nall > (ndrop-1)))
-
-    if np.count_nonzero(ok) < 5:
-        return {}, {}, None, 0., 0
-
-    sma, flx = sma[ok], flx[ok]
-    mags = 22.5 - 2.5 * np.log10(flx)
-
-    if apferr is not None:
-        w = 2.5 * ferr[ok] / (flx * np.log(10.0))  # mag errors
-        w = np.where(w > 0, w, np.nan)
-        # add a magnitude floor
-        w = np.sqrt(w**2 + minerr**2)
-    else:
-        w = None
-
-
-    #def initial_guesses(sma, mags, r0, bounds):
-    #    # asymptote at large r
-    #    mtot0 = float(np.median(mags[-5:]))
-    #    # amplitude from very small r (use high quantile to avoid a single noisy point)
-    #    dmag0 = float(np.percentile(mags[:5], 80) - mtot0)
-    #    dmag0 = max(dmag0, 0.2)
-    #
-    #    # y = (mtot + dmag - m)/dmag ∈ (0,1), z = -ln y = alpha1 * (r/r0)^(-alpha2)
-    #    y = (mtot0 + dmag0 - mags)/dmag0
-    #    m = (y > 1e-6) & (y < 1-1e-6)
-    #    r = sma[m]; z = -np.log(y[m])
-    #
-    #    # ln z = (ln alpha1 + alpha2 ln r0) - alpha2 ln r  → slope = -alpha2
-    #    X = np.vstack([np.ones_like(r), -np.log(r)]).T
-    #    beta, *_ = np.linalg.lstsq(X, np.log(z), rcond=None)
-    #    intercept, slope = beta
-    #    alpha2 = max(slope, 1e-6)
-    #    lnalpha2 = np.log(alpha2)
-    #    lnalpha1 = float(intercept - alpha2*np.log(r0))
-    #
-    #    # make sure we're within the bounds
-    #    params = [mtot0, dmag0, lnalpha1, lnalpha2]
-    #    for param, lb, ub in zip(params, bounds[0], bounds[1]):
-    #        print(param, lb, ub)
-    #        if param < lb or param > ub:
-    #            pdb.set_trace()
-    #    return params
-
-
     def initial_guesses(sma, mags, r0, bounds, eps=1e-6):
         # bounds order: (mtot, dmag, lnalpha1, lnalpha2)
         (mt_lb, dm_lb, lnA1_lb, lnA2_lb), (mt_ub, dm_ub, lnA1_ub, lnA2_ub) = bounds
@@ -222,6 +160,74 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
         return (mtot0, dmag0, lnalpha1, lnalpha2)
 
 
+    def residuals(p):
+        mt, dm, lnA1, lnA2 = p
+        A2 = np.exp(lnA2)
+
+        # z = exp(lnA1 - A2*log_rr0), computed stably
+        logz = lnA1 - A2 * log_rr0
+        logz = np.clip(logz, -100.0, 100.0)
+        z = np.exp(logz)
+
+        # m = mt + dm * (1 - exp(-z)) = mt + dm * (-expm1(-z))
+        yhat = mt + dm * (-np.expm1(-z))
+
+        res = yhat - mags
+        if w is not None:
+            res = res / w
+        return res
+
+
+    def jacobian(p):
+        mt, dm, lnA1, lnA2 = p
+        A2 = np.exp(lnA2)
+
+        logz = lnA1 - A2 * log_rr0
+        logz = np.clip(logz, -100.0, 100.0)
+        z = np.exp(logz)
+        emz = np.exp(-z)
+
+        invw = 1.0 if w is None else (1.0 / w)
+        J = np.empty((sma.size, 4), float)
+        J[:, 0] = 1.0 * invw                           # ∂m/∂mtot
+        J[:, 1] = (1.0 - emz) * invw                   # ∂m/∂dmag
+        J[:, 2] = (dm * z * emz) * invw                # ∂m/∂lnalpha1
+        J[:, 3] = (-dm * z * A2 * log_rr0 * emz) * invw# ∂m/∂lnalpha2
+        return J
+
+
+    from scipy.optimize import least_squares
+
+    nall = np.arange(len(sma_arcsec))
+
+    # check for good values and also ignore the first N inner points,
+    # where the PSF dominates (especially in GALEX and WISE)
+    if ferr is not None:
+        ok = (np.isfinite(sma_arcsec) & np.isfinite(flux) & (sma_arcsec > 0) &
+              (flux > 0) & np.isfinite(ferr) & (ferr > 0) &
+              (nall > (ndrop-1)))
+    else:
+        ok = (np.isfinite(sma_arcsec) & np.isfinite(flux) & (sma_arcsec > 0) &
+              (flux > 0) & (nall > (ndrop-1)))
+
+    if np.count_nonzero(ok) < 5:
+        return {}, {}, None, 0., 0
+
+    sma = sma_arcsec[ok]
+    mags = 22.5 - 2.5 * np.log10(flux[ok])
+
+    if ferr is not None:
+        w = 2.5 * ferr[ok] / (flux[ok] * np.log(10.))  # mag errors
+        w = np.where(w > 0, w, np.nan)
+        # add a magnitude floor
+        w = np.sqrt(w**2 + minerr**2)
+    else:
+        w = None
+
+    eps = np.finfo(float).tiny
+    log_rr0 = np.log(np.maximum(sma, eps) / r0)   # reused by residuals & jacobian
+
+
     # Bounds
     ymin, ymax = float(np.nanmin(mags)), float(np.nanmax(mags))
     if bounds is None:
@@ -235,44 +241,12 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
     if p0 is None:
         p0 = initial_guesses(sma, mags, r0, bounds)
 
-    # Residuals
-    def residuals(p):
-        mt, dm, lnA1, lnA2 = p
-        yhat = cog_model(sma, mt, dm, lnA1, lnA2, r0=r0)
-        res = yhat - mags
-        if w is not None:
-            res = res / w
-        return res
-
-
-    def jacobian(params, sma, w, r0):
-        # analytic Jacobian
-        mtot, dmag, lnA1, lnA2 = params
-        A1 = np.exp(lnA1); A2 = np.exp(lnA2)
-        rr = np.asarray(sma, float)
-        log_rr0 = np.log(np.maximum(rr, np.finfo(float).tiny) / r0)
-
-        # z and exp(-z) (stable)
-        logx = -A2 * log_rr0 # = ln[(r/r0)^(-A2)]
-        logz = lnA1 + logx
-        logz = np.clip(logz, -100.0, 100.0)
-        z = np.exp(logz)
-        emz = np.exp(-z)
-
-        J = np.empty((rr.size, 4), float)
-        invw = 1. if w is None else 1. / w
-
-        J[:, 0] = 1.0 * invw                                # d/d mtot
-        J[:, 1] = (1.0 - emz) * invw                        # d/d dmag
-        J[:, 2] = (dmag * z * emz) * invw                   # d/d lnalpha1
-        J[:, 3] = (-dmag * z * A2 * log_rr0 * emz) * invw   # d/d lnalpha2
-        return J
-
     res = least_squares(
         residuals, x0=np.array(p0, float), bounds=bounds,
-        x_scale='jac', jac=lambda p: jacobian(p, sma, w, r0),
-        method='trf', loss=('soft_l1' if robust else 'linear'),
-        f_scale=f_scale)
+        jac=jacobian, f_scale=f_scale, method='trf',
+        loss=('soft_l1' if robust else 'linear'),
+        x_scale='jac', max_nfev=200, ftol=1e-10, xtol=1e-10,
+        gtol=1e-10)
 
     # Classical chi^2 (independent of robust loss)
     mt, dm, lnA1, lnA2 = res.x
@@ -754,7 +728,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     sma_array_arcsec = sma_array * pixscale
 
     # Measure the surface-brightness profile in each bandpass.
-    debug = False#True#False
+    debug = True#False
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
