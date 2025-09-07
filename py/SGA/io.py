@@ -515,7 +515,7 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
 
         for iobj, (obj, results_obj) in enumerate(zip(sample, results[idata])):
 
-            sganame = sample['SGANAME'][0].replace(' ', '_')
+            sganame = obj['SGANAME'].replace(' ', '_') # unix safe
             ellipsefile = os.path.join(data["galaxydir"], f'{sganame}-ellipse-{suffix}.fits')
 
             # add the sample catalog to the optical ellipse file

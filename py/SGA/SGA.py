@@ -544,6 +544,15 @@ def build_catalog_one(galaxy, galaxydir, fullsample, REMCOLS,
     return tractor, parent, ellipse
 
 
+def _empty_tractor(cat):
+    for col in cat.colnames:
+        if cat[col].dtype == bool:
+            cat[col] = False
+        else:
+            cat[col] *= 0
+    return cat
+
+
 def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
                   region='dr11-south', galex=True, unwise=True,
                   mp=1, no_groups=False, datadir=None, verbose=False,
@@ -554,6 +563,8 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     import astropy.units as u
     from astropy.io import fits
     from astropy.table import vstack, join, Column
+    from SGA.ellipse import ELLIPSEBIT
+
 
     version = SGA_version()
     outfile = os.path.join(sga_dir(), f'SGA2025-ellipse-{version}.fits')
@@ -596,10 +607,15 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
         refs = fitsio.read(tractorfile, columns=['ref_cat', 'ref_id'])
         I = np.where(np.logical_or(refs['ref_cat'] == REFCAT, refs['ref_cat'] == 'LG') *
                      np.isin(refs['ref_id'], ellipse[REFIDCOLUMN]))[0]
-        tractor = Table(fitsio.read(tractorfile, rows=I))
-        if len(tractor) != len(ellipse):
-            print('FIX ME!')
-            pdb.set_trace()
+        if len(I) == 0:
+            # confirm that the NOTRACTOR bit was set; if so, read a
+            # blank catalog and then move on
+            assert(ellipse['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
+            tractor = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
+            tractor['ref_cat'] = REFCAT
+            tractor['ref_id'] = ellipse[REFIDCOLUMN]
+        else:
+            tractor = Table(fitsio.read(tractorfile, rows=I))
 
         allellipse.append(ellipse)
         alltractor.append(tractor)
@@ -639,7 +655,6 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     try:
         assert(np.all(tractor['ref_id'] == ellipse[REFIDCOLUMN]))
     except:
-        # make sure we populate ref_id in the tractor-dropped sources
         pdb.set_trace()
 
 
@@ -647,7 +662,6 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     # re-organize the ellipse table to match the datamodel and assign units
     print('TOTAL HACK!!!')
     outellipse = ellipse[ellipse.colnames[:54]]
-    outellipse['DIAM_INIT'] /= 60.
 
     def choose_geometry(ellipse):
         diam = 2. * ellipse['R26_R'].value / 60. # [arcmin]
@@ -678,7 +692,7 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
             outellipse.add_column(Column(name=col, unit=unit, data=ellipse[col].value))
         if not ('CHI2' in param or 'NDOF' in param):
             for filt in uall_bands:
-                col = f'{param}_{filt}'
+                col = f'{param}_ERR_{filt}'
                 outellipse.add_column(Column(name=f'{param}_ERR_{filt}',
                                           unit=unit, data=ellipse[col].value))
 
@@ -955,7 +969,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     width = data['width']
     sz = (width, width)
 
-    GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'DIAM_INIT', 'BA_INIT', 'PA_INIT']
+    GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
     GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
 
     # coadded optical, IR, and UV images and initial geometry
@@ -1182,7 +1196,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         """
         if table is not None:
             bx, by = table['BX_INIT'], table['BY_INIT']
-            sma = table['DIAM_INIT'] / 2. / pixscale # [pixels]
+            sma = table['SMA_INIT'] / pixscale # [pixels]
             ba = table['BA_INIT']
             pa = table['PA_INIT']
         elif tractor is not None:
@@ -1795,7 +1809,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
     for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
         sample.rename_column(col, f'{col}_INIT')
-    sample['DIAM_INIT'] *= 60. # [arcsec]
+    sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
+                      index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 
     # PSF size and depth
     for filt in opt_bands:
@@ -1854,12 +1869,12 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         srt = np.argsort(sample['FLUX'])[::-1]
     else:
         log.info('Sorting by initial diameter:')
-        srt = np.argsort(sample['DIAM_INIT'])[::-1]
+        srt = np.argsort(sample['SMA_INIT'])[::-1]
 
     sample = sample[srt]
     samplesrcs = [samplesrcs[I] for I in srt]
     for obj in sample:
-        log.info(f'  ref_id={obj[REFIDCOLUMN]}: D(25)={obj["DIAM_INIT"]/60.:.3f} arcmin, ' + \
+        log.info(f'  ref_id={obj[REFIDCOLUMN]}: D(25)={obj["DIAM_INIT"]:.3f} arcmin, ' + \
                  f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
     sample.remove_column('FLUX')
 
