@@ -47,203 +47,284 @@ REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
 REF_APERTURES = [0.5, 1., 1.25, 1.5, 2., 3.] # multiples of SMA_MOMENT
 
 
-def cog_model(radius, mtot, m0, alpha1, alpha2, r0=10.):
-    """Curve-of-growth model in magnitudes."""
-    x = (radius / r0)**(-alpha2)
-    return mtot + m0 * (1.0 - np.exp(-alpha1 * x))
+def to_float32_safe_mapping(d):
+    finfo = np.finfo(np.float32)
+    out = {}
+    for k, v in d.items():
+        v = float(v)
+        if not np.isfinite(v):
+            out[k] = np.float32(np.nan)
+        else:
+            out[k] = np.float32(np.clip(v, finfo.min, finfo.max))
+    return out
+
+
+def to_float32_safe_scalar(x):
+    finfo = np.finfo(np.float32)
+    x = float(x)
+    return np.float32(np.nan if not np.isfinite(x) else min(max(x, finfo.min), finfo.max))
+
+
+def cog_model(radius, mtot, dmag, lnalpha1, lnalpha2, r0=10.):
+    """
+    Curve-of-growth model in magnitudes.
+
+        m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
+
+    Parameters
+    ----------
+    radius   : array-like
+    mtot     : float         # asymptotic total magnitude
+    dmag     : float         # positive amplitude (~ inner mag - mtot)
+    lnalpha1 : float         # log(alpha1), alpha1 = exp(lnalpha1) > 0
+    lnalpha2 : float         # log(alpha2), alpha2 = exp(lnalpha2) > 0
+    r0       : float         # scale radius
+
+    Returns
+    -------
+    model magnitudes at 'radius'.
+
+    """
+    r = np.asarray(radius, float)
+    eps = np.finfo(float).tiny
+    a1 = np.exp(lnalpha1)
+    a2 = np.exp(lnalpha2)
+
+    # log((r/r0)^(-a2)) = -a2 * log(r/r0)
+    logx = -a2 * np.log(np.maximum(r, eps) / r0)
+
+    # z = a1 * x, but do it in logs and clip to avoid overflow in exp
+    logz = lnalpha1 + logx
+    # safe range for np.exp in float64 (~[-745, 709]); we can be stricter
+    logz = np.clip(logz, -100.0, 100.0)
+    z = np.exp(logz)
+
+    # 1 - exp(-z) evaluated stably
+    return mtot + dmag * (-np.expm1(-z))
 
 
 def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
             bounds=None, robust=True, f_scale=1.):
     """
-    Fit mtot, m0, alpha1, alpha2 in:
-        model = mtot + m0 * (1 - exp(-alpha1 * (r/r0)^(-alpha2)))
+    Fit (mtot, dmag, lnalpha1, lnalpha2) in:
 
-    Parameters
-    ----------
-    radius : array
-        Semi-major axes (arcsec or same units as r0), > 0.
-    mags : array
-        Measured magnitudes at each radius.
-    mag_err : array or None
-        1σ magnitude uncertainties for weighting. If None, unweighted.
-    r0 : float
-        Scale radius (same units as radius). Common choice: 10 arcsec.
-    p0 : 4-seq or None
-        Initial guess (mtot, m0, alpha1, alpha2). If None, guessed automatically.
-    bounds : 2-tuple or None
-        ((lower bounds), (upper bounds)). If None, sensible defaults are used.
-    robust : bool
-        If True, use soft-L1 loss for outlier robustness.
-    f_scale : float
-        Tuning for robust loss (see least_squares docs).
+        m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
 
     Returns
     -------
     popt : dict
-        Best-fit parameters: {'mtot','m0','alpha1','alpha2'}.
+        {'mtot','dmag','lnalpha1','lnalpha2'}
     perr : dict
-        Approximate 1σ uncertainties from (JᵀJ)⁻¹ scaled by χ²/(N−M).
-    res  : OptimizeResult
-        Full result from least_squares.
+        1σ uncertainties for the same keys (approximate; from (JᵀJ)^(-1) scaled by χ²/ndof)
+    cov  : ndarray or None
+        Covariance matrix for (mtot, dmag, lnalpha1, lnalpha2)
+    chi2 : float
+        Classical χ² = Σ[(m_model - m_data)/σ_m]^2 (unweighted if apferr is None)
+    ndof : int
+        Degrees of freedom = N - 4 (clamped to ≥1)
 
     """
     from scipy.optimize import least_squares
 
-    nfree = 4 # 4 free parameters
-    I = (sma_arcsec > 0.) * (apflux > 0.) * (apferr > 0.)
-    if np.sum(I) < 5:
-        log.warning('Need at least 5 independent points to attempt a fit.')
-        return {}, {}, None, 0., 0.
-    r = sma_arcsec[I]
-    y = 22.5 - 2.5 * np.log10(apflux[I])
+    sma = np.asarray(sma_arcsec, float)
+    flx = np.asarray(apflux, float)
 
-    if apferr is None:
-        w = None
+    if apferr is not None:
+        ferr = np.asarray(apferr, float)
+        ok = (np.isfinite(sma) & np.isfinite(flx) & (sma > 0) &
+              (flx > 0) & np.isfinite(ferr) & (ferr > 0))
     else:
-        w = 2.5 * apferr[I] / apflux[I] / np.log(10.)
-        w = np.where(w > 0, w, np.nan)  # guard
+        ok = np.isfinite(sma) & np.isfinite(flx) & (sma > 0) & (flx > 0)
 
-    # initial guess
+    if np.count_nonzero(ok) < 5:
+        return {}, {}, None, 0., 0
+
+    sma, flx = sma[ok], flx[ok]
+    mags = 22.5 - 2.5 * np.log10(flx)
+
+    if apferr is not None:
+        w = 2.5 * ferr[ok] / (flx * np.log(10.0))  # mag errors
+        w = np.where(w > 0, w, np.nan)
+    else:
+        w = None
+
+    # Initial guess
     if p0 is None:
-        # mtot ~ asymptote at largest radius; m0 ~ offset at smallest radius
-        order = np.argsort(r)
-        y_large = np.nanmedian(y[order[-max(3, len(y)//10):]])
-        y_small = np.nanmedian(y[order[:max(3, len(y)//10)]])
-        mtot0 = y_large
-        m00 = max(y_small - mtot0, 0.1)   # positive amplitude
-        a10 = 1.
-        a20 = 1.
-        p0 = (mtot0, m00, a10, a20)
+        order = np.argsort(sma)
+        y_large = np.nanmedian(mags[order[-max(3, len(mags)//10):]])
+        y_small = np.nanmedian(mags[order[:max(3, len(mags)//10)]])
+        mtot0   = y_large
+        dmag0   = max(y_small - mtot0, 0.1)
+        lnA10   = 0.01
+        lnA20   = 0.01
+        p0 = (mtot0, dmag0, lnA10, lnA20)
 
-    # bounds
+    # Bounds
+    ymin, ymax = float(np.nanmin(mags)), float(np.nanmax(mags))
     if bounds is None:
-        lb = (-np.inf, 0.0, 1e-8, 1e-8)  # mtot free; others positive
-        ub = (np.inf, np.inf, np.inf, np.inf)
+        # mtot near the data; dmag positive but not absurd; lnalpha*
+        # kept in a safe numeric range
+        lb = (ymin - 5., 1e-6, -20., -20.)
+        ub = (ymax + 5., (ymax - ymin) + 5., 20., 20.)
         bounds = (lb, ub)
 
+    # Residuals
     def residuals(p):
-        mtot, m0, a1, a2 = p
-        yhat = cog_model(r, mtot, m0, a1, a2, r0=r0)
-        res = yhat - y
+        mt, dm, lnA1, lnA2 = p
+        yhat = cog_model(sma, mt, dm, lnA1, lnA2, r0=r0)
+        res = yhat - mags
         if w is not None:
             res = res / w
         return res
-
 
     res = least_squares(
         residuals, x0=np.array(p0, float), bounds=bounds,
         method='trf', loss=('soft_l1' if robust else 'linear'),
         f_scale=f_scale)
 
-    chi2 = float(np.sum(res.fun**2))   # sum of squared (weighted) residuals
-    ndof = max(1, r.size - res.x.size) # degrees of freedom
+    # Classical chi^2 (independent of robust loss)
+    mt, dm, lnA1, lnA2 = res.x
+    yhat = cog_model(sma, mt, dm, lnA1, lnA2, r0=r0)
+    if w is not None:
+        chi2 = float(np.sum(((yhat - mags) / w)**2))
+    else:
+        chi2 = float(np.sum((yhat - mags)**2))
+    ndof = max(1, sma.size - 4)
 
-    # best-fit
-    mtot, m0, a1, a2 = res.x
-    popt = {'mtot': mtot, 'm0': m0, 'alpha1': a1, 'alpha2': a2}
-
-    # uncertainties from covariance ≈ s^2 * (J^T J)^(-1)
-    # (Note: this is approximate if robust loss or active bounds)
+    # Covariance and 1σ errors (approximate)
     try:
         J = res.jac
-        dof = max(1, len(r) - len(res.x))
-        s2 = (res.fun @ res.fun) / dof
+        s2 = (res.fun @ res.fun) / ndof
         cov = np.linalg.inv(J.T @ J) * s2
         var = np.diag(cov)
-        if np.all(var > 0.):
+        if np.all(var > 0):
             sig = np.sqrt(var)
-            perr = dict(zip(popt.keys(), sig))
+            perr = {'mtot': sig[0], 'dmag': sig[1], 'lnalpha1': sig[2], 'lnalpha2': sig[3]}
         else:
-            perr = {k: np.nan for k in popt.keys()}
             cov = None
+            perr = {'mtot': np.nan, 'dmag': np.nan, 'lnalpha1': np.nan, 'lnalpha2': np.nan}
     except np.linalg.LinAlgError:
-        perr = {k: np.nan for k in popt.keys()}
-        cov = None
+        #cov = None
+        #perr = {'mtot': np.nan, 'dmag': np.nan, 'lnalpha1': np.nan, 'lnalpha2': np.nan}
+        return {}, {}, None, 0., 0
+
+    popt = {'mtot': mt, 'dmag': dm, 'lnalpha1': lnA1, 'lnalpha2': lnA2}
+
+    # check for insane values
+    #ill_conditioned = any(not np.isfinite(v) for v in popt.values())
+    #reduced_chi2 = chi2 / max(1, ndof)
+    ill_conditioned = any(not np.isfinite(v) for v in popt.values()) \
+        or any(not np.isfinite(e) for e in perr.values())# \
+    #    or (reduced_chi2 > 1e3)
+
+    if ill_conditioned:
+        return {}, {}, None, 0., 0
+        #popt = {k: np.nan for k in ('mtot','dmag','lnalpha1','lnalpha2')}
+        #perr = {k: np.nan for k in ('mtot','dmag','lnalpha1','lnalpha2')}
+
+    # convert to f4
+    popt32 = to_float32_safe_mapping(popt)
+    perr32 = to_float32_safe_mapping(perr)
+    chi2_32 = to_float32_safe_scalar(chi2)
 
     return popt, perr, cov, chi2, ndof
 
 
-def radius_for_fraction(f, m0, alpha1, alpha2, r0=10.0):
-    """Invert the model to get r_f for enclosed fraction f (0<f<1)."""
-    if not (0 < f < 1):
-        raise ValueError("f must be in (0,1).")
-    dm = -2.5*np.log10(f)                   # required mag offset
-    if m0 <= dm:
-        raise ValueError(f"Need m0 > {dm:.6f} mag to reach fraction f.")
-    t = 1.0 - dm/m0                         # in (0,1)
-    y = -np.log(t)                          # >0
-    r = r0 * (alpha1 / y)**(1.0/alpha2)
-
-    return r
-
-
-def radius_fraction_uncertainty(f, params, cov, r0=10.0, var_r0=None):
+def radius_for_fraction(f, dmag, lnalpha1, lnalpha2, r0=10.):
     """
-    Error propagation for r_f using analytic derivatives.
+    Invert m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
+    to get the semi-major axis r_f enclosing flux fraction f (0<f<1).
 
     Parameters
     ----------
-    f : float
-        Enclosed flux fraction (e.g., 0.5 for half-light).
-    params : sequence-like
-        (mtot, m0, alpha1, alpha2) from your fit. mtot is unused here.
-    cov : (4,4) ndarray
-        Covariance matrix for (mtot, m0, alpha1, alpha2) in that order.
-        (Typical estimate: s^2 * (J^T J)^{-1}.)
-    r0 : float
-        Scale radius used in the model.
-    var_r0 : float or None
-        Optional variance of r0 (if you treat r0 as uncertain).
-        If None, r0 is treated as fixed.
+    f        : float in (0,1)   # enclosed flux fraction (e.g., 0.5 for half-light)
+    dmag     : float            # amplitude (> 0)
+    lnalpha1 : float            # log(alpha1)
+    lnalpha2 : float            # log(alpha2)
+    r0       : float            # scale radius (same units as desired r)
 
     Returns
     -------
     r_f : float
-        Radius enclosing fraction f (same units as r0).
-    sigma_r : float
-        1-sigma uncertainty on r_f.
 
     """
-    mtot, m0, a1, a2 = map(float, params)
+    if not (0.0 < f < 1.0):
+        raise ValueError("f must be in (0, 1).")
+    dm = -2.5 * np.log10(f)          # required mag offset from mtot
+    if dmag <= dm:
+        raise ValueError(f"dmag={dmag:.6g} must exceed {dm:.6g} mag to reach fraction f.")
+    t = 1. - dm/dmag                # in (0, 1)
+    y = -np.log(t)                  # > 0
+    a1 = np.exp(lnalpha1)
+    a2 = np.exp(lnalpha2)
+    r = r0 * (a1 / y)**(1.0 / a2)
 
-    # Compute r_f and useful intermediates
-    dm = -2.5*np.log10(f)
-    if m0 <= dm:
-        raise ValueError(f"Need m0 > {dm:.6f} mag to reach fraction f.")
-    t = 1.0 - dm/m0
+    return r
+
+
+def radius_fraction_uncertainty(f, params, cov, r0=10., var_r0=None):
+    """
+    Error propagation for r_f with analytic derivatives under the new parameterization.
+
+    Parameters
+    ----------
+    f      : float in (0,1)
+    params : sequence (mtot, dmag, lnalpha1, lnalpha2)
+    cov    : (4,4) covariance matrix for (mtot, dmag, lnalpha1, lnalpha2)
+    r0     : float   # scale radius
+    var_r0 : float or None   # optional variance of r0 (assumed independent)
+
+    Returns
+    -------
+    r_f    : float
+    sigma_r: float
+
+    """
+    mtot, dmag, lnA1, lnA2 = map(float, params)  # mtot unused, but kept for ordering
+
+    # Compute r_f and intermediates
+    dm = -2.5 * np.log10(f)
+    if dmag <= dm:
+        raise ValueError(f"dmag={dmag:.6g} must exceed {dm:.6g} mag to reach fraction f.")
+    t = 1.0 - dm/dmag
     y = -np.log(t)
-    r = r0 * (a1 / y)**(1.0/a2)
+    a1 = np.exp(lnA1)
+    a2 = np.exp(lnA2)
+    r = r0 * (a1 / y)**(1.0 / a2)
 
-    # Work with log-derivatives to keep it tidy: dr/dp = r * d(ln r)/dp
-    # ln r = ln r0 + (1/a2)*(ln a1 - ln y)
-    dL_da1 = (1.0/a2) * (1.0/a1)
-    dL_da2 = - (np.log(a1) - np.log(y)) / (a2*a2)
-    # d(ln y)/dm0: y = -ln(1 - dm/m0) => dy/dm0 = - dm/(m0^2 * t); so:
-    d_ln_y_dm0 = (-dm) / (m0*m0 * t * y)
-    dL_dm0 = - (1.0/a2) * d_ln_y_dm0   # minus sign from (ln a1 - ln y)
+    # log-derivative approach: dr/dp = r * d(ln r)/dp
+    # ln r = ln r0 + (1/a2) * (ln a1 - ln y)
+    # derivatives:
+    dL_dlnA1 = 1.0 / a2
+    dL_dlnA2 = -(lnA1 - np.log(y)) / a2
+    # d(ln y)/ddmag = - dm / (dmag^2 * t * y)
+    d_ln_y_ddmag = - dm / (dmag*dmag * t * y)
+    dL_ddmag = - (1.0 / a2) * d_ln_y_ddmag   # = + dm/(a2 * dmag^2 * t * y)
 
-    # Convert to derivatives of r
-    dr_dm0 = r * dL_dm0
-    dr_da1 = r * dL_da1
-    dr_da2 = r * dL_da2
-    # Optional r0 term
-    dr_dr0 = r / r0
+    # convert to dr/dp
+    dr_ddmag  = r * dL_ddmag
+    dr_dlnA1  = r * dL_dlnA1
+    dr_dlnA2  = r * dL_dlnA2
+    dr_dr0    = r / r0
 
-    # Build gradient in the same order as cov: (mtot, m0, a1, a2)
-    g = np.array([0.0, dr_dm0, dr_da1, dr_da2])
+    # gradient in (mtot, dmag, lnalpha1, lnalpha2) order
+    g = np.array([0.0, dr_ddmag, dr_dlnA1, dr_dlnA2], dtype=float)
 
-    # Propagate
-    sigma2 = g @ cov @ g
+    # propagate
+    sigma2 = float(g @ cov @ g)
     if var_r0 is not None:
-        sigma2 += (dr_dr0**2) * float(var_r0)  # assuming r0 independent of other params
+        sigma2 += (dr_dr0**2) * float(var_r0)
     sigma_r = np.sqrt(max(sigma2, 0.0))
 
     return r, sigma_r
 
 
-def half_light_radius_with_uncertainty(params, cov, r0=10.0, var_r0=None):
-    """Convenience wrapper for f=0.5."""
+def half_light_radius(params, r0=10.):
+    _, dmag, lnA1, lnA2 = params
+    return radius_for_fraction(0.5, dmag, lnA1, lnA2, r0=r0)
+
+
+def half_light_radius_with_uncertainty(params, cov, r0=10., var_r0=None):
     return radius_fraction_uncertainty(0.5, params, cov, r0=r0, var_r0=var_r0)
 
 
@@ -521,8 +602,9 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
 
         # curve of growth model parameters
         for param, unit, dtype in zip(
-                ['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-                [u.mag, u.ABmag, None, None, None, None, u.arcsec],
+                #['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+                ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+                [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
                 ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
             for filt in ubands:
                 results.add_column(Column(name=f'{param}_{filt}',
@@ -586,7 +668,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     sma_array_arcsec = sma_array * pixscale
 
     # Measure the surface-brightness profile in each bandpass.
-    debug = False
+    #debug = True#False
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
@@ -651,7 +733,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         if bool(popt) and cov is not None:
             try:
                 r50, r50_err = half_light_radius_with_uncertainty(
-                    (popt['mtot'], popt['m0'], popt['alpha1'], popt['alpha2']),
+                    (popt['mtot'], popt['dmag'], popt['lnalpha1'], popt['lnalpha2']),
                     cov, r0=sma_moment_arcsec)
                 log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
 
@@ -659,7 +741,6 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                 results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
             except:
                 pass
-                #pdb.set_trace()
 
         # aperture photometry within the reference apertures
         mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
@@ -700,8 +781,8 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                         if res['lower_limit']:
                             log.warning("Lower limit: profile never reaches 25 mag/arcsec^2 within data.")
                         else:
-                            log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
-                                      f"{res['a_iso_err']:.2f} [success={res['success_rate']:.2%}]")
+                            log.info(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                     f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
                             results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
                             results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
 
@@ -719,9 +800,10 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                     refmag = 22.5-2.5*np.log10(refflux[I])
                     ax.scatter(refsmas[I], refmag, marker='s', s=100, facecolor='none')
 
-                rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
-                mfit = cog_model(rgrid, **popt, r0=sma_moment_arcsec)
-                ax.plot(rgrid, mfit, color='k', alpha=0.8)
+                if bool(popt):
+                    rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
+                    mfit = cog_model(rgrid, **popt, r0=sma_moment_arcsec)
+                    ax.plot(rgrid, mfit, color='k', alpha=0.8)
 
         dt, unit = get_dt(t0)
         log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
@@ -735,6 +817,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         ax.legend()
         fig.savefig('ioannis/tmp/junk.png')
         plt.close()
+
 
     return results, sbprofiles
 
