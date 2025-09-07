@@ -669,8 +669,9 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
         outellipse.add_column(Column(name=col, data=ellipse[col].value))
 
     for param, unit, dtype in zip(
-            ['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-            [u.mag, u.ABmag, None, None, None, None, u.arcsec],
+            #['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+            ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+            [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
             ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
         for filt in uall_bands:
             col = f'{param}_{filt}'

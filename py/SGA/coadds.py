@@ -337,8 +337,8 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC',
-                  force_psf_detection=False, subsky_radii=None,
-                  just_coadds=False,  missing_ok=False,
+                  force_psf_detection=False, fit_on_coadds=False,
+                  subsky_radii=None, just_coadds=False, missing_ok=False,
                   force=False, cleanup=True, unwise=True, galex=False,
                   no_gaia=False, no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
@@ -418,6 +418,8 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
 
     if not force_psf_detection:
         cmdargs += '--no-galaxy-forcepsf '
+    if fit_on_coadds:
+        cmdargs += '--fit-on-coadds --no-ivar-reweighting '
 
     log.info(f'runbrick {cmdargs}')
     err = runbrick(args=cmdargs.split())
