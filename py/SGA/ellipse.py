@@ -308,23 +308,6 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
         any(not np.isfinite(e) for e in perr.values())):
         return {}, {}, None, 0., ndof
 
-    #ill_conditioned = any(not np.isfinite(v) for v in popt.values())
-    #reduced_chi2 = chi2 / max(1, ndof)
-    #ill_conditioned = any(not np.isfinite(v) for v in popt.values()) \
-    #    or any(not np.isfinite(e) for e in perr.values())# \
-    #    or (reduced_chi2 > 1e3)
-
-    #import matplotlib.pyplot as plt
-    #fig, ax = plt.subplots()
-    #ax.scatter(sma, mags)
-    #ax.plot(sma, yhat, color='k')
-    #fig.savefig('ioannis/tmp/junk.png')
-
-    #if ill_conditioned:
-    #    return {}, {}, None, 0., 0
-    #    #popt = {k: np.nan for k in ('mtot','dmag','lnalpha1','lnalpha2')}
-    #    #perr = {k: np.nan for k in ('mtot','dmag','lnalpha1','lnalpha2')}
-
     # convert to f4
     popt32 = to_float32_safe_mapping(popt)
     perr32 = to_float32_safe_mapping(perr)
