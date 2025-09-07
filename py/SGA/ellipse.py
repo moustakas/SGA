@@ -157,40 +157,83 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
         w = None
 
 
-    def initial_guesses(sma, mags, r0):
-        # asymptote at large r
-        mtot0 = float(np.median(mags[-5:]))
-        # amplitude from very small r (use high quantile to avoid a single noisy point)
-        dmag0 = float(np.percentile(mags[:5], 80) - mtot0)
-        dmag0 = max(dmag0, 0.2)
+    #def initial_guesses(sma, mags, r0, bounds):
+    #    # asymptote at large r
+    #    mtot0 = float(np.median(mags[-5:]))
+    #    # amplitude from very small r (use high quantile to avoid a single noisy point)
+    #    dmag0 = float(np.percentile(mags[:5], 80) - mtot0)
+    #    dmag0 = max(dmag0, 0.2)
+    #
+    #    # y = (mtot + dmag - m)/dmag ∈ (0,1), z = -ln y = alpha1 * (r/r0)^(-alpha2)
+    #    y = (mtot0 + dmag0 - mags)/dmag0
+    #    m = (y > 1e-6) & (y < 1-1e-6)
+    #    r = sma[m]; z = -np.log(y[m])
+    #
+    #    # ln z = (ln alpha1 + alpha2 ln r0) - alpha2 ln r  → slope = -alpha2
+    #    X = np.vstack([np.ones_like(r), -np.log(r)]).T
+    #    beta, *_ = np.linalg.lstsq(X, np.log(z), rcond=None)
+    #    intercept, slope = beta
+    #    alpha2 = max(slope, 1e-6)
+    #    lnalpha2 = np.log(alpha2)
+    #    lnalpha1 = float(intercept - alpha2*np.log(r0))
+    #
+    #    # make sure we're within the bounds
+    #    params = [mtot0, dmag0, lnalpha1, lnalpha2]
+    #    for param, lb, ub in zip(params, bounds[0], bounds[1]):
+    #        print(param, lb, ub)
+    #        if param < lb or param > ub:
+    #            pdb.set_trace()
+    #    return params
 
-        # y = (mtot + dmag - m)/dmag ∈ (0,1), z = -ln y = alpha1 * (r/r0)^(-alpha2)
-        y = (mtot0 + dmag0 - mags)/dmag0
-        m = (y > 1e-6) & (y < 1-1e-6)
-        r = sma[m]; z = -np.log(y[m])
 
-        # ln z = (ln alpha1 + alpha2 ln r0) - alpha2 ln r  → slope = -alpha2
-        X = np.vstack([np.ones_like(r), -np.log(r)]).T
-        beta, *_ = np.linalg.lstsq(X, np.log(z), rcond=None)
-        intercept, slope = beta
-        alpha2 = max(slope, 1e-6)
-        lnalpha2 = np.log(alpha2)
-        lnalpha1 = float(intercept - alpha2*np.log(r0))
+    def initial_guesses(sma, mags, r0, bounds, eps=1e-6):
+        # bounds order: (mtot, dmag, lnalpha1, lnalpha2)
+        (mt_lb, dm_lb, lnA1_lb, lnA2_lb), (mt_ub, dm_ub, lnA1_ub, lnA2_ub) = bounds
+
+        sma = np.asarray(sma, float)
+        mags = np.asarray(mags, float)
+        good = np.isfinite(sma) & np.isfinite(mags) & (sma > 0)
+        a = sma[good]; y = mags[good]
+        if a.size < 5:
+            # absolute fallback: midpoints in a safe box
+            lnalpha2 = np.clip(np.log(0.7), lnA2_lb+eps, lnA2_ub-eps)
+            lnalpha1 = np.clip(lnalpha2 * 0.0, lnA1_lb+eps, lnA1_ub-eps)  # r_p=r0 → ln(r_p/r0)=0
+            mtot = np.clip(np.median(y), mt_lb+eps, mt_ub-eps)
+            dmag = np.clip((np.percentile(y, 80) - mtot), max(dm_lb+eps, 0.1), dm_ub-eps)
+            return (mtot, dmag, lnalpha1, lnalpha2)
+
+        # mtot, dmag from ends of the curve
+        mtot0 = float(np.median(y[-min(5, y.size):]))
+        dmag0 = float(np.percentile(y[:min(5, y.size)], 80) - mtot0)
+        dmag0 = max(dmag0, 0.1)
+
+        # default α2 if regression failed or was out of bounds
+        lnalpha2 = np.log(0.7)  # α2 ≈ 0.7
+        # pivot at geometric mean radius
+        rp = float(np.exp(np.mean(np.log(a))))
+        # lnalpha1 so that z(rp)=1
+        lnalpha1 = np.exp(lnalpha2) * np.log(max(rp, 1e-12) / r0)
+
+        # clip into bounds with a small margin
+        mtot0   = float(np.clip(mtot0,   mt_lb+eps, mt_ub-eps))
+        dmag0   = float(np.clip(dmag0,   dm_lb+eps, dm_ub-eps))
+        lnalpha1 = float(np.clip(lnalpha1, lnA1_lb+eps, lnA1_ub-eps))
+        lnalpha2 = float(np.clip(lnalpha2, lnA2_lb+eps, lnA2_ub-eps))
         return (mtot0, dmag0, lnalpha1, lnalpha2)
 
-
-    # Initial guess
-    if p0 is None:
-        p0 = initial_guesses(sma, mags, r0)
 
     # Bounds
     ymin, ymax = float(np.nanmin(mags)), float(np.nanmax(mags))
     if bounds is None:
         # mtot near the data; dmag positive but not absurd; lnalpha*
         # kept in a safe numeric range
-        lb = (ymin - 5., 1e-6, -20., -20.)
-        ub = (ymax + 5., (ymax - ymin) + 5., 20., 20.)
+        lb = (ymin - 5., 1e-6, -10., -10.)
+        ub = (ymax + 5., (ymax - ymin) + 5., 10., 10.)
         bounds = (lb, ub)
+
+    # Initial guess
+    if p0 is None:
+        p0 = initial_guesses(sma, mags, r0, bounds)
 
     # Residuals
     def residuals(p):
@@ -227,7 +270,7 @@ def fit_cog(sma_arcsec, apflux, apferr=None, r0=10., p0=None,
 
     res = least_squares(
         residuals, x0=np.array(p0, float), bounds=bounds,
-        jac=lambda p: jacobian(p, sma, w, r0),
+        x_scale='jac', jac=lambda p: jacobian(p, sma, w, r0),
         method='trf', loss=('soft_l1' if robust else 'linear'),
         f_scale=f_scale)
 
