@@ -587,12 +587,15 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     galaxy, galaxydir = get_galaxy_galaxydir(fullsample, region=region,
                                              group=not no_groups,
                                              datadir=datadir)
-
     t0 = time.time()
 
     allellipse, alltractor = [], []
     for iobj, (gal, gdir, obj) in enumerate(zip(galaxy, galaxydir, fullsample)):
         ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
+        if len(ellipsefiles) == 0:
+            log.warning(f'All ellipse files missing for {gdir}/{gal}')
+            continue
+
         for ellipsefile in ellipsefiles:
             sganame = os.path.basename(ellipsefile).split('-')[0]
             for idata, dataset in enumerate(datasets):
@@ -1918,24 +1921,28 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     return data, sample, 1
 
 
-def get_radius_mosaic(diam, mindiam=0.5, pixscale=0.262, get_barlen=False):
+def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
+                      pixscale=0.262, get_barlen=False):
     """Get the mosaic radius.
 
     diam, mindiam in arcmin
 
     """
     if diam < mindiam:
-        diam = mindiam
+        diam = mindiam # arcmin
 
     radius_mosaic_arcsec = 60. * diam / 2. # [arcsec]
-    if diam > 10.:
-        radius_mosaic_arcsec *= 1.1
-    elif diam > 3. and diam <= 10:
-        radius_mosaic_arcsec *= 1.5
-    elif diam > 1. and diam <= 3.:
-        radius_mosaic_arcsec *= 1.8
-    else:
-        radius_mosaic_arcsec *= 2.
+    print('### check -- using group_diameters with no adjustments!!!')
+    # FIXME - not sure if this is needed
+    #if multiplicity == 1:
+    #    if diam > 10.:
+    #        radius_mosaic_arcsec *= 1.1
+    #    elif diam > 3. and diam <= 10:
+    #        radius_mosaic_arcsec *= 1.5
+    #    elif diam > 1. and diam <= 3.:
+    #        radius_mosaic_arcsec *= 1.8
+    #    else:
+    #        radius_mosaic_arcsec *= 2.
 
     if get_barlen:
         if radius_mosaic_arcsec > 6. * 60.: # [>6] arcmin

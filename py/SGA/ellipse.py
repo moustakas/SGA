@@ -728,7 +728,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     sma_array_arcsec = sma_array * pixscale
 
     # Measure the surface-brightness profile in each bandpass.
-    debug = True#False
+    debug = False
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()

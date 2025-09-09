@@ -236,16 +236,16 @@ def main():
                  f'{len(sample):,d} divided across {size} rank(s).')
 
     if len(groups[rank]) == 0:
-        log.info(f'{suffix.upper()} for all {len(sample)} galaxies on rank ' + \
+        log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
                  f'{rank} are complete!')
         return
     else:
-        log.info(f' Rank {rank}: {len(groups[rank])} galaxies left to do.')
+        log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
         if rank == 0 and args.count:
             if args.debug:
                 if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank])} / ' + \
-                             f'{len(sample)}')
+                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
+                             f'{len(sample):,d}')
                     dsrt = np.argsort(sample[fail[rank]][DIAMCOLUMN])
                     galaxy, galaxydir = get_galaxy_galaxydir(
                         sample[fail[rank]][dsrt], region=args.region,
@@ -294,7 +294,13 @@ def main():
             log.info(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
-        radius_mosaic_arcsec = get_radius_mosaic(onegal[DIAMCOLUMN]) # diam in arcmin
+        if no_groups:
+            multiplicity = 1
+        else:
+            multiplicity = onegal['GROUP_MULT']
+
+        radius_mosaic_arcsec = get_radius_mosaic(onegal[DIAMCOLUMN], # diam in arcmin
+                                                 multiplicity=multiplicity)
 
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 
@@ -466,7 +472,7 @@ def main():
             stilltodo = len(np.hstack(groups))
         else:
             stilltodo = 0
-        log.info(f'{suffix.upper()} left to do: {stilltodo} / {ntodo}.')
+        log.info(f'{suffix.upper()} left to do: {stilltodo:,d} / {ntodo:,d}.')
 
 
 
