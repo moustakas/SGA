@@ -1183,10 +1183,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
             ax2.imshow(cutout_mask, origin='lower')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            #pdb.set_trace()
 
-        P.x0 += x1
-        P.y0 += y1
+        if P.a <= 0.:
+            log.warning('Reverting to input geometry; moment-derived ' + \
+                        'semi-major axis is zero!')
+            P.bx = bx
+            P.by = by
+            P.a = sma # [pixels]
+            P.ba = ba
+            P.pa = pa
+        else:
+            P.x0 += x1
+            P.y0 += y1
 
         return P
 

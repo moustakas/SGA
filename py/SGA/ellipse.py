@@ -1281,7 +1281,9 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                     xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
 
                 xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
-                xx.legend(loc='upper right', fontsize=8)
+                hndls, _ = xx.get_legend_handles_labels()
+                if hndls:
+                    xx.legend(loc='upper right', fontsize=8)
             else:
                 ax[idata, 0].text(0.03, 0.97, f'{label} - No Data',
                                   transform=ax[idata, 0].transAxes,
