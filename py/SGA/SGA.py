@@ -589,6 +589,9 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
                                              datadir=datadir)
     t0 = time.time()
 
+    # No tractor or ellipse catalog for this object:
+    #dr11-south/203/20337p3381
+
     allellipse, alltractor = [], []
     for iobj, (gal, gdir, obj) in enumerate(zip(galaxy, galaxydir, fullsample)):
         ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
@@ -597,10 +600,19 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
             continue
 
         for ellipsefile in ellipsefiles:
-            sganame = os.path.basename(ellipsefile).split('-')[0]
+            # fragile!!
+            sganame = os.path.basename(ellipsefile).split('-')[:-2]
+            if len(sganame) == 1:
+                sganame = sganame[0]
+            else:
+                sganame = '-'.join(sganame)
             for idata, dataset in enumerate(datasets):
                 ellipsefile1 = os.path.join(gdir, f'{sganame}-ellipse-{dataset}.fits')
-                ellipse1 = Table(fitsio.read(ellipsefile1, ext='ELLIPSE'))
+                try:
+                    ellipse1 = Table(fitsio.read(ellipsefile1, ext='ELLIPSE'))
+                except:
+                    pdb.set_trace()
+
                 if idata == 0:
                     ellipse = ellipse1
                 else:

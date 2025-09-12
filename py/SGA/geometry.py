@@ -77,7 +77,14 @@ class EllipseProperties:
         labels, nblobs = ndimage.label(mask)
         self.labels = labels
         if nblobs < 1:
-            raise ValueError("No positive blobs found in image.")
+            #raise ValueError("No positive blobs found in image.")
+            log.warning("No positive blobs found in image.")
+            self.x0 = 0.
+            self.y0 = 0.
+            self.a = 0.
+            self.pa = 0.
+            self.ba = 1.
+            return self
         sizes = ndimage.sum(mask, labels, index=np.arange(1, nblobs+1))
         largest = np.argmax(sizes) + 1
         self.blob_mask = (labels == largest)

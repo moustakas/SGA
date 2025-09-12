@@ -14,8 +14,8 @@ those changes propagate everywhere.
 This needs to be in its own file to prevent circular imports with other code.
 
 """
-from logging import DEBUG
-from desiutil.log import get_logger
+#from logging import DEBUG
+#from desiutil.log import get_logger
 
 def getSgaLogger():
     """Create a logging object unique to the SGA.  Configure it to
@@ -53,4 +53,3 @@ def getSgaLogger():
 
 log = getSgaLogger()
 #log = get_logger()
-

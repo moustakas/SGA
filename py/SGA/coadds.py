@@ -125,7 +125,7 @@ def _rearrange_files(galaxy, output_dir, brickname, bands=GRIZ, unwise=True,
     ccdsfile = os.path.join(output_dir, 'coadd', 'cus', brickname,
                             f'legacysurvey-{brickname}-ccds.fits')
     if not os.path.isfile(ccdsfile) and missing_ok is False:
-        print('No photometric CCDs touching brick.')
+        log.info('No CCDs touching this brick; nothing to do.')
         if cleanup:
             _do_cleanup()
         return 1

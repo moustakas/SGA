@@ -499,7 +499,7 @@ def isophotal_radius_mc(
 
     if n_success == 0:
         # No valid crossings in MC → report limits only
-        out.update(a_iso=np.nan, a_lo=np.nan, a_hi=np.nan)
+        out.update(a_iso=np.nan, a_iso_err=np.nan, a_lo=np.nan, a_hi=np.nan)
         if return_samples:
             out["samples"] = samples
         return out
@@ -844,8 +844,9 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                         else:
                             log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
                                       f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
-                            results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
-                            results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
+                            if np.isfinite(res['a_iso']) and np.isfinite(res['a_iso_err']):
+                                results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
+                                results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
 
         if debug:
             I = apflux > 0.
@@ -1412,6 +1413,15 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
     # we need as many MASKBITS bit-masks as datasetss
     assert(len(SGAMASKBITS) == len(datasets))
+
+    # In the case that there were "no photometric CCDs touching
+    # brick", there will not be a CCDs file (e.g.,
+    # dr11-south/203/20337p3381=WISEA J133330.14+334903.2), so we
+    # should exit cleanly.
+    ccdsfile = os.path.join(galaxydir, f'{galaxy}-ccds.fits')
+    if not os.path.isfile(ccdsfile):
+        log.info('No CCDs touching this brick; nothing to do.')
+        return 1
 
     #data = read_multiband_function(
     #    galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
