@@ -686,9 +686,10 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
     if np.any(I):
         diam[I] = mindiam
 
-    # clean up missing values of BA and PA
-    ba[ba < 0.] = 1.
+    # clean up missing (or crazy) values of BA and PA
     pa[pa < 0.] = 0.
+    ba[ba < 0.] = 1.
+    ba[ba < 0.1] = 0.1 # note!
 
     if get_mag:
         mag = np.zeros(nobj) - 99.

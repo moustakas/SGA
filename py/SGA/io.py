@@ -497,6 +497,7 @@ def deprecated_write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sb
 
 
 def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False):
+    """
     # add to header:
     #  --bands
     #  --pixscale(s)
@@ -505,6 +506,10 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
     #  --nclip
     #  --width,height
 
+    """
+    from glob import glob
+
+
     REFIDCOLUMN = data['REFIDCOLUMN']
 
     for idata, dataset in enumerate(datasets):
@@ -512,6 +517,12 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
             suffix = ''.join(data['all_opt_bands']) # always griz in north & south
         else:
             suffix = dataset
+
+        # remove old files
+        ellipsefiles = glob(os.path.join(data["galaxydir"], f'*-ellipse-{suffix}.fits'))
+        if len(ellipsefiles) > 0:
+            for ellipsefile in ellipsefiles:
+                os.remove(ellipsefile)
 
         for iobj, (obj, results_obj) in enumerate(zip(sample, results[idata])):
 
@@ -528,16 +539,16 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
 
             #results_obj['SMA_AP01', 'SMA50_R', 'R22_R', 'R23_R', 'R24_R', 'R25_R', 'R26_R']
 
-            if False:
-                imfile = os.path.join(data["galaxydir"], f'{results_obj["SGAGROUP"][0]}-image-r.fits.fz')
-                images = data[f'{dataset}_images'][iobj, :, :, :]
-                invvar = data[f'{dataset}_invvar']
-                import matplotlib.pyplot as plt
-                fig, (ax1, ax2) = plt.subplots(1, 2)
-                ax1.imshow(np.logical_not(maskbits) * np.log10(im/0.262**2 - models[1, :, :]), origin='lower')
-                ax2.imshow(np.logical_not(maskbits) * np.log10(images[1, :, :]), origin='lower')
-                fig.savefig('ioannis/tmp/junk.png')
-                plt.close()
+            #if False:
+            #    imfile = os.path.join(data["galaxydir"], f'{results_obj["SGAGROUP"][0]}-image-r.fits.fz')
+            #    images = data[f'{dataset}_images'][iobj, :, :, :]
+            #    invvar = data[f'{dataset}_invvar']
+            #    import matplotlib.pyplot as plt
+            #    fig, (ax1, ax2) = plt.subplots(1, 2)
+            #    ax1.imshow(np.logical_not(maskbits) * np.log10(im/0.262**2 - models[1, :, :]), origin='lower')
+            #    ax2.imshow(np.logical_not(maskbits) * np.log10(images[1, :, :]), origin='lower')
+            #    fig.savefig('ioannis/tmp/junk.png')
+            #    plt.close()
 
             #with warnings.catch_warnings():
             #    warnings.filterwarnings('ignore', '.*nmgy.*')

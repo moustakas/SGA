@@ -501,7 +501,7 @@ def _build_catalog_one(args):
     return build_catalog_one(*args)
 
 
-def build_catalog_one(primary, grp, gdir, datasets, opt_bands):
+def build_catalog_one(sample, grp, gdir, datasets, opt_bands):
     """Gather the ellipse-fitting results for a single group.
 
     No tractor or ellipse catalog for this object:
@@ -521,6 +521,12 @@ def build_catalog_one(primary, grp, gdir, datasets, opt_bands):
     if len(ellipsefiles) == 0:
         log.warning(f'All ellipse files missing for {gdir}/{grp}')
         return Table(), Table()
+
+    if len(ellipsefiles) > len(sample):
+        msg = f'Found vestigial ellipse files in {gdir}; please remove!'
+        log.critical(msg)
+        raise IOError(msg)
+
 
     ellipse = []
     for ellipsefile in ellipsefiles:
@@ -551,19 +557,38 @@ def build_catalog_one(primary, grp, gdir, datasets, opt_bands):
     if len(ellipse) > 0:
         ellipse = vstack(ellipse)
 
-    # read the Tractor catalog for all the SGA sources as well as for
-    # all sources within the SGA oellipse (using MASKBITS)
+    assert(np.all(np.isin(ellipse[REFIDCOLUMN], sample[REFIDCOLUMN])))
+
+
+    # Read the Tractor catalog for all the SGA sources as well as for
+    # all sources within the SGA ellipse (using MASKBITS).
     tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
-    refs = fitsio.read(tractorfile, columns=['brick_primary', 'type', 'ref_cat',
-                                             'ref_id', 'maskbits'])
-    I = np.where(refs['brick_primary'] * (refs['ref_cat'] != 'G3') *
-                 (refs['type'] != 'DUP') * (refs['maskbits'] & MASKBITS['GALAXY'] != 0))[0]
-    if len(I) == 0:
-        msg = f'No sources found in {tractorfile}'
+    refs = fitsio.read(tractorfile, columns=['brick_primary', 'ra', 'dec', 'type', 'fitbits',
+                                             'ref_cat', 'ref_id', 'maskbits'])
+    I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
+    # if np.sum(I)==0, this is a problem...
+    if np.sum(I) == 0:
+        msg = f'All sources dropped in {tractorfile}'
         log.critical(msg)
         raise ValueError(msg)
-
+    else:
+        J = I * np.logical_or((refs['maskbits'] & MASKBITS['GALAXY'] != 0),
+                              refs['ref_cat'] == REFCAT)
+        # J can be empty if the initial geometry is so pathological
+        # that the SGA source doesn't get MASKBITS set (or that the
+        # SGA source is dropped *and* there are no sources within the
+        # initial elliptical geometry).
+        if np.sum(J) == 0:
+            I = np.where(I)[0]
+        else:
+            I = np.where(J)[0]
     tractor = Table(fitsio.read(tractorfile, rows=I))
+
+    # Remove SGA Tractor that don't "belong" to this group.
+    rem = np.where(np.logical_not(np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])) *
+                   (tractor['ref_cat'] == REFCAT))[0]
+    if len(rem) > 0:
+        tractor.remove_rows(rem)
 
     # Tractor catalog of the SGA source(s)
     tractor_sga = []
@@ -572,6 +597,7 @@ def build_catalog_one(primary, grp, gdir, datasets, opt_bands):
                      (refs['ref_cat'] == REFCAT))[0]
         # If there's no match, confirm that the NOTRACTOR bit was set,
         # read a blank catalog, and then move on. Should never happen!
+        # dr11-south/195/19533p2848/SDSS J130120.01+282848.5
         if len(I) == 0:
             assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
             tractor_sga1 = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
@@ -583,6 +609,10 @@ def build_catalog_one(primary, grp, gdir, datasets, opt_bands):
         tractor_sga = vstack(tractor_sga)
         tractor = vstack((tractor, tractor_sga))
 
+    #try:
+    #    assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
+    #except:
+    #    pdb.set_trace()
     #assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
 
     return ellipse, tractor
@@ -623,10 +653,16 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
         I = sample['REGION'] & REGIONBITS[region] != 0
         J = fullsample['REGION'] & REGIONBITS[region] != 0
         sample_region = sample[I]
-        #fullsample_region = fullsample[J]
+        fullsample_region = fullsample[J]
 
-        sample_region = sample_region[sample_region['GROUP_MULT'] > 1]
+        # testing
+        #sample_region = sample_region[sample_region['GROUP_MULT'] > 1]
         #sample_region = sample_region[:128]
+        #sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19327p2880', 'SGA2025_19325p2882'])]
+        sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19379p2775', 'SGA2025_19410p2921'])]
+
+        log.info(f'Trimmed to {len(sample_region):,d} groups in region={region}')
+
         group, groupdir = get_galaxy_galaxydir(
             sample_region, region=region,
             group=not no_groups, datadir=datadir)
@@ -634,9 +670,9 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
 
         # build the mp list
         mpargs = []
-        for primary, grp, gdir in zip(sample_region, group, groupdir):
-            #I = prim['GROUP_ID'] == fullsample_region['GROUP_ID']
-            mpargs.append((primary, grp, gdir, datasets, opt_bands))
+        for prim, grp, gdir in zip(sample_region, group, groupdir):
+            I = prim['GROUP_ID'] == fullsample_region['GROUP_ID']
+            mpargs.append((fullsample_region[I], grp, gdir, datasets, opt_bands))
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 out = P.map(_build_catalog_one, mpargs)
@@ -646,76 +682,15 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
         out = list(zip(*out))
         ellipse = vstack(out[0])
         tractor = vstack(out[1])
-        log.info(f'Merged {len(ellipse):,d} {len(tractor):,d} objects took {(time.time()-t0)/60.0:.2f} min.')
-        log.info(f'Merged {len(ellipse):,d} {len(tractor):,d} objects took {(time.time()-t0)/60.0:.2f} min.')
-
-        pdb.set_trace()
-        assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
-
-
-        tractor1 = list(filter(None, results[0]))
-        ellipse1 = list(filter(None, results[2]))
-
-        allellipse, alltractor = [], []
-        for iobj, (gal, gdir, obj) in enumerate(zip(galaxy, galaxydir, fullsample_region)):
-            ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
-            if len(ellipsefiles) == 0:
-                log.warning(f'All ellipse files missing for {gdir}/{gal}')
-                continue
-
-            for ellipsefile in ellipsefiles:
-                # fragile!!
-                sganame = os.path.basename(ellipsefile).split('-')[:-2]
-                if len(sganame) == 1:
-                    sganame = sganame[0]
-                else:
-                    sganame = '-'.join(sganame)
-                for idata, dataset in enumerate(datasets):
-                    ellipsefile1 = os.path.join(gdir, f'{sganame}-ellipse-{dataset}.fits')
-                    try:
-                        ellipse1 = Table(fitsio.read(ellipsefile1, ext='ELLIPSE'))
-                    except:
-                        pdb.set_trace()
-
-                    if idata == 0:
-                        ellipse = ellipse1
-                    else:
-                        ellipse = join(ellipse, ellipse1)
-
-            tractorfile = os.path.join(gdir, f'{gal}-tractor.fits')
-            refs = fitsio.read(tractorfile, columns=['ref_cat', 'ref_id'])
-            I = np.where(np.logical_or(refs['ref_cat'] == REFCAT, refs['ref_cat'] == 'LG') *
-                         np.isin(refs['ref_id'], ellipse[REFIDCOLUMN]))[0]
-            if len(I) == 0:
-                # confirm that the NOTRACTOR bit was set; if so, read a
-                # blank catalog and then move on
-                assert(ellipse['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
-                tractor = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
-                tractor['ref_cat'] = REFCAT
-                tractor['ref_id'] = ellipse[REFIDCOLUMN]
-            else:
-                tractor = Table(fitsio.read(tractorfile, rows=I))
-
-            allellipse.append(ellipse)
-            alltractor.append(tractor)
-
-        #for col in ellipse1[0].colnames:
-        #    if ellipse1[0][col].ndim > 1:
-        #        print(col)
-
-        #log.info('Doing an outer join on Tractor because some columns are missing from some catalogs:')
-        #log.info("  ['mw_transmission_nuv' 'mw_transmission_fuv' 'ngood_g' 'ngood_r' 'ngood_z']")
-        #tractor = vstack(tractor1, metadata_conflicts='silent')
-
-        ellipse = vstack(allellipse)
-        tractor = vstack(alltractor)
-        del allellipse, alltractor
-        log.info(f'Merging {len(tractor):,d} objects took {(time.time()-t0)/60.0:.2f} min.')
+        log.info(f'Gathered ellipse measurements for {len(ellipse):,d} unique objects and ' + \
+                 f'{len(tractor):,d} Tractor sources in {(time.time()-t0)/60.0:.2f} min.')
 
         try:
-            assert(np.all(tractor['ref_id'] == ellipse[REFIDCOLUMN]))
+            assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
         except:
             pdb.set_trace()
+
+        pdb.set_trace()
 
         ##################################################
         # re-organize the ellipse table to match the datamodel and assign units
@@ -1716,7 +1691,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         #print('HACK!!')
         #sample['BY_INIT'] += 30.
         qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
-        pdb.set_trace()
 
     # clean-up
     del data['brightstarmask']
