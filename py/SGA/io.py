@@ -539,6 +539,10 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
                 fig.savefig('ioannis/tmp/junk.png')
                 plt.close()
 
+            #with warnings.catch_warnings():
+            #    warnings.filterwarnings('ignore', '.*nmgy.*')
+            #    fibermap_hdu = fits.BinTableHDU(fibermap)
+
             #fitsio.write(ellipsefile, images, clobber=True, extname='IMAGES')
             fitsio.write(ellipsefile, models, clobber=True, extname='MODELS')
             fitsio.write(ellipsefile, maskbits, extname='MASKBITS')

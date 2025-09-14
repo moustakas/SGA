@@ -125,19 +125,24 @@ def main():
         log.info(f'$SGA_HTML_DIR={htmldir}')
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
+        if args.build_catalog or args.build_refcat:
+            region = None
+        else:
+            region = args.region
+
         sample, fullsample = read_sample(
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, maxmult=args.maxmult,
             galaxylist=args.galaxylist, no_groups=no_groups,
-            lvd=args.lvd, region=args.region,
+            lvd=args.lvd, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
         if len(sample) == 0:
             return
 
-        if args.coadds or args.build_catalog or args.build_refcat:
-            if args.build_catalog:
-                sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
+        #if args.coadds or args.build_catalog or args.build_refcat:
+        #    if args.build_catalog:
+        #        sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
     else:
         sample = []
         fullsample = []
@@ -188,7 +193,7 @@ def main():
                 assert(np.all(np.isfinite(ref[col])))
             ref['fitmode'] = fullsample['FITMODE']
 
-            reffile = os.path.join(basedir, f'SGA2025-{version}-refcat.fits')
+            reffile = os.path.join(basedir, f'SGA2025-refcat-{version}.fits')
             kdreffile = reffile.replace('.fits', '.kd.fits')
             log.info(f'Writing {ngal} galaxies to {reffile}')
 
@@ -207,10 +212,9 @@ def main():
             return
 
         if args.build_catalog:
-            build_catalog(sample, fullsample, bands=bands, region=args.region,
-                          datadir=datadir, no_groups=no_groups,
-                          unwise=args.unwise, galex=args.galex, mp=args.mp,
-                          verbose=args.verbose, clobber=args.clobber)
+            build_catalog(sample, fullsample, bands=bands, datadir=datadir,
+                          no_groups=no_groups, unwise=args.unwise, galex=args.galex,
+                          mp=args.mp, verbose=args.verbose, clobber=args.clobber)
             return
 
     # Determine how many more galaxies we need to analyze and divide them across

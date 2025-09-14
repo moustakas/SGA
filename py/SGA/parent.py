@@ -983,6 +983,11 @@ def update_lvd_properties(cat):
     assert(np.all((lvd['DIAM'] != -99.) * (lvd['BA'] != -99.)))
     #lvd[lvd['PA_REF'] == 'default']
 
+    # one last update -- set b/a=1 if pa_ref=='default'
+    I = (lvd['PA_REF'] == 'default') * (lvd['BA'] != 1.)
+    if np.any(I):
+        lvd['BA'][I] = 1.
+
     # write out
     lvd = lvd[np.argsort(lvd['ROW'])]
 
@@ -2386,7 +2391,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
 
     # ROW_PARENT must be unique across versions
-    rowfiles = glob(os.path.join(sga_dir(), 'parent', f'SGA2025-parent-row-*.fits'))
+    rowfiles = glob(os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-*-rows.fits'))
     if len(rowfiles) > 0:
         log.warning('FIXME!')
         pdb.set_trace()
@@ -2396,7 +2401,7 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
     parent['ROW_PARENT'] = rows
 
-    rowfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-rows-{version_nocuts}.fits')
+    rowfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-{version_nocuts}-rows.fits')
     rowcat = parent['OBJNAME', 'ROW_PARENT', ]
     log.info(f'Writing {len(rowcat):,d} objects to {rowfile}')
     rowcat.write(rowfile, overwrite=True)
@@ -2824,7 +2829,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     version = SGA_version(parent=True)
     version_nocuts = SGA_version(nocuts=True)
     version_archive = SGA_version(archive=True)
-    outdir = os.path.join(sga_dir(), 'parent')
+    outdir = os.path.join(sga_dir(), 'sample')
 
     outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
     if os.path.isfile(outfile) and not overwrite:
@@ -2975,6 +2980,8 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     grp['PA'] = pa.astype('f4')
     grp['MAG'] = mag.astype('f4')
     grp['BAND'] = band
+    grp['DIAM_REF'] = ref
+    pdb.set_trace()
 
     #ra, dec = grp['RA'].value, grp['DEC'].value
     #grp.add_column(sga2025_name(ra, dec, unixsafe=True),
