@@ -1377,9 +1377,9 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
             results_dataset1, sbprofiles_dataset1 = multifit(
                 obj, images, sigimages, masks, sma_array_pix, dataset,
                 bands, opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
-                pixscale=pixscale, mp=mp, nmonte=nmonte, seed=seed,
+                pixscale=pixscale, mp=mp, nmonte=nmonte, allbands=allbands,
                 sbthresh=sbthresh, sma_apertures_arcsec=sma_apertures_arcsec,
-                debug=debug)
+                seed=seed, debug=debug)
 
             results_dataset.append(results_dataset1)
             sbprofiles_dataset.append(sbprofiles_dataset1)

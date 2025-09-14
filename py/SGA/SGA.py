@@ -625,7 +625,7 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     import multiprocessing
     import astropy.units as u
     from astropy.io import fits
-    from astropy.table import vstack, join, Column
+    from astropy.table import vstack, join, Column, MaskedColumn
     from SGA.ellipse import ELLIPSEBIT
     from SGA.coadds import REGIONBITS
 
@@ -657,9 +657,9 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
 
         # testing
         #sample_region = sample_region[sample_region['GROUP_MULT'] > 1]
-        #sample_region = sample_region[:128]
+        sample_region = sample_region[:128]
         #sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19327p2880', 'SGA2025_19325p2882'])]
-        sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19379p2775', 'SGA2025_19410p2921'])]
+        #sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19379p2775', 'SGA2025_19410p2921'])]
 
         log.info(f'Trimmed to {len(sample_region):,d} groups in region={region}')
 
@@ -682,19 +682,88 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
         out = list(zip(*out))
         ellipse = vstack(out[0])
         tractor = vstack(out[1])
-        log.info(f'Gathered ellipse measurements for {len(ellipse):,d} unique objects and ' + \
+        nobj = len(ellipse)
+
+        log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
                  f'{len(tractor):,d} Tractor sources in {(time.time()-t0)/60.0:.2f} min.')
 
         try:
             assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
         except:
             pdb.set_trace()
+        #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
+
+        # re-organize the ellipse table to match the datamodel and assign units
+        dmcols = [
+            ('SGAID', np.int64, None),
+            ('SGAGROUP', 'U18', None),
+            ('REGION', np.int16, None),
+            ('OBJNAME', 'U30', None),
+            ('PGC', np.int64, None),
+            ('SAMPLE', np.int32, None),
+            ('ELLIPSEMODE', np.int32, None),
+            ('FITMODE', np.int32, None),
+            ('BX_INIT', np.float32, u.pixel),
+            ('BY_INIT', np.float32, u.pixel),
+            ('RA_INIT', np.float64, u.degree),
+            ('DEC_INIT', np.float64, u.degree),
+            ('SMA_INIT', np.float32, u.arcsec),
+            ('DIAM_INIT', np.float32, u.arcmin),
+            ('BA_INIT', np.float32, None),
+            ('PA_INIT', np.float32, u.degree),
+            ('MAG', np.float32, u.mag),
+            ('BAND', 'U1', None),
+            ('EBV', np.float32, u.mag),
+            ('GROUP_ID', np.int32, None),
+            ('GROUP_NAME', 'U10', None),
+            ('GROUP_MULT', np.int16, None),
+            ('GROUP_PRIMARY', bool, None),
+            ('GROUP_RA', np.float64, u.degree),
+            ('GROUP_DEC', np.float64, u.degree),
+            ('GROUP_DIAMETER', np.float32, u.arcmin),
+            ('PSFSIZE_G', np.float32, u.arcsec),
+            ('PSFSIZE_R', np.float32, u.arcsec),
+            ('PSFSIZE_I', np.float32, u.arcsec),
+            ('PSFSIZE_Z', np.float32, u.arcsec),
+            ('PSFDEPTH_G', np.float32, u.ABmag),
+            ('PSFDEPTH_R', np.float32, u.ABmag),
+            ('PSFDEPTH_I', np.float32, u.ABmag),
+            ('PSFDEPTH_Z', np.float32, u.ABmag),
+            ('SGANAME', 'U25', None),
+            ('RA', np.float64, u.degree),
+            ('DEC', np.float64, u.degree),
+            ('BX', np.float32, u.pixel),
+            ('BY', np.float32, u.pixel),
+            ('SMA_MOMENT', np.float32, u.arcsec),
+            ('BA_MOMENT', np.float32, None),
+            ('PA_MOMENT', np.float32, u.degree),
+            ('RA_TRACTOR', np.float64, u.degree),
+            ('DEC_TRACTOR', np.float64, u.degree),
+            ('ELLIPSEBIT', np.int32, None),
+        ]
+        for filt in bands:
+            dmcols += [(f'MW_TRANSMISSION_{filt.upper()}', np.float32, None)]
+
+        outellipse = Table()
+        for col in dmcols:
+            outellipse.add_column(Column(name=col[0], data=np.zeros(nobj, dtype=col[1]), unit=col[2]))
+
+        for col in outellipse.colnames:
+            val = ellipse[col]
+            if col == 'PSFSIZE_I':
+                pdb.set_trace()
+            if not (isinstance(val, str) or 'U' in str(val.dtype)):
+                if type(val) is MaskedColumn:
+                    I = val.mask
+                else:
+                    I = np.logical_or(np.isnan(val.value), np.logical_not(np.isfinite(val.value)))
+                if np.any(I):
+                    log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
+                    val[I] = 0
+            outellipse[col] = val
 
         pdb.set_trace()
 
-        ##################################################
-        # re-organize the ellipse table to match the datamodel and assign units
-        print('TOTAL HACK!!!')
         outellipse = ellipse[ellipse.colnames[:54]]
 
         def choose_geometry(ellipse):
@@ -1682,7 +1751,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
     sample['SGANAME'] = sga2025_name(ra, dec)
     #sample['RA_MOMENT'] = ra
     #sample['DEC_MOMENT'] = dec
-    for filt in all_bands:
+    for filt in data['all_opt_bands']: # NB: all optical bands
         sample[f'MW_TRANSMISSION_{filt.upper()}'] = mwdust_transmission(
             sample['EBV'], band=filt, run=data['run'])
 
@@ -1828,9 +1897,9 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     cols += [f'flux_{filt}' for filt in opt_bands]
     cols += [f'flux_ivar_{filt}' for filt in opt_bands]
     cols += [f'nobs_{filt}' for filt in opt_bands]
-    cols += [f'mw_transmission_{filt}' for filt in opt_bands]
-    cols += [f'psfdepth_{filt}' for filt in opt_bands]
-    cols += [f'psfsize_{filt}' for filt in opt_bands]
+    #cols += [f'mw_transmission_{filt}' for filt in all_opt_bands]
+    cols += [f'psfdepth_{filt}' for filt in all_opt_bands] # NB: all optical bands
+    cols += [f'psfsize_{filt}' for filt in all_opt_bands]
     if galex:
         cols += [f'flux_{filt.lower()}' for filt in galex_bands]
         cols += [f'flux_ivar_{filt.lower()}' for filt in galex_bands]
@@ -1854,10 +1923,10 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                       index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 
-    # PSF size and depth
-    for filt in opt_bands:
+    # PSF size and depth; NB: all optical bands
+    for filt in all_opt_bands:
         sample[f'PSFSIZE_{filt.upper()}'] = np.zeros(len(sample), 'f4')
-    for filt in bands:
+    for filt in all_bands:
         sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
     # populate (BX,BY)_INIT by quickly building the WCS
