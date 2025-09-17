@@ -60,9 +60,24 @@ def to_float32_safe_mapping(d):
 
 
 def to_float32_safe_scalar(x):
-    finfo = np.finfo(np.float32)
-    x = float(x)
-    return np.float32(np.nan if not np.isfinite(x) else min(max(x, finfo.min), finfo.max))
+    import math
+
+    try:
+        xv = float(x)
+    except Exception:
+        return np.nan
+
+    if not math.isfinite(xv):
+        return np.float32(np.nan)
+
+    f32 = np.finfo(np.float32)
+    fmin = float(f32.min)
+    fmax = float(f32.max)
+
+    if xv < fmin or xv > fmax:
+        return np.float32(np.nan)
+
+    return np.float32(xv)
 
 
 def cog_model(radius, mtot, dmag, lnalpha1, lnalpha2, r0=10.):
@@ -104,7 +119,8 @@ def cog_model(radius, mtot, dmag, lnalpha1, lnalpha2, r0=10.):
 
 
 def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
-            bounds=None, robust=True, minerr=0.02, f_scale=1.):
+            bounds=None, robust=True, minerr=0.02, f_scale=1.,
+            debug=False):
     """
     Fit (mtot, dmag, lnalpha1, lnalpha2) in:
 
@@ -277,17 +293,19 @@ def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
 
     popt = {'mtot': mt, 'dmag': dm, 'lnalpha1': lnA1, 'lnalpha2': lnA2}
 
+    # convert to f4
+    #if debug:
+    #    pdb.set_trace()
+    popt = to_float32_safe_mapping(popt)
+    perr = to_float32_safe_mapping(perr)
+    chi2 = to_float32_safe_scalar(chi2)
+
     # check for insane values
     if (any(not np.isfinite(v) for v in popt.values()) or \
         any(not np.isfinite(e) for e in perr.values())):
         return {}, {}, None, 0., ndof
-
-    # convert to f4
-    popt32 = to_float32_safe_mapping(popt)
-    perr32 = to_float32_safe_mapping(perr)
-    chi2_32 = to_float32_safe_scalar(chi2)
-
-    return popt, perr, cov, chi2, ndof
+    else:
+        return popt, perr, cov, chi2, ndof
 
 
 def radius_for_fraction(f, dmag, lnalpha1, lnalpha2, r0=10.):
@@ -375,6 +393,9 @@ def radius_fraction_uncertainty(f, params, cov, r0=10., var_r0=None):
     if var_r0 is not None:
         sigma2 += (dr_dr0**2) * float(var_r0)
     sigma_r = np.sqrt(max(sigma2, 0.0))
+
+    r = to_float32_safe_mapping(r)
+    sigma_r = to_float32_safe_mapping(sigma_r)
 
     return r, sigma_r
 
@@ -748,7 +769,10 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         ap_moment = EllipticalAperture((bx, by), a=sma_moment_pix, theta=ellipse_pa,
                                        b=sma_moment_pix*(1.-ellipse_eps))
         apmask_moment = ap_moment.to_mask().to_image((width, width)) != 0. # object mask=True
-        results[f'GINI_{filt.upper()}'] = gini(img, mask=np.logical_or(msk, np.logical_not(apmask_moment)))
+        gin = gini(img, mask=np.logical_or(msk, np.logical_not(apmask_moment)))
+        if np.isnan(gin):
+            pdb.set_trace()
+        results[f'GINI_{filt.upper()}'] = gin
 
         #import matplotlib.pyplot as plt
         #fig, ax = plt.subplots()
@@ -796,10 +820,12 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                 r50, r50_err = half_light_radius_with_uncertainty(
                     (popt['mtot'], popt['dmag'], popt['lnalpha1'], popt['lnalpha2']),
                     cov, r0=sma_moment_arcsec)
-                log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
-
-                results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
-                results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
+                if np.isnan(r50) or np.isnan(r50_err):
+                    pass
+                else:
+                    log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
+                    results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
+                    results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
             except:
                 pass
 
@@ -1452,6 +1478,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
     if not nowrite:
         from SGA.io import write_ellipsefit
-        err = write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=verbose)
+        err = write_ellipsefit(data, sample, datasets, results, sbprofiles,
+                               verbose=verbose)
 
     return err

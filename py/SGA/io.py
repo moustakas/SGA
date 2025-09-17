@@ -282,7 +282,7 @@ def _read_image_data(data, filt2imfile, verbose=False):
 
     VEGA2AB = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
 
-    all_bands = data['all_bands']
+    all_data_bands = data['all_data_bands']
     opt_bands = data['opt_bands']
     unwise_bands = data['unwise_bands']
 
@@ -292,7 +292,7 @@ def _read_image_data(data, filt2imfile, verbose=False):
 
     # Read the per-filter images and generate an optical and UV/IR
     # mask.
-    for filt in all_bands:
+    for filt in all_data_bands:
         # Read the data and initialize the mask with the inverse
         # variance image.
         if verbose:
@@ -496,18 +496,13 @@ def deprecated_write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sb
     #fitsio.write(ellipsefitfile, out.as_array(), extname='ELLIPSE', header=hdr, clobber=True)
 
 
-def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False):
-    """
-    # add to header:
-    #  --bands
-    #  --pixscale(s)
-    #  --integrmode
-    #  --sclip
-    #  --nclip
-    #  --width,height
+def write_ellipsefit(data, sample, datasets, results, sbprofiles,
+                     verbose=False):
+    """Write out the ellipse and sbprofiles catalogs.
 
     """
     from glob import glob
+    from astropy.io import fits
 
 
     REFIDCOLUMN = data['REFIDCOLUMN']
@@ -537,28 +532,32 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles, verbose=False)
             models = data[f'{dataset}_models'][iobj, :, :, :]
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
-            #results_obj['SMA_AP01', 'SMA50_R', 'R22_R', 'R23_R', 'R24_R', 'R25_R', 'R26_R']
+            # add to header:
+            # --WCS!
+            # --bands
+            # --pixscale(s)
+            # --integrmode
+            # --sclip
+            # --nclip
+            # --width,height
 
-            #if False:
-            #    imfile = os.path.join(data["galaxydir"], f'{results_obj["SGAGROUP"][0]}-image-r.fits.fz')
-            #    images = data[f'{dataset}_images'][iobj, :, :, :]
-            #    invvar = data[f'{dataset}_invvar']
-            #    import matplotlib.pyplot as plt
-            #    fig, (ax1, ax2) = plt.subplots(1, 2)
-            #    ax1.imshow(np.logical_not(maskbits) * np.log10(im/0.262**2 - models[1, :, :]), origin='lower')
-            #    ax2.imshow(np.logical_not(maskbits) * np.log10(images[1, :, :]), origin='lower')
-            #    fig.savefig('ioannis/tmp/junk.png')
-            #    plt.close()
+            hdu0 = fits.PrimaryHDU(models)
+            hdu1 = fits.ImageHDU(maskbits)
+            hdu2 = fits.convenience.table_to_hdu(results_obj)
+            hdu3 = fits.convenience.table_to_hdu(sbprofiles_obj)
 
-            #with warnings.catch_warnings():
-            #    warnings.filterwarnings('ignore', '.*nmgy.*')
-            #    fibermap_hdu = fits.BinTableHDU(fibermap)
+            hdu0.header['EXTNAME'] = 'MODELS'
+            hdu1.header['EXTNAME'] = 'MASKBITS'
+            hdu2.header['EXTNAME'] = 'ELLIPSE'
+            hdu3.header['EXTNAME'] = 'SBPROFILES'
 
-            #fitsio.write(ellipsefile, images, clobber=True, extname='IMAGES')
-            fitsio.write(ellipsefile, models, clobber=True, extname='MODELS')
-            fitsio.write(ellipsefile, maskbits, extname='MASKBITS')
-            fitsio.write(ellipsefile, results_obj.as_array(), extname='ELLIPSE')
-            fitsio.write(ellipsefile, sbprofiles_obj.as_array(), extname='SBPROFILES')
+            #hdr = legacyhalos_header()
+            #hdu.header.update(hdr)
+
+            hx = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
+            tmpfile = ellipsefile+'.tmp'
+            hx.writeto(tmpfile, overwrite=True, checksum=True)
+            os.rename(tmpfile, ellipsefile)
             log.info(f'Wrote {ellipsefile}')
 
     return 1

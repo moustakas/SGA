@@ -487,6 +487,137 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     return sample, fullsample
 
 
+def SGA_geometry(ellipse):
+    diam = 2. * ellipse['R26_R'].value / 60. # [arcmin]
+    ba = ellipse['BA_MOMENT'].value
+    pa = ellipse['PA_MOMENT'].value
+    return diam, ba, pa
+
+
+def SGA_datamodel(ellipse, bands, all_bands):
+    import astropy.units as u
+    from astropy.table import Column, MaskedColumn
+
+    nobj = len(ellipse)
+
+    ubands = np.char.upper(bands)
+    uall_bands = np.char.upper(all_bands)
+
+    dmcols = [
+        # from original sample
+        ('SGAID', np.int64, None),
+        ('SGAGROUP', 'U18', None),
+        ('REGION', np.int16, None),
+        ('OBJNAME', 'U30', None),
+        ('PGC', np.int64, None),
+        ('SAMPLE', np.int32, None),
+        ('ELLIPSEMODE', np.int32, None),
+        ('FITMODE', np.int32, None),
+        ('BX_INIT', np.float32, u.pixel),
+        ('BY_INIT', np.float32, u.pixel),
+        ('RA_INIT', np.float64, u.degree),
+        ('DEC_INIT', np.float64, u.degree),
+        ('SMA_INIT', np.float32, u.arcsec),
+        ('DIAM_INIT', np.float32, u.arcmin),
+        ('BA_INIT', np.float32, None),
+        ('PA_INIT', np.float32, u.degree),
+        ('MAG', np.float32, u.mag),
+        ('BAND', 'U1', None),
+        ('EBV', np.float32, u.mag),
+        ('GROUP_ID', np.int32, None),
+        ('GROUP_NAME', 'U10', None),
+        ('GROUP_MULT', np.int16, None),
+        ('GROUP_PRIMARY', bool, None),
+        ('GROUP_RA', np.float64, u.degree),
+        ('GROUP_DEC', np.float64, u.degree),
+        ('GROUP_DIAMETER', np.float32, u.arcmin),
+        ('PSFSIZE_G', np.float32, u.arcsec),
+        ('PSFSIZE_R', np.float32, u.arcsec),
+        ('PSFSIZE_I', np.float32, u.arcsec),
+        ('PSFSIZE_Z', np.float32, u.arcsec),
+        ('PSFDEPTH_G', np.float32, u.ABmag),
+        ('PSFDEPTH_R', np.float32, u.ABmag),
+        ('PSFDEPTH_I', np.float32, u.ABmag),
+        ('PSFDEPTH_Z', np.float32, u.ABmag),
+        ('SGANAME', 'U25', None),
+        ('RA', np.float64, u.degree),
+        ('DEC', np.float64, u.degree),
+        ('BX', np.float32, u.pixel),
+        ('BY', np.float32, u.pixel),
+        ('SMA_MOMENT', np.float32, u.arcsec),
+        ('BA_MOMENT', np.float32, None),
+        ('PA_MOMENT', np.float32, u.degree),
+        ('RA_TRACTOR', np.float64, u.degree),
+        ('DEC_TRACTOR', np.float64, u.degree),
+        ('ELLIPSEBIT', np.int32, None),
+    ]
+    for filt in ubands:
+        dmcols += [(f'MW_TRANSMISSION_{filt}', np.float32, None)]
+    for filt in uall_bands:
+        dmcols += [(f'GINI_{filt}', np.float32, None)]
+    for param, unit, dtype in zip(
+            ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+            [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
+            ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
+        for filt in uall_bands:
+            dmcols += [(f'{param}_{filt}', dtype, unit)]
+        if not ('CHI2' in param or 'NDOF' in param):
+            for filt in uall_bands:
+                dmcols += [(f'{param}_ERR_{filt}', dtype, unit)]
+
+    # flux within apertures that are multiples of sma_moment
+    for iap in range(len(APERTURES)):
+        dmcols += [(f'SMA_AP{iap:02}', np.float32, u.arcsec)]
+    for iap in range(len(APERTURES)):
+        for filt in uall_bands:
+            dmcols += [(f'FLUX_AP{iap:02}_{filt}', np.float32, u.nanomaggy)]
+        for filt in uall_bands:
+            dmcols += [(f'FLUX_ERR_AP{iap:02}_{filt}', np.float32, u.nanomaggy)]
+        for filt in uall_bands:
+            dmcols += [(f'FMASKED_AP{iap:02}_{filt}', np.float32, None)]
+
+    # optical isophotal radii
+    for thresh in SBTHRESH:
+        for filt in ubands:
+            dmcols += [(f'R{thresh:.0f}_{filt}', np.float32, u.arcsec)]
+        for filt in ubands:
+            dmcols += [(f'R{thresh:.0f}_ERR_{filt}', np.float32, u.arcsec)]
+
+    # final diameters
+    dmcols += [
+        ('D26', np.float32, u.arcmin),
+        ('BA', np.float32, None),
+        ('PA', np.float32, u.degree),
+    ]
+
+    out = Table()
+    for col in dmcols:
+        out.add_column(Column(name=col[0], data=np.zeros(nobj, dtype=col[1]), unit=col[2]))
+
+    # copy over the data
+    check = []
+    for col in out.colnames:
+        if col in ellipse.colnames:
+            val = ellipse[col]
+            if not (isinstance(val, str) or 'U' in str(val.dtype)):
+                if type(val) is MaskedColumn:
+                    I = val.mask
+                else:
+                    I = np.logical_or(np.isnan(val.value), np.logical_not(np.isfinite(val.value)))
+                if np.any(I):
+                    log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
+                    I = np.where(I)[0]
+                    pdb.set_trace()
+                    check.append(I)
+                    val[I] = 0
+            out[col] = val
+    check = np.unique(np.hstack(check))
+    print(','.join(ellipse['GROUP_NAME'][check].value))
+    pdb.set_trace()
+
+    return out
+
+
 def _empty_tractor(cat):
     for col in cat.colnames:
         if cat[col].dtype == bool:
@@ -623,11 +754,10 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
                   datadir=None, verbose=False, clobber=False):
     import time
     import multiprocessing
-    import astropy.units as u
     from astropy.io import fits
-    from astropy.table import vstack, join, Column, MaskedColumn
     from SGA.ellipse import ELLIPSEBIT
     from SGA.coadds import REGIONBITS
+    from SGA.util import match
 
     print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
     print('E.g., ESO 050- G 010 is on the edge of NGC104 and we want the sources to match the DR11 maskbits')
@@ -641,6 +771,8 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
     if galex:
         datasets += ['galex']
         all_bands = np.append(all_bands, ['FUV', 'NUV'])
+
+
 
     for region in ['dr11-south', 'dr9-north']:
         version = SGA_version()
@@ -657,7 +789,7 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
 
         # testing
         #sample_region = sample_region[sample_region['GROUP_MULT'] > 1]
-        sample_region = sample_region[:128]
+        #sample_region = sample_region[:128]
         #sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19327p2880', 'SGA2025_19325p2882'])]
         #sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19379p2775', 'SGA2025_19410p2921'])]
 
@@ -693,138 +825,21 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
             pdb.set_trace()
         #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
 
+        #pdb.set_trace()
+        np.sum(~np.isfinite(ellipse['COG_LNALPHA1_ERR_R']))
         # re-organize the ellipse table to match the datamodel and assign units
-        dmcols = [
-            ('SGAID', np.int64, None),
-            ('SGAGROUP', 'U18', None),
-            ('REGION', np.int16, None),
-            ('OBJNAME', 'U30', None),
-            ('PGC', np.int64, None),
-            ('SAMPLE', np.int32, None),
-            ('ELLIPSEMODE', np.int32, None),
-            ('FITMODE', np.int32, None),
-            ('BX_INIT', np.float32, u.pixel),
-            ('BY_INIT', np.float32, u.pixel),
-            ('RA_INIT', np.float64, u.degree),
-            ('DEC_INIT', np.float64, u.degree),
-            ('SMA_INIT', np.float32, u.arcsec),
-            ('DIAM_INIT', np.float32, u.arcmin),
-            ('BA_INIT', np.float32, None),
-            ('PA_INIT', np.float32, u.degree),
-            ('MAG', np.float32, u.mag),
-            ('BAND', 'U1', None),
-            ('EBV', np.float32, u.mag),
-            ('GROUP_ID', np.int32, None),
-            ('GROUP_NAME', 'U10', None),
-            ('GROUP_MULT', np.int16, None),
-            ('GROUP_PRIMARY', bool, None),
-            ('GROUP_RA', np.float64, u.degree),
-            ('GROUP_DEC', np.float64, u.degree),
-            ('GROUP_DIAMETER', np.float32, u.arcmin),
-            ('PSFSIZE_G', np.float32, u.arcsec),
-            ('PSFSIZE_R', np.float32, u.arcsec),
-            ('PSFSIZE_I', np.float32, u.arcsec),
-            ('PSFSIZE_Z', np.float32, u.arcsec),
-            ('PSFDEPTH_G', np.float32, u.ABmag),
-            ('PSFDEPTH_R', np.float32, u.ABmag),
-            ('PSFDEPTH_I', np.float32, u.ABmag),
-            ('PSFDEPTH_Z', np.float32, u.ABmag),
-            ('SGANAME', 'U25', None),
-            ('RA', np.float64, u.degree),
-            ('DEC', np.float64, u.degree),
-            ('BX', np.float32, u.pixel),
-            ('BY', np.float32, u.pixel),
-            ('SMA_MOMENT', np.float32, u.arcsec),
-            ('BA_MOMENT', np.float32, None),
-            ('PA_MOMENT', np.float32, u.degree),
-            ('RA_TRACTOR', np.float64, u.degree),
-            ('DEC_TRACTOR', np.float64, u.degree),
-            ('ELLIPSEBIT', np.int32, None),
-        ]
-        for filt in bands:
-            dmcols += [(f'MW_TRANSMISSION_{filt.upper()}', np.float32, None)]
+        outellipse = SGA_datamodel(ellipse, bands, all_bands)
 
-        outellipse = Table()
-        for col in dmcols:
-            outellipse.add_column(Column(name=col[0], data=np.zeros(nobj, dtype=col[1]), unit=col[2]))
-
-        for col in outellipse.colnames:
-            val = ellipse[col]
-            if col == 'PSFSIZE_I':
-                pdb.set_trace()
-            if not (isinstance(val, str) or 'U' in str(val.dtype)):
-                if type(val) is MaskedColumn:
-                    I = val.mask
-                else:
-                    I = np.logical_or(np.isnan(val.value), np.logical_not(np.isfinite(val.value)))
-                if np.any(I):
-                    log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
-                    val[I] = 0
+        # final geometry
+        diam, ba, pa = SGA_geometry(outellipse)
+        for col, val in zip(['D26', 'BA', 'PA'], [diam, ba, pa]):
             outellipse[col] = val
 
         pdb.set_trace()
 
-        outellipse = ellipse[ellipse.colnames[:54]]
+        # separate out (and sort) the tractor catalog of the SGA sources
+        #m1, m2 = match(ellipse[
 
-        def choose_geometry(ellipse):
-            diam = 2. * ellipse['R26_R'].value / 60. # [arcmin]
-            ba = ellipse['BA_MOMENT'].value
-            pa = ellipse['PA_MOMENT'].value
-            return diam, ba, pa
-
-        diam, ba, pa = choose_geometry(ellipse)
-
-        outellipse.add_column(Column(name='DIAM', unit=u.arcmin, data=diam.astype('f4')))
-        outellipse.add_column(Column(name='BA', unit=None, data=ba.astype('f4')))
-        outellipse.add_column(Column(name='PA', unit=u.deg, data=pa.astype('f4')))
-
-        ubands = np.char.upper(bands)
-        uall_bands = np.char.upper(all_bands)
-
-        for filt in uall_bands:
-            col = f'GINI_{filt}'
-            outellipse.add_column(Column(name=col, data=ellipse[col].value))
-
-        for param, unit, dtype in zip(
-                #['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-                ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-                [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
-                ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
-            for filt in uall_bands:
-                col = f'{param}_{filt}'
-                outellipse.add_column(Column(name=col, unit=unit, data=ellipse[col].value))
-            if not ('CHI2' in param or 'NDOF' in param):
-                for filt in uall_bands:
-                    col = f'{param}_ERR_{filt}'
-                    outellipse.add_column(Column(name=f'{param}_ERR_{filt}',
-                                              unit=unit, data=ellipse[col].value))
-
-        # flux within apertures that are multiples of sma_moment
-        for iap in range(len(APERTURES)):
-            col = f'SMA_AP{iap:02}'
-            outellipse.add_column(Column(name=col, unit=u.arcsec, data=ellipse[col].value))
-        for iap in range(len(APERTURES)):
-            for filt in uall_bands:
-                col = f'FLUX_AP{iap:02}_{filt}'
-                outellipse.add_column(Column(name=col, unit=u.nanomaggy, data=ellipse[col].value))
-            for filt in uall_bands:
-                col = f'FLUX_ERR_AP{iap:02}_{filt}'
-                outellipse.add_column(Column(name=col, unit=u.nanomaggy, data=ellipse[col].value))
-            for filt in uall_bands:
-                col = f'FMASKED_AP{iap:02}_{filt}'
-                outellipse.add_column(Column(name=col, unit=None, data=ellipse[col].value))
-
-        # optical isophotal radii
-        for thresh in SBTHRESH:
-            for filt in ubands:
-                col = f'R{thresh:.0f}_{filt}'
-                outellipse.add_column(Column(name=col, unit=u.arcsec, data=ellipse[col].value))
-            for filt in ubands:
-                col = f'R{thresh:.0f}_ERR_{filt}'
-                outellipse.add_column(Column(name=col, unit=u.arcsec, data=ellipse[col].value))
-
-        ellipse = outellipse
-        ##################################################
 
         ## exact join
         #parent = vstack(parent1, join_type='exact', metadata_conflicts='silent')
@@ -1363,7 +1378,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
     nsample = len(sample)
 
-    all_bands = data['all_bands']
+    all_data_bands = data['all_data_bands']
     opt_bands = data['opt_bands']
     opt_refband = data['opt_refband']
     opt_pixscale = data['opt_pixscale']
@@ -1763,7 +1778,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
     # clean-up
     del data['brightstarmask']
-    for filt in all_bands:
+    for filt in all_data_bands:
         del data[filt]
         #for col in ['psf', 'invvar', 'mask']:
         for col in ['psf', 'mask']:
@@ -1866,16 +1881,22 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                 log.critical(msg)
                 return {}, 0
 
-    # update all_bands
-    all_bands = opt_bands
+    all_data_bands = opt_bands
     if unwise:
-        all_bands = np.hstack((all_bands, unwise_bands))
+        all_data_bands = np.hstack((all_data_bands, unwise_bands))
     if galex:
-        all_bands = np.hstack((all_bands, galex_bands))
-    log.info(f'Found complete data in bands: {",".join(all_bands)}')
+        all_data_bands = np.hstack((all_data_bands, galex_bands))
+    ## update all_bands
+    #all_bands = opt_bands
+    #if unwise:
+    #    all_bands = np.hstack((all_bands, unwise_bands))
+    #if galex:
+    #    all_bands = np.hstack((all_bands, galex_bands))
+    log.info(f'Found complete data in bands: {",".join(all_data_bands)}')
 
     # Pack some preliminary info into the output dictionary.
     data['all_bands'] = all_bands
+    data['all_data_bands'] = all_data_bands
     data['opt_bands'] = opt_bands
     data['galex_bands'] = galex_bands
     data['unwise_bands'] = unwise_bands
@@ -1903,11 +1924,11 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     if galex:
         cols += [f'flux_{filt.lower()}' for filt in galex_bands]
         cols += [f'flux_ivar_{filt.lower()}' for filt in galex_bands]
-        cols += [f'psfdepth_{filt}' for filt in galex_bands]
+        cols += [f'psfdepth_{filt.lower()}' for filt in galex_bands]
     if unwise:
         cols += [f'flux_{filt.lower()}' for filt in unwise_bands]
         cols += [f'flux_ivar_{filt.lower()}' for filt in unwise_bands]
-        cols += [f'psfdepth_{filt}' for filt in unwise_bands]
+        cols += [f'psfdepth_{filt.lower()}' for filt in unwise_bands]
 
     prim = fitsio.read(tractorfile, columns='brick_primary')
     tractor = fits_table(tractorfile, rows=np.where(prim)[0], columns=cols)
@@ -1993,7 +2014,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     #data['samplesrcs'] = samplesrcs
 
     # add the PSF depth and size
-    _get_psfsize_and_depth(sample, tractor, bands,
+    _get_psfsize_and_depth(sample, tractor, all_data_bands,
                            pixscale, incenter=False)
 
     # Read the maskbits image and build the starmask.
