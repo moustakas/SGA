@@ -394,8 +394,8 @@ def radius_fraction_uncertainty(f, params, cov, r0=10., var_r0=None):
         sigma2 += (dr_dr0**2) * float(var_r0)
     sigma_r = np.sqrt(max(sigma2, 0.0))
 
-    r = to_float32_safe_mapping(r)
-    sigma_r = to_float32_safe_mapping(sigma_r)
+    r = to_float32_safe_scalar(r)
+    sigma_r = to_float32_safe_scalar(sigma_r)
 
     return r, sigma_r
 
@@ -769,16 +769,14 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         ap_moment = EllipticalAperture((bx, by), a=sma_moment_pix, theta=ellipse_pa,
                                        b=sma_moment_pix*(1.-ellipse_eps))
         apmask_moment = ap_moment.to_mask().to_image((width, width)) != 0. # object mask=True
-        gin = gini(img, mask=np.logical_or(msk, np.logical_not(apmask_moment)))
-        if np.isnan(gin):
-            pdb.set_trace()
-        results[f'GINI_{filt.upper()}'] = gin
+        gini_mask = np.logical_or(msk, np.logical_not(apmask_moment))
+        if not np.all(gini_mask): # not all pixels masked
+            gin = gini(img, mask=gini_mask)
+            results[f'GINI_{filt.upper()}'] = gin
 
         #import matplotlib.pyplot as plt
         #fig, ax = plt.subplots()
-        #ax.imshow(np.log10(img*np.logical_or(msk, apmask_moment)), origin='lower')
-        #ax.imshow(np.log10(img), origin='lower')
-        #ax.imshow(, origin='lower')
+        #ax.imshow(np.log10(img*gini_mask), origin='lower')
         #ap_moment.plot(ax=ax)
         #fig.savefig('ioannis/tmp/junk.png')
 
@@ -823,11 +821,14 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                 if np.isnan(r50) or np.isnan(r50_err):
                     pass
                 else:
-                    log.info(f"{filt}: r(50) = {r50:.3f} ± {r50_err:.3f}")
+                    log.info(f"{filt}(50) = {r50:.3f} ± {r50_err:.3f}")
                     results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
                     results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
             except:
                 pass
+
+        #if filt == 'i':
+        #    pdb.set_trace()
 
         # aperture photometry within the reference apertures
         mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
@@ -866,7 +867,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                             sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
                             nmonte=nmonte, sky_sigma=0.02, smooth_win=3, random_state=seed)
                         if res['lower_limit']:
-                            log.warning(f'Surface-brightness profile never reaches {thresh:.0f} mag/arcsec2.')
+                            log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
                         else:
                             log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
                                       f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")

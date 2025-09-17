@@ -488,10 +488,28 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 
 
 def SGA_geometry(ellipse):
-    diam = 2. * ellipse['R26_R'].value / 60. # [arcmin]
+
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    return diam, ba, pa
+    diam = np.zeros(len(ellipse))
+    diam_ref = np.zeros(len(ellipse), '<U5')
+
+    # r-band R(26)
+    I =  (diam == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)
+    if np.any(I):
+        diam[I] = ellipse['R26_R'][I].value
+        diam_ref[I] = 'R26_R'
+
+    # r-band R(24)
+    I =  (diam == 0.) * (ellipse['R24_R'] > 0.) * (ellipse['R24_ERR_R'] > 0.)
+    if np.any(I):
+        diam[I] = ellipse['R24_R'][I].value * 1.70 # median factor
+        diam_ref[I] = 'R24_R'
+
+    # convert radius-->diameter and arcsec-->arcmin
+    diam *= (2. / 60.) # [arcmin]
+
+    return np.float32(diam), ba, pa, diam_ref
 
 
 def SGA_datamodel(ellipse, bands, all_bands):
@@ -588,6 +606,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('D26', np.float32, u.arcmin),
         ('BA', np.float32, None),
         ('PA', np.float32, u.degree),
+        ('D26_REF', '<U5', None),
     ]
 
     out = Table()
@@ -607,13 +626,13 @@ def SGA_datamodel(ellipse, bands, all_bands):
                 if np.any(I):
                     log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
                     I = np.where(I)[0]
-                    pdb.set_trace()
+                    #pdb.set_trace()
                     check.append(I)
                     val[I] = 0
             out[col] = val
     check = np.unique(np.hstack(check))
     print(','.join(ellipse['GROUP_NAME'][check].value))
-    pdb.set_trace()
+    #pdb.set_trace()
 
     return out
 
@@ -773,7 +792,6 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
         all_bands = np.append(all_bands, ['FUV', 'NUV'])
 
 
-
     for region in ['dr11-south', 'dr9-north']:
         version = SGA_version()
         outfile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
@@ -825,21 +843,23 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
             pdb.set_trace()
         #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
 
-        #pdb.set_trace()
-        np.sum(~np.isfinite(ellipse['COG_LNALPHA1_ERR_R']))
+        #np.sum(~np.isfinite(ellipse['COG_LNALPHA1_ERR_R']))
         # re-organize the ellipse table to match the datamodel and assign units
         outellipse = SGA_datamodel(ellipse, bands, all_bands)
 
         # final geometry
-        diam, ba, pa = SGA_geometry(outellipse)
-        for col, val in zip(['D26', 'BA', 'PA'], [diam, ba, pa]):
+        diam, ba, pa, diam_ref = SGA_geometry(outellipse)
+        for col, val in zip(['D26', 'BA', 'PA', 'D26_REF'],
+                            [diam, ba, pa, diam_ref]):
             outellipse[col] = val
+
+        #I = (outellipse['R26_G'] > 0.) * (outellipse['R26_R'] > 0.) ; np.median(outellipse['R26_R'][I]/outellipse['R26_G'][I])
+        outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
 
         pdb.set_trace()
 
         # separate out (and sort) the tractor catalog of the SGA sources
         #m1, m2 = match(ellipse[
-
 
         ## exact join
         #parent = vstack(parent1, join_type='exact', metadata_conflicts='silent')
@@ -1604,14 +1624,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
             [bx, by, sma, ba, pa] = geo_iter
             #print(iobj, iiter, bx, by, sma, ba, pa)
 
-        # Set the blended bit and largeshift bits, as needed.
-        if len(refsamples) > 0:
-            Iclose = in_ellipse_mask(bx, width-by, sma, sma*ba, pa,
-                                     refsamples['BX_INIT'],
-                                     width-refsamples['BY_INIT'])
-            if np.any(Iclose):
-                sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['BLENDED']
-
+        # set the largeshift bits
         ra_final, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
         dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
         if dshift_arcsec > maxshift_arcsec:
@@ -1670,6 +1683,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         #plt.imshow(np.log10(opt_images_final[iobj, 0, :, :]*(opt_maskbits[iobj, :, :]==0)), origin='lower')
         #plt.savefig('ioannis/tmp/junk.png')
         #plt.close()
+
+    # Loop through all objects again to set the blended bit.
+    for iobj, obj in enumerate(sample):
+        refindx = np.delete(np.arange(nsample), iobj)
+        for indx in refindx:
+            [bx, by, _, _, _] = geo_final[iobj, :]
+            [refbx, refby, refsma, refba, refpa] = geo_final[indx, :]
+            Iclose = in_ellipse_mask(refbx, width-refby, refsma,
+                                     refsma*refba, refpa, bx, width-by)
+            if Iclose:
+                sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['BLENDED']
 
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
