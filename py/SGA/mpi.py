@@ -67,6 +67,9 @@ def mpi_args():
 
     parser.add_argument('--lvd', action='store_true', help='Read the parent LVD sample.')
 
+    parser.add_argument('--use-gpu', action='store_true', help='Launch the GPU version of legacypipe (only with --coadds).')
+    parser.add_argument('--threads-per-gpu', default=16, type=int, help='Max threads per GPU - CPU will fill remaining threads.')
+
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')
     args = parser.parse_args()

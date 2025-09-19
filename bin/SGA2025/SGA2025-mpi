@@ -68,7 +68,7 @@ def main():
     """
     from legacypipe.runs import get_survey
 
-    from SGA.coadds import RUNS, BANDS
+    from SGA.coadds import RUNS, BANDS, RELEASE
     from SGA.mpi import mpi_args
     from SGA.io import set_legacysurvey_dir
     from SGA.ellipse import ELLIPSEMODE
@@ -110,6 +110,7 @@ def main():
         htmldir = args.htmldir
 
     run = RUNS[args.region]
+    release = RELEASE[args.region]
     bands = BANDS[args.region]
 
     # Read and broadcast the sample.
@@ -125,16 +126,16 @@ def main():
         log.info(f'$SGA_HTML_DIR={htmldir}')
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
-        if args.build_catalog or args.build_refcat:
-            region = None
-        else:
-            region = args.region
+        #if args.build_catalog or args.build_refcat:
+        #    region = None
+        #else:
+        #    region = args.region
 
         sample, fullsample = read_sample(
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, maxmult=args.maxmult,
             galaxylist=args.galaxylist, no_groups=no_groups,
-            lvd=args.lvd, region=region,
+            lvd=args.lvd, region=args.region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
         if len(sample) == 0:
@@ -211,11 +212,12 @@ def main():
 
             return
 
-        if args.build_catalog:
-            build_catalog(sample, fullsample, bands=bands, datadir=datadir,
-                          no_groups=no_groups, unwise=args.unwise, galex=args.galex,
-                          mp=args.mp, verbose=args.verbose, clobber=args.clobber)
-            return
+    if args.build_catalog:
+        build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
+                      datadir=datadir, no_groups=no_groups, unwise=args.unwise,
+                      galex=args.galex, mp=args.mp, verbose=args.verbose,
+                      clobber=args.clobber)
+        return
 
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
@@ -347,11 +349,12 @@ def main():
             if args.debug:
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                    pixscale=args.pixscale, bands=bands, mp=args.mp,
+                    release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
                     nsigma=args.nsigma, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
                     just_coadds=args.just_coadds, force=args.force,
                     force_psf_detection=force_psf_detection,
                     fit_on_coadds=args.fit_on_coadds,
+                    use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
                     cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
                     verbose=args.verbose)
             else:
@@ -359,10 +362,11 @@ def main():
                     with redirect_stdout(L), redirect_stderr(L):
                         err, _ = custom_coadds(
                             onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                            pixscale=args.pixscale, bands=bands, mp=args.mp,
+                            release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
                             nsigma=args.nsigma, just_coadds=args.just_coadds,
                             force_psf_detection=force_psf_detection,
                             fit_on_coadds=args.fit_on_coadds,
+                            use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
                             force=args.force, cleanup=args.cleanup,
                             unwise=args.unwise, galex=args.galex,
                             verbose=args.verbose)

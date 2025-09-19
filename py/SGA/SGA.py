@@ -671,6 +671,7 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
 
     """
     import fitsio
+    from os import getpid
     from glob import glob
     from legacypipe.bits import MASKBITS
     from SGA.ellipse import ELLIPSEBIT
@@ -684,9 +685,8 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
         log.warning(f'All ellipse files missing for {gdir}/{grp}')
         return Table(), Table()
 
-    if igrp % 1000 == 0:
-        log.info(f'Working on group {igrp:,d}')
-    #log.info(f'Working on group {igrp:,d}')
+    if igrp % 500 == 0:
+        log.info(f'Process {getpid()}: working on group {igrp:,d}')
 
     nsample = len(refid_array)
 
@@ -726,7 +726,6 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
         ellipse = vstack(ellipse)
 
     assert(np.all(np.isin(ellipse[REFIDCOLUMN], refid_array)))
-
 
     # Read the Tractor catalog for all the SGA sources as well as for
     # all sources within the SGA ellipse (using MASKBITS).
@@ -777,24 +776,31 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
         tractor_sga = vstack(tractor_sga)
         tractor = vstack((tractor, tractor_sga))
 
-    #try:
-    #    assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
-    #except:
-    #    pdb.set_trace()
-    #assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
-
     return ellipse, tractor
 
 
-def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
-                  galex=True, unwise=True, mp=1, no_groups=False,
-                  datadir=None, verbose=False, clobber=False):
+def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
+                  region='dr11-south', galex=True, unwise=True, mp=1,
+                  no_groups=False, datadir=None, verbose=False,
+                  clobber=False):
+    """Build the final catalog.
+
+    FIXME - combine the north and south
+
+    """
     import time
+    from glob import glob
     import multiprocessing
     from astropy.io import fits
     from SGA.ellipse import ELLIPSEBIT, FITMODE
     from SGA.coadds import REGIONBITS
     from SGA.util import match, get_dt
+
+
+    if comm:
+        rank, size = comm.rank, comm.size
+    else:
+        rank, size = 0, 1
 
     print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
     print('E.g., ESO 050- G 010 is on the edge of NGC104 and we want the sources to match the DR11 maskbits')
@@ -810,137 +816,171 @@ def build_catalog(sample, fullsample, bands=['g', 'r', 'i', 'z'],
         all_bands = np.append(all_bands, ['FUV', 'NUV'])
 
 
-    for region in ['dr11-south', 'dr9-north']:
-        version = SGA_version()
-        outfile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
-        outfile_ellipse = os.path.join(sga_dir(), 'sample', f'SGA2025-ellipse-{version}-{region}.fits')
-        kdoutfile_ellipse = os.path.join(sga_dir(), 'sample', f'SGA2025-ellipse-{version}-{region}.kd.fits')
-        if os.path.isfile(outfile) and not clobber:
+    version = SGA_version()
+    outfile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+    outfile_ellipse = os.path.join(sga_dir(), 'sample', f'SGA2025-ellipse-{version}-{region}.fits')
+    kdoutfile_ellipse = os.path.join(sga_dir(), 'sample', f'SGA2025-ellipse-{version}-{region}.kd.fits')
+    if os.path.isfile(outfile) and not clobber:
+        if rank == 0:
             log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
-            continue
+        return
 
-        I = sample['REGION'] & REGIONBITS[region] != 0
-        J = fullsample['REGION'] & REGIONBITS[region] != 0
-        sample_region = sample[I]
-        fullsample_region = fullsample[J]
+    #I = sample['REGION'] & REGIONBITS[region] != 0
+    #J = fullsample['REGION'] & REGIONBITS[region] != 0
+    #sample_region = sample[I]
+    #fullsample_region = fullsample[J]
 
-        # testing
-        #sample_region = sample_region[sample_region['GROUP_MULT'] > 1]
-        #sample_region = sample_region[:128]
-        #sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19327p2880', 'SGA2025_19325p2882'])]
-        #sample_region = sample_region[np.isin(sample_region['SGAGROUP'], ['SGA2025_19379p2775', 'SGA2025_19410p2921'])]
+    # testing
+    #sample = sample[sample['GROUP_MULT'] > 1]
+    #sample = sample[:700]
+    #log.info(f'Trimmed to {len(sample):,d} groups in region={region}')
 
-        log.info(f'Trimmed to {len(sample_region):,d} groups in region={region}')
+    group, groupdir = get_galaxy_galaxydir(
+        sample, region=region,
+        group=not no_groups, datadir=datadir)
+    ngrp = len(group)
 
-        group, groupdir = get_galaxy_galaxydir(
-            sample_region, region=region,
-            group=not no_groups, datadir=datadir)
-        ngrp = len(group)
-
-        # build the mp list
+    # divide into chunks and assign to different ranks (if running with MPI)
+    if rank == 0:
         t0 = time.time()
+        nperchunk = 2**12 # 14 # 2**8
+
+        # clean up previous runs
+        chunkfiles = glob(os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk*.fits'))
+        for chunkfile in chunkfiles:
+            os.remove(chunkfile)
+
+        nchunk = int(np.ceil(ngrp / nperchunk))
+        chunkindx = np.array_split(np.arange(ngrp), nchunk)
+        nperchunk = int(np.mean([len(indx) for indx in chunkindx]))
+
+        log.info(f'Dividing the sample into {nchunk:,d} chunk(s) with ' + \
+                 f'{nperchunk:,d} objects per chunk.')
+
+        #nchunkperrank = int(np.ceil(nperchunk / size))
+        #log.info(f'Distributing chunks to {size} MPI ranks with approximately {nchunkperrank} chunks per rank.')
+        #chunkfiles = [os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk{ichunk}.fits')
+        #              for ichunk in range(nchunk)]
+
+    chunkfiles = comm.bcast(chunkfiles, root=0)
+
+    if comm:
+        comm.barrier()
+
+    chunkfiles = []
+    for ichunk, indx in enumerate(chunkindx):
+        chunkfile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk{ichunk}.fits')
+        log.info(f'Dividing chunk {ichunk+1}/{nchunk} among {mp} cores ({len(indx)//mp:,d} objects per core).')
+        log.info(f'  Writing to: {chunkfile}')
+        chunkfiles.append(chunkfile)
+
         mpargs = []
-        for igrp, (prim, grp, gdir) in enumerate(zip(sample_region, group, groupdir)):
-            I = prim['GROUP_ID'] == fullsample_region['GROUP_ID']
-            #mpargs.append((fullsample_region[I], grp, gdir, datasets, opt_bands))
-            mpargs.append((igrp, grp, gdir, fullsample_region[REFIDCOLUMN][I].value,
-                           datasets, opt_bands))
+        for iobj, grp, gdir in zip(indx, group[indx], groupdir[indx]):
+            refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][iobj]].value
+            mpargs.append((iobj, grp, gdir, refids, datasets, opt_bands))
 
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 out = P.map(_build_catalog_one, mpargs)
         else:
             out = [build_catalog_one(*mparg) for mparg in mpargs]
-        pdb.set_trace()
 
         out = list(zip(*out))
         ellipse = vstack(out[0])
         tractor = vstack(out[1])
-        nobj = len(ellipse)
+        fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
+        fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
 
-        dt, unit = get_dt(t0)
-        log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
-                 f'{len(tractor):,d} Tractor sources in {dt:.3f} {unit}.')
+    # gather the results
+    ellipse, tractor = [], []
+    for chunkfile in chunkfiles:
+        ellipse.append(Table(fitsio.read(chunkfile, 'ELLIPSE')))
+        tractor.append(Table(fitsio.read(chunkfile, 'TRACTOR')))
+        os.remove(chunkfile)
+    ellipse = vstack(ellipse)
+    tractor = vstack(tractor)
+    nobj = len(ellipse)
 
-        try:
-            assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
-        except:
-            pdb.set_trace()
-        #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
+    dt, unit = get_dt(t0)
+    log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
+             f'{len(tractor):,d} Tractor sources in {dt:.3f} {unit}.')
 
-        #np.sum(~np.isfinite(ellipse['COG_LNALPHA1_ERR_R']))
-        # re-organize the ellipse table to match the datamodel and assign units
-        outellipse = SGA_datamodel(ellipse, bands, all_bands)
-
-        # final geometry
-        diam, ba, pa, diam_ref = SGA_geometry(outellipse)
-        for col, val in zip(['D26', 'BA', 'PA', 'D26_REF'],
-                            [diam, ba, pa, diam_ref]):
-            outellipse[col] = val
-
-        #I = (outellipse['R26_G'] > 0.) * (outellipse['R26_R'] > 0.) ; np.median(outellipse['R26_R'][I]/outellipse['R26_G'][I])
-        outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
-        assert(np.all(outellipse['D26'] > 0.))
-
-        # separate out (and sort) the tractor catalog of the SGA sources
-        I = np.where(tractor['ref_cat'] == REFCAT)[0]
-        m1, m2 = match(outellipse[REFIDCOLUMN], tractor['ref_id'][I])
-        outellipse = outellipse[m1]
-        tractor_sga = tractor[I[m2]]
-
-        tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
-
-        # Write out ellipsefile with the ELLIPSE and TRACTOR HDUs.
-        hdu_primary = fits.PrimaryHDU()
-        hdu_ellipse = fits.convenience.table_to_hdu(outellipse)
-        hdu_tractor_sga = fits.convenience.table_to_hdu(tractor_sga)
-        hdu_ellipse.header['EXTNAME'] = 'ELLIPSE'
-        hdu_tractor_sga.header['EXTNAME'] = 'TRACTOR'
-        hx = fits.HDUList([hdu_primary, hdu_ellipse, hdu_tractor_sga])
-        hx.writeto(outfile, overwrite=True, checksum=True)
-        log.info(f'Wrote {len(outellipse):,d} objects to {outfile}')
-
-        # Write out ellipsefile_ellipse by combining the ellipse and
-        # tractor catalogs.
-        ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG', 'PA', 'BA', 'D26', 'FITMODE']
-        tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
-            [f'flux_{filt}' for filt in bands]
-
-        out_sga = outellipse[ellipse_cols]
-        out_sga.rename_columns(['SGAID', 'D26'], ['REF_ID', 'DIAM'])
-        [out_sga.rename_column(col, col.lower()) for col in out_sga.colnames]
-
-        out_nosga = Table()
-        for col in out_sga.colnames:
-            out_nosga[col] = np.zeros(len(tractor_nosga), dtype=out_sga[col].dtype)
-        out_nosga = hstack((out_nosga, tractor_nosga[tractor_cols]))
-        out_nosga['ra'] = tractor_nosga['ra']
-        out_nosga['dec'] = tractor_nosga['dec']
-        out_nosga['ref_id'] = -1
-
-        out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
-        out = vstack((out_sga, out_nosga))
-
-        out['fitmode'] += FITMODE['FREEZE']
-
-        hdu_primary = fits.PrimaryHDU()
-        hdu_out = fits.convenience.table_to_hdu(out)
-        hdu_out.header['EXTNAME'] = 'SGA2025'
-        hdu_out.header['VER'] = REFCAT
-        hx = fits.HDUList([hdu_primary, hdu_out])
-        hx.writeto(outfile_ellipse, overwrite=True, checksum=True)
-        log.info(f'Wrote {len(out):,d} objects to {outfile_ellipse}')
-
-        # KD version
-        cmd1 = f'startree -i {outfile_ellipse} -o {kdoutfile_ellipse} -T -P -k -n stars'
-        cmd2 = f'modhead {kdoutfile_ellipse} VER {REFCAT}'
-        _ = os.system(cmd1)
-        _ = os.system(cmd2)
-        log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
-
+    try:
+        assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
+    except:
         pdb.set_trace()
+    #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
 
-    # FIXME - combine the north and south
+    #np.sum(~np.isfinite(ellipse['COG_LNALPHA1_ERR_R']))
+    # re-organize the ellipse table to match the datamodel and assign units
+    outellipse = SGA_datamodel(ellipse, bands, all_bands)
+
+    # final geometry
+    diam, ba, pa, diam_ref = SGA_geometry(outellipse)
+    for col, val in zip(['D26', 'BA', 'PA', 'D26_REF'],
+                        [diam, ba, pa, diam_ref]):
+        outellipse[col] = val
+
+    #I = (outellipse['R26_G'] > 0.) * (outellipse['R26_R'] > 0.) ; np.median(outellipse['R26_R'][I]/outellipse['R26_G'][I])
+    outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
+    assert(np.all(outellipse['D26'] > 0.))
+
+    # separate out (and sort) the tractor catalog of the SGA sources
+    I = np.where(tractor['ref_cat'] == REFCAT)[0]
+    m1, m2 = match(outellipse[REFIDCOLUMN], tractor['ref_id'][I])
+    outellipse = outellipse[m1]
+    tractor_sga = tractor[I[m2]]
+
+    tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
+
+    # Write out ellipsefile with the ELLIPSE and TRACTOR HDUs.
+    hdu_primary = fits.PrimaryHDU()
+    hdu_ellipse = fits.convenience.table_to_hdu(outellipse)
+    hdu_tractor_sga = fits.convenience.table_to_hdu(tractor_sga)
+    hdu_ellipse.header['EXTNAME'] = 'ELLIPSE'
+    hdu_tractor_sga.header['EXTNAME'] = 'TRACTOR'
+    hx = fits.HDUList([hdu_primary, hdu_ellipse, hdu_tractor_sga])
+    hx.writeto(outfile, overwrite=True, checksum=True)
+    log.info(f'Wrote {len(outellipse):,d} objects to {outfile}')
+
+    # Write out ellipsefile_ellipse by combining the ellipse and
+    # tractor catalogs.
+    ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG', 'PA', 'BA', 'D26', 'FITMODE']
+    tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
+        [f'flux_{filt}' for filt in bands]
+
+    out_sga = outellipse[ellipse_cols]
+    out_sga.rename_columns(['SGAID', 'D26'], ['REF_ID', 'DIAM'])
+    [out_sga.rename_column(col, col.lower()) for col in out_sga.colnames]
+
+    out_nosga = Table()
+    for col in out_sga.colnames:
+        out_nosga[col] = np.zeros(len(tractor_nosga), dtype=out_sga[col].dtype)
+    out_nosga = hstack((out_nosga, tractor_nosga[tractor_cols]))
+    out_nosga['ra'] = tractor_nosga['ra']
+    out_nosga['dec'] = tractor_nosga['dec']
+    out_nosga['ref_id'] = -1
+
+    out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
+    out = vstack((out_sga, out_nosga))
+
+    out['fitmode'] += FITMODE['FREEZE']
+
+    hdu_primary = fits.PrimaryHDU()
+    hdu_out = fits.convenience.table_to_hdu(out)
+    hdu_out.header['EXTNAME'] = 'SGA2025'
+    hdu_out.header['VER'] = REFCAT
+    hx = fits.HDUList([hdu_primary, hdu_out])
+    hx.writeto(outfile_ellipse, overwrite=True, checksum=True)
+    log.info(f'Wrote {len(out):,d} objects to {outfile_ellipse}')
+
+    # KD version
+    cmd1 = f'startree -i {outfile_ellipse} -o {kdoutfile_ellipse} -T -P -k -n stars'
+    cmd2 = f'modhead {kdoutfile_ellipse} VER {REFCAT}'
+    _ = os.system(cmd1)
+    _ = os.system(cmd2)
+    log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
+
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
