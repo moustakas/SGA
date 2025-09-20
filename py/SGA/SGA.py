@@ -66,16 +66,14 @@ APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
 def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
     if nocuts:
-        version = 'v0.1'
+        version = 'v0.11'
     elif vicuts:
-        version = 'v0.1'
+        version = 'v0.11'
     elif archive:
-        version = 'v0.1'
+        version = 'v0.11'
     elif parent:
         #version = 'v0.10'
         version = 'v0.11' # no mindiam/minsep cuts
-    else:
-        version = 'v0.10'
     return version
 
 
@@ -2178,17 +2176,15 @@ def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
         diam = mindiam # arcmin
 
     radius_mosaic_arcsec = 60. * diam / 2. # [arcsec]
-    print('### check -- using group_diameters with no adjustments!!!')
-    # FIXME - not sure if this is needed
-    #if multiplicity == 1:
-    #    if diam > 10.:
-    #        radius_mosaic_arcsec *= 1.1
-    #    elif diam > 3. and diam <= 10:
-    #        radius_mosaic_arcsec *= 1.5
-    #    elif diam > 1. and diam <= 3.:
-    #        radius_mosaic_arcsec *= 1.8
-    #    else:
-    #        radius_mosaic_arcsec *= 2.
+    if multiplicity == 1:
+        if diam > 10.:
+            radius_mosaic_arcsec *= 1.
+        elif diam > 3. and diam <= 10:
+            radius_mosaic_arcsec *= 1.1
+        elif diam > 1. and diam <= 3.:
+            radius_mosaic_arcsec *= 1.3
+        else:
+            radius_mosaic_arcsec *= 1.5
 
     if get_barlen:
         if radius_mosaic_arcsec > 6. * 60.: # [>6] arcmin
