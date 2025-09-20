@@ -66,6 +66,7 @@ def mwdust_transmission(ebv=0., band='r', run='south'):
         k_X.update({
             'g': 3.258, # BASS
             'r': 2.176, # BASS
+            'i': 1.591, # DECam
             'z': 1.199, # MzLS
         })
     else:

@@ -322,10 +322,13 @@ def _read_image_data(data, filt2imfile, verbose=False):
                 wcs = ConstantFitsWcs(wcs)
 
             if filt == opt_refband:
+                data['opt_hdr'] = hdr
                 data['opt_wcs'] = wcs
             elif filt == galex_refband:
+                data['galex_hdr'] = hdr
                 data['galex_wcs'] = wcs
             elif filt == unwise_refband:
+                data['unwise_hdr'] = hdr
                 data['unwise_wcs'] = wcs
 
         # convert WISE images from Vega nanomaggies to AB nanomaggies
@@ -394,106 +397,64 @@ def _read_image_data(data, filt2imfile, verbose=False):
     return data
 
 
-def deprecated_write_ellipsefit(data, ellipsefit, bands=['g', 'r', 'i', 'z'], sbthresh=None,
-                     apertures=None, add_datamodel_cols=None, verbose=False):
-    """Write out a FITS file based on the output of
-    ellipse.ellipsefit_multiband..
-
-    ellipsefit - input dictionary
+def table_to_fitsio(tbl):
+    """
+    Convert an Astropy Table/QTable into (data, names, units) for fitsio.write().
+    Units are written verbatim to TUNITn (non-standard allowed).
 
     """
-    from astropy.io import fits
-    from astropy.table import Table
+    names = list(tbl.colnames)
+    data  = [tbl[name].value if hasattr(tbl[name], 'value') else np.asarray(tbl[name])
+             for name in names]
+    units = []
+    for name in names:
+        u = getattr(tbl[name], 'unit', None)
+        units.append(str(u) if u is not None else '')
+    return data, names, units
 
-    ellipsefitfile = get_ellipsefit_filename(galaxy, galaxydir, filesuffix=filesuffix, galaxy_id=galaxy_id)
 
-    if sbthresh is None:
-        from SGA.ellipse import REF_SBTHRESH as sbthresh
-    if apertures is None:
-        from SGA.ellipse import REF_APERTURES as apertures
+def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
+    """
+    Build a FITSHDR copying specific keys from an existing fitsio FITSHDR.
 
-    # Turn the ellipsefit dictionary into a FITS table, starting with the
-    # galaxyinfo dictionary (if provided).
-    out = Table()
-    if galaxyinfo:
-        for key in galaxyinfo.keys():
-            data = galaxyinfo[key][0]
-            if np.isscalar(data):
-                data = np.atleast_1d(data)
+    Parameters
+    ----------
+    src_hdr : fitsio.FITSHDR or None
+        Source header to copy from (can be None).
+    keys : iterable of str
+        Keyword names to copy (if present) with their values and comments.
+    extname : str, optional
+        Set/override EXTNAME.
+    bunit : str, optional
+        Set/override BUNIT (free-form text ok in fitsio).
+    extra : dict, optional
+        Extra cards to add. Values can be scalar, or (value, comment) tuples.
+
+    Returns
+    -------
+    hdr : fitsio.FITSHDR
+
+    """
+    hdr = fitsio.FITSHDR()
+    if src_hdr is not None:
+        for k in keys:
+            if k in src_hdr:
+                val = src_hdr[k]
+                com = src_hdr.get_comment(k) if hasattr(src_hdr, 'get_comment') else ''
+                hdr.add_record({'name': k, 'value': val, 'comment': com})
+    if extname is not None:
+        hdr['EXTNAME'] = extname
+    if bunit is not None:
+        hdr['BUNIT'] = bunit
+    if extra:
+        for k, v in extra.items():
+            if isinstance(v, tuple) and len(v) == 2:
+                val, com = v
+                hdr.add_record({'name': k, 'value': val, 'comment': com})
             else:
-                data = np.atleast_2d(data)
-            unit = galaxyinfo[key][1] # add units
-            col = Column(name=key, data=data, dtype=data.dtype, unit=unit)
-            #if type(unit) is str:
-            #else:
-            #    #data *= unit
-            #    #data = u.Quantity(value=data, unit=unit, dtype=data.dtype)
-            #    col = Column(name=key, data=data, dtype=data.dtype)
-            out.add_column(col)
+                hdr[k] = v
 
-    # First, unpack the nested dictionaries.
-    datadict = {}
-    for key in ellipsefit.keys():
-        #if type(ellipsefit[key]) is dict: # obsolete
-        #    for key2 in ellipsefit[key].keys():
-        #        datadict['{}_{}'.format(key, key2)] = ellipsefit[key][key2]
-        #else:
-        #    datadict[key] = ellipsefit[key]
-        datadict[key] = ellipsefit[key]
-    del ellipsefit
-
-    # Add to the data table
-    datakeys = datadict.keys()
-    for key, unit in _get_ellipse_datamodel(sbthresh, apertures, bands=bands, add_datamodel_cols=add_datamodel_cols,
-                                            copy_mw_transmission=copy_mw_transmission):
-        if key not in datakeys:
-            raise ValueError('Data model change -- no column {} for galaxy {}!'.format(key, galaxy))
-        data = datadict[key]
-        if np.isscalar(data):# or len(np.array(data)) > 1:
-            data = np.atleast_1d(data)
-        #elif len(data) == 0:
-        #    data = np.atleast_1d(data)
-        else:
-            data = np.atleast_2d(data)
-        #if type(unit) is not str:
-        #    data = u.Quantity(value=data, unit=unit, dtype=data.dtype)
-        #col = Column(name=key, data=data)
-        col = Column(name=key, data=data, dtype=data.dtype, unit=unit)
-        #if 'z_cog' in key:
-        #    print(key)
-        #    pdb.set_trace()
-        out.add_column(col)
-
-    if np.logical_not(np.all(np.isin([*datakeys], out.colnames))):
-        raise ValueError('Data model change -- non-documented columns have been added to ellipsefit dictionary!')
-
-    # uppercase!
-    for col in out.colnames:
-        out.rename_column(col, col.upper())
-
-    hdr = legacyhalos_header()
-
-    #for col in out.colnames:
-    #    print(col, out[col])
-
-    hdu = fits.convenience.table_to_hdu(out)
-    hdu.header['EXTNAME'] = 'ELLIPSE'
-    hdu.header.update(hdr)
-    hdu.add_checksum()
-
-    hdu0 = fits.PrimaryHDU()
-    hdu0.header['EXTNAME'] = 'PRIMARY'
-    hx = fits.HDUList([hdu0, hdu])
-
-    if verbose:
-        print('Writing {}'.format(ellipsefitfile))
-    tmpfile = ellipsefitfile+'.tmp'
-    hx.writeto(tmpfile, overwrite=True, checksum=True)
-    os.rename(tmpfile, ellipsefitfile)
-    #hx.writeto(ellipsefitfile, overwrite=True, checksum=True)
-
-    #out.write(ellipsefitfile, overwrite=True)
-    #fitsio.write(ellipsefitfile, out.as_array(), extname='ELLIPSE', header=hdr, clobber=True)
+    return hdr
 
 
 def write_ellipsefit(data, sample, datasets, results, sbprofiles,
@@ -507,11 +468,19 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles,
 
     REFIDCOLUMN = data['REFIDCOLUMN']
 
+    # optical header cards to copy from the original image
+    opt_cards = ['LEGPIPEV', 'LSDIR', ]
+
+
+
+
     for idata, dataset in enumerate(datasets):
         if dataset == 'opt':
             suffix = ''.join(data['all_opt_bands']) # always griz in north & south
         else:
             suffix = dataset
+
+        hdr = data[f'{dataset}_hdr']
 
         # remove old files
         ellipsefiles = glob(os.path.join(data["galaxydir"], f'*-ellipse-{suffix}.fits'))
@@ -541,6 +510,32 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles,
             # --nclip
             # --width,height
 
+            pdb.set_trace()
+
+            tmpfile = ellipsefile + '.tmp'
+            with fitsio.FITS(tmpfile, mode='rw', clobber=True) as F:
+                # models, maskbits are numpy arrays
+                # orig_models_hdr / orig_mask_hdr are fitsio.FITSHDR you inherited
+                models_hdr  = make_header(orig_models_hdr,
+                                          keys=['FILTER','INSTRUME','EXPTIME','DATE-OBS','BUNIT'],
+                                          extname='MODELS')  # add bunit=... if you want to override
+                maskbits_hdr = make_header(orig_mask_hdr,
+                                           keys=['FILTER','INSTRUME','DATE-OBS'], extname='MASKBITS')
+                F.write(models, header=models_hdr)          # IMAGE HDU 0
+                F.write(maskbits, header=maskbits_hdr)      # IMAGE HDU 1
+                # results_obj → ELLIPSE table
+                data, names, units = table_to_fitsio(results_obj)
+                F.write(data, names=names, units=units, extname='ELLIPSE')
+                # sbprofiles_obj → SBPROFILES table
+                data2, names2, units2 = table_to_fitsio(sbprofiles_obj)
+                F.write(data2, names=names2, units=units2, extname='SBPROFILES')
+                # optional: add checksums
+                for h in F:
+                    h.write_checksum()
+            os.rename(tmpfile, ellipsefile)
+
+
+
             hdu0 = fits.PrimaryHDU(models)
             hdu1 = fits.ImageHDU(maskbits)
             hdu2 = fits.convenience.table_to_hdu(results_obj)
@@ -550,9 +545,6 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles,
             hdu1.header['EXTNAME'] = 'MASKBITS'
             hdu2.header['EXTNAME'] = 'ELLIPSE'
             hdu3.header['EXTNAME'] = 'SBPROFILES'
-
-            #hdr = legacyhalos_header()
-            #hdu.header.update(hdr)
 
             hx = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
             tmpfile = ellipsefile+'.tmp'

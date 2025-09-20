@@ -29,10 +29,13 @@ srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/script
 
 
 """
-import os, time, pdb
+import os, time, sys, pdb
+import logging, warnings
 import numpy as np
 
-from SGA.logger import log
+from SGA.logger import (log, LOGFMT, hook_legacypipe_and_root,
+                        unhook_legacypipe_and_root,
+                        setup_logging)
 
 
 def get_logfile(galaxy, galaxydir, stagesuffix):
@@ -42,9 +45,7 @@ def get_logfile(galaxy, galaxydir, stagesuffix):
     return logfile
 
 
-def done(galaxy, galaxydir, err, stagesuffix, debug=False):
-    import logging
-
+def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
     donefile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}')
     if err == 0:
         log.warning(f'Problem processing {galaxydir}/{galaxy}; please check the log file.')
@@ -55,12 +56,24 @@ def done(galaxy, galaxydir, err, stagesuffix, debug=False):
     # equivalent to 'touch'
     open(donefile, 'w').close()
 
-    # close all file handlers
-    if not debug:
-        for hh in logging.root.handlers:
-            logging.root.removeHandler(hh)
-            hh.close()
+    # restore the logger
+    if fh is not None:
+        unhook_legacypipe_and_root(fh, restore_console=True, debug=debug)
 
+        # detach from both loggers
+        logging.getLogger('py.warnings').removeHandler(fh)
+        log.removeHandler(fh)
+        fh.close()
+
+        # reattach console logging to stdout
+        have_console = any((type(h) is logging.StreamHandler) and
+                           getattr(h, "stream", None) is sys.stdout
+                           for h in log.handlers)
+        if not have_console:
+            ch = logging.StreamHandler(sys.stdout)
+            ch.setLevel(logging.INFO)
+            ch.setFormatter(LOGFMT)
+            log.addHandler(ch)
 
 def main():
     """Top-level wrapper.
@@ -292,12 +305,9 @@ def main():
         log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
                  f'{galaxydir} (index {ii:,d})')
 
-        if args.debug:
-            logfile = None
-        else:
-            from contextlib import redirect_stdout, redirect_stderr
-            logfile = get_logfile(galaxy, galaxydir, suffix)
-            log.info(f'Logging output to {logfile}')
+        logfile = get_logfile(galaxy, galaxydir, suffix)
+        log.info(f'Logging output to {logfile}')
+        fh = setup_logging(logfile, debug=args.debug)
 
         # Need the object "radius" to build the coadds.
         if no_groups:
@@ -346,31 +356,17 @@ def main():
                 # FIXME - set --no-clusters or --no-force-gaia
                 pass
 
-            if args.debug:
-                err, _ = custom_coadds(
-                    onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                    release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
-                    nsigma=args.nsigma, racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                    just_coadds=args.just_coadds, force=args.force,
-                    force_psf_detection=force_psf_detection,
-                    fit_on_coadds=args.fit_on_coadds,
-                    use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
-                    cleanup=args.cleanup, unwise=args.unwise, galex=args.galex,
-                    verbose=args.verbose)
-            else:
-                with open(logfile, 'w') as L:
-                    with redirect_stdout(L), redirect_stderr(L):
-                        err, _ = custom_coadds(
-                            onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                            release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
-                            nsigma=args.nsigma, just_coadds=args.just_coadds,
-                            force_psf_detection=force_psf_detection,
-                            fit_on_coadds=args.fit_on_coadds,
-                            use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
-                            force=args.force, cleanup=args.cleanup,
-                            unwise=args.unwise, galex=args.galex,
-                            verbose=args.verbose)
-            done(galaxy, galaxydir, err, suffix, debug=args.debug)
+            err, _ = custom_coadds(
+                onegal, galaxy, survey, run, radius_mosaic_arcsec,
+                release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
+                nsigma=args.nsigma, just_coadds=args.just_coadds,
+                force_psf_detection=force_psf_detection,
+                fit_on_coadds=args.fit_on_coadds,
+                use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
+                force=args.force, cleanup=args.cleanup,
+                unwise=args.unwise, galex=args.galex,
+                verbose=args.verbose)
+            done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
 
         if args.ellipse:
@@ -389,42 +385,28 @@ def main():
             if args.galex:
                 SGAMASKBITS += [GALEXMASKBITS]
 
-            print('Temporarily make htmlgalaxydir here')
-            if not os.path.isdir(htmlgalaxydir):
-                os.makedirs(htmlgalaxydir, exist_ok=True)
+            #print('Temporarily make htmlgalaxydir here')
+            #if not os.path.isdir(htmlgalaxydir):
+            #    os.makedirs(htmlgalaxydir, exist_ok=True)
 
             if args.debug:
                 qaplot = True
             else:
-                print('Temporarily setting qaplot=True!')
+                #print('Temporarily setting qaplot=True!')
                 #qaplot = True
                 qaplot = False
 
-            if args.debug:
-                err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                           unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
-                                           mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
-                                           nmonte=args.nmonte, seed=args.seed,
-                                           pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
-                                           galex_pixscale=args.galex_pixscale, unwise=args.unwise,
-                                           galex=args.galex, qaplot=qaplot, verbose=args.verbose,
-                                           clobber=args.clobber,
-                                           # HACK!!
-                                           htmlgalaxydir=htmlgalaxydir)
-            else:
-                with open(logfile, 'w') as L:
-                    with redirect_stdout(L), redirect_stderr(L):
-                        err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                                   unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
-                                                   mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
-                                                   nmonte=args.nmonte, seed=args.seed,
-                                                   pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
-                                                   galex_pixscale=args.galex_pixscale, unwise=args.unwise,
-                                                   galex=args.galex, qaplot=qaplot, verbose=args.verbose,
-                                                   clobber=args.clobber,
-                                                   # HACK!!
-                                                   htmlgalaxydir=htmlgalaxydir)
-            done(galaxy, galaxydir, err, suffix, debug=args.debug)
+            err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
+                                       unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
+                                       mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
+                                       nmonte=args.nmonte, seed=args.seed,
+                                       pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
+                                       galex_pixscale=args.galex_pixscale, unwise=args.unwise,
+                                       galex=args.galex, qaplot=qaplot, verbose=args.verbose,
+                                       clobber=args.clobber,
+                                       # HACK!!
+                                       htmlgalaxydir=htmlgalaxydir)
+            done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
 
         if args.htmlplots:
@@ -451,15 +433,15 @@ def main():
                              unwise=args.unwise, galex=args.galex,
                              verbose=args.verbose, clobber=args.clobber)
 
-                    #onegal, galaxy, pixscale=args.pixscale,
-                    #mp=args.mp, verbose=args.verbose, debug=args.debug,
-                    #clobber=args.clobber,
-                    #htmldir=htmldir, datadir=datadir,
-                    #barlen=barlen, barlabel=barlabel,
-                    #galex=args.galex, unwise=args.unwise,
-                    #region=args.region,
-                    #get_galaxy_galaxydir=get_galaxy_galaxydir,
-                    #read_multiband=read_multiband)
+            #onegal, galaxy, pixscale=args.pixscale,
+            #mp=args.mp, verbose=args.verbose, debug=args.debug,
+            #clobber=args.clobber,
+            #htmldir=htmldir, datadir=datadir,
+            #barlen=barlen, barlabel=barlabel,
+            #galex=args.galex, unwise=args.unwise,
+            #region=args.region,
+            #get_galaxy_galaxydir=get_galaxy_galaxydir,
+            #read_multiband=read_multiband)
 
 
     if rank == 0:

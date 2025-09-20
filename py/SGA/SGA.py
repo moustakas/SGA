@@ -563,10 +563,10 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('PSFSIZE_R', np.float32, u.arcsec),
         ('PSFSIZE_I', np.float32, u.arcsec),
         ('PSFSIZE_Z', np.float32, u.arcsec),
-        ('PSFDEPTH_G', np.float32, u.ABmag),
-        ('PSFDEPTH_R', np.float32, u.ABmag),
-        ('PSFDEPTH_I', np.float32, u.ABmag),
-        ('PSFDEPTH_Z', np.float32, u.ABmag),
+        ('PSFDEPTH_G', np.float32, u.mag),
+        ('PSFDEPTH_R', np.float32, u.mag),
+        ('PSFDEPTH_I', np.float32, u.mag),
+        ('PSFDEPTH_Z', np.float32, u.mag),
         ('SGANAME', 'U25', None),
         ('RA', np.float64, u.degree),
         ('DEC', np.float64, u.degree),
@@ -585,7 +585,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         dmcols += [(f'GINI_{filt}', np.float32, None)]
     for param, unit, dtype in zip(
             ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-            [u.ABmag, u.ABmag, None, None, None, None, u.arcsec],
+            [u.mag, u.mag, None, None, None, None, u.arcsec],
             ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
         for filt in uall_bands:
             dmcols += [(f'{param}_{filt}', dtype, unit)]
