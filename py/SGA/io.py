@@ -384,7 +384,7 @@ def _read_image_data(data, filt2imfile, verbose=False):
             data[f'{filt}_skysigma'] = skysigma
 
         # set invvar of masked pixels to zero.
-        log.debug('Setting invvar of masked pixels to zero.')
+        #log.debug('Setting invvar of masked pixels to zero.')
         invvar[mask] = 0.
 
         data[filt] = image # [nanomaggies]
@@ -409,7 +409,13 @@ def table_to_fitsio(tbl):
     units = []
     for name in names:
         u = getattr(tbl[name], 'unit', None)
-        units.append(str(u) if u is not None else '')
+        if u is None:
+            units.append('')
+        else:
+            u = str(u)
+            if 'nmgy' in u:
+                u = u.replace('nmgy', 'nanomaggy')
+            units.append(u)
     return data, names, units
 
 
@@ -458,7 +464,7 @@ def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
 
 
 def write_ellipsefit(data, sample, datasets, results, sbprofiles,
-                     verbose=False):
+                     MASKBITS, verbose=False):
     """Write out the ellipse and sbprofiles catalogs.
 
     """
@@ -468,11 +474,20 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles,
 
     REFIDCOLUMN = data['REFIDCOLUMN']
 
-    # optical header cards to copy from the original image
-    opt_cards = ['LEGPIPEV', 'LSDIR', ]
+    hdr_cards = [#'LEGPIPEV', 'LSDIR',
+                 'RA', 'DEC', 'CTYPE1', 'CTYPE2', 'CRVAL1', 'CRVAL2',
+                 'CRPIX1', 'CRPIX2', 'CD1_1', 'CD1_2', 'CD2_1',
+                 'CD2_2', 'EQUINOX', ]
+    phot_cards = ['MAGZERO', 'BUNIT', ]
 
-
-
+    maskbits_comments = {
+        'brightstar': 'BRIGHT|MEDIUM|CLUSTER',
+        'gaiastar': 'Gaia star(s)',
+        'galaxy': 'extended source(s)',
+        'reference': 'SGA source(s)',
+    }
+    for band in data['all_bands']:
+        maskbits_comments.update({band: f'invvar=0 in {band}-band image'})
 
     for idata, dataset in enumerate(datasets):
         if dataset == 'opt':
@@ -480,7 +495,35 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles,
         else:
             suffix = dataset
 
-        hdr = data[f'{dataset}_hdr']
+        pixscale = data[f'{dataset}_pixscale']
+        models_extra = {
+            'PIXSCALE': (pixscale, 'pixel scale (arcsec/pixel)'),
+            'PHOTSYS': ('AB', 'photometric system')}
+
+        # the headers are inconsistent
+        orighdr = data[f'{dataset}_hdr']
+        if 'BUNIT' not in orighdr:
+            orighdr['BUNIT'] = data['opt_hdr']['BUNIT']
+
+        bands = data[f'{dataset}_bands']
+        nbands = len(bands)
+
+        if 'BANDS' in models_extra.keys():
+            models_extra['BANDS'] = (bands, 'bands')
+            models_extra['NBANDS'] = (nbands, 'number of bands')
+        else:
+            models_extra.update({
+                'BANDS': (','.join(bands), 'bands'),
+                'NBANDS': (nbands, 'number of bands')})
+
+        # add MASKBITS definitions
+        maskbits_extra = {'PIXSCALE': (pixscale, 'pixel scale (arcsec/pixel)')}
+        bits = MASKBITS[idata]
+        for ibit, bit in enumerate(bits):
+            #power = int(np.log2(bits[bit]))
+            maskbits_extra[f'MBIT_{ibit}'] = (
+                bit, f'maskbits bit {ibit} ' + \
+                f'({str(hex(bits[bit]))}): {maskbits_comments[bit]}')
 
         # remove old files
         ellipsefiles = glob(os.path.join(data["galaxydir"], f'*-ellipse-{suffix}.fits'))
@@ -502,53 +545,29 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles,
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
             # add to header:
-            # --WCS!
             # --bands
-            # --pixscale(s)
-            # --integrmode
-            # --sclip
-            # --nclip
-            # --width,height
-
-            pdb.set_trace()
 
             tmpfile = ellipsefile + '.tmp'
             with fitsio.FITS(tmpfile, mode='rw', clobber=True) as F:
                 # models, maskbits are numpy arrays
-                # orig_models_hdr / orig_mask_hdr are fitsio.FITSHDR you inherited
-                models_hdr  = make_header(orig_models_hdr,
-                                          keys=['FILTER','INSTRUME','EXPTIME','DATE-OBS','BUNIT'],
-                                          extname='MODELS')  # add bunit=... if you want to override
-                maskbits_hdr = make_header(orig_mask_hdr,
-                                           keys=['FILTER','INSTRUME','DATE-OBS'], extname='MASKBITS')
-                F.write(models, header=models_hdr)          # IMAGE HDU 0
-                F.write(maskbits, header=maskbits_hdr)      # IMAGE HDU 1
+                models_hdr = make_header(orighdr, keys=hdr_cards+phot_cards,
+                                         extra=models_extra)
+                maskbits_hdr = make_header(orighdr, keys=hdr_cards,
+                                           extra=maskbits_extra)
+                F.write(models, header=models_hdr, extname='MODELS') # [nanomaggies]
+                F.write(maskbits, header=maskbits_hdr, extname='MASKBITS')
+
                 # results_obj → ELLIPSE table
-                data, names, units = table_to_fitsio(results_obj)
-                F.write(data, names=names, units=units, extname='ELLIPSE')
+                vals, names, units = table_to_fitsio(results_obj)
+                F.write(vals, names=names, units=units, extname='ELLIPSE')
+
                 # sbprofiles_obj → SBPROFILES table
-                data2, names2, units2 = table_to_fitsio(sbprofiles_obj)
-                F.write(data2, names=names2, units=units2, extname='SBPROFILES')
-                # optional: add checksums
+                vals, names, units = table_to_fitsio(sbprofiles_obj)
+                F.write(vals, names=names, units=units, extname='SBPROFILES')
+                # add checksums
                 for h in F:
                     h.write_checksum()
-            os.rename(tmpfile, ellipsefile)
 
-
-
-            hdu0 = fits.PrimaryHDU(models)
-            hdu1 = fits.ImageHDU(maskbits)
-            hdu2 = fits.convenience.table_to_hdu(results_obj)
-            hdu3 = fits.convenience.table_to_hdu(sbprofiles_obj)
-
-            hdu0.header['EXTNAME'] = 'MODELS'
-            hdu1.header['EXTNAME'] = 'MASKBITS'
-            hdu2.header['EXTNAME'] = 'ELLIPSE'
-            hdu3.header['EXTNAME'] = 'SBPROFILES'
-
-            hx = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
-            tmpfile = ellipsefile+'.tmp'
-            hx.writeto(tmpfile, overwrite=True, checksum=True)
             os.rename(tmpfile, ellipsefile)
             log.info(f'Wrote {ellipsefile}')
 

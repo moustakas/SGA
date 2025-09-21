@@ -30,34 +30,34 @@ SAMPLE = dict(
 )
 
 OPTMASKBITS = dict(
-    brightstar = 2**0, # BRIGHT or MEDIUM legacypipe MASKBITS
+    brightstar = 2**0, # BRIGHT,MEDIUM,CLUSTER legacypipe MASKBITS
     gaiastar = 2**1,   # Gaia (type=PSF) stars
     galaxy = 2**2,     # galaxy (extended, non-reference) sources
     reference = 2**3,  # SGA (reference) sources
-    g = 2**4,          #
-    r = 2**5,          #
-    i = 2**6,          #
-    z = 2**7,          #
+    g = 2**4,          # g-band
+    r = 2**5,          # r-band
+    i = 2**6,          # i-band
+    z = 2**7,          # z-band
 )
 
 GALEXMASKBITS = dict(
-    brightstar = 2**0, # BRIGHT, MEDIUM, or CLUSTER MASKBITS
-    gaiastar = 2**1,   # Gaia (type=PSF) stars
-    galaxy = 2**2,     # galaxy (extended, non-reference) sources
-    reference = 2**3,  # SGA (reference) sources
-    FUV = 2**4,        #
-    NUV = 2**5,        #
+    brightstar = 2**0,
+    gaiastar = 2**1,
+    galaxy = 2**2,
+    reference = 2**3,
+    FUV = 2**4,
+    NUV = 2**5,
 )
 
 UNWISEMASKBITS = dict(
-    brightstar = 2**0, # BRIGHT, MEDIUM, or CLUSTER MASKBITS
-    gaiastar = 2**1,   # Gaia (type=PSF) stars
-    galaxy = 2**2,     # galaxy (extended, non-reference) sources
-    reference = 2**3,  # SGA (reference) sources
-    W1 = 2**4,         #
-    W2 = 2**5,         #
-    W3 = 2**6,         #
-    W4 = 2**7,         #
+    brightstar = 2**0,
+    gaiastar = 2**1,
+    galaxy = 2**2,
+    reference = 2**3,
+    W1 = 2**4,
+    W2 = 2**5,
+    W3 = 2**6,
+    W4 = 2**7,
 )
 
 SBTHRESH = [22., 23., 24., 25., 26.] # surface brightness thresholds
@@ -1556,13 +1556,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         # mask.
         opt_gaiamask_obj = np.copy(opt_gaiamask)
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['LESSMASKING'] != 0:
-            log.info('  LESSMASKING bit set; no Gaia threshold-masking.')
+            log.info('LESSMASKING bit set; no Gaia threshold-masking.')
             opt_gaiamask_obj[:, :] = False
 
         # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0:# or True:
-            log.info('  MOREMASKING bit set; masking all extended sources.')
+            log.info('MOREMASKING bit set; masking all extended sources.')
             mask_allgals = True
         else:
             mask_allgals = False
@@ -1679,7 +1679,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
             # Optionally update the geometry from the masked, coadded
             # optical image.
             if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-                log.info('  FIXGEO bit set; fixing the elliptical geometry.')
+                log.info('FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
             else:
                 # generate a detection image and pixel mask for use with find_galaxy_in_cutout
@@ -1867,8 +1867,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
     # convert to surface brightness
     for prefix in ['opt', 'unwise', 'galex']:
         pixscale = data[f'{prefix}_pixscale']
-        data[f'{prefix}_images'] /= pixscale**2   # [nanomaggies/arcsec**2]
-        data[f'{prefix}_sigma'] /= pixscale**2 # [nanomaggies/arcsec**2]
+        data[f'{prefix}_images'] /= pixscale**2 # [nanomaggies/arcsec**2]
+        data[f'{prefix}_sigma'] /= pixscale**2  # [nanomaggies/arcsec**2]
 
     # final geometry
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))

@@ -663,7 +663,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
             sbprofiles.add_column(Column(name=f'FLUX_ERR_{filt}', unit=u.nanomaggy,
                                   data=np.zeros(nsma, 'f4')))
         for filt in ubands:
-            sbprofiles.add_column(Column(name=f'FMASKED_{filt}', data=np.zeros(nsma, 'f4')))
+            sbprofiles.add_column(Column(name=f'FMASKED_{filt}', data=np.ones(nsma, 'f4'))) # NB: initial value
         return sbprofiles
 
 
@@ -707,8 +707,8 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                 results.add_column(Column(name=f'FLUX_ERR_AP{iap:02}_{filt}',
                                           unit=u.nanomaggy, data=np.zeros(1, 'f4')))
             for filt in ubands:
-                results.add_column(Column(name=f'FMASKED_AP{iap:02}_{filt}',
-                                          unit=None, data=np.zeros(1, 'f4')))
+                results.add_column(Column(name=f'FMASKED_AP{iap:02}_{filt}', # NB: initial value
+                                          unit=None, data=np.ones(1, 'f4')))
 
         # optical isophotal radii
         if dataset == 'opt':
@@ -793,13 +793,15 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         isobandfit = IsophoteList(out[0])
 
         # curve of growth
-        apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
-        apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
+        apflux = np.hstack(out[1])
+        apferr = np.hstack(out[2])
         apfmasked = np.hstack(out[3])
 
-        sbprofiles[f'FLUX_{filt.upper()}'] = apflux
-        sbprofiles[f'FLUX_ERR_{filt.upper()}'] = apferr
-        sbprofiles[f'FMASKED_{filt.upper()}'] = apfmasked
+        I = np.isfinite(apflux) * np.isfinite(apferr) * np.isfinite(apfmasked)
+        if np.any(I):
+            sbprofiles[f'FLUX_{filt.upper()}'][I] = apflux[I] * pixscale**2. # [nanomaggies]
+            sbprofiles[f'FLUX_ERR_{filt.upper()}'][I] = apferr[I] * pixscale**2. # [nanomaggies]
+            sbprofiles[f'FMASKED_{filt.upper()}'][I] = apfmasked[I]
 
         # model
         popt, perr, cov, chi2, ndof = fit_cog(
@@ -827,9 +829,6 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
             except:
                 pass
 
-        #if filt == 'i':
-        #    pdb.set_trace()
-
         # aperture photometry within the reference apertures
         mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
                    by, integrmode, sclip, nclip, False)
@@ -841,14 +840,17 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
             refout = [integrate_isophot_one(*mparg) for mparg in mpargs]
         refout = list(zip(*refout))
 
-        refapflux = np.hstack(refout[1]) * pixscale**2. # [nanomaggies]
-        refapferr = np.hstack(refout[2]) * pixscale**2. # [nanomaggies]
+        refapflux = np.hstack(refout[1])
+        refapferr = np.hstack(refout[2])
         refapfmasked = np.hstack(refout[3])
 
         for iap in range(len(sma_apertures_arcsec)):
-            results[f'FLUX_AP{iap:02}_{filt.upper()}'] = refapflux[iap]
-            results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'] = refapferr[iap]
-            results[f'FMASKED_AP{iap:02}_{filt.upper()}'] = refapfmasked[iap]
+            I = (np.isfinite(refapflux[iap]) * np.isfinite(refapferr[iap]) *
+                 np.isfinite(refapfmasked[iap]))
+            if np.any(I):
+                results[f'FLUX_AP{iap:02}_{filt.upper()}'][I] = refapflux[iap][I] * pixscale**2. # [nanomaggies]
+                results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'][I] = refapferr[iap][I] * pixscale**2. # [nanomaggies]
+                results[f'FMASKED_AP{iap:02}_{filt.upper()}'][I] = refapfmasked[iap][I]
 
         # isophotal radii
         I = np.isfinite(isobandfit.intens) * np.isfinite(isobandfit.int_err)
@@ -1480,6 +1482,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     if not nowrite:
         from SGA.io import write_ellipsefit
         err = write_ellipsefit(data, sample, datasets, results, sbprofiles,
-                               verbose=verbose)
+                               SGAMASKBITS, verbose=verbose)
 
     return err

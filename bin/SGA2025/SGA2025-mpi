@@ -30,7 +30,7 @@ srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/script
 
 """
 import os, time, sys, pdb
-import logging, warnings
+from astropy.table import Table
 import numpy as np
 
 from SGA.logger import (log, LOGFMT, hook_legacypipe_and_root,
@@ -46,6 +46,8 @@ def get_logfile(galaxy, galaxydir, stagesuffix):
 
 
 def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
+    import logging
+
     donefile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}')
     if err == 0:
         log.warning(f'Problem processing {galaxydir}/{galaxy}; please check the log file.')
@@ -185,7 +187,6 @@ def main():
             # pipeline. Satellites can belong to more than one group,
             # so trim to unique IDs.
             import fitsio
-            from astropy.table import Table
             from SGA.SGA import SGA_version, REFCAT
 
             version = SGA_version(parent=True)
@@ -322,7 +323,7 @@ def main():
 
         if args.coadds:
             from contextlib import redirect_stdout, redirect_stderr
-            from astropy.table import Table
+            from wurlitzer import pipes
             from SGA.coadds import custom_coadds
 
             # Write out the individual galaxies for this mosaic.
@@ -357,7 +358,8 @@ def main():
                 # FIXME - set --no-clusters or --no-force-gaia
                 pass
 
-            with open(logfile, 'a', buffering=1) as L, redirect_stdout(L), redirect_stderr(L):
+            with open(logfile, 'a', buffering=1) as L, pipes(stdout=L, stderr=L), \
+                 redirect_stdout(L), redirect_stderr(L):
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
