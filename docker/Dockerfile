@@ -1,4 +1,4 @@
-FROM legacysurvey/cutouts:v1.2
+FROM legacysurvey/cutouts:v1.3
 
 RUN for x in \
   ipython \
@@ -12,6 +12,7 @@ RUN for x in \
   photutils \
   healpy \
   astroquery \
+  wurlitzer \
   ; do pip --no-cache-dir install --upgrade $x --break-system-packages; done
 
 ENV IPYTHONDIR=/tmp/ipython-config
@@ -30,7 +31,7 @@ RUN git config --global --add safe.directory /src/SGA \
   && git config --global --add safe.directory /src/desiutil
 
 # updates
-RUN cd /src/SGA && git pull && echo 3
+RUN cd /src/SGA && git pull && echo 4
 
 ENV PYTHONPATH=/src/SGA/py:/src/desiutil/py:$PYTHONPATH
 
