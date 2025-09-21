@@ -1,5 +1,4 @@
-FROM legacysurvey/cutouts:v1.2-gpu
-#FROM legacysurvey/cutouts:v1.2
+FROM legacysurvey/cutouts:v1.3
 
 RUN for x in \
   ipython \
@@ -13,6 +12,7 @@ RUN for x in \
   photutils \
   healpy \
   astroquery \
+  wurlitzer \
   ; do pip --no-cache-dir install --upgrade $x --break-system-packages; done
 
 ENV IPYTHONDIR=/tmp/ipython-config
