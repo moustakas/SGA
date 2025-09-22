@@ -65,15 +65,18 @@ APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
 
 def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
+    # nocuts, vicuts, and archive *have* to share a version (too
+    # confusing otherwise!)
+    version_work = 'v0.10'
+
     if nocuts:
-        version = 'v0.11'
+        version = version_work
     elif vicuts:
-        version = 'v0.11'
+        version = version_work
     elif archive:
-        version = 'v0.11'
+        version = version_work
     elif parent:
-        #version = 'v0.10'
-        version = 'v0.11' # no mindiam/minsep cuts
+        version = 'v0.10'
     return version
 
 

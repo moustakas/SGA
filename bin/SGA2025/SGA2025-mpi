@@ -357,6 +357,17 @@ def main():
                 pass
 
             if args.debug:
+                err, _ = custom_coadds(
+                    onegal, galaxy, survey, run, radius_mosaic_arcsec,
+                    release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
+                    nsigma=args.nsigma, just_coadds=args.just_coadds,
+                    force_psf_detection=force_psf_detection,
+                    fit_on_coadds=args.fit_on_coadds,
+                    use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
+                    force=args.force, cleanup=args.cleanup,
+                    unwise=args.unwise, galex=args.galex,
+                    verbose=args.verbose)
+            else:
                 from contextlib import redirect_stdout, redirect_stderr
                 from wurlitzer import pipes
                 with open(logfile, 'a', buffering=1) as L, pipes(stdout=L, stderr=L), \
@@ -371,17 +382,6 @@ def main():
                         force=args.force, cleanup=args.cleanup,
                         unwise=args.unwise, galex=args.galex,
                         verbose=args.verbose)
-            else:
-                err, _ = custom_coadds(
-                    onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                    release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
-                    nsigma=args.nsigma, just_coadds=args.just_coadds,
-                    force_psf_detection=force_psf_detection,
-                    fit_on_coadds=args.fit_on_coadds,
-                    use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
-                    force=args.force, cleanup=args.cleanup,
-                    unwise=args.unwise, galex=args.galex,
-                    verbose=args.verbose)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
 

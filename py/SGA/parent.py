@@ -2829,6 +2829,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     version = SGA_version(parent=True)
     version_nocuts = SGA_version(nocuts=True)
     version_archive = SGA_version(archive=True)
+    parentdir = os.path.join(sga_dir(), 'parent')
     outdir = os.path.join(sga_dir(), 'sample')
 
     outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
@@ -2845,7 +2846,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     # merge the two regions
     parent = []
     for region in ['dr11-south', 'dr9-north']:
-        catfile = os.path.join(outdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
+        catfile = os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         log.info(f'Read {len(cat):,d} objects from {catfile}')
 
