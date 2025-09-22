@@ -2979,8 +2979,9 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     grp['BA'] = ba.astype('f4')
     grp['PA'] = pa.astype('f4')
     grp['MAG'] = mag.astype('f4')
-    grp['BAND'] = band
+    #grp['BAND'] = band
     grp['DIAM_REF'] = ref
+    print('Need to check DIAM_REF')
     pdb.set_trace()
 
     #ra, dec = grp['RA'].value, grp['DEC'].value

@@ -106,6 +106,9 @@ Leo II,dr11-south,LVD
 Leo I,dr11-south,LVD
 WISEA J203133.10-070501.5,dr11-south,In 'PN A66 70'
 DDO 154,dr11-south,LVD
+ESO 451- G 012,dr11-south,near star
+WISEA J205942.51-414751.8,dr11-south,geometry algorithm failure
+FGCE 0721,dr11-south,geometry algorithm failure
 #
 # LVD - dr9-north & dr11-south
 #

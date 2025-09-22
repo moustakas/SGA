@@ -531,6 +531,8 @@ def SGA_datamodel(ellipse, bands, all_bands):
     ubands = np.char.upper(bands)
     uall_bands = np.char.upper(all_bands)
 
+    print('Need to add DIAM_INIT_REF and BANDS.')
+
     dmcols = [
         # from original sample
         ('SGAID', np.int64, None),
@@ -550,7 +552,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('BA_INIT', np.float32, None),
         ('PA_INIT', np.float32, u.degree),
         ('MAG', np.float32, u.mag),
-        ('BAND', 'U1', None),
+        #('BAND', 'U1', None),
         ('EBV', np.float32, u.mag),
         ('GROUP_ID', np.int32, None),
         ('GROUP_NAME', 'U10', None),
@@ -979,6 +981,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     _ = os.system(cmd2)
     log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
 
+    print('NB: When combining north-south catalogs, need to look at OBJNAME; SGANAME may not be the same!')
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
@@ -1006,7 +1009,7 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
         if psfsizecol in tractor.columns():
             good = np.where(tractor.get(psfsizecol)[these] > 0)[0]
             if len(good) == 0:
-                log.warning(f'  No good measurements of the PSF size in band {filt}!')
+                log.warning(f'No good measurements of the PSF size in band {filt}!')
                 #data[psfsigmacol] = np.float32(0.0)
                 #data[psfsizecol] = np.float32(0.0)
             else:
@@ -1022,7 +1025,7 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
         if psfdepthcol in tractor.columns():
             good = np.where(tractor.get(psfdepthcol)[these] > 0)[0]
             if len(good) == 0:
-                log.warning(f'  No good measurements of the PSF depth in band {filt}!')
+                log.warning(f'No good measurements of the PSF depth in band {filt}!')
                 #data[psfdepthcol] = np.float32(0.0)
             else:
                 psfdepth = tractor.get(psfdepthcol)[these][good] # [AB mag, 5-sigma]
@@ -1136,6 +1139,9 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     from SGA.sky import map_bxby
     from SGA.qa import overplot_ellipse, get_norm
 
+
+    if not os.path.isdir(htmlgalaxydir):
+        os.makedirs(htmlgalaxydir, exist_ok=True)
     qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
 
     alpha = 0.6
@@ -1399,7 +1405,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         P = EllipseProperties()
         perc = 0.95 # 0.975
         method = 'percentile'
-        #method = 'rms'
         P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, smooth_sigma=0.)
 
         if False:
@@ -1555,7 +1560,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         # If the LESSMASKING bit is set, do not use the Gaia threshold
         # mask.
         opt_gaiamask_obj = np.copy(opt_gaiamask)
-        if obj['ELLIPSEMODE'] & ELLIPSEMODE['LESSMASKING'] != 0:
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['LESSMASKING'] != 0:# or True:
             log.info('LESSMASKING bit set; no Gaia threshold-masking.')
             opt_gaiamask_obj[:, :] = False
 
@@ -1671,6 +1676,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
+            #opt_galmask[:] = False
             opt_masks_obj = _update_masks(iter_brightstarmask, opt_gaiamask_obj,
                                           iter_refmask, opt_galmask,
                                           opt_mask_perband, opt_bands,
@@ -1754,6 +1760,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
             mask_allgals=mask_allgals)
         if not mask_allgals:
             opt_galmask[inellipse] = False
+        #opt_galmask[:] = False
 
         #import matplotlib.pyplot as plt
         #plt.clf()
@@ -2124,6 +2131,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         log.info(f'  ref_id={obj[REFIDCOLUMN]}: D(25)={obj["DIAM_INIT"]:.3f} arcmin, ' + \
                  f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
     sample.remove_column('FLUX')
+
+    print('Add BANDS!!!')
 
     #data['sample'] = sample
     #data['samplesrcs'] = samplesrcs

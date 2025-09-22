@@ -897,7 +897,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                     ax.plot(rgrid, mfit, color='k', alpha=0.8)
 
         dt, unit = get_dt(t0)
-        log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
+        #log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
 
     dt, unit = get_dt(tall)
     log.info(f'  Fit {"".join(bands)} in a ' + \
