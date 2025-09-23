@@ -1058,9 +1058,19 @@ def update_properties(cat, verbose=False):
             if newval != -99.:
                 out[col][I] = newval
 
-    # some SGA2020 diameters are grossly overestimated; fix those here
-    objs = ['NGC 0134', 'NGC 4157']
-    diams = [16., 12.] # [arcmin
+    # some SGA2020 diameters are grossly over/underestimated; fix those here
+    objs = ['NGC 0134', 'NGC 4157', 'NGC 3254', 'NGC 4312', 'NGC 4666',
+            'NGC 4178', 'ESO 358- G 063', 'NGC 3254', 'NGC 4257', 'NGC 2549',
+            'NGC 4010', 'NGC 5899', 'NGC 7541', 'NGC 4062',
+            'MESSIER 085', 'UGC 00484', 'NGC 0720', 'ESO 079- G 003', 'NGC 7721',
+            'NGC 3923', 'NGC 6902', 'NGC 4266', 'ESO 186-IG 069 NED02', 'NGC 5859',
+            'NGC 4395',]
+    diams = [16., 12., 6., 6., 7., # [arcmin
+             7., 7., 6., 7., 6.,
+             5.5, 5.5, 6., 6.,
+             12., 5., 9.5, 4.5, 5.5,
+             10., 9., 5., 3., 4.,
+             5.]
     for obj, diam in zip(objs, diams):
         I = cat['OBJNAME'] == obj
         if np.sum(I) == 1:
@@ -2906,6 +2916,14 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     mindiam = 20. # [arcsec]
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
+
+    # cleanup
+    band[band == ''] = 'V' # default
+    I = mag > 22.
+    if np.any(I):
+        mag[I] = 22
+
+    # diameter cut
     I = diam == mindiam
     if np.any(I):
         log.warning(f'Setting mindiam={mindiam:.1f} arcsec for {np.sum(I):,d} objects.')
@@ -2980,10 +2998,8 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     grp['BA'] = ba.astype('f4')
     grp['PA'] = pa.astype('f4')
     grp['MAG'] = mag.astype('f4')
-    #grp['BAND'] = band
+    grp['MAG_BAND'] = band
     grp['DIAM_REF'] = ref
-    print('Need to check DIAM_REF')
-    pdb.set_trace()
 
     #ra, dec = grp['RA'].value, grp['DEC'].value
     #grp.add_column(sga2025_name(ra, dec, unixsafe=True),
@@ -3034,6 +3050,8 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
+
+    pdb.set_trace()
 
     ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
     ## objects within (outside) the DR11 imaging footprint.
