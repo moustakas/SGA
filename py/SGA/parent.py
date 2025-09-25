@@ -3004,7 +3004,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     grp['BA'] = ba.astype('f4')
     grp['PA'] = pa.astype('f4')
     grp['MAG'] = mag.astype('f4')
-    grp['MAG_BAND'] = band
+    #grp['MAG_BAND'] = band
     grp['DIAM_REF'] = ref
 
     #ra, dec = grp['RA'].value, grp['DEC'].value
