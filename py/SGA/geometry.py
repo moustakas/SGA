@@ -290,7 +290,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             if prop == 'mag':
                 col = 'BT'
                 band = 'B'
-                I = (cat[col] > 0.) * (cat[col] < 1e20.)
+                I = (cat[col] > 0.) * (cat[col] < 1e20)
                 if np.sum(I) > 0:
                     val[I] = cat[col][I]
                     val_ref[I] = ref
