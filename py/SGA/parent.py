@@ -1067,7 +1067,7 @@ def update_properties(cat, verbose=False):
             'NGC 4395', 'UGC 12732', 'MCG -02-55-005', 'NGC 4383',
             'ESO 114- G 008', 'WISEA J022103.95-334348.4', 'UGC 10046 NED02', 'UGC 10046 NED01',
             'ESO 234- G 024', 'UGC 09621', 'UGC 10988', 'NGC 6654A',
-            'NGC 2460', 'UGC 08524', 'UGC 09883']
+            'NGC 2460', 'UGC 08524', 'UGC 09883', 'NGC 0765']
     diams = [16., 12., 6., 6., 7., # [arcmin
              7., 7., 6., 7., 6.,
              5.5, 5.5, 6., 6.,
@@ -1076,7 +1076,7 @@ def update_properties(cat, verbose=False):
              5., 5., 2., 3.5,
              2., 0.3, 1.5, 1.5,
              2., 1., 1.5, 4.,
-             5., 2., 1., ]
+             5., 2., 1., 4.5]
     for obj, diam in zip(objs, diams):
         I = cat['OBJNAME'] == obj
         if np.sum(I) == 1:
