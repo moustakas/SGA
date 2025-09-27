@@ -1,4 +1,4 @@
-FROM legacysurvey/cutouts:v1.3
+FROM legacysurvey/cutouts:v1.4
 
 RUN for x in \
   ipython \
@@ -31,7 +31,7 @@ RUN git config --global --add safe.directory /src/SGA \
   && git config --global --add safe.directory /src/desiutil
 
 # updates
-RUN cd /src/SGA && git pull && echo 4
+RUN cd /src/SGA && git pull && echo 5
 
 ENV PYTHONPATH=/src/SGA/py:/src/desiutil/py:$PYTHONPATH
 
