@@ -121,3 +121,4 @@ KV19-212,dr11-south
 KV19-329,dr11-south
 KV19-442,dr11-south
 SUCD1,dr11-south
+WISEA J060215.84-395636.5,dr11-south

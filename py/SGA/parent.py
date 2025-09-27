@@ -2420,7 +2420,8 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     rowfiles = glob(os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-*-rows.fits'))
     if len(rowfiles) > 0:
         log.warning('FIXME!')
-        pdb.set_trace()
+        rows = np.arange(len(parent))
+        #pdb.set_trace()
         # adjust ROWS so they're unique
     else:
         rows = np.arange(len(parent))

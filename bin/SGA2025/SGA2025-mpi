@@ -141,16 +141,16 @@ def main():
         log.info(f'$SGA_HTML_DIR={htmldir}')
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
-        #if args.build_catalog or args.build_refcat:
-        #    region = None
-        #else:
-        #    region = args.region
+        if args.build_refcat:
+            region = None
+        else:
+            region = args.region
 
         sample, fullsample = read_sample(
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, maxmult=args.maxmult,
             galaxylist=args.galaxylist, no_groups=no_groups,
-            lvd=args.lvd, region=args.region,
+            lvd=args.lvd, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
         if len(sample) == 0:
@@ -307,8 +307,9 @@ def main():
                  f'{galaxydir} (index {ii:,d})')
 
         logfile = get_logfile(galaxy, galaxydir, suffix)
-        log.info(f'Logging output to {logfile}')
         fh = setup_logging(logfile, debug=args.debug)
+        if not args.debug:
+            log.info(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
         if no_groups:
