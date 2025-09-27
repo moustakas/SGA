@@ -16,17 +16,24 @@ GALEX_PIXSCALE = 1.5
 UNWISE_PIXSCALE = 2.75
 
 RUNS = {'dr9-north': 'north', 'dr9-south': 'south',
-        'dr10-south': 'south', 'dr11-south': 'south'}
+        'dr10-south': 'south',
+        'dr11-north': 'north', 'dr11-south': 'south'}
 
 # although dr9-north is missing i-band imaging, there are many
 # advantages to adopting a consistent data model
 GRZ = ['g', 'r', 'z']
 GRIZ = ['g', 'r', 'i', 'z']
 BANDS = {'dr9-north': GRIZ, 'dr9-south': GRIZ,
-         'dr10-south': GRIZ, 'dr11-south': GRIZ}
+         'dr10-south': GRIZ,
+         'dr11-north': GRIZ, 'dr11-south': GRIZ}
+
+RELEASE = {'dr9-north': 9011, 'dr9-south': 9010,
+           'dr10-south': 10000,
+           'dr11-north': 11001, 'dr11-south': 11000}
 
 REGIONBITS = {
     'dr11-south': 2**0,
+    'dr11-north': 2**1,
     'dr9-north': 2**1
 }
 
@@ -125,7 +132,7 @@ def _rearrange_files(galaxy, output_dir, brickname, bands=GRIZ, unwise=True,
     ccdsfile = os.path.join(output_dir, 'coadd', 'cus', brickname,
                             f'legacysurvey-{brickname}-ccds.fits')
     if not os.path.isfile(ccdsfile) and missing_ok is False:
-        print('No photometric CCDs touching brick.')
+        log.info('No CCDs touching this brick; nothing to do.')
         if cleanup:
             _do_cleanup()
         return 1
@@ -335,12 +342,13 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 
 
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                  pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
+                  release=1000, pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC',
-                  force_psf_detection=False, subsky_radii=None,
-                  just_coadds=False,  missing_ok=False,
-                  force=False, cleanup=True, unwise=True, galex=False,
-                  no_gaia=False, no_tycho=False, verbose=False):
+                  force_psf_detection=False, fit_on_coadds=False,
+                  use_gpu=False, threads_per_gpu=16, subsky_radii=None,
+                  just_coadds=False, missing_ok=False, force=False, cleanup=True,
+                  unwise=True, galex=False, no_gaia=False, no_tycho=False,
+                  verbose=False):
     """Build a custom set of large-galaxy coadds.
 
     """
@@ -370,6 +378,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     cmdargs += f'--width={width} --height={width} --pixscale={pixscale} '
     cmdargs += f'--threads={mp} --outdir={survey.output_dir} --bands={",".join(bands)} '
     cmdargs += f'--survey-dir={survey.survey_dir} --run={run} '
+    cmdargs += f'--release={release} '
 
     if nsigma:
         cmdargs += f'--nsigma={nsigma:.0f} '
@@ -413,11 +422,16 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     #    cmdargs += '--no-subsky --ubercal-sky '
 
     # stage-specific options here--
-    #cmdargs += '--fit-on-coadds --no-ivar-reweighting '
     cmdargs += '--save-coadd-psf '
 
     if not force_psf_detection:
         cmdargs += '--no-galaxy-forcepsf '
+    if fit_on_coadds:
+        cmdargs += '--fit-on-coadds --no-ivar-reweighting '
+
+    # GPU stuff
+    if use_gpu:
+        cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu=1 --gpumode=2 '
 
     log.info(f'runbrick {cmdargs}')
     err = runbrick(args=cmdargs.split())

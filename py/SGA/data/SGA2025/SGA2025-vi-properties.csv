@@ -119,6 +119,7 @@ PRC C-59,-99.,-99.,0.5,-99.,-99.,-99.,No,
 ESO 409-IG 021 NED01,1.8366666666666667,-28.11863888888889,-99.,-99.,-99.,-99.,No,Moved to the position of 'WISEA J000720.78-280706.9'.
 ESO 012-IG 016,5.445587,-81.117359,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J002146.94-810702.4'.
 ESO 012-IG 019,8.247833333333332,-78.21466666666667,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 012-IG 019 NED03'.
+ESO 012-IG 019 NED03,8.2193505,-78.2241018,-99.,-99.,-99.,-99.,No,Adopted HyperLeda coordinates.
 ESO 152-IG 014,23.691374999999997,-53.41811111111111,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'WISEA J013445.78-532505.9'.
 ESO 053-IG 024 NED01,45.352833,-69.614204,-99.,-99.,-99.,-99.,No,Moved to the position of '2MASS J03012467-6936511'.
 ESO 202- G 013,65.802751,-49.252654,-99.,-99.,-99.,-99.,Yes,Galaxy triple moved to the position of 'ESO 202- G 013 NED03'.
@@ -885,3 +886,265 @@ WISEA J055809.16-713448.9,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
 WISEA J060602.41-704200.7,-99.,-99.,1.0,-99.,-99.,-99.,No,Estimated diameter
 WISEA J012853.13-195720.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
 UGC 10873,262.3166,16.1628,-99.,90.,-99.,-99.,No,Moved to LS/DR9 position
+WISEA J140817.90-284715.6,-99.,-99.,0.75,-99.,-99.,-99.,No,Estimated diameter
+WISEA J024850.91-695852.6,-99.,-99.,0.75,-99.,-99.,-99.,No,Estimated diameter
+2MASX J02584636+1338243,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J051937.05-231127.1,-99.,-99.,0.75,-99.,-99.,-99.,No,Estimated diameter
+WISEA J055428.80-174005.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J070700.69-341836.4,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J070701.69-341907.9,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J080239.07-091758.5,-99.,-99.,0.75,-99.,-99.,-99.,No,Estimated diameter
+WISEA J140821.57-284644.5,-99.,-99.,0.75,-99.,-99.,-99.,No,Estimated diameter
+2MASX J14324113-1947288,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J144927.64-214841.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J150148.02-222725.8,-99.,-99.,0.75,-99.,-99.,-99.,No,Estimated diameter
+WISEA J162933.60-163306.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J162935.69-163329.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+PGC 572917,78.3423,-41.7081,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+PGC 572863,78.3424,-41.7132,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+PGC 572892,78.3395,-41.7112,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 425- G 020,95.3575,-29.7737,-99.,90.,-99.,-99.,No,Estimated position
+LSBC F683-V02,20.5170,9.4183,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+PGC1035237,31.850111,-6.234575,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+PGC495313,63.568673,-47.813866,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGC 0821,134.812407,-4.880200,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 451- G 012,242.40892617842843,-29.02228748040981,1.443382,130.20755,0.28666812,-99.,No,Moment position and geometry
+WISEA J205942.51-414751.8,314.927038,-41.797678,0.716,131.8,0.16,-99.,No,SGA-2020 position and geometry
+PGC480503,16.824862,-49.097482,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+PGC598586,63.667014,-39.401969,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+PGC510581,63.739868,-46.795214,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+FGCE 0721,132.47723755264735,-20.65053806473753,0.8746975,50.562603,0.17753527,-99.,No,Moment position and geometry
+FGCE 0938,183.1539,-48.1511,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+FGC 2201,276.4261,29.4965,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+PGC 526392,282.6541,-45.4758,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 1521,311.5623,-34.6002,-99.,64.10542511530974,0.11186023468880367,-99.,No,Moment position and geometry
+FGCE 1638,325.3043,-29.7441,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+FGCE 1668,328.6728,-22.7409,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+NGC 6784,291.6487916666667,-65.61888888888888,-99.,-99.,-99.,-99.,Yes,Original HyperLeda coordinates cause 'NGC 6784A' to be dropped
+NGC 6784A,291.6299166666666,-65.6261111111111,-99.,-99.,-99.,-99.,Yes,Original HyperLeda coordinates cause 'NGC 6784A' to be dropped
+WISEA J035445.29-302259.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+UGCA 320 NOTES01,-99.,-99.,0.9,-99.,-99.,-99.,No,Estimated diameter
+2MASX J13312752-3149140,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+NGC 2993,-99.,-99.,5.,-99.,0.9,5.,No,Estimated diameter and geometry
+NGC 4709,-99.,-99.,5.,-99.,0.9,5.,No,Estimated diameter and geometry
+ESO 509-IG 083 NED01,-99.,-99.,1.,-99.,-99.,1.,No,Estimated diameter
+NGC 5078,-99.,-99.,6.,-99.,-99.,6.,No,Estimated diameter
+ESO 105- G 026,-99.,-99.,2.,-99.,-99.,2.,No,Estimated diameter
+WISEA J002113.47+222046.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J002110.19+221940.4,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+NGC 5026,-99.,-99.,4.5,-99.,-99.,4.5,No,Estimated diameter
+2MASX J13000871+2809352,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 036- G 006,-99.,-99.,4.5,-99.,-99.,-99.,No,Estimated diameter
+NGC 3630,-99.,-99.,3.66,37.06,0.361,-99.,No,Adopt SGA-2020 geometry
+IC 4329,-99.,-99.,5.5,-99.,0.8,5.5,No,Estimated diameter and ba
+NGC 4373,-99.,-99.,5.,-99.,0.8,5.,No,Estimated diameter and ba
+NGC 5419,-99.,-99.,5.,-99.,-99.,5.,No,Estimated diameter
+NGC 1954,-99.,-99.,4.7,152.,0.5,4.7,No,Estimated diameter pa and ba
+UGCA 145,-99.,-99.,4.,-99.,-99.,4.,No,Estimated diameter
+WISEA J023047.72-025430.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J023048.98-025644.5,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J023046.49-025705.3,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+IC 2560,-99.,-99.,4.5,-99.,-99.,4.5,No,Estimated diameter
+NGC 1487 NED01,-99.,-99.,6.5,46.,0.68,-99.,No,Estimated diameter pa and ba
+NGC 1487 NED02,-99.,-99.,0.8,0.0,1.0,-99.,No,Estimated diameter pa and ba
+2MASX J04392916-6214108,-99.,-99.,1.56,178.,0.2,-99.,No,Estimated diameter pa and ba
+NGC 2187A,-99.,-99.,2.,-99.,-99.,2.,No,Estimated diameter
+WISEA J022103.95-334348.4,-99.,-99.,0.3,-99.,-99.,0.3,No,Estimated diameter
+WISEA J075758.87+561955.2,-99.,-99.,0.5,-99.,-99.,0.3,No,Estimated diameter
+MRK 0205,-99.,-99.,0.2,-99.,-99.,0.3,No,Estimated diameter
+NGC 2258,-99.,-99.,5.,-99.,0.8,5.,No,Estimated diameter pa and ba
+UGC 10214,-99.,-99.,2.2,85.,0.42,-99.,No,Estimated diameter pa and ba
+WISEA J144924.98+274622.5,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+2MASX J02251167-2928044,-99.,-99.,0.5,90.,0.1,-99.,No,Estimated geometry
+LEDA 098597,-99.,-99.,0.5,160.,0.2,-99.,No,Estimated geometry
+WISEA J013652.25-135721.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J015615.70+264430.1,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J054732.29-193952.4,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+ESO 566-IG 007,-99.,-99.,1.1,30.,0.7,-99.,No,Estimated diameter pa and ba
+LSBC F637-02,-99.,-99.,-99.,-99.,1.0,-99.,No,Estimated ba
+ESO-LV 2990161,-99.,-99.,-99.,-99.,1.0,-99.,No,Estimated ba
+UGC 06614,-99.,-99.,3.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 475- G 015,-99.,-99.,2.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 510- G 056,-99.,-99.,2.,-99.,-99.,-99.,No,Estimated diameter
+2MFGC 03636,-99.,-99.,-99.,45.,-99.,-99.,No,Estimated pa
+WISEA J234134.57+090455.3,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+NGC 5765A,-99.,-99.,1.3,80.,-99.,-99.,No,Estimated diameter and pa
+ESO 153- G 017,-99.,-99.,3.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 387- G 021,-99.,-99.,2.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J105137.46-170728.9,-99.,-99.,-99.,45.,-99.,-99.,No,Estimated pa
+ARP 261 NED04,-99.,-99.,-99.,135.,-99.,-99.,No,Estimated pa
+WISEA J222410.22-551419.5,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J015838.81+082021.6,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J125703.79-323010.5,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J022536.70-082539.3,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J015932.51-145115.6,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J232234.25+192632.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+NGC 0702 NED02,-99.,-99.,3.,0.,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J004949.84+005728.2,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+PGC 3099135,13.5697,-3.5810,0.2,-99.,-99.,-99.,No,Estimated diameter and moved to LS/DR10 position
+6dF J0346405-342247,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J141450.33-335255.4,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J141703.50-013016.5,-99.,-99.,0.8,0.,1.0,-99.,No,Estimated diameter pa and ba
+SDSS J013001.91+004411.9,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASX J01395868-0854346,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J114217.54+101044.6,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J114216.00+101018.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+ESO 114-IG 009 NED02,-99.,-99.,0.3,-99.,1.0,-99.,No,Estimated diameter and ba
+WISEA J152037.61-070059.1,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J054741.70-580420.7,-99.,-99.,1.,-99.,-99.,-99.,No,Estimated diameter
+2MASX J15185935+0327394,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J135253.57+071509.4,-99.,-99.,0.6,-99.,-99.,-99.,No,Estimated diameter
+WISEA J023117.21-081248.8,-99.,-99.,2.,-99.,-99.,-99.,No,Estimated diameter
+WISEA J225234.22+090247.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J011551.25-212216.0,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J121541.48-041133.1,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J012520.73-052322.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+2MASX J01252383-0522471,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J012523.75-052355.9,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J032954.10-171551.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+KDG 236,-99.,-99.,1.5,0.,1.0,-99.,No,Estimated diameter pa and ba
+LCSB S1432N,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 424- G 009,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J162359.46+083918.7,-99.,-99.,0.4,-99.,-99.,-99.,No,Estimated diameter
+ESO 002- G 003,-99.,-99.,1.2,0.,1.,-99.,No,Estimated diameter pa and ba
+GALEXASC J004058.77-261604.5,-99.,-99.,1.,0.,1.,-99.,No,Estimated diameter pa and ba
+LSBC F650-V01,-99.,-99.,1.,0.,1.,-99.,No,Estimated diameter pa and ba
+ESO 486- G 015,75.753360,-25.467793,-99.,90.,-99.,-99.,No,Moved to SGA-2020 position
+LSBC F636-01,-99.,-99.,1.2,0.,1.,-99.,No,Estimated diameter pa and ba
+ESO 054- G 024,-99.,-99.,1.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J100642.72-311756.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J100648.89-311918.8,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+SDSS J125524.52+265136.7,-99.,-99.,0.8,0.,1.,-99.,No,Estimated diameter pa and ba
+FAIRALL 0114,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+FAIRALL 1302,-99.,-99.,1.2,0.,1.,-99.,No,Estimated diameter pa and ba
+WISEA J092905.16+265714.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO-LV 2070041,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+ESO 513- G 029,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J113400.69-164725.5,-99.,-99.,1.2,133.,0.3,-99.,No,Estimated diameter pa and ba
+WISEA J000046.46-465728.9,-99.,-99.,-99.,0.,1.,-99.,No,Estimated ba and pa
+WISEA J132229.49-214348.9,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+PGC 682643,212.1515,-32.9983,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+LSBC F535-02,-99.,-99.,1.,0.,1.,-99.,No,Estimated diameter pa and ba
+WISEA J022752.35+183019.0,-99.,-99.,1.4,-99.,-99.,-99.,No,Estimated diameter
+WISEA J174222.26+172553.6,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J054958.19-255412.6,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+SN 2005lu HOST,-99.,-99.,1.2,0.,0.6,-99.,No,Estimated diameter pa and ba
+PKS 0651-60,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+ESO 596- G 033,-99.,-99.,1.6,-99.,-99.,-99.,No,Estimated diameter
+WISEA J221340.02-730153.2,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J054058.68-450352.7,-99.,-99.,0.8,0.,1.,-99.,No,Estimated diameter pa and ba
+AM 0059-673,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+I SZ 015b,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+UGCA 256,-99.,-99.,-99.,110.,-99.,-99.,No,Estimated pa
+ESO 448- G 002,-99.,-99.,-99.,110.,-99.,-99.,No,Estimated pa
+ESO 323- G 085,-99.,-99.,2.6,0.,1.,-99.,No,Estimated diameter pa and ba
+IC 0806,-99.,-99.,1.5,0.,1.,-99.,No,Estimated diameter pa and ba
+PGC1 2815803 NED001,-99.,-99.,-99.,90.,-99.,-99.,No,Estimated pa
+WISEA J010602.10-341352.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J010558.34-341417.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 513- G 022,-99.,-99.,2.0,0.,1.,-99.,No,Estimated diameter pa and ba
+WISEA J214323.75+140634.8,325.8487,14.1116,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+ESO 443- G 007,-99.,-99.,1.6,-99.,-99.,-99.,No,Estimated diameter
+ESO 444- G 066,-99.,-99.,1.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J214144.43-524541.1,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J031229.32-502127.3,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+WISEA J031234.18-502020.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+VCC 1195,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+PGC1 0059782 NED002,-99.,-99.,-99.,130.,-99.,-99.,No,Estimated pa
+MCG -01-38-014,-99.,-99.,-99.,90.,-99.,-99.,No,Estimated pa
+ESO 507- G 067,-99.,-99.,2.0,-99.,0.8,-99.,No,Estimated diameter and ba
+MCG -02-57-004,-99.,-99.,-99.,40.,-99.,-99.,No,Estimated pa
+NGC 5134,-99.,-99.,3.7,0.0,1.0,-99.,No,Estimated diameter pa and ba
+NGC 5087,-99.,-99.,3.5,-99.,-99.,-99.,No,Estimated diameter
+NGC 7135,-99.,-99.,4.0,-99.,-99.,-99.,No,Estimated diameter
+IC 4214,-99.,-99.,3.7,-99.,-99.,-99.,No,Estimated diameter
+NGC 3051,-99.,-99.,6.5,-99.,-99.,-99.,No,Estimated diameter
+UGC 00830,-99.,-99.,3.0,-99.,-99.,-99.,No,Estimated diameter
+MCG -02-38-015,-99.,-99.,4.0,-99.,-99.,-99.,No,Estimated diameter
+IC 4842,-99.,-99.,3.2,-99.,-99.,-99.,No,Estimated diameter
+NGC 5220,-99.,-99.,3.8,-99.,0.7,-99.,No,Estimated diameter and ba
+WISEA J013732.79-423939.9,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+ESO 150- G 005,-99.,-99.,4.0,-99.,0.8,-99.,No,Estimated diameter and ba
+WISEA J002246.82-533754.7,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+NGC 5626,-99.,-99.,3.5,0.0,1.0,-99.,No,Estimated diameter pa and ba
+IC 4180,-99.,-99.,2.4,0.0,1.0,-99.,No,Estimated diameter pa and ba
+ESO 106- G 002,-99.,-99.,2.0,-99.,-99.,-99.,No,Estimated diameter
+ESO 051- G 011,-99.,-99.,3.0,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J220810.37+044030.1,-99.,-99.,0.3,-99.,-99.,-99.,No,Estimated diameter
+MCG -03-13-063,-99.,-99.,3.0,0.0,1.0,-99.,No,Estimated diameter pa and ba
+NGC 4650A,-99.,-99.,2.0,-99.,-99.,-99.,No,Estimated diameter
+ESO 109- G 034,-99.,-99.,1.7,0.0,1.0,-99.,No,Estimated diameter pa and ba
+CGCG 093-031,-99.,-99.,1.5,-99.,-99.,-99.,No,Estimated diameter
+IC 5362,-99.,-99.,2.5,-99.,-99.,-99.,No,Estimated diameter
+IC 2910,-99.,-99.,2.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J152556.16-301619.3,-99.,-99.,2.5,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J010710.33-192152.0,-99.,-99.,0.8,-99.,-99.,-99.,No,Estimated diameter
+WISEA J041911.84-532121.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+MCG -02-14-007,-99.,-99.,2.0,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J051347.66-124450.7,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 384- G 019,-99.,-99.,2.5,0.0,1.0,-99.,No,Estimated diameter pa and ba
+AM 2230-481 NED01,-99.,-99.,0.8,-99.,-99.,-99.,No,Estimated diameter
+ESO 322- G 027,-99.,-99.,2.0,0.0,1.0,-99.,No,Estimated diameter pa and ba
+ESO 442- G 028,-99.,-99.,3.0,0.0,1.0,-99.,No,Estimated diameter pa and ba
+CGCG 460-029,-99.,-99.,1.0,148.0,0.78,-99.,No,Estimated diameter pa and ba
+WISEA J225042.97-581401.0,342.6786,-58.2334,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J113716.89+070324.7,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+MCG -03-58-006,-99.,-99.,1.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J124121.74-040857.6,-99.,-99.,1.3,140.0,0.37,-99.,No,Estimated diameter pa and ba
+WISEA J140334.68-271646.8,-99.,-99.,3.3,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J133202.34-114027.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J120931.51+033000.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 502-IG 006,-99.,-99.,1.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 052- G 015,-99.,-99.,0.9,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J022425.67-322349.9,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J050713.08-522624.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+LCRS B000746.5-413852,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+WISEA J213042.35+103721.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J053016.33-290238.7,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+WISEA J052149.27-171246.7,-99.,-99.,1.2,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J134233.12-300757.1,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J154553.13+043316.4,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J094301.83+091508.9,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+2MASX J22521525+0023124,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+WISEA J044209.74-231416.8,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+NGC 5291,-99.,-99.,10.67,165.0,0.3,-99.,No,Estimated diameter pa and ba
+ESO 501- G 070,-99.,-99.,1.2,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J095904.52-205708.7,-99.,-99.,1.0,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J235455.98-091600.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J235500.04-091603.2,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J184136.83-630000.4,-99.,-99.,1.2,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J024426.88-064438.9,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+AM 0303-742,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+WISEA J150407.40-340004.6,-99.,-99.,1.2,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J031612.51-190454.6,-99.,-99.,0.7,0.0,1.0,-99.,No,Estimated diameter pa and ba
+ESO 286-IG 019,-99.,-99.,1.6,-99.,0.8,-99.,No,Estimated diameter and ba
+WISEA J094732.80+104508.6,-99.,-99.,2.0,-99.,-99.,-99.,No,Estimated diameter
+ESO 514- G 013,-99.,-99.,1.2,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J011817.84-171109.4,-99.,-99.,1.0,0.,-99.,-99.,No,Estimated diameter and pa
+WISEA J034339.25-231759.6,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J232839.37+193311.2,-99.,-99.,0.8,-99.,-99.,-99.,No,Estimated diameter
+GALEXASC J142430.85-165914.3,-99.,-99.,2.2,-99.,0.75,-99.,No,Estimated diameter and ba
+WISEA J203110.63-074446.5,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+ESO 499- G 012,-99.,-99.,1.8,-99.,-99.,-99.,No,Estimated diameter
+ESO 347- G 003,-99.,-99.,1.2,-99.,-99.,-99.,No,Estimated diameter
+MCG -07-48-016,-99.,-99.,1.4,-99.,-99.,-99.,No,Estimated diameter
+LEDA 2815840,-99.,-99.,-99.,90.,-99.,-99.,No,Estimated pa
+WISEA J050541.83-235130.1,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+VCC 0169,-99.,-99.,1.7,90.,0.8,-99.,No,Estimated diameter pa and ba
+GALEXASC J220106.04-505056.2,-99.,-99.,1.6,-99.,-99.,-99.,No,Estimated diameter
+WISEA J012500.34-164415.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+LEDA 083638,193.6077,-17.5691,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J151159.80-211901.5,-99.,-99.,1.0,-99.,1.0,-99.,No,Estimated diameter and ba
+WISEA J034509.35-223743.0,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J233550.69-480718.5,353.9630,-48.1212,-99.,90.,-99.,-99.,No,Moved to LS/DR10 position
+WISEA J003739.63-041657.8,-99.,-99.,1.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J135023.98-301732.5,-99.,-99.,1.5,-99.,-99.,-99.,No,Estimated diameter
+WISEA J110923.56+235624.3,-99.,-99.,0.7,-99.,-99.,-99.,No,Estimated diameter
+WISEA J231702.18-440511.7,-99.,-99.,1.4,-99.,-99.,-99.,No,Estimated diameter
+ESO-LV 5530191,-99.,-99.,1.6,0.0,1.0,-99.,No,Estimated diameter pa and ba
+WISEA J231830.84-010152.8,-99.,-99.,-99.,-99.,1.0,-99.,No,Estimated ba
+VCC 0652,-99.,-99.,0.45,-99.,-99.,-99.,No,Estimated diameter
+ESO 295- G 023,-99.,-99.,1.2,0.0,1.0,-99.,No,Estimated diameter pa and ba
+AM 0410-291 NED01,-99.,-99.,1.6,-99.,-99.,-99.,No,Estimated diameter
+6dF J1305235-233121,-99.,-99.,1.4,-99.,0.6,-99.,No,Estimated diameter and ba
+2MASX J07214268+2601521,-99.,-99.,0.5,-99.,-99.,-99.,No,Estimated diameter

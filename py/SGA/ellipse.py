@@ -17,6 +17,25 @@ from SGA.logger import log
 
 MAXSHIFT_ARCSEC = 3.5
 
+# legacypipe fitting modes
+FITMODE = dict(
+    FREEZE = 2**0,      # freeze Tractor parameters
+    FIXGEO = 2**1,      # fix ellipse geometry
+    RESOLVED = 2**2,    # no Tractor catalogs or ellipse-fitting
+)
+
+# SGA fitting modes
+ELLIPSEMODE = dict(
+    FIXGEO = 2**0,      # fix ellipse geometry
+    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting
+    FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
+                        # subtract but do not threshold-mask Gaia stars
+    FORCEGAIA = 2**3,   # force PSF source detection and photometry within the SGA mask;
+    LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
+    MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
+                        # mask (e.g., within a cluster environment)
+)
+
 ELLIPSEBIT = dict(
     NOTRACTOR = 2**0,          # SGA source has no corresponding Tractor source
     BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
@@ -24,473 +43,370 @@ ELLIPSEBIT = dict(
     LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
 )
 
-REF_SBTHRESH = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26] # surface brightness thresholds
-REF_APERTURES = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0] # multiples of MAJORAXIS
-
-# ndim>1 columns when ellipse-fitting fails; note, this list is used
-# by various build_catalog functions, so change with care!
-FAILCOLS = ['sma', 'intens', 'intens_err', 'eps', 'eps_err',
-            'pa', 'pa_err', 'x0', 'x0_err', 'y0', 'y0_err',
-            'a3', 'a3_err', 'a4', 'a4_err'] + ['ndata']
-FAILDTYPES = [np.float32] * 15 + [np.int16]
+REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
+REF_APERTURES = [0.5, 1., 1.25, 1.5, 2., 3.] # multiples of SMA_MOMENT
 
 
-def _get_r0():
-    r0 = 10.0 # [arcsec]
-    return r0
+def to_float32_safe_mapping(d):
+    finfo = np.finfo(np.float32)
+    out = {}
+    for k, v in d.items():
+        v = float(v)
+        if not np.isfinite(v):
+            out[k] = np.float32(np.nan)
+        else:
+            out[k] = np.float32(np.clip(v, finfo.min, finfo.max))
+    return out
 
-def cog_model(radius, mtot, m0, alpha1, alpha2):
-    r0 = _get_r0()
-    #return mtot - m0 * np.expm1(-alpha1*((radius / r0)**(-alpha2)))
-    return mtot + m0 * np.log1p(alpha1*(radius/10.0)**(-alpha2))
 
+def to_float32_safe_scalar(x):
+    import math
 
-def cog_dofit(sma, mag, mag_err, bounds=None):
-    from scipy.optimize import curve_fit
-
-    chisq = 1e6
     try:
-        popt, _ = curve_fit(cog_model, sma, mag, sigma=mag_err,
-                            bounds=bounds, max_nfev=10000)
-    except RuntimeError:
-        popt = None
-    else:
-        chisq = (((cog_model(sma, *popt) - mag) / mag_err) ** 2).sum()
+        xv = float(x)
+    except Exception:
+        return np.nan
 
-    return popt, chisq
+    if not math.isfinite(xv):
+        return np.float32(np.nan)
+
+    f32 = np.finfo(np.float32)
+    fmin = float(f32.min)
+    fmax = float(f32.max)
+
+    if xv < fmin or xv > fmax:
+        return np.float32(np.nan)
+
+    return np.float32(xv)
 
 
-class CogModel(astropy.modeling.Fittable1DModel):
-    """Class to empirically model the curve of growth.
+def cog_model(radius, mtot, dmag, lnalpha1, lnalpha2, r0=10.):
+    """
+    Curve-of-growth model in magnitudes.
 
-    radius in arcsec
-    r0 - constant scale factor (10)
+        m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
 
-    m(r) = mtot + mcen * (1-exp**(-alpha1*(radius/r0)**(-alpha2))
+    Parameters
+    ----------
+    radius   : array-like
+    mtot     : float         # asymptotic total magnitude
+    dmag     : float         # positive amplitude (~ inner mag - mtot)
+    lnalpha1 : float         # log(alpha1), alpha1 = exp(lnalpha1) > 0
+    lnalpha2 : float         # log(alpha2), alpha2 = exp(lnalpha2) > 0
+    r0       : float         # scale radius
+
+    Returns
+    -------
+    model magnitudes at 'radius'.
 
     """
-    mtot = astropy.modeling.Parameter(default=20.0, bounds=(1, 30)) # integrated magnitude (r-->infty)
-    m0 = astropy.modeling.Parameter(default=10.0, bounds=(1, 30)) # central magnitude (r=0)
-    alpha1 = astropy.modeling.Parameter(default=0.3, bounds=(1e-3, 5)) # scale factor 1
-    alpha2 = astropy.modeling.Parameter(default=0.5, bounds=(1e-3, 5)) # scale factor 2
+    r = np.asarray(radius, float)
+    eps = np.finfo(float).tiny
+    a1 = np.exp(lnalpha1)
+    a2 = np.exp(lnalpha2)
 
-    def __init__(self, mtot=mtot.default, m0=m0.default,
-                 alpha1=alpha1.default, alpha2=alpha2.default):
-        super(CogModel, self).__init__(mtot, m0, alpha1, alpha2)
+    # log((r/r0)^(-a2)) = -a2 * log(r/r0)
+    logx = -a2 * np.log(np.maximum(r, eps) / r0)
 
-        self.r0 = 10 # scale factor [arcsec]
+    # z = a1 * x, but do it in logs and clip to avoid overflow in exp
+    logz = lnalpha1 + logx
+    # safe range for np.exp in float64 (~[-745, 709]); we can be stricter
+    logz = np.clip(logz, -100.0, 100.0)
+    z = np.exp(logz)
 
-    def evaluate(self, radius, mtot, m0, alpha1, alpha2):
-        """Evaluate the COG model."""
-        model = mtot + m0 * (1 - np.exp(-alpha1*(radius/self.r0)**(-alpha2)))
-        return model
-
-
-def _apphot_one(args):
-    """Wrapper function for the multiprocessing."""
-    return apphot_one(*args)
+    # 1 - exp(-z) evaluated stably
+    return mtot + dmag * (-np.expm1(-z))
 
 
-def apphot_one(img, mask, theta, x0, y0, aa, bb, pixscale, variance=False, iscircle=False):
-    """Perform aperture photometry in a single elliptical annulus.
+def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
+            bounds=None, robust=True, minerr=0.02, f_scale=1.,
+            debug=False):
+    """
+    Fit (mtot, dmag, lnalpha1, lnalpha2) in:
+
+        m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
+
+    Returns
+    -------
+    popt : dict
+        {'mtot','dmag','lnalpha1','lnalpha2'}
+    perr : dict
+        1σ uncertainties for the same keys (approximate; from (JᵀJ)^(-1) scaled by χ²/ndof)
+    cov  : ndarray or None
+        Covariance matrix for (mtot, dmag, lnalpha1, lnalpha2)
+    chi2 : float
+        Classical χ² = Σ[(m_model - m_data)/σ_m]^2 (unweighted if apferr is None)
+    ndof : int
+        Degrees of freedom = N - 4 (clamped to ≥1)
 
     """
-    from photutils import EllipticalAperture, CircularAperture, aperture_photometry
+    def initial_guesses(sma, mags, r0, bounds, eps=1e-6):
+        # bounds order: (mtot, dmag, lnalpha1, lnalpha2)
+        (mt_lb, dm_lb, lnA1_lb, lnA2_lb), (mt_ub, dm_ub, lnA1_ub, lnA2_ub) = bounds
 
-    if iscircle:
-        aperture = CircularAperture((x0, y0), aa)
+        sma = np.asarray(sma, float)
+        mags = np.asarray(mags, float)
+        good = np.isfinite(sma) & np.isfinite(mags) & (sma > 0)
+        a = sma[good]; y = mags[good]
+        if a.size < 5:
+            # absolute fallback: midpoints in a safe box
+            lnalpha2 = np.clip(np.log(0.7), lnA2_lb+eps, lnA2_ub-eps)
+            lnalpha1 = np.clip(lnalpha2 * 0.0, lnA1_lb+eps, lnA1_ub-eps)  # r_p=r0 → ln(r_p/r0)=0
+            mtot = np.clip(np.median(y), mt_lb+eps, mt_ub-eps)
+            dmag = np.clip((np.percentile(y, 80) - mtot), max(dm_lb+eps, 0.1), dm_ub-eps)
+            return (mtot, dmag, lnalpha1, lnalpha2)
+
+        # mtot, dmag from ends of the curve
+        mtot0 = float(np.median(y[-min(5, y.size):]))
+        dmag0 = float(np.percentile(y[:min(5, y.size)], 80) - mtot0)
+        dmag0 = max(dmag0, 0.1)
+
+        # default α2 if regression failed or was out of bounds
+        lnalpha2 = np.log(0.7)  # α2 ≈ 0.7
+        # pivot at geometric mean radius
+        rp = float(np.exp(np.mean(np.log(a))))
+        # lnalpha1 so that z(rp)=1
+        lnalpha1 = np.exp(lnalpha2) * np.log(max(rp, 1e-12) / r0)
+
+        # clip into bounds with a small margin
+        mtot0   = float(np.clip(mtot0,   mt_lb+eps, mt_ub-eps))
+        dmag0   = float(np.clip(dmag0,   dm_lb+eps, dm_ub-eps))
+        lnalpha1 = float(np.clip(lnalpha1, lnA1_lb+eps, lnA1_ub-eps))
+        lnalpha2 = float(np.clip(lnalpha2, lnA2_lb+eps, lnA2_ub-eps))
+        return (mtot0, dmag0, lnalpha1, lnalpha2)
+
+
+    def residuals(p):
+        mt, dm, lnA1, lnA2 = p
+        A2 = np.exp(lnA2)
+
+        # z = exp(lnA1 - A2*log_rr0), computed stably
+        logz = lnA1 - A2 * log_rr0
+        logz = np.clip(logz, -100.0, 100.0)
+        z = np.exp(logz)
+
+        # m = mt + dm * (1 - exp(-z)) = mt + dm * (-expm1(-z))
+        yhat = mt + dm * (-np.expm1(-z))
+
+        res = yhat - mags
+        if w is not None:
+            res = res / w
+        return res
+
+
+    def jacobian(p):
+        mt, dm, lnA1, lnA2 = p
+        A2 = np.exp(lnA2)
+
+        logz = lnA1 - A2 * log_rr0
+        logz = np.clip(logz, -100.0, 100.0)
+        z = np.exp(logz)
+        emz = np.exp(-z)
+
+        invw = 1.0 if w is None else (1.0 / w)
+        J = np.empty((sma.size, 4), float)
+        J[:, 0] = 1.0 * invw                           # ∂m/∂mtot
+        J[:, 1] = (1.0 - emz) * invw                   # ∂m/∂dmag
+        J[:, 2] = (dm * z * emz) * invw                # ∂m/∂lnalpha1
+        J[:, 3] = (-dm * z * A2 * log_rr0 * emz) * invw# ∂m/∂lnalpha2
+        return J
+
+
+    from scipy.optimize import least_squares
+
+    nall = np.arange(len(sma_arcsec))
+
+    # check for good values and also ignore the first N inner points,
+    # where the PSF dominates (especially in GALEX and WISE)
+    if ferr is not None:
+        ok = (np.isfinite(sma_arcsec) & np.isfinite(flux) & (sma_arcsec > 0) &
+              (flux > 0) & np.isfinite(ferr) & (ferr > 0) &
+              (nall > (ndrop-1)))
     else:
-        aperture = EllipticalAperture((x0, y0), aa, bb, theta)
+        ok = (np.isfinite(sma_arcsec) & np.isfinite(flux) & (sma_arcsec > 0) &
+              (flux > 0) & (nall > (ndrop-1)))
 
-    # Integrate the data to get the total surface brightness (in
-    # nanomaggies/arcsec2) and the mask to get the fractional area.
+    if np.count_nonzero(ok) < 5:
+        return {}, {}, None, 0., 0
 
-    #area = (aperture_photometry(~mask*1, aperture, mask=mask, method='exact'))['aperture_sum'].data * pixscale**2 # [arcsec**2]
-    mu_flux = (aperture_photometry(img, aperture, mask=mask, method='exact'))['aperture_sum'].data # [nanomaggies/arcsec2]
-    #print(x0, y0, aa, bb, theta, mu_flux, pixscale, img.shape, mask.shape, aperture)
-    if variance:
-        apphot = np.sqrt(mu_flux) * pixscale**2 # [nanomaggies]
+    sma = sma_arcsec[ok]
+    mags = 22.5 - 2.5 * np.log10(flux[ok])
+
+    if ferr is not None:
+        w = 2.5 * ferr[ok] / (flux[ok] * np.log(10.))  # mag errors
+        w = np.where(w > 0, w, np.nan)
+        # add a magnitude floor
+        w = np.sqrt(w**2 + minerr**2)
     else:
-        apphot = mu_flux * pixscale**2 # [nanomaggies]
+        w = None
 
-    return apphot
+    eps = np.finfo(float).tiny
+    log_rr0 = np.log(np.maximum(sma, eps) / r0)   # reused by residuals & jacobian
 
 
-def ellipse_cog(bands, refellipsefit, mp=1,
-                seed=1, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                nmonte=30):
-    """Measure the curve of growth (CoG) by performing elliptical aperture
-    photometry.
+    # Bounds
+    ymin, ymax = float(np.nanmin(mags)), float(np.nanmax(mags))
+    if bounds is None:
+        # mtot near the data; dmag positive but not absurd; lnalpha*
+        # kept in a safe numeric range
+        lb = (ymin - 5., 1e-6, -10., -10.)
+        ub = (ymax + 5., (ymax - ymin) + 5., 10., 10.)
+        bounds = (lb, ub)
 
-    maxsma in pixels
-    pixscalefactor - assumed to be constant for all bandpasses!
+    # Initial guess
+    if p0 is None:
+        p0 = initial_guesses(sma, mags, r0, bounds)
+
+    res = least_squares(
+        residuals, x0=np.array(p0, float), bounds=bounds,
+        jac=jacobian, f_scale=f_scale, method='trf',
+        loss=('soft_l1' if robust else 'linear'),
+        x_scale='jac', max_nfev=200, ftol=1e-10, xtol=1e-10,
+        gtol=1e-10)
+
+    # Classical chi^2 (independent of robust loss)
+    mt, dm, lnA1, lnA2 = res.x
+    yhat = cog_model(sma, mt, dm, lnA1, lnA2, r0=r0)
+    if w is not None:
+        chi2 = float(np.sum(((yhat - mags) / w)**2))
+    else:
+        chi2 = float(np.sum((yhat - mags)**2))
+    ndof = max(1, sma.size - 4)
+
+    # Covariance and 1σ errors (approximate)
+    try:
+        J = res.jac
+        s2 = (res.fun @ res.fun) / ndof
+        cov = np.linalg.inv(J.T @ J) * s2
+        var = np.diag(cov)
+        if np.all(var > 0):
+            sig = np.sqrt(var)
+            perr = {'mtot': sig[0], 'dmag': sig[1], 'lnalpha1': sig[2], 'lnalpha2': sig[3]}
+        else:
+            #cov = None
+            #perr = {'mtot': np.nan, 'dmag': np.nan, 'lnalpha1': np.nan, 'lnalpha2': np.nan}
+            return {}, {}, None, 0., ndof
+    except np.linalg.LinAlgError:
+        #cov = None
+        #perr = {'mtot': np.nan, 'dmag': np.nan, 'lnalpha1': np.nan, 'lnalpha2': np.nan}
+        return {}, {}, None, 0., ndof
+
+    popt = {'mtot': mt, 'dmag': dm, 'lnalpha1': lnA1, 'lnalpha2': lnA2}
+
+    # convert to f4
+    #if debug:
+    #    pdb.set_trace()
+    popt = to_float32_safe_mapping(popt)
+    perr = to_float32_safe_mapping(perr)
+    chi2 = to_float32_safe_scalar(chi2)
+
+    # check for insane values
+    if (any(not np.isfinite(v) for v in popt.values()) or \
+        any(not np.isfinite(e) for e in perr.values())):
+        return {}, {}, None, 0., ndof
+    else:
+        return popt, perr, cov, chi2, ndof
+
+
+def radius_for_fraction(f, dmag, lnalpha1, lnalpha2, r0=10.):
+    """
+    Invert m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
+    to get the semi-major axis r_f enclosing flux fraction f (0<f<1).
+
+    Parameters
+    ----------
+    f        : float in (0,1)   # enclosed flux fraction (e.g., 0.5 for half-light)
+    dmag     : float            # amplitude (> 0)
+    lnalpha1 : float            # log(alpha1)
+    lnalpha2 : float            # log(alpha2)
+    r0       : float            # scale radius (same units as desired r)
+
+    Returns
+    -------
+    r_f : float
 
     """
-    import numpy.ma as ma
-    import astropy.table
-    from astropy.utils.exceptions import AstropyUserWarning
-    from scipy import integrate
-    from scipy.interpolate import interp1d
-    from scipy.stats import sigmaclip
+    if not (0.0 < f < 1.0):
+        raise ValueError("f must be in (0, 1).")
+    dm = -2.5 * np.log10(f)          # required mag offset from mtot
+    if dmag <= dm:
+        raise ValueError(f"dmag={dmag:.6g} must exceed {dm:.6g} mag to reach fraction f.")
+    t = 1. - dm/dmag                # in (0, 1)
+    y = -np.log(t)                  # > 0
+    a1 = np.exp(lnalpha1)
+    a2 = np.exp(lnalpha2)
+    r = r0 * (a1 / y)**(1.0 / a2)
 
-    rand = np.random.RandomState(seed)
-
-    #deltaa = 1.0 # pixel spacing
-
-    #theta, eps = refellipsefit['geometry'].pa, refellipsefit['geometry'].eps
-    theta = np.radians(refellipsefit['pa_moment']-90)
-    eps = refellipsefit['eps_moment']
-    refband = refellipsefit['refband']
-    refpixscale = data['refpixscale']
-
-    #maxsma = refellipsefit['maxsma']
-
-    results = {}
-
-    # Build the SB profile and measure the radius (in arcsec) at which mu
-    # crosses a few different thresholds like 25 mag/arcsec, etc.
-    sbprofile = ellipse_sbprofile(refellipsefit)
-
-    for sbcut in sbthresh:
-        if sbprofile['mu_{}'.format(refband)].max() < sbcut or sbprofile['mu_{}'.format(refband)].min() > sbcut:
-            print('Insufficient profile to measure the radius at {:.1f} mag/arcsec2!'.format(sbcut))
-            results['sma_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-            results['sma_ivar_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-            continue
-
-        rr = (sbprofile['sma_{}'.format(refband)] * refpixscale)**0.25 # [arcsec]
-        sb = sbprofile['mu_{}'.format(refband)] - sbcut
-        sberr = sbprofile['muerr_{}'.format(refband)]
-        keep = np.where((sb > -1) * (sb < 1))[0]
-        if len(keep) < 5:
-            keep = np.where((sb > -2) * (sb < 2))[0]
-            if len(keep) < 5:
-                print('Insufficient profile to measure the radius at {:.1f} mag/arcsec2!'.format(sbcut))
-                results['sma_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-                results['sma_ivar_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-                continue
-
-        # Monte Carlo to get the radius
-        rcut = []
-        for ii in np.arange(20):
-            sbfit = rand.normal(sb[keep], sberr[keep])
-            coeff = np.polyfit(sbfit, rr[keep], 1)
-            rcut.append((np.polyval(coeff, 0))**4)
-        rcut_clipped, _, _ = sigmaclip(rcut, low=3, high=3)
-        meanrcut, sigrcut = np.mean(rcut_clipped), np.std(rcut_clipped)
-        #meanrcut, sigrcut = np.mean(rcut), np.std(rcut)
-        #print(rcut, meanrcut, sigrcut)
-
-        #plt.clf() ; plt.plot((rr[keep])**4, sb[keep]) ; plt.axvline(x=meanrcut) ; plt.savefig('junk.png')
-        #plt.clf() ; plt.plot(rr, sb+sbcut) ; plt.axvline(x=meanrcut**0.25) ; plt.axhline(y=sbcut) ; plt.xlim(2, 2.6) ; plt.savefig('junk.png')
-
-        #try:
-        #    rcut = interp1d()(sbcut) # [arcsec]
-        #except:
-        #    print('Warning: extrapolating r({:0g})!'.format(sbcut))
-        #    rcut = interp1d(sbprofile['mu_{}'.format(refband)], sbprofile['sma_{}'.format(refband)] * pixscale, fill_value='extrapolate')(sbcut) # [arcsec]
-        if meanrcut > 0 and sigrcut > 0:
-            # require a minimum S/N
-            if meanrcut / sigrcut > 2:
-                results['sma_sb{:0g}'.format(sbcut)] = np.float32(meanrcut) # [arcsec]
-                results['sma_ivar_sb{:0g}'.format(sbcut)] = np.float32(1.0 / sigrcut**2)
-            else:
-                print('Dropping profile measured at radius {:.1f} mag/arcsec2 due to S/N<2'.format(sbcut))
-                results['sma_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-                results['sma_ivar_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-        else:
-            results['sma_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-            results['sma_ivar_sb{:0g}'.format(sbcut)] = np.float32(0.0)
-
-    # aperture radii
-    for iap, ap in enumerate(apertures):
-        if refellipsefit['sma_moment'] > 0:
-            results['sma_ap{:02d}'.format(iap+1)] = np.float32(refellipsefit['sma_moment'] * ap) # [arcsec]
-        else:
-            results['sma_ap{:02d}'.format(iap+1)] = np.float32(0.0)
-
-    chi2fail = 1e8
-    nparams = 4
-
-    if eps == 0.0:
-        iscircle = True
-    else:
-        iscircle = False
-
-    for filt in bands:
-        img = ma.getdata(data['{}_masked'.format(filt.lower())][igal]) # [nanomaggies/arcsec2]
-        mask = ma.getmask(data['{}_masked'.format(filt.lower())][igal])
-
-        # handle GALEX and WISE
-        if 'filt2pixscale' in data.keys():
-            pixscale = data['filt2pixscale'][filt]
-            if np.isclose(pixscale, refpixscale): # avoid rounding issues
-                pixscale = refpixscale
-                pixscalefactor = 1.0
-            else:
-                pixscalefactor = refpixscale / pixscale
-        else:
-            pixscale = refpixscale
-            pixscalefactor = 1.0
-
-        x0 = pixscalefactor * refellipsefit['x0_moment']
-        y0 = pixscalefactor * refellipsefit['y0_moment']
-
-        #im = np.log10(img) ; im[mask] = 0 ; plt.clf() ; plt.imshow(im, origin='lower') ; plt.scatter(y0, x0, s=50, color='red') ; plt.savefig('junk.png')
-
-        # First get the elliptical aperture photometry within the threshold
-        # radii found above. Also measure aperture photometry in integer
-        # multiples of sma_moment.
-        smapixels, sbaplist = [], []
-        for sbcut in sbthresh:
-            # initialize with zeros
-            results['flux_sb{:0g}_{}'.format(sbcut, filt.lower())] = np.float32(0.0)
-            results['flux_ivar_sb{:0g}_{}'.format(sbcut, filt.lower())] = np.float32(0.0)
-            results['fracmasked_sb{:0g}_{}'.format(sbcut, filt.lower())] = np.float32(0.0)
-            _smapixels = results['sma_sb{:0g}'.format(sbcut)] / pixscale # [pixels]
-            if _smapixels > 0:
-                smapixels.append(_smapixels)
-                sbaplist.append('sb{:0g}'.format(sbcut))
-
-        for iap, ap in enumerate(apertures):
-            # initialize with zeros
-            results['flux_ap{:02d}_{}'.format(iap+1, filt.lower())] = np.float32(0.0)
-            results['flux_ivar_ap{:02d}_{}'.format(iap+1, filt.lower())] = np.float32(0.0)
-            results['fracmasked_ap{:02d}_{}'.format(iap+1, filt.lower())] = np.float32(0.0)
-            _smapixels = results['sma_ap{:02d}'.format(iap+1)] / pixscale # [pixels]
-            if _smapixels > 0:
-                smapixels.append(_smapixels)
-                sbaplist.append('ap{:02d}'.format(iap+1))
-
-        if len(smapixels) > 0:
-            smapixels = np.hstack(smapixels)
-            sbaplist = np.hstack(sbaplist)
-            smbpixels = smapixels * (1. - eps)
-
-            with np.errstate(all='ignore'):
-                with warnings.catch_warnings():
-                    warnings.simplefilter('ignore', category=AstropyUserWarning)
-                    cogflux = pool.map(_apphot_one, [(img, mask, theta, x0, y0, aa, bb, pixscale, False, iscircle)
-                                                     for aa, bb in zip(smapixels, smbpixels)])
-
-                    # compute the fraction of masked pixels
-                    nmasked = pool.map(_apphot_one, [(np.ones_like(img), np.logical_not(mask), theta, x0, y0, aa, bb, pixscale, False, iscircle)
-                                                       for aa, bb in zip(smapixels, smbpixels)])
-                    npix = pool.map(_apphot_one, [(np.ones_like(img), np.zeros_like(mask), theta, x0, y0, aa, bb, pixscale, False, iscircle)
-                                                  for aa, bb in zip(smapixels, smbpixels)])
-
-                    if len(cogflux) > 0:
-                        cogflux = np.hstack(cogflux)
-                        npix = np.hstack(npix) * pixscale**2
-                        nmasked = np.hstack(nmasked) * pixscale**2
-                        fracmasked = np.zeros_like(cogflux)
-                        I = np.where(npix > 0)[0]
-                        if len(I) > 0:
-                            fracmasked[I] = nmasked[I] / npix[I]
-                    else:
-                        cogflux = np.array([0.0])
-                        fracmasked = np.array([0.0])
-
-                    if '{}_var'.format(filt.lower()) in data.keys():
-                        var = data['{}_var'.format(filt.lower())][igal] # [nanomaggies**2/arcsec**4]
-                        cogferr = pool.map(_apphot_one, [(var, mask, theta, x0, y0, aa, bb, pixscale, True, iscircle)
-                                                        for aa, bb in zip(smapixels, smbpixels)])
-                        if len(cogferr) > 0:
-                            cogferr = np.hstack(cogferr)
-                        else:
-                            cogferr = np.array([0.0])
-                    else:
-                        cogferr = None
-
-            with warnings.catch_warnings():
-                if cogferr is not None:
-                    ok = np.where(np.isfinite(cogflux) * (cogferr > 0) * np.isfinite(cogferr))[0]
-                else:
-                    ok = np.where(np.isfinite(cogflux))[0]
-
-            if len(ok) > 0:
-                for label, cflux, cferr, fmask in zip(sbaplist[ok], cogflux[ok], cogferr[ok], fracmasked[ok]):
-                    results['flux_{}_{}'.format(label, filt.lower())] = np.float32(cflux)
-                    results['flux_ivar_{}_{}'.format(label, filt.lower())] = np.float32(1/cferr**2)
-                    results['fracmasked_{}_{}'.format(label, filt.lower())] = np.float32(fmask)
-
-        # now get the curve of growth at a wide range of regularly spaced
-        # positions along the semi-major axis.
-
-        # initialize
-        results['cog_mtot_{}'.format(filt.lower())] = np.float32(0.0)
-        results['cog_mtot_ivar_{}'.format(filt.lower())] = np.float32(0.0)
-        results['cog_m0_{}'.format(filt.lower())] = np.float32(0.0)
-        results['cog_m0_ivar_{}'.format(filt.lower())] = np.float32(0.0)
-        results['cog_alpha1_{}'.format(filt.lower())] = np.float32(0.0)
-        results['cog_alpha1_ivar_{}'.format(filt.lower())] = np.float32(0.0)
-        results['cog_alpha2_{}'.format(filt.lower())] = np.float32(0.0)
-        results['cog_alpha2_ivar_{}'.format(filt.lower())] = np.float32(0.0)
-
-        results['cog_chi2_{}'.format(filt.lower())] = np.float32(-1.0)
-        results['cog_sma50_{}'.format(filt.lower())] = np.float32(-1.0)
-
-        results['cog_sma_{}'.format(filt.lower())] = np.float32(-1.0) # np.array([])
-        results['cog_flux_{}'.format(filt.lower())] = np.float32(0.0) # np.array([])
-        results['cog_flux_ivar_{}'.format(filt.lower())] = np.float32(0.0) # np.array([])
-
-        maxsma = np.max(sbprofile['sma_{}'.format(filt.lower())])        # [pixels]
-        if maxsma <= 0:
-            maxsma = np.max(refellipsefit['sma_{}'.format(filt.lower())])        # [pixels]
-
-        #sma = np.arange(deltaa_filt, maxsma * pixscalefactor, deltaa_filt)
-
-        sma = refellipsefit['sma_{}'.format(filt.lower())] * 1.0 # [pixels]
-        keep = np.where((sma > 0) * (sma <= maxsma))[0]
-        #keep = np.where(sma < maxsma)[0]
-        if len(keep) > 0:
-            sma = sma[keep]
-        else:
-            continue
-            #print('Too few good semi-major axis pixels!')
-            #raise ValueError
-
-        smb = sma * (1. - eps)
-
-        #print(filt, img.shape, pixscale)
-        with np.errstate(all='ignore'):
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', category=AstropyUserWarning)
-                #cogflux = [apphot_one(img, mask, theta, x0, y0, aa, bb, pixscale, False, iscircle) for aa, bb in zip(sma, smb)]
-                cogflux = pool.map(_apphot_one, [(img, mask, theta, x0, y0, aa, bb, pixscale, False, iscircle)
-                                                for aa, bb in zip(sma, smb)])
-                if len(cogflux) > 0:
-                    cogflux = np.hstack(cogflux)
-                else:
-                    cogflux = np.array([0.0])
-
-                if '{}_var'.format(filt.lower()) in data.keys():
-                    var = data['{}_var'.format(filt.lower())][igal] # [nanomaggies**2/arcsec**4]
-                    cogferr = pool.map(_apphot_one, [(var, mask, theta, x0, y0, aa, bb, pixscale, True, iscircle)
-                                                    for aa, bb in zip(sma, smb)])
-                    if len(cogferr) > 0:
-                        cogferr = np.hstack(cogferr)
-                    else:
-                        cogferr = np.array([0.0])
-                else:
-                    cogferr = None
-
-        # Store the curve of growth fluxes, included negative fluxes (but check
-        # that the uncertainties are positive).
-        with warnings.catch_warnings():
-            if cogferr is not None:
-                ok = np.isfinite(cogflux) * (cogferr > 0) * np.isfinite(cogferr)
-            else:
-                ok = np.isfinite(cogflux)
-
-        if np.count_nonzero(ok) > 0:
-            results['cog_sma_{}'.format(filt.lower())] = np.float32(sma[ok] * pixscale) # [arcsec]
-            results['cog_flux_{}'.format(filt.lower())] = np.float32(cogflux[ok])
-            results['cog_flux_ivar_{}'.format(filt.lower())] = np.float32(1.0 / cogferr[ok]**2)
-
-            #print('Modeling the curve of growth.')
-            # convert to mag
-            with warnings.catch_warnings():
-                if cogferr is not None:
-                    with np.errstate(divide='ignore'):
-                        these = np.where((cogflux > 0) * np.isfinite(cogflux) * (cogferr > 0) * np.isfinite(cogferr) * (cogflux / cogferr > 1))[0]
-                else:
-                    these = np.where((cogflux > 0) * np.isfinite(cogflux))[0]
-                    cogmagerr = np.zeros(len(cogflux))+0.1 # hack!
-
-            if len(these) < nparams:
-                print('Warning: Too few {}-band pixels to fit the curve of growth; skipping.'.format(filt))
-                continue
-
-            sma_arcsec = sma[these] * pixscale             # [arcsec]
-            cogmag = 22.5 - 2.5 * np.log10(cogflux[these]) # [mag]
-            if cogferr is not None:
-                cogmagerr = 2.5 * cogferr[these] / cogflux[these] / np.log(10)
-
-            bounds = ([cogmag[-1]-2.0, 0, 0, 0], np.inf)
-            #bounds = ([cogmag[-1]-0.5, 2.5, 0, 0], np.inf)
-            #bounds = (0, inf)
-
-            popt, minchi2 = cog_dofit(sma_arcsec, cogmag, cogmagerr, bounds=bounds)
-            if minchi2 < chi2fail and popt is not None:
-                mtot, m0, alpha1, alpha2 = popt
-
-                print('{} CoG modeling succeeded with a chi^2 minimum of {:.2f}'.format(filt, minchi2))
-
-                results['cog_mtot_{}'.format(filt.lower())] = np.float32(mtot)
-                results['cog_m0_{}'.format(filt.lower())] = np.float32(m0)
-                results['cog_alpha1_{}'.format(filt.lower())] = np.float32(alpha1)
-                results['cog_alpha2_{}'.format(filt.lower())] = np.float32(alpha2)
-                results['cog_chi2_{}'.format(filt.lower())] = np.float32(minchi2)
-
-                # Monte Carlo to get the variance
-                if nmonte > 0:
-                    monte_mtot, monte_m0, monte_alpha1, monte_alpha2 = [], [], [], []
-                    for _ in np.arange(nmonte):
-                        try:
-                            monte_popt, monte_minchi2 = cog_dofit(sma_arcsec, rand.normal(loc=cogmag, scale=cogmagerr),
-                                                                  cogmagerr, bounds=bounds)
-                        except:
-                            monte_popt = None
-                        if monte_minchi2 < chi2fail and monte_popt is not None:
-                            monte_mtot.append(monte_popt[0])
-                            monte_m0.append(monte_popt[1])
-                            monte_alpha1.append(monte_popt[2])
-                            monte_alpha2.append(monte_popt[3])
-
-                    if len(monte_mtot) > 2:
-                        mtot_sig = np.std(monte_mtot)
-                        m0_sig = np.std(monte_m0)
-                        alpha1_sig = np.std(monte_alpha1)
-                        alpha2_sig = np.std(monte_alpha2)
-
-                        if mtot_sig > 0 and m0_sig > 0 and alpha1_sig > 0 and alpha2_sig > 0:
-                            results['cog_mtot_ivar_{}'.format(filt.lower())] = np.float32(1/mtot_sig**2)
-                            results['cog_m0_ivar_{}'.format(filt.lower())] = np.float32(1/m0_sig**2)
-                            results['cog_alpha1_ivar_{}'.format(filt.lower())] = np.float32(1/alpha1_sig**2)
-                            results['cog_alpha2_ivar_{}'.format(filt.lower())] = np.float32(1/alpha2_sig**2)
-
-                # get the half-light radius (along the major axis)
-                if (m0 != 0) * (alpha1 != 0.0) * (alpha2 != 0.0):
-                    #half_light_sma = (- np.log(1.0 - np.log10(2.0) * 2.5 / m0) / alpha1)**(-1.0/alpha2) * _get_r0() # [arcsec]
-                    with np.errstate(all='ignore'):
-                        half_light_sma = ((np.expm1(np.log10(2.0)*2.5/m0)) / alpha1)**(-1.0 / alpha2) * _get_r0() # [arcsec]
-                    results['cog_sma50_{}'.format(filt.lower())] = np.float32(half_light_sma)
-
-    return results
+    return r
 
 
-def unpack_isofit(filt, isofit, failed=False):
-    """Unpack a selection of IsophotList attributes into a dictionary.
+def radius_fraction_uncertainty(f, params, cov, r0=10., var_r0=None):
+    """
+    Error propagation for r_f with analytic derivatives under the new parameterization.
 
-    https://photutils.readthedocs.io/en/latest/api/photutils.isophote.IsophoteList.html
+    Parameters
+    ----------
+    f      : float in (0,1)
+    params : sequence (mtot, dmag, lnalpha1, lnalpha2)
+    cov    : (4,4) covariance matrix for (mtot, dmag, lnalpha1, lnalpha2)
+    r0     : float   # scale radius
+    var_r0 : float or None   # optional variance of r0 (assumed independent)
+
+    Returns
+    -------
+    r_f    : float
+    sigma_r: float
 
     """
-    def fill_failed():
-        fail = {}
-        for col, dtype in zip(FAILCOLS, FAILDTYPES):
-            fail[f'{col}_{filt}'] = np.array([-1]).astype(dtype)
-        return fail
+    mtot, dmag, lnA1, lnA2 = map(float, params)  # mtot unused, but kept for ordering
 
-    if failed:
-        return fill_failed()
-    else:
-        I = np.isfinite(isofit.intens) * np.isfinite(isofit.int_err)
-        if np.sum(I) == 0:
-            return fill_failed()
-        else:
-            values = [isofit.sma[I], isofit.intens[I], isofit.int_err[I], isofit.eps[I],
-                      isofit.ellip_err[I], isofit.pa[I], isofit.pa_err[I], isofit.x0[I],
-                      isofit.x0_err[I], isofit.y0[I], isofit.y0_err[I], isofit.a3[I],
-                      isofit.a3_err[I], isofit.a4[I], isofit.a4_err[I], isofit.ndata[I]]
-            if len(values) != len(FAILCOLS):
-                msg = 'Unanticipated data model change in ellipse-fitting code!'
-                log.critical(msg)
-                raise ValueError(msg)
-            out = {}
-            for col, dtype, value in zip(FAILCOLS, FAILDTYPES, values):
-                out[f'{col}_{filt}'] = value.astype(dtype)
-            return out
+    # Compute r_f and intermediates
+    dm = -2.5 * np.log10(f)
+    if dmag <= dm:
+        raise ValueError(f"dmag={dmag:.6g} must exceed {dm:.6g} mag to reach fraction f.")
+    t = 1.0 - dm/dmag
+    y = -np.log(t)
+    a1 = np.exp(lnA1)
+    a2 = np.exp(lnA2)
+    r = r0 * (a1 / y)**(1.0 / a2)
+
+    # log-derivative approach: dr/dp = r * d(ln r)/dp
+    # ln r = ln r0 + (1/a2) * (ln a1 - ln y)
+    # derivatives:
+    dL_dlnA1 = 1.0 / a2
+    dL_dlnA2 = -(lnA1 - np.log(y)) / a2
+    # d(ln y)/ddmag = - dm / (dmag^2 * t * y)
+    d_ln_y_ddmag = - dm / (dmag*dmag * t * y)
+    dL_ddmag = - (1.0 / a2) * d_ln_y_ddmag   # = + dm/(a2 * dmag^2 * t * y)
+
+    # convert to dr/dp
+    dr_ddmag  = r * dL_ddmag
+    dr_dlnA1  = r * dL_dlnA1
+    dr_dlnA2  = r * dL_dlnA2
+    dr_dr0    = r / r0
+
+    # gradient in (mtot, dmag, lnalpha1, lnalpha2) order
+    g = np.array([0.0, dr_ddmag, dr_dlnA1, dr_dlnA2], dtype=float)
+
+    # propagate
+    sigma2 = float(g @ cov @ g)
+    if var_r0 is not None:
+        sigma2 += (dr_dr0**2) * float(var_r0)
+    sigma_r = np.sqrt(max(sigma2, 0.0))
+
+    r = to_float32_safe_scalar(r)
+    sigma_r = to_float32_safe_scalar(sigma_r)
+
+    return r, sigma_r
+
+
+def half_light_radius(params, r0=10.):
+    _, dmag, lnA1, lnA2 = params
+    return radius_for_fraction(0.5, dmag, lnA1, lnA2, r0=r0)
+
+
+def half_light_radius_with_uncertainty(params, cov, r0=10., var_r0=None):
+    return radius_fraction_uncertainty(0.5, params, cov, r0=r0, var_r0=var_r0)
 
 
 def _integrate_isophot_one(args):
@@ -498,8 +414,132 @@ def _integrate_isophot_one(args):
     return integrate_isophot_one(*args)
 
 
+def _boxcar(y, w):
+    if w is None or w < 2:
+        return y
+    w = int(w)
+    if w % 2 == 0:
+        w += 1
+    k = np.ones(w, float) / w
+    # reflect at edges to avoid edge dips
+    return np.convolve(y, k, mode='same')
+
+
+def _outer_isophotal_radius(a, mu, mu_iso, smooth_win=None):
+    """
+    Single-pass outer crossing on a single (a, mu) profile.
+    - Assumes a increasing.
+    - Enforces non-decreasing mu with radius via running max.
+    - Returns np.nan if level is outside data range.
+
+    """
+    # optional light smoothing
+    mu_work = _boxcar(mu, smooth_win)
+
+    # monotone non-decreasing envelope (magnitudes get fainter outward)
+    mu_env = np.maximum.accumulate(mu_work)
+
+    mu_min, mu_max = mu_env[0], mu_env[-1]
+    if mu_iso < mu_min: # level brighter than innermost point → inside first bin
+        return np.nan
+    if mu_iso > mu_max: # level fainter than outermost point → beyond last bin
+        return np.nan
+
+    # piecewise-linear monotone interpolation: a(mu_iso)
+    # np.interp expects ascending x; mu_env is non-decreasing
+    return float(np.interp(mu_iso, mu_env, a))
+
+
+def isophotal_radius_mc(
+    a,                # semi-major axis array
+    mu,               # surface brightness [mag/arcsec^2]
+    mu_err,           # 1σ uncertainties (same shape as mu)
+    mu_iso,           # target isophote (e.g., 25.0)
+    nmonte=100,
+    sky_sigma=None,   # optional global sky mag error (additive, per draw)
+    smooth_win=3,     # odd window for gentle pre-smoothing; set None/1 to disable
+    random_state=None,
+    return_samples=False):
+
+    """
+    Monte Carlo isophotal radius with a monotone outer envelope.
+
+    Returns
+    -------
+    out : dict with keys
+        'a_iso'         : median isophotal radius [same units as a]
+        'a_lo','a_hi'   : 16th/84th percentiles
+        'success_rate'  : fraction of MC draws with a valid crossing
+        'n_success'     : number of valid draws
+        'nmonte'       : total draws
+        'lower_limit'   : True if even the *nominal* profile never reaches mu_iso outward
+        'upper_limit'   : True if the nominal profile is already fainter than mu_iso at innermost bin
+        'samples'       : (optional) array of successful radii
+    """
+    rng = np.random.default_rng(random_state)
+
+    # sanitize + sort by increasing radius
+    a = np.asarray(a, float)
+    mu = np.asarray(mu, float)
+    mu_err = np.asarray(mu_err, float)
+    m = np.isfinite(a) & np.isfinite(mu) & np.isfinite(mu_err)
+    a, mu, mu_err = a[m], mu[m], mu_err[m]
+    order = np.argsort(a)
+    a, mu, mu_err = a[order], mu[order], mu_err[order]
+
+    if a.size < 2:
+        raise ValueError("Need at least two points in profile.")
+
+    # Quick diagnosis on the *nominal* profile (for limit flags only)
+    mu_env_nom = np.maximum.accumulate(_boxcar(mu, smooth_win))
+    lower_limit = (mu_iso > mu_env_nom[-1])   # target fainter than outermost measured
+    upper_limit = (mu_iso < mu_env_nom[0])    # target brighter than innermost measured
+
+    # Monte Carlo draws
+    samples = []
+    for _ in range(int(nmonte)):
+        draw = mu + rng.normal(0.0, mu_err)
+        if sky_sigma and sky_sigma > 0:
+            draw = draw + rng.normal(0.0, sky_sigma)  # shared offset per draw
+
+        a_iso = _outer_isophotal_radius(a, draw, mu_iso, smooth_win=smooth_win)
+        if np.isfinite(a_iso):
+            samples.append(a_iso)
+
+    samples = np.array(samples, float)
+    n_success = int(np.isfinite(samples).sum())
+    success_rate = n_success / float(nmonte)
+
+    out = dict(
+        nmonte=int(nmonte),
+        n_success=n_success,
+        success_rate=success_rate,
+        lower_limit=bool(lower_limit),
+        upper_limit=bool(upper_limit),
+    )
+
+    if n_success == 0:
+        # No valid crossings in MC → report limits only
+        out.update(a_iso=np.nan, a_iso_err=np.nan, a_lo=np.nan, a_hi=np.nan)
+        if return_samples:
+            out["samples"] = samples
+        return out
+
+    med = np.nanmedian(samples)
+    lo, hi = np.nanpercentile(samples, [25., 75.])
+    #lo, hi = np.nanpercentile(samples, [16, 84])
+    sig = (hi - lo) / 1.349 # robust sigma
+
+    out.update(a_iso=float(med), a_iso_err=float(sig),
+               a_lo=float(lo), a_hi=float(hi))
+    if return_samples:
+        out["samples"] = samples
+
+    return out
+
+
 def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
-                          integrmode, sclip, nclip):
+                          integrmode, sclip, nclip, measure_sb):
     """Integrate the ellipse profile at a single semi-major axis (in
     pixels).
 
@@ -517,19 +557,25 @@ def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
         # central pixel is a special case; see
         # https://github.com/astropy/photutils-datasets/blob/main/notebooks/isophote/isophote_example4.ipynb
         if sma == 0.:
-            samp = CentralEllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
-                                        position_angle=theta, sclip=sclip,
-                                        nclip=nclip, integrmode=integrmode)
-            samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
-            iso = CentralEllipseFitter(samp).fit()
+            if measure_sb:
+                samp = CentralEllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
+                                            position_angle=theta, sclip=sclip,
+                                            nclip=nclip, integrmode=integrmode)
+                samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
+                iso = CentralEllipseFitter(samp).fit()
+            else:
+                iso = None
 
             flux, ferr, fracmasked = 0., 0., 0.
         else:
-            samp = EllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
-                                 position_angle=theta, sclip=sclip,
-                                 nclip=nclip, integrmode=integrmode)
-            samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
-            iso = Isophote(samp, 0, True, 0)
+            if measure_sb:
+                samp = EllipseSample(mimg, sma=sma, x0=x0, y0=y0, eps=eps,
+                                     position_angle=theta, sclip=sclip,
+                                     nclip=nclip, integrmode=integrmode)
+                samp.update(fixed_parameters=[True]*4) # x0, y0, theta, eps
+                iso = Isophote(samp, 0, True, 0)
+            else:
+                iso = None
 
             # aperture photometry
             ap = EllipticalAperture((x0, y0), a=sma, b=sma*(1.-eps), theta=theta)
@@ -574,67 +620,113 @@ def logspaced_integers(limit, n):
     return np.array(list(map(lambda x: round(x)-1, result)), dtype=int)
 
 
-def get_dt(t0):
-    dt = time() - t0
-    if dt > 60.:
-        dt /= 60.
-        unit = 'minutes'
-    else:
-        unit = 'seconds'
-    return dt, unit
-
-
-def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'],
-             opt_wcs=None, wcs=None, opt_pixscale=0.262, pixscale=0.262, mp=1,
+def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
+             bands=['g', 'r', 'i', 'z'], opt_wcs=None, wcs=None,
+             opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=100,
              allbands=None, integrmode='median', nclip=3, sclip=3,
-             sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, debug=False):
+             seed=42, sbthresh=REF_SBTHRESH, sma_apertures_arcsec=None,
+             debug=False):
     """Multi-band ellipse-fitting, broadly based on--
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
-
-    See also:
     https://photutils.readthedocs.io/en/latest/user_guide/isophote.html
+
+    sma_array in pixels
+    sma_apertures_pix in pixels
 
     """
     import multiprocessing
     from photutils.isophote import EllipseGeometry, IsophoteList
+    from photutils.aperture import EllipticalAperture
+    from photutils.morphology import gini
+    from SGA.util import get_dt
     from SGA.sky import map_bxby
-
 
     def sbprofiles_datamodel(sma, bands):
         import astropy.units as u
         from astropy.table import Table, Column
         nsma = len(sma)
 
+        ubands = np.char.upper(bands)
+
         sbprofiles = Table()
-        sbprofiles.add_column(Column(name='sma', unit=u.arcsec, data=sma.astype('f4')))
-        for filt in bands:
-            sbprofiles.add_column(Column(name=f'sb_{filt}', unit=u.nanomaggy/u.arcsec**2,
+        sbprofiles.add_column(Column(name='SMA', unit=u.arcsec, data=sma.astype('f4')))
+        for filt in ubands:
+            sbprofiles.add_column(Column(name=f'SB_{filt}', unit=u.nanomaggy/u.arcsec**2,
                                   data=np.zeros(nsma, 'f4')))
-        for filt in bands:
-            sbprofiles.add_column(Column(name=f'sb_err_{filt}', unit=u.nanomaggy/u.arcsec**2,
+        for filt in ubands:
+            sbprofiles.add_column(Column(name=f'SB_ERR_{filt}', unit=u.nanomaggy/u.arcsec**2,
                                   data=np.zeros(nsma, 'f4')))
-        for filt in bands:
-            sbprofiles.add_column(Column(name=f'flux_{filt}', unit=u.nanomaggy,
+        for filt in ubands:
+            sbprofiles.add_column(Column(name=f'FLUX_{filt}', unit=u.nanomaggy,
                                   data=np.zeros(nsma, 'f4')))
-        for filt in bands:
-            sbprofiles.add_column(Column(name=f'flux_err_{filt}', unit=u.nanomaggy,
+        for filt in ubands:
+            sbprofiles.add_column(Column(name=f'FLUX_ERR_{filt}', unit=u.nanomaggy,
                                   data=np.zeros(nsma, 'f4')))
-        for filt in bands:
-            sbprofiles.add_column(Column(name=f'fmasked_{filt}', data=np.zeros(nsma, 'f4')))
+        for filt in ubands:
+            sbprofiles.add_column(Column(name=f'FMASKED_{filt}', data=np.ones(nsma, 'f4'))) # NB: initial value
         return sbprofiles
 
 
-    def results_datamodel(obj, bands):
+    def results_datamodel(obj, bands, dataset):
         import astropy.units as u
         from astropy.table import Table, Column
 
-        # FIXME - copy everything?
-        cols = obj.colnames
+        ubands = np.char.upper(bands)
+
+        cols = ['SGAID', 'SGAGROUP']
         results = Table(obj[cols])
-        for thresh in np.array(sbthresh).astype(str):
-            for filt in bands:
-                results.add_column(Column(name=f'D{thresh}_{filt.upper()}',
-                                          unit=u.arcsec, data=np.zeros(1, 'f4')))
+        #results = Table()
+
+        # Gini coefficient within the MOMENT aperture
+        for filt in ubands:
+            results.add_column(Column(name=f'GINI_{filt}', data=np.zeros(1, 'f4')))
+
+        # curve of growth model parameters
+        for param, unit, dtype in zip(
+                #['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+                ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+                [u.mag, u.mag, None, None, None, None, u.arcsec],
+                ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
+            for filt in ubands:
+                results.add_column(Column(name=f'{param}_{filt}',
+                                          unit=unit, data=np.zeros(1, dtype)))
+            if not ('CHI2' in param or 'NDOF' in param):
+                for filt in ubands:
+                    results.add_column(Column(name=f'{param}_ERR_{filt}',
+                                              unit=unit, data=np.zeros(1, dtype)))
+
+        # flux within apertures that are multiples of sma_moment
+        for iap, ap in enumerate(sma_apertures_arcsec):
+            results.add_column(Column(name=f'SMA_AP{iap:02}',
+                                      unit=u.arcsec, data=np.float32(ap)))
+        for iap in range(len(sma_apertures_arcsec)):
+            for filt in ubands:
+                results.add_column(Column(name=f'FLUX_AP{iap:02}_{filt}',
+                                          unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+            for filt in ubands:
+                results.add_column(Column(name=f'FLUX_ERR_AP{iap:02}_{filt}',
+                                          unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+            for filt in ubands:
+                results.add_column(Column(name=f'FMASKED_AP{iap:02}_{filt}', # NB: initial value
+                                          unit=None, data=np.ones(1, 'f4')))
+
+        # optical isophotal radii
+        if dataset == 'opt':
+            for thresh in sbthresh:
+                for filt in ubands:
+                    results.add_column(Column(name=f'R{thresh:.0f}_{filt}',
+                                              unit=u.arcsec, data=np.zeros(1, 'f4')))
+                for filt in ubands:
+                    results.add_column(Column(name=f'R{thresh:.0f}_ERR_{filt}',
+                                              unit=u.arcsec, data=np.zeros(1, 'f4')))
+                # flux within apertures based on the optical isophotal radii (deprecated)
+                #for filt in ubands:
+                #    results.add_column(Column(name=f'FLUX_R{thresh:.0f}_{filt}',
+                #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+                #for filt in ubands:
+                #    results.add_column(Column(name=f'FLUX_ERR_R{thresh:.0f}_{filt}',
+                #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+
         return results
 
 
@@ -642,37 +734,22 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
     if allbands is None:
         allbands = bands
 
-    results = results_datamodel(obj, allbands)
+    results = results_datamodel(obj, allbands, dataset)
     sbprofiles = sbprofiles_datamodel(sma_array*pixscale, allbands)
 
-    ## Initialize the object geometry. NB: (x,y) are switched in
-    ## photutils and PA is measured CCW from the x-axis while PA is CCW
-    ## from the y-axis!
-    #cols = ['BX_MOMENT', 'BY_MOMENT', 'DIAM_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
-    #[opt_bx, opt_by, opt_diam_arcsec, ba, pa] = list(obj[cols].values())
-
-    opt_bx = obj['BX_MOMENT']
-    opt_by = obj['BY_MOMENT']
+    # Initialize the moment geometry.
+    opt_bx = obj['BX']
+    opt_by = obj['BY']
     ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
     ellipse_eps = 1 - obj['BA_MOMENT']
-    #opt_semia_pix = obj['DIAM_MOMENT'] / 2. / opt_pixscale # [optical pixels]
-
-    #if debug:
-    #    import matplotlib.pyplot as plt
-    #    from photutils.aperture import EllipticalAperture
-    #    aper = EllipticalAperture((geo.x0, geo.y0), geo.sma,
-    #                              geo.sma * (1 - geo.eps),
-    #                              geo.pa)
-    #    plt.clf()
-    #    plt.imshow(np.log10(np.sum(images, axis=0)), origin='lower')
-    #    aper.plot(color='white')
-    #    plt.savefig('ioannis/tmp/junk.png')
-    #    plt.close()
+    sma_moment_arcsec = obj['SMA_MOMENT'] # [arcsec]
+    sma_moment_pix = sma_moment_arcsec / pixscale # [pixels]
 
     nbands, width, _ = images.shape
+    sma_array_arcsec = sma_array * pixscale
 
     # Measure the surface-brightness profile in each bandpass.
-    debug = True
+    debug = False
     if debug:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
@@ -685,60 +762,154 @@ def multifit(obj, images, sigimages, masks, sma_array, bands=['g', 'r', 'i', 'z'
 
         sig = sigimages[iband, :, :]
         msk = masks[iband, :, :] # True=masked
-        mimg = np.ma.array(images[iband, :, :], mask=msk) # ignore masked pixels
+        img = images[iband, :, :]
+        mimg = np.ma.array(img, mask=msk) # ignore masked pixels
 
+        # Gini coefficient in the MOMENT ellipse
+        ap_moment = EllipticalAperture((bx, by), a=sma_moment_pix, theta=ellipse_pa,
+                                       b=sma_moment_pix*(1.-ellipse_eps))
+        apmask_moment = ap_moment.to_mask().to_image((width, width)) != 0. # object mask=True
+        gini_mask = np.logical_or(msk, np.logical_not(apmask_moment))
+        if not np.all(gini_mask): # not all pixels masked
+            gin = gini(img, mask=gini_mask)
+            results[f'GINI_{filt.upper()}'] = gin
+
+        #import matplotlib.pyplot as plt
+        #fig, ax = plt.subplots()
+        #ax.imshow(np.log10(img*gini_mask), origin='lower')
+        #ap_moment.plot(ax=ax)
+        #fig.savefig('ioannis/tmp/junk.png')
+
+        # surface-brightness profile and aperture photometry
         mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
-                   by, integrmode, sclip, nclip) for onesma in sma_array]
+                   by, integrmode, sclip, nclip, True)
+                  for onesma in sma_array]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 out = P.map(_integrate_isophot_one, mpargs)
         else:
             out = [integrate_isophot_one(*mparg) for mparg in mpargs]
-
         out = list(zip(*out))
         isobandfit = IsophoteList(out[0])
 
         # curve of growth
-        apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
-        apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
+        apflux = np.hstack(out[1])
+        apferr = np.hstack(out[2])
         apfmasked = np.hstack(out[3])
 
-        # diameters...
-        # results[]
+        I = np.isfinite(apflux) * np.isfinite(apferr) * np.isfinite(apfmasked)
+        if np.any(I):
+            sbprofiles[f'FLUX_{filt.upper()}'][I] = apflux[I] * pixscale**2. # [nanomaggies]
+            sbprofiles[f'FLUX_ERR_{filt.upper()}'][I] = apferr[I] * pixscale**2. # [nanomaggies]
+            sbprofiles[f'FMASKED_{filt.upper()}'][I] = apfmasked[I]
 
-        # populate the output table
+        # model
+        popt, perr, cov, chi2, ndof = fit_cog(
+            sma_array_arcsec, apflux, apferr, r0=sma_moment_arcsec)
+        results[f'COG_NDOF_{filt.upper()}'] = ndof # always store ndof
+
+        if bool(popt):
+            for key in popt.keys():
+                results[f'COG_{key.upper()}_{filt.upper()}'] = popt[key]
+                results[f'COG_{key.upper()}_ERR_{filt.upper()}'] = perr[key]
+            results[f'COG_CHI2_{filt.upper()}'] = chi2
+
+        # half-light radius and uncertainty
+        if bool(popt) and cov is not None:
+            try:
+                r50, r50_err = half_light_radius_with_uncertainty(
+                    (popt['mtot'], popt['dmag'], popt['lnalpha1'], popt['lnalpha2']),
+                    cov, r0=sma_moment_arcsec)
+                if np.isnan(r50) or np.isnan(r50_err):
+                    pass
+                else:
+                    log.info(f"{filt}(50) = {r50:.3f} ± {r50_err:.3f}")
+                    results[f'SMA50_{filt.upper()}'] = r50          # [arcsec]
+                    results[f'SMA50_ERR_{filt.upper()}'] = r50_err  # [arcsec]
+            except:
+                pass
+
+        # aperture photometry within the reference apertures
+        mpargs = [(mimg, sig, msk, onesma, ellipse_pa, ellipse_eps, bx,
+                   by, integrmode, sclip, nclip, False)
+                  for onesma in sma_apertures_arcsec / pixscale]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                refout = P.map(_integrate_isophot_one, mpargs)
+        else:
+            refout = [integrate_isophot_one(*mparg) for mparg in mpargs]
+        refout = list(zip(*refout))
+
+        refapflux = np.hstack(refout[1])
+        refapferr = np.hstack(refout[2])
+        refapfmasked = np.hstack(refout[3])
+
+        for iap in range(len(sma_apertures_arcsec)):
+            I = (np.isfinite(refapflux[iap]) * np.isfinite(refapferr[iap]) *
+                 np.isfinite(refapfmasked[iap]))
+            if np.any(I):
+                results[f'FLUX_AP{iap:02}_{filt.upper()}'][I] = refapflux[iap][I] * pixscale**2. # [nanomaggies]
+                results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'][I] = refapferr[iap][I] * pixscale**2. # [nanomaggies]
+                results[f'FMASKED_AP{iap:02}_{filt.upper()}'][I] = refapfmasked[iap][I]
+
+        # isophotal radii
         I = np.isfinite(isobandfit.intens) * np.isfinite(isobandfit.int_err)
         if np.sum(I) > 0:
-            sbprofiles[f'sb_{filt}'][I] = isobandfit.intens[I]
-            sbprofiles[f'sb_err_{filt}'][I] = isobandfit.int_err[I]
-        sbprofiles[f'flux_{filt}'] = apflux
-        sbprofiles[f'flux_err_{filt}'] = apferr
-        sbprofiles[f'fmasked_{filt}'] = apfmasked
+            sbprofiles[f'SB_{filt.upper()}'][I] = isobandfit.intens[I]
+            sbprofiles[f'SB_ERR_{filt.upper()}'][I] = isobandfit.int_err[I]
+
+            # isophotal radii
+            if dataset == 'opt':
+                I = (isobandfit.intens > 0.) * (isobandfit.int_err > 0.)
+                if np.sum(I) > 2: # need at least 2 points
+                    mu = 22.5 - 2.5 * np.log10(isobandfit.intens[I])
+                    mu_err = 2.5 * isobandfit.int_err[I] / isobandfit.intens[I] / np.log(10.)
+                    for thresh in sbthresh:
+                        res = isophotal_radius_mc(
+                            sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
+                            nmonte=nmonte, sky_sigma=0.02, smooth_win=3, random_state=seed)
+                        if res['lower_limit']:
+                            log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
+                        else:
+                            log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                      f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
+                            if np.isfinite(res['a_iso']) and np.isfinite(res['a_iso_err']):
+                                results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
+                                results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
 
         if debug:
             I = apflux > 0.
-            mag = 22.5-2.5*np.log10(apflux[I])
-            dm = 2.5*apferr[I]/apflux[I]/np.log(10.)
-            ax.scatter(sma_array[I]*pixscale, mag, label=filt)
+            if np.any(I):
+                mag = 22.5-2.5*np.log10(apflux[I])
+                dm = 2.5*apferr[I]/apflux[I]/np.log(10.)
+                ax.scatter(sma_array_arcsec[I], mag, label=filt)
+
+                refsmas = np.hstack([results[f'SMA_AP{iap:02}'] for iap in range(len(sma_apertures_arcsec))])
+                refflux = np.hstack([results[f'FLUX_AP{iap:02}_{filt.upper()}'] for iap in range(len(sma_apertures_arcsec))])
+                I = (refflux > 0.)
+                if np.any(I):
+                    refmag = 22.5-2.5*np.log10(refflux[I])
+                    ax.scatter(refsmas[I], refmag, marker='s', s=100, facecolor='none')
+
+                if bool(popt):
+                    rgrid = np.linspace(min(sma_array_arcsec), max(sma_array_arcsec), 50)
+                    mfit = cog_model(rgrid, **popt, r0=sma_moment_arcsec)
+                    ax.plot(rgrid, mfit, color='k', alpha=0.8)
 
         dt, unit = get_dt(t0)
-        log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
+        #log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
 
     dt, unit = get_dt(tall)
-    log.info(f'Ellipse-fitting {len(bands)} bandpasses in a ' + \
-             f'{width}x{width} mosaic took {dt:.3f} {unit}')
+    log.info(f'  Fit {"".join(bands)} in a ' + \
+             f'{width}x{width} mosaic in {dt:.3f} {unit}')
 
     if debug:
         ax.invert_yaxis()
         ax.legend()
         fig.savefig('ioannis/tmp/junk.png')
         plt.close()
+        pdb.set_trace()
 
-    #t0 = time()
-    #cog = ellipse_cog(bands, data, results, mp=mp,
-    #                  sbthresh=sbthresh, apertures=apertures)
-    #results.update(cog)
-    #log.info('Time = {:.3f} min'.format( (time() - t0) / 60))
 
     return results, sbprofiles
 
@@ -908,8 +1079,9 @@ def qa_sma_grid():
 
 
 
-def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, MASKBITS,
-                  REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'], linear=False):
+def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
+                  MASKBITS, REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
+                  linear=False, htmlgalaxydir=None):
     """Simple QA.
 
     """
@@ -951,8 +1123,8 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
 
     for iobj, obj in enumerate(sample):
 
-        qafile = os.path.join('/global/cfs/cdirs/desi/users/ioannis/tmp',
-                              f'qa-ellipsefit-{obj["SGANAME"]}.png')
+        sganame = obj['SGANAME'].replace(' ', '_')
+        qafile = os.path.join(htmlgalaxydir, f'qa-ellipsefit-{sganame}.png')
 
         fig, ax = plt.subplots(nrow, ncol,
                                figsize=(inches_per_panel * (1+ncol),
@@ -967,166 +1139,198 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
         # one row per dataset
         for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
 
+            images = data[f'{dataset}_images'][iobj, :, :, :]
+            if np.all(images == 0.):
+                have_data = False
+            else:
+                have_data = True
+
             results_obj = results[idata][iobj]
             sbprofiles_obj = sbprofiles[idata][iobj]
-            images = data[f'{dataset}_images'][iobj, :, :, :]
+
             models = data[f'{dataset}_models'][iobj, :, :, :]
             maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
 
-            refband = data[f'{dataset}_refband']
             bands = data[f'{dataset}_bands']
             pixscale = data[f'{dataset}_pixscale']
             wcs = data[f'{dataset}_wcs']
 
-            opt_bx = obj['BX_MOMENT']
-            opt_by = obj['BY_MOMENT']
+            opt_bx = obj['BX']
+            opt_by = obj['BY']
             ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
             ellipse_eps = 1 - obj['BA_MOMENT']
-            semia = obj['DIAM_MOMENT'] / 2. # [arcsec]
+            semia = obj['SMA_MOMENT'] # [arcsec]
 
-            bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
-            refg = EllipseGeometry(x0=by, y0=bx, eps=ellipse_eps, # note bx,by swapped
-                                   pa=ellipse_pa, sma=semia/pixscale) # sma in pixels
-            refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
-                                       refg.sma*(1. - refg.eps), refg.pa)
+            if have_data:
+                bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
+                refg = EllipseGeometry(x0=bx, y0=by, eps=ellipse_eps,
+                                       pa=ellipse_pa, sma=semia/pixscale) # sma in pixels
+                refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
+                                           refg.sma*(1. - refg.eps), refg.pa)
 
-            # a little wasteful...
-            masks = unpack_maskbits_function(data[f'{dataset}_maskbits'], bands=bands,
-                                             BITS=MASKBITS[idata])
-            masks = masks[iobj, :, :, :]
+                # a little wasteful...
+                masks = unpack_maskbits_function(data[f'{dataset}_maskbits'], bands=bands,
+                                                 BITS=MASKBITS[idata])
+                masks = masks[iobj, :, :, :]
 
-            wimg = np.sum(images * np.logical_not(masks), axis=0)
-            wimg[wimg == 0.] = np.nan
+                wimg = np.sum(images * np.logical_not(masks), axis=0)
+                wimg[wimg == 0.] = np.nan
+                try:
+                    norm = get_norm(wimg)
+                except:
+                    norm = None
 
-            # col 0 - images
-            xx = ax[idata, 0]
-            #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
-            xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
-                      norm=get_norm(wimg), alpha=1.)
-            xx.text(0.03, 0.97, label, transform=xx.transAxes,
-                    ha='left', va='top', color='white',
-                    linespacing=1.5, fontsize=10,
-                    bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-            xx.set_xlim(0, wimg.shape[0]-1)
-            xx.set_ylim(0, wimg.shape[0]-1)
-            xx.margins(0)
-            xx.set_xticks([])
-            xx.set_yticks([])
-
-            smas = sbprofiles_obj['sma'] / pixscale # [pixels]
-            for sma in smas: # sma in pixels
-                if sma == 0.:
-                    continue
-                ap = EllipticalAperture((refg.x0, refg.y0), sma,
-                                        sma*(1. - refg.eps), refg.pa)
-                ap.plot(color='k', lw=1, ax=xx)
-            refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
-
-            ## col 1 - linear SB profiles
-            #xx = ax[idata, 1]
-            #for filt in bands:
-            #    xx.fill_between(sbprofiles_obj['sma']**0.25,
-            #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
-            #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
-            #                    label=filt, alpha=0.6)
-            #xx.set_xlim(ax[0, 1].get_xlim())
-            #if idata == ndataset-1:
-            #    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
-            #else:
-            #    xx.set_xticks([])
-            #
-            #xx.relim()
-            #xx.autoscale_view()
-            #
-            #xx_twin = xx.twinx()
-            #xx_twin.set_ylim(xx.get_ylim())
-            #kill_left_y(xx)
-            #
-            #if idata == 1:
-            #    xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
-            #
-            #xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
-
-            # col 1 - mag SB profiles
-            if linear:
-                yminmax = [1e8, -1e8]
-            else:
-                yminmax = [40, 0]
-
-            xx = ax[idata, 1]
-            for filt in bands:
-                I = (sbprofiles_obj[f'sb_{filt}'].value > 0.) * (sbprofiles_obj[f'sb_err_{filt}'].value > 0.)
-                if np.any(I):
-                    mu = 22.5 - 2.5 * np.log10(sbprofiles_obj[f'sb_{filt}'][I].value)
-                    muerr = 2.5 * sbprofiles_obj[f'sb_err_{filt}'][I].value / sbprofiles_obj[f'sb_{filt}'][I].value / np.log(10.)
-
-                    col = sbcolors[filt]
-                    xx.plot(sbprofiles_obj['sma'][I].value**0.25, mu-muerr, color=col, alpha=0.8)
-                    xx.plot(sbprofiles_obj['sma'][I].value**0.25, mu+muerr, color=col, alpha=0.8)
-                    xx.fill_between(sbprofiles_obj['sma'][I].value**0.25, mu-muerr, mu+muerr,
-                                    label=filt, color=col, alpha=0.7)
-
-                    # robust limits
-                    mulo = (mu - muerr)[mu / muerr > 10.]
-                    muhi = (mu + muerr)[mu / muerr > 10.]
-                    #print(filt, np.min(mulo), np.max(muhi))
-                    if len(mulo) > 0:
-                        mn = np.min(mulo)
-                        if mn < yminmax[0]:
-                            yminmax[0] = mn
-                    if len(muhi) > 0:
-                        mx = np.max(muhi)
-                        if mx > yminmax[1]:
-                            yminmax[1] = mx
-                #print(filt, yminmax[0], yminmax[1])
-
-            xx.margins(x=0)
-            xx.set_xlim(ax[0, 1].get_xlim())
-
-            if idata == ndataset-1:
-                xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
-            else:
+                # col 0 - images
+                xx = ax[idata, 0]
+                #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
+                xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
+                          norm=norm, alpha=1.)
+                xx.text(0.03, 0.97, label, transform=xx.transAxes,
+                        ha='left', va='top', color='white',
+                        linespacing=1.5, fontsize=10,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                xx.set_xlim(0, wimg.shape[0]-1)
+                xx.set_ylim(0, wimg.shape[0]-1)
+                xx.margins(0)
                 xx.set_xticks([])
+                xx.set_yticks([])
 
-            #xx.relim()
-            #xx.autoscale_view()
-            if linear:
-                ylim = [yminmax[0], yminmax[1]]
+                smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
+                for sma in smas: # sma in pixels
+                    if sma == 0.:
+                        continue
+                    ap = EllipticalAperture((refg.x0, refg.y0), sma,
+                                            sma*(1. - refg.eps), refg.pa)
+                    ap.plot(color='k', lw=1, ax=xx)
+                refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
+
+                ## col 1 - linear SB profiles
+                #xx = ax[idata, 1]
+                #for filt in bands:
+                #    xx.fill_between(sbprofiles_obj['SMA']**0.25,
+                #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
+                #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
+                #                    label=filt, alpha=0.6)
+                #xx.set_xlim(ax[0, 1].get_xlim())
+                #if idata == ndataset-1:
+                #    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                #else:
+                #    xx.set_xticks([])
+                #
+                #xx.relim()
+                #xx.autoscale_view()
+                #
+                #xx_twin = xx.twinx()
+                #xx_twin.set_ylim(xx.get_ylim())
+                #kill_left_y(xx)
+                #
+                #if idata == 1:
+                #    xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
+                #
+                #xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+
+                # col 1 - mag SB profiles
+                if linear:
+                    yminmax = [1e8, -1e8]
+                else:
+                    yminmax = [40, 0]
+
+                xx = ax[idata, 1]
+                for filt in bands:
+                    I = ((sbprofiles_obj[f'SB_{filt.upper()}'].value > 0.) *
+                         (sbprofiles_obj[f'SB_ERR_{filt.upper()}'].value > 0.))
+                    if np.any(I):
+                        sma = sbprofiles_obj['SMA'][I].value**0.25
+                        sb = sbprofiles_obj[f'SB_{filt.upper()}'][I].value
+                        sberr = sbprofiles_obj[f'SB_ERR_{filt.upper()}'][I].value
+                        mu = 22.5 - 2.5 * np.log10(sb)
+                        muerr = 2.5 * sberr / sb / np.log(10.)
+
+                        col = sbcolors[filt]
+                        xx.plot(sma, mu-muerr, color=col, alpha=0.8)
+                        xx.plot(sma, mu+muerr, color=col, alpha=0.8)
+                        xx.fill_between(sma, mu-muerr, mu+muerr,
+                                        label=filt, color=col, alpha=0.7)
+
+                        # robust limits
+                        mulo = (mu - muerr)[mu / muerr > 10.]
+                        muhi = (mu + muerr)[mu / muerr > 10.]
+                        #print(filt, np.min(mulo), np.max(muhi))
+                        if len(mulo) > 0:
+                            mn = np.min(mulo)
+                            if mn < yminmax[0]:
+                                yminmax[0] = mn
+                        if len(muhi) > 0:
+                            mx = np.max(muhi)
+                            if mx > yminmax[1]:
+                                yminmax[1] = mx
+                    #print(filt, yminmax[0], yminmax[1])
+
+                xx.margins(x=0)
+                xx.set_xlim(ax[0, 1].get_xlim())
+
+                if idata == ndataset-1:
+                    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    xx.set_xticks([])
+
+                #xx.relim()
+                #xx.autoscale_view()
+                if linear:
+                    ylim = [yminmax[0], yminmax[1]]
+                else:
+                    ylim = [yminmax[0]-0.75, yminmax[1]+0.5]
+                    if ylim[0] < 13:
+                        ylim[0] = 13
+                    if ylim[1] > 34:
+                        ylim[1] = 34
+                #print(idata, yminmax, ylim)
+                xx.set_ylim(ylim)
+
+                xx_twin = xx.twinx()
+                xx_twin.set_ylim(ylim)
+                kill_left_y(xx)
+
+                xx.invert_yaxis()
+                xx_twin.invert_yaxis()
+
+                #y0, y1 = xx.get_ylim()
+                #span_dec = abs(np.log10(y1) - np.log10(y0))
+                #if span_dec < 1.:
+                #    # within ~one decade: 1–2–5 per decade
+                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
+                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
+                #else:
+                #    # multiple decades: decades only
+                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
+                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
+                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
+
+                if idata == 1:
+                    xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
+
+                xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+                hndls, _ = xx.get_legend_handles_labels()
+                if hndls:
+                    xx.legend(loc='upper right', fontsize=8)
             else:
-                ylim = [yminmax[0]-0.75, yminmax[1]+0.5]
-                if ylim[0] < 13:
-                    ylim[0] = 13
-                if ylim[1] > 34:
-                    ylim[1] = 34
-            #print(idata, yminmax, ylim)
-            xx.set_ylim(ylim)
+                ax[idata, 0].text(0.03, 0.97, f'{label} - No Data',
+                                  transform=ax[idata, 0].transAxes,
+                                  ha='left', va='top', color='white',
+                                  linespacing=1.5, fontsize=10,
+                                  bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                ax[idata, 0].set_xticks([])
+                ax[idata, 0].set_yticks([])
 
-            xx_twin = xx.twinx()
-            xx_twin.set_ylim(ylim)
-            kill_left_y(xx)
+                ax[idata, 1].set_yticks([])
+                ax[idata, 1].margins(x=0)
+                ax[idata, 1].set_xlim(ax[0, 1].get_xlim())
 
-            xx.invert_yaxis()
-            xx_twin.invert_yaxis()
-
-            #y0, y1 = xx.get_ylim()
-            #span_dec = abs(np.log10(y1) - np.log10(y0))
-            #if span_dec < 1.:
-            #    # within ~one decade: 1–2–5 per decade
-            #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
-            #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-            #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
-            #else:
-            #    # multiple decades: decades only
-            #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
-            #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-            #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
-
-            if idata == 1:
-                xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
-
-            xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
-
-            xx.legend(loc='upper right', fontsize=8)
+                if idata == ndataset-1:
+                    ax[idata, 1].set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    ax[idata, 1].set_xticks([])
 
 
         fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
@@ -1138,90 +1342,9 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function, M
         log.info(f'Wrote {qafile}')
 
 
-def ellipsefit_datamodel(sma, bands, dataset='opt'):
-    """Initialize the ellipsefit data model.
-
-    """
-    import astropy.units as u
-    from astropy.table import Table, Column
-
-    nsma = len(sma)
-
-    out = Table()
-    out.add_column(Column(name=f'sma_{dataset}', unit=u.arcsec, data=sma.astype('f4')))
-    for filt in bands:
-        out.add_column(Column(name=f'sb_{filt}', unit=u.nanomaggy/u.arcsec**2,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'sb_err_{filt}', unit=u.nanomaggy/u.arcsec**2,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'flux_{filt}', unit=u.nanomaggy,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'flux_err_{filt}', unit=u.nanomaggy,
-                              data=np.zeros((1, nsma), 'f4')))
-        out.add_column(Column(name=f'fmasked_{filt}', data=np.zeros((1, nsma), 'f4')))
-
-    #for band in bands:
-    #    cols.append(('mw_transmission_{}'.format(band.lower()), None))
-    #    cols.append(('sma_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('intens_{}'.format(band.lower()), 'nanomaggies arcsec-2'))#1e-9*u.maggy/u.arcsec**2))
-    #    cols.append(('intens_err_{}'.format(band.lower()), 'nanomaggies arcsec-2'))#1e-9*u.maggy/u.arcsec**2))
-    #    cols.append(('eps_{}'.format(band.lower()), None))
-    #    cols.append(('eps_err_{}'.format(band.lower()), None))
-    #    cols.append(('pa_{}'.format(band.lower()), u.degree))
-    #    cols.append(('pa_err_{}'.format(band.lower()), u.degree))
-    #    cols.append(('x0_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('x0_err_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('y0_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('y0_err_{}'.format(band.lower()), u.pixel))
-    #    cols.append(('a3_{}'.format(band.lower()), None)) # units?
-    #    cols.append(('a3_err_{}'.format(band.lower()), None))
-    #    cols.append(('a4_{}'.format(band.lower()), None))
-    #    cols.append(('a4_err_{}'.format(band.lower()), None))
-    #
-    #for thresh in sbthresh:
-    #    cols.append(('sma_sb{:0g}'.format(thresh), u.arcsec))
-    #for thresh in sbthresh:
-    #    cols.append(('sma_ivar_sb{:0g}'.format(thresh), 1/u.arcsec**2))
-    #for band in bands:
-    #    for thresh in sbthresh:
-    #        cols.append(('flux_sb{:0g}_{}'.format(thresh, band.lower()), 'nanomaggies'))#1e-9*u.maggy))
-    #    for thresh in sbthresh:
-    #        cols.append(('flux_ivar_sb{:0g}_{}'.format(thresh, band.lower()), 'nanomaggies-2'))#1e18/u.maggy**2))
-    #    for thresh in sbthresh:
-    #        cols.append(('fracmasked_sb{:0g}_{}'.format(thresh, band.lower()), None))
-    #
-    #for iap, ap in enumerate(apertures):
-    #    cols.append(('sma_ap{:02d}'.format(iap+1), u.arcsec))
-    #for band in bands:
-    #    for iap, ap in enumerate(apertures):
-    #        cols.append(('flux_ap{:02d}_{}'.format(iap+1, band.lower()), 'nanomaggies'))#1e-9*u.maggy))
-    #    for iap, ap in enumerate(apertures):
-    #        cols.append(('flux_ivar_ap{:02d}_{}'.format(iap+1, band.lower()), 'nanomaggies-2'))#1e18/u.maggy**2))
-    #    for iap, ap in enumerate(apertures):
-    #        cols.append(('fracmasked_ap{:02d}_{}'.format(iap+1, band.lower()), None))
-    #
-    #for band in bands:
-    #    cols.append(('cog_sma_{}'.format(band.lower()), u.arcsec))
-    #    cols.append(('cog_flux_{}'.format(band.lower()), 'nanomaggies'))#1e-9*u.maggy))
-    #    cols.append(('cog_flux_ivar_{}'.format(band.lower()), 'nanomaggies-2'))#1e18/u.maggy**2))
-    #
-    #for band in bands:
-    #    cols.append(('cog_mtot_{}'.format(band.lower()), u.mag))
-    #    cols.append(('cog_mtot_ivar_{}'.format(band.lower()), 1/u.mag**2))
-    #    cols.append(('cog_m0_{}'.format(band.lower()), u.mag))
-    #    cols.append(('cog_m0_ivar_{}'.format(band.lower()), 1/u.mag**2))
-    #    cols.append(('cog_alpha1_{}'.format(band.lower()), None))
-    #    cols.append(('cog_alpha1_ivar_{}'.format(band.lower()), None))
-    #    cols.append(('cog_alpha2_{}'.format(band.lower()), None))
-    #    cols.append(('cog_alpha2_ivar_{}'.format(band.lower()), None))
-    #    cols.append(('cog_chi2_{}'.format(band.lower()), None))
-    #    cols.append(('cog_sma50_{}'.format(band.lower()), u.arcsec))
-
-    return out
-
-
 def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
-                  sbthresh, apertures, SGAMASKBITS, mp=1, debug=False):
+                  sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=100,
+                  seed=42, debug=False):
     """Simple wrapper on multifit.
 
     Iterate on objects then datasets (even though some work is
@@ -1232,11 +1355,14 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 
     opt_wcs = data['opt_wcs']
     opt_pixscale = data['opt_pixscale']
+    nsample = len(sample)
 
     results_obj = []
     sbprofiles_obj = []
     for iobj, obj in enumerate(sample):
         refid = obj[REFIDCOLUMN]
+
+        log.info(f'Ellipse-fitting galaxy {iobj+1}/{nsample}.')
 
         results_dataset = []
         sbprofiles_dataset = []
@@ -1255,28 +1381,34 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
             # build the sma vector
             if dataset == 'opt':
                 ba = obj['BA_MOMENT']
-                semia = obj['DIAM_MOMENT'] / 2. / pixscale # [pixels]
-                psf_fwhm_pix = 1.1 / pixscale              # [pixels]
+                sma_moment_arcsec = obj['SMA_MOMENT']  # [arsec]
+                semia_pix = sma_moment_arcsec / pixscale    # [pixels]
+                psf_fwhm_pix = 1.1 / pixscale          # [pixels]
                 allbands = data['all_opt_bands'] # always griz in north & south
 
-                opt_sma_array, info = build_sma_opt(
-                    s95_pix=semia, ba=ba, psf_fwhm_pix=psf_fwhm_pix,
+                # reference apertures
+                sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures) # [arcsec]
+
+                opt_sma_array_pix, info = build_sma_opt(
+                    s95_pix=semia_pix, ba=ba, psf_fwhm_pix=psf_fwhm_pix,
                     inner_step_pix=1., min_pixels_per_annulus=25,
                     frac_step=0.15, amax_factor=3.)
-                sma_array = np.copy(opt_sma_array)
+                sma_array_pix = np.copy(opt_sma_array_pix)
             else:
                 allbands = bands
-                sma_array = build_sma_band(
-                    opt_sma_array, opt_pixscale=opt_pixscale,
+
+                sma_array_pix = build_sma_band( # [pixels]
+                    opt_sma_array_pix, opt_pixscale=opt_pixscale,
                     pixscale=pixscale, ba=ba,
                     min_pixels_per_annulus=5) # ~constant S/N per annulus
 
-            #print(sma_array)
+            #print(sma_array_pix)
             results_dataset1, sbprofiles_dataset1 = multifit(
-                obj, images, sigimages, masks, sma_array, bands,
-                opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
-                pixscale=pixscale, mp=mp, sbthresh=sbthresh,
-                apertures=apertures, debug=debug)
+                obj, images, sigimages, masks, sma_array_pix, dataset,
+                bands, opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
+                pixscale=pixscale, mp=mp, nmonte=nmonte, allbands=allbands,
+                sbthresh=sbthresh, sma_apertures_arcsec=sma_apertures_arcsec,
+                seed=seed, debug=debug)
 
             results_dataset.append(results_dataset1)
             sbprofiles_dataset.append(sbprofiles_dataset1)
@@ -1285,8 +1417,8 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
         sbprofiles_obj.append(sbprofiles_dataset)
 
     # unpack the SB profiles and results tables
-    results = list(zip(*results_obj))
-    sbprofiles = list(zip(*sbprofiles_obj))
+    results = list(zip(*results_obj))       # [ndatasets][nobj]
+    sbprofiles = list(zip(*sbprofiles_obj)) # [ndatasets][nobj]
 
     return results, sbprofiles
 
@@ -1296,7 +1428,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, galex=True, unwise=True,
                          sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         verbose=False, nowrite=False, clobber=False, qaplot=False):
+                         nmonte=100, seed=42, verbose=False, nowrite=False,
+                         clobber=False, qaplot=False, htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
 
@@ -1310,6 +1443,15 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     # we need as many MASKBITS bit-masks as datasetss
     assert(len(SGAMASKBITS) == len(datasets))
 
+    # In the case that there were "no photometric CCDs touching
+    # brick", there will not be a CCDs file (e.g.,
+    # dr11-south/203/20337p3381=WISEA J133330.14+334903.2), so we
+    # should exit cleanly.
+    ccdsfile = os.path.join(galaxydir, f'{galaxy}-ccds.fits')
+    if not os.path.isfile(ccdsfile):
+        log.info('No CCDs touching this brick; nothing to do.')
+        return 1
+
     #data = read_multiband_function(
     #    galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
     #    pixscale=pixscale, galex_pixscale=galex_pixscale,
@@ -1320,7 +1462,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, verbose=verbose, qaplot=qaplot)
+        galex=galex, verbose=verbose, qaplot=qaplot,
+        htmlgalaxydir=htmlgalaxydir)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
@@ -1329,15 +1472,16 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     results, sbprofiles = wrap_multifit(
         data, sample, datasets, unpack_maskbits_function,
         sbthresh, apertures, SGAMASKBITS, mp=mp,
-        debug=False)
+        nmonte=nmonte, seed=seed, debug=qaplot)
 
     if qaplot:
         qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
-                      SGAMASKBITS, REFIDCOLUMN, datasets=datasets)
+                      SGAMASKBITS, REFIDCOLUMN, datasets=datasets,
+                      htmlgalaxydir=htmlgalaxydir)
 
-    pdb.set_trace()
     if not nowrite:
         from SGA.io import write_ellipsefit
-        err = write_ellipsefit(data, datasets, results, sbprofiles, verbose=verbose)
+        err = write_ellipsefit(data, sample, datasets, results, sbprofiles,
+                               SGAMASKBITS, verbose=verbose)
 
     return err

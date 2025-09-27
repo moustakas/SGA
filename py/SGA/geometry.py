@@ -77,7 +77,14 @@ class EllipseProperties:
         labels, nblobs = ndimage.label(mask)
         self.labels = labels
         if nblobs < 1:
-            raise ValueError("No positive blobs found in image.")
+            #raise ValueError("No positive blobs found in image.")
+            log.warning("No positive blobs found in image.")
+            self.x0 = 0.
+            self.y0 = 0.
+            self.a = 0.
+            self.pa = 0.
+            self.ba = 1.
+            return self
         sizes = ndimage.sum(mask, labels, index=np.arange(1, nblobs+1))
         largest = np.argmax(sizes) + 1
         self.blob_mask = (labels == largest)
@@ -283,7 +290,7 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
             if prop == 'mag':
                 col = 'BT'
                 band = 'B'
-                I = cat[col] > 0.
+                I = (cat[col] > 0.) * (cat[col] < 1e20)
                 if np.sum(I) > 0:
                     val[I] = cat[col][I]
                     val_ref[I] = ref
@@ -679,9 +686,10 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
     if np.any(I):
         diam[I] = mindiam
 
-    # clean up missing values of BA and PA
-    ba[ba < 0.] = 1.
+    # clean up missing (or crazy) values of BA and PA
     pa[pa < 0.] = 0.
+    ba[ba < 0.] = 1.
+    ba[ba < 0.1] = 0.1 # note!
 
     if get_mag:
         mag = np.zeros(nobj) - 99.

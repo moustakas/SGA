@@ -1,31 +1,10 @@
-# This file contains the set of objects that should trigger
-# SGAFITMODE='forcepsf'.
-#
-# Cuts: DIAM_INIT > 3.9
+# This file contains the set of objects (all Milky Way satellites)
+# that should trigger SGAFITMODE='forcepsf'.
 #
 objname,region,comment
-#
-# LVD - dr9-north
-#
-Holmberg I,dr9-north,LVD
-#
 # LVD - dr11-south
 #
 Fornax,dr11-south,LVD
 Sculptor,dr11-south,LVD
-IC 1613,dr11-south,LVD
-NGC 6822,dr11-south,LVD
 Leo II,dr11-south,LVD
-WLM,dr11-south,LVD
 Leo I,dr11-south,LVD
-Pegasus dIrr,dr11-south,LVD
-Sextans B,dr11-south,LVD
-Sextans A,dr11-south,LVD
-Phoenix,dr11-south,LVD
-ESO 383-087,dr11-south,LVD
-Cetus,dr11-south,LVD
-Andromeda VI,dr11-south,LVD
-#
-# LVD - dr9-north & dr11-south
-#
-Leo A,dr11-south;dr9-north,LVD

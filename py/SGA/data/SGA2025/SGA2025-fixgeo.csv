@@ -100,6 +100,16 @@ Reticulum III,dr11-south,LVD
 Centaurus I,dr11-south,LVD
 Scl-MM-Dw2,dr11-south,LVD
 Bootes II,dr11-south,LVD
+Fornax,dr11-south,LVD
+Sculptor,dr11-south,LVD
+Leo II,dr11-south,LVD
+Leo I,dr11-south,LVD
+WISEA J203133.10-070501.5,dr11-south,In 'PN A66 70'
+DDO 154,dr11-south,LVD
+ESO 451- G 012,dr11-south,near star
+WISEA J205942.51-414751.8,dr11-south,geometry algorithm failure
+FGCE 0721,dr11-south,geometry algorithm failure
+NGC 5291,dr11-south,extended blue light
 #
 # LVD - dr9-north & dr11-south
 #
@@ -110,7 +120,3 @@ Bootes V,dr9-north;dr11-south,LVD
 NGC 4631-dw1,dr9-north;dr11-south,LVD
 NGC 4631-dw2,dr9-north;dr11-south,LVD
 NGC 4631-dw3,dr9-north;dr11-south,LVD
-#
-# dr11-south
-#
-WISEA J203133.10-070501.5,dr11-south,In 'PN A66 70'

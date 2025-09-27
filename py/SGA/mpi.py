@@ -24,6 +24,7 @@ def mpi_args():
 
     parser.add_argument('--mindiam', default=0., type=float, help='Minimum diameter (arcmin).')
     parser.add_argument('--maxdiam', default=100., type=float, help='Maximum diameter (arcmin).')
+    parser.add_argument('--maxmult', default=None, type=int, help='Only read primary groups with up to maxmult members.')
 
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
     parser.add_argument('--customsky', action='store_true', help='Build the largest large-galaxy coadds with custom sky-subtraction.')
@@ -42,18 +43,22 @@ def mpi_args():
     parser.add_argument('--galex-pixscale', default=1.5, type=float, help='GALEX pixel scale (arcsec/pix).')
 
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
+    parser.add_argument('--nmonte', default=100, type=int, help='Number of Monte Carlo draws (ellipsefit_multiband)')
+    parser.add_argument('--seed', default=42, type=int, help='Random seed for Monte Carlo draws (ellipsefit_multiband)')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
 
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
     parser.add_argument('--htmldir', default=None, type=str, help='Override $SGA_HTML_DIR environment variable')
 
     parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
+    parser.add_argument('--test-bricks', action='store_true', help='Read the sample of test bricks.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
     parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
 
     #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
+    parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
@@ -61,6 +66,9 @@ def mpi_args():
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
 
     parser.add_argument('--lvd', action='store_true', help='Read the parent LVD sample.')
+
+    parser.add_argument('--use-gpu', action='store_true', help='Launch the GPU version of legacypipe (only with --coadds).')
+    parser.add_argument('--threads-per-gpu', default=16, type=int, help='Max threads per GPU - CPU will fill remaining threads.')
 
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')

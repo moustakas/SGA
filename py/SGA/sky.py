@@ -134,16 +134,17 @@ def in_ellipse_mask_sky(racen, deccen, semia, semib, pa, ras, decs):
     return (xp/semia)**2 + (yp/semib)**2 <= 1
 
 
-def find_close(cat, fullcat, rad_arcsec=1., isolated=False):
+def find_close(cat, fullcat, rad_arcsec=1., isolated=False, return_counts=False):
 
     rad = rad_arcsec / 3600.
     allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
                              fullcat['RA'].value, fullcat['DEC'].value,
                              rad, indexlist=True, notself=False)
-    primaryindx, groupindx = [], []
+    primaryindx, groupindx, ningroup = [], [], []
     for ii, mm in enumerate(allmatches):
         if mm is not None:
             ngroup = len(mm)
+            ningroup.append(ngroup)
             #print(ngroup, ii, mm)
             if isolated:
                 if ngroup == 1:
@@ -156,6 +157,8 @@ def find_close(cat, fullcat, rad_arcsec=1., isolated=False):
     if len(primaryindx) == 0:
         return [], []
     primaryindx = np.array(primaryindx)
+    ningroup = np.array(ningroup)
+
     primaries = cat[primaryindx]
     primaries = primaries[np.argsort(primaries['RA'])]
 
@@ -163,7 +166,10 @@ def find_close(cat, fullcat, rad_arcsec=1., isolated=False):
     groups = fullcat[groupindx]
     groups = groups[np.argsort(groups['RA'])]
 
-    return primaries, groups
+    if return_counts:
+        return primaries, groups, ningroup
+    else:
+        return primaries, groups
 
 
 def choose_primary(group, verbose=False, keep_all_mergers=False, ignore_objtype=False):
