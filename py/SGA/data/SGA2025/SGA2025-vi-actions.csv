@@ -2847,6 +2847,10 @@ WISEA J083502.54+292845.0,drop,off-footprint,
 WISEA J214912.16-013325.8,drop,off-footprint,
 WISEA J220415.14+024538.9,drop,off-footprint,
 #
+WISEA J130006.24+281501.0,drop,faint shred or compact,
+WISEA J235604.52-344217.7,drop,faint shred or compact,
+GALEXASC J235601.66-344145.9,drop,faint shred or compact,
+DESI J206.8498-30.4393,drop,faint shred or compact,
 GALEXASC J125501.25-173415.4,drop,faint shred or compact,
 WISEA J232409.30-652728.4,drop,faint shred or compact,
 WISEA J133922.87-850020.8,drop,faint shred or compact,
@@ -5253,6 +5257,10 @@ WISEA J064822.73+742927.8,drop,faint shred or compact,
 SDSS J134910.49+395929.3,drop,faint shred or compact,
 DESI J108.9393+64.7099,drop,faint shred or compact,
 #
+SDSS J130045.30+280609.6,drop,faint shred or compact,
+SDSS J125746.63+274530.5,drop,faint shred or compact,
+SDSS J130008.05+274623.9,drop,faint shred or compact,
+2MASS J13000961+2758418,drop,faint shred or compact,
 [WTK99] 4,drop,faint shred or compact,
 [WTK99] 5,drop,faint shred or compact,
 CG J1720-67.8:[TWG2003] 09,drop,faint shred or compact,
@@ -23910,7 +23918,6 @@ SDSS J085716.65+025520.7,drop,faint shred or compact,
 WISEA J085729.65+025400.5,drop,faint shred or compact,
 WISEA J091021.87+070403.0,drop,faint shred or compact,
 WISEA J091058.16-085125.5,drop,faint shred or compact,
-MCG +05-22-016,drop,faint shred or compact,
 2MASS J09155654+1738266,drop,faint shred or compact,
 GALEXASC J092509.87-064242.2,drop,faint shred or compact,
 SDSS J092642.22+075826.2,drop,faint shred or compact,
@@ -27309,6 +27316,7 @@ NGC 1741 NED01,drop,shred,
 NGC 1741 NED03,drop,shred,
 ESO 424- G 010 NED02,drop,shred,
 #
+WISEA J125804.02+265122.9,drop,star,Foreground star in 'UGC 08080'
 UGC 06284 NED01,drop,star,Foreground star in 'UGC 06284 NED02'?
 2MASX J02580958+0321332,drop,star,Foreground star in 'NGC 1153'.
 UGC 08691 NED02,drop,star,Foreground star in 'UGC 08691 NED01'.
