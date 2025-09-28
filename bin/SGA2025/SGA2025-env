@@ -5,7 +5,7 @@
 
 export COSMO=/dvs_ro/cfs/cdirs/cosmo
 
-export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/desi/users/ioannis/SGA/2025/SGA2025-v0.11-refcat.kd.fits
+export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/desi/users/ioannis/SGA/2025/SGA2025-v0.10-refcat.kd.fits
 
 export SGA_CODE_DIR=/global/homes/i/ioannis/code/SGA
 export LEGACYPIPE_CODE_DIR=/global/common/software/desi/users/ioannis/legacypipe

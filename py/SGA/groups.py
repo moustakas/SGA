@@ -1,300 +1,306 @@
-"""
-SGA.groups
-==========
-
-Code to do construct various group catalogs.
 
 """
-import os, time, pdb
+SGA groups.py — overlap-based group finding with optional anisotropic (ellipse-aware) linking.
+This version removes any pydl dependency and assumes Astropy is available.
+"""
+
+from __future__ import annotations
+
+import math
 import numpy as np
-from astropy.table import Table
-from SGA.coadds import PIXSCALE
-from SGA.logger import log
+from astropy.table import Table, Column
 
+# Logging: use SGA.logger if available, otherwise standard logging
+try:
+    from SGA.logger import log  # type: ignore
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    class _L:
+        @staticmethod
+        def info(msg): logging.getLogger("SGA.groups").info(msg)
+        @staticmethod
+        def warning(msg): logging.getLogger("SGA.groups").warning(msg)
+        @staticmethod
+        def debug(msg): logging.getLogger("SGA.groups").debug(msg)
+    log = _L()
 
-def fof_groups(cat, linking_length=2, verbose=True):
-    """Find groups using a friends-of-friends algorithm.
+DEG2RAD = np.pi / 180.0
+RAD2DEG = 180.0 / np.pi
+ARCMIN_PER_DEG = 60.0
 
+def _wrap_deg(x: float | np.ndarray) -> float | np.ndarray:
+    return np.mod(x, 360.0)
+
+def _angdiff_deg(a: float, b: float) -> float:
+    """Smallest signed difference a-b in (-180, 180]."""
+    d = (a - b + 180.0) % 360.0 - 180.0
+    return d
+
+def _bearing_pa_deg(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
     """
-    from pydl.pydlutils.spheregroup import spheregroup
-
-    grp, mult, frst, nxt = spheregroup(cat['ra'], cat['dec'], linking_length / 60.0)
-    ngrp = max(grp) + 1
-
-    if verbose:
-        npergrp, _ = np.histogram(grp, bins=len(grp), range=(0, len(grp)))
-        log.info('Found {} total groups, including:'.format(ngrp), flush=True)
-        log.info('  {} groups with 1 member'.format(
-            np.sum( (npergrp == 1) ).astype('int')), flush=True)
-        log.info('  {} groups with 2-5 members'.format(
-            np.sum( (npergrp > 1)*(npergrp <= 5) ).astype('int')), flush=True)
-        log.info('  {} groups with 5-10 members'.format(
-            np.sum( (npergrp > 5)*(npergrp <= 10) ).astype('int')), flush=True)
-        log.info('  {} groups with >10 members'.format(
-            np.sum( (npergrp > 10) ).astype('int')), flush=True)
-    return (grp, mult, frst, nxt)
-
-
-def build_groupcat_sky(parent, linking_length=2, verbose=True, groupcatfile='groupcat.fits',
-                       parentfile='parent.fits'):
-    """Build a group catalog based on just RA, Dec coordinates.
-
+    Astronomical bearing (position angle) from (ra1,dec1) toward (ra2,dec2).
+    0° = North, 90° = East, increases CCW. Returns [0,360).
+    Uses a small-angle projection appropriate for arcminute scales.
     """
-    from astropy.table import Column, Table
-    from astrometry.util.starutil_numpy import radectoxyz, xyztoradec, arcsec_between
+    ra1r, dec1r, ra2r, dec2r = np.radians([ra1, dec1, ra2, dec2])
+    dra = (ra2r - ra1r) * np.cos(dec1r)
+    ddec = (dec2r - dec1r)
+    pa = np.degrees(np.arctan2(dra, ddec))
+    return float(_wrap_deg(pa))
 
-    grp, mult, frst, nxt = fof_groups(parent, linking_length=linking_length, verbose=verbose)
-
-    ngrp = max(grp) + 1
-    groupid = np.arange(ngrp)
-
-    groupcat = Table()
-    groupcat.add_column(Column(name='groupid', dtype='i4', length=ngrp, data=groupid)) # unique ID number
-    #groupcat.add_column(Column(name='galaxy', dtype='S1000', length=ngrp))
-    groupcat.add_column(Column(name='nmembers', dtype='i4', length=ngrp))
-    groupcat.add_column(Column(name='ra', dtype='f8', length=ngrp))  # average RA
-    groupcat.add_column(Column(name='dec', dtype='f8', length=ngrp)) # average Dec
-    groupcat.add_column(Column(name='width', dtype='f4', length=ngrp)) # maximum separation
-    groupcat.add_column(Column(name='d25max', dtype='f4', length=ngrp))
-    groupcat.add_column(Column(name='d25min', dtype='f4', length=ngrp))
-    groupcat.add_column(Column(name='fracmasked', dtype='f4', length=ngrp))
-
-    # Add the groupid to the input catalog.
-    outparent = parent.copy()
-
-    #t0 = time.time()
-    npergrp, _ = np.histogram(grp, bins=len(grp), range=(0, len(grp)))
-    #print('Time to build the histogram = {:.3f} minutes.'.format( (time.time() - t0) / 60 ) )
-
-    big = np.where( npergrp > 1 )[0]
-    small = np.where( npergrp == 1 )[0]
-
-    if len(small) > 0:
-        groupcat['nmembers'][small] = 1
-        groupcat['groupid'][small] = groupid[small]
-        groupcat['ra'][small] = parent['ra'][grp[small]]
-        groupcat['dec'][small] = parent['dec'][grp[small]]
-        groupcat['d25max'][small] = parent['d25'][grp[small]]
-        groupcat['d25min'][small] = parent['d25'][grp[small]]
-        groupcat['width'][small] = parent['d25'][grp[small]]
-
-        outparent['groupid'][grp[small]] = groupid[small]
-
-    for igrp in range(len(big)):
-        jj = frst[big[igrp]]
-        ig = list()
-        ig.append(jj)
-        while (nxt[jj] != -1):
-            ig.append(nxt[jj])
-            jj = nxt[jj]
-        ig = np.array(ig)
-
-        ra1, dec1 = parent['ra'][ig].data, parent['dec'][ig].data
-        ra2, dec2 = xyztoradec(np.mean(radectoxyz(ra1, dec1), axis=0))
-
-        groupcat['ra'][big[igrp]] = ra2
-        groupcat['dec'][big[igrp]] = dec2
-
-        d25min, d25max = np.min(parent['d25'][ig]), np.max(parent['d25'][ig])
-
-        groupcat['d25max'][big[igrp]] = d25max
-        groupcat['d25min'][big[igrp]] = d25min
-
-        groupcat['nmembers'][big[igrp]] = len(ig)
-        outparent['groupid'][ig] = groupcat['groupid'][big[igrp]]
-
-        # Get the distance of each object from every other object.
-        #diff = arcsec_between(ra1, dec1, ra2, dec2) / 60 # [arcmin] # group center
-
-        diff = list()
-        for _ra, _dec in zip(ra1, dec1):
-            diff.append(arcsec_between(ra1, dec1, _ra, _dec) / 60) # [arcmin]
-
-        #if len(ig) > 2:
-        #    import pdb ; pdb.set_trace()
-        diameter = np.hstack(diff).max()
-        groupcat['width'][big[igrp]] = diameter
-
-    print('Writing {}'.format(groupcatfile))
-    groupcat.write(groupcatfile, overwrite=True)
-
-    print('Writing {}'.format(parentfile))
-    outparent.write(parentfile, overwrite=True)
-
-    return groupcat, outparent
-
-
-def build_group_catalog(cat, group_id_start=0, mfac=1.5,
-                        dmin=36./3600., dmax=3./60.):
-    """dmin, dmax in degrees
-
-    dmin = 36 arcsec is set by the precision (0.01 deg) of radec_to_groupname
-
-    Group SGA galaxies together where their circular radii would overlap.  Use
-    the catalog D25 diameters (in arcmin) multiplied by a scaling factor MFAC.
-    The output catalog adds the column GROUP_ID which is unique for each group.
-    The column MULT_GROUP is the multiplicity of that galaxy's group.
-
+def _reff_arcmin(diam_arcmin: float, ba: float, pa_deg: float,
+                 ra_i: float, dec_i: float, ra_j: float, dec_j: float,
+                 q_floor: float = 0.0) -> float:
     """
-    from astropy.table import Column
-    from pydl.pydlutils.spheregroup import spheregroup
-    from astrometry.util.starutil_numpy import degrees_between
-    from SGA.io import radec_to_groupname
+    Directional elliptical radius (arcmin) of object i toward j.
+    Parameters
+    ----------
+    diam_arcmin : D25 major-axis diameter (arcmin)
+    ba : axis ratio b/a in (0,1]; if invalid, fall back to circular radius
+    pa_deg : astronomical PA of major axis, degrees
+    ra_i, dec_i : position of object i [deg]
+    ra_j, dec_j : position of neighbor j [deg]
+    q_floor : minimum axis ratio to avoid extreme shrink along minor axis
+    """
+    if not np.isfinite(diam_arcmin) or diam_arcmin <= 0.0:
+        return 0.0
+    a = 0.5 * float(diam_arcmin)
+    if not (np.isfinite(ba) and ba > 0.0):
+        return a
+    if q_floor and ba < q_floor:
+        ba = q_floor
+    b = ba * a
+    if not np.isfinite(pa_deg):
+        return a
+    bearing = _bearing_pa_deg(ra_i, dec_i, ra_j, dec_j)
+    ddeg = _angdiff_deg(bearing, float(pa_deg))
+    d = np.radians(ddeg)
+    denom = math.hypot(b * math.cos(d), a * math.sin(d))
+    if denom <= 0.0:
+        return a
+    return (a * b) / denom
 
-    log.info(f'Starting spheregrouping with {len(cat):,d} objects.')
+def _small_angle_sep_arcmin(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
+    """Approximate small-angle separation in arcmin (accurate at a few arcminutes)."""
+    dra = (ra2 - ra1) * math.cos(dec1 * DEG2RAD)
+    ddec = (dec2 - dec1)
+    return math.hypot(dra, ddec) * ARCMIN_PER_DEG
 
-    #nchar = np.max([len(gg) for gg in cat['SGANAME']])+6 # add six characters for "_GROUP"
+def _radectoxyz(ra_rad: np.ndarray, dec_rad: np.ndarray) -> np.ndarray:
+    """Unit vectors from RA/Dec in radians; shape (N,3)."""
+    cosd = np.cos(dec_rad)
+    x = cosd * np.cos(ra_rad)
+    y = cosd * np.sin(ra_rad)
+    z = np.sin(dec_rad)
+    return np.vstack((x, y, z)).T
 
-    # clean up old entries
-    for col in ['GROUP_ID', 'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
-                'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER']:
-        if col in cat.colnames:
-            cat.remove_column(col)
+def _xyztoradec(xyz: np.ndarray) -> tuple[float, float]:
+    """RA,Dec in radians from a 3-vector."""
+    x, y, z = xyz
+    ra = math.atan2(y, x)
+    rxy = math.hypot(x, y)
+    dec = math.atan2(z, rxy)
+    if ra < 0:
+        ra += 2.0 * np.pi
+    return ra, dec
 
-    t0 = time.time()
-    cat.add_column(Column(name='GROUP_ID', data=np.zeros(len(cat), dtype=np.int32)-1))
-    cat.add_column(Column(name='GROUP_NAME', length=len(cat), dtype=f'<U10'))
-    #cat.add_column(Column(name='GROUP_NAME', length=len(cat), dtype=f'<U{nchar}'))
-    cat.add_column(Column(name='GROUP_MULT', data=np.zeros(len(cat), dtype=np.int16)))
-    cat.add_column(Column(name='GROUP_PRIMARY', data=np.zeros(len(cat), dtype=bool)))
-    cat.add_column(Column(name='GROUP_RA', length=len(cat), dtype='f8')) # diameter-weighted center
-    cat.add_column(Column(name='GROUP_DEC', length=len(cat), dtype='f8'))
-    cat.add_column(Column(name='GROUP_DIAMETER', length=len(cat), dtype='f4'))
+class DSU:
+    """Disjoint Set Union (Union-Find) with path compression and union by rank."""
+    def __init__(self, n: int):
+        self.p = list(range(n))
+        self.r = [0] * n
+    def find(self, x: int) -> int:
+        while self.p[x] != x:
+            self.p[x] = self.p[self.p[x]]
+            x = self.p[x]
+        return x
+    def union(self, a: int, b: int) -> None:
+        ra, rb = self.find(a), self.find(b)
+        if ra == rb:
+            return
+        if self.r[ra] < self.r[rb]:
+            self.p[ra] = rb
+        elif self.r[ra] > self.r[rb]:
+            self.p[rb] = ra
+        else:
+            self.p[rb] = ra
+            self.r[ra] += 1
 
-    # Initialize a unique group number for each galaxy
-    gnum = np.arange(len(cat)).astype(np.int32)
-    mgrp = np.ones(len(cat)).astype(np.int16)
+def build_group_catalog(
+    cat: Table,
+    group_id_start: int = 0,
+    mfac: float = 1.5,
+    dmin: float = 36.0/3600.0,   # degrees; 36 arcsec
+    dmax: float = 3.0/60.0,      # degrees; 3 arcmin window for candidate pairs
+    anisotropic: bool = True,
+    link_mode: str = "hybrid",   # "off" | "anisotropic" | "hybrid"
+    big_diam: float = 5.0,       # arcmin threshold for "large" galaxies
+    mfac_backbone: float = 2.0,  # large–large multiplier
+    mfac_sat: float = 1.8,       # large–small multiplier (default tuned)
+    k_floor: float = 0.30,       # floor factor: r_eff >= k_floor * r_circ (default tuned)
+    q_floor: float = 0.20,       # minimum axis ratio for anisotropy (default tuned)
+    name_via: str = "radec",     # "radec" or "none"
+) -> Table:
+    """
+    Build an overlap-based group catalog with optional anisotropy and a hybrid strategy.
 
-    ra, dec, diam = cat['RA'].value, cat['DEC'].value, cat['DIAM'].value
-    I = diam/60. < dmin
-    if np.any(I):
-        log.info(f'Using mindiam={dmin*3600.:.0f} arcsec for {np.sum(I):,d} objects.')
-        diam[I] = dmin * 60.
+    Required input columns in `cat` (degrees and arcminutes):
+        RA, DEC [deg], DIAM [arcmin]
+    Optional columns:
+        BA (=b/a), PA [deg astronomical]
+        OBJNAME (kept and returned untouched)
 
-    # First group galaxies within dmax arcmin, setting those to have the same
-    # group number
-    t0 = time.time()
-    ingroup, group_mult, firstgroup, nextgroup = spheregroup(ra, dec, dmax)
+    Output columns added:
+        GROUP_ID, MULT (group multiplicity), PRIMARY (bool),
+        GROUP_NAME, GROUP_RA, GROUP_DEC, GROUP_DIAM (arcmin).
+    """
+    required = {'RA', 'DEC', 'DIAM'}
+    if not required <= set(cat.colnames):
+        raise ValueError(f"Catalog must have columns {required}")
+    RA = np.asarray(cat['RA'], dtype=float)
+    DEC = np.asarray(cat['DEC'], dtype=float)
+    DIAM = np.asarray(cat['DIAM'], dtype=float)
+    N = len(cat)
+    BA = np.asarray(cat['BA'], dtype=float) if 'BA' in cat.colnames else np.full(N, np.nan)
+    PA = np.asarray(cat['PA'], dtype=float) if 'PA' in cat.colnames else np.full(N, np.nan)
 
-    ngroup = np.count_nonzero(firstgroup != -1)
-    for ii in np.arange(ngroup):
-        #print(ii, ngroup)
-        nn = group_mult[ii] # number of galaxies in this group
-        if nn > 1:
-            # Build INDX as the indices of all objects in this grouping
-            indx = np.zeros(nn, dtype=int)
-            indx[0] = firstgroup[ii]
-            for jj in np.arange(nn-1):
-                indx[jj+1] = nextgroup[indx[jj]]
-            # Look at all pairs within this grouping to see if they should be connected.
-            for jj in np.arange(nn-1):
-                for kk in np.arange(jj, nn):
-                    dd = degrees_between(ra[indx[jj]], dec[indx[jj]], ra[indx[kk]], dec[indx[kk]])
-                    # If these two galaxies should be connected, make GNUM the
-                    # same for them...
-                    #print(dd, mfac * (cat['DIAM'][indx[jj]] / 60. + cat['DIAM'][indx[kk]] / 60.))
-                    if dd < (0.5 * mfac * (diam[indx[jj]] / 60. + diam[indx[kk]] / 60.)):
-                        jndx = np.where(np.logical_or(gnum[indx]==gnum[indx[jj]], gnum[indx]==gnum[indx[kk]]))[0]
-                        gnum[indx[jndx]] = gnum[indx[jndx[0]]]
-                        mgrp[indx[jndx]] = len(jndx)
-            #print(ii, ngroup, gnum[indx], mgrp[indx])
+    def _radec_to_groupname(ra_deg: float, dec_deg: float) -> str:
+        """Best-effort group name following existing SGA convention if available."""
+        try:
+            from SGA.io import radec_to_groupname  # type: ignore
+            return radec_to_groupname(ra_deg, dec_deg)
+        except Exception:
+            ra_h = ra_deg / 15.0
+            h = int(ra_h)
+            m = int((ra_h - h) * 60.0 + 1e-6)
+            ra_tag = f"{h:02d}{m:02d}"
+            s = '+' if dec_deg >= 0 else '-'
+            d = int(abs(dec_deg))
+            dm = int((abs(dec_deg) - d) * 60.0 + 1e-6)
+            dec_tag = f"{d:02d}{dm:02d}"
+            return f"G{ra_tag}{s}{dec_tag}"
 
-    # Special-case the largest galaxies, looking for neighbhors
-    ibig = np.where(diam / 60. > dmax)[0]
-    if len(ibig) > 0:
-        for ii in np.arange(len(ibig)):
-           dd = degrees_between(ra[ibig[ii]], dec[ibig[ii]], ra, dec)
-           inear = np.where(dd < 0.5*(cat[ibig[ii]]['DIAM'] + diam) / 60.)[0]
-           if len(inear) > 0:
-               for jj in np.arange(len(inear)):
-                  indx = np.where(np.logical_or(gnum==gnum[ibig[ii]], gnum==gnum[inear[jj]]))[0]
-                  gnum[indx] = gnum[indx[0]]
-                  mgrp[indx] = len(indx)
+    def thresh_arcmin(i: int, j: int) -> float:
+        """Pair-specific link threshold (arcmin) under the selected mode."""
+        ri_c, rj_c = 0.5 * DIAM[i], 0.5 * DIAM[j]
+        if not anisotropic or link_mode in ("off", None):
+            return 0.5 * mfac * (ri_c + rj_c)
 
-    npergrp, _ = np.histogram(gnum, bins=len(gnum), range=(0, len(gnum)))
+        ri_a = _reff_arcmin(DIAM[i], BA[i], PA[i], RA[i], DEC[i], RA[j], DEC[j], q_floor=q_floor)
+        rj_a = _reff_arcmin(DIAM[j], BA[j], PA[j], RA[j], DEC[j], RA[i], DEC[i], q_floor=q_floor)
 
-    log.info(f'Found {len(set(gnum)):,d} total groups, including:')
-    log.info(f'  {int(np.sum((npergrp == 1))):,d} groups with 1 member')
-    log.info(f'  {int(np.sum((npergrp == 2))):,d} groups with 2 members')
-    log.info(f'  {int(np.sum((npergrp > 2) * (npergrp <= 5))):,d} group(s) with 3-5 members')
-    log.info(f'  {int(np.sum((npergrp > 5) * (npergrp <= 10))):,d} group(s) with 6-10 members')
-    log.info(f'  {int(np.sum( (npergrp > 10))):,d} group(s) with >10 members')
+        if link_mode == "anisotropic":
+            return 0.5 * mfac * (ri_a + rj_a)
 
-    cat['GROUP_ID'] = gnum + group_id_start
-    cat['GROUP_MULT'] = mgrp
+        big_i = DIAM[i] >= big_diam
+        big_j = DIAM[j] >= big_diam
+        if big_i and big_j:
+            return 0.5 * mfac_backbone * (ri_c + rj_c)
+        if big_i or big_j:
+            ri = max(ri_a, k_floor * ri_c)
+            rj = max(rj_a, k_floor * rj_c)
+            return 0.5 * mfac_sat * (ri + rj)
+        return 0.5 * mfac * (ri_a + rj_a)
 
-    I = np.where(cat['GROUP_MULT'] == 1)[0]
-    if len(I) > 0:
-        cat['GROUP_RA'][I] = ra[I]
-        cat['GROUP_DEC'][I] = dec[I]
-        cat['GROUP_DIAMETER'][I] = diam[I]
-        cat['GROUP_NAME'][I] = radec_to_groupname(cat['GROUP_RA'][I], cat['GROUP_DEC'][I])
-        #cat['GROUP_NAME'][I] = cat['SGANAME'][I]
-        cat['GROUP_PRIMARY'][I] = True
+    dsu = DSU(N)
+    dmax_arcmin = dmax * ARCMIN_PER_DEG
+    dmin_arcmin = dmin * ARCMIN_PER_DEG
+    links = 0
 
-    more = np.where(cat['GROUP_MULT'] > 1)[0]
-    for group in set(cat['GROUP_ID'][more]):
-        I = np.where(cat['GROUP_ID'] == group)[0]
-        # Compute the DIAM-weighted RA, Dec of the group:
-        weight = diam[I]
-        cat['GROUP_RA'][I] = np.sum(weight * ra[I]) / np.sum(weight)
-        cat['GROUP_DEC'][I] = np.sum(weight * dec[I]) / np.sum(weight)
-        # Get the diameter of the group as the distance between the
-        # center of the group and the outermost galaxy (plus the
-        # radius of that galaxy, in case it's a big one!).
-        dd = degrees_between(ra[I], dec[I], cat['GROUP_RA'][I[0]], cat['GROUP_DEC'][I[0]])
-        pad = dd + (diam[I] / 2. / 60.) # [degrees]
-        gdiam = 2. * np.max(pad) * 60. # [arcmin]
-        ## cap the maximum size of the group
-        #if gdiam > 15.:# and len(I) <= 2:
-        #    gdiam = 1.1 * np.max(pad) * 60. # [arcmin]
-        cat['GROUP_DIAMETER'][I] = gdiam
-        if cat['GROUP_DIAMETER'][I[0]] < np.max(diam[I]):
-            log.critical('Should not happen!')
-            raise ValueError
+    # Pair loop with a quick rectangular pre-filter followed by an accurate separation
+    for i in range(N):
+        cosdi = math.cos(DEC[i] * DEG2RAD)
+        for j in range(i + 1, N):
+            if abs(DEC[j] - DEC[i]) > dmax:
+                continue
+            if abs((RA[j] - RA[i]) * cosdi) > dmax:
+                continue
+            dd = _small_angle_sep_arcmin(RA[i], DEC[i], RA[j], DEC[j])
+            if dd > dmax_arcmin:
+                continue
+            thr = thresh_arcmin(i, j)
+            thr = max(thr, dmin_arcmin)
+            if dd <= thr:
+                dsu.union(i, j)
+                links += 1
 
-        # Assign the group name based on its largest member and also make this
-        # galaxy "primary".
-        primary = np.argmax(diam[I])
-        cat['GROUP_NAME'][I] = radec_to_groupname(
-            cat['GROUP_RA'][I][primary], cat['GROUP_DEC'][I][primary])
-        #cat['GROUP_NAME'][I] = f'{cat["SGANAME"][I][primary]}_GROUP'
-        cat['GROUP_PRIMARY'][I[primary]] = True
+    roots = np.array([dsu.find(i) for i in range(N)])
+    uniq, inv = np.unique(roots, return_inverse=True)
+    group_ids = inv + group_id_start
+    mult = np.bincount(inv, minlength=len(uniq))
 
-        #if cat['GROUP_ID'][I][0] == 2708:
-        #    pdb.set_trace()
+    # Group centers by DIAM-weighted average on the unit sphere
+    grp_ra = np.zeros(len(uniq))
+    grp_dec = np.zeros(len(uniq))
+    grp_diam = np.zeros(len(uniq))
+    grp_primary = np.zeros(len(uniq), dtype=int)
 
-    log.info(f'Building a group catalog took {(time.time() - t0)/60.:.3f} min')
+    for g, r in enumerate(uniq):
+        idx = np.where(roots == r)[0]
+        w = np.clip(DIAM[idx], 1e-3, None)
+        ra_rad = RA[idx] * DEG2RAD
+        dec_rad = DEC[idx] * DEG2RAD
+        xyz = _radectoxyz(ra_rad, dec_rad)
+        cen = (xyz * w[:, None]).sum(axis=0) / w.sum()
+        cen /= np.linalg.norm(cen)
+        ra_c, dec_c = _xyztoradec(cen)
+        ra_c *= RAD2DEG
+        dec_c *= RAD2DEG
+        grp_ra[g], grp_dec[g] = ra_c, dec_c
+
+        # Conservative group footprint: max over (dist to center + member circular radius)
+        max_extent = 0.0
+        for k in idx:
+            dcen = _small_angle_sep_arcmin(RA[k], DEC[k], ra_c, dec_c)
+            rk = 0.5 * DIAM[k]
+            max_extent = max(max_extent, dcen + rk)
+        grp_diam[g] = 2.0 * max_extent
+        grp_primary[g] = int(idx[np.argmax(DIAM[idx])])
+
+    # Attach per-row columns
+    if 'GROUP_ID' in cat.colnames:
+        cat.remove_column('GROUP_ID')
+    cat.add_column(Column(group_ids, name='GROUP_ID'))
+
+    row_mult = mult[inv]
+    if 'MULT' in cat.colnames:
+        cat.remove_column('MULT')
+    cat.add_column(Column(row_mult, name='MULT'))
+
+    primary_flags = np.zeros(N, dtype=bool)
+    for g, r in enumerate(uniq):
+        primary_flags[grp_primary[g]] = True
+    if 'PRIMARY' in cat.colnames:
+        cat.remove_column('PRIMARY')
+    cat.add_column(Column(primary_flags, name='PRIMARY'))
+
+    if 'GROUP_NAME' in cat.colnames:
+        cat.remove_column('GROUP_NAME')
+    if name_via == "radec":
+        names = np.array([
+            _radec_to_groupname(grp_ra[inv[i]], grp_dec[inv[i]])
+            for i in range(N)
+        ])
+    else:
+        names = np.array([''] * N)
+    cat.add_column(Column(names, name='GROUP_NAME'))
+
+    for colname in ('GROUP_RA', 'GROUP_DEC', 'GROUP_DIAM'):
+        if colname in cat.colnames:
+            cat.remove_column(colname)
+    cat.add_column(Column(grp_ra[inv], name='GROUP_RA'))
+    cat.add_column(Column(grp_dec[inv], name='GROUP_DEC'))
+    cat.add_column(Column(grp_diam[inv], name='GROUP_DIAM'))
+
+    nm = len(uniq)
+    n1 = int(np.sum(mult == 1))
+    n2 = int(np.sum(mult == 2))
+    n3p = int(np.sum(mult >= 3))
+    log.info(f"Groups built: {nm} total (singles={n1}, pairs={n2}, 3+={n3p}); links formed: {links}")
 
     return cat
 
-
-def qa(version='v1'):
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    sns.set(context='talk', style='ticks', font_scale=1.2)
-
-    fig, ax = plt.subplots(2, 2, figsize=(13, 10))
-    ax[0, 0].scatter(ra[m1], dec[m1], s=5)
-    ax[0, 0].scatter(ra[miss], dec[miss], s=5)
-    ax[0, 0].set_xlim(290, 90)
-    ax[0, 0].set_xlabel('RA')
-    ax[0, 0].set_ylabel('Dec')
-
-    ax[0, 1].hist(cat['RADIUS'][m1]*2/60, bins=50, range=(0, 8),
-                  label='SGA-match (N={})'.format(len(m1)))
-    ax[0, 1].hist(cat['RADIUS'][miss]*2/60, bins=50, range=(0, 8), alpha=0.5,
-                  label='SGA-no match (N={})'.format(len(miss)))
-    ax[0, 1].set_yscale('log')
-    ax[0, 1].set_xlabel('log Radius (arcmin)')
-    ax[0, 1].set_ylabel('Number of Galaxies')
-    ax[0, 1].legend(loc='upper right', fontsize=14)
-
-    ax[1, 0].scatter(sga['DIAM_INIT'][m2], cat['RADIUS'][m1]*2/60, s=5)
-    ax[1, 0].set_xlabel('SGA Diameter [arcmin]')
-    ax[1, 0].set_ylabel('Input Diameter [arcmin]')
-
-    ax[1, 1].axis('off')
-
-    fig.subplots_adjust(left=0.1, bottom=0.15, right=0.98, hspace=0.25, wspace=0.2)
-    fig.savefig(os.path.join(homedir, 'qa-virgofilaments-{}-SGA.png'.format(version)))
+def qa(*args, **kwargs):
+    """Placeholder QA function; intentionally does nothing in this drop-in."""
+    log.info("qa(): no-op placeholder.")
