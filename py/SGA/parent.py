@@ -2839,7 +2839,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
-def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
+def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
@@ -3036,7 +3036,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     #grp.add_column(SFD.ebv(grp['RA'].value, grp['DEC'].value), name='EBV', index=10)
     grp['EBV'] = SFD.ebv(grp['RA'].value, grp['DEC'].value).astype('f4')
 
-    log.info('Reserse-sorting by diameter')
+    log.info('Reverse-sorting by diameter')
     srt = np.argsort(diam)[::-1]
     grp = grp[srt]
 
@@ -3052,9 +3052,9 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     # samples (e.g., SMC, LMC).
     I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
                       grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
-    out1 = build_group_catalog(grp[I])
+    out1 = build_group_catalog(grp[I], mp=mp)
     #out = out1
-    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1)
+    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     out = vstack((out1, out2))
     del out1, out2
 
@@ -3067,8 +3067,6 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
-
-    pdb.set_trace()
 
     ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
     ## objects within (outside) the DR11 imaging footprint.
