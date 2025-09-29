@@ -77,6 +77,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         version = version_work
     elif parent:
         version = 'v0.10'
+    else:
+        # merged SGA catalog
+        version = 'v0.10'
     return version
 
 
@@ -554,7 +557,8 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('DIAM_INIT', np.float32, u.arcmin),
         ('BA_INIT', np.float32, None),
         ('PA_INIT', np.float32, u.degree),
-        ('MAG', np.float32, u.mag),
+        ('MAG_INIT', np.float32, u.mag),
+        ('DIAM_REF_INIT', 'U9', None),
         #('BAND', 'U1', None),
         ('EBV', np.float32, u.mag),
         ('GROUP_ID', np.int32, None),
@@ -572,6 +576,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('PSFDEPTH_R', np.float32, u.mag),
         ('PSFDEPTH_I', np.float32, u.mag),
         ('PSFDEPTH_Z', np.float32, u.mag),
+        ('BANDS', 'U4', None),
         ('SGANAME', 'U25', None),
         ('RA', np.float64, u.degree),
         ('DEC', np.float64, u.degree),
@@ -645,9 +650,10 @@ def SGA_datamodel(ellipse, bands, all_bands):
                     check.append(I)
                     val[I] = 0
             out[col] = val
-    check = np.unique(np.hstack(check))
-    print(','.join(ellipse['GROUP_NAME'][check].value))
-    #pdb.set_trace()
+    if len(check) > 0:
+        check = np.unique(np.hstack(check))
+        print(','.join(ellipse['GROUP_NAME'][check].value))
+        #pdb.set_trace()
 
     return out
 
@@ -841,6 +847,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     group, groupdir = get_galaxy_galaxydir(
         sample, region=region,
         group=not no_groups, datadir=datadir)
+    group = np.atleast_1d(group)
+    groupdir = np.atleast_1d(groupdir)
     ngrp = len(group)
 
     # divide into chunks and assign to different ranks (if running with MPI)
@@ -948,7 +956,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # Write out ellipsefile_ellipse by combining the ellipse and
     # tractor catalogs.
-    ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG', 'PA', 'BA', 'D26', 'FITMODE']
+    ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG_INIT', 'PA', 'BA', 'D26', 'FITMODE']
     tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
         [f'flux_{filt}' for filt in bands]
 
@@ -1297,8 +1305,8 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
         for col in range(3):
             # initial geometry
-            [bx, by, diam, ba, pa] = list(obj[GEOINITCOLS].values())
-            overplot_ellipse(diam, ba, pa, bx, by, pixscale=opt_pixscale,
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
                              ax=ax[1+iobj, col], color=colors2[0], linestyle='-',
                              linewidth=2, draw_majorminor_axes=True,
                              jpeg=False, label='Initial')
@@ -2070,6 +2078,10 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                       index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 
+    print('HACK!!!!!!!!')
+    sample['SMA_INIT'] = 179.8639
+    sample['DIAM_INIT'] = 179.8639*2./60.
+
     # populate (BX,BY)_INIT by quickly building the WCS
     wcs = Tan(filt2imfile[opt_refband]['image'], 1)
     (_, x0, y0) = wcs.radec2pixelxy(sample['RA_INIT'].value, sample['DEC_INIT'].value)
@@ -2170,9 +2182,13 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     # Read the basic imaging data and masks and build the multiband
     # masks.
+    print('HACK!!')
+    niter = 1
+
     data = _read_image_data(data, filt2imfile, verbose=verbose)
     data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                        qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
+                                        qaplot=qaplot, niter=niter,
+                                        htmlgalaxydir=htmlgalaxydir)
 
     return data, sample, 1
 
