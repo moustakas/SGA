@@ -87,8 +87,8 @@ def main():
     from SGA.mpi import mpi_args
     from SGA.io import set_legacysurvey_dir
     from SGA.ellipse import ELLIPSEMODE
-    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE,
-                         sga_dir, sga_data_dir, sga_html_dir,
+    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE, REFCAT,
+                         sga_dir, sga_data_dir, sga_html_dir, SGA_version,
                          read_sample, missing_files, get_galaxy_galaxydir,
                          build_catalog, get_radius_mosaic)
 
@@ -141,6 +141,21 @@ def main():
         log.info(f'$SGA_HTML_DIR={htmldir}')
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
+        sga_version = SGA_version(parent=True)
+        refcatfile = os.path.join(basedir, 'sample', f'SGA2025-refcat-{sga_version}.fits')
+        kdrefcatfile = refcatfile.replace('.fits', '.kd.fits')
+        if not os.getenv("LARGEGALAXIES_CAT"):
+            msg = f'{os.getenv("LARGEGALAXIES_CAT")} not found!'
+            log.critical(msg)
+            raise ValueError(msg)
+        else:
+            if kdrefcatfile != os.getenv("LARGEGALAXIES_CAT"):
+                if kdrefcatfile.replace('/global/', '/dvs_ro/') != os.getenv("LARGEGALAXIES_CAT"):
+                    msg = f'Mismatch between $LARGEGALAXIES_CAT and {kdrefcatfile}!'
+                    log.critical(msg)
+                    raise ValueError(msg)
+
+
         if args.build_refcat:
             region = None
         else:
@@ -187,13 +202,8 @@ def main():
             # pipeline. Satellites can belong to more than one group,
             # so trim to unique IDs.
             import fitsio
-            from SGA.SGA import SGA_version, REFCAT
 
-            version = SGA_version(parent=True)
-            #version = 'v0.1'
-            #fullsample = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-v0.1.fits'))
             ngal = len(fullsample)
-
             assert(ngal == len(np.unique(fullsample['SGAID'])))
 
             ref = Table()
@@ -208,20 +218,18 @@ def main():
                 assert(np.all(np.isfinite(ref[col])))
             ref['fitmode'] = fullsample['FITMODE']
 
-            reffile = os.path.join(basedir, f'SGA2025-refcat-{version}.fits')
-            kdreffile = reffile.replace('.fits', '.kd.fits')
-            log.info(f'Writing {ngal} galaxies to {reffile}')
+            log.info(f'Writing {ngal} galaxies to {refcatfile}')
 
             hdr = fitsio.FITSHDR()
             hdr['VER'] = REFCAT
-            fitsio.write(reffile, ref.as_array(), header=hdr, clobber=True)
+            fitsio.write(refcatfile, ref.as_array(), header=hdr, clobber=True)
 
-            log.info(f'Writing {kdreffile}')
-            cmd = f'startree -i {reffile} -o {kdreffile} -T -P -k -n stars'
+            log.info(f'Writing {kdrefcatfile}')
+            cmd = f'startree -i {refcatfile} -o {kdrefcatfile} -T -P -k -n stars'
             log.info(cmd)
             _ = os.system(cmd)
 
-            cmd = f'modhead {kdreffile} VER {REFCAT}'
+            cmd = f'modhead {kdrefcatfile} VER {REFCAT}'
             _ = os.system(cmd)
 
             return

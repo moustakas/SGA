@@ -535,7 +535,7 @@ def build_group_catalog(
 
     def _attach(name: str, data, dtype=None):
         if dtype is not None:
-            col = Column(np.asarray(data, dtype=dtype), name=name)
+            col = Column(np.asarray(data, dtype=dtype).squeeze(), name=name)
         else:
             col = Column(data, name=name)
         if name in cat.colnames:

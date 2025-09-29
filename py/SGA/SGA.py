@@ -2064,16 +2064,11 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
     sample = Table(fitsio.read(samplefile))#, columns=cols))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
-    for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
+    for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'MAG']:
         sample.rename_column(col, f'{col}_INIT')
+    sample.rename_column('DIAM_REF', 'DIAM_INIT_REF')
     sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                       index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
-
-    # PSF size and depth; NB: all optical bands
-    for filt in all_opt_bands:
-        sample[f'PSFSIZE_{filt.upper()}'] = np.zeros(len(sample), 'f4')
-    for filt in all_bands:
-        sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
     # populate (BX,BY)_INIT by quickly building the WCS
     wcs = Tan(filt2imfile[opt_refband]['image'], 1)
@@ -2086,6 +2081,10 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     #sample['BY_INIT'] = (y0 - 1.).astype('f4')
 
     sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
+
+    # optical bands
+    sample['BANDS'] = np.zeros(len(sample), f'<U{len(bands)}')
+    sample['BANDS'] = ''.join(data['opt_bands'])
 
     # moment geometry
     sample['SGANAME'] = np.zeros(len(sample), '<U25')
@@ -2135,10 +2134,11 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                  f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
     sample.remove_column('FLUX')
 
-    print('Add BANDS!!!')
-
-    #data['sample'] = sample
-    #data['samplesrcs'] = samplesrcs
+    # PSF size and depth
+    for filt in all_opt_bands:
+        sample[f'PSFSIZE_{filt.upper()}'] = np.zeros(len(sample), 'f4')
+    for filt in all_bands:
+        sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
     # add the PSF depth and size
     _get_psfsize_and_depth(sample, tractor, all_data_bands,
