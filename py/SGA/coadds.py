@@ -433,8 +433,14 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     if use_gpu:
         cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu=1 --gpumode=2 '
 
-    log.info(f'runbrick {cmdargs}')
-    err = runbrick(args=cmdargs.split())
+    try:
+        log.info(f'runbrick {cmdargs}')
+        err = runbrick(args=cmdargs.split())
+    except:
+        log.critical(f'Exception raised on {survey.output_dir}/{galaxy}')
+        import traceback
+        traceback.print_exc()
+        return 0, stagesuffix
 
     # get the updated (final) set of bands
     ccdsfile = os.path.join(
