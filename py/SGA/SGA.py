@@ -844,6 +844,13 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     #sample = sample[:700]
     #log.info(f'Trimmed to {len(sample):,d} groups in region={region}')
 
+    print('HACK!!!')
+    from SGA.brick import brickname as get_brickname
+    bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
+    I = np.isin(bricks, ['1943p265'])
+    sample = sample[I]
+
+
     group, groupdir = get_galaxy_galaxydir(
         sample, region=region,
         group=not no_groups, datadir=datadir)
@@ -899,15 +906,17 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         out = list(zip(*out))
         ellipse = vstack(out[0])
         tractor = vstack(out[1])
-        fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
-        fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
+        if len(ellipse) > 0:
+            fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
+            fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
 
     # gather the results
     ellipse, tractor = [], []
     for chunkfile in chunkfiles:
-        ellipse.append(Table(fitsio.read(chunkfile, 'ELLIPSE')))
-        tractor.append(Table(fitsio.read(chunkfile, 'TRACTOR')))
-        os.remove(chunkfile)
+        if os.path.isfile(chunkfile):
+            ellipse.append(Table(fitsio.read(chunkfile, 'ELLIPSE')))
+            tractor.append(Table(fitsio.read(chunkfile, 'TRACTOR')))
+            os.remove(chunkfile)
     ellipse = vstack(ellipse)
     tractor = vstack(tractor)
     nobj = len(ellipse)
@@ -961,7 +970,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         [f'flux_{filt}' for filt in bands]
 
     out_sga = outellipse[ellipse_cols]
-    out_sga.rename_columns(['SGAID', 'D26'], ['REF_ID', 'DIAM'])
+    out_sga.rename_columns(['SGAID', 'D26', 'MAG_INIT'], ['REF_ID', 'DIAM', 'MAG'])
     [out_sga.rename_column(col, col.lower()) for col in out_sga.colnames]
 
     out_nosga = Table()
@@ -987,7 +996,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # KD version
     cmd1 = f'startree -i {outfile_ellipse} -o {kdoutfile_ellipse} -T -P -k -n stars'
-    cmd2 = f'modhead {kdoutfile_ellipse} VER {REFCAT}'
+    cmd2 = f'modhead {kdoutfile_ellipse} VER {REFCAT}-ellipse'
     _ = os.system(cmd1)
     _ = os.system(cmd2)
     log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
@@ -1245,9 +1254,9 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
         # initial ellipse geometry
         #pixfactor = data['opt_pixscale'] / pixscale
         for iobj, obj in enumerate(sample):
-            [bx, by, diam, ba, pa] = list(obj[GEOINITCOLS].values())
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
             bx, by = map_bxby(bx, by, from_wcs=opt_wcs, to_wcs=wcs)
-            overplot_ellipse(diam, ba, pa, bx, by, pixscale=pixscale, ax=xx,
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=pixscale, ax=xx,
                              color=colors1[iobj], linestyle='-', linewidth=2,
                              draw_majorminor_axes=True, jpeg=False,
                              label=obj[REFIDCOLUMN])
@@ -1351,7 +1360,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     log.info(f'Wrote {qafile}')
 
 
-def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
+def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          qaplot=False, maxshift_arcsec=MAXSHIFT_ARCSEC,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -1625,7 +1634,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
             niter_actual = 1
         else:
-            niter_actual = niter
+            niter_actual = niter_geometry
 
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
@@ -1924,8 +1933,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
 
 def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
-                   sort_by_flux=True, run='south', pixscale=0.262,
-                   galex_pixscale=1.5, unwise_pixscale=2.75,
+                   sort_by_flux=True, run='south', niter_geometry=2,
+                   pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
                    galex=True, unwise=True, verbose=False, qaplot=False,
                    htmlgalaxydir=None):
     """Read the multi-band images (converted to surface brightness) in
@@ -2078,9 +2087,9 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                       index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 
-    print('HACK!!!!!!!!')
-    sample['SMA_INIT'] = 179.8639
-    sample['DIAM_INIT'] = 179.8639*2./60.
+    #print('HACK!!!!!!!!')
+    #sample['SMA_INIT'] = 179.8639
+    #sample['DIAM_INIT'] = 179.8639*2./60.
 
     # populate (BX,BY)_INIT by quickly building the WCS
     wcs = Tan(filt2imfile[opt_refband]['image'], 1)
@@ -2182,12 +2191,12 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     # Read the basic imaging data and masks and build the multiband
     # masks.
-    print('HACK!!')
-    niter = 1
+    #print('HACK!!')
+    #niter = 1
 
     data = _read_image_data(data, filt2imfile, verbose=verbose)
     data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                        qaplot=qaplot, niter=niter,
+                                        qaplot=qaplot, niter_geometry=niter_geometry,
                                         htmlgalaxydir=htmlgalaxydir)
 
     return data, sample, 1

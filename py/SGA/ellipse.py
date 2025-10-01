@@ -1458,8 +1458,11 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     #    unwise_pixscale=unwise_pixscale, unwise=unwise,
     #    galex=galex, verbose=verbose)
 
+    niter_geometry = 2
+
     data, sample, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
+        niter_geometry=niter_geometry,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
         galex=galex, verbose=verbose, qaplot=qaplot,

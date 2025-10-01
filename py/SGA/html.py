@@ -359,7 +359,7 @@ def make_maskbits_qa(galaxy, galaxydir, htmlgalaxydir, clobber=False, verbose=Fa
             if verbose:
                 print('File {} not found!'.format(tractorfile))
             return
-        
+
         mask = fitsio.read(fitsfile)
         tractor = fitsio.read(tractorfile)
 
@@ -384,7 +384,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
         from SGA.qa import qa_multiwavelength_sed
 
     Image.MAX_IMAGE_PIXELS = None
-    
+
     # Read the data.
     if read_multiband is None:
         print('Unable to build ellipse QA without specifying read_multiband method.')
@@ -393,7 +393,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
     data, galaxyinfo = read_multiband(galaxy, galaxydir, galaxy_id=galaxy_id, bands=bands,
                                       refband=refband, pixscale=pixscale,
                                       verbose=verbose, galex=galex, unwise=unwise)
-    
+
     if not bool(data) or data['missingdata']:
         return
 
@@ -403,7 +403,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
     # optionally read the Tractor catalog
     tractor = None
     if galex or unwise:
-        tractorfile = os.path.join(galaxydir, '{}-{}-tractor.fits'.format(galaxy, data['filesuffix']))        
+        tractorfile = os.path.join(galaxydir, '{}-{}-tractor.fits'.format(galaxy, data['filesuffix']))
         if os.path.isfile(tractorfile):
             tractor = Table(fitsio.read(tractorfile, lower=True))
 
@@ -425,21 +425,21 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
                     if tractor is not None:
                         _tractor = tractor[(tractor['ref_cat'] != '  ')*np.isin(tractor['ref_id'], data['galaxy_id'][igal])] # fragile...
                     qa_multiwavelength_sed(ellipsefit, tractor=_tractor, png=sedfile, verbose=verbose)
-                    
+
             sbprofilefile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}sbprofile.png'.format(galaxy, data['filesuffix'], galid))
             if not os.path.isfile(sbprofilefile) or clobber:
                 display_ellipse_sbprofile(ellipsefit, plot_radius=False, plot_sbradii=False,
                                           png=sbprofilefile, verbose=verbose, minerr=0.0,
                                           cosmo=cosmo, linear=linear, plot_colors=plot_colors)
-                
+
             cogfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}cog.png'.format(galaxy, data['filesuffix'], galid))
             if not os.path.isfile(cogfile) or clobber:
                 qa_curveofgrowth(ellipsefit, pipeline_ellipsefit={}, plot_sbradii=False,
                                  png=cogfile, verbose=verbose, cosmo=cosmo)
-            
+
             #print('hack!')
             #continue
-        
+
             if unwise:
                 multibandfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}multiband-W1W2.png'.format(galaxy, data['filesuffix'], galid))
                 thumbfile = os.path.join(htmlgalaxydir, 'thumb-{}-{}-ellipse-{}multiband-W1W2.png'.format(galaxy, data['filesuffix'], galid))
@@ -482,7 +482,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
                                       igal=igal, barlen=barlen, barlabel=barlabel,
                                       SBTHRESH=SBTHRESH,
                                       png=multibandfile, verbose=verbose, scaledfont=scaledfont)
-            
+
                 # Create a thumbnail.
                 cmd = 'convert -thumbnail 1024x1024 {} {}'.format(multibandfile, thumbfile)#.replace('>', '\>')
                 if os.path.isfile(thumbfile):
@@ -536,7 +536,8 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
 
     # Read the sample catalog for this group.
     samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
-    sample = Table(fitsio.read(samplefile, columns=['SGAID', 'SGANAME']))
+
+    sample = Table(fitsio.read(samplefile))#, columns=['SGAID', 'SGANAME']))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
 
     # Read the per-object ellipse-fitting results.
@@ -602,7 +603,7 @@ def viewer_link(ra, dec, width, sga=False, manga=False, dr10=False):
         drlayer = 'ls-dr10'
     else:
         drlayer = 'ls-dr9'
-        
+
     layer1 = ''
     if sga:
         layer1 = '&sga&sga-parent'
@@ -625,7 +626,7 @@ def build_htmlhome(sample, htmldir, htmlhome='index.html', pixscale=0.262,
     htmlhomefile = os.path.join(htmldir, htmlhome)
     print('Building {}'.format(htmlhomefile))
 
-    js = html_javadate()       
+    js = html_javadate()
 
     # group by RA slices
     raslices = np.array([SGA.io.get_raslice(ra) for ra in sample[racolumn]])
@@ -666,7 +667,7 @@ def build_htmlhome(sample, htmldir, htmlhome='index.html', pixscale=0.262,
             html.write('<th>Diameter (arcmin)</th>\n')
             html.write('<th>Viewer</th>\n')
             html.write('</tr>\n')
-            
+
             galaxy, galaxydir, htmlgalaxydir = SGA.io.get_galaxy_galaxydir(sample, html=True)
             for gal, galaxy1, htmlgalaxydir1 in zip(sample, np.atleast_1d(galaxy), np.atleast_1d(htmlgalaxydir)):
 
@@ -688,7 +689,7 @@ def build_htmlhome(sample, htmldir, htmlhome='index.html', pixscale=0.262,
                 html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(link))
                 html.write('</tr>\n')
             html.write('</table>\n')
-            
+
         # close up shop
         html.write('<br /><br />\n')
         html.write('<b><i>Last updated {}</b></i>\n'.format(js))
@@ -773,7 +774,7 @@ def build_htmlpage_one(ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, h
     import fitsio
     from glob import glob
     import SGA.io
-    
+
     if not os.path.exists(htmlgalaxydir1):
         os.makedirs(htmlgalaxydir1)
 
@@ -781,17 +782,17 @@ def build_htmlpage_one(ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, h
     if os.path.isfile(htmlfile) and not clobber:
         print('File {} exists and clobber=False'.format(htmlfile))
         return
-    
+
     nexthtmlgalaxydir1 = os.path.join('{}'.format(nexthtmlgalaxydir[ii].replace(htmldir, '')[1:]), '{}.html'.format(nextgalaxy[ii]))
     prevhtmlgalaxydir1 = os.path.join('{}'.format(prevhtmlgalaxydir[ii].replace(htmldir, '')[1:]), '{}.html'.format(prevgalaxy[ii]))
-    
+
     js = html_javadate()
 
     # Support routines--
 
     def _read_ccds_tractor_sample(prefix):
         nccds, tractor, sample = None, None, None
-        
+
         ccdsfile = glob(os.path.join(galaxydir1, '{}-{}-ccds-*.fits'.format(galaxy1, prefix))) # north or south
         if len(ccdsfile) > 0:
             nccds = fitsio.FITS(ccdsfile[0])[1].get_nrows()
@@ -949,7 +950,7 @@ def build_htmlpage_one(ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, h
             html.write('<h3>Geometry</h3>\n')
             html.write('<h3>Photometry</h3>\n')
             return
-            
+
         html.write('<h3>Geometry</h3>\n')
         html.write('<table>\n')
         html.write('<tr><th></th>\n')
