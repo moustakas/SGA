@@ -152,8 +152,9 @@ def main():
             if kdrefcatfile != os.getenv("LARGEGALAXIES_CAT"):
                 if kdrefcatfile.replace('/global/', '/dvs_ro/') != os.getenv("LARGEGALAXIES_CAT"):
                     msg = f'Mismatch between $LARGEGALAXIES_CAT and {kdrefcatfile}!'
-                    log.critical(msg)
-                    raise ValueError(msg)
+                    log.warning(msg)
+                    #log.critical(msg)
+                    #raise ValueError(msg)
 
 
         if args.build_refcat:
