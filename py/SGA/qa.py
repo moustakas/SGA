@@ -103,6 +103,15 @@ def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
     return norm
 
 
+def matched_norm(data, model, a=0.9, percentile=95.):
+    p = PercentileInterval(percentile)
+    vmin_d, vmax_d = p.get_limits(data)
+    vmin_m, vmax_m = p.get_limits(model)
+    vmin = min(vmin_d, vmin_m)
+    vmax = max(vmax_d, vmax_m)
+    return ImageNormalize(vmin=vmin, vmax=vmax, stretch=AsinhStretch(a=a), clip=True)
+
+
 def overplot_ellipse(major_axis_arcsec, ba, pa, x0, y0,
                      height_pixels=None, ax=None,
                      pixscale=0.262, color='red', linestyle='-',

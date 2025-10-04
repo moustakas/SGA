@@ -4,11 +4,12 @@
 # environment file in this script. (Passing the --env-file works OK, but $PATH
 # and $PYTHONPATH get overwritten.)
 
-SHIFTER=docker:legacysurvey/sga:0.5.2
+SHIFTER=docker:legacysurvey/sga:0.5.3
 
 echo 'Updating and loading the shifter image '$SHIFTER
 echo 'Load the environment with: '
 echo 'source '$SGA_CODE_DIR'/bin/SGA2025/SGA2025-env'
 
 shifterimg pull $SHIFTER
-shifter --module=gpu --module=mpich --image $SHIFTER bash
+#shifter --module=gpu --module=mpich --image $SHIFTER bash
+shifter --module=mpich --image $SHIFTER bash

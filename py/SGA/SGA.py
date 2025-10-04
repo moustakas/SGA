@@ -1157,7 +1157,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
     from SGA.util import var2ivar
     from SGA.sky import map_bxby
-    from SGA.qa import overplot_ellipse, get_norm
+    from SGA.qa import overplot_ellipse, get_norm, matched_norm
 
 
     if not os.path.isdir(htmlgalaxydir):
@@ -1289,16 +1289,28 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
         wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
         wimg[wimg == 0.] = np.nan
 
+        wmodel = np.sum(opt_invvar * opt_models[iobj, :, :, :], axis=0)
+        wnorm = np.sum(opt_invvar, axis=0)
+        wmodel[wnorm > 0.] /= wnorm[wnorm > 0.] / pixscale**2 # [nanomaggies/arcsec**2]
+
         try:
-            norm = get_norm(wimg)
+            norm = matched_norm(wimg, wmodel)
+            #norm = get_norm(wimg)
         except:
             norm = None
         ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
                              norm=norm)
-
-        wmodel = np.sum(opt_models[iobj, :, :, :], axis=0)
         ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
-                             norm=get_norm(wmodel))
+                             norm=norm)
+        #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
+        #pdb.set_trace()
+        #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
+        #xx[0].imshow(wimg, origin='lower', norm=norm)
+        #wnorm = get_norm(wmodel)
+        #wnorm.vmin = norm.vmin
+        #wnorm.vmax = norm.vmax
+        #xx[1].imshow(wmodel, origin='lower', norm=wnorm)
+        #fig.savefig('ioannis/tmp/junk.png')
 
         # masks
         leg = []
@@ -1541,6 +1553,21 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
     psfsrcs = tractor[Ipsf]
     allgalsrcs = tractor[Igal]
+
+    #import matplotlib.pyplot as plt
+    #from SGA.coadds import srcs2image
+    #from SGA.qa import get_norm
+    #ncols = 4
+    #nrows = int(np.ceil(len(allgalsrcs) / ncols))
+    #norm = get_norm(data['r'])
+    #fig, ax = plt.subplots(nrows, ncols, sharex=True, sharey=True)
+    #for xx, src in zip(ax.flat, allgalsrcs):
+    #    model = srcs2image(src, opt_wcs, band='r', pixelized_psf=data['r_psf'])
+    #    xx.imshow(np.log10(model), origin='lower', cmap=plt.cm.cividis)#, norm=norm)
+    #for xx in ax.flat:
+    #    xx.axis('off')
+    #fig.tight_layout()
+    #fig.savefig('ioannis/tmp/junk.png')
 
     # Initialize the *original* images arrays.
     opt_images = np.zeros((len(opt_bands), *sz), 'f4')
@@ -1816,7 +1843,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
     data['opt_maskbits'] = opt_maskbits
-    data['opt_models'] = opt_models
+    data['opt_models'] = opt_models # [nanomaggies]
     data['opt_invvar'] = opt_invvar
     sig, _ = ivar2var(opt_invvar, sigma=True) # [nanomaggies]
     data['opt_sigma'] = sig
@@ -1914,7 +1941,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # optionally build a QA figure
     if qaplot:
-        #print('HACK!!')
         #sample['BY_INIT'] += 30.
         qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
 
