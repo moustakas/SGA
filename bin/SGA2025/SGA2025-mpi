@@ -469,6 +469,8 @@ def main():
             #get_galaxy_galaxydir=get_galaxy_galaxydir,
             #read_multiband=read_multiband)
 
+    if comm:
+        comm.barrier()
 
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
