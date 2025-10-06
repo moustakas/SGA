@@ -1,4 +1,4 @@
-FROM legacysurvey/cutouts:v1.4.3
+FROM legacysurvey/cutouts:v1.4.4
 
 RUN for x in \
   ipython \
