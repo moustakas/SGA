@@ -491,41 +491,52 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     return sample, fullsample
 
 
+def SGA_diameter(ellipse, radius_arcsec=False):
+    """
+    radius_arcsec - do not convert to diameter in arcmin
+
+    """
+    radius = np.zeros(len(ellipse))
+    ref = np.zeros(len(ellipse), '<U6')
+
+    # r-band R(26)
+    I =  (radius == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['R26_R'][I].value
+        ref[I] = 'R26_R'
+
+    # r-band R(25)
+    I =  (radius == 0.) * (ellipse['R25_R'] > 0.) * (ellipse['R25_ERR_R'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['R25_R'][I].value * 1.28 # median factor
+        ref[I] = 'R25_R'
+
+    # r-band R(24)
+    I =  (radius == 0.) * (ellipse['R24_R'] > 0.) * (ellipse['R24_ERR_R'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['R24_R'][I].value * 1.70 # median factor
+        ref[I] = 'R24_R'
+
+    # sma_moment
+    I =  (radius == 0.) * (ellipse['SMA_MOMENT'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['SMA_MOMENT'][I].value * 1.19 # median factor
+        ref[I] = 'MOMENT'
+
+    if radius_arcsec:
+        return radius, ref
+    else:
+        # convert radius-->diameter and arcsec-->arcmin
+        diam = radius * 2. / 60. # [arcmin]
+        return np.float32(diam), ref
+
+
 def SGA_geometry(ellipse):
 
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    diam = np.zeros(len(ellipse))
-    diam_ref = np.zeros(len(ellipse), '<U6')
-
-    # r-band R(26)
-    I =  (diam == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['R26_R'][I].value
-        diam_ref[I] = 'R26_R'
-
-    # r-band R(25)
-    I =  (diam == 0.) * (ellipse['R25_R'] > 0.) * (ellipse['R25_ERR_R'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['R25_R'][I].value * 1.28 # median factor
-        diam_ref[I] = 'R25_R'
-
-    # r-band R(24)
-    I =  (diam == 0.) * (ellipse['R24_R'] > 0.) * (ellipse['R24_ERR_R'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['R24_R'][I].value * 1.70 # median factor
-        diam_ref[I] = 'R24_R'
-
-    # sma_moment
-    I =  (diam == 0.) * (ellipse['SMA_MOMENT'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['SMA_MOMENT'][I].value * 1.19 # median factor
-        diam_ref[I] = 'MOMENT'
-
-    # convert radius-->diameter and arcsec-->arcmin
-    diam *= (2. / 60.) # [arcmin]
-
-    return np.float32(diam), ba, pa, diam_ref
+    diam, diam_ref = SGA_diameter(ellipse)
+    return diam, ba, pa, diam_ref
 
 
 def SGA_datamodel(ellipse, bands, all_bands):
@@ -1294,12 +1305,13 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
         wmodel[wnorm > 0.] /= wnorm[wnorm > 0.] / pixscale**2 # [nanomaggies/arcsec**2]
 
         try:
-            norm = matched_norm(wimg, wmodel)
-            #norm = get_norm(wimg)
+            #norm = matched_norm(wimg, wmodel)
+            norm = get_norm(wimg)
         except:
             norm = None
         ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
                              norm=norm)
+        norm = get_norm(wmodel)
         ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
                              norm=norm)
         #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
@@ -1373,7 +1385,8 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         qaplot=False, maxshift_arcsec=MAXSHIFT_ARCSEC,
+                         input_geo_initial=None, qaplot=False,
+                         maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
@@ -1649,9 +1662,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 opt_models[iobj, iband, :, :] += model
 
         # Initial geometry and elliptical mask.
-        geo_init  = get_geometry(opt_pixscale, table=obj)
+        if input_geo_initial is not None:
+            geo_init = input_geo_initial[iobj, :]
+        else:
+            geo_init = get_geometry(opt_pixscale, table=obj)
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
+        print(iobj, bx, by, sma, ba, pa)
 
         #print('HACK!')
         #obj['ELLIPSEMODE'] += 2**0
@@ -1766,7 +1783,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            #print(iobj, iiter, bx, by, sma, ba, pa)
+            print(iobj, iiter, bx, by, sma, ba, pa)
 
         # set the largeshift bits
         ra_final, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
@@ -1945,15 +1962,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
 
     # clean-up
-    del data['brightstarmask']
-    for filt in all_data_bands:
-        del data[filt]
-        #for col in ['psf', 'invvar', 'mask']:
-        for col in ['psf', 'mask']:
-            del data[f'{filt}_{col}']
-    for filt in opt_bands:
-        for col in ['skysigma']:
-            del data[f'{filt}_{col}']
+    if cleanup:
+        del data['brightstarmask']
+        for filt in all_data_bands:
+            del data[filt]
+            #for col in ['psf', 'invvar', 'mask']:
+            for col in ['psf', 'mask']:
+                del data[f'{filt}_{col}']
+        for filt in opt_bands:
+            for col in ['skysigma']:
+                del data[f'{filt}_{col}']
 
     return data, sample
 
@@ -1962,7 +1980,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                    sort_by_flux=True, run='south', niter_geometry=2,
                    pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
                    galex=True, unwise=True, verbose=False, qaplot=False,
-                   htmlgalaxydir=None):
+                   cleanup=False, htmlgalaxydir=None):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
 
@@ -2222,10 +2240,11 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     data = _read_image_data(data, filt2imfile, verbose=verbose)
     data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                        qaplot=qaplot, niter_geometry=niter_geometry,
+                                        qaplot=qaplot, cleanup=cleanup,
+                                        niter_geometry=niter_geometry,
                                         htmlgalaxydir=htmlgalaxydir)
 
-    return data, sample, 1
+    return data, tractor, sample, samplesrcs, 1
 
 
 def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
