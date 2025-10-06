@@ -6,7 +6,7 @@ Working interactively in a login node, one would do something like:
 
   salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
   SGA2025-shifter
-  source $HOME/code/SGA/bin/SGA2025/SGA2025-env
+  source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
   SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1
   SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1 --annotate
@@ -76,6 +76,12 @@ zooniverse project:
   SGA2025-cutouts --cutoutdir=/global/cfs/cdirs/cosmo/www/temp/SGA2025/zooniverse/project1 \
     --httpdir=https://portal.nersc.gov/project/cosmo/temp/SGA2025/zooniverse/project1 \
     --region=dr9-north --zooniverse --annotated-montage
+
+###
+SGA-2020 sample:
+
+SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2020-cutouts --sga2020 --region=dr9 --bands='g,r,z' --rescale --mp=128
+
 
 """
 import pdb # for debugging
@@ -148,8 +154,7 @@ def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
         refindx = find_isolated(cat[I], fullcat[J], radius=90.)
         refcat = cat[I[refindx]]
     elif ssl_version == 'v4':
-        pdb.set_trace()
-
+        pass
     else:
         raise ValueError('Write me')
 
@@ -530,9 +535,9 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
 
     """
     from SGA.io import read_fits_catalog
-    from SGA.parent import parent_version
+    from SGA.SGA import SGA_version
 
-    version = parent_version(archive=True)
+    version = SGA_version(archive=True)
     columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'Z', 'PGC',
                'DIAM_LIT_REF', 'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA',
                'BA_HYPERLEDA', 'PA_HYPERLEDA', 'DIAM_SGA2020', 'BA_SGA2020',
@@ -794,7 +799,7 @@ def main():
 
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south'],
+    parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south', 'dr9'],
                         type=str, help='Region to analyze (only for --catalog="sga2025-parent").')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--ntest', type=int, default=None, help='Number of test objects to read.')
@@ -821,6 +826,9 @@ def main():
     parser.add_argument('--annotate-central-only', action='store_true', help='Only annotate the central galaxy.')
     parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
 
+    parser.add_argument('--sga2020', action='store_true', help='Read the SGA-2020 catalog.')
+    parser.add_argument('--bands', default='g,r,i,z', type=str, help='Default bandpasses')
+
     parser.add_argument('--no-fits-cutouts', action='store_false', dest='fits_cutouts', help='Do not generate FITS cutouts.')
     parser.add_argument('--ivar-cutouts', action='store_true', help='Generate ivar cutouts.')
     parser.add_argument('--invvar', dest='ivar_cutouts', action='store_true', help='Generate ivar cutouts.')
@@ -831,6 +839,8 @@ def main():
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
 
     args = parser.parse_args()
+
+    bands = args.bands.split(',')
 
     try:
         from mpi4py import MPI
@@ -883,6 +893,7 @@ def main():
 
 
     cat, fullcat = None, None
+    use_catalog_objname = False
     if rank == 0:
         if args.build_ssl:
             if args.ssl_version is None:
@@ -907,12 +918,27 @@ def main():
             fullcat = vstack((fullcat_north, fullcat_south))
             del cat_north, cat_south, fullcat_north, fullcat_south
         else:
-            cat, fullcat = read_catalog(region=args.region, annotate=args.annotate,
-                                        cutoutdir=args.cutoutdir, ntest=args.ntest,
-                                        wisesize=args.wisesize, lvd=args.lvd,
-                                        zooniverse=args.zooniverse, ssl=args.ssl,
-                                        ssl_version=args.ssl_version,
-                                        photo_version=args.photo_version)
+            if args.sga2020:
+                from SGA.external import read_sga2020
+                fullcat = read_sga2020()
+                fullcat.rename_columns(['D26', 'PA', 'BA'], ['DIAM', 'PA', 'BA'])
+                fullcat['DIAM_REF'] = 'SGA2020'
+                cat = Table()
+                cat['OBJNAME'] = np.array([f'SGA2020-{sgaid:06d}' for sgaid in fullcat['SGA_ID'].value])
+                for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+                    cat[col] = fullcat[col]
+                del fullcat
+                #cat = cat[:8]
+                fullcat = cat
+                use_catalog_objname = True
+                layer = 'ls-dr9'
+            else:
+                cat, fullcat = read_catalog(region=args.region, annotate=args.annotate,
+                                            cutoutdir=args.cutoutdir, ntest=args.ntest,
+                                            wisesize=args.wisesize, lvd=args.lvd,
+                                            zooniverse=args.zooniverse, ssl=args.ssl,
+                                            ssl_version=args.ssl_version,
+                                            photo_version=args.photo_version)
 
     if comm is not None:
         cat = comm.bcast(cat, root=0)
@@ -968,7 +994,8 @@ def main():
              annotatedir=annotatedir, photodir=photodir, mp=args.mp,
              annotate=args.annotate, photo=args.photo, fits_cutouts=fits_cutouts,
              unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
-             overwrite=args.overwrite, verbose=args.verbose)
+             overwrite=args.overwrite, verbose=args.verbose,
+             use_catalog_objname=use_catalog_objname)
         return
 
     if args.gather_photo and rank == 0:
@@ -998,10 +1025,10 @@ def main():
         do_cutouts(cat, layer=layer, mp=args.mp, comm=comm, cutoutdir=cutoutdir,
                    base_cutoutdir=args.cutoutdir, default_pixscale=args.pixscale,
                    default_width=args.width, rescale=args.rescale,
-                   overwrite=args.overwrite, dry_run=args.dry_run,
+                   default_bands=bands, overwrite=args.overwrite, dry_run=args.dry_run,
                    fits_cutouts=fits_cutouts, ivar_cutouts=ivar_cutouts,
                    unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
-                   verbose=args.verbose)
+                   verbose=args.verbose, use_catalog_objname=use_catalog_objname)
 
 if __name__ == '__main__':
     main()
