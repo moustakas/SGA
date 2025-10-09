@@ -194,7 +194,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     from glob import glob
     import multiprocessing
     import astropy
-    from SGA.mpi import weighted_partition
+    from SGA.mpi import distribute_work
+    #from SGA.mpi import weighted_partition
     from SGA.io import _missing_files_one
 
     if sample is None and bricks is None:
@@ -312,22 +313,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         done_indices = [np.array([])]
 
     if len(itodo) > 0:
-        #todo_indices = np.array_split(indices[itodo], size)
-
-        # Assign the sample to ranks to make the diameter distribution
-        # per rank ~flat.
-        # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
-        _todo_indices = indices[itodo]
-        weight = np.atleast_1d(sample[DIAMCOL])[_todo_indices]
-        cumuweight = weight.cumsum() / weight.sum()
-        idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
-        if len(idx) < size: # can happen in corner cases or with 1 rank
-            todo_indices = np.array_split(_todo_indices, size) # unweighted
-        else:
-            todo_indices = np.array_split(_todo_indices, idx) # weighted
-        for ii in range(size): # sort by weight
-            srt = np.argsort(sample[DIAMCOL][todo_indices[ii]])
-            todo_indices[ii] = todo_indices[ii][srt]
+        todo_indices, loads = distribute_work(sample[DIAMCOL].value, itodo=itodo,
+                                              size=size, p=2.0, verbose=True)
     else:
         todo_indices = [np.array([])]
 
@@ -391,10 +378,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             rows = np.where(
                 (info['DIAM'] > mindiam) *
-                (info['DIAM'] < maxdiam))[0]
+                (info['DIAM'] <= maxdiam))[0]
         else:
             I = ((info['GROUP_DIAMETER'] > mindiam) *
-                 (info['GROUP_DIAMETER'] < maxdiam) *
+                 (info['GROUP_DIAMETER'] <= maxdiam) *
                  info['GROUP_PRIMARY'])
             if maxmult is not None:
                 I *= info['GROUP_MULT'] <= maxmult
