@@ -12,7 +12,10 @@ export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2
 export LEGACYPIPE_CODE_DIR=/global/common/software/desi/users/ioannis/legacypipe
 echo "LEGACYPIPE_CODE_DIR="$LEGACYPIPE_CODE_DIR
 
-export SGA_CODE_DIR=/global/homes/i/ioannis/code/SGA
+export SGA_CODE_DIR=/global/homes/i/ioannis/tmp/SGA
+#export SGA_CODE_DIR=/global/homes/i/ioannis/code/SGA
+echo "SGA_CODE_DIR="$SGA_CODE_DIR
+
 export PYTHONPATH=$SGA_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH
 export PATH=$SGA_CODE_DIR/bin/SGA2025:$PATH
 
