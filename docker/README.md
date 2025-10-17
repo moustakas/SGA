@@ -5,7 +5,7 @@ Build a cross-platform docker container as documented [here](https://www.docker.
 
 First, pull the latest container:
 ```
-docker pull legacysurvey/legacypipe:gpu-1.4.5
+docker pull legacysurvey/legacypipe:gpu-1.4.6
 
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
@@ -21,7 +21,7 @@ docker buildx use SGA-build
 and then
 
 ```
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:0.5.5 .
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:0.5.6 .
 docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:latest .
 ```
 
