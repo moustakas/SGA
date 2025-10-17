@@ -437,7 +437,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
+    if False:#True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
         log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')

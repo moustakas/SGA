@@ -2956,6 +2956,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     mindiam = 20. # [arcsec]
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
+    print('Need to make sure to not override diam for LVD sources which might have diam<mindiam like Clump I')
+    pdb.set_trace()
 
     # cleanup
     band[band == ''] = 'V' # default

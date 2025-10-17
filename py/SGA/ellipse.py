@@ -1465,7 +1465,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
 
-    # fit just the optical and then update the mask
+    # First fit just the optical and then update the mask.
     results, sbprofiles = wrap_multifit(
         data, sample, ['opt'], unpack_maskbits_function,
         sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
@@ -1482,9 +1482,14 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
                 tab[col] = results[0][iobj][col]
                 tab[colerr] = results[0][iobj][colerr]
+
         radius, _ = SGA_diameter(tab, radius_arcsec=True)
         [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
-        input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+        # handle FIXGEO
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+            input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
+        else:
+            input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
 
     data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                         input_geo_initial=input_geo_initial,
