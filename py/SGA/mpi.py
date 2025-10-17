@@ -114,7 +114,8 @@ def weighted_partition(weights, n):
     return groups
 
 
-def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False):
+def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
+                    small_bricks_first=False):
     """
     Partition tasks into `size` buckets with ~equal total weight, then
     sort each bucket so smaller bricks are processed first.
@@ -157,7 +158,10 @@ def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False):
         return [np.array([], dtype=int) for _ in range(size)], np.zeros(size, dtype=float)
     if size == 1:
         br = np.array(itodo, dtype=int)
-        srt = np.argsort(np.asarray(diameter)[br])
+        if small_bricks_first:
+            srt = np.argsort(np.asarray(diameter)[br])
+        else:
+            srt = np.argsort(np.asarray(diameter)[br])[::-1]
         loads = np.array([np.sum(np.power(np.asarray(diameter)[br], p))] + [0.0]*(size-1), dtype=float)
         if verbose:
             tot = loads.sum()
@@ -188,12 +192,15 @@ def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False):
         loads[r] = load
         heapq.heappush(heap, (load, r))
 
-    # Within each rank, do small bricks first
+    # Within each rank, do large bricks first
     todo_indices = []
     for r in range(size):
         br = np.array(buckets[r], dtype=int)
         if br.size:
-            srt = np.argsort(diam[br])
+            if small_bricks_first:
+                srt = np.argsort(diam[br])
+            else:
+                srt = np.argsort(diam[br])[::-1]
             br = br[srt]
         todo_indices.append(br)
 

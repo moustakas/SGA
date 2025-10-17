@@ -437,6 +437,13 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
+    if True:
+        from SGA.ellipse import ELLIPSEMODE
+        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
+        log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
+        sample = sample[I]
+        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
     # select a subset of objects
     if first is not None or last is not None:
         nsample = len(sample)
@@ -847,7 +854,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
     I = np.isin(bricks, ['1943p265'])
     sample = sample[I]
-
+    pdb.set_trace()
 
     group, groupdir = get_galaxy_galaxydir(
         sample, region=region,
