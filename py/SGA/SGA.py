@@ -418,7 +418,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
-        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
+        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
+        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
         testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
         log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
         allbricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
@@ -444,6 +445,22 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
+    if galaxylist is not None:
+        galaxylist = np.array(galaxylist.split(','))
+        log.debug('Selecting specific galaxies.')
+        I = np.isin(sample['GROUP_NAME'], galaxylist)
+        if np.count_nonzero(I) == 0:
+            #log.warning('No matching galaxies using column GROUP_NAME!')
+            #I = np.isin(sample['SGANAME'], galaxylist)
+            I = np.isin(sample['SGAID'], galaxylist)
+            if np.count_nonzero(I) == 0:
+                #log.warning('No matching galaxies using column SGANAME!')
+                I = np.isin(sample['OBJNAME'], galaxylist)
+                if np.count_nonzero(I) == 0:
+                    log.warning('No matching galaxies found in sample; try a different region?')
+                    sample, fullsample = Table(), Table()
+        sample = sample[I]
+
     # select a subset of objects
     if first is not None or last is not None:
         nsample = len(sample)
@@ -465,22 +482,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             fullsample = sample
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
-
-    if galaxylist is not None:
-        galaxylist = np.array(galaxylist.split(','))
-        log.debug('Selecting specific galaxies.')
-        I = np.isin(sample['GROUP_NAME'], galaxylist)
-        if np.count_nonzero(I) == 0:
-            #log.warning('No matching galaxies using column GROUP_NAME!')
-            #I = np.isin(sample['SGANAME'], galaxylist)
-            I = np.isin(sample['SGAID'], galaxylist)
-            if np.count_nonzero(I) == 0:
-                #log.warning('No matching galaxies using column SGANAME!')
-                I = np.isin(sample['OBJNAME'], galaxylist)
-                if np.count_nonzero(I) == 0:
-                    log.warning('No matching galaxies found in sample; try a different region?')
-                    sample, fullsample = Table(), Table()
-        sample = sample[I]
 
     return sample, fullsample
 
