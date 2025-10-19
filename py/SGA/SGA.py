@@ -2241,7 +2241,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                                             qaplot=qaplot, cleanup=cleanup,
                                             niter_geometry=niter_geometry,
                                             htmlgalaxydir=htmlgalaxydir)
-
     return data, tractor, sample, samplesrcs, 1
 
 

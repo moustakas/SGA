@@ -9,7 +9,7 @@ import pdb
 
 import os, subprocess
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table, vstack, join
 
 from SGA.SGA import RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
 from SGA.logger import log
@@ -95,7 +95,7 @@ def html_javadate():
 
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
-                      barlabel=None, clobber=False, verbose=False):
+                      barlabel=None, clobber=False):
     """Diagnostic QA for the output of build_multiband_mask.
 
     """
@@ -105,8 +105,13 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
 
     if not os.path.isdir(htmlgalaxydir):
         os.makedirs(htmlgalaxydir, exist_ok=True)
+
     #qafile = os.path.join('ioannis/tmp2/junk.png')
     qafile = os.path.join(htmlgalaxydir, f'qa-multiband-montage-{data["galaxy"]}.png')
+    if os.path.isfile(qafile) and not clobber:
+        log.info(f'File {qafile} exists and clobber=False')
+        return
+
 
     ncol = 3
     nrow = 3 # data, model, residuals
@@ -157,6 +162,216 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
     fig.savefig(qafile)
     plt.close()
     log.info(f'Wrote {qafile}')
+
+
+def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function,
+                           SGAMASKBITS, barlen=None, barlabel=None, clobber=False):
+    """Diagnostic QA for the output of build_multiband_mask.
+
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.cm import get_cmap
+    import matplotlib.gridspec as gridspec
+    from matplotlib.patches import Patch
+
+    from SGA.sky import map_bxby
+    from SGA.qa import overplot_ellipse, get_norm, matched_norm
+
+
+    if not os.path.isdir(htmlgalaxydir):
+        os.makedirs(htmlgalaxydir, exist_ok=True)
+    qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
+
+    alpha = 0.6
+    orange = (0.9, 0.6, 0.0, alpha)   # golden-orange
+    blue   = (0.0, 0.45, 0.7, alpha)  # muted blue
+    purple = (0.8, 0.6, 0.7, alpha)   # soft violet
+    magenta = (0.85, 0.2, 0.5, alpha) # vibrant rose
+
+    nsample = len(sample)
+
+    opt_bands = data['opt_bands']
+    opt_images = data['opt_images']
+    opt_maskbits = data['opt_maskbits']
+    opt_models = data['opt_models']
+    opt_invvar = data['opt_invvar']
+    opt_pixscale = data['opt_pixscale']
+
+    opt_wcs = data['opt_wcs']
+    unwise_wcs = data['unwise_wcs']
+    galex_wcs = data['galex_wcs']
+
+    OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS = SGAMASKBITS
+
+    ncol = 3
+    nrow = 1 + nsample
+    inches_per_panel = 3.
+    fig, ax = plt.subplots(nrow, ncol,
+                           figsize=(inches_per_panel*ncol,
+                                    inches_per_panel*nrow),
+                           gridspec_kw={'wspace': 0.01, 'hspace': 0.01},
+                           constrained_layout=True)
+
+    cmap = plt.cm.cividis
+    cmap.set_bad('white')
+
+    cmap1 = get_cmap('tab20') # or tab20b or tab20c
+    colors1 = [cmap1(i) for i in range(20)]
+
+    cmap2 = get_cmap('Dark2')
+    colors2 = [cmap2(i) for i in range(5)]
+
+    width = data['width']
+    sz = (width, width)
+
+    GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
+    GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+
+    # coadded optical, IR, and UV images and initial geometry
+    imgbands = [opt_bands, data['unwise_bands'], data['galex_bands']]
+    labels = [''.join(opt_bands), 'unWISE', 'GALEX']
+    for iax, (xx, bands, label, wcs, pixscale, refband) in enumerate(zip(
+            ax[0, :], imgbands, labels,
+            [opt_wcs, unwise_wcs, galex_wcs],
+            [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
+            [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
+        wimgs = np.stack([data[filt] for filt in bands])
+        wivars = np.stack([data[f'{filt}_invvar'] for filt in bands])
+        wimg = np.sum(wivars * wimgs, axis=0)
+        wnorm = np.sum(wivars, axis=0)
+        wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
+
+        try:
+            norm = get_norm(wimg)
+        except:
+            norm = None
+        xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
+                  norm=norm, alpha=1.)
+        xx.set_xlim(0, wimg.shape[0]-1)
+        xx.set_ylim(0, wimg.shape[1]-1)
+        xx.margins(0)
+
+        # initial ellipse geometry
+        #pixfactor = data['opt_pixscale'] / pixscale
+        for iobj, obj in enumerate(sample):
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            bx, by = map_bxby(bx, by, from_wcs=opt_wcs, to_wcs=wcs)
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=pixscale, ax=xx,
+                             color=colors1[iobj], linestyle='-', linewidth=2,
+                             draw_majorminor_axes=True, jpeg=False,
+                             label=obj[REFIDCOLUMN])
+
+        xx.text(0.03, 0.97, label, transform=xx.transAxes,
+                ha='left', va='top', color='white',
+                linespacing=1.5, fontsize=8,
+                bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        if iax == 0:
+            xx.legend(loc='lower left', fontsize=8, ncol=2,
+                      fancybox=True, framealpha=0.5)
+        del wimgs, wivars, wimg
+
+    # unpack the maskbits bitmask
+    opt_masks, brightstarmasks, refmasks, gaiamasks, galmasks = \
+        unpack_maskbits_function(opt_maskbits, bands=opt_bands, # [nobj,nband,width,width]
+                                 BITS=OPTMASKBITS, allmasks=True)
+
+    # one row per object
+    for iobj, obj in enumerate(sample):
+        opt_masks_obj = opt_masks[iobj, :, :, :]
+        brightstarmask = brightstarmasks[iobj, :, :]
+        gaiamask = gaiamasks[iobj, :, :]
+        galmask = galmasks[iobj, :, :]
+        refmask = refmasks[iobj, :, :]
+
+        wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images[iobj, :, :], axis=0)
+        wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
+        wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
+        wimg[wimg == 0.] = np.nan
+
+        wmodel = np.sum(opt_invvar * opt_models[iobj, :, :, :], axis=0)
+        wnorm = np.sum(opt_invvar, axis=0)
+        wmodel[wnorm > 0.] /= wnorm[wnorm > 0.] / pixscale**2 # [nanomaggies/arcsec**2]
+
+        try:
+            #norm = matched_norm(wimg, wmodel)
+            norm = get_norm(wimg)
+        except:
+            norm = None
+        ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
+                             norm=norm)
+        norm = get_norm(wmodel)
+        ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
+                             norm=norm)
+        #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
+        #pdb.set_trace()
+        #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
+        #xx[0].imshow(wimg, origin='lower', norm=norm)
+        #wnorm = get_norm(wmodel)
+        #wnorm.vmin = norm.vmin
+        #wnorm.vmax = norm.vmax
+        #xx[1].imshow(wmodel, origin='lower', norm=wnorm)
+        #fig.savefig('ioannis/tmp/junk.png')
+
+        # masks
+        leg = []
+        for msk, col, label in zip([brightstarmask, gaiamask, galmask, refmask],
+                                   [orange, blue, purple, magenta],
+                                   ['Bright Stars', 'Gaia Stars', 'Galaxies', 'Other SGA']):
+            rgba = np.zeros((*msk.shape, 4))
+            rgba[msk] = col
+            ax[1+iobj, 2].imshow(rgba, origin='lower')
+            leg.append(Patch(facecolor=col, edgecolor='none', alpha=0.6, label=label))
+        if iobj == 0:
+            ax[1+iobj, 2].legend(handles=leg, loc='lower right', fontsize=8)
+
+        for col in range(3):
+            # initial geometry
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
+                             ax=ax[1+iobj, col], color=colors2[0], linestyle='-',
+                             linewidth=2, draw_majorminor_axes=True,
+                             jpeg=False, label='Initial')
+
+            # final geometry
+            [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
+                             ax=ax[1+iobj, col], color=colors2[1], linestyle='--',
+                             linewidth=2, draw_majorminor_axes=True,
+                             jpeg=False, label='Final')
+            ax[1+iobj, col].set_xlim(0, width-1)
+            ax[1+iobj, col].set_ylim(0, width-1)
+            ax[1+iobj, col].margins(0)
+
+        ax[1+iobj, 0].text(0.03, 0.97, f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})',
+                           transform=ax[1+iobj, 0].transAxes,
+                           ha='left', va='top', color='white',
+                           linespacing=1.5, fontsize=8,
+                           bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        if iobj == 0:
+            ax[1+iobj, 1].text(0.03, 0.97, f'{"".join(opt_bands)} models',
+                               transform=ax[1+iobj, 1].transAxes, ha='left', va='top',
+                               color='white', linespacing=1.5, fontsize=8,
+                               bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+            ax[1+iobj, 2].text(0.03, 0.97, f'{"".join(opt_bands)} masks',
+                               transform=ax[1+iobj, 2].transAxes, ha='left', va='top',
+                               color='white', linespacing=1.5, fontsize=8,
+                               bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        ax[1+iobj, 0].legend(loc='lower left', fontsize=8, fancybox=True,
+                             framealpha=0.5)
+
+    for xx in ax.ravel():
+        xx.margins(0)
+        xx.set_xticks([])
+        xx.set_yticks([])
+
+    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    fig.savefig(qafile)
+    plt.close()
+    log.info(f'Wrote {qafile}')
+
 
 
 def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z'],
@@ -297,39 +512,107 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     from glob import glob
     import fitsio
 
+    allbands = ''.join(bands)
+    datasets = ['opt']
+    if unwise:
+        datasets += ['unwise']
+    if galex:
+        datasets += ['galex']
+
     data, tractor, sample, samplesrcs, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
         galex=galex, build_mask=False, read_jpg=True)
 
-    multiband_montage(data, sample, htmlgalaxydir,
-                      barlen=barlen, barlabel=barlabel,
-                      clobber=clobber, verbose=verbose)
+    multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
+                      barlabel=barlabel, clobber=clobber)
+
+    nsample = len(sample)
+
+    # read the ellipse-fitting results
+    ellipsefiles = glob(os.path.join(galaxydir, f'*-ellipse-{allbands}.fits'))
+    if len(ellipsefiles) == 0:
+        log.warning(f'All ellipse files missing for {galaxydir}/{galaxy}')
+        return Table(), Table()
+
+    if len(ellipsefiles) != len(sample):
+        msg = f'Mismatching number of ellipse files and objects in sample in {galaxydir}'
+        log.critical(msg)
+        raise IOError(msg)
+
+    ellipse = []
+    for ellipsefile in ellipsefiles:
+        # fragile!!
+        sganame = os.path.basename(ellipsefile).split('-')[:-2]
+        if len(sganame) == 1:
+            sganame = sganame[0]
+        else:
+            sganame = '-'.join(sganame)
+
+        # loop on datasets and join
+        for idata, dataset in enumerate(datasets):
+            if dataset == 'opt':
+                suffix = allbands
+            else:
+                suffix = dataset
+            ellipsefile_dataset = os.path.join(galaxydir, f'{sganame}-ellipse-{suffix}.fits')
+            try:
+                ellipse_dataset = Table(fitsio.read(ellipsefile_dataset, ext='ELLIPSE'))
+            except:
+                msg = f'Problem reading {ellipsefile_dataset}!'
+                log.critical(msg)
+                break
+
+            if idata == 0:
+                ellipse1 = ellipse_dataset
+            else:
+                ellipse1 = join(ellipse1, ellipse_dataset)
+
+        ellipse.append(ellipse1)
+
+    if len(ellipse) > 0:
+        ellipse = vstack(ellipse)
+
+    # Next, read the original images, models, maskbits, and
+    # sbprofiles. Store the models, maskbits, and surface-brightness
+    # profiles as a nested ellipse [ndataset][nsample].
+
+    for idata, dataset in enumerate(datasets):
+        bands = data[f'{dataset}_bands']
+        refband = data[f'{dataset}_refband']
+        sz = data[refband].shape
+
+        images = np.zeros((nsample, len(bands), *sz), 'f4')
+        models = np.zeros((nsample, len(bands), *sz), 'f4')
+        maskbits = np.zeros((nsample, *sz), np.int32)
+
+        original_images = np.stack([data[filt] for filt in data[f'{dataset}_bands']])
+
+        data[f'{dataset}_sbprofiles'] = []
+        for iobj, sganame in enumerate(ellipse['SGANAME'].value):
+            if dataset == 'opt':
+                suffix = allbands
+            else:
+                suffix = dataset
+            ellipsefile = os.path.join(galaxydir, f'{sganame.replace(" ", "_")}-ellipse-{suffix}.fits')
+
+            data[f'{dataset}_sbprofiles'].append(Table(fitsio.read(ellipsefile, ext='SBPROFILES')))
+
+            maskbits[iobj, :, :] = fitsio.read(ellipsefile, ext='MASKBITS') # [nsample, ny, ny]
+            models[iobj, :, :, :] = fitsio.read(ellipsefile, ext='MODELS')  # [nsample, nband, ny, ny]
+            images[iobj, :, :, :] = original_images - models[iobj, :, :, :] # [nsample, nband, ny, ny]
+
+        data[f'{dataset}_images'] = images
+        data[f'{dataset}_models'] = models
+        data[f'{dataset}_maskbits'] = maskbits
+
+        data[f'{dataset}_invvar'] = np.stack([data[f'{filt}_invvar'] for filt in data[f'{dataset}_bands']])
+
+    multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function,
+                           SGAMASKBITS, barlen=barlen, barlabel=barlabel,
+                           clobber=clobber)
     pdb.set_trace()
-
-    # Read the per-object ellipse-fitting results.
-    for iobj, obj in enumerate(sample):
-        suffix = ''.join(bands)
-        ellipsefile = os.path.join(galaxydir, f'{galaxy}-ellipse-{obj[REFIDCOLUMN]}-{suffix}.fits')
-        log.info(f'Reading {ellipsefile}')
-
-        models = fitsio.read(ellipsefile, 'MODELS')
-        maskbits = fitsio.read(ellipsefile, 'MASKBITS')
-        ellipse = Table(fitsio.read(ellipsefile, 'ELLIPSE'))
-        sbprofiles = Table(fitsio.read(ellipsefile, 'SBPROFILES'))
-
-        pdb.set_trace()
-
-        # Build the ellipse and photometry plots.
-        make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=bands, refband=refband,
-                        pixscale=pixscale, barlen=barlen, barlabel=barlabel,
-                        galaxy_id=galaxy_id, SBTHRESH=SBTHRESH,
-                        linear=linear, plot_colors=plot_colors,
-                        clobber=clobber, verbose=verbose, galex=galex, unwise=unwise,
-                        cosmo=cosmo, scaledfont=scaledfont, read_multiband=read_multiband,
-                        qa_multiwavelength_sed=qa_multiwavelength_sed)
-
 
     return 1
 
