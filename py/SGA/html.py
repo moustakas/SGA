@@ -335,6 +335,7 @@ def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function
 
             # final geometry
             [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
+            pdb.set_trace()
             overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
                              ax=ax[1+iobj, col], color=colors2[1], linestyle='--',
                              linewidth=2, draw_majorminor_axes=True,
@@ -574,10 +575,12 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     if len(ellipse) > 0:
         ellipse = vstack(ellipse)
 
+    # sort by optical flux
+    ellipse = ellipse[np.argsort(ellipse['OPTFLUX'])[::-1]]
+
     # Next, read the original images, models, maskbits, and
     # sbprofiles. Store the models, maskbits, and surface-brightness
     # profiles as a nested ellipse [ndataset][nsample].
-
     for idata, dataset in enumerate(datasets):
         bands = data[f'{dataset}_bands']
         refband = data[f'{dataset}_refband']

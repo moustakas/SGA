@@ -418,12 +418,12 @@ def main():
             #if not os.path.isdir(htmlgalaxydir):
             #    os.makedirs(htmlgalaxydir, exist_ok=True)
 
-            if args.debug:
-                qaplot = True
-            else:
-                #print('Temporarily setting qaplot=True!')
-                #qaplot = True
-                qaplot = False
+            #if args.debug:
+            #    qaplot = True
+            #else:
+            #    #print('Temporarily setting qaplot=True!')
+            #    #qaplot = True
+            #    qaplot = False
 
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
                                        unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
@@ -431,7 +431,7 @@ def main():
                                        nmonte=args.nmonte, seed=args.seed,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
-                                       galex=args.galex, qaplot=qaplot, verbose=args.verbose,
+                                       galex=args.galex, qaplot=False, verbose=args.verbose,
                                        clobber=args.clobber,
                                        # HACK!!
                                        htmlgalaxydir=htmlgalaxydir)

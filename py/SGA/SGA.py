@@ -583,6 +583,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('PSFDEPTH_I', np.float32, u.mag),
         ('PSFDEPTH_Z', np.float32, u.mag),
         ('BANDS', 'U4', None),
+        ('OPTFLUX', np.float32, u.nanomaggy),
         ('SGANAME', 'U25', None),
         ('RA', np.float64, u.degree),
         ('DEC', np.float64, u.degree),
@@ -2141,7 +2142,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                       index=np.where(np.array(sample.colnames) == 'BX_INIT')[0][0]+1)  # NB the -1!
     #sample['BY_INIT'] = (y0 - 1.).astype('f4')
 
-    sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
+    sample['OPTFLUX'] = np.zeros(len(sample), 'f4') # brightest band
 
     # optical bands
     sample['BANDS'] = np.zeros(len(sample), f'<U{len(bands)}')
@@ -2175,15 +2176,15 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             if tractor[I[0]].type in ['PSF', 'DUP']:
                 log.warning(f'ref_id={refid} fit by Tractor as PSF (or DUP)')
                 #sample['PSF'][iobj] = True
-            sample['FLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
-                                        for filt in opt_bands])
+            sample['OPTFLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
+                                           for filt in opt_bands])
             sample['RA_TRACTOR'][iobj] = tractor[I[0]].ra
             sample['DEC_TRACTOR'][iobj] = tractor[I[0]].dec
 
     # Sort by initial diameter or optical brightness (in any band).
     if sort_by_flux:
         log.info('Sorting by optical flux:')
-        srt = np.argsort(sample['FLUX'])[::-1]
+        srt = np.argsort(sample['OPTFLUX'])[::-1]
     else:
         log.info('Sorting by initial diameter:')
         srt = np.argsort(sample['SMA_INIT'])[::-1]
@@ -2192,8 +2193,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     samplesrcs = [samplesrcs[I] for I in srt]
     for obj in sample:
         log.info(f'  ref_id={obj[REFIDCOLUMN]}: D(25)={obj["DIAM_INIT"]:.3f} arcmin, ' + \
-                 f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
-    sample.remove_column('FLUX')
+                 f'max optical flux={obj["OPTFLUX"]:.2f} nanomaggies')
 
     # PSF size and depth
     for filt in all_opt_bands:
