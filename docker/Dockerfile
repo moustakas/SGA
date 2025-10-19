@@ -1,4 +1,4 @@
-FROM legacysurvey/cutouts:v1.4.4
+FROM legacysurvey/legacypipe:gpu-1.4.6
 
 RUN for x in \
   ipython \
