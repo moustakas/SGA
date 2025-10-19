@@ -169,12 +169,6 @@ def main():
             lvd=args.lvd, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
-        if len(sample) == 0:
-            return
-
-        #if args.coadds or args.build_catalog or args.build_refcat:
-        #    if args.build_catalog:
-        #        sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
     else:
         sample = []
         fullsample = []
@@ -182,6 +176,10 @@ def main():
     if comm:
         sample = comm.bcast(sample, root=0)
         fullsample = comm.bcast(fullsample, root=0)
+
+    if len(sample) == 0:
+        log.info(f' Rank {rank}: to do (empty sample)!')
+        return
 
     # Building the web-page and integrating the ellipse-fitting
     # results work on the full sample, so do that here and then
@@ -263,6 +261,8 @@ def main():
         ntodo = len(np.hstack(groups))
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
                  f'{len(sample):,d} divided across {size} rank(s).')
+    if comm:
+        comm.barrier()
 
     if len(groups) == 0 or len(groups[rank]) == 0:
         log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \

@@ -303,7 +303,6 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         unwise_pixscale=unwise_pixscale, unwise=unwise,
         galex=galex, build_mask=False, read_jpg=True)
 
-    # Build the montage coadds.
     multiband_montage(data, sample, htmlgalaxydir,
                       barlen=barlen, barlabel=barlabel,
                       clobber=clobber, verbose=verbose)
@@ -315,7 +314,6 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         ellipsefile = os.path.join(galaxydir, f'{galaxy}-ellipse-{obj[REFIDCOLUMN]}-{suffix}.fits')
         log.info(f'Reading {ellipsefile}')
 
-        images = fitsio.read(ellipsefile, 'IMAGES')
         models = fitsio.read(ellipsefile, 'MODELS')
         maskbits = fitsio.read(ellipsefile, 'MASKBITS')
         ellipse = Table(fitsio.read(ellipsefile, 'ELLIPSE'))
@@ -324,14 +322,13 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         pdb.set_trace()
 
         # Build the ellipse and photometry plots.
-        if not just_coadds:
-            make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=bands, refband=refband,
-                            pixscale=pixscale, barlen=barlen, barlabel=barlabel,
-                            galaxy_id=galaxy_id, SBTHRESH=SBTHRESH,
-                            linear=linear, plot_colors=plot_colors,
-                            clobber=clobber, verbose=verbose, galex=galex, unwise=unwise,
-                            cosmo=cosmo, scaledfont=scaledfont, read_multiband=read_multiband,
-                            qa_multiwavelength_sed=qa_multiwavelength_sed)
+        make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=bands, refband=refband,
+                        pixscale=pixscale, barlen=barlen, barlabel=barlabel,
+                        galaxy_id=galaxy_id, SBTHRESH=SBTHRESH,
+                        linear=linear, plot_colors=plot_colors,
+                        clobber=clobber, verbose=verbose, galex=galex, unwise=unwise,
+                        cosmo=cosmo, scaledfont=scaledfont, read_multiband=read_multiband,
+                        qa_multiwavelength_sed=qa_multiwavelength_sed)
 
 
     return 1
