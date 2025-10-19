@@ -261,7 +261,7 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
         raise IOError(msg)
 
 
-def _read_image_data(data, filt2imfile, verbose=False):
+def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
     """Helper function for the project-specific read_multiband method.
 
     Read the multi-band images and inverse variance images and pack them into a
@@ -269,6 +269,7 @@ def _read_image_data(data, filt2imfile, verbose=False):
     different pixel scales (e.g., GALEX and WISE images).
 
     """
+    from matplotlib.image import imread
     from scipy.ndimage.morphology import binary_dilation
     from skimage.transform import resize
     from astropy.stats import sigma_clipped_stats
@@ -330,6 +331,23 @@ def _read_image_data(data, filt2imfile, verbose=False):
             elif filt == unwise_refband:
                 data['unwise_hdr'] = hdr
                 data['unwise_wcs'] = wcs
+
+            if read_jpg:
+                if filt == opt_refband:
+                    prefix = 'opt'
+                    suffix = ''
+                elif filt == galex_refband:
+                    prefix = 'galex'
+                    suffix = '-FUVNUV'
+                elif filt == unwise_refband:
+                    prefix = 'unwise'
+                    suffix = '-W1W2'
+
+                for imtype in ['image', 'model', 'resid']:
+                    jpgfile = os.path.join(data['galaxydir'], f"{data['galaxy']}-{imtype}{suffix}.jpg")
+                    if os.path.isfile(jpgfile):
+                        jpg = imread(jpgfile)
+                        data[f'{prefix}_jpg_{imtype}'] = jpg
 
         # convert WISE images from Vega nanomaggies to AB nanomaggies
         # https://www.legacysurvey.org/dr9/description/#photometry

@@ -1975,7 +1975,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                    sort_by_flux=True, run='south', niter_geometry=2,
                    pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
                    galex=True, unwise=True, verbose=False, qaplot=False,
-                   cleanup=False, htmlgalaxydir=None):
+                   cleanup=False, build_mask=True, read_jpg=False,
+                   htmlgalaxydir=None):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
 
@@ -2233,11 +2234,13 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     #print('HACK!!')
     #niter = 1
 
-    data = _read_image_data(data, filt2imfile, verbose=verbose)
-    data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                        qaplot=qaplot, cleanup=cleanup,
-                                        niter_geometry=niter_geometry,
-                                        htmlgalaxydir=htmlgalaxydir)
+    data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
+
+    if build_mask:
+        data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
+                                            qaplot=qaplot, cleanup=cleanup,
+                                            niter_geometry=niter_geometry,
+                                            htmlgalaxydir=htmlgalaxydir)
 
     return data, tractor, sample, samplesrcs, 1
 

@@ -396,21 +396,23 @@ def main():
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
 
-        if args.ellipse:
+        if args.ellipse or args.htmlplots:
             from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
                                  OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
                                  read_multiband, unpack_maskbits)
-            from SGA.ellipse import ellipsefit_multiband
-
-            if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
-                log.warning('Coadds must be generated before running ellipse-fitting.')
-                continue
-
             SGAMASKBITS = [OPTMASKBITS, ]
             if args.unwise:
                 SGAMASKBITS += [UNWISEMASKBITS]
             if args.galex:
                 SGAMASKBITS += [GALEXMASKBITS]
+
+
+        if args.ellipse:
+            from SGA.ellipse import ellipsefit_multiband
+
+            if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
+                log.warning('Coadds must be generated before running ellipse-fitting.')
+                continue
 
             #print('Temporarily make htmlgalaxydir here')
             #if not os.path.isdir(htmlgalaxydir):
@@ -438,9 +440,6 @@ def main():
 
         if args.htmlplots:
             from SGA.html import make_plots
-            from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
-                                 OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
-                                 read_multiband, unpack_maskbits)
 
             if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-ellipse.isdone')):
                 log.warning('Ellipse-fitting must be done before generating plots.')
@@ -453,8 +452,8 @@ def main():
                 onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True)
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
-                             unpack_maskbits, (OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS),
-                             radius_mosaic_arcsec=radius_mosaic_arcsec,
+                             unpack_maskbits, SGAMASKBITS,
+                             #radius_mosaic_arcsec=radius_mosaic_arcsec,
                              barlen=barlen, barlabel=barlabel, run=run,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
