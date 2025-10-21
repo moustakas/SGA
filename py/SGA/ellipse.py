@@ -793,14 +793,14 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         isobandfit = IsophoteList(out[0])
 
         # curve of growth
-        apflux = np.hstack(out[1])
-        apferr = np.hstack(out[2])
+        apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
+        apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
         apfmasked = np.hstack(out[3])
 
         I = np.isfinite(apflux) * np.isfinite(apferr) * np.isfinite(apfmasked)
         if np.any(I):
-            sbprofiles[f'FLUX_{filt.upper()}'][I] = apflux[I] * pixscale**2. # [nanomaggies]
-            sbprofiles[f'FLUX_ERR_{filt.upper()}'][I] = apferr[I] * pixscale**2. # [nanomaggies]
+            sbprofiles[f'FLUX_{filt.upper()}'][I] = apflux[I]     # [nanomaggies]
+            sbprofiles[f'FLUX_ERR_{filt.upper()}'][I] = apferr[I] # [nanomaggies]
             sbprofiles[f'FMASKED_{filt.upper()}'][I] = apfmasked[I]
 
         # model
@@ -840,16 +840,16 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
             refout = [integrate_isophot_one(*mparg) for mparg in mpargs]
         refout = list(zip(*refout))
 
-        refapflux = np.hstack(refout[1])
-        refapferr = np.hstack(refout[2])
+        refapflux = np.hstack(refout[1]) * pixscale**2. # [nanomaggies]
+        refapferr = np.hstack(refout[2]) * pixscale**2. # [nanomaggies]
         refapfmasked = np.hstack(refout[3])
 
         for iap in range(len(sma_apertures_arcsec)):
             I = (np.isfinite(refapflux[iap]) * np.isfinite(refapferr[iap]) *
                  np.isfinite(refapfmasked[iap]))
             if np.any(I):
-                results[f'FLUX_AP{iap:02}_{filt.upper()}'][I] = refapflux[iap][I] * pixscale**2. # [nanomaggies]
-                results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'][I] = refapferr[iap][I] * pixscale**2. # [nanomaggies]
+                results[f'FLUX_AP{iap:02}_{filt.upper()}'][I] = refapflux[iap][I]     # [nanomaggies]
+                results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'][I] = refapferr[iap][I] # [nanomaggies]
                 results[f'FMASKED_AP{iap:02}_{filt.upper()}'][I] = refapfmasked[iap][I]
 
         # isophotal radii
