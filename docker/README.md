@@ -33,7 +33,6 @@ docker run -it legacysurvey/sga:latest
 
 Or at NERSC:
 ```
-shifterimg pull docker:legacysurvey/sga:0.5.5
-shifterimg pull docker:legacysurvey/sga:latest
-shifter --image docker:legacysurvey/sga:latest bash
+shifterimg pull docker:legacysurvey/sga:0.5.6
+shifter --image docker:legacysurvey/sga:0.5.6 bash
 ```

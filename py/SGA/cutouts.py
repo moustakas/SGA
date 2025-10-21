@@ -55,7 +55,7 @@ def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
                  photodir='.', size=1, mp=1, group=False, photo=False,
                  gather_photo=False, annotate=False, fits_cutouts=True,
                  unwise_cutouts=False, galex_cutouts=False, overwrite=False,
-                 verbose=False):
+                 verbose=False, use_catalog_objname=False):
     """Build a plan for generating (annotated) cutouts and basic photometry.
 
     """
@@ -67,7 +67,10 @@ def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
         objname = cat['SGAGROUP']
         #objname = cat['GROUP_NAME']
     else:
-        objname = sga2025_name(cat['RA'], cat['DEC'], unixsafe=True)
+        if use_catalog_objname:
+            objname = cat['OBJNAME'].value
+        else:
+            objname = sga2025_name(cat['RA'], cat['DEC'], unixsafe=True)
 
     if photo or gather_photo:
         mpargs = [(obj, objname1, cutoutdir, photodir, gather_photo, overwrite, verbose)
@@ -692,7 +695,7 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
                cutoutdir='.', base_cutoutdir='.', maxdiam_arcmin=25., rescale=False,
                overwrite=False, fits_cutouts=True, ivar_cutouts=False,
                unwise_cutouts=False, galex_cutouts=False, dry_run=False,
-               verbose=False):
+               verbose=False, use_catalog_objname=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -718,7 +721,8 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
             cat, width=width, layer=layer, cutoutdir=cutoutdir,
             size=size, group=group, overwrite=overwrite, mp=mp,
             fits_cutouts=fits_cutouts, unwise_cutouts=unwise_cutouts,
-            galex_cutouts=galex_cutouts, verbose=verbose)
+            galex_cutouts=galex_cutouts, verbose=verbose,
+            use_catalog_objname=use_catalog_objname)
         log.info(f'Planning took {time.time() - t0:.2f} sec')
     else:
         basefiles, allra, alldec, groups = [], [], [], []

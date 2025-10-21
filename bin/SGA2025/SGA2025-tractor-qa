@@ -10,7 +10,7 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.10 --last=10
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
@@ -327,9 +327,9 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
     log.info(f'Wrote {pdffile}')
 
 
-def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
-               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False, no_groups=False,
-               mindiam=0., maxdiam=200.):
+def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1,
+               datadir=None, lvd_resolved=False, lvd_fixgeo=False, lvd_forcepsf=False,
+               lvd=False, no_groups=False, mindiam=0., maxdiam=200.):
 
     if datadir is None:
         datadir = sga_data_dir()
@@ -340,6 +340,8 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
         no_groups = True
 
     sample, fullsample = read_sample(region=region, lvd=any_lvd,
+                                     first=first, last=last,
+                                     galaxylist=galaxylist,
                                      no_groups=no_groups,
                                      mindiam=mindiam, maxdiam=maxdiam)
 
@@ -374,6 +376,7 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
         sample = sample[I]
 
         # for the various LVD samples, do not include group members
+        print('FIXME -- groups have been split up correctly now')
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd{suffix}.pdf')
         fullsample = sample
         diamcolumn = 'DIAM'
@@ -385,17 +388,15 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
             suffix = ''
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-sample{suffix}.pdf')
 
-        print('Hack!')
-        #I = sample['SAMPLE'] == 0
-
-        srt = np.argsort(sample['GROUP_MULT'])[::-1]
-        sample = sample[srt]
-        I = (sample['SAMPLE'] == 0) * (sample['GROUP_MULT'] > 50)
+        #print('Hack!')
+        ##I = sample['SAMPLE'] == 0
+        #srt = np.argsort(sample['GROUP_MULT'])[::-1]
+        #sample = sample[srt]
+        #I = (sample['SAMPLE'] == 0) * (sample['GROUP_MULT'] > 50)
 
         #I = np.isin(sample['OBJNAME'], ['KUG 1247+260', 'III Zw 040 NOTES02', 'dw1227p0136', 'UGC 05688'])
         #I = np.isin(sample['SGANAME'], ['SGA2025_J0150.168+068.660'])
-
-        sample = sample[I]
+        #sample = sample[I]
 
         # We still want to see and label nearby companions in
         # 'fullsample', i.e., without any diameter cuts.
@@ -435,10 +436,12 @@ def qa_tractor(region='dr11-south', mp=1, datadir=None, lvd_resolved=False,
         fullsample['CUTOUT'][np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'][~I])] = True
 
         galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
-                                                 group=not no_groups, datadir=cutoutdir)
+                                                 group=not no_groups,
+                                                 datadir=cutoutdir)
         M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
         log.info(f'Generating cutouts for {np.sum(M):,d}/{np.sum(~I):,d} ' + \
                  'objects with missing pipeline results.')
+        pdb.set_trace()
 
         if np.sum(M) > 0:
             from SGA.cutouts import do_cutouts
@@ -467,6 +470,10 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--first', type=int, help='Index of first object to process.')
+    parser.add_argument('--last', type=int, help='Index of last object to process.')
+    parser.add_argument('--galaxylist', type=str, default=None, help='Comma-separated list of galaxy names to process.')
+
     parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--mindiam', default=0., type=float, help='minimum diameter')
     parser.add_argument('--maxdiam', default=200., type=float, help='minimum diameter')
@@ -479,8 +486,8 @@ if __name__ == '__main__':
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
 
-    qa_tractor(datadir=args.datadir, region=args.region, mp=args.mp,
+    qa_tractor(datadir=args.datadir, region=args.region, first=args.first,
+               last=args.last, galaxylist=args.galaxylist, mp=args.mp,
                lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
-               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd,
-               no_groups=args.no_groups, mindiam=args.mindiam,
-               maxdiam=args.maxdiam)
+               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd, no_groups=args.no_groups,
+               mindiam=args.mindiam, maxdiam=args.maxdiam)

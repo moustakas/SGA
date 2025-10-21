@@ -12,7 +12,7 @@ SGA2025-build-parent --vicuts [--overwrite]
 SGA2025-build-parent --archive [--overwrite]
 SGA2025-build-parent --in-footprint --region=dr9-north
 SGA2025-build-parent --in-footprint --region=dr11-south
-SGA2025-build-parent --parent [--reset-sgaid] [--overwrite]
+SGA2025-build-parent --parent --mp=32 [--reset-sgaid] [--overwrite]
 SGA2025-build-parent --qa-parent
 
 salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
@@ -27,6 +27,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--ntest', type=int, default=None, help='Number of ' + \
                         'test objects to read (only with --in-footprint.')
     parser.add_argument('--region', default='dr9-north', type=str,
@@ -81,7 +82,7 @@ def main():
 
     if args.parent:
         from SGA.parent import build_parent
-        build_parent(overwrite=args.overwrite, verbose=args.verbose)
+        build_parent(mp=args.mp, overwrite=args.overwrite, verbose=args.verbose)
 
     if args.qa_footprint:
         from SGA.parent import qa_footprint

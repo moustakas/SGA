@@ -1434,6 +1434,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     in a given group or coadd.
 
     """
+    from astropy.table import Table
+    from SGA.SGA import SGA_diameter, build_multiband_mask
+
     datasets = ['opt']
     if unwise:
         datasets += ['unwise']
@@ -1452,21 +1455,46 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         log.info('No CCDs touching this brick; nothing to do.')
         return 1
 
-    #data = read_multiband_function(
-    #    galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
-    #    pixscale=pixscale, galex_pixscale=galex_pixscale,
-    #    unwise_pixscale=unwise_pixscale, unwise=unwise,
-    #    galex=galex, verbose=verbose)
-
-    data, sample, err = read_multiband_function(
+    data, tractor, sample, samplesrcs, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
-        pixscale=pixscale, galex_pixscale=galex_pixscale,
+        niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, verbose=verbose, qaplot=qaplot,
+        galex=galex, verbose=verbose, qaplot=False, cleanup=False,
         htmlgalaxydir=htmlgalaxydir)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
+
+    # First fit just the optical and then update the mask.
+    results, sbprofiles = wrap_multifit(
+        data, sample, ['opt'], unpack_maskbits_function,
+        sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
+        nmonte=nmonte, seed=seed, debug=False)
+
+    GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+    input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
+
+    for iobj, obj in enumerate(sample):
+        tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT'])
+        for filt in bands:
+            for thresh in sbthresh:
+                col = f'R{thresh:.0f}_{filt.upper()}'
+                colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
+                tab[col] = results[0][iobj][col]
+                tab[colerr] = results[0][iobj][colerr]
+
+        radius, _ = SGA_diameter(tab, radius_arcsec=True)
+        [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
+        # handle FIXGEO
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+            input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
+        else:
+            input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+
+    data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
+                                        input_geo_initial=input_geo_initial,
+                                        qaplot=qaplot, niter_geometry=1,
+                                        htmlgalaxydir=htmlgalaxydir)
 
     # ellipse-fit over objects and then datasets
     results, sbprofiles = wrap_multifit(

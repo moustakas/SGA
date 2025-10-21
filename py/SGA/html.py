@@ -9,7 +9,7 @@ import pdb
 
 import os, subprocess
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table, vstack, join
 
 from SGA.SGA import RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
 from SGA.logger import log
@@ -94,276 +94,556 @@ def html_javadate():
     return js
 
 
-def make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=None,
-                        barlabel=None, just_coadds=False, clobber=False,
-                        verbose=False):
-    """Montage the coadds into a nice QAplot.
-
-    barlen - pixels
+def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
+                      barlabel=None, clobber=False):
+    """Diagnostic QA for the output of build_multiband_mask.
 
     """
-    from SGA.qa import addbar_to_png, fonttype
-    from PIL import Image, ImageDraw, ImageFont
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
 
-    Image.MAX_IMAGE_PIXELS = None
 
-    for filesuffix in ['custom', 'pipeline']:
-        montagefile = os.path.join(htmlgalaxydir, '{}-{}-montage-grz.png'.format(galaxy, filesuffix))
-        thumbfile = os.path.join(htmlgalaxydir, 'thumb-{}-{}-montage-grz.png'.format(galaxy, filesuffix))
-        thumb2file = os.path.join(htmlgalaxydir, 'thumb2-{}-{}-montage-grz.png'.format(galaxy, filesuffix))
-        if not os.path.isfile(montagefile) or clobber:
-            if filesuffix == 'custom':
-                coaddfiles = ('{}-image-grz'.format(filesuffix),
-                              '{}-model-grz'.format(filesuffix),
-                              '{}-resid-grz'.format(filesuffix))
+    if not os.path.isdir(htmlgalaxydir):
+        os.makedirs(htmlgalaxydir, exist_ok=True)
+
+    #qafile = os.path.join('ioannis/tmp2/junk.png')
+    qafile = os.path.join(htmlgalaxydir, f'qa-multiband-montage-{data["galaxy"]}.png')
+    if os.path.isfile(qafile) and not clobber:
+        log.info(f'File {qafile} exists and clobber=False')
+        return
+
+
+    ncol = 3
+    nrow = 3 # data, model, residuals
+    inches_per_panel = 3.
+    fig, ax = plt.subplots(nrow, ncol,
+                           figsize=(inches_per_panel*ncol,
+                                    inches_per_panel*nrow),
+                           gridspec_kw={'wspace': 0.0, 'hspace': 0.0},
+                           constrained_layout=True)
+
+    opt_bands = data['opt_bands']
+    labels = [''.join(opt_bands), 'unWISE', 'GALEX']
+    imgbands = [opt_bands, data['unwise_bands'], data['galex_bands']]
+
+    for ii, imtype in enumerate(['image', 'model', 'resid']):
+        for iax, (xx, bands, label, wimg, pixscale, refband) in enumerate(zip(
+                ax[ii, :], imgbands, labels,
+                [data[f'opt_jpg_{imtype}'], data[f'unwise_jpg_{imtype}'], data[f'galex_jpg_{imtype}']],
+                [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
+                [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
+            xx.imshow(wimg)
+
+            # add the scale bar
+            if ii == 0 and iax == 0:
+                xpos, ypos = 0.07, 0.07
+                dx = barlen / wimg.shape[0]
+                xx.plot([xpos, xpos+dx], [ypos, ypos], transform=xx.transAxes,
+                        color='white', lw=2)
+                xx.text(xpos + dx/2., ypos+0.05, barlabel, transform=xx.transAxes,
+                        ha='center', va='center', color='white')
+
+            if ii == 0:
+                label2 = label
             else:
-                coaddfiles = ('{}-image-grz'.format(filesuffix),
-                              '{}-model-grz'.format(filesuffix),
-                              '{}-resid-grz'.format(filesuffix))
+                label2 = imtype.replace('resid', 'residuals')#.replace('model', 'Tractor model')
+            if ii == 0 or iax == 0:
+                xx.text(0.03, 0.97, label2, transform=xx.transAxes,
+                        ha='left', va='top', color='white',
+                        linespacing=1.5, fontsize=11,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
-            # Image coadd with the scale bar label--
-            barpngfile = os.path.join(htmlgalaxydir, '{}-{}.png'.format(galaxy, coaddfiles[0]))
+    for xx in ax.ravel():
+        xx.margins(0)
+        xx.set_xticks([])
+        xx.set_yticks([])
 
-            # Make sure all the files exist.
-            check, _just_coadds = True, just_coadds
-            jpgfile = []
-            for suffix in coaddfiles:
-                _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
-                jpgfile.append(_jpgfile)
-                if not os.path.isfile(_jpgfile):
-                    if verbose:
-                        print('File {} not found!'.format(_jpgfile))
-                    check = False
-                #print(check, _jpgfile)
-
-            # Check for just the image coadd.
-            if check is False:
-                if os.path.isfile(np.atleast_1d(jpgfile)[0]):
-                    _just_coadds = True
-                else:
-                    continue
-
-            if check or _just_coadds:
-                with Image.open(np.atleast_1d(jpgfile)[0]) as im:
-                    sz = im.size
-                if sz[0] > 4096 and sz[0] < 8192:
-                    resize = '1024x1024'
-                    #resize = '-resize 2048x2048 '
-                elif sz[0] > 8192:
-                    resize = '1024x1024'
-                    #resize = '-resize 4096x4096 '
-                else:
-                    resize = None
-
-                # Make a quick thumbnail of just the data.
-                cmd = 'convert -thumbnail {0}x{0} {1} {2}'.format(96, np.atleast_1d(jpgfile)[0], thumb2file)
-                if os.path.isfile(thumb2file):
-                    os.remove(thumb2file)
-                print('Writing {}'.format(thumb2file))
-                subprocess.call(cmd.split())
-
-                # Add a bar and label to the first image.
-                if _just_coadds:
-                    if resize:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 1x1 -resize {} -geometry +0+0 '.format(resize)
-                    else:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 1x1 -geometry +0+0 '
-                    if barlen:
-                        addbar_to_png(jpgfile[0], barlen, barlabel, None, barpngfile, scaledfont=True)
-                        cmd = cmd+' '+barpngfile
-                    else:
-                        cmd = cmd+' '+jpgfile
-                    if sz[0] > 512:
-                        thumbsz = 512
-                    else:
-                        thumbsz = sz[0]
-                else:
-                    if resize:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -resize {} -geometry +0+0 '.format(resize)
-                    else:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -geometry +0+0 '
-                    if barlen:
-                        addbar_to_png(jpgfile[0], barlen, barlabel, None, barpngfile, scaledfont=True)
-                        cmd = cmd+' '+barpngfile+' '
-                        cmd = cmd+' '.join(ff for ff in jpgfile[1:])
-                    else:
-                        cmd = cmd+' '.join(ff for ff in jpgfile)
-                    if sz[0] > 512:
-                        thumbsz = 512*3
-                    else:
-                        thumbsz = sz[0]*3
-                cmd = cmd+' {}'.format(montagefile)
-                print(cmd)
-
-                #if verbose:
-                print('Writing {}'.format(montagefile))
-                subprocess.call(cmd.split())
-                if not os.path.isfile(montagefile):
-                    print('There was a problem writing {}'.format(montagefile))
-                    print(cmd)
-                    continue
-
-                # Create a couple smaller thumbnail images
-                cmd = 'convert -thumbnail {0} {1} {2}'.format(thumbsz, montagefile, thumbfile)
-                #print(cmd)
-                if os.path.isfile(thumbfile):
-                    os.remove(thumbfile)
-                print('Writing {}'.format(thumbfile))
-                subprocess.call(cmd.split())
-
-                ## Create a couple smaller thumbnail images
-                #for tf, sz in zip((thumbfile, thumb2file), (512, 96)):
-                #    cmd = 'convert -thumbnail {}x{} {} {}'.format(sz, sz, montagefile, tf)
-                #    #if verbose:
-                #    print('Writing {}'.format(tf))
-                #    subprocess.call(cmd.split())
+    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    fig.savefig(qafile)
+    plt.close()
+    log.info(f'Wrote {qafile}')
 
 
-def make_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, refpixscale=0.262,
-                                barlen=None, barlabel=None, just_coadds=False,
-                                clobber=False, verbose=False):
-    """Montage the GALEX and WISE coadds into a nice QAplot.
-
-    barlen - pixels
+def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
+                           SGAMASKBITS, barlen=None, barlabel=None, clobber=False):
+    """Diagnostic QA for the output of build_multiband_mask.
 
     """
-    from SGA.qa import addbar_to_png, fonttype
-    from PIL import Image, ImageDraw, ImageFont
+    import matplotlib.pyplot as plt
+    from matplotlib.cm import get_cmap
+    import matplotlib.gridspec as gridspec
+    from matplotlib.patches import Patch
 
-    Image.MAX_IMAGE_PIXELS = None
+    from SGA.sky import map_bxby
+    from SGA.qa import overplot_ellipse, get_norm, matched_norm
 
-    filesuffix = 'custom'
 
-    for bandsuffix, pixscale in zip(('FUVNUV', 'W1W2'), (1.5, 2.75)):
-        montagefile = os.path.join(htmlgalaxydir, '{}-{}-montage-{}.png'.format(galaxy, filesuffix, bandsuffix))
-        thumbfile = os.path.join(htmlgalaxydir, 'thumb-{}-{}-montage-{}.png'.format(galaxy, filesuffix, bandsuffix))
-        thumb2file = os.path.join(htmlgalaxydir, 'thumb2-{}-{}-montage-{}.png'.format(galaxy, filesuffix, bandsuffix))
-        if not os.path.isfile(montagefile) or clobber:
-            coaddfiles = ('{}-image-{}'.format(filesuffix, bandsuffix),
-                          '{}-model-{}'.format(filesuffix, bandsuffix),
-                          '{}-resid-{}'.format(filesuffix, bandsuffix))
+    if not os.path.isdir(htmlgalaxydir):
+        os.makedirs(htmlgalaxydir, exist_ok=True)
 
-            # Image coadd with the scale bar label--
-            barpngfile = os.path.join(htmlgalaxydir, '{}-{}.png'.format(galaxy, coaddfiles[0]))
+    qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
+    if os.path.isfile(qafile) and not clobber:
+        log.info(f'File {qafile} exists and clobber=False')
+        return
 
-            # Make sure all the files exist.
-            check, _just_coadds = True, just_coadds
-            jpgfile = []
-            for suffix in coaddfiles:
-                _jpgfile = os.path.join(galaxydir, '{}-{}.jpg'.format(galaxy, suffix))
-                jpgfile.append(_jpgfile)
-                if not os.path.isfile(_jpgfile):
-                    if verbose:
-                        print('File {} not found!'.format(_jpgfile))
-                    check = False
-                #print(check, _jpgfile)
+    nsample = len(ellipse)
 
-            # Check for just the image coadd.
-            if check is False:
-                if os.path.isfile(np.atleast_1d(jpgfile)[0]):
-                    _just_coadds = True
-                else:
-                    continue
+    alpha = 0.6
+    orange = (0.9, 0.6, 0.0, alpha)   # golden-orange
+    blue   = (0.0, 0.45, 0.7, alpha)  # muted blue
+    purple = (0.8, 0.6, 0.7, alpha)   # soft violet
+    magenta = (0.85, 0.2, 0.5, alpha) # vibrant rose
 
-            if check or _just_coadds:
-                with Image.open(np.atleast_1d(jpgfile)[0]) as im:
-                    sz = im.size
-                if sz[0] > 4096 and sz[0] < 8192:
-                    resize = '1024x1024'
-                    #resize = '-resize 2048x2048 '
-                elif sz[0] > 8192:
-                    resize = '1024x1024'
-                    #resize = '-resize 4096x4096 '
-                else:
-                    resize = None
+    opt_bands = data['opt_bands']
+    opt_images = data['opt_images']
+    opt_maskbits = data['opt_maskbits']
+    opt_models = data['opt_models']
+    opt_invvar = data['opt_invvar']
+    opt_pixscale = data['opt_pixscale']
 
-                # Make a quick thumbnail of just the data.
-                cmd = 'convert -thumbnail {0}x{0} {1} {2}'.format(96, np.atleast_1d(jpgfile)[0], thumb2file)
-                if os.path.isfile(thumb2file):
-                    os.remove(thumb2file)
-                print('Writing {}'.format(thumb2file))
-                subprocess.call(cmd.split())
+    opt_wcs = data['opt_wcs']
+    unwise_wcs = data['unwise_wcs']
+    galex_wcs = data['galex_wcs']
 
-                # Add a bar and label to the first image.
-                if _just_coadds:
-                    if resize:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 1x1 -resize {} -geometry +0+0 '.format(resize)
-                    else:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 1x1 -geometry +0+0 '
-                    if barlen:
-                        addbar_to_png(jpgfile[0], barlen, barlabel, None, barpngfile, scaledfont=True)
-                        cmd = cmd+' '+barpngfile
-                    else:
-                        cmd = cmd+' '+jpgfile
-                    if sz[0] > 512:
-                        thumbsz = 512
-                    else:
-                        thumbsz = sz[0]
-                else:
-                    if resize:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -resize {} -geometry +0+0 '.format(resize)
-                    else:
-                        cmd = 'montage -bordercolor white -borderwidth 1 -tile 3x1 -geometry +0+0 '
-                    if barlen:
-                        pixscalefactor = pixscale / refpixscale
-                        #barlen2 = barlen / pixscalefactor
-                        #pixscalefactor = 1.0
-                        addbar_to_png(jpgfile[0], barlen, barlabel, None, barpngfile,
-                                      scaledfont=True, pixscalefactor=pixscalefactor)
-                        cmd = cmd+' '+barpngfile+' '
-                        cmd = cmd+' '.join(ff for ff in jpgfile[1:])
-                    else:
-                        cmd = cmd+' '.join(ff for ff in jpgfile)
-                    if sz[0] > 512:
-                        thumbsz = 512*3
-                    else:
-                        thumbsz = sz[0]*3
-                cmd = cmd+' {}'.format(montagefile)
-                print(cmd)
+    OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS = SGAMASKBITS
 
-                #if verbose:
-                print('Writing {}'.format(montagefile))
-                subprocess.call(cmd.split())
-                if not os.path.isfile(montagefile):
-                    print('There was a problem writing {}'.format(montagefile))
-                    print(cmd)
-                    continue
+    ncol = 3
+    nrow = 1 + nsample
+    inches_per_panel = 3.
+    fig, ax = plt.subplots(nrow, ncol,
+                           figsize=(inches_per_panel*ncol,
+                                    inches_per_panel*nrow),
+                           gridspec_kw={'wspace': 0.01, 'hspace': 0.01},
+                           constrained_layout=True)
 
-                # Create a couple smaller thumbnail images
-                cmd = 'convert -thumbnail {0} {1} {2}'.format(thumbsz, montagefile, thumbfile)
-                #print(cmd)
-                if os.path.isfile(thumbfile):
-                    os.remove(thumbfile)                
-                print('Writing {}'.format(thumbfile))
-                subprocess.call(cmd.split())
-    
-    
-def make_maskbits_qa(galaxy, galaxydir, htmlgalaxydir, clobber=False, verbose=False):
-    """Visualize the maskbits image.
+    cmap = plt.cm.cividis
+    cmap.set_bad('white')
+
+    cmap1 = get_cmap('tab20') # or tab20b or tab20c
+    colors1 = [cmap1(i) for i in range(20)]
+
+    cmap2 = get_cmap('Dark2')
+    colors2 = [cmap2(i) for i in range(5)]
+
+    width = data['width']
+    sz = (width, width)
+
+    GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
+    GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+
+    # coadded optical, IR, and UV images and initial geometry
+    imgbands = [opt_bands, data['unwise_bands'], data['galex_bands']]
+    labels = [''.join(opt_bands), 'unWISE', 'GALEX']
+    for iax, (xx, bands, label, wcs, pixscale, refband) in enumerate(zip(
+            ax[0, :], imgbands, labels,
+            [opt_wcs, unwise_wcs, galex_wcs],
+            [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
+            [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
+        wimgs = np.stack([data[filt] for filt in bands])
+        wivars = np.stack([data[f'{filt}_invvar'] for filt in bands])
+        wimg = np.sum(wivars * wimgs, axis=0)
+        wnorm = np.sum(wivars, axis=0)
+        wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
+
+        try:
+            norm = get_norm(wimg)
+        except:
+            norm = None
+        xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
+                  norm=norm, alpha=1.)
+        xx.set_xlim(0, wimg.shape[0]-1)
+        xx.set_ylim(0, wimg.shape[1]-1)
+        xx.margins(0)
+
+        # initial ellipse geometry
+        #pixfactor = data['opt_pixscale'] / pixscale
+        for iobj, obj in enumerate(ellipse):
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            bx, by = map_bxby(bx, by, from_wcs=opt_wcs, to_wcs=wcs)
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=pixscale, ax=xx,
+                             color=colors1[iobj], linestyle='-', linewidth=2,
+                             draw_majorminor_axes=True, jpeg=False,
+                             label=obj[REFIDCOLUMN])
+
+        xx.text(0.03, 0.97, label, transform=xx.transAxes,
+                ha='left', va='top', color='white',
+                linespacing=1.5, fontsize=8,
+                bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        if iax == 0:
+            xx.legend(loc='lower left', fontsize=8, ncol=2,
+                      fancybox=True, framealpha=0.5)
+        del wimgs, wivars, wimg
+
+    # unpack the maskbits bitmask
+    opt_masks, brightstarmasks, refmasks, gaiamasks, galmasks = \
+        unpack_maskbits_function(opt_maskbits, bands=opt_bands, # [nobj,nband,width,width]
+                                 BITS=OPTMASKBITS, allmasks=True)
+
+    # one row per object
+    for iobj, obj in enumerate(ellipse):
+        opt_masks_obj = opt_masks[iobj, :, :, :]
+        brightstarmask = brightstarmasks[iobj, :, :]
+        gaiamask = gaiamasks[iobj, :, :]
+        galmask = galmasks[iobj, :, :]
+        refmask = refmasks[iobj, :, :]
+
+        wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images[iobj, :, :], axis=0)
+        wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
+        wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
+        wimg[wimg == 0.] = np.nan
+
+        wmodel = np.sum(opt_invvar * opt_models[iobj, :, :, :], axis=0)
+        wnorm = np.sum(opt_invvar, axis=0)
+        wmodel[wnorm > 0.] /= wnorm[wnorm > 0.] / pixscale**2 # [nanomaggies/arcsec**2]
+
+        try:
+            #norm = matched_norm(wimg, wmodel)
+            norm = get_norm(wimg)
+        except:
+            norm = None
+        ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
+                             norm=norm)
+        norm = get_norm(wmodel)
+        ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
+                             norm=norm)
+        #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
+        #pdb.set_trace()
+        #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
+        #xx[0].imshow(wimg, origin='lower', norm=norm)
+        #wnorm = get_norm(wmodel)
+        #wnorm.vmin = norm.vmin
+        #wnorm.vmax = norm.vmax
+        #xx[1].imshow(wmodel, origin='lower', norm=wnorm)
+        #fig.savefig('ioannis/tmp/junk.png')
+
+        # masks
+        leg = []
+        for msk, col, label in zip([brightstarmask, gaiamask, galmask, refmask],
+                                   [orange, blue, purple, magenta],
+                                   ['Bright Stars', 'Gaia Stars', 'Galaxies', 'Other SGA']):
+            rgba = np.zeros((*msk.shape, 4))
+            rgba[msk] = col
+            ax[1+iobj, 2].imshow(rgba, origin='lower')
+            leg.append(Patch(facecolor=col, edgecolor='none', alpha=0.6, label=label))
+        if iobj == 0:
+            ax[1+iobj, 2].legend(handles=leg, loc='lower right', fontsize=8)
+
+        for col in range(3):
+            # initial geometry
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
+                             ax=ax[1+iobj, col], color=colors2[0], linestyle='-',
+                             linewidth=2, draw_majorminor_axes=True,
+                             jpeg=False, label='Initial')
+
+            # final geometry
+            [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
+                             ax=ax[1+iobj, col], color=colors2[1], linestyle='--',
+                             linewidth=2, draw_majorminor_axes=True,
+                             jpeg=False, label='Final')
+            ax[1+iobj, col].set_xlim(0, width-1)
+            ax[1+iobj, col].set_ylim(0, width-1)
+            ax[1+iobj, col].margins(0)
+
+        ax[1+iobj, 0].text(0.03, 0.97, f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})',
+                           transform=ax[1+iobj, 0].transAxes,
+                           ha='left', va='top', color='white',
+                           linespacing=1.5, fontsize=8,
+                           bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        if iobj == 0:
+            ax[1+iobj, 1].text(0.03, 0.97, f'{"".join(opt_bands)} models',
+                               transform=ax[1+iobj, 1].transAxes, ha='left', va='top',
+                               color='white', linespacing=1.5, fontsize=8,
+                               bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+            ax[1+iobj, 2].text(0.03, 0.97, f'{"".join(opt_bands)} masks',
+                               transform=ax[1+iobj, 2].transAxes, ha='left', va='top',
+                               color='white', linespacing=1.5, fontsize=8,
+                               bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+        ax[1+iobj, 0].legend(loc='lower left', fontsize=8, fancybox=True,
+                             framealpha=0.5)
+
+    for xx in ax.ravel():
+        xx.margins(0)
+        xx.set_xticks([])
+        xx.set_yticks([])
+
+    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    fig.savefig(qafile)
+    plt.close()
+    log.info(f'Wrote {qafile}')
+
+
+def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
+                       unpack_maskbits_function, MASKBITS, REFIDCOLUMN,
+                       datasets=['opt', 'unwise', 'galex'],
+                       linear=False):
+    """Surface-brightness profiles.
 
     """
-    import fitsio
-    from SGA.qa import qa_maskbits
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    from matplotlib.cm import get_cmap
+    from photutils.isophote import EllipseGeometry
+    from photutils.aperture import EllipticalAperture
 
-    filesuffix = 'largegalaxy'
+    from SGA.sky import map_bxby
+    from SGA.qa import overplot_ellipse, get_norm, sbprofile_colors
 
-    maskbitsfile = os.path.join(htmlgalaxydir, '{}-{}-maskbits.png'.format(galaxy, filesuffix))
-    if not os.path.isfile(maskbitsfile) or clobber:
-        fitsfile = os.path.join(galaxydir, '{}-{}-maskbits.fits.fz'.format(galaxy, filesuffix))
-        tractorfile = os.path.join(galaxydir, '{}-{}-tractor.fits'.format(galaxy, filesuffix))
-        if not os.path.isfile(fitsfile):
-            if verbose:
-                print('File {} not found!'.format(fitsfile))
-            return
-        if not os.path.isfile(tractorfile):
-            if verbose:
-                print('File {} not found!'.format(tractorfile))
-            return
-        
-        mask = fitsio.read(fitsfile)
-        tractor = fitsio.read(tractorfile)
 
-        qa_maskbits(mask, tractor, png=maskbitsfile)
+    def kill_left_y(ax):
+        ax.yaxis.set_major_locator(ticker.NullLocator())
+        ax.yaxis.set_minor_locator(ticker.NullLocator())
+        ax.tick_params(axis='y', which='both', left=False, labelleft=False)
+        ax.spines['left'].set_visible(False)  # optional
+
+    def get_sma_sbthresh(obj, bands):
+        val, label = 0., None
+        for thresh in [26., 25., 24.]:
+            for filt in ['R']:#bands:
+                col = f'R{thresh:.0f}_{filt}'
+                if col in obj.colnames:
+                    val = obj[col]
+                    label = r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
+                    if val > 0.:
+                        return val, label
+        return val, label
+
+
+    nsample = len(ellipse)
+    ndataset = len(datasets)
+
+    opt_wcs = data['opt_wcs']
+    opt_pixscale = data['opt_pixscale']
+    opt_bands = ''.join(data['opt_bands']) # not general
+
+    ncol = 2 # 3
+    nrow = ndataset
+    inches_per_panel = 3.
+
+    cmap = plt.cm.cividis
+    cmap.set_bad('white')
+
+    sbcolors = sbprofile_colors()
+
+    cmap2a = get_cmap('Dark2')
+    cmap2b = get_cmap('Paired')
+    colors2 = [cmap2a(1), cmap2b(3)]
+    #colors2 = [cmap2(i) for i in range(5)]
+
+    for iobj, obj in enumerate(ellipse):
+
+        sganame = obj['SGANAME'].replace(' ', '_')
+        qafile = os.path.join(htmlgalaxydir, f'qa-ellipsefit-{sganame}.png')
+
+        fig, ax = plt.subplots(nrow, ncol,
+                               figsize=(inches_per_panel * (1+ncol),
+                                        inches_per_panel * nrow),
+                               gridspec_kw={
+                                   'height_ratios': [1., 1., 1.],
+                                   'width_ratios': [1., 2.],
+                                   #'width_ratios': [1., 2., 2.],
+                                   #'wspace': 0
+                               })
+
+        # one row per dataset
+        for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
+
+            images = data[f'{dataset}_images'][iobj, :, :, :]
+            if np.all(images == 0.):
+                have_data = False
+            else:
+                have_data = True
+
+            #results_obj = results[idata][iobj]
+            sbprofiles_obj = sbprofiles[idata][iobj]
+
+            models = data[f'{dataset}_models'][iobj, :, :, :]
+            maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
+
+            bands = data[f'{dataset}_bands']
+            pixscale = data[f'{dataset}_pixscale']
+            wcs = data[f'{dataset}_wcs']
+
+            opt_bx = obj['BX']
+            opt_by = obj['BY']
+            ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
+            ellipse_eps = 1 - obj['BA_MOMENT']
+
+            sma_moment = obj['SMA_MOMENT'] # [arcsec]
+            label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
+            if dataset == 'opt':
+                sma_sbthresh, label_sbthresh = get_sma_sbthresh(obj, bands)
+
+            if have_data:
+                bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
+                refg = EllipseGeometry(x0=bx, y0=by, eps=ellipse_eps,
+                                       pa=ellipse_pa, sma=sma_moment/pixscale) # sma in pixels
+                refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
+                                           refg.sma*(1. - refg.eps), refg.pa)
+
+                refap_sma_sbthresh = EllipticalAperture((refg.x0, refg.y0), sma_sbthresh/pixscale,
+                                               sma_sbthresh/pixscale*(1. - refg.eps), refg.pa)
+
+                # a little wasteful...
+                masks = unpack_maskbits_function(data[f'{dataset}_maskbits'], bands=bands,
+                                                 BITS=MASKBITS[idata])
+                masks = masks[iobj, :, :, :]
+
+                wimg = np.sum(images * np.logical_not(masks), axis=0)
+                wimg[wimg == 0.] = np.nan
+                try:
+                    norm = get_norm(wimg)
+                except:
+                    norm = None
+
+                # col 0 - images
+                xx = ax[idata, 0]
+                #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
+                xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
+                          norm=norm, alpha=1.)
+                xx.text(0.03, 0.97, label, transform=xx.transAxes,
+                        ha='left', va='top', color='white',
+                        linespacing=1.5, fontsize=10,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                xx.set_xlim(0, wimg.shape[0]-1)
+                xx.set_ylim(0, wimg.shape[0]-1)
+                xx.margins(0)
+                xx.set_xticks([])
+                xx.set_yticks([])
+
+                smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
+                for sma in smas: # sma in pixels
+                    if sma == 0.:
+                        continue
+                    ap = EllipticalAperture((refg.x0, refg.y0), sma,
+                                            sma*(1. - refg.eps), refg.pa)
+                    ap.plot(color='k', lw=1, ax=xx)
+                refap.plot(color=colors2[0], lw=2, ls='--', ax=xx)
+                refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='--', ax=xx)
+
+                # col 1 - mag SB profiles
+                if linear:
+                    yminmax = [1e8, -1e8]
+                else:
+                    yminmax = [40, 0]
+
+                xx = ax[idata, 1]
+                for filt in bands:
+                    I = ((sbprofiles_obj[f'SB_{filt.upper()}'].value > 0.) *
+                         (sbprofiles_obj[f'SB_ERR_{filt.upper()}'].value > 0.))
+                    if np.any(I):
+                        sma = sbprofiles_obj['SMA'][I].value**0.25
+                        sb = sbprofiles_obj[f'SB_{filt.upper()}'][I].value
+                        sberr = sbprofiles_obj[f'SB_ERR_{filt.upper()}'][I].value
+                        mu = 22.5 - 2.5 * np.log10(sb)
+                        muerr = 2.5 * sberr / sb / np.log(10.)
+
+                        col = sbcolors[filt]
+                        xx.plot(sma, mu-muerr, color=col, alpha=0.8)
+                        xx.plot(sma, mu+muerr, color=col, alpha=0.8)
+                        #xx.fill_between(sma, mu-muerr, mu+muerr,
+                        #                label=filt, color=col, alpha=0.7)
+                        xx.scatter(sma, mu, label=filt, color=col)
+                        if filt == 'z':
+                            xx.scatter(sma, mu+muerr, label=filt, color='k')
+                            xx.scatter(sma, mu-muerr, label=filt, color='k')
+                            pdb.set_trace()
+
+                        # robust limits
+                        mulo = (mu - muerr)[(muerr < 1.) * (mu / muerr > 8.)]
+                        muhi = (mu + muerr)[(muerr < 1.) * (mu / muerr > 8.)]
+                        #print(filt, np.min(mulo), np.max(muhi))
+                        if len(mulo) > 0:
+                            mn = np.min(mulo)
+                            if mn < yminmax[0]:
+                                yminmax[0] = mn
+                        if len(muhi) > 0:
+                            mx = np.max(muhi)
+                            if mx > yminmax[1]:
+                                yminmax[1] = mx
+                    print(filt, yminmax[0], yminmax[1])
+                    #if filt == 'r':
+                    #    pdb.set_trace()
+
+                xx.margins(x=0)
+                xx.set_xlim(ax[0, 1].get_xlim())
+
+                if idata == ndataset-1:
+                    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    xx.set_xticks([])
+
+                #xx.relim()
+                #xx.autoscale_view()
+                if linear:
+                    ylim = [yminmax[0], yminmax[1]]
+                else:
+                    ylim = [yminmax[0]-0.75, yminmax[1]+0.5]
+                    if ylim[0] < 13:
+                        ylim[0] = 13
+                    if ylim[1] > 34:
+                        ylim[1] = 34
+                #print(idata, yminmax, ylim)
+                xx.set_ylim(ylim)
+
+                xx_twin = xx.twinx()
+                xx_twin.set_ylim(ylim)
+                kill_left_y(xx)
+
+                xx.invert_yaxis()
+                xx_twin.invert_yaxis()
+
+                if idata == 1:
+                    xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
+
+                if sma_sbthresh > 0.:
+                    xx.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
+                xx.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
+
+                hndls, _ = xx.get_legend_handles_labels()
+                if hndls:
+                    if sma_sbthresh > 0.:
+                        split = -2
+                    else:
+                        split = -1
+                    if idata == 0:
+                        # split into two legends
+                        leg1 = xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
+                        xx.legend(handles=hndls[split:], loc='lower left', fontsize=8)
+                        xx.add_artist(leg1)
+                    else:
+                        xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
+            else:
+                ax[idata, 0].text(0.03, 0.97, f'{label} - No Data',
+                                  transform=ax[idata, 0].transAxes,
+                                  ha='left', va='top', color='white',
+                                  linespacing=1.5, fontsize=10,
+                                  bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                ax[idata, 0].set_xticks([])
+                ax[idata, 0].set_yticks([])
+
+                ax[idata, 1].set_yticks([])
+                ax[idata, 1].margins(x=0)
+                ax[idata, 1].set_xlim(ax[0, 1].get_xlim())
+
+                if idata == ndataset-1:
+                    ax[idata, 1].set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    ax[idata, 1].set_xticks([])
+
+
+        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
+                     f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})')
+        #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+        fig.tight_layout()
+        fig.savefig(qafile, bbox_inches='tight')
+        plt.close()
+        log.info(f'Wrote {qafile}')
+
 
 
 def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z'],
@@ -384,7 +664,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
         from SGA.qa import qa_multiwavelength_sed
 
     Image.MAX_IMAGE_PIXELS = None
-    
+
     # Read the data.
     if read_multiband is None:
         print('Unable to build ellipse QA without specifying read_multiband method.')
@@ -393,7 +673,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
     data, galaxyinfo = read_multiband(galaxy, galaxydir, galaxy_id=galaxy_id, bands=bands,
                                       refband=refband, pixscale=pixscale,
                                       verbose=verbose, galex=galex, unwise=unwise)
-    
+
     if not bool(data) or data['missingdata']:
         return
 
@@ -403,7 +683,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
     # optionally read the Tractor catalog
     tractor = None
     if galex or unwise:
-        tractorfile = os.path.join(galaxydir, '{}-{}-tractor.fits'.format(galaxy, data['filesuffix']))        
+        tractorfile = os.path.join(galaxydir, '{}-{}-tractor.fits'.format(galaxy, data['filesuffix']))
         if os.path.isfile(tractorfile):
             tractor = Table(fitsio.read(tractorfile, lower=True))
 
@@ -425,21 +705,18 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
                     if tractor is not None:
                         _tractor = tractor[(tractor['ref_cat'] != '  ')*np.isin(tractor['ref_id'], data['galaxy_id'][igal])] # fragile...
                     qa_multiwavelength_sed(ellipsefit, tractor=_tractor, png=sedfile, verbose=verbose)
-                    
+
             sbprofilefile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}sbprofile.png'.format(galaxy, data['filesuffix'], galid))
             if not os.path.isfile(sbprofilefile) or clobber:
                 display_ellipse_sbprofile(ellipsefit, plot_radius=False, plot_sbradii=False,
                                           png=sbprofilefile, verbose=verbose, minerr=0.0,
                                           cosmo=cosmo, linear=linear, plot_colors=plot_colors)
-                
+
             cogfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}cog.png'.format(galaxy, data['filesuffix'], galid))
             if not os.path.isfile(cogfile) or clobber:
                 qa_curveofgrowth(ellipsefit, pipeline_ellipsefit={}, plot_sbradii=False,
                                  png=cogfile, verbose=verbose, cosmo=cosmo)
-            
-            #print('hack!')
-            #continue
-        
+
             if unwise:
                 multibandfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}multiband-W1W2.png'.format(galaxy, data['filesuffix'], galid))
                 thumbfile = os.path.join(htmlgalaxydir, 'thumb-{}-{}-ellipse-{}multiband-W1W2.png'.format(galaxy, data['filesuffix'], galid))
@@ -482,7 +759,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
                                       igal=igal, barlen=barlen, barlabel=barlabel,
                                       SBTHRESH=SBTHRESH,
                                       png=multibandfile, verbose=verbose, scaledfont=scaledfont)
-            
+
                 # Create a thumbnail.
                 cmd = 'convert -thumbnail 1024x1024 {} {}'.format(multibandfile, thumbfile)#.replace('>', '\>')
                 if os.path.isfile(thumbfile):
@@ -494,92 +771,131 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
             #print('HACK!!!')
             #continue
 
-    ## maskbits QA
-    #maskbitsfile = os.path.join(htmlgalaxydir, '{}-{}-maskbits.png'.format(galaxy, data['filesuffix']))
-    #if not os.path.isfile(maskbitsfile) or clobber:
-    #    fitsfile = os.path.join(galaxydir, '{}-{}-maskbits.fits.fz'.format(galaxy, data['filesuffix']))
-    #    tractorfile = os.path.join(galaxydir, '{}-{}-tractor.fits'.format(galaxy, data['filesuffix']))
-    #    if not os.path.isfile(fitsfile):
-    #        if verbose:
-    #            print('File {} not found!'.format(fitsfile))
-    #        return
-    #    if not os.path.isfile(tractorfile):
-    #        if verbose:
-    #            print('File {} not found!'.format(tractorfile))
-    #        return
-    #
-    #    mask = fitsio.read(fitsfile)
-    #    tractor = Table(fitsio.read(tractorfile, upper=True))
-    #
-    #    with Image.open(os.path.join(galaxydir, '{}-{}-image-grz.jpg'.format(galaxy, data['filesuffix']))) as colorimg:
-    #        qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=True, png=maskbitsfile)
-
 
 def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_function,
-               unpack_maskbits_function, MASKBITS, run='south', mp=1,
-               bands=['g', 'r', 'i', 'z'], radius_mosaic_arcsec=None,
-               pixscale=0.262, barlen=None, barlabel=None, galex=True,
-               unwise=True, verbose=False, clobber=False):
-
-#sample, datadir=None, htmldir=None, survey=None, refband='r',
-#               bands=['g', 'r', 'i', 'z'], pixscale=0.262, zcolumn='Z', galaxy_id=None,
-#               mp=1, barlen=None, barlabel=None, SBTHRESH=None,
-#               radius_mosaic_arcsec=None, linear=False, plot_colors=True,
-#               clobber=False, verbose=True, get_galaxy_galaxydir=None,
-#               read_multiband=None, qa_multiwavelength_sed=None,
-#               cosmo=None, galex=False, unwise=False,
-#               just_coadds=False, scaledfont=False):
+               unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
+               bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
+               unwise_pixscale=2.75, galex=True, unwise=True,
+               barlen=None, barlabel=None, verbose=False, clobber=False):
+               #radius_mosaic_arcsec=None,
     """Make QA plots.
 
     """
+    from glob import glob
     import fitsio
 
-    # Read the sample catalog for this group.
-    samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
-    sample = Table(fitsio.read(samplefile, columns=['SGAID', 'SGANAME']))
-    log.info(f'Read {len(sample)} source(s) from {samplefile}')
+    allbands = ''.join(bands)
+    datasets = ['opt']
+    if unwise:
+        datasets += ['unwise']
+    if galex:
+        datasets += ['galex']
 
-    # Read the per-object ellipse-fitting results.
-    for iobj, obj in enumerate(sample):
-        suffix = ''.join(bands)
-        ellipsefile = os.path.join(galaxydir, f'{galaxy}-ellipse-{obj[REFIDCOLUMN]}-{suffix}.fits')
-        log.info(f'Reading {ellipsefile}')
+    data, tractor, sample, samplesrcs, err = read_multiband_function(
+        galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
+        niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
+        unwise_pixscale=unwise_pixscale, unwise=unwise,
+        galex=galex, build_mask=False, read_jpg=True)
 
-        images = fitsio.read(ellipsefile, 'IMAGES')
-        models = fitsio.read(ellipsefile, 'MODELS')
-        maskbits = fitsio.read(ellipsefile, 'MASKBITS')
-        ellipse = Table(fitsio.read(ellipsefile, 'ELLIPSE'))
-        sbprofiles = Table(fitsio.read(ellipsefile, 'SBPROFILES'))
+    multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
+                      barlabel=barlabel, clobber=clobber)
 
-        pdb.set_trace()
+    nsample = len(sample)
 
-        # Build the ellipse and photometry plots.
-        if not just_coadds:
-            make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=bands, refband=refband,
-                            pixscale=pixscale, barlen=barlen, barlabel=barlabel,
-                            galaxy_id=galaxy_id, SBTHRESH=SBTHRESH,
-                            linear=linear, plot_colors=plot_colors,
-                            clobber=clobber, verbose=verbose, galex=galex, unwise=unwise,
-                            cosmo=cosmo, scaledfont=scaledfont, read_multiband=read_multiband,
-                            qa_multiwavelength_sed=qa_multiwavelength_sed)
-            #continue # here!
-            #pdb.set_trace()
+    # read the ellipse-fitting results
+    ellipsefiles = glob(os.path.join(galaxydir, f'*-ellipse-{allbands}.fits'))
+    if len(ellipsefiles) == 0:
+        log.warning(f'All ellipse files missing for {galaxydir}/{galaxy}')
+        return Table(), Table()
 
-        # Multiwavelength coadds (does not support just_coadds=True)--
-        if galex:
-            make_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir,
-                                        refpixscale=pixscale,
-                                        #barlen=barlen, barlabel=barlabel,
-                                        clobber=clobber, verbose=verbose)
+    if len(ellipsefiles) != len(sample):
+        msg = f'Mismatching number of ellipse files and objects in sample in {galaxydir}'
+        log.critical(msg)
+        raise IOError(msg)
 
-        # Build the montage coadds.
-        make_montage_coadds(galaxy, galaxydir, htmlgalaxydir, barlen=barlen,
-                            barlabel=barlabel, clobber=clobber, verbose=verbose,
-                            just_coadds=just_coadds)
+    ellipse = []
+    for ellipsefile in ellipsefiles:
+        # fragile!!
+        sganame = os.path.basename(ellipsefile).split('-')[:-2]
+        if len(sganame) == 1:
+            sganame = sganame[0]
+        else:
+            sganame = '-'.join(sganame)
 
-        # Build the maskbits figure.
-        #make_maskbits_qa(galaxy, galaxydir, htmlgalaxydir, clobber=clobber, verbose=verbose)
+        # loop on datasets and join
+        for idata, dataset in enumerate(datasets):
+            if dataset == 'opt':
+                suffix = allbands
+            else:
+                suffix = dataset
+            ellipsefile_dataset = os.path.join(galaxydir, f'{sganame}-ellipse-{suffix}.fits')
+            try:
+                ellipse_dataset = Table(fitsio.read(ellipsefile_dataset, ext='ELLIPSE'))
+            except:
+                msg = f'Problem reading {ellipsefile_dataset}!'
+                log.critical(msg)
+                break
 
+            if idata == 0:
+                ellipse1 = ellipse_dataset
+            else:
+                ellipse1 = join(ellipse1, ellipse_dataset)
+
+        ellipse.append(ellipse1)
+
+    if len(ellipse) > 0:
+        ellipse = vstack(ellipse)
+
+    # sort by optical flux
+    ellipse = ellipse[np.argsort(ellipse['OPTFLUX'])[::-1]]
+
+    # Next, read the original images, models, maskbits, and
+    # sbprofiles. Store the models, maskbits, and surface-brightness
+    # profiles as a nested ellipse [ndataset][nsample].
+    sbprofiles = []
+    for idata, dataset in enumerate(datasets):
+        bands = data[f'{dataset}_bands']
+        refband = data[f'{dataset}_refband']
+        sz = data[refband].shape
+
+        images = np.zeros((nsample, len(bands), *sz), 'f4')
+        models = np.zeros((nsample, len(bands), *sz), 'f4')
+        maskbits = np.zeros((nsample, *sz), np.int32)
+
+        original_images = np.stack([data[filt] for filt in data[f'{dataset}_bands']])
+
+        sbprofiles_obj = []
+        for iobj, sganame in enumerate(ellipse['SGANAME'].value):
+            if dataset == 'opt':
+                suffix = allbands
+            else:
+                suffix = dataset
+            ellipsefile = os.path.join(galaxydir, f'{sganame.replace(" ", "_")}-ellipse-{suffix}.fits')
+
+            sbprofiles_obj.append(Table(fitsio.read(ellipsefile, ext='SBPROFILES')))
+
+            maskbits[iobj, :, :] = fitsio.read(ellipsefile, ext='MASKBITS') # [nsample, ny, ny]
+            models[iobj, :, :, :] = fitsio.read(ellipsefile, ext='MODELS')  # [nsample, nband, ny, ny]
+            images[iobj, :, :, :] = original_images - models[iobj, :, :, :] # [nsample, nband, ny, ny]
+
+        sbprofiles.append(sbprofiles_obj)
+
+        data[f'{dataset}_images'] = images
+        data[f'{dataset}_models'] = models
+        data[f'{dataset}_maskbits'] = maskbits
+
+        data[f'{dataset}_invvar'] = np.stack([data[f'{filt}_invvar'] for filt in data[f'{dataset}_bands']])
+
+    # surface-brightness profiles
+    ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
+                       unpack_maskbits_function, SGAMASKBITS,
+                       REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
+                       linear=False)
+
+    # ellipse mask
+    multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
+                           SGAMASKBITS, barlen=barlen, barlabel=barlabel,
+                           clobber=clobber)
 
     return 1
 
@@ -602,7 +918,7 @@ def viewer_link(ra, dec, width, sga=False, manga=False, dr10=False):
         drlayer = 'ls-dr10'
     else:
         drlayer = 'ls-dr9'
-        
+
     layer1 = ''
     if sga:
         layer1 = '&sga&sga-parent'
@@ -625,7 +941,7 @@ def build_htmlhome(sample, htmldir, htmlhome='index.html', pixscale=0.262,
     htmlhomefile = os.path.join(htmldir, htmlhome)
     print('Building {}'.format(htmlhomefile))
 
-    js = html_javadate()       
+    js = html_javadate()
 
     # group by RA slices
     raslices = np.array([SGA.io.get_raslice(ra) for ra in sample[racolumn]])
@@ -666,7 +982,7 @@ def build_htmlhome(sample, htmldir, htmlhome='index.html', pixscale=0.262,
             html.write('<th>Diameter (arcmin)</th>\n')
             html.write('<th>Viewer</th>\n')
             html.write('</tr>\n')
-            
+
             galaxy, galaxydir, htmlgalaxydir = SGA.io.get_galaxy_galaxydir(sample, html=True)
             for gal, galaxy1, htmlgalaxydir1 in zip(sample, np.atleast_1d(galaxy), np.atleast_1d(htmlgalaxydir)):
 
@@ -688,7 +1004,7 @@ def build_htmlhome(sample, htmldir, htmlhome='index.html', pixscale=0.262,
                 html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(link))
                 html.write('</tr>\n')
             html.write('</table>\n')
-            
+
         # close up shop
         html.write('<br /><br />\n')
         html.write('<b><i>Last updated {}</b></i>\n'.format(js))
@@ -773,7 +1089,7 @@ def build_htmlpage_one(ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, h
     import fitsio
     from glob import glob
     import SGA.io
-    
+
     if not os.path.exists(htmlgalaxydir1):
         os.makedirs(htmlgalaxydir1)
 
@@ -781,17 +1097,17 @@ def build_htmlpage_one(ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, h
     if os.path.isfile(htmlfile) and not clobber:
         print('File {} exists and clobber=False'.format(htmlfile))
         return
-    
+
     nexthtmlgalaxydir1 = os.path.join('{}'.format(nexthtmlgalaxydir[ii].replace(htmldir, '')[1:]), '{}.html'.format(nextgalaxy[ii]))
     prevhtmlgalaxydir1 = os.path.join('{}'.format(prevhtmlgalaxydir[ii].replace(htmldir, '')[1:]), '{}.html'.format(prevgalaxy[ii]))
-    
+
     js = html_javadate()
 
     # Support routines--
 
     def _read_ccds_tractor_sample(prefix):
         nccds, tractor, sample = None, None, None
-        
+
         ccdsfile = glob(os.path.join(galaxydir1, '{}-{}-ccds-*.fits'.format(galaxy1, prefix))) # north or south
         if len(ccdsfile) > 0:
             nccds = fitsio.FITS(ccdsfile[0])[1].get_nrows()
@@ -949,7 +1265,7 @@ def build_htmlpage_one(ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, h
             html.write('<h3>Geometry</h3>\n')
             html.write('<h3>Photometry</h3>\n')
             return
-            
+
         html.write('<h3>Geometry</h3>\n')
         html.write('<table>\n')
         html.write('<tr><th></th>\n')

@@ -1072,7 +1072,7 @@ def update_properties(cat, verbose=False):
             'IC 0774', 'NGC 4701', 'ESO 119- G 048', 'ESO 108- G 023',
             'NGC 5248', 'ESO 306- G 009', 'NGC 1403', 'NGC 1437A',
             'NGC 4797', 'MCG -01-35-020', 'NGC 0692', 'NGC 6902B',
-            'UGC 07178', ]
+            'UGC 07178', 'NGC 4816', ]
     diams = [16., 12., 6., 6., 7., # [arcmin
              7., 7., 6., 7., 6.,
              5.5, 5.5, 6., 6.,
@@ -1086,7 +1086,7 @@ def update_properties(cat, verbose=False):
              2.2, 3.2, 3.4, 3.5,
              9., 2.8, 4., 3.,
              2.6, 4., 4., 2.5,
-             2.5, ]
+             2.5, 3., ]
     for obj, diam in zip(objs, diams):
         I = cat['OBJNAME'] == obj
         if np.sum(I) == 1:
@@ -2420,7 +2420,8 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     rowfiles = glob(os.path.join(sga_dir(), 'parent', f'SGA2025-parent-nocuts-*-rows.fits'))
     if len(rowfiles) > 0:
         log.warning('FIXME!')
-        pdb.set_trace()
+        rows = np.arange(len(parent))
+        #pdb.set_trace()
         # adjust ROWS so they're unique
     else:
         rows = np.arange(len(parent))
@@ -2522,6 +2523,7 @@ def build_parent_archive(verbose=False, overwrite=False):
 
     """
     from glob import glob
+    from astropy.table import join
     from SGA.external import read_custom_external
     from SGA.geometry import choose_geometry
     from SGA.sky import in_ellipse_mask_sky
@@ -2732,7 +2734,29 @@ def build_parent_archive(verbose=False, overwrite=False):
           'objects in the custom or properties tables.')
     photo = photo[~I]
 
-    # FIXME - we may want to keep these...
+    # Keep all small objects (with a low redshift) in and around the
+    # Coma and Virgo clusters.
+    virgo = (187.705833, 12.391111, 5.5) # radius in degrees
+    coma = (194.898750, 27.959167, 1.5)
+    for name, (racen, deccen, rad_degrees) in zip(['Coma', 'Virgo'], [coma, virgo]):
+        m1, m2, _ = match_radec(photo['RA'], photo['DEC'], racen, deccen, rad_degrees)
+        clust = join(cat['OBJNAME', 'RA', 'DEC', 'Z', 'DIAM_LIT', 'BA_LIT', 'PA_LIT'], photo['OBJNAME', ][m1], keys='OBJNAME')
+        clust = clust[(clust['Z'] != -99.) * (clust['Z'] < 0.1)] # low-z
+        log.info(f'Removing {len(clust):,d}/{len(photo):,d} objects with z<0.1 around the {name} cluster.')
+        photo = photo[~np.isin(photo['OBJNAME'], clust['OBJNAME'])]
+
+        if True:
+            clust.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM_LIT', 'BA_LIT', 'PA_LIT'],
+                                 ['name', 'ra', 'dec', 'radius', 'abratio', 'posAngle'])
+            clust['posAngle'][clust['posAngle'] < 0.] = 0.
+            clust['abratio'][clust['abratio'] < 0.] = 1.
+            I = clust['radius'] < 20./60.
+            if np.any(I):
+                clust['radius'][I] = 20./60.
+            clust['radius'] *= 60. / 2.
+            clust.write(f'viewer-{name}.fits', overwrite=True)
+
+    # FIXME - we may want to keep more of these...
 
     # The photo files are limited to objects with DIAM_INIT<20 arcsec;
     # after significant VI, most of these are genuinely small objects,
@@ -2838,7 +2862,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
-def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
+def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
@@ -2879,26 +2903,26 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
         # need to make sure we keep all LVD dwarfs
         lvd_dwarfs = cat['OBJNAME'][cat['ROW_LVD'] != -99].value
 
-        # Remove all sources smaller than MINDIAM with no other source
-        # within XX arcsec.
-        if False:
-            mindiam = 30. # [arcsec]
-            minsep = 60.  # [arcsec]
-
-            primaries, groups = find_close(cat, cat, rad_arcsec=minsep, isolated=True)
-            diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-            I = ((primaries['ROW_LVD'] == -99) * ~primaries['IN_LMC'] * ~primaries['IN_SMC'] * (diam < mindiam))
-            log.info(f'Removing {np.sum(I):,d}/{len(cat):,d} isolated (separation>{minsep:.1f} arcsec) ' + \
-                     f'objects with diameter<{mindiam:.1f} arcsec.')
-            cat = cat[~np.isin(cat['OBJNAME'], primaries['OBJNAME'][I])]
-
-            diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-            I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
-                                      cat['IN_SMC'], diam > mindiam))
-
-            cat = cat[I]
-            log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
-                     f'diameter > {mindiam:.1f} arcsec.')
+        ## Remove all sources smaller than MINDIAM with no other source
+        ## within XX arcsec.
+        #if False:
+        #    mindiam = 30. # [arcsec]
+        #    minsep = 60.  # [arcsec]
+        #
+        #    primaries, groups = find_close(cat, cat, rad_arcsec=minsep, isolated=True)
+        #    diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
+        #    I = ((primaries['ROW_LVD'] == -99) * ~primaries['IN_LMC'] * ~primaries['IN_SMC'] * (diam < mindiam))
+        #    log.info(f'Removing {np.sum(I):,d}/{len(cat):,d} isolated (separation>{minsep:.1f} arcsec) ' + \
+        #             f'objects with diameter<{mindiam:.1f} arcsec.')
+        #    cat = cat[~np.isin(cat['OBJNAME'], primaries['OBJNAME'][I])]
+        #
+        #    diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
+        #    I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
+        #                              cat['IN_SMC'], diam > mindiam))
+        #
+        #    cat = cat[I]
+        #    log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
+        #             f'diameter > {mindiam:.1f} arcsec.')
 
         # make sure we haven't dropped any LVD dwarfs
         assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
@@ -2932,12 +2956,14 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     mindiam = 20. # [arcsec]
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
+    print('Need to make sure to not override diam for LVD sources which might have diam<mindiam like Clump I')
+    pdb.set_trace()
 
     # cleanup
     band[band == ''] = 'V' # default
-    I = mag > 22.
+    I = mag > 20.
     if np.any(I):
-        mag[I] = 22
+        mag[I] = 20.
 
     # diameter cut
     I = diam == mindiam
@@ -2946,14 +2972,14 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     diam /= 60. # [arcmin]
     assert(np.all(diam > 0.))
 
-    # Pre-process the morphology column.
-    allmorph = []
-    for objtype, morph, basic_morph in zip(
-            parent['OBJTYPE'].value, parent['MORPH'].value,
-            parent['BASIC_MORPH'].value):
-        morph1 = np.array([objtype, morph, basic_morph])
-        morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
-        allmorph.append(morph1)
+    ## Pre-process the morphology column.
+    #allmorph = []
+    #for objtype, morph, basic_morph in zip(
+    #        parent['OBJTYPE'].value, parent['MORPH'].value,
+    #        parent['BASIC_MORPH'].value):
+    #    morph1 = np.array([objtype, morph, basic_morph])
+    #    morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
+    #    allmorph.append(morph1)
 
     log.warning('Consider removing sources that are too close to bright stars.')
 
@@ -3035,7 +3061,7 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     #grp.add_column(SFD.ebv(grp['RA'].value, grp['DEC'].value), name='EBV', index=10)
     grp['EBV'] = SFD.ebv(grp['RA'].value, grp['DEC'].value).astype('f4')
 
-    log.info('Reserse-sorting by diameter')
+    log.info('Reverse-sorting by diameter')
     srt = np.argsort(diam)[::-1]
     grp = grp[srt]
 
@@ -3051,9 +3077,9 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     # samples (e.g., SMC, LMC).
     I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
                       grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
-    out1 = build_group_catalog(grp[I])
+    out1 = build_group_catalog(grp[I], mp=mp)
     #out = out1
-    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1)
+    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     out = vstack((out1, out2))
     del out1, out2
 
@@ -3066,8 +3092,6 @@ def build_parent(reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
-
-    pdb.set_trace()
 
     ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
     ## objects within (outside) the DR11 imaging footprint.

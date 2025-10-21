@@ -112,3 +112,103 @@ def weighted_partition(weights, n):
     assert len(groups) == n
 
     return groups
+
+
+def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
+                    small_bricks_first=False):
+    """
+    Partition tasks into `size` buckets with ~equal total weight, then
+    sort each bucket so smaller bricks are processed first.
+
+    Parameters
+    ----------
+    diameter : array-like
+        Brick diameters (arcmin) for all items.
+    itodo : array-like of int or None, optional
+        Indices to schedule (default: all items).
+    size : int, optional
+        Number of MPI ranks (default: 1).
+    p : float, optional
+        Exponent for weight model: weight = diameter**p (default: 2.0).
+    verbose : bool, optional
+        If True, print a load-balance summary.
+
+    Returns
+    -------
+    todo_indices : list of np.ndarray
+        One array of indices per rank. Each array is sorted ascending
+        by diameter so each rank does small bricks first.
+    loads : np.ndarray
+        Total weight per rank.
+
+    """
+    import heapq
+
+    if itodo is None:
+        itodo = np.arange(len(diameter), dtype=int)
+    else:
+        itodo = np.asarray(itodo, dtype=int)
+
+    size = int(size)
+    if size < 1:
+        raise ValueError("size must be >= 1")
+
+    # Trivial or empty cases
+    if len(itodo) == 0:
+        return [np.array([], dtype=int) for _ in range(size)], np.zeros(size, dtype=float)
+    if size == 1:
+        br = np.array(itodo, dtype=int)
+        if small_bricks_first:
+            srt = np.argsort(np.asarray(diameter)[br])
+        else:
+            srt = np.argsort(np.asarray(diameter)[br])[::-1]
+        loads = np.array([np.sum(np.power(np.asarray(diameter)[br], p))] + [0.0]*(size-1), dtype=float)
+        if verbose:
+            tot = loads.sum()
+            target = tot / size
+            log.info(f"[scheduler] p={p:g}, total={tot:.6g}, per-rank target={target:.6g}, "
+                     f"max load={loads.max():.6g}, rel_imbalance={(loads.max()-target)/target if target>0 else 0.0:.2%}")
+        return [br[srt]] + [np.array([], dtype=int) for _ in range(size-1)], loads
+
+    diam = np.asarray(diameter, dtype=float)
+    dsub = diam[itodo]
+    w = np.power(dsub, p)
+
+    # Stable sort by DESC weight; tie-break on index for determinism
+    order = np.lexsort((itodo, -w))
+    jobs = itodo[order]
+    jw = w[order]
+
+    # Greedy LPT: assign next heaviest job to least-loaded rank
+    heap = [(0.0, r) for r in range(size)]  # (load, rank)
+    heapq.heapify(heap)
+    buckets = [[] for _ in range(size)]
+    loads = np.zeros(size, dtype=float)
+
+    for idx, wt in zip(jobs, jw):
+        load, r = heapq.heappop(heap)
+        buckets[r].append(idx)
+        load += wt
+        loads[r] = load
+        heapq.heappush(heap, (load, r))
+
+    # Within each rank, do large bricks first
+    todo_indices = []
+    for r in range(size):
+        br = np.array(buckets[r], dtype=int)
+        if br.size:
+            if small_bricks_first:
+                srt = np.argsort(diam[br])
+            else:
+                srt = np.argsort(diam[br])[::-1]
+            br = br[srt]
+        todo_indices.append(br)
+
+    if verbose:
+        tot = loads.sum()
+        target = tot / size
+        imbalance = (loads.max() - target) / target if target > 0 else 0.0
+        print(f"[scheduler] p={p:g}, total={tot:.6g}, per-rank target={target:.6g}, "
+              f"max load={loads.max():.6g}, rel_imbalance={imbalance:.2%}")
+
+    return todo_indices, loads

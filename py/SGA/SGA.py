@@ -77,6 +77,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         version = version_work
     elif parent:
         version = 'v0.10'
+    else:
+        # merged SGA catalog
+        version = 'v0.10'
     return version
 
 
@@ -191,7 +194,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     from glob import glob
     import multiprocessing
     import astropy
-    from SGA.mpi import weighted_partition
+    from SGA.mpi import distribute_work
+    #from SGA.mpi import weighted_partition
     from SGA.io import _missing_files_one
 
     if sample is None and bricks is None:
@@ -309,22 +313,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         done_indices = [np.array([])]
 
     if len(itodo) > 0:
-        #todo_indices = np.array_split(indices[itodo], size)
-
-        # Assign the sample to ranks to make the diameter distribution
-        # per rank ~flat.
-        # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
-        _todo_indices = indices[itodo]
-        weight = np.atleast_1d(sample[DIAMCOL])[_todo_indices]
-        cumuweight = weight.cumsum() / weight.sum()
-        idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
-        if len(idx) < size: # can happen in corner cases or with 1 rank
-            todo_indices = np.array_split(_todo_indices, size) # unweighted
-        else:
-            todo_indices = np.array_split(_todo_indices, idx) # weighted
-        for ii in range(size): # sort by weight
-            srt = np.argsort(sample[DIAMCOL][todo_indices[ii]])
-            todo_indices[ii] = todo_indices[ii][srt]
+        todo_indices, loads = distribute_work(sample[DIAMCOL].value, itodo=itodo,
+                                              size=size, p=2.0, verbose=True)
     else:
         todo_indices = [np.array([])]
 
@@ -388,10 +378,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             rows = np.where(
                 (info['DIAM'] > mindiam) *
-                (info['DIAM'] < maxdiam))[0]
+                (info['DIAM'] <= maxdiam))[0]
         else:
             I = ((info['GROUP_DIAMETER'] > mindiam) *
-                 (info['GROUP_DIAMETER'] < maxdiam) *
+                 (info['GROUP_DIAMETER'] <= maxdiam) *
                  info['GROUP_PRIMARY'])
             if maxmult is not None:
                 I *= info['GROUP_MULT'] <= maxmult
@@ -428,7 +418,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
-        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
+        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
+        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
         testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
         log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
         allbricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
@@ -446,6 +437,29 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         fullsample = sample
         if len(sample) == 0:
             return sample, fullsample
+
+    if False:#True:
+        from SGA.ellipse import ELLIPSEMODE
+        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
+        log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
+        sample = sample[I]
+        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
+    if galaxylist is not None:
+        galaxylist = np.array(galaxylist.split(','))
+        log.debug('Selecting specific galaxies.')
+        I = np.isin(sample['GROUP_NAME'], galaxylist)
+        if np.count_nonzero(I) == 0:
+            #log.warning('No matching galaxies using column GROUP_NAME!')
+            #I = np.isin(sample['SGANAME'], galaxylist)
+            I = np.isin(sample['SGAID'], galaxylist)
+            if np.count_nonzero(I) == 0:
+                #log.warning('No matching galaxies using column SGANAME!')
+                I = np.isin(sample['OBJNAME'], galaxylist)
+                if np.count_nonzero(I) == 0:
+                    log.warning('No matching galaxies found in sample; try a different region?')
+                    sample, fullsample = Table(), Table()
+        sample = sample[I]
 
     # select a subset of objects
     if first is not None or last is not None:
@@ -469,60 +483,55 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    if galaxylist is not None:
-        galaxylist = np.array(galaxylist.split(','))
-        log.debug('Selecting specific galaxies.')
-        I = np.isin(sample['GROUP_NAME'], galaxylist)
-        if np.count_nonzero(I) == 0:
-            #log.warning('No matching galaxies using column GROUP_NAME!')
-            #I = np.isin(sample['SGANAME'], galaxylist)
-            I = np.isin(sample['SGAID'], galaxylist)
-            if np.count_nonzero(I) == 0:
-                #log.warning('No matching galaxies using column SGANAME!')
-                I = np.isin(sample['OBJNAME'], galaxylist)
-                if np.count_nonzero(I) == 0:
-                    log.warning('No matching galaxies found in sample; try a different region?')
-                    sample, fullsample = Table(), Table()
-        sample = sample[I]
-
     return sample, fullsample
+
+
+def SGA_diameter(ellipse, radius_arcsec=False):
+    """
+    radius_arcsec - do not convert to diameter in arcmin
+
+    """
+    radius = np.zeros(len(ellipse))
+    ref = np.zeros(len(ellipse), '<U6')
+
+    # r-band R(26)
+    I =  (radius == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['R26_R'][I].value
+        ref[I] = 'R26_R'
+
+    # r-band R(25)
+    I =  (radius == 0.) * (ellipse['R25_R'] > 0.) * (ellipse['R25_ERR_R'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['R25_R'][I].value * 1.28 # median factor
+        ref[I] = 'R25_R'
+
+    # r-band R(24)
+    I =  (radius == 0.) * (ellipse['R24_R'] > 0.) * (ellipse['R24_ERR_R'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['R24_R'][I].value * 1.70 # median factor
+        ref[I] = 'R24_R'
+
+    # sma_moment
+    I =  (radius == 0.) * (ellipse['SMA_MOMENT'] > 0.)
+    if np.any(I):
+        radius[I] = ellipse['SMA_MOMENT'][I].value * 1.19 # median factor
+        ref[I] = 'MOMENT'
+
+    if radius_arcsec:
+        return radius, ref
+    else:
+        # convert radius-->diameter and arcsec-->arcmin
+        diam = radius * 2. / 60. # [arcmin]
+        return np.float32(diam), ref
 
 
 def SGA_geometry(ellipse):
 
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    diam = np.zeros(len(ellipse))
-    diam_ref = np.zeros(len(ellipse), '<U6')
-
-    # r-band R(26)
-    I =  (diam == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['R26_R'][I].value
-        diam_ref[I] = 'R26_R'
-
-    # r-band R(25)
-    I =  (diam == 0.) * (ellipse['R25_R'] > 0.) * (ellipse['R25_ERR_R'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['R25_R'][I].value * 1.28 # median factor
-        diam_ref[I] = 'R25_R'
-
-    # r-band R(24)
-    I =  (diam == 0.) * (ellipse['R24_R'] > 0.) * (ellipse['R24_ERR_R'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['R24_R'][I].value * 1.70 # median factor
-        diam_ref[I] = 'R24_R'
-
-    # sma_moment
-    I =  (diam == 0.) * (ellipse['SMA_MOMENT'] > 0.)
-    if np.any(I):
-        diam[I] = ellipse['SMA_MOMENT'][I].value * 1.19 # median factor
-        diam_ref[I] = 'MOMENT'
-
-    # convert radius-->diameter and arcsec-->arcmin
-    diam *= (2. / 60.) # [arcmin]
-
-    return np.float32(diam), ba, pa, diam_ref
+    diam, diam_ref = SGA_diameter(ellipse)
+    return diam, ba, pa, diam_ref
 
 
 def SGA_datamodel(ellipse, bands, all_bands):
@@ -554,7 +563,8 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('DIAM_INIT', np.float32, u.arcmin),
         ('BA_INIT', np.float32, None),
         ('PA_INIT', np.float32, u.degree),
-        ('MAG', np.float32, u.mag),
+        ('MAG_INIT', np.float32, u.mag),
+        ('DIAM_REF_INIT', 'U9', None),
         #('BAND', 'U1', None),
         ('EBV', np.float32, u.mag),
         ('GROUP_ID', np.int32, None),
@@ -572,6 +582,8 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('PSFDEPTH_R', np.float32, u.mag),
         ('PSFDEPTH_I', np.float32, u.mag),
         ('PSFDEPTH_Z', np.float32, u.mag),
+        ('BANDS', 'U4', None),
+        ('OPTFLUX', np.float32, u.nanomaggy),
         ('SGANAME', 'U25', None),
         ('RA', np.float64, u.degree),
         ('DEC', np.float64, u.degree),
@@ -645,9 +657,10 @@ def SGA_datamodel(ellipse, bands, all_bands):
                     check.append(I)
                     val[I] = 0
             out[col] = val
-    check = np.unique(np.hstack(check))
-    print(','.join(ellipse['GROUP_NAME'][check].value))
-    #pdb.set_trace()
+    if len(check) > 0:
+        check = np.unique(np.hstack(check))
+        print(','.join(ellipse['GROUP_NAME'][check].value))
+        #pdb.set_trace()
 
     return out
 
@@ -838,9 +851,18 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     #sample = sample[:700]
     #log.info(f'Trimmed to {len(sample):,d} groups in region={region}')
 
+    print('HACK!!!')
+    from SGA.brick import brickname as get_brickname
+    bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
+    I = np.isin(bricks, ['1943p265'])
+    sample = sample[I]
+    pdb.set_trace()
+
     group, groupdir = get_galaxy_galaxydir(
         sample, region=region,
         group=not no_groups, datadir=datadir)
+    group = np.atleast_1d(group)
+    groupdir = np.atleast_1d(groupdir)
     ngrp = len(group)
 
     # divide into chunks and assign to different ranks (if running with MPI)
@@ -891,15 +913,17 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         out = list(zip(*out))
         ellipse = vstack(out[0])
         tractor = vstack(out[1])
-        fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
-        fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
+        if len(ellipse) > 0:
+            fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
+            fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
 
     # gather the results
     ellipse, tractor = [], []
     for chunkfile in chunkfiles:
-        ellipse.append(Table(fitsio.read(chunkfile, 'ELLIPSE')))
-        tractor.append(Table(fitsio.read(chunkfile, 'TRACTOR')))
-        os.remove(chunkfile)
+        if os.path.isfile(chunkfile):
+            ellipse.append(Table(fitsio.read(chunkfile, 'ELLIPSE')))
+            tractor.append(Table(fitsio.read(chunkfile, 'TRACTOR')))
+            os.remove(chunkfile)
     ellipse = vstack(ellipse)
     tractor = vstack(tractor)
     nobj = len(ellipse)
@@ -948,12 +972,12 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # Write out ellipsefile_ellipse by combining the ellipse and
     # tractor catalogs.
-    ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG', 'PA', 'BA', 'D26', 'FITMODE']
+    ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG_INIT', 'PA', 'BA', 'D26', 'FITMODE']
     tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
         [f'flux_{filt}' for filt in bands]
 
     out_sga = outellipse[ellipse_cols]
-    out_sga.rename_columns(['SGAID', 'D26'], ['REF_ID', 'DIAM'])
+    out_sga.rename_columns(['SGAID', 'D26', 'MAG_INIT'], ['REF_ID', 'DIAM', 'MAG'])
     [out_sga.rename_column(col, col.lower()) for col in out_sga.colnames]
 
     out_nosga = Table()
@@ -979,7 +1003,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # KD version
     cmd1 = f'startree -i {outfile_ellipse} -o {kdoutfile_ellipse} -T -P -k -n stars'
-    cmd2 = f'modhead {kdoutfile_ellipse} VER {REFCAT}'
+    cmd2 = f'modhead {kdoutfile_ellipse} VER {REFCAT}-ellipse'
     _ = os.system(cmd1)
     _ = os.system(cmd2)
     log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
@@ -1140,7 +1164,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
     from SGA.util import var2ivar
     from SGA.sky import map_bxby
-    from SGA.qa import overplot_ellipse, get_norm
+    from SGA.qa import overplot_ellipse, get_norm, matched_norm
 
 
     if not os.path.isdir(htmlgalaxydir):
@@ -1237,9 +1261,9 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
         # initial ellipse geometry
         #pixfactor = data['opt_pixscale'] / pixscale
         for iobj, obj in enumerate(sample):
-            [bx, by, diam, ba, pa] = list(obj[GEOINITCOLS].values())
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
             bx, by = map_bxby(bx, by, from_wcs=opt_wcs, to_wcs=wcs)
-            overplot_ellipse(diam, ba, pa, bx, by, pixscale=pixscale, ax=xx,
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=pixscale, ax=xx,
                              color=colors1[iobj], linestyle='-', linewidth=2,
                              draw_majorminor_axes=True, jpeg=False,
                              label=obj[REFIDCOLUMN])
@@ -1272,16 +1296,29 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
         wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
         wimg[wimg == 0.] = np.nan
 
+        wmodel = np.sum(opt_invvar * opt_models[iobj, :, :, :], axis=0)
+        wnorm = np.sum(opt_invvar, axis=0)
+        wmodel[wnorm > 0.] /= wnorm[wnorm > 0.] / pixscale**2 # [nanomaggies/arcsec**2]
+
         try:
+            #norm = matched_norm(wimg, wmodel)
             norm = get_norm(wimg)
         except:
             norm = None
         ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
                              norm=norm)
-
-        wmodel = np.sum(opt_models[iobj, :, :, :], axis=0)
+        norm = get_norm(wmodel)
         ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
-                             norm=get_norm(wmodel))
+                             norm=norm)
+        #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
+        #pdb.set_trace()
+        #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
+        #xx[0].imshow(wimg, origin='lower', norm=norm)
+        #wnorm = get_norm(wmodel)
+        #wnorm.vmin = norm.vmin
+        #wnorm.vmax = norm.vmax
+        #xx[1].imshow(wmodel, origin='lower', norm=wnorm)
+        #fig.savefig('ioannis/tmp/junk.png')
 
         # masks
         leg = []
@@ -1297,8 +1334,8 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
         for col in range(3):
             # initial geometry
-            [bx, by, diam, ba, pa] = list(obj[GEOINITCOLS].values())
-            overplot_ellipse(diam, ba, pa, bx, by, pixscale=opt_pixscale,
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
                              ax=ax[1+iobj, col], color=colors2[0], linestyle='-',
                              linewidth=2, draw_majorminor_axes=True,
                              jpeg=False, label='Initial')
@@ -1343,8 +1380,9 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     log.info(f'Wrote {qafile}')
 
 
-def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
-                         qaplot=False, maxshift_arcsec=MAXSHIFT_ARCSEC,
+def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
+                         input_geo_initial=None, qaplot=False,
+                         maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
@@ -1525,6 +1563,21 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
     psfsrcs = tractor[Ipsf]
     allgalsrcs = tractor[Igal]
 
+    #import matplotlib.pyplot as plt
+    #from SGA.coadds import srcs2image
+    #from SGA.qa import get_norm
+    #ncols = 4
+    #nrows = int(np.ceil(len(allgalsrcs) / ncols))
+    #norm = get_norm(data['r'])
+    #fig, ax = plt.subplots(nrows, ncols, sharex=True, sharey=True)
+    #for xx, src in zip(ax.flat, allgalsrcs):
+    #    model = srcs2image(src, opt_wcs, band='r', pixelized_psf=data['r_psf'])
+    #    xx.imshow(np.log10(model), origin='lower', cmap=plt.cm.cividis)#, norm=norm)
+    #for xx in ax.flat:
+    #    xx.axis('off')
+    #fig.tight_layout()
+    #fig.savefig('ioannis/tmp/junk.png')
+
     # Initialize the *original* images arrays.
     opt_images = np.zeros((len(opt_bands), *sz), 'f4')
     opt_mask_perband = np.stack([data[f'{filt}_mask'] for filt in opt_bands])
@@ -1605,9 +1658,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
                 opt_models[iobj, iband, :, :] += model
 
         # Initial geometry and elliptical mask.
-        geo_init  = get_geometry(opt_pixscale, table=obj)
+        if input_geo_initial is not None:
+            geo_init = input_geo_initial[iobj, :]
+        else:
+            geo_init = get_geometry(opt_pixscale, table=obj)
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
+        print(iobj, bx, by, sma, ba, pa)
 
         #print('HACK!')
         #obj['ELLIPSEMODE'] += 2**0
@@ -1617,7 +1674,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
             niter_actual = 1
         else:
-            niter_actual = niter
+            niter_actual = niter_geometry
 
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
@@ -1722,7 +1779,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            #print(iobj, iiter, bx, by, sma, ba, pa)
+            print(iobj, iiter, bx, by, sma, ba, pa)
 
         # set the largeshift bits
         ra_final, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
@@ -1799,7 +1856,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
     data['opt_maskbits'] = opt_maskbits
-    data['opt_models'] = opt_models
+    data['opt_models'] = opt_models # [nanomaggies]
     data['opt_invvar'] = opt_invvar
     sig, _ = ivar2var(opt_invvar, sigma=True) # [nanomaggies]
     data['opt_sigma'] = sig
@@ -1897,28 +1954,29 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter=2,
 
     # optionally build a QA figure
     if qaplot:
-        #print('HACK!!')
         #sample['BY_INIT'] += 30.
         qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
 
     # clean-up
-    del data['brightstarmask']
-    for filt in all_data_bands:
-        del data[filt]
-        #for col in ['psf', 'invvar', 'mask']:
-        for col in ['psf', 'mask']:
-            del data[f'{filt}_{col}']
-    for filt in opt_bands:
-        for col in ['skysigma']:
-            del data[f'{filt}_{col}']
+    if cleanup:
+        del data['brightstarmask']
+        for filt in all_data_bands:
+            del data[filt]
+            #for col in ['psf', 'invvar', 'mask']:
+            for col in ['psf', 'mask']:
+                del data[f'{filt}_{col}']
+        for filt in opt_bands:
+            for col in ['skysigma']:
+                del data[f'{filt}_{col}']
 
     return data, sample
 
 
 def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
-                   sort_by_flux=True, run='south', pixscale=0.262,
-                   galex_pixscale=1.5, unwise_pixscale=2.75,
+                   sort_by_flux=True, run='south', niter_geometry=2,
+                   pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
                    galex=True, unwise=True, verbose=False, qaplot=False,
+                   cleanup=False, build_mask=True, read_jpg=False,
                    htmlgalaxydir=None):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
@@ -2064,16 +2122,15 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
     sample = Table(fitsio.read(samplefile))#, columns=cols))
     log.info(f'Read {len(sample)} source(s) from {samplefile}')
-    for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA']:
+    for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'MAG']:
         sample.rename_column(col, f'{col}_INIT')
+    sample.rename_column('DIAM_REF', 'DIAM_INIT_REF')
     sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                       index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 
-    # PSF size and depth; NB: all optical bands
-    for filt in all_opt_bands:
-        sample[f'PSFSIZE_{filt.upper()}'] = np.zeros(len(sample), 'f4')
-    for filt in all_bands:
-        sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
+    #print('HACK!!!!!!!!')
+    #sample['SMA_INIT'] = 179.8639
+    #sample['DIAM_INIT'] = 179.8639*2./60.
 
     # populate (BX,BY)_INIT by quickly building the WCS
     wcs = Tan(filt2imfile[opt_refband]['image'], 1)
@@ -2085,7 +2142,11 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                       index=np.where(np.array(sample.colnames) == 'BX_INIT')[0][0]+1)  # NB the -1!
     #sample['BY_INIT'] = (y0 - 1.).astype('f4')
 
-    sample['FLUX'] = np.zeros(len(sample), 'f4') # brightest band
+    sample['OPTFLUX'] = np.zeros(len(sample), 'f4') # brightest band
+
+    # optical bands
+    sample['BANDS'] = np.zeros(len(sample), f'<U{len(bands)}')
+    sample['BANDS'] = ''.join(data['opt_bands'])
 
     # moment geometry
     sample['SGANAME'] = np.zeros(len(sample), '<U25')
@@ -2115,15 +2176,15 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             if tractor[I[0]].type in ['PSF', 'DUP']:
                 log.warning(f'ref_id={refid} fit by Tractor as PSF (or DUP)')
                 #sample['PSF'][iobj] = True
-            sample['FLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
-                                        for filt in opt_bands])
+            sample['OPTFLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
+                                           for filt in opt_bands])
             sample['RA_TRACTOR'][iobj] = tractor[I[0]].ra
             sample['DEC_TRACTOR'][iobj] = tractor[I[0]].dec
 
     # Sort by initial diameter or optical brightness (in any band).
     if sort_by_flux:
         log.info('Sorting by optical flux:')
-        srt = np.argsort(sample['FLUX'])[::-1]
+        srt = np.argsort(sample['OPTFLUX'])[::-1]
     else:
         log.info('Sorting by initial diameter:')
         srt = np.argsort(sample['SMA_INIT'])[::-1]
@@ -2132,13 +2193,13 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     samplesrcs = [samplesrcs[I] for I in srt]
     for obj in sample:
         log.info(f'  ref_id={obj[REFIDCOLUMN]}: D(25)={obj["DIAM_INIT"]:.3f} arcmin, ' + \
-                 f'max optical flux={obj["FLUX"]:.2f} nanomaggies')
-    sample.remove_column('FLUX')
+                 f'max optical flux={obj["OPTFLUX"]:.2f} nanomaggies')
 
-    print('Add BANDS!!!')
-
-    #data['sample'] = sample
-    #data['samplesrcs'] = samplesrcs
+    # PSF size and depth
+    for filt in all_opt_bands:
+        sample[f'PSFSIZE_{filt.upper()}'] = np.zeros(len(sample), 'f4')
+    for filt in all_bands:
+        sample[f'PSFDEPTH_{filt.upper()}'] = np.zeros(len(sample), 'f4')
 
     # add the PSF depth and size
     _get_psfsize_and_depth(sample, tractor, all_data_bands,
@@ -2170,11 +2231,17 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     # Read the basic imaging data and masks and build the multiband
     # masks.
-    data = _read_image_data(data, filt2imfile, verbose=verbose)
-    data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                        qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
+    #print('HACK!!')
+    #niter = 1
 
-    return data, sample, 1
+    data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
+
+    if build_mask:
+        data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
+                                            qaplot=qaplot, cleanup=cleanup,
+                                            niter_geometry=niter_geometry,
+                                            htmlgalaxydir=htmlgalaxydir)
+    return data, tractor, sample, samplesrcs, 1
 
 
 def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,

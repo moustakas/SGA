@@ -87,8 +87,8 @@ def main():
     from SGA.mpi import mpi_args
     from SGA.io import set_legacysurvey_dir
     from SGA.ellipse import ELLIPSEMODE
-    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE,
-                         sga_dir, sga_data_dir, sga_html_dir,
+    from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE, REFCAT,
+                         sga_dir, sga_data_dir, sga_html_dir, SGA_version,
                          read_sample, missing_files, get_galaxy_galaxydir,
                          build_catalog, get_radius_mosaic)
 
@@ -141,24 +141,34 @@ def main():
         log.info(f'$SGA_HTML_DIR={htmldir}')
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
-        #if args.build_catalog or args.build_refcat:
-        #    region = None
-        #else:
-        #    region = args.region
+        sga_version = SGA_version(parent=True)
+        refcatfile = os.path.join(basedir, 'sample', f'SGA2025-refcat-{sga_version}.fits')
+        kdrefcatfile = refcatfile.replace('.fits', '.kd.fits')
+        if not os.getenv("LARGEGALAXIES_CAT"):
+            msg = f'{os.getenv("LARGEGALAXIES_CAT")} not found!'
+            log.critical(msg)
+            raise ValueError(msg)
+        else:
+            if kdrefcatfile != os.getenv("LARGEGALAXIES_CAT"):
+                if kdrefcatfile.replace('/global/', '/dvs_ro/') != os.getenv("LARGEGALAXIES_CAT"):
+                    msg = f'Mismatch between $LARGEGALAXIES_CAT and {kdrefcatfile}!'
+                    log.warning(msg)
+                    #log.critical(msg)
+                    #raise ValueError(msg)
+
+
+        if args.build_refcat:
+            region = None
+        else:
+            region = args.region
 
         sample, fullsample = read_sample(
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, maxmult=args.maxmult,
             galaxylist=args.galaxylist, no_groups=no_groups,
-            lvd=args.lvd, region=args.region,
+            lvd=args.lvd, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
-        if len(sample) == 0:
-            return
-
-        #if args.coadds or args.build_catalog or args.build_refcat:
-        #    if args.build_catalog:
-        #        sample = sample[np.argsort(sample['GROUP_ID'])] # sort by group_id
     else:
         sample = []
         fullsample = []
@@ -166,6 +176,10 @@ def main():
     if comm:
         sample = comm.bcast(sample, root=0)
         fullsample = comm.bcast(fullsample, root=0)
+
+    if len(sample) == 0:
+        log.info(f' Rank {rank}: to do (empty sample)!')
+        return
 
     # Building the web-page and integrating the ellipse-fitting
     # results work on the full sample, so do that here and then
@@ -187,13 +201,8 @@ def main():
             # pipeline. Satellites can belong to more than one group,
             # so trim to unique IDs.
             import fitsio
-            from SGA.SGA import SGA_version, REFCAT
 
-            version = SGA_version(parent=True)
-            #version = 'v0.1'
-            #fullsample = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-v0.1.fits'))
             ngal = len(fullsample)
-
             assert(ngal == len(np.unique(fullsample['SGAID'])))
 
             ref = Table()
@@ -208,20 +217,18 @@ def main():
                 assert(np.all(np.isfinite(ref[col])))
             ref['fitmode'] = fullsample['FITMODE']
 
-            reffile = os.path.join(basedir, f'SGA2025-refcat-{version}.fits')
-            kdreffile = reffile.replace('.fits', '.kd.fits')
-            log.info(f'Writing {ngal} galaxies to {reffile}')
+            log.info(f'Writing {ngal} galaxies to {refcatfile}')
 
             hdr = fitsio.FITSHDR()
             hdr['VER'] = REFCAT
-            fitsio.write(reffile, ref.as_array(), header=hdr, clobber=True)
+            fitsio.write(refcatfile, ref.as_array(), header=hdr, clobber=True)
 
-            log.info(f'Writing {kdreffile}')
-            cmd = f'startree -i {reffile} -o {kdreffile} -T -P -k -n stars'
+            log.info(f'Writing {kdrefcatfile}')
+            cmd = f'startree -i {refcatfile} -o {kdrefcatfile} -T -P -k -n stars'
             log.info(cmd)
             _ = os.system(cmd)
 
-            cmd = f'modhead {kdreffile} VER {REFCAT}'
+            cmd = f'modhead {kdrefcatfile} VER {REFCAT}'
             _ = os.system(cmd)
 
             return
@@ -254,8 +261,10 @@ def main():
         ntodo = len(np.hstack(groups))
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
                  f'{len(sample):,d} divided across {size} rank(s).')
+    if comm:
+        comm.barrier()
 
-    if len(groups[rank]) == 0:
+    if len(groups) == 0 or len(groups[rank]) == 0:
         log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
                  f'{rank} are complete!')
         return
@@ -266,12 +275,11 @@ def main():
                 if len(fail[rank]) > 0:
                     log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
                              f'{len(sample):,d}')
-                    dsrt = np.argsort(sample[fail[rank]][DIAMCOLUMN])
                     galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]][dsrt], region=args.region,
+                        sample[fail[rank]], region=args.region,
                         group=not no_groups, datadir=datadir, htmldir=htmldir)
                     for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[fail[rank]][DIAMCOLUMN][dsrt]):
+                                            sample[DIAMCOLUMN][fail[rank]]):
                         print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
 
                 todo = np.hstack(groups)
@@ -282,9 +290,11 @@ def main():
                         group=not no_groups,
                         datadir=datadir, htmldir=htmldir)
                     for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
-                                                 sample[todo]['OBJNAME'],
-                                                 sample[todo][DIAMCOLUMN]):
-                        log.info(f'  {ii} {dd} ({obj}; d={diam:.3f} arcmin)')
+                                                 sample['OBJNAME'][todo],
+                                                 sample[DIAMCOLUMN][todo]):
+                        log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
+                        #log.info(f'  {ii} {dd} ({obj}; d={diam:.3f} arcmin)')
+                        #log.info(f'{dd}')
             return
 
     # Loop on the remaining objects.
@@ -307,8 +317,9 @@ def main():
                  f'{galaxydir} (index {ii:,d})')
 
         logfile = get_logfile(galaxy, galaxydir, suffix)
-        log.info(f'Logging output to {logfile}')
         fh = setup_logging(logfile, debug=args.debug)
+        if not args.debug:
+            log.info(f'Logging output to {logfile}')
 
         # Need the object "radius" to build the coadds.
         if no_groups:
@@ -385,32 +396,34 @@ def main():
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
 
-        if args.ellipse:
+        if args.ellipse or args.htmlplots:
             from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
                                  OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
                                  read_multiband, unpack_maskbits)
-            from SGA.ellipse import ellipsefit_multiband
-
-            if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
-                log.warning('Coadds must be generated before running ellipse-fitting.')
-                continue
-
             SGAMASKBITS = [OPTMASKBITS, ]
             if args.unwise:
                 SGAMASKBITS += [UNWISEMASKBITS]
             if args.galex:
                 SGAMASKBITS += [GALEXMASKBITS]
 
+
+        if args.ellipse:
+            from SGA.ellipse import ellipsefit_multiband
+
+            if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
+                log.warning('Coadds must be generated before running ellipse-fitting.')
+                continue
+
             #print('Temporarily make htmlgalaxydir here')
             #if not os.path.isdir(htmlgalaxydir):
             #    os.makedirs(htmlgalaxydir, exist_ok=True)
 
-            if args.debug:
-                qaplot = True
-            else:
-                #print('Temporarily setting qaplot=True!')
-                #qaplot = True
-                qaplot = False
+            #if args.debug:
+            #    qaplot = True
+            #else:
+            #    #print('Temporarily setting qaplot=True!')
+            #    #qaplot = True
+            #    qaplot = False
 
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
                                        unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
@@ -418,7 +431,7 @@ def main():
                                        nmonte=args.nmonte, seed=args.seed,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
-                                       galex=args.galex, qaplot=qaplot, verbose=args.verbose,
+                                       galex=args.galex, qaplot=False, verbose=args.verbose,
                                        clobber=args.clobber,
                                        # HACK!!
                                        htmlgalaxydir=htmlgalaxydir)
@@ -427,9 +440,6 @@ def main():
 
         if args.htmlplots:
             from SGA.html import make_plots
-            from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
-                                 OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
-                                 read_multiband, unpack_maskbits)
 
             if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-ellipse.isdone')):
                 log.warning('Ellipse-fitting must be done before generating plots.')
@@ -442,8 +452,8 @@ def main():
                 onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True)
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
-                             unpack_maskbits, (OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS),
-                             radius_mosaic_arcsec=radius_mosaic_arcsec,
+                             unpack_maskbits, SGAMASKBITS,
+                             #radius_mosaic_arcsec=radius_mosaic_arcsec,
                              barlen=barlen, barlabel=barlabel, run=run,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
@@ -459,6 +469,8 @@ def main():
             #get_galaxy_galaxydir=get_galaxy_galaxydir,
             #read_multiband=read_multiband)
 
+    if comm:
+        comm.barrier()
 
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
