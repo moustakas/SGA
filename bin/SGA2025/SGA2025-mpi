@@ -374,7 +374,8 @@ def main():
                     nsigma=args.nsigma, just_coadds=args.just_coadds,
                     force_psf_detection=force_psf_detection,
                     fit_on_coadds=args.fit_on_coadds,
-                    use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
+                    use_gpu=args.use_gpu, ngpu=args.ngpu,
+                    threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
                     unwise=args.unwise, galex=args.galex,
                     verbose=args.verbose)
@@ -389,7 +390,8 @@ def main():
                         nsigma=args.nsigma, just_coadds=args.just_coadds,
                         force_psf_detection=force_psf_detection,
                         fit_on_coadds=args.fit_on_coadds,
-                        use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
+                        use_gpu=args.use_gpu, ngpu=args.ngpu,
+                        threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
                         unwise=args.unwise, galex=args.galex,
                         verbose=args.verbose)
