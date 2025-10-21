@@ -343,7 +343,7 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   release=1000, pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
-                  racolumn='GROUP_RA', deccolumn='GROUP_DEC',
+                  nsatur=2, racolumn='GROUP_RA', deccolumn='GROUP_DEC',
                   force_psf_detection=False, fit_on_coadds=False,
                   use_gpu=False, threads_per_gpu=16, subsky_radii=None,
                   just_coadds=False, missing_ok=False, force=False, cleanup=True,
@@ -379,6 +379,9 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     cmdargs += f'--threads={mp} --outdir={survey.output_dir} --bands={",".join(bands)} '
     cmdargs += f'--survey-dir={survey.survey_dir} --run={run} '
     cmdargs += f'--release={release} '
+
+    if nsatur:
+        cmdargs += f'--nsatur={nsatur:.0f} '
 
     if nsigma:
         cmdargs += f'--nsigma={nsigma:.0f} '
