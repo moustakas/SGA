@@ -164,7 +164,7 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
     log.info(f'Wrote {qafile}')
 
 
-def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function,
+def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
                            SGAMASKBITS, barlen=None, barlabel=None, clobber=False):
     """Diagnostic QA for the output of build_multiband_mask.
 
@@ -180,15 +180,19 @@ def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function
 
     if not os.path.isdir(htmlgalaxydir):
         os.makedirs(htmlgalaxydir, exist_ok=True)
+
     qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
+    if os.path.isfile(qafile) and not clobber:
+        log.info(f'File {qafile} exists and clobber=False')
+        return
+
+    nsample = len(ellipse)
 
     alpha = 0.6
     orange = (0.9, 0.6, 0.0, alpha)   # golden-orange
     blue   = (0.0, 0.45, 0.7, alpha)  # muted blue
     purple = (0.8, 0.6, 0.7, alpha)   # soft violet
     magenta = (0.85, 0.2, 0.5, alpha) # vibrant rose
-
-    nsample = len(sample)
 
     opt_bands = data['opt_bands']
     opt_images = data['opt_images']
@@ -253,7 +257,7 @@ def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function
 
         # initial ellipse geometry
         #pixfactor = data['opt_pixscale'] / pixscale
-        for iobj, obj in enumerate(sample):
+        for iobj, obj in enumerate(ellipse):
             [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
             bx, by = map_bxby(bx, by, from_wcs=opt_wcs, to_wcs=wcs)
             overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=pixscale, ax=xx,
@@ -277,7 +281,7 @@ def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function
                                  BITS=OPTMASKBITS, allmasks=True)
 
     # one row per object
-    for iobj, obj in enumerate(sample):
+    for iobj, obj in enumerate(ellipse):
         opt_masks_obj = opt_masks[iobj, :, :, :]
         brightstarmask = brightstarmasks[iobj, :, :]
         gaiamask = gaiamasks[iobj, :, :]
@@ -335,7 +339,6 @@ def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function
 
             # final geometry
             [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
-            pdb.set_trace()
             overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
                              ax=ax[1+iobj, col], color=colors2[1], linestyle='--',
                              linewidth=2, draw_majorminor_axes=True,
@@ -372,6 +375,274 @@ def multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function
     fig.savefig(qafile)
     plt.close()
     log.info(f'Wrote {qafile}')
+
+
+def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
+                       unpack_maskbits_function, MASKBITS, REFIDCOLUMN,
+                       datasets=['opt', 'unwise', 'galex'],
+                       linear=False):
+    """Surface-brightness profiles.
+
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    from matplotlib.cm import get_cmap
+    from photutils.isophote import EllipseGeometry
+    from photutils.aperture import EllipticalAperture
+
+    from SGA.sky import map_bxby
+    from SGA.qa import overplot_ellipse, get_norm, sbprofile_colors
+
+
+    def kill_left_y(ax):
+        ax.yaxis.set_major_locator(ticker.NullLocator())
+        ax.yaxis.set_minor_locator(ticker.NullLocator())
+        ax.tick_params(axis='y', which='both', left=False, labelleft=False)
+        ax.spines['left'].set_visible(False)  # optional
+
+    def get_sma_sbthresh(obj, bands):
+        val, label = 0., None
+        for thresh in [26., 25., 24.]:
+            for filt in ['R']:#bands:
+                col = f'R{thresh:.0f}_{filt}'
+                if col in obj.colnames:
+                    val = obj[col]
+                    label = r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
+                    if val > 0.:
+                        return val, label
+        return val, label
+
+
+    nsample = len(ellipse)
+    ndataset = len(datasets)
+
+    opt_wcs = data['opt_wcs']
+    opt_pixscale = data['opt_pixscale']
+    opt_bands = ''.join(data['opt_bands']) # not general
+
+    ncol = 2 # 3
+    nrow = ndataset
+    inches_per_panel = 3.
+
+    cmap = plt.cm.cividis
+    cmap.set_bad('white')
+
+    sbcolors = sbprofile_colors()
+
+    cmap2a = get_cmap('Dark2')
+    cmap2b = get_cmap('Paired')
+    colors2 = [cmap2a(1), cmap2b(3)]
+    #colors2 = [cmap2(i) for i in range(5)]
+
+    for iobj, obj in enumerate(ellipse):
+
+        sganame = obj['SGANAME'].replace(' ', '_')
+        qafile = os.path.join(htmlgalaxydir, f'qa-ellipsefit-{sganame}.png')
+
+        fig, ax = plt.subplots(nrow, ncol,
+                               figsize=(inches_per_panel * (1+ncol),
+                                        inches_per_panel * nrow),
+                               gridspec_kw={
+                                   'height_ratios': [1., 1., 1.],
+                                   'width_ratios': [1., 2.],
+                                   #'width_ratios': [1., 2., 2.],
+                                   #'wspace': 0
+                               })
+
+        # one row per dataset
+        for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
+
+            images = data[f'{dataset}_images'][iobj, :, :, :]
+            if np.all(images == 0.):
+                have_data = False
+            else:
+                have_data = True
+
+            #results_obj = results[idata][iobj]
+            sbprofiles_obj = sbprofiles[idata][iobj]
+
+            models = data[f'{dataset}_models'][iobj, :, :, :]
+            maskbits = data[f'{dataset}_maskbits'][iobj, :, :]
+
+            bands = data[f'{dataset}_bands']
+            pixscale = data[f'{dataset}_pixscale']
+            wcs = data[f'{dataset}_wcs']
+
+            opt_bx = obj['BX']
+            opt_by = obj['BY']
+            ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
+            ellipse_eps = 1 - obj['BA_MOMENT']
+
+            sma_moment = obj['SMA_MOMENT'] # [arcsec]
+            label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
+            if dataset == 'opt':
+                sma_sbthresh, label_sbthresh = get_sma_sbthresh(obj, bands)
+
+            if have_data:
+                bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
+                refg = EllipseGeometry(x0=bx, y0=by, eps=ellipse_eps,
+                                       pa=ellipse_pa, sma=sma_moment/pixscale) # sma in pixels
+                refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
+                                           refg.sma*(1. - refg.eps), refg.pa)
+
+                refap_sma_sbthresh = EllipticalAperture((refg.x0, refg.y0), sma_sbthresh/pixscale,
+                                               sma_sbthresh/pixscale*(1. - refg.eps), refg.pa)
+
+                # a little wasteful...
+                masks = unpack_maskbits_function(data[f'{dataset}_maskbits'], bands=bands,
+                                                 BITS=MASKBITS[idata])
+                masks = masks[iobj, :, :, :]
+
+                wimg = np.sum(images * np.logical_not(masks), axis=0)
+                wimg[wimg == 0.] = np.nan
+                try:
+                    norm = get_norm(wimg)
+                except:
+                    norm = None
+
+                # col 0 - images
+                xx = ax[idata, 0]
+                #xx.imshow(np.flipud(jpg), origin='lower', cmap='inferno')
+                xx.imshow(wimg, origin='lower', cmap=cmap, interpolation='none',
+                          norm=norm, alpha=1.)
+                xx.text(0.03, 0.97, label, transform=xx.transAxes,
+                        ha='left', va='top', color='white',
+                        linespacing=1.5, fontsize=10,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                xx.set_xlim(0, wimg.shape[0]-1)
+                xx.set_ylim(0, wimg.shape[0]-1)
+                xx.margins(0)
+                xx.set_xticks([])
+                xx.set_yticks([])
+
+                smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
+                for sma in smas: # sma in pixels
+                    if sma == 0.:
+                        continue
+                    ap = EllipticalAperture((refg.x0, refg.y0), sma,
+                                            sma*(1. - refg.eps), refg.pa)
+                    ap.plot(color='k', lw=1, ax=xx)
+                refap.plot(color=colors2[0], lw=2, ls='--', ax=xx)
+                refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='--', ax=xx)
+
+                # col 1 - mag SB profiles
+                if linear:
+                    yminmax = [1e8, -1e8]
+                else:
+                    yminmax = [40, 0]
+
+                xx = ax[idata, 1]
+                for filt in bands:
+                    I = ((sbprofiles_obj[f'SB_{filt.upper()}'].value > 0.) *
+                         (sbprofiles_obj[f'SB_ERR_{filt.upper()}'].value > 0.))
+                    if np.any(I):
+                        sma = sbprofiles_obj['SMA'][I].value**0.25
+                        sb = sbprofiles_obj[f'SB_{filt.upper()}'][I].value
+                        sberr = sbprofiles_obj[f'SB_ERR_{filt.upper()}'][I].value
+                        mu = 22.5 - 2.5 * np.log10(sb)
+                        muerr = 2.5 * sberr / sb / np.log(10.)
+
+                        col = sbcolors[filt]
+                        xx.plot(sma, mu-muerr, color=col, alpha=0.8)
+                        xx.plot(sma, mu+muerr, color=col, alpha=0.8)
+                        #xx.fill_between(sma, mu-muerr, mu+muerr,
+                        #                label=filt, color=col, alpha=0.7)
+                        xx.scatter(sma, mu, label=filt, color=col)
+                        if filt == 'z':
+                            xx.scatter(sma, mu+muerr, label=filt, color='k')
+                            xx.scatter(sma, mu-muerr, label=filt, color='k')
+                            pdb.set_trace()
+
+                        # robust limits
+                        mulo = (mu - muerr)[(muerr < 1.) * (mu / muerr > 8.)]
+                        muhi = (mu + muerr)[(muerr < 1.) * (mu / muerr > 8.)]
+                        #print(filt, np.min(mulo), np.max(muhi))
+                        if len(mulo) > 0:
+                            mn = np.min(mulo)
+                            if mn < yminmax[0]:
+                                yminmax[0] = mn
+                        if len(muhi) > 0:
+                            mx = np.max(muhi)
+                            if mx > yminmax[1]:
+                                yminmax[1] = mx
+                    print(filt, yminmax[0], yminmax[1])
+                    #if filt == 'r':
+                    #    pdb.set_trace()
+
+                xx.margins(x=0)
+                xx.set_xlim(ax[0, 1].get_xlim())
+
+                if idata == ndataset-1:
+                    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    xx.set_xticks([])
+
+                #xx.relim()
+                #xx.autoscale_view()
+                if linear:
+                    ylim = [yminmax[0], yminmax[1]]
+                else:
+                    ylim = [yminmax[0]-0.75, yminmax[1]+0.5]
+                    if ylim[0] < 13:
+                        ylim[0] = 13
+                    if ylim[1] > 34:
+                        ylim[1] = 34
+                #print(idata, yminmax, ylim)
+                xx.set_ylim(ylim)
+
+                xx_twin = xx.twinx()
+                xx_twin.set_ylim(ylim)
+                kill_left_y(xx)
+
+                xx.invert_yaxis()
+                xx_twin.invert_yaxis()
+
+                if idata == 1:
+                    xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
+
+                if sma_sbthresh > 0.:
+                    xx.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
+                xx.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
+
+                hndls, _ = xx.get_legend_handles_labels()
+                if hndls:
+                    if sma_sbthresh > 0.:
+                        split = -2
+                    else:
+                        split = -1
+                    if idata == 0:
+                        # split into two legends
+                        leg1 = xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
+                        xx.legend(handles=hndls[split:], loc='lower left', fontsize=8)
+                        xx.add_artist(leg1)
+                    else:
+                        xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
+            else:
+                ax[idata, 0].text(0.03, 0.97, f'{label} - No Data',
+                                  transform=ax[idata, 0].transAxes,
+                                  ha='left', va='top', color='white',
+                                  linespacing=1.5, fontsize=10,
+                                  bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+                ax[idata, 0].set_xticks([])
+                ax[idata, 0].set_yticks([])
+
+                ax[idata, 1].set_yticks([])
+                ax[idata, 1].margins(x=0)
+                ax[idata, 1].set_xlim(ax[0, 1].get_xlim())
+
+                if idata == ndataset-1:
+                    ax[idata, 1].set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+                else:
+                    ax[idata, 1].set_xticks([])
+
+
+        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
+                     f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})')
+        #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+        fig.tight_layout()
+        fig.savefig(qafile, bbox_inches='tight')
+        plt.close()
+        log.info(f'Wrote {qafile}')
 
 
 
@@ -581,6 +852,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     # Next, read the original images, models, maskbits, and
     # sbprofiles. Store the models, maskbits, and surface-brightness
     # profiles as a nested ellipse [ndataset][nsample].
+    sbprofiles = []
     for idata, dataset in enumerate(datasets):
         bands = data[f'{dataset}_bands']
         refband = data[f'{dataset}_refband']
@@ -592,7 +864,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
 
         original_images = np.stack([data[filt] for filt in data[f'{dataset}_bands']])
 
-        data[f'{dataset}_sbprofiles'] = []
+        sbprofiles_obj = []
         for iobj, sganame in enumerate(ellipse['SGANAME'].value):
             if dataset == 'opt':
                 suffix = allbands
@@ -600,11 +872,13 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                 suffix = dataset
             ellipsefile = os.path.join(galaxydir, f'{sganame.replace(" ", "_")}-ellipse-{suffix}.fits')
 
-            data[f'{dataset}_sbprofiles'].append(Table(fitsio.read(ellipsefile, ext='SBPROFILES')))
+            sbprofiles_obj.append(Table(fitsio.read(ellipsefile, ext='SBPROFILES')))
 
             maskbits[iobj, :, :] = fitsio.read(ellipsefile, ext='MASKBITS') # [nsample, ny, ny]
             models[iobj, :, :, :] = fitsio.read(ellipsefile, ext='MODELS')  # [nsample, nband, ny, ny]
             images[iobj, :, :, :] = original_images - models[iobj, :, :, :] # [nsample, nband, ny, ny]
+
+        sbprofiles.append(sbprofiles_obj)
 
         data[f'{dataset}_images'] = images
         data[f'{dataset}_models'] = models
@@ -612,10 +886,16 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
 
         data[f'{dataset}_invvar'] = np.stack([data[f'{filt}_invvar'] for filt in data[f'{dataset}_bands']])
 
-    multiband_ellipse_mask(data, sample, htmlgalaxydir, unpack_maskbits_function,
+    # surface-brightness profiles
+    ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
+                       unpack_maskbits_function, SGAMASKBITS,
+                       REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
+                       linear=False)
+
+    # ellipse mask
+    multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
                            SGAMASKBITS, barlen=barlen, barlabel=barlabel,
                            clobber=clobber)
-    pdb.set_trace()
 
     return 1
 
