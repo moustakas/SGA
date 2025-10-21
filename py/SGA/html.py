@@ -377,10 +377,148 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     log.info(f'Wrote {qafile}')
 
 
+def _get_sma_sbthresh(obj, bands):
+    val, label = 0., None
+    for thresh in [26., 25., 24.]:
+        for filt in ['R']:#bands:
+            col = f'R{thresh:.0f}_{filt}'
+            if col in obj.colnames:
+                val = obj[col]
+                label = r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
+                if val > 0.:
+                    return val, label
+    return val, label
+
+
+def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwise', 'galex'],
+                clobber=False):
+    """
+    curve of growth
+
+    """
+    import matplotlib
+    import matplotlib.pyplot as plt
+    from matplotlib.cm import get_cmap
+    from SGA.ellipse import cog_model
+    from SGA.qa import sbprofile_colors
+
+    for iobj, obj in enumerate(ellipse):
+
+        sganame = obj['SGANAME'].replace(' ', '_')
+        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-cog.png')
+        if os.path.isfile(qafile) and not clobber:
+            log.info(f'File {qafile} exists and clobber=False')
+            continue
+
+        sbcolors = sbprofile_colors()
+        cmap2a = get_cmap('Dark2')
+        cmap2b = get_cmap('Paired')
+        colors2 = [cmap2a(1), cmap2b(3)]
+
+        markers = ['s', 'o', 'v']
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        # one row per dataset
+        yminmax = [40, 0]
+        xminmax = [0., max(sbprofiles[0][iobj]['SMA'])] # optical
+        for idata, dataset in enumerate(datasets):
+
+            sbprofiles_obj = sbprofiles[idata][iobj]
+            bands = data[f'{dataset}_bands']
+
+            sma_moment = obj['SMA_MOMENT'] # [arcsec]
+            label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
+            if dataset == 'opt':
+                sma_sbthresh, label_sbthresh = _get_sma_sbthresh(obj, bands)
+
+            for filt in bands:
+                I = ((sbprofiles_obj[f'FLUX_{filt.upper()}'].value > 0.) *
+                     (sbprofiles_obj[f'FLUX_ERR_{filt.upper()}'].value > 0.))
+
+                if np.any(I):
+                    sma = sbprofiles_obj['SMA'][I].value
+                    flux = sbprofiles_obj[f'FLUX_{filt.upper()}'][I].value
+                    fluxerr = sbprofiles_obj[f'FLUX_ERR_{filt.upper()}'][I].value
+                    mag = 22.5 - 2.5 * np.log10(flux)
+                    magerr = 2.5 * fluxerr / flux / np.log(10.)
+
+                    mtot = ellipse[f'COG_MTOT_{filt.upper()}'][iobj]
+                    mtoterr = ellipse[f'COG_MTOT_ERR_{filt.upper()}'][iobj]
+                    if mtot > 0:
+                        label = f'{filt}={mtot:.3f}'+r'$\pm$'+f'{mtoterr:.3f} mag'
+                    else:
+                        label = filt
+
+                    col = sbcolors[filt]
+                    ax.errorbar(sma, mag, yerr=magerr, fmt=markers[idata], markersize=5, markeredgewidth=1,
+                                markeredgecolor='k', markerfacecolor=col, elinewidth=3,
+                                ecolor=col, capsize=4, label=label, alpha=0.7)
+
+                    # best-fitting model
+                    dmag = ellipse[f'COG_DMAG_{filt.upper()}'][iobj]
+                    lnalpha1 = ellipse[f'COG_LNALPHA1_{filt.upper()}'][iobj]
+                    lnalpha2 = ellipse[f'COG_LNALPHA2_{filt.upper()}'][iobj]
+                    if mtot > 0:
+                        smagrid = np.linspace(0., xminmax[1], 50)
+                        mfit = cog_model(smagrid, mtot, dmag, lnalpha1, lnalpha2, r0=sma_moment)
+                        ax.plot(smagrid, mfit, color=col, alpha=0.8)
+
+                    # robust limits
+                    maglo = (mag - magerr)[(magerr < 1.) * (mag / magerr > 8.)]
+                    maghi = (mag + magerr)[(magerr < 1.) * (mag / magerr > 8.)]
+                    #print(filt, np.min(maglo), np.max(maghi))
+                    if len(maglo) > 0:
+                        mn = np.min(maglo)
+                        if mn < yminmax[0]:
+                            yminmax[0] = mn
+                    if len(maghi) > 0:
+                        mx = np.max(maghi)
+                        if mx > yminmax[1]:
+                            yminmax[1] = mx
+                #print(filt, yminmax[0], yminmax[1])
+
+        ylim = [yminmax[0]-1.5, yminmax[1]+1.5]
+        #if ylim[0] < 13:
+        #    ylim[0] = 13
+        if ylim[1] > 34:
+            ylim[1] = 34
+        #print(idata, yminmax, ylim)
+        ax.set_ylim(ylim)
+        ax.invert_yaxis()
+        ax.set_xlim(xminmax)
+        ax.margins(x=0)
+
+        ax.set_xlabel('(Semi-major axis (arcsec)')
+        ax.set_ylabel('Cumulative Flux (AB mag)')
+
+        if sma_sbthresh > 0.:
+            ax.axvline(x=sma_sbthresh, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
+        ax.axvline(x=sma_moment, color=colors2[0], lw=2, ls='--', label=label_moment)
+
+        hndls, _ = ax.get_legend_handles_labels()
+        if hndls:
+            # split into two legends
+            hndls_data = [hndl for hndl in hndls if not type(hndl) is matplotlib.lines.Line2D]
+            hndls_vline = [hndl for hndl in hndls if type(hndl) is matplotlib.lines.Line2D]
+            leg1 = ax.legend(handles=hndls_data, loc='lower right', fontsize=8)
+            ax.legend(handles=hndls_vline, loc='upper left', fontsize=8)
+            ax.add_artist(leg1)
+
+        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
+                     f'{obj["OBJNAME"]} ({obj["SGANAME"]})') # ({obj[REFIDCOLUMN]})
+        #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+        fig.tight_layout()
+        fig.savefig(qafile, bbox_inches='tight')
+        plt.close()
+        log.info(f'Wrote {qafile}')
+
+
+
 def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                        unpack_maskbits_function, MASKBITS, REFIDCOLUMN,
                        datasets=['opt', 'unwise', 'galex'],
-                       linear=False):
+                       linear=False, clobber=False):
     """Surface-brightness profiles.
 
     """
@@ -400,18 +538,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
         ax.tick_params(axis='y', which='both', left=False, labelleft=False)
         ax.spines['left'].set_visible(False)  # optional
 
-    def get_sma_sbthresh(obj, bands):
-        val, label = 0., None
-        for thresh in [26., 25., 24.]:
-            for filt in ['R']:#bands:
-                col = f'R{thresh:.0f}_{filt}'
-                if col in obj.colnames:
-                    val = obj[col]
-                    label = r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
-                    if val > 0.:
-                        return val, label
-        return val, label
-
 
     nsample = len(ellipse)
     ndataset = len(datasets)
@@ -428,7 +554,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
     cmap.set_bad('white')
 
     sbcolors = sbprofile_colors()
-
     cmap2a = get_cmap('Dark2')
     cmap2b = get_cmap('Paired')
     colors2 = [cmap2a(1), cmap2b(3)]
@@ -438,6 +563,10 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
 
         sganame = obj['SGANAME'].replace(' ', '_')
         qafile = os.path.join(htmlgalaxydir, f'qa-ellipsefit-{sganame}.png')
+        if os.path.isfile(qafile) and not clobber:
+            log.info(f'File {qafile} exists and clobber=False')
+            continue
+
 
         fig, ax = plt.subplots(nrow, ncol,
                                figsize=(inches_per_panel * (1+ncol),
@@ -476,7 +605,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if dataset == 'opt':
-                sma_sbthresh, label_sbthresh = get_sma_sbthresh(obj, bands)
+                sma_sbthresh, label_sbthresh = _get_sma_sbthresh(obj, bands)
 
             if have_data:
                 bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
@@ -523,7 +652,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                                             sma*(1. - refg.eps), refg.pa)
                     ap.plot(color='k', lw=1, ax=xx)
                 refap.plot(color=colors2[0], lw=2, ls='--', ax=xx)
-                refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='--', ax=xx)
+                refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='-', ax=xx)
 
                 # col 1 - mag SB profiles
                 if linear:
@@ -542,16 +671,14 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                         mu = 22.5 - 2.5 * np.log10(sb)
                         muerr = 2.5 * sberr / sb / np.log(10.)
 
-                        col = sbcolors[filt]
-                        xx.plot(sma, mu-muerr, color=col, alpha=0.8)
-                        xx.plot(sma, mu+muerr, color=col, alpha=0.8)
-                        #xx.fill_between(sma, mu-muerr, mu+muerr,
-                        #                label=filt, color=col, alpha=0.7)
-                        xx.scatter(sma, mu, label=filt, color=col)
-                        if filt == 'z':
-                            xx.scatter(sma, mu+muerr, label=filt, color='k')
-                            xx.scatter(sma, mu-muerr, label=filt, color='k')
-                            pdb.set_trace()
+                        J = muerr < 1. # don't plot everything
+                        if np.any(J):
+                            col = sbcolors[filt]
+                            #xx.plot(sma[J], mu[J]-muerr[J], color=col, alpha=0.8)
+                            #xx.plot(sma[J], mu[J]+muerr[J], color=col, alpha=0.8)
+                            #xx.scatter(sma[J], mu[J], label=filt, color=col)
+                            xx.fill_between(sma[J], mu[J]-muerr[J], mu[J]+muerr[J],
+                                            label=filt, color=col, alpha=0.7)
 
                         # robust limits
                         mulo = (mu - muerr)[(muerr < 1.) * (mu / muerr > 8.)]
@@ -565,9 +692,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                             mx = np.max(muhi)
                             if mx > yminmax[1]:
                                 yminmax[1] = mx
-                    print(filt, yminmax[0], yminmax[1])
-                    #if filt == 'r':
-                    #    pdb.set_trace()
+                    #print(filt, yminmax[0], yminmax[1])
 
                 xx.margins(x=0)
                 xx.set_xlim(ax[0, 1].get_xlim())
@@ -637,7 +762,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
 
 
         fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
-                     f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})')
+                     f'{obj["OBJNAME"]} ({obj["SGANAME"]})') # ({obj[REFIDCOLUMN]})
         #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
         fig.tight_layout()
         fig.savefig(qafile, bbox_inches='tight')
@@ -885,6 +1010,12 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         data[f'{dataset}_maskbits'] = maskbits
 
         data[f'{dataset}_invvar'] = np.stack([data[f'{filt}_invvar'] for filt in data[f'{dataset}_bands']])
+
+    # photometry - curve of growth and SED
+    ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir,
+                datasets=['opt', 'unwise', 'galex'],
+                clobber=clobber)
+    return
 
     # surface-brightness profiles
     ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
