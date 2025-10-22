@@ -441,7 +441,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     if True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
-        log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
+        log.warning(f'Temporarily removing {np.sum(I):,d} LVD-RESOLVED sources!')
+        sample = sample[I]
+        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
+    if True:
+        from SGA.ellipse import ELLIPSEMODE
+        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
+        log.warning(f'Temporarily restricting to {np.sum(~I):,d} sources with FIXGEO!')
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
@@ -491,8 +498,16 @@ def SGA_diameter(ellipse, radius_arcsec=False):
     radius_arcsec - do not convert to diameter in arcmin
 
     """
+    from SGA.ellipse import ELLIPSEMODE
+
     radius = np.zeros(len(ellipse))
     ref = np.zeros(len(ellipse), '<U6')
+
+    # if FIXGEO, use SMA_INIT
+    I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
+    if np.any(I):
+        radius[I] = ellipse['SMA_INIT'][I].value
+        ref[I] = 'R(init)'
 
     # r-band R(26)
     I =  (radius == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)

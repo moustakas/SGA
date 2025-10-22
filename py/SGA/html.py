@@ -108,7 +108,7 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
         os.makedirs(htmlgalaxydir, exist_ok=True)
 
     #qafile = os.path.join('ioannis/tmp2/junk.png')
-    qafile = os.path.join(htmlgalaxydir, f'qa-multiband-montage-{data["galaxy"]}.png')
+    qafile = os.path.join(htmlgalaxydir, f'qa-{data["galaxy"]}-montage.png')
     if os.path.isfile(qafile) and not clobber:
         log.info(f'File {qafile} exists and clobber=False')
         return
@@ -182,7 +182,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     if not os.path.isdir(htmlgalaxydir):
         os.makedirs(htmlgalaxydir, exist_ok=True)
 
-    qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
+    qafile = os.path.join(htmlgalaxydir, f'qa-{data["galaxy"]}-ellipsemask.png')
     if os.path.isfile(qafile) and not clobber:
         log.info(f'File {qafile} exists and clobber=False')
         return
@@ -493,7 +493,7 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 
 
         # make the plot
-        fig, ax = plt.subplots(figsize=(9, 7))
+        fig, ax = plt.subplots(figsize=(8, 6))
 
         # get the plot limits
         good = np.where(phot['mag_tot']['abmag'] > 0)[0]
@@ -570,8 +570,11 @@ def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwi
     import matplotlib
     import matplotlib.pyplot as plt
     from matplotlib.cm import get_cmap
+
+    from SGA.SGA import SGA_diameter
     from SGA.ellipse import cog_model
     from SGA.qa import sbprofile_colors
+
 
     for iobj, obj in enumerate(ellipse):
 
@@ -588,7 +591,7 @@ def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwi
 
         markers = ['s', 'o', 'v']
 
-        fig, ax = plt.subplots(figsize=(9, 7))
+        fig, ax = plt.subplots(figsize=(8, 6))
 
         # one row per dataset
         yminmax = [40, 0]
@@ -601,7 +604,9 @@ def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwi
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if dataset == 'opt':
-                sma_sbthresh, label_sbthresh = _get_sma_sbthresh(obj, bands)
+                sma_sbthresh, label_sbthresh = SGA_diameter(Table(obj), radius_arcsec=True)
+                sma_sbthresh = sma_sbthresh[0]
+                label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
 
             for filt in bands:
                 I = ((sbprofiles_obj[f'FLUX_{filt.upper()}'].value > 0.) *
@@ -700,6 +705,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
     from photutils.aperture import EllipticalAperture
 
     from SGA.sky import map_bxby
+    from SGA.SGA import SGA_diameter
     from SGA.qa import overplot_ellipse, get_norm, sbprofile_colors
 
 
@@ -733,7 +739,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
     for iobj, obj in enumerate(ellipse):
 
         sganame = obj['SGANAME'].replace(' ', '_')
-        qafile = os.path.join(htmlgalaxydir, f'qa-ellipsefit-{sganame}.png')
+        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-sbprofiles.png')
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
@@ -775,8 +781,11 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
 
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
-            if dataset == 'opt':
-                sma_sbthresh, label_sbthresh = _get_sma_sbthresh(obj, bands)
+            if idata == 0:
+                sma_sbthresh, label_sbthresh = SGA_diameter(Table(obj), radius_arcsec=True)
+                sma_sbthresh = sma_sbthresh[0]
+                label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
+                #r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
 
             if have_data:
                 bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
@@ -941,133 +950,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
         log.info(f'Wrote {qafile}')
 
 
-
-def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z'],
-                    refband='r', pixscale=0.262, read_multiband=None,
-                    qa_multiwavelength_sed=None, SBTHRESH=None,
-                    linear=False, plot_colors=True,
-                    galaxy_id=None, barlen=None, barlabel=None, clobber=False, verbose=False,
-                    cosmo=None, galex=False, unwise=False, scaledfont=False):
-    """Generate QAplots from the ellipse-fitting.
-
-    """
-    import fitsio
-    from PIL import Image
-    from SGA.qa import (display_multiband, display_ellipsefit,
-                        display_ellipse_sbprofile, qa_curveofgrowth,
-                        qa_maskbits)
-    if qa_multiwavelength_sed is None:
-        from SGA.qa import qa_multiwavelength_sed
-
-    Image.MAX_IMAGE_PIXELS = None
-
-    # Read the data.
-    if read_multiband is None:
-        print('Unable to build ellipse QA without specifying read_multiband method.')
-        return
-
-    data, galaxyinfo = read_multiband(galaxy, galaxydir, galaxy_id=galaxy_id, bands=bands,
-                                      refband=refband, pixscale=pixscale,
-                                      verbose=verbose, galex=galex, unwise=unwise)
-
-    if not bool(data) or data['missingdata']:
-        return
-
-    if data['failed']: # all galaxies dropped
-        return
-
-    # optionally read the Tractor catalog
-    tractor = None
-    if galex or unwise:
-        tractorfile = os.path.join(galaxydir, '{}-{}-tractor.fits'.format(galaxy, data['filesuffix']))
-        if os.path.isfile(tractorfile):
-            tractor = Table(fitsio.read(tractorfile, lower=True))
-
-    ellipsefitall = []
-    for igal, galid in enumerate(data['galaxy_id']):
-        galid = str(galid)
-        ellipsefit = SGA.io.read_ellipsefit(galaxy, galaxydir, filesuffix=data['filesuffix'],
-                                            galaxy_id=galid, verbose=verbose)
-        if bool(ellipsefit):
-            ellipsefitall.append(ellipsefit)
-
-            if galid.strip() != '':
-                galid = '{}-'.format(galid)
-
-            if galex or unwise:
-                sedfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}sed.png'.format(galaxy, data['filesuffix'], galid))
-                if not os.path.isfile(sedfile) or clobber:
-                    _tractor = None
-                    if tractor is not None:
-                        _tractor = tractor[(tractor['ref_cat'] != '  ')*np.isin(tractor['ref_id'], data['galaxy_id'][igal])] # fragile...
-                    qa_multiwavelength_sed(ellipsefit, tractor=_tractor, png=sedfile, verbose=verbose)
-
-            sbprofilefile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}sbprofile.png'.format(galaxy, data['filesuffix'], galid))
-            if not os.path.isfile(sbprofilefile) or clobber:
-                display_ellipse_sbprofile(ellipsefit, plot_radius=False, plot_sbradii=False,
-                                          png=sbprofilefile, verbose=verbose, minerr=0.0,
-                                          cosmo=cosmo, linear=linear, plot_colors=plot_colors)
-
-            cogfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}cog.png'.format(galaxy, data['filesuffix'], galid))
-            if not os.path.isfile(cogfile) or clobber:
-                qa_curveofgrowth(ellipsefit, pipeline_ellipsefit={}, plot_sbradii=False,
-                                 png=cogfile, verbose=verbose, cosmo=cosmo)
-
-            if unwise:
-                multibandfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}multiband-W1W2.png'.format(galaxy, data['filesuffix'], galid))
-                thumbfile = os.path.join(htmlgalaxydir, 'thumb-{}-{}-ellipse-{}multiband-W1W2.png'.format(galaxy, data['filesuffix'], galid))
-                if not os.path.isfile(multibandfile) or clobber:
-                    with Image.open(os.path.join(galaxydir, '{}-{}-image-W1W2.jpg'.format(galaxy, data['filesuffix']))) as colorimg:
-                        display_multiband(data, ellipsefit=ellipsefit, colorimg=colorimg,
-                                          igal=igal, barlen=barlen, barlabel=barlabel,
-                                          png=multibandfile, verbose=verbose, scaledfont=scaledfont,
-                                          SBTHRESH=SBTHRESH,
-                                          galex=False, unwise=True)
-                    # Create a thumbnail.
-                    cmd = 'convert -thumbnail 1024x1024 {} {}'.format(multibandfile, thumbfile)#.replace('>', '\>')
-                    if os.path.isfile(thumbfile):
-                        os.remove(thumbfile)
-                    print('Writing {}'.format(thumbfile))
-                    subprocess.call(cmd.split())
-
-            if galex:
-                multibandfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}multiband-FUVNUV.png'.format(galaxy, data['filesuffix'], galid))
-                thumbfile = os.path.join(htmlgalaxydir, 'thumb-{}-{}-ellipse-{}multiband-FUVNUV.png'.format(galaxy, data['filesuffix'], galid))
-                if not os.path.isfile(multibandfile) or clobber:
-                    with Image.open(os.path.join(galaxydir, '{}-{}-image-FUVNUV.jpg'.format(galaxy, data['filesuffix']))) as colorimg:
-                        display_multiband(data, ellipsefit=ellipsefit, colorimg=colorimg,
-                                          igal=igal, barlen=barlen, barlabel=barlabel,
-                                          png=multibandfile, verbose=verbose, scaledfont=scaledfont,
-                                          SBTHRESH=SBTHRESH,
-                                          galex=True, unwise=False)
-                    # Create a thumbnail.
-                    cmd = 'convert -thumbnail 1024x1024 {} {}'.format(multibandfile, thumbfile)#.replace('>', '\>')
-                    if os.path.isfile(thumbfile):
-                        os.remove(thumbfile)
-                    print('Writing {}'.format(thumbfile))
-                    subprocess.call(cmd.split())
-
-            multibandfile = os.path.join(htmlgalaxydir, '{}-{}-ellipse-{}multiband.png'.format(galaxy, data['filesuffix'], galid))
-            thumbfile = os.path.join(htmlgalaxydir, 'thumb-{}-{}-ellipse-{}multiband.png'.format(galaxy, data['filesuffix'], galid))
-            if not os.path.isfile(multibandfile) or clobber:
-                with Image.open(os.path.join(galaxydir, '{}-{}-image-grz.jpg'.format(galaxy, data['filesuffix']))) as colorimg:
-                    display_multiband(data, ellipsefit=ellipsefit, colorimg=colorimg, bands=bands,
-                                      igal=igal, barlen=barlen, barlabel=barlabel,
-                                      SBTHRESH=SBTHRESH,
-                                      png=multibandfile, verbose=verbose, scaledfont=scaledfont)
-
-                # Create a thumbnail.
-                cmd = 'convert -thumbnail 1024x1024 {} {}'.format(multibandfile, thumbfile)#.replace('>', '\>')
-                if os.path.isfile(thumbfile):
-                    os.remove(thumbfile)
-                print('Writing {}'.format(thumbfile))
-                subprocess.call(cmd.split())
-
-            ## hack!
-            #print('HACK!!!')
-            #continue
-
-
 def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_function,
                unpack_maskbits_function, SGAMASKBITS, APERTURES, run='south', mp=1,
                bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
@@ -1185,7 +1067,6 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     # photometry - curve of growth and SED
     ellipse_sed(data, ellipse, htmlgalaxydir, run=run, apertures=APERTURES,
                 clobber=clobber)
-    return
 
     ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir,
                 datasets=['opt', 'unwise', 'galex'],
@@ -1195,7 +1076,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                        unpack_maskbits_function, SGAMASKBITS,
                        REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
-                       linear=False)
+                       linear=False, clobber=clobber)
 
     # ellipse mask
     multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
