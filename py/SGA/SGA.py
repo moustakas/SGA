@@ -316,7 +316,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         todo_indices, loads = distribute_work(sample[DIAMCOL].value, itodo=itodo,
                                               size=size, p=2.0, verbose=True)
     else:
-        todo_indices = [np.array([])]
+        todo_indices = []
 
     return suffix, todo_indices, done_indices, fail_indices
 
@@ -438,7 +438,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
+    if True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
         log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
