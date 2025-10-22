@@ -11,6 +11,7 @@ import os, subprocess
 import numpy as np
 from astropy.table import Table, vstack, join
 
+from SGA.ellipse import REF_APERTURES
 from SGA.SGA import RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
 from SGA.logger import log
 
@@ -390,6 +391,176 @@ def _get_sma_sbthresh(obj, bands):
     return val, label
 
 
+def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
+                apertures=REF_APERTURES, clobber=False):
+    """
+    spectral energy distribution
+
+    """
+    from copy import deepcopy
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    from matplotlib.cm import get_cmap
+    import seaborn as sns
+
+    from SGA.util import filter_effwaves
+
+
+    colors1 = sns.color_palette('Set1', n_colors=14, desat=0.75)
+
+    marker_mtot = 's'
+    marker_tractor = 'o'
+    color_mtot = colors1[3]
+    color_tractor = colors1[1]
+
+    markers_ap = ['v', '^', 'p', 'P', '*']
+    colors_ap = sns.color_palette('Set2', n_colors=5)#, desat=0.75)
+
+    weff = filter_effwaves(run=run)
+    bands = data['all_data_bands']
+    nband = len(bands)
+
+    # build the arrays
+    bandwave = np.array([weff[filt] for filt in bands])
+    tphot = {'abmag': np.zeros(nband, 'f4') - 1,
+             'abmagerr': np.zeros(nband, 'f4') + 0.5,
+             'lower': np.zeros(nband, bool)}
+    phot = {'mag_tot': deepcopy(tphot), 'tractor': deepcopy(tphot)}
+
+    for iap in range(len(apertures)):
+        phot.update({f'mag_ap{iap:02}': deepcopy(tphot)})
+
+
+    def _addphot(thisphot, color, marker, alpha, label):
+        good = np.where((thisphot['abmag'] > 0.) * thisphot['lower'])[0]
+        if len(good) > 0:
+            ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
+                        marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
+                        lolims=True, linestyle='none', alpha=alpha)#, lolims=True)
+        good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == False))[0]
+        if len(good) > 0:
+            ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
+                        marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
+                        label=label, linestyle='none', alpha=alpha)
+
+
+    # see also Morrisey+05
+    for iobj, obj in enumerate(ellipse):
+
+        sganame = obj['SGANAME'].replace(' ', '_')
+        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-sed.png')
+        if os.path.isfile(qafile) and not clobber:
+            log.info(f'File {qafile} exists and clobber=False')
+            continue
+
+
+        for ifilt, filt in enumerate(bands):
+            mtot = ellipse[f'COG_MTOT_{filt.upper()}'][iobj]
+            mtoterr = ellipse[f'COG_MTOT_ERR_{filt.upper()}'][iobj]
+            if mtot > 0:
+                phot['mag_tot']['abmag'][ifilt] = mtot
+                phot['mag_tot']['abmagerr'][ifilt] = mtoterr
+                phot['mag_tot']['lower'][ifilt] = False
+
+            for iap in range(len(apertures)):
+                flux = ellipse[f'FLUX_AP{iap:02}_{filt.upper()}'][iobj]
+                ferr = ellipse[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'][iobj]
+
+                if flux > 0. and ferr > 0.:
+                    mag = 22.5 - 2.5 * np.log10(flux)
+                    magerr = 2.5 * ferr / flux / np.log(10.)
+                    phot[f'mag_ap{iap:02}']['abmag'][ifilt] = mag
+                    phot[f'mag_ap{iap:02}']['abmagerr'][ifilt] = magerr
+                    phot[f'mag_ap{iap:02}']['lower'][ifilt] = False
+                if flux <=0 and ferr > 0.:
+                    mag = 22.5 - 2.5 * np.log10(ferr)
+                    phot[f'mag_ap{iap:02}']['abmag'][ifilt] = mag
+                    phot[f'mag_ap{iap:02}']['abmagerr'][ifilt] = 0.75
+                    phot[f'mag_ap{iap:02}']['lower'][ifilt] = True
+
+                if tractor is not None:
+                    flux = tractor['flux_{}'.format(filt.lower())]
+                    ivar = tractor['flux_ivar_{}'.format(filt.lower())]
+                    if flux > 0 and ivar > 0:
+                        phot['tractor']['abmag'][ifilt] = 22.5 - 2.5 * np.log10(flux)
+                        phot['tractor']['abmagerr'][ifilt] = 0.1
+                    if flux <= 0 and ivar > 0:
+                        phot['tractor']['abmag'][ifilt] = 22.5 - 2.5 * np.log10(1/np.sqrt(ivar))
+                        phot['tractor']['abmagerr'][ifilt] = 0.75
+                        phot['tractor']['lower'][ifilt] = True
+
+
+        # make the plot
+        fig, ax = plt.subplots(figsize=(9, 7))
+
+        # get the plot limits
+        good = np.where(phot['mag_tot']['abmag'] > 0)[0]
+        ymax = np.min(phot['mag_tot']['abmag'][good])
+        ymin = np.max(phot['mag_tot']['abmag'][good])
+
+        if tractor is not None:
+            good = np.where(phot['tractor']['abmag'] > 0)[0]
+            if np.min(phot['tractor']['abmag'][good]) < ymax:
+                ymax = np.min(phot['tractor']['abmag'][good])
+            if np.max(phot['tractor']['abmag']) > ymin:
+                ymin = np.max(phot['tractor']['abmag'][good])
+
+        for iap in range(len(apertures)):
+            good = np.where(phot[f'mag_ap{iap:02}']['abmag'] > 0)[0]
+            if np.min(phot[f'mag_ap{iap:02}']['abmag'][good]) < ymax:
+                ymax = np.min(phot[f'mag_ap{iap:02}']['abmag'][good])
+            if np.max(phot[f'mag_ap{iap:02}']['abmag']) > ymin:
+                ymin = np.max(phot[f'mag_ap{iap:02}']['abmag'][good])
+
+
+        ymin += 2.
+        ymax -= 1.5
+
+        wavemin, wavemax = 0.1, 30
+
+        # have to set the limits before plotting since the axes are reversed
+        if np.abs(ymax-ymin) > 15:
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(5))
+        ax.set_ylim(ymin, ymax)
+
+        _addphot(phot['mag_tot'], color=color_mtot, marker=marker_mtot, alpha=1.0,
+                 label=r'$m_{\mathrm{tot}}$')
+        if tractor is not None:
+            _addphot(phot['tractor'], color=color_tractor, marker=marker_tractor, alpha=0.75,
+                     label='Tractor')
+        for iap in range(len(apertures)):
+            _addphot(phot[f'mag_ap{iap:02}'], color=colors_ap[iap], marker=markers_ap[iap],
+                     alpha=0.9, label=r'$m(<R_{'+f'AP{iap:02}'+r'})$')
+
+        ax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)', fontsize=14)
+        ax.set_ylabel(r'Apparent Brightness (AB mag)', fontsize=14)
+        ax.tick_params(axis='both', labelsize=14)
+        ax.set_xlim(wavemin, wavemax)
+        ax.set_xscale('log')
+        ax.legend(loc='lower right', frameon=True, ncol=2)
+
+
+        def _frmt(value, _):
+            if value < 1:
+                return '{:.1f}'.format(value)
+            else:
+                return '{:.0f}'.format(value)
+
+        #ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_xticks([0.1, 0.2, 0.4, 1.0, 3.0, 5.0, 10, 20])
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(_frmt))
+
+        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
+                     f'{obj["OBJNAME"]} ({obj["SGANAME"]})') # ({obj[REFIDCOLUMN]})
+        fig.tight_layout()
+        fig.savefig(qafile, bbox_inches='tight')
+        plt.close()
+        log.info(f'Wrote {qafile}')
+
+
+
 def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwise', 'galex'],
                 clobber=False):
     """
@@ -417,7 +588,7 @@ def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwi
 
         markers = ['s', 'o', 'v']
 
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots(figsize=(9, 7))
 
         # one row per dataset
         yminmax = [40, 0]
@@ -898,7 +1069,7 @@ def make_ellipse_qa(galaxy, galaxydir, htmlgalaxydir, bands=['g', 'r', 'i', 'z']
 
 
 def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_function,
-               unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
+               unpack_maskbits_function, SGAMASKBITS, APERTURES, run='south', mp=1,
                bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                unwise_pixscale=2.75, galex=True, unwise=True,
                barlen=None, barlabel=None, verbose=False, clobber=False):
@@ -1012,10 +1183,13 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         data[f'{dataset}_invvar'] = np.stack([data[f'{filt}_invvar'] for filt in data[f'{dataset}_bands']])
 
     # photometry - curve of growth and SED
+    ellipse_sed(data, ellipse, htmlgalaxydir, run=run, apertures=APERTURES,
+                clobber=clobber)
+    return
+
     ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir,
                 datasets=['opt', 'unwise', 'galex'],
                 clobber=clobber)
-    return
 
     # surface-brightness profiles
     ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,

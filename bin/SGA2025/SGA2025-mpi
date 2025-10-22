@@ -246,6 +246,14 @@ def main():
             no_groups=no_groups, clobber=args.clobber,
             verbose=args.verbose, datadir=datadir, htmldir=htmldir,
             size=size, mp=args.mp)
+
+        if args.diameter_file:
+            todo = np.hstack(groups)
+            with open(args.diameter_file, 'w') as F:
+                for diam in sample[DIAMCOLUMN][todo].value:
+                    F.write(f'{diam}\n')
+            log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+            return
     else:
         groups, suffix = [], ''
 
@@ -458,7 +466,7 @@ def main():
                 onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True)
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
-                             unpack_maskbits, SGAMASKBITS,
+                             unpack_maskbits, SGAMASKBITS, APERTURES,
                              #radius_mosaic_arcsec=radius_mosaic_arcsec,
                              barlen=barlen, barlabel=barlabel, run=run,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,

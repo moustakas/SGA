@@ -26,6 +26,35 @@ def get_dt(t0):
     return dt, unit
 
 
+def filter_effwaves(run='south'):
+    """Return the effective wavelengths of the standard LS filters.
+
+    """
+    weff = {
+        'FUV': 1528.0,
+        'NUV': 2271.0,
+        'W1': 34002.54044482,
+        'W2': 46520.07577119,
+        'W3': 128103.3789599,
+        'W4': 223752.7751558,
+        'i': 7847.78249813, # no i-band in the north
+    }
+    if run == 'south':
+        weff.update({
+            'g': 4890.03670428,
+            'r': 6469.62203811,
+            'z': 9196.46396394,
+        })
+    elif run == 'north':
+        weff.update({
+            'g': 4815.95363513,
+            'r': 6437.79282937,
+            'z': 9229.65786449,
+        })
+
+    return weff
+
+
 def mwdust_transmission(ebv=0., band='r', run='south'):
     """Convert SFD E(B-V) value to dust transmission 0-1 given the
     bandpass.
