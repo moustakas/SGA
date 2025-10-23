@@ -10,10 +10,10 @@ SGA2025-mpi --build-refcat
 # (1) nice isolated spiral; (2) second isolated spiral; (3) 2-member
 # group; (4) giant and dwarf group;
 
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="WISEA J125450.10+261929.6"
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="KUG 1247+260"
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="III Zw 040 NOTES02"
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="UGC 05688"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="WISEA J125450.10+261929.6"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="KUG 1247+260"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="III Zw 040 NOTES02"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="UGC 05688"
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
 

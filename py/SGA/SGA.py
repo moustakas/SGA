@@ -445,7 +445,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    if True:
+    if False:#True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
         log.warning(f'Temporarily restricting to {np.sum(~I):,d} sources with FIXGEO!')
@@ -1679,10 +1679,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             geo_init = get_geometry(opt_pixscale, table=obj)
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
-        print(iobj, bx, by, sma, ba, pa)
-
-        #print('HACK!')
-        #obj['ELLIPSEMODE'] += 2**0
+        #print(iobj, bx, by, sma, ba, pa)
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
@@ -1794,7 +1791,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            print(iobj, iiter, bx, by, sma, ba, pa)
+            #print(iobj, iiter, bx, by, sma, ba, pa)
 
         # set the largeshift bits
         ra_final, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
@@ -2143,10 +2140,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                       index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 
-    #print('HACK!!!!!!!!')
-    #sample['SMA_INIT'] = 179.8639
-    #sample['DIAM_INIT'] = 179.8639*2./60.
-
     # populate (BX,BY)_INIT by quickly building the WCS
     wcs = Tan(filt2imfile[opt_refband]['image'], 1)
     (_, x0, y0) = wcs.radec2pixelxy(sample['RA_INIT'].value, sample['DEC_INIT'].value)
@@ -2246,9 +2239,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     # Read the basic imaging data and masks and build the multiband
     # masks.
-    #print('HACK!!')
-    #niter = 1
-
     data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
 
     if build_mask:

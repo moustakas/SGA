@@ -481,15 +481,20 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
                     phot[f'mag_ap{iap:02}']['lower'][ifilt] = True
 
                 if tractor is not None:
-                    flux = tractor['flux_{}'.format(filt.lower())]
-                    ivar = tractor['flux_ivar_{}'.format(filt.lower())]
-                    if flux > 0 and ivar > 0:
-                        phot['tractor']['abmag'][ifilt] = 22.5 - 2.5 * np.log10(flux)
-                        phot['tractor']['abmagerr'][ifilt] = 0.1
-                    if flux <= 0 and ivar > 0:
-                        phot['tractor']['abmag'][ifilt] = 22.5 - 2.5 * np.log10(1/np.sqrt(ivar))
-                        phot['tractor']['abmagerr'][ifilt] = 0.75
-                        phot['tractor']['lower'][ifilt] = True
+                    if tractor[iobj] is not None:
+                        flux = getattr(tractor[iobj][0], f'flux_{filt.lower()}')
+                        ivar = getattr(tractor[iobj][0], f'flux_ivar_{filt.lower()}')
+                        if flux > 0. and ivar > 0.:
+                            ferr = 1. / np.sqrt(ivar)
+                            magerr = 2.5 * ferr / flux / np.log(10.)
+                            phot['tractor']['abmag'][ifilt] = 22.5 - 2.5 * np.log10(flux)
+                            phot['tractor']['abmagerr'][ifilt] = magerr
+                        if flux <= 0. and ivar > 0.:
+                            ferr = 1. / np.sqrt(ivar)
+                            mag = 22.5 - 2.5 * np.log10(ferr)
+                            phot['tractor']['abmag'][ifilt] = mag
+                            phot['tractor']['abmagerr'][ifilt] = 0.75
+                            phot['tractor']['lower'][ifilt] = True
 
 
         # make the plot
@@ -1065,8 +1070,9 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         data[f'{dataset}_invvar'] = np.stack([data[f'{filt}_invvar'] for filt in data[f'{dataset}_bands']])
 
     # photometry - curve of growth and SED
-    ellipse_sed(data, ellipse, htmlgalaxydir, run=run, apertures=APERTURES,
-                clobber=clobber)
+    ellipse_sed(data, ellipse, htmlgalaxydir, run=run, tractor=samplesrcs,
+                apertures=APERTURES, clobber=clobber)
+    pdb.set_trace()
 
     ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir,
                 datasets=['opt', 'unwise', 'galex'],
