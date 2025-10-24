@@ -441,14 +441,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     if True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
-        log.warning(f'Temporarily removing {np.sum(I):,d} LVD-RESOLVED sources!')
+        log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
     if False:#True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
-        log.warning(f'Temporarily restricting to {np.sum(~I):,d} sources with FIXGEO!')
+        log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 

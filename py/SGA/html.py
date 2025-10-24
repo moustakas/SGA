@@ -1072,7 +1072,6 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     # photometry - curve of growth and SED
     ellipse_sed(data, ellipse, htmlgalaxydir, run=run, tractor=samplesrcs,
                 apertures=APERTURES, clobber=clobber)
-    pdb.set_trace()
 
     ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir,
                 datasets=['opt', 'unwise', 'galex'],
