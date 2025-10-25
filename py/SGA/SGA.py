@@ -1498,7 +1498,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         """
         if table is not None:
             bx, by = table['BX_INIT'], table['BY_INIT']
-            sma = table['SMA_INIT'] / pixscale # [pixels]
+            if table['SMA_MASK'] > 0.:
+                sma = table['SMA_MASK'] / pixscale # [pixels]
+            else:
+                sma = table['SMA_INIT'] / pixscale # [pixels]
             ba = table['BA_INIT']
             pa = table['PA_INIT']
         elif tractor is not None:
