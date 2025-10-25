@@ -1425,7 +1425,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, galex=True, unwise=True,
                          sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         nmonte=100, seed=42, verbose=False, nowrite=False,
+                         nmonte=75, seed=42, verbose=False, nowrite=False,
                          clobber=False, qaplot=False, htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
@@ -1466,7 +1466,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     results, sbprofiles = wrap_multifit(
         data, sample, ['opt'], unpack_maskbits_function,
         sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
-        nmonte=nmonte, seed=seed, debug=False)
+        nmonte=3, seed=seed, debug=False)
 
     GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
     input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
@@ -1488,12 +1488,11 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                     tab[colerr] = results[0][iobj][colerr]
             radius, _ = SGA_diameter(tab, radius_arcsec=True)
             input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
-            #pdb.set_trace()
 
     data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                         input_geo_initial=input_geo_initial,
-                                        qaplot=qaplot, niter_geometry=1,
-                                        htmlgalaxydir=htmlgalaxydir)
+                                        galmask_margin=0., niter_geometry=1,
+                                        qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
 
     # ellipse-fit over objects and then datasets
     results, sbprofiles = wrap_multifit(

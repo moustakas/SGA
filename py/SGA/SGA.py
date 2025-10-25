@@ -604,6 +604,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('DEC', np.float64, u.degree),
         ('BX', np.float32, u.pixel),
         ('BY', np.float32, u.pixel),
+        ('SMA_MASK', np.float32, u.arcsec),
         ('SMA_MOMENT', np.float32, u.arcsec),
         ('BA_MOMENT', np.float32, None),
         ('PA_MOMENT', np.float32, u.degree),
@@ -1686,7 +1687,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             geo_init = get_geometry(opt_pixscale, table=obj)
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
-        print('Initial', iobj, bx, by, sma, ba, pa)
+        #print('Initial', iobj, bx, by, sma, ba, pa)
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
@@ -1697,7 +1698,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
-            print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
+            #print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,
@@ -1745,7 +1746,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Hack! If there are other reference sources, double the
             # opt_refmask inellipse veto mask so that the derived
             # geometry can grow, if necessary.
-            print('Check this double on input or not?')
+            print('@################# Check this double on input or not?')
             if iobj > 0:
                 if input_geo_initial is not None:
                     inellipse2 = in_ellipse_mask(bx, width-by, sma, sma*ba,
@@ -1820,7 +1821,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
+            #print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
 
         # set the largeshift bits
         if dshift_arcsec > maxshift_arcsec:
@@ -1974,8 +1975,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # final geometry
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
     for icol, col in enumerate(['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
-        sample[col] = geo_final[:, icol].astype('f4')
-    sample['SMA_MOMENT'] *= opt_pixscale # [pixels-->arcsec]
+        if 'SMA' in col:
+            if input_geo_initial is None:
+                sample[col] = geo_final[:, icol].astype('f4')
+                sample['SMA_MOMENT'] *= opt_pixscale # [pixels-->arcsec]
+                sample['SMA_MASK'] = sample['SMA_MOMENT'] * (1.+galmask_margin) # [arcsec]
+            else:
+                sample['SMA_MASK'] = np.float32(geo_final[:, icol] * (1.+galmask_margin) * opt_pixscale) # [arcsec]
+        else:
+            sample[col] = geo_final[:, icol].astype('f4')
 
     sample['RA'] = ra
     sample['DEC'] = dec
@@ -1988,7 +1996,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # optionally build a QA figure
     if qaplot:
-        #sample['BY_INIT'] += 30.
         qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
 
     # clean-up
@@ -2184,6 +2191,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     sample['DEC'] = np.zeros(len(sample), 'f8')
     sample['BX'] = np.zeros(len(sample), 'f4')
     sample['BY'] = np.zeros(len(sample), 'f4')
+    sample['SMA_MASK'] = np.zeros(len(sample), 'f4') # [arcsec]
     sample['SMA_MOMENT'] = np.zeros(len(sample), 'f4') # [arcsec]
     sample['BA_MOMENT'] = np.zeros(len(sample), 'f4')
     sample['PA_MOMENT'] = np.zeros(len(sample), 'f4')
