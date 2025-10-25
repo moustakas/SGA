@@ -1749,7 +1749,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Hack! If there are other reference sources, double the
             # opt_refmask inellipse veto mask so that the derived
             # geometry can grow, if necessary.
-            print('@################# Check this double on input or not?')
+            #print('@################# Check this double on input or not?')
             if iobj > 0:
                 if input_geo_initial is not None:
                     inellipse2 = in_ellipse_mask(bx, width-by, sma, sma*ba,
