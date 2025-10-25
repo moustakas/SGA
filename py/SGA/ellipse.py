@@ -494,19 +494,31 @@ def isophotal_radius_mc(
     upper_limit = (mu_iso < mu_env_nom[0])    # target brighter than innermost measured
 
     # Monte Carlo draws
-    samples = []
-    for _ in range(int(nmonte)):
-        draw = mu + rng.normal(0.0, mu_err)
-        if sky_sigma and sky_sigma > 0:
-            draw = draw + rng.normal(0.0, sky_sigma)  # shared offset per draw
+    if nmonte > 0:
+        samples = []
+        for _ in range(int(nmonte)):
+            draw = mu + rng.normal(0.0, mu_err)
+            if sky_sigma and sky_sigma > 0:
+                draw = draw + rng.normal(0.0, sky_sigma)  # shared offset per draw
 
-        a_iso = _outer_isophotal_radius(a, draw, mu_iso, smooth_win=smooth_win)
+            a_iso = _outer_isophotal_radius(a, draw, mu_iso, smooth_win=smooth_win)
+            if np.isfinite(a_iso):
+                samples.append(a_iso)
+
+        samples = np.array(samples, float)
+        n_success = int(np.isfinite(samples).sum())
+        success_rate = n_success / float(nmonte)
+    else:
+        samples = None
+        a_iso = _outer_isophotal_radius(a, mu, mu_iso, smooth_win=smooth_win)
         if np.isfinite(a_iso):
-            samples.append(a_iso)
-
-    samples = np.array(samples, float)
-    n_success = int(np.isfinite(samples).sum())
-    success_rate = n_success / float(nmonte)
+            med = a_iso
+            sig, lo, hi = 0., 0., 0. # no uncertainty??
+            n_success = 1
+            success_rate = 1.
+        else:
+            n_success = 0
+            success_rate = 0.
 
     out = dict(
         nmonte=int(nmonte),
@@ -523,10 +535,11 @@ def isophotal_radius_mc(
             out["samples"] = samples
         return out
 
-    med = np.nanmedian(samples)
-    lo, hi = np.nanpercentile(samples, [25., 75.])
-    #lo, hi = np.nanpercentile(samples, [16, 84])
-    sig = (hi - lo) / 1.349 # robust sigma
+    if nmonte > 0:
+        med = np.nanmedian(samples)
+        lo, hi = np.nanpercentile(samples, [25., 75.])
+        #lo, hi = np.nanpercentile(samples, [16, 84])
+        sig = (hi - lo) / 1.349 # robust sigma
 
     out.update(a_iso=float(med), a_iso_err=float(sig),
                a_lo=float(lo), a_hi=float(hi))
@@ -869,11 +882,13 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                         if res['lower_limit']:
                             log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
                         else:
-                            log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
-                                      f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
                             if np.isfinite(res['a_iso']) and np.isfinite(res['a_iso_err']):
+                                log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                          f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
                                 results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
                                 results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
+                            else:
+                                log.debug(f"{filt}: R{thresh:.0f} could not be measured.")
 
         if debug:
             I = apflux > 0.
@@ -1466,7 +1481,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     results, sbprofiles = wrap_multifit(
         data, sample, ['opt'], unpack_maskbits_function,
         sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
-        nmonte=3, seed=seed, debug=False)
+        nmonte=0, seed=seed, debug=False)
 
     GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
     input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
