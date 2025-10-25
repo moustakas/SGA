@@ -1464,9 +1464,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         if debug:
             import matplotlib.pyplot as plt
+            from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
             P.plot(image=np.log10(cutout), ax=ax1)
             ax2.imshow(cutout_mask, origin='lower')
+            overplot_ellipse(2*(sma*0.262), ba, pa, bx-x1,
+                             by-y1, pixscale=0.262,
+                             ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
 
@@ -1676,6 +1680,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Initial geometry and elliptical mask.
         if input_geo_initial is not None:
+            niter_actual = 1
             geo_init = input_geo_initial[iobj, :]
         else:
             geo_init = get_geometry(opt_pixscale, table=obj)
@@ -1740,9 +1745,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Hack! If there are other reference sources, double the
             # opt_refmask inellipse veto mask so that the derived
             # geometry can grow, if necessary.
+            print('Check this double on input or not?')
             if iobj > 0:
-                inellipse2 = in_ellipse_mask(bx, width-by, 2.*sma, 2.*sma*ba,
-                                             pa, xgrid, ygrid_flip)
+                if input_geo_initial is not None:
+                    inellipse2 = in_ellipse_mask(bx, width-by, sma, sma*ba,
+                                                 pa, xgrid, ygrid_flip)
+                else:
+                    inellipse2 = in_ellipse_mask(bx, width-by, 2.*sma, 2.*sma*ba,
+                                                 pa, xgrid, ygrid_flip)
                 iter_refmask[inellipse2] = False
             #import matplotlib.pyplot as plt
             #plt.clf()
@@ -1762,6 +1772,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
                 log.info('FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
+            elif input_geo_initial is not None:
+                geo_iter = geo_init
+                ## debug code below here
+                #wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images_obj, axis=0)
+                #wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
+                #wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
+                #wmasks = np.zeros_like(opt_images_obj, bool)
+                #for iband, filt in enumerate(opt_bands):
+                #    wmasks[iband, :, :] = (~opt_masks_obj[iband, :, :]) * (opt_images_obj[iband, :, :] > opt_skysigmas[filt])
+                #wmask = np.any(wmasks, axis=0) * (wimg > 0.)
+                #props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask, debug=True)
             else:
                 # generate a detection image and pixel mask for use with find_galaxy_in_cutout
                 wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images_obj, axis=0)
@@ -1776,8 +1797,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # can become ill-defined).
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-                print('HACK! -- remove debug')
-                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask, debug=True)
+                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask)#, debug=True)
                 geo_iter = get_geometry(opt_pixscale, props=props)
 
             ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
@@ -1787,7 +1807,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 dshift_tractor_arcsec = arcsec_between(objsrc.ra, objsrc.dec, ra_iter, dec_iter)
 
             if dshift_arcsec > maxshift_arcsec:
-                log.warning(f'Large shift for iobj/iter={iobj} ({obj[REFIDCOLUMN]}): delta=' + \
+                log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' + \
                             f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
                 # Revert to the Tractor position or the initial
                 # position and update the masks one last time.
@@ -1801,7 +1821,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
             print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
-            pdb.set_trace()
 
         # set the largeshift bits
         if dshift_arcsec > maxshift_arcsec:

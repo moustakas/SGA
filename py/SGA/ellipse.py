@@ -1488,9 +1488,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                     tab[colerr] = results[0][iobj][colerr]
             radius, _ = SGA_diameter(tab, radius_arcsec=True)
             input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
-            pdb.set_trace()
+            #pdb.set_trace()
 
-    pdb.set_trace()
     data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                         input_geo_initial=input_geo_initial,
                                         qaplot=qaplot, niter_geometry=1,
@@ -1501,7 +1500,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         data, sample, datasets, unpack_maskbits_function,
         sbthresh, apertures, SGAMASKBITS, mp=mp,
         nmonte=nmonte, seed=seed, debug=qaplot)
-    pdb.set_trace()
 
     if qaplot:
         qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
