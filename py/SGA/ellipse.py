@@ -294,8 +294,6 @@ def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
     popt = {'mtot': mt, 'dmag': dm, 'lnalpha1': lnA1, 'lnalpha2': lnA2}
 
     # convert to f4
-    #if debug:
-    #    pdb.set_trace()
     popt = to_float32_safe_mapping(popt)
     perr = to_float32_safe_mapping(perr)
     chi2 = to_float32_safe_scalar(chi2)
@@ -900,7 +898,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         #log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
 
     dt, unit = get_dt(tall)
-    log.info(f'  Fit {"".join(bands)} in a ' + \
+    log.info(f'Fit {"".join(bands)} in a ' + \
              f'{width}x{width} mosaic in {dt:.3f} {unit}')
 
     if debug:
@@ -908,7 +906,6 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         ax.legend()
         fig.savefig('ioannis/tmp/junk.png')
         plt.close()
-        pdb.set_trace()
 
 
     return results, sbprofiles
@@ -1475,24 +1472,25 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
 
     for iobj, obj in enumerate(sample):
-        tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
-        for filt in bands:
-            for thresh in sbthresh:
-                col = f'R{thresh:.0f}_{filt.upper()}'
-                colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
-                tab[col] = results[0][iobj][col]
-                tab[colerr] = results[0][iobj][colerr]
-
         [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
-        input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
 
-        # handle FIXGEO
-        #radius, _ = SGA_diameter(tab, radius_arcsec=True)
-        #if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-        #    input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
-        #else:
-        #    input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+        # if fixgeo, use the moment geometry
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+            input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
+        else:
+            # estimate R(26)
+            tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
+            for filt in bands:
+                for thresh in sbthresh:
+                    col = f'R{thresh:.0f}_{filt.upper()}'
+                    colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
+                    tab[col] = results[0][iobj][col]
+                    tab[colerr] = results[0][iobj][colerr]
+            radius, _ = SGA_diameter(tab, radius_arcsec=True)
+            input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+            pdb.set_trace()
 
+    pdb.set_trace()
     data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                         input_geo_initial=input_geo_initial,
                                         qaplot=qaplot, niter_geometry=1,
@@ -1503,6 +1501,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         data, sample, datasets, unpack_maskbits_function,
         sbthresh, apertures, SGAMASKBITS, mp=mp,
         nmonte=nmonte, seed=seed, debug=qaplot)
+    pdb.set_trace()
 
     if qaplot:
         qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,

@@ -668,14 +668,12 @@ def SGA_datamodel(ellipse, bands, all_bands):
                 if np.any(I):
                     log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
                     I = np.where(I)[0]
-                    #pdb.set_trace()
                     check.append(I)
                     val[I] = 0
             out[col] = val
     if len(check) > 0:
         check = np.unique(np.hstack(check))
         print(','.join(ellipse['GROUP_NAME'][check].value))
-        #pdb.set_trace()
 
     return out
 
@@ -1326,7 +1324,6 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
         ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
                              norm=norm)
         #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
-        #pdb.set_trace()
         #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
         #xx[0].imshow(wimg, origin='lower', norm=norm)
         #wnorm = get_norm(wmodel)
@@ -1396,11 +1393,13 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         input_geo_initial=None, qaplot=False,
+                         galmask_margin=0.2, input_geo_initial=None, qaplot=False,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
+
+    galmask_margin - expand the galaxy mask by this factor
 
     """
     from astrometry.util.starutil_numpy import arcsec_between
@@ -1429,7 +1428,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
-                              factor=2., wmask=None):
+                              factor=2., wmask=None, debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
 
@@ -1463,7 +1462,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         method = 'percentile'
         P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, smooth_sigma=0.)
 
-        if False:
+        if debug:
             import matplotlib.pyplot as plt
             fig, (ax1, ax2) = plt.subplots(1, 2)
             P.plot(image=np.log10(cutout), ax=ax1)
@@ -1654,15 +1653,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_refmask = np.zeros(sz, bool)
         opt_images_obj = opt_images.copy() # reset the data
         for indx, refsrc, refsample in zip(refindx, refsrcs, refsamples):
-            # for *previously* completed objects, use the final, not
-            # initial geometry
+            # For *previously* completed objects, use the final, not
+            # initial geometry. Also apply some margin
+            # (galmask_margin) to the mask since the moment geometry
+            # only includes 95% of the light.
             if indx < iobj:
                 [bx, by, sma, ba, pa] = geo_final[indx, :]
             else:
                 [bx, by, sma, ba, pa] = \
                     get_geometry(opt_pixscale, table=refsample)
-            opt_refmask1 = in_ellipse_mask(bx, width-by, sma, ba*sma,
-                                           pa, xgrid, ygrid_flip)
+            opt_refmask1 = in_ellipse_mask(bx, width-by, sma*(1.+galmask_margin),
+                                           ba*sma*(1.+galmask_margin), pa,
+                                           xgrid, ygrid_flip)
             opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
 
             for iband, filt in enumerate(opt_bands):
@@ -1679,7 +1681,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             geo_init = get_geometry(opt_pixscale, table=obj)
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
-        #print(iobj, bx, by, sma, ba, pa)
+        print('Initial', iobj, bx, by, sma, ba, pa)
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
@@ -1690,7 +1692,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
-            #print(iobj, iiter, bx, by, sma, ba, pa)
+            print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,
@@ -1719,13 +1721,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             #plt.savefig('ioannis/tmp/junk2.png')
 
             # Build a galaxy mask from all extended sources outside
-            # the (current) elliptical mask (but do not subtract the
-            # models). By default, galaxy pixels inside the elliptical
-            # mask, unless we're masking *all* galaxies (e.g., in
-            # cluster fields).
+            # the (current) elliptical mask expanded by a factor of
+            # galmask_margin (but do not subtract the models). By
+            # default, mask galaxy pixels inside the elliptical mask,
+            # unless we're masking *all* galaxies (e.g., in cluster
+            # fields).
             galsrcs, opt_galmask, _ = update_galmask(
-                allgalsrcs, bx, by, sma, ba, pa,
-                opt_skysigmas=opt_skysigmas, opt_models=None,
+                allgalsrcs, bx, by, sma*(1.+galmask_margin), ba,
+                pa, opt_skysigmas=opt_skysigmas, opt_models=None,
                 mask_allgals=mask_allgals)
             if not mask_allgals:
                 opt_galmask[inellipse] = False
@@ -1738,7 +1741,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # opt_refmask inellipse veto mask so that the derived
             # geometry can grow, if necessary.
             if iobj > 0:
-                inellipse2 = in_ellipse_mask(bx, width-by, 4.*sma, 4.*sma*ba,
+                inellipse2 = in_ellipse_mask(bx, width-by, 2.*sma, 2.*sma*ba,
                                              pa, xgrid, ygrid_flip)
                 iter_refmask[inellipse2] = False
             #import matplotlib.pyplot as plt
@@ -1773,15 +1776,21 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # can become ill-defined).
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask)
+                print('HACK! -- remove debug')
+                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask, debug=True)
                 geo_iter = get_geometry(opt_pixscale, props=props)
 
             ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
+
             dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
+            if objsrc is not None:
+                dshift_tractor_arcsec = arcsec_between(objsrc.ra, objsrc.dec, ra_iter, dec_iter)
+
             if dshift_arcsec > maxshift_arcsec:
-                log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' + \
+                log.warning(f'Large shift for iobj/iter={iobj} ({obj[REFIDCOLUMN]}): delta=' + \
                             f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
-                # revert to the Tractor position or the initial position
+                # Revert to the Tractor position or the initial
+                # position and update the masks one last time.
                 if objsrc is not None:
                     geo_iter[0] = objsrc.bx
                     geo_iter[1] = objsrc.by
@@ -1791,21 +1800,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            #print(iobj, iiter, bx, by, sma, ba, pa)
+            print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
+            pdb.set_trace()
 
         # set the largeshift bits
-        ra_final, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
-        dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
         if dshift_arcsec > maxshift_arcsec:
             sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['LARGESHIFT']
-        #sample['DSHIFT'][iobj] = dshift_arcsec
-
-        # Was there a large shift between the Tractor and final position?
         if objsrc is not None:
-            dshift_tractor_arcsec = arcsec_between(objsrc.ra, objsrc.dec, ra_iter, dec_iter)
             if dshift_tractor_arcsec > maxshift_arcsec:
                 sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['LARGESHIFT_TRACTOR']
-            #sample['DSHIFT_TRACTOR'][iobj] = dshift_tractor_arcsec
 
         # final images and geometry
         opt_images_final[iobj, :, :, :] = opt_images_obj
@@ -1826,7 +1829,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             final_brightstarmask[inellipse2] = False
 
         _, opt_galmask, opt_models_obj = update_galmask(
-            allgalsrcs, bx, by, sma, ba, pa,
+            allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
             opt_models=opt_models[iobj, :, :, :],
             opt_skysigmas=opt_skysigmas,
             mask_allgals=mask_allgals)

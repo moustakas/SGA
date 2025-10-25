@@ -236,6 +236,12 @@ def main():
                       clobber=args.clobber)
         return
 
+    # need at least one keyword at this point
+    if args.coadds is False and args.ellipse is False and args.htmlplots is False:
+        log.warning('Need to specify at least one of --coadds, --ellipse, or ' + \
+                    '--htmlplots; nothing to do.')
+        return
+
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
     if rank == 0:
