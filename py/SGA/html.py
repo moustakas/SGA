@@ -502,24 +502,44 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
         fig, ax = plt.subplots(figsize=(8, 6))
 
         # get the plot limits
+        ymin, ymax = None, None
         good = np.where(phot['mag_tot']['abmag'] > 0)[0]
-        ymax = np.min(phot['mag_tot']['abmag'][good])
-        ymin = np.max(phot['mag_tot']['abmag'][good])
+        if len(good) > 0:
+            ymax = np.min(phot['mag_tot']['abmag'][good])
+            ymin = np.max(phot['mag_tot']['abmag'][good])
 
         if tractor is not None:
             good = np.where(phot['tractor']['abmag'] > 0)[0]
-            if np.min(phot['tractor']['abmag'][good]) < ymax:
-                ymax = np.min(phot['tractor']['abmag'][good])
-            if np.max(phot['tractor']['abmag']) > ymin:
-                ymin = np.max(phot['tractor']['abmag'][good])
+            if len(good) > 0:
+                if ymax is None:
+                    ymax = np.min(phot['tractor']['abmag'][good])
+                else:
+                    if np.min(phot['tractor']['abmag'][good]) < ymax:
+                        ymax = np.min(phot['tractor']['abmag'][good])
+                if ymin is None:
+                    ymin = np.max(phot['tractor']['abmag'][good])
+                else:
+                    if np.max(phot['tractor']['abmag']) > ymin:
+                        ymin = np.max(phot['tractor']['abmag'][good])
 
         for iap in range(len(apertures)):
             good = np.where(phot[f'mag_ap{iap:02}']['abmag'] > 0)[0]
-            if np.min(phot[f'mag_ap{iap:02}']['abmag'][good]) < ymax:
-                ymax = np.min(phot[f'mag_ap{iap:02}']['abmag'][good])
-            if np.max(phot[f'mag_ap{iap:02}']['abmag']) > ymin:
-                ymin = np.max(phot[f'mag_ap{iap:02}']['abmag'][good])
+            if len(good) > 0:
+                if ymax is None:
+                    ymax = np.min(phot[f'mag_ap{iap:02}']['abmag'][good])
+                else:
+                    if np.min(phot[f'mag_ap{iap:02}']['abmag'][good]) < ymax:
+                        ymax = np.min(phot[f'mag_ap{iap:02}']['abmag'][good])
+                if ymin is None:
+                    ymin = np.max(phot[f'mag_ap{iap:02}']['abmag'][good])
+                else:
+                    if np.max(phot[f'mag_ap{iap:02}']['abmag']) > ymin:
+                        ymin = np.max(phot[f'mag_ap{iap:02}']['abmag'][good])
 
+        if ymin is None:
+            ymin = 25
+        if ymax is None:
+            ymax = 10
 
         ymin += 2.
         ymax -= 1.5

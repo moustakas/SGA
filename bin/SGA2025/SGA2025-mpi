@@ -254,11 +254,14 @@ def main():
             size=size, mp=args.mp)
 
         if args.diameter_file:
-            todo = np.hstack(groups)
-            with open(args.diameter_file, 'w') as F:
-                for diam in sample[DIAMCOLUMN][todo].value:
-                    F.write(f'{diam}\n')
-            log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+            if len(groups) > 0:
+                todo = np.hstack(groups)
+                with open(args.diameter_file, 'w') as F:
+                    for diam in sample[DIAMCOLUMN][todo].value:
+                        F.write(f'{diam}\n')
+                log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+            else:
+                log.warning('All done!')
             return
     else:
         groups, suffix = [], ''
@@ -289,6 +292,15 @@ def main():
         log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
         if args.count:
             if rank == 0:
+                #if len(fail[rank]) > 0:
+                #    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
+                #             f'{len(sample):,d}')
+                #    galaxy, galaxydir = get_galaxy_galaxydir(
+                #        sample[fail[rank]], region=args.region,
+                #        group=not no_groups, datadir=datadir, htmldir=htmldir)
+                #    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                #                            sample[DIAMCOLUMN][fail[rank]]):
+                #        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
                 if args.debug:
                     if len(fail[rank]) > 0:
                         log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
