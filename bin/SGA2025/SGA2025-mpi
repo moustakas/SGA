@@ -233,7 +233,7 @@ def main():
         build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
                       datadir=datadir, no_groups=no_groups, unwise=args.unwise,
                       galex=args.galex, mp=args.mp, verbose=args.verbose,
-                      clobber=args.clobber)
+                      test_bricks=args.test_bricks, clobber=args.clobber)
         return
 
     # need at least one keyword at this point

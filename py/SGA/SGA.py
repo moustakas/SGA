@@ -787,6 +787,12 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
     if len(rem) > 0:
         tractor.remove_rows(rem)
 
+    # 18111p0189,18009m0110
+    if tractor['gaia_phot_variable_flag'].dtype == bool:
+        print('FIXING PROBLEM!')
+        tractor.remove_column('gaia_phot_variable_flag') # bool ????
+        tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), '<U13')
+
     # Tractor catalog of the SGA source(s)
     tractor_sga = []
     for ellipse1 in ellipse:
@@ -798,6 +804,10 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
         if len(I) == 0:
             assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
             tractor_sga1 = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
+            if tractor_sga1['gaia_phot_variable_flag'].dtype == bool:
+                print('FIXING PROBLEM! SGA')
+                tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
+                tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), '<U13')
             tractor_sga1['ref_cat'] = REFCAT
             tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
             tractor_sga.append(tractor_sga1)
@@ -810,8 +820,8 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
 
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
-                  region='dr11-south', galex=True, unwise=True, mp=1,
-                  no_groups=False, datadir=None, verbose=False,
+                  region='dr11-south', test_bricks=False, galex=True, unwise=True,
+                  mp=1, no_groups=False, datadir=None, verbose=False,
                   clobber=False):
     """Build the final catalog.
 
@@ -825,6 +835,14 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     from SGA.ellipse import ELLIPSEBIT, FITMODE
     from SGA.coadds import REGIONBITS
     from SGA.util import match, get_dt
+
+
+    def write_kdfile(outfile, kdoutfile):
+        # KD version
+        cmd1 = f'startree -i {outfile} -o {kdoutfile} -T -P -k -n stars'
+        cmd2 = f'modhead {kdoutfile} VER {REFCAT}-ellipse'
+        _ = os.system(cmd1)
+        _ = os.system(cmd2)
 
 
     if comm:
@@ -847,9 +865,22 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
 
     version = SGA_version()
-    outfile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
-    outfile_ellipse = os.path.join(sga_dir(), 'sample', f'SGA2025-ellipse-{version}-{region}.fits')
-    kdoutfile_ellipse = os.path.join(sga_dir(), 'sample', f'SGA2025-ellipse-{version}-{region}.kd.fits')
+    if test_bricks:
+        version = 'dr11a-v0.10'
+        outfile = f'SGA2025-{version}.fits'
+        kdoutfile = f'SGA2025-{version}.fits'
+        outfile_ellipse = f'SGA2025-ellipse-{version}.fits'
+        kdoutfile_ellipse = f'SGA2025-ellipse-{version}.kd.fits'
+    else:
+        outfile = f'SGA2025-{version}-{region}.fits'
+        kdoutfile = f'SGA2025-{version}-{region}.fits'
+        outfile_ellipse = f'SGA2025-ellipse-{version}-{region}.fits'
+        kdoutfile_ellipse = f'SGA2025-ellipse-{version}-{region}.kd.fits'
+
+    outfile = os.path.join(sga_dir(), 'sample', outfile)
+    kdoutfile = os.path.join(sga_dir(), 'sample', kdoutfile)
+    outfile_ellipse = os.path.join(sga_dir(), 'sample', outfile_ellipse)
+    kdoutfile_ellipse = os.path.join(sga_dir(), 'sample', kdoutfile_ellipse)
     if os.path.isfile(outfile) and not clobber:
         if rank == 0:
             log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
@@ -865,12 +896,10 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     #sample = sample[:700]
     #log.info(f'Trimmed to {len(sample):,d} groups in region={region}')
 
-    print('HACK!!!')
-    from SGA.brick import brickname as get_brickname
-    bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
-    I = np.isin(bricks, ['1943p265'])
-    sample = sample[I]
-    pdb.set_trace()
+    #from SGA.brick import brickname as get_brickname
+    #bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
+    #I = np.isin(bricks, ['1943p265'])
+    #sample = sample[I]
 
     group, groupdir = get_galaxy_galaxydir(
         sample, region=region,
@@ -926,7 +955,15 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         out = list(zip(*out))
         ellipse = vstack(out[0])
-        tractor = vstack(out[1])
+        try:
+            tractor = vstack(out[1])
+        except:
+            #print('TOTAL HACK!!')
+            #out[1][3]['gaia_phot_variable_flag'].dtype = '<U13'
+            #out[1][4]['gaia_phot_variable_flag'].dtype = '<U13'
+            #tractor = vstack(out[1])
+            pdb.set_trace()
+
         if len(ellipse) > 0:
             fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
             fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
@@ -962,9 +999,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                         [diam, ba, pa, diam_ref]):
         outellipse[col] = val
 
-    #I = (outellipse['R26_G'] > 0.) * (outellipse['R26_R'] > 0.) ; np.median(outellipse['R26_R'][I]/outellipse['R26_G'][I])
-    outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
-    assert(np.all(outellipse['D26'] > 0.))
+    try:
+        assert(np.all(outellipse['D26'] > 0.))
+    except:
+        #I = (outellipse['R26_G'] > 0.) * (outellipse['R26_R'] > 0.) ; np.median(outellipse['R26_R'][I]/outellipse['R26_G'][I])
+        outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
 
     # separate out (and sort) the tractor catalog of the SGA sources
     I = np.where(tractor['ref_cat'] == REFCAT)[0]
@@ -974,7 +1013,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
 
-    # Write out ellipsefile with the ELLIPSE and TRACTOR HDUs.
+    # Write out outfile with the ELLIPSE and TRACTOR HDUs.
     hdu_primary = fits.PrimaryHDU()
     hdu_ellipse = fits.convenience.table_to_hdu(outellipse)
     hdu_tractor_sga = fits.convenience.table_to_hdu(tractor_sga)
@@ -984,7 +1023,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     hx.writeto(outfile, overwrite=True, checksum=True)
     log.info(f'Wrote {len(outellipse):,d} objects to {outfile}')
 
-    # Write out ellipsefile_ellipse by combining the ellipse and
+    #write_kdfile(outfile, kdoutfile)
+    #log.info(f'Wrote {len(outellipse):,d} objects to {kdoutfile}')
+
+
+    # Write out outfile_ellipse by combining the ellipse and
     # tractor catalogs.
     ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG_INIT', 'PA', 'BA', 'D26', 'FITMODE']
     tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
@@ -1015,11 +1058,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     hx.writeto(outfile_ellipse, overwrite=True, checksum=True)
     log.info(f'Wrote {len(out):,d} objects to {outfile_ellipse}')
 
-    # KD version
-    cmd1 = f'startree -i {outfile_ellipse} -o {kdoutfile_ellipse} -T -P -k -n stars'
-    cmd2 = f'modhead {kdoutfile_ellipse} VER {REFCAT}-ellipse'
-    _ = os.system(cmd1)
-    _ = os.system(cmd2)
+    write_kdfile(outfile_ellipse, kdoutfile_ellipse)
     log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
 
     print('NB: When combining north-south catalogs, need to look at OBJNAME; SGANAME may not be the same!')
@@ -2275,11 +2314,19 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
 
     if build_mask:
-        data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                            qaplot=qaplot, cleanup=cleanup,
-                                            niter_geometry=niter_geometry,
-                                            htmlgalaxydir=htmlgalaxydir)
-    return data, tractor, sample, samplesrcs, 1
+        try:
+            data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
+                                                qaplot=qaplot, cleanup=cleanup,
+                                                niter_geometry=niter_geometry,
+                                                htmlgalaxydir=htmlgalaxydir)
+            err = 1
+        except:
+            err = 0
+            log.critical(f'Exception raised on {survey.output_dir}/{galaxy}')
+            import traceback
+            traceback.print_exc()
+
+        return data, tractor, sample, samplesrcs, err
 
 
 def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
