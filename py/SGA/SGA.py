@@ -2313,6 +2313,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     # masks.
     data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
 
+    err = 1
     if build_mask:
         try:
             data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
@@ -2326,7 +2327,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             import traceback
             traceback.print_exc()
 
-        return data, tractor, sample, samplesrcs, err
+    return data, tractor, sample, samplesrcs, err
 
 
 def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,

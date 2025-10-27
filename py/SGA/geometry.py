@@ -136,11 +136,16 @@ class EllipseProperties:
             raise ValueError(f"Unknown method: {method}")
 
         # 10) compute axis ratio and astronomical PA within 0-180°
-        b = np.sqrt(eigvals[1])
-        self.ba = b / self.a_rms if self.a_rms > 0 else 0
-        vx, vy = eigvecs[:, 0]
-        pa_cart = np.degrees(np.arctan2(vy, vx)) % 180.0
-        self.pa = (pa_cart - 90.) % 180.0
+        if self.a_rms > 0. and eigvals[1] > 0.:
+            b = np.sqrt(eigvals[1])
+            self.ba = b / self.a_rms
+            vx, vy = eigvecs[:, 0]
+            pa_cart = np.degrees(np.arctan2(vy, vx)) % 180.0
+            self.pa = (pa_cart - 90.) % 180.0
+        else:
+            log.warning('Unable to determine the ellipse geometry.')
+            self.ba = 1.
+            self.pa = 0.
 
         return self
 
