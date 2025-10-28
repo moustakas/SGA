@@ -1477,6 +1477,11 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
 
+    # special case: completely empty Tractor catalog (e.g.,
+    # r9-north/326/32630p0027)
+    if err == 1 and not bool(data):
+        return err
+
     # First fit just the optical and then update the mask.
     results, sbprofiles = wrap_multifit(
         data, sample, ['opt'], unpack_maskbits_function,

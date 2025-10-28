@@ -2196,6 +2196,12 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         cols += [f'flux_ivar_{filt.lower()}' for filt in unwise_bands]
         cols += [f'psfdepth_{filt.lower()}' for filt in unwise_bands]
 
+    # make sure there are sources
+    with fitsio.FITS(tractorfile) as F:
+        if F['CATALOG'].get_nrows() == 0:
+            log.warning('No sources in brick!')
+            return {}, None, None, None, 1
+
     prim = fitsio.read(tractorfile, columns='brick_primary')
     tractor = fits_table(tractorfile, rows=np.where(prim)[0], columns=cols)
     log.info(f'Read {len(tractor):,d} brick_primary sources from {tractorfile}')
