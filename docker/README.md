@@ -21,7 +21,7 @@ docker buildx use SGA-build
 and then
 
 ```
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:0.5.8 .
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:0.5.9 .
 docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t legacysurvey/sga:latest .
 ```
 
@@ -33,6 +33,6 @@ docker run -it legacysurvey/sga:latest
 
 Or at NERSC:
 ```
-shifterimg pull docker:legacysurvey/sga:0.5.8
-shifter --image docker:legacysurvey/sga:0.5.8 bash
+shifterimg pull docker:legacysurvey/sga:0.5.9
+shifter --image docker:legacysurvey/sga:0.5.9 bash
 ```

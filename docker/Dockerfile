@@ -8,6 +8,7 @@ RUN for x in \
   gnureadline \
   corner \
   scikit-image \
+  scikit-learn \
   seaborn \
   photutils \
   healpy \
