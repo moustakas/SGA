@@ -323,7 +323,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
                 no_groups=False, lvd=False, final_sample=False, test_bricks=False,
-                region='dr11-south', mindiam=0., maxdiam=200., maxmult=None):
+                region='dr11-south', mindiam=0., maxdiam=1e3, maxmult=None):
     """Read/generate the parent SGA catalog.
 
     mindiam,maxdiam in arcmin
@@ -438,11 +438,16 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
+    if True:#False:
         from SGA.ellipse import ELLIPSEMODE
-        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
-        log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
+        ## remove
+        #I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
+        #log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
+        # keep
+        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0
+        log.warning(f'Temporarily restricting to {np.sum(I):,d} LVD-RESOLVED sources!')
         sample = sample[I]
+
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
     if False:#True:
@@ -1048,7 +1053,21 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
     out = vstack((out_sga, out_nosga))
 
-    out['fitmode'] += FITMODE['FREEZE']
+    # Remove sources dropped by Tractor which have a non-zero FITMODE
+    # (e.g., FIXGEO, RESOLVED) because otherwise their empty
+    # parameters (type, sersic, etc.) will be frozen and cause
+    # problem.
+    I = (out['ref_id'] != -1) * (out['type'] == '') * (out['fitmode'] == 0)
+    log.warning(f'Removing {np.sum(I):,d} SGA sources dropped by Tractor; ' + \
+                'these should be removed in the parent catalog!')
+    out = out[~I]
+
+    # Set freeze for everything except "special" (ignore_source)
+    # objects with a non-zero FITMODE at this point in the script.
+    I = out['fitmode'] == 0
+    log.info(f'Not setting fitmode=FREEZE for {np.sum(~I):,d}/{len(out):,d} special SGA sources.')
+    log.info(f'Setting fitmode=FREEZE for the remaining {np.sum(I):,d}/{len(out):,d} SGA+Tractor sources.')
+    out['fitmode'][I] += FITMODE['FREEZE']
 
     hdu_primary = fits.PrimaryHDU()
     hdu_out = fits.convenience.table_to_hdu(out)
@@ -1062,6 +1081,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
 
     print('NB: When combining north-south catalogs, need to look at OBJNAME; SGANAME may not be the same!')
+    pdb.set_trace()
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):

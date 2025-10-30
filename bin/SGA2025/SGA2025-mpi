@@ -381,6 +381,25 @@ def main():
                 os.rename(tmpfile, samplefile)
 
             # SGA fitting modes
+
+            # RESOLVED sources: no fitting, just coadds (and should
+            # always have GROUP_MULT==1)
+            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
+                just_coadds = True
+                # special-case LMC and SMC!
+                # galex, unwise pixscale??
+                if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC'])):
+                    pixscale = 60. # [arcsec]
+                elif np.any(np.isin(onegal['OBJNAME'], ['SMC'])):
+                    pixscale = 30. # [arcsec]
+                elif np.any(np.isin(onegal['OBJNAME'], ['Antlia II'])):
+                    pixscale = 10. # [arcsec]
+                else:
+                    pixscale = args.pixscale
+            else:
+                just_coadds = args.just_coadds
+                pixscale = args.pixscale
+
             # FIXGEO
             #   ...
             # FORCEGAIA
@@ -400,8 +419,8 @@ def main():
             if args.debug:
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                    release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
-                    nsigma=args.nsigma, just_coadds=args.just_coadds,
+                    release=release, pixscale=pixscale, bands=bands, mp=args.mp,
+                    nsigma=args.nsigma, just_coadds=just_coadds,
                     force_psf_detection=force_psf_detection,
                     fit_on_coadds=args.fit_on_coadds,
                     use_gpu=args.use_gpu, ngpu=args.ngpu,
@@ -416,8 +435,8 @@ def main():
                      redirect_stdout(L), redirect_stderr(L):
                     err, _ = custom_coadds(
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                        release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
-                        nsigma=args.nsigma, just_coadds=args.just_coadds,
+                        release=release, pixscale=pixscale, bands=bands, mp=args.mp,
+                        nsigma=args.nsigma, just_coadds=just_coadds,
                         force_psf_detection=force_psf_detection,
                         fit_on_coadds=args.fit_on_coadds,
                         use_gpu=args.use_gpu, ngpu=args.ngpu,
@@ -456,6 +475,12 @@ def main():
             #    #print('Temporarily setting qaplot=True!')
             #    #qaplot = True
             #    qaplot = False
+
+            # RESOLVED - nothing to do
+            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
+                log.info(f'No ellipse-fitting needed for RESOLVED source {galaxydir}/{galaxy}')
+                done(galaxy, galaxydir, 1, suffix, fh=fh, debug=args.debug)
+                continue
 
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
                                        unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
