@@ -698,7 +698,7 @@ def _build_catalog_one(args):
     return build_catalog_one(*args)
 
 
-def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
+def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
     """Gather the ellipse-fitting results for a single group.
 
     No tractor or ellipse catalog for this object:
@@ -711,18 +711,25 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
     from legacypipe.bits import MASKBITS
     from SGA.ellipse import ELLIPSEBIT
 
+
+    # sample group name and directory
+    grp, gdir = get_galaxy_galaxydir(
+        grpsample[0], region=region,
+        group=not no_groups, datadir=datadir)
+
     if not os.path.isdir(gdir):
+        log.warning(f'Group directory {gdir} does not exist.')
         return Table(), Table()
 
     # gather the ellipse catalogs
     ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
     if len(ellipsefiles) == 0:
         log.warning(f'All ellipse files missing for {gdir}/{grp}')
+        for obj in grpsample:
+            log.warning(f'  {obj["OBJNAME"]} (d={obj[DIAMCOLUMN]}:.3f arcmin)')
         return Table(), Table()
 
-    #if igrp % 500 == 0:
-    #    log.info(f'Process {getpid()}: working on group {igrp:,d}')
-
+    refid_array = grpsample['SGAID'].value
     nsample = len(refid_array)
 
     if len(ellipsefiles) > nsample:
@@ -826,11 +833,14 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                   region='dr11-south', test_bricks=False, galex=True, unwise=True,
-                  mp=1, no_groups=False, datadir=None, verbose=False,
+                  no_groups=False, datadir=None, verbose=False,
                   clobber=False):
     """Build the final catalog.
 
     FIXME - combine the north and south
+
+    NB: When combining north-south catalogs, need to look at OBJNAME;
+    SGANAME may not be the same!
 
     """
     import time
@@ -855,6 +865,15 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         rank, size = comm.rank, comm.size
     else:
         rank, size = 0, 1
+
+    # Initialize the variables we will broadcast if using MPI.
+    if comm:
+        outfile = None
+        datasets = None
+        opt_bands = None
+        raslices_todo = None
+
+    t0 = time.time()
 
     if rank == 0:
         print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
@@ -896,10 +915,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
         return
 
-    # Initialize the variables we will be broadcasting.
-    if comm:
-        raslices_todo = None
-        #allraslices = None
 
     # outer loop is on RA slice
     if rank == 0:
@@ -929,6 +944,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 continue
             raslices_todo.append(raslice)
 
+        print('Hack!')
+        raslices_todo = ['000']#, '001']#, '002']
+
     if comm:
         datasets = comm.bcast(datasets, root=0)
         opt_bands = comm.bcast(opt_bands, root=0)
@@ -937,7 +955,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # outer loop on RA slices
     for islice, raslice in enumerate(raslices_todo):
-        log.info(f'Working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
+        if rank == 0:
+            log.info(f'Working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
 
         if rank == 0:
             I = np.where(raslice == allraslices)[0]
@@ -947,12 +966,12 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             if rank == 0:
                 indx_byrank = np.array_split(I, size-1)
                 for onerank, indx in zip(np.arange(size-1)+1, indx_byrank):
-                    log.info(f'Rank {rank:03} distributing {len(indx):,d} objects to rank {onerank:03}')
+                    #log.debug(f'Rank {rank:03} distributing {len(indx):,d} objects to rank {onerank:03}')
                     comm.send(indx, dest=onerank)
             else:
                 # ...and the other ranks receive the work.
                 indx = comm.recv(source=0)
-                log.info(f'Rank {rank:03} received {len(indx):,d} objects from rank 0')
+                #log.debug(f'Rank {rank:03} received {len(indx):,d} objects from rank 0')
         else:
             indx = I
 
@@ -960,221 +979,176 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         if comm is not None and size > 1:
             # The other ranks do work and send their results...
             if rank > 0:
-                group, groupdir = get_galaxy_galaxydir(
-                    sample[indx], region=region,
-                    group=not no_groups, datadir=datadir)
+                if len(indx) == 0:
+                    ellipse = Table()
+                    tractor = Table()
+                else:
+                    log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
+                    out = []
+                    for count, grpindx in enumerate(indx):
+                        #if count % 100 == 0:
+                        #    log.info(f'Rank {rank:03} RA slice {raslice}: working on group {count+1:,d}/{len(indx):,d}')
+                        #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][igrp]].value
+                        grpsample = fullsample[fullsample['GROUP_ID'] == sample['GROUP_ID'][grpindx]]
+                        out1 = build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups)
+                        out.append(out1)
+                    out = list(zip(*out))
+                    ellipse = vstack(out[0])
+                    tractor = vstack(out[1])
 
-                out = []
-                for iobj, grp, gdir in zip(indx, np.atleast_1d(group), np.atleast_1d(groupdir)):
-                    refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][iobj]].value
-                    out.append(build_catalog_one(iobj, grp, gdir, refids, datasets, opt_bands))
-                out = list(zip(*out))
-                ellipse = vstack(out[0])
-                tractor = vstack(out[1])
-
+                log.info(f'Rank {rank:03} RA slice {raslice}: sending ellipse (Tractor) table ' + \
+                         f'with {len(ellipse):,d} ({len(tractor):,d}) rows to rank 000')
                 comm.send(ellipse, dest=0, tag=1)
                 comm.send(tractor, dest=0, tag=2)
             else:
                 # ...to rank 0.
                 allellipse, alltractor = [], []
                 for onerank in np.arange(size-1)+1:
-                    allellipse.append(comm.recv(source=0, tag=1))
-                    alltractor.append(comm.recv(source=0, tag=2))
+                    ellipse = comm.recv(source=onerank, tag=1)
+                    tractor = comm.recv(source=onerank, tag=2)
+                    log.info(f'Rank {rank:03} RA slice {raslice}: received ellipse (Tractor) catalogs ' + \
+                             f'with {len(ellipse):,d} ({len(tractor):,d}) rows from rank {onerank:03}')
+                    allellipse.append(ellipse)
+                    alltractor.append(tractor)
+                allellipse = vstack(allellipse)
+                alltractor = vstack(alltractor)
         else:
-            group, groupdir = get_galaxy_galaxydir(
-                sample[indx], region=region,
-                group=not no_groups, datadir=datadir)
-
+            log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
             out = []
-            for iobj, grp, gdir in zip(indx, np.atleast_1d(group), np.atleast_1d(groupdir)):
-                refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][iobj]].value
-                out.append(build_catalog_one(iobj, grp, gdir, refids, datasets, opt_bands))
+            for count, grpindx in enumerate(indx):
+                #if count % 100 == 0:
+                #    log.info(f'Rank {rank:03} RA slice {raslice}: working on group {count+1:,d}/{len(indx):,d}')
+                #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][igrp]].value
+                grpsample = fullsample[fullsample['GROUP_ID'] == sample['GROUP_ID'][grpindx]]
+                out1 = build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups)
+                out.append(out1)
             out = list(zip(*out))
             allellipse = vstack(out[0])
             alltractor = vstack(out[1])
 
-        if len(ellipse) > 0:
-            fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
-            fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
-
-        pdb.set_trace()
-
-    #group, groupdir = get_galaxy_galaxydir(
-    #    sample, region=region,
-    #    group=not no_groups, datadir=datadir)
-    #group = np.atleast_1d(group)
-    #groupdir = np.atleast_1d(groupdir)
-    #ngrp = len(group)
-    #
-    ## divide into chunks and assign to different ranks (if running with MPI)
-    #if rank == 0:
-    #    t0 = time.time()
-    #    nperchunk = 2**12 # 14 # 2**8
-    #
-    #    # clean up previous runs
-    #    chunkfiles = glob(os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk*.fits'))
-    #    for chunkfile in chunkfiles:
-    #        os.remove(chunkfile)
-    #
-    #    nchunk = int(np.ceil(ngrp / nperchunk))
-    #    chunkindx = np.array_split(np.arange(ngrp), nchunk)
-    #    nperchunk = int(np.mean([len(indx) for indx in chunkindx]))
-    #
-    #    log.info(f'Dividing the sample into {nchunk:,d} chunk(s) with ' + \
-    #             f'{nperchunk:,d} objects per chunk.')
-    #
-    #    #nchunkperrank = int(np.ceil(nperchunk / size))
-    #    #log.info(f'Distributing chunks to {size} MPI ranks with approximately {nchunkperrank} chunks per rank.')
-    #    #chunkfiles = [os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk{ichunk}.fits')
-    #    #              for ichunk in range(nchunk)]
-    #
-    #chunkfiles = comm.bcast(chunkfiles, root=0)
-    #
-    #if comm:
-    #    comm.barrier()
-
-    chunkfiles = []
-    for ichunk, indx in enumerate(chunkindx):
-        chunkfile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk{ichunk}.fits')
-        log.info(f'Dividing chunk {ichunk+1}/{nchunk} among {mp} cores ({len(indx)//mp:,d} objects per core).')
-        log.info(f'  Writing to: {chunkfile}')
-        chunkfiles.append(chunkfile)
-
-        mpargs = []
-        for iobj, grp, gdir in zip(indx, group[indx], groupdir[indx]):
-            refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][iobj]].value
-            mpargs.append((iobj, grp, gdir, refids, datasets, opt_bands))
-
-        if mp > 1:
-            with multiprocessing.Pool(mp) as P:
-                out = P.map(_build_catalog_one, mpargs)
-        else:
-            out = [build_catalog_one(*mparg) for mparg in mpargs]
-
-        out = list(zip(*out))
-        ellipse = vstack(out[0])
-        try:
-            tractor = vstack(out[1])
-        except:
-            #print('TOTAL HACK!!')
-            #out[1][3]['gaia_phot_variable_flag'].dtype = '<U13'
-            #out[1][4]['gaia_phot_variable_flag'].dtype = '<U13'
-            #tractor = vstack(out[1])
-            pdb.set_trace()
-
-        if len(ellipse) > 0:
-            fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
-            fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
-
-    # gather the results
-    ellipse, tractor = [], []
-    for chunkfile in chunkfiles:
-        if os.path.isfile(chunkfile):
-            ellipse.append(Table(fitsio.read(chunkfile, 'ELLIPSE')))
-            tractor.append(Table(fitsio.read(chunkfile, 'TRACTOR')))
-            os.remove(chunkfile)
-    ellipse = vstack(ellipse)
-    tractor = vstack(tractor)
-    nobj = len(ellipse)
+        if rank == 0:
+            slicefile = os.path.join(datadir, region, f'SGA2025-{raslice}.fits')
+            log.info(f'Writing {len(allellipse):,d} objects to {slicefile}')
+            fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
+            fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
 
     dt, unit = get_dt(t0)
-    log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
-             f'{len(tractor):,d} Tractor sources in {dt:.3f} {unit}.')
+    log.info(f'Rank {rank:03} all done in {dt:.3f} {unit}')
 
-    try:
-        assert(np.all(np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])))
-    except:
-        pdb.set_trace()
-    #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
+    if comm:
+        comm.barrier()
 
-    #np.sum(~np.isfinite(ellipse['COG_LNALPHA1_ERR_R']))
-    # re-organize the ellipse table to match the datamodel and assign units
-    outellipse = SGA_datamodel(ellipse, bands, all_bands)
+    # Now loop back through and gather up all the results (on rank 0).
+    if rank == 0:
+        t0 = time.time()
+        t1 = time.time()
+        log.info(f'Rank {rank:03} gathering catalogs from {len(raslices_todo)} RA slices.')
 
-    # final geometry
-    diam, ba, pa, diam_ref = SGA_geometry(outellipse)
-    for col, val in zip(['D26', 'BA', 'PA', 'D26_REF'],
-                        [diam, ba, pa, diam_ref]):
-        outellipse[col] = val
+        ellipse, tractor = [], []
+        for islice, raslice in enumerate(raslices_todo):
+            slicefile = os.path.join(datadir, region, f'SGA2025-{raslice}.fits')
+            ellipse.append(Table(fitsio.read(slicefile, 'ELLIPSE')))
+            tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
+            #os.remove(slicefile)
+        ellipse = vstack(ellipse)
+        tractor = vstack(tractor)
+        nobj = len(ellipse)
 
-    try:
-        assert(np.all(outellipse['D26'] > 0.))
-    except:
-        #I = (outellipse['R26_G'] > 0.) * (outellipse['R26_R'] > 0.) ; np.median(outellipse['R26_R'][I]/outellipse['R26_G'][I])
-        outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
+        dt, unit = get_dt(t1)
+        log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
+                 f'{len(tractor):,d} Tractor sources in {dt:.3f} {unit}.')
 
-    # separate out (and sort) the tractor catalog of the SGA sources
-    I = np.where(tractor['ref_cat'] == REFCAT)[0]
-    m1, m2 = match(outellipse[REFIDCOLUMN], tractor['ref_id'][I])
-    outellipse = outellipse[m1]
-    tractor_sga = tractor[I[m2]]
+        I = np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])
+        if not np.all(I):
+            log.warning('ref_id mismatch between ellipse and tractor!')
+        #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
 
-    tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
+        # re-organize the ellipse table to match the datamodel and assign units
+        outellipse = SGA_datamodel(ellipse, bands, all_bands)
 
-    # Write out outfile with the ELLIPSE and TRACTOR HDUs.
-    hdu_primary = fits.PrimaryHDU()
-    hdu_ellipse = fits.convenience.table_to_hdu(outellipse)
-    hdu_tractor_sga = fits.convenience.table_to_hdu(tractor_sga)
-    hdu_ellipse.header['EXTNAME'] = 'ELLIPSE'
-    hdu_tractor_sga.header['EXTNAME'] = 'TRACTOR'
-    hx = fits.HDUList([hdu_primary, hdu_ellipse, hdu_tractor_sga])
-    hx.writeto(outfile, overwrite=True, checksum=True)
-    log.info(f'Wrote {len(outellipse):,d} objects to {outfile}')
+        # final geometry
+        diam, ba, pa, diam_ref = SGA_geometry(outellipse)
+        for col, val in zip(['D26', 'BA', 'PA', 'D26_REF'],
+                            [diam, ba, pa, diam_ref]):
+            outellipse[col] = val
 
-    #write_kdfile(outfile, kdoutfile)
-    #log.info(f'Wrote {len(outellipse):,d} objects to {kdoutfile}')
+        I = np.logical_or(outellipse['D26'] <= 0., np.isnan(outellipse['D26']))
+        if np.any(I):
+            log.warning(f'Negative or infinite diameters for {np.sum(I):,d} objects!')
+            #outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
 
+        # separate out (and sort) the tractor catalog of the SGA sources
+        I = np.where(tractor['ref_cat'] == REFCAT)[0]
+        m1, m2 = match(outellipse[REFIDCOLUMN], tractor['ref_id'][I])
+        outellipse = outellipse[m1]
+        tractor_sga = tractor[I[m2]]
 
-    # Write out outfile_ellipse by combining the ellipse and
-    # tractor catalogs.
-    ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG_INIT', 'PA', 'BA', 'D26', 'FITMODE']
-    tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
-        [f'flux_{filt}' for filt in bands]
+        tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
 
-    out_sga = outellipse[ellipse_cols]
-    out_sga.rename_columns(['SGAID', 'D26', 'MAG_INIT'], ['REF_ID', 'DIAM', 'MAG'])
-    [out_sga.rename_column(col, col.lower()) for col in out_sga.colnames]
+        # Write out outfile with the ELLIPSE and TRACTOR HDUs.
+        hdu_primary = fits.PrimaryHDU()
+        hdu_ellipse = fits.convenience.table_to_hdu(outellipse)
+        hdu_tractor_sga = fits.convenience.table_to_hdu(tractor_sga)
+        hdu_ellipse.header['EXTNAME'] = 'ELLIPSE'
+        hdu_tractor_sga.header['EXTNAME'] = 'TRACTOR'
+        hx = fits.HDUList([hdu_primary, hdu_ellipse, hdu_tractor_sga])
+        hx.writeto(outfile, overwrite=True, checksum=True)
+        log.info(f'Wrote {len(outellipse):,d} objects to {outfile}')
 
-    out_nosga = Table()
-    for col in out_sga.colnames:
-        out_nosga[col] = np.zeros(len(tractor_nosga), dtype=out_sga[col].dtype)
-    out_nosga = hstack((out_nosga, tractor_nosga[tractor_cols]))
-    out_nosga['ra'] = tractor_nosga['ra']
-    out_nosga['dec'] = tractor_nosga['dec']
-    out_nosga['ref_id'] = -1
+        #write_kdfile(outfile, kdoutfile)
+        #log.info(f'Wrote {len(outellipse):,d} objects to {kdoutfile}')
 
-    out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
-    out = vstack((out_sga, out_nosga))
+        # Write out outfile_ellipse by combining the ellipse and
+        # tractor catalogs.
+        ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG_INIT', 'PA', 'BA', 'D26', 'FITMODE']
+        tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
+            [f'flux_{filt}' for filt in bands]
 
-    # Remove sources dropped by Tractor which have a non-zero FITMODE
-    # (e.g., FIXGEO, RESOLVED) because otherwise their empty
-    # parameters (type, sersic, etc.) will be frozen and cause
-    # problem.
-    I = (out['ref_id'] != -1) * (out['type'] == '') * (out['fitmode'] == 0)
-    log.warning(f'Removing {np.sum(I):,d} SGA sources dropped by Tractor; ' + \
-                'these should be removed in the parent catalog!')
-    out = out[~I]
+        out_sga = outellipse[ellipse_cols]
+        out_sga.rename_columns(['SGAID', 'D26', 'MAG_INIT'], ['REF_ID', 'DIAM', 'MAG'])
+        [out_sga.rename_column(col, col.lower()) for col in out_sga.colnames]
 
-    # Set freeze for everything except "special" (ignore_source)
-    # objects with a non-zero FITMODE at this point in the script.
-    I = out['fitmode'] == 0
-    log.info(f'Not setting fitmode=FREEZE for {np.sum(~I):,d}/{len(out):,d} special SGA sources.')
-    log.info(f'Setting fitmode=FREEZE for the remaining {np.sum(I):,d}/{len(out):,d} SGA+Tractor sources.')
-    out['fitmode'][I] += FITMODE['FREEZE']
+        out_nosga = Table()
+        for col in out_sga.colnames:
+            out_nosga[col] = np.zeros(len(tractor_nosga), dtype=out_sga[col].dtype)
+        out_nosga = hstack((out_nosga, tractor_nosga[tractor_cols]))
+        out_nosga['ra'] = tractor_nosga['ra']
+        out_nosga['dec'] = tractor_nosga['dec']
+        out_nosga['ref_id'] = -1
 
-    hdu_primary = fits.PrimaryHDU()
-    hdu_out = fits.convenience.table_to_hdu(out)
-    hdu_out.header['EXTNAME'] = 'SGA2025'
-    hdu_out.header['VER'] = REFCAT
-    hx = fits.HDUList([hdu_primary, hdu_out])
-    hx.writeto(outfile_ellipse, overwrite=True, checksum=True)
-    log.info(f'Wrote {len(out):,d} objects to {outfile_ellipse}')
+        out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
+        out = vstack((out_sga, out_nosga))
 
-    write_kdfile(outfile_ellipse, kdoutfile_ellipse)
-    log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
+        # Remove sources dropped by Tractor which have a non-zero FITMODE
+        # (e.g., FIXGEO, RESOLVED) because otherwise their empty
+        # parameters (type, sersic, etc.) will be frozen and cause
+        # problem.
+        I = (out['ref_id'] != -1) * (out['type'] == '') * (out['fitmode'] == 0)
+        log.warning(f'Removing {np.sum(I):,d} SGA sources dropped by Tractor; ' + \
+                    'these should be removed in the parent catalog!')
+        out = out[~I]
 
-    print('NB: When combining north-south catalogs, need to look at OBJNAME; SGANAME may not be the same!')
-    pdb.set_trace()
+        # Set freeze for everything except "special" (ignore_source)
+        # objects with a non-zero FITMODE at this point in the script.
+        I = out['fitmode'] == 0
+        log.info(f'Not setting fitmode=FREEZE for {np.sum(~I):,d}/{len(out):,d} special SGA sources.')
+        log.info(f'Setting fitmode=FREEZE for the remaining {np.sum(I):,d}/{len(out):,d} SGA+Tractor sources.')
+        out['fitmode'][I] += FITMODE['FREEZE']
+
+        hdu_primary = fits.PrimaryHDU()
+        hdu_out = fits.convenience.table_to_hdu(out)
+        hdu_out.header['EXTNAME'] = 'SGA2025'
+        hdu_out.header['VER'] = REFCAT
+        hx = fits.HDUList([hdu_primary, hdu_out])
+        hx.writeto(outfile_ellipse, overwrite=True, checksum=True)
+        log.info(f'Wrote {len(out):,d} objects to {outfile_ellipse}')
+
+        write_kdfile(outfile_ellipse, kdoutfile_ellipse)
+        log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
+
+        dt, unit = get_dt(t0)
+        log.info(f'Rank {rank:03} all done in {dt:.3f} {unit}')
+
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):

@@ -232,7 +232,7 @@ def main():
     if args.build_catalog:
         build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
                       datadir=datadir, no_groups=no_groups, unwise=args.unwise,
-                      galex=args.galex, mp=args.mp, verbose=args.verbose,
+                      galex=args.galex, verbose=args.verbose,
                       test_bricks=args.test_bricks, clobber=args.clobber)
         return
 
