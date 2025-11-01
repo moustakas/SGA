@@ -438,7 +438,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:#False:
+    if False:
         from SGA.ellipse import ELLIPSEMODE
         ## remove
         #I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
@@ -720,8 +720,8 @@ def build_catalog_one(igrp, grp, gdir, refid_array, datasets, opt_bands):
         log.warning(f'All ellipse files missing for {gdir}/{grp}')
         return Table(), Table()
 
-    if igrp % 500 == 0:
-        log.info(f'Process {getpid()}: working on group {igrp:,d}')
+    #if igrp % 500 == 0:
+    #    log.info(f'Process {getpid()}: working on group {igrp:,d}')
 
     nsample = len(refid_array)
 
@@ -837,6 +837,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     from glob import glob
     import multiprocessing
     from astropy.io import fits
+    from SGA.io import get_raslice
     from SGA.ellipse import ELLIPSEBIT, FITMODE
     from SGA.coadds import REGIONBITS
     from SGA.util import match, get_dt
@@ -855,90 +856,182 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     else:
         rank, size = 0, 1
 
-    print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
-    print('E.g., ESO 050- G 010 is on the edge of NGC104 and we want the sources to match the DR11 maskbits')
+    if rank == 0:
+        print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
+        print('E.g., ESO 050- G 010 is on the edge of NGC104 and we want the sources to match the DR11 maskbits')
 
-    all_bands = np.copy(bands)
-    opt_bands = ''.join(bands)
-    datasets = [opt_bands]
-    if unwise:
-        datasets += ['unwise']
-        all_bands = np.append(all_bands, ['W1', 'W2', 'W3', 'W4'])
-    if galex:
-        datasets += ['galex']
-        all_bands = np.append(all_bands, ['FUV', 'NUV'])
+        all_bands = np.copy(bands)
+        opt_bands = ''.join(bands)
+        datasets = [opt_bands]
+        if unwise:
+            datasets += ['unwise']
+            all_bands = np.append(all_bands, ['W1', 'W2', 'W3', 'W4'])
+        if galex:
+            datasets += ['galex']
+            all_bands = np.append(all_bands, ['FUV', 'NUV'])
 
+        version = SGA_version()
+        if test_bricks:
+            version = 'dr11a-v0.10'
+            outfile = f'SGA2025-{version}.fits'
+            kdoutfile = f'SGA2025-{version}.fits'
+            outfile_ellipse = f'SGA2025-ellipse-{version}.fits'
+            kdoutfile_ellipse = f'SGA2025-ellipse-{version}.kd.fits'
+        else:
+            outfile = f'SGA2025-{version}-{region}.fits'
+            kdoutfile = f'SGA2025-{version}-{region}.fits'
+            outfile_ellipse = f'SGA2025-ellipse-{version}-{region}.fits'
+            kdoutfile_ellipse = f'SGA2025-ellipse-{version}-{region}.kd.fits'
 
-    version = SGA_version()
-    if test_bricks:
-        version = 'dr11a-v0.10'
-        outfile = f'SGA2025-{version}.fits'
-        kdoutfile = f'SGA2025-{version}.fits'
-        outfile_ellipse = f'SGA2025-ellipse-{version}.fits'
-        kdoutfile_ellipse = f'SGA2025-ellipse-{version}.kd.fits'
-    else:
-        outfile = f'SGA2025-{version}-{region}.fits'
-        kdoutfile = f'SGA2025-{version}-{region}.fits'
-        outfile_ellipse = f'SGA2025-ellipse-{version}-{region}.fits'
-        kdoutfile_ellipse = f'SGA2025-ellipse-{version}-{region}.kd.fits'
+        outfile = os.path.join(sga_dir(), 'sample', outfile)
+        kdoutfile = os.path.join(sga_dir(), 'sample', kdoutfile)
+        outfile_ellipse = os.path.join(sga_dir(), 'sample', outfile_ellipse)
+        kdoutfile_ellipse = os.path.join(sga_dir(), 'sample', kdoutfile_ellipse)
 
-    outfile = os.path.join(sga_dir(), 'sample', outfile)
-    kdoutfile = os.path.join(sga_dir(), 'sample', kdoutfile)
-    outfile_ellipse = os.path.join(sga_dir(), 'sample', outfile_ellipse)
-    kdoutfile_ellipse = os.path.join(sga_dir(), 'sample', kdoutfile_ellipse)
+    if comm:
+        outfile = comm.bcast(outfile, root=0)
+
     if os.path.isfile(outfile) and not clobber:
         if rank == 0:
             log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
         return
 
-    #I = sample['REGION'] & REGIONBITS[region] != 0
-    #J = fullsample['REGION'] & REGIONBITS[region] != 0
-    #sample_region = sample[I]
-    #fullsample_region = fullsample[J]
+    # Initialize the variables we will be broadcasting.
+    if comm:
+        raslices_todo = None
+        #allraslices = None
 
-    # testing
-    #sample = sample[sample['GROUP_MULT'] > 1]
-    #sample = sample[:700]
-    #log.info(f'Trimmed to {len(sample):,d} groups in region={region}')
-
-    #from SGA.brick import brickname as get_brickname
-    #bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
-    #I = np.isin(bricks, ['1943p265'])
-    #sample = sample[I]
-
-    group, groupdir = get_galaxy_galaxydir(
-        sample, region=region,
-        group=not no_groups, datadir=datadir)
-    group = np.atleast_1d(group)
-    groupdir = np.atleast_1d(groupdir)
-    ngrp = len(group)
-
-    # divide into chunks and assign to different ranks (if running with MPI)
+    # outer loop is on RA slice
     if rank == 0:
-        t0 = time.time()
-        nperchunk = 2**12 # 14 # 2**8
+        #I = sample['REGION'] & REGIONBITS[region] != 0
+        #J = fullsample['REGION'] & REGIONBITS[region] != 0
+        #sample_region = sample[I]
+        #fullsample_region = fullsample[J]
 
-        # clean up previous runs
-        chunkfiles = glob(os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk*.fits'))
-        for chunkfile in chunkfiles:
-            os.remove(chunkfile)
+        # testing
+        #sample = sample[sample['GROUP_MULT'] > 1]
+        #sample = sample[:700]
+        #log.info(f'Trimmed to {len(sample):,d} groups in region={region}')
 
-        nchunk = int(np.ceil(ngrp / nperchunk))
-        chunkindx = np.array_split(np.arange(ngrp), nchunk)
-        nperchunk = int(np.mean([len(indx) for indx in chunkindx]))
+        #from SGA.brick import brickname as get_brickname
+        #bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
+        #I = np.isin(bricks, ['1943p265'])
+        #sample = sample[I]
 
-        log.info(f'Dividing the sample into {nchunk:,d} chunk(s) with ' + \
-                 f'{nperchunk:,d} objects per chunk.')
+        allraslices = get_raslice(sample['GROUP_RA'].value)
+        uraslices = sorted(set(allraslices))
 
-        #nchunkperrank = int(np.ceil(nperchunk / size))
-        #log.info(f'Distributing chunks to {size} MPI ranks with approximately {nchunkperrank} chunks per rank.')
-        #chunkfiles = [os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk{ichunk}.fits')
-        #              for ichunk in range(nchunk)]
-
-    chunkfiles = comm.bcast(chunkfiles, root=0)
+        raslices_todo = []
+        for raslice in uraslices:
+            slicefile = os.path.join(datadir, region, f'SGA2025-{raslice}.fits')
+            if os.path.isfile(slicefile) and not clobber:
+                log.warning(f'Use --clobber to overwrite existing catalog {slicefile}')
+                continue
+            raslices_todo.append(raslice)
 
     if comm:
-        comm.barrier()
+        datasets = comm.bcast(datasets, root=0)
+        opt_bands = comm.bcast(opt_bands, root=0)
+        raslices_todo = comm.bcast(raslices_todo, root=0)
+        #allraslices = comm.bcast(allraslices, root=0)
+
+    # outer loop on RA slices
+    for islice, raslice in enumerate(raslices_todo):
+        log.info(f'Working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
+
+        if rank == 0:
+            I = np.where(raslice == allraslices)[0]
+
+        if comm is not None and size > 1:
+            # rank 0 sends work to the other ranks...
+            if rank == 0:
+                indx_byrank = np.array_split(I, size-1)
+                for onerank, indx in zip(np.arange(size-1)+1, indx_byrank):
+                    log.info(f'Rank {rank:03} distributing {len(indx):,d} objects to rank {onerank:03}')
+                    comm.send(indx, dest=onerank)
+            else:
+                # ...and the other ranks receive the work.
+                indx = comm.recv(source=0)
+                log.info(f'Rank {rank:03} received {len(indx):,d} objects from rank 0')
+        else:
+            indx = I
+
+
+        if comm is not None and size > 1:
+            # The other ranks do work and send their results...
+            if rank > 0:
+                group, groupdir = get_galaxy_galaxydir(
+                    sample[indx], region=region,
+                    group=not no_groups, datadir=datadir)
+
+                out = []
+                for iobj, grp, gdir in zip(indx, np.atleast_1d(group), np.atleast_1d(groupdir)):
+                    refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][iobj]].value
+                    out.append(build_catalog_one(iobj, grp, gdir, refids, datasets, opt_bands))
+                out = list(zip(*out))
+                ellipse = vstack(out[0])
+                tractor = vstack(out[1])
+
+                comm.send(ellipse, dest=0, tag=1)
+                comm.send(tractor, dest=0, tag=2)
+            else:
+                # ...to rank 0.
+                allellipse, alltractor = [], []
+                for onerank in np.arange(size-1)+1:
+                    allellipse.append(comm.recv(source=0, tag=1))
+                    alltractor.append(comm.recv(source=0, tag=2))
+        else:
+            group, groupdir = get_galaxy_galaxydir(
+                sample[indx], region=region,
+                group=not no_groups, datadir=datadir)
+
+            out = []
+            for iobj, grp, gdir in zip(indx, np.atleast_1d(group), np.atleast_1d(groupdir)):
+                refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][iobj]].value
+                out.append(build_catalog_one(iobj, grp, gdir, refids, datasets, opt_bands))
+            out = list(zip(*out))
+            allellipse = vstack(out[0])
+            alltractor = vstack(out[1])
+
+        if len(ellipse) > 0:
+            fitsio.write(chunkfile, ellipse.as_array(), extname='ELLIPSE', clobber=True)
+            fitsio.write(chunkfile, tractor.as_array(), extname='TRACTOR')
+
+        pdb.set_trace()
+
+    #group, groupdir = get_galaxy_galaxydir(
+    #    sample, region=region,
+    #    group=not no_groups, datadir=datadir)
+    #group = np.atleast_1d(group)
+    #groupdir = np.atleast_1d(groupdir)
+    #ngrp = len(group)
+    #
+    ## divide into chunks and assign to different ranks (if running with MPI)
+    #if rank == 0:
+    #    t0 = time.time()
+    #    nperchunk = 2**12 # 14 # 2**8
+    #
+    #    # clean up previous runs
+    #    chunkfiles = glob(os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk*.fits'))
+    #    for chunkfile in chunkfiles:
+    #        os.remove(chunkfile)
+    #
+    #    nchunk = int(np.ceil(ngrp / nperchunk))
+    #    chunkindx = np.array_split(np.arange(ngrp), nchunk)
+    #    nperchunk = int(np.mean([len(indx) for indx in chunkindx]))
+    #
+    #    log.info(f'Dividing the sample into {nchunk:,d} chunk(s) with ' + \
+    #             f'{nperchunk:,d} objects per chunk.')
+    #
+    #    #nchunkperrank = int(np.ceil(nperchunk / size))
+    #    #log.info(f'Distributing chunks to {size} MPI ranks with approximately {nchunkperrank} chunks per rank.')
+    #    #chunkfiles = [os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}-chunk{ichunk}.fits')
+    #    #              for ichunk in range(nchunk)]
+    #
+    #chunkfiles = comm.bcast(chunkfiles, root=0)
+    #
+    #if comm:
+    #    comm.barrier()
 
     chunkfiles = []
     for ichunk, indx in enumerate(chunkindx):
