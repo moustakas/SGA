@@ -1,0 +1,204 @@
+#!/usr/bin/env python
+
+"""Generate finding charts.
+
+  SGA2025-shifter
+  source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
+
+  finding-charts --cutoutdir=$PSCRATCH/desimetals --region=dr11-south --mp=1
+
+"""
+import pdb # for debugging
+import os
+from glob import glob
+import numpy as np
+import fitsio
+
+from astropy.table import Table, vstack
+from astrometry.libkd.spherematch import match_radec
+
+from SGA.geometry import choose_geometry
+
+#from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
+#from SGA.ellipse import choose_geometry, parse_geometry
+#from SGA.coadds import PIXSCALE, GALEX_PIXSCALE, UNWISE_PIXSCALE
+
+from SGA.logger import log
+
+
+def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
+                 ssl_version=None, photo_version=None, ntest=None,
+                 annotate=False, ssl=False, wisesize=False, lvd=False,
+                 zooniverse=False):
+    """Simple wrapper to read a specified catalog.
+
+    """
+    from SGA.io import read_fits_catalog
+    from SGA.SGA import SGA_version
+
+    version = SGA_version(archive=True)
+    columns = ['OBJNAME', 'FILTERS', 'RA', 'DEC', 'OBJTYPE', 'MORPH', 'Z', 'PGC',
+               'DIAM_LIT_REF', 'DIAM_LIT', 'BA_LIT', 'PA_LIT', 'DIAM_HYPERLEDA',
+               'BA_HYPERLEDA', 'PA_HYPERLEDA', 'DIAM_SGA2020', 'BA_SGA2020',
+               'PA_SGA2020', 'ROW_LVD', 'ROW_NEDLVS', 'ROW_PARENT',
+               'STARFDIST', 'STARMAG', 'RESOLVED', 'FORCEGAIA', 'FORCEPSF']
+
+    if 'NERSC_HOST' in os.environ:
+        catdir = '/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent'
+    else:
+        catdir = '/Users/ioannis/research/projects/SGA/2025/parent'
+
+    catfile = os.path.join(catdir, f'SGA2025-parent-archive-{region}-{version}.fits')
+
+    F = fitsio.FITS(catfile)
+    N = F[1].get_nrows()
+
+    # read a test sample
+    if ntest is not None:
+        rng = np.random.default_rng(seed=1)
+        rows = rng.choice(N, size=ntest, replace=False)
+        rows = rows[np.argsort(rows)]
+    else:
+        rows = np.arange(N)
+
+    cat = read_fits_catalog(catfile, columns=columns, rows=rows)
+
+    if ssl and ssl_version is None:
+        log.info('ssl_version must be specified')
+        return
+
+    # when annotating, must make a copy *before* any cuts!
+    if read_fullcat or annotate or ssl or lvd:
+        if ntest is not None:
+            fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
+        else:
+            fullcat = cat.copy()
+    else:
+        fullcat = None
+
+    # read various samples / projects
+    #cat, fullcat = _read_test_sample1(cat, region, photo_version)
+    #cat = _read_test_sample2(cat, region, photo_version)
+    #cat = _read_test_sample3(cat, region, isolated=False)
+
+    #pdb.set_trace()
+
+    if False:#True:
+        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023340.70+345454.6'])]
+        cat = cat[np.isin(cat['OBJNAME'], ['Pictor I', 'Phoenix'])]
+        fullcat = cat.copy()
+        fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
+        fullcat = fullcat[fullcat_diam > 30.]
+
+        # good tests for do_photo()
+        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3', '6dF J1125579-114702', 'SDSS J125753.66+100506.8'])]
+
+
+    sort_by_ra = False
+    sort_by_diameter = True
+    #if lvd and photo_version is not None:
+    #    pdb.set_trace()
+    if sort_by_ra:
+        log.info('Sorting by RA')
+        cat = cat[np.argsort(cat['RA'])]
+    elif sort_by_diameter:
+        log.info('Sorting by diameter')
+        diam, _, _, ref = choose_geometry(cat, mindiam=0.)
+        cat = cat[np.argsort(diam)[::-1]]
+    else:
+        log.info('Sorting by OBJNAME')
+        cat = cat[np.argsort(cat['OBJNAME'])]
+
+    if len(cat) == 0:
+        raise ValueError('No objects in catalog!')
+
+    return cat, fullcat
+
+
+def main():
+    """Main wrapper.
+
+    """
+    import argparse
+    from SGA.cutouts import get_pixscale_and_width, cutouts_plan
+
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--region', default='dr9', choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south', 'dr9'],
+                        type=str, help='Region to analyze.')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--width', type=int, default=229, help='Default cutout width [pixels].')
+    parser.add_argument('--pixscale', type=float, default=0.262, help='Default pixel scale [arcsec/pixel].')
+    parser.add_argument('--bands', default='g,r,i,z', type=str, help='Default bandpasses')
+    parser.add_argument('--cutoutdir', default='./', type=str, help='Base output data directory.')
+    parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
+    parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
+    parser.add_argument('--montage', action='store_true', help='Generate multipage montages of annotated images.')
+    parser.add_argument('--fits-cutouts', action='store_true', dest='no_fits_cutouts', help='Generate FITS cutouts.')
+    parser.add_argument('--ivar-cutouts', action='store_true', help='Generate ivar cutouts.')
+    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
+    parser.add_argument('--debug', action='store_true', help='Print out a variety of debugging messages.')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
+
+    args = parser.parse_args()
+
+    bands = args.bands.split(',')
+
+    cutoutdir = os.path.join(args.cutoutdir, args.region, 'cutouts')
+    annotatedir = os.path.join(args.cutoutdir, args.region, 'annotated')
+
+    cat = Table(fitsio.read('/global/u2/i/ioannis/desi_lbt_properties.fits'))
+    fullcat = cat.copy()
+
+    if args.montage:
+        from SGA.cutouts import annotated_montage
+        annotated_montage(cat, region=args.region, cutoutdir=args.cutoutdir,
+                          annotatedir=annotatedir, overwrite=args.overwrite)
+        return
+
+    # no FITS cutouts needed for the Zooniverse project
+    fits_cutouts = args.fits_cutouts
+    ivar_cutouts = args.ivar_cutouts
+    unwise_cutouts = False
+    galex_cutouts = False
+
+    if args.plan:
+            mindiam = args.width * args.pixscale # [arcsec]
+            diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
+
+            pixscale, width = get_pixscale_and_width(
+                diam, mindiam, rescale=args.rescale,
+                default_width=args.width,
+                default_pixscale=args.pixscale)
+
+        cutouts_plan(cat, width=width, layer=layer, size=size, cutoutdir=cutoutdir,
+             annotatedir=annotatedir, photodir=photodir, mp=args.mp,
+             annotate=args.annotate, photo=args.photo, fits_cutouts=fits_cutouts,
+             unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
+             overwrite=args.overwrite, verbose=args.verbose,
+             use_catalog_objname=use_catalog_objname)
+        return
+
+    if args.annotate:
+        from SGA.cutouts import do_annotate
+        do_annotate(cat, fullcat, default_pixscale=args.pixscale,
+                    default_width=args.width, mp=args.mp,
+                    comm=comm, base_cutoutdir=args.cutoutdir, cutoutdir=cutoutdir,
+                    annotatedir=annotatedir, region=args.region, httpdir=args.httpdir,
+                    overwrite=args.overwrite, fits_cutouts=fits_cutouts,
+                    draw_largest_ellipse=draw_largest_ellipse,
+                    annotate_central_only=args.annotate_central_only,
+                    debug=args.debug, dry_run=args.dry_run, verbose=args.verbose)
+    else:
+        from SGA.cutouts import do_cutouts
+        do_cutouts(cat, layer=layer, mp=args.mp, comm=comm, cutoutdir=cutoutdir,
+                   base_cutoutdir=args.cutoutdir, default_pixscale=args.pixscale,
+                   default_width=args.width, rescale=args.rescale,
+                   default_bands=bands, overwrite=args.overwrite, dry_run=args.dry_run,
+                   fits_cutouts=fits_cutouts, ivar_cutouts=ivar_cutouts,
+                   unwise_cutouts=unwise_cutouts, galex_cutouts=galex_cutouts,
+                   verbose=args.verbose, use_catalog_objname=use_catalog_objname)
+
+if __name__ == '__main__':
+    main()
