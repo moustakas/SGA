@@ -474,12 +474,12 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 'SDSS J143518.67+120938.6','WISEA J150852.22+075029.9','WISEA J162933.60-163306.0','WISEA J173704.33-005508.8',
                 'WISEA J223653.00+131314.7','WISEA J231159.69-124755.9','WISEA J233916.97+262513.0','WISEA J234212.09-401532.7',
                 'WISEA J235352.66-123739.4','WISEA J235543.52+140000.7']
-        I = np.isin(sample['OBJNAME'], drop)
-        #I = ~np.isin(sample['OBJNAME'], drop)
+        #I = np.isin(sample['OBJNAME'], drop)
+        I = ~np.isin(sample['OBJNAME'], drop)
         log.warning(f'version v0.10---dropping {np.sum(~I)} objects in duplicate groups!')
         sample = sample[I]
-        fullsample = fullsample[np.isin(fullsample['OBJNAME'], drop)]
-        #fullsample = fullsample[~np.isin(fullsample['OBJNAME'], drop)]
+        #fullsample = fullsample[np.isin(fullsample['OBJNAME'], drop)]
+        fullsample = fullsample[~np.isin(fullsample['OBJNAME'], drop)]
     ##############################
 
     if galaxylist is not None:
