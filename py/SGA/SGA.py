@@ -246,7 +246,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     elif htmlplots:
         suffix = 'html'
         filesuffix = '-montage.png'
-        dependson = '-image.jpg'
+        dependson = None # '-image.jpg'
         galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir, region=region,
             group=group, html=True)
@@ -456,6 +456,31 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+
+    ##############################
+    # v0.10 had 30 duplicate groups (29 in dr11-south; 1 in
+    # dr9-north); remove the duplicates here.
+    if version == 'v0.10':
+        dupgroups = [
+            '01298m3385','01747p1908','02097m0808','03152m3114','06833m1343','07544m1821','12066m0929','12991m0980',
+            '13264p1019','14230p3936','15224p0781','17788m3116','18407p1841','19454p2754','20114m2844','20405m0103',
+            '20722m1948','20748m1818','21013p1208','21208m2877','21882p1216','22721p0784','24739m1655','26426m0091',
+            '33922p1322','34799m1279','35482p2642','35555m4025','35846m1262','35893p1399']
+        drop = ['DUKST 351-033','2MASX J01095516+1904570','WISEA J012355.12-080514.3','WISEA J020605.35-310900.1',
+                'WISEA J043320.16-132621.2','WISEA J050147.86-181307.2','WISEA J080239.07-091758.5','WISEA J083939.57-094802.8',
+                'WISEA J085033.88+101123.9','WISEA J092912.50+392211.3','WISEA J100859.72+074842.9','WISEA J115133.31-311009.8',
+                'WISEA J121619.21+182509.4','WISEA J125809.70+273257.8','WISEA J132435.80-282653.3','UGC 08584 NED01',
+                'WISEA J134855.15-192913.8','WISEA J134955.46-181051.6','WISEA J140032.74+120521.4','WISEA J140821.57-284644.5',
+                'SDSS J143518.67+120938.6','WISEA J150852.22+075029.9','WISEA J162933.60-163306.0','WISEA J173704.33-005508.8',
+                'WISEA J223653.00+131314.7','WISEA J231159.69-124755.9','WISEA J233916.97+262513.0','WISEA J234212.09-401532.7',
+                'WISEA J235352.66-123739.4','WISEA J235543.52+140000.7']
+        I = np.isin(sample['OBJNAME'], drop)
+        #I = ~np.isin(sample['OBJNAME'], drop)
+        log.warning(f'version v0.10---dropping {np.sum(~I)} objects in duplicate groups!')
+        sample = sample[I]
+        fullsample = fullsample[np.isin(fullsample['OBJNAME'], drop)]
+        #fullsample = fullsample[~np.isin(fullsample['OBJNAME'], drop)]
+    ##############################
 
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
@@ -724,9 +749,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     # gather the ellipse catalogs
     ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
     if len(ellipsefiles) == 0:
-        log.warning(f'All ellipse files missing for {gdir}/{grp}')
         for obj in grpsample:
-            log.warning(f'  {obj["OBJNAME"]} (d={obj[DIAMCOLUMN]}:.3f arcmin)')
+            log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         return Table(), Table()
 
     refid_array = grpsample['SGAID'].value
@@ -767,7 +791,11 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if len(ellipse) > 0:
         ellipse = vstack(ellipse)
 
-    assert(np.all(np.isin(ellipse[REFIDCOLUMN], refid_array)))
+    I = np.isin(ellipse[REFIDCOLUMN], refid_array)
+    if not np.all(I):
+        for obj in grpsample:
+            log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        return Table(), Table()
 
     # Read the Tractor catalog for all the SGA sources as well as for
     # all sources within the SGA ellipse (using MASKBITS).
@@ -777,9 +805,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
     # if np.sum(I)==0, this is a problem...
     if np.sum(I) == 0:
-        msg = f'All sources dropped in {tractorfile}'
-        log.critical(msg)
-        raise ValueError(msg)
+        log.warning(f'No sources in {tractorfile}')
+        tractor = Table()
+        tractor_sga = Table()
     else:
         J = I * np.logical_or((refs['maskbits'] & MASKBITS['GALAXY'] != 0),
                               refs['ref_cat'] == REFCAT)
@@ -791,42 +819,42 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             I = np.where(I)[0]
         else:
             I = np.where(J)[0]
-    tractor = Table(fitsio.read(tractorfile, rows=I))
+        tractor = Table(fitsio.read(tractorfile, rows=I))
 
-    # Remove SGA Tractor that don't "belong" to this group.
-    rem = np.where(np.logical_not(np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])) *
-                   (tractor['ref_cat'] == REFCAT))[0]
-    if len(rem) > 0:
-        tractor.remove_rows(rem)
+        # Remove SGA Tractor sources that don't "belong" to this group.
+        rem = np.where(np.logical_not(np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])) *
+                       (tractor['ref_cat'] == REFCAT))[0]
+        if len(rem) > 0:
+            tractor.remove_rows(rem)
 
-    # 18111p0189,18009m0110
-    if tractor['gaia_phot_variable_flag'].dtype == bool:
-        print('FIXING PROBLEM!')
-        tractor.remove_column('gaia_phot_variable_flag') # bool ????
-        tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), '<U13')
+        # 18111p0189,18009m0110
+        if tractor['gaia_phot_variable_flag'].dtype == bool:
+            #print('FIXING PROBLEM!')
+            tractor.remove_column('gaia_phot_variable_flag') # bool ????
+            tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), '<U13')
 
-    # Tractor catalog of the SGA source(s)
-    tractor_sga = []
-    for ellipse1 in ellipse:
-        I = np.where((refs['ref_id'] == ellipse1[REFIDCOLUMN]) *
-                     (refs['ref_cat'] == REFCAT))[0]
-        # If there's no match, confirm that the NOTRACTOR bit was set,
-        # read a blank catalog, and then move on. Should never happen!
-        # dr11-south/195/19533p2848/SDSS J130120.01+282848.5
-        if len(I) == 0:
-            assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
-            tractor_sga1 = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
-            if tractor_sga1['gaia_phot_variable_flag'].dtype == bool:
-                print('FIXING PROBLEM! SGA')
-                tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
-                tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), '<U13')
-            tractor_sga1['ref_cat'] = REFCAT
-            tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
-            tractor_sga.append(tractor_sga1)
+        # Tractor catalog of SGA source(s)
+        tractor_sga = []
+        for ellipse1 in ellipse:
+            I = np.where((refs['ref_id'] == ellipse1[REFIDCOLUMN]) *
+                         (refs['ref_cat'] == REFCAT))[0]
+            # If there's no match, confirm that the NOTRACTOR bit was set,
+            # read a blank catalog, and then move on. Should never happen!
+            # dr11-south/195/19533p2848/SDSS J130120.01+282848.5
+            if len(I) == 0:
+                assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
+                tractor_sga1 = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
+                if tractor_sga1['gaia_phot_variable_flag'].dtype == bool:
+                    #print('FIXING PROBLEM! SGA')
+                    tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
+                    tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), '<U13')
+                tractor_sga1['ref_cat'] = REFCAT
+                tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
+                tractor_sga.append(tractor_sga1)
 
-    if len(tractor_sga) > 0:
-        tractor_sga = vstack(tractor_sga)
-        tractor = vstack((tractor, tractor_sga))
+        if len(tractor_sga) > 0:
+            tractor_sga = vstack(tractor_sga)
+            tractor = vstack((tractor, tractor_sga))
 
     return ellipse, tractor
 
@@ -876,8 +904,14 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     t0 = time.time()
 
     if rank == 0:
+        print()
+        print('###################')
+        print('REMOVE THE gaia_phot_variable_flag STUFF!')
+
         print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
         print('E.g., ESO 050- G 010 is on the edge of NGC104 and we want the sources to match the DR11 maskbits')
+        print('###################')
+        print()
 
         all_bands = np.copy(bands)
         opt_bands = ''.join(bands)
@@ -943,9 +977,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 log.warning(f'Use --clobber to overwrite existing catalog {slicefile}')
                 continue
             raslices_todo.append(raslice)
+        raslices_todo = np.array(raslices_todo)
 
-        print('Hack!')
-        raslices_todo = ['000']#, '001']#, '002']
+        #print('Hack!')
+        #raslices_todo = ['000']#, '001']#, '002']
+        raslices_todo = raslices_todo[45:]
 
     if comm:
         datasets = comm.bcast(datasets, root=0)
@@ -955,10 +991,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # outer loop on RA slices
     for islice, raslice in enumerate(raslices_todo):
+        #log.info(f'Rank {rank:03}: working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
         if rank == 0:
             log.info(f'Working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
-
-        if rank == 0:
             I = np.where(raslice == allraslices)[0]
 
         if comm is not None and size > 1:
@@ -966,15 +1001,14 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             if rank == 0:
                 indx_byrank = np.array_split(I, size-1)
                 for onerank, indx in zip(np.arange(size-1)+1, indx_byrank):
-                    #log.debug(f'Rank {rank:03} distributing {len(indx):,d} objects to rank {onerank:03}')
-                    comm.send(indx, dest=onerank)
+                    #log.info(f'Rank {rank:03} distributing {len(indx):,d} objects to rank {onerank:03}')
+                    comm.send(indx, dest=onerank, tag=1)
             else:
                 # ...and the other ranks receive the work.
-                indx = comm.recv(source=0)
-                #log.debug(f'Rank {rank:03} received {len(indx):,d} objects from rank 0')
+                indx = comm.recv(source=0, tag=1)
+                #log.info(f'Rank {rank:03} received {len(indx):,d} objects from rank 0')
         else:
             indx = I
-
 
         if comm is not None and size > 1:
             # The other ranks do work and send their results...
@@ -983,7 +1017,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                     ellipse = Table()
                     tractor = Table()
                 else:
-                    log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
+                    #log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
                     out = []
                     for count, grpindx in enumerate(indx):
                         #if count % 100 == 0:
@@ -991,29 +1025,33 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                         #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][igrp]].value
                         grpsample = fullsample[fullsample['GROUP_ID'] == sample['GROUP_ID'][grpindx]]
                         out1 = build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups)
+                        #t1 = Table()
+                        #t1['RA'] = [180.]
+                        #t1['DEC'] = [30.]
+                        #out1 = [t1, t1]
                         out.append(out1)
                     out = list(zip(*out))
                     ellipse = vstack(out[0])
                     tractor = vstack(out[1])
 
-                log.info(f'Rank {rank:03} RA slice {raslice}: sending ellipse (Tractor) table ' + \
-                         f'with {len(ellipse):,d} ({len(tractor):,d}) rows to rank 000')
-                comm.send(ellipse, dest=0, tag=1)
-                comm.send(tractor, dest=0, tag=2)
+                #log.info(f'Rank {rank:03} RA slice {raslice}: sending ellipse (Tractor) table ' + \
+                #         f'with {len(ellipse):,d} ({len(tractor):,d}) rows to rank 000')
+                comm.send(ellipse, dest=0, tag=2)
+                comm.send(tractor, dest=0, tag=3)
             else:
                 # ...to rank 0.
                 allellipse, alltractor = [], []
                 for onerank in np.arange(size-1)+1:
-                    ellipse = comm.recv(source=onerank, tag=1)
-                    tractor = comm.recv(source=onerank, tag=2)
-                    log.info(f'Rank {rank:03} RA slice {raslice}: received ellipse (Tractor) catalogs ' + \
-                             f'with {len(ellipse):,d} ({len(tractor):,d}) rows from rank {onerank:03}')
+                    ellipse = comm.recv(source=onerank, tag=2)
+                    tractor = comm.recv(source=onerank, tag=3)
+                    #log.info(f'Rank {rank:03} RA slice {raslice}: received ellipse (Tractor) catalogs ' + \
+                    #         f'with {len(ellipse):,d} ({len(tractor):,d}) objects from rank {onerank:03}')
                     allellipse.append(ellipse)
                     alltractor.append(tractor)
                 allellipse = vstack(allellipse)
                 alltractor = vstack(alltractor)
         else:
-            log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
+            #log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
             out = []
             for count, grpindx in enumerate(indx):
                 #if count % 100 == 0:
@@ -1028,9 +1066,10 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'SGA2025-{raslice}.fits')
-            log.info(f'Writing {len(allellipse):,d} objects to {slicefile}')
+            log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
             fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
             fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
+            print()
 
     dt, unit = get_dt(t0)
     log.info(f'Rank {rank:03} all done in {dt:.3f} {unit}')

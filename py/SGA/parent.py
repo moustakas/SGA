@@ -3088,6 +3088,11 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     groupname = sga2025_name(out['GROUP_RA'].value, out['GROUP_DEC'].value, group_name=True)
     #out.add_column(groupdir, name='GROUPDIR', index=1)
     out.add_column(groupname, name='SGAGROUP', index=1)
+    I = out['GROUP_PRIMARY']
+    gg, cc = np.unique(['SGAGROUP'][I], return_counts=True)
+    if len(gg[cc>1]) > 0:
+        print('Duplicate groups!!')
+        pdb.set_trace()
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
