@@ -162,7 +162,7 @@ def main():
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, maxmult=args.maxmult,
             galaxylist=args.galaxylist, no_groups=no_groups,
-            lvd=args.lvd, region=region,
+            lvd=args.lvd, wisesize=args.wisesize, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
     else:
@@ -232,7 +232,7 @@ def main():
     if args.build_catalog:
         build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
                       datadir=datadir, no_groups=no_groups, unwise=args.unwise,
-                      galex=args.galex, verbose=args.verbose,
+                      galex=args.galex, wisesize=args.wisesize, verbose=args.verbose,
                       test_bricks=args.test_bricks, clobber=args.clobber)
         return
 
@@ -478,9 +478,12 @@ def main():
 
             # RESOLVED - nothing to do
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
-                log.info(f'No ellipse-fitting needed for RESOLVED source {galaxydir}/{galaxy}')
-                done(galaxy, galaxydir, 1, suffix, fh=fh, debug=args.debug)
-                continue
+                skip_ellipse = True
+                #log.info(f'No ellipse-fitting needed for RESOLVED source {galaxydir}/{galaxy}')
+                #done(galaxy, galaxydir, 1, suffix, fh=fh, debug=args.debug)
+                #continue
+            else:
+                skip_ellipse = False
 
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
                                        unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
@@ -489,8 +492,7 @@ def main():
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=False, verbose=args.verbose,
-                                       clobber=args.clobber,
-                                       # HACK!!
+                                       clobber=args.clobber, skip_ellipse=skip_ellipse,
                                        htmlgalaxydir=htmlgalaxydir)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
