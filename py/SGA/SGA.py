@@ -2341,6 +2341,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
         return sample, samplesrcs, tractor
 
+
     # Dictionary mapping between optical filter and filename coded up in
     # coadds.py, galex.py, and unwise.py, which depends on the project.
     data = {}
@@ -2415,12 +2416,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             if os.path.isfile(imfile):
                 filt2imfile[filt][imtype] = imfile
                 datacount += 1
-                ## if missing_ok, get opt_refband here
-                #if missing_ok:
-                #    if filt in all_opt_bands:
-                #        opt_bands.append(filt)
-                #        if opt_refband is None:
-                #            opt_refband = filt
             else:
                 log.warning(f'Missing {imfile}')
 
@@ -2469,32 +2464,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     # Intercept objects (e.g., RESOLVED) that we do not ellipse-fit.
     if skip_ellipse:
-        from tractor.tractortime import TAITime
-        from astrometry.util.util import Tan
-        from legacypipe.survey import LegacySurveyWcs, ConstantFitsWcs
-
         tractor = None
-        # FIXME - duplicate code from io._read_image_data
-        log.warning('FIXME! -- Uncomment GALEX, unWISE after legacypipe/#777 is addressed!')
-        # https://github.com/legacysurvey/legacypipe/issues/777
-        #for refband in [opt_refband, galex_refband, unwise_refband]:
-        for filt in [opt_refband]:
-            hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
-            wcs = Tan(hdr)
-            if 'MJD_MEAN' in hdr:
-                mjd_tai = hdr['MJD_MEAN'] # [TAI]
-                wcs = LegacySurveyWcs(wcs, TAITime(None, mjd=mjd_tai))
-            else:
-                wcs = ConstantFitsWcs(wcs)
-            if filt == opt_refband:
-                data['opt_hdr'] = hdr
-                data['opt_wcs'] = wcs
-            elif filt == galex_refband:
-                data['galex_hdr'] = hdr
-                data['galex_wcs'] = wcs
-            elif filt == unwise_refband:
-                data['unwise_hdr'] = hdr
-                data['unwise_wcs'] = wcs
     else:
         # We ~have~ to read the tractor catalog using fits_table because we will
         # turn these catalog entries into Tractor sources later.
@@ -2558,6 +2528,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     sample, samplesrcs, tractor = _read_sample(opt_refband, tractor=tractor)
 
+
     if skip_ellipse:
         # Populate columns which would otherwise be added in
         # build_multiband_mask. NB: RA_TRACTOR,DEC_TRACTOR stay zero!
@@ -2571,6 +2542,63 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         sample['BA_MOMENT'] = sample['BA_INIT']
         sample['PA_MOMENT'] = sample['PA_INIT']
         sample['ELLIPSEBIT'] += ELLIPSEBIT['NOTRACTOR']
+
+
+        # FIXME - duplicate code from io._read_image_data
+        from tractor.tractortime import TAITime
+        from astrometry.util.util import Tan
+        from legacypipe.survey import LegacySurveyWcs, ConstantFitsWcs
+
+        for filt, these_bands, this_pixscale, dataset in zip(
+                [opt_refband, galex_refband, unwise_refband],
+                [opt_bands, galex_bands, unwise_bands],
+                [pixscale, galex_pixscale, unwise_pixscale],
+                ['opt', 'galex', 'unwise']):
+
+            if dataset == 'opt':
+                hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
+                wcs = Tan(hdr)
+                if 'MJD_MEAN' in hdr:
+                    mjd_tai = hdr['MJD_MEAN'] # [TAI]
+                    wcs = LegacySurveyWcs(wcs, TAITime(None, mjd=mjd_tai))
+                else:
+                    wcs = ConstantFitsWcs(wcs)
+                opt_sz = (int(wcs.wcs.imageh), int(wcs.wcs.imagew))
+                sz = (int(wcs.wcs.imageh), int(wcs.wcs.imagew))
+                data[f'{dataset}_wcs'] = wcs
+                data[f'{dataset}_hdr'] = hdr
+            else:
+                # https://github.com/legacysurvey/legacypipe/issues/777
+                log.warning('FIXME! --- Need legacypipe/#777 to be addressed!')
+                factor = pixscale / this_pixscale
+                sz = (int(opt_sz[0] * factor), int(opt_sz[1] * factor))
+                crpix = sz[0] / 2. + 0.5
+
+                img = np.zeros((sz[0], sz[1]), 'f4')
+                wcs2 = Tan(*[float(xx) for xx in [wcs.wcs.crval[0], wcs.wcs.crval[1], crpix,
+                                                  crpix, wcs.wcs.cd[0] / factor, wcs.wcs.cd[1] / factor,
+                                                  wcs.wcs.cd[2] / factor, wcs.wcs.cd[3] / factor,
+                                                  sz[0], sz[1]]])
+                thdr = fitsio.FITSHDR()
+                wcs2.add_to_header(thdr)
+                data[f'{dataset}_hdr'] = thdr
+                data[f'{dataset}_wcs'] = wcs2
+
+
+            if filt == opt_refband:
+                data['opt_hdr'] = hdr
+                data['opt_wcs'] = wcs
+            elif filt == galex_refband:
+                data['galex_hdr'] = hdr
+                data['galex_wcs'] = wcs
+            elif filt == unwise_refband:
+                data['unwise_hdr'] = hdr
+                data['unwise_wcs'] = wcs
+
+            # empty models and maskbits images
+            data[f'{dataset}_models'] = np.zeros((len(sample), len(these_bands), *sz), 'f4')
+            data[f'{dataset}_maskbits'] = np.zeros((len(sample), *sz), np.int32)
+
 
         return data, tractor, sample, samplesrcs, 1
 

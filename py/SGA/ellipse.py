@@ -1500,7 +1500,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                     allbands = data[f'{dataset}_bands']
 
                 results_dataset1 = results_datamodel(obj, allbands, dataset, sma_apertures_arcsec, sbthresh)
-                sbprofiles_dataset1 = None
+                sbprofiles_dataset1 = Table()
                 #sbprofiles_dataset1 = sbprofiles_datamodel(sma_array*pixscale, allbands)
                 results_dataset.append(results_dataset1)
                 sbprofiles_dataset.append(sbprofiles_dataset1)
