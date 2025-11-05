@@ -26,9 +26,10 @@ def set_legacysurvey_dir(region='dr9-north', rank=None):
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
     if rank is not None:
         pre = f'Rank {rank}: '
+        if rank == 0:
+            log.info(f'{pre}Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     else:
-        pre = ''
-    log.info(f'{pre}Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
+        log.info(f'Setting LEGACY_SURVEY_DIR={legacy_survey_dir}')
     os.environ['LEGACY_SURVEY_DIR'] = legacy_survey_dir
 
 
