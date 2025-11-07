@@ -472,7 +472,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.info(f'Selecting {len(fullsample):,d}/{nfullobj:,d} ({len(sample):,d}/{nobj:,d}) wisesize groups (objects)')
 
 
-    if False:#True:#False:
+    if False:
         from SGA.ellipse import ELLIPSEMODE
         ## remove
         #I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
@@ -625,8 +625,6 @@ def SGA_datamodel(ellipse, bands, all_bands):
     ubands = np.char.upper(bands)
     uall_bands = np.char.upper(all_bands)
 
-    print('Need to add DIAM_INIT_REF and BANDS.')
-
     dmcols = [
         # from original sample
         ('SGAID', np.int64, None),
@@ -679,7 +677,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('DEC_TRACTOR', np.float64, u.degree),
         ('ELLIPSEBIT', np.int32, None),
     ]
-    for filt in ubands:
+    for filt in uall_bands:
         dmcols += [(f'MW_TRANSMISSION_{filt}', np.float32, None)]
     for filt in uall_bands:
         dmcols += [(f'GINI_{filt}', np.float32, None)]
@@ -798,7 +796,7 @@ def _empty_tractor(cat=None):
             ('gaia_phot_rp_mean_mag', '>f4'),
             ('gaia_phot_rp_mean_flux_over_error', '>f4'),
             ('gaia_phot_rp_n_obs', '>i4'),
-            ('gaia_phot_variable_flag', '<U13'), # not bool!
+            ('gaia_phot_variable_flag', '|b1'),
             ('gaia_astrometric_excess_noise', '>f4'),
             ('gaia_astrometric_excess_noise_sig', '>f4'),
             ('gaia_astrometric_n_obs_al', '>i2'),
@@ -1122,10 +1120,10 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
                 tractor.remove_rows(rem)
 
             # 18111p0189,18009m0110
-            if tractor['gaia_phot_variable_flag'].dtype == bool:
+            if tractor['gaia_phot_variable_flag'].dtype == '<U13':
                 #print('FIXING PROBLEM!')
-                tractor.remove_column('gaia_phot_variable_flag') # bool ????
-                tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), '<U13')
+                tractor.remove_column('gaia_phot_variable_flag')
+                tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), bool)
 
             # Tractor catalog of SGA source(s)
             for ellipse1 in ellipse:
@@ -1145,10 +1143,10 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
                     assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
                     #tractor_sga1 = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
                     tractor_sga1 = _empty_tractor()
-                    if tractor_sga1['gaia_phot_variable_flag'].dtype == bool:
+                    if tractor_sga1['gaia_phot_variable_flag'].dtype == '<U13':
                         #print('FIXING PROBLEM! SGA')
                         tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
-                        tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), '<U13')
+                        tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), bool)
                     tractor_sga1['ref_cat'] = REFCAT
                     tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
                     tractor_sga.append(tractor_sga1)
@@ -2884,7 +2882,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
 
     # add MW dust extinction
-    for filt in data['all_opt_bands']: # NB: all optical bands
+    for filt in data['all_bands']: # NB: all bands
         sample[f'MW_TRANSMISSION_{filt.upper()}'] = mwdust_transmission(
             sample['EBV'], band=filt, run=data['run'])
 
