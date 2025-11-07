@@ -2952,6 +2952,13 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
+    # Read and process the "vi-drop" file; update REGION for objects
+    # indicated in that file.
+    print('Read and process the drop file! -- CHECK FOR DUPLICATES!')
+    print('Make sure the relevant bit is actually set before subtracting it.')
+    print('Make sure REGION does not become zero! If it does, drop that object!')
+    pdb.set_trace()
+
     # sanity check on initial diameters
     mindiam = 20. # [arcsec]
     diam, ba, pa, ref, mag, band = choose_geometry(
@@ -3093,6 +3100,15 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     if len(gg[cc>1]) > 0:
         print('Duplicate groups!!')
         pdb.set_trace()
+
+    # After assigning groups, loop back through and update REGION to
+    # ensure that all group members have data in a given
+    # region. Otherwise when we build the final catalog for a given
+    # region, SGA.build_catalog will think that a galaxy is missing
+    # for reasons other than there are no data.
+    print('Update REGION for all group members!')
+    pdb.set_trace()
+
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
