@@ -2,6 +2,9 @@
 #
 # NB: If "region" is blank, then drop from all/both regions.
 #
+# NB: The comment "very poor initial positions" means the source is
+# real but it just needs more work.
+#
 objname,region,comment
 #
 WISEA J145331.46+302133.9,dr9-north,
@@ -142,3 +145,11 @@ WISEA J043321.32-132549.6,,
 WISEA J085035.00+101207.6,,
 WISEA J092912.50+392211.3,,
 WISEA J050146.37-181233.4,,missing companion
+ESO 359-IG 021 NED01,,very poor initial positions
+ESO 359-IG 021 NED02,,very poor initial positions
+ESO 291- G?008,,no source
+ESO 201- G?019,,no source
+ESO 263- G 028,,no source
+KUG 1206+229B,,no source
+ESO 502- G 001,,no source
+

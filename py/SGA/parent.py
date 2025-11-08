@@ -2952,9 +2952,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
-    # Read and process the "vi-drop" file; update REGION for objects
-    # indicated in that file.
-    dropfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-vi-drop.csv')
+    # Read and process the "parent-drop" file; update REGION for
+    # objects indicated in that file.
+    dropfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-drop.csv')
     drop = Table.read(dropfile, format='csv', comment='#')
     log.info(f'Read {len(drop)} objects from {dropfile}')
     try:
@@ -3006,6 +3006,47 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.warning(f'Setting mindiam={mindiam:.1f} arcsec for {np.sum(I):,d} objects.')
     diam /= 60. # [arcmin]
     assert(np.all(diam > 0.))
+
+    # one final update of coordinates and geometry based on VI
+    propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
+    props = Table.read(propsfile, format='csv', comment='#')
+    log.info(f'Read {len(props)} objects from {propsfile}')
+
+    for prop in props:
+        objname = prop['objname']
+        I = np.where(objname == parent['OBJNAME'].value)[0]
+        if len(I) != 1:
+            log.info(f'Problem finding {objname}!')
+            pdb.set_trace()
+
+        for col in ['ra', 'dec', 'diam', 'pa', 'ba']:
+            newval = prop[col]
+            if col == 'ra' or col == 'dec':
+                oldval = parent[col.upper()][I[0]]
+            elif col == 'diam':
+                oldval = diam[I[0]]
+            elif col == 'pa':
+                oldval = pa[I[0]]
+            elif col == 'ba':
+                oldval = ba[I[0]]
+
+            if newval != -99.:
+                log.info(f'{objname} {col}: {oldval} --> {newval}')
+            else:
+                pass
+                #log.info(f'  Retaining {col}: {oldval}')
+
+            if newval != -99.:
+                if col == 'ra' or col == 'dec':
+                    parent[col.upper()][I] = newval
+                elif col == 'diam':
+                    diam[I] = newval
+                elif col == 'pa':
+                    pa[I] = newval
+                elif col == 'ba':
+                    ba[I] = newval
+
+    pdb.set_trace()
 
     ## Pre-process the morphology column.
     #allmorph = []
@@ -3103,6 +3144,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                       grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
     out1 = build_group_catalog(grp[I], mp=mp)
     try:
+        #test = grp[~I]
+        #out2 = build_group_catalog(test[:10000], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
         out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     except:
         pdb.set_trace()
@@ -3114,19 +3157,27 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     out.add_column(groupname, name='SGAGROUP', index=1)
 
     I = out['GROUP_PRIMARY']
-    gg, cc = np.unique(['SGAGROUP'][I], return_counts=True)
+    gg, cc = np.unique(out['SGAGROUP'][I], return_counts=True)
     if len(gg[cc>1]) > 0:
         print('Duplicate groups!!')
         pdb.set_trace()
 
-    # After assigning groups, loop back through and update REGION to
-    # ensure that all group members have data in a given
-    # region. Otherwise when we build the final catalog for a given
-    # region, SGA.build_catalog will think that a galaxy is missing
-    # for reasons other than there are no data.
-    I = out['GROUP_PRIMARY']
-    print('Update REGION for all group members!')
-    pdb.set_trace()
+    # After assigning groups, loop back through and make sure REGION
+    # is the same for all group members, otherwise SGA.build_catalog
+    # will think that a galaxy is missing for reasons other than there
+    # are no data.
+    I = out['GROUP_PRIMARY'] * (out['GROUP_MULT'] > 1)
+    drop_groupid = []
+    for groupid in out['GROUP_ID'][I]:
+        J = groupid == out['GROUP_ID']
+        if np.min(out['REGION'][J]) != np.max(out['REGION'][J]):
+            drop_groupid.append(groupid)
+    if len(drop_groupid) > 0:
+        I = np.isin(out['GROUP_ID'], drop_groupid)
+        log.info(f'Dropping {len(np.unique(drop_groupid)):,d} unique groups ' + \
+                 f'({np.sum(I):,d} members) on the edge of the footprint.')
+        pdb.set_trace()
+        out = out[~I]
 
     # one more check!
     try:

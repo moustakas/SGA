@@ -310,7 +310,7 @@ def build_group_catalog(
     contain: bool = True,                      # enable ellipse-containment linking
     contain_margin: float = 0.50,              # expansion on axes (1+margin)
     merge_centers: bool = True,                # merge groups with centers within threshold
-    merge_sep_arcsec: float = 51.0,            # DEFAULT bumped to 51.0 arcsec
+    merge_sep_arcsec: float = 52.,             # merge groups closer than this value
 ) -> Table:
     """
     Build a mosaic-friendly group catalog using a hybrid anisotropic rule.

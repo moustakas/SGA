@@ -79,7 +79,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # original run
         #version = 'v0.10'
 
-        # new group-finder; no duplicate groups; cleanup of REGION; some dropped sources
+        # new group-finder; no duplicate groups; cleanup of REGION;
+        # some dropped sources via VI.
         version = 'v0.11'
     else:
         # merged SGA catalog

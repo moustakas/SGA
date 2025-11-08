@@ -1,0 +1,4 @@
+# Additional sources to be added to the final parent catalog based on VI.
+#
+objname,ra,dec,diam,pa,ba,comment
+DESI J0336.410-055.480,336.4106,-55.4806,0.5,0.0,1.0,Companion to 'ESO 190-IG 008'
