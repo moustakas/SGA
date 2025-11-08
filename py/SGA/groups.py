@@ -1,21 +1,32 @@
+
+# -*- coding: utf-8 -*-
 """
-SGA groups.py — high-performance group finding with hybrid anisotropic linking,
-multiprocessing, and ellipse-containment linking.
+SGA groups.py — group finding for SGA-2025
 
-Assumptions:
-  - Astropy available
-  - `from SGA.logger import log` succeeds
-  - `from SGA.io import radec_to_groupname` succeeds
-  - `pydl.pydlutils.spheregroup.spheregroup` installed (pip install pydl)
+This module implements high-performance group finding on the sky using:
+  • Fast spherical preclustering via pydl's `spheregroup`
+  • Intra-precluster linking with a grid-based neighbor search
+  • Hybrid anisotropic link thresholds using BA/PA when available
+  • Optional ellipse-containment linking
+  • Optional post-pass center-merging to remove 36″ name collisions
+  • Multiprocessing across preclusters
 
-Appended columns (exact dtypes):
-    GROUP_ID        int32
-    GROUP_NAME      str10
-    GROUP_MULT      int16
-    GROUP_PRIMARY   bool
-    GROUP_RA        float64
-    GROUP_DEC       float64
-    GROUP_DIAMETER  float32   # arcmin
+Assumptions
+-----------
+- Astropy available
+- `from SGA.logger import log` succeeds
+- `from SGA.io import radec_to_groupname` succeeds
+- `pydl.pydlutils.spheregroup.spheregroup` installed
+
+Appended columns (exact dtypes)
+--------------------------------
+GROUP_ID        int32
+GROUP_NAME      str10
+GROUP_MULT      int16
+GROUP_PRIMARY   bool
+GROUP_RA        float64     # deg
+GROUP_DEC       float64     # deg
+GROUP_DIAMETER  float32     # arcmin
 """
 
 from __future__ import annotations
@@ -47,20 +58,30 @@ _G_params = None
 
 
 def _wrap_deg(x: float | np.ndarray) -> float | np.ndarray:
+    """Wrap angle(s) into [0, 360) degrees."""
     return np.mod(x, 360.0)
 
 
 def _angdiff_deg(a: float, b: float) -> float:
+    """Compute signed difference a-b wrapped into (-180, 180] degrees."""
     return (a - b + 180.0) % 360.0 - 180.0
 
 
 def _bearing_pa_deg_local(dx_deg: float, dy_deg: float) -> float:
     """
-    Local-plane bearing (PA-style) from point i toward j using small-angle
-    tangent-plane offsets:
-        dx_deg = (RA_j - RA_i) * cos(dec0)
-        dy_deg = (DEC_j - DEC_i)
-    Returns PA in degrees: 0° = North, 90° = East, [0,360).
+    Bearing (astronomical PA) on the local tangent plane from i→j.
+
+    Parameters
+    ----------
+    dx_deg : float
+        (RA_j − RA_i) * cos(dec0) in degrees.
+    dy_deg : float
+        (DEC_j − DEC_i) in degrees.
+
+    Returns
+    -------
+    float
+        PA in degrees with 0°=North, 90°=East in [0,360).
     """
     pa = math.degrees(math.atan2(dx_deg, dy_deg))
     if pa < 0.0:
@@ -69,7 +90,7 @@ def _bearing_pa_deg_local(dx_deg: float, dy_deg: float) -> float:
 
 
 class DSU:
-    """Disjoint Set Union (Union-Find) with path compression and union by rank."""
+    """Disjoint Set Union with path compression and union by rank."""
 
     def __init__(self, n: int):
         self.p = list(range(n))
@@ -95,10 +116,7 @@ class DSU:
 
 
 def _init_pool(RA, DEC, DIAM, BA, PA, params_dict):
-    """
-    Initializer for worker processes. Stores large arrays and common parameters
-    in module-level globals to avoid pickling them for every task.
-    """
+    """Initializer for worker processes: cache arrays and parameters in globals."""
     global _G_RA, _G_DEC, _G_DIAM, _G_BA, _G_PA
     global _G_a_arc, _G_b_arc, _G_pa_rad, _G_has_aniso, _G_params
 
@@ -125,10 +143,7 @@ def _init_pool(RA, DEC, DIAM, BA, PA, params_dict):
 
 
 def _pair_threshold_arcmin(i: int, j: int, dx_deg: float, dy_deg: float) -> float:
-    """
-    Compute the hybrid/anisotropic link threshold (arcmin) for a pair (i,j),
-    given local-plane deltas dx,dy in degrees.
-    """
+    """Hybrid/anisotropic link threshold (arcmin) for pair (i, j) using local-plane deltas."""
     a_arc = _G_a_arc
     b_arc = _G_b_arc
     pa_rad = _G_pa_rad
@@ -181,8 +196,8 @@ def _pair_threshold_arcmin(i: int, j: int, dx_deg: float, dy_deg: float) -> floa
 
 def _contains_pair(i: int, j: int, dx_deg: float, dy_deg: float, scale: float) -> bool:
     """
-    Return True if j lies inside the *scaled* ellipse of i.
-    Uses local-plane deltas (dx,dy) in degrees and precomputed ellipse params.
+    True if j lies inside the *scaled* ellipse of i (or circle if BA/PA missing).
+    Uses local-plane deltas (dx, dy) in degrees.
     """
     a = _G_a_arc[i]
     b = _G_b_arc[i]
@@ -206,10 +221,7 @@ def _contains_pair(i: int, j: int, dx_deg: float, dy_deg: float, scale: float) -
 
 
 def _process_cluster(members: list[int]) -> np.ndarray:
-    """
-    Worker: process a single precluster and return an array of edges (i,j)
-    that should be unioned at the global DSU. Shape (E,2), dtype int64.
-    """
+    """Process a single precluster and return edges (i, j) to union (E×2 int64)."""
     p = _G_params
     RA = _G_RA
     DEC = _G_DEC
@@ -288,119 +300,72 @@ def build_group_catalog(
     dmax: float = 3.0/60.0,         # deg (3') maximum candidate separation
     anisotropic: bool = True,
     link_mode: str = "hybrid",      # "off" | "anisotropic" | "hybrid"
-    big_diam: float = 3.0,          # arcmin threshold for "large" galaxies  [DEFAULT CHANGED]
+    big_diam: float = 3.0,          # arcmin threshold for "large" galaxies
     mfac_backbone: float = 2.0,     # large–large multiplier
-    mfac_sat: float = 1.5,          # large–small multiplier                 [DEFAULT CHANGED]
-    k_floor: float = 0.40,          # floor factor for softened anisotropy   [DEFAULT CHANGED]
+    mfac_sat: float = 1.5,          # large–small multiplier
+    k_floor: float = 0.40,          # floor factor for softened anisotropy
     q_floor: float = 0.20,          # minimum BA
     name_via: str = "radec",
     sphere_link_arcmin: float | None = None,  # precluster link length; default uses dmax
     grid_cell_arcmin: float | None = None,    # grid bin size; default = dmax
     mp: int = 1,                               # number of processes for parallel precluster processing
     contain: bool = True,                      # enable ellipse-containment linking
-    contain_margin: float = 0.50,              # expansion on axes (1+margin)       [DEFAULT CHANGED]
+    contain_margin: float = 0.50,              # expansion on axes (1+margin)
+    merge_centers: bool = True,                # merge groups with centers within 36″
+    merge_sep_arcsec: float = 36.0,            # merge threshold in arcsec
 ) -> Table:
     """
-    Build a mosaic-friendly group catalog on the sky using a **hybrid anisotropic** rule
-    with fast preclustering and optional multiprocessing.
+    Build a mosaic-friendly group catalog using a hybrid anisotropic rule.
 
     Parameters
     ----------
-    cat : astropy.table.Table
-        Input table with required columns: **RA, DEC** [deg] and **DIAM** [arcmin].
-        Optional: **BA** (= b/a), **PA** [deg astronomical], **OBJNAME**.
-
+    cat : Table
+        Input with required columns: RA, DEC [deg], DIAM [arcmin]. Optional: BA (b/a),
+        PA [deg astronomical], OBJNAME.
     group_id_start : int, default 0
-        Offset added to the 0-based group labels.
-
+        Offset added to 0-based group labels.
     mfac : float, default 1.5
-        Base multiplier for **small–small** links (and for all links if `link_mode="anisotropic"`).
-        Threshold:  d ≤ 0.5 * mfac * (r_i + r_j).  *Secondary in hybrid.*
-
+        Base multiplier for small–small links (also used if link_mode="anisotropic").
     dmin : float, default 36"/deg
-        Hard minimum link length (in degrees) to avoid pathological tiny links.
-
+        Hard minimum link length (in degrees).
     dmax : float, default 3'/deg
-        Hard maximum candidate separation (in degrees). Also sets the search window,
-        precluster default, and grid cell default. Larger dmax = more candidates.
-
+        Hard maximum candidate separation (in degrees). Also sets search/grid defaults.
     anisotropic : bool, default True
-        Whether to use ellipse-aware radii (BA/PA). If False or `link_mode="off"`, falls back
-        to circular geometry with `mfac`.
-
+        Use ellipse-aware radii (BA/PA). If False or link_mode="off", use circular.
     link_mode : {"off", "anisotropic", "hybrid"}, default "hybrid"
-        - "off": circular rule only: d ≤ 0.5 * mfac * (a_i + a_j).
-        - "anisotropic": directional ellipses for **all** pairs: d ≤ 0.5 * mfac * (r_i + r_j).
-        - "hybrid": use pair-type rules below (recommended).
-
+        "off": circular; "anisotropic": directional for all; "hybrid": pair-type rules.
     big_diam : float [arcmin], default 3.0
-        Size threshold for "large" galaxies. Controls which branch fires:
-        large–large, large–small, or small–small. **Primary knob** in hybrid.
-
+        Threshold for "large" classification (controls pair-type in hybrid).
     mfac_backbone : float, default 2.0
-        Multiplier for **large–large** links (circularized). Threshold:
-            d ≤ 0.5 * mfac_backbone * (a_i + a_j).
-        Keeps obvious bright pairs/triples together. *Secondary.*
-
+        Multiplier for large–large links (circularized).
     mfac_sat : float, default 1.5
-        Multiplier for **large–small** links. Applied to softened directional radii:
-            r'_i = max(r_i, k_floor * a_i);  r'_j = max(r_j, k_floor * a_j)
-            d ≤ 0.5 * mfac_sat * (r'_i + r'_j).
-        **Primary** for attaching satellites to a large host in hybrid.
-
+        Multiplier for large–small links (with k_floor softening).
     k_floor : float, default 0.40
-        Soft floor on directional radii in large–small links to prevent thin edge-ons from
-        over-suppressing along the minor axis. Higher = more permissive. *Primary for hybrid.*
-
+        Floor for directional radii in large–small links.
     q_floor : float, default 0.20
-        Global minimum axis ratio used in all anisotropic radii (prevents extreme shrink). *Secondary.*
-
+        Global minimum BA used in anisotropic radii.
     name_via : {"radec","none"}, default "radec"
-        How to generate GROUP_NAME (fallback uses J-style encoding).
-
+        How to generate GROUP_NAME.
     sphere_link_arcmin : float or None, default None
-        Preclustering link length (arcmin) for `spheregroup`. If None, uses `dmax` (3′).
-        Tighter = smaller preclusters; looser = larger preclusters. *Affects speed.*
-
+        Preclustering link length (arcmin) for spheregroup (defaults to dmax if None).
     grid_cell_arcmin : float or None, default None
-        Grid cell size (arcmin) for intra-precluster neighbor search. If None, uses `dmax`.
-        Larger cells can reduce overhead in sparse fields. *Affects speed.*
-
+        Grid cell size (arcmin) in neighbor search (defaults to dmax if None).
     mp : int, default 1
-        Number of processes for parallel intra-precluster linking. `mp=8` is typical for
-        ~1M rows on a shared node.
-
+        Number of processes for parallel intra-precluster linking.
     contain : bool, default True
-        Enable **containment rule**: if j lies inside i’s ellipse scaled by (1+contain_margin),
-        link immediately (or vice versa). **Preempts** distance tests. *Primary for hybrid.*
-
+        Enable containment rule (preempts distance tests).
     contain_margin : float, default 0.50
-        Scale factor margin (e.g., 0.50 ⇒ semiaxes ×1.5). Increasing pulls in borderline
-        in-ellipse neighbors; decreasing is stricter.
+        Ellipse scale margin; 0.50 ⇒ axes ×1.5.
+    merge_centers : bool, default True
+        After linking, merge any provisional groups whose centers are within
+        `merge_sep_arcsec` on the sky (removes 36″ name collisions).
+    merge_sep_arcsec : float, default 36.0
+        Separation in arcsec used for center-merging.
 
     Returns
     -------
-    cat : astropy.table.Table
-        The **same table** with columns appended (dtypes fixed):
-        GROUP_ID (int32), GROUP_NAME (str10), GROUP_MULT (int16), GROUP_PRIMARY (bool),
-        GROUP_RA (float64), GROUP_DEC (float64), GROUP_DIAMETER (float32).
-
-    Notes
-    -----
-    Core geometry (directional radius toward neighbor j):
-        r_eff_i(θ) = (a_i * b_i) / sqrt( (b_i cos(θ − PA_i))^2 + (a_i sin(θ − PA_i))^2 ),
-        where a_i = 0.5 * DIAM_i (arcmin), b_i = max(BA_i, q_floor) * a_i,
-        θ = atan2(Δx, Δy) on the local tangent plane (deg). If BA/PA missing, r_eff_i = a_i.
-
-    Hybrid pair rules:
-        Small–small:    d ≤ 0.5 * mfac * (r_i + r_j)
-        Large–small:    r'_i = max(r_i, k_floor*a_i), r'_j = max(r_j, k_floor*a_j);
-                         d ≤ 0.5 * mfac_sat * (r'_i + r'_j)
-        Large–large:    d ≤ 0.5 * mfac_backbone * (a_i + a_j)
-
-    Guardrails:
-        dmin ≤ thresholds ≤ dmax; preclustering uses `sphere_link_arcmin` (default = dmax);
-        neighbor search uses a grid of `grid_cell_arcmin` (default = dmax).
+    Table
+        Same table with GROUP_* columns appended (dtypes fixed).
     """
     t0 = time.time()
 
@@ -478,6 +443,53 @@ def build_group_catalog(
     log.info(f"[2/3] Intra-precluster linking (grid+hybrid, mp={mp if mp else 1}): "
              f"{links} links in {t2 - t1:.2f}s (grid={cell_arcmin:.2f}')")
 
+    # Optional: merge provisional groups whose centers are within merge_sep_arcsec
+    if merge_centers:
+        roots_tmp = np.array([dsu.find(i) for i in range(N)], dtype=np.int64)
+        uniq_tmp, inv_tmp = np.unique(roots_tmp, return_inverse=True)
+
+        # Representative member per provisional group (first occurrence)
+        reps = np.zeros(len(uniq_tmp), dtype=np.int64)
+        first_seen = {}
+        for i, g in enumerate(inv_tmp):
+            if g not in first_seen:
+                first_seen[g] = i
+        for g, irep in first_seen.items():
+            reps[g] = irep
+
+        # Provisional DIAM-weighted centers on the unit sphere
+        ra_c = np.zeros(len(uniq_tmp), dtype=float)
+        dec_c = np.zeros(len(uniq_tmp), dtype=float)
+        for gi, rlab in enumerate(uniq_tmp):
+            idx = np.where(roots_tmp == rlab)[0]
+            w = np.clip(DIAM[idx], 1e-3, None)
+            ra_rad = RA[idx] * DEG2RAD
+            dec_rad = DEC[idx] * DEG2RAD
+            cosd = np.cos(dec_rad)
+            x = (cosd * np.cos(ra_rad) * w).sum() / w.sum()
+            y = (cosd * np.sin(ra_rad) * w).sum() / w.sum()
+            z = (np.sin(dec_rad) * w).sum() / w.sum()
+            nrm = math.sqrt(x*x + y*y + z*z)
+            if nrm > 0.0:
+                x, y, z = x/nrm, y/nrm, z/nrm
+            ra_c[gi]  = (math.atan2(y, x) % (2.0*math.pi)) * RAD2DEG
+            dec_c[gi] = math.atan2(z, math.hypot(x, y)) * RAD2DEG
+
+        # Group-center stitching via spheregroup at merge_sep_arcsec
+        ll_cent_deg = float(merge_sep_arcsec) / 3600.0
+        gcent, mcent, fcent, nxcent = _spheregroup(ra_c, dec_c, ll_cent_deg)
+
+        # Union all representatives within each center precluster
+        for gc in np.unique(gcent):
+            i = fcent[gc]
+            if i == -1:
+                continue
+            j = nxcent[i]
+            while j != -1:
+                dsu.union(int(reps[i]), int(reps[j]))
+                j = nxcent[j]
+
+    # Final roots after optional center merge
     roots = np.array([dsu.find(i) for i in range(N)], dtype=np.int64)
     uniq, inv = np.unique(roots, return_inverse=True)
     group_ids = (inv + group_id_start).astype(np.int32, copy=False)
@@ -534,6 +546,7 @@ def build_group_catalog(
         names = np.full(N, '', dtype='U10')
 
     def _attach(name: str, data, dtype=None):
+        """Attach/replace a column with controlled dtype; squeeze to avoid str10[1]."""
         if dtype is not None:
             col = Column(np.asarray(data, dtype=dtype).squeeze(), name=name)
         else:
@@ -550,6 +563,14 @@ def build_group_catalog(
     _attach('GROUP_RA', row_grp_ra, np.float64)
     _attach('GROUP_DEC', row_grp_dec, np.float64)
     _attach('GROUP_DIAMETER', row_grp_diam, np.float32)
+
+    # Enforce uniqueness of GROUP_NAME
+    if len(cat) > 0:
+        nm = np.array(cat['GROUP_NAME'])
+        un, idx, cnt = np.unique(nm, return_index=True, return_counts=True)
+        dups = un[cnt > 1]
+        if dups.size > 0:
+            raise ValueError(f"Duplicate GROUP_NAME(s) after center-merge: {dups.tolist()}")
 
     t3 = time.time()
 
@@ -577,4 +598,5 @@ def build_group_catalog(
 
 
 def qa(*args, **kwargs):
+    """Placeholder QA hook (no-op)."""
     log.info("qa(): no-op placeholder.")
