@@ -2952,6 +2952,39 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
+    # add additional sources by-hand
+    def _empty_parent(cat, N=1):
+        for col in cat.colnames:
+            if cat[col].dtype == bool:
+                cat[col] = False
+            else:
+                cat[col] *= 0
+        if N > 1:
+            cat = vstack([onecat for onecat in cat])
+        return cat
+
+
+    customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
+    custom = Table.read(customfile, format='csv', comment='#')
+    log.info(f'Read {len(custom)} objects from {customfile}')
+
+    moreparent = _empty_parent(parent[:1], len(custom))
+    for col in custom.colnames:
+        if col == 'COMMENT':
+            continue
+        if col == 'REGION':
+            moreparent[col] = [REGIONBITS[cust[col]] for cust in custom]
+        else:
+            moreparent[col] = custom[col]
+    #moreparent[custom.colnames[:-1]]
+
+    # assign a unique parent_row
+    all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
+    moreparent['ROW_PARENT'] = np.max(all_parent_rows) + np.arange(len(moreparent)) + 1
+    parent = vstack((parent, moreparent))
+    pdb.set_trace()
+
+
     # Read and process the "parent-drop" file; update REGION for
     # objects indicated in that file.
     dropfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-drop.csv')
