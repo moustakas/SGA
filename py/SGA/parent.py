@@ -3207,18 +3207,32 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # is the same for all group members, otherwise SGA.build_catalog
     # will think that a galaxy is missing for reasons other than there
     # are no data.
-    I = out['GROUP_PRIMARY'] * (out['GROUP_MULT'] > 1)
+    # bits
+    I = (out['GROUP_PRIMARY']) & (out['GROUP_MULT'] > 2)
     drop_groupid = []
+    strip_groups = 0
     for groupid in out['GROUP_ID'][I]:
-        J = groupid == out['GROUP_ID']
-        if np.min(out['REGION'][J]) != np.max(out['REGION'][J]):
+        J = (out['GROUP_ID'] == groupid)
+        # Bits common to ALL members of this group:
+        allowed = int(np.bitwise_and.reduce(out['REGION'][J]))
+        if allowed == 0:
+            # no region bit shared by all members → drop entire group
             drop_groupid.append(groupid)
-    if len(drop_groupid) > 0:
-        I = np.isin(out['GROUP_ID'], drop_groupid)
-        log.info(f'Dropping {len(np.unique(drop_groupid)):,d} unique groups ' + \
-                 f'({np.sum(I):,d} members) on the edge of the footprint.')
-        pdb.set_trace()
-        out = out[~I]
+        else:
+            # clear missing bits from everyone in the group (keep only the common bits)
+            new_reg = (out['REGION'][J] & allowed)
+            if np.any(new_reg != out['REGION'][J]):
+                out['REGION'][J] = new_reg
+                strip_groups += 1
+
+    if drop_groupid:
+        M = np.isin(out['GROUP_ID'], drop_groupid)
+        log.info(f"Dropping {len(np.unique(drop_groupid)):,d} unique groups "
+                 f"({np.sum(M):,d} members) with no common region bit.")
+        out = out[~M]
+
+    if strip_groups:
+        log.info(f"Stripped region bits (kept groups) for {strip_groups:,d} groups.")
 
     # one more check!
     try:
@@ -3229,8 +3243,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
-
-    pdb.set_trace()
 
     ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
     ## objects within (outside) the DR11 imaging footprint.
