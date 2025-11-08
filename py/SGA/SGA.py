@@ -1926,7 +1926,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
-                              factor=2., nsample=1, wmask=None, debug=False):
+                              factor=2., use_tractor_position=False,
+                              wmask=None, debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
 
@@ -1955,10 +1956,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         else:
             cutout_mask = np.ones(cutout.shape, bool)
 
+        if use_tractor_position:
+            x0y0 = (bx-x1, by-y1)
+        else:
+            x0y0 = None
+
         P = EllipseProperties()
         perc = 0.95 # 0.975
         method = 'percentile'
-        P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, smooth_sigma=0.)
+        P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, x0y0=x0y0, smooth_sigma=0.)
 
         if debug:
             import matplotlib.pyplot as plt
@@ -1971,7 +1977,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1988,15 +1993,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         return P
 
 
-    def get_geometry(pixscale, pixfactor=1., nsample=1, table=None, tractor=None,
-                     ref_tractor=None, props=None):
+    def get_geometry(pixscale, pixfactor=1., table=None, tractor=None, ref_tractor=None,
+                     use_tractor_position=False, props=None):
         """Extract elliptical geometry from either an astropy Table
         (sample), a tractor catalog, or an ellipse_properties object.
 
         """
         if table is not None:
             # if in a galaxy group use the Tractor initial position
-            if nsample > 1 and ref_tractor is not None:
+            if use_tractor_position and ref_tractor is not None:
                 bx, by = ref_tractor.bx[0], ref_tractor.by[0]
             else:
                 bx, by = table['BX_INIT'], table['BY_INIT']
@@ -2185,12 +2190,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 opt_models[iobj, iband, :, :] += model
 
         # Initial geometry and elliptical mask.
+        use_tractor_position = False
         if input_geo_initial is not None:
             niter_actual = 1
             geo_init = input_geo_initial[iobj, :]
         else:
-            geo_init = get_geometry(opt_pixscale, table=obj, nsample=nsample,
-                                    ref_tractor=objsrc)
+            # in groups, fall back to the Tractor center
+            if nsample > 1 and objsrc is not None:
+                use_tractor_position = True
+            geo_init = get_geometry(opt_pixscale, table=obj, ref_tractor=objsrc,
+                                    use_tractor_position=use_tractor_position)
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
         #print('Initial', iobj, bx, by, sma, ba, pa)
@@ -2304,9 +2313,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # can become ill-defined).
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask, debug=True)
-                geo_iter = get_geometry(opt_pixscale, props=props, nsample=nsample)
-                pdb.set_trace()
+                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask,# debug=True,
+                                              use_tractor_position=use_tractor_position)
+                geo_iter = get_geometry(opt_pixscale, props=props)
 
             ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
 
@@ -2547,10 +2556,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'MAG']:
             sample.rename_column(col, f'{col}_INIT')
         sample.rename_column('DIAM_REF', 'DIAM_INIT_REF')
-        #print('HACK!!!!!!!!!!')
-        #sample['RA_INIT'][0] = 325.7414
-        #sample['DEC_INIT'][0] = -63.2377
-        #sample['DIAM_INIT'][0] = 0.34
         sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                           index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 

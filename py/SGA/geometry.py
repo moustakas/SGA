@@ -39,7 +39,7 @@ class EllipseProperties:
         self.blob_mask = None
 
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            smooth_sigma=1.0):
+            x0y0=None, smooth_sigma=1.0):
         """
         Label and smooth the image, then select the largest contiguous blob
         and compute ellipse properties using second moments.
@@ -100,9 +100,13 @@ class EllipseProperties:
             import pdb ; pdb.set_trace()
         F = flux.sum()
 
-        # 4) flux-weighted centroid
-        self.x0 = np.dot(flux, x_sel) / F
-        self.y0 = np.dot(flux, y_sel) / F
+        # 4) flux-weighted centroid (optionally fixed)
+        if x0y0 is None:
+            self.x0 = np.dot(flux, x_sel) / F
+            self.y0 = np.dot(flux, y_sel) / F
+        else:
+            self.x0 = x0y0[0]
+            self.y0 = x0y0[1]
 
         # 5) central second moments
         dx = x_sel - self.x0
