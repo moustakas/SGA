@@ -2518,6 +2518,61 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
+def add_gaia_masking(cat):
+
+    log.info(f'Adding Gaia bright-star masking bits.')
+    if not 'STARFDIST' in cat.colnames:
+        cat['STARFDIST'] = np.zeros(len(cat), 'f4') + 99.
+    if not 'STARDIST' in cat.colnames:
+        cat['STARDIST'] = np.zeros(len(cat), 'f4') + 99.
+    if not 'STARMAG' in cat.colnames:
+        cat['STARMAG'] = np.zeros(len(cat), 'f4') + 99.
+
+    gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
+    gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
+    log.info(f'Read {len(gaia):,d} Gaia stars from {gaiafile}')
+    I = gaia['radius'] > 0.
+    log.info(f'Trimmed to {np.sum(I):,d}/{len(gaia):,d} stars with radius>0')
+    gaia = gaia[I]
+
+    dmag = 1.
+    bright = np.min(np.floor(gaia['mask_mag']))
+    faint = np.max(np.ceil(gaia['mask_mag']))
+    magbins = np.arange(bright, faint, dmag)
+
+    for mag in magbins:
+        # find all Gaia stars in this magnitude bin
+        I = np.where((gaia['mask_mag'] >= mag) * (gaia['mask_mag'] < mag+dmag))[0]
+
+        # search within 2 times the largest masking radius
+        maxradius = 2. * np.max(gaia['radius'][I]) # [degrees]
+        log.info(f'Found {len(I):,d} Gaia stars in magnitude bin {mag:.0f} to ' + \
+              f'{mag+dmag:.0f} with max radius {maxradius:.4f} degrees.')
+
+        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], gaia['ra'][I], gaia['dec'][I], maxradius, nearest=True)
+        if len(m1) > 0:
+            zero = np.where(sep == 0.)[0]
+            if len(zero) > 0:
+                cat['STARDIST'][m1[zero]] = 0.
+                cat['STARFDIST'][m1[zero]] = 0.
+                cat['STARMAG'][m1[zero]] = gaia['mask_mag'][I[m2[zero]]]
+
+            # separations can be identically zero
+            pos = np.where(sep > 0.)[0]
+            if len(pos) > 0:
+                # distance to the nearest star (in this mag bin)
+                # relative to the mask radius of that star (given its
+                # mag), capped at a factor of 2; values <1 mean the
+                # object is within the star's masking radius
+                fdist = sep[pos] / gaia['radius'][I[m2[pos]]].value
+                # only store the smallest value
+                J = np.where((fdist < 2.) * (fdist < cat['STARFDIST'][m1[pos]]))[0]
+                if len(J) > 0:
+                    cat['STARDIST'][m1[pos[J]]] = sep[pos[J]] # [degrees]
+                    cat['STARFDIST'][m1[pos[J]]] = fdist[J]
+                    cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
+
+
 def build_parent_archive(verbose=False, overwrite=False):
     """Build the parent catalog.
 
@@ -2807,55 +2862,8 @@ def build_parent_archive(verbose=False, overwrite=False):
     # RESOLVED always implies FIXGEO!
     cat['IN_FIXGEO'][cat['IN_RESOLVED']] = True
 
-    # add the Gaia mask bits
-    log.info(f'Adding Gaia bright-star masking bits.')
-    cat['STARFDIST'] = np.zeros(len(cat), 'f4') + 99.
-    cat['STARDIST'] = np.zeros(len(cat), 'f4') + 99.
-    cat['STARMAG'] = np.zeros(len(cat), 'f4') + 99.
-
-    gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
-    gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
-    log.info(f'Read {len(gaia):,d} Gaia stars from {gaiafile}')
-    I = gaia['radius'] > 0.
-    log.info(f'Trimmed to {np.sum(I):,d}/{len(gaia):,d} stars with radius>0')
-    gaia = gaia[I]
-
-    dmag = 1.
-    bright = np.min(np.floor(gaia['mask_mag']))
-    faint = np.max(np.ceil(gaia['mask_mag']))
-    magbins = np.arange(bright, faint, dmag)
-
-    for mag in magbins:
-        # find all Gaia stars in this magnitude bin
-        I = np.where((gaia['mask_mag'] >= mag) * (gaia['mask_mag'] < mag+dmag))[0]
-
-        # search within 2 times the largest masking radius
-        maxradius = 2. * np.max(gaia['radius'][I]) # [degrees]
-        log.info(f'Found {len(I):,d} Gaia stars in magnitude bin {mag:.0f} to ' + \
-              f'{mag+dmag:.0f} with max radius {maxradius:.4f} degrees.')
-
-        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], gaia['ra'][I], gaia['dec'][I], maxradius, nearest=True)
-        if len(m1) > 0:
-            zero = np.where(sep == 0.)[0]
-            if len(zero) > 0:
-                cat['STARDIST'][m1[zero]] = 0.
-                cat['STARFDIST'][m1[zero]] = 0.
-                cat['STARMAG'][m1[zero]] = gaia['mask_mag'][I[m2[zero]]]
-
-            # separations can be identically zero
-            pos = np.where(sep > 0.)[0]
-            if len(pos) > 0:
-                # distance to the nearest star (in this mag bin)
-                # relative to the mask radius of that star (given its
-                # mag), capped at a factor of 2; values <1 mean the
-                # object is within the star's masking radius
-                fdist = sep[pos] / gaia['radius'][I[m2[pos]]].value
-                # only store the smallest value
-                J = np.where((fdist < 2.) * (fdist < cat['STARFDIST'][m1[pos]]))[0]
-                if len(J) > 0:
-                    cat['STARDIST'][m1[pos[J]]] = sep[pos[J]] # [degrees]
-                    cat['STARFDIST'][m1[pos[J]]] = fdist[J]
-                    cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
+    # add the Gaia masking bits
+    add_gaia_masking(cat)
 
     log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
@@ -2978,12 +2986,15 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             moreparent[col] = custom[col]
     #moreparent[custom.colnames[:-1]]
 
+    # update the Gaia masking bits
+    add_gaia_masking(moreparent)
+
     # assign a unique parent_row
     all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
     moreparent['ROW_PARENT'] = np.max(all_parent_rows) + np.arange(len(moreparent)) + 1
     parent = vstack((parent, moreparent))
-    pdb.set_trace()
 
+    pdb.set_trace()
 
     # Read and process the "parent-drop" file; update REGION for
     # objects indicated in that file.
