@@ -387,7 +387,6 @@ def build_group_catalog(
                 edges = fut.result()
                 if edges.size:
                     for a, b in edges:
-                        dsu.union(int(reps[i]), int(reps[j]))
                         dsu.union(int(a), int(b))
                     links += int(edges.shape[0])
     t2 = time.time()
@@ -522,8 +521,9 @@ def build_group_catalog(
         un, counts = np.unique(group_names, return_counts=True)
         dups = un[counts > 1]
         if dups.size > 0:
-            log.warning("Duplicate GROUP_NAME(s) after center-merge: %d unique name(s) duplicated; examples: %s",
-                        int(dups.size), dups[:10].tolist())
+            #log.warning("Duplicate GROUP_NAME(s) after center-merge: %d unique name(s) duplicated; examples: %s",
+            #            int(dups.size), dups[:10].tolist())
+            log.warning("Duplicate GROUP_NAME(s) after center-merge.")
 
     t3 = time.time()
 

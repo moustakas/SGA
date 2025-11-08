@@ -3128,6 +3128,12 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     print('Update REGION for all group members!')
     pdb.set_trace()
 
+    # one more check!
+    try:
+        assert(np.all(np.isin(lvd_dwarfs, out['OBJNAME'])))
+    except:
+        pdb.set_trace()
+
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
