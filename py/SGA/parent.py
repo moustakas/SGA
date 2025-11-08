@@ -2954,25 +2954,53 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # Read and process the "vi-drop" file; update REGION for objects
     # indicated in that file.
-    print('Read and process the drop file! -- CHECK FOR DUPLICATES!')
-    print('Make sure the relevant bit is actually set before subtracting it.')
-    print('Make sure REGION does not become zero! If it does, drop that object!')
-    pdb.set_trace()
+    dropfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-vi-drop.csv')
+    drop = Table.read(dropfile, format='csv', comment='#')
+    log.info(f'Read {len(drop)} objects from {dropfile}')
+    try:
+        assert(len(drop) == len(np.unique(drop['objname'])))
+    except:
+        pdb.set_trace()
+
+    # drop crap from both/all regions
+    Idrop = drop['region'].mask
+    log.info(f'Dropping {np.sum(Idrop):,d}/{len(parent):,d} objects based on VI')
+    parent = parent[~np.isin(parent['OBJNAME'], drop['objname'][Idrop])]
+
+    # drop crap for specified regions
+    drop = drop[~drop['region'].mask]
+    for region in ['dr11-south', 'dr9-north']:
+        bit = REGIONBITS[region]
+
+        Idrop = drop['region'] == region
+        Iregion = (parent['REGION'] & bit != 0)
+        Iparent = Iregion * np.isin(parent['OBJNAME'], drop['objname'][Idrop])
+        log.info(f'Dropping {np.sum(Idrop):,d}/{np.sum(Iregion):,d} objects in {region} based on VI')
+        parent['REGION'][Iparent] -= bit
+
+    try:
+        assert(np.all(parent['REGION'] > 0))
+    except:
+        pdb.set_trace()
 
     # sanity check on initial diameters
     mindiam = 20. # [arcsec]
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
-    print('Need to make sure to not override diam for LVD sources which might have diam<mindiam like Clump I')
-    pdb.set_trace()
+    origdiam, _, _, _ = choose_geometry(parent, mindiam=0.)
 
-    # cleanup
+    # cleanup magnitudes
     band[band == ''] = 'V' # default
     I = mag > 20.
     if np.any(I):
         mag[I] = 20.
 
-    # diameter cut
+    # Restore diameters for LVD sources which have diam<mindiam (e.g.,
+    # Clump I)
+    I = (parent['ROW_LVD'] != -99) * (diam <= mindiam)
+    log.info(f'Restoring {np.sum(I)} LVD diameters that are <mindiam={mindiam:.1f}')
+    diam[I] = origdiam[I]
+
     I = diam == mindiam
     if np.any(I):
         log.warning(f'Setting mindiam={mindiam:.1f} arcsec for {np.sum(I):,d} objects.')
@@ -2988,7 +3016,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #    morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
     #    allmorph.append(morph1)
 
-    log.warning('Consider removing sources that are too close to bright stars.')
+    #log.warning('Consider removing sources that are too close to bright stars.')
 
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
@@ -3050,19 +3078,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #grp['MAG_BAND'] = band
     grp['DIAM_REF'] = ref
 
-    #ra, dec = grp['RA'].value, grp['DEC'].value
-    #grp.add_column(sga2025_name(ra, dec, unixsafe=True),
-    #               name='SGANAME', index=0)
-    #grp.add_column(allmorph, name='MORPH', index=1)
-    #grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=2)
-    #grp.add_column(samplebits, name='SAMPLE')#, index=9)
-    #grp.add_column(ellipsemode, name='ELLIPSEMODE')#, index=8)
-    #grp.add_column(diam.astype('f4'), name='DIAM')#, index=3) # [arcmin]
-    #grp.add_column(ba.astype('f4'), name='BA')#, index=4)
-    #grp.add_column(pa.astype('f4'), name='PA')#, index=5)
-    #grp.add_column(mag.astype('f4'), name='MAG')#, index=6)
-    #grp.add_column(band, name='BAND', index=7)
-
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
     #grp.add_column(SFD.ebv(grp['RA'].value, grp['DEC'].value), name='EBV', index=10)
@@ -3080,21 +3095,24 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         sgaid = parent['ROW_PARENT'][srt].value
     grp.add_column(sgaid, name='SGAID', index=0)
 
+    assert(len(grp) == len(np.unique(grp['SGAID'])))
+
     # Build the group catalog but without the RESOLVED or FORCEPSF
     # samples (e.g., SMC, LMC).
     I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
                       grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
     out1 = build_group_catalog(grp[I], mp=mp)
-    #out = out1
-    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
+    try:
+        out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
+    except:
+        pdb.set_trace()
     out = vstack((out1, out2))
     del out1, out2
 
-    # assign groupdir and groupname
-    #groupdir = radec_to_groupname(out['GROUP_RA'].value, out['GROUP_DEC'].value)
-    groupname = sga2025_name(out['GROUP_RA'].value, out['GROUP_DEC'].value, group_name=True)
-    #out.add_column(groupdir, name='GROUPDIR', index=1)
+    # assign SGAGROUP from GROUP_NAME and check for duplicates
+    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
     out.add_column(groupname, name='SGAGROUP', index=1)
+
     I = out['GROUP_PRIMARY']
     gg, cc = np.unique(['SGAGROUP'][I], return_counts=True)
     if len(gg[cc>1]) > 0:
@@ -3106,9 +3124,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # region. Otherwise when we build the final catalog for a given
     # region, SGA.build_catalog will think that a galaxy is missing
     # for reasons other than there are no data.
+    I = out['GROUP_PRIMARY']
     print('Update REGION for all group members!')
     pdb.set_trace()
-
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'

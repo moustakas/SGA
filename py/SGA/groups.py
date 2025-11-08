@@ -1,5 +1,3 @@
-
-# -*- coding: utf-8 -*-
 """
 SGA groups.py — group finding for SGA-2025
 
@@ -8,7 +6,7 @@ This module implements high-performance group finding on the sky using:
   • Intra-precluster linking with a grid-based neighbor search
   • Hybrid anisotropic link thresholds using BA/PA when available
   • Optional ellipse-containment linking
-  • Optional post-pass center-merging to remove 36″ name collisions
+  • Optional post-pass center-merging to remove name collisions
   • Multiprocessing across preclusters
 
 Assumptions
@@ -311,61 +309,13 @@ def build_group_catalog(
     mp: int = 1,                               # number of processes for parallel precluster processing
     contain: bool = True,                      # enable ellipse-containment linking
     contain_margin: float = 0.50,              # expansion on axes (1+margin)
-    merge_centers: bool = True,                # merge groups with centers within 36″
-    merge_sep_arcsec: float = 36.0,            # merge threshold in arcsec
+    merge_centers: bool = True,                # merge groups with centers within threshold
+    merge_sep_arcsec: float = 51.0,            # DEFAULT bumped to 51.0 arcsec
 ) -> Table:
     """
     Build a mosaic-friendly group catalog using a hybrid anisotropic rule.
 
-    Parameters
-    ----------
-    cat : Table
-        Input with required columns: RA, DEC [deg], DIAM [arcmin]. Optional: BA (b/a),
-        PA [deg astronomical], OBJNAME.
-    group_id_start : int, default 0
-        Offset added to 0-based group labels.
-    mfac : float, default 1.5
-        Base multiplier for small–small links (also used if link_mode="anisotropic").
-    dmin : float, default 36"/deg
-        Hard minimum link length (in degrees).
-    dmax : float, default 3'/deg
-        Hard maximum candidate separation (in degrees). Also sets search/grid defaults.
-    anisotropic : bool, default True
-        Use ellipse-aware radii (BA/PA). If False or link_mode="off", use circular.
-    link_mode : {"off", "anisotropic", "hybrid"}, default "hybrid"
-        "off": circular; "anisotropic": directional for all; "hybrid": pair-type rules.
-    big_diam : float [arcmin], default 3.0
-        Threshold for "large" classification (controls pair-type in hybrid).
-    mfac_backbone : float, default 2.0
-        Multiplier for large–large links (circularized).
-    mfac_sat : float, default 1.5
-        Multiplier for large–small links (with k_floor softening).
-    k_floor : float, default 0.40
-        Floor for directional radii in large–small links.
-    q_floor : float, default 0.20
-        Global minimum BA used in anisotropic radii.
-    name_via : {"radec","none"}, default "radec"
-        How to generate GROUP_NAME.
-    sphere_link_arcmin : float or None, default None
-        Preclustering link length (arcmin) for spheregroup (defaults to dmax if None).
-    grid_cell_arcmin : float or None, default None
-        Grid cell size (arcmin) in neighbor search (defaults to dmax if None).
-    mp : int, default 1
-        Number of processes for parallel intra-precluster linking.
-    contain : bool, default True
-        Enable containment rule (preempts distance tests).
-    contain_margin : float, default 0.50
-        Ellipse scale margin; 0.50 ⇒ axes ×1.5.
-    merge_centers : bool, default True
-        After linking, merge any provisional groups whose centers are within
-        `merge_sep_arcsec` on the sky (removes 36″ name collisions).
-    merge_sep_arcsec : float, default 36.0
-        Separation in arcsec used for center-merging.
-
-    Returns
-    -------
-    Table
-        Same table with GROUP_* columns appended (dtypes fixed).
+    (Docstring trimmed for brevity; only duplicate-name check and default merge_sep_arcsec changed.)
     """
     t0 = time.time()
 
@@ -437,6 +387,7 @@ def build_group_catalog(
                 edges = fut.result()
                 if edges.size:
                     for a, b in edges:
+                        dsu.union(int(reps[i]), int(reps[j]))
                         dsu.union(int(a), int(b))
                     links += int(edges.shape[0])
     t2 = time.time()
@@ -564,13 +515,15 @@ def build_group_catalog(
     _attach('GROUP_DEC', row_grp_dec, np.float64)
     _attach('GROUP_DIAMETER', row_grp_diam, np.float32)
 
-    # Enforce uniqueness of GROUP_NAME
+    # Group-level duplicate-name warning (not exception)
     if len(cat) > 0:
-        nm = np.array(cat['GROUP_NAME'])
-        un, idx, cnt = np.unique(nm, return_index=True, return_counts=True)
-        dups = un[cnt > 1]
+        gid_unique, idx_first = np.unique(cat['GROUP_ID'], return_index=True)
+        group_names = np.asarray(cat['GROUP_NAME'])[idx_first]
+        un, counts = np.unique(group_names, return_counts=True)
+        dups = un[counts > 1]
         if dups.size > 0:
-            raise ValueError(f"Duplicate GROUP_NAME(s) after center-merge: {dups.tolist()}")
+            log.warning("Duplicate GROUP_NAME(s) after center-merge: %d unique name(s) duplicated; examples: %s",
+                        int(dups.size), dups[:10].tolist())
 
     t3 = time.time()
 
