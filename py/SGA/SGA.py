@@ -1926,7 +1926,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
-                              factor=2., wmask=None, debug=False):
+                              factor=2., nsample=1, wmask=None, debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
 
@@ -1971,6 +1971,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
+            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1987,14 +1988,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         return P
 
 
-    def get_geometry(pixscale, pixfactor=1., table=None, tractor=None,
-                     props=None):
+    def get_geometry(pixscale, pixfactor=1., nsample=1, table=None, tractor=None,
+                     ref_tractor=None, props=None):
         """Extract elliptical geometry from either an astropy Table
         (sample), a tractor catalog, or an ellipse_properties object.
 
         """
         if table is not None:
-            bx, by = table['BX_INIT'], table['BY_INIT']
+            # if in a galaxy group use the Tractor initial position
+            if nsample > 1 and ref_tractor is not None:
+                bx, by = ref_tractor.bx[0], ref_tractor.by[0]
+            else:
+                bx, by = table['BX_INIT'], table['BY_INIT']
             if table['SMA_MASK'] > 0.:
                 sma = table['SMA_MASK'] / pixscale # [pixels]
             else:
@@ -2161,7 +2166,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # For *previously* completed objects, use the final, not
             # initial geometry. Also apply some margin
             # (galmask_margin) to the mask since the moment geometry
-            # only includes 95% of the light.
+            # only includes XX% of the light.
             if indx < iobj:
                 [bx, by, sma, ba, pa] = geo_final[indx, :]
             else:
@@ -2184,7 +2189,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             niter_actual = 1
             geo_init = input_geo_initial[iobj, :]
         else:
-            geo_init = get_geometry(opt_pixscale, table=obj)
+            geo_init = get_geometry(opt_pixscale, table=obj, nsample=nsample,
+                                    ref_tractor=objsrc)
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
         #print('Initial', iobj, bx, by, sma, ba, pa)
@@ -2298,8 +2304,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # can become ill-defined).
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask)#, debug=True)
-                geo_iter = get_geometry(opt_pixscale, props=props)
+                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask, debug=True)
+                geo_iter = get_geometry(opt_pixscale, props=props, nsample=nsample)
+                pdb.set_trace()
 
             ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
 
@@ -2540,6 +2547,10 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'MAG']:
             sample.rename_column(col, f'{col}_INIT')
         sample.rename_column('DIAM_REF', 'DIAM_INIT_REF')
+        #print('HACK!!!!!!!!!!')
+        #sample['RA_INIT'][0] = 325.7414
+        #sample['DEC_INIT'][0] = -63.2377
+        #sample['DIAM_INIT'][0] = 0.34
         sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                           index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
 
@@ -2887,14 +2898,21 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
 
         if build_mask:
+            # no margin for galaxy groups
+            if len(sample) > 1:
+                galmask_margin = 0.
+            else:
+                galmask_margin = 0.2
+
             try:
                 data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                                     qaplot=qaplot, cleanup=cleanup,
+                                                    galmask_margin=galmask_margin,
                                                     niter_geometry=niter_geometry,
                                                     htmlgalaxydir=htmlgalaxydir)
             except:
                 err = 0
-                log.critical(f'Exception raised on {survey.output_dir}/{galaxy}')
+                log.critical(f'Exception raised on {galaxydir}/{galaxy}')
                 import traceback
                 traceback.print_exc()
 

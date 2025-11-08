@@ -2831,7 +2831,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     # For convenience, add dedicated Boolean columns for each external
     # file (which may be different than the ELLIPSEMODE and SAMPLE bits
     # which will be populated in build_parent).
-    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking']:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
             log.warning(f'No action file {actfile} found; skipping.')
@@ -2962,14 +2962,15 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # add additional sources by-hand
     def _empty_parent(cat, N=1):
-        for col in cat.colnames:
-            if cat[col].dtype == bool:
-                cat[col] = False
+        empty = cat.copy()
+        for col in empty.colnames:
+            if empty[col].dtype == bool:
+                empty[col] = False
             else:
-                cat[col] *= 0
+                empty[col] *= 0
         if N > 1:
-            cat = vstack([onecat for onecat in cat])
-        return cat
+            empty = vstack([oneempty for oneempty in empty])
+        return empty
 
 
     customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
@@ -2993,8 +2994,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
     moreparent['ROW_PARENT'] = np.max(all_parent_rows) + np.arange(len(moreparent)) + 1
     parent = vstack((parent, moreparent))
-
-    pdb.set_trace()
 
     # Read and process the "parent-drop" file; update REGION for
     # objects indicated in that file.
@@ -3090,8 +3089,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 elif col == 'ba':
                     ba[I] = newval
 
-    pdb.set_trace()
-
     ## Pre-process the morphology column.
     #allmorph = []
     #for objtype, morph, basic_morph in zip(
@@ -3116,7 +3113,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # file so those files can be updated without having to rerun
     # build_parent_archive.
     ellipsemode = np.zeros(len(parent), np.int32)
-    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking']:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
             log.warning(f'No action file {actfile} found; skipping.')
@@ -3232,6 +3229,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
+
+    pdb.set_trace()
 
     ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
     ## objects within (outside) the DR11 imaging footprint.
