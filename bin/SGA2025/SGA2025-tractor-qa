@@ -111,7 +111,8 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
 
 
 def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
-              datadir=None, cutoutdir=None, region='dr11-south', no_groups=False):
+              datadir=None, cutoutdir=None, region='dr11-south', no_groups=False,
+              final_sample=False):
 
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
 
@@ -162,28 +163,50 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
             if iax < len(indx):
                 obj = showsample[indx[iax]]
                 #print(obj['OBJNAME'])
-                diam0, ba0, pa0 = obj['DIAM']*60., obj['BA'], obj['PA']
-                geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
 
-                txt_ul = '\n'.join([obj["OBJNAME"], #obj["SGANAME"],
-                                    r'$(\alpha,\delta)$='+f'({obj["RA"]:.7f},{obj["DEC"]:.6f})',
-                                    geo0])
+                if final_sample:
+                    #diam, ba, pa = obj['D26']*60., obj['BA'], obj['PA']
+                    objra, objdec, diam, ba, pa = obj['RA'], obj['DEC'], obj['D26']*60., obj['BA'], obj['PA']
+                    geo = f'D(26)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}'
+
+                    #diam0, ba0, pa0 = obj['DIAM_INIT']*60., obj['BA_INIT'], obj['PA_INIT']
+                    objra0, objdec0, diam0, ba0, pa0 = obj['RA_INIT'], obj['DEC_INIT'], obj['DIAM_INIT']*60., obj['BA_INIT'], obj['PA_INIT']
+                    geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+                else:
+                    objra0, objdec0, diam0, ba0, pa0 = obj['RA'], obj['DEC'], obj['DIAM']*60., obj['BA'], obj['PA']
+                    geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+
+
+                if final_sample:
+                    txt = [obj["OBJNAME"], obj["GROUP_NAME"],
+                           r'$(\alpha,\delta)$='+f'({objra:.7f},{objdec:.6f})',
+                           geo0, geo]
+                else:
+                    txt = [obj["OBJNAME"], #obj["SGANAME"],
+                           r'$(\alpha,\delta)$='+f'({objra:.7f},{objdec:.6f})',
+                           geo0]
+                txt_ul = '\n'.join(txt)
                 xx.text(0.03, 0.97, txt_ul, transform=xx.transAxes, ha='left',
                         va='top', color='white', linespacing=1.5, fontsize=9,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
                 if obj['CUTOUT'] or no_groups:
-                    diam = obj['DIAM'] * 60., # [arcsec]
-                    ra = obj['RA']
-                    dec = obj['DEC']
+                    groupdiam = obj['DIAM'] * 60., # [arcsec]
+                    if final_sample:
+                        groupra = obj['RA']
+                        groupdec = obj['DEC']
+                    else:
+                        groupra = obj['RA_INIT']
+                        groupdec = obj['DEC_INIT']
                 else:
-                    diam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
-                    ra = obj['GROUP_RA']
-                    dec = obj['GROUP_DEC']
+                    groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
+                    groupra = obj['GROUP_RA']
+                    groupdec = obj['GROUP_DEC']
+
                 sga, tractor, image, wcs = read_coadds(
                     galaxy[indx[iax]], galaxydir[indx[iax]],
-                    refid=obj[REFIDCOLUMN], ra=ra, dec=dec, diam=diam,
-                    cutout_galaxy=cutout_galaxy[indx[iax]],
+                    refid=obj[REFIDCOLUMN], ra=groupra, dec=groupdec,
+                    diam=groupdiam, cutout_galaxy=cutout_galaxy[indx[iax]],
                     cutout_galaxydir=cutout_galaxydir[indx[iax]],
                     cutout=obj['CUTOUT'])
 
@@ -229,20 +252,40 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
                     if len(sga) > 0:
                         from SGA.geometry import get_tractor_ellipse
-                        _, ba, pa = get_tractor_ellipse(sga['shape_r'][0], sga['shape_e1'][0], sga['shape_e2'][0])
-                        print(f"{obj['OBJNAME']:20} {diam0:05.0f} arcsec   {obj['RA']:.7f} {obj['DEC']:.7f} " + \
-                              f"{sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba:.3f} {pa:.1f}")
+                        _, ba_tractor, pa_tractor = get_tractor_ellipse(sga['shape_r'][0], sga['shape_e1'][0], sga['shape_e2'][0])
+                        if final_sample:
+                            print(f"{obj['OBJNAME']:28} {diam:05.0f} arcsec   {objra:.7f} {objdec:.7f} " + \
+                                  f"{sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba_tractor:.3f} {pa_tractor:.1f}")
+                        else:
+                            print(f"{obj['OBJNAME']:28} {diam0:05.0f} arcsec   {objra0:.7f} {objdec0:.7f} " + \
+                                  f"{sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba_tractor:.3f} {pa_tractor:.1f}")
                         xx.scatter(sga['bx'], height-sga['by'], marker='s',
                                    facecolor='none', s=40, color='cyan')
                     else:
-                        print(f"{obj['OBJNAME']:20} {diam0:05.0f} arcsec   {obj['RA']:.7f} {obj['DEC']:.7f}")
+                        if final_sample:
+                            print(f"{obj['OBJNAME']:28} {diam:05.0f} arcsec   {objra:.7f} {objdec:.7f}")
+                        else:
+                            print(f"{obj['OBJNAME']:28} {diam0:05.0f} arcsec   {objra0:.7f} {objdec0:.7f}")
 
-                    # draw the initial ellipse geometry...
-                    (xpix, ypix) = wcs.wcs_world2pix(obj['RA'], obj['DEC'], 0)
-                    overplot_ellipse(diam0, ba0, pa0, xpix, ypix,
-                                     height_pixels=width, pixscale=pixscale,
-                                     ax=xx, color='white', linestyle='-',
-                                     draw_majorminor_axes=True, jpeg=True)
+                    # draw the initial and final ellipse geometry...
+                    if final_sample:
+                        (xpix, ypix) = wcs.wcs_world2pix(objra, objdec, 0)
+                        (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
+                        #overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
+                        #                 height_pixels=width, pixscale=pixscale,
+                        #                 ax=xx, color='white', linestyle='-.',
+                        #                 draw_majorminor_axes=True, jpeg=True)
+                        overplot_ellipse(diam, ba, pa, xpix, ypix,
+                                         height_pixels=width, pixscale=pixscale,
+                                         ax=xx, color='cyan', linestyle='-',
+                                         draw_majorminor_axes=True, jpeg=True)
+                    else:
+                        (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
+                        overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
+                                         height_pixels=width, pixscale=pixscale,
+                                         ax=xx, color='white', linestyle='-',
+                                         draw_majorminor_axes=True, jpeg=True)
+
 
                     if len(sga) > 0:
                         typ, nn = sga['type'][0], sga['sersic'][0]
@@ -318,10 +361,16 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                                      ax=xx, color='yellow', linestyle='--',
                                      draw_majorminor_axes=True, jpeg=True)
 
+                xx.text(0.97, 0.03, str(indx[iax]+1), transform=xx.transAxes,
+                        ha='right', va='bottom', color='white',
+                        linespacing=1.5, fontsize=9,
+                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
             else:
                 xx.axis('off')
         pdf.savefig(fig, bbox_inches='tight')#, dpi=150, pad_inches=0)
         plt.close()
+        print()
 
     pdf.close()
     log.info(f'Wrote {pdffile}')
@@ -329,7 +378,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
 def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1,
                datadir=None, lvd_resolved=False, lvd_fixgeo=False, lvd_forcepsf=False,
-               lvd=False, no_groups=False, mindiam=0., maxdiam=200.):
+               lvd=False, final_sample=False, no_groups=False, mindiam=0., maxdiam=1e3):
 
     if datadir is None:
         datadir = sga_data_dir()
@@ -343,6 +392,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                                      first=first, last=last,
                                      galaxylist=galaxylist,
                                      no_groups=no_groups,
+                                     final_sample=final_sample,
                                      mindiam=mindiam, maxdiam=maxdiam)
 
     if any_lvd:
@@ -463,7 +513,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     annotated(sample, fullsample, pdffile, region=region,
               datadir=datadir, cutoutdir=cutoutdir,
-              no_groups=no_groups)
+              final_sample=final_sample, no_groups=no_groups)
 
 if __name__ == '__main__':
 
@@ -482,6 +532,7 @@ if __name__ == '__main__':
     parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
     parser.add_argument('--lvd', action='store_true', help='Generate QA for the remaining LVD sample.')
     parser.add_argument('--no-groups', action='store_true', help='Do not show group cutouts.')
+    parser.add_argument('--final-sample', action='store_true', help='Read the final SGA-2025 sample.')
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
     parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
     args = parser.parse_args()
@@ -489,5 +540,6 @@ if __name__ == '__main__':
     qa_tractor(datadir=args.datadir, region=args.region, first=args.first,
                last=args.last, galaxylist=args.galaxylist, mp=args.mp,
                lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
-               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd, no_groups=args.no_groups,
+               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd,
+               final_sample=args.final_sample, no_groups=args.no_groups,
                mindiam=args.mindiam, maxdiam=args.maxdiam)
