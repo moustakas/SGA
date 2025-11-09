@@ -4,7 +4,7 @@
 # environment file in this script. (Passing the --env-file works OK, but $PATH
 # and $PYTHONPATH get overwritten.)
 
-SHIFTER=docker:legacysurvey/sga:0.5.9
+SHIFTER=docker:legacysurvey/sga:0.5.10
 
 echo 'Updating and loading the shifter image '$SHIFTER
 echo 'Load the environment with: '
