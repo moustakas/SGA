@@ -2968,6 +2968,11 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 empty[col] = False
             else:
                 empty[col] *= 0
+                if not empty[col].dtype.type is np.str_:
+                    if col in ['STARMAG', 'STARDIST', 'STARFDIST']:
+                        empty[col] += 99 # null value
+                    else:
+                        empty[col] += -99 # null value
         if N > 1:
             empty = vstack([oneempty for oneempty in empty])
         return empty
