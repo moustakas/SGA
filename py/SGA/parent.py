@@ -3210,7 +3210,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # bits
     I = (out['GROUP_PRIMARY']) & (out['GROUP_MULT'] > 2)
     drop_groupid = []
-    strip_groups = 0
+    strip_groups = []
     for groupid in out['GROUP_ID'][I]:
         J = (out['GROUP_ID'] == groupid)
         # Bits common to ALL members of this group:
@@ -3223,7 +3223,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             new_reg = (out['REGION'][J] & allowed)
             if np.any(new_reg != out['REGION'][J]):
                 out['REGION'][J] = new_reg
-                strip_groups += 1
+                strip_groups.append(out['GROUP_NAME'][J[0]])
 
     if drop_groupid:
         M = np.isin(out['GROUP_ID'], drop_groupid)
@@ -3231,8 +3231,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                  f"({np.sum(M):,d} members) with no common region bit.")
         out = out[~M]
 
-    if strip_groups:
-        log.info(f"Stripped region bits (kept groups) for {strip_groups:,d} groups.")
+    if len(strip_groups) > 0:
+        strip_groups = np.unique(strip_groups)
+        log.info(f"Stripped region bits (kept groups) for {len(strip_groups):,d} groups:")
+        log.info(f"  {','.join(strip_groups)}")
 
     # one more check!
     try:

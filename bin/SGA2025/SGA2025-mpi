@@ -138,7 +138,7 @@ def main():
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
         sga_version = SGA_version(parent=True)
-        refcatfile = os.path.join(basedir, 'sample', f'SGA2025-refcat-{sga_version}.fits')
+        refcatfile = os.path.join(basedir, 'sample', f'SGA2025-parent-refcat-{sga_version}.fits')
         kdrefcatfile = refcatfile.replace('.fits', '.kd.fits')
         if not os.getenv("LARGEGALAXIES_CAT"):
             msg = f'{os.getenv("LARGEGALAXIES_CAT")} not found!'

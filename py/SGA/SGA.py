@@ -76,15 +76,20 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
     elif archive:
         version = version_work
     elif parent:
-        # original run
+        # first major run
         #version = 'v0.10'
 
-        # new group-finder; no duplicate groups; cleanup of REGION;
-        # some dropped sources via VI.
+        # no duplicate groups; cleanup of REGION bits; some dropped
+        # sources via VI.
         version = 'v0.11'
     else:
-        # merged SGA catalog
-        version = 'v0.10'
+        # parent-refcat, parent-ellipse, and final SGA2025
+        #version = 'v0.10'
+        #  parent_version = v0.10
+
+        # parent_version bump
+        version = 'v0.11'
+        #  parent_version = v0.11
     return version
 
 
