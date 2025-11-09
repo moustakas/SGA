@@ -3228,7 +3228,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             new_reg = (out['REGION'][J] & allowed)
             if np.any(new_reg != out['REGION'][J]):
                 out['REGION'][J] = new_reg
-                strip_groups.append(out['GROUP_NAME'][J[0]])
+                strip_groups.append(out['GROUP_NAME'][J][0])
 
     if drop_groupid:
         M = np.isin(out['GROUP_ID'], drop_groupid)
