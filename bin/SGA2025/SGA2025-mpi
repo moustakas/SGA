@@ -10,10 +10,10 @@ SGA2025-mpi --build-refcat
 # (1) nice isolated spiral; (2) second isolated spiral; (3) 2-member
 # group; (4) giant and dwarf group;
 
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="WISEA J125450.10+261929.6"
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="KUG 1247+260"
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="III Zw 040 NOTES02"
-SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-test1-v0.11 --mp=32 --debug --coadds --galaxylist="UGC 05688"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="WISEA J125450.10+261929.6"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="KUG 1247+260"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="III Zw 040 NOTES02"
+SGA2025-mpi --datadir=/pscratch/sd/i/ioannis/SGA2025-flags --mp=32 --debug --coadds --galaxylist="UGC 05688"
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-test1
 
@@ -114,15 +114,11 @@ def main():
         DIAMCOLUMN = 'DIAM'
 
     basedir = sga_dir()
-    if args.datadir is None:
-        datadir = sga_data_dir()
-    else:
-        datadir = args.datadir
+    datadir = args.datadir if args.datadir is not None else sga_data_dir()
+    htmldir = args.htmldir if args.htmldir is not None else sga_html_dir()
 
-    if args.htmldir is None:
-        htmldir = sga_html_dir()
-    else:
-        htmldir = args.htmldir
+    os.environ['SGA_DATA_DIR'] = os.path.abspath(datadir)
+    os.environ['SGA_HTML_DIR'] = os.path.abspath(htmldir)
 
     run = RUNS[args.region]
     release = RELEASE[args.region]
@@ -142,7 +138,7 @@ def main():
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')
 
         sga_version = SGA_version(parent=True)
-        refcatfile = os.path.join(basedir, 'sample', f'SGA2025-refcat-{sga_version}.fits')
+        refcatfile = os.path.join(basedir, 'sample', f'SGA2025-parent-refcat-{sga_version}.fits')
         kdrefcatfile = refcatfile.replace('.fits', '.kd.fits')
         if not os.getenv("LARGEGALAXIES_CAT"):
             msg = f'{os.getenv("LARGEGALAXIES_CAT")} not found!'
@@ -166,7 +162,7 @@ def main():
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, maxmult=args.maxmult,
             galaxylist=args.galaxylist, no_groups=no_groups,
-            lvd=args.lvd, region=region,
+            lvd=args.lvd, wisesize=args.wisesize, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
     else:
@@ -236,8 +232,14 @@ def main():
     if args.build_catalog:
         build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
                       datadir=datadir, no_groups=no_groups, unwise=args.unwise,
-                      galex=args.galex, mp=args.mp, verbose=args.verbose,
-                      clobber=args.clobber)
+                      galex=args.galex, wisesize=args.wisesize, verbose=args.verbose,
+                      test_bricks=args.test_bricks, clobber=args.clobber)
+        return
+
+    # need at least one keyword at this point
+    if args.coadds is False and args.ellipse is False and args.htmlplots is False:
+        log.warning('Need to specify at least one of --coadds, --ellipse, or ' + \
+                    '--htmlplots; nothing to do.')
         return
 
     # Determine how many more galaxies we need to analyze and divide them across
@@ -250,6 +252,17 @@ def main():
             no_groups=no_groups, clobber=args.clobber,
             verbose=args.verbose, datadir=datadir, htmldir=htmldir,
             size=size, mp=args.mp)
+
+        if args.diameter_file:
+            if len(groups) > 0:
+                todo = np.hstack(groups)
+                with open(args.diameter_file, 'w') as F:
+                    for diam in sample[DIAMCOLUMN][todo].value:
+                        F.write(f'{diam}\n')
+                log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+            else:
+                log.warning('All done!')
+            return
     else:
         groups, suffix = [], ''
 
@@ -258,43 +271,60 @@ def main():
         suffix = comm.bcast(suffix, root=0)
 
     if rank == 0:
-        ntodo = len(np.hstack(groups))
+        if len(groups) == 0:
+            ntodo = 0
+        else:
+            ntodo = len(np.hstack(groups))
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
                  f'{len(sample):,d} divided across {size} rank(s).')
     if comm:
         comm.barrier()
 
-    if len(groups) == 0 or len(groups[rank]) == 0:
+    if len(groups) == 0:
+        log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
+                 f'{rank} are complete!')
+        return
+    elif len(groups[rank]) == 0:
         log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
                  f'{rank} are complete!')
         return
     else:
         log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
-        if rank == 0 and args.count:
-            if args.debug:
-                if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                             f'{len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[DIAMCOLUMN][fail[rank]]):
-                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+        if args.count:
+            if rank == 0:
+                #if len(fail[rank]) > 0:
+                #    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
+                #             f'{len(sample):,d}')
+                #    galaxy, galaxydir = get_galaxy_galaxydir(
+                #        sample[fail[rank]], region=args.region,
+                #        group=not no_groups, datadir=datadir, htmldir=htmldir)
+                #    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                #                            sample[DIAMCOLUMN][fail[rank]]):
+                #        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+                if args.debug:
+                    if len(fail[rank]) > 0:
+                        log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
+                                 f'{len(sample):,d}')
+                        galaxy, galaxydir = get_galaxy_galaxydir(
+                            sample[fail[rank]], region=args.region,
+                            group=not no_groups, datadir=datadir, htmldir=htmldir)
+                        for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                                                sample[DIAMCOLUMN][fail[rank]]):
+                            print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
 
-                todo = np.hstack(groups)
-                if len(todo) > 0:
-                    log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[todo], region=args.region,
-                        group=not no_groups,
-                        datadir=datadir, htmldir=htmldir)
-                    for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
-                                                 sample['OBJNAME'][todo],
-                                                 sample[DIAMCOLUMN][todo]):
-                        log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
-                        #log.info(f'  {ii} {dd} ({obj}; d={diam:.3f} arcmin)')
-                        #log.info(f'{dd}')
+                    todo = np.hstack(groups)
+                    if len(todo) > 0:
+                        log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
+                        galaxy, galaxydir = get_galaxy_galaxydir(
+                            sample[todo], region=args.region,
+                            group=not no_groups,
+                            datadir=datadir, htmldir=htmldir)
+                        for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
+                                                     sample['OBJNAME'][todo],
+                                                     sample[DIAMCOLUMN][todo]):
+                            log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
+                            #log.info(f'  {ii} {dd} ({obj}; d={diam:.3f} arcmin)')
+                            #log.info(f'{dd}')
             return
 
     # Loop on the remaining objects.
@@ -351,6 +381,25 @@ def main():
                 os.rename(tmpfile, samplefile)
 
             # SGA fitting modes
+
+            # RESOLVED sources: no fitting, just coadds (and should
+            # always have GROUP_MULT==1)
+            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
+                just_coadds = True
+                # special-case LMC and SMC!
+                # galex, unwise pixscale??
+                if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC'])):
+                    pixscale = 60. # [arcsec]
+                elif np.any(np.isin(onegal['OBJNAME'], ['SMC'])):
+                    pixscale = 30. # [arcsec]
+                elif np.any(np.isin(onegal['OBJNAME'], ['Antlia II'])):
+                    pixscale = 10. # [arcsec]
+                else:
+                    pixscale = args.pixscale
+            else:
+                just_coadds = args.just_coadds
+                pixscale = args.pixscale
+
             # FIXGEO
             #   ...
             # FORCEGAIA
@@ -370,11 +419,12 @@ def main():
             if args.debug:
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                    release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
-                    nsigma=args.nsigma, just_coadds=args.just_coadds,
+                    release=release, pixscale=pixscale, bands=bands, mp=args.mp,
+                    nsigma=args.nsigma, just_coadds=just_coadds,
                     force_psf_detection=force_psf_detection,
                     fit_on_coadds=args.fit_on_coadds,
-                    use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
+                    use_gpu=args.use_gpu, ngpu=args.ngpu,
+                    threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
                     unwise=args.unwise, galex=args.galex,
                     verbose=args.verbose)
@@ -385,11 +435,12 @@ def main():
                      redirect_stdout(L), redirect_stderr(L):
                     err, _ = custom_coadds(
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                        release=release, pixscale=args.pixscale, bands=bands, mp=args.mp,
-                        nsigma=args.nsigma, just_coadds=args.just_coadds,
+                        release=release, pixscale=pixscale, bands=bands, mp=args.mp,
+                        nsigma=args.nsigma, just_coadds=just_coadds,
                         force_psf_detection=force_psf_detection,
                         fit_on_coadds=args.fit_on_coadds,
-                        use_gpu=args.use_gpu, threads_per_gpu=args.threads_per_gpu,
+                        use_gpu=args.use_gpu, ngpu=args.ngpu,
+                        threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
                         unwise=args.unwise, galex=args.galex,
                         verbose=args.verbose)
@@ -425,6 +476,15 @@ def main():
             #    #qaplot = True
             #    qaplot = False
 
+            # RESOLVED - nothing to do
+            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
+                skip_ellipse = True
+                #log.info(f'No ellipse-fitting needed for RESOLVED source {galaxydir}/{galaxy}')
+                #done(galaxy, galaxydir, 1, suffix, fh=fh, debug=args.debug)
+                #continue
+            else:
+                skip_ellipse = False
+
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
                                        unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
                                        mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
@@ -432,8 +492,7 @@ def main():
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=False, verbose=args.verbose,
-                                       clobber=args.clobber,
-                                       # HACK!!
+                                       clobber=args.clobber, skip_ellipse=skip_ellipse,
                                        htmlgalaxydir=htmlgalaxydir)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
@@ -452,7 +511,7 @@ def main():
                 onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True)
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
-                             unpack_maskbits, SGAMASKBITS,
+                             unpack_maskbits, SGAMASKBITS, APERTURES,
                              #radius_mosaic_arcsec=radius_mosaic_arcsec,
                              barlen=barlen, barlabel=barlabel, run=run,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,

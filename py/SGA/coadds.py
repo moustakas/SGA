@@ -343,9 +343,9 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   release=1000, pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
-                  nsatur=2, racolumn='GROUP_RA', deccolumn='GROUP_DEC',
+                  nsatur=2, rgb_stretch=1.5, racolumn='GROUP_RA', deccolumn='GROUP_DEC',
                   force_psf_detection=False, fit_on_coadds=False,
-                  use_gpu=False, threads_per_gpu=16, subsky_radii=None,
+                  use_gpu=False, ngpu=1, threads_per_gpu=8, subsky_radii=None,
                   just_coadds=False, missing_ok=False, force=False, cleanup=True,
                   unwise=True, galex=False, no_gaia=False, no_tycho=False,
                   verbose=False):
@@ -383,6 +383,9 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     if nsatur:
         cmdargs += f'--nsatur={nsatur:.0f} '
 
+    if rgb_stretch:
+        cmdargs += f'--rgb-stretch={rgb_stretch:.2f} '
+
     if nsigma:
         cmdargs += f'--nsigma={nsigma:.0f} '
 
@@ -395,8 +398,8 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     cmdargs += f'--checkpoint={survey.output_dir}/{galaxy}-checkpoint.p '
     cmdargs += f'--pickle={survey.output_dir}/{galaxy}-%%(stage)s.p '
     if just_coadds:
-        unwise = False
-        galex = False
+        #unwise = False
+        #galex = False
         cmdargs += '--stage=image_coadds '
     if not unwise:
         cmdargs += '--no-unwise-coadds --no-wise '
@@ -434,7 +437,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
 
     # GPU stuff
     if use_gpu:
-        cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu=1 --gpumode=2 '
+        cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu={ngpu} --gpumode=2 '
 
     try:
         log.info(f'runbrick {cmdargs}')

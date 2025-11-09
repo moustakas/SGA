@@ -1,4 +1,4 @@
-FROM legacysurvey/legacypipe:gpu-1.4.8
+FROM legacysurvey/legacypipe:gpu-1.4.10
 
 RUN for x in \
   ipython \
@@ -8,6 +8,7 @@ RUN for x in \
   gnureadline \
   corner \
   scikit-image \
+  scikit-learn \
   seaborn \
   photutils \
   healpy \

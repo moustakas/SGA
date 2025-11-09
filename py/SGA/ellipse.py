@@ -294,8 +294,6 @@ def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
     popt = {'mtot': mt, 'dmag': dm, 'lnalpha1': lnA1, 'lnalpha2': lnA2}
 
     # convert to f4
-    #if debug:
-    #    pdb.set_trace()
     popt = to_float32_safe_mapping(popt)
     perr = to_float32_safe_mapping(perr)
     chi2 = to_float32_safe_scalar(chi2)
@@ -496,19 +494,31 @@ def isophotal_radius_mc(
     upper_limit = (mu_iso < mu_env_nom[0])    # target brighter than innermost measured
 
     # Monte Carlo draws
-    samples = []
-    for _ in range(int(nmonte)):
-        draw = mu + rng.normal(0.0, mu_err)
-        if sky_sigma and sky_sigma > 0:
-            draw = draw + rng.normal(0.0, sky_sigma)  # shared offset per draw
+    if nmonte > 0:
+        samples = []
+        for _ in range(int(nmonte)):
+            draw = mu + rng.normal(0.0, mu_err)
+            if sky_sigma and sky_sigma > 0:
+                draw = draw + rng.normal(0.0, sky_sigma)  # shared offset per draw
 
-        a_iso = _outer_isophotal_radius(a, draw, mu_iso, smooth_win=smooth_win)
+            a_iso = _outer_isophotal_radius(a, draw, mu_iso, smooth_win=smooth_win)
+            if np.isfinite(a_iso):
+                samples.append(a_iso)
+
+        samples = np.array(samples, float)
+        n_success = int(np.isfinite(samples).sum())
+        success_rate = n_success / float(nmonte)
+    else:
+        samples = None
+        a_iso = _outer_isophotal_radius(a, mu, mu_iso, smooth_win=smooth_win)
         if np.isfinite(a_iso):
-            samples.append(a_iso)
-
-    samples = np.array(samples, float)
-    n_success = int(np.isfinite(samples).sum())
-    success_rate = n_success / float(nmonte)
+            med = a_iso
+            sig, lo, hi = 0., 0., 0. # no uncertainty??
+            n_success = 1
+            success_rate = 1.
+        else:
+            n_success = 0
+            success_rate = 0.
 
     out = dict(
         nmonte=int(nmonte),
@@ -525,10 +535,11 @@ def isophotal_radius_mc(
             out["samples"] = samples
         return out
 
-    med = np.nanmedian(samples)
-    lo, hi = np.nanpercentile(samples, [25., 75.])
-    #lo, hi = np.nanpercentile(samples, [16, 84])
-    sig = (hi - lo) / 1.349 # robust sigma
+    if nmonte > 0:
+        med = np.nanmedian(samples)
+        lo, hi = np.nanpercentile(samples, [25., 75.])
+        #lo, hi = np.nanpercentile(samples, [16, 84])
+        sig = (hi - lo) / 1.349 # robust sigma
 
     out.update(a_iso=float(med), a_iso_err=float(sig),
                a_lo=float(lo), a_hi=float(hi))
@@ -620,6 +631,95 @@ def logspaced_integers(limit, n):
     return np.array(list(map(lambda x: round(x)-1, result)), dtype=int)
 
 
+def sbprofiles_datamodel(sma, bands):
+    import astropy.units as u
+    from astropy.table import Table, Column
+    nsma = len(sma)
+
+    ubands = np.char.upper(bands)
+
+    sbprofiles = Table()
+    sbprofiles.add_column(Column(name='SMA', unit=u.arcsec, data=sma.astype('f4')))
+    for filt in ubands:
+        sbprofiles.add_column(Column(name=f'SB_{filt}', unit=u.nanomaggy/u.arcsec**2,
+                              data=np.zeros(nsma, 'f4')))
+    for filt in ubands:
+        sbprofiles.add_column(Column(name=f'SB_ERR_{filt}', unit=u.nanomaggy/u.arcsec**2,
+                              data=np.zeros(nsma, 'f4')))
+    for filt in ubands:
+        sbprofiles.add_column(Column(name=f'FLUX_{filt}', unit=u.nanomaggy,
+                              data=np.zeros(nsma, 'f4')))
+    for filt in ubands:
+        sbprofiles.add_column(Column(name=f'FLUX_ERR_{filt}', unit=u.nanomaggy,
+                              data=np.zeros(nsma, 'f4')))
+    for filt in ubands:
+        sbprofiles.add_column(Column(name=f'FMASKED_{filt}', data=np.ones(nsma, 'f4'))) # NB: initial value
+    return sbprofiles
+
+
+def results_datamodel(obj, bands, dataset, sma_apertures_arcsec, sbthresh):
+    import astropy.units as u
+    from astropy.table import Table, Column
+
+    ubands = np.char.upper(bands)
+
+    cols = ['SGAID', 'SGAGROUP']
+    results = Table(obj[cols])
+    #results = Table()
+
+    # Gini coefficient within the MOMENT aperture
+    for filt in ubands:
+        results.add_column(Column(name=f'GINI_{filt}', data=np.zeros(1, 'f4')))
+
+    # curve of growth model parameters
+    for param, unit, dtype in zip(
+            #['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+            ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
+            [u.mag, u.mag, None, None, None, None, u.arcsec],
+            ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
+        for filt in ubands:
+            results.add_column(Column(name=f'{param}_{filt}',
+                                      unit=unit, data=np.zeros(1, dtype)))
+        if not ('CHI2' in param or 'NDOF' in param):
+            for filt in ubands:
+                results.add_column(Column(name=f'{param}_ERR_{filt}',
+                                          unit=unit, data=np.zeros(1, dtype)))
+
+    # flux within apertures that are multiples of sma_moment
+    for iap, ap in enumerate(sma_apertures_arcsec):
+        results.add_column(Column(name=f'SMA_AP{iap:02}',
+                                  unit=u.arcsec, data=np.float32(ap)))
+    for iap in range(len(sma_apertures_arcsec)):
+        for filt in ubands:
+            results.add_column(Column(name=f'FLUX_AP{iap:02}_{filt}',
+                                      unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+        for filt in ubands:
+            results.add_column(Column(name=f'FLUX_ERR_AP{iap:02}_{filt}',
+                                      unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+        for filt in ubands:
+            results.add_column(Column(name=f'FMASKED_AP{iap:02}_{filt}', # NB: initial value
+                                      unit=None, data=np.ones(1, 'f4')))
+
+    # optical isophotal radii
+    if dataset == 'opt':
+        for thresh in sbthresh:
+            for filt in ubands:
+                results.add_column(Column(name=f'R{thresh:.0f}_{filt}',
+                                          unit=u.arcsec, data=np.zeros(1, 'f4')))
+            for filt in ubands:
+                results.add_column(Column(name=f'R{thresh:.0f}_ERR_{filt}',
+                                          unit=u.arcsec, data=np.zeros(1, 'f4')))
+            # flux within apertures based on the optical isophotal radii (deprecated)
+            #for filt in ubands:
+            #    results.add_column(Column(name=f'FLUX_R{thresh:.0f}_{filt}',
+            #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+            #for filt in ubands:
+            #    results.add_column(Column(name=f'FLUX_ERR_R{thresh:.0f}_{filt}',
+            #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
+
+    return results
+
+
 def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
              bands=['g', 'r', 'i', 'z'], opt_wcs=None, wcs=None,
              opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=100,
@@ -641,100 +741,12 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     from SGA.util import get_dt
     from SGA.sky import map_bxby
 
-    def sbprofiles_datamodel(sma, bands):
-        import astropy.units as u
-        from astropy.table import Table, Column
-        nsma = len(sma)
-
-        ubands = np.char.upper(bands)
-
-        sbprofiles = Table()
-        sbprofiles.add_column(Column(name='SMA', unit=u.arcsec, data=sma.astype('f4')))
-        for filt in ubands:
-            sbprofiles.add_column(Column(name=f'SB_{filt}', unit=u.nanomaggy/u.arcsec**2,
-                                  data=np.zeros(nsma, 'f4')))
-        for filt in ubands:
-            sbprofiles.add_column(Column(name=f'SB_ERR_{filt}', unit=u.nanomaggy/u.arcsec**2,
-                                  data=np.zeros(nsma, 'f4')))
-        for filt in ubands:
-            sbprofiles.add_column(Column(name=f'FLUX_{filt}', unit=u.nanomaggy,
-                                  data=np.zeros(nsma, 'f4')))
-        for filt in ubands:
-            sbprofiles.add_column(Column(name=f'FLUX_ERR_{filt}', unit=u.nanomaggy,
-                                  data=np.zeros(nsma, 'f4')))
-        for filt in ubands:
-            sbprofiles.add_column(Column(name=f'FMASKED_{filt}', data=np.ones(nsma, 'f4'))) # NB: initial value
-        return sbprofiles
-
-
-    def results_datamodel(obj, bands, dataset):
-        import astropy.units as u
-        from astropy.table import Table, Column
-
-        ubands = np.char.upper(bands)
-
-        cols = ['SGAID', 'SGAGROUP']
-        results = Table(obj[cols])
-        #results = Table()
-
-        # Gini coefficient within the MOMENT aperture
-        for filt in ubands:
-            results.add_column(Column(name=f'GINI_{filt}', data=np.zeros(1, 'f4')))
-
-        # curve of growth model parameters
-        for param, unit, dtype in zip(
-                #['COG_MTOT', 'COG_M0', 'COG_ALPHA1', 'COG_ALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-                ['COG_MTOT', 'COG_DMAG', 'COG_LNALPHA1', 'COG_LNALPHA2', 'COG_CHI2', 'COG_NDOF', 'SMA50'],
-                [u.mag, u.mag, None, None, None, None, u.arcsec],
-                ['f4', 'f4', 'f4', 'f4', 'f4', np.int32, 'f4']):
-            for filt in ubands:
-                results.add_column(Column(name=f'{param}_{filt}',
-                                          unit=unit, data=np.zeros(1, dtype)))
-            if not ('CHI2' in param or 'NDOF' in param):
-                for filt in ubands:
-                    results.add_column(Column(name=f'{param}_ERR_{filt}',
-                                              unit=unit, data=np.zeros(1, dtype)))
-
-        # flux within apertures that are multiples of sma_moment
-        for iap, ap in enumerate(sma_apertures_arcsec):
-            results.add_column(Column(name=f'SMA_AP{iap:02}',
-                                      unit=u.arcsec, data=np.float32(ap)))
-        for iap in range(len(sma_apertures_arcsec)):
-            for filt in ubands:
-                results.add_column(Column(name=f'FLUX_AP{iap:02}_{filt}',
-                                          unit=u.nanomaggy, data=np.zeros(1, 'f4')))
-            for filt in ubands:
-                results.add_column(Column(name=f'FLUX_ERR_AP{iap:02}_{filt}',
-                                          unit=u.nanomaggy, data=np.zeros(1, 'f4')))
-            for filt in ubands:
-                results.add_column(Column(name=f'FMASKED_AP{iap:02}_{filt}', # NB: initial value
-                                          unit=None, data=np.ones(1, 'f4')))
-
-        # optical isophotal radii
-        if dataset == 'opt':
-            for thresh in sbthresh:
-                for filt in ubands:
-                    results.add_column(Column(name=f'R{thresh:.0f}_{filt}',
-                                              unit=u.arcsec, data=np.zeros(1, 'f4')))
-                for filt in ubands:
-                    results.add_column(Column(name=f'R{thresh:.0f}_ERR_{filt}',
-                                              unit=u.arcsec, data=np.zeros(1, 'f4')))
-                # flux within apertures based on the optical isophotal radii (deprecated)
-                #for filt in ubands:
-                #    results.add_column(Column(name=f'FLUX_R{thresh:.0f}_{filt}',
-                #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
-                #for filt in ubands:
-                #    results.add_column(Column(name=f'FLUX_ERR_R{thresh:.0f}_{filt}',
-                #                              unit=u.nanomaggy, data=np.zeros(1, 'f4')))
-
-        return results
-
 
     # Initialize the output table
     if allbands is None:
         allbands = bands
 
-    results = results_datamodel(obj, allbands, dataset)
+    results = results_datamodel(obj, allbands, dataset, sma_apertures_arcsec, sbthresh)
     sbprofiles = sbprofiles_datamodel(sma_array*pixscale, allbands)
 
     # Initialize the moment geometry.
@@ -793,14 +805,14 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         isobandfit = IsophoteList(out[0])
 
         # curve of growth
-        apflux = np.hstack(out[1])
-        apferr = np.hstack(out[2])
+        apflux = np.hstack(out[1]) * pixscale**2. # [nanomaggies]
+        apferr = np.hstack(out[2]) * pixscale**2. # [nanomaggies]
         apfmasked = np.hstack(out[3])
 
         I = np.isfinite(apflux) * np.isfinite(apferr) * np.isfinite(apfmasked)
         if np.any(I):
-            sbprofiles[f'FLUX_{filt.upper()}'][I] = apflux[I] * pixscale**2. # [nanomaggies]
-            sbprofiles[f'FLUX_ERR_{filt.upper()}'][I] = apferr[I] * pixscale**2. # [nanomaggies]
+            sbprofiles[f'FLUX_{filt.upper()}'][I] = apflux[I]     # [nanomaggies]
+            sbprofiles[f'FLUX_ERR_{filt.upper()}'][I] = apferr[I] # [nanomaggies]
             sbprofiles[f'FMASKED_{filt.upper()}'][I] = apfmasked[I]
 
         # model
@@ -840,16 +852,16 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
             refout = [integrate_isophot_one(*mparg) for mparg in mpargs]
         refout = list(zip(*refout))
 
-        refapflux = np.hstack(refout[1])
-        refapferr = np.hstack(refout[2])
+        refapflux = np.hstack(refout[1]) * pixscale**2. # [nanomaggies]
+        refapferr = np.hstack(refout[2]) * pixscale**2. # [nanomaggies]
         refapfmasked = np.hstack(refout[3])
 
         for iap in range(len(sma_apertures_arcsec)):
             I = (np.isfinite(refapflux[iap]) * np.isfinite(refapferr[iap]) *
                  np.isfinite(refapfmasked[iap]))
             if np.any(I):
-                results[f'FLUX_AP{iap:02}_{filt.upper()}'][I] = refapflux[iap][I] * pixscale**2. # [nanomaggies]
-                results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'][I] = refapferr[iap][I] * pixscale**2. # [nanomaggies]
+                results[f'FLUX_AP{iap:02}_{filt.upper()}'][I] = refapflux[iap][I]     # [nanomaggies]
+                results[f'FLUX_ERR_AP{iap:02}_{filt.upper()}'][I] = refapferr[iap][I] # [nanomaggies]
                 results[f'FMASKED_AP{iap:02}_{filt.upper()}'][I] = refapfmasked[iap][I]
 
         # isophotal radii
@@ -871,11 +883,13 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                         if res['lower_limit']:
                             log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
                         else:
-                            log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
-                                      f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
                             if np.isfinite(res['a_iso']) and np.isfinite(res['a_iso_err']):
+                                log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                          f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
                                 results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
                                 results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
+                            else:
+                                log.debug(f"{filt}: R{thresh:.0f} could not be measured.")
 
         if debug:
             I = apflux > 0.
@@ -900,7 +914,7 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         #log.debug(f'Ellipse-fitting the {filt}-band took {dt:.3f} {unit}')
 
     dt, unit = get_dt(tall)
-    log.info(f'  Fit {"".join(bands)} in a ' + \
+    log.info(f'Fit {"".join(bands)} in a ' + \
              f'{width}x{width} mosaic in {dt:.3f} {unit}')
 
     if debug:
@@ -908,7 +922,6 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
         ax.legend()
         fig.savefig('ioannis/tmp/junk.png')
         plt.close()
-        pdb.set_trace()
 
 
     return results, sbprofiles
@@ -1428,8 +1441,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, galex=True, unwise=True,
                          sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         nmonte=100, seed=42, verbose=False, nowrite=False,
-                         clobber=False, qaplot=False, htmlgalaxydir=None):
+                         nmonte=75, seed=42, verbose=False, skip_ellipse=False,
+                         nowrite=False, clobber=False, qaplot=False,
+                         htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
 
@@ -1460,52 +1474,84 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
         galex=galex, verbose=verbose, qaplot=False, cleanup=False,
-        htmlgalaxydir=htmlgalaxydir)
+        skip_ellipse=skip_ellipse, htmlgalaxydir=htmlgalaxydir)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
 
-    # First fit just the optical and then update the mask.
-    results, sbprofiles = wrap_multifit(
-        data, sample, ['opt'], unpack_maskbits_function,
-        sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
-        nmonte=nmonte, seed=seed, debug=False)
+    # special case: completely empty Tractor catalog (e.g.,
+    # r9-north/326/32630p0027)
+    if err == 1 and not bool(data):
+        return err
 
-    GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
-    input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
+    # if skipping ellipse-fitting just initialize the data model and write out
+    if skip_ellipse:
+        results_obj = []
+        sbprofiles_obj = []
+        for iobj, obj in enumerate(sample):
+            results_dataset = []
+            sbprofiles_dataset = []
+            for idata, dataset in enumerate(datasets):
+                if dataset == 'opt':
+                    allbands = data['all_opt_bands'] # always griz in north & south
+                    sma_moment_arcsec = obj['SMA_MOMENT']  # [arsec]
+                    sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures) # [arcsec]
+                else:
+                    allbands = data[f'{dataset}_bands']
 
-    for iobj, obj in enumerate(sample):
-        tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT'])
-        for filt in bands:
-            for thresh in sbthresh:
-                col = f'R{thresh:.0f}_{filt.upper()}'
-                colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
-                tab[col] = results[0][iobj][col]
-                tab[colerr] = results[0][iobj][colerr]
+                results_dataset1 = results_datamodel(obj, allbands, dataset, sma_apertures_arcsec, sbthresh)
+                sbprofiles_dataset1 = Table()
+                #sbprofiles_dataset1 = sbprofiles_datamodel(sma_array*pixscale, allbands)
+                results_dataset.append(results_dataset1)
+                sbprofiles_dataset.append(sbprofiles_dataset1)
+            results_obj.append(results_dataset)
+            sbprofiles_obj.append(sbprofiles_dataset)
 
-        radius, _ = SGA_diameter(tab, radius_arcsec=True)
-        [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
-        # handle FIXGEO
-        if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-            input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
-        else:
-            input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+        results = list(zip(*results_obj))       # [ndatasets][nobj]
+        sbprofiles = list(zip(*sbprofiles_obj)) # [ndatasets][nobj]
+    else:
+        # First fit just the optical and then update the mask.
+        results, sbprofiles = wrap_multifit(
+            data, sample, ['opt'], unpack_maskbits_function,
+            sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
+            nmonte=0, seed=seed, debug=False)
 
-    data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                        input_geo_initial=input_geo_initial,
-                                        qaplot=qaplot, niter_geometry=1,
-                                        htmlgalaxydir=htmlgalaxydir)
+        GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+        input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
 
-    # ellipse-fit over objects and then datasets
-    results, sbprofiles = wrap_multifit(
-        data, sample, datasets, unpack_maskbits_function,
-        sbthresh, apertures, SGAMASKBITS, mp=mp,
-        nmonte=nmonte, seed=seed, debug=qaplot)
+        for iobj, obj in enumerate(sample):
+            [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
 
-    if qaplot:
-        qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
-                      SGAMASKBITS, REFIDCOLUMN, datasets=datasets,
-                      htmlgalaxydir=htmlgalaxydir)
+            # if fixgeo, use the moment geometry
+            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+                input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
+            else:
+                # estimate R(26)
+                tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
+                for filt in bands:
+                    for thresh in sbthresh:
+                        col = f'R{thresh:.0f}_{filt.upper()}'
+                        colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
+                        tab[col] = results[0][iobj][col]
+                        tab[colerr] = results[0][iobj][colerr]
+                radius, _ = SGA_diameter(tab, radius_arcsec=True)
+                input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+
+        data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
+                                            input_geo_initial=input_geo_initial,
+                                            galmask_margin=0., niter_geometry=1,
+                                            qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
+
+        # ellipse-fit over objects and then datasets
+        results, sbprofiles = wrap_multifit(
+            data, sample, datasets, unpack_maskbits_function,
+            sbthresh, apertures, SGAMASKBITS, mp=mp,
+            nmonte=nmonte, seed=seed, debug=qaplot)
+
+        if qaplot:
+            qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
+                          SGAMASKBITS, REFIDCOLUMN, datasets=datasets,
+                          htmlgalaxydir=htmlgalaxydir)
 
     if not nowrite:
         from SGA.io import write_ellipsefit

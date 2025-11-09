@@ -23,7 +23,7 @@ def mpi_args():
     parser.add_argument('--galaxylist', type=str, default=None, help='Comma-separated list of galaxy names to process.')
 
     parser.add_argument('--mindiam', default=0., type=float, help='Minimum diameter (arcmin).')
-    parser.add_argument('--maxdiam', default=100., type=float, help='Maximum diameter (arcmin).')
+    parser.add_argument('--maxdiam', default=1e3, type=float, help='Maximum diameter (arcmin).')
     parser.add_argument('--maxmult', default=None, type=int, help='Only read primary groups with up to maxmult members.')
 
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
@@ -57,6 +57,8 @@ def mpi_args():
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
     parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
 
+    parser.add_argument('--diameter-file', default=None, type=str, help='Write a diameter file for use with generate_sga_jobs.sh')
+
     #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
     parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
@@ -66,9 +68,11 @@ def mpi_args():
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
 
     parser.add_argument('--lvd', action='store_true', help='Read the parent LVD sample.')
+    parser.add_argument('--wisesize', action='store_true', help='Read the wisesize parent sample.')
 
     parser.add_argument('--use-gpu', action='store_true', help='Launch the GPU version of legacypipe (only with --coadds).')
-    parser.add_argument('--threads-per-gpu', default=16, type=int, help='Max threads per GPU - CPU will fill remaining threads.')
+    parser.add_argument('--ngpu', default=1, type=int, help='Number of GPUs to use.')
+    parser.add_argument('--threads-per-gpu', default=8, type=int, help='Max threads per GPU - CPU will fill remaining threads.')
 
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')

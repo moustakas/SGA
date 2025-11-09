@@ -2518,6 +2518,61 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
+def add_gaia_masking(cat):
+
+    log.info(f'Adding Gaia bright-star masking bits.')
+    if not 'STARFDIST' in cat.colnames:
+        cat['STARFDIST'] = np.zeros(len(cat), 'f4') + 99.
+    if not 'STARDIST' in cat.colnames:
+        cat['STARDIST'] = np.zeros(len(cat), 'f4') + 99.
+    if not 'STARMAG' in cat.colnames:
+        cat['STARMAG'] = np.zeros(len(cat), 'f4') + 99.
+
+    gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
+    gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
+    log.info(f'Read {len(gaia):,d} Gaia stars from {gaiafile}')
+    I = gaia['radius'] > 0.
+    log.info(f'Trimmed to {np.sum(I):,d}/{len(gaia):,d} stars with radius>0')
+    gaia = gaia[I]
+
+    dmag = 1.
+    bright = np.min(np.floor(gaia['mask_mag']))
+    faint = np.max(np.ceil(gaia['mask_mag']))
+    magbins = np.arange(bright, faint, dmag)
+
+    for mag in magbins:
+        # find all Gaia stars in this magnitude bin
+        I = np.where((gaia['mask_mag'] >= mag) * (gaia['mask_mag'] < mag+dmag))[0]
+
+        # search within 2 times the largest masking radius
+        maxradius = 2. * np.max(gaia['radius'][I]) # [degrees]
+        log.info(f'Found {len(I):,d} Gaia stars in magnitude bin {mag:.0f} to ' + \
+              f'{mag+dmag:.0f} with max radius {maxradius:.4f} degrees.')
+
+        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], gaia['ra'][I], gaia['dec'][I], maxradius, nearest=True)
+        if len(m1) > 0:
+            zero = np.where(sep == 0.)[0]
+            if len(zero) > 0:
+                cat['STARDIST'][m1[zero]] = 0.
+                cat['STARFDIST'][m1[zero]] = 0.
+                cat['STARMAG'][m1[zero]] = gaia['mask_mag'][I[m2[zero]]]
+
+            # separations can be identically zero
+            pos = np.where(sep > 0.)[0]
+            if len(pos) > 0:
+                # distance to the nearest star (in this mag bin)
+                # relative to the mask radius of that star (given its
+                # mag), capped at a factor of 2; values <1 mean the
+                # object is within the star's masking radius
+                fdist = sep[pos] / gaia['radius'][I[m2[pos]]].value
+                # only store the smallest value
+                J = np.where((fdist < 2.) * (fdist < cat['STARFDIST'][m1[pos]]))[0]
+                if len(J) > 0:
+                    cat['STARDIST'][m1[pos[J]]] = sep[pos[J]] # [degrees]
+                    cat['STARFDIST'][m1[pos[J]]] = fdist[J]
+                    cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
+
+
 def build_parent_archive(verbose=False, overwrite=False):
     """Build the parent catalog.
 
@@ -2776,7 +2831,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     # For convenience, add dedicated Boolean columns for each external
     # file (which may be different than the ELLIPSEMODE and SAMPLE bits
     # which will be populated in build_parent).
-    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking']:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
             log.warning(f'No action file {actfile} found; skipping.')
@@ -2807,55 +2862,8 @@ def build_parent_archive(verbose=False, overwrite=False):
     # RESOLVED always implies FIXGEO!
     cat['IN_FIXGEO'][cat['IN_RESOLVED']] = True
 
-    # add the Gaia mask bits
-    log.info(f'Adding Gaia bright-star masking bits.')
-    cat['STARFDIST'] = np.zeros(len(cat), 'f4') + 99.
-    cat['STARDIST'] = np.zeros(len(cat), 'f4') + 99.
-    cat['STARMAG'] = np.zeros(len(cat), 'f4') + 99.
-
-    gaiafile = os.path.join(sga_dir(), 'gaia', 'gaia-mask-dr3-galb9.fits')
-    gaia = Table(fitsio.read(gaiafile, columns=['ra', 'dec', 'radius', 'mask_mag', 'isbright', 'ismedium']))
-    log.info(f'Read {len(gaia):,d} Gaia stars from {gaiafile}')
-    I = gaia['radius'] > 0.
-    log.info(f'Trimmed to {np.sum(I):,d}/{len(gaia):,d} stars with radius>0')
-    gaia = gaia[I]
-
-    dmag = 1.
-    bright = np.min(np.floor(gaia['mask_mag']))
-    faint = np.max(np.ceil(gaia['mask_mag']))
-    magbins = np.arange(bright, faint, dmag)
-
-    for mag in magbins:
-        # find all Gaia stars in this magnitude bin
-        I = np.where((gaia['mask_mag'] >= mag) * (gaia['mask_mag'] < mag+dmag))[0]
-
-        # search within 2 times the largest masking radius
-        maxradius = 2. * np.max(gaia['radius'][I]) # [degrees]
-        log.info(f'Found {len(I):,d} Gaia stars in magnitude bin {mag:.0f} to ' + \
-              f'{mag+dmag:.0f} with max radius {maxradius:.4f} degrees.')
-
-        m1, m2, sep = match_radec(cat['RA'], cat['DEC'], gaia['ra'][I], gaia['dec'][I], maxradius, nearest=True)
-        if len(m1) > 0:
-            zero = np.where(sep == 0.)[0]
-            if len(zero) > 0:
-                cat['STARDIST'][m1[zero]] = 0.
-                cat['STARFDIST'][m1[zero]] = 0.
-                cat['STARMAG'][m1[zero]] = gaia['mask_mag'][I[m2[zero]]]
-
-            # separations can be identically zero
-            pos = np.where(sep > 0.)[0]
-            if len(pos) > 0:
-                # distance to the nearest star (in this mag bin)
-                # relative to the mask radius of that star (given its
-                # mag), capped at a factor of 2; values <1 mean the
-                # object is within the star's masking radius
-                fdist = sep[pos] / gaia['radius'][I[m2[pos]]].value
-                # only store the smallest value
-                J = np.where((fdist < 2.) * (fdist < cat['STARFDIST'][m1[pos]]))[0]
-                if len(J) > 0:
-                    cat['STARDIST'][m1[pos[J]]] = sep[pos[J]] # [degrees]
-                    cat['STARFDIST'][m1[pos[J]]] = fdist[J]
-                    cat['STARMAG'][m1[pos[J]]] = gaia['mask_mag'][I[m2[pos[J]]]]
+    # add the Gaia masking bits
+    add_gaia_masking(cat)
 
     log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
@@ -2952,25 +2960,139 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
+    # add additional sources by-hand
+    def _empty_parent(cat, N=1):
+        empty = cat.copy()
+        for col in empty.colnames:
+            if empty[col].dtype == bool:
+                empty[col] = False
+            else:
+                empty[col] *= 0
+                if not empty[col].dtype.type is np.str_:
+                    if col in ['STARMAG', 'STARDIST', 'STARFDIST']:
+                        empty[col] += 99 # null value
+                    else:
+                        empty[col] += -99 # null value
+        if N > 1:
+            empty = vstack([oneempty for oneempty in empty])
+        return empty
+
+
+    customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
+    custom = Table.read(customfile, format='csv', comment='#')
+    log.info(f'Read {len(custom)} objects from {customfile}')
+
+    moreparent = _empty_parent(parent[:1], len(custom))
+    for col in custom.colnames:
+        if col == 'COMMENT':
+            continue
+        if col == 'REGION':
+            moreparent[col] = [REGIONBITS[cust[col]] for cust in custom]
+        else:
+            moreparent[col] = custom[col]
+    #moreparent[custom.colnames[:-1]]
+
+    # update the Gaia masking bits
+    add_gaia_masking(moreparent)
+
+    # assign a unique parent_row
+    all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
+    moreparent['ROW_PARENT'] = np.max(all_parent_rows) + np.arange(len(moreparent)) + 1
+    parent = vstack((parent, moreparent))
+
+    # Read and process the "parent-drop" file; update REGION for
+    # objects indicated in that file.
+    dropfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-drop.csv')
+    drop = Table.read(dropfile, format='csv', comment='#')
+    log.info(f'Read {len(drop)} objects from {dropfile}')
+    try:
+        assert(len(drop) == len(np.unique(drop['objname'])))
+    except:
+        pdb.set_trace()
+
+    # drop crap from both/all regions
+    Idrop = drop['region'].mask
+    log.info(f'Dropping {np.sum(Idrop):,d}/{len(parent):,d} objects based on VI')
+    parent = parent[~np.isin(parent['OBJNAME'], drop['objname'][Idrop])]
+
+    # drop crap for specified regions
+    drop = drop[~drop['region'].mask]
+    for region in ['dr11-south', 'dr9-north']:
+        bit = REGIONBITS[region]
+
+        Idrop = drop['region'] == region
+        Iregion = (parent['REGION'] & bit != 0)
+        Iparent = Iregion * np.isin(parent['OBJNAME'], drop['objname'][Idrop])
+        log.info(f'Dropping {np.sum(Idrop):,d}/{np.sum(Iregion):,d} objects in {region} based on VI')
+        parent['REGION'][Iparent] -= bit
+
+    try:
+        assert(np.all(parent['REGION'] > 0))
+    except:
+        pdb.set_trace()
+
     # sanity check on initial diameters
     mindiam = 20. # [arcsec]
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
-    print('Need to make sure to not override diam for LVD sources which might have diam<mindiam like Clump I')
-    pdb.set_trace()
+    origdiam, _, _, _ = choose_geometry(parent, mindiam=0.)
 
-    # cleanup
+    # cleanup magnitudes
     band[band == ''] = 'V' # default
     I = mag > 20.
     if np.any(I):
         mag[I] = 20.
 
-    # diameter cut
+    # Restore diameters for LVD sources which have diam<mindiam (e.g.,
+    # Clump I)
+    I = (parent['ROW_LVD'] != -99) * (diam <= mindiam)
+    log.info(f'Restoring {np.sum(I)} LVD diameters that are <mindiam={mindiam:.1f}')
+    diam[I] = origdiam[I]
+
     I = diam == mindiam
     if np.any(I):
         log.warning(f'Setting mindiam={mindiam:.1f} arcsec for {np.sum(I):,d} objects.')
     diam /= 60. # [arcmin]
     assert(np.all(diam > 0.))
+
+    # one final update of coordinates and geometry based on VI
+    propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
+    props = Table.read(propsfile, format='csv', comment='#')
+    log.info(f'Read {len(props)} objects from {propsfile}')
+
+    for prop in props:
+        objname = prop['objname']
+        I = np.where(objname == parent['OBJNAME'].value)[0]
+        if len(I) != 1:
+            log.info(f'Problem finding {objname}!')
+            pdb.set_trace()
+
+        for col in ['ra', 'dec', 'diam', 'pa', 'ba']:
+            newval = prop[col]
+            if col == 'ra' or col == 'dec':
+                oldval = parent[col.upper()][I[0]]
+            elif col == 'diam':
+                oldval = diam[I[0]]
+            elif col == 'pa':
+                oldval = pa[I[0]]
+            elif col == 'ba':
+                oldval = ba[I[0]]
+
+            if newval != -99.:
+                log.info(f'{objname} {col}: {oldval} --> {newval}')
+            else:
+                pass
+                #log.info(f'  Retaining {col}: {oldval}')
+
+            if newval != -99.:
+                if col == 'ra' or col == 'dec':
+                    parent[col.upper()][I] = newval
+                elif col == 'diam':
+                    diam[I] = newval
+                elif col == 'pa':
+                    pa[I] = newval
+                elif col == 'ba':
+                    ba[I] = newval
 
     ## Pre-process the morphology column.
     #allmorph = []
@@ -2981,7 +3103,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #    morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
     #    allmorph.append(morph1)
 
-    log.warning('Consider removing sources that are too close to bright stars.')
+    #log.warning('Consider removing sources that are too close to bright stars.')
 
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
@@ -2996,7 +3118,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # file so those files can be updated without having to rerun
     # build_parent_archive.
     ellipsemode = np.zeros(len(parent), np.int32)
-    for action in ['fixgeo', 'resolved', 'forcepsf', 'forcegaia', 'lessmasking', 'moremasking']:
+    for action in ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking']:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
             log.warning(f'No action file {actfile} found; skipping.')
@@ -3043,19 +3165,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #grp['MAG_BAND'] = band
     grp['DIAM_REF'] = ref
 
-    #ra, dec = grp['RA'].value, grp['DEC'].value
-    #grp.add_column(sga2025_name(ra, dec, unixsafe=True),
-    #               name='SGANAME', index=0)
-    #grp.add_column(allmorph, name='MORPH', index=1)
-    #grp.add_column(get_brickname(ra, dec), name='BRICKNAME', index=2)
-    #grp.add_column(samplebits, name='SAMPLE')#, index=9)
-    #grp.add_column(ellipsemode, name='ELLIPSEMODE')#, index=8)
-    #grp.add_column(diam.astype('f4'), name='DIAM')#, index=3) # [arcmin]
-    #grp.add_column(ba.astype('f4'), name='BA')#, index=4)
-    #grp.add_column(pa.astype('f4'), name='PA')#, index=5)
-    #grp.add_column(mag.astype('f4'), name='MAG')#, index=6)
-    #grp.add_column(band, name='BAND', index=7)
-
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
     #grp.add_column(SFD.ebv(grp['RA'].value, grp['DEC'].value), name='EBV', index=10)
@@ -3073,21 +3182,70 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         sgaid = parent['ROW_PARENT'][srt].value
     grp.add_column(sgaid, name='SGAID', index=0)
 
+    assert(len(grp) == len(np.unique(grp['SGAID'])))
+
     # Build the group catalog but without the RESOLVED or FORCEPSF
     # samples (e.g., SMC, LMC).
     I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
                       grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
     out1 = build_group_catalog(grp[I], mp=mp)
-    #out = out1
-    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
+    try:
+        #test = grp[~I]
+        #out2 = build_group_catalog(test[:10000], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
+        out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
+    except:
+        pdb.set_trace()
     out = vstack((out1, out2))
     del out1, out2
 
-    # assign groupdir and groupname
-    #groupdir = radec_to_groupname(out['GROUP_RA'].value, out['GROUP_DEC'].value)
-    groupname = sga2025_name(out['GROUP_RA'].value, out['GROUP_DEC'].value, group_name=True)
-    #out.add_column(groupdir, name='GROUPDIR', index=1)
+    # assign SGAGROUP from GROUP_NAME and check for duplicates
+    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
     out.add_column(groupname, name='SGAGROUP', index=1)
+
+    I = out['GROUP_PRIMARY']
+    gg, cc = np.unique(out['SGAGROUP'][I], return_counts=True)
+    if len(gg[cc>1]) > 0:
+        print('Duplicate groups!!')
+        pdb.set_trace()
+
+    # After assigning groups, loop back through and make sure REGION
+    # is the same for all group members, otherwise SGA.build_catalog
+    # will think that a galaxy is missing for reasons other than there
+    # are no data.
+    # bits
+    I = (out['GROUP_PRIMARY']) & (out['GROUP_MULT'] > 2)
+    drop_groupid = []
+    strip_groups = []
+    for groupid in out['GROUP_ID'][I]:
+        J = (out['GROUP_ID'] == groupid)
+        # Bits common to ALL members of this group:
+        allowed = int(np.bitwise_and.reduce(out['REGION'][J]))
+        if allowed == 0:
+            # no region bit shared by all members → drop entire group
+            drop_groupid.append(groupid)
+        else:
+            # clear missing bits from everyone in the group (keep only the common bits)
+            new_reg = (out['REGION'][J] & allowed)
+            if np.any(new_reg != out['REGION'][J]):
+                out['REGION'][J] = new_reg
+                strip_groups.append(out['GROUP_NAME'][J][0])
+
+    if drop_groupid:
+        M = np.isin(out['GROUP_ID'], drop_groupid)
+        log.info(f"Dropping {len(np.unique(drop_groupid)):,d} unique groups "
+                 f"({np.sum(M):,d} members) with no common region bit.")
+        out = out[~M]
+
+    if len(strip_groups) > 0:
+        strip_groups = np.unique(strip_groups)
+        log.info(f"Stripped region bits (kept groups) for {len(strip_groups):,d} groups:")
+        log.info(f"  {','.join(strip_groups)}")
+
+    # one more check!
+    try:
+        assert(np.all(np.isin(lvd_dwarfs, out['OBJNAME'])))
+    except:
+        pdb.set_trace()
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'

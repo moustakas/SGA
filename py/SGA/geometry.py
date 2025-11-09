@@ -39,7 +39,7 @@ class EllipseProperties:
         self.blob_mask = None
 
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            smooth_sigma=1.0):
+            x0y0=None, smooth_sigma=1.0):
         """
         Label and smooth the image, then select the largest contiguous blob
         and compute ellipse properties using second moments.
@@ -100,9 +100,13 @@ class EllipseProperties:
             import pdb ; pdb.set_trace()
         F = flux.sum()
 
-        # 4) flux-weighted centroid
-        self.x0 = np.dot(flux, x_sel) / F
-        self.y0 = np.dot(flux, y_sel) / F
+        # 4) flux-weighted centroid (optionally fixed)
+        if x0y0 is None:
+            self.x0 = np.dot(flux, x_sel) / F
+            self.y0 = np.dot(flux, y_sel) / F
+        else:
+            self.x0 = x0y0[0]
+            self.y0 = x0y0[1]
 
         # 5) central second moments
         dx = x_sel - self.x0
@@ -136,11 +140,22 @@ class EllipseProperties:
             raise ValueError(f"Unknown method: {method}")
 
         # 10) compute axis ratio and astronomical PA within 0-180°
-        b = np.sqrt(eigvals[1])
-        self.ba = b / self.a_rms if self.a_rms > 0 else 0
-        vx, vy = eigvecs[:, 0]
-        pa_cart = np.degrees(np.arctan2(vy, vx)) % 180.0
-        self.pa = (pa_cart - 90.) % 180.0
+        if self.a_rms > 0. and eigvals[1] > 0.:
+            b = np.sqrt(eigvals[1])
+            # guard against crazy values
+            if b < 1e-2:
+                log.warning('Unrealistically small semi-minor axis.')
+                self.ba = 1.
+                self.pa = 0.
+            else:
+                self.ba = b / self.a_rms
+                vx, vy = eigvecs[:, 0]
+                pa_cart = np.degrees(np.arctan2(vy, vx)) % 180.0
+                self.pa = (pa_cart - 90.) % 180.0
+        else:
+            log.warning('Unable to determine the ellipse geometry.')
+            self.ba = 1.
+            self.pa = 0.
 
         return self
 
