@@ -7,6 +7,7 @@ Code to calibrate Rr(26).
 """
 from __future__ import annotations
 
+import os
 import json
 import warnings
 import numpy as np
@@ -169,24 +170,141 @@ def _to_log_and_sigma(r: np.ndarray, sigma_r: Optional[np.ndarray]) -> Tuple[np.
     return y, sigma_r / np.clip(r, 1e-300, None)  # σ_log ≈ σ_R / R
 
 
+def _plot_calibration_diagnostics(
+    plot_data: Dict[str, Dict[str, np.ndarray]],
+    cal: Calibration,
+    calib_path: str,
+) -> None:
+    """Make a multi-panel diagnostic plot of channel vs R26_R with fits.
+
+    plot_data[name] = {"x": x_lin_anchor, "y": y_lin_anchor}
+
+    """
+    import matplotlib.pyplot as plt
+
+    if not plot_data:
+        return
+
+    # Determine output filename from calib_path
+    base, ext = os.path.splitext(str(calib_path))
+    png_path = base + ".png"
+
+    # Sort channels for a stable layout
+    names = sorted(plot_data.keys())
+
+    n = len(names)
+    ncols = 4
+    nrows = int(np.ceil(n / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), squeeze=False)
+
+    # Flatten axes for easy indexing
+    axes_flat = axes.ravel()
+
+    for idx, name in enumerate(names):
+        ax = axes_flat[idx]
+        d = plot_data[name]
+        x = d["x"]
+        y = d["y"]
+
+        # Scatter of anchor points
+        mask = np.isfinite(x) & np.isfinite(y)
+        if not np.any(mask):
+            ax.set_title(name)
+            ax.set_axis_off()
+            continue
+
+        xx = x[mask]
+        yy = y[mask]
+
+        ax.scatter(xx, yy, s=4, alpha=0.3)
+
+        # Best-fit line from calibration (log-log model mapped back)
+        ch = cal.channels.get(name)
+        if ch is not None:
+            a = ch.a
+            b = ch.b
+            tau = ch.tau
+            sdef = ch.sigma_obs_default if ch.sigma_obs_default is not None else 0.0
+
+            # Build line in linear space: x_lin -> y_lin
+            x_min = np.nanmin(xx)
+            x_max = np.nanmax(xx)
+            if np.isfinite(x_min) and np.isfinite(x_max) and x_max > x_min:
+                x_grid = np.linspace(x_min, x_max, 200)
+                # avoid log(<=0)
+                xg_pos = np.clip(x_grid, 1e-6, None)
+                ylog_fit = a + b * np.log(xg_pos)
+                y_fit = np.exp(ylog_fit)
+                (line,) = ax.plot(x_grid, y_fit, "k-", lw=1)
+
+                label = f"a={a:.3f}, b={b:.3f}, tau={tau:.3f}, sdef={sdef:.3f}"
+                ax.legend([line], [label], fontsize=7, loc="lower right", frameon=False)
+
+        ax.set_xlabel(f"{name} [arcsec]")
+        ax.set_ylabel("R26_R [arcsec]")
+        ax.set_title(name)
+
+    # Turn off any unused panels
+    for j in range(len(names), len(axes_flat)):
+        axes_flat[j].set_axis_off()
+
+    fig.tight_layout()
+    fig.savefig(png_path, dpi=150)
+    plt.close(fig)
+
+    log.info(f"Wrote calibration diagnostic plot to {png_path}")
+
+
 def _fit_channel_odr(
     x_log: np.ndarray,
     sx_log: Optional[np.ndarray],
     y_log: np.ndarray,
     sy_log: Optional[np.ndarray],
-    Z: Optional[np.ndarray]) -> Tuple[np.ndarray, float, float]:
-    """Fit y = a + b*x + c^T z via SciPy ODR with robust sanitation +
-    fallbacks.
-
-    Returns (beta, tau, sigma_obs_default).
-
+    Z: Optional[np.ndarray],
+    r26_min_anchor: float = 15.0,
+) -> Tuple[np.ndarray, float, float]:
     """
-    # --- sanitize ---
+    Fit y = a + b*x + c^T z via SciPy ODR with robust sanitation + fallbacks.
+
+    Parameters
+    ----------
+    x_log : array
+        log(channel radius) for anchor objects.
+    sx_log : array or None
+        1σ uncertainty in log(channel radius), same length as x_log, or None.
+    y_log : array
+        log(R26_R) for anchor objects.
+    sy_log : array or None
+        1σ uncertainty in log(R26_R), or None.
+    Z : array or None
+        Optional covariates, shape (N, K).
+    r26_min_anchor : float
+        Minimum R26_R [arcsec] to include in the fit. Points with R26_R below
+        this are discarded from this channel's calibration.
+
+    Returns
+    -------
+    beta : array
+        Fitted coefficients [a, b, c...].
+    tau : float
+        Extra scatter term in log-space.
+    sigma_obs_default : float
+        Default σ_log(x) for this channel when per-object errors are missing.
+    """
     eps = 1e-12
+
+    # Start with finite mask
     m = np.isfinite(x_log) & np.isfinite(y_log)
+
+    # Apply minimum R26_R anchor cut if requested
+    if r26_min_anchor is not None and r26_min_anchor > 0.0:
+        y_min_log = np.log(r26_min_anchor)
+        m &= (y_log >= y_min_log)
+
     if sx_log is not None:
         sx_log = np.where(np.isfinite(sx_log) & (sx_log >= 0), sx_log, 0.0)
-        sx_log = np.where(sx_log < eps, 0.0, sx_log)  # 0 means "unknown"/ignored by ODR
+        sx_log = np.where(sx_log < eps, 0.0, sx_log)  # 0 means "unknown"/ignored
         m &= np.isfinite(sx_log)
     if sy_log is not None:
         sy_log = np.where(np.isfinite(sy_log) & (sy_log >= 0), sy_log, 0.0)
@@ -202,16 +320,28 @@ def _fit_channel_odr(
     # Need at least K+3 points
     K = 0 if Z is None else Z.shape[1]
     if xl.size < max(3, K + 3):
-        # Too few points: return OLS with zeros for c if needed
-        X_lin = np.hstack([np.ones((xl.size, 1)), xl.reshape(-1, 1)]) if Z is None else np.hstack([np.ones((xl.size, 1)), xl.reshape(-1, 1), Z])
+        # Too few points: simple OLS
+        if xl.size == 0:
+            # Degenerate: no info; fall back to identity-ish
+            beta = np.array([0.0, 1.0] + [0.0]*K, dtype=float)
+            return beta, 0.0, 0.1
+        X_lin = np.hstack(
+            [np.ones((xl.size, 1)), xl.reshape(-1, 1)]
+        ) if Z is None else np.hstack(
+            [np.ones((xl.size, 1)), xl.reshape(-1, 1), Z]
+        )
         beta_ols, *_ = np.linalg.lstsq(X_lin, yl, rcond=None)
         beta = beta_ols
         tau = float(np.std(yl - X_lin @ beta)) if xl.size > (K + 2) else 0.0
-        sdef = float(np.nanmedian(sxl)) if sxl is not None and sxl.size else 0.1
+        sdef = float(np.nanmedian(sxl)) if (sxl is not None and sxl.size) else 0.1
         return beta, tau, sdef
 
-    # Initial guess
-    X_lin = np.hstack([np.ones((xl.size, 1)), xl.reshape(-1, 1)]) if Z is None else np.hstack([np.ones((xl.size, 1)), xl.reshape(-1, 1), Z])
+    # Initial guess from OLS
+    X_lin = np.hstack(
+        [np.ones((xl.size, 1)), xl.reshape(-1, 1)]
+    ) if Z is None else np.hstack(
+        [np.ones((xl.size, 1)), xl.reshape(-1, 1), Z]
+    )
     beta0, *_ = np.linalg.lstsq(X_lin, yl, rcond=None)
 
     def f(beta, X):
@@ -231,26 +361,27 @@ def _fit_channel_odr(
     if Z is not None:
         sx_all = np.vstack([sx_all, np.zeros_like(Z.T)])
 
-    # --- try ODR ---
+    # Try ODR
     try:
-        # Floor any exactly-zero uncertainties to avoid odrpack 1/sd**2 division warnings
         eps_w = 1e-12
         if sx_all is not None:
             sx_all = np.where(np.asarray(sx_all) == 0.0, eps_w, sx_all)
         if syl is not None:
             syl = np.where(np.asarray(syl) == 0.0, eps_w, syl)
+
         data = odr.RealData(X, yl, sx=sx_all, sy=syl)
         model = odr.Model(f)
         odrobj = odr.ODR(data, model, beta0=beta0, maxit=200)
-        odrobj.set_job(fit_type=0)  # explicit ODR
+        odrobj.set_job(fit_type=0)
         out = odrobj.run()
         beta = out.beta
     except Exception:
-        # --- fallback 1: Deming regression (only if no covariates) ---
+        # Fallback 1: Deming (no covariates)
         if Z is None:
-            sx_med = float(np.nanmedian(sxl)) if sxl is not None and sxl.size else 0.0
-            sy_med = float(np.nanmedian(syl)) if syl is not None and syl.size else 0.0
+            sx_med = float(np.nanmedian(sxl)) if (sxl is not None and sxl.size) else 0.0
+            sy_med = float(np.nanmedian(syl)) if (syl is not None and syl.size) else 0.0
             lam = (sy_med / (sx_med + eps))**2 if (sx_med > 0 and sy_med > 0) else 1.0
+
             xbar, ybar = np.nanmean(xl), np.nanmean(yl)
             Sxx = np.nanmean((xl - xbar)**2)
             Syy = np.nanmean((yl - ybar)**2)
@@ -260,10 +391,11 @@ def _fit_channel_odr(
             a = ybar - b * xbar
             beta = np.array([a, b], dtype=float)
         else:
-            # --- fallback 2: robust OLS (Huber on residual y vs [x,Z]) ---
+            # Fallback 2: robust OLS
             hub = HuberRegressor(alpha=0.0, fit_intercept=True)
             hub.fit(X_lin, yl)
-            a = float(hub.intercept_); b = float(hub.coef_[0])
+            a = float(hub.intercept_)
+            b = float(hub.coef_[0])
             c = hub.coef_[1:] if Z is not None else np.array([], dtype=float)
             beta = np.concatenate([[a, b], c]) if Z is not None else np.array([a, b], dtype=float)
 
@@ -273,20 +405,20 @@ def _fit_channel_odr(
     else:
         y_pred = beta[0] + beta[1] * xl + (Z @ beta[2:])
     resid = yl - y_pred
+
     meas_var = np.zeros_like(resid)
     if syl is not None:
         meas_var += syl**2
     if sxl is not None:
         meas_var += (beta[1] ** 2) * (sxl**2)
 
-    # robust scale for residuals
     mad = np.nanmedian(np.abs(resid - np.nanmedian(resid)))
     resid_scale = 1.4826 * mad if np.isfinite(mad) else np.nanstd(resid)
     mean_meas_var = np.nanmean(meas_var) if np.isfinite(np.nanmean(meas_var)) else 0.0
     tau2 = max(0.0, resid_scale**2 - mean_meas_var)
     tau = float(np.sqrt(tau2))
 
-    # default σ_log(x)
+    # Default σ_log(x)
     if sxl is not None and np.isfinite(np.nanmedian(sxl)):
         sdef = float(np.nanmedian(sxl))
     else:
@@ -301,6 +433,7 @@ def calibrate_from_table(
     *,
     covariates: Optional[np.ndarray] = None,
     covariate_names: Optional[List[str]] = None,
+    r26_min_anchor: float = 15.0,
 ) -> Calibration:
     """Identify calibration anchor (objects with valid R26_R and
     R26_ERR_R > 0), fit channels via ODR, and write calibration TSV.
@@ -328,6 +461,9 @@ def calibrate_from_table(
 
     y_log, sy_log = _to_log_and_sigma(y_lin[anchor_mask], None if sy_lin is None else sy_lin[anchor_mask])
 
+    # For diagnostics: store x,y in linear space for each channel on the anchor set
+    plot_data: Dict[str, Dict[str, np.ndarray]] = {}
+
     # Channels to calibrate: all except the target
     channels: Dict[str, ChannelCalib] = {}
     for name, x_lin_full in table.items():
@@ -346,6 +482,12 @@ def calibrate_from_table(
         if not np.any(m):
             continue
 
+        # Save linear-space data for diagnostics (only rows used in the fit)
+        plot_data[name] = {
+            "x": x_lin[m],
+            "y": y_lin[anchor_mask][m],
+        }
+
         Z = None
         if covariates is not None:
             Z = np.asarray(covariates, dtype=float)[anchor_mask, :]
@@ -353,7 +495,14 @@ def calibrate_from_table(
         yl = y_log[m]
         syl = None if sy_log is None else sy_log[m]
 
-        beta, tau, sdef = _fit_channel_odr(x_log[m], None if sx_log is None else sx_log[m], yl, syl, Z)
+        beta, tau, sdef = _fit_channel_odr(
+            x_log[m],
+            None if sx_log is None else sx_log[m],
+            yl,
+            syl,
+            Z,
+            r26_min_anchor=r26_min_anchor,
+        )
         a = float(beta[0]); b = float(beta[1]); c = beta[2:].copy() if len(beta) > 2 else np.array([], dtype=float)
 
         channels[name] = ChannelCalib(
@@ -367,6 +516,9 @@ def calibrate_from_table(
     cal = Calibration(channels=channels, target_name="r26")
     save_calibration(cal, calib_path)
     log.info(f"Wrote calibration to {calib_path}  (channels={len(channels)})")
+
+    # Generate diagnostic plot
+    _plot_calibration_diagnostics(plot_data, cal, calib_path)
 
     return cal
 
