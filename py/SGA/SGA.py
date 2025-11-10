@@ -598,6 +598,11 @@ def SGA_diameter(ellipse, radius_arcsec=False):
     #    d26_ref = d26_ref[0]
     #    d26_weight = d26_weight[0]
 
+    I = np.isin(d26_ref, 'moment')
+    if np.any(I):
+        d26_ref[I] = 'mom' # shorten for the data model
+    d26_ref = d26_ref.astype('<U3')
+
     if radius_arcsec:
         r26 = d26 / 2. * 60. # [radius, arcsec]
         r26_err = d26_err / 2. * 60.   # [radius, arcsec]
@@ -610,8 +615,8 @@ def SGA_geometry(ellipse):
 
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    diam, diam_ref = SGA_diameter(ellipse)
-    return diam, ba, pa, diam_ref
+    diam, diam_err, diam_ref, diam_weight = SGA_diameter(ellipse)
+    return diam, ba, pa, diam_err, diam_ref, diam_weight
 
 
 def SGA_datamodel(ellipse, bands, all_bands):
@@ -711,8 +716,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
     dmcols += [
         ('D26', np.float32, u.arcmin),
         ('D26_ERR', np.float32, u.arcmin),
-        ('D26_REF', '<U7', None),
-        ('D26_WEIGHT', np.float32, None),
+        ('D26_REF', '<U3', None),
         ('BA', np.float32, None),
         ('PA', np.float32, u.degree),
     ]
@@ -743,11 +747,6 @@ def SGA_datamodel(ellipse, bands, all_bands):
         print(','.join(ellipse['GROUP_NAME'][check].value))
 
     return out
-
-
-def _build_catalog_one(args):
-    """Wrapper function for the multiprocessing."""
-    return build_catalog_one(*args)
 
 
 def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
@@ -987,9 +986,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             if wisesize:
                 outprefix = 'SGA2025-wisesize'
             else:
-                version = 'test'
-                outprefix = 'SGA2025-test'
-                #outprefix = 'SGA2025'
+                #version = 'test'
+                #outprefix = 'SGA2025-test'
+                outprefix = 'SGA2025'
             outfile = f'{outprefix}-{version}-{region}.fits'
             kdoutfile = f'{outprefix}-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
@@ -1172,9 +1171,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         outellipse = SGA_datamodel(ellipse, bands, all_bands)
 
         # final geometry
-        diam, ba, pa, diam_ref = SGA_geometry(outellipse)
-        for col, val in zip(['D26', 'BA', 'PA', 'D26_REF'],
-                            [diam, ba, pa, diam_ref]):
+        diam, ba, pa, diam_err, diam_ref, _ = SGA_geometry(outellipse)
+        for col, val in zip(['D26', 'BA', 'PA', 'D26_ERR', 'D26_REF'],
+                            [diam, ba, pa, diam_err, diam_ref]):
             outellipse[col] = val
 
         I = np.logical_or(outellipse['D26'] <= 0., np.isnan(outellipse['D26']))
