@@ -171,47 +171,87 @@ def _to_log_and_sigma(r: np.ndarray, sigma_r: Optional[np.ndarray]) -> Tuple[np.
     return y, sigma_r / np.clip(r, 1e-300, None)  # σ_log ≈ σ_R / R
 
 
+def _channel_threshold(name: str) -> Optional[int]:
+    """Return isophotal threshold (e.g. 23,24,25,26) or None for non-isophotal."""
+    if name == "r26":
+        return 26
+    if name == "moment":
+        return None
+    # expect names like 'g24', 'r25', 'z26', etc.
+    try:
+        return int(name[-2:])
+    except ValueError:
+        return None
+
+
+def _hierarchy_rank(name: str) -> int:
+    """
+    Rank channels for diagnostic display and combination logic.
+
+    Lower rank = earlier in grid (upper-left).
+    """
+    if name == "moment":
+        return 0
+
+    th = _channel_threshold(name)
+    if th == 23:
+        return 1
+    if th == 24:
+        return 2
+    if th == 25:
+        return 3
+    if th == 26:
+        return 4
+
+    # Any weird/unclassified channels go last
+    return 99
+
+
 def _plot_calibration_diagnostics(
     plot_data: Dict[str, Dict[str, np.ndarray]],
     cal: Calibration,
     calib_path: str,
 ) -> None:
-    """Make a multi-panel diagnostic plot of channel vs R26_R with fits.
-
-    plot_data[name] = {"x": x_lin_anchor, "y": y_lin_anchor}
-
-    """
-    import matplotlib.pyplot as plt
-
+    """Make a multi-panel diagnostic plot of channel vs R26_R with fits."""
     if not plot_data:
         return
 
-    # Determine output filename from calib_path
-    base, ext = os.path.splitext(str(calib_path))
+    import matplotlib.pyplot as plt
+    import os
+    import numpy as np
+
+    base, _ = os.path.splitext(str(calib_path))
     png_path = base + ".png"
 
-    # Sort channels for a stable layout
-    #names = sorted(plot_data.keys())
-
-    # Compute total scatter (tau^2 + sigma_obs_default^2) for sorting
-    scatters = {}
+    # Compute total scatter per channel from calibration:
+    # σ_tot = sqrt(tau^2 + sigma_obs_default^2)
+    scatters: Dict[str, float] = {}
     for name, ch in cal.channels.items():
-        scatters[name] = np.sqrt(ch.tau**2 + (ch.sigma_obs_default or 0.0)**2)
+        sdef = ch.sigma_obs_default or 0.0
+        scatters[name] = float(np.sqrt(ch.tau ** 2 + sdef ** 2))
 
-    # Keep only channels actually in plot_data, sort descending by total scatter
+    # Channels we can actually plot
+    available = [n for n in plot_data.keys() if n in cal.channels]
+
+    # Sort by (hierarchy rank, descending scatter)
     names = sorted(
-        [n for n in plot_data.keys() if n in scatters],
-        key=lambda n: scatters[n],
-        reverse=True,
+        available,
+        key=lambda n: (_hierarchy_rank(n), -scatters.get(n, 0.0)),
     )
 
     n = len(names)
-    ncols = 4 # 3
+    if n == 0:
+        return
+
+    ncols = 4
     nrows = int(np.ceil(n / ncols))
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), squeeze=False)
-
-    # Flatten axes for easy indexing
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(4 * ncols, 4 * nrows),
+        sharey=True,
+        #squeeze=False
+    )
     axes_flat = axes.ravel()
 
     for idx, name in enumerate(names):
@@ -220,7 +260,6 @@ def _plot_calibration_diagnostics(
         x = d["x"]
         y = d["y"]
 
-        # Scatter of anchor points
         mask = np.isfinite(x) & np.isfinite(y)
         if not np.any(mask):
             ax.set_title(name)
@@ -232,35 +271,42 @@ def _plot_calibration_diagnostics(
 
         ax.scatter(xx, yy, s=4, alpha=0.3)
 
-        # Best-fit line from calibration (log-log model mapped back)
         ch = cal.channels.get(name)
         if ch is not None:
             a = ch.a
             b = ch.b
             tau = ch.tau
-            sdef = ch.sigma_obs_default if ch.sigma_obs_default is not None else 0.0
+            sdef = ch.sigma_obs_default or 0.0
+            s_tot = np.sqrt(tau**2 + sdef**2)
 
-            # Build line in linear space: x_lin -> y_lin
+            # Model: log R26_R = a + b log x  => R26_R(x) = exp(a + b log x)
             x_min = np.nanmin(xx)
             x_max = np.nanmax(xx)
             if np.isfinite(x_min) and np.isfinite(x_max) and x_max > x_min:
                 x_grid = np.linspace(x_min, x_max, 200)
-                # avoid log(<=0)
                 xg_pos = np.clip(x_grid, 1e-6, None)
                 ylog_fit = a + b * np.log(xg_pos)
                 y_fit = np.exp(ylog_fit)
                 (line,) = ax.plot(x_grid, y_fit, "k-", lw=1)
 
-                label = f"a={a:.3f}, b={b:.3f}, tau={tau:.3f}, sdef={sdef:.3f}"
-                s_tot = np.sqrt(tau**2 + sdef**2)
-                #label += f", σ_tot={s_tot:.3f}"
-                ax.legend([line], [label], fontsize=6, loc="upper left", frameon=False)
+                label = (
+                    f"a={a:.3f}, b={b:.3f}, "
+                    f"tau={tau:.3f}, sdef={sdef:.3f}, σ_tot={s_tot:.3f}"
+                )
+                ax.legend(
+                    [line],
+                    [label],
+                    fontsize=7,
+                    loc="upper left",
+                    frameon=False,
+                )
 
         ax.set_xlabel(f"{name} [arcsec]")
-        ax.set_ylabel("R26_R [arcsec]")
-        ax.set_title(f"{name}  (σ_tot={s_tot:.3f})")
+        if idx % ncols == 0:
+            ax.set_ylabel("R26_R [arcsec]")
+        ax.set_title(f"{name} (σ_tot={s_tot:.3f})")
 
-    # Turn off any unused panels
+    # Turn off unused panels
     for j in range(len(names), len(axes_flat)):
         axes_flat[j].set_axis_off()
 
@@ -472,7 +518,7 @@ def calibrate_from_table(
     *,
     covariates: Optional[np.ndarray] = None,
     covariate_names: Optional[List[str]] = None,
-    r26_min_anchor: float = 5.0,
+    r26_min_anchor: float = 10.,
 ) -> Calibration:
     """Identify calibration anchor (objects with valid R26_R and
     R26_ERR_R > 0), fit channels via ODR, and write calibration TSV.
