@@ -771,7 +771,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         group=not no_groups, datadir=datadir)
 
     if not os.path.isdir(gdir):
-        log.warning(f'Group directory {gdir} does not exist.')
+        #log.warning(f'Group directory {gdir} does not exist.')
+        for obj in grpsample:
+            log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         return Table(), Table()
 
     # gather the ellipse catalogs
@@ -834,7 +836,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
     if not os.path.isfile(tractorfile):
         if len(ellipse) == 1 and ellipse['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
-            log.warning('Sources with ELLIPSEMODEL["RESOLVED"] do not have Tractor catalogs.')
+            #log.warning('Sources with ELLIPSEMODEL["RESOLVED"] do not have Tractor catalogs.')
             tractor_sga1 = empty_tractor()
             # should we add ra,dec,shape_{r,e1,e2}??
             tractor_sga1['ref_cat'] = REFCAT
