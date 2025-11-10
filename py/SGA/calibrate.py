@@ -16,9 +16,11 @@ from scipy import odr
 from sklearn.linear_model import HuberRegressor
 from importlib import resources
 
-from SGA.SGA import SBTHRESH
 from SGA.coadds import GRIZ as BANDS
 from SGA.logger import log
+
+#from SGA.SGA import SBTHRESH
+SBTHRESH = [23, 24, 25, 26]
 
 from dataclasses import dataclass
 
@@ -60,8 +62,8 @@ def _collect_channels_from_table(tbl: Table) -> Tuple[Dict[str, np.ndarray], Dic
     # Isophotal channels
     for th in SBTHRESH:
         for band in np.char.upper(BANDS):
-            base = f"R{th}_{band}"
-            err = f"R{th}_ERR_{band}"
+            base = f"R{th:.0f}_{band}"
+            err = f"R{th:.0f}_ERR_{band}"
             key = _channel_key(th, band)  # e.g., r26
             if base in tbl.colnames:
                 vals = _as_float(tbl[base])
@@ -437,8 +439,8 @@ def _infer_one(
 
 def infer_best_r26(
     tbl: Table,
-    calib_path: str = None,
     *,
+    calib_path: str = None,
     covariates: Optional[np.ndarray] = None,
     add_columns: bool = False,
     include_direct_r26: bool = True,
@@ -477,6 +479,10 @@ def infer_best_r26(
                     si = si_arr[i]
                     sig_i[name] = None if (not np.isfinite(si) or si <= 0.0) else float(si)
         zi = None if not any_cov else np.asarray(covariates[i, :], dtype=float)
+
+        print("channels in calibration:", sorted(cal.channels.keys()))
+        print("measurements:", meas_i)
+        print("sigmas:", sig_i)
 
         y, sy, wdict = _infer_one(
             meas_i, sig_i, cal,

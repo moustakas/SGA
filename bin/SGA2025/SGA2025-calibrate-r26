@@ -31,7 +31,7 @@ CLI (optional):
 Author: ChatGPT (SGA-2025 helper)
 
 
-SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.10-dr11-south.fits r26-calibration.tsv
+SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.10-dr11-south.fits r26-calibration-coeff.tsv
 
 
 """
@@ -44,7 +44,7 @@ from SGA.logger import log
 
 def _read_table(path: str) -> Table:
     if path.lower().endswith((".fits", ".fit", ".fits.gz")):
-        return Table.read(path, format="fits")
+        return Table.read(path, 'ELLIPSE', format="fits")
     elif path.lower().endswith((".ecsv", ".csv")):
         return Table.read(path)
     else:

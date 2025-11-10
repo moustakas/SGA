@@ -591,50 +591,19 @@ def SGA_diameter(ellipse, radius_arcsec=False):
     from SGA.ellipse import ELLIPSEMODE
     from SGA.calibrate import infer_best_r26
 
-    D26, D26_ERR, D26_REF, D26_WEIGHT = infer_best_r26(ellipse)
-
-    pdb.set_trace()
-
-    radius = np.zeros(len(ellipse))
-    ref = np.zeros(len(ellipse), '<U7')
-
-
-    # if FIXGEO, use SMA_INIT
-    I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
-    if np.any(I):
-        radius[I] = ellipse['SMA_INIT'][I].value
-        ref[I] = 'R(init)'
-
-    # r-band R(26)
-    I =  (radius == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['R26_R'][I].value
-        ref[I] = 'R26_R'
-
-    # r-band R(25)
-    I =  (radius == 0.) * (ellipse['R25_R'] > 0.) * (ellipse['R25_ERR_R'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['R25_R'][I].value * 1.28 # median factor
-        ref[I] = 'R25_R'
-
-    # r-band R(24)
-    I =  (radius == 0.) * (ellipse['R24_R'] > 0.) * (ellipse['R24_ERR_R'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['R24_R'][I].value * 1.70 # median factor
-        ref[I] = 'R24_R'
-
-    # sma_moment
-    I =  (radius == 0.) * (ellipse['SMA_MOMENT'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['SMA_MOMENT'][I].value * 1.19 # median factor
-        ref[I] = 'MOMENT'
+    d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
+    #if len(d26) == 1:
+    #    d26 = d26[0]
+    #    d26_err = d26_err[0]
+    #    d26_ref = d26_ref[0]
+    #    d26_weight = d26_weight[0]
 
     if radius_arcsec:
-        return radius, ref
+        r26 = d26 / 2. * 60. # [radius, arcsec]
+        r26_err = d26_err / 2. * 60.   # [radius, arcsec]
+        return r26, r26_err, d26_ref, d26_weight
     else:
-        # convert radius-->diameter and arcsec-->arcmin
-        diam = radius * 2. / 60. # [arcmin]
-        return np.float32(diam), ref
+        return d26, d26_err, d26_ref, d26_weight
 
 
 def SGA_geometry(ellipse):
@@ -741,9 +710,11 @@ def SGA_datamodel(ellipse, bands, all_bands):
     # final diameters
     dmcols += [
         ('D26', np.float32, u.arcmin),
+        ('D26_ERR', np.float32, u.arcmin),
+        ('D26_REF', '<U7', None),
+        ('D26_WEIGHT', np.float32, None),
         ('BA', np.float32, None),
         ('PA', np.float32, u.degree),
-        ('D26_REF', '<U7', None),
     ]
 
     out = Table()
