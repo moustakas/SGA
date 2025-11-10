@@ -472,7 +472,7 @@ def build_group_catalog(
 
         max_extent = 0.0
         for k in members:
-            dra = (RA[k] - ra_c) * math.cos(dec_c * DEG2RAD)
+            dra = _angdiff_deg(RA[k], ra_c) * math.cos(dec_c * DEG2RAD)
             ddec = (DEC[k] - dec_c)
             dcen_arcmin = math.hypot(dra, ddec) * ARCMIN_PER_DEG
             rk = 0.5 * DIAM[k]
