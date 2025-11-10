@@ -2981,6 +2981,11 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     custom = Table.read(customfile, format='csv', comment='#')
     log.info(f'Read {len(custom)} objects from {customfile}')
+    try:
+        assert(len(custom) == len(np.unique(custom['OBJNAME'])))
+    except:
+        log.info('Warning: duplicates in parent-custom file!')
+        raise ValueError()
 
     moreparent = _empty_parent(parent[:1], len(custom))
     for col in custom.colnames:
@@ -3008,7 +3013,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     try:
         assert(len(drop) == len(np.unique(drop['objname'])))
     except:
-        pdb.set_trace()
+        log.info('Warning: duplicates in parent-drop file!')
+        raise ValueError()
 
     # drop crap from both/all regions
     Idrop = drop['region'].mask
@@ -3059,6 +3065,11 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
     props = Table.read(propsfile, format='csv', comment='#')
     log.info(f'Read {len(props)} objects from {propsfile}')
+    try:
+        assert(len(props) == len(np.unique(props['objname'])))
+    except:
+        log.info('Warning: duplicates in parent-properties file!')
+        raise ValueError()
 
     for prop in props:
         objname = prop['objname']

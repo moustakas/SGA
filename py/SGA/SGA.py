@@ -737,7 +737,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
                     I = np.logical_or(np.isnan(val.value), np.logical_not(np.isfinite(val.value)))
                 if np.any(I):
                     log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
-                    pdb.set_trace()
+                    #pdb.set_trace()
                     I = np.where(I)[0]
                     check.append(I)
                     val[I] = 0
@@ -1034,7 +1034,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             if os.path.isfile(slicefile) and not clobber:
-                log.warning(f'Use --clobber to overwrite existing catalog {slicefile}')
+                log.warning(f'Skipping existing catalog {slicefile}')
                 continue
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
@@ -1145,7 +1145,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         #log.info(f'Rank {rank:03} gathering catalogs from {len(raslices_todo)} RA slices.')
 
         ellipse, tractor = [], []
-        for islice, raslice in enumerate(raslices_todo):
+        for islice, raslice in enumerate(uraslices):
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             ellipse.append(Table(fitsio.read(slicefile, 'ELLIPSE')))
             tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
@@ -1166,7 +1166,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         I = np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])
         if not np.all(I):
             log.warning('ref_id mismatch between ellipse and tractor!')
-            pdb.set_trace()
+            #pdb.set_trace()
         #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
 
         # re-organize the ellipse table to match the datamodel and assign units
