@@ -22,6 +22,7 @@ from SGA.logger import log
 
 #from SGA.SGA import SBTHRESH
 SBTHRESH = [23, 24, 25, 26]
+#SBTHRESH = [24, 25, 26]
 
 from dataclasses import dataclass
 
@@ -190,10 +191,22 @@ def _plot_calibration_diagnostics(
     png_path = base + ".png"
 
     # Sort channels for a stable layout
-    names = sorted(plot_data.keys())
+    #names = sorted(plot_data.keys())
+
+    # Compute total scatter (tau^2 + sigma_obs_default^2) for sorting
+    scatters = {}
+    for name, ch in cal.channels.items():
+        scatters[name] = np.sqrt(ch.tau**2 + (ch.sigma_obs_default or 0.0)**2)
+
+    # Keep only channels actually in plot_data, sort descending by total scatter
+    names = sorted(
+        [n for n in plot_data.keys() if n in scatters],
+        key=lambda n: scatters[n],
+        reverse=True,
+    )
 
     n = len(names)
-    ncols = 4
+    ncols = 4 # 3
     nrows = int(np.ceil(n / ncols))
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), squeeze=False)
@@ -239,11 +252,13 @@ def _plot_calibration_diagnostics(
                 (line,) = ax.plot(x_grid, y_fit, "k-", lw=1)
 
                 label = f"a={a:.3f}, b={b:.3f}, tau={tau:.3f}, sdef={sdef:.3f}"
-                ax.legend([line], [label], fontsize=7, loc="lower right", frameon=False)
+                s_tot = np.sqrt(tau**2 + sdef**2)
+                #label += f", σ_tot={s_tot:.3f}"
+                ax.legend([line], [label], fontsize=6, loc="upper left", frameon=False)
 
         ax.set_xlabel(f"{name} [arcsec]")
         ax.set_ylabel("R26_R [arcsec]")
-        ax.set_title(name)
+        ax.set_title(f"{name}  (σ_tot={s_tot:.3f})")
 
     # Turn off any unused panels
     for j in range(len(names), len(axes_flat)):
@@ -256,173 +271,197 @@ def _plot_calibration_diagnostics(
     log.info(f"Wrote calibration diagnostic plot to {png_path}")
 
 
-def _fit_channel_odr(
+def _fit_channel_bisector_robust(
     x_log: np.ndarray,
     sx_log: Optional[np.ndarray],
     y_log: np.ndarray,
     sy_log: Optional[np.ndarray],
     Z: Optional[np.ndarray],
     r26_min_anchor: float = 15.0,
+    clip_sigma: float = 3.0,
+    max_iter: int = 5,
 ) -> Tuple[np.ndarray, float, float]:
     """
-    Fit y = a + b*x + c^T z via SciPy ODR with robust sanitation + fallbacks.
+    Robust symmetric fit for y = a + b*x (+ c^T z) in log-space using a
+    least-squares bisector with iterative sigma clipping on orthogonal residuals.
+
+    For now, covariates Z are ignored (the relation is 2-parameter: a, b).
+    If Z is not None, they are dropped for this channel.
 
     Parameters
     ----------
     x_log : array
-        log(channel radius) for anchor objects.
+        log(proxy radius) for anchor objects.
     sx_log : array or None
-        1σ uncertainty in log(channel radius), same length as x_log, or None.
+        1σ uncertainty in log(proxy radius), or None.
     y_log : array
         log(R26_R) for anchor objects.
     sy_log : array or None
         1σ uncertainty in log(R26_R), or None.
     Z : array or None
-        Optional covariates, shape (N, K).
-    r26_min_anchor : float
-        Minimum R26_R [arcsec] to include in the fit. Points with R26_R below
-        this are discarded from this channel's calibration.
+        Ignored in this implementation (set to None upstream).
+    clip_sigma : float
+        Sigma-clipping threshold for orthogonal residuals.
+    max_iter : int
+        Maximum number of clipping iterations.
 
     Returns
     -------
     beta : array
-        Fitted coefficients [a, b, c...].
+        [a, b]; no covariates in this implementation.
     tau : float
-        Extra scatter term in log-space.
+        Extra scatter term in log-space (in y-direction).
     sigma_obs_default : float
         Default σ_log(x) for this channel when per-object errors are missing.
+
     """
     eps = 1e-12
 
-    # Start with finite mask
+    # Base mask: finite and positive radii
     m = np.isfinite(x_log) & np.isfinite(y_log)
 
-    # Apply minimum R26_R anchor cut if requested
+    # Apply minimum R26_R cut if requested
     if r26_min_anchor is not None and r26_min_anchor > 0.0:
         y_min_log = np.log(r26_min_anchor)
         m &= (y_log >= y_min_log)
 
-    if sx_log is not None:
-        sx_log = np.where(np.isfinite(sx_log) & (sx_log >= 0), sx_log, 0.0)
-        sx_log = np.where(sx_log < eps, 0.0, sx_log)  # 0 means "unknown"/ignored
-        m &= np.isfinite(sx_log)
-    if sy_log is not None:
-        sy_log = np.where(np.isfinite(sy_log) & (sy_log >= 0), sy_log, 0.0)
-        sy_log = np.where(sy_log < eps, 0.0, sy_log)
-        m &= np.isfinite(sy_log)
+    x = x_log[m]
+    y = y_log[m]
+    if x.size < 3:
+        # Degenerate: default to identity with modest scatter
+        return np.array([0.0, 1.0], dtype=float), 0.0, 0.1
 
-    if Z is not None:
-        Z = Z[np.asarray(m), :]
-    xl, yl = x_log[m], y_log[m]
-    sxl = None if sx_log is None else sx_log[m]
-    syl = None if sy_log is None else sy_log[m]
+    # Ignore covariates for now
+    # (If you decide you truly need Z, we can extend this to a robust TLS in higher dimensions.)
+    # Iterative sigma-clipped LS-bisector (Isobe+ 1990 style)
+    mask = np.ones_like(x, dtype=bool)
 
-    # Need at least K+3 points
-    K = 0 if Z is None else Z.shape[1]
-    if xl.size < max(3, K + 3):
-        # Too few points: simple OLS
-        if xl.size == 0:
-            # Degenerate: no info; fall back to identity-ish
-            beta = np.array([0.0, 1.0] + [0.0]*K, dtype=float)
-            return beta, 0.0, 0.1
-        X_lin = np.hstack(
-            [np.ones((xl.size, 1)), xl.reshape(-1, 1)]
-        ) if Z is None else np.hstack(
-            [np.ones((xl.size, 1)), xl.reshape(-1, 1), Z]
-        )
-        beta_ols, *_ = np.linalg.lstsq(X_lin, yl, rcond=None)
-        beta = beta_ols
-        tau = float(np.std(yl - X_lin @ beta)) if xl.size > (K + 2) else 0.0
-        sdef = float(np.nanmedian(sxl)) if (sxl is not None and sxl.size) else 0.1
-        return beta, tau, sdef
+    for _ in range(max_iter):
+        xx = x[mask]
+        yy = y[mask]
+        if xx.size < 3:
+            break
 
-    # Initial guess from OLS
-    X_lin = np.hstack(
-        [np.ones((xl.size, 1)), xl.reshape(-1, 1)]
-    ) if Z is None else np.hstack(
-        [np.ones((xl.size, 1)), xl.reshape(-1, 1), Z]
-    )
-    beta0, *_ = np.linalg.lstsq(X_lin, yl, rcond=None)
+        # OLS Y|X: yy = a1 + b1 * xx
+        A1 = np.column_stack([np.ones_like(xx), xx])
+        b1, a1 = np.linalg.lstsq(A1, yy, rcond=None)[0][1], np.linalg.lstsq(A1, yy, rcond=None)[0][0]
 
-    def f(beta, X):
-        x = X[0, :]
-        yhat = beta[0] + beta[1] * x
-        if X.shape[0] > 1:
-            c = beta[2:]
-            yhat += (X[1:, :].T @ c)
-        return yhat
-
-    # Build ODR inputs
-    X = np.vstack([xl] if Z is None else [xl, Z.T])
-    if sxl is None:
-        sx_all = np.vstack([np.zeros_like(xl)])
-    else:
-        sx_all = np.vstack([sxl])
-    if Z is not None:
-        sx_all = np.vstack([sx_all, np.zeros_like(Z.T)])
-
-    # Try ODR
-    try:
-        eps_w = 1e-12
-        if sx_all is not None:
-            sx_all = np.where(np.asarray(sx_all) == 0.0, eps_w, sx_all)
-        if syl is not None:
-            syl = np.where(np.asarray(syl) == 0.0, eps_w, syl)
-
-        data = odr.RealData(X, yl, sx=sx_all, sy=syl)
-        model = odr.Model(f)
-        odrobj = odr.ODR(data, model, beta0=beta0, maxit=200)
-        odrobj.set_job(fit_type=0)
-        out = odrobj.run()
-        beta = out.beta
-    except Exception:
-        # Fallback 1: Deming (no covariates)
-        if Z is None:
-            sx_med = float(np.nanmedian(sxl)) if (sxl is not None and sxl.size) else 0.0
-            sy_med = float(np.nanmedian(syl)) if (syl is not None and syl.size) else 0.0
-            lam = (sy_med / (sx_med + eps))**2 if (sx_med > 0 and sy_med > 0) else 1.0
-
-            xbar, ybar = np.nanmean(xl), np.nanmean(yl)
-            Sxx = np.nanmean((xl - xbar)**2)
-            Syy = np.nanmean((yl - ybar)**2)
-            Sxy = np.nanmean((xl - xbar)*(yl - ybar))
-            disc = (Syy - lam * Sxx)
-            b = (disc + np.sqrt(disc**2 + 4 * lam * Sxy**2)) / (2 * Sxy + eps)
-            a = ybar - b * xbar
-            beta = np.array([a, b], dtype=float)
+        # OLS X|Y: xx = a2 + b2 * yy  => yy = (-a2/b2) + (1/b2) * xx
+        A2 = np.column_stack([np.ones_like(yy), yy])
+        b2x, a2x = np.linalg.lstsq(A2, xx, rcond=None)[0][1], np.linalg.lstsq(A2, xx, rcond=None)[0][0]
+        if b2x == 0:
+            # Fallback: if pathological, just use Y|X
+            b = b1
+            a = a1
         else:
-            # Fallback 2: robust OLS
-            hub = HuberRegressor(alpha=0.0, fit_intercept=True)
-            hub.fit(X_lin, yl)
-            a = float(hub.intercept_)
-            b = float(hub.coef_[0])
-            c = hub.coef_[1:] if Z is not None else np.array([], dtype=float)
-            beta = np.concatenate([[a, b], c]) if Z is not None else np.array([a, b], dtype=float)
+            m1 = b1
+            m2 = 1.0 / b2x
 
-    # Residuals and tau
-    if Z is None:
-        y_pred = beta[0] + beta[1] * xl
+            # Intersection of the two regression lines
+            # y = a1 + m1 x
+            # y = -a2x/b2x + (1/b2x) x
+            denom = (m1 - m2)
+            if abs(denom) < eps:
+                # Nearly parallel; anchor at means
+                x0 = np.mean(xx)
+                y0 = np.mean(yy)
+            else:
+                x0 = ((-a2x / b2x) - a1) / (m1 - m2)
+                y0 = a1 + m1 * x0
+
+            # Bisector slope: angle-bisector between m1 and m2
+            theta1 = np.arctan(m1)
+            theta2 = np.arctan(m2)
+            mb = np.tan(0.5 * (theta1 + theta2))
+            a = y0 - mb * x0
+            b = mb
+
+        # Orthogonal residuals to the current bisector line
+        # distance = (y - (a + b x)) / sqrt(1 + b^2)
+        denom = np.sqrt(1.0 + b * b)
+        r_orth = (y - (a + b * x)) / (denom + eps)
+
+        # Robust scale via MAD
+        mad = np.nanmedian(np.abs(r_orth[mask] - np.nanmedian(r_orth[mask])))
+        sigma = 1.4826 * mad if np.isfinite(mad) and mad > 0 else np.nanstd(r_orth[mask])
+
+        if not np.isfinite(sigma) or sigma == 0.0:
+            # No sensible scatter; stop iterating
+            break
+
+        new_mask = np.abs(r_orth) <= clip_sigma * sigma
+
+        if new_mask.sum() == mask.sum():
+            # Converged
+            mask = new_mask
+            break
+
+        mask = new_mask
+
+    # Final fit from last iteration
+    xx = x[mask]
+    yy = y[mask]
+    if xx.size < 3:
+        # Fallback to simple Y|X on all points
+        A = np.column_stack([np.ones_like(x), x])
+        a, b = np.linalg.lstsq(A, y, rcond=None)[0]
     else:
-        y_pred = beta[0] + beta[1] * xl + (Z @ beta[2:])
-    resid = yl - y_pred
+        A1 = np.column_stack([np.ones_like(xx), xx])
+        b1, a1 = np.linalg.lstsq(A1, yy, rcond=None)[0][1], np.linalg.lstsq(A1, yy, rcond=None)[0][0]
 
-    meas_var = np.zeros_like(resid)
-    if syl is not None:
-        meas_var += syl**2
-    if sxl is not None:
-        meas_var += (beta[1] ** 2) * (sxl**2)
+        A2 = np.column_stack([np.ones_like(yy), yy])
+        b2x, a2x = np.linalg.lstsq(A2, xx, rcond=None)[0][1], np.linalg.lstsq(A2, xx, rcond=None)[0][0]
+        if b2x == 0:
+            a, b = a1, b1
+        else:
+            m1 = b1
+            m2 = 1.0 / b2x
+            denom = (m1 - m2)
+            if abs(denom) < eps:
+                x0 = np.mean(xx)
+                y0 = np.mean(yy)
+            else:
+                x0 = ((-a2x / b2x) - a1) / (m1 - m2)
+                y0 = a1 + m1 * x0
+            theta1 = np.arctan(m1)
+            theta2 = np.arctan(m2)
+            mb = np.tan(0.5 * (theta1 + theta2))
+            a = y0 - mb * x0
+            b = mb
 
-    mad = np.nanmedian(np.abs(resid - np.nanmedian(resid)))
-    resid_scale = 1.4826 * mad if np.isfinite(mad) else np.nanstd(resid)
-    mean_meas_var = np.nanmean(meas_var) if np.isfinite(np.nanmean(meas_var)) else 0.0
-    tau2 = max(0.0, resid_scale**2 - mean_meas_var)
+    beta = np.array([float(a), float(b)], dtype=float)
+
+    # Now estimate tau, sigma_obs_default in y-direction
+    y_pred = beta[0] + beta[1] * x
+    resid_y = y - y_pred
+
+    # Measurement variance term (if any)
+    meas_var = np.zeros_like(resid_y)
+    if sy_log is not None:
+        sy = sy_log[m]
+        meas_var += np.where(np.isfinite(sy), sy**2, 0.0)
+    if sx_log is not None:
+        sx = sx_log[m]
+        meas_var += (beta[1] ** 2) * np.where(np.isfinite(sx), sx**2, 0.0)
+
+    # Robust residual scale in y
+    mad_y = np.nanmedian(np.abs(resid_y[mask] - np.nanmedian(resid_y[mask])))
+    resid_scale_y = 1.4826 * mad_y if np.isfinite(mad_y) and mad_y > 0 else np.nanstd(resid_y[mask])
+
+    mean_meas_var = np.nanmean(meas_var[mask]) if np.isfinite(np.nanmean(meas_var[mask])) else 0.0
+    tau2 = max(0.0, resid_scale_y**2 - mean_meas_var)
     tau = float(np.sqrt(tau2))
 
-    # Default σ_log(x)
-    if sxl is not None and np.isfinite(np.nanmedian(sxl)):
-        sdef = float(np.nanmedian(sxl))
+    # Default σ_log(x): if we have sxl, use its median; else infer from residuals
+    if sx_log is not None:
+        sx = sx_log[m]
+        med_sx = np.nanmedian(sx[np.isfinite(sx)])
+        if np.isfinite(med_sx) and med_sx > 0:
+            sdef = float(med_sx)
+        else:
+            sdef = float(resid_scale_y / (abs(beta[1]) + 1e-9))
     else:
-        sdef = float(resid_scale / (abs(beta[1]) + 1e-9))
+        sdef = float(resid_scale_y / (abs(beta[1]) + 1e-9))
 
     return beta, tau, sdef
 
@@ -433,7 +472,7 @@ def calibrate_from_table(
     *,
     covariates: Optional[np.ndarray] = None,
     covariate_names: Optional[List[str]] = None,
-    r26_min_anchor: float = 15.0,
+    r26_min_anchor: float = 5.0,
 ) -> Calibration:
     """Identify calibration anchor (objects with valid R26_R and
     R26_ERR_R > 0), fit channels via ODR, and write calibration TSV.
@@ -495,13 +534,15 @@ def calibrate_from_table(
         yl = y_log[m]
         syl = None if sy_log is None else sy_log[m]
 
-        beta, tau, sdef = _fit_channel_odr(
+        beta, tau, sdef = _fit_channel_bisector_robust(
             x_log[m],
             None if sx_log is None else sx_log[m],
             yl,
             syl,
-            Z,
+            Z=None,              # ignore covariates for now; they weren't used anyway
             r26_min_anchor=r26_min_anchor,
+            clip_sigma=3.0,
+            max_iter=5,
         )
         a = float(beta[0]); b = float(beta[1]); c = beta[2:].copy() if len(beta) > 2 else np.array([], dtype=float)
 
@@ -632,9 +673,9 @@ def infer_best_r26(
                     sig_i[name] = None if (not np.isfinite(si) or si <= 0.0) else float(si)
         zi = None if not any_cov else np.asarray(covariates[i, :], dtype=float)
 
-        print("channels in calibration:", sorted(cal.channels.keys()))
-        print("measurements:", meas_i)
-        print("sigmas:", sig_i)
+        #print("channels in calibration:", sorted(cal.channels.keys()))
+        #print("measurements:", meas_i)
+        #print("sigmas:", sig_i)
 
         y, sy, wdict = _infer_one(
             meas_i, sig_i, cal,

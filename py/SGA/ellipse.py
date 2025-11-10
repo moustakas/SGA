@@ -1534,7 +1534,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                         colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
                         tab[col] = results[0][iobj][col]
                         tab[colerr] = results[0][iobj][colerr]
-                radius, _, _, _ = SGA_diameter(tab, radius_arcsec=True)
+                radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
+                print(tab)
+                print(radius, radius_err, radius_ref, radius_weight)
                 pdb.set_trace()
                 input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
 
