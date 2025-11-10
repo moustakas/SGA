@@ -564,6 +564,20 @@ def calibrate_from_table(
     return cal
 
 
+def _channel_threshold(name: str) -> Optional[int]:
+    """Return isophotal threshold (e.g. 23,24,25,26) or None for non-isophotal."""
+    if name == "moment":
+        return None
+    if name == "r26":
+        return 26  # direct target measurement
+    # names like 'g24', 'r25', 'z26'
+    try:
+        th = int(name[-2:])
+        return th
+    except ValueError:
+        return None
+
+
 def _infer_one(
     measurements: Dict[str, float],
     sigmas: Dict[str, Optional[float]],
@@ -572,32 +586,58 @@ def _infer_one(
     covars_row: Optional[np.ndarray] = None,
     include_direct_r26: bool = True,
 ) -> Tuple[float, float, Dict[str, float]]:
-    """Combine channels to infer log R_r26 for a single object.
+    """Combine channels to infer log R_r26 for a single object."""
 
-    """
     y_list, v_list, w_dict = [], [], {}
 
-    # Optionally include the direct r26 measurement itself (as y with
-    # known σ).
+    # Determine deepest available isophotal level for this object
+    th_available = []
+    for name in measurements.keys():
+        th = _channel_threshold(name)
+        if th is not None:
+            th_available.append(th)
+    deepest_th = max(th_available) if th_available else None
+
+    # Optionally include direct R26_R as a measurement
     if include_direct_r26 and "r26" in measurements:
         x_lin = measurements["r26"]
         sx_lin = sigmas.get("r26", None)
-        if np.isfinite(x_lin) and (sx_lin is not None) and np.isfinite(sx_lin) and (x_lin > 0.0) and (sx_lin > 0.0):
+        if (
+            np.isfinite(x_lin)
+            and x_lin > 0.0
+            and sx_lin is not None
+            and np.isfinite(sx_lin)
+            and sx_lin > 0.0
+        ):
             yj = float(np.log(x_lin))
-            var_j = float((sx_lin / x_lin)**2)
+            var_j = float((sx_lin / x_lin) ** 2)
             var_j = max(var_j, var_floor_log)
             w = 1.0 / var_j
-            y_list.append(yj); v_list.append(var_j); w_dict["r26"] = w
+            y_list.append(yj)
+            v_list.append(var_j)
+            w_dict["r26"] = w
 
+    # Use calibrated channels with hierarchy:
+    # only channels at the deepest available isophotal threshold,
+    # plus non-threshold channels like 'moment'.
     for name, ch in cal.channels.items():
         if name not in measurements:
             continue
+
+        th = _channel_threshold(name)
+
+        # Enforce the threshold hierarchy:
+        # if we have any isophotal measurements, ignore shallower ones
+        if deepest_th is not None and th is not None and th < deepest_th:
+            continue  # e.g., if deepest=26, drop 25/24/23; if deepest=25, drop 24/23
+
         x_lin = measurements[name]
         if not np.isfinite(x_lin) or x_lin <= 0.0:
             continue
 
         x_log = float(np.log(x_lin))
         sx_lin = sigmas.get(name, None)
+
         if sx_lin is None and ch.sigma_obs_default is not None:
             sx_log = ch.sigma_obs_default
         elif sx_lin is None:
@@ -608,25 +648,33 @@ def _infer_one(
         z_term = 0.0
         if ch.c.size > 0:
             if covars_row is None or len(covars_row) != len(ch.c):
-                raise ValueError(f"Covariate vector required (len {len(ch.c)}) for channel {name}.")
+                raise ValueError(
+                    f"Covariate vector required (len {len(ch.c)}) for channel {name}."
+                )
             z_term = float(np.dot(ch.c, covars_row))
 
-        # Invert mapping
-        b = ch.b if ch.b != 0 else 1e-9
+        b = ch.b if ch.b != 0.0 else 1e-9
+
+        # Invert mapping: x_log = a + b*y + z_term  => y = (x_log - a - z_term)/b
         yj = (x_log - ch.a - z_term) / b
+
         var_j = ((0.0 if sx_log is None else sx_log**2) + ch.tau**2) / (b**2)
         var_j = max(var_j, var_floor_log)
 
         w = 1.0 / var_j
-        y_list.append(yj); v_list.append(var_j); w_dict[name] = w
+        y_list.append(yj)
+        v_list.append(var_j)
+        w_dict[name] = w
 
     if not y_list:
         return np.nan, np.nan, {}
 
     w_arr = 1.0 / np.asarray(v_list)
     y_arr = np.asarray(y_list)
+
     y_hat = float(np.sum(w_arr * y_arr) / np.sum(w_arr))
     sigma_y = float(np.sqrt(1.0 / np.sum(w_arr)))
+
     return y_hat, sigma_y, w_dict
 
 
