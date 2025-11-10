@@ -589,9 +589,15 @@ def SGA_diameter(ellipse, radius_arcsec=False):
 
     """
     from SGA.ellipse import ELLIPSEMODE
+    from SGA.calibrate import infer_best_r26
+
+    D26, D26_ERR, D26_REF, D26_WEIGHT = infer_best_r26(ellipse)
+
+    pdb.set_trace()
 
     radius = np.zeros(len(ellipse))
     ref = np.zeros(len(ellipse), '<U7')
+
 
     # if FIXGEO, use SMA_INIT
     I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0

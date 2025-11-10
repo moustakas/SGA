@@ -14,9 +14,11 @@ from typing import Dict, List, Optional, Tuple
 from astropy.table import Table
 from scipy import odr
 from sklearn.linear_model import HuberRegressor
+from importlib import resources
 
 from SGA.SGA import SBTHRESH
 from SGA.coadds import GRIZ as BANDS
+from SGA.logger import log
 
 from dataclasses import dataclass
 
@@ -103,6 +105,17 @@ def save_calibration(cal: Calibration, path: str) -> None:
     """Write ASCII TSV with columns: name a b tau sigma_obs_default
     covar_names c_json.
 
+    Model:
+      logR26,r = = a + b log R25,g + c1 logq + c2 (g−r)
+
+    name - The channel name (e.g., r25, g24, moment, etc.)
+    a - Intercept in the log–log linear mapping y = a + bx + c^T z
+    b - Slope multiplying the predictor x = log R_X (threshold)
+    tau - Extra (“intrinsic”) scatter term for that channel in log-space
+    sigma_obs_default - Default uncertainty in log(x) if no per-object σ is available
+    covar_names - JSON list of covariate names (if you fit with additional regressors)
+    c_json - JSON list of the numerical coefficients c c corresponding to those covariates
+
     """
     rows = ["\t".join(["name", "a", "b", "tau", "sigma_obs_default", "covar_names", "c_json"])]
     for ch in cal.channels.values():
@@ -119,10 +132,18 @@ def save_calibration(cal: Calibration, path: str) -> None:
         f.write("\n".join(rows))
 
 
-def load_calibration(path: str) -> Calibration:
+def load_calibration(path: Optional[str] = None) -> Calibration:
+    """Load a Calibration object from a TSV file.
+    If no path is provided, use the packaged default under SGA/data/SGA2025.
+
+    """
+    if path is None:
+        path = resources.files("SGA").joinpath("data/SGA2025/r26-calibration-coeff.tsv")
+        log.debug(f"Read calibration file: {path}")
+
     lines = [ln.strip() for ln in open(path, "r") if ln.strip()]
     if not lines or not lines[0].startswith("name"):
-        raise ValueError("Malformed calibration file")
+        raise ValueError(f"Malformed calibration file: {path}")
     channels: Dict[str, ChannelCalib] = {}
     for ln in lines[1:]:
         name, a, b, tau, sdef, covars_json, c_json = ln.split("\t")
@@ -135,6 +156,7 @@ def load_calibration(path: str) -> Calibration:
             c=np.array(json.loads(c_json), dtype=float),
             sigma_obs_default=(float(sdef) if sdef != "" else None),
         )
+
     return Calibration(channels=channels, target_name="r26")
 
 
@@ -415,10 +437,10 @@ def _infer_one(
 
 def infer_best_r26(
     tbl: Table,
-    calib_path: str,
+    calib_path: str = None,
     *,
     covariates: Optional[np.ndarray] = None,
-    add_columns: bool = True,
+    add_columns: bool = False,
     include_direct_r26: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
     """Apply stored calibration to an Astropy Table and return arrays
