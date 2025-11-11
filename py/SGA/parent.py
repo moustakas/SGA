@@ -3245,7 +3245,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # will think that a galaxy is missing for reasons other than there
     # are no data.
     # bits
-    I = (out['GROUP_PRIMARY']) & (out['GROUP_MULT'] > 2)
+    I = (out['GROUP_PRIMARY']) & (out['GROUP_MULT'] > 1)
     drop_groupid = []
     strip_groups = []
     for groupid in out['GROUP_ID'][I]:
