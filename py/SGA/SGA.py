@@ -90,6 +90,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # parent_version bump
         version = 'v0.11'
         #  parent_version = v0.11
+
+        #version = 'v0.12'
+        ##  parent_version = v0.11
     return version
 
 

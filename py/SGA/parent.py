@@ -2884,6 +2884,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     from SGA.sky import find_close, in_ellipse_mask_sky
     #from SGA.brick import brickname as get_brickname
 
+
     version = SGA_version(parent=True)
     version_nocuts = SGA_version(nocuts=True)
     version_archive = SGA_version(archive=True)
@@ -2894,6 +2895,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
+
+
+    # mapping between minimum diameter cut and version number
+    mindiam_by_version = {'default': 20., 'v0.10': 20., 'v0.11': 20., 'v0.12': 27.}
 
     cols = ['OBJNAME',
             #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
@@ -3037,8 +3042,12 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     except:
         pdb.set_trace()
 
-    # sanity check on initial diameters
-    mindiam = 20. # [arcsec]
+    # specify mindiam
+    if version in mindiam_by_version.keys():
+        mindiam = mindiam_by_version[version] # [arcsec]
+    else:
+        mindiam = mindiam_by_version['default'] # [arcsec]
+
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
     origdiam, _, _, _ = choose_geometry(parent, mindiam=0.)
@@ -3048,6 +3057,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     I = mag > 20.
     if np.any(I):
         mag[I] = 20.
+
+    # if there are previous parent catalogs, update the diameters here
+    #pdb.set_trace()
 
     # Restore diameters for LVD sources which have diam<mindiam (e.g.,
     # Clump I)
