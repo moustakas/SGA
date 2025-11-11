@@ -311,6 +311,7 @@ def build_group_catalog(
     contain_margin: float = 0.50,              # expansion on axes (1+margin)
     merge_centers: bool = True,                # merge groups with centers within threshold
     merge_sep_arcsec: float = 52.,             # merge groups closer than this value
+    min_group_diam_arcsec: float = 30.,        # minimum group diameter [arcsec]
 ) -> Table:
     """
     Build a mosaic-friendly group catalog using a hybrid anisotropic rule.
@@ -478,7 +479,9 @@ def build_group_catalog(
             rk = 0.5 * DIAM[k]
             if dcen_arcmin + rk > max_extent:
                 max_extent = dcen_arcmin + rk
-        grp_diam[gidx] = np.float32(2.0 * max_extent)
+        # minimum group diameter [arcmin]
+        #grp_diam[gidx] = np.float32(2.0 * max_extent)
+        grp_diam[gidx] = max(2. * max_extent, min_group_diam_arcsec/60.)
         grp_primary[gidx] = int(members[np.argmax(DIAM[members])])
 
     row_group_id = group_ids
