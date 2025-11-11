@@ -991,9 +991,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             if wisesize:
                 outprefix = 'SGA2025-wisesize'
             else:
-                #version = 'test'
-                #outprefix = 'SGA2025-test'
-                outprefix = 'SGA2025'
+                if True:
+                    outprefix = 'SGA2025'
+                else:
+                    version = 'test'
+                    outprefix = 'SGA2025-test'
             outfile = f'{outprefix}-{version}-{region}.fits'
             kdoutfile = f'{outprefix}-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
@@ -1042,8 +1044,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #print('Hack!')
-        #raslices_todo = ['000']#, '001']#, '002']
+        print('Hack!')
+        raslices_todo = ['134', '162']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -1150,6 +1152,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         ellipse, tractor = [], []
         for islice, raslice in enumerate(uraslices):
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
+            if not os.path.isfile(slicefile):
+                log.info(f'Skipping missing file {slicefile}')
+                continue
             ellipse.append(Table(fitsio.read(slicefile, 'ELLIPSE')))
             tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
             #os.remove(slicefile)

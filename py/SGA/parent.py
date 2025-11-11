@@ -2990,7 +2990,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         assert(len(custom) == len(np.unique(custom['OBJNAME'])))
     except:
         log.info('Warning: duplicates in parent-custom file!')
-        raise ValueError()
+        #raise ValueError()
+        oo, cc = np.unique(custom['OBJNAME'], return_counts=True)
+        log.info(oo[cc>1])
+        pdb.set_trace()
 
     moreparent = _empty_parent(parent[:1], len(custom))
     for col in custom.colnames:
@@ -3019,7 +3022,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         assert(len(drop) == len(np.unique(drop['objname'])))
     except:
         log.info('Warning: duplicates in parent-drop file!')
-        raise ValueError()
+        #raise ValueError()
+        oo, cc = np.unique(drop['objname'], return_counts=True)
+        log.info(oo[cc>1])
+        pdb.set_trace()
 
     # drop crap from both/all regions
     Idrop = drop['region'].mask
@@ -3081,7 +3087,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         assert(len(props) == len(np.unique(props['objname'])))
     except:
         log.info('Warning: duplicates in parent-properties file!')
-        raise ValueError()
+        #raise ValueError()
+        oo, cc = np.unique(proprs['objname'], return_counts=True)
+        log.info(oo[cc>1])
+        pdb.set_trace()
 
     for prop in props:
         objname = prop['objname']
