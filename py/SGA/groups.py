@@ -232,7 +232,7 @@ def _process_cluster(members: list[int]) -> np.ndarray:
     dec0 = float(np.median(DEC[idx]))
     cosd0 = math.cos(dec0 * DEG2RAD)
     ra0 = float(np.median(RA[idx]))
-    dx = (RA[idx] - ra0) * cosd0
+    dx = _angdiff_deg(RA[idx], ra0) * cosd0
     dy = (DEC[idx] - dec0)
 
     cell_deg = p['cell_arcmin'] / ARCMIN_PER_DEG
