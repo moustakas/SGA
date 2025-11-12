@@ -2900,11 +2900,14 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # mapping between minimum diameter cut and version number
     mindiam_by_version = {'default': 20., 'v0.10': 20., 'v0.11': 20., 'v0.12': 27.}
 
-    cols = ['OBJNAME',
-            #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
-            'RA', 'DEC', 'PGC', #'RESOLVED',
-            #'STARFDIST', 'STARDIST', 'STARMAG',
-            'REGION']#, 'ROW_PARENT']
+    # reference catalog for updating initial diameters from the literature
+    #reffiles = None
+    reffiles = {
+        'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+        'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+    }
+
+    cols = ['OBJNAME', 'RA', 'DEC', 'PGC', 'REGION']
 
     # merge the two regions
     parent = []
@@ -3064,9 +3067,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     if np.any(I):
         mag[I] = 20.
 
-    # if there are previous parent catalogs, update the diameters here
-    #pdb.set_trace()
-
     # Restore diameters for LVD sources which have diam<mindiam (e.g.,
     # Clump I)
     I = (parent['ROW_LVD'] != -99) * (diam <= mindiam)
@@ -3125,6 +3125,34 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                     pa[I] = newval
                 elif col == 'ba':
                     ba[I] = newval
+
+    # If there is a reference catalog of diameters, use it here.
+    if reffiles:
+        prevdiam = np.zeros(len(parent))
+        for region in ['dr9-north', 'dr11-south']:
+            reffile = reffiles[region]
+            ref = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'D26', 'D26_ERR']))
+            log.info(f'Read {len(ref):,d} objects from {reffile}')
+
+            # this will prefer dr11-south initial diameters over
+            # dr9-north since dr11-south goes last
+            m1, m2 = match(parent['OBJNAME'], ref['OBJNAME'])
+
+            pdb.set_trace()
+            # after REGION is updated in the dr11/dr9 catalog for
+            # sources on the edge (see SGA.py, line 915), there should
+            # be no "missing" sources in "bb", below.
+            I = parent['REGION'] & REGIONBITS[region] != 0
+            bb = parent[I]
+            bb[~np.isin(bb['OBJNAME'], ref['OBJNAME'])]
+
+            J = np.where(prevdiam[I[m1]] < 60.*prev['D26'][m2])[0]
+            prevdiam[I[m1[J]]] = 60.*prev['D26'][m2[J]]
+
+
+    pdb.set_trace()
+
+
 
     ## Pre-process the morphology column.
     #allmorph = []

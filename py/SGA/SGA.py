@@ -81,18 +81,21 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # no duplicate groups; cleanup of REGION bits; some dropped
         # sources via VI.
-        version = 'v0.11'
+        #version = 'v0.11'
+
+        # ...
+        version = 'v0.12'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10'
         #  parent_version = v0.10
 
         # parent_version bump
-        version = 'v0.11'
+        #version = 'v0.11'
         #  parent_version = v0.11
 
-        #version = 'v0.12'
-        ##  parent_version = v0.11
+        version = 'v0.12'
+        #  parent_version = v0.11
     return version
 
 
@@ -198,7 +201,7 @@ def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
 
 def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
-                  build_catalog=False, clobber=False, clobber_overwrite=None,
+                  clobber=False, clobber_overwrite=None,
                   no_groups=False, verbose=False, datadir=None, htmldir=None,
                   size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
@@ -252,10 +255,6 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         suffix = 'ellipse'
         filesuffix = '-ellipse.isdone'
         dependson = '-coadds.isdone'
-    elif build_catalog:
-        suffix = 'build-catalog'
-        filesuffix = '-SGA.isdone'
-        dependson = '-ellipse.isdone'
     elif htmlplots:
         suffix = 'html'
         filesuffix = '-montage.png'
@@ -274,10 +273,10 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         log.critical(msg)
         raise ValueError(msg)
 
-    # Make clobber=False for build_catalog and htmlindex because we're not
-    # making the files here, we're just looking for them. The argument
+    # Make clobber=False for htmlindex because we're not making the
+    # files here, we're just looking for them. The argument
     # args.clobber gets used downstream.
-    if htmlindex or build_catalog:
+    if htmlindex:
         clobber = False
 
     if clobber_overwrite is not None:
@@ -911,6 +910,10 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if len(tractor_sga) > 0:
         tractor_sga = vstack(tractor_sga)
         tractor = vstack((tractor, tractor_sga))
+
+    # FIXME!
+    log.warning('LOOP THROUGH THE FULLSAMPLE COLUMNS AND UPDATE ELLIPSE (e.g., REGION bits may have changed!)')
+
 
     return ellipse, tractor
 
