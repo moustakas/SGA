@@ -3070,7 +3070,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # Restore diameters for LVD sources which have diam<mindiam (e.g.,
     # Clump I)
     I = (parent['ROW_LVD'] != -99) * (diam <= mindiam)
-    log.info(f'Restoring {np.sum(I)} LVD diameters that are <mindiam={mindiam:.1f}')
+    log.info(f'Restoring {np.sum(I)} LVD diameters that are <mindiam={mindiam:.1f} arcsec')
     diam[I] = origdiam[I]
 
     I = diam == mindiam
