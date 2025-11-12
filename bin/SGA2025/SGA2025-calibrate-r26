@@ -36,27 +36,22 @@ SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v
 
 """
 import sys
-from astropy.table import Table
+from astropy.table import Table, vstack
 from SGA.calibrate import calibrate_from_table, infer_best_r26
 
 from SGA.logger import log
 
 
 def _read_table(path: str) -> Table:
-    if path.lower().endswith((".fits", ".fit", ".fits.gz")):
-        return Table.read(path, 'ELLIPSE', format="fits")
-    elif path.lower().endswith((".ecsv", ".csv")):
-        return Table.read(path)
-    else:
-        return Table.read(path)
+    return Table.read(path, 'ELLIPSE', format="fits")
 
 
 def main(argv=None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
     if len(argv) < 1 or argv[0] in {"-h", "--help"}:
         print("Usage:\n"
-              "  calibrate  INPUT.(fits|ecsv|csv)  CALIB.tsv\n"
-              "  infer      INPUT.(fits|ecsv|csv)  CALIB.tsv  OUTPUT.(fits|ecsv)\n", file=sys.stderr)
+              "  calibrate  INPUT.fits CALIB.tsv\n"
+              "  infer      INPUT.fits CALIB.tsv  OUTPUT.(fits|ecsv)\n", file=sys.stderr)
         sys.exit(2)
 
     cmd = argv[0].lower()
@@ -65,6 +60,11 @@ def main(argv=None) -> None:
             sys.exit("calibrate requires INPUT and CALIB.tsv")
         in_path, calib_path = argv[1], argv[2]
         tbl = _read_table(in_path)
+        ## temporary hack
+        #in_path1, in_path2, calib_path = argv[1], argv[2], argv[3]
+        #tbl1 = _read_table(in_path1)
+        #tbl2 = _read_table(in_path2)
+        #tbl = vstack((tbl1, tbl2))
         calibrate_from_table(tbl, calib_path)
     elif cmd == "infer":
         if len(argv) < 4:
