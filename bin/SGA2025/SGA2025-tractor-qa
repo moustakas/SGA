@@ -15,6 +15,14 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
 
+
+VI campaign:
+
+sample 01
+* d
+
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=1
+
 """
 
 import pdb # for debugging
@@ -32,12 +40,13 @@ from matplotlib.image import imread
 
 from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
                      read_sample, DIAMCOLUMN, REFIDCOLUMN, SAMPLE,
-                     REFCAT)
+                     REFCAT, SGA_version)
 from SGA.ellipse import ELLIPSEMODE
 from SGA.io import get_raslice
 from SGA.geometry import get_tractor_ellipse
 from SGA.qa import overplot_ellipse
 from SGA.logger import log
+
 
 MAXDIAM = 3. # [arcmin]
 
@@ -110,7 +119,7 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
     return sga, tractor, image, wcs
 
 
-def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
+def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
               datadir=None, cutoutdir=None, region='dr11-south', no_groups=False,
               final_sample=False):
 
@@ -271,13 +280,14 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     if final_sample:
                         (xpix, ypix) = wcs.wcs_world2pix(objra, objdec, 0)
                         (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
-                        #overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
-                        #                 height_pixels=width, pixscale=pixscale,
-                        #                 ax=xx, color='white', linestyle='-.',
-                        #                 draw_majorminor_axes=True, jpeg=True)
+                        if True:
+                            overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
+                                             height_pixels=width, pixscale=pixscale,
+                                             ax=xx, color='white', linewidth=0.3, linestyle='-',
+                                             draw_majorminor_axes=False, jpeg=True)
                         overplot_ellipse(diam, ba, pa, xpix, ypix,
                                          height_pixels=width, pixscale=pixscale,
-                                         ax=xx, color='cyan', linestyle='-',
+                                         ax=xx, color='cyan', linewidth=2, linestyle='-',
                                          draw_majorminor_axes=True, jpeg=True)
                     else:
                         (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
@@ -358,7 +368,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
                     (xpix, ypix) = wcs.wcs_world2pix(sga['ra'], sga['dec'], 0)
                     overplot_ellipse(2.*r50, ba, pa, xpix, ypix,
                                      height_pixels=height, pixscale=pixscale,
-                                     ax=xx, color='yellow', linestyle='--',
+                                     ax=xx, color='yellow', linewidth=1, linestyle='--',
                                      draw_majorminor_axes=True, jpeg=True)
 
                 xx.text(0.97, 0.03, str(indx[iax]+1), transform=xx.transAxes,
@@ -378,7 +388,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=4, inches_per_panel=4.,
 
 def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1,
                datadir=None, lvd_resolved=False, lvd_fixgeo=False, lvd_forcepsf=False,
-               lvd=False, final_sample=False, no_groups=False, mindiam=0., maxdiam=1e3):
+               lvd=False, vi_sample=None, final_sample=False, no_groups=False,
+               mindiam=0., maxdiam=1e3):
 
     if datadir is None:
         datadir = sga_data_dir()
@@ -430,6 +441,32 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         pdffile = os.path.join(qadir, f'qa-tractor-{region}-lvd{suffix}.pdf')
         fullsample = sample
         diamcolumn = 'DIAM'
+    elif vi_sample:
+        ver = SGA_version()
+        suff = f'vi-{ver}'
+        qadir = os.path.join(sga_dir(), 'parent', suff)
+        if not os.path.isdir(qadir):
+            os.makedirs(qadir, exist_ok=True)
+
+        diamcolumn = 'D26'
+
+        # need to be smarter about galaxy groups, GROUP_PRIMARY
+        match vi_sample:
+            case 1:
+                I = ((sample['SAMPLE'] == 0) * (sample['D26'] > 0.5) * (sample['D26'] < 5.) * (sample['GROUP_MULT'] == 1))
+                sample = sample[I][:128]
+                fullsample = sample
+            case _:
+                raise ValueError('Write me')
+
+        # this needs to be a root filename so it can be multiple documents!!
+        pdffile = os.path.join(qadir, f'qa-sample{str(vi_sample):02}-subset01-{region}.pdf')
+        txtfile = os.path.join(qadir, f'cat-sample{str(vi_sample):02}-subset01-{region}.txt')
+
+        with open(txtfile, 'w') as F:
+            for obj in sample['OBJNAME'].value:
+                F.write(f'{obj}\n')
+        log.info(f'Wrote {txtfile}')
     else:
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
         if no_groups:
@@ -527,6 +564,9 @@ if __name__ == '__main__':
     parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--mindiam', default=0., type=float, help='minimum diameter')
     parser.add_argument('--maxdiam', default=200., type=float, help='minimum diameter')
+
+    parser.add_argument('--vi-sample', default=None, type=int, help='VI sample to generate.')
+
     parser.add_argument('--lvd-resolved', action='store_true', help='Generate QA for the LVD/resolved sample.')
     parser.add_argument('--lvd-fixgeo', action='store_true', help='Generate QA for the LVD/fixgeo sample.')
     parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
@@ -541,5 +581,6 @@ if __name__ == '__main__':
                last=args.last, galaxylist=args.galaxylist, mp=args.mp,
                lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
                lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd,
+               vi_sample=args.vi_sample,
                final_sample=args.final_sample, no_groups=args.no_groups,
                mindiam=args.mindiam, maxdiam=args.maxdiam)

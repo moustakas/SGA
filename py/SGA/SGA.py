@@ -81,20 +81,20 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # no duplicate groups; cleanup of REGION bits; some dropped
         # sources via VI.
-        #version = 'v0.11'
+        version = 'v0.11'
 
         # ...
-        version = 'v0.12'
+        #version = 'v0.12'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10'
         #  parent_version = v0.10
 
         # parent_version bump
-        #version = 'v0.11'
+        version = 'v0.11'
         #  parent_version = v0.11
 
-        version = 'v0.12'
+        #version = 'v0.12'
         #  parent_version = v0.11
     return version
 
