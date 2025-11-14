@@ -355,6 +355,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             raise ValueError(msg)
 
     if final_sample:
+        raise ValueError('This code block is not correct...')
         if tractor:
             ext = 'TRACTOR'
         else:
