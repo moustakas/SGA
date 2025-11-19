@@ -2870,6 +2870,51 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
+def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
+                        diamcolumn='D26', exclude_group_ids=None):
+    """Return a new catalog containing only groups with at least
+    `minmult` members whose *all* members have diameters between
+    `mindiam` and `maxdiam` based on `diamcolumn` (in arcminutes).
+
+    """
+    # Groups to exclude entirely (e.g. LVD groups)
+    if exclude_group_ids is None:
+        exclude_mask = np.zeros(len(cat), dtype=bool)
+    else:
+        exclude_mask = np.isin(cat['GROUP_ID'], exclude_group_ids)
+
+    # Only consider groups with >= minmult members
+    mask_multi = cat['GROUP_MULT'] >= minmult
+    if maxmult is not None:
+        mask_multi *= (cat['GROUP_MULT'] <= maxmult)
+    mask_multi &= ~exclude_mask
+
+    gid  = cat['GROUP_ID'][mask_multi]
+    diam = cat[diamcolumn][mask_multi]
+
+    # Sort by group ID so each group is contiguous
+    order       = np.argsort(gid)
+    gid_sorted  = gid[order]
+    diam_sorted = diam[order]
+
+    # For each group, find start index and per-group min/max diameter
+    unique_gids, idx_start = np.unique(gid_sorted, return_index=True)
+    group_max = np.maximum.reduceat(diam_sorted, idx_start)
+
+    # Groups where ALL members are < mindiam  ⇒ max < mindiam
+    rem_group_ids = unique_gids[group_max < mindiam]
+    rem_rows = np.isin(cat['GROUP_ID'], rem_group_ids) & mask_multi
+    keep_rows = (~rem_rows) & mask_multi
+
+    rem = cat[rem_rows]
+    rem = rem[np.lexsort((rem[diamcolumn], rem['GROUP_NAME']))]
+
+    out = cat[keep_rows]
+    out = out[np.lexsort((out[diamcolumn], out['GROUP_NAME']))]
+
+    return out, rem
+
+
 def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
@@ -3002,10 +3047,16 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     for col in custom.colnames:
         if col == 'COMMENT':
             continue
-        if col == 'REGION':
-            moreparent[col] = [REGIONBITS[cust[col]] for cust in custom]
+        moreparent[col] = custom[col]
+
+    # special handling of REGION; if masked then it's both regions
+    for iobj, (reg, mask) in enumerate(zip(custom['REGION'].value, custom['REGION'].mask)):
+        if mask:
+            moreparent['REGION'][iobj] = REGIONBITS['dr11-south'] + REGIONBITS['dr9-north']
         else:
-            moreparent[col] = custom[col]
+            moreparent['REGION'][iobj] = REGIONBITS[reg]
+    print('double-check the masked logic here')
+    pdb.set_trace()
     #moreparent[custom.colnames[:-1]]
 
     # update the Gaia masking bits

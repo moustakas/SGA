@@ -18,9 +18,12 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
 
 VI campaign:
 
-sample 01
-
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr11-south --vi-sample=1
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr11-south --vi-sample=2
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr11-south --vi-sample=3
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=4
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=5
+
 
 """
 
@@ -124,9 +127,15 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
               final_sample=False, verbose=False):
 
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
-    import matplotlib.pyplot as plt
-    plt.rcParams['path.simplify'] = True
+    import matplotlib as mpl
 
+    # reduces file size
+    mpl.rcParams["pdf.compression"] = 9
+    mpl.rcParams['path.simplify'] = True
+    mpl.rcParams["path.simplify_threshold"] = 1.0
+    mpl.rcParams["pdf.fonttype"] = 42
+    mpl.rcParams["ps.fonttype"] = 42
+    mpl.rcParams["pdf.use14corefonts"] = True
 
     if no_groups:
         showsample = sample
@@ -397,7 +406,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
 
             else:
                 xx.axis('off')
-        pdf.savefig(fig, bbox_inches='tight', dpi=100)
+        pdf.savefig(fig, bbox_inches='tight')
         plt.close()
         if verbose:
             print()
@@ -406,7 +415,6 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
     log.info(f'Wrote {pdffile}')
 
     plt.rcParams['path.simplify'] = False # restore
-
 
 
 def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1,
@@ -421,6 +429,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     """
     from SGA.SGA import SAMPLE
+    from SGA.parent import remove_small_groups
     from SGA.coadds import REGIONBITS
 
 
@@ -477,31 +486,72 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         txtdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/txt'
 
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
-        regions = fitsio.read(samplefile, 'ELLIPSE', columns='REGION')
-        rows = np.where(regions & REGIONBITS[region] != 0)[0]
-        fullsample = Table(fitsio.read(samplefile, 'ELLIPSE', rows=rows))
+        #regions = fitsio.read(samplefile, 'ELLIPSE', columns='REGION')
+        #rows = np.where(regions & REGIONBITS[region] != 0)[0]
+        fullsample = Table(fitsio.read(samplefile, 'ELLIPSE'))#, rows=rows))
         log.info(f'Read {len(fullsample):,d} {region} objects from {samplefile}')
+
+        LVD      = SAMPLE['LVD']
+        MCLOUDS  = SAMPLE['MCLOUDS']
+        GCLPNE   = SAMPLE['GCLPNE']
+        NEARSTAR = SAMPLE['NEARSTAR']
+        INSTAR   = SAMPLE['INSTAR']
+
+        gm1 = (fullsample['GROUP_MULT'] == 1)
+        gm2 = (fullsample['GROUP_MULT'] == 2)
+        gm3 = (fullsample['GROUP_MULT'] > 2)
+
+        not_LVD = (fullsample['SAMPLE'] & LVD) == 0
+        is_LVD  = (fullsample['SAMPLE'] & LVD) != 0
+
+        ellipse_ok  = (fullsample['ELLIPSEBIT'] == 0)
+        ellipse_bad = (fullsample['ELLIPSEBIT'] != 0)
+
+        sample_flags = (fullsample['SAMPLE'] & (MCLOUDS | GCLPNE | NEARSTAR | INSTAR)) != 0
+
+        diamcolumn = 'D26'
+        sort_by_groupname = False
 
         # need to be smarter about galaxy groups, GROUP_PRIMARY
         match vi_sample:
-            # sample 001
+            # sample 001 - GM=1, in size range, no bits set at all, ellipse clean, not LVD
             case 1:
-                # all are primary
-                diamcolumn = 'D26'
-                I = ((fullsample['SAMPLE'] == 0) * (fullsample['ELLIPSEBIT'] == 0) *
-                     (fullsample['D26'] > 0.5) * (fullsample['D26'] < 5.) *
-                     fullsample['GROUP_PRIMARY'] * (fullsample['GROUP_MULT'] == 1))
+                diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
+                I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
                 fullsample = fullsample[I]
                 sample = fullsample
-            # sample 002
+            # sample 002 - GM=1, in size range, ellipse clean, at least one of {MCLOUDS,GCLPNE,NEARSTAR,INSTAR} set, and not LVD
             case 2:
-                # need to think about D26 for any group member and ellipsebit for all group members?
-                diamcolumn = 'GROUP_DIAMETER'
-                raise ValueError('Write me')
-                I = ((sample['SAMPLE'] == 0) * (sample['ELLIPSEBIT'] == 0) * (sample['D26'] > 0.5) *
-                     (sample['D26'] < 5.) * (sample['GROUP_MULT'] == 2))
-                sample = sample[I]
-                fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+                diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
+                I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
+                fullsample = fullsample[I]
+                sample = fullsample
+            # sample 003 - GM=1, in size range, not LVD, any ellipse problem
+            case 3:
+                diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
+                I = gm1 & diam_cut & not_LVD & ellipse_bad
+                fullsample = fullsample[I]
+                sample = fullsample
+            # sample 004 - GM=1, D(26)>5, not LVD, any ellipse problem
+            case 4:
+                diam_cut = (fullsample[diamcolumn] >= 5.)
+                I = gm1 & diam_cut & not_LVD
+                fullsample = fullsample[I]
+                sample = fullsample
+            # sample 005 - all groups containing one or more LVD dwarfs
+            case 5:
+                sort_by_groupname = True
+                LVD_group_ids = np.unique(fullsample['GROUP_ID'][is_LVD])
+                I = np.isin(fullsample['GROUP_ID'], LVD_group_ids)
+                fullsample = fullsample[I]
+                sample = fullsample[fullsample['GROUP_PRIMARY']]
+            # sample 006 - groups with 2 or more members
+            case 6:
+                sort_by_groupname = True
+                LVD_group_ids = np.unique(fullsample['GROUP_ID'][is_LVD])
+                fullsample, rem = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5,
+                                                      diamcolumn=diamcolumn, exclude_group_ids=LVD_group_ids)
+                sample = fullsample[fullsample['GROUP_PRIMARY']]
             case _:
                 raise ValueError('Write me')
 
@@ -522,6 +572,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             diamcolumn = DIAMCOLUMN
         fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
+
     # make the output directories
     if not os.path.isdir(qadir):
         os.makedirs(qadir, exist_ok=True)
@@ -531,7 +582,9 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
                                              group=not no_groups,
                                              datadir=datadir)
-    I = np.array([os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)])
+    #I = np.array([os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)])
+    I = np.array([os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
+                  for gdir, gal in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy))])
     log.info(f'Found {np.sum(I):,d}/{len(sample):,d} ' + \
              'objects with pipeline results.')
 
@@ -549,26 +602,33 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
                                                  group=not no_groups,
                                                  datadir=cutoutdir)
-        M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
+        #M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
+        M = [not os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
+             for gdir, gal in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy))]
+
         log.info(f'Generating cutouts for {np.sum(M):,d}/{np.sum(~I):,d} ' + \
                  'objects with missing pipeline results.')
-        raise ValueError('This logic is not quite right...')
 
         if np.sum(M) > 0:
             from SGA.cutouts import do_cutouts
 
             layer = f'ls-{region}'
             if region == 'dr11-south':
-                log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
+                log.warning(f"Overriding layer={layer}-->ls-dr11-early-v2")
                 layer = 'ls-dr11-early-v2'
 
             do_cutouts(sample[~I][M], layer=layer, group=not no_groups,
                        fits_cutouts=False, maxdiam_arcmin=MAXDIAM, mp=mp,
                        cutoutdir=os.path.join(cutoutdir, region))
 
+
     # sort by diameter (?)
-    sample = sample[np.argsort(sample[diamcolumn])]
-    fullsample = fullsample[np.argsort(fullsample[diamcolumn])]
+    if sort_by_groupname:
+        fullsample = fullsample[np.lexsort((fullsample[diamcolumn], fullsample['GROUP_NAME']))]
+        sample = sample[np.argsort(sample['GROUP_NAME'])]
+    else:
+        sample = sample[np.argsort(sample[diamcolumn])]
+        fullsample = fullsample[np.argsort(fullsample[diamcolumn])]
 
     # figure out how many PDF documents / subsamples based on nperpdf
     ngal = len(fullsample)
@@ -576,23 +636,13 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     log.info(f'Generating {npdf} PDF documents for {ngal:,d} galaxies with {nperpdf} objects per PDF.')
 
     for ipdf in range(npdf):
+    #for ipdf in [70]:#range(npdf):
         # special case the VI work: custom name and write out a text file
         istart = ipdf*nperpdf
         iend = (ipdf+1)*nperpdf
         if iend > ngal-1:
             iend = ngal-1
         indx = np.arange(istart, iend)
-
-        if vi_sample:
-            pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
-            txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
-
-            with open(txtfile, 'w') as F:
-                for obj in fullsample['OBJNAME'][indx].value:
-                    F.write(f'{obj}\n')
-            log.info(f'Wrote {txtfile}')
-        else:
-            pdffile = os.path.join(qadir, f'{pdfbase}-{ipdf+1:03}.pdf')
 
         thisfullsample = fullsample[indx]
         thissample = sample[np.isin(sample['GROUP_ID'], thisfullsample['GROUP_ID'])]
@@ -601,14 +651,27 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         thissample = thissample[np.argsort(thissample[diamcolumn])]
         thisfullsample = thisfullsample[np.argsort(thisfullsample[diamcolumn])]
 
+        if vi_sample:
+            pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
+            txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
+
+            with open(txtfile, 'w') as F:
+                for obj in thisfullsample['OBJNAME'].value:
+                    F.write(f'{obj}\n')
+            log.info(f'Wrote {txtfile}')
+        else:
+            pdffile = os.path.join(qadir, f'{pdfbase}-{ipdf+1:03}.pdf')
+
+        if os.path.isfile(pdffile):
+            log.info(f'Skipping existing file {pdffile}')
+            continue
+
         annotated(thissample, thisfullsample, pdffile, region=region,
                   datadir=datadir, cutoutdir=cutoutdir,
                   ncol=ncol, nrow=nrow, verbose=verbose,
                   show_tractor_ellipse=show_tractor_ellipse,
                   show_initial_ellipse=show_initial_ellipse,
                   final_sample=final_sample, no_groups=no_groups)
-
-        pdb.set_trace()
 
 
 
