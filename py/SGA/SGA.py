@@ -81,21 +81,22 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # no duplicate groups; cleanup of REGION bits; some dropped
         # sources via VI.
-        version = 'v0.11'
+        #version = 'v0.11'
 
-        # ...
-        #version = 'v0.12'
+        # re-initialize diameters with v0.11 ellipse results
+        version = 'v0.12'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10'
         #  parent_version = v0.10
 
         # parent_version bump
-        version = 'v0.11'
+        #version = 'v0.11'
         #  parent_version = v0.11
 
-        #version = 'v0.12'
-        #  parent_version = v0.11
+        # parent_version bump
+        version = 'v0.12'
+        #  parent_version = v0.12
     return version
 
 
@@ -605,6 +606,13 @@ def SGA_diameter(ellipse, radius_arcsec=False):
     if np.any(I):
         d26_ref[I] = 'mom' # shorten for the data model
     d26_ref = d26_ref.astype('<U3')
+
+    # over-ride FIXGEO geometry
+    I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
+    if np.any(I):
+        print('WRITE ME!')
+        pdb.set_trace()
+
 
     if radius_arcsec:
         r26 = d26 / 2. * 60. # [radius, arcsec]

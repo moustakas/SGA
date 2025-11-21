@@ -2921,18 +2921,19 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    from astropy.table import MaskedColumn, Column
     from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
     from SGA.SGA import sga2025_name, SAMPLE, SGA_version
     from SGA.ellipse import ELLIPSEMODE, FITMODE
     from SGA.io import radec_to_groupname
-    from SGA.groups import build_group_catalog
+    from SGA.groups import build_group_catalog, make_singleton_group
     from SGA.coadds import REGIONBITS
     from SGA.sky import find_close, in_ellipse_mask_sky
-    #from SGA.brick import brickname as get_brickname
 
 
     version = SGA_version(parent=True)
+    version_vicuts = SGA_version(vicuts=True)
     version_nocuts = SGA_version(nocuts=True)
     version_archive = SGA_version(archive=True)
     parentdir = os.path.join(sga_dir(), 'parent')
@@ -2942,17 +2943,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
-
-
-    # mapping between minimum diameter cut and version number
-    mindiam_by_version = {'default': 20., 'v0.10': 20., 'v0.11': 20., 'v0.12': 27.}
-
-    # reference catalog for updating initial diameters from the literature
-    #reffiles = None
-    reffiles = {
-        'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
-        'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
-    }
 
     cols = ['OBJNAME', 'RA', 'DEC', 'PGC', 'REGION']
 
@@ -2965,27 +2955,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
         # need to make sure we keep all LVD dwarfs
         lvd_dwarfs = cat['OBJNAME'][cat['ROW_LVD'] != -99].value
-
-        ## Remove all sources smaller than MINDIAM with no other source
-        ## within XX arcsec.
-        #if False:
-        #    mindiam = 30. # [arcsec]
-        #    minsep = 60.  # [arcsec]
-        #
-        #    primaries, groups = find_close(cat, cat, rad_arcsec=minsep, isolated=True)
-        #    diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-        #    I = ((primaries['ROW_LVD'] == -99) * ~primaries['IN_LMC'] * ~primaries['IN_SMC'] * (diam < mindiam))
-        #    log.info(f'Removing {np.sum(I):,d}/{len(cat):,d} isolated (separation>{minsep:.1f} arcsec) ' + \
-        #             f'objects with diameter<{mindiam:.1f} arcsec.')
-        #    cat = cat[~np.isin(cat['OBJNAME'], primaries['OBJNAME'][I])]
-        #
-        #    diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-        #    I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
-        #                              cat['IN_SMC'], diam > mindiam))
-        #
-        #    cat = cat[I]
-        #    log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
-        #             f'diameter > {mindiam:.1f} arcsec.')
 
         # make sure we haven't dropped any LVD dwarfs
         assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
@@ -3017,21 +2986,41 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # add additional sources by-hand
     def _empty_parent(cat, N=1):
-        empty = cat.copy()
-        for col in empty.colnames:
-            if empty[col].dtype == bool:
-                empty[col] = False
+        """Return a new Table with same columns/dtypes as `cat`,
+        length N, initialized with your null values.
+        """
+        empty = Table(masked=False)
+
+        for col in cat.itercols():
+            name = col.name
+            dt = col.dtype
+            if dt.kind == 'b':                      # bool
+                data = np.zeros(N, dtype=dt)
+            elif dt.kind in 'iu' or dt.kind == 'f': # int / uint and float
+                fill = 99 if name in ['STARMAG', 'STARDIST', 'STARFDIST'] else -99
+                data = np.full(N, fill, dtype=dt)
+            elif dt.kind in 'SU':                   # fixed-length string
+                data = np.full(N, '', dtype=dt)
             else:
-                empty[col] *= 0
-                if not empty[col].dtype.type is np.str_:
-                    if col in ['STARMAG', 'STARDIST', 'STARFDIST']:
-                        empty[col] += 99 # null value
-                    else:
-                        empty[col] += -99 # null value
-        if N > 1:
-            empty = vstack([oneempty for oneempty in empty])
+                data = np.full(N, -99, dtype=dt)
+            empty[name] = Column(data, name=name, dtype=dt)
         return empty
 
+    #def _empty_parent(cat, N=1):
+    #    empty = cat.copy()
+    #    for col in empty.colnames:
+    #        if empty[col].dtype == bool:
+    #            empty[col] = False
+    #        else:
+    #            empty[col] *= 0
+    #            if not empty[col].dtype.type is np.str_:
+    #                if col in ['STARMAG', 'STARDIST', 'STARFDIST']:
+    #                    empty[col] += 99 # null value
+    #                else:
+    #                    empty[col] += -99 # null value
+    #    if N > 1:
+    #        empty = vstack([empty] * N)
+    #    return empty
 
     customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     custom = Table.read(customfile, format='csv', comment='#')
@@ -3045,29 +3034,49 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(oo[cc>1])
         pdb.set_trace()
 
+    # special handling of SREGION; if masked then it's both regions
+    if hasattr(custom['SREGION'], 'mask'):
+        custom['SREGION'] = custom['SREGION'].filled('')
+    custom['REGION'] = np.zeros(len(custom), dtype=parent['REGION'].dtype)
+    for iobj, reg in enumerate(custom['SREGION']):
+        if reg == '':
+            custom['REGION'][iobj] = REGIONBITS['dr11-south'] + REGIONBITS['dr9-north']
+        else:
+            custom['REGION'][iobj] = REGIONBITS[reg]
+    custom.remove_columns(['SREGION', 'COMMENT'])
+
     moreparent = _empty_parent(parent[:1], len(custom))
     for col in custom.colnames:
         if col == 'COMMENT':
             continue
-        moreparent[col] = custom[col]
-
-    # special handling of REGION; if masked then it's both regions
-    for iobj, (reg, mask) in enumerate(zip(custom['REGION'].value, custom['REGION'].mask)):
-        if mask:
-            moreparent['REGION'][iobj] = REGIONBITS['dr11-south'] + REGIONBITS['dr9-north']
-        else:
-            moreparent['REGION'][iobj] = REGIONBITS[reg]
-    print('double-check the masked logic here')
-    pdb.set_trace()
-    #moreparent[custom.colnames[:-1]]
+        moreparent[col] = np.asarray(custom[col], dtype=parent[col].dtype)
+    #moreparent[custom.colnames]
 
     # update the Gaia masking bits
     add_gaia_masking(moreparent)
 
-    # assign a unique parent_row
-    all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
-    moreparent['ROW_PARENT'] = np.max(all_parent_rows) + np.arange(len(moreparent)) + 1
+    # Some objects were dropped in the 'archive' step but restored via
+    # the custom file; restore their properties here.
+    vicuts_objnames = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-vicuts-{version_vicuts}.fits'), columns='OBJNAME')
+    rows = np.isin(vicuts_objnames, moreparent['OBJNAME'])
+    if np.any(rows):
+        rows = np.where(np.isin(vicuts_objnames, moreparent['OBJNAME']))[0]
+        vicuts = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-vicuts-{version_vicuts}.fits'), rows=rows))
+        m_parent, m_vicuts = match(moreparent['OBJNAME'], vicuts['OBJNAME'])
+        for col in moreparent.colnames:
+            if col in ['DIAM_LIT', 'REGION']:
+                continue
+            if col in vicuts.colnames:
+                moreparent[col][m_parent] = vicuts[col][m_vicuts]
+
+    # assign a unique parent_row for new objects
+    I = np.where(~np.isin(moreparent['OBJNAME'], vicuts_objnames))[0]
+    if len(I) > 0:
+        all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
+        moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
+
     parent = vstack((parent, moreparent))
+    assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
     # Read and process the "parent-drop" file; update REGION for
     # objects indicated in that file.
@@ -3104,12 +3113,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     except:
         pdb.set_trace()
 
-    # specify mindiam
-    if version in mindiam_by_version.keys():
-        mindiam = mindiam_by_version[version] # [arcsec]
-    else:
-        mindiam = mindiam_by_version['default'] # [arcsec]
-
+    mindiam = 20.
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
     origdiam, _, _, _ = choose_geometry(parent, mindiam=0.)
@@ -3179,44 +3183,67 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 elif col == 'ba':
                     ba[I] = newval
 
-    # If there is a reference catalog of diameters, use it here.
-    if reffiles:
-        prevdiam = np.zeros(len(parent))
-        for region in ['dr9-north', 'dr11-south']:
-            reffile = reffiles[region]
-            ref = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'D26', 'D26_ERR']))
-            log.info(f'Read {len(ref):,d} objects from {reffile}')
+    # If there is a reference catalog of diameters for this version, use it here.
+    reffiles = {
+        'v0.12': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            }
+    }
+    if version in reffiles.keys():
+        ref_version = reffiles[version]['ref_version']
+        log.info(f'Updating initial diameters using reference version {ref_version}')
 
-            # this will prefer dr11-south initial diameters over
-            # dr9-north since dr11-south goes last
-            m1, m2 = match(parent['OBJNAME'], ref['OBJNAME'])
+        # in v0.11 the 'fixgeo' geometry was inadvertently
+        # overwritten, so don't update those diameters
+        veto_objnames = None
+        if ref_version == 'v0.11':
+            veto = []
+            for action in ['fixgeo', 'resolved']:
+                actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
+                veto.append(Table.read(actfile, format='csv', comment='#'))
+            veto = vstack(veto)
+            veto_objnames = set(np.unique(veto['objname']).tolist())
 
-            pdb.set_trace()
-            # after REGION is updated in the dr11/dr9 catalog for
-            # sources on the edge (see SGA.py, line 915), there should
-            # be no "missing" sources in "bb", below.
-            I = parent['REGION'] & REGIONBITS[region] != 0
-            bb = parent[I]
-            bb[~np.isin(bb['OBJNAME'], ref['OBJNAME'])]
+        for region in ['dr9-north', 'dr11-south']:  # dr11-south wins in overlaps
+            bit = REGIONBITS[region]
+            reffile = reffiles[version][region]
 
-            J = np.where(prevdiam[I[m1]] < 60.*prev['D26'][m2])[0]
-            prevdiam[I[m1[J]]] = 60.*prev['D26'][m2[J]]
+            ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'BA', 'PA', 'D26', 'D26_REF']))
+            log.info(f'Read {len(ref_tab):,d} objects from {reffile}')
 
+            # match by OBJNAME
+            m_parent, m_ref = match(parent['OBJNAME'], ref_tab['OBJNAME'])
 
-    pdb.set_trace()
+            # only objects whose REGION includes this bit
+            in_region = (parent['REGION'][m_parent] & bit) != 0
+            if veto_objnames is not None:
+                not_veto  = ~np.isin(parent['OBJNAME'][m_parent], list(veto_objnames))
+                idx_p = m_parent[in_region & not_veto]
+                idx_r = m_ref[in_region & not_veto]
+            else:
+                idx_p = m_parent[in_region]
+                idx_r = m_ref[in_region]
 
+            # reference geometry
+            ref_diam = ref_tab['D26'][idx_r].value
+            ref_ba = ref_tab['BA'][idx_r].value
+            ref_pa = ref_tab['PA'][idx_r].value
+            ref_ref = ref_version + '/' + ref_tab['D26_REF'][idx_r].value
 
+            #valid = ref_diam > 0
+            #idx_pv = idx_p[valid]
+            #diam[idx_pv] = ref_diam[valid]
+            #ba[idx_pv] = ref_ba[valid]
+            #pa[idx_pv] = ref_pa[valid]
+            #ref[idx_pv] = ref_ref[valid]
 
-    ## Pre-process the morphology column.
-    #allmorph = []
-    #for objtype, morph, basic_morph in zip(
-    #        parent['OBJTYPE'].value, parent['MORPH'].value,
-    #        parent['BASIC_MORPH'].value):
-    #    morph1 = np.array([objtype, morph, basic_morph])
-    #    morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
-    #    allmorph.append(morph1)
+            diam[idx_p] = ref_diam
+            ba[idx_p] = ref_ba
+            pa[idx_p] = ref_pa
+            ref[idx_p] = ref_ref
 
-    #log.warning('Consider removing sources that are too close to bright stars.')
 
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
@@ -3297,21 +3324,16 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     assert(len(grp) == len(np.unique(grp['SGAID'])))
 
-    # Build the group catalog but without the RESOLVED or FORCEPSF
-    # samples (e.g., SMC, LMC).
     print('Check the logic of I and make sure we get complementary sets.')
-    pdb.set_trace()
-    I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
-                      grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
-    out1 = build_group_catalog(grp[I], mp=mp)
-    try:
-        #test = grp[~I]
-        #out2 = build_group_catalog(test[:10000], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
-        out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
-    except:
-        pdb.set_trace()
+
+    # Build the group catalog but make sure the RESOLVED and FORCEPSF
+    # samples (e.g., SMC, LMC) are alone.
+    I = np.logical_or((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0,
+                      (grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
+    out1 = make_singleton_group(grp[I], group_id_start=0)
+    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     out = vstack((out1, out2))
-    del out1, out2
+    #del out1, out2
 
     # assign SGAGROUP from GROUP_NAME and check for duplicates
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])

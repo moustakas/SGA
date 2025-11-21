@@ -290,6 +290,20 @@ def _process_cluster(members: list[int]) -> np.ndarray:
     return np.asarray(edges, dtype=np.int64)
 
 
+def make_singleton_group(cat, group_id_start=0):
+    out = cat.copy(copy_data=True)
+    n = len(out)
+    names = [radec_to_groupname(out['RA'][k], out['DEC'][k]) for k in range(n)]
+    out['GROUP_ID'] = np.arange(group_id_start, group_id_start+n, dtype=np.int32)
+    out['GROUP_NAME'] = np.array(names, dtype='U10')
+    out['GROUP_MULT'] = np.ones(n, dtype=np.int16)
+    out['GROUP_PRIMARY'] = np.ones(n, dtype=bool)
+    out['GROUP_RA'] = out['RA'].astype(np.float64, copy=False)
+    out['GROUP_DEC'] = out['DEC'].astype(np.float64, copy=False)
+    out['GROUP_DIAMETER'] = out['DIAM'].astype(np.float32, copy=False)
+    return out
+
+
 def build_group_catalog(
     cat: Table,
     group_id_start: int = 0,

@@ -1,10 +1,10 @@
 # Additional sources to be added to the final parent catalog based on VI.
 #
-OBJNAME,REGION,RA,DEC,DIAM_LIT,PA_LIT,BA_LIT,MAG_LIT,COMMENT
+OBJNAME,SREGION,RA,DEC,DIAM_LIT,PA_LIT,BA_LIT,MAG_LIT,COMMENT
 DESI J0336.410-055.480,dr11-south,336.4106,-55.4806,0.4,0.0,1.0,17.,Companion to 'ESO 190-IG 008'
 WISEA J145414.69+044933.8,dr11-south,223.561215,4.826066,0.4,0.0,1.0,20.5,Companion to 'IC 1072'
 GALEXASC J020734.78+020838.5,dr11-south,31.894671,2.144136,0.5,0.0,1.0,20.5,Companion to 'UGC 01620'
 IC 0254,dr11-south,40.52075,-15.106638888888888,0.7,0.0,1.0,12.,Companion to 'NGC 0165'; inadvertently dropped in ssl-v2
-WISEA J031735.91-101850.9,dr11-south,49.399791666,-10.31405555,0.6,0.0,1.0,16.,Companion to 'NGC 1284'; inadvertently dropped in ssl-v2
+WISEA J031735.91-101850.9,dr11-south,49.399791666,-10.31405555,0.6,0.0,1.0,16.,Companion to 'NGC 1284'; dropped in ssl-v2
 CGCG 164-027,,222.034877,31.710371,0.75,0.0,1.0,15.5,Dropped in ssl-v2
 CGCG 164-028,,222.030749,31.738027,0.75,0.0,1.0,16.0,Dropped in ssl-v2

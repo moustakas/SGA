@@ -509,6 +509,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     elif vi_sample:
         version = SGA_version()
+        #version = 'v0.11'
         subdir = f'vi-{version}'
         qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/pdf'
         txtdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/txt'
