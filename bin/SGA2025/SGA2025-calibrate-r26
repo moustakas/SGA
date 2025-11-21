@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+
+"""Two-stage fast calibration + inference for galaxy isophotal radii to
+produce the "best" estimate of R_r(26) using multi-band/threshold
+measurements.
+
+Data model (Astropy Table expected):
+  Columns: R{TH}_{X}, R{TH}_ERR_{X}  for TH in {24,25,26}, X in {G,R,I,Z}
+  Plus:    SMA_MOMENT  (no per-object error available)
+  Units:   plain floats (no astropy.units). Missing values are encoded as 0.0.
+
+Stage 1 (calibration): fit errors-in-variables linear mappings that
+align each channel to the latent target y = log(R_r(26)). Uses SciPy
+ODR with robust sanitation and fallbacks. Learns per-channel extra
+scatter tau and, when needed, a default log-uncertainty for channels
+without per-object errors (e.g., SMA_MOMENT). Writes ASCII TSV.
+
+Stage 2 (inference): for any table, apply calibration and combine all
+available channels via inverse-variance weighting in log-space to
+return R_r(26), then convert to D26 (diameter, arcmin).
+
+Public API (import these):
+  - calibrate_from_table(table, calib_path, *, covariates=None, covariate_names=None)
+  - infer_best_r26(table, calib_path, *, covariates=None, add_columns=True, include_direct_r26=True)
+  - load_calibration(calib_path), save_calibration(cal, path)
+
+CLI (optional):
+  python SGA2025-calibrate-r26 calibrate  input.fits  r26_calibration.tsv
+  python SGA2025-calibrate-r26 infer      input.fits  r26_calibration.tsv  output.fits
+
+Author: ChatGPT (SGA-2025 helper)
+
+
+SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.10-dr11-south.fits r26-calibration-coeff.tsv
+
+
+"""
+import sys
+from astropy.table import Table, vstack
+from SGA.calibrate import calibrate_from_table, infer_best_r26
+
+from SGA.logger import log
+
+
+def _read_table(path: str) -> Table:
+    return Table.read(path, 'ELLIPSE', format="fits")
+
+
+def main(argv=None) -> None:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if len(argv) < 1 or argv[0] in {"-h", "--help"}:
+        print("Usage:\n"
+              "  calibrate  INPUT.fits CALIB.tsv\n"
+              "  infer      INPUT.fits CALIB.tsv  OUTPUT.(fits|ecsv)\n", file=sys.stderr)
+        sys.exit(2)
+
+    cmd = argv[0].lower()
+    if cmd == "calibrate":
+        if len(argv) < 3:
+            sys.exit("calibrate requires INPUT and CALIB.tsv")
+        in_path, calib_path = argv[1], argv[2]
+        tbl = _read_table(in_path)
+        ## temporary hack
+        #in_path1, in_path2, calib_path = argv[1], argv[2], argv[3]
+        #tbl1 = _read_table(in_path1)
+        #tbl2 = _read_table(in_path2)
+        #tbl = vstack((tbl1, tbl2))
+        calibrate_from_table(tbl, calib_path)
+    elif cmd == "infer":
+        if len(argv) < 4:
+            sys.exit("infer requires INPUT, CALIB.tsv, and OUTPUT path")
+        in_path, calib_path, out_path = argv[1], argv[2], argv[3]
+        tbl = _read_table(in_path)
+        infer_best_r26(tbl, calib_path, add_columns=True, include_direct_r26=True)
+        tbl.write(out_path, overwrite=True)
+        log.info(f"Wrote {out_path}")
+    else:
+        sys.exit(f"Unknown command: {cmd}")
+
+
+if __name__ == "__main__":
+    main()

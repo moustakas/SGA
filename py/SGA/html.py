@@ -630,7 +630,7 @@ def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwi
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if dataset == 'opt':
-                sma_sbthresh, label_sbthresh = SGA_diameter(Table(obj), radius_arcsec=True)
+                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(Table(obj), radius_arcsec=True)
                 sma_sbthresh = sma_sbthresh[0]
                 label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
 
@@ -808,7 +808,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if idata == 0:
-                sma_sbthresh, label_sbthresh = SGA_diameter(Table(obj), radius_arcsec=True)
+                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(Table(obj), radius_arcsec=True)
                 sma_sbthresh = sma_sbthresh[0]
                 label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
                 #r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'

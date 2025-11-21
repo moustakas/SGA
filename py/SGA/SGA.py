@@ -82,6 +82,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # no duplicate groups; cleanup of REGION bits; some dropped
         # sources via VI.
         version = 'v0.11'
+
+        # ...
+        #version = 'v0.12'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10'
@@ -89,6 +92,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # parent_version bump
         version = 'v0.11'
+        #  parent_version = v0.11
+
+        #version = 'v0.12'
         #  parent_version = v0.11
     return version
 
@@ -195,7 +201,7 @@ def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
 
 def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
-                  build_catalog=False, clobber=False, clobber_overwrite=None,
+                  clobber=False, clobber_overwrite=None,
                   no_groups=False, verbose=False, datadir=None, htmldir=None,
                   size=1, mp=1):
     """Figure out which files are missing and still need to be processed.
@@ -249,10 +255,6 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         suffix = 'ellipse'
         filesuffix = '-ellipse.isdone'
         dependson = '-coadds.isdone'
-    elif build_catalog:
-        suffix = 'build-catalog'
-        filesuffix = '-SGA.isdone'
-        dependson = '-ellipse.isdone'
     elif htmlplots:
         suffix = 'html'
         filesuffix = '-montage.png'
@@ -271,10 +273,10 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         log.critical(msg)
         raise ValueError(msg)
 
-    # Make clobber=False for build_catalog and htmlindex because we're not
-    # making the files here, we're just looking for them. The argument
+    # Make clobber=False for htmlindex because we're not making the
+    # files here, we're just looking for them. The argument
     # args.clobber gets used downstream.
-    if htmlindex or build_catalog:
+    if htmlindex:
         clobber = False
 
     if clobber_overwrite is not None:
@@ -353,6 +355,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             raise ValueError(msg)
 
     if final_sample:
+        raise ValueError('This code block is not correct...')
         if tractor:
             ext = 'TRACTOR'
         else:
@@ -589,54 +592,34 @@ def SGA_diameter(ellipse, radius_arcsec=False):
 
     """
     from SGA.ellipse import ELLIPSEMODE
+    from SGA.calibrate import infer_best_r26
 
-    radius = np.zeros(len(ellipse))
-    ref = np.zeros(len(ellipse), '<U7')
+    d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
+    #if len(d26) == 1:
+    #    d26 = d26[0]
+    #    d26_err = d26_err[0]
+    #    d26_ref = d26_ref[0]
+    #    d26_weight = d26_weight[0]
 
-    # if FIXGEO, use SMA_INIT
-    I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
+    I = np.isin(d26_ref, 'moment')
     if np.any(I):
-        radius[I] = ellipse['SMA_INIT'][I].value
-        ref[I] = 'R(init)'
-
-    # r-band R(26)
-    I =  (radius == 0.) * (ellipse['R26_R'] > 0.) * (ellipse['R26_ERR_R'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['R26_R'][I].value
-        ref[I] = 'R26_R'
-
-    # r-band R(25)
-    I =  (radius == 0.) * (ellipse['R25_R'] > 0.) * (ellipse['R25_ERR_R'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['R25_R'][I].value * 1.28 # median factor
-        ref[I] = 'R25_R'
-
-    # r-band R(24)
-    I =  (radius == 0.) * (ellipse['R24_R'] > 0.) * (ellipse['R24_ERR_R'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['R24_R'][I].value * 1.70 # median factor
-        ref[I] = 'R24_R'
-
-    # sma_moment
-    I =  (radius == 0.) * (ellipse['SMA_MOMENT'] > 0.)
-    if np.any(I):
-        radius[I] = ellipse['SMA_MOMENT'][I].value * 1.19 # median factor
-        ref[I] = 'MOMENT'
+        d26_ref[I] = 'mom' # shorten for the data model
+    d26_ref = d26_ref.astype('<U3')
 
     if radius_arcsec:
-        return radius, ref
+        r26 = d26 / 2. * 60. # [radius, arcsec]
+        r26_err = d26_err / 2. * 60.   # [radius, arcsec]
+        return r26, r26_err, d26_ref, d26_weight
     else:
-        # convert radius-->diameter and arcsec-->arcmin
-        diam = radius * 2. / 60. # [arcmin]
-        return np.float32(diam), ref
+        return d26, d26_err, d26_ref, d26_weight
 
 
 def SGA_geometry(ellipse):
 
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    diam, diam_ref = SGA_diameter(ellipse)
-    return diam, ba, pa, diam_ref
+    diam, diam_err, diam_ref, diam_weight = SGA_diameter(ellipse)
+    return diam, ba, pa, diam_err, diam_ref, diam_weight
 
 
 def SGA_datamodel(ellipse, bands, all_bands):
@@ -735,9 +718,10 @@ def SGA_datamodel(ellipse, bands, all_bands):
     # final diameters
     dmcols += [
         ('D26', np.float32, u.arcmin),
+        ('D26_ERR', np.float32, u.arcmin),
+        ('D26_REF', '<U3', None),
         ('BA', np.float32, None),
         ('PA', np.float32, u.degree),
-        ('D26_REF', '<U7', None),
     ]
 
     out = Table()
@@ -756,7 +740,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
                     I = np.logical_or(np.isnan(val.value), np.logical_not(np.isfinite(val.value)))
                 if np.any(I):
                     log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
-                    pdb.set_trace()
+                    #pdb.set_trace()
                     I = np.where(I)[0]
                     check.append(I)
                     val[I] = 0
@@ -766,261 +750,6 @@ def SGA_datamodel(ellipse, bands, all_bands):
         print(','.join(ellipse['GROUP_NAME'][check].value))
 
     return out
-
-
-def _empty_tractor(cat=None):
-    if cat is not None:
-        for col in cat.colnames:
-            if cat[col].dtype == bool:
-                cat[col] = True # False # [brick_primary]
-            else:
-                cat[col] *= 0
-        return cat
-    else:
-        # fragile!
-        # fitsio.read('/global/cfs/cdirs/cosmo/work/legacysurvey/dr11a/tractor/175/tractor-1758m007.fits').dtype.descr
-        # fitsio.read('/pscratch/sd/i/ioannis/SGA2025-v0.10/dr11-south/068/06860m2556/SGA2025_06860m2556-tractor.fits').dtype.descr
-        COLS = [
-            ('ls_id_dr11', '>i8'),
-            ('release', '>i2'),
-            ('brickid', '>i4'),
-            ('brickname', '<U8'),
-            ('objid', '>i4'),
-            ('brick_primary', '|b1'),
-            ('maskbits', '>i4'),
-            ('fitbits', '>i2'),
-            ('type', '<U3'),
-            ('ra', '>f8'),
-            ('dec', '>f8'),
-            ('ra_ivar', '>f4'),
-            ('dec_ivar', '>f4'),
-            ('bx', '>f4'),
-            ('by', '>f4'),
-            ('dchisq', '>f4', (5,)),
-            ('ebv', '>f4'),
-            ('mjd_min', '>f8'),
-            ('mjd_max', '>f8'),
-            ('nearest_neighbor', '>f4'),
-            ('ref_cat', '<U2'),
-            ('ref_id', '>i8'),
-            ('pmra', '>f4'),
-            ('pmdec', '>f4'),
-            ('parallax', '>f4'),
-            ('pmra_ivar', '>f4'),
-            ('pmdec_ivar', '>f4'),
-            ('parallax_ivar', '>f4'),
-            ('ref_epoch', '>f4'),
-            ('gaia_phot_g_mean_mag', '>f4'),
-            ('gaia_phot_g_mean_flux_over_error', '>f4'),
-            ('gaia_phot_g_n_obs', '>i4'),
-            ('gaia_phot_bp_mean_mag', '>f4'),
-            ('gaia_phot_bp_mean_flux_over_error', '>f4'),
-            ('gaia_phot_bp_n_obs', '>i4'),
-            ('gaia_phot_rp_mean_mag', '>f4'),
-            ('gaia_phot_rp_mean_flux_over_error', '>f4'),
-            ('gaia_phot_rp_n_obs', '>i4'),
-            ('gaia_phot_variable_flag', '|b1'),
-            ('gaia_astrometric_excess_noise', '>f4'),
-            ('gaia_astrometric_excess_noise_sig', '>f4'),
-            ('gaia_astrometric_n_obs_al', '>i2'),
-            ('gaia_astrometric_n_good_obs_al', '>i2'),
-            ('gaia_astrometric_weight_al', '>f4'),
-            ('gaia_duplicated_source', '|b1'),
-            ('gaia_a_g_val', '>f4'),
-            ('gaia_e_bp_min_rp_val', '>f4'),
-            ('gaia_phot_bp_rp_excess_factor', '>f4'),
-            ('gaia_astrometric_sigma5d_max', '>f4'),
-            ('gaia_astrometric_params_solved', '|u1'),
-            ('flux_g', '>f4'),
-            ('flux_r', '>f4'),
-            ('flux_i', '>f4'),
-            ('flux_z', '>f4'),
-            ('flux_w1', '>f4'),
-            ('flux_w2', '>f4'),
-            ('flux_w3', '>f4'),
-            ('flux_w4', '>f4'),
-            ('flux_nuv', '>f4'),
-            ('flux_fuv', '>f4'),
-            ('flux_ivar_g', '>f4'),
-            ('flux_ivar_r', '>f4'),
-            ('flux_ivar_i', '>f4'),
-            ('flux_ivar_z', '>f4'),
-            ('flux_ivar_w1', '>f4'),
-            ('flux_ivar_w2', '>f4'),
-            ('flux_ivar_w3', '>f4'),
-            ('flux_ivar_w4', '>f4'),
-            ('flux_ivar_nuv', '>f4'),
-            ('flux_ivar_fuv', '>f4'),
-            ('fiberflux_g', '>f4'),
-            ('fiberflux_r', '>f4'),
-            ('fiberflux_i', '>f4'),
-            ('fiberflux_z', '>f4'),
-            ('fibertotflux_g', '>f4'),
-            ('fibertotflux_r', '>f4'),
-            ('fibertotflux_i', '>f4'),
-            ('fibertotflux_z', '>f4'),
-            ('apflux_g', '>f4', (8,)),
-            ('apflux_r', '>f4', (8,)),
-            ('apflux_i', '>f4', (8,)),
-            ('apflux_z', '>f4', (8,)),
-            ('apflux_resid_g', '>f4', (8,)),
-            ('apflux_resid_r', '>f4', (8,)),
-            ('apflux_resid_i', '>f4', (8,)),
-            ('apflux_resid_z', '>f4', (8,)),
-            ('apflux_blobresid_g', '>f4', (8,)),
-            ('apflux_blobresid_r', '>f4', (8,)),
-            ('apflux_blobresid_i', '>f4', (8,)), # missing from DR11?
-            ('apflux_blobresid_z', '>f4', (8,)),
-            ('apflux_ivar_g', '>f4', (8,)),
-            ('apflux_ivar_r', '>f4', (8,)),
-            ('apflux_ivar_i', '>f4', (8,)),
-            ('apflux_ivar_z', '>f4', (8,)),
-            ('apflux_masked_g', '>f4', (8,)),
-            ('apflux_masked_r', '>f4', (8,)),
-            ('apflux_masked_i', '>f4', (8,)),
-            ('apflux_masked_z', '>f4', (8,)),
-            ('apflux_w1', '>f4', (5,)),
-            ('apflux_w2', '>f4', (5,)),
-            ('apflux_w3', '>f4', (5,)),
-            ('apflux_w4', '>f4', (5,)),
-            ('apflux_resid_w1', '>f4', (5,)),
-            ('apflux_resid_w2', '>f4', (5,)),
-            ('apflux_resid_w3', '>f4', (5,)),
-            ('apflux_resid_w4', '>f4', (5,)),
-            ('apflux_ivar_w1', '>f4', (5,)),
-            ('apflux_ivar_w2', '>f4', (5,)),
-            ('apflux_ivar_w3', '>f4', (5,)),
-            ('apflux_ivar_w4', '>f4', (5,)),
-            ('apflux_nuv', '>f4', (5,)),
-            ('apflux_fuv', '>f4', (5,)),
-            ('apflux_resid_nuv', '>f4', (5,)),
-            ('apflux_resid_fuv', '>f4', (5,)),
-            ('apflux_ivar_nuv', '>f4', (5,)),
-            ('apflux_ivar_fuv', '>f4', (5,)),
-            ('mw_transmission_g', '>f4'),
-            ('mw_transmission_r', '>f4'),
-            ('mw_transmission_i', '>f4'),
-            ('mw_transmission_z', '>f4'),
-            ('mw_transmission_w1', '>f4'),
-            ('mw_transmission_w2', '>f4'),
-            ('mw_transmission_w3', '>f4'),
-            ('mw_transmission_w4', '>f4'),
-            ('mw_transmission_nuv', '>f4'),
-            ('mw_transmission_fuv', '>f4'),
-            ('nobs_g', '>i2'),
-            ('nobs_r', '>i2'),
-            ('nobs_i', '>i2'),
-            ('nobs_z', '>i2'),
-            ('nobs_w1', '>i2'),
-            ('nobs_w2', '>i2'),
-            ('nobs_w3', '>i2'),
-            ('nobs_w4', '>i2'),
-            ('rchisq_g', '>f4'),
-            ('rchisq_r', '>f4'),
-            ('rchisq_i', '>f4'),
-            ('rchisq_z', '>f4'),
-            ('rchisq_w1', '>f4'),
-            ('rchisq_w2', '>f4'),
-            ('rchisq_w3', '>f4'),
-            ('rchisq_w4', '>f4'),
-            ('fracflux_g', '>f4'),
-            ('fracflux_r', '>f4'),
-            ('fracflux_i', '>f4'),
-            ('fracflux_z', '>f4'),
-            ('fracflux_w1', '>f4'),
-            ('fracflux_w2', '>f4'),
-            ('fracflux_w3', '>f4'),
-            ('fracflux_w4', '>f4'),
-            ('fracmasked_g', '>f4'),
-            ('fracmasked_r', '>f4'),
-            ('fracmasked_i', '>f4'),
-            ('fracmasked_z', '>f4'),
-            ('fracin_g', '>f4'),
-            ('fracin_r', '>f4'),
-            ('fracin_i', '>f4'),
-            ('fracin_z', '>f4'),
-            ('ngood_g', '>i2'),
-            ('ngood_r', '>i2'),
-            ('ngood_i', '>i2'),
-            ('ngood_z', '>i2'),
-            ('anymask_g', '>i2'),
-            ('anymask_r', '>i2'),
-            ('anymask_i', '>i2'),
-            ('anymask_z', '>i2'),
-            ('allmask_g', '>i2'),
-            ('allmask_r', '>i2'),
-            ('allmask_i', '>i2'),
-            ('allmask_z', '>i2'),
-            ('wisemask_w1', '|u1'),
-            ('wisemask_w2', '|u1'),
-            ('psfsize_g', '>f4'),
-            ('psfsize_r', '>f4'),
-            ('psfsize_i', '>f4'),
-            ('psfsize_z', '>f4'),
-            ('psfdepth_g', '>f4'),
-            ('psfdepth_r', '>f4'),
-            ('psfdepth_i', '>f4'),
-            ('psfdepth_z', '>f4'),
-            ('galdepth_g', '>f4'),
-            ('galdepth_r', '>f4'),
-            ('galdepth_i', '>f4'),
-            ('galdepth_z', '>f4'),
-            ('nea_g', '>f4'),
-            ('nea_r', '>f4'),
-            ('nea_i', '>f4'), # missing from DR11?
-            ('nea_z', '>f4'),
-            ('blob_nea_g', '>f4'),
-            ('blob_nea_r', '>f4'),
-            ('blob_nea_i', '>f4'), # missing from DR11?
-            ('blob_nea_z', '>f4'),
-            ('psfdepth_w1', '>f4'),
-            ('psfdepth_w2', '>f4'),
-            ('psfdepth_w3', '>f4'),
-            ('psfdepth_w4', '>f4'),
-            ('psfdepth_nuv', '>f4'),
-            ('psfdepth_fuv', '>f4'),
-            ('wise_coadd_id', '<U8'),
-            ('wise_x', '>f4'),
-            ('wise_y', '>f4'),
-            #('lc_flux_w1', '>f4', (19,)),
-            #('lc_flux_w2', '>f4', (19,)),
-            #('lc_flux_ivar_w1', '>f4', (19,)),
-            #('lc_flux_ivar_w2', '>f4', (19,)),
-            #('lc_nobs_w1', '>i2', (19,)),
-            #('lc_nobs_w2', '>i2', (19,)),
-            #('lc_fracflux_w1', '>f4', (19,)),
-            #('lc_fracflux_w2', '>f4', (19,)),
-            #('lc_rchisq_w1', '>f4', (19,)),
-            #('lc_rchisq_w2', '>f4', (19,)),
-            #('lc_mjd_w1', '>f8', (19,)),
-            #('lc_mjd_w2', '>f8', (19,)),
-            #('lc_epoch_index_w1', '>i2', (19,)),
-            #('lc_epoch_index_w2', '>i2', (19,)),
-            ('sersic', '>f4'),
-            ('sersic_ivar', '>f4'),
-            ('shape_r', '>f4'),
-            ('shape_r_ivar', '>f4'),
-            ('shape_e1', '>f4'),
-            ('shape_e1_ivar', '>f4'),
-            ('shape_e2', '>f4'),
-            ('shape_e2_ivar', '>f4'),
-        ]
-        tractor = Table()
-        for col in COLS:
-            colname = col[0]
-            if len(col) == 2:
-                dtype, shape = col[1], (1,)
-            else:
-                dtype, shape = col[1], (1,) + col[2]
-            #if colname == 'dchisq':
-            #    pdb.set_trace()
-            tractor[colname] = np.zeros(shape=shape, dtype=dtype)
-        return tractor
-
-
-def _build_catalog_one(args):
-    """Wrapper function for the multiprocessing."""
-    return build_catalog_one(*args)
 
 
 def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
@@ -1034,6 +763,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     from os import getpid
     from glob import glob
     from legacypipe.bits import MASKBITS
+
+    from SGA.io import empty_tractor
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
 
 
@@ -1043,7 +774,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         group=not no_groups, datadir=datadir)
 
     if not os.path.isdir(gdir):
-        log.warning(f'Group directory {gdir} does not exist.')
+        #log.warning(f'Group directory {gdir} does not exist.')
+        for obj in grpsample:
+            log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         return Table(), Table()
 
     # gather the ellipse catalogs
@@ -1106,8 +839,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
     if not os.path.isfile(tractorfile):
         if len(ellipse) == 1 and ellipse['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
-            log.warning('Sources with ELLIPSEMODEL["RESOLVED"] do not have Tractor catalogs.')
-            tractor_sga1 = _empty_tractor()
+            #log.warning('Sources with ELLIPSEMODEL["RESOLVED"] do not have Tractor catalogs.')
+            tractor_sga1 = empty_tractor()
             # should we add ra,dec,shape_{r,e1,e2}??
             tractor_sga1['ref_cat'] = REFCAT
             tractor_sga1['ref_id'] = ellipse[REFIDCOLUMN]
@@ -1164,8 +897,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
                 #    tractor_sga.append(tractor[I])
                 if len(I) == 0:
                     assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
-                    #tractor_sga1 = _empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
-                    tractor_sga1 = _empty_tractor()
+                    #tractor_sga1 = empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
+                    tractor_sga1 = empty_tractor()
                     if tractor_sga1['gaia_phot_variable_flag'].dtype == '<U13':
                         #print('FIXING PROBLEM! SGA')
                         tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
@@ -1178,6 +911,10 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if len(tractor_sga) > 0:
         tractor_sga = vstack(tractor_sga)
         tractor = vstack((tractor, tractor_sga))
+
+    # FIXME!
+    log.warning('LOOP THROUGH THE FULLSAMPLE COLUMNS AND UPDATE ELLIPSE (e.g., REGION bits may have changed!)')
+
 
     return ellipse, tractor
 
@@ -1258,9 +995,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             if wisesize:
                 outprefix = 'SGA2025-wisesize'
             else:
-                version = 'test'
-                outprefix = 'SGA2025-test'
-                #outprefix = 'SGA2025'
+                if True:
+                    outprefix = 'SGA2025'
+                else:
+                    version = 'test'
+                    outprefix = 'SGA2025-test'
             outfile = f'{outprefix}-{version}-{region}.fits'
             kdoutfile = f'{outprefix}-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
@@ -1304,13 +1043,13 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             if os.path.isfile(slicefile) and not clobber:
-                log.warning(f'Use --clobber to overwrite existing catalog {slicefile}')
+                log.warning(f'Skipping existing catalog {slicefile}')
                 continue
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
         #print('Hack!')
-        #raslices_todo = ['000']#, '001']#, '002']
+        #raslices_todo = ['134', '162']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -1415,8 +1154,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         #log.info(f'Rank {rank:03} gathering catalogs from {len(raslices_todo)} RA slices.')
 
         ellipse, tractor = [], []
-        for islice, raslice in enumerate(raslices_todo):
+        for islice, raslice in enumerate(uraslices):
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
+            if not os.path.isfile(slicefile):
+                log.info(f'Skipping missing file {slicefile}')
+                continue
             ellipse.append(Table(fitsio.read(slicefile, 'ELLIPSE')))
             tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
             #os.remove(slicefile)
@@ -1436,16 +1178,16 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         I = np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])
         if not np.all(I):
             log.warning('ref_id mismatch between ellipse and tractor!')
-            pdb.set_trace()
+            #pdb.set_trace()
         #tractor[np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])]
 
         # re-organize the ellipse table to match the datamodel and assign units
         outellipse = SGA_datamodel(ellipse, bands, all_bands)
 
         # final geometry
-        diam, ba, pa, diam_ref = SGA_geometry(outellipse)
-        for col, val in zip(['D26', 'BA', 'PA', 'D26_REF'],
-                            [diam, ba, pa, diam_ref]):
+        diam, ba, pa, diam_err, diam_ref, _ = SGA_geometry(outellipse)
+        for col, val in zip(['D26', 'BA', 'PA', 'D26_ERR', 'D26_REF'],
+                            [diam, ba, pa, diam_err, diam_ref]):
             outellipse[col] = val
 
         I = np.logical_or(outellipse['D26'] <= 0., np.isnan(outellipse['D26']))

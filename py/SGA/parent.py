@@ -2870,6 +2870,53 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
+def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
+                        diamcolumn='D26', exclude_group_names=None):
+    """Return a new catalog containing only groups with at least
+    `minmult` members whose *all* members have diameters between
+    `mindiam` and `maxdiam` based on `diamcolumn` (in arcminutes).
+
+    Early catalogs had duplicate GROUP_IDs, so use GROUP_NAME.
+
+    """
+    # Groups to exclude entirely (e.g. LVD groups)
+    if exclude_group_names is None:
+        exclude_mask = np.zeros(len(cat), dtype=bool)
+    else:
+        exclude_mask = np.isin(cat['GROUP_NAME'], exclude_group_names)
+
+    # Only consider groups with >= minmult members
+    mask_multi = cat['GROUP_MULT'] >= minmult
+    if maxmult is not None:
+        mask_multi *= (cat['GROUP_MULT'] <= maxmult)
+    mask_multi &= ~exclude_mask
+
+    gname = cat['GROUP_NAME'][mask_multi]
+    diam = cat[diamcolumn][mask_multi]
+
+    # Sort by group name so each group is contiguous
+    order = np.argsort(gname)
+    gname_sorted = gname[order]
+    diam_sorted = diam[order]
+
+    # For each group, find start index and per-group min/max diameter
+    unique_gnames, idx_start = np.unique(gname_sorted, return_index=True)
+    group_max = np.maximum.reduceat(diam_sorted, idx_start)
+
+    # Groups where ALL members are < mindiam  ⇒ max < mindiam
+    rem_group_names = unique_gnames[group_max < mindiam]
+    rem_rows = np.isin(cat['GROUP_NAME'], rem_group_names) & mask_multi
+    keep_rows = (~rem_rows) & mask_multi
+
+    rem = cat[rem_rows]
+    rem = rem[np.lexsort((rem[diamcolumn], rem['GROUP_NAME']))]
+
+    out = cat[keep_rows]
+    out = out[np.lexsort((out[diamcolumn], out['GROUP_NAME']))]
+
+    return out, rem
+
+
 def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
@@ -2884,6 +2931,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     from SGA.sky import find_close, in_ellipse_mask_sky
     #from SGA.brick import brickname as get_brickname
 
+
     version = SGA_version(parent=True)
     version_nocuts = SGA_version(nocuts=True)
     version_archive = SGA_version(archive=True)
@@ -2895,11 +2943,18 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
 
-    cols = ['OBJNAME',
-            #'OBJTYPE', 'MORPH', 'BASIC_MORPH',
-            'RA', 'DEC', 'PGC', #'RESOLVED',
-            #'STARFDIST', 'STARDIST', 'STARMAG',
-            'REGION']#, 'ROW_PARENT']
+
+    # mapping between minimum diameter cut and version number
+    mindiam_by_version = {'default': 20., 'v0.10': 20., 'v0.11': 20., 'v0.12': 27.}
+
+    # reference catalog for updating initial diameters from the literature
+    #reffiles = None
+    reffiles = {
+        'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+        'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+    }
+
+    cols = ['OBJNAME', 'RA', 'DEC', 'PGC', 'REGION']
 
     # merge the two regions
     parent = []
@@ -2981,15 +3036,29 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     custom = Table.read(customfile, format='csv', comment='#')
     log.info(f'Read {len(custom)} objects from {customfile}')
+    try:
+        assert(len(custom) == len(np.unique(custom['OBJNAME'])))
+    except:
+        log.info('Warning: duplicates in parent-custom file!')
+        #raise ValueError()
+        oo, cc = np.unique(custom['OBJNAME'], return_counts=True)
+        log.info(oo[cc>1])
+        pdb.set_trace()
 
     moreparent = _empty_parent(parent[:1], len(custom))
     for col in custom.colnames:
         if col == 'COMMENT':
             continue
-        if col == 'REGION':
-            moreparent[col] = [REGIONBITS[cust[col]] for cust in custom]
+        moreparent[col] = custom[col]
+
+    # special handling of REGION; if masked then it's both regions
+    for iobj, (reg, mask) in enumerate(zip(custom['REGION'].value, custom['REGION'].mask)):
+        if mask:
+            moreparent['REGION'][iobj] = REGIONBITS['dr11-south'] + REGIONBITS['dr9-north']
         else:
-            moreparent[col] = custom[col]
+            moreparent['REGION'][iobj] = REGIONBITS[reg]
+    print('double-check the masked logic here')
+    pdb.set_trace()
     #moreparent[custom.colnames[:-1]]
 
     # update the Gaia masking bits
@@ -3008,6 +3077,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     try:
         assert(len(drop) == len(np.unique(drop['objname'])))
     except:
+        log.info('Warning: duplicates in parent-drop file!')
+        #raise ValueError()
+        oo, cc = np.unique(drop['objname'], return_counts=True)
+        log.info(oo[cc>1])
         pdb.set_trace()
 
     # drop crap from both/all regions
@@ -3031,8 +3104,12 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     except:
         pdb.set_trace()
 
-    # sanity check on initial diameters
-    mindiam = 20. # [arcsec]
+    # specify mindiam
+    if version in mindiam_by_version.keys():
+        mindiam = mindiam_by_version[version] # [arcsec]
+    else:
+        mindiam = mindiam_by_version['default'] # [arcsec]
+
     diam, ba, pa, ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
     origdiam, _, _, _ = choose_geometry(parent, mindiam=0.)
@@ -3046,7 +3123,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # Restore diameters for LVD sources which have diam<mindiam (e.g.,
     # Clump I)
     I = (parent['ROW_LVD'] != -99) * (diam <= mindiam)
-    log.info(f'Restoring {np.sum(I)} LVD diameters that are <mindiam={mindiam:.1f}')
+    log.info(f'Restoring {np.sum(I)} LVD diameters that are <mindiam={mindiam:.1f} arcsec')
     diam[I] = origdiam[I]
 
     I = diam == mindiam
@@ -3059,6 +3136,14 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
     props = Table.read(propsfile, format='csv', comment='#')
     log.info(f'Read {len(props)} objects from {propsfile}')
+    try:
+        assert(len(props) == len(np.unique(props['objname'])))
+    except:
+        log.info('Warning: duplicates in parent-properties file!')
+        #raise ValueError()
+        oo, cc = np.unique(proprs['objname'], return_counts=True)
+        log.info(oo[cc>1])
+        pdb.set_trace()
 
     for prop in props:
         objname = prop['objname']
@@ -3093,6 +3178,34 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                     pa[I] = newval
                 elif col == 'ba':
                     ba[I] = newval
+
+    # If there is a reference catalog of diameters, use it here.
+    if reffiles:
+        prevdiam = np.zeros(len(parent))
+        for region in ['dr9-north', 'dr11-south']:
+            reffile = reffiles[region]
+            ref = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'D26', 'D26_ERR']))
+            log.info(f'Read {len(ref):,d} objects from {reffile}')
+
+            # this will prefer dr11-south initial diameters over
+            # dr9-north since dr11-south goes last
+            m1, m2 = match(parent['OBJNAME'], ref['OBJNAME'])
+
+            pdb.set_trace()
+            # after REGION is updated in the dr11/dr9 catalog for
+            # sources on the edge (see SGA.py, line 915), there should
+            # be no "missing" sources in "bb", below.
+            I = parent['REGION'] & REGIONBITS[region] != 0
+            bb = parent[I]
+            bb[~np.isin(bb['OBJNAME'], ref['OBJNAME'])]
+
+            J = np.where(prevdiam[I[m1]] < 60.*prev['D26'][m2])[0]
+            prevdiam[I[m1[J]]] = 60.*prev['D26'][m2[J]]
+
+
+    pdb.set_trace()
+
+
 
     ## Pre-process the morphology column.
     #allmorph = []
@@ -3186,6 +3299,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # Build the group catalog but without the RESOLVED or FORCEPSF
     # samples (e.g., SMC, LMC).
+    print('Check the logic of I and make sure we get complementary sets.')
+    pdb.set_trace()
     I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
                       grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
     out1 = build_group_catalog(grp[I], mp=mp)
@@ -3213,7 +3328,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # will think that a galaxy is missing for reasons other than there
     # are no data.
     # bits
-    I = (out['GROUP_PRIMARY']) & (out['GROUP_MULT'] > 2)
+    I = (out['GROUP_PRIMARY']) & (out['GROUP_MULT'] > 1)
     drop_groupid = []
     strip_groups = []
     for groupid in out['GROUP_ID'][I]:

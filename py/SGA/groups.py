@@ -232,7 +232,7 @@ def _process_cluster(members: list[int]) -> np.ndarray:
     dec0 = float(np.median(DEC[idx]))
     cosd0 = math.cos(dec0 * DEG2RAD)
     ra0 = float(np.median(RA[idx]))
-    dx = (RA[idx] - ra0) * cosd0
+    dx = _angdiff_deg(RA[idx], ra0) * cosd0
     dy = (DEC[idx] - dec0)
 
     cell_deg = p['cell_arcmin'] / ARCMIN_PER_DEG
@@ -311,6 +311,7 @@ def build_group_catalog(
     contain_margin: float = 0.50,              # expansion on axes (1+margin)
     merge_centers: bool = True,                # merge groups with centers within threshold
     merge_sep_arcsec: float = 52.,             # merge groups closer than this value
+    min_group_diam_arcsec: float = 30.,        # minimum group diameter [arcsec]
 ) -> Table:
     """
     Build a mosaic-friendly group catalog using a hybrid anisotropic rule.
@@ -472,13 +473,15 @@ def build_group_catalog(
 
         max_extent = 0.0
         for k in members:
-            dra = (RA[k] - ra_c) * math.cos(dec_c * DEG2RAD)
+            dra = _angdiff_deg(RA[k], ra_c) * math.cos(dec_c * DEG2RAD)
             ddec = (DEC[k] - dec_c)
             dcen_arcmin = math.hypot(dra, ddec) * ARCMIN_PER_DEG
             rk = 0.5 * DIAM[k]
             if dcen_arcmin + rk > max_extent:
                 max_extent = dcen_arcmin + rk
-        grp_diam[gidx] = np.float32(2.0 * max_extent)
+        # minimum group diameter [arcmin]
+        #grp_diam[gidx] = np.float32(2.0 * max_extent)
+        grp_diam[gidx] = max(2. * max_extent, min_group_diam_arcsec/60.)
         grp_primary[gidx] = int(members[np.argmax(DIAM[members])])
 
     row_group_id = group_ids
