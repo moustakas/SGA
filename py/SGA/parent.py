@@ -2871,17 +2871,19 @@ def build_parent_archive(verbose=False, overwrite=False):
 
 
 def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
-                        diamcolumn='D26', exclude_group_ids=None):
+                        diamcolumn='D26', exclude_group_names=None):
     """Return a new catalog containing only groups with at least
     `minmult` members whose *all* members have diameters between
     `mindiam` and `maxdiam` based on `diamcolumn` (in arcminutes).
 
+    Early catalogs had duplicate GROUP_IDs, so use GROUP_NAME.
+
     """
     # Groups to exclude entirely (e.g. LVD groups)
-    if exclude_group_ids is None:
+    if exclude_group_names is None:
         exclude_mask = np.zeros(len(cat), dtype=bool)
     else:
-        exclude_mask = np.isin(cat['GROUP_ID'], exclude_group_ids)
+        exclude_mask = np.isin(cat['GROUP_NAME'], exclude_group_names)
 
     # Only consider groups with >= minmult members
     mask_multi = cat['GROUP_MULT'] >= minmult
@@ -2889,21 +2891,21 @@ def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
         mask_multi *= (cat['GROUP_MULT'] <= maxmult)
     mask_multi &= ~exclude_mask
 
-    gid  = cat['GROUP_ID'][mask_multi]
+    gname = cat['GROUP_NAME'][mask_multi]
     diam = cat[diamcolumn][mask_multi]
 
-    # Sort by group ID so each group is contiguous
-    order       = np.argsort(gid)
-    gid_sorted  = gid[order]
+    # Sort by group name so each group is contiguous
+    order = np.argsort(gname)
+    gname_sorted = gname[order]
     diam_sorted = diam[order]
 
     # For each group, find start index and per-group min/max diameter
-    unique_gids, idx_start = np.unique(gid_sorted, return_index=True)
+    unique_gnames, idx_start = np.unique(gname_sorted, return_index=True)
     group_max = np.maximum.reduceat(diam_sorted, idx_start)
 
     # Groups where ALL members are < mindiam  ⇒ max < mindiam
-    rem_group_ids = unique_gids[group_max < mindiam]
-    rem_rows = np.isin(cat['GROUP_ID'], rem_group_ids) & mask_multi
+    rem_group_names = unique_gnames[group_max < mindiam]
+    rem_rows = np.isin(cat['GROUP_NAME'], rem_group_names) & mask_multi
     keep_rows = (~rem_rows) & mask_multi
 
     rem = cat[rem_rows]
@@ -3297,6 +3299,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # Build the group catalog but without the RESOLVED or FORCEPSF
     # samples (e.g., SMC, LMC).
+    print('Check the logic of I and make sure we get complementary sets.')
+    pdb.set_trace()
     I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
                       grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
     out1 = build_group_catalog(grp[I], mp=mp)

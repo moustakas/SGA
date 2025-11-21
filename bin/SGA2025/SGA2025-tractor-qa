@@ -23,7 +23,8 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr11-south --vi-sample=3
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=4
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=5
-
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=6
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=7
 
 """
 
@@ -39,6 +40,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.gridspec as gridspec
 from matplotlib.image import imread
+
+from PIL import Image
+Image.MAX_IMAGE_PIXELS = None
 
 from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
                      read_sample, DIAMCOLUMN, REFIDCOLUMN, SAMPLE,
@@ -88,29 +92,44 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
     #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
     #imagefile = os.path.join(galaxydir, f'{galaxy}-resid.jpg')
     tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
-    if not os.path.isfile(tractorfile):
-        log.warning(f'Missing {tractorfile}')
+
+    # this should never happen since we check for images earlier
+    if not os.path.isfile(imagefile) and not os.path.isfile(tractorfile):
+        log.warning(f'Missing pipeline outputs for {galaxydir}/{galaxy}')
         return Table(), Table(), None, None
 
-    cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
-                     'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
-                     'flux_r', 'flux_i', 'flux_z'])
-    #allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
-    #cols = cols[np.isin(cols, allcols)]
-    #print(galaxydir)
-    tractor = Table(fitsio.read(tractorfile, columns=cols))
+    #if not os.path.isfile(tractorfile):
+    #    log.warning(f'Missing {tractorfile}')
+    #    return Table(), Table(), None, None
 
-    I = (np.logical_or(tractor['ref_cat'] == 'LG', tractor['ref_cat'] == REFCAT) * \
-         (tractor['ref_id'] == refid))
-    if np.sum(I) == 0:
-        sga = Table()
+    # OK to have an image but no Tractor catalog (e.g., LVD / resolved)
+    if os.path.isfile(tractorfile):
+        cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
+                         'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
+                         'flux_r', 'flux_i', 'flux_z'])
+        #allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
+        #cols = cols[np.isin(cols, allcols)]
+        #print(galaxydir)
+        tractor = Table(fitsio.read(tractorfile, columns=cols))
+
+        I = (np.logical_or(tractor['ref_cat'] == 'LG', tractor['ref_cat'] == REFCAT) * \
+             (tractor['ref_id'] == refid))
+        if np.sum(I) == 0:
+            sga = Table()
+        else:
+            sga = tractor[I]
+            #tractor = tractor[~I]
     else:
-        sga = tractor[I]
-        #tractor = tractor[~I]
+        log.warning(f'Missing tractor catalog {tractorfile}')
+        sga = Table()
+        tractor = Table()
 
-    if os.path.isfile(imagefile):
-        image = imread(imagefile)
+    if not os.path.isfile(imagefile):
+        msg = f'Images should never be missing at this point! {galaxydir}/{galaxy}'
+        log.critical(msg)
+        raise ValueError(msg)
 
+    image = imread(imagefile)
     for band in ['g', 'r', 'i', 'z']:
         fitsfile = os.path.join(galaxydir, f'{galaxy}-image-{band}.fits.fz')
         if os.path.isfile(fitsfile):
@@ -449,6 +468,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                                          final_sample=final_sample,
                                          mindiam=mindiam, maxdiam=maxdiam)
 
+
     txtdir = None
     if any_lvd:
         # for the various LVD samples, do not include group members
@@ -512,48 +532,79 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         diamcolumn = 'D26'
         sort_by_groupname = False
 
-        # need to be smarter about galaxy groups, GROUP_PRIMARY
-        match vi_sample:
+        # samples 001–007 are mutually exclusive.
+        # Their union includes:
+        #   * all non-LVD objects with GROUP_MULT == 1 and D26 ≥ 0.5;
+        #   * all LVD groups’ primaries (except explicitly dropped LMC/SMC);
+        #   * all non-LVD groups’ primaries with GROUP_MULT ≥ 2 and at least one member having D26 ≥ 0.5.
+
+        if vi_sample == 1:
             # sample 001 - GM=1, in size range, no bits set at all, ellipse clean, not LVD
-            case 1:
-                diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-                I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
-                fullsample = fullsample[I]
-                sample = fullsample
+            diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
+            I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
+            fullsample = fullsample[I]
+            sample = fullsample
+        elif vi_sample == 2:
             # sample 002 - GM=1, in size range, ellipse clean, at least one of {MCLOUDS,GCLPNE,NEARSTAR,INSTAR} set, and not LVD
-            case 2:
-                diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-                I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
-                fullsample = fullsample[I]
-                sample = fullsample
+            diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
+            I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
+            fullsample = fullsample[I]
+            sample = fullsample
+        elif vi_sample == 3:
             # sample 003 - GM=1, in size range, not LVD, any ellipse problem
-            case 3:
-                diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-                I = gm1 & diam_cut & not_LVD & ellipse_bad
-                fullsample = fullsample[I]
-                sample = fullsample
+            diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
+            I = gm1 & diam_cut & not_LVD & ellipse_bad
+            fullsample = fullsample[I]
+            sample = fullsample
+        elif vi_sample == 4:
             # sample 004 - GM=1, D(26)>5, not LVD, any ellipse problem
-            case 4:
-                diam_cut = (fullsample[diamcolumn] >= 5.)
-                I = gm1 & diam_cut & not_LVD
-                fullsample = fullsample[I]
-                sample = fullsample
+            diam_cut = (fullsample[diamcolumn] >= 5.)
+            I = gm1 & diam_cut & not_LVD
+            fullsample = fullsample[I]
+            sample = fullsample
+        elif vi_sample == 5:
             # sample 005 - all groups containing one or more LVD dwarfs
-            case 5:
-                sort_by_groupname = True
-                LVD_group_ids = np.unique(fullsample['GROUP_ID'][is_LVD])
-                I = np.isin(fullsample['GROUP_ID'], LVD_group_ids)
-                fullsample = fullsample[I]
-                sample = fullsample[fullsample['GROUP_PRIMARY']]
-            # sample 006 - groups with 2 or more members
-            case 6:
-                sort_by_groupname = True
-                LVD_group_ids = np.unique(fullsample['GROUP_ID'][is_LVD])
-                fullsample, rem = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5,
-                                                      diamcolumn=diamcolumn, exclude_group_ids=LVD_group_ids)
-                sample = fullsample[fullsample['GROUP_PRIMARY']]
-            case _:
-                raise ValueError('Write me')
+            sort_by_groupname = True
+            LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
+            I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
+            fullsample = fullsample[I]
+            # Need to remove SMC, LMC
+            log.warning('Removing LMC, SMC (coadds are too large).')
+            fullsample = fullsample[~np.isin(fullsample['OBJNAME'], ['LMC', 'SMC'])]
+            sample = fullsample[fullsample['GROUP_PRIMARY']]
+        elif vi_sample == 6 or vi_sample == 7:
+            sort_by_groupname = True
+            LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
+            fullsample_67, _ = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5,
+                                                   diamcolumn=diamcolumn, exclude_group_names=LVD_group_names)
+
+            # split on ELLIPSEBIT
+            gnames = fullsample_67['GROUP_NAME']
+            ellipse_bad = fullsample_67['ELLIPSEBIT'] != 0
+            order = np.argsort(gnames)
+            gnames_sorted = gnames[order]
+            bad_sorted = ellipse_bad[order]
+
+            # Unique group IDs and start indices
+            uniq_gnames, idx_start = np.unique(gnames_sorted, return_index=True)
+
+            # For each group: does it have ANY bad member? Convert
+            # bool→int so we can use reduceat with max.
+            any_bad = np.maximum.reduceat(bad_sorted.astype(int), idx_start).astype(bool)
+
+            good_group_names = uniq_gnames[~any_bad]  # all members ellipse_ok
+            bad_group_names  = uniq_gnames[any_bad]   # at least one member ellipse_bad
+
+            if vi_sample == 6:
+                # sample 006 - groups with 2 or more members, ellipse_ok & ~is_LVD
+                fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], good_group_names)]
+            elif vi_sample == 7:
+                # sample 007 - groups with 2 or more members, ellipse_bad & ~is_LVD
+                fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], bad_group_names)]
+
+            sample = fullsample[fullsample['GROUP_PRIMARY']]
+        else:
+            raise ValueError('Write me')
 
     else:
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
@@ -617,6 +668,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                 log.warning(f"Overriding layer={layer}-->ls-dr11-early-v2")
                 layer = 'ls-dr11-early-v2'
 
+            pdb.set_trace()
             do_cutouts(sample[~I][M], layer=layer, group=not no_groups,
                        fits_cutouts=False, maxdiam_arcmin=MAXDIAM, mp=mp,
                        cutoutdir=os.path.join(cutoutdir, region))
@@ -648,8 +700,12 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         thissample = sample[np.isin(sample['GROUP_ID'], thisfullsample['GROUP_ID'])]
 
         # re-sort by diameter (?)
-        thissample = thissample[np.argsort(thissample[diamcolumn])]
-        thisfullsample = thisfullsample[np.argsort(thisfullsample[diamcolumn])]
+        if sort_by_groupname:
+            thisfullsample = thisfullsample[np.lexsort((thisfullsample[diamcolumn], thisfullsample['GROUP_NAME']))]
+            thissample = thissample[np.argsort(thissample['GROUP_NAME'])]
+        else:
+            thissample = thissample[np.argsort(thissample[diamcolumn])]
+            thisfullsample = thisfullsample[np.argsort(thisfullsample[diamcolumn])]
 
         if vi_sample:
             pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
@@ -672,7 +728,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                   show_tractor_ellipse=show_tractor_ellipse,
                   show_initial_ellipse=show_initial_ellipse,
                   final_sample=final_sample, no_groups=no_groups)
-
 
 
 if __name__ == '__main__':
