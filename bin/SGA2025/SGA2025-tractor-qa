@@ -26,6 +26,14 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=6
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=7
 
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr9-north --vi-sample=1
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr9-north --vi-sample=2
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr9-north --vi-sample=3
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=4
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=5
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=6
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=7
+
 """
 
 import pdb # for debugging
