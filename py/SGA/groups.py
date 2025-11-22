@@ -295,7 +295,7 @@ def make_singleton_group(cat, group_id_start=0):
     n = len(out)
     names = [radec_to_groupname(out['RA'][k], out['DEC'][k]) for k in range(n)]
     out['GROUP_ID'] = np.arange(group_id_start, group_id_start+n, dtype=np.int32)
-    out['GROUP_NAME'] = np.array(names, dtype='U10')
+    out['GROUP_NAME'] = np.array(names, dtype='U10').squeeze()
     out['GROUP_MULT'] = np.ones(n, dtype=np.int16)
     out['GROUP_PRIMARY'] = np.ones(n, dtype=bool)
     out['GROUP_RA'] = out['RA'].astype(np.float64, copy=False)

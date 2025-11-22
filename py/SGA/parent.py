@@ -3114,7 +3114,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         pdb.set_trace()
 
     mindiam = 20.
-    diam, ba, pa, ref, mag, band = choose_geometry(
+    diam, ba, pa, diam_ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
     origdiam, _, _, _ = choose_geometry(parent, mindiam=0.)
 
@@ -3210,7 +3210,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             bit = REGIONBITS[region]
             reffile = reffiles[version][region]
 
-            ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'BA', 'PA', 'D26', 'D26_REF']))
+            ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'RA', 'DEC',
+                                                                     'BA', 'PA', 'D26', 'D26_REF']))
             log.info(f'Read {len(ref_tab):,d} objects from {reffile}')
 
             # match by OBJNAME
@@ -3237,12 +3238,19 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             #diam[idx_pv] = ref_diam[valid]
             #ba[idx_pv] = ref_ba[valid]
             #pa[idx_pv] = ref_pa[valid]
-            #ref[idx_pv] = ref_ref[valid]
+            #diam_ref[idx_pv] = ref_ref[valid]
 
             diam[idx_p] = ref_diam
             ba[idx_p] = ref_ba
             pa[idx_p] = ref_pa
-            ref[idx_p] = ref_ref
+            diam_ref[idx_p] = ref_ref
+
+            # update coordinates
+            if ref_version == 'v0.11':
+                pass
+            elif ref_version == 'v0.12':
+                print('Update coordinates?')
+                pdb.set_trace()
 
 
     # Assign the SAMPLE bits.
@@ -3303,7 +3311,12 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     grp['PA'] = pa.astype('f4')
     grp['MAG'] = mag.astype('f4')
     #grp['MAG_BAND'] = band
-    grp['DIAM_REF'] = ref
+    grp['DIAM_REF'] = diam_ref
+
+
+    print('APPLY DIAMETER CUT BUT MAKE SURE NOTHING FROM custom or properties is dropped')
+    pdb.set_trace()
+
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
@@ -3321,16 +3334,14 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info('Adopting ROW_PARENT for SGAID')
         sgaid = parent['ROW_PARENT'][srt].value
     grp.add_column(sgaid, name='SGAID', index=0)
-
     assert(len(grp) == len(np.unique(grp['SGAID'])))
-
-    print('Check the logic of I and make sure we get complementary sets.')
 
     # Build the group catalog but make sure the RESOLVED and FORCEPSF
     # samples (e.g., SMC, LMC) are alone.
     I = np.logical_or((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0,
                       (grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
     out1 = make_singleton_group(grp[I], group_id_start=0)
+    #out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     out = vstack((out1, out2))
     #del out1, out2

@@ -34,6 +34,9 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=6
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=7
 
+# some tests
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
+
 """
 
 import pdb # for debugging
@@ -446,8 +449,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
 
 def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1,
                nperpdf=4096, ncol=4, nrow=2, datadir=None, lvd_resolved=False,
-               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False, vi_sample=None,
-               final_sample=False, no_groups=False, show_tractor_ellipse=True,
+               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False, version=None,
+               vi_sample=None, final_sample=False, no_groups=False, show_tractor_ellipse=True,
                show_initial_ellipse=True, verbose=False, mindiam=0., maxdiam=1e3):
     """
     nperpdf - maximum number of galaxies per pdf
@@ -456,6 +459,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     """
     from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
     from SGA.parent import remove_small_groups
     from SGA.coadds import REGIONBITS
 
@@ -508,8 +512,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         fullsample = sample
 
     elif vi_sample:
-        version = SGA_version()
-        #version = 'v0.11'
+        if version is None:
+            version = SGA_version()
         subdir = f'vi-{version}'
         qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/pdf'
         txtdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/txt'
@@ -611,6 +615,13 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                 # sample 007 - groups with 2 or more members, ellipse_bad & ~is_LVD
                 fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], bad_group_names)]
 
+            sample = fullsample[fullsample['GROUP_PRIMARY']]
+        elif vi_sample == 999:
+            sort_by_groupname = True
+            I = (((fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0) *
+                 ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) == 0) *
+                 (fullsample['D26'] > 0.5))
+            fullsample = fullsample[I]
             sample = fullsample[fullsample['GROUP_PRIMARY']]
         else:
             raise ValueError('Write me')
@@ -720,6 +731,14 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
             txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
 
+            viewfile = os.path.join(txtdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
+            view = thisfullsample['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA']
+            view.rename_columns(['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+            view['radius'] *= 60./2.
+            view.write(viewfile, overwrite=True)
+
+            pdb.set_trace()
+
             with open(txtfile, 'w') as F:
                 for obj in thisfullsample['OBJNAME'].value:
                     F.write(f'{obj}\n')
@@ -747,6 +766,8 @@ if __name__ == '__main__':
     parser.add_argument('--first', type=int, help='Index of first object to process.')
     parser.add_argument('--last', type=int, help='Index of last object to process.')
     parser.add_argument('--galaxylist', type=str, default=None, help='Comma-separated list of galaxy names to process.')
+
+    parser.add_argument('--version', type=str, default=None, help='SGA version.')
 
     parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--mindiam', default=0., type=float, help='minimum diameter')
@@ -777,7 +798,7 @@ if __name__ == '__main__':
                last=args.last, galaxylist=args.galaxylist, mp=args.mp,
                lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
                lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd,
-               vi_sample=args.vi_sample, ncol=args.ncol, nrow=args.nrow,
+               version=args.version, vi_sample=args.vi_sample, ncol=args.ncol, nrow=args.nrow,
                nperpdf=args.nperpdf, show_tractor_ellipse=args.show_tractor_ellipse,
                show_initial_ellipse=args.show_initial_ellipse,
                final_sample=args.final_sample, no_groups=args.no_groups,
