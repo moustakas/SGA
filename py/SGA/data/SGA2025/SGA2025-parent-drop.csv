@@ -389,7 +389,6 @@ SDSS J074131.81+313548.6,dr9-north,no Tractor source
 2MASS J07420978+4021562,dr9-north,no Tractor source
 2MASX J07452453+6840469,dr9-north,no Tractor source
 SDSS J074537.42+335645.3,dr9-north,no Tractor source
-SDSS J074634.52+313647.3,dr9-north,no Tractor source
 SDSS J074954.03+411219.3,dr9-north,no Tractor source
 SDSS J075209.98+292315.4,dr9-north,no Tractor source
 DESI J118.2427+33.5781,dr9-north,no Tractor source
@@ -698,7 +697,6 @@ SDSS J132455.80+533858.7,dr9-north,no Tractor source
 PGC 2062288,dr9-north,no Tractor source
 SDSS J132524.03+403047.7,dr9-north,no Tractor source
 PGC 2144958,dr9-north,no Tractor source
-dw1329-45,dr9-north,no Tractor source
 DESI J202.2981+47.3465,dr9-north,no Tractor source
 SDSS J132915.01+432216.3,dr9-north,no Tractor source
 DESI J202.3803+47.0148,dr9-north,no Tractor source
@@ -1830,7 +1828,6 @@ DESI J358.3698+00.5951,dr9-north,no Tractor source
 DESI J359.2029+00.7213,dr9-north,no Tractor source
 DESI J359.2590+01.4465,dr9-north,no Tractor source
 2MFGC 18001,dr9-north,no Tractor source
-PGC1065811,dr11-south,no Tractor source
 PGC 636605,dr11-south,no Tractor source
 PGC 619609,dr11-south,no Tractor source
 2MASX J00202490+2152336,dr11-south,no Tractor source
@@ -1916,7 +1913,7 @@ PGC 566766,dr11-south,no Tractor source
 WISEA J073946.51-000855.5,dr11-south,no Tractor source
 WISEA J074143.09-684211.1,dr11-south,no Tractor source
 WISEA J074212.23+073443.8,dr11-south,no Tractor source
-SDSS J074634.52+313647.3,dr11-south,no Tractor source
+SDSS J074634.52+313647.3,,no Tractor source
 2MASS J07552005-0108438,dr11-south,no Tractor source
 WISEA J075519.49-010847.2,dr11-south,no Tractor source
 WISEA J075717.41-063109.6,dr11-south,no Tractor source
@@ -2069,7 +2066,6 @@ PGC 1637656,dr11-south,no Tractor source
 2MASX J21205936-5110258,dr11-south,no Tractor source
 2MASS J21254686-3404349,dr11-south,no Tractor source
 SARS 320.70736-34.92418,dr11-south,no Tractor source
-PGC 131568,dr11-south,no Tractor source
 WISEA J214340.47-435054.5,dr11-south,no Tractor source
 WISEA J215903.83-042231.8,dr11-south,no Tractor source
 PGC 238485,dr11-south,no Tractor source

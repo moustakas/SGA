@@ -3108,10 +3108,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(f'Dropping {np.sum(Idrop):,d}/{np.sum(Iregion):,d} objects in {region} based on VI')
         parent['REGION'][Iparent] -= bit
 
-    try:
-        assert(np.all(parent['REGION'] > 0))
-    except:
-        pdb.set_trace()
+    # totally out of the sample...
+    I = parent['REGION'] == 0
+    if np.any(I):
+        parent = parent[~I]
 
     mindiam = 20.
     diam, ba, pa, diam_ref, mag, band = choose_geometry(
@@ -3135,53 +3135,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.warning(f'Setting mindiam={mindiam:.1f} arcsec for {np.sum(I):,d} objects.')
     diam /= 60. # [arcmin]
     assert(np.all(diam > 0.))
-
-    # one final update of coordinates and geometry based on VI
-    propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
-    props = Table.read(propsfile, format='csv', comment='#')
-    log.info(f'Read {len(props)} objects from {propsfile}')
-    try:
-        assert(len(props) == len(np.unique(props['objname'])))
-    except:
-        log.info('Warning: duplicates in parent-properties file!')
-        #raise ValueError()
-        oo, cc = np.unique(proprs['objname'], return_counts=True)
-        log.info(oo[cc>1])
-        pdb.set_trace()
-
-    for prop in props:
-        objname = prop['objname']
-        I = np.where(objname == parent['OBJNAME'].value)[0]
-        if len(I) != 1:
-            log.info(f'Problem finding {objname}!')
-            pdb.set_trace()
-
-        for col in ['ra', 'dec', 'diam', 'pa', 'ba']:
-            newval = prop[col]
-            if col == 'ra' or col == 'dec':
-                oldval = parent[col.upper()][I[0]]
-            elif col == 'diam':
-                oldval = diam[I[0]]
-            elif col == 'pa':
-                oldval = pa[I[0]]
-            elif col == 'ba':
-                oldval = ba[I[0]]
-
-            if newval != -99.:
-                log.info(f'{objname} {col}: {oldval} --> {newval}')
-            else:
-                pass
-                #log.info(f'  Retaining {col}: {oldval}')
-
-            if newval != -99.:
-                if col == 'ra' or col == 'dec':
-                    parent[col.upper()][I] = newval
-                elif col == 'diam':
-                    diam[I] = newval
-                elif col == 'pa':
-                    pa[I] = newval
-                elif col == 'ba':
-                    ba[I] = newval
 
     # If there is a reference catalog of diameters for this version, use it here.
     reffiles = {
@@ -3253,6 +3206,54 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 pdb.set_trace()
 
 
+    # one final update of coordinates and geometry based on VI
+    propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
+    props = Table.read(propsfile, format='csv', comment='#')
+    log.info(f'Read {len(props)} objects from {propsfile}')
+    try:
+        assert(len(props) == len(np.unique(props['objname'])))
+    except:
+        log.info('Warning: duplicates in parent-properties file!')
+        #raise ValueError()
+        oo, cc = np.unique(proprs['objname'], return_counts=True)
+        log.info(oo[cc>1])
+        pdb.set_trace()
+
+    for prop in props:
+        objname = prop['objname']
+        I = np.where(objname == parent['OBJNAME'].value)[0]
+        if len(I) != 1:
+            log.info(f'Problem finding {objname}!')
+            pdb.set_trace()
+
+        for col in ['ra', 'dec', 'diam', 'pa', 'ba']:
+            newval = prop[col]
+            if col == 'ra' or col == 'dec':
+                oldval = parent[col.upper()][I[0]]
+            elif col == 'diam':
+                oldval = diam[I[0]]
+            elif col == 'pa':
+                oldval = pa[I[0]]
+            elif col == 'ba':
+                oldval = ba[I[0]]
+
+            if newval != -99.:
+                log.info(f'{objname} {col}: {oldval} --> {newval}')
+            else:
+                pass
+                #log.info(f'  Retaining {col}: {oldval}')
+
+            if newval != -99.:
+                if col == 'ra' or col == 'dec':
+                    parent[col.upper()][I] = newval
+                elif col == 'diam':
+                    diam[I] = newval
+                elif col == 'pa':
+                    pa[I] = newval
+                elif col == 'ba':
+                    ba[I] = newval
+
+
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
     samplebits[parent['ROW_LVD'] != -99] += SAMPLE['LVD']       # 2^0 - LVD dwarfs
@@ -3314,9 +3315,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     grp['DIAM_REF'] = diam_ref
 
 
-    print('APPLY DIAMETER CUT BUT MAKE SURE NOTHING FROM custom or properties is dropped')
-    pdb.set_trace()
-
+    # apply an additional diameter cut:
+    if float(version[1:]) >= 0.13:
+        print('APPLY DIAMETER CUT BUT MAKE SURE NOTHING FROM custom or properties is dropped')
+        pdb.set_trace()
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)

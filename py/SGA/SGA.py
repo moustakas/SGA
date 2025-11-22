@@ -83,7 +83,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # sources via VI.
         #version = 'v0.11'
 
-        # re-initialize diameters with v0.11 ellipse results
+        # re-initialize diameters with v0.11 ellipse results; drop
+        # sources with no Tractor; update some galaxy properties based
+        # on VI
         version = 'v0.12'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
