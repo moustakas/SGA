@@ -2964,8 +2964,75 @@ def update_geometry_from_reffiles(parent, diam, ba, pa, diam_ref, reffiles,
     return diam, ba, pa, diam_ref
 
 
+def find_blended_groups(small_groups, g_sorted, RA_sorted, DEC_sorted,
+                        D_sorted, uniq, idx_start, idx_end):
+    """Return group names among `small_groups` where at least one
+    pair of circularized ellipses overlaps.
+
+    Parameters
+    ----------
+    small_groups : array-like
+        Group names (as in uniq[]) whose members all have D < mindiam.
+    g_sorted : array
+        GROUP_NAME column sorted by name and filtered to gm2_notLVD rows.
+    RA_sorted, DEC_sorted : arrays
+        Sorted RA, DEC values aligned with g_sorted.
+    D_sorted : array
+        Sorted diameters (arcmin) aligned with g_sorted.
+    uniq : array
+        Unique group names (sorted) corresponding to g_sorted.
+    idx_start, idx_end : arrays
+        Start and end indices into the sorted arrays for each uniq[] entry.
+
+    Returns
+    -------
+    np.ndarray
+        Sorted unique group names for which overlap was detected.
+
+    """
+    blended = []
+
+    for gname in small_groups:
+        # locate this group's slice in sorted arrays
+        k = np.where(uniq == gname)[0][0]
+        i0, i1 = idx_start[k], idx_end[k]
+
+        ra  = RA_sorted[i0:i1]
+        dec = DEC_sorted[i0:i1]
+        d   = D_sorted[i0:i1]
+        r   = 0.5 * d   # circularized radius (arcmin)
+
+        n = len(ra)
+        if n < 2:
+            continue
+
+        found = False
+
+        for ii in range(n - 1):
+            for jj in range(ii + 1, n):
+
+                # Tangent-plane separation (arcmin)
+                dec_mean = 0.5 * (dec[ii] + dec[jj]) * np.pi / 180.0
+                dx = (ra[jj] - ra[ii]) * np.cos(dec_mean) * 60.0
+                dy = (dec[jj] - dec[ii]) * 60.0
+                dist2 = dx*dx + dy*dy
+
+                # overlap check
+                thresh = r[ii] + r[jj]
+                if dist2 <= thresh * thresh:
+                    blended.append(gname)
+                    found = True
+                    break
+
+            if found:
+                break
+
+    return np.unique(blended)
+
+
 def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
-                                     SAMPLE, mindiam=0.5, veto_objnames=None):
+                                     SAMPLE, ELLIPSEBIT, mindiam=0.5,
+                                     veto_objnames=None):
     """Update parent['REGION'] by removing this region for objects that
     do NOT fall in VI samples 001–007, based on a previous-version catalog
     `ref_tab` for a single region.
@@ -3013,18 +3080,47 @@ def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
     # 001–004: GM=1, non-LVD, D≥0.5
     mask_001_004 = gm1 & not_LVD & (D >= mindiam)
 
-    # 005: all members of LVD groups (minus LMC/SMC primaries)
+    # 005: all members of LVD groups
     LVD_group_names = np.unique(ref_tab['GROUP_NAME'][is_LVD])
     mask_005 = np.isin(ref_tab['GROUP_NAME'], LVD_group_names)
 
     # 006–007: non-LVD, GM≥2, at least one member with D≥mindiam
-    gnames = ref_tab['GROUP_NAME']
-    order = np.argsort(gnames)
-    uniq, idx = np.unique(gnames[order], return_index=True)
-    group_maxD = np.maximum.reduceat(D[order], idx)
-    good_groups = uniq[group_maxD >= mindiam]
+    #          OR at least one overlapping circularized pair
+    gm2_notLVD = (ref_tab['GROUP_MULT'] >= 2) & not_LVD
 
-    mask_006_007 = (ref_tab['GROUP_MULT'] >= 2) & not_LVD & np.isin(gnames, good_groups)
+    D_all   = ref_tab['DIAM_INIT'] # use initial diameter not D26!
+    RA_all  = ref_tab['RA_INIT']
+    DEC_all = ref_tab['DEC_INIT']
+    g_all   = ref_tab['GROUP_NAME']
+
+    D   = D_all[gm2_notLVD]
+    RA  = RA_all[gm2_notLVD]
+    DEC = DEC_all[gm2_notLVD]
+    g   = g_all[gm2_notLVD]
+
+    order = np.argsort(g)
+    g_sorted   = g[order]
+    D_sorted   = D[order]
+    RA_sorted  = RA[order]
+    DEC_sorted = DEC[order]
+
+    uniq, idx_start = np.unique(g_sorted, return_index=True)
+    idx_end = np.append(idx_start[1:], len(g_sorted))
+
+    group_maxD = np.maximum.reduceat(D_sorted, idx_start) # groups kept by diameter only
+    good_groups_diam = uniq[group_maxD >= mindiam]
+
+    # groups with all members below mindiam
+    small_groups = uniq[group_maxD < mindiam]
+
+    # find small groups with overlapping circularized ellipses
+    blended_groups = find_blended_groups(
+        small_groups, g_sorted, RA_sorted, DEC_sorted, D_sorted,
+        uniq, idx_start, idx_end)
+    pdb.set_trace()
+
+    good_groups = np.union1d(good_groups_diam, blended_groups) # diameter OR blended
+    mask_006_007 = gm2_notLVD & np.isin(g_all, good_groups)
 
     # union of 001–007 in ref_tab
     mask_all = mask_001_004 | mask_005 | mask_006_007
@@ -3033,8 +3129,7 @@ def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
     keep_names = set(ref_tab['OBJNAME'][mask_all])
 
     # For parent rows in this region and present in ref_tab:
-    parent = parent.copy()
-
+    #parent = parent.copy()
     in_region = (parent['REGION'] & bit) != 0
     in_ref = np.isin(parent['OBJNAME'], ref_tab['OBJNAME'])
 
@@ -3048,12 +3143,12 @@ def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
 
     parent['REGION'][fails] -= bit
 
-    # Finally, drop rows with REGION==0.
+    # report the numbers but don't actually trim
     I = parent['REGION'] != 0
     log.info(f'Removing {np.sum(~I):,d}/{np.sum(in_region):,d} objects with ' + \
              f'D(26)<0.5 from region {region}')
 
-    return parent[I]
+    return parent
 
 
 def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
@@ -3064,7 +3159,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
     from SGA.SGA import sga2025_name, SAMPLE, SGA_version
-    from SGA.ellipse import ELLIPSEMODE, FITMODE
+    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
     from SGA.io import radec_to_groupname
     from SGA.groups import build_group_catalog, make_singleton_group
     from SGA.coadds import REGIONBITS
@@ -3303,11 +3398,22 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             reffile = reffiles[version][region]
             ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=[
                 'OBJNAME', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'RA', 'DEC',
-                'GROUP_NAME', 'GROUP_MULT',
+                'GROUP_NAME', 'GROUP_MULT', 'RA_INIT', 'DEC_INIT', 'DIAM_INIT',
                 'BA', 'PA', 'D26', 'D26_REF']))
             parent = remove_small_groups_and_galaxies(
                 parent, ref_tab, region, REGIONBITS, SAMPLE,
-                mindiam=0.5, veto_objnames=veto_objnames)
+                ELLIPSEBIT, mindiam=0.5, veto_objnames=veto_objnames)
+
+        # Drop objects with REGION==0.
+        I = parent['REGION'] != 0
+        pdb.set_trace()
+        parent = parent[I]
+        diam = diam[I]
+        ba = ba[I]
+        pa = pa[I]
+        diam_ref = diam_ref[I]
+        mag = mag[I]
+        band = band[I]
         assert(np.all(np.isin(lvd_dwarfs, parent['OBJNAME'])))
 
     pdb.set_trace()
