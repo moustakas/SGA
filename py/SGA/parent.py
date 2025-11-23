@@ -2917,6 +2917,145 @@ def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
     return out, rem
 
 
+def update_geometry_from_reffiles(parent, diam, ba, pa, diam_ref, reffiles,
+                                  REGIONBITS, veto_objnames=None,
+                                  region_order=['dr9-north', 'dr11-south']):
+    # optionally update initial diameters
+    ref_version = reffiles['ref_version']
+    log.info(f'Updating initial diameters using reference version {ref_version}')
+
+    for region in region_order:  # dr11-south wins in overlaps
+        bit = REGIONBITS[region]
+        reffile = reffiles[region]
+
+        ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=[
+            'OBJNAME', 'REGION', 'RA', 'DEC', 'GROUP_MULT',
+            'BA', 'PA', 'D26', 'D26_REF']))
+        if ref_version == 'v0.11':
+            # not all ellipse diameters in v0.11 were reliable
+            ref_tab = ref_tab[ref_tab['GROUP_MULT'] == 1]
+        log.info(f'Read {len(ref_tab):,d} objects from {reffile}')
+
+        # match by OBJNAME
+        m_parent, m_ref = match(parent['OBJNAME'], ref_tab['OBJNAME'])
+
+        # only objects whose REGION includes this bit
+        keep = (parent['REGION'][m_parent] & bit) != 0
+        if veto_objnames is not None:
+            not_veto  = ~np.isin(parent['OBJNAME'][m_parent], list(veto_objnames))
+            keep = keep & not_veto
+
+        idx_p = m_parent[keep]
+        idx_r = m_ref[keep]
+
+        # reference geometry
+        ref_diam = ref_tab['D26'][idx_r].value # [arcmin]
+        ref_ba = ref_tab['BA'][idx_r].value
+        ref_pa = ref_tab['PA'][idx_r].value
+        ref_ref = ref_version + '/' + ref_tab['D26_REF'][idx_r].value
+
+        diam[idx_p] = ref_diam # [arcsec]
+        ba[idx_p] = ref_ba
+        pa[idx_p] = ref_pa
+        diam_ref[idx_p] = ref_ref
+
+        # update coordinates?
+
+    return diam, ba, pa, diam_ref
+
+
+def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
+                                     SAMPLE, mindiam=0.5, veto_objnames=None):
+    """Update parent['REGION'] by removing this region for objects that
+    do NOT fall in VI samples 001–007, based on a previous-version catalog
+    `ref_tab` for a single region.
+
+    Parameters
+    ----------
+    parent : astropy.table.Table
+        Current parent catalog (modified in-place; also returned).
+    ref_tab : astropy.table.Table
+        Previous-version regional catalog with GROUP_* and ellipse info
+        (equivalent to `fullsample`).
+    region : str
+        'dr9-north' or 'dr11-south', etc. Must be a key in REGIONBITS.
+    REGIONBITS : dict
+        Mapping from region_name -> bit value.
+    SAMPLE : dict
+        SAMPLE bit dictionary with keys LVD, MCLOUDS, GCLPNE, NEARSTAR, INSTAR.
+
+    Returns
+    -------
+    parent_new : astropy.table.Table
+        Parent with this region bit removed where appropriate, and rows
+        with REGION==0 dropped.
+
+    """
+    bit = REGIONBITS[region]
+
+    LVD      = SAMPLE['LVD']
+    MCLOUDS  = SAMPLE['MCLOUDS']
+    GCLPNE   = SAMPLE['GCLPNE']
+    NEARSTAR = SAMPLE['NEARSTAR']
+    INSTAR   = SAMPLE['INSTAR']
+
+    gm1    = (ref_tab['GROUP_MULT'] == 1)
+    not_LVD = (ref_tab['SAMPLE'] & LVD) == 0
+    is_LVD  = (ref_tab['SAMPLE'] & LVD) != 0
+
+    ellipse_ok  = (ref_tab['ELLIPSEBIT'] == 0)
+    ellipse_bad = (ref_tab['ELLIPSEBIT'] != 0)
+
+    sample_flags = (ref_tab['SAMPLE'] & (MCLOUDS | GCLPNE | NEARSTAR | INSTAR)) != 0
+
+    D = ref_tab['D26']
+
+    # 001–004: GM=1, non-LVD, D≥0.5
+    mask_001_004 = gm1 & not_LVD & (D >= mindiam)
+
+    # 005: all members of LVD groups (minus LMC/SMC primaries)
+    LVD_group_names = np.unique(ref_tab['GROUP_NAME'][is_LVD])
+    mask_005 = np.isin(ref_tab['GROUP_NAME'], LVD_group_names)
+
+    # 006–007: non-LVD, GM≥2, at least one member with D≥mindiam
+    gnames = ref_tab['GROUP_NAME']
+    order = np.argsort(gnames)
+    uniq, idx = np.unique(gnames[order], return_index=True)
+    group_maxD = np.maximum.reduceat(D[order], idx)
+    good_groups = uniq[group_maxD >= mindiam]
+
+    mask_006_007 = (ref_tab['GROUP_MULT'] >= 2) & not_LVD & np.isin(gnames, good_groups)
+
+    # union of 001–007 in ref_tab
+    mask_all = mask_001_004 | mask_005 | mask_006_007
+
+    # OBJNAMEs in this region that PASS the 001–007 selection
+    keep_names = set(ref_tab['OBJNAME'][mask_all])
+
+    # For parent rows in this region and present in ref_tab:
+    parent = parent.copy()
+
+    in_region = (parent['REGION'] & bit) != 0
+    in_ref = np.isin(parent['OBJNAME'], ref_tab['OBJNAME'])
+
+    # Objects that fail samples 001–007
+    fails = in_region & in_ref & ~np.isin(parent['OBJNAME'], list(keep_names))
+
+    # Apply veto: do NOT drop veto_names
+    if veto_objnames is not None:
+        veto_mask = np.isin(parent['OBJNAME'], list(veto_objnames))
+        fails &= ~veto_mask
+
+    parent['REGION'][fails] -= bit
+
+    # Finally, drop rows with REGION==0.
+    I = parent['REGION'] != 0
+    log.info(f'Removing {np.sum(~I):,d}/{np.sum(in_region):,d} objects with ' + \
+             f'D(26)<0.5 from region {region}')
+
+    return parent[I]
+
+
 def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
@@ -2940,6 +3079,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     outdir = os.path.join(sga_dir(), 'sample')
 
     outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
+    kdoutfile = os.path.join(outdir, f'SGA2025-parent-{version}.kd.fits')
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
@@ -2947,23 +3087,20 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     cols = ['OBJNAME', 'RA', 'DEC', 'PGC', 'REGION']
 
     # merge the two regions
-    parent = []
+    parent, lvd_dwarfs = [], []
     for region in ['dr11-south', 'dr9-north']:
         catfile = os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         log.info(f'Read {len(cat):,d} objects from {catfile}')
 
-        # need to make sure we keep all LVD dwarfs
-        lvd_dwarfs = cat['OBJNAME'][cat['ROW_LVD'] != -99].value
-
-        # make sure we haven't dropped any LVD dwarfs
-        assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
+        lvd_dwarfs.append(cat['OBJNAME'][cat['ROW_LVD'] != -99].value)
 
         # add the region bit
         cat['REGION'] = np.int16(REGIONBITS[region])
         parent.append(cat)
 
     parent = vstack(parent)
+    lvd_dwarfs = np.unique(np.hstack(lvd_dwarfs))
 
     # merge north-south duplicates
     parent.remove_columns(['NCCD', 'FILTERS']) # can be useful to see in the duplicates
@@ -2983,6 +3120,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     parent = parent[np.lexsort([parent['OBJNAME'].value, parent['RA'].value])]
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
+
+    # make sure we haven't dropped any LVD dwarfs
+    assert(np.all(np.isin(lvd_dwarfs, parent['OBJNAME'])))
+
 
     # add additional sources by-hand
     def _empty_parent(cat, N=1):
@@ -3006,21 +3147,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             empty[name] = Column(data, name=name, dtype=dt)
         return empty
 
-    #def _empty_parent(cat, N=1):
-    #    empty = cat.copy()
-    #    for col in empty.colnames:
-    #        if empty[col].dtype == bool:
-    #            empty[col] = False
-    #        else:
-    #            empty[col] *= 0
-    #            if not empty[col].dtype.type is np.str_:
-    #                if col in ['STARMAG', 'STARDIST', 'STARFDIST']:
-    #                    empty[col] += 99 # null value
-    #                else:
-    #                    empty[col] += -99 # null value
-    #    if N > 1:
-    #        empty = vstack([empty] * N)
-    #    return empty
 
     customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     custom = Table.read(customfile, format='csv', comment='#')
@@ -3136,75 +3262,55 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     diam /= 60. # [arcmin]
     assert(np.all(diam > 0.))
 
-    # If there is a reference catalog of diameters for this version, use it here.
+
+    # use "reference" diameters
     reffiles = {
+        # The v0.12 parent catalog was constructed by updating the
+        # initial diameters from the v0.11 values.
         'v0.12': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            },
+        # In v0.20, use the v0.11 measurements to throw out small galaxies.
+        'v0.20': {
             'ref_version': 'v0.11',
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
             }
     }
-    if version in reffiles.keys():
-        ref_version = reffiles[version]['ref_version']
-        log.info(f'Updating initial diameters using reference version {ref_version}')
-
+    if version == 'v0.12':
         # in v0.11 the 'fixgeo' geometry was inadvertently
         # overwritten, so don't update those diameters
-        veto_objnames = None
-        if ref_version == 'v0.11':
-            veto = []
-            for action in ['fixgeo', 'resolved']:
-                actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
-                veto.append(Table.read(actfile, format='csv', comment='#'))
-            veto = vstack(veto)
-            veto_objnames = set(np.unique(veto['objname']).tolist())
+        veto = []
+        for action in ['fixgeo', 'resolved']:
+            actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
+            veto.append(Table.read(actfile, format='csv', comment='#'))
+        veto = vstack(veto)
+        veto_objnames = set(np.unique(veto['objname'].tolist()))
 
-        for region in ['dr9-north', 'dr11-south']:  # dr11-south wins in overlaps
-            bit = REGIONBITS[region]
+        diam, ba, pa, diam_ref = update_geometry_from_reffiles(
+            parent, diam, ba, pa, diam_ref, reffiles[version],
+            REGIONBITS, veto_objnames=veto_objnames)
+    elif version == 'v0.20':
+        # Apply D(26)>0.5 diameter cuts but do not drop objects in the
+        # "properties" catalog.
+        propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
+        props = Table.read(propsfile, format='csv', comment='#')
+        veto_objnames = set(np.unique(props['objname']).tolist())
+
+        for region in ['dr9-north', 'dr11-south']:
             reffile = reffiles[version][region]
+            ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=[
+                'OBJNAME', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'RA', 'DEC',
+                'GROUP_NAME', 'GROUP_MULT',
+                'BA', 'PA', 'D26', 'D26_REF']))
+            parent = remove_small_groups_and_galaxies(
+                parent, ref_tab, region, REGIONBITS, SAMPLE,
+                mindiam=0.5, veto_objnames=veto_objnames)
+        assert(np.all(np.isin(lvd_dwarfs, parent['OBJNAME'])))
 
-            ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'RA', 'DEC',
-                                                                     'BA', 'PA', 'D26', 'D26_REF']))
-            log.info(f'Read {len(ref_tab):,d} objects from {reffile}')
-
-            # match by OBJNAME
-            m_parent, m_ref = match(parent['OBJNAME'], ref_tab['OBJNAME'])
-
-            # only objects whose REGION includes this bit
-            in_region = (parent['REGION'][m_parent] & bit) != 0
-            if veto_objnames is not None:
-                not_veto  = ~np.isin(parent['OBJNAME'][m_parent], list(veto_objnames))
-                idx_p = m_parent[in_region & not_veto]
-                idx_r = m_ref[in_region & not_veto]
-            else:
-                idx_p = m_parent[in_region]
-                idx_r = m_ref[in_region]
-
-            # reference geometry
-            ref_diam = ref_tab['D26'][idx_r].value
-            ref_ba = ref_tab['BA'][idx_r].value
-            ref_pa = ref_tab['PA'][idx_r].value
-            ref_ref = ref_version + '/' + ref_tab['D26_REF'][idx_r].value
-
-            #valid = ref_diam > 0
-            #idx_pv = idx_p[valid]
-            #diam[idx_pv] = ref_diam[valid]
-            #ba[idx_pv] = ref_ba[valid]
-            #pa[idx_pv] = ref_pa[valid]
-            #diam_ref[idx_pv] = ref_ref[valid]
-
-            diam[idx_p] = ref_diam
-            ba[idx_p] = ref_ba
-            pa[idx_p] = ref_pa
-            diam_ref[idx_p] = ref_ref
-
-            # update coordinates
-            if ref_version == 'v0.11':
-                pass
-            elif ref_version == 'v0.12':
-                print('Update coordinates?')
-                pdb.set_trace()
-
+    pdb.set_trace()
 
     # one final update of coordinates and geometry based on VI
     propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
@@ -3400,6 +3506,11 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
+
+    cmd = f'startree -i {outfile} -o {kdoutfile} -T -P -k -n stars'
+    log.info(cmd)
+    _ = os.system(cmd)
+
 
     ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
     ## objects within (outside) the DR11 imaging footprint.

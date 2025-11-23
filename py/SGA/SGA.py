@@ -76,29 +76,27 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
     elif archive:
         version = version_work
     elif parent:
-        # first major run
+        ## first major run
         #version = 'v0.10'
 
-        # no duplicate groups; cleanup of REGION bits; some dropped
-        # sources via VI.
+        ## no duplicate groups; cleanup of REGION bits; some dropped
+        ## sources via VI.
         #version = 'v0.11'
 
-        # re-initialize diameters with v0.11 ellipse results; drop
-        # sources with no Tractor; update some galaxy properties based
-        # on VI
-        version = 'v0.12'
+        ## re-initialize diameters with v0.11 ellipse results; drop
+        ## sources with no Tractor; VI update of galaxy properties
+        #version = 'v0.12'
+
+        # remove D(26)<0.5 sources (and groups where /all/ members
+        # have D(26)<0.5) based on v0.11 fitting results; keep
+        # diameters at their initial values
+        version = 'v0.20'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
-        #version = 'v0.10'
-        #  parent_version = v0.10
-
-        # parent_version bump
-        #version = 'v0.11'
-        #  parent_version = v0.11
-
-        # parent_version bump
-        version = 'v0.12'
-        #  parent_version = v0.12
+        #version = 'v0.10' # parent_version = v0.10
+        #version = 'v0.11' # parent_version = v0.10 --> v0.11
+        #version = 'v0.12' # parent_version = v0.11 --> v0.12
+        version = 'v0.20'  # parent_version = v0.12 --> v0.20
     return version
 
 

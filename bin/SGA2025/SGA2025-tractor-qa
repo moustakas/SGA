@@ -609,10 +609,10 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             bad_group_names  = uniq_gnames[any_bad]   # at least one member ellipse_bad
 
             if vi_sample == 6:
-                # sample 006 - groups with 2 or more members, ellipse_ok & ~is_LVD
+                # sample 006 - groups with 2 or more members, all ellipse_ok & ~is_LVD
                 fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], good_group_names)]
             elif vi_sample == 7:
-                # sample 007 - groups with 2 or more members, ellipse_bad & ~is_LVD
+                # sample 007 - groups with 2 or more members, any ellipse_bad & ~is_LVD
                 fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], bad_group_names)]
 
             sample = fullsample[fullsample['GROUP_PRIMARY']]
