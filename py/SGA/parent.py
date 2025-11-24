@@ -3117,7 +3117,6 @@ def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
     blended_groups = find_blended_groups(
         small_groups, g_sorted, RA_sorted, DEC_sorted, D_sorted,
         uniq, idx_start, idx_end)
-    pdb.set_trace()
 
     good_groups = np.union1d(good_groups_diam, blended_groups) # diameter OR blended
     mask_006_007 = gm2_notLVD & np.isin(g_all, good_groups)
@@ -3284,11 +3283,10 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         rows = np.where(np.isin(vicuts_objnames, moreparent['OBJNAME']))[0]
         vicuts = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-vicuts-{version_vicuts}.fits'), rows=rows))
         m_parent, m_vicuts = match(moreparent['OBJNAME'], vicuts['OBJNAME'])
-        for col in moreparent.colnames:
-            if col in ['DIAM_LIT', 'REGION']:
+        for col in vicuts.colnames:
+            if col in moreparent.colnames:
                 continue
-            if col in vicuts.colnames:
-                moreparent[col][m_parent] = vicuts[col][m_vicuts]
+            moreparent[col][m_parent] = vicuts[col][m_vicuts]
 
     # assign a unique parent_row for new objects
     I = np.where(~np.isin(moreparent['OBJNAME'], vicuts_objnames))[0]
@@ -3296,6 +3294,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
         moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
 
+    pdb.set_trace()
     parent = vstack((parent, moreparent))
     assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
@@ -3388,11 +3387,15 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             parent, diam, ba, pa, diam_ref, reffiles[version],
             REGIONBITS, veto_objnames=veto_objnames)
     elif version == 'v0.20':
-        # Apply D(26)>0.5 diameter cuts but do not drop objects in the
-        # "properties" catalog.
+        # Apply D(26)>0.5 diameter cuts but do not drop objects from the
+        # "properties" or "custom" catalog.
         propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
+        customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
         props = Table.read(propsfile, format='csv', comment='#')
-        veto_objnames = set(np.unique(props['objname']).tolist())
+        custom = Table.read(customfile, format='csv', comment='#')
+
+        veto_objnames = np.unique(np.hstack([props['objname'], custom['OBJNAME']]))
+        veto_objnames = set(veto_objnames.tolist())
 
         for region in ['dr9-north', 'dr11-south']:
             reffile = reffiles[version][region]
@@ -3406,7 +3409,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
         # Drop objects with REGION==0.
         I = parent['REGION'] != 0
-        pdb.set_trace()
         parent = parent[I]
         diam = diam[I]
         ba = ba[I]
@@ -3415,8 +3417,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         mag = mag[I]
         band = band[I]
         assert(np.all(np.isin(lvd_dwarfs, parent['OBJNAME'])))
-
-    pdb.set_trace()
 
     # one final update of coordinates and geometry based on VI
     propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
@@ -3529,8 +3529,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # apply an additional diameter cut:
     if float(version[1:]) >= 0.13:
-        print('APPLY DIAMETER CUT BUT MAKE SURE NOTHING FROM custom or properties is dropped')
-        pdb.set_trace()
+        print('APPLY VI CUTS!')
+        #pdb.set_trace()
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
