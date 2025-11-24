@@ -36,6 +36,7 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 
 # some tests
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
 
 """
 
@@ -517,6 +518,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         subdir = f'vi-{version}'
         qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/pdf'
         txtdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/txt'
+        viewdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/viewer'
 
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
         #regions = fitsio.read(samplefile, 'ELLIPSE', columns='REGION')
@@ -616,11 +618,23 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                 fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], bad_group_names)]
 
             sample = fullsample[fullsample['GROUP_PRIMARY']]
-        elif vi_sample == 999:
-            sort_by_groupname = True
-            I = (((fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0) *
-                 ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) == 0) *
-                 (fullsample['D26'] > 0.5))
+        elif vi_sample > 990:
+            sort_by_groupname = False
+            #I = (((fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0) *
+            #     ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) == 0) *
+            #     (fullsample['D26'] > 0.5))
+            res = Table(fitsio.read(os.path.join(sga_dir(), 'sample', 'vi-v0.11', 'results-vi-v0.11.fits')))
+            if vi_sample == 999:
+                res = res[res['CLASS'] == 'Help!']
+            elif vi_sample == 998:
+                res = res[res['CLASS'] == 'Not a (large) galaxy']
+            elif vi_sample == 997:
+                res = res[res['CLASS'] == 'Bad geometry']
+            elif vi_sample == 996:
+                res = res[res['CLASS'] == 'Bad center']
+            else:
+                raise ValueError('Write me')
+            I = np.isin(fullsample['OBJNAME'], res['OBJNAME'])
             fullsample = fullsample[I]
             sample = fullsample[fullsample['GROUP_PRIMARY']]
         else:
@@ -688,7 +702,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                 log.warning(f"Overriding layer={layer}-->ls-dr11-early-v2")
                 layer = 'ls-dr11-early-v2'
 
-            pdb.set_trace()
             do_cutouts(sample[~I][M], layer=layer, group=not no_groups,
                        fits_cutouts=False, maxdiam_arcmin=MAXDIAM, mp=mp,
                        cutoutdir=os.path.join(cutoutdir, region))
@@ -731,13 +744,11 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
             txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
 
-            viewfile = os.path.join(txtdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
+            viewfile = os.path.join(viewdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
             view = thisfullsample['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA']
             view.rename_columns(['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
             view['radius'] *= 60./2.
             view.write(viewfile, overwrite=True)
-
-            pdb.set_trace()
 
             with open(txtfile, 'w') as F:
                 for obj in thisfullsample['OBJNAME'].value:
