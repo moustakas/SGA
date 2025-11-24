@@ -3277,24 +3277,23 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # Some objects were dropped in the 'archive' step but restored via
     # the custom file; restore their properties here.
-    vicuts_objnames = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-vicuts-{version_vicuts}.fits'), columns='OBJNAME')
-    rows = np.isin(vicuts_objnames, moreparent['OBJNAME'])
+    nocuts_objnames = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='OBJNAME')
+    rows = np.isin(nocuts_objnames, moreparent['OBJNAME'])
     if np.any(rows):
-        rows = np.where(np.isin(vicuts_objnames, moreparent['OBJNAME']))[0]
-        vicuts = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-vicuts-{version_vicuts}.fits'), rows=rows))
-        m_parent, m_vicuts = match(moreparent['OBJNAME'], vicuts['OBJNAME'])
-        for col in vicuts.colnames:
-            if col in moreparent.colnames:
+        rows = np.where(np.isin(nocuts_objnames, moreparent['OBJNAME']))[0]
+        nocuts = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), rows=rows))
+        m_parent, m_nocuts = match(moreparent['OBJNAME'], nocuts['OBJNAME'])
+        for col in nocuts.colnames:
+            if col in custom.colnames: # do not overwrite the custom file
                 continue
-            moreparent[col][m_parent] = vicuts[col][m_vicuts]
+            moreparent[col][m_parent] = nocuts[col][m_nocuts]
 
     # assign a unique parent_row for new objects
-    I = np.where(~np.isin(moreparent['OBJNAME'], vicuts_objnames))[0]
+    I = np.where(moreparent['ROW_PARENT'] < 0)[0]
     if len(I) > 0:
         all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
         moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
 
-    pdb.set_trace()
     parent = vstack((parent, moreparent))
     assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
@@ -3427,7 +3426,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     except:
         log.info('Warning: duplicates in parent-properties file!')
         #raise ValueError()
-        oo, cc = np.unique(proprs['objname'], return_counts=True)
+        oo, cc = np.unique(props['objname'], return_counts=True)
         log.info(oo[cc>1])
         pdb.set_trace()
 
@@ -3526,7 +3525,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #grp['MAG_BAND'] = band
     grp['DIAM_REF'] = diam_ref
 
-
     # apply an additional diameter cut:
     if float(version[1:]) >= 0.13:
         print('APPLY VI CUTS!')
@@ -3541,6 +3539,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     srt = np.argsort(diam)[::-1]
     grp = grp[srt]
 
+    pdb.set_trace()
     if reset_sgaid:
         log.info('Resetting SGAID')
         sgaid = np.arange(len(grp))
@@ -3549,6 +3548,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         sgaid = parent['ROW_PARENT'][srt].value
     grp.add_column(sgaid, name='SGAID', index=0)
     assert(len(grp) == len(np.unique(grp['SGAID'])))
+
 
     # Build the group catalog but make sure the RESOLVED and FORCEPSF
     # samples (e.g., SMC, LMC) are alone.
@@ -3559,6 +3559,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     out = vstack((out1, out2))
     #del out1, out2
+
+    print('FIXME -- add a blended bit!')
+
 
     # assign SGAGROUP from GROUP_NAME and check for duplicates
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
