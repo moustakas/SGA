@@ -1,0 +1,64 @@
+#!/usr/bin/env python
+
+"""Parse the VI campaign results.
+
+"""
+import os, pdb
+import fitsio
+import numpy as np
+from glob import glob
+from astropy.table import Table, vstack, hstack, MaskedColumn
+from SGA.util import match
+from SGA.SGA import sga_dir
+
+campaign = 'vi-v0.11'
+
+rootdir = os.path.join(sga_dir(), 'sample', campaign)
+
+# join with the parent catalog
+refcat = Table(fitsio.read(os.path.join(sga_dir(), 'sample', 'SGA2025-parent-v0.11.fits'),
+                           columns=['OBJNAME', 'RA', 'DEC', 'SGAID']))#, 'REGION']))
+
+
+vall = []
+for region in ['dr11-south', 'dr9-north']:
+    allfiles = sorted(glob(rootdir + f'/{region}-*.csv'))
+    vregion = []
+    for onefile in allfiles:
+        try:
+            vone = Table.read(onefile, names=['objname', '_', 'class'], format='csv', data_start=0, guess=False)
+            vone['comment'] = ['']
+            vone['class'] = vone['class'].astype(str)
+        except:
+            vone = Table.read(onefile, names=['objname', '_', 'class', 'comment'], format='csv', data_start=0, guess=False)
+            vone['class'] = vone['class'].astype(str)
+            vone['comment'] = vone['comment'].astype(str)
+        vone.remove_column('_')
+        splt = os.path.basename(onefile).split('-')
+        vone['region'] = '-'.join(splt[:2])
+        vone['sample'] = splt[2]
+        vone['subset'] = splt[3].replace('.csv', '')
+        vone['row'] = np.int16(np.arange(len(vone))+1)
+        print(f'Read {len(vone)} rows from {onefile}')
+        vregion.append(vone)
+    vregion = vstack(vregion)
+
+    if type(vregion['class']) is MaskedColumn:
+        vregion['class'] = vregion['class'].filled('')
+    if type(vregion['comment']) is MaskedColumn:
+        vregion['comment'] = vregion['comment'].filled('')
+    for col in vregion.colnames:
+        vregion.rename_column(col, col.upper())
+
+    m_refcat, m_vregion = match(refcat['OBJNAME'], vregion['OBJNAME'])
+    region_refcat = refcat[m_refcat]
+    vregion = vregion[m_vregion]
+    assert(np.all(vregion['OBJNAME'] == region_refcat['OBJNAME']))
+    region_refcat.remove_column('OBJNAME')
+    vregion = hstack((vregion, region_refcat))
+    vall.append(vregion)
+vall = vstack(vall)
+
+outfile = os.path.join(rootdir, f'results-{campaign}.fits')
+vall.write(outfile, overwrite=True)
+print(f'Wrote {len(vall):,d} classifications to {outfile}')

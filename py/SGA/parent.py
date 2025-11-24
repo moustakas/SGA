@@ -3154,7 +3154,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
-    from astropy.table import MaskedColumn, Column
+    from astropy.table import Column
     from desiutil.dust import SFDMap
     from SGA.geometry import choose_geometry
     from SGA.SGA import sga2025_name, SAMPLE, SGA_version
@@ -3539,7 +3539,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     srt = np.argsort(diam)[::-1]
     grp = grp[srt]
 
-    pdb.set_trace()
     if reset_sgaid:
         log.info('Resetting SGAID')
         sgaid = np.arange(len(grp))
@@ -3561,7 +3560,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #del out1, out2
 
     print('FIXME -- add a blended bit!')
-
 
     # assign SGAGROUP from GROUP_NAME and check for duplicates
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
