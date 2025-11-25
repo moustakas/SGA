@@ -1439,7 +1439,7 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
                          unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
-                         unwise_pixscale=2.75, galex=True, unwise=True,
+                         unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
                          sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
                          nmonte=75, seed=42, verbose=False, skip_ellipse=False,
                          nowrite=False, clobber=False, qaplot=False,
@@ -1472,9 +1472,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     data, tractor, sample, samplesrcs, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
-        unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, verbose=verbose, qaplot=False, cleanup=False,
-        skip_ellipse=skip_ellipse, htmlgalaxydir=htmlgalaxydir)
+        unwise_pixscale=unwise_pixscale, mask_nearby=mask_nearby,
+        unwise=unwise, galex=galex, verbose=verbose, qaplot=False,
+        cleanup=False, skip_ellipse=skip_ellipse, htmlgalaxydir=htmlgalaxydir)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
@@ -1541,6 +1541,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
+                                            mask_nearby=mask_nearby,
                                             galmask_margin=0., niter_geometry=1,
                                             qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
 

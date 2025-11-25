@@ -1647,8 +1647,8 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          galmask_margin=0.2, input_geo_initial=None, qaplot=False,
-                         maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
-                         htmlgalaxydir=None):
+                         mask_nearby=None, maxshift_arcsec=MAXSHIFT_ARCSEC,
+                         cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
@@ -1785,7 +1785,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def update_galmask(allgalsrcs, bx, by, sma, ba, pa, opt_skysigmas=None,
-                       opt_models=None, mask_allgals=False):
+                       opt_nearbymask=None, opt_models=None, mask_allgals=False):
         """Update the galaxy mask based on the current in-ellipse array.
 
         """
@@ -1813,6 +1813,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 galsrcs = None
         else:
             galsrcs = None
+
+        if opt_nearbymask is not None:
+            opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
 
         return galsrcs, opt_galmask, opt_models
 
@@ -1874,6 +1877,23 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # Bright-star mask.
     opt_brightstarmask = data['brightstarmask']
     #opt_brightstarmask[:, :] = False
+
+    # Nearby-galaxy mask.
+    opt_nearbymask = np.zeros(sz, bool)
+    if mask_nearby:
+        for mask_one in mask_nearby:
+            ba, pa = mask_one['BA'], mask_one['PA']
+            sma_mask = mask_one['DIAM'] * 60. / 2. / opt_pixscale
+            (_, bx, by) = opt_wcs.wcs.radec2pixelxy(mask_one['RA'], mask_one['DEC'])
+            I = in_ellipse_mask(bx-1., width-(by-1.), sma_mask, sma_mask*ba, pa,
+                                xgrid, ygrid_flip)
+            opt_nearbymask[I] = True
+
+        #import matplotlib.pyplot as plt
+        #fig, ax = plt.subplots()
+        #ax.imshow(opt_nearbymask, origin='lower')
+        #fig.savefig('ioannis/tmp/junk.png')
+
 
     # Subtract Gaia stars from all optical images and generate the
     # threshold gaiamask (which will be used unless the LESSMASKING
@@ -2004,8 +2024,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # fields).
             galsrcs, opt_galmask, _ = update_galmask(
                 allgalsrcs, bx, by, sma*(1.+galmask_margin), ba,
-                pa, opt_skysigmas=opt_skysigmas, opt_models=None,
-                mask_allgals=mask_allgals)
+                pa, opt_skysigmas=opt_skysigmas, opt_nearbymask=opt_nearbymask,
+                opt_models=None, mask_allgals=mask_allgals)
             if not mask_allgals:
                 opt_galmask[inellipse] = False
                 #import matplotlib.pyplot as plt
@@ -2122,6 +2142,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         _, opt_galmask, opt_models_obj = update_galmask(
             allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
             opt_models=opt_models[iobj, :, :, :],
+            opt_nearbymask=opt_nearbymask,
             opt_skysigmas=opt_skysigmas,
             mask_allgals=mask_allgals)
         if not mask_allgals:
@@ -2284,8 +2305,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                    sort_by_flux=True, run='south', niter_geometry=2,
                    pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
-                   galex=True, unwise=True, verbose=False, qaplot=False,
-                   cleanup=False, build_mask=True, read_jpg=False,
+                   galex=True, unwise=True, mask_nearby=None, verbose=False,
+                   qaplot=False, cleanup=False, build_mask=True, read_jpg=False,
                    skip_ellipse=False, htmlgalaxydir=None):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
@@ -2667,6 +2688,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             try:
                 data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                                     qaplot=qaplot, cleanup=cleanup,
+                                                    mask_nearby=mask_nearby,
                                                     galmask_margin=galmask_margin,
                                                     niter_geometry=niter_geometry,
                                                     htmlgalaxydir=htmlgalaxydir)

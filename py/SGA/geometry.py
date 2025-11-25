@@ -219,7 +219,7 @@ def in_ellipse_mask(xcen, ycen, semia, semib, pa, x, y):
     xcen, ycen : float
         Center of the ellipse.
     semia, semib : float
-        Semi-major and semi-minor axes lengths.
+        Semi-major and semi-minor axes lengths in pixels.
     pa : float
         Position angle in degrees, measured CCW from the +y (north) axis.
     x, y : array-like

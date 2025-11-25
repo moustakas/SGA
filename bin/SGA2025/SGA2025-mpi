@@ -30,8 +30,10 @@ srun --ntasks=8 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/script
 
 """
 import os, time, sys, pdb
-from astropy.table import Table
 import numpy as np
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
 
 from SGA.logger import (log, LOGFMT, hook_legacypipe_and_root,
                         unhook_legacypipe_and_root,
@@ -165,13 +167,17 @@ def main():
             lvd=args.lvd, wisesize=args.wisesize, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
+        # pre-compute the SkyCoord object
+        c_fullsample = SkyCoord(fullsample[RACOLUMN]*u.deg, fullsample[DECCOLUMN]*u.deg)
     else:
         sample = []
         fullsample = []
+        c_fullsample = None
 
     if comm:
         sample = comm.bcast(sample, root=0)
         fullsample = comm.bcast(fullsample, root=0)
+        c_fullsample = comm.bcast(c_fullsample, root=0)
 
     if len(sample) == 0:
         log.info(f' Rank {rank}: to do (empty sample)!')
@@ -364,22 +370,6 @@ def main():
 
         if args.coadds:
             from SGA.coadds import custom_coadds
-
-            # Write out the individual galaxies for this mosaic.
-            if no_groups:
-                thissample = Table(onegal)
-            else:
-                I = np.where(onegal['GROUP_ID'] == fullsample['GROUP_ID'])[0]
-                thissample = fullsample[I]
-
-            samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
-            if args.clobber or not os.path.isfile(samplefile):
-                log.debug(f'Writing {len(thissample)} galaxy(ies) ' + \
-                          f'to {samplefile}')
-                tmpfile = samplefile+'.tmp'
-                thissample.write(tmpfile, overwrite=True, format='fits')
-                os.rename(tmpfile, samplefile)
-
             # SGA fitting modes
 
             # RESOLVED sources: no fitting, just coadds (and should
@@ -465,16 +455,27 @@ def main():
                 log.warning('Coadds must be generated before running ellipse-fitting.')
                 continue
 
+            # Always write out the individual galaxies for this mosaic
+            # if doing ellipse-fitting to make sure we get the latest
+            # catalog parameters.
+            if no_groups:
+                sample_thisgroup = Table(onegal)
+            else:
+                I = np.where(onegal['GROUP_NAME'] == fullsample['GROUP_NAME'])[0]
+                sample_thisgroup = fullsample[I]
+
+            samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
+            log.info(f'Writing {len(sample_thisgroup)} galaxy(ies) to {samplefile}')
+            tmpfile = samplefile+'.tmp'
+            sample_thisgroup.write(tmpfile, overwrite=True, format='fits')
+            os.rename(tmpfile, samplefile)
+
             #print('Temporarily make htmlgalaxydir here')
             #if not os.path.isdir(htmlgalaxydir):
             #    os.makedirs(htmlgalaxydir, exist_ok=True)
 
-            #if args.debug:
-            #    qaplot = True
-            #else:
-            #    #print('Temporarily setting qaplot=True!')
-            #    #qaplot = True
-            #    qaplot = False
+            if args.debug:
+                args.qaplot = True # always
 
             # RESOLVED - nothing to do
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
@@ -485,13 +486,25 @@ def main():
             else:
                 skip_ellipse = False
 
+            # Find other objects not in this group (excluding RESOLVED
+            # sources) which may contaminate the actual group members.
+            minsep = (0.5 * u.deg) # 5. * u.arcmin
+            c_thisgroup = SkyCoord(onegal[RACOLUMN]*u.deg, onegal[DECCOLUMN]*u.deg)
+            Imask_nearby = (c_thisgroup.separation(c_fullsample) < minsep * # separation < 1 degree
+                            ~np.isin(fullsample[REFIDCOLUMN], sample_thisgroup[REFIDCOLUMN]) *
+                            ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) == 0))
+            if np.any(Imask_nearby):
+                mask_nearby = fullsample['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][Imask_nearby]
+            else:
+                mask_nearby = None
+
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
                                        unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
                                        mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
-                                       nmonte=args.nmonte, seed=args.seed,
+                                       nmonte=args.nmonte, seed=args.seed, mask_nearby=mask_nearby,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
-                                       galex=args.galex, qaplot=False, verbose=args.verbose,
+                                       galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
                                        clobber=args.clobber, skip_ellipse=skip_ellipse,
                                        htmlgalaxydir=htmlgalaxydir)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
