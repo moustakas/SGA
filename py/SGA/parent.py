@@ -3467,12 +3467,12 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
-    samplebits[parent['ROW_LVD'] != -99] += SAMPLE['LVD']       # 2^0 - LVD dwarfs
+    samplebits[parent['ROW_LVD'] != -99] |= SAMPLE['LVD']       # 2^0 - LVD dwarfs
     for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
-        samplebits[parent[f'IN_{cloud}']] += SAMPLE['MCLOUDS']
-    samplebits[parent['IN_GCLPNE']] += SAMPLE['GCLPNE']         # 2^2 - GC/PNe
-    samplebits[parent['STARFDIST'] < 1.2] += SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
-    samplebits[parent['STARFDIST'] < 0.5] += SAMPLE['INSTAR']   # 2^4 - INSTAR
+        samplebits[parent[f'IN_{cloud}']] |= SAMPLE['MCLOUDS']
+    samplebits[parent['IN_GCLPNE']] |= SAMPLE['GCLPNE']         # 2^2 - GC/PNe
+    samplebits[parent['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
+    samplebits[parent['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']   # 2^4 - INSTAR
 
     # Assign the ELLIPSEMODE bits. Rederive the set of objects in each
     # file so those files can be updated without having to rerun
@@ -3501,15 +3501,15 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             log.info(act[~np.isin(act['objname'].value, parent['OBJNAME'].value)])
             pdb.set_trace()
 
-        ellipsemode[I] += ELLIPSEMODE[action.upper()]
+        ellipsemode[I] |= ELLIPSEMODE[action.upper()]
 
     # RESOLVED always implies FIXGEO!
-    ellipsemode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] += ELLIPSEMODE['FIXGEO']
+    ellipsemode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] |= ELLIPSEMODE['FIXGEO']
 
     # FITMODE is used by legacypipe
     fitmode = np.zeros(len(parent), np.int32)
-    fitmode[ellipsemode & ELLIPSEMODE['FIXGEO'] != 0] += FITMODE['FIXGEO']
-    fitmode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] += FITMODE['RESOLVED']
+    fitmode[ellipsemode & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
+    fitmode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] |= FITMODE['RESOLVED']
 
     # build the final catalog.
     grp = parent['REGION', 'OBJNAME', 'PGC']

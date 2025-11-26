@@ -1259,7 +1259,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         I = out['fitmode'] == 0
         log.info(f'Not setting fitmode=FREEZE for {np.sum(~I):,d}/{len(out):,d} special SGA sources.')
         log.info(f'Setting fitmode=FREEZE for the remaining {np.sum(I):,d}/{len(out):,d} SGA+Tractor sources.')
-        out['fitmode'][I] += FITMODE['FREEZE']
+        out['fitmode'][I] |= FITMODE['FREEZE']
 
         hdu_primary = fits.PrimaryHDU()
         hdu_out = fits.convenience.table_to_hdu(out)
@@ -1398,13 +1398,13 @@ def _update_masks(brightstarmask, gaiamask, refmask, galmask, mask_perband,
             gaiamask = resize(gaiamask, sz, mode='edge', anti_aliasing=False) > 0
 
         maskbits = np.zeros(sz, np.int32)
-        maskbits[brightstarmask] += MASKDICT['brightstar']
-        maskbits[refmask] += MASKDICT['reference']
-        maskbits[galmask] += MASKDICT['galaxy']
-        maskbits[gaiamask] += MASKDICT['gaiastar']
+        maskbits[brightstarmask] |= MASKDICT['brightstar']
+        maskbits[refmask] |= MASKDICT['reference']
+        maskbits[galmask] |= MASKDICT['galaxy']
+        maskbits[gaiamask] |= MASKDICT['gaiastar']
 
         for iband, filt in enumerate(bands):
-            maskbits[mask_perband[iband, :, :]] += MASKDICT[filt]
+            maskbits[mask_perband[iband, :, :]] |= MASKDICT[filt]
         return maskbits
     else:
         objmask = np.logical_or.reduce((brightstarmask, refmask, galmask, gaiamask))
@@ -2116,10 +2116,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # set the largeshift bits
         if dshift_arcsec > maxshift_arcsec:
-            sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['LARGESHIFT']
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT']
         if objsrc is not None:
             if dshift_tractor_arcsec > maxshift_arcsec:
-                sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['LARGESHIFT_TRACTOR']
+                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
 
         # final images and geometry
         opt_images_final[iobj, :, :, :] = opt_images_obj
@@ -2178,7 +2178,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             Iclose = in_ellipse_mask(refbx, width-refby, refsma,
                                      refsma*refba, refpa, bx, width-by)
             if Iclose:
-                sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['BLENDED']
+                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['BLENDED']
 
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
@@ -2376,7 +2376,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                              (tractor.ref_id == refid))[0]
                 if len(I) == 0:
                     log.warning(f'ref_id={refid} dropped by Tractor')
-                    sample['ELLIPSEBIT'][iobj] += ELLIPSEBIT['NOTRACTOR']
+                    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['NOTRACTOR']
                     samplesrcs.append(None)
                 else:
                     samplesrcs.append(tractor[I])
@@ -2616,7 +2616,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         sample['SMA_MOMENT'] = sample['SMA_INIT'] # [arcsec]
         sample['BA_MOMENT'] = sample['BA_INIT']
         sample['PA_MOMENT'] = sample['PA_INIT']
-        sample['ELLIPSEBIT'] += ELLIPSEBIT['NOTRACTOR']
+        sample['ELLIPSEBIT'] |= ELLIPSEBIT['NOTRACTOR']
 
         # FIXME - duplicate code from io._read_image_data
         from tractor.tractortime import TAITime
