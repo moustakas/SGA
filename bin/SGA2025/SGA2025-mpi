@@ -167,8 +167,11 @@ def main():
             lvd=args.lvd, wisesize=args.wisesize, region=region,
             test_bricks=args.test_bricks, verbose=args.verbose)
 
-        # pre-compute the SkyCoord object
-        c_fullsample = SkyCoord(fullsample[RACOLUMN]*u.deg, fullsample[DECCOLUMN]*u.deg)
+        if len(fullsample) > 0:
+            # pre-compute the SkyCoord object
+            c_fullsample = SkyCoord(fullsample[RACOLUMN]*u.deg, fullsample[DECCOLUMN]*u.deg)
+        else:
+            c_fullsample = None
     else:
         sample = []
         fullsample = []

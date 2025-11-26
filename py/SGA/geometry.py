@@ -253,6 +253,56 @@ def in_ellipse_mask(xcen, ycen, semia, semib, pa, x, y):
     return (xp/semia)**2 + (yp/semib)**2 <= 1
 
 
+def ellipses_overlap(bx, by, sma, ba, pa, refbx, refby, refsma,
+                     refba, refpa, ntheta=64):
+    """
+    Return True if two ellipses plausibly overlap by sampling points.
+
+    Ellipse i:  center (bx,by), semimajor sma, semiminor sma*ba, PA=pa (deg)
+    Ellipse j:  center (refbx,refby), semimajor refsma, semiminor refsma*refba, PA=refpa
+
+    """
+    semib  = sma * ba
+    refsemib = refsma * refba
+
+    # Quick checks: centers inside the other ellipse?
+    if in_ellipse_mask(refbx, refby, refsma, refsemib, refpa, bx, by):
+        return True
+    if in_ellipse_mask(bx, by, sma, semib, pa, refbx, refby):
+        return True
+
+    # Sample points on ellipse 1 boundary, test against ellipse 2
+    theta = np.deg2rad(pa)
+    t = np.linspace(0, 2*np.pi, ntheta, endpoint=False)
+    xp = sma * np.cos(t)
+    yp = semib * np.sin(t)
+
+    # Map (xp,yp) in ellipse coords -> (x,y) in image coords
+    # major axis dir = (sinθ, cosθ), minor = (–cosθ, sinθ)
+    dx = xp * np.sin(theta) + yp * (-np.cos(theta))
+    dy = xp * np.cos(theta) + yp * np.sin(theta)
+    x1 = bx + dx
+    y1 = by + dy
+
+    if np.any(in_ellipse_mask(refbx, refby, refsma, refsemib, refpa, x1, y1)):
+        return True
+
+    # Sample points on ellipse 2 boundary, test against ellipse 1
+    theta2 = np.deg2rad(refpa)
+    t2 = np.linspace(0, 2*np.pi, ntheta, endpoint=False)
+    xp2 = refsma * np.cos(t2)
+    yp2 = refsemib * np.sin(t2)
+    dx2 = xp2 * np.sin(theta2) + yp2 * (-np.cos(theta2))
+    dy2 = xp2 * np.cos(theta2) + yp2 * np.sin(theta2)
+    x2 = refbx + dx2
+    y2 = refby + dy2
+
+    if np.any(in_ellipse_mask(bx, by, sma, semib, pa, x2, y2)):
+        return True
+
+    return False
+
+
 def get_tractor_ellipse(r50, e1, e2):
     """Convert Tractor epsilon1, epsilon2 values to ellipticity and position angle.
 

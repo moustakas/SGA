@@ -1654,7 +1654,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     """
     from astrometry.util.starutil_numpy import arcsec_between
-    from SGA.geometry import in_ellipse_mask
+    from SGA.geometry import in_ellipse_mask, ellipses_overlap
     from SGA.util import ivar2var
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
 
@@ -1964,12 +1964,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if input_geo_initial is not None:
             niter_actual = 1
             geo_init = input_geo_initial[iobj, :]
+            geo_init_ref = geo_init # gets used below
         else:
+            # gets used below as a fallback
+            geo_init_ref = get_geometry(opt_pixscale, table=obj)
+
             # in groups, fall back to the Tractor center
             if nsample > 1 and objsrc is not None:
                 use_tractor_position = True
             geo_init = get_geometry(opt_pixscale, table=obj, ref_tractor=objsrc,
                                     use_tractor_position=use_tractor_position)
+
         geo_initial[iobj, :] = geo_init
         [bx, by, sma, ba, pa] = geo_init
         #print('Initial', iobj, bx, by, sma, ba, pa)
@@ -1983,7 +1988,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
-            #print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
+            print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,
@@ -2089,7 +2094,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
                 props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask,# debug=True,
                                               use_tractor_position=use_tractor_position)
-                geo_iter = get_geometry(opt_pixscale, props=props)
+                #geo_iter = get_geometry(opt_pixscale, props=props)
+                geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
+                                        use_tractor_position=use_tractor_position)
 
             ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
 
@@ -2111,7 +2118,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            #print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
+            print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
 
         # set the largeshift bits
         if dshift_arcsec > maxshift_arcsec:
@@ -2119,6 +2126,21 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if objsrc is not None:
             if dshift_tractor_arcsec > maxshift_arcsec:
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
+
+        # Check separation from previously processed objects.
+        for j in range(iobj):
+            bx_j, by_j, _, _, _ = geo_final[j]
+            ra_j, dec_j = opt_wcs.wcs.pixelxy2radec(bx_j+1., by_j+1.)
+            sep = arcsec_between(ra_j, dec_j, ra_iter, dec_iter)
+
+            if sep < maxshift_arcsec:
+                log.warning(f'Objects {iobj} and {j} converged to nearly the same center '
+                            f'({sep:.2f} < {maxshift_arcsec} arcsec); reverting to initial/input center.')
+                geo_iter[0] = geo_init_ref[0]
+                geo_iter[1] = geo_init_ref[1]
+
+                ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
+                break
 
         # final images and geometry
         opt_images_final[iobj, :, :, :] = opt_images_obj
@@ -2176,10 +2198,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         for indx in refindx:
             [bx, by, _, _, _] = geo_final[iobj, :]
             [refbx, refby, refsma, refba, refpa] = geo_final[indx, :]
-            Iclose = in_ellipse_mask(refbx, width-refby, refsma,
-                                     refsma*refba, refpa, bx, width-by)
+            #Iclose = in_ellipse_mask(refbx, width-refby, refsma,
+            #                         refsma*refba, refpa, bx, width-by)
+            Iclose = ellipses_overlap(bx, by, sma, ba, pa,
+                refbx, refby, refsma, refba, refpa)
             if Iclose:
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['BLENDED']
+                break
 
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
@@ -2266,6 +2291,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         data[f'{prefix}_sigma'] /= pixscale**2  # [nanomaggies/arcsec**2]
 
     # final geometry
+    pdb.set_trace()
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
     for icol, col in enumerate(['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
         if 'SMA' in col:
@@ -2283,6 +2309,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     sample['SGANAME'] = sga2025_name(ra, dec)
     #sample['RA_MOMENT'] = ra
     #sample['DEC_MOMENT'] = dec
+
+    if nsample > 1:
+        if len(sample['SGANAME']) != len(np.unique(sample['SGANAME'])):
+            msg = f'Duplicate SGA names {sample["SGANAME"][0]}'
+            log.critical(msg)
+            raise ValueError(msg)
+
 
     # optionally build a QA figure
     if qaplot:
