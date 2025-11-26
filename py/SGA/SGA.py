@@ -610,9 +610,7 @@ def SGA_diameter(ellipse, radius_arcsec=False):
     # over-ride FIXGEO geometry
     I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
     if np.any(I):
-        print('WRITE ME!')
-        pdb.set_trace()
-
+        raise ValueError('WRITE ME!')
 
     if radius_arcsec:
         r26 = d26 / 2. * 60. # [radius, arcsec]
@@ -1785,7 +1783,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def update_galmask(allgalsrcs, bx, by, sma, ba, pa, opt_skysigmas=None,
-                       opt_nearbymask=None, opt_models=None, mask_allgals=False):
+                       opt_models=None, mask_allgals=False):
         """Update the galaxy mask based on the current in-ellipse array.
 
         """
@@ -1813,9 +1811,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 galsrcs = None
         else:
             galsrcs = None
-
-        if opt_nearbymask is not None:
-            opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
 
         return galsrcs, opt_galmask, opt_models
 
@@ -2024,14 +2019,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # fields).
             galsrcs, opt_galmask, _ = update_galmask(
                 allgalsrcs, bx, by, sma*(1.+galmask_margin), ba,
-                pa, opt_skysigmas=opt_skysigmas, opt_nearbymask=opt_nearbymask,
+                pa, opt_skysigmas=opt_skysigmas,
                 opt_models=None, mask_allgals=mask_allgals)
+
             if not mask_allgals:
                 opt_galmask[inellipse] = False
                 #import matplotlib.pyplot as plt
                 #plt.clf()
                 #plt.imshow(opt_galmask, origin='lower')
                 #plt.savefig('ioannis/tmp/junk2.png')
+
+            # apply the mask_nearby mask
+            opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
 
             # Hack! If there are other reference sources, double the
             # opt_refmask inellipse veto mask so that the derived
@@ -2142,12 +2141,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         _, opt_galmask, opt_models_obj = update_galmask(
             allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
             opt_models=opt_models[iobj, :, :, :],
-            opt_nearbymask=opt_nearbymask,
             opt_skysigmas=opt_skysigmas,
             mask_allgals=mask_allgals)
         if not mask_allgals:
             opt_galmask[inellipse] = False
         #opt_galmask[:] = False
+
+        # apply the mask_nearby mask
+        opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
 
         #import matplotlib.pyplot as plt
         #plt.clf()

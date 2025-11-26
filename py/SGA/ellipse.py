@@ -1521,6 +1521,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
         for iobj, obj in enumerate(sample):
             [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
+            #print([bx, by, sma, ba, pa])
 
             # if fixgeo, use the moment geometry
             if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
@@ -1528,8 +1529,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             else:
                 # estimate R(26)
                 tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
-                for filt in bands:
-                    for thresh in sbthresh:
+                for thresh in sbthresh:
+                    for filt in bands:
                         col = f'R{thresh:.0f}_{filt.upper()}'
                         colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
                         tab[col] = results[0][iobj][col]
@@ -1537,6 +1538,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
                 #print(tab)
                 #print(radius, radius_err, radius_ref, radius_weight)
+                #print([bx, by, radius[0]/pixscale, ba, pa])
                 input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
 
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,

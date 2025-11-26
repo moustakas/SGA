@@ -759,7 +759,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
     sbcolors = sbprofile_colors()
     cmap2a = get_cmap('Dark2')
     cmap2b = get_cmap('Paired')
-    colors2 = [cmap2a(1), cmap2b(3)]
+    colors2 = [cmap2a(1), cmap2b(3), cmap2a(2)]
     #colors2 = [cmap2(i) for i in range(5)]
 
     for iobj, obj in enumerate(ellipse):
@@ -805,7 +805,9 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
             ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
             ellipse_eps = 1 - obj['BA_MOMENT']
 
+            sma_mask = obj['SMA_MASK']     # [arcsec]
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
+            label_mask = r'$R(mask)='+f'{sma_mask:.1f}'+r'$ arcsec'
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if idata == 0:
                 sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(Table(obj), radius_arcsec=True)
@@ -819,6 +821,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                                        pa=ellipse_pa, sma=sma_moment/pixscale) # sma in pixels
                 refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
                                            refg.sma*(1. - refg.eps), refg.pa)
+                refmask = EllipticalAperture((refg.x0, refg.y0), sma_mask/pixscale,
+                                             sma_mask/pixscale*(1. - refg.eps), refg.pa)
 
                 refap_sma_sbthresh = EllipticalAperture((refg.x0, refg.y0), sma_sbthresh/pixscale,
                                                sma_sbthresh/pixscale*(1. - refg.eps), refg.pa)
@@ -858,6 +862,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                                             sma*(1. - refg.eps), refg.pa)
                     ap.plot(color='k', lw=1, ax=xx)
                 refap.plot(color=colors2[0], lw=2, ls='--', ax=xx)
+                refmask.plot(color=colors2[2], lw=2, ls='--', ax=xx)
                 refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='-', ax=xx)
 
                 # col 1 - mag SB profiles
@@ -934,13 +939,14 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                 if sma_sbthresh > 0.:
                     xx.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
                 xx.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
+                xx.axvline(x=sma_mask**0.25, color=colors2[2], lw=2, ls='--', label=label_mask)
 
                 hndls, _ = xx.get_legend_handles_labels()
                 if hndls:
                     if sma_sbthresh > 0.:
-                        split = -2
+                        split = -3
                     else:
-                        split = -1
+                        split = -2
                     if idata == 0:
                         # split into two legends
                         leg1 = xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
