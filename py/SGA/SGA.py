@@ -1834,7 +1834,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     opt_skysigmas = {}
     for filt in opt_bands:
-        #opt_skysigmas[filt] = 1e9*10.**(-0.4*sample[f'PSFDEPTH_{filt.upper()}'][0])
         opt_skysigmas[filt] = data[f'{filt}_skysigma']
 
     Ipsf = ((tractor.type == 'PSF') * (tractor.type != 'DUP') *
@@ -1845,21 +1844,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     psfsrcs = tractor[Ipsf]
     allgalsrcs = tractor[Igal]
 
-    #import matplotlib.pyplot as plt
-    #from SGA.coadds import srcs2image
-    #from SGA.qa import get_norm
-    #ncols = 4
-    #nrows = int(np.ceil(len(allgalsrcs) / ncols))
-    #norm = get_norm(data['r'])
-    #fig, ax = plt.subplots(nrows, ncols, sharex=True, sharey=True)
-    #for xx, src in zip(ax.flat, allgalsrcs):
-    #    model = srcs2image(src, opt_wcs, band='r', pixelized_psf=data['r_psf'])
-    #    xx.imshow(np.log10(model), origin='lower', cmap=plt.cm.cividis)#, norm=norm)
-    #for xx in ax.flat:
-    #    xx.axis('off')
-    #fig.tight_layout()
-    #fig.savefig('ioannis/tmp/junk.png')
-
     # Initialize the *original* images arrays.
     opt_images = np.zeros((len(opt_bands), *sz), 'f4')
     opt_mask_perband = np.stack([data[f'{filt}_mask'] for filt in opt_bands])
@@ -1869,9 +1853,22 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     opt_images_final = np.zeros((nsample, len(opt_bands), *sz), 'f4')
     opt_models = np.zeros((nsample, len(opt_bands), *sz), 'f4')
 
+    # arrays to hold per-object state for final mask building
+    opt_refmask_all = np.zeros((nsample, *sz), bool)
+    opt_gaiamask_obj_all = np.zeros((nsample, *sz), bool)
+    mask_allgals_arr = np.zeros(nsample, bool)
+
+    # shifts relative to initial / Tractor centers
+    dshift_arcsec_arr = np.zeros(nsample, 'f4')
+    dshift_tractor_arcsec_arr = np.zeros(nsample, 'f4')
+
+    # store table-based initial geometry for later reversion
+    geo_initial = np.zeros((nsample, 5))     # [bx,by,sma,ba,pa] (starting geo)
+    geo_init_ref_all = np.zeros((nsample, 5))  # table-based geometry fallback
+    geo_final = np.zeros_like(geo_initial)
+
     # Bright-star mask.
     opt_brightstarmask = data['brightstarmask']
-    #opt_brightstarmask[:, :] = False
 
     # Nearby-galaxy mask.
     opt_nearbymask = np.zeros(sz, bool)
@@ -1879,16 +1876,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         for mask_one in mask_nearby:
             ba, pa = mask_one['BA'], mask_one['PA']
             sma_mask = mask_one['DIAM'] * 60. / 2. / opt_pixscale
-            (_, bx, by) = opt_wcs.wcs.radec2pixelxy(mask_one['RA'], mask_one['DEC'])
-            I = in_ellipse_mask(bx-1., width-(by-1.), sma_mask, sma_mask*ba, pa,
+            (_, bxm, bym) = opt_wcs.wcs.radec2pixelxy(mask_one['RA'], mask_one['DEC'])
+            I = in_ellipse_mask(bxm-1., width-(bym-1.), sma_mask, sma_mask*ba, pa,
                                 xgrid, ygrid_flip)
             opt_nearbymask[I] = True
-
-        #import matplotlib.pyplot as plt
-        #fig, ax = plt.subplots()
-        #ax.imshow(opt_nearbymask, origin='lower')
-        #fig.savefig('ioannis/tmp/junk.png')
-
 
     # Subtract Gaia stars from all optical images and generate the
     # threshold gaiamask (which will be used unless the LESSMASKING
@@ -1905,27 +1896,25 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         else:
             opt_images[iband, :, :] = data[filt]
 
-    geo_initial = np.zeros((nsample, 5)) # [bx,by,sma,ba,pa]
-    geo_final = np.zeros_like(geo_initial)
-
+    # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
-        log.info('Determining the geometry for galaxy ' + \
+        log.info('Determining the geometry for galaxy ' +
                  f'{iobj+1}/{nsample}.')
 
-        # If the LESSMASKING bit is set, do not use the Gaia threshold
-        # mask.
+        # If the LESSMASKING bit is set, do not use the Gaia threshold mask.
         opt_gaiamask_obj = np.copy(opt_gaiamask)
-        if obj['ELLIPSEMODE'] & ELLIPSEMODE['LESSMASKING'] != 0:# or True:
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['LESSMASKING'] != 0:
             log.info('LESSMASKING bit set; no Gaia threshold-masking.')
             opt_gaiamask_obj[:, :] = False
 
         # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
-        if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0:# or True:
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0:
             log.info('MOREMASKING bit set; masking all extended sources.')
             mask_allgals = True
         else:
             mask_allgals = False
+        mask_allgals_arr[iobj] = mask_allgals
 
         # Find all reference sources (not dropped by Tractor) except
         # the one we're working on.
@@ -1943,12 +1932,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # (galmask_margin) to the mask since the moment geometry
             # only includes XX% of the light.
             if indx < iobj:
-                [bx, by, sma, ba, pa] = geo_final[indx, :]
+                [bxr, byr, smar, bar, par] = geo_final[indx, :]
             else:
-                [bx, by, sma, ba, pa] = \
-                    get_geometry(opt_pixscale, table=refsample)
-            opt_refmask1 = in_ellipse_mask(bx, width-by, sma*(1.+galmask_margin),
-                                           ba*sma*(1.+galmask_margin), pa,
+                [bxr, byr, smar, bar, par] = get_geometry(opt_pixscale, table=refsample)
+            opt_refmask1 = in_ellipse_mask(bxr, width-byr, smar*(1.+galmask_margin),
+                                           bar*smar*(1.+galmask_margin), par,
                                            xgrid, ygrid_flip)
             opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
 
@@ -1964,20 +1952,22 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if input_geo_initial is not None:
             niter_actual = 1
             geo_init = input_geo_initial[iobj, :]
-            geo_init_ref = geo_init # gets used below
+            geo_init_ref = geo_init
         else:
-            # gets used below as a fallback
+            # table-based geometry used as fallback
             geo_init_ref = get_geometry(opt_pixscale, table=obj)
 
             # in groups, fall back to the Tractor center
-            if nsample > 1 and objsrc is not None:
+            #if nsample > 1 and objsrc is not None:
+            if objsrc is not None:
                 use_tractor_position = True
             geo_init = get_geometry(opt_pixscale, table=obj, ref_tractor=objsrc,
                                     use_tractor_position=use_tractor_position)
 
         geo_initial[iobj, :] = geo_init
+        geo_init_ref_all[iobj, :] = geo_init_ref
+
         [bx, by, sma, ba, pa] = geo_init
-        #print('Initial', iobj, bx, by, sma, ba, pa)
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
@@ -1986,9 +1976,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         else:
             niter_actual = niter_geometry
 
+        dshift_arcsec = 0.0
+        dshift_tractor_arcsec = 0.0
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
-            print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
+            #print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,
@@ -2009,13 +2001,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
 
-            #iter_gaiamask = np.copy(opt_gaiamask_obj)
-            #iter_gaiamask[inellipse] = False
-            #import matplotlib.pyplot as plt
-            #plt.clf()
-            #plt.imshow(opt_models[0, 0, :, :], origin='lower')
-            #plt.savefig('ioannis/tmp/junk2.png')
-
             # Build a galaxy mask from all extended sources outside
             # the (current) elliptical mask expanded by a factor of
             # galmask_margin (but do not subtract the models). By
@@ -2029,10 +2014,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             if not mask_allgals:
                 opt_galmask[inellipse] = False
-                #import matplotlib.pyplot as plt
-                #plt.clf()
-                #plt.imshow(opt_galmask, origin='lower')
-                #plt.savefig('ioannis/tmp/junk2.png')
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -2040,7 +2021,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Hack! If there are other reference sources, double the
             # opt_refmask inellipse veto mask so that the derived
             # geometry can grow, if necessary.
-            #print('@################# Check this double on input or not?')
             if iobj > 0:
                 if input_geo_initial is not None:
                     inellipse2 = in_ellipse_mask(bx, width-by, sma, sma*ba,
@@ -2049,14 +2029,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     inellipse2 = in_ellipse_mask(bx, width-by, 2.*sma, 2.*sma*ba,
                                                  pa, xgrid, ygrid_flip)
                 iter_refmask[inellipse2] = False
-            #import matplotlib.pyplot as plt
-            #plt.clf()
-            #plt.imshow(iter_refmask, origin='lower')
-            #plt.savefig('ioannis/tmp/junk2.png')
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
-            #opt_galmask[:] = False
             opt_masks_obj = _update_masks(iter_brightstarmask, opt_gaiamask_obj,
                                           iter_refmask, opt_galmask,
                                           opt_mask_perband, opt_bands,
@@ -2069,15 +2044,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 geo_iter = geo_init
             elif input_geo_initial is not None:
                 geo_iter = geo_init
-                ## debug code below here
-                #wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images_obj, axis=0)
-                #wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
-                #wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
-                #wmasks = np.zeros_like(opt_images_obj, bool)
-                #for iband, filt in enumerate(opt_bands):
-                #    wmasks[iband, :, :] = (~opt_masks_obj[iband, :, :]) * (opt_images_obj[iband, :, :] > opt_skysigmas[filt])
-                #wmask = np.any(wmasks, axis=0) * (wimg > 0.)
-                #props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask, debug=True)
             else:
                 # generate a detection image and pixel mask for use with find_galaxy_in_cutout
                 wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images_obj, axis=0)
@@ -2088,27 +2054,27 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 for iband, filt in enumerate(opt_bands):
                     wmasks[iband, :, :] = (~opt_masks_obj[iband, :, :]) * (opt_images_obj[iband, :, :] > opt_skysigmas[filt])
                 # True=any pixel is >5*skynoise and positive in the
-                # coadded image (otherwise the ellipse_moments matrix
-                # can become ill-defined).
+                # coadded image.
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-                props = find_galaxy_in_cutout(wimg, bx, by, sma, ba, pa, wmask=wmask,# debug=True,
-                                              use_tractor_position=use_tractor_position)
-                #geo_iter = get_geometry(opt_pixscale, props=props)
-                geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
-                                        use_tractor_position=use_tractor_position)
+                props = find_galaxy_in_cutout(
+                    wimg, bx, by, sma, ba, pa, wmask=wmask,
+                    use_tractor_position=use_tractor_position)
+                geo_iter = get_geometry(
+                    opt_pixscale, props=props, ref_tractor=objsrc,
+                    use_tractor_position=use_tractor_position)
 
-            ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
+            ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
 
             dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
             if objsrc is not None:
                 dshift_tractor_arcsec = arcsec_between(objsrc.ra, objsrc.dec, ra_iter, dec_iter)
 
             if dshift_arcsec > maxshift_arcsec:
-                log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' + \
+                log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' +
                             f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
                 # Revert to the Tractor position or the initial
-                # position and update the masks one last time.
+                # position for subsequent iterations.
                 if objsrc is not None:
                     geo_iter[0] = objsrc.bx
                     geo_iter[1] = objsrc.by
@@ -2118,39 +2084,58 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
+            #print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
 
-        # set the largeshift bits
-        if dshift_arcsec > maxshift_arcsec:
-            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT']
-        if objsrc is not None:
-            if dshift_tractor_arcsec > maxshift_arcsec:
-                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
+        # store shifts
+        dshift_arcsec_arr[iobj] = dshift_arcsec
+        dshift_tractor_arcsec_arr[iobj] = dshift_tractor_arcsec
 
-        # Check separation from previously processed objects.
-        for j in range(iobj):
-            bx_j, by_j, _, _, _ = geo_final[j]
-            ra_j, dec_j = opt_wcs.wcs.pixelxy2radec(bx_j+1., by_j+1.)
-            sep = arcsec_between(ra_j, dec_j, ra_iter, dec_iter)
+        # store images, geometry, and masks needed later
+        opt_images_final[iobj, :, :, :] = opt_images_obj
+        geo_final[iobj, :] = geo_iter  # last iteration
+        opt_refmask_all[iobj, :, :] = opt_refmask
+        opt_gaiamask_obj_all[iobj, :, :] = opt_gaiamask_obj
 
+    # enforce minimum separation between centers
+    ra_final, dec_final = opt_wcs.wcs.pixelxy2radec(
+        (geo_final[:, 0] + 1.), (geo_final[:, 1] + 1.))
+
+    for iobj in range(nsample):
+        for j in range(iobj+1, nsample):
+            sep = arcsec_between(
+                ra_final[iobj], dec_final[iobj],
+                ra_final[j], dec_final[j])
             if sep < maxshift_arcsec:
                 log.warning(f'Objects {iobj} and {j} converged to nearly the same center '
-                            f'({sep:.2f} < {maxshift_arcsec} arcsec); reverting to initial/input center.')
-                geo_iter[0] = geo_init_ref[0]
-                geo_iter[1] = geo_init_ref[1]
+                            f'({sep:.2f} < {maxshift_arcsec} arcsec); reverting both to '
+                            'input/table-based centers.')
+                # revert both centers to table-based geometry
+                geo_final[iobj, 0] = geo_init_ref_all[iobj, 0]
+                geo_final[iobj, 1] = geo_init_ref_all[iobj, 1]
+                geo_final[j, 0] = geo_init_ref_all[j, 0]
+                geo_final[j, 1] = geo_init_ref_all[j, 1]
 
-                ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0]+1., geo_iter[1]+1.)
-                break
+                ra_final[iobj], dec_final[iobj] = opt_wcs.wcs.pixelxy2radec(
+                    geo_final[iobj, 0] + 1., geo_final[iobj, 1] + 1.)
+                ra_final[j], dec_final[j] = opt_wcs.wcs.pixelxy2radec(
+                    geo_final[j, 0] + 1., geo_final[j, 1] + 1.)
 
-        # final images and geometry
-        opt_images_final[iobj, :, :, :] = opt_images_obj
-        geo_final[iobj, :] = geo_iter # last iteration
+    # set LARGESHIFT bits
+    for iobj, objsrc in enumerate(samplesrcs):
+        if dshift_arcsec_arr[iobj] > maxshift_arcsec:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT']
+        if objsrc is not None:
+            if dshift_tractor_arcsec_arr[iobj] > maxshift_arcsec:
+                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
 
-        # final masks
+    # final optical masks
+    for iobj, obj in enumerate(sample):
+        [bx, by, sma, ba, pa] = geo_final[iobj, :]
+
         inellipse = in_ellipse_mask(bx, width-by, sma, sma*ba,
                                     pa, xgrid, ygrid_flip)
         final_brightstarmask = np.copy(opt_brightstarmask)
-        final_refmask = np.copy(opt_refmask)
+        final_refmask = np.copy(opt_refmask_all[iobj])
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
 
@@ -2164,44 +2149,29 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
             opt_models=opt_models[iobj, :, :, :],
             opt_skysigmas=opt_skysigmas,
-            mask_allgals=mask_allgals)
-        if not mask_allgals:
+            mask_allgals=mask_allgals_arr[iobj])
+        if not mask_allgals_arr[iobj]:
             opt_galmask[inellipse] = False
-        #opt_galmask[:] = False
 
         # apply the mask_nearby mask
         opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
 
-        #import matplotlib.pyplot as plt
-        #plt.clf()
-        #plt.imshow(opt_gaiamask_obj, origin='lower')
-        ##plt.imshow(final_refmask, origin='lower')
-        #plt.savefig('ioannis/tmp/junk2.png')
-
         opt_maskbits_obj = _update_masks(
-            final_brightstarmask, opt_gaiamask_obj,
+            final_brightstarmask, opt_gaiamask_obj_all[iobj],
             final_refmask, opt_galmask, opt_mask_perband,
             opt_bands, sz, build_maskbits=True,
             MASKDICT=OPTMASKBITS)
         opt_models[iobj, :, :, :] = opt_models_obj
         opt_maskbits[iobj, :, :] = opt_maskbits_obj
 
-        #import matplotlib.pyplot as plt
-        #plt.clf()
-        #plt.imshow(np.log10(opt_images_final[iobj, 0, :, :]*(opt_maskbits[iobj, :, :]==0)), origin='lower')
-        #plt.savefig('ioannis/tmp/junk.png')
-        #plt.close()
-
     # Loop through all objects again to set the blended bit.
     for iobj, obj in enumerate(sample):
         refindx = np.delete(np.arange(nsample), iobj)
         for indx in refindx:
-            [bx, by, _, _, _] = geo_final[iobj, :]
+            [bx, by, sma, ba, pa] = geo_final[iobj, :]
             [refbx, refby, refsma, refba, refpa] = geo_final[indx, :]
-            #Iclose = in_ellipse_mask(refbx, width-refby, refsma,
-            #                         refsma*refba, refpa, bx, width-by)
             Iclose = ellipses_overlap(bx, by, sma, ba, pa,
-                refbx, refby, refsma, refba, refpa)
+                                      refbx, refby, refsma, refba, refpa)
             if Iclose:
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['BLENDED']
                 break
@@ -2270,19 +2240,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 bands, sz, build_maskbits=True, MASKDICT=MASKDICT,
                 do_resize=True)
 
-            #import matplotlib.pyplot as plt
-            #plt.clf()
-            #plt.imshow(maskbits[iobj, :, :], origin='lower')
-            #plt.savefig('ioannis/tmp/junk.png')
-            #plt.close()
-
         data[f'{prefix}_images'] = images_final # [nanomaggies]
         data[f'{prefix}_maskbits'] = maskbits
         data[f'{prefix}_models'] = models
         ivar = np.stack([data[f'{filt}_invvar'] for filt in bands])
         sig, _ = ivar2var(ivar, sigma=True, allmasked_ok=True) # [nanomaggies]
         data[f'{prefix}_sigma'] = sig
-
 
     # convert to surface brightness
     for prefix in ['opt', 'unwise', 'galex']:
@@ -2291,7 +2254,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         data[f'{prefix}_sigma'] /= pixscale**2  # [nanomaggies/arcsec**2]
 
     # final geometry
-    pdb.set_trace()
     ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
     for icol, col in enumerate(['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
         if 'SMA' in col:
@@ -2307,15 +2269,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     sample['RA'] = ra
     sample['DEC'] = dec
     sample['SGANAME'] = sga2025_name(ra, dec)
-    #sample['RA_MOMENT'] = ra
-    #sample['DEC_MOMENT'] = dec
-
     if nsample > 1:
         if len(sample['SGANAME']) != len(np.unique(sample['SGANAME'])):
-            msg = f'Duplicate SGA names {sample["SGANAME"][0]}'
+            msg = f'Duplicate SGA names {sample['SGANAME'][0]}'
             log.critical(msg)
             raise ValueError(msg)
-
 
     # optionally build a QA figure
     if qaplot:
@@ -2326,7 +2284,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         del data['brightstarmask']
         for filt in all_data_bands:
             del data[filt]
-            #for col in ['psf', 'invvar', 'mask']:
             for col in ['psf', 'mask']:
                 del data[f'{filt}_{col}']
         for filt in opt_bands:
