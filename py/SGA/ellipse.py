@@ -41,6 +41,7 @@ ELLIPSEBIT = dict(
     BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
     LARGESHIFT = 2**2,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
     LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
+    MAJORGAL = 2**4,           # nearby bright galaxy (>=30% of the SGA source) subtracted
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds

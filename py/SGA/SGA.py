@@ -1644,13 +1644,15 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         galmask_margin=0.2, input_geo_initial=None, qaplot=False,
-                         mask_nearby=None, maxshift_arcsec=MAXSHIFT_ARCSEC,
+                         galmask_margin=0.2, FMAJOR=0.3, input_geo_initial=None,
+                         qaplot=False, mask_nearby=None, maxshift_arcsec=MAXSHIFT_ARCSEC,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
     galmask_margin - expand the galaxy mask by this factor
+
+    FMAJOR = 0.3  # major if >= 30% of SGA source flux
 
     """
     from astrometry.util.starutil_numpy import arcsec_between
@@ -1839,10 +1841,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     Ipsf = ((tractor.type == 'PSF') * (tractor.type != 'DUP') *
             (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG') *
             np.logical_or(tractor.ref_cat == 'GE', tractor.ref_cat == 'G3'))
+    psfsrcs = tractor[Ipsf]
+
+    # Flux-based classification of extended Tractor galaxies.
     Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
             (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
-    psfsrcs = tractor[Ipsf]
     allgalsrcs = tractor[Igal]
+
+    galsrcs_optflux = np.zeros(len(allgalsrcs), 'f4')
+    for j, src in enumerate(allgalsrcs):
+        galsrcs_optflux[j] = max([getattr(src, f'flux_{filt}') for filt in opt_bands])
 
     # Initialize the *original* images arrays.
     opt_images = np.zeros((len(opt_bands), *sz), 'f4')
@@ -2001,18 +2009,46 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
 
-            # Build a galaxy mask from all extended sources outside
-            # the (current) elliptical mask expanded by a factor of
-            # galmask_margin (but do not subtract the models). By
-            # default, mask galaxy pixels inside the elliptical mask,
-            # unless we're masking *all* galaxies (e.g., in cluster
-            # fields).
-            galsrcs, opt_galmask, _ = update_galmask(
-                allgalsrcs, bx, by, sma*(1.+galmask_margin), ba,
-                pa, opt_skysigmas=opt_skysigmas,
-                opt_models=None, mask_allgals=mask_allgals)
+            # Build a galaxy mask from extended sources, split into
+            # "major" and "minor" based on flux ratio relative to the
+            # SGA source.
+            opt_galmask = np.zeros(sz, bool)
 
-            if not mask_allgals:
+            if mask_allgals:
+                _, opt_galmask, _ = update_galmask(
+                    allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
+                    opt_skysigmas=opt_skysigmas, opt_models=None,
+                    mask_allgals=True)
+            else:
+                flux_sga = sample['OPTFLUX'][iobj]
+                if flux_sga > 0.:
+                    R_flux = galsrcs_optflux / flux_sga
+                    major_mask = R_flux >= FMAJOR
+                    minor_mask = ~major_mask
+                else:
+                    # If central flux is zero/undefined, treat all as "minor".
+                    major_mask = np.zeros(len(allgalsrcs), bool)
+                    minor_mask = np.ones(len(allgalsrcs), bool)
+
+                # Major companions: mask their flux everywhere (inside and out).
+                if np.any(major_mask):
+                    _, galmask_major, _ = update_galmask(
+                        allgalsrcs[major_mask], bx, by,
+                        sma*(1.+galmask_margin), ba, pa,
+                        opt_skysigmas=opt_skysigmas,
+                        opt_models=None, mask_allgals=True)
+                    opt_galmask = np.logical_or(opt_galmask, galmask_major)
+
+                # Minor companions: use the original "outside-ellipse only" logic.
+                if np.any(minor_mask):
+                    _, galmask_minor, _ = update_galmask(
+                        allgalsrcs[minor_mask], bx, by,
+                        sma*(1.+galmask_margin), ba, pa,
+                        opt_skysigmas=opt_skysigmas,
+                        opt_models=None, mask_allgals=False)
+                    opt_galmask = np.logical_or(opt_galmask, galmask_minor)
+
+                # Do not mask the current SGA ellipse itself.
                 opt_galmask[inellipse] = False
 
             # apply the mask_nearby mask
@@ -2145,12 +2181,55 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
 
-        _, opt_galmask, opt_models_obj = update_galmask(
-            allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
-            opt_models=opt_models[iobj, :, :, :],
-            opt_skysigmas=opt_skysigmas,
-            mask_allgals=mask_allgals_arr[iobj])
-        if not mask_allgals_arr[iobj]:
+        #---
+        #_, opt_galmask, opt_models_obj = update_galmask(
+        #    allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
+        #    opt_models=opt_models[iobj, :, :, :],
+        #    opt_skysigmas=opt_skysigmas,
+        #    mask_allgals=mask_allgals_arr[iobj])
+        #if not mask_allgals_arr[iobj]:
+        #    opt_galmask[inellipse] = False
+        ## apply the mask_nearby mask
+        #opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
+        #---
+
+        # Build the final galaxy mask
+        opt_galmask = np.zeros(sz, bool)
+        opt_models_obj = opt_models[iobj, :, :, :]
+        if mask_allgals:
+            _, opt_galmask, opt_models_obj = update_galmask(
+                allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
+                opt_models=opt_models_obj,
+                opt_skysigmas=opt_skysigmas,
+                mask_allgals=True)
+        else:
+            flux_sga = sample['OPTFLUX'][iobj]
+            if flux_sga > 0:
+                R_flux = galsrcs_optflux / flux_sga
+                major_mask = R_flux >= FMAJOR
+                minor_mask = ~major_mask
+            else:
+                major_mask = np.zeros(len(allgalsrcs), bool)
+                minor_mask = np.ones(len(allgalsrcs), bool)
+
+            if np.any(major_mask):
+                _, galmask_major, opt_models_obj = update_galmask(
+                    allgalsrcs[major_mask], bx, by,
+                    sma*(1.+galmask_margin), ba, pa,
+                    opt_models=opt_models_obj,
+                    opt_skysigmas=opt_skysigmas,
+                    mask_allgals=True)
+                opt_galmask = np.logical_or(opt_galmask, galmask_major)
+
+            if np.any(minor_mask):
+                _, galmask_minor, opt_models_obj = update_galmask(
+                    allgalsrcs[minor_mask], bx, by,
+                    sma*(1.+galmask_margin), ba, pa,
+                    opt_models=opt_models_obj,
+                    opt_skysigmas=opt_skysigmas,
+                    mask_allgals=False)
+                opt_galmask = np.logical_or(opt_galmask, galmask_minor)
+
             opt_galmask[inellipse] = False
 
         # apply the mask_nearby mask
@@ -2164,7 +2243,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_models[iobj, :, :, :] = opt_models_obj
         opt_maskbits[iobj, :, :] = opt_maskbits_obj
 
-    # Loop through all objects again to set the blended bit.
+    # Loop through all objects again to set the blended and majorgal
+    # bits.
     for iobj, obj in enumerate(sample):
         refindx = np.delete(np.arange(nsample), iobj)
         for indx in refindx:
@@ -2175,6 +2255,19 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if Iclose:
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['BLENDED']
                 break
+
+        flux_sga = sample['OPTFLUX'][iobj]
+        if flux_sga > 0 and len(allgalsrcs) > 0:
+            R_flux = galsrcs_optflux / flux_sga
+            major_mask = R_flux >= FMAJOR
+            if np.any(major_mask):
+                bx, by, sma, ba, pa = geo_final[iobj, :]
+                # Are any major companions’ centers inside this ellipse?
+                inside = in_ellipse_mask(bx, width-by, sma, sma*ba, pa,
+                                         allgalsrcs[major_mask].bx,
+                                         width - allgalsrcs[major_mask].by)
+                if np.any(inside):
+                    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MAJORGAL']
 
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
