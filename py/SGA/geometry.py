@@ -15,18 +15,8 @@ from SGA.logger import log
 class EllipseProperties:
     """
     Fit an ellipse to the flux distribution of the largest labelled blob in a 2D image.
-
-    After calling `fit(image, method, percentile, smooth_sigma)`, attributes are:
-      x0, y0         # flux-weighted centroid (pixels)
-      ba             # minor-to-major axis ratio (b/a)
-      pa             # astronomical PA (deg CCW from +y, range 0–180)
-      a              # chosen major-axis length (pixels)
-      a_rms          # RMS-based semi-major axis (pixels)
-      a_percentile   # percentile-based radius (pixels)
-      labels         # label array for all blobs
-      blob_mask      # mask of the selected largest blob
-
     """
+
     def __init__(self):
         self.x0 = None
         self.y0 = None
@@ -40,29 +30,20 @@ class EllipseProperties:
 
     @staticmethod
     def elliptical_radius(x, y, x0, y0, a, ba=1.0, pa_deg=0.0):
-        """
-        Compute dimensionless elliptical radius r_ell for pixels (x,y)
-        given ellipse parameters (x0,y0,a,ba,pa).
-
-        r_ell = 1 on the ellipse; r_ell < 1 inside; r_ell > 1 outside.
-
-        """
         b = a * ba
         theta = np.deg2rad(pa_deg)
 
         dx = x - x0
         dy = y - y0
 
-        # Same convention as your in_ellipse_mask: major axis along (sinθ, cosθ)
         xp =  dx * np.sin(theta) + dy * np.cos(theta)
         yp = -dx * np.cos(theta) + dy * np.sin(theta)
 
         r_ell = np.sqrt((xp / a)**2 + (yp / b)**2)
         return r_ell
 
-
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            x0y0=None, smooth_sigma=1.0, sma=None):
+            x0y0=None, smooth_sigma=1.0, use_r2_weight=True):
         """
         Label and smooth the image, then select the largest contiguous blob
         and compute ellipse properties using second moments.
@@ -70,57 +51,62 @@ class EllipseProperties:
         Parameters
         ----------
         image : 2D ndarray
-            Pixel flux values (background should be zero or masked).
-        method : {'percentile', 'rms'}
-            Major-axis estimator:
-            - 'percentile': brightness-weighted percentile radius
-            - 'rms':        root of largest eigenvalue (second moment)
+        mask  : 2D bool array or None
+            True = usable pixels. Used as a veto on blob detection.
+        method : {'percentile','rms'}
         percentile : float
-            Fraction (0 < percentile <= 1) for percentile radius when method='percentile'.
-        smooth_sigma : float, default=1.0
-            Gaussian sigma (pixels) for smoothing before blob detection.
-
-        Returns
-        -------
-        self : EllipseProperties
-
+        use_r2_weight : bool
+            If True, second moments are weighted by flux * r^2.
         """
         from scipy import ndimage
 
-        # 1) optionally smooth for blob detection
+        # 1) Smooth for blob detection (not for moments per se)
         if smooth_sigma and smooth_sigma > 0:
             smoothed = ndimage.gaussian_filter(image, sigma=smooth_sigma)
         else:
             smoothed = image
 
-        # 2) label positive pixels in smoothed image, pick largest blob
+        # 2) Build detection mask: (smoothed > 0) AND user mask (if any)
         if mask is None:
-            mask = (smoothed > 0)
+            detect = (smoothed > 0)
+        else:
+            detect = (smoothed > 0) & mask
 
-        labels, nblobs = ndimage.label(mask)
+        labels, nblobs = ndimage.label(detect)
         self.labels = labels
         if nblobs < 1:
-            #raise ValueError("No positive blobs found in image.")
             log.warning("No positive blobs found in image.")
-            self.x0 = 0.
-            self.y0 = 0.
-            self.a = 0.
-            self.pa = 0.
-            self.ba = 1.
+            self.x0 = 0.0
+            self.y0 = 0.0
+            self.a = 0.0
+            self.pa = 0.0
+            self.ba = 1.0
             return self
-        sizes = ndimage.sum(mask, labels, index=np.arange(1, nblobs+1))
+
+        sizes = ndimage.sum(detect, labels, index=np.arange(1, nblobs + 1))
         largest = np.argmax(sizes) + 1
         self.blob_mask = (labels == largest)
         blob_idx = np.flatnonzero(self.blob_mask)
 
-        # 3) pixel coordinates and smoothed fluxes for blob pixels
+        # 3) pixel coordinates and (smoothed) fluxes for blob pixels
         yy, xx = np.indices(image.shape)
         x_sel = xx.flat[blob_idx]
         y_sel = yy.flat[blob_idx]
         flux = smoothed.flat[blob_idx]
+
         if np.any(flux < 0):
             log.warning('Negative flux in image!')
             raise ValueError()
+
+        F = flux.sum()
+        if F <= 0:
+            log.warning('Non-positive total flux in blob.')
+            self.x0 = 0.0
+            self.y0 = 0.0
+            self.a = 0.0
+            self.pa = 0.0
+            self.ba = 1.0
+            return self
 
         # 4) flux-weighted centroid (optionally fixed)
         if x0y0 is None:
@@ -130,43 +116,45 @@ class EllipseProperties:
             self.x0 = x0y0[0]
             self.y0 = x0y0[1]
 
-        # weights
-        if sma is not None:
-            dx = x_sel - self.x0
-            dy = y_sel - self.y0
-            rpix = np.hypot(dx, dy)
-            #rpix = self.elliptical_radius(x_sel, y_sel, self.x0, self.y0, sma)
-            W = 1. / (1. + (rpix / (0.1 * sma))**2)
-            wflux = flux * W
-            F = np.sum(wflux)
-        else:
-            wflux = flux
-            F = flux.sum()
-
-        # 5) central second moments
+        # 5) geometry vectors and radius (compute once)
         dx = x_sel - self.x0
         dy = y_sel - self.y0
-        Mxx = np.dot(wflux, dx*dx) / F
-        Myy = np.dot(wflux, dy*dy) / F
-        Mxy = np.dot(wflux, dx*dy) / F
+        r = np.hypot(dx, dy)
 
-        # 6) diagonalize inertia tensor
+        # 6) weights for the second moments
+        if use_r2_weight:
+            # Simple r^2 weighting; you can clip or taper if needed
+            w_mom = flux * (r**2)
+        else:
+            w_mom = flux
+
+        F_m = w_mom.sum()
+        if F_m <= 0:
+            # Fallback to unweighted if pathological
+            w_mom = flux
+            F_m = F
+
+        # 7) central second moments with chosen weights
+        Mxx = np.dot(w_mom, dx*dx) / F_m
+        Myy = np.dot(w_mom, dy*dy) / F_m
+        Mxy = np.dot(w_mom, dx*dy) / F_m
+
+        # 8) diagonalize inertia tensor
         eigvals, eigvecs = np.linalg.eigh([[Mxx, Mxy], [Mxy, Myy]])
         order = np.argsort(eigvals)[::-1]
         eigvals = eigvals[order]
         eigvecs = eigvecs[:, order]
 
-        # 7) RMS-based semi-major axis
-        self.a_rms = np.sqrt(eigvals[0])
+        # 9) RMS-based semi-major axis from largest eigenvalue
+        self.a_rms = np.sqrt(max(eigvals[0], 0.0))
 
-        # 8) percentile-based radius
-        r = np.sqrt(dx*dx + dy*dy)
+        # 10) percentile-based radius (using *flux* weights, not w_mom)
         order_r = np.argsort(r)
         cumflux = np.cumsum(flux[order_r])
         cumfrac = cumflux / cumflux[-1]
         self.a_percentile = float(np.interp(percentile, cumfrac, r[order_r]))
 
-        # 9) select final major axis
+        # 11) select final major axis
         if method == 'rms':
             self.a = self.a_rms
         elif method == 'percentile':
@@ -174,25 +162,25 @@ class EllipseProperties:
         else:
             raise ValueError(f"Unknown method: {method}")
 
-        # 10) compute axis ratio and astronomical PA within 0-180°
+        # 12) axis ratio and PA
         if self.a_rms > 0. and eigvals[1] > 0.:
             b = np.sqrt(eigvals[1])
-            # guard against crazy values
             if b < 1e-2:
                 log.warning('Unrealistically small semi-minor axis.')
-                self.ba = 1.
-                self.pa = 0.
+                self.ba = 1.0
+                self.pa = 0.0
             else:
                 self.ba = b / self.a_rms
                 vx, vy = eigvecs[:, 0]
                 pa_cart = np.degrees(np.arctan2(vy, vx)) % 180.0
-                self.pa = (pa_cart - 90.) % 180.0
+                self.pa = (pa_cart - 90.0) % 180.0
         else:
             log.warning('Unable to determine the ellipse geometry.')
-            self.ba = 1.
-            self.pa = 0.
+            self.ba = 1.0
+            self.pa = 0.0
 
         return self
+
 
     def plot(self, image=None, ax=None, imshow_kwargs=None,
              ellipse_kwargs=None, blob_outline_kwargs=None):

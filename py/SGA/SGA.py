@@ -1720,9 +1720,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         P = EllipseProperties()
         P.fit(cutout, mask=cutout_mask, method=moment_method,
-              percentile=0.95, x0y0=x0y0, smooth_sigma=0.)#, sma=sma)
+              percentile=0.95, x0y0=x0y0, smooth_sigma=0.)
 
-        if debug:
+        if True:#debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -1733,6 +1733,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
+            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1777,7 +1778,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             bx = props.x0
             by = props.y0
             if moment_method == 'rms':
-                sma = 2. * props.a # semimajor [pixels]
+                sma = 1.5 * props.a # semimajor [pixels]
             else:
                 sma = props.a # semimajor [pixels]
             ba = props.ba
@@ -2053,8 +2054,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         opt_models=None, mask_allgals=False)
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
-                # Do not mask the current SGA ellipse itself.
-                opt_galmask[inellipse] = False
+                # Optionally do not mask within the current SGA ellipse itself.
+                #opt_galmask[inellipse] = False
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -2188,18 +2189,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
 
-        #---
-        #_, opt_galmask, opt_models_obj = update_galmask(
-        #    allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
-        #    opt_models=opt_models[iobj, :, :, :],
-        #    opt_skysigmas=opt_skysigmas,
-        #    mask_allgals=mask_allgals_arr[iobj])
-        #if not mask_allgals_arr[iobj]:
-        #    opt_galmask[inellipse] = False
-        ## apply the mask_nearby mask
-        #opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
-        #---
-
         # Build the final galaxy mask
         opt_galmask = np.zeros(sz, bool)
         opt_models_obj = opt_models[iobj, :, :, :]
@@ -2237,7 +2226,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     mask_allgals=False)
                 opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
-            opt_galmask[inellipse] = False
+            # Optionally do not mask within the current SGA ellipse itself.
+            #opt_galmask[inellipse] = False
 
         # apply the mask_nearby mask
         opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
