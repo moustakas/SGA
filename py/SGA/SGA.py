@@ -1646,7 +1646,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          galmask_margin=0.2, FMAJOR=0.05, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
-                         use_tractor_position=True, use_r2_weight=False,
+                         use_tractor_position=True, use_radial_weight=True,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -1685,7 +1685,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
                               factor=1.5, moment_method='rms', wmask=None,
-                              use_tractor_position=False, use_r2_weight=False,
+                              use_tractor_position=False, use_radial_weight=True,
                               debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
@@ -1723,7 +1723,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         P = EllipseProperties()
         P.fit(cutout, mask=cutout_mask, method=moment_method,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
-              use_r2_weight=True)#use_r2_weight, rmax=sma)
+              use_radial_weight=use_radial_weight)
 
         if True:#debug:
             import matplotlib.pyplot as plt
@@ -2110,7 +2110,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 props = find_galaxy_in_cutout(
                     wimg, bx, by, sma, ba, pa, wmask=wmask,
                     moment_method=moment_method,
-                    use_r2_weight=use_r2_weight,
+                    use_radial_weight=use_radial_weight,
                     use_tractor_position=use_tractor_position)
                 geo_iter = get_geometry(
                     opt_pixscale, props=props, ref_tractor=objsrc,

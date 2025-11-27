@@ -43,7 +43,7 @@ class EllipseProperties:
         return r_ell
 
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            x0y0=None, smooth_sigma=1.0, rmax=None, use_r2_weight=True):
+            x0y0=None, smooth_sigma=1.0, rmax=None, use_radial_weight=True):
         """
         Label and smooth the image, then select the largest contiguous blob
         and compute ellipse properties using second moments.
@@ -55,7 +55,7 @@ class EllipseProperties:
             True = usable pixels. Used as a veto on blob detection.
         method : {'percentile','rms'}
         percentile : float
-        use_r2_weight : bool
+        use_radial_weight : bool
             If True, second moments are weighted by flux * r^2.
 
         """
@@ -132,7 +132,7 @@ class EllipseProperties:
         #    r = r[inside]
 
         # 6) weights for the second moments
-        if use_r2_weight:# and rmax is not None:
+        if use_radial_weight:# and rmax is not None:
             w_mom = flux * r**1.5 # (r**2)
             #r0 = 0.5 * rmax
             #W = (r / r0)
