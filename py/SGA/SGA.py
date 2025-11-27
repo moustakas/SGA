@@ -1646,7 +1646,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          galmask_margin=0.2, FMAJOR=0.05, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
-                         maxshift_arcsec=MAXSHIFT_ARCSEC,
+                         use_tractor_position=True, maxshift_arcsec=MAXSHIFT_ARCSEC,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
@@ -1722,7 +1722,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         P.fit(cutout, mask=cutout_mask, method=moment_method,
               percentile=0.95, x0y0=x0y0, smooth_sigma=0.)
 
-        if True:#debug:
+        if debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -1733,7 +1733,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1756,9 +1755,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         """Extract elliptical geometry from either an astropy Table
         (sample), a tractor catalog, or an ellipse_properties object.
 
+        Returns np.array([bx, by, sma, ba, pa]) in *pixel* units.
+
         """
         if table is not None:
-            # if in a galaxy group use the Tractor initial position
             if use_tractor_position and ref_tractor is not None:
                 bx, by = ref_tractor.bx[0], ref_tractor.by[0]
             else:
@@ -1775,8 +1775,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             sma = tractor.shape_r / pixscale # [pixels]
             _, ba, pa = get_tractor_ellipse(sma, tractor.shape_e1, tractor.shape_e2)
         elif props is not None:
-            bx = props.x0
-            by = props.y0
+            if use_tractor_position and ref_tractor is not None:
+                bx, by = ref_tractor.bx[0], ref_tractor.by[0]
+            else:
+                bx = props.x0
+                by = props.y0
             if moment_method == 'rms':
                 sma = 1.5 * props.a # semimajor [pixels]
             else:
@@ -1962,7 +1965,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 opt_models[iobj, iband, :, :] += model
 
         # Initial geometry and elliptical mask.
-        use_tractor_position = False
         if input_geo_initial is not None:
             niter_actual = 1
             geo_init = input_geo_initial[iobj, :]
@@ -1973,8 +1975,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # in groups, fall back to the Tractor center
             #if nsample > 1 and objsrc is not None:
-            if objsrc is not None:
-                use_tractor_position = True
+            #if objsrc is not None:
+            #    use_tractor_position = False#True
             geo_init = get_geometry(opt_pixscale, table=obj, ref_tractor=objsrc,
                                     use_tractor_position=use_tractor_position)
 
@@ -2094,7 +2096,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
                 wmasks = np.zeros_like(opt_images_obj, bool)
                 for iband, filt in enumerate(opt_bands):
-                    wmasks[iband, :, :] = (~opt_masks_obj[iband, :, :]) * (opt_images_obj[iband, :, :] > opt_skysigmas[filt])
+                    wmasks[iband, :, :] = ((~opt_masks_obj[iband, :, :]) * \
+                                           (opt_images_obj[iband, :, :] > opt_skysigmas[filt]))
                 # True=any pixel is >5*skynoise and positive in the
                 # coadded image.
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
@@ -2117,14 +2120,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if dshift_arcsec > maxshift_arcsec:
                 log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' +
                             f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
-                # Revert to the Tractor position or the initial
-                # position for subsequent iterations.
-                if objsrc is not None:
-                    geo_iter[0] = objsrc.bx
-                    geo_iter[1] = objsrc.by
-                else:
-                    geo_iter[0] = geo_init[0]
-                    geo_iter[1] = geo_init[1]
+            #    # Revert to the Tractor position or the initial
+            #    # position for subsequent iterations.
+            #    if objsrc is not None:
+            #        geo_iter[0] = objsrc.bx
+            #        geo_iter[1] = objsrc.by
+            #    else:
+            #        geo_iter[0] = geo_init[0]
+            #        geo_iter[1] = geo_init[1]
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter

@@ -57,42 +57,65 @@ class EllipseProperties:
         percentile : float
         use_r2_weight : bool
             If True, second moments are weighted by flux * r^2.
+
         """
         from scipy import ndimage
 
-        # 1) Smooth for blob detection (not for moments per se)
         if smooth_sigma and smooth_sigma > 0:
             smoothed = ndimage.gaussian_filter(image, sigma=smooth_sigma)
         else:
             smoothed = image
 
-        # 2) Build detection mask: (smoothed > 0) AND user mask (if any)
         if mask is None:
-            detect = (smoothed > 0)
+            sel = (smoothed > 0)
         else:
-            detect = (smoothed > 0) & mask
+            sel = (smoothed > 0) & mask
 
-        labels, nblobs = ndimage.label(detect)
-        self.labels = labels
-        if nblobs < 1:
-            log.warning("No positive blobs found in image.")
-            self.x0 = 0.0
-            self.y0 = 0.0
-            self.a = 0.0
+        if not np.any(sel):
+            log.warning("No positive unmasked pixels in image.")
+            self.x0 = self.y0 = self.a = 0.0
             self.pa = 0.0
             self.ba = 1.0
             return self
 
-        sizes = ndimage.sum(detect, labels, index=np.arange(1, nblobs + 1))
-        largest = np.argmax(sizes) + 1
-        self.blob_mask = (labels == largest)
-        blob_idx = np.flatnonzero(self.blob_mask)
-
-        # 3) pixel coordinates and (smoothed) fluxes for blob pixels
         yy, xx = np.indices(image.shape)
-        x_sel = xx.flat[blob_idx]
-        y_sel = yy.flat[blob_idx]
-        flux = smoothed.flat[blob_idx]
+        x_sel = xx[sel]
+        y_sel = yy[sel]
+        flux = smoothed[sel]
+
+        ## 1) Smooth for blob detection (not for moments per se)
+        #if smooth_sigma and smooth_sigma > 0:
+        #    smoothed = ndimage.gaussian_filter(image, sigma=smooth_sigma)
+        #else:
+        #    smoothed = image
+        #
+        ## 2) Build detection mask: (smoothed > 0) AND user mask (if any)
+        #if mask is None:
+        #    detect = (smoothed > 0)
+        #else:
+        #    detect = (smoothed > 0) & mask
+        #
+        #labels, nblobs = ndimage.label(detect)
+        #self.labels = labels
+        #if nblobs < 1:
+        #    log.warning("No positive blobs found in image.")
+        #    self.x0 = 0.0
+        #    self.y0 = 0.0
+        #    self.a = 0.0
+        #    self.pa = 0.0
+        #    self.ba = 1.0
+        #    return self
+        #
+        #sizes = ndimage.sum(detect, labels, index=np.arange(1, nblobs + 1))
+        #largest = np.argmax(sizes) + 1
+        #self.blob_mask = (labels == largest)
+        #blob_idx = np.flatnonzero(self.blob_mask)
+        #
+        ## 3) pixel coordinates and (smoothed) fluxes for blob pixels
+        #yy, xx = np.indices(image.shape)
+        #x_sel = xx.flat[blob_idx]
+        #y_sel = yy.flat[blob_idx]
+        #flux = smoothed.flat[blob_idx]
 
         if np.any(flux < 0):
             log.warning('Negative flux in image!')
@@ -216,10 +239,10 @@ class EllipseProperties:
         disp = image if image is not None else self.blob_mask
         ax.imshow(disp, **imshow_kwargs)
 
-        # outline only the largest blob
-        if blob_outline_kwargs is None:
-            blob_outline_kwargs = {'colors': 'k', 'linewidths': 1, 'alpha': 0.7}
-        ax.contour(self.blob_mask, levels=[0.5], **blob_outline_kwargs)
+        ## outline only the largest blob
+        #if blob_outline_kwargs is None:
+        #    blob_outline_kwargs = {'colors': 'k', 'linewidths': 1, 'alpha': 0.7}
+        #ax.contour(self.blob_mask, levels=[0.5], **blob_outline_kwargs)
 
         # overlay ellipse
         if ellipse_kwargs is None:
