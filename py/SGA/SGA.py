@@ -1644,7 +1644,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         galmask_margin=0.2, FMAJOR=0.05, moment_method='rms',
+                         galmask_margin=0.2, FMAJOR=0.1, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
@@ -1654,7 +1654,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     galmask_margin - expand the galaxy mask by this factor
 
-    FMAJOR = 0.05  # major if >= 5% of SGA source flux
+    FMAJOR = 0.05  # major if >= XX% of SGA source flux
     moment_method - 'rms' or 'percentile'
 
     """
@@ -1725,7 +1725,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
               use_radial_weight=use_radial_weight)
 
-        if True:#debug:
+        if debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -1736,7 +1736,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1767,10 +1766,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 bx, by = ref_tractor.bx[0], ref_tractor.by[0]
             else:
                 bx, by = table['BX_INIT'], table['BY_INIT']
-            if table['SMA_MASK'] > 0.:
-                sma = table['SMA_MASK'] / pixscale # [pixels]
-            else:
-                sma = table['SMA_INIT'] / pixscale # [pixels]
+            sma = table['SMA_INIT'] / pixscale # [pixels]
             ba = table['BA_INIT']
             pa = table['PA_INIT']
         elif tractor is not None:
@@ -1863,8 +1859,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     allgalsrcs = tractor[Igal]
 
     galsrcs_optflux = np.zeros(len(allgalsrcs), 'f4')
+    #galsrcs_optsb = np.zeros(len(allgalsrcs), 'f4')
     for j, src in enumerate(allgalsrcs):
         galsrcs_optflux[j] = max([getattr(src, f'flux_{filt}') for filt in opt_bands])
+        #r50 = getattr(src, 'shape_r')
+        #if (galsrcs_optflux[j] > 0.) & (r50 > 1e-2):
+        #    galsrcs_optsb[j] = 22.5 - 2.5 * np.log10(galsrcs_optflux[j] / r50)
 
     # Initialize the *original* images arrays.
     opt_images = np.zeros((len(opt_bands), *sz), 'f4')
@@ -1917,6 +1917,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             opt_gaiamask = np.logical_or(opt_gaiamask, msk)
         else:
             opt_images[iband, :, :] = data[filt]
+
+
+    # are we allowed to change the geometry in this call?
+    geometry_mode = (input_geo_initial is None)
 
     # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
@@ -1992,10 +1996,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Next, iteratively update the source geometry unless
         # FIXGEO has been set.
-        if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-            niter_actual = 1
+        if geometry_mode:
+            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+                niter_actual = 1
+            else:
+                niter_actual = niter_geometry
         else:
-            niter_actual = niter_geometry
+            niter_actual = 1
 
         dshift_arcsec = 0.0
         dshift_tractor_arcsec = 0.0
@@ -2033,10 +2040,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_skysigmas=opt_skysigmas, opt_models=None,
                     mask_allgals=True)
             else:
+                print('NEED TO MAKE SURE ALLGALSRCS is not zero!')
                 flux_sga = sample['OPTFLUX'][iobj]
                 if flux_sga > 0.:
                     R_flux = galsrcs_optflux / flux_sga
                     major_mask = R_flux >= FMAJOR
+                    if objsrc is not None:
+                        sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra, allgalsrcs.dec)
+                        major_mask &= sep_arcsec > 2.*objsrc.shape_r
                     minor_mask = ~major_mask
                 else:
                     # If central flux is zero/undefined, treat all as "minor".
@@ -2117,23 +2128,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     moment_method=moment_method,
                     use_tractor_position=use_tractor_position)
 
-            ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
+            if geometry_mode:
+                ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
 
-            dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
-            if objsrc is not None:
-                dshift_tractor_arcsec = arcsec_between(objsrc.ra, objsrc.dec, ra_iter, dec_iter)
+                dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
+                if objsrc is not None:
+                    dshift_tractor_arcsec = arcsec_between(objsrc.ra, objsrc.dec, ra_iter, dec_iter)
 
-            if dshift_arcsec > maxshift_arcsec:
-                log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' +
-                            f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
-            #    # Revert to the Tractor position or the initial
-            #    # position for subsequent iterations.
-            #    if objsrc is not None:
-            #        geo_iter[0] = objsrc.bx
-            #        geo_iter[1] = objsrc.by
-            #    else:
-            #        geo_iter[0] = geo_init[0]
-            #        geo_iter[1] = geo_init[1]
+                if dshift_arcsec > maxshift_arcsec:
+                    log.warning(f'Large shift for iobj={iobj} ({obj[REFIDCOLUMN]}): delta=' +
+                                f'{dshift_arcsec:.3f}>{maxshift_arcsec:.3f} arcsec')
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
@@ -2149,40 +2153,42 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_refmask_all[iobj, :, :] = opt_refmask
         opt_gaiamask_obj_all[iobj, :, :] = opt_gaiamask_obj
 
-    # enforce minimum separation between centers
-    ra_final, dec_final = opt_wcs.wcs.pixelxy2radec(
-        (geo_final[:, 0] + 1.), (geo_final[:, 1] + 1.))
 
-    for iobj in range(nsample):
-        for j in range(iobj+1, nsample):
-            sep = arcsec_between(
-                ra_final[iobj], dec_final[iobj],
-                ra_final[j], dec_final[j])
-            if sep < maxshift_arcsec:
-                log.warning(f'Objects {iobj} and {j} converged to nearly the same center '
-                            f'({sep:.2f} < {maxshift_arcsec} arcsec); reverting both to '
-                            'input/table-based centers.')
-                # revert both centers to table-based geometry
-                geo_final[iobj, 0] = geo_init_ref_all[iobj, 0]
-                geo_final[iobj, 1] = geo_init_ref_all[iobj, 1]
-                geo_final[j, 0] = geo_init_ref_all[j, 0]
-                geo_final[j, 1] = geo_init_ref_all[j, 1]
+    if geometry_mode:
+        # enforce minimum separation between centers
+        ra_final, dec_final = opt_wcs.wcs.pixelxy2radec(
+            (geo_final[:, 0] + 1.), (geo_final[:, 1] + 1.))
 
-                ra_final[iobj], dec_final[iobj] = opt_wcs.wcs.pixelxy2radec(
-                    geo_final[iobj, 0] + 1., geo_final[iobj, 1] + 1.)
-                ra_final[j], dec_final[j] = opt_wcs.wcs.pixelxy2radec(
-                    geo_final[j, 0] + 1., geo_final[j, 1] + 1.)
+        for iobj in range(nsample):
+            for j in range(iobj+1, nsample):
+                sep = arcsec_between(
+                    ra_final[iobj], dec_final[iobj],
+                    ra_final[j], dec_final[j])
+                if sep < maxshift_arcsec:
+                    log.warning(f'Objects {iobj} and {j} converged to nearly the same center '
+                                f'({sep:.2f} < {maxshift_arcsec} arcsec); reverting both to '
+                                'input/table-based centers.')
+                    # revert both centers to table-based geometry
+                    geo_final[iobj, 0] = geo_init_ref_all[iobj, 0]
+                    geo_final[iobj, 1] = geo_init_ref_all[iobj, 1]
+                    geo_final[j, 0] = geo_init_ref_all[j, 0]
+                    geo_final[j, 1] = geo_init_ref_all[j, 1]
 
-    # set LARGESHIFT bits
-    for iobj, objsrc in enumerate(samplesrcs):
-        if dshift_arcsec_arr[iobj] > maxshift_arcsec:
-            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT']
-        if objsrc is not None:
-            if dshift_tractor_arcsec_arr[iobj] > maxshift_arcsec:
-                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
+                    ra_final[iobj], dec_final[iobj] = opt_wcs.wcs.pixelxy2radec(
+                        geo_final[iobj, 0] + 1., geo_final[iobj, 1] + 1.)
+                    ra_final[j], dec_final[j] = opt_wcs.wcs.pixelxy2radec(
+                        geo_final[j, 0] + 1., geo_final[j, 1] + 1.)
+
+        # set LARGESHIFT bits
+        for iobj, objsrc in enumerate(samplesrcs):
+            if dshift_arcsec_arr[iobj] > maxshift_arcsec:
+                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT']
+            if objsrc is not None:
+                if dshift_tractor_arcsec_arr[iobj] > maxshift_arcsec:
+                    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
 
     # final optical masks
-    for iobj, obj in enumerate(sample):
+    for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
         [bx, by, sma, ba, pa] = geo_final[iobj, :]
 
         inellipse = in_ellipse_mask(bx, width-by, sma, sma*ba,
@@ -2212,6 +2218,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if flux_sga > 0:
                 R_flux = galsrcs_optflux / flux_sga
                 major_mask = R_flux >= FMAJOR
+                if objsrc is not None:
+                    sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra, allgalsrcs.dec)
+                    major_mask &= sep_arcsec > 2.*objsrc.shape_r
                 minor_mask = ~major_mask
             else:
                 major_mask = np.zeros(len(allgalsrcs), bool)
