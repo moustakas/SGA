@@ -1766,7 +1766,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 bx, by = ref_tractor.bx[0], ref_tractor.by[0]
             else:
                 bx, by = table['BX_INIT'], table['BY_INIT']
-            sma = table['SMA_INIT'] / pixscale # [pixels]
+            # use the moment-based radius if it has been measured
+            if table['SMA_MOMENT'] > 0.:
+                sma_arcsec = table['SMA_MOMENT']
+            else:
+                sma_arcsec = table['SMA_INIT']
+            sma = sma_arcsec / pixscale # [pixels]
             ba = table['BA_INIT']
             pa = table['PA_INIT']
         elif tractor is not None:
