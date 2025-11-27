@@ -1980,7 +1980,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Initial geometry and elliptical mask.
         if input_geo_initial is not None:
-            niter_actual = 1
             geo_init = input_geo_initial[iobj, :]
             geo_init_ref = geo_init
         else:
@@ -2045,19 +2044,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_skysigmas=opt_skysigmas, opt_models=None,
                     mask_allgals=True)
             else:
-                print('NEED TO MAKE SURE ALLGALSRCS is not zero!')
                 flux_sga = sample['OPTFLUX'][iobj]
-                if flux_sga > 0.:
+                if len(allgalsrcs) == 0 or flux_sga <= 0.:
+                    major_mask = np.zeros(len(allgalsrcs), bool)
+                    minor_mask = np.ones(len(allgalsrcs), bool)
+                else:
                     R_flux = galsrcs_optflux / flux_sga
                     major_mask = R_flux >= FMAJOR
                     if objsrc is not None:
-                        sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra, allgalsrcs.dec)
+                        sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
+                                                    allgalsrcs.dec)
                         major_mask &= sep_arcsec > 2.*objsrc.shape_r
                     minor_mask = ~major_mask
-                else:
-                    # If central flux is zero/undefined, treat all as "minor".
-                    major_mask = np.zeros(len(allgalsrcs), bool)
-                    minor_mask = np.ones(len(allgalsrcs), bool)
 
                 # Major companions: mask their flux everywhere (inside and out).
                 if np.any(major_mask):
@@ -2104,10 +2102,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # Optionally update the geometry from the masked, coadded
             # optical image.
-            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-                log.info('FIXGEO bit set; fixing the elliptical geometry.')
-                geo_iter = geo_init
-            elif input_geo_initial is not None:
+            if (not geometry_mode) or (obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0):
+                if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+                    log.info('FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
             else:
                 # generate a detection image and pixel mask for use with find_galaxy_in_cutout
@@ -2146,7 +2143,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            #print('Iter-done', iobj, iiter, bx, by, sma, ba, pa)
 
         # store shifts
         dshift_arcsec_arr[iobj] = dshift_arcsec
@@ -2212,7 +2208,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         # Build the final galaxy mask
         opt_galmask = np.zeros(sz, bool)
         opt_models_obj = opt_models[iobj, :, :, :]
-        if mask_allgals:
+        if mask_allgals_arr[iobj]:
             _, opt_galmask, opt_models_obj = update_galmask(
                 allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
                 opt_models=opt_models_obj,
@@ -2220,16 +2216,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 mask_allgals=True)
         else:
             flux_sga = sample['OPTFLUX'][iobj]
-            if flux_sga > 0:
+            if len(allgalsrcs) == 0 or flux_sga <= 0.:
+                major_mask = np.zeros(len(allgalsrcs), bool)
+                minor_mask = np.ones(len(allgalsrcs), bool)
+            else:
                 R_flux = galsrcs_optflux / flux_sga
                 major_mask = R_flux >= FMAJOR
                 if objsrc is not None:
-                    sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra, allgalsrcs.dec)
+                    sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
+                                                allgalsrcs.dec)
                     major_mask &= sep_arcsec > 2.*objsrc.shape_r
                 minor_mask = ~major_mask
-            else:
-                major_mask = np.zeros(len(allgalsrcs), bool)
-                minor_mask = np.ones(len(allgalsrcs), bool)
 
             if np.any(major_mask):
                 _, galmask_major, opt_models_obj = update_galmask(
