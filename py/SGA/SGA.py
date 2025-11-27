@@ -1644,15 +1644,17 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         galmask_margin=0.2, FMAJOR=0.3, input_geo_initial=None,
-                         qaplot=False, mask_nearby=None, maxshift_arcsec=MAXSHIFT_ARCSEC,
+                         galmask_margin=0.2, FMAJOR=0.05, moment_method='rms',
+                         input_geo_initial=None, qaplot=False, mask_nearby=None,
+                         maxshift_arcsec=MAXSHIFT_ARCSEC,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
     galmask_margin - expand the galaxy mask by this factor
 
-    FMAJOR = 0.3  # major if >= 30% of SGA source flux
+    FMAJOR = 0.05  # major if >= 5% of SGA source flux
+    moment_method - 'rms' or 'percentile'
 
     """
     from astrometry.util.starutil_numpy import arcsec_between
@@ -1681,8 +1683,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
-                              factor=2., use_tractor_position=False,
-                              wmask=None, debug=False):
+                              factor=2., moment_method='rms', wmask=None,
+                              use_tractor_position=False, debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
 
@@ -1717,9 +1719,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             x0y0 = None
 
         P = EllipseProperties()
-        perc = 0.95 # 0.975
-        method = 'percentile'
-        P.fit(cutout, mask=cutout_mask, method=method, percentile=perc, x0y0=x0y0, smooth_sigma=0.)
+        P.fit(cutout, mask=cutout_mask, method=moment_method,
+              percentile=0.95, x0y0=x0y0, smooth_sigma=0.)#, sma=sma)
 
         if debug:
             import matplotlib.pyplot as plt
@@ -1748,7 +1749,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         return P
 
 
-    def get_geometry(pixscale, pixfactor=1., table=None, tractor=None, ref_tractor=None,
+    def get_geometry(pixscale, pixfactor=1., table=None, tractor=None,
+                     moment_method='rms', ref_tractor=None,
                      use_tractor_position=False, props=None):
         """Extract elliptical geometry from either an astropy Table
         (sample), a tractor catalog, or an ellipse_properties object.
@@ -1774,7 +1776,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         elif props is not None:
             bx = props.x0
             by = props.y0
-            sma = props.a # semimajor [pixels]
+            if moment_method == 'rms':
+                sma = 2. * props.a # semimajor [pixels]
+            else:
+                sma = props.a # semimajor [pixels]
             ba = props.ba
             pa = props.pa
 
@@ -2095,9 +2100,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
                 props = find_galaxy_in_cutout(
                     wimg, bx, by, sma, ba, pa, wmask=wmask,
+                    moment_method=moment_method,
                     use_tractor_position=use_tractor_position)
                 geo_iter = get_geometry(
                     opt_pixscale, props=props, ref_tractor=objsrc,
+                    moment_method=moment_method,
                     use_tractor_position=use_tractor_position)
 
             ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)

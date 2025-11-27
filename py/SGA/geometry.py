@@ -38,8 +38,31 @@ class EllipseProperties:
         self.labels = None
         self.blob_mask = None
 
+    @staticmethod
+    def elliptical_radius(x, y, x0, y0, a, ba=1.0, pa_deg=0.0):
+        """
+        Compute dimensionless elliptical radius r_ell for pixels (x,y)
+        given ellipse parameters (x0,y0,a,ba,pa).
+
+        r_ell = 1 on the ellipse; r_ell < 1 inside; r_ell > 1 outside.
+
+        """
+        b = a * ba
+        theta = np.deg2rad(pa_deg)
+
+        dx = x - x0
+        dy = y - y0
+
+        # Same convention as your in_ellipse_mask: major axis along (sinθ, cosθ)
+        xp =  dx * np.sin(theta) + dy * np.cos(theta)
+        yp = -dx * np.cos(theta) + dy * np.sin(theta)
+
+        r_ell = np.sqrt((xp / a)**2 + (yp / b)**2)
+        return r_ell
+
+
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            x0y0=None, smooth_sigma=1.0):
+            x0y0=None, smooth_sigma=1.0, sma=None):
         """
         Label and smooth the image, then select the largest contiguous blob
         and compute ellipse properties using second moments.
@@ -97,8 +120,7 @@ class EllipseProperties:
         flux = smoothed.flat[blob_idx]
         if np.any(flux < 0):
             log.warning('Negative flux in image!')
-            import pdb ; pdb.set_trace()
-        F = flux.sum()
+            raise ValueError()
 
         # 4) flux-weighted centroid (optionally fixed)
         if x0y0 is None:
@@ -108,12 +130,25 @@ class EllipseProperties:
             self.x0 = x0y0[0]
             self.y0 = x0y0[1]
 
+        # weights
+        if sma is not None:
+            dx = x_sel - self.x0
+            dy = y_sel - self.y0
+            rpix = np.hypot(dx, dy)
+            #rpix = self.elliptical_radius(x_sel, y_sel, self.x0, self.y0, sma)
+            W = 1. / (1. + (rpix / (0.1 * sma))**2)
+            wflux = flux * W
+            F = np.sum(wflux)
+        else:
+            wflux = flux
+            F = flux.sum()
+
         # 5) central second moments
         dx = x_sel - self.x0
         dy = y_sel - self.y0
-        Mxx = np.dot(flux, dx*dx) / F
-        Myy = np.dot(flux, dy*dy) / F
-        Mxy = np.dot(flux, dx*dy) / F
+        Mxx = np.dot(wflux, dx*dx) / F
+        Myy = np.dot(wflux, dy*dy) / F
+        Mxy = np.dot(wflux, dx*dy) / F
 
         # 6) diagonalize inertia tensor
         eigvals, eigvecs = np.linalg.eigh([[Mxx, Mxy], [Mxy, Myy]])
