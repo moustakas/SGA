@@ -1646,7 +1646,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          galmask_margin=0.2, FMAJOR=0.05, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
-                         use_tractor_position=True, use_r2_weight=True,
+                         use_tractor_position=True, use_r2_weight=False,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -1685,7 +1685,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
                               factor=1.5, moment_method='rms', wmask=None,
-                              use_tractor_position=False, use_r2_weight=True,
+                              use_tractor_position=False, use_r2_weight=False,
                               debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
@@ -1722,8 +1722,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         P = EllipseProperties()
         P.fit(cutout, mask=cutout_mask, method=moment_method,
-              percentile=0.95, x0y0=x0y0, smooth_sigma=0.,
-              use_r2_weight=use_r2_weight, rmax=1.5*sma)
+              percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
+              use_r2_weight=True)#use_r2_weight, rmax=sma)
 
         if True:#debug:
             import matplotlib.pyplot as plt

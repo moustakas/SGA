@@ -885,8 +885,8 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                             log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
                         else:
                             if np.isfinite(res['a_iso']) and np.isfinite(res['a_iso_err']):
-                                log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
-                                          f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
+                                #log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                #          f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
                                 results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
                                 results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
                             else:

@@ -67,37 +67,49 @@ class EllipseProperties:
             smoothed = image
 
         if mask is None:
-            sel = (smoothed > 0)
+            good = (smoothed > 0)
         else:
-            sel = (smoothed > 0) & mask
+            good = (smoothed > 0) & mask
 
-        if not np.any(sel):
-            log.warning("No positive unmasked pixels in image.")
-            self.x0 = self.y0 = self.a = 0.0
-            self.pa = 0.0
+        if not np.any(good):
+            log.warning("No good pixels in EllipseProperties.fit.")
+            self.x0 = self.y0 = 0.0
+            self.a = self.a_rms = self.a_percentile = 0.0
             self.ba = 1.0
+            self.pa = 0.0
             return self
 
-        yy, xx = np.indices(image.shape)
-        x_sel = xx[sel]
-        y_sel = yy[sel]
-        flux = smoothed[sel]
+        # segment: pick the largest contiguous blob in the *good* pixels
+        labels, nblobs = ndimage.label(good)
+        if nblobs < 1:
+            log.warning("No labelled blobs in EllipseProperties.fit.")
+            self.x0 = self.y0 = 0.0
+            self.a = self.a_rms = self.a_percentile = 0.0
+            self.ba = 1.0
+            self.pa = 0.0
+            return self
 
-        if np.any(flux < 0):
-            log.warning('Negative flux in image!')
-            raise ValueError()
+        sizes = ndimage.sum(good, labels, index=np.arange(1, nblobs + 1))
+        largest = np.argmax(sizes) + 1
+        self.blob_mask = (labels == largest)
+
+        # 4) now restrict to that blob *only*
+        blob_idx = np.flatnonzero(self.blob_mask)
+        yy, xx = np.indices(smoothed.shape)
+        x_sel = xx.flat[blob_idx].astype(float)
+        y_sel = yy.flat[blob_idx].astype(float)
+        flux  = smoothed.flat[blob_idx].astype(float)
 
         F = flux.sum()
-        if F <= 0:
-            log.warning('Non-positive total flux in blob.')
-            self.x0 = 0.0
-            self.y0 = 0.0
-            self.a = 0.0
-            self.pa = 0.0
+        if flux.size < 3 or F <= 0.:
+            log.warning("Too few pixels in largest blob for ellipse fit.")
+            self.x0 = self.y0 = 0.0
+            self.a = self.a_rms = self.a_percentile = 0.0
             self.ba = 1.0
+            self.pa = 0.0
             return self
 
-        # 4) flux-weighted centroid (optionally fixed)
+        # flux-weighted centroid (optionally fixed)
         if x0y0 is None:
             self.x0 = np.dot(flux, x_sel) / F
             self.y0 = np.dot(flux, y_sel) / F
@@ -105,24 +117,27 @@ class EllipseProperties:
             self.x0 = x0y0[0]
             self.y0 = x0y0[1]
 
-        # 5) geometry vectors and radius (compute once)
+        # geometry vectors and radius
         dx = x_sel - self.x0
         dy = y_sel - self.y0
         r = np.hypot(dx, dy)
 
-        if rmax is not None:
-            inside = (r <= rmax)
-            x_sel = x_sel[inside]
-            y_sel = y_sel[inside]
-            flux = flux[inside]
-            dx = dx[inside]
-            dy = dy[inside]
-            r = r[inside]
+        #if rmax is not None:
+        #    inside = (r <= rmax)
+        #    x_sel = x_sel[inside]
+        #    y_sel = y_sel[inside]
+        #    flux = flux[inside]
+        #    dx = dx[inside]
+        #    dy = dy[inside]
+        #    r = r[inside]
 
         # 6) weights for the second moments
-        if use_r2_weight:
-            # Simple r^2 weighting; you can clip or taper if needed
-            w_mom = flux * (r**2)
+        if use_r2_weight:# and rmax is not None:
+            w_mom = flux * r**1.5 # (r**2)
+            #r0 = 0.5 * rmax
+            #W = (r / r0)
+            #W = np.minimum(W, 1.0)    # don’t blow up beyond r0
+            #w_mom = flux * W
         else:
             w_mom = flux
 
@@ -212,10 +227,10 @@ class EllipseProperties:
         disp = image if image is not None else self.blob_mask
         ax.imshow(disp, **imshow_kwargs)
 
-        ## outline only the largest blob
-        #if blob_outline_kwargs is None:
-        #    blob_outline_kwargs = {'colors': 'k', 'linewidths': 1, 'alpha': 0.7}
-        #ax.contour(self.blob_mask, levels=[0.5], **blob_outline_kwargs)
+        # outline only the largest blob
+        if blob_outline_kwargs is None:
+            blob_outline_kwargs = {'colors': 'k', 'linewidths': 1, 'alpha': 0.7}
+        ax.contour(self.blob_mask, levels=[0.5], **blob_outline_kwargs)
 
         # overlay ellipse
         if ellipse_kwargs is None:
