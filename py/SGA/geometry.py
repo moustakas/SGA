@@ -43,7 +43,7 @@ class EllipseProperties:
         return r_ell
 
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            x0y0=None, smooth_sigma=1.0, use_r2_weight=True):
+            x0y0=None, smooth_sigma=1.0, rmax=None, use_r2_weight=True):
         """
         Label and smooth the image, then select the largest contiguous blob
         and compute ellipse properties using second moments.
@@ -83,40 +83,6 @@ class EllipseProperties:
         y_sel = yy[sel]
         flux = smoothed[sel]
 
-        ## 1) Smooth for blob detection (not for moments per se)
-        #if smooth_sigma and smooth_sigma > 0:
-        #    smoothed = ndimage.gaussian_filter(image, sigma=smooth_sigma)
-        #else:
-        #    smoothed = image
-        #
-        ## 2) Build detection mask: (smoothed > 0) AND user mask (if any)
-        #if mask is None:
-        #    detect = (smoothed > 0)
-        #else:
-        #    detect = (smoothed > 0) & mask
-        #
-        #labels, nblobs = ndimage.label(detect)
-        #self.labels = labels
-        #if nblobs < 1:
-        #    log.warning("No positive blobs found in image.")
-        #    self.x0 = 0.0
-        #    self.y0 = 0.0
-        #    self.a = 0.0
-        #    self.pa = 0.0
-        #    self.ba = 1.0
-        #    return self
-        #
-        #sizes = ndimage.sum(detect, labels, index=np.arange(1, nblobs + 1))
-        #largest = np.argmax(sizes) + 1
-        #self.blob_mask = (labels == largest)
-        #blob_idx = np.flatnonzero(self.blob_mask)
-        #
-        ## 3) pixel coordinates and (smoothed) fluxes for blob pixels
-        #yy, xx = np.indices(image.shape)
-        #x_sel = xx.flat[blob_idx]
-        #y_sel = yy.flat[blob_idx]
-        #flux = smoothed.flat[blob_idx]
-
         if np.any(flux < 0):
             log.warning('Negative flux in image!')
             raise ValueError()
@@ -143,6 +109,15 @@ class EllipseProperties:
         dx = x_sel - self.x0
         dy = y_sel - self.y0
         r = np.hypot(dx, dy)
+
+        if rmax is not None:
+            inside = (r <= rmax)
+            x_sel = x_sel[inside]
+            y_sel = y_sel[inside]
+            flux = flux[inside]
+            dx = dx[inside]
+            dy = dy[inside]
+            r = r[inside]
 
         # 6) weights for the second moments
         if use_r2_weight:
@@ -221,8 +196,6 @@ class EllipseProperties:
             Passed to ax.imshow (e.g., cmap, origin).
         ellipse_kwargs : dict, optional
             Passed to the Ellipse patch (e.g., edgecolor).
-        blob_outline_kwargs : dict, optional
-            Passed to ax.contour for the largest blob outline (e.g., colors, linewidths).
 
         Returns
         -------
