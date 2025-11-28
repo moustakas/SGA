@@ -14,25 +14,28 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from astropy.table import Table
 from scipy import odr
-from sklearn.linear_model import HuberRegressor
 from importlib import resources
+from dataclasses import dataclass
 
 from SGA.coadds import GRIZ as BANDS
 from SGA.logger import log
+
+
+_CALIB_CACHE = {}
 
 #from SGA.SGA import SBTHRESH
 SBTHRESH = [23, 24, 25, 26]
 #SBTHRESH = [24, 25, 26]
 
-from dataclasses import dataclass
-
-
 warnings.filterwarnings(
     'ignore',
     message='divide by zero encountered in divide',
     category=RuntimeWarning,
-    module='scipy.odr._odrpack'
-)
+    module='scipy.odr._odrpack')
+
+
+def clear_calibration_cache():
+    _CALIB_CACHE.clear()
 
 
 def _as_float(col) -> np.ndarray:
@@ -137,18 +140,32 @@ def save_calibration(cal: Calibration, path: str) -> None:
 
 
 def load_calibration(path: Optional[str] = None) -> Calibration:
-    """Load a Calibration object from a TSV file.
+    """Load a Calibration object from a TSV file, with caching.
     If no path is provided, use the packaged default under SGA/data/SGA2025.
-
     """
+
+    import os
+    from importlib import resources
+
+    # Resolve the calibration file path
     if path is None:
         path = resources.files("SGA").joinpath("data/SGA2025/r26-calibration-coeff.tsv")
         log.debug(f"Read calibration file: {path}")
 
+    # Normalize to absolute string key for caching
+    key = os.path.abspath(str(path))
+
+    # Cache hit
+    if key in _CALIB_CACHE:
+        return _CALIB_CACHE[key]
+
+    # --- Load from disk (your original logic) ---
     lines = [ln.strip() for ln in open(path, "r") if ln.strip()]
     if not lines or not lines[0].startswith("name"):
         raise ValueError(f"Malformed calibration file: {path}")
+
     channels: Dict[str, ChannelCalib] = {}
+
     for ln in lines[1:]:
         name, a, b, tau, sdef, covars_json, c_json = ln.split("\t")
         channels[name] = ChannelCalib(
@@ -161,7 +178,11 @@ def load_calibration(path: Optional[str] = None) -> Calibration:
             sigma_obs_default=(float(sdef) if sdef != "" else None),
         )
 
-    return Calibration(channels=channels, target_name="r26")
+    cal = Calibration(channels=channels, target_name="r26")
+
+    # Store in cache
+    _CALIB_CACHE[key] = cal
+    return cal
 
 
 def _to_log_and_sigma(r: np.ndarray, sigma_r: Optional[np.ndarray]) -> Tuple[np.ndarray, Optional[np.ndarray]]:
