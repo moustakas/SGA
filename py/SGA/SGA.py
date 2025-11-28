@@ -1685,7 +1685,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
                               factor=1.5, moment_method='rms', wmask=None,
                               use_tractor_position=False, use_radial_weight=True,
-                              debug=False):
+                              input_ba_pa=None, debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
 
@@ -1722,6 +1722,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         P = EllipseProperties()
         P.fit(cutout, mask=cutout_mask, method=moment_method,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
+              input_ba_pa=input_ba_pa,
               use_radial_weight=use_radial_weight)
 
         if debug:
@@ -1761,7 +1762,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         Returns np.array([bx, by, sma, ba, pa]) in *pixel* units.
 
         """
-        if table is not None:
+        def _table_geometry(table):
             if use_tractor_position and ref_tractor is not None:
                 bx, by = ref_tractor.bx[0], ref_tractor.by[0]
             else:
@@ -1774,12 +1775,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             sma = sma_arcsec / pixscale # [pixels]
             ba = table['BA_INIT']
             pa = table['PA_INIT']
-        elif tractor is not None:
+            return bx, by, sma, ba, pa
+
+
+        def _tractor_geometry(tractor):
             from SGA.geometry import get_tractor_ellipse
             (bx, by) = tractor.bx, tractor.by
             sma = tractor.shape_r / pixscale # [pixels]
             _, ba, pa = get_tractor_ellipse(sma, tractor.shape_e1, tractor.shape_e2)
-        elif props is not None:
+            return bx, by, sma, ba, pa
+
+
+        def _props_geometry(props):
             if use_tractor_position and ref_tractor is not None:
                 bx, by = ref_tractor.bx[0], ref_tractor.by[0]
             else:
@@ -1792,6 +1799,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 sma = props.a # semimajor [pixels]
             ba = props.ba
             pa = props.pa
+            return bx, by, sma, ba, pa
+
+
+        if table is not None:
+            bx, by, sma, ba, pa = _table_geometry(table)
+        elif tractor is not None:
+            bx, by, sma, ba, pa = _tractor_geometry(tractor)
+        elif props is not None:
+            bx, by, sma, ba, pa = _props_geometry(props)
 
         bx *= pixfactor
         by *= pixfactor
@@ -2156,9 +2172,19 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # coadded image.
                 wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
+                # Optionally use Tractor for small overlapping satellites.
+                if tractor_geometry_for_satellites and tractor_geometry_for_satellites_obj[iobj]:
+                    if objsrc is None or objsrc.type == 'PSF':
+                        input_ba_pa = None
+                    else:
+                        _, _, _, ba_tr, pa_tr = get_geometry(opt_pixscale, tractor=objsrc)
+                        input_ba_pa = (ba_tr, pa_tr)
+                else:
+                    input_ba_pa = None
+
                 props = find_galaxy_in_cutout(
                     wimg, bx, by, sma, ba, pa, wmask=wmask,
-                    moment_method=moment_method,
+                    moment_method=moment_method, input_ba_pa=input_ba_pa,
                     use_radial_weight=(use_radial_weight and use_radial_weight_obj[iobj]),
                     use_tractor_position=use_tractor_position)
                 geo_iter = get_geometry(
