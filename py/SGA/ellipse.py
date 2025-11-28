@@ -27,13 +27,15 @@ FITMODE = dict(
 # SGA fitting modes
 ELLIPSEMODE = dict(
     FIXGEO = 2**0,      # fix ellipse geometry
-    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting
+    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting (always implies FIXGEO)
     FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
-                        # subtract but do not threshold-mask Gaia stars
     FORCEGAIA = 2**3,   # force PSF source detection and photometry within the SGA mask;
     LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
     MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
                         # mask (e.g., within a cluster environment)
+    MOMENTPOS = 2**6,   # use the light-weighted (not Tractor) center
+    TRACTORGEO = 2**7,  # use the Tractor (not light-weighted) geometry
+    RADWEIGHT = 2**8,   # derive the moment geometry after weighting radially as r^1.5
 )
 
 ELLIPSEBIT = dict(
@@ -41,7 +43,7 @@ ELLIPSEBIT = dict(
     BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
     LARGESHIFT = 2**2,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
     LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
-    MAJORGAL = 2**4,           # nearby bright galaxy (>=30% of the SGA source) subtracted
+    MAJORGAL = 2**4,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds

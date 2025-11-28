@@ -3478,7 +3478,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     # file so those files can be updated without having to rerun
     # build_parent_archive.
     ellipsemode = np.zeros(len(parent), np.int32)
-    for action in ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking']:
+    actions = ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking',
+               'momentpos', 'tractorgeo', 'radweight', '']
+    for action in actions:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
             log.warning(f'No action file {actfile} found; skipping.')
@@ -3492,14 +3494,14 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         if np.any(cc > 1):
             log.warning(f'duplicates in action file {actfile}')
             log.info(oo[cc>1])
-            pdb.set_trace()
+            raise ValueError()
 
         # make sure every object is in the current catalog
         I = np.isin(parent['OBJNAME'].value, act['objname'].value)
         if np.sum(I) != len(act):
             log.warning(f'The parent catalog is missing the following objects in {actfile}')
             log.info(act[~np.isin(act['objname'].value, parent['OBJNAME'].value)])
-            pdb.set_trace()
+            raise ValueError()
 
         ellipsemode[I] |= ELLIPSEMODE[action.upper()]
 
