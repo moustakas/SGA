@@ -150,13 +150,13 @@ def load_calibration(path: Optional[str] = None) -> Calibration:
     # Resolve the calibration file path
     if path is None:
         path = resources.files("SGA").joinpath("data/SGA2025/r26-calibration-coeff.tsv")
-        log.debug(f"Read calibration file: {path}")
 
     # Normalize to absolute string key for caching
     key = os.path.abspath(str(path))
 
     # Cache hit
     if key in _CALIB_CACHE:
+        log.debug(f"Loaded cached calibration file: {path}")
         return _CALIB_CACHE[key]
 
     # --- Load from disk (your original logic) ---
@@ -179,6 +179,7 @@ def load_calibration(path: Optional[str] = None) -> Calibration:
         )
 
     cal = Calibration(channels=channels, target_name="r26")
+    log.debug(f"Read calibration file: {path}")
 
     # Store in cache
     _CALIB_CACHE[key] = cal

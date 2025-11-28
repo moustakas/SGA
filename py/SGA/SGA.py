@@ -1724,19 +1724,20 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
               input_ba_pa=input_ba_pa,
               use_radial_weight=use_radial_weight)
+        print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, sma, P.ba, P.pa)
 
-        #if debug:
-        #    print('FIXME!')
-        #    import matplotlib.pyplot as plt
-        #    from SGA.qa import overplot_ellipse
-        #    fig, (ax1, ax2) = plt.subplots(1, 2)
-        #    P.plot(image=np.log10(cutout), ax=ax1)
-        #    ax2.imshow(cutout_mask, origin='lower')
-        #    overplot_ellipse(2*(sma*0.262), ba, pa, bx-x1,
-        #                     by-y1, pixscale=0.262,
-        #                     ax=ax1, color='blue')
-        #    fig.savefig('ioannis/tmp/junk.png')
-        #    plt.close()
+        if debug:
+            print('FIXME!')
+            import matplotlib.pyplot as plt
+            from SGA.qa import overplot_ellipse
+            fig, (ax1, ax2) = plt.subplots(1, 2)
+            P.plot(image=np.log10(cutout), ax=ax1)
+            ax2.imshow(cutout_mask, origin='lower')
+            overplot_ellipse(2*(sma*0.262), ba, pa, bx-x1,
+                             by-y1, pixscale=0.262,
+                             ax=ax1, color='blue')
+            fig.savefig('ioannis/tmp/junk.png')
+            plt.close()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -2247,6 +2248,29 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if objsrc is not None:
                 if dshift_tractor_arcsec_arr[iobj] > maxshift_arcsec:
                     sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
+
+
+        # Rebuild reference masks using *final* geometry for all SGA sources.
+        opt_refmask_all[:, :, :] = False # clear everything from the first pass
+
+        for iobj in range(nsample):
+            bx_i, by_i, sma_i, ba_i, pa_i = geo_final[iobj, :]
+
+            # Mask all *other* SGA sources using their final ellipses
+            refmask_i = np.zeros(sz, bool)
+            for j in range(nsample):
+                if j == iobj:
+                    continue
+
+                bx_j, by_j, sma_j, ba_j, pa_j = geo_final[j, :]
+                if sma_j <= 0:
+                    continue
+
+                refmask_j = in_ellipse_mask(bx_j, width - by_j, sma_j * ref_factor,
+                    ba_j*sma_j*ref_factor, pa_j, xgrid, ygrid_flip)
+                refmask_i |= refmask_j
+
+            opt_refmask_all[iobj, :, :] = refmask_i
 
     # final optical masks
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
