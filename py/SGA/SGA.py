@@ -1647,7 +1647,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True,
-                         tractor_geometry_for_satellites=True,
+                         tractor_geometry_for_satellites=True, use_sma_moment_floor=False,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -2053,13 +2053,21 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Initial geometry and elliptical mask.
         if input_geo_initial is not None:
-            geo_init = input_geo_initial[iobj, :]
             geo_init_ref = geo_init
+            geo_init = input_geo_initial[iobj, :]
         else:
             # initial geometry used as fallback
             geo_init_ref = get_geometry(opt_pixscale, table=obj)
             geo_init = get_geometry(opt_pixscale, table=obj, ref_tractor=objsrc,
                                     use_tractor_position=use_tractor_position)
+
+        # Minimum semi-major axis.
+        if input_geo_initial is not None:
+            sma_floor = input_geo_initial[iobj, 2] # [pixels]
+        elif use_sma_moment_floor and (obj['SMA_MOMENT'] > 0):
+            sma_floor = obj['SMA_MOMENT'] / opt_pixscale   # arcsec -> pixels
+        else:
+            sma_floor = None
 
         geo_initial[iobj, :] = geo_init
         geo_init_ref_all[iobj, :] = geo_init_ref
@@ -2080,6 +2088,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         dshift_tractor_arcsec = 0.0
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
+
+            # Enforce R26-based minimum radius on second pass
+            if sma_floor is not None and sma < sma_floor:
+                log.info(f'Setting sma={sma:.2f} pixel to its floor {sma_floor:.2f} pixels.')
+                sma = sma_floor
+                geo_iter[2] = sma_floor
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,

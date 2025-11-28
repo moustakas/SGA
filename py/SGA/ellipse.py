@@ -1516,6 +1516,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             input_geo_initial=input_geo_initial,
                                             mask_nearby=mask_nearby,
                                             niter_geometry=2, qaplot=qaplot,
+                                            use_sma_moment_floor=update_geometry,
                                             htmlgalaxydir=htmlgalaxydir)
         # restore the original SMA_MOMENT values
         sample['SMA_MOMENT'] = sma_moment0
