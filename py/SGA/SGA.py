@@ -2032,13 +2032,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             geo_init = input_geo_initial[iobj, :]
             geo_init_ref = geo_init
         else:
-            # table-based geometry used as fallback
+            # initial geometry used as fallback
             geo_init_ref = get_geometry(opt_pixscale, table=obj)
-
-            # in groups, fall back to the Tractor center
-            #if nsample > 1 and objsrc is not None:
-            #if objsrc is not None:
-            #    use_tractor_position = False#True
             geo_init = get_geometry(opt_pixscale, table=obj, ref_tractor=objsrc,
                                     use_tractor_position=use_tractor_position)
 
@@ -2061,7 +2056,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         dshift_tractor_arcsec = 0.0
         for iiter in range(niter_actual):
             log.debug(f'Iteration {iiter+1}/{niter_actual}')
-            #print('Iter-start', iobj, iiter, bx, by, sma, ba, pa)
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,

@@ -43,7 +43,8 @@ class EllipseProperties:
         return r_ell
 
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            x0y0=None, smooth_sigma=1.0, rmax=None, use_radial_weight=True):
+            x0y0=None, input_ba_pa=None, smooth_sigma=1.0, rmax=None,
+            use_radial_weight=True):
         """
         Label and smooth the image, then select the largest contiguous blob
         and compute ellipse properties using second moments.
@@ -57,6 +58,8 @@ class EllipseProperties:
         percentile : float
         use_radial_weight : bool
             If True, second moments are weighted by flux * r^2.
+        input_ba_pa : 2D float array or None
+            Input geometry, e.g., from Tractor.
 
         """
         from scipy import ndimage
@@ -93,7 +96,7 @@ class EllipseProperties:
         largest = np.argmax(sizes) + 1
         self.blob_mask = (labels == largest)
 
-        # 4) now restrict to that blob *only*
+        # now restrict to that blob *only*
         blob_idx = np.flatnonzero(self.blob_mask)
         yy, xx = np.indices(smoothed.shape)
         x_sel = xx.flat[blob_idx].astype(float)
@@ -122,22 +125,9 @@ class EllipseProperties:
         dy = y_sel - self.y0
         r = np.hypot(dx, dy)
 
-        #if rmax is not None:
-        #    inside = (r <= rmax)
-        #    x_sel = x_sel[inside]
-        #    y_sel = y_sel[inside]
-        #    flux = flux[inside]
-        #    dx = dx[inside]
-        #    dy = dy[inside]
-        #    r = r[inside]
-
-        # 6) weights for the second moments
+        # weights for the second moments
         if use_radial_weight:# and rmax is not None:
             w_mom = flux * r**1.5 # (r**2)
-            #r0 = 0.5 * rmax
-            #W = (r / r0)
-            #W = np.minimum(W, 1.0)    # don’t blow up beyond r0
-            #w_mom = flux * W
         else:
             w_mom = flux
 
@@ -147,27 +137,76 @@ class EllipseProperties:
             w_mom = flux
             F_m = F
 
-        # 7) central second moments with chosen weights
+        # Fixed-shape branch: use input (b/a, PA) and solve only for
+        # scale a.
+        if input_ba_pa is not None:
+            ba_in, pa_in = input_ba_pa
+            # Guard against pathological b/a
+            q = float(np.clip(ba_in, 1e-2, 1.0))
+
+            theta = np.deg2rad(pa_in)
+            # Same convention as in_ellipse_mask / elliptical_radius:
+            # major axis along (sinθ, cosθ)
+            xp =  dx * np.sin(theta) + dy * np.cos(theta)   # along major axis
+            yp = -dx * np.cos(theta) + dy * np.sin(theta)   # along minor axis
+
+            Mmaj = np.dot(wflux, xp * xp) / F_w
+            Mmin = np.dot(wflux, yp * yp) / F_w
+
+            A = (Mmaj + q*q * Mmin) / (1.0 + q**4)  # a^2
+            if not np.isfinite(A) or A <= 0.0:
+                log.warning("Failed fixed-shape scale solution; falling back to zero geometry.")
+                self.a = self.a_rms = self.a_percentile = 0.0
+                self.ba = 1.0
+                self.pa = 0.0
+                return self
+
+            a_fixed = np.sqrt(A)
+
+            # RMS-based “a” is this fixed scale
+            self.a_rms = a_fixed
+
+            # Percentile radius: radial distance in pixels, independent of shape
+            order_r = np.argsort(r)
+            cumflux = np.cumsum(flux[order_r])
+            cumfrac = cumflux / cumflux[-1]
+            self.a_percentile = float(np.interp(percentile, cumfrac, r[order_r]))
+
+            # Choose final a
+            if method == 'rms':
+                self.a = self.a_rms
+            elif method == 'percentile':
+                self.a = self.a_percentile
+            else:
+                raise ValueError(f"Unknown method: {method}")
+
+            # Adopt Tractor-like shape
+            self.ba = q
+            self.pa = pa_in % 180.0
+
+            return self
+
+        # central second moments with chosen weights
         Mxx = np.dot(w_mom, dx*dx) / F_m
         Myy = np.dot(w_mom, dy*dy) / F_m
         Mxy = np.dot(w_mom, dx*dy) / F_m
 
-        # 8) diagonalize inertia tensor
+        # diagonalize inertia tensor
         eigvals, eigvecs = np.linalg.eigh([[Mxx, Mxy], [Mxy, Myy]])
         order = np.argsort(eigvals)[::-1]
         eigvals = eigvals[order]
         eigvecs = eigvecs[:, order]
 
-        # 9) RMS-based semi-major axis from largest eigenvalue
+        # RMS-based semi-major axis from largest eigenvalue
         self.a_rms = np.sqrt(max(eigvals[0], 0.0))
 
-        # 10) percentile-based radius (using *flux* weights, not w_mom)
+        # percentile-based radius (using *flux* weights, not w_mom)
         order_r = np.argsort(r)
         cumflux = np.cumsum(flux[order_r])
         cumfrac = cumflux / cumflux[-1]
         self.a_percentile = float(np.interp(percentile, cumfrac, r[order_r]))
 
-        # 11) select final major axis
+        # select final major axis
         if method == 'rms':
             self.a = self.a_rms
         elif method == 'percentile':
@@ -175,7 +214,7 @@ class EllipseProperties:
         else:
             raise ValueError(f"Unknown method: {method}")
 
-        # 12) axis ratio and PA
+        # axis ratio and PA
         if self.a_rms > 0. and eigvals[1] > 0.:
             b = np.sqrt(eigvals[1])
             if b < 1e-2:
