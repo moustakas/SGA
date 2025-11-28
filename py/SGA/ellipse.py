@@ -1522,6 +1522,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         else:
             input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
 
+        sma_moment0 = sample['SMA_MOMENT'] # original values
         for iobj, obj in enumerate(sample):
             bx, by, sma_mom, ba_mom, pa_mom = [
                 obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
@@ -1552,8 +1553,11 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
                                             mask_nearby=mask_nearby,
-                                            galmask_margin=0., niter_geometry=2,
-                                            qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
+                                            niter_geometry=2, qaplot=qaplot,
+                                            htmlgalaxydir=htmlgalaxydir)
+
+        # restore the original SMA_MOMENT values
+        sample['SMA_MOMENT'] = sma_moment0
 
         # ellipse-fit over objects and then datasets
         results, sbprofiles = wrap_multifit(

@@ -648,13 +648,8 @@ def _infer_one(
     if include_direct_r26 and "r26" in measurements:
         x_lin = measurements["r26"]
         sx_lin = sigmas.get("r26", None)
-        if (
-            np.isfinite(x_lin)
-            and x_lin > 0.0
-            and sx_lin is not None
-            and np.isfinite(sx_lin)
-            and sx_lin > 0.0
-        ):
+        if (np.isfinite(x_lin) and x_lin > 0.0 and sx_lin is not None
+            and np.isfinite(sx_lin) and sx_lin > 0.0):
             yj = float(np.log(x_lin))
             var_j = float((sx_lin / x_lin) ** 2)
             var_j = max(var_j, var_floor_log)
@@ -663,9 +658,9 @@ def _infer_one(
             v_list.append(var_j)
             w_dict["r26"] = w
 
-    # Use calibrated channels with hierarchy:
-    # only channels at the deepest available isophotal threshold,
-    # plus non-threshold channels like 'moment'.
+    # Use calibrated channels with hierarchy: only channels at the
+    # deepest available isophotal threshold, plus non-threshold
+    # channels like 'moment'.
     for name, ch in cal.channels.items():
         if name not in measurements:
             continue

@@ -681,7 +681,6 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('DEC', np.float64, u.degree),
         ('BX', np.float32, u.pixel),
         ('BY', np.float32, u.pixel),
-        ('SMA_MASK', np.float32, u.arcsec),
         ('SMA_MOMENT', np.float32, u.arcsec),
         ('BA_MOMENT', np.float32, None),
         ('PA_MOMENT', np.float32, u.degree),
@@ -1644,15 +1643,13 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         galmask_margin=0.2, FMAJOR=0.1, moment_method='rms',
+                         FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
-
-    galmask_margin - expand the galaxy mask by this factor
 
     FMAJOR = 0.05  # major if >= XX% of SGA source flux
     moment_method - 'rms' or 'percentile'
@@ -1725,7 +1722,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
               use_radial_weight=use_radial_weight)
 
-        if True:#debug:
+        if debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -1736,7 +1733,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1960,16 +1956,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_images_obj = opt_images.copy() # reset the data
         for indx, refsrc, refsample in zip(refindx, refsrcs, refsamples):
             # For *previously* completed objects, use the final, not
-            # initial geometry. Also apply some margin
-            # (galmask_margin) to the mask since the moment geometry
-            # only includes XX% of the light.
+            # initial geometry.
             if indx < iobj:
                 [bxr, byr, smar, bar, par] = geo_final[indx, :]
             else:
                 [bxr, byr, smar, bar, par] = get_geometry(opt_pixscale, table=refsample)
-            opt_refmask1 = in_ellipse_mask(bxr, width-byr, smar*(1.+galmask_margin),
-                                           bar*smar*(1.+galmask_margin), par,
-                                           xgrid, ygrid_flip)
+            opt_refmask1 = in_ellipse_mask(bxr, width-byr, smar*ref_factor, bar*smar*ref_factor,
+                                           par, xgrid, ygrid_flip)
             opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
 
             for iband, filt in enumerate(opt_bands):
@@ -2041,7 +2034,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             if mask_allgals:
                 _, opt_galmask, _ = update_galmask(
-                    allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
+                    allgalsrcs, bx, by, sma, ba, pa,
                     opt_skysigmas=opt_skysigmas, opt_models=None,
                     mask_allgals=True)
             else:
@@ -2062,8 +2055,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if np.any(major_mask):
                     _, galmask_major, _ = update_galmask(
                         allgalsrcs[major_mask], bx, by,
-                        sma*(1.+galmask_margin), ba, pa,
-                        opt_skysigmas=opt_skysigmas,
+                        sma, ba, pa, opt_skysigmas=opt_skysigmas,
                         opt_models=None, mask_allgals=True)
                     opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
@@ -2071,8 +2063,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if np.any(minor_mask):
                     _, galmask_minor, _ = update_galmask(
                         allgalsrcs[minor_mask], bx, by,
-                        sma*(1.+galmask_margin), ba, pa,
-                        opt_skysigmas=opt_skysigmas,
+                        sma, ba, pa, opt_skysigmas=opt_skysigmas,
                         opt_models=None, mask_allgals=False)
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
@@ -2211,7 +2202,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_models_obj = opt_models[iobj, :, :, :]
         if mask_allgals_arr[iobj]:
             _, opt_galmask, opt_models_obj = update_galmask(
-                allgalsrcs, bx, by, sma*(1.+galmask_margin), ba, pa,
+                allgalsrcs, bx, by, sma, ba, pa,
                 opt_models=opt_models_obj,
                 opt_skysigmas=opt_skysigmas,
                 mask_allgals=True)
@@ -2232,8 +2223,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if np.any(major_mask):
                 _, galmask_major, opt_models_obj = update_galmask(
                     allgalsrcs[major_mask], bx, by,
-                    sma*(1.+galmask_margin), ba, pa,
-                    opt_models=opt_models_obj,
+                    sma, ba, pa, opt_models=opt_models_obj,
                     opt_skysigmas=opt_skysigmas,
                     mask_allgals=True)
                 opt_galmask = np.logical_or(opt_galmask, galmask_major)
@@ -2241,8 +2231,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if np.any(minor_mask):
                 _, galmask_minor, opt_models_obj = update_galmask(
                     allgalsrcs[minor_mask], bx, by,
-                    sma*(1.+galmask_margin), ba, pa,
-                    opt_models=opt_models_obj,
+                    sma, ba, pa, opt_models=opt_models_obj,
                     opt_skysigmas=opt_skysigmas,
                     mask_allgals=False)
                 opt_galmask = np.logical_or(opt_galmask, galmask_minor)
@@ -2371,9 +2360,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if input_geo_initial is None:
                 sample[col] = geo_final[:, icol].astype('f4')
                 sample['SMA_MOMENT'] *= opt_pixscale # [pixels-->arcsec]
-                sample['SMA_MASK'] = sample['SMA_MOMENT'] * (1.+galmask_margin) # [arcsec]
-            else:
-                sample['SMA_MASK'] = np.float32(geo_final[:, icol] * (1.+galmask_margin) * opt_pixscale) # [arcsec]
         else:
             sample[col] = geo_final[:, icol].astype('f4')
 
@@ -2459,7 +2445,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         sample['DEC'] = np.zeros(len(sample), 'f8')
         sample['BX'] = np.zeros(len(sample), 'f4')
         sample['BY'] = np.zeros(len(sample), 'f4')
-        sample['SMA_MASK'] = np.zeros(len(sample), 'f4') # [arcsec]
         sample['SMA_MOMENT'] = np.zeros(len(sample), 'f4') # [arcsec]
         sample['BA_MOMENT'] = np.zeros(len(sample), 'f4')
         sample['PA_MOMENT'] = np.zeros(len(sample), 'f4')
@@ -2714,7 +2699,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         sample['RA'] = sample['RA_INIT']
         sample['DEC'] = sample['DEC_INIT']
         sample['SGANAME'] = sga2025_name(sample['RA'], sample['DEC'])
-        sample['SMA_MASK'] = sample['SMA_INIT']   # [arcsec]
         sample['SMA_MOMENT'] = sample['SMA_INIT'] # [arcsec]
         sample['BA_MOMENT'] = sample['BA_INIT']
         sample['PA_MOMENT'] = sample['PA_INIT']
@@ -2781,17 +2765,10 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
 
         if build_mask:
-            # no margin for galaxy groups
-            if len(sample) > 1:
-                galmask_margin = 0.
-            else:
-                galmask_margin = 0.2
-
             try:
                 data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                                     qaplot=qaplot, cleanup=cleanup,
                                                     mask_nearby=mask_nearby,
-                                                    galmask_margin=galmask_margin,
                                                     niter_geometry=niter_geometry,
                                                     htmlgalaxydir=htmlgalaxydir)
             except:
