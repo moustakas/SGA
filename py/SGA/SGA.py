@@ -1647,6 +1647,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True,
+                         tractor_geometry_for_satellites=True,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -1938,9 +1939,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # Per-object decision on whether to use radial weighting in the
     # moments.
     use_radial_weight_obj = np.ones(nsample, bool)
+    tractor_geometry_for_satellites_obj = np.zeros(nsample, bool)
 
     if nsample == 1:
-        use_radial_weight_obj[0] = True # trivially isolated
+        use_radial_weight_obj[0] = True
+        tractor_geometry_for_satellites_obj[0] = False
     else:
         for i in range(nsample):
             bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[i, :]
@@ -1969,10 +1972,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 max_sma_neighbor = max(geo_overlap[j, 2] for j in overlapping_indices)
 
                 if sma_i < SATELLITE_FRAC * max_sma_neighbor:
-                    # "Satellite" inside / near a bigger galaxy: NO radial weighting
+                    # "Satellite" inside / near a bigger galaxy: no
+                    # radial weighting and use Tractor geometry.
                     use_radial_weight_obj[i] = False
+                    tractor_geometry_for_satellites_obj[i] = True
                 else:
-                    # Comparable or larger than its overlapping neighbour(s): OK to weight
+                    # Comparable or larger than its overlapping
+                    # neighbour(s): OK to weight and no Tractor
+                    # geometry.
                     use_radial_weight_obj[i] = True
 
 
