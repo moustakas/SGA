@@ -1441,7 +1441,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=True,
                          nmonte=75, seed=42, verbose=False, skip_ellipse=False,
                          nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
@@ -1489,24 +1489,24 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     if skip_ellipse:
         results_obj = []
         sbprofiles_obj = []
+
         for iobj, obj in enumerate(sample):
+            sma_moment_arcsec = obj['SMA_MOMENT']
+            sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures)
+
             results_dataset = []
             sbprofiles_dataset = []
-            for idata, dataset in enumerate(datasets):
+            for dataset in datasets:
                 if dataset == 'opt':
-                    allbands = data['all_opt_bands'] # always griz in north & south
-                    sma_moment_arcsec = obj['SMA_MOMENT']  # [arsec]
-                    sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures) # [arcsec]
+                    allbands = data['all_opt_bands']
                 else:
                     allbands = data[f'{dataset}_bands']
 
-                results_dataset1 = results_datamodel(obj, allbands, dataset, sma_apertures_arcsec, sbthresh)
+                results_dataset1 = results_datamodel(obj, allbands, dataset,sma_apertures_arcsec, sbthresh)
                 sbprofiles_dataset1 = Table()
                 #sbprofiles_dataset1 = sbprofiles_datamodel(sma_array*pixscale, allbands)
                 results_dataset.append(results_dataset1)
                 sbprofiles_dataset.append(sbprofiles_dataset1)
-            results_obj.append(results_dataset)
-            sbprofiles_obj.append(sbprofiles_dataset)
 
         results = list(zip(*results_obj))       # [ndatasets][nobj]
         sbprofiles = list(zip(*sbprofiles_obj)) # [ndatasets][nobj]
@@ -1517,35 +1517,42 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
             nmonte=0, seed=seed, debug=False)
 
-        GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
-        input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
+        if update_geometry:
+            input_geo_initial = None
+        else:
+            input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
 
         for iobj, obj in enumerate(sample):
-            [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
-            #print([bx, by, sma, ba, pa])
+            bx, by, sma_mom, ba_mom, pa_mom = [
+                obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
 
-            # if fixgeo, use the moment geometry
+            # if FIXGEO, use the moment geometry
             if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-                input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
+                if not update_geometry:
+                    input_geo_initial[iobj, :] = [bx, by, sma_mom/pixscale, ba_mom, pa_mom]
+                continue
+
+            # estimate R(26) from first-pass profiles
+            tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
+            for thresh in sbthresh:
+                for filt in bands:
+                    col = f'R{thresh:.0f}_{filt.upper()}'
+                    colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
+                    tab[col] = results[0][iobj][col]
+                    tab[colerr] = results[0][iobj][colerr]
+            radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
+
+            if update_geometry:
+                sample['SMA_MOMENT'][iobj] = radius[0] # [arcsec]
             else:
-                # estimate R(26)
-                tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
-                for thresh in sbthresh:
-                    for filt in bands:
-                        col = f'R{thresh:.0f}_{filt.upper()}'
-                        colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
-                        tab[col] = results[0][iobj][col]
-                        tab[colerr] = results[0][iobj][colerr]
-                radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
-                #print(tab)
-                #print(radius, radius_err, radius_ref, radius_weight)
-                #print([bx, by, radius[0]/pixscale, ba, pa])
                 input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
 
+
+        # geometry_mode=False → geometry frozen, only masks updated
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
                                             mask_nearby=mask_nearby,
-                                            galmask_margin=0., niter_geometry=1,
+                                            galmask_margin=0., niter_geometry=2,
                                             qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
 
         # ellipse-fit over objects and then datasets
