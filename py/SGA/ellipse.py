@@ -1517,6 +1517,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
             nmonte=0, seed=seed, debug=False)
 
+        #sample['OBJNAME', 'SMA_INIT', 'SMA_MOMENT', 'PA_MOMENT', 'BA_MOMENT']
         if update_geometry:
             input_geo_initial = None
         else:
@@ -1534,7 +1535,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 continue
 
             # estimate R(26) from first-pass profiles
-            tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
+            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE'])
             for thresh in sbthresh:
                 for filt in bands:
                     col = f'R{thresh:.0f}_{filt.upper()}'

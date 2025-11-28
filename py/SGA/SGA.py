@@ -595,12 +595,13 @@ def SGA_diameter(ellipse, radius_arcsec=False):
     from SGA.ellipse import ELLIPSEMODE
     from SGA.calibrate import infer_best_r26
 
+    for col in ['ELLIPSEMODE', 'SMA_MOMENT']:
+        if not col in ellipse.colnames:
+            msg = f'Missing mandatory column {col}'
+            log.critical(msg)
+            raise ValueError(msg)
+
     d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
-    #if len(d26) == 1:
-    #    d26 = d26[0]
-    #    d26_err = d26_err[0]
-    #    d26_ref = d26_ref[0]
-    #    d26_weight = d26_weight[0]
 
     I = np.isin(d26_ref, 'moment')
     if np.any(I):
@@ -614,7 +615,7 @@ def SGA_diameter(ellipse, radius_arcsec=False):
 
     if radius_arcsec:
         r26 = d26 / 2. * 60. # [radius, arcsec]
-        r26_err = d26_err / 2. * 60.   # [radius, arcsec]
+        r26_err = d26_err / 2. * 60. # [radius, arcsec]
         return r26, r26_err, d26_ref, d26_weight
     else:
         return d26, d26_err, d26_ref, d26_weight
@@ -1723,6 +1724,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               use_radial_weight=use_radial_weight)
 
         if True:#debug:
+            print('FIXME!')
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -1733,7 +1735,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -2126,18 +2127,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
-
-            ## Hack! If there are other reference sources, double the
-            ## opt_refmask inellipse veto mask so that the derived
-            ## geometry can grow, if necessary.
-            #if iobj > 0:
-            #    if input_geo_initial is not None:
-            #        inellipse2 = in_ellipse_mask(bx, width-by, sma, sma*ba,
-            #                                     pa, xgrid, ygrid_flip)
-            #    else:
-            #        inellipse2 = in_ellipse_mask(bx, width-by, 2.*sma, 2.*sma*ba,
-            #                                     pa, xgrid, ygrid_flip)
-            #    iter_refmask[inellipse2] = False
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.

@@ -658,23 +658,14 @@ def _infer_one(
             v_list.append(var_j)
             w_dict["r26"] = w
 
-    # Use calibrated channels with hierarchy: only channels at the
-    # deepest available isophotal threshold, plus non-threshold
-    # channels like 'moment'.
-    for name, ch in cal.channels.items():
-        if name not in measurements:
-            continue
 
-        th = _channel_threshold(name)
+    def _add_channel(name: str):
+        nonlocal y_list, v_list, w_dict
 
-        # Enforce the threshold hierarchy:
-        # if we have any isophotal measurements, ignore shallower ones
-        if deepest_th is not None and th is not None and th < deepest_th:
-            continue  # e.g., if deepest=26, drop 25/24/23; if deepest=25, drop 24/23
-
+        ch = cal.channels[name]
         x_lin = measurements[name]
         if not np.isfinite(x_lin) or x_lin <= 0.0:
-            continue
+            return
 
         x_log = float(np.log(x_lin))
         sx_lin = sigmas.get(name, None)
@@ -706,6 +697,35 @@ def _infer_one(
         y_list.append(yj)
         v_list.append(var_j)
         w_dict[name] = w
+
+    # 1) First pass: only calibrated *isophotal* channels at deepest_th.
+    #    Non-threshold channels like 'moment' are deliberately skipped.
+    if deepest_th is not None:
+        for name, ch in cal.channels.items():
+            if name not in measurements:
+                continue
+            th = _channel_threshold(name)
+
+            # only use isophotal channels at the deepest available threshold
+            if th is None:
+                continue
+            if th < deepest_th:
+                continue
+
+            _add_channel(name)
+
+    # 2) Fallback: if we still have no usable measurements (no r26, no
+    #    deepest-th isophotal channels), allow non-threshold channels
+    #    like 'moment' as "radius of last resort".
+    if not y_list:
+        for name, ch in cal.channels.items():
+            if name not in measurements:
+                continue
+            th = _channel_threshold(name)
+            if th is not None:
+                continue  # only non-threshold channels here (e.g., 'moment')
+
+            _add_channel(name)
 
     if not y_list:
         return np.nan, np.nan, {}
@@ -769,8 +789,7 @@ def infer_best_r26(
         y, sy, wdict = _infer_one(
             meas_i, sig_i, cal,
             covars_row=zi,
-            include_direct_r26=include_direct_r26
-        )
+            include_direct_r26=include_direct_r26)
 
         if np.isfinite(y):
             R = np.exp(y)                         # arcsec (radius)
