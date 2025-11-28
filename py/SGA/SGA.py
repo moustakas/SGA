@@ -682,6 +682,7 @@ def SGA_datamodel(ellipse, bands, all_bands):
         ('DEC', np.float64, u.degree),
         ('BX', np.float32, u.pixel),
         ('BY', np.float32, u.pixel),
+        ('SMA_MASK', np.float32, u.arcsec),
         ('SMA_MOMENT', np.float32, u.arcsec),
         ('BA_MOMENT', np.float32, None),
         ('PA_MOMENT', np.float32, u.degree),
@@ -1724,7 +1725,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
               input_ba_pa=input_ba_pa,
               use_radial_weight=use_radial_weight)
-        print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, sma, P.ba, P.pa)
+        #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, sma, P.ba, P.pa)
 
         if debug:
             print('FIXME!')
@@ -2556,6 +2557,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         sample['DEC'] = np.zeros(len(sample), 'f8')
         sample['BX'] = np.zeros(len(sample), 'f4')
         sample['BY'] = np.zeros(len(sample), 'f4')
+        sample['SMA_MASK'] = np.zeros(len(sample), 'f4') # [arcsec]
         sample['SMA_MOMENT'] = np.zeros(len(sample), 'f4') # [arcsec]
         sample['BA_MOMENT'] = np.zeros(len(sample), 'f4')
         sample['PA_MOMENT'] = np.zeros(len(sample), 'f4')
@@ -2810,6 +2812,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         sample['RA'] = sample['RA_INIT']
         sample['DEC'] = sample['DEC_INIT']
         sample['SGANAME'] = sga2025_name(sample['RA'], sample['DEC'])
+        sample['SMA_MASK'] = sample['SMA_INIT'] # [arcsec]
         sample['SMA_MOMENT'] = sample['SMA_INIT'] # [arcsec]
         sample['BA_MOMENT'] = sample['BA_INIT']
         sample['PA_MOMENT'] = sample['PA_INIT']
