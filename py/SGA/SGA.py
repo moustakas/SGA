@@ -1722,7 +1722,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
               use_radial_weight=use_radial_weight)
 
-        if debug:
+        if True:#debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -1733,6 +1733,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
+            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1919,6 +1920,59 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             opt_gaiamask = np.logical_or(opt_gaiamask, msk)
         else:
             opt_images[iband, :, :] = data[filt]
+
+
+    # If an SGA source is smaller than this fraction of an overlapping neighbour,
+    # treat it as a "satellite" and *disable* radial weighting for its moments.
+    SATELLITE_FRAC = 0.5
+
+    # Precompute approximate geometry for overlap classification.
+    geo_overlap = np.zeros((nsample, 5), 'f4')  # [bx, by, sma, ba, pa] in pixels
+    for i, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
+        geo_overlap[i, :] = get_geometry(opt_pixscale,
+            table=obj, ref_tractor=objsrc,
+            moment_method=moment_method,
+            use_tractor_position=use_tractor_position)
+
+    # Per-object decision on whether to use radial weighting in the
+    # moments.
+    use_radial_weight_obj = np.ones(nsample, bool)
+
+    if nsample == 1:
+        use_radial_weight_obj[0] = True # trivially isolated
+    else:
+        for i in range(nsample):
+            bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[i, :]
+            if sma_i <= 0:
+                # Degenerate geometry -> be conservative, no radial weighting
+                use_radial_weight_obj[i] = False
+                continue
+
+            overlapping_indices = []
+            for j in range(nsample):
+                if j == i:
+                    continue
+                bx_j, by_j, sma_j, ba_j, pa_j = geo_overlap[j, :]
+                if sma_j <= 0:
+                    continue
+
+                if ellipses_overlap(bx_i, by_i, sma_i, ba_i, pa_i,
+                                    bx_j, by_j, sma_j, ba_j, pa_j):
+                    overlapping_indices.append(j)
+
+            if not overlapping_indices:
+                # Isolated SGA source: use radial weighting
+                use_radial_weight_obj[i] = True
+            else:
+                # At least one overlap; compare sizes.
+                max_sma_neighbor = max(geo_overlap[j, 2] for j in overlapping_indices)
+
+                if sma_i < SATELLITE_FRAC * max_sma_neighbor:
+                    # "Satellite" inside / near a bigger galaxy: NO radial weighting
+                    use_radial_weight_obj[i] = False
+                else:
+                    # Comparable or larger than its overlapping neighbour(s): OK to weight
+                    use_radial_weight_obj[i] = True
 
 
     # are we allowed to change the geometry in this call?
@@ -2115,7 +2169,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 props = find_galaxy_in_cutout(
                     wimg, bx, by, sma, ba, pa, wmask=wmask,
                     moment_method=moment_method,
-                    use_radial_weight=use_radial_weight,
+                    use_radial_weight=(use_radial_weight and use_radial_weight_obj[iobj]),
                     use_tractor_position=use_tractor_position)
                 geo_iter = get_geometry(
                     opt_pixscale, props=props, ref_tractor=objsrc,
