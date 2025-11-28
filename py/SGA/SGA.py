@@ -1647,7 +1647,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR=0.05, ref_factor=1.0, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
-                         use_tractor_position=True, use_radial_weight=True,
+                         use_tractor_position=True, radial_weight_for_overlaps=False,
                          tractor_geometry_for_satellites=True, use_sma_moment_floor=False,
                          maxshift_arcsec=MAXSHIFT_ARCSEC, cleanup=True,
                          htmlgalaxydir=None):
@@ -1956,10 +1956,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # Per-object decision on whether to use radial weighting in the
     # moments.
-    use_radial_weight_obj = np.ones(nsample, bool)
-    tractor_geometry_for_satellites_obj = np.zeros(nsample, bool)
+    use_radial_weight_obj = np.ones(nsample, bool) # default True
+    tractor_geometry_for_satellites_obj = np.zeros(nsample, bool) # default False
 
     if nsample == 1:
+        # Single object: always radial weighting; no Tractor-geometry override.
         use_radial_weight_obj[0] = True
         tractor_geometry_for_satellites_obj[0] = False
     else:
@@ -1968,6 +1969,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if sma_i <= 0:
                 # Degenerate geometry -> be conservative, no radial weighting
                 use_radial_weight_obj[i] = False
+                tractor_geometry_for_satellites_obj[i] = False
                 continue
 
             overlapping_indices = []
@@ -1982,23 +1984,29 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                     bx_j, by_j, sma_j, ba_j, pa_j):
                     overlapping_indices.append(j)
 
+            # Isolated: keep defaults (radial weight on, no Tractor override).
             if not overlapping_indices:
-                # Isolated SGA source: use radial weighting
                 use_radial_weight_obj[i] = True
-            else:
-                # At least one overlap; compare sizes.
-                max_sma_neighbor = max(geo_overlap[j, 2] for j in overlapping_indices)
+                tractor_geometry_for_satellites_obj[i] = False
+                continue
 
-                if sma_i < SATELLITE_FRAC * max_sma_neighbor:
-                    # "Satellite" inside / near a bigger galaxy: no
-                    # radial weighting and use Tractor geometry.
+            # Overlapping: classify as "satellite" vs "peer" based on size.
+            max_sma_neighbor = max(geo_overlap[j, 2] for j in overlapping_indices)
+            is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
+
+            if not radial_weight_for_overlaps:
+                # Global rule: *any* overlap => no radial weighting.
+                use_radial_weight_obj[i] = False
+                # Still allow Tractor geometry only for small satellites.
+                tractor_geometry_for_satellites_obj[i] = is_satellite
+            else:
+                # Only small satellites lose radial weighting and get Tractor geometry.
+                if is_satellite:
                     use_radial_weight_obj[i] = False
                     tractor_geometry_for_satellites_obj[i] = True
                 else:
-                    # Comparable or larger than its overlapping
-                    # neighbour(s): OK to weight and no Tractor
-                    # geometry.
                     use_radial_weight_obj[i] = True
+                    tractor_geometry_for_satellites_obj[i] = False
 
 
     # are we allowed to change the geometry in this call?
@@ -2201,7 +2209,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 props = find_galaxy_in_cutout(
                     wimg, bx, by, sma, ba, pa, wmask=wmask,
                     moment_method=moment_method, input_ba_pa=input_ba_pa,
-                    use_radial_weight=(use_radial_weight and use_radial_weight_obj[iobj]),
+                    use_radial_weight=use_radial_weight_obj[iobj],
                     use_tractor_position=use_tractor_position)
                 geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
                     moment_method=moment_method, use_tractor_position=use_tractor_position)
@@ -2244,7 +2252,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if sep < maxshift_arcsec:
                     log.warning(f'Objects {iobj} and {j} converged to nearly the same center '
                                 f'({sep:.2f} < {maxshift_arcsec} arcsec); reverting both to '
-                                'input/table-based centers.')
+                                'input centers.')
                     # revert both centers to table-based geometry
                     geo_final[iobj, 0] = geo_init_ref_all[iobj, 0]
                     geo_final[iobj, 1] = geo_init_ref_all[iobj, 1]
