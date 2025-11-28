@@ -2045,7 +2045,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 else:
                     R_flux = galsrcs_optflux / flux_sga
                     major_mask = R_flux >= FMAJOR
-                    if objsrc is not None:
+                    if objsrc is not None and use_tractor_position:
                         sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
                                                     allgalsrcs.dec)
                         major_mask &= sep_arcsec > 2.*objsrc.shape_r
@@ -2068,7 +2068,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
                 # Optionally do not mask within the current SGA ellipse itself.
-                #opt_galmask[inellipse] = False
+                opt_galmask[inellipse] = False
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -2214,7 +2214,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             else:
                 R_flux = galsrcs_optflux / flux_sga
                 major_mask = R_flux >= FMAJOR
-                if objsrc is not None:
+                if objsrc is not None and use_tractor_position:
                     sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
                                                 allgalsrcs.dec)
                     major_mask &= sep_arcsec > 2.*objsrc.shape_r
@@ -2237,7 +2237,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
             # Optionally do not mask within the current SGA ellipse itself.
-            #opt_galmask[inellipse] = False
+            opt_galmask[inellipse] = False
 
         # apply the mask_nearby mask
         opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -2252,7 +2252,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # Loop through all objects again to set the blended and majorgal
     # bits.
-    for iobj, obj in enumerate(sample):
+    for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
         refindx = np.delete(np.arange(nsample), iobj)
         for indx in refindx:
             [bx, by, sma, ba, pa] = geo_final[iobj, :]
@@ -2267,6 +2267,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if flux_sga > 0 and len(allgalsrcs) > 0:
             R_flux = galsrcs_optflux / flux_sga
             major_mask = R_flux >= FMAJOR
+            if objsrc is not None and use_tractor_position:
+                sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
+                                            allgalsrcs.dec)
+                major_mask &= sep_arcsec > 2.*objsrc.shape_r
+
             if np.any(major_mask):
                 bx, by, sma, ba, pa = geo_final[iobj, :]
                 # Are any major companions’ centers inside this ellipse?
