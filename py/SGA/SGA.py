@@ -1878,16 +1878,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # Flux-based classification of extended Tractor galaxies.
     Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
+            (tractor.shape_r > 0.1) *
             (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
     allgalsrcs = tractor[Igal]
 
     galsrcs_optflux = np.zeros(len(allgalsrcs), 'f4')
-    #galsrcs_optsb = np.zeros(len(allgalsrcs), 'f4')
+    galsrcs_optsb = np.zeros(len(allgalsrcs), 'f4')
     for j, src in enumerate(allgalsrcs):
         galsrcs_optflux[j] = max([getattr(src, f'flux_{filt}') for filt in opt_bands])
-        #r50 = getattr(src, 'shape_r')
-        #if (galsrcs_optflux[j] > 0.) & (r50 > 1e-2):
-        #    galsrcs_optsb[j] = 22.5 - 2.5 * np.log10(galsrcs_optflux[j] / r50)
+        r50 = getattr(src, 'shape_r')
+        if (galsrcs_optflux[j] > 0.) & (r50 > 1e-2):
+            galsrcs_optsb[j] = 22.5 - 2.5 * np.log10(galsrcs_optflux[j] / r50)
 
     # Initialize the *original* images arrays.
     opt_images = np.zeros((len(opt_bands), *sz), 'f4')
@@ -2100,7 +2101,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # Enforce R26-based minimum radius on second pass
             if sma_floor is not None and sma < sma_floor:
-                log.info(f'Setting sma={sma:.2f} pixel to its floor {sma_floor:.2f} pixels.')
+                log.info(f'Setting sma={sma/opt_pixscale:.2f} arcsec to its ' + \
+                         f'floor {sma_floor/opt_pixscale:.2f} arcsec.')
                 sma = sma_floor
                 geo_iter[2] = sma_floor
 
