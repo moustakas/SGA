@@ -1218,31 +1218,6 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                     ap.plot(color='k', lw=1, ax=xx)
                 refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
 
-                ## col 1 - linear SB profiles
-                #xx = ax[idata, 1]
-                #for filt in bands:
-                #    xx.fill_between(sbprofiles_obj['SMA']**0.25,
-                #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
-                #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
-                #                    label=filt, alpha=0.6)
-                #xx.set_xlim(ax[0, 1].get_xlim())
-                #if idata == ndataset-1:
-                #    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
-                #else:
-                #    xx.set_xticks([])
-                #
-                #xx.relim()
-                #xx.autoscale_view()
-                #
-                #xx_twin = xx.twinx()
-                #xx_twin.set_ylim(xx.get_ylim())
-                #kill_left_y(xx)
-                #
-                #if idata == 1:
-                #    xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
-                #
-                #xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
-
                 # col 1 - mag SB profiles
                 if linear:
                     yminmax = [1e8, -1e8]
@@ -1307,19 +1282,6 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
 
                 xx.invert_yaxis()
                 xx_twin.invert_yaxis()
-
-                #y0, y1 = xx.get_ylim()
-                #span_dec = abs(np.log10(y1) - np.log10(y0))
-                #if span_dec < 1.:
-                #    # within ~one decade: 1–2–5 per decade
-                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
-                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
-                #else:
-                #    # multiple decades: decades only
-                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
-                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
 
                 if idata == 1:
                     xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
@@ -1517,13 +1479,12 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
             nmonte=0, seed=seed, debug=False)
 
-        #sample['OBJNAME', 'SMA_INIT', 'SMA_MOMENT', 'PA_MOMENT', 'BA_MOMENT']
         if update_geometry:
             input_geo_initial = None
         else:
             input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
 
-        sma_moment0 = sample['SMA_MOMENT'] # original values
+        sma_moment0 = sample['SMA_MOMENT'].copy() # original values
         for iobj, obj in enumerate(sample):
             bx, by, sma_mom, ba_mom, pa_mom = [
                 obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
@@ -1556,7 +1517,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             mask_nearby=mask_nearby,
                                             niter_geometry=2, qaplot=qaplot,
                                             htmlgalaxydir=htmlgalaxydir)
-
         # restore the original SMA_MOMENT values
         sample['SMA_MOMENT'] = sma_moment0
 

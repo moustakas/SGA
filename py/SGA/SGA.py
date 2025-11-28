@@ -1723,7 +1723,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
               use_radial_weight=use_radial_weight)
 
-        if True:#debug:
+        if debug:
             print('FIXME!')
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
