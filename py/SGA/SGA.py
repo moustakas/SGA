@@ -1725,18 +1725,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               input_ba_pa=input_ba_pa,
               use_radial_weight=use_radial_weight)
 
-        if debug:
-            print('FIXME!')
-            import matplotlib.pyplot as plt
-            from SGA.qa import overplot_ellipse
-            fig, (ax1, ax2) = plt.subplots(1, 2)
-            P.plot(image=np.log10(cutout), ax=ax1)
-            ax2.imshow(cutout_mask, origin='lower')
-            overplot_ellipse(2*(sma*0.262), ba, pa, bx-x1,
-                             by-y1, pixscale=0.262,
-                             ax=ax1, color='blue')
-            fig.savefig('ioannis/tmp/junk.png')
-            plt.close()
+        #if debug:
+        #    print('FIXME!')
+        #    import matplotlib.pyplot as plt
+        #    from SGA.qa import overplot_ellipse
+        #    fig, (ax1, ax2) = plt.subplots(1, 2)
+        #    P.plot(image=np.log10(cutout), ax=ax1)
+        #    ax2.imshow(cutout_mask, origin='lower')
+        #    overplot_ellipse(2*(sma*0.262), ba, pa, bx-x1,
+        #                     by-y1, pixscale=0.262,
+        #                     ax=ax1, color='blue')
+        #    fig.savefig('ioannis/tmp/junk.png')
+        #    plt.close()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -1783,7 +1783,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             (bx, by) = tractor.bx, tractor.by
             sma = tractor.shape_r / pixscale # [pixels]
             _, ba, pa = get_tractor_ellipse(sma, tractor.shape_e1, tractor.shape_e2)
-            return bx, by, sma, ba, pa
+            return bx[0], by[0], sma[0], ba[0], pa[0]
 
 
         def _props_geometry(props):
@@ -1794,7 +1794,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 by = props.y0
             if moment_method == 'rms':
                 #sma = props.a # semimajor [pixels]
-                sma = 1.5 * props.a # semimajor [pixels]
+                sma = 2. * props.a # semimajor [pixels]
             else:
                 sma = props.a # semimajor [pixels]
             ba = props.ba
@@ -1947,8 +1947,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # Precompute approximate geometry for overlap classification.
     geo_overlap = np.zeros((nsample, 5), 'f4')  # [bx, by, sma, ba, pa] in pixels
     for i, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
-        geo_overlap[i, :] = get_geometry(opt_pixscale,
-            table=obj, ref_tractor=objsrc,
+        geo_overlap[i, :] = get_geometry(
+            opt_pixscale, table=obj, ref_tractor=objsrc,
             moment_method=moment_method,
             use_tractor_position=use_tractor_position)
 
@@ -2187,10 +2187,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     moment_method=moment_method, input_ba_pa=input_ba_pa,
                     use_radial_weight=(use_radial_weight and use_radial_weight_obj[iobj]),
                     use_tractor_position=use_tractor_position)
-                geo_iter = get_geometry(
-                    opt_pixscale, props=props, ref_tractor=objsrc,
-                    moment_method=moment_method,
-                    use_tractor_position=use_tractor_position)
+                geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
+                    moment_method=moment_method, use_tractor_position=use_tractor_position)
 
             if geometry_mode:
                 ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)

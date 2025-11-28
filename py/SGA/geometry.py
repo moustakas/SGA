@@ -127,15 +127,15 @@ class EllipseProperties:
 
         # weights for the second moments
         if use_radial_weight:# and rmax is not None:
-            w_mom = flux * r**1.5 # (r**2)
+            wflux = flux * r**1.5 # (r**2)
         else:
-            w_mom = flux
+            wflux = flux
 
-        F_m = w_mom.sum()
-        if F_m <= 0:
+        F_w = wflux.sum()
+        if F_w <= 0:
             # Fallback to unweighted if pathological
-            w_mom = flux
-            F_m = F
+            wflux = flux
+            F_w = F
 
         # Fixed-shape branch: use input (b/a, PA) and solve only for
         # scale a.
@@ -187,9 +187,9 @@ class EllipseProperties:
             return self
 
         # central second moments with chosen weights
-        Mxx = np.dot(w_mom, dx*dx) / F_m
-        Myy = np.dot(w_mom, dy*dy) / F_m
-        Mxy = np.dot(w_mom, dx*dy) / F_m
+        Mxx = np.dot(wflux, dx*dx) / F_w
+        Myy = np.dot(wflux, dy*dy) / F_w
+        Mxy = np.dot(wflux, dx*dy) / F_w
 
         # diagonalize inertia tensor
         eigvals, eigvecs = np.linalg.eigh([[Mxx, Mxy], [Mxy, Myy]])
@@ -200,7 +200,7 @@ class EllipseProperties:
         # RMS-based semi-major axis from largest eigenvalue
         self.a_rms = np.sqrt(max(eigvals[0], 0.0))
 
-        # percentile-based radius (using *flux* weights, not w_mom)
+        # percentile-based radius (using *flux* weights, not wflux)
         order_r = np.argsort(r)
         cumflux = np.cumsum(flux[order_r])
         cumfrac = cumflux / cumflux[-1]
