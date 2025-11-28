@@ -1645,7 +1645,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
+                         FMAJOR=0.05, ref_factor=1.0, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True,
                          tractor_geometry_for_satellites=True, use_sma_moment_floor=False,
@@ -1654,7 +1654,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
-    FMAJOR = 0.05  # major if >= XX% of SGA source flux
+    FMAJOR - major if >= XX% of SGA source flux
     moment_method - 'rms' or 'percentile'
 
     """
@@ -1725,7 +1725,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
               input_ba_pa=input_ba_pa,
               use_radial_weight=use_radial_weight)
-        #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, sma, P.ba, P.pa)
+        #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, P.ba, P.pa, sma)
 
         if debug:
             print('FIXME!')
@@ -1796,7 +1796,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 by = props.y0
             if moment_method == 'rms':
                 #sma = props.a # semimajor [pixels]
-                sma = 2. * props.a # semimajor [pixels]
+                sma = 1.75 * props.a # semimajor [pixels]
             else:
                 sma = props.a # semimajor [pixels]
             ba = props.ba
