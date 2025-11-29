@@ -1368,8 +1368,8 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
                 sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures) # [arcsec]
 
                 opt_sma_array_pix, info = build_sma_opt(
-                    s95_pix=semia_pix, ba=ba, psf_fwhm_pix=psf_fwhm_pix,
-                    inner_step_pix=1., min_pixels_per_annulus=25,
+                    s95_pix=max(semia_pix, 3*psf_fwhm_pix), ba=ba, psf_fwhm_pix=psf_fwhm_pix,
+                    inner_step_pix=1., min_pixels_per_annulus=15,
                     frac_step=0.15, amax_factor=3.)
                 sma_array_pix = np.copy(opt_sma_array_pix)
             else:
