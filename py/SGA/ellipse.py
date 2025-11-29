@@ -29,7 +29,7 @@ ELLIPSEMODE = dict(
     FIXGEO = 2**0,      # fix ellipse geometry
     RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting (always implies FIXGEO)
     FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
-    FORCEGAIA = 2**3,   # force PSF source detection and photometry within the SGA mask;
+    FORCEGAIA = 2**3,   # force Gaia source detection and photometry within the whole field
     LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
     MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
                         # mask (e.g., within a cluster environment)

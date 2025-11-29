@@ -2115,13 +2115,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         dshift_arcsec = 0.0
         dshift_tractor_arcsec = 0.0
+
         for iiter in range(niter_actual):
-            # Enforce R26-based minimum radius on second pass
+            # Enforce R26-based minimum radius on this iteration
             if sma_floor is not None and sma < sma_floor:
-                log.info(f'Setting sma={sma*opt_pixscale:.2f} arcsec to its ' + \
+                log.info(f'Setting sma={sma*opt_pixscale:.2f} arcsec to its '
                          f'floor {sma_floor*opt_pixscale:.2f} arcsec.')
                 sma = sma_floor
-                geo_iter[2] = sma_floor
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,
@@ -2236,6 +2236,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     use_tractor_position=use_tractor_pos_obj)
                 geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
                     moment_method=moment_method, use_tractor_position=use_tractor_pos_obj)
+
+                if sma_floor is not None and geo_iter[2] < sma_floor:
+                    log.info(f'Setting sma={sma*opt_pixscale:.2f} arcsec to its '
+                             f'floor {sma_floor*opt_pixscale:.2f} arcsec.')
+                    geo_iter[2] = sma_floor
 
             if geometry_mode:
                 ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
