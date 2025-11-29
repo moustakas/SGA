@@ -393,21 +393,15 @@ def main():
                 just_coadds = args.just_coadds
                 pixscale = args.pixscale
 
-            # FIXGEO
-            #   ...
-            # FORCEGAIA
-            #   ...
-
+            # FORCEGAIA (not yet implemented); may be useful for e.g., Leo I
+            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEGAIA'] != 0:
+                pass
 
             # FORCEPSF
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0:
                 force_psf_detection = True
             else:
                 force_psf_detection = False
-
-            if onegal['SAMPLE'] & SAMPLE['GCLPNE'] != 0:
-                # FIXME - set --no-clusters or --no-force-gaia
-                pass
 
             if args.debug:
                 err, _ = custom_coadds(

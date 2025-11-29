@@ -2097,7 +2097,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if input_geo_initial is not None:
             sma_floor = input_geo_initial[iobj, 2] # [pixels]
         elif use_sma_moment_floor and (obj['SMA_MOMENT'] > 0):
-            sma_floor = obj['SMA_MOMENT'] / opt_pixscale   # arcsec -> pixels
+            sma_floor = obj['SMA_MOMENT'] / opt_pixscale # [pixels]
+            if geo_init[2] < sma_floor:
+                log.info(f'Initializing sma={geo_init[2]*opt_pixscale:.2f} arcsec to its '
+                         f'floor {sma_floor*opt_pixscale:.2f} arcsec.')
+                geo_init[2] = sma_floor
         else:
             sma_floor = None
 
@@ -2120,12 +2124,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         dshift_tractor_arcsec = 0.0
 
         for iiter in range(niter_actual):
-            # Enforce R26-based minimum radius on this iteration
-            if sma_floor is not None and sma < sma_floor:
-                log.info(f'Setting sma={sma*opt_pixscale:.2f} arcsec to its '
-                         f'floor {sma_floor*opt_pixscale:.2f} arcsec.')
-                sma = sma_floor
-
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,
                                         pa, xgrid, ygrid_flip)
@@ -2240,9 +2238,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
                     moment_method=moment_method, use_tractor_position=use_tractor_pos_obj)
 
+                # Enforce R26-based minimum radius.
                 if sma_floor is not None and geo_iter[2] < sma_floor:
-                    log.info(f'Setting sma={sma*opt_pixscale:.2f} arcsec to its '
-                             f'floor {sma_floor*opt_pixscale:.2f} arcsec.')
+                    #if iiter == niter_actual-1:
+                    #    log.info(f'Setting sma={geo_iter[2]*opt_pixscale:.2f} arcsec to its '
+                    #             f'floor {sma_floor*opt_pixscale:.2f} arcsec.')
                     geo_iter[2] = sma_floor
 
             if geometry_mode:

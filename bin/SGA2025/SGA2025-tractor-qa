@@ -36,7 +36,10 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 
 # some tests
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=999 --version=v0.11
+
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=900 --version=v0.11
+
 
 """
 
@@ -618,7 +621,12 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                 fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], bad_group_names)]
 
             sample = fullsample[fullsample['GROUP_PRIMARY']]
-        elif vi_sample > 990:
+        elif (vi_sample >= 900) & (vi_sample < 950):
+            sort_by_groupname = False
+            I = ((fullsample['SAMPLE'] & SAMPLE['GCLPNE'] != 0) * (fullsample['D26'] > 0.5))
+            fullsample = fullsample[I]
+            sample = fullsample[fullsample['GROUP_PRIMARY']]
+        elif vi_sample > 950:
             sort_by_groupname = False
             #I = (((fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0) *
             #     ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) == 0) *
@@ -724,9 +732,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     #for ipdf in [70]:#range(npdf):
         # special case the VI work: custom name and write out a text file
         istart = ipdf*nperpdf
-        iend = (ipdf+1)*nperpdf
-        if iend > ngal-1:
-            iend = ngal-1
+        iend = min((ipdf+1)*nperpdf, ngal)
         indx = np.arange(istart, iend)
 
         thisfullsample = fullsample[indx]
