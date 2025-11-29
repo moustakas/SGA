@@ -1,0 +1,4 @@
+# This file contains the set of objects that should use radial
+# weighting during ellipse-fitting.
+objname,comment
+ESO 422- G 034,
