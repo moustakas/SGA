@@ -156,7 +156,7 @@ def load_calibration(path: Optional[str] = None) -> Calibration:
 
     # Cache hit
     if key in _CALIB_CACHE:
-        log.debug(f"Loaded cached calibration file: {path}")
+        #log.debug(f"Loaded cached calibration file: {path}")
         return _CALIB_CACHE[key]
 
     # --- Load from disk (your original logic) ---

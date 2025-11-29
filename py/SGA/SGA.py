@@ -2274,7 +2274,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            log.info(f'Iteration {iiter+1}/{niter_actual}: (bx,by)=({bx:.1f}, {by:.1f}) ' + \
+            log.info(f'  Iteration {iiter+1}/{niter_actual}: (bx,by)=({bx:.1f}, {by:.1f}) ' + \
                      f'b/a={ba:.2f} PA={pa:.1f} degree sma={sma*opt_pixscale:.2f} arcsec')
 
         # store shifts

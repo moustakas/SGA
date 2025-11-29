@@ -38,7 +38,9 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=999 --version=v0.11
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=900 --version=v0.11
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=900 --version=v0.11 # GCLPNE
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=901 --version=v0.11 # PSF / isolated
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=902 --version=v0.11 # PSF / in group
 
 
 """
@@ -287,17 +289,20 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                         xx.spines[spine].set_color('white')
 
                     if len(tractor) > 0:
-                        I = ((tractor['type'] != 'PSF') * (tractor['type'] != 'DUP') *
-                             (tractor['shape_r'] > 0.5))
+                        I = (tractor['ref_cat'] == 'L4')
+                        #I = ((tractor['type'] != 'PSF') * (tractor['type'] != 'DUP') *
+                        #     (tractor['shape_r'] > 0.5))
                         #I = tractor['shape_r'] >= 0.
                         #I = tractor['shape_r'] > 1.
-                        if np.sum(I) > 0 and False:
+                        if np.sum(I) > 0:# and False:
                             if np.sum(I) > 50:
                                 alpha = 0.5
+                                s = 10
                             else:
-                                alpha = 0.9
+                                alpha = 1.0
+                                s = 25
                             xx.scatter(tractor['bx'][I], height-tractor['by'][I],
-                                       marker='x', s=10, color='red', alpha=alpha)
+                                       marker='x', s=s, color='red', alpha=alpha)
 
                         J = np.logical_or(tractor['type'] == 'PSF', tractor['type'] == 'DUP')
                         #print(galaxy[indx[iax]], np.sum(J))
@@ -623,7 +628,14 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             sample = fullsample[fullsample['GROUP_PRIMARY']]
         elif (vi_sample >= 900) & (vi_sample < 950):
             sort_by_groupname = False
-            I = ((fullsample['SAMPLE'] & SAMPLE['GCLPNE'] != 0) * (fullsample['D26'] > 0.5))
+            if vi_sample == 900:
+                I = ((fullsample['SAMPLE'] & SAMPLE['GCLPNE'] != 0) * (fullsample['D26'] > 0.5))
+            elif vi_sample == 901 or vi_sample == 902:
+                fulltractor = Table(fitsio.read(samplefile, 'TRACTOR', columns=['type', 'shape_r']))
+                if vi_sample == 901:
+                    I = ((fulltractor['type'] == 'PSF') * (fullsample['D26'] > 0.5) * (fullsample['GROUP_MULT'] == 1))
+                elif vi_sample == 902:
+                    I = ((fulltractor['type'] == 'PSF') * (fullsample['D26'] > 0.5) * (fullsample['GROUP_MULT'] > 1))
             fullsample = fullsample[I]
             sample = fullsample[fullsample['GROUP_PRIMARY']]
         elif vi_sample > 950:
