@@ -1853,6 +1853,49 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         return galsrcs, opt_galmask, opt_models
 
 
+    def estimate_sma_star_limit(bx, by, sma_init, ba, pa, brightstarmask,
+                                xgrid, ygrid_flip, frac_star_thresh=0.2,
+                                amax_factor=3.0, step_pix=1.0):
+        """
+        Estimate sma_star_limit using annular contamination fractions.
+        Returns None if no contamination threshold is crossed.
+
+        """
+        # Build candidate radii; start near the initial SMA and go outward generously.
+        a_start = max(2.0, float(sma_init))  # avoid tiny annuli
+        a_max = amax_factor * float(sma_init)
+
+        # Scan increasing radii.
+        a = a_start
+        while a <= a_max:
+            a_in  = a
+            a_out = a + step_pix
+
+            # Elliptical annuli
+            in_outer = in_ellipse_mask(
+                bx, ygrid_flip.shape[0]-by, a_out, a_out*ba,
+                pa, xgrid, ygrid_flip)
+            in_inner = in_ellipse_mask(
+                bx, ygrid_flip.shape[0]-by, a_in, a_in*ba,
+                pa, xgrid, ygrid_flip)
+            ann = in_outer & (~in_inner)
+            n_tot = ann.sum()
+            if n_tot == 0:
+                a += step_pix
+                continue
+
+            # Fraction of pixels killed by bright-star mask.
+            n_star = (ann & brightstarmask).sum()
+            frac_star = n_star / float(n_tot)
+
+            # Threshold crossing => set sma_star_limit
+            if frac_star >= frac_star_thresh:
+                return a_in  # or (a_in + a_out)/2
+            a += step_pix
+
+        return None # No contamination
+
+
     nsample = len(sample)
 
     all_data_bands = data['all_data_bands']
@@ -2042,6 +2085,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if tractor_geometry_for_satellites_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
+    #use_radial_weight_obj[:] = True
 
     # are we allowed to change the geometry in this call?
     geometry_mode = (input_geo_initial is None)
@@ -2151,13 +2195,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             iter_refmask[inellipse] = False
 
             # Expand the brightstarmask veto if the NEARSTAR or GCLPNE
-            # bits are set (factor of 2), with a floor for very small
+            # bits are set (factor of XX), with a floor for very small
             # galaxies.
-            if (obj['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
+            if (obj['SAMPLE'] & (SAMPLE['INSTAR'] | SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
                 if 2.*sma*opt_pixscale < 10.: # [arcsec]
                     sma_veto = 10. / opt_pixscale
                 else:
-                    sma_veto = 2. * sma
+                    sma_veto = 1.5 * sma
                 inellipse2 = in_ellipse_mask(bx, width-by, sma_veto, sma_veto*ba,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
@@ -2251,6 +2295,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     else:
                         _, _, _, ba_tr, pa_tr = get_geometry(opt_pixscale, tractor=objsrc)
                         input_ba_pa = (ba_tr, pa_tr)
+                        log.info(f'  Adopting Tractor geometry with b/a={ba_tr:.2f} PA={pa_tr:.1f}')
                 else:
                     input_ba_pa = None
 
@@ -2268,6 +2313,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     #    log.info(f'Setting sma={geo_iter[2]*opt_pixscale:.2f} arcsec to its '
                     #             f'floor {sma_floor*opt_pixscale:.2f} arcsec.')
                     geo_iter[2] = sma_floor
+
+                # Enforce a maximum increase in the moment semi-major
+                # axis due to bright-star contamination.
+                if (obj['SAMPLE'] & (SAMPLE['INSTAR'] | SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
+                    sma_star_limit = obj['SMA_INIT'] / opt_pixscale
+                    #sma_star_limit = estimate_sma_star_limit(
+                    #    bx, by, sma, ba, pa, opt_brightstarmask,
+                    #    xgrid, ygrid_flip, frac_star_thresh=0.2)
+                    if sma_star_limit is not None and geo_iter[2] > sma_star_limit:
+                        geo_iter[2] = sma_star_limit
+
 
             if geometry_mode:
                 ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
@@ -2367,11 +2423,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
 
-        if (sample['SAMPLE'][iobj] & (SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
+        if (sample['SAMPLE'][iobj] & (SAMPLE['INSTAR'] | SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
             if 2.*sma*opt_pixscale < 10.: # [arcsec]
                 sma_veto = 10. / opt_pixscale
             else:
-                sma_veto = 2. * sma
+                sma_veto = 1.5 * sma
             inellipse2 = in_ellipse_mask(bx, width-by, sma_veto, sma_veto*ba,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
