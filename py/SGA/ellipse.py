@@ -1491,8 +1491,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             bx, by, sma_mom, ba_mom, pa_mom = [
                 obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
 
-            # if FIXGEO, use the moment geometry
-            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+            # if FIXGEO or TRACTORGEO use the input geometry
+            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
                 if not update_geometry:
                     input_geo_initial[iobj, :] = [bx, by, sma_mom/pixscale, ba_mom, pa_mom]
                 continue

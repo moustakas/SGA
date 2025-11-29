@@ -608,10 +608,13 @@ def SGA_diameter(ellipse, radius_arcsec=False):
         d26_ref[I] = 'mom' # shorten for the data model
     d26_ref = d26_ref.astype('<U3')
 
-    # over-ride FIXGEO geometry
+    # fixed geometry
     I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
     if np.any(I):
-        raise ValueError('WRITE ME!')
+        d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60. # [arcmin]
+        d26_err[I] = 0. # no error
+        d26_ref[I] = 'fix'
+        d26_weight[I] = 1.
 
     if radius_arcsec:
         r26 = d26 / 2. * 60. # [radius, arcsec]
