@@ -2033,6 +2033,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['RADWEIGHT']) != 0:
             use_radial_weight_obj[iobj] = True
 
+        #print('HACK!')
+        #sample['ELLIPSEMODE'][iobj] |= ELLIPSEMODE['TRACTORGEO']
+
         if use_radial_weight_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['RADWEIGHT']
 
@@ -2218,6 +2221,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
                     log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
                     geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
+                    if geo_iter[2] <= 0.:
+                        log.warning(f'Semi-major axis for {obj["OBJNAME"]} is zero or negative; adopting initial geometry.')
+                        sample['ELLIPSEMODE'][iobj] &= ~ELLIPSEMODE['TRACTORGEO']
+                        sample['ELLIPSEMODE'][iobj] |= ELLIPSEMODE['FIXGEO']
+                        geo_iter = geo_init
                 else:
                     if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
                         log.info('FIXGEO bit set; fixing the elliptical geometry.')
