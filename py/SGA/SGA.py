@@ -1645,7 +1645,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         FMAJOR=0.05, ref_factor=1.0, moment_method='rms',
+                         FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, radial_weight_for_overlaps=False,
                          tractor_geometry_for_satellites=True, use_sma_moment_floor=False,
@@ -2025,7 +2025,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if (obj['ELLIPSEMODE'] & ELLIPSEMODE['RADWEIGHT']) != 0:
             use_radial_weight_obj[iobj] = True
 
-
     # are we allowed to change the geometry in this call?
     geometry_mode = (input_geo_initial is None)
 
@@ -2069,7 +2068,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 [bxr, byr, smar, bar, par] = geo_final[indx, :]
             else:
                 [bxr, byr, smar, bar, par] = get_geometry(opt_pixscale, table=refsample)
-            opt_refmask1 = in_ellipse_mask(bxr, width-byr, smar*ref_factor, bar*smar*ref_factor,
+            opt_refmask1 = in_ellipse_mask(bxr, width-byr, smar*ref_factor,
+                                           bar*smar*ref_factor,
                                            par, xgrid, ygrid_flip)
             opt_refmask = np.logical_or(opt_refmask, opt_refmask1)
 
@@ -2116,8 +2116,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         dshift_arcsec = 0.0
         dshift_tractor_arcsec = 0.0
         for iiter in range(niter_actual):
-            log.debug(f'Iteration {iiter+1}/{niter_actual}')
-
             # Enforce R26-based minimum radius on second pass
             if sma_floor is not None and sma < sma_floor:
                 log.info(f'Setting sma={sma*opt_pixscale:.2f} arcsec to its ' + \
@@ -2252,6 +2250,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
+            log.info(f'Iteration {iiter+1}/{niter_actual}: (bx,by)=({bx:.1f}, {by:.1f}) ' + \
+                     f'b/a={ba:.2f} PA={pa:.1f} degree sma={sma*opt_pixscale:.2f} arcsec')
 
         # store shifts
         dshift_arcsec_arr[iobj] = dshift_arcsec

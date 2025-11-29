@@ -1508,10 +1508,10 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
 
             if update_geometry:
+                log.info(f'Initial surface-brightness profile estimate of R(26)={radius[0]:.2f} arcsec')
                 sample['SMA_MOMENT'][iobj] = radius[0] # [arcsec]
             else:
                 input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
-
 
         # geometry_mode=False → geometry frozen, only masks updated
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
