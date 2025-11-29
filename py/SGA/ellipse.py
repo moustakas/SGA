@@ -44,6 +44,10 @@ ELLIPSEBIT = dict(
     LARGESHIFT = 2**2,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
     LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
     MAJORGAL = 2**4,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
+    OVERLAP = 2**5,            # any part of the initial SGA ellipse overlaps another SGA ellipse
+    SATELLITE = 2**6,          # satellite of another larger galaxy
+    TRACTORGEO = 2**7,         # used the Tractor (not light-weighted) geometry
+    RADWEIGHT = 2**8,          # moment geometry derived using radial weighting
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds

@@ -1948,12 +1948,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # If an SGA source is smaller than this fraction of an overlapping neighbour,
     # treat it as a "satellite" and *disable* radial weighting for its moments.
-    SATELLITE_FRAC = 0.5
+    SATELLITE_FRAC = 0.3
 
     # Precompute approximate geometry for overlap classification.
     geo_overlap = np.zeros((nsample, 5), 'f4')  # [bx, by, sma, ba, pa] in pixels
-    for i, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
-        geo_overlap[i, :] = get_geometry(
+    for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
+        geo_overlap[iobj, :] = get_geometry(
             opt_pixscale, table=obj, ref_tractor=objsrc,
             moment_method=moment_method,
             use_tractor_position=use_tractor_position)
@@ -1969,64 +1969,76 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         use_radial_weight_obj[0] = False
         tractor_geometry_for_satellites_obj[0] = False
     else:
-        for i in range(nsample):
-            bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[i, :]
+        for iobj in range(nsample):
+            bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[iobj, :]
             if sma_i <= 0:
                 # Degenerate geometry -> be conservative, no radial weighting
-                use_radial_weight_obj[i] = False
-                tractor_geometry_for_satellites_obj[i] = False
+                use_radial_weight_obj[iobj] = False
+                tractor_geometry_for_satellites_obj[iobj] = False
                 continue
 
             overlapping_indices = []
-            for j in range(nsample):
-                if j == i:
+            for jobj in range(nsample):
+                if jobj == iobj:
                     continue
-                bx_j, by_j, sma_j, ba_j, pa_j = geo_overlap[j, :]
+                bx_j, by_j, sma_j, ba_j, pa_j = geo_overlap[jobj, :]
                 if sma_j <= 0:
                     continue
 
                 if ellipses_overlap(bx_i, by_i, sma_i, ba_i, pa_i,
                                     bx_j, by_j, sma_j, ba_j, pa_j):
-                    overlapping_indices.append(j)
+                    overlapping_indices.append(jobj)
 
             # Isolated
             if not overlapping_indices:
-                use_radial_weight_obj[i] = False
-                tractor_geometry_for_satellites_obj[i] = False
+                use_radial_weight_obj[iobj] = False
+                tractor_geometry_for_satellites_obj[iobj] = False
                 continue
 
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
+
             # Overlapping: classify as "satellite" vs "peer" based on size.
-            max_sma_neighbor = max(geo_overlap[j, 2] for j in overlapping_indices)
+            max_sma_neighbor = max(geo_overlap[jobj, 2] for j in overlapping_indices)
             is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
+
+            if is_satellite:
+                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['SATELLITE']
 
             if not radial_weight_for_overlaps:
                 # Global rule: *any* overlap => no radial weighting.
-                use_radial_weight_obj[i] = False
+                use_radial_weight_obj[iobj] = False
                 # Still allow Tractor geometry only for small satellites.
-                tractor_geometry_for_satellites_obj[i] = is_satellite
+                tractor_geometry_for_satellites_obj[iobj] = is_satellite
             else:
                 # Only small satellites lose radial weighting and get Tractor geometry.
                 if is_satellite:
-                    use_radial_weight_obj[i] = False
-                    tractor_geometry_for_satellites_obj[i] = True
+                    use_radial_weight_obj[iobj] = False
+                    tractor_geometry_for_satellites_obj[iobj] = True
                 else:
                     # Overlapping peer: allow radial weighting, no Tractor-geometry override.
-                    use_radial_weight_obj[i] = True
-                    tractor_geometry_for_satellites_obj[i] = False
+                    use_radial_weight_obj[iobj] = True
+                    tractor_geometry_for_satellites_obj[iobj] = False
 
 
     # Per-object overrides from ELLIPSEMODE bits.
-    for iobj, obj in enumerate(sample):
+    for iobj in range(nsample):
         # If TRACTORGEO is set, force Tractor-based geometry for this object.
-        if (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0:
+        if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0:
             tractor_geometry_for_satellites_obj[iobj] = True
             # Geometry is coming from Tractor, so radial weighting is irrelevant.
             use_radial_weight_obj[iobj] = False
 
         # If RADWEIGHT is set, always allow radial weighting,
         # regardless of overlap logic.
-        if (obj['ELLIPSEMODE'] & ELLIPSEMODE['RADWEIGHT']) != 0:
+        if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['RADWEIGHT']) != 0:
             use_radial_weight_obj[iobj] = True
+
+        if use_radial_weight_obj[iobj]:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['RADWEIGHT']
+
+        if tractor_geometry_for_satellites_obj[iobj]:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
+
 
     # are we allowed to change the geometry in this call?
     geometry_mode = (input_geo_initial is None)
@@ -2136,10 +2148,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             iter_refmask[inellipse] = False
 
             # Expand the brightstarmask veto if the NEARSTAR or GCLPNE
-            # bits are set (factor of 2).
-            if (obj['SAMPLE'] & SAMPLE['NEARSTAR'] != 0 or \
-                obj['SAMPLE'] & SAMPLE['GCLPNE'] != 0):
-                inellipse2 = in_ellipse_mask(bx, width-by, 2.*sma, 2.*sma*ba,
+            # bits are set (factor of 2), with a floor for very small
+            # galaxies.
+            if (obj['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
+                if 2.*sma*opt_pixscale < 10.: # [arcsec]
+                    sma_veto = 10. / opt_pixscale
+                else:
+                    sma_veto = 2. * sma
+                inellipse2 = in_ellipse_mask(bx, width-by, sma_veto, sma_veto*ba,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
 
@@ -2343,9 +2359,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
 
-        if (sample['SAMPLE'][iobj] & SAMPLE['NEARSTAR'] != 0 or \
-            sample['SAMPLE'][iobj] & SAMPLE['GCLPNE'] != 0):
-            inellipse2 = in_ellipse_mask(bx, width-by, 2.*sma, 2.*sma*ba,
+        if (sample['SAMPLE'][iobj] & (SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
+            if 2.*sma*opt_pixscale < 10.: # [arcsec]
+                sma_veto = 10. / opt_pixscale
+            else:
+                sma_veto = 2. * sma
+            inellipse2 = in_ellipse_mask(bx, width-by, sma_veto, sma_veto*ba,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
 
