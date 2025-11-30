@@ -2142,13 +2142,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Initial geometry and elliptical mask.
         if input_geo_initial is not None:
-            geo_init_ref = geo_init
-            geo_init = input_geo_initial[iobj, :]
+            # Fallback: table-based geometry (same as first pass)
+            geo_init_ref = get_geometry(opt_pixscale, table=obj)
+            # Starting geometry for this pass (e.g. R26 based)
+            geo_init = input_geo_initial[iobj, :].copy()
         else:
             # initial geometry used as fallback
             geo_init_ref = get_geometry(opt_pixscale, table=obj)
-            geo_init = get_geometry(opt_pixscale, table=obj, ref_tractor=objsrc,
-                                    use_tractor_position=use_tractor_pos_obj)
+            geo_init = get_geometry(
+                opt_pixscale, table=obj, ref_tractor=objsrc,
+                use_tractor_position=use_tractor_pos_obj)
 
         # Minimum semi-major axis.
         if input_geo_initial is not None:
