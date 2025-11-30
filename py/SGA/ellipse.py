@@ -1292,7 +1292,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                 if idata == 1:
                     xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
 
-                xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+                xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--', label=f'R(mom)={semia:.2f} arcsec')
                 hndls, _ = xx.get_legend_handles_labels()
                 if hndls:
                     xx.legend(loc='upper right', fontsize=8)
@@ -1517,7 +1517,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             else:
                 input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
 
-        # geometry_mode=False → geometry frozen, only masks updated
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
                                             mask_nearby=mask_nearby,
@@ -1533,7 +1532,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         results, sbprofiles = wrap_multifit(
             data, sample, datasets, unpack_maskbits_function,
             sbthresh, apertures, SGAMASKBITS, mp=mp,
-            nmonte=nmonte, seed=seed, debug=qaplot)
+            nmonte=nmonte, seed=seed, debug=False)#qaplot)
 
         if qaplot:
             qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
