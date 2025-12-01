@@ -2047,6 +2047,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         if use_radial_weight_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['RADWEIGHT']
+
         if tractor_geometry_for_satellites_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
@@ -2064,6 +2065,22 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
         log.info('Determining the geometry for galaxy ' +
                  f'{iobj+1}/{nsample}.')
+
+        msg = ''
+        for mode in ELLIPSEMODE.keys():
+            if mode == 'RADWEIGHT':
+                if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
+                    if use_radial_weight_obj[iobj]:
+                        msg += f'{mode} [primary] = True '
+            elif mode == 'TRACTORPOS':
+                if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
+                    if tractor_geometry_for_satellites_obj[iobj]:
+                        msg += f'{mode} [satellite] = True '
+            else:
+                if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
+                    msg += f'{mode} = True '
+        if msg != '':
+            log.info(f'  {msg}')
 
         # Use the light-weighted (not Tractor) center.
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOMENTPOS'] != 0:
@@ -2150,6 +2167,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 use_tractor_position=use_tractor_position_obj,
                 use_sma_mask=False)
 
+
         geo_initial[iobj, :] = geo_init
         geo_init_ref_all[iobj, :] = geo_init_ref
 
@@ -2169,14 +2187,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         dshift_tractor_arcsec = 0.0
 
         for iiter in range(niter_actual):
-            log.info(f'  Iteration {iiter+1}/{niter_actual}:')
-
+            #log.info(f'  Iteration {iiter+1}/{niter_actual}:')
             bx_init, by_init, sma_init, ba_init, pa_init = \
                 np.copy(bx), np.copy(by), np.copy(sma), np.copy(ba), np.copy(pa)
 
-            # use a minimum radius for masking
-            sma_mask = max(sma, SMA_MASK_MIN_PIX)
-            log.info(f'    sma_mask={sma_mask*opt_pixscale:.2f} arcsec')
+            # Use a minimum radius for masking but also make sure mask
+            # doesn't shrink below our initial estimate of R26 in the
+            # second pass.
+            sma_mask = max(max(sma, SMA_MASK_MIN_PIX), obj['SMA_MASK'])
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma_mask, ba*sma_mask,
@@ -2303,13 +2321,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
                     moment_method=moment_method, use_tractor_position=use_tractor_position_obj)
 
-                # Enforce a maximum increase in the moment semi-major
-                # axis due to bright-star contamination.
-                if (obj['SAMPLE'] & (SAMPLE['INSTAR'] | SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
-                    #print('Come back to this.')
-                    sma_star_limit = obj['SMA_INIT'] / opt_pixscale
-                    if sma_star_limit is not None and geo_iter[2] > sma_star_limit:
-                        geo_iter[2] = sma_star_limit
+                ## Enforce a maximum increase in the moment semi-major
+                ## axis due to bright-star contamination.
+                #if (obj['SAMPLE'] & (SAMPLE['INSTAR'] | SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
+                #    #print('Come back to this.')
+                #    sma_star_limit = obj['SMA_INIT'] / opt_pixscale
+                #    if sma_star_limit is not None and geo_iter[2] > sma_star_limit:
+                #        geo_iter[2] = sma_star_limit
 
             if geometry_mode:
                 ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
@@ -2324,10 +2342,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            log.info(f'    (bx,by)=({bx_init:.1f}, {by_init:.1f})-->({bx:.1f}, {by:.1f}) ' + \
+            log.info(f'  Iteration {iiter+1}/{niter_actual}: (bx,by)=({bx_init:.1f},{by_init:.1f})-->({bx:.1f},{by:.1f}) ' + \
                      f'b/a={ba_init:.2f}-->{ba:.2f} PA={pa_init:.1f}-->{pa:.1f} degree ' + \
-                     f'sma={sma_init*opt_pixscale:.2f}-->{sma*opt_pixscale:.2f} arcsec')
-            pdb.set_trace()
+                     f'sma={sma_init*opt_pixscale:.2f}-->{sma*opt_pixscale:.2f} arcsec ' + \
+                     f'[sma_mask={sma_mask*opt_pixscale:.2f} arcsec]')
 
         # store shifts
         dshift_arcsec_arr[iobj] = dshift_arcsec
@@ -2400,7 +2418,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
 
         [bx, by, sma, ba, pa] = geo_final[iobj, :]
-        sma_mask = max(sma, SMA_MASK_MIN_PIX)
+        sma_mask = max(max(sma, SMA_MASK_MIN_PIX), obj['SMA_MASK'])
+        #sma_mask = max(sma, SMA_MASK_MIN_PIX)
         log.info(f'  Galaxy {iobj+1}/{nsample}: (bx,by)=({bx:.1f}, {by:.1f}) b/a={ba:.2f} PA={pa:.1f} degree ' + \
                  f'sma={sma*opt_pixscale:.2f} arcsec sma_mask={sma_mask*opt_pixscale:.2f} arcsec')
 
