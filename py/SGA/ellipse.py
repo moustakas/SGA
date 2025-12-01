@@ -888,7 +888,8 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                             sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
                             nmonte=nmonte, sky_sigma=0.02, smooth_win=3, random_state=seed)
                         if res['lower_limit']:
-                            log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
+                            if thresh == 26.:
+                                log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
                         else:
                             if np.isfinite(res['a_iso']) and np.isfinite(res['a_iso_err']):
                                 #log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
@@ -1442,7 +1443,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, mask_nearby=mask_nearby,
-        unwise=unwise, galex=galex, verbose=verbose, qaplot=False,
+        unwise=unwise, galex=galex, verbose=verbose, qaplot=True,#False,
         cleanup=False, skip_ellipse=skip_ellipse, htmlgalaxydir=htmlgalaxydir)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
@@ -1490,7 +1491,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         else:
             input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
 
-        sma_moment0 = sample['SMA_MOMENT'].copy() # original values
+        #sma_moment0 = sample['SMA_MOMENT'].copy() # original values
         for iobj, obj in enumerate(sample):
             bx, by, sma_mom, ba_mom, pa_mom = [
                 obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
@@ -1510,23 +1511,38 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                     tab[col] = results[0][iobj][col]
                     tab[colerr] = results[0][iobj][colerr]
             radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
+            r26_arcsec = float(radius[0])
+
+            # merge R26 with the existing SMA_MASK in arcsec
+            sma_moment_arcsec = obj['SMA_MOMENT']
+            sma_mask_arcsec = obj['SMA_MASK']
+            if sma_mask_arcsec <= 0.:
+                sma_mask_arcsec = r26_arcsec
+            else:
+                sma_mask_arcsec = max(sma_mask_arcsec, r26_arcsec)
+
+            log.info(f'Initial surface-brightness profile estimate of R(26)='
+                     f'{r26_arcsec:.2f} arcsec (previous sma_mask={sma_mask_arcsec:.2f} ' + \
+                     'arcsec).')
 
             if update_geometry:
-                log.info(f'Initial surface-brightness profile estimate of R(26)={radius[0]:.2f} arcsec')
-                sample['SMA_MOMENT'][iobj] = radius[0] # [arcsec]
+                # Case A: let build_multiband_mask compute geometry
+                # from the table; update SMA_MOMENT in arcsec and DO
+                # NOT pass input_geo_initial.
+                sample['SMA_MASK'][iobj] = sma_mask_arcsec
             else:
-                input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+                # Case B: pass explicit geometry to build_multiband_mask.
+                input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba, pa]
 
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
                                             mask_nearby=mask_nearby,
                                             niter_geometry=2, qaplot=qaplot,
-                                            use_sma_moment_floor=update_geometry,
                                             htmlgalaxydir=htmlgalaxydir)
 
-        # record SMA_MASK and restore the original SMA_MOMENT
-        sample['SMA_MASK'] = sample['SMA_MOMENT'].copy() # [arcsec]
-        sample['SMA_MOMENT'] = sma_moment0
+        ## record SMA_MASK and restore the original SMA_MOMENT
+        #sample['SMA_MASK'] = sample['SMA_MOMENT'].copy() # [arcsec]
+        #sample['SMA_MOMENT'] = sma_moment0
 
         # ellipse-fit over objects and then datasets
         results, sbprofiles = wrap_multifit(
