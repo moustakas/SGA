@@ -1684,41 +1684,48 @@ def _log_object_modes(log, iobj, obj, use_radial_weight, use_tractor_geometry_ob
     mode_bits = obj["ELLIPSEMODE"]
     bit_bits  = obj["ELLIPSEBIT"]
 
+    msg = []
     if stage == "initial":
         # --- ELLIPSEMODE bits ---
         for mode, bit in ELLIPSEMODE.items():
             if mode == "RADWEIGHT":
-                # FIX: parentheses and 'or' instead of bitwise '|'
                 if ((mode_bits & bit) != 0) or use_radial_weight:
-                    log.info(f"  {mode} = True ")
-                    # If there is a same-named ELLIPSEBIT, check propagation
+                    #log.info(f"  {mode} = True ")
+                    #msg.append(f"{mode} = True ")
                     if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
-                        log.warning(f"  {mode}: ELLIPSEMODE set/used but ELLIPSEBIT[{mode}] is not set.")
+                        log.warning(f"{mode}: ELLIPSEMODE set/used but ELLIPSEBIT[{mode}] is not set.")
             elif mode == "TRACTORGEO":
                 if (mode_bits & bit) != 0:
-                    log.info(f"  {mode} = True ")
+                    #log.info(f"  {mode} = True ")
+                    #msg.append(f"{mode} = True ")
                     if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
-                        log.warning(f"  {mode}: ELLIPSEMODE set but ELLIPSEBIT[{mode}] is not set.")
+                        log.warning(f"{mode}: ELLIPSEMODE set but ELLIPSEBIT[{mode}] is not set.")
                 elif use_tractor_geometry_obj:
-                    log.info(f"  {mode} [satellite] = True ")
+                    #log.info(f"  {mode} [satellite] = True ")
+                    #msg.append(f"{mode} [satellite] = True ")
                     if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
-                        log.warning(f"  {mode}: satellite runtime flag true but ELLIPSEBIT[{mode}] is not set.")
+                        log.warning(f"{mode}: satellite runtime flag true but ELLIPSEBIT[{mode}] is not set.")
             else:
                 if (mode_bits & bit) != 0:
-                    log.info(f"  {mode} = True ")
+                    #log.info(f"  {mode} = True ")
+                    msg.append(f"{mode} = True ")
                     if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
-                        log.warning(f"  {mode}: ELLIPSEMODE set but ELLIPSEBIT[{mode}] is not set.")
+                        log.warning(f"{mode}: ELLIPSEMODE set but ELLIPSEBIT[{mode}] is not set.")
 
         # --- Initial ELLIPSEBIT bits ---
         for mode, bit in ELLIPSEBIT.items():
             if (bit_bits & bit) != 0:
-                log.info(f"  {mode} [initial] = True ")
+                #log.info(f"  {mode} [initial] = True ")
+                msg.append(f"{mode} [initial] = True ")
 
     elif stage == "final":
         # --- Final ELLIPSEBIT bits ---
         for mode, bit in ELLIPSEBIT.items():
             if (bit_bits & bit) != 0:
-                log.info(f"    {mode} = True ")
+                #log.info(f"    {mode} = True ")
+                msg.append(f"{mode} [final] = True ")
+
+    return msg
 
 
 def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
@@ -1743,6 +1750,9 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
         geo_overlap[iobj, :] = get_geometry(opt_pixscale, table=obj,
             ref_tractor=objsrc, use_sma_mask=False,
             use_tractor_position=use_tractor_position)
+
+    overlap_obj = np.zeros(nsample, bool)
+    satellite_obj = np.zeros(nsample, bool)
 
     # Per-object decision on whether to use radial weighting in the
     # moments or to use the Tractor geometry for satellites.
@@ -1787,6 +1797,10 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
             max_sma_neighbor = max(geo_overlap[jobj, 2] for jobj in overlapping_indices)
             is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
 
+            overlap_obj[iobj] = True
+            if is_satellite:
+                satellite_obj[iobj] = True
+
             if not use_radial_weight_for_overlaps:
                 # Global rule: *any* overlap => no radial weighting.
                 use_radial_weight_obj[iobj] = False
@@ -1803,15 +1817,15 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
                     use_tractor_geometry_obj[iobj] = False
 
 
-    return geo_overlap, use_radial_weight_obj, use_tractor_geometry_obj
+    return use_radial_weight_obj, use_tractor_geometry_obj, satellite_obj, overlap_obj
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
                          maxshift_arcsec=MAXSHIFT_ARCSEC, radial_power=0.7,
                          SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
-                         input_geo_initial=None, qaplot=False,
-                         mask_nearby=None, use_tractor_position=True, use_radial_weight=True,
+                         input_geo_initial=None, qaplot=False, mask_nearby=None,
+                         use_tractor_position=True, use_radial_weight=True,
                          use_radial_weight_for_overlaps=False, use_tractor_geometry=True,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -2134,7 +2148,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     # Decide on radial weighting and use of Tractor geometry
-    geo_overlap, use_radial_weight_obj, use_tractor_geometry_obj = \
+    use_radial_weight_obj, use_tractor_geometry_obj, satellite_obj, overlap_obj = \
         _get_radial_weight_and_tractor_geometry(
             sample=sample, samplesrcs=samplesrcs, opt_pixscale=opt_pixscale,
             use_tractor_position=use_tractor_position, use_radial_weight=use_radial_weight,
@@ -2142,8 +2156,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-
-    # Per-object overrides from ELLIPSEMODE bits.
+    # Per-object overrides from ELLIPSEMODE bits and other ELLIPSEBIT bits.
     sample['ELLIPSEBIT'] &= ~(ELLIPSEBIT['RADWEIGHT'] | ELLIPSEBIT['TRACTORGEO'] |
                               ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'] |
                               ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'])
@@ -2159,6 +2172,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['RADWEIGHT']) != 0:
             use_radial_weight_obj[iobj] = True
 
+        if use_radial_weight_obj[iobj]:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['RADWEIGHT']
+        if use_tractor_geometry_obj[iobj]:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
+        if satellite_obj[iobj]:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['SATELLITE']
+        if overlap_obj[iobj]:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
+
 
     # Minimum semi-major axis used for masks (not for stored geometry).
     SMA_MASK_MIN_ARCSEC = 5.0 # [arcsec]
@@ -2172,26 +2194,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         log.info('Determining the geometry for galaxy ' +
                  f'{iobj+1}/{nsample}.')
 
-        _log_object_modes(log, iobj, obj, use_radial_weight_obj[iobj],
-                          use_tractor_geometry_obj[iobj], ELLIPSEMODE,
-                          ELLIPSEBIT, stage="initial")
-
-        #for mode in ELLIPSEMODE.keys():
-        #    if mode == 'RADWEIGHT':
-        #        if ((obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0) |
-        #            use_radial_weight_obj[iobj]):
-        #            log.info(f'  {mode} = True ')
-        #    elif mode == 'TRACTORGEO':
-        #        if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
-        #            log.info(f'  {mode} = True ')
-        #        elif use_tractor_geometry_obj[iobj]:
-        #            log.info(f'  {mode} [satellite] = True ')
-        #    else:
-        #        if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
-        #            log.info(f'  {mode} = True ')
-        #for mode in ELLIPSEBIT.keys():
-        #    if obj['ELLIPSEBIT'] & ELLIPSEBIT[mode] != 0:
-        #        log.info(f'  {mode} [initial] = True ')
+        msg = _log_object_modes(log, iobj, obj, use_radial_weight_obj[iobj],
+                                use_tractor_geometry_obj[iobj], ELLIPSEMODE,
+                                ELLIPSEBIT, stage="initial")
+        for msg1 in msg:
+            log.info(f'  {msg1}')
 
         # Use the light-weighted (not Tractor) center.
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOMENTPOS'] != 0:
@@ -2522,7 +2529,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             raise ValueError(msg)
 
     # Bits that must be cleared because they depend on final geometry.
-    sample['ELLIPSEBIT'] &= ~(ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'] |
+    sample['ELLIPSEBIT'] &= ~(ELLIPSEBIT['RADWEIGHT'] | ELLIPSEBIT['TRACTORGEO'] |
+                              ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'] |
                               ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'])
 
     log.info('Final geometry:')
@@ -2678,13 +2686,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if np.any(inside):
                     sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MAJORGAL']
 
-        _log_object_modes(log, iobj, sample[iobj], use_radial_weight_obj[iobj],
-                          use_tractor_geometry_obj[iobj], ELLIPSEMODE, ELLIPSEBIT,
-                          stage="final")
-
-        #for mode in ELLIPSEBIT.keys():
-        #    if sample['ELLIPSEBIT'][iobj] & ELLIPSEBIT[mode] != 0:
-        #        log.info(f'    {mode} = True ')
+        msg = _log_object_modes(log, iobj, sample[iobj], use_radial_weight_obj[iobj],
+                                use_tractor_geometry_obj[iobj], ELLIPSEMODE, ELLIPSEBIT,
+                                stage="final")
+        for msg1 in msg:
+            log.info(f'    {msg1}')
 
 
     # Update the data dictionary.
