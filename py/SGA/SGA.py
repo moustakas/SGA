@@ -2186,6 +2186,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         dshift_arcsec = 0.0
         dshift_tractor_arcsec = 0.0
 
+        sma_floor_pix = obj['SMA_MASK'] / opt_pixscale
+
         for iiter in range(niter_actual):
             #log.info(f'  Iteration {iiter+1}/{niter_actual}:')
             bx_init, by_init, sma_init, ba_init, pa_init = \
@@ -2194,7 +2196,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Use a minimum radius for masking but also make sure mask
             # doesn't shrink below our initial estimate of R26 in the
             # second pass.
-            sma_mask = max(max(sma, SMA_MASK_MIN_PIX), obj['SMA_MASK'])
+            sma_mask = max(max(sma, SMA_MASK_MIN_PIX), sma_floor_pix)
 
             # initialize (or update) the in-ellipse mask
             inellipse = in_ellipse_mask(bx, width-by, sma_mask, ba*sma_mask,
@@ -2413,15 +2415,34 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             opt_refmask_all[iobj, :, :] = refmask_i
 
-    # final optical masks
+    # final optical masks and quantities
+    ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
+    sample['RA'] = ra
+    sample['DEC'] = dec
+    sample['SGANAME'] = sga2025_name(ra, dec)
+    if nsample > 1:
+        if len(sample['SGANAME']) != len(np.unique(sample['SGANAME'])):
+            msg = f'Duplicate SGA names {sample['SGANAME'][0]}'
+            log.critical(msg)
+            raise ValueError(msg)
+
     log.info('Final geometry:')
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
 
         [bx, by, sma, ba, pa] = geo_final[iobj, :]
-        sma_mask = max(max(sma, SMA_MASK_MIN_PIX), obj['SMA_MASK'])
-        #sma_mask = max(sma, SMA_MASK_MIN_PIX)
-        log.info(f'  Galaxy {iobj+1}/{nsample}: (bx,by)=({bx:.1f}, {by:.1f}) b/a={ba:.2f} PA={pa:.1f} degree ' + \
-                 f'sma={sma*opt_pixscale:.2f} arcsec sma_mask={sma_mask*opt_pixscale:.2f} arcsec')
+
+        sma_floor_pix = obj['SMA_MASK'] / opt_pixscale
+        sma_mask = max(max(sma, SMA_MASK_MIN_PIX), sma_floor_pix)
+
+        log.info(f'  Galaxy {iobj+1}/{nsample}: (bx,by)=({bx:.1f},{by:.1f}) b/a={ba:.2f} PA={pa:.1f} degree ' + \
+                 f'sma={sma*opt_pixscale:.2f} arcsec [sma_mask={sma_mask*opt_pixscale:.2f} arcsec]')
+
+        sample['BX'][iobj] = bx
+        sample['BY'][iobj] = by
+        sample['SMA_MOMENT'][iobj] = sma * opt_pixscale    # [arcsec]
+        sample['SMA_MASK'][iobj] = sma_mask * opt_pixscale # [arcsec]
+        sample['BA_MOMENT'][iobj] = ba
+        sample['PA_MOMENT'][iobj] = pa
 
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOMENTPOS'] != 0:
             use_tractor_position_obj = False
@@ -2638,26 +2659,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         pixscale = data[f'{prefix}_pixscale']
         data[f'{prefix}_images'] /= pixscale**2 # [nanomaggies/arcsec**2]
         data[f'{prefix}_sigma'] /= pixscale**2  # [nanomaggies/arcsec**2]
-
-    # final geometry
-    ra, dec = opt_wcs.wcs.pixelxy2radec((geo_final[:, 0]+1.), (geo_final[:, 1]+1.))
-    for icol, col in enumerate(['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']):
-        if 'SMA' in col:
-            if input_geo_initial is None:
-                sample[col] = geo_final[:, icol].astype('f4')
-                sample[col] *= opt_pixscale # [pixels-->arcsec]
-                sample['SMA_MASK'] = [max(sample[col][iobj], SMA_MASK_MIN_ARCSEC) for iobj in range(nsample)]
-        else:
-            sample[col] = geo_final[:, icol].astype('f4')
-
-    sample['RA'] = ra
-    sample['DEC'] = dec
-    sample['SGANAME'] = sga2025_name(ra, dec)
-    if nsample > 1:
-        if len(sample['SGANAME']) != len(np.unique(sample['SGANAME'])):
-            msg = f'Duplicate SGA names {sample['SGANAME'][0]}'
-            log.critical(msg)
-            raise ValueError(msg)
 
     # optionally build a QA figure
     if qaplot:

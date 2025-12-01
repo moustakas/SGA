@@ -1443,7 +1443,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, mask_nearby=mask_nearby,
-        unwise=unwise, galex=galex, verbose=verbose, qaplot=True,#False,
+        unwise=unwise, galex=galex, verbose=verbose, qaplot=False,
         cleanup=False, skip_ellipse=skip_ellipse, htmlgalaxydir=htmlgalaxydir)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
@@ -1521,9 +1521,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             else:
                 sma_mask_arcsec = max(sma_mask_arcsec, r26_arcsec)
 
-            log.info(f'Initial surface-brightness profile estimate of R(26)='
-                     f'{r26_arcsec:.2f} arcsec (previous sma_mask={sma_mask_arcsec:.2f} ' + \
-                     'arcsec).')
+            log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
+                     f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
 
             if update_geometry:
                 # Case A: let build_multiband_mask compute geometry
@@ -1540,17 +1539,12 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             niter_geometry=2, qaplot=qaplot,
                                             htmlgalaxydir=htmlgalaxydir)
 
-        ## record SMA_MASK and restore the original SMA_MOMENT
-        #sample['SMA_MASK'] = sample['SMA_MOMENT'].copy() # [arcsec]
-        #sample['SMA_MOMENT'] = sma_moment0
-
         # ellipse-fit over objects and then datasets
         results, sbprofiles = wrap_multifit(
             data, sample, datasets, unpack_maskbits_function,
             sbthresh, apertures, SGAMASKBITS, mp=mp,
             nmonte=nmonte, seed=seed, debug=False)#qaplot)
 
-        pdb.set_trace()
         if qaplot:
             qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                           SGAMASKBITS, REFIDCOLUMN, datasets=datasets,
