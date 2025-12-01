@@ -1809,7 +1809,8 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
                          maxshift_arcsec=MAXSHIFT_ARCSEC, radial_power=0.7,
-                         SATELLITE_FRAC=0.3, input_geo_initial=None, qaplot=False,
+                         SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
+                         input_geo_initial=None, qaplot=False,
                          mask_nearby=None, use_tractor_position=True, use_radial_weight=True,
                          use_radial_weight_for_overlaps=False, use_tractor_geometry=True,
                          cleanup=True, htmlgalaxydir=None):
@@ -2357,7 +2358,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
                 # Minor companions: use the original "outside-ellipse only" logic.
-                if np.any(minor_mask):
+                if np.any(minor_mask) and mask_minor_galaxies:
                     _, galmask_minor, _ = update_galmask(
                         allgalsrcs[minor_mask], bx, by,
                         sma_mask, ba, pa, opt_skysigmas=opt_skysigmas,
@@ -2587,7 +2588,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     mask_allgals=True)
                 opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
-            if np.any(minor_mask):
+            if np.any(minor_mask) and mask_minor_galaxies:
                 _, galmask_minor, opt_models_obj = update_galmask(
                     allgalsrcs[minor_mask], bx, by,
                     sma_mask, ba, pa, opt_models=opt_models_obj,
@@ -2663,7 +2664,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             use_tractor_position_obj = use_tractor_position
 
         flux_sga = sample['OPTFLUX'][iobj]
-        flux_sga = sample["OPTFLUX"][iobj]
         if flux_sga > 0 and len(allgalsrcs) > 0:
             major_mask, _ = _compute_major_minor_masks(
                 flux_sga, allgalsrcs, galsrcs_optflux,
