@@ -1550,6 +1550,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             sbthresh, apertures, SGAMASKBITS, mp=mp,
             nmonte=nmonte, seed=seed, debug=False)#qaplot)
 
+        pdb.set_trace()
         if qaplot:
             qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                           SGAMASKBITS, REFIDCOLUMN, datasets=datasets,
