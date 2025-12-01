@@ -1721,18 +1721,107 @@ def _log_object_modes(log, iobj, obj, use_radial_weight, use_tractor_geometry_ob
                 log.info(f"    {mode} = True ")
 
 
+def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
+    opt_pixscale, use_tractor_position, use_radial_weight,
+    use_radial_weight_for_overlaps, SATELLITE_FRAC, get_geometry,
+    ellipses_overlap):
+    """
+    Decide per-object:
+      - use_radial_weight_obj[i]: whether to use radial weighting in moments
+      - use_tractor_geometry_obj[i]: whether to force Tractor geometry for satellites
+
+    Global knobs:
+      - use_radial_weight: default radial-weighting preference (True/False)
+      - use_radial_weight_for_overlaps: if False, *any* overlap disables radial weighting
+
+    """
+    nsample = len(sample)
+
+    # Precompute approximate geometry for overlap classification.
+    geo_overlap = np.zeros((nsample, 5), "f4")  # [bx, by, sma, ba, pa] in pixels
+    for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
+        geo_overlap[iobj, :] = get_geometry(opt_pixscale, table=obj,
+            ref_tractor=objsrc, use_sma_mask=False,
+            use_tractor_position=use_tractor_position)
+
+    # Per-object decision on whether to use radial weighting in the
+    # moments or to use the Tractor geometry for satellites.
+    use_radial_weight_obj = np.zeros(nsample, bool)
+    use_tractor_geometry_obj = np.zeros(nsample, bool)
+
+    if nsample == 1:
+        # Single object: honor the global default, no Tractor-geometry override.
+        use_radial_weight_obj[0] = bool(use_radial_weight)
+        use_tractor_geometry_obj[0] = False
+    else:
+        for iobj in range(nsample):
+            bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[iobj, :]
+            if sma_i <= 0:
+                # Degenerate geometry -> be conservative, no radial weighting
+                use_radial_weight_obj[iobj] = False
+                use_tractor_geometry_obj[iobj] = False
+                continue
+
+            overlapping_indices = []
+            for jobj in range(nsample):
+                if jobj == iobj:
+                    continue
+                bx_j, by_j, sma_j, ba_j, pa_j = geo_overlap[jobj, :]
+                if sma_j <= 0:
+                    continue
+
+                if ellipses_overlap(
+                    bx_i, by_i, sma_i, ba_i, pa_i,
+                    bx_j, by_j, sma_j, ba_j, pa_j,
+                ):
+                    overlapping_indices.append(jobj)
+
+            # Isolated object
+            if not overlapping_indices:
+                # Just follow the global default; no Tractor-geometry override.
+                use_radial_weight_obj[iobj] = bool(use_radial_weight)
+                use_tractor_geometry_obj[iobj] = False
+                continue
+
+            # Overlapping: classify as "satellite" vs "peer" based on size.
+            max_sma_neighbor = max(geo_overlap[jobj, 2] for jobj in overlapping_indices)
+            is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
+
+            if not use_radial_weight_for_overlaps:
+                # Global rule: *any* overlap => no radial weighting.
+                use_radial_weight_obj[iobj] = False
+                # Still allow Tractor geometry only for small satellites.
+                use_tractor_geometry_obj[iobj] = is_satellite
+            else:
+                # Overlaps allowed to use radial weighting, but satellites are suppressed.
+                if is_satellite:
+                    use_radial_weight_obj[iobj] = False
+                    use_tractor_geometry_obj[iobj] = True
+                else:
+                    # Overlapping peer: allow radial weighting if global default says so.
+                    use_radial_weight_obj[iobj] = bool(use_radial_weight)
+                    use_tractor_geometry_obj[iobj] = False
+
+
+    return geo_overlap, use_radial_weight_obj, use_tractor_geometry_obj
+
+
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
                          maxshift_arcsec=MAXSHIFT_ARCSEC, radial_power=0.7,
-                         input_geo_initial=None, qaplot=False, mask_nearby=None,
-                         use_tractor_position=True, use_radial_weight=True,
-                         use_radial_weight_for_overlaps=False,
-                         use_tractor_geometry=True, cleanup=True, htmlgalaxydir=None):
+                         SATELLITE_FRAC=0.3, input_geo_initial=None, qaplot=False,
+                         mask_nearby=None, use_tractor_position=True, use_radial_weight=True,
+                         use_radial_weight_for_overlaps=False, use_tractor_geometry=True,
+                         cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
     FMAJOR - major if >= XX% of SGA source flux
     moment_method - 'rms' or 'percentile'
+
+    SATELLITE_FRAC - If an SGA source is smaller than SATELLITE_FRAC
+    of an overlapping neighbour, treat it as a "satellite" and
+    *disable* radial weighting for its moments.
 
     """
     from astrometry.util.starutil_numpy import arcsec_between
@@ -2043,73 +2132,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             opt_images[iband, :, :] = data[filt]
 
 
-    # If an SGA source is smaller than this fraction of an overlapping neighbour,
-    # treat it as a "satellite" and *disable* radial weighting for its moments.
-    SATELLITE_FRAC = 0.3
-
-    # Precompute approximate geometry for overlap classification.
-    geo_overlap = np.zeros((nsample, 5), 'f4')  # [bx, by, sma, ba, pa] in pixels
-    for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
-        geo_overlap[iobj, :] = get_geometry(
-            opt_pixscale, table=obj, ref_tractor=objsrc,
-            use_sma_mask=False, use_tractor_position=use_tractor_position)
-
-    # Per-object decision on whether to use radial weighting in the
-    # moments or to use the Tractor geometry for satellites.
-    use_radial_weight_obj = np.zeros(nsample, bool)    # default False
-    use_tractor_geometry_obj = np.zeros(nsample, bool) # default False
-
-    if nsample == 1:
-        # Single object: no radial weighting, no Tractor-geometry override.
-        use_radial_weight_obj[0] = False
-        use_tractor_geometry_obj[0] = False
-    else:
-        for iobj in range(nsample):
-            bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[iobj, :]
-            if sma_i <= 0:
-                # Degenerate geometry -> be conservative, no radial weighting
-                use_radial_weight_obj[iobj] = False
-                use_tractor_geometry_obj[iobj] = False
-                continue
-
-            overlapping_indices = []
-            for jobj in range(nsample):
-                if jobj == iobj:
-                    continue
-                bx_j, by_j, sma_j, ba_j, pa_j = geo_overlap[jobj, :]
-                if sma_j <= 0:
-                    continue
-
-                if ellipses_overlap(bx_i, by_i, sma_i, ba_i, pa_i,
-                                    bx_j, by_j, sma_j, ba_j, pa_j):
-                    overlapping_indices.append(jobj)
-
-            # Isolated
-            print(iobj, overlapping_indices, bx_i, by_i, sma_i, ba_i, pa_i,
-                  bx_j, by_j, sma_j, ba_j, pa_j)
-            if not overlapping_indices:
-                use_radial_weight_obj[iobj] = False
-                use_tractor_geometry_obj[iobj] = False
-                continue
-
-            # Overlapping: classify as "satellite" vs "peer" based on size.
-            max_sma_neighbor = max(geo_overlap[jobj, 2] for j in overlapping_indices)
-            is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
-
-            if not use_radial_weight_for_overlaps:
-                # Global rule: *any* overlap => no radial weighting.
-                use_radial_weight_obj[iobj] = False
-                # Still allow Tractor geometry only for small satellites.
-                use_tractor_geometry_obj[iobj] = is_satellite
-            else:
-                # Only small satellites lose radial weighting and get Tractor geometry.
-                if is_satellite:
-                    use_radial_weight_obj[iobj] = False
-                    use_tractor_geometry_obj[iobj] = True
-                else:
-                    # Overlapping peer: allow radial weighting, no Tractor-geometry override.
-                    use_radial_weight_obj[iobj] = True
-                    use_tractor_geometry_obj[iobj] = False
+    # Decide on radial weighting and use of Tractor geometry
+    geo_overlap, use_radial_weight_obj, use_tractor_geometry_obj = \
+        _get_radial_weight_and_tractor_geometry(
+            sample=sample, samplesrcs=samplesrcs, opt_pixscale=opt_pixscale,
+            use_tractor_position=use_tractor_position, use_radial_weight=use_radial_weight,
+            use_radial_weight_for_overlaps=use_radial_weight_for_overlaps,
+            SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
+            ellipses_overlap=ellipses_overlap)
 
 
     # Per-object overrides from ELLIPSEMODE bits.
@@ -2128,8 +2158,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['RADWEIGHT']) != 0:
             use_radial_weight_obj[iobj] = True
 
-
-    #use_radial_weight_obj[:] = True
 
     # Minimum semi-major axis used for masks (not for stored geometry).
     SMA_MASK_MIN_ARCSEC = 5.0 # [arcsec]
