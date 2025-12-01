@@ -2006,6 +2006,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     overlapping_indices.append(jobj)
 
             # Isolated
+            print(iobj, overlapping_indices, bx_i, by_i, sma_i, ba_i, pa_i,
+                  bx_j, by_j, sma_j, ba_j, pa_j)
             if not overlapping_indices:
                 use_radial_weight_obj[iobj] = False
                 use_tractor_geometry_obj[iobj] = False
@@ -2517,19 +2519,27 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if use_tractor_geometry and use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
-        # Overlap bit.
+        # Overlap bit. Note! use sma_mask because on the second pass
+        # it is very close to the (final) R(26) value.
         overlapping_indices = []
         for jobj in range(nsample):
             if jobj == iobj:
                 continue
             bx_j, by_j, sma_j, ba_j, pa_j = geo_final[jobj, :]
+            sma_j = max(max(sma, SMA_MASK_MIN_PIX), sample['SMA_MASK'][jobj] / opt_pixscale)
             if sma_j <= 0:
                 continue
-            if ellipses_overlap(bx, by, sma, ba, pa,
+            if ellipses_overlap(bx, by, sma_mask, ba, pa,
                                 bx_j, by_j, sma_j, ba_j, pa_j):
                 overlapping_indices.append(jobj)
 
-        if overlapping_indices:
+        #print(iobj, overlapping_indices, bx, by, sma, ba, pa,
+        #      bx_j, by_j, sma_j, ba_j, pa_j)
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.imshow(in_ellipse_mask(bx, width-by, sma, sma*ba, pa, xgrid, ygrid_flip), origin='lower')
+        #plt.savefig('ioannis/tmp/junk.png')
+        if len(overlapping_indices) > 0:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
 
         # Satellite bit.
@@ -2541,9 +2551,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         # Blended bit.
         refindx = np.delete(np.arange(nsample), iobj)
         for indx in refindx:
-            [bx, by, sma, ba, pa] = geo_final[iobj, :]
             [refbx, refby, refsma, refba, refpa] = geo_final[indx, :]
-            Iclose = ellipses_overlap(bx, by, sma, ba, pa,
+            refsma = max(max(refsma, SMA_MASK_MIN_PIX), sample['SMA_MASK'][refindx] / opt_pixscale)
+            Iclose = ellipses_overlap(bx, by, sma_mask, ba, pa,
                                       refbx, refby, refsma, refba, refpa)
             if Iclose:
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['BLENDED']
@@ -2565,10 +2575,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 major_mask &= sep_arcsec > objsrc.shape_r
 
             if np.any(major_mask):
-                bx, by, sma, ba, pa = geo_final[iobj, :]
                 # Are any major companions’ centers inside this ellipse?
-                inside = in_ellipse_mask(bx, width-by, sma, sma*ba, pa,
-                                         allgalsrcs[major_mask].bx,
+                inside = in_ellipse_mask(bx, width-by, sma_mask, sma_mask*ba,
+                                         pa, allgalsrcs[major_mask].bx,
                                          width - allgalsrcs[major_mask].by)
                 if np.any(inside):
                     sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MAJORGAL']
