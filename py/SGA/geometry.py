@@ -43,7 +43,7 @@ class EllipseProperties:
         return r_ell
 
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
-            x0y0=None, input_ba_pa=None, smooth_sigma=1.0, rmax=None,
+            radial_power=0.7, x0y0=None, input_ba_pa=None, smooth_sigma=1.0,
             use_radial_weight=True):
         """
         Label and smooth the image, then select the largest contiguous blob
@@ -126,8 +126,8 @@ class EllipseProperties:
         r = np.hypot(dx, dy)
 
         # weights for the second moments
-        if use_radial_weight:# and rmax is not None:
-            wflux = flux * r**1.5 # (r**2)
+        if use_radial_weight:
+            wflux = flux * r**radial_power
         else:
             wflux = flux
 

@@ -1645,12 +1645,89 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     log.info(f'Wrote {qafile}')
 
 
+def _compute_major_minor_masks(flux_sga, allgalsrcs, galsrcs_optflux,
+                               FMAJOR, objsrc, use_tractor_position_obj,
+                               arcsec_between):
+    """Classify Tractor galaxies into major / minor companions.
+
+    Returns (major_mask, minor_mask), both boolean arrays of length len(allgalsrcs).
+    """
+    if len(allgalsrcs) == 0 or flux_sga <= 0.0:
+        major_mask = np.zeros(len(allgalsrcs), bool)
+        minor_mask = np.ones(len(allgalsrcs), bool)
+        return major_mask, minor_mask
+
+    R_flux = galsrcs_optflux / flux_sga
+    major_mask = (R_flux >= FMAJOR)
+
+    # If we have Tractor geometry and are using Tractor positions,
+    # optionally ignore “majors” that are essentially the SGA itself.
+    if (objsrc is not None) and use_tractor_position_obj:
+        sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec,
+                                    allgalsrcs.ra, allgalsrcs.dec)
+        major_mask &= (sep_arcsec > objsrc.shape_r)
+
+    minor_mask = ~major_mask
+    return major_mask, minor_mask
+
+
+def _log_object_modes(log, iobj, obj, use_radial_weight, use_tractor_geometry_obj,
+                      ELLIPSEMODE, ELLIPSEBIT, stage="initial"):
+    """
+    stage = "initial" or "final".
+
+    - initial: mimic your existing logging of ELLIPSEMODE + initial ELLIPSEBIT,
+      and check that same-named bits in ELLIPSEMODE → ELLIPSEBIT are propagated.
+    - final: mimic your "after all bits" logging of final ELLIPSEBIT.
+
+    """
+    mode_bits = obj["ELLIPSEMODE"]
+    bit_bits  = obj["ELLIPSEBIT"]
+
+    if stage == "initial":
+        # --- ELLIPSEMODE bits ---
+        for mode, bit in ELLIPSEMODE.items():
+            if mode == "RADWEIGHT":
+                # FIX: parentheses and 'or' instead of bitwise '|'
+                if ((mode_bits & bit) != 0) or use_radial_weight:
+                    log.info(f"  {mode} = True ")
+                    # If there is a same-named ELLIPSEBIT, check propagation
+                    if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
+                        log.warning(f"  {mode}: ELLIPSEMODE set/used but ELLIPSEBIT[{mode}] is not set.")
+            elif mode == "TRACTORGEO":
+                if (mode_bits & bit) != 0:
+                    log.info(f"  {mode} = True ")
+                    if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
+                        log.warning(f"  {mode}: ELLIPSEMODE set but ELLIPSEBIT[{mode}] is not set.")
+                elif use_tractor_geometry_obj:
+                    log.info(f"  {mode} [satellite] = True ")
+                    if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
+                        log.warning(f"  {mode}: satellite runtime flag true but ELLIPSEBIT[{mode}] is not set.")
+            else:
+                if (mode_bits & bit) != 0:
+                    log.info(f"  {mode} = True ")
+                    if mode in ELLIPSEBIT and (bit_bits & ELLIPSEBIT[mode]) == 0:
+                        log.warning(f"  {mode}: ELLIPSEMODE set but ELLIPSEBIT[{mode}] is not set.")
+
+        # --- Initial ELLIPSEBIT bits ---
+        for mode, bit in ELLIPSEBIT.items():
+            if (bit_bits & bit) != 0:
+                log.info(f"  {mode} [initial] = True ")
+
+    elif stage == "final":
+        # --- Final ELLIPSEBIT bits ---
+        for mode, bit in ELLIPSEBIT.items():
+            if (bit_bits & bit) != 0:
+                log.info(f"    {mode} = True ")
+
+
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
-                         maxshift_arcsec=MAXSHIFT_ARCSEC, input_geo_initial=None,
-                         qaplot=False, mask_nearby=None, use_tractor_position=True,
-                         radial_weight_for_overlaps=False, cleanup=True,
-                         use_tractor_geometry=True, htmlgalaxydir=None):
+                         maxshift_arcsec=MAXSHIFT_ARCSEC, radial_power=0.7,
+                         input_geo_initial=None, qaplot=False, mask_nearby=None,
+                         use_tractor_position=True, use_radial_weight=True,
+                         use_radial_weight_for_overlaps=False,
+                         use_tractor_geometry=True, cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
@@ -1684,9 +1761,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def find_galaxy_in_cutout(img, bx, by, sma, ba, pa, fraction=0.5,
-                              factor=1.5, moment_method='rms', wmask=None,
-                              use_tractor_position=False, use_radial_weight=True,
-                              input_ba_pa=None, debug=False):
+                              factor=1.5, radial_power=0.7, moment_method='rms',
+                              wmask=None, use_tractor_position=False,
+                              use_radial_weight=True, input_ba_pa=None,
+                              debug=False):
         """Measure the light-weighted center and elliptical geometry
         of the object of interest.
 
@@ -1723,6 +1801,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         P = EllipseProperties()
         P.fit(cutout, mask=cutout_mask, method=moment_method,
               percentile=0.95, x0y0=x0y0, smooth_sigma=1.,
+              radial_power=radial_power,
               input_ba_pa=input_ba_pa,
               use_radial_weight=use_radial_weight)
         #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, P.ba, P.pa, sma)
@@ -1977,7 +2056,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # Per-object decision on whether to use radial weighting in the
     # moments or to use the Tractor geometry for satellites.
-    use_radial_weight_obj = np.zeros(nsample, bool)               # default False
+    use_radial_weight_obj = np.zeros(nsample, bool)    # default False
     use_tractor_geometry_obj = np.zeros(nsample, bool) # default False
 
     if nsample == 1:
@@ -2017,7 +2096,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             max_sma_neighbor = max(geo_overlap[jobj, 2] for j in overlapping_indices)
             is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
 
-            if not radial_weight_for_overlaps:
+            if not use_radial_weight_for_overlaps:
                 # Global rule: *any* overlap => no radial weighting.
                 use_radial_weight_obj[iobj] = False
                 # Still allow Tractor geometry only for small satellites.
@@ -2037,7 +2116,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     sample['ELLIPSEBIT'] &= ~(ELLIPSEBIT['RADWEIGHT'] | ELLIPSEBIT['TRACTORGEO'] |
                               ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'] |
                               ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'])
-
     for iobj in range(nsample):
         # If TRACTORGEO is set, force Tractor-based geometry for this object.
         if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0:
@@ -2065,22 +2143,26 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         log.info('Determining the geometry for galaxy ' +
                  f'{iobj+1}/{nsample}.')
 
-        for mode in ELLIPSEMODE.keys():
-            if mode == 'RADWEIGHT':
-                if ((obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0) |
-                    use_radial_weight_obj[iobj]):
-                    log.info(f'  {mode} = True ')
-            elif mode == 'TRACTORGEO':
-                if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
-                    log.info(f'  {mode} = True ')
-                elif use_tractor_geometry_obj[iobj]:
-                    log.info(f'  {mode} [satellite] = True ')
-            else:
-                if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
-                    log.info(f'  {mode} = True ')
-        for mode in ELLIPSEBIT.keys():
-            if obj['ELLIPSEBIT'] & ELLIPSEBIT[mode] != 0:
-                log.info(f'  {mode} [initial] = True ')
+        _log_object_modes(log, iobj, obj, use_radial_weight_obj[iobj],
+                          use_tractor_geometry_obj[iobj], ELLIPSEMODE,
+                          ELLIPSEBIT, stage="initial")
+
+        #for mode in ELLIPSEMODE.keys():
+        #    if mode == 'RADWEIGHT':
+        #        if ((obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0) |
+        #            use_radial_weight_obj[iobj]):
+        #            log.info(f'  {mode} = True ')
+        #    elif mode == 'TRACTORGEO':
+        #        if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
+        #            log.info(f'  {mode} = True ')
+        #        elif use_tractor_geometry_obj[iobj]:
+        #            log.info(f'  {mode} [satellite] = True ')
+        #    else:
+        #        if obj['ELLIPSEMODE'] & ELLIPSEMODE[mode] != 0:
+        #            log.info(f'  {mode} = True ')
+        #for mode in ELLIPSEBIT.keys():
+        #    if obj['ELLIPSEBIT'] & ELLIPSEBIT[mode] != 0:
+        #        log.info(f'  {mode} [initial] = True ')
 
         # Use the light-weighted (not Tractor) center.
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOMENTPOS'] != 0:
@@ -2233,17 +2315,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     mask_allgals=True)
             else:
                 flux_sga = sample['OPTFLUX'][iobj]
-                if len(allgalsrcs) == 0 or flux_sga <= 0.:
-                    major_mask = np.zeros(len(allgalsrcs), bool)
-                    minor_mask = np.ones(len(allgalsrcs), bool)
-                else:
-                    R_flux = galsrcs_optflux / flux_sga
-                    major_mask = R_flux >= FMAJOR
-                    if objsrc is not None and use_tractor_position_obj:
-                        sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
-                                                    allgalsrcs.dec)
-                        major_mask &= sep_arcsec > objsrc.shape_r
-                    minor_mask = ~major_mask
+                major_mask, minor_mask = _compute_major_minor_masks(
+                    flux_sga, allgalsrcs, galsrcs_optflux,
+                    FMAJOR, objsrc, use_tractor_position_obj,
+                    arcsec_between)
 
                 # Major companions: mask their flux everywhere (inside and out).
                 if np.any(major_mask):
@@ -2316,6 +2391,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 props = find_galaxy_in_cutout(
                     wimg, bx, by, sma_mask, ba, pa, wmask=wmask,
                     moment_method=moment_method, input_ba_pa=input_ba_pa,
+                    radial_power=radial_power,
                     use_radial_weight=use_radial_weight_obj[iobj],
                     use_tractor_position=use_tractor_position_obj)
                 geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
@@ -2470,17 +2546,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 mask_allgals=True)
         else:
             flux_sga = sample['OPTFLUX'][iobj]
-            if len(allgalsrcs) == 0 or flux_sga <= 0.:
-                major_mask = np.zeros(len(allgalsrcs), bool)
-                minor_mask = np.ones(len(allgalsrcs), bool)
-            else:
-                R_flux = galsrcs_optflux / flux_sga
-                major_mask = R_flux >= FMAJOR
-                if objsrc is not None and use_tractor_position_obj:
-                    sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
-                                                allgalsrcs.dec)
-                    major_mask &= sep_arcsec > objsrc.shape_r
-                minor_mask = ~major_mask
+            major_mask, minor_mask = _compute_major_minor_masks(
+                flux_sga, allgalsrcs, galsrcs_optflux,
+                FMAJOR, objsrc, use_tractor_position_obj,
+                arcsec_between)
 
             if np.any(major_mask):
                 _, galmask_major, opt_models_obj = update_galmask(
@@ -2566,13 +2635,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             use_tractor_position_obj = use_tractor_position
 
         flux_sga = sample['OPTFLUX'][iobj]
+        flux_sga = sample["OPTFLUX"][iobj]
         if flux_sga > 0 and len(allgalsrcs) > 0:
-            R_flux = galsrcs_optflux / flux_sga
-            major_mask = R_flux >= FMAJOR
-            if objsrc is not None and use_tractor_position_obj:
-                sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec, allgalsrcs.ra,
-                                            allgalsrcs.dec)
-                major_mask &= sep_arcsec > objsrc.shape_r
+            major_mask, _ = _compute_major_minor_masks(
+                flux_sga, allgalsrcs, galsrcs_optflux,
+                FMAJOR, objsrc, use_tractor_position_obj,
+                arcsec_between)
 
             if np.any(major_mask):
                 # Are any major companions’ centers inside this ellipse?
@@ -2582,9 +2650,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if np.any(inside):
                     sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MAJORGAL']
 
-        for mode in ELLIPSEBIT.keys():
-            if sample['ELLIPSEBIT'][iobj] & ELLIPSEBIT[mode] != 0:
-                log.info(f'    {mode} = True ')
+        _log_object_modes(log, iobj, sample[iobj], use_radial_weight_obj[iobj],
+                          use_tractor_geometry_obj[iobj], ELLIPSEMODE, ELLIPSEBIT,
+                          stage="final")
+
+        #for mode in ELLIPSEBIT.keys():
+        #    if sample['ELLIPSEBIT'][iobj] & ELLIPSEBIT[mode] != 0:
+        #        log.info(f'    {mode} = True ')
 
 
     # Update the data dictionary.
