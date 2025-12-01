@@ -2284,8 +2284,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         sample['ELLIPSEMODE'][iobj] |= ELLIPSEMODE['FIXGEO']
                         geo_iter = geo_init
                 else:
-                    if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-                        log.info('FIXGEO bit set; fixing the elliptical geometry.')
+                    #if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+                        #log.info('FIXGEO bit set; fixing the elliptical geometry.')
                     geo_iter = geo_init
             else:
                 # generate a detection image and pixel mask for use with find_galaxy_in_cutout
@@ -2514,7 +2514,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if use_radial_weight_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['RADWEIGHT']
 
-        if use_tractor_geometry_obj[iobj]:
+        if use_tractor_geometry and use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
         # Overlap bit.
@@ -2522,12 +2522,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         for jobj in range(nsample):
             if jobj == iobj:
                 continue
-            bx_j, by_j, sma_j, ba_j, pa_j = geo_overlap[jobj, :]
+            bx_j, by_j, sma_j, ba_j, pa_j = geo_final[jobj, :]
             if sma_j <= 0:
                 continue
             if ellipses_overlap(bx, by, sma, ba, pa,
                                 bx_j, by_j, sma_j, ba_j, pa_j):
                 overlapping_indices.append(jobj)
+
         if overlapping_indices:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
 
@@ -2576,7 +2577,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if sample['ELLIPSEBIT'][iobj] & ELLIPSEBIT[mode] != 0:
                 log.info(f'    {mode} = True ')
 
-    pdb.set_trace()
 
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
