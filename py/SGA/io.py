@@ -701,7 +701,7 @@ def empty_tractor(cat=None):
             ('apflux_resid_z', '>f4', (8,)),
             ('apflux_blobresid_g', '>f4', (8,)),
             ('apflux_blobresid_r', '>f4', (8,)),
-            ('apflux_blobresid_i', '>f4', (8,)), # missing from DR11?
+            ('apflux_blobresid_i', '>f4', (8,)),
             ('apflux_blobresid_z', '>f4', (8,)),
             ('apflux_ivar_g', '>f4', (8,)),
             ('apflux_ivar_r', '>f4', (8,)),
@@ -747,6 +747,8 @@ def empty_tractor(cat=None):
             ('nobs_w2', '>i2'),
             ('nobs_w3', '>i2'),
             ('nobs_w4', '>i2'),
+            ('nobs_nuv', '>i2'),
+            ('nobs_fuv', '>i2'),
             ('rchisq_g', '>f4'),
             ('rchisq_r', '>f4'),
             ('rchisq_i', '>f4'),
@@ -755,6 +757,8 @@ def empty_tractor(cat=None):
             ('rchisq_w2', '>f4'),
             ('rchisq_w3', '>f4'),
             ('rchisq_w4', '>f4'),
+            ('rchisq_nuv', '>f4'),
+            ('rchisq_fuv', '>f4'),
             ('fracflux_g', '>f4'),
             ('fracflux_r', '>f4'),
             ('fracflux_i', '>f4'),
@@ -763,6 +767,8 @@ def empty_tractor(cat=None):
             ('fracflux_w2', '>f4'),
             ('fracflux_w3', '>f4'),
             ('fracflux_w4', '>f4'),
+            ('fracflux_nuv', '>f4'),
+            ('fracflux_fuv', '>f4'),
             ('fracmasked_g', '>f4'),
             ('fracmasked_r', '>f4'),
             ('fracmasked_i', '>f4'),
@@ -799,11 +805,11 @@ def empty_tractor(cat=None):
             ('galdepth_z', '>f4'),
             ('nea_g', '>f4'),
             ('nea_r', '>f4'),
-            ('nea_i', '>f4'), # missing from DR11?
+            ('nea_i', '>f4'),
             ('nea_z', '>f4'),
             ('blob_nea_g', '>f4'),
             ('blob_nea_r', '>f4'),
-            ('blob_nea_i', '>f4'), # missing from DR11?
+            ('blob_nea_i', '>f4'),
             ('blob_nea_z', '>f4'),
             ('psfdepth_w1', '>f4'),
             ('psfdepth_w2', '>f4'),
@@ -844,7 +850,5 @@ def empty_tractor(cat=None):
                 dtype, shape = col[1], (1,)
             else:
                 dtype, shape = col[1], (1,) + col[2]
-            #if colname == 'dchisq':
-            #    pdb.set_trace()
             tractor[colname] = np.zeros(shape=shape, dtype=dtype)
         return tractor
