@@ -3249,10 +3249,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         assert(len(custom) == len(np.unique(custom['OBJNAME'])))
     except:
         log.info('Warning: duplicates in parent-custom file!')
-        #raise ValueError()
         oo, cc = np.unique(custom['OBJNAME'], return_counts=True)
         log.info(oo[cc>1])
-        pdb.set_trace()
+        raise ValueError()
 
     # special handling of SREGION; if masked then it's both regions
     if hasattr(custom['SREGION'], 'mask'):
@@ -3293,8 +3292,13 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     if len(I) > 0:
         all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
         moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
-
     parent = vstack((parent, moreparent))
+    if len(parent) != len(np.unique(parent['ROW_PARENT'])):
+        log.info('Duplicate ROW_PARENT values between parent and moreparent!')
+        oo, cc = np.unique(parent['ROW_PARENT'], return_counts=True)
+        log.info(oo[cc>1])
+        bb = parent[np.isin(parent['ROW_PARENT'], oo[cc>1])]['OBJNAME', 'ROW_PARENT'] ; bb = bb[np.argsort(bb['ROW_PARENT'])] ; bb
+        pdb.set_trace()
     assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
     # Read and process the "parent-drop" file; update REGION for
@@ -3365,12 +3369,17 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
             },
-        # In v0.20, use the v0.11 measurements to throw out small galaxies.
+        # In v0.20 and v0.21 use the v0.11 measurements to throw out small galaxies.
         'v0.20': {
             'ref_version': 'v0.11',
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
-            }
+            },
+        'v0.21': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            },
     }
     if version == 'v0.12':
         # in v0.11 the 'fixgeo' geometry was inadvertently
@@ -3385,7 +3394,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         diam, ba, pa, diam_ref = update_geometry_from_reffiles(
             parent, diam, ba, pa, diam_ref, reffiles[version],
             REGIONBITS, veto_objnames=veto_objnames)
-    elif version == 'v0.20':
+    elif version == 'v0.20' or version == 'v0.21':
         # Apply D(26)>0.5 diameter cuts but do not drop objects from the
         # "properties" or "custom" catalog.
         propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')

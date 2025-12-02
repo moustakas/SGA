@@ -90,13 +90,17 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # remove D(26)<0.5 sources (and groups where /all/ members
         # have D(26)<0.5) based on v0.11 fitting results; keep
         # diameters at their initial values
-        version = 'v0.20'
+        #version = 'v0.20'
+
+        # tons of VI results
+        version = 'v0.21'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
         #version = 'v0.11' # parent_version = v0.10 --> v0.11
         #version = 'v0.12' # parent_version = v0.11 --> v0.12
-        version = 'v0.20'  # parent_version = v0.12 --> v0.20
+        #version = 'v0.20'  # parent_version = v0.12 --> v0.20
+        version = 'v0.21'  # parent_version = v0.20 --> v0.21
     return version
 
 
@@ -3187,7 +3191,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     return data, tractor, sample, samplesrcs, err
 
 
-def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
+def _get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
                       pixscale=0.262, get_barlen=False):
     """Get the mosaic radius.
 
@@ -3221,3 +3225,102 @@ def get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
         return radius_mosaic_arcsec, barlen, barlabel
     else:
         return radius_mosaic_arcsec
+
+
+def get_radius_mosaic(diam_arcmin,
+                      multiplicity=1,
+                      q_primary=None,      # BA of the primary; if None, no ellipticity inflation
+                      mindiam_arcmin=0.5,  # floor on input diameter (arcmin)
+                      pixscale=0.262,      # arcsec/pixel
+                      # single-object inflation f_single(d) = 1 + A / [1 + (d/d0)^beta]
+                      single_A=0.6,
+                      single_d0=2.5,
+                      single_beta=1.7,
+                      # group inflation f_mult(m) = min(1 + slope*(m-1), cap)
+                      mult_slope=0.06,
+                      mult_cap=1.30,
+                      # ellipticity inflation f_q = 1 + eta*(1 - q)
+                      eta=0.3,
+                      get_barlen=False):
+    """Compute a mosaic radius (arcsec) from a group diameter
+    (arcmin), using smooth, size-aware inflation and optional BA-based
+    padding. The final radius is rounded up to an integer number of
+    pixels.
+
+    Parameters
+    ----------
+    diam_arcmin : float
+        Group diameter in arcmin (for singles, this is the object diam).
+    multiplicity : int, default 1
+        Group multiplicity; >1 triggers the group-inflation rule.
+    q_primary : float or None, default None
+        Axis ratio b/a of the primary. If None, skip ellipticity inflation.
+    mindiam_arcmin : float, default 0.5
+        Minimum diameter allowed (arcmin).
+    pixscale : float, default 0.262
+        Pixel scale in arcsec/pixel.
+    single_A, single_d0, single_beta : floats
+        Parameters of the single-object inflation curve.
+    mult_slope : float, default 0.06
+        Per-companion inflation for groups.
+    mult_cap : float, default 1.30
+        Maximum inflation for groups (set to a large value to effectively disable).
+    eta : float, default 0.3
+        Strength of BA inflation; f_q = 1 + eta*(1 - q).
+
+    Returns
+    -------
+    float
+        Mosaic radius in arcsec, rounded up to a whole number of pixels.
+
+    """
+    from math import ceil
+
+    # diameter floor (arcmin) and base radius (arcsec)
+    d = float(diam_arcmin)
+    if d < mindiam_arcmin:
+        d = mindiam_arcmin
+    r0 = 30.0 * d  # arcsec (half-diameter)
+
+    # inflation for singles vs groups
+    if multiplicity <= 1:
+        f_single = 1.0 + single_A / (1.0 + (d / single_d0) ** single_beta)
+        f = f_single
+    else:
+        f_mult = 1.0 + mult_slope * (multiplicity - 1)
+        if f_mult > mult_cap:
+            f_mult = mult_cap
+        f = f_mult
+
+    # optional BA padding (thin primaries → larger radius)
+    if q_primary is not None:
+        q = float(q_primary)
+        if q < 0.0:
+            q = 0.0
+        if q > 1.0:
+            q = 1.0
+        f_q = 1.0 + eta * (1.0 - q)
+        f *= f_q
+
+    # apply inflation
+    r_arcsec = r0 * f
+
+    # enforce 30″ minimum and round up to whole pixels (no max cap)
+    if r_arcsec < 30.0:
+        r_arcsec = 30.0
+    npix = ceil(r_arcsec / pixscale)
+    r_arcsec = npix * pixscale
+
+    if get_barlen:
+        if r_arcsec > 6. * 60.: # [>6] arcmin
+            barlabel = '2 arcmin'
+            barlen = np.ceil(120. / pixscale).astype(int) # [pixels]
+        elif (r_arcsec > 3. * 60.) & (r_arcsec < 6. * 60.): # [3-6] arcmin
+            barlabel = '1 arcmin'
+            barlen = np.ceil(60. / pixscale).astype(int) # [pixels]
+        else:
+            barlabel = '30 arcsec'
+            barlen = np.ceil(30. / pixscale).astype(int) # [pixels]
+        return r_arcsec, barlen, barlabel
+    else:
+        return r_arcsec
