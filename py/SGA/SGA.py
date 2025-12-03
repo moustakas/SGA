@@ -985,9 +985,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         print()
         print('###################')
         print('REMOVE THE gaia_phot_variable_flag STUFF!')
-
-        print('If the GCPNe samplebit is set, do not pass forward Tractor sources (other than the SGA source).')
-        print('E.g., ESO 050- G 010 is on the edge of NGC104 and we want the sources to match the DR11 maskbits')
         print('###################')
         print()
 
@@ -1004,18 +1001,18 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         version = SGA_version()
         #version = 'v0.10b'
         if test_bricks:
-            version = 'dr11a-v0.10'
-            outfile = f'SGA2025-{version}.fits'
-            kdoutfile = f'SGA2025-{version}.fits'
-            outfile_ellipse = f'SGA2025-ellipse-{version}.fits'
-            kdoutfile_ellipse = f'SGA2025-ellipse-{version}.kd.fits'
+            version = 'testbricks-v0.21'
+            outprefix = 'SGA2025'
+            outfile = f'{outprefix}-{version}.fits'
+            kdoutfile = f'{outprefix}-{version}.fits'
+            outfile_ellipse = f'{outprefix}-ellipse-{version}.fits'
+            kdoutfile_ellipse = f'{outprefix}-ellipse-{version}.kd.fits'
         else:
             if wisesize:
                 outprefix = 'SGA2025-wisesize'
             else:
-                if True:
-                    outprefix = 'SGA2025'
-                else:
+                outprefix = 'SGA2025'
+                if False:
                     version = 'test'
                     outprefix = 'SGA2025-test'
             outfile = f'{outprefix}-{version}-{region}.fits'
