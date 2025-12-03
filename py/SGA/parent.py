@@ -3150,13 +3150,119 @@ def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
     return parent
 
 
+def set_overlap_bit(cat, SAMPLE):
+    """
+    Flag ellipse-overlap within each group by setting SAMPLE['OVERLAP'].
+
+    Assumes `cat` has columns: GROUP_NAME, GROUP_MULT, RA, DEC, DIAM (arcmin), BA, PA (deg, astronomical).
+    Modifies `cat['SAMPLE']` in place by OR'ing the OVERLAP bit for members that
+    overlap at least one other member in their group.
+
+    Parameters
+    ----------
+    cat : astropy.table.Table
+        Input catalog, modified in place.
+    SAMPLE : dict
+        Bitmask dictionary that includes key 'OVERLAP'.
+
+    """
+    OVERLAP_BIT = SAMPLE['OVERLAP']
+    DEG2RAD = np.pi / 180.0
+    ARCMIN_PER_DEG = 60.0
+
+    def _angdiff_deg(a, b):
+        """(a-b) wrapped to (-180, 180] deg."""
+        return (a - b + 180.0) % 360.0 - 180.0
+
+    def _dir_radius_arcmin(a_arc, b_arc, pa_rad, bearing_rad):
+        """
+        Radius (arcmin) of an ellipse with semi-axes (a_arc, b_arc) and PA=pa_rad
+        along a ray at `bearing_rad` (astronomical: 0°=N, 90°=E).
+        """
+        d = bearing_rad - pa_rad
+        # wrap to [-pi, pi] for numerical stability
+        d = np.where(d > np.pi, d - 2.0*np.pi, d)
+        d = np.where(d < -np.pi, d + 2.0*np.pi, d)
+        denom = np.hypot(b_arc * np.cos(d), a_arc * np.sin(d))
+        # fallback to circular if degenerate
+        out = (a_arc * b_arc) / np.where(denom > 0.0, denom, 1.0)
+        out = np.where(denom > 0.0, out, a_arc)
+        return out
+
+    # Work only on groups with >1 member
+    mask_mult = (cat['GROUP_MULT'] > 1)
+    if not np.any(mask_mult):
+        return  # nothing to do
+
+    # Unique group names among multi-member groups
+    gnames = np.asarray(cat['GROUP_NAME'][mask_mult]).astype(str)
+    ugroups = np.unique(gnames)
+
+    # Column views (avoid repeated table lookups)
+    RA_all   = np.asarray(cat['RA'], dtype=float)
+    DEC_all  = np.asarray(cat['DEC'], dtype=float)
+    DIAM_all = np.asarray(cat['DIAM'], dtype=float)  # arcmin
+    BA_all   = np.asarray(cat['BA'], dtype=float) if 'BA' in cat.colnames else np.full(len(cat), np.nan)
+    PA_all   = np.asarray(cat['PA'], dtype=float) if 'PA' in cat.colnames else np.full(len(cat), np.nan)
+    GNAME    = np.asarray(cat['GROUP_NAME']).astype(str)
+
+    for gname in ugroups:
+        I = np.where(GNAME == gname)[0]
+        if I.size < 2:
+            continue
+
+        # Local tangent-plane scale for this group
+        dec0 = float(np.median(DEC_all[I]))
+        cosd0 = np.cos(dec0 * DEG2RAD)
+
+        # Per-member geometry
+        ra  = RA_all[I]
+        dec = DEC_all[I]
+        diam = DIAM_all[I]                        # arcmin
+        a_arc = 0.5 * diam                        # semi-major (arcmin)
+
+        ba   = BA_all[I]
+        pa   = PA_all[I]
+        ba_eff = np.where(np.isfinite(ba) & (ba > 0.0), ba, 1.0)  # circular if missing/invalid
+        b_arc = ba_eff * a_arc
+        pa_rad = np.where(np.isfinite(pa), pa, 0.0) * DEG2RAD
+
+        overlapped = np.zeros(I.size, dtype=bool)
+
+        # Pairwise checks (upper triangle)
+        for ii in range(I.size - 1):
+            # Local deltas (deg), wrap RA
+            dx_deg = _angdiff_deg(ra[ii+1:], ra[ii]) * cosd0
+            dy_deg = (dec[ii+1:] - dec[ii])
+
+            # Convert to arcmin and compute separations + bearings
+            dx_am = dx_deg * ARCMIN_PER_DEG
+            dy_am = dy_deg * ARCMIN_PER_DEG
+            sep_am = np.hypot(dx_am, dy_am)
+            bearing_ij = np.arctan2(dx_am, dy_am)      # rad, 0=N, 90=E
+            bearing_ji = np.arctan2(-dx_am, -dy_am)
+
+            # Directional radii along the center-center line
+            ri_dir = _dir_radius_arcmin(a_arc[ii],         b_arc[ii],         pa_rad[ii],         bearing_ij)
+            rj_dir = _dir_radius_arcmin(a_arc[ii+1:],      b_arc[ii+1:],      pa_rad[ii+1:],      bearing_ji)
+
+            # Overlap condition: separation <= sum of directional radii
+            touches = sep_am <= (ri_dir + rj_dir)
+            if np.any(touches):
+                overlapped[ii] = True
+                overlapped[ii+1:][touches] = True
+
+        if np.any(overlapped):
+            cat['SAMPLE'][I[overlapped]] |= OVERLAP_BIT
+
+
 def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
     from astropy.table import Column
     from desiutil.dust import SFDMap
-    from SGA.geometry import choose_geometry
+    from SGA.geometry import choose_geometry, in_ellipse_mask, ellipses_overlap
     from SGA.SGA import sga2025_name, SAMPLE, SGA_version
     from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
     from SGA.io import radec_to_groupname
@@ -3570,8 +3676,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     out = vstack((out1, out2))
     #del out1, out2
 
-    print('FIXME -- add a blended bit!')
-
     # assign SGAGROUP from GROUP_NAME and check for duplicates
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
     out.add_column(groupname, name='SGAGROUP', index=1)
@@ -3614,6 +3718,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         strip_groups = np.unique(strip_groups)
         log.info(f"Stripped region bits (kept groups) for {len(strip_groups):,d} groups:")
         log.info(f"  {','.join(strip_groups)}")
+
+    # For each unique group, assign the OVERLAP sample bit.
+    set_overlap_bit(out, SAMPLE)
 
     # one more check!
     try:

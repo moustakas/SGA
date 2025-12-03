@@ -27,6 +27,7 @@ SAMPLE = dict(
     GCLPNE = 2**2,   # in a globular cluster or PNe mask (implies --no-force-gaia)
     NEARSTAR = 2**3, # STARFDIST < 1.2
     INSTAR = 2**4,   # STARFDIST < 0.5
+    OVERLAP = 2**5,  # initial ellipse overlaps another (SGA) ellipse
 )
 
 OPTMASKBITS = dict(
@@ -94,13 +95,17 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # tons of VI results
         version = 'v0.21'
+
+        # VI of groups with overlapping ellipses
+        #version = 'v0.22'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
         #version = 'v0.11' # parent_version = v0.10 --> v0.11
         #version = 'v0.12' # parent_version = v0.11 --> v0.12
-        #version = 'v0.20'  # parent_version = v0.12 --> v0.20
-        version = 'v0.21'  # parent_version = v0.20 --> v0.21
+        #version = 'v0.20' # parent_version = v0.12 --> v0.20
+        version = 'v0.21' # parent_version = v0.20 --> v0.21
+        #version = 'v0.22'  # parent_version = v0.21 --> v0.22
     return version
 
 
@@ -2662,7 +2667,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         refindx = np.delete(np.arange(nsample), iobj)
         for indx in refindx:
             [refbx, refby, refsma, refba, refpa] = geo_final[indx, :]
-            refsma = max(max(refsma, SMA_MASK_MIN_PIX), sample['SMA_MASK'][refindx] / opt_pixscale)
+            refsma = max(max(refsma, SMA_MASK_MIN_PIX), sample['SMA_MASK'][indx] / opt_pixscale)
             Iclose = ellipses_overlap(bx, by, sma_mask, ba, pa,
                                       refbx, refby, refsma, refba, refpa)
             if Iclose:
