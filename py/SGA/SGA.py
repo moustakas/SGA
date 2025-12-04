@@ -1823,9 +1823,9 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         FMAJOR=0.05, ref_factor=1.0, moment_method='rms',
-                         maxshift_arcsec=MAXSHIFT_ARCSEC, radial_power=0.7,
-                         SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
+                         FMAJOR_geo=0.01, FMAJOR_final=None, ref_factor=1.0,
+                         moment_method='rms', maxshift_arcsec=MAXSHIFT_ARCSEC,
+                         radial_power=0.7, SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True,
                          use_radial_weight_for_overlaps=False, use_tractor_geometry=True,
@@ -2054,6 +2054,20 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             galsrcs = None
 
         return galsrcs, opt_galmask, opt_models
+
+
+    def _mask_edges(mask, frac=0.1):
+        # Mask a XX% border.
+        sz = mask.shape
+        edge = int(frac*sz[0])
+        mask[:edge, :] = True
+        mask[:, :edge] = True
+        mask[:, sz[0]-edge:] = True
+        mask[sz[0]-edge:, :] = True
+
+
+    if FMAJOR_final is None:
+        FMAJOR_final = FMAJOR_geo
 
 
     nsample = len(sample)
@@ -2343,6 +2357,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
 
+            # mask edges aggressively to not bias our 'moment' geometry
+            _mask_edges(iter_brightstarmask)
+
             # Build a galaxy mask from extended sources, split into
             # "major" and "minor" based on flux ratio relative to the
             # SGA source.
@@ -2357,7 +2374,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 flux_sga = sample['OPTFLUX'][iobj]
                 major_mask, minor_mask = _compute_major_minor_masks(
                     flux_sga, allgalsrcs, galsrcs_optflux,
-                    FMAJOR, objsrc, use_tractor_position_obj,
+                    FMAJOR_geo, objsrc, use_tractor_position_obj,
                     arcsec_between)
 
                 # Major companions: mask their flux everywhere (inside and out).
@@ -2589,7 +2606,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             flux_sga = sample['OPTFLUX'][iobj]
             major_mask, minor_mask = _compute_major_minor_masks(
                 flux_sga, allgalsrcs, galsrcs_optflux,
-                FMAJOR, objsrc, use_tractor_position_obj,
+                FMAJOR_final, objsrc, use_tractor_position_obj,
                 arcsec_between)
 
             if np.any(major_mask):
@@ -2679,7 +2696,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if flux_sga > 0 and len(allgalsrcs) > 0:
             major_mask, _ = _compute_major_minor_masks(
                 flux_sga, allgalsrcs, galsrcs_optflux,
-                FMAJOR, objsrc, use_tractor_position_obj,
+                FMAJOR_final, objsrc, use_tractor_position_obj,
                 arcsec_between)
 
             if np.any(major_mask):
@@ -2793,11 +2810,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
 def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
-                   sort_by_flux=True, run='south', niter_geometry=2,
-                   pixscale=0.262, galex_pixscale=1.5, unwise_pixscale=2.75,
-                   galex=True, unwise=True, mask_nearby=None, verbose=False,
-                   qaplot=False, cleanup=False, build_mask=True, read_jpg=False,
-                   skip_ellipse=False, htmlgalaxydir=None):
+                   sort_by_flux=True, run='south', pixscale=0.262,
+                   galex_pixscale=1.5, unwise_pixscale=2.75,
+                   galex=True, unwise=True, verbose=False, read_jpg=False,
+                   skip_ellipse=False):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
 
@@ -2905,6 +2921,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
         return sample, samplesrcs, tractor
 
+
+    err = 1 # assume success!
 
     # Dictionary mapping between optical filter and filename coded up in
     # coadds.py, galex.py, and unwise.py, which depends on the project.
@@ -3092,8 +3110,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     sample, samplesrcs, tractor = _read_sample(opt_refband, tractor=tractor)
 
-    err = 1 # assume success!
-
     if skip_ellipse:
         # Populate columns which would otherwise be added in
         # build_multiband_mask. NB: RA_TRACTOR,DEC_TRACTOR stay zero!
@@ -3167,20 +3183,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         # Read the basic imaging data and masks and build the multiband
         # masks.
         data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
-
-        if build_mask:
-            try:
-                data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
-                                                    qaplot=qaplot, cleanup=cleanup,
-                                                    mask_nearby=mask_nearby,
-                                                    niter_geometry=niter_geometry,
-                                                    htmlgalaxydir=htmlgalaxydir)
-            except:
-                err = 0
-                log.critical(f'Exception raised on {galaxydir}/{galaxy}')
-                import traceback
-                traceback.print_exc()
-
 
     # add MW dust extinction
     for filt in data['all_bands']: # NB: all bands

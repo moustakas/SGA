@@ -43,6 +43,9 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=902 --version=v0.11 # PSF / in group
 
 
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-testbricks-v0.21 --final-sample --region=dr11-south --vi-sample=1 --version=v0.21
+
+
 """
 
 import pdb # for debugging
@@ -528,7 +531,10 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         txtdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/txt'
         viewdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/viewer'
 
-        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+        print('HACK!!!!')
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-testbricks-v0.21.fits')
+        #samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+
         #regions = fitsio.read(samplefile, 'ELLIPSE', columns='REGION')
         #rows = np.where(regions & REGIONBITS[region] != 0)[0]
         fullsample = Table(fitsio.read(samplefile, 'ELLIPSE'))#, rows=rows))
@@ -564,7 +570,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         if vi_sample == 1:
             # sample 001 - GM=1, in size range, no bits set at all, ellipse clean, not LVD
             diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-            I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
+            I = gm1 & diam_cut & not_LVD & (fullsample['SAMPLE'] == 0)
+            #I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
             fullsample = fullsample[I]
             sample = fullsample
         elif vi_sample == 2:
@@ -683,6 +690,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         os.makedirs(qadir, exist_ok=True)
     if txtdir and not os.path.isdir(txtdir):
         os.makedirs(txtdir, exist_ok=True)
+    if viewdir and not os.path.isdir(viewdir):
+        os.makedirs(viewdir, exist_ok=True)
 
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
                                              group=not no_groups,

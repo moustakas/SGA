@@ -990,9 +990,9 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
 
     data, tractor, sample, samplesrcs, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
-        niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
+        pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, build_mask=False, read_jpg=True)
+        galex=galex, read_jpg=True)
 
     multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
                       barlabel=barlabel, clobber=clobber)

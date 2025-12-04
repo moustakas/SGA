@@ -379,12 +379,12 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
 
         mask = binary_dilation(mask, iterations=2)
 
-        # Mask a XX% border.
-        edge = int(0.02*sz[0])
-        mask[:edge, :] = True
-        mask[:, :edge] = True
-        mask[:, sz[0]-edge:] = True
-        mask[sz[0]-edge:, :] = True
+        ## Mask a XX% border.
+        #edge = int(0.1*sz[0])
+        #mask[:edge, :] = True
+        #mask[:, :edge] = True
+        #mask[:, sz[0]-edge:] = True
+        #mask[sz[0]-edge:, :] = True
 
         # Robustly estimate the sky-sigma; we do our own source
         # detection and segmentation here because the Tractor model

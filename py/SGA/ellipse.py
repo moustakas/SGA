@@ -1410,7 +1410,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=False,#True,
+                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=False,
                          nmonte=75, seed=42, verbose=False, skip_ellipse=False,
                          nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
@@ -1441,12 +1441,33 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
     data, tractor, sample, samplesrcs, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
-        niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
-        unwise_pixscale=unwise_pixscale, mask_nearby=mask_nearby,
-        unwise=unwise, galex=galex, verbose=verbose, qaplot=False,
-        cleanup=False, skip_ellipse=skip_ellipse, htmlgalaxydir=htmlgalaxydir)
+        pixscale=pixscale, galex_pixscale=galex_pixscale,
+        unwise_pixscale=unwise_pixscale, unwise=unwise, galex=galex,
+        verbose=verbose, skip_ellipse=skip_ellipse)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
+        return err
+
+    FMAJOR_geo = 0.01
+    FMAJOR_final = 0.1
+
+    try:
+        err = 1
+
+        # mask aggressively to determine the geometry
+        data, sample = build_multiband_mask(
+            data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
+            mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
+            mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
+
+    except:
+        err = 0
+        log.critical(f'Exception raised on {galaxydir}/{galaxy}')
+        import traceback
+        traceback.print_exc()
+
+    if err == 0:
+        log.warning(f'Problem building image masks for {galaxydir}/{galaxy}')
         return err
 
     # special case: completely empty Tractor catalog (e.g.,
@@ -1528,20 +1549,17 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 sma_mask_arcsec = max(sma_mask_arcsec, r26_arcsec)
 
             sample['SMA_MASK'][iobj] = sma_mask_arcsec
-            if update_geometry:
-                # Case A: let build_multiband_mask compute geometry
-                # from the table; update SMA_MOMENT in arcsec and DO
-                # NOT pass input_geo_initial.
-                # sample['SMA_MASK'][iobj] = sma_mask_arcsec
-                pass
-            else:
-                # Case B: pass explicit geometry to build_multiband_mask.
+            if not update_geometry:
+                # pass explicit/fixed geometry to build_multiband_mask
                 input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba_mom, pa_mom]
 
+        # pull back on the masking for the final iteration
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
-                                            mask_nearby=mask_nearby,
-                                            niter_geometry=niter_geometry, qaplot=qaplot,
+                                            mask_nearby=mask_nearby, qaplot=qaplot,
+                                            FMAJOR_geo=FMAJOR_geo, FMAJOR_final=FMAJOR_final,
+                                            mask_minor_galaxies=False,
+                                            niter_geometry=niter_geometry,
                                             htmlgalaxydir=htmlgalaxydir)
 
         # ellipse-fit over objects and then datasets
