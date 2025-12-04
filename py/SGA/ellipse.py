@@ -1410,7 +1410,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=True,
+                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=False,#True,
                          nmonte=75, seed=42, verbose=False, skip_ellipse=False,
                          nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
@@ -1488,8 +1488,10 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
         if update_geometry:
             input_geo_initial = None
+            niter_geometry = 1 # 2
         else:
             input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
+            niter_geometry = 1 # not used by build_multiband_mask
 
         #sma_moment0 = sample['SMA_MOMENT'].copy() # original values
         for iobj, obj in enumerate(sample):
@@ -1516,27 +1518,30 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             # merge R26 with the existing SMA_MASK in arcsec
             sma_moment_arcsec = obj['SMA_MOMENT']
             sma_mask_arcsec = obj['SMA_MASK']
+
+            log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
+                     f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
+
             if sma_mask_arcsec <= 0.:
                 sma_mask_arcsec = r26_arcsec
             else:
                 sma_mask_arcsec = max(sma_mask_arcsec, r26_arcsec)
 
-            log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
-                     f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
-
+            sample['SMA_MASK'][iobj] = sma_mask_arcsec
             if update_geometry:
                 # Case A: let build_multiband_mask compute geometry
                 # from the table; update SMA_MOMENT in arcsec and DO
                 # NOT pass input_geo_initial.
-                sample['SMA_MASK'][iobj] = sma_mask_arcsec
+                # sample['SMA_MASK'][iobj] = sma_mask_arcsec
+                pass
             else:
                 # Case B: pass explicit geometry to build_multiband_mask.
-                input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba, pa]
+                input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba_mom, pa_mom]
 
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
                                             mask_nearby=mask_nearby,
-                                            niter_geometry=2, qaplot=qaplot,
+                                            niter_geometry=niter_geometry, qaplot=qaplot,
                                             htmlgalaxydir=htmlgalaxydir)
 
         # ellipse-fit over objects and then datasets

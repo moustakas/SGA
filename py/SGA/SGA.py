@@ -930,10 +930,6 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         tractor_sga = vstack(tractor_sga)
         tractor = vstack((tractor, tractor_sga))
 
-    # FIXME!
-    log.warning('LOOP THROUGH THE FULLSAMPLE COLUMNS AND UPDATE ELLIPSE (e.g., REGION bits may have changed!)')
-
-
     return ellipse, tractor
 
 
@@ -1827,7 +1823,7 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         FMAJOR=0.1, ref_factor=1.0, moment_method='rms',
+                         FMAJOR=0.05, ref_factor=1.0, moment_method='rms',
                          maxshift_arcsec=MAXSHIFT_ARCSEC, radial_power=0.7,
                          SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
@@ -2194,6 +2190,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # are we allowed to change the geometry in this call?
     geometry_mode = (input_geo_initial is None)
+
+    #sample['ELLIPSEMODE'] |= ELLIPSEMODE['MOMENTPOS'] # for testing
 
     # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
