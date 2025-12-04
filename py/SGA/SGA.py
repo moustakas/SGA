@@ -1661,15 +1661,16 @@ def _compute_major_minor_masks(flux_sga, allgalsrcs, galsrcs_optflux,
 
     R_flux = galsrcs_optflux / flux_sga
     major_mask = (R_flux >= FMAJOR)
+    minor_mask = ~major_mask
 
     # If we have Tractor geometry and are using Tractor positions,
-    # optionally ignore “majors” that are essentially the SGA itself.
+    # optionally ignore all sources that may be a shred of the SGA
+    # itself.
     if (objsrc is not None) and use_tractor_position_obj:
         sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec,
                                     allgalsrcs.ra, allgalsrcs.dec)
         major_mask &= (sep_arcsec > objsrc.shape_r)
 
-    minor_mask = ~major_mask
     return major_mask, minor_mask
 
 
@@ -2617,6 +2618,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     mask_allgals=True)
                 opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
+            #import matplotlib.pyplot as plt
+            #plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x')
+            #plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10)
+            #plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=15, color='red')
+            #plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=15, color='blue')
+            #plt.savefig('ioannis/tmp/junk.png')
             if np.any(minor_mask) and mask_minor_galaxies:
                 _, galmask_minor, opt_models_obj = update_galmask(
                     allgalsrcs[minor_mask], bx, by,
