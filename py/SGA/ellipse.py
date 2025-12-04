@@ -1454,7 +1454,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     try:
         err = 1
 
-        # mask aggressively to determine the geometry
+        # mask aggressively to determine the geometry; use FMAJOR_geo
+        # plus mask_minor_galaxies=True (outside the ellipse)
         data, sample = build_multiband_mask(
             data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
             mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,

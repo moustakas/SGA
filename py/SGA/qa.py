@@ -88,9 +88,8 @@ def sbprofile_colors():
 def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
              n_samples=1000):
     #from astropy.visualization import simple_norm
-    from astropy.visualization import AsinhStretch
-    from astropy.visualization import ImageNormalize
-    from astropy.visualization import PercentileInterval
+    from astropy.visualization import (AsinhStretch, ImageNormalize,
+                                       PercentileInterval)
     #from astropy.visualization import ZScaleInterval
 
     stretch = AsinhStretch(a=a)
@@ -104,12 +103,24 @@ def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
 
 
 def matched_norm(data, model, a=0.9, percentile=95.):
+    # expects a masked array for data!
+
+    import matplotlib.colors as mcolors
+    from astropy.visualization import AsinhStretch, PercentileInterval
+
+    mask = data.mask
+
+    d = np.asarray(data[~mask]).ravel()
+    m = np.asarray(model).ravel()
+    vals = np.concatenate([d, m])
+
     p = PercentileInterval(percentile)
-    vmin_d, vmax_d = p.get_limits(data)
-    vmin_m, vmax_m = p.get_limits(model)
-    vmin = min(vmin_d, vmin_m)
-    vmax = max(vmax_d, vmax_m)
-    return ImageNormalize(vmin=vmin, vmax=vmax, stretch=AsinhStretch(a=a), clip=True)
+    vmin, vmax = p.get_limits(vals)
+    S = AsinhStretch(a=a)
+    svmin, svmax = S(np.array([vmin, vmax], dtype=float))
+    norm = mcolors.Normalize(vmin=float(svmin), vmax=float(svmax), clip=True)
+
+    return S, norm
 
 
 def overplot_ellipse(major_axis_arcsec, ba, pa, x0, y0,

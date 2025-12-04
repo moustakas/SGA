@@ -170,6 +170,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     """Diagnostic QA for the output of build_multiband_mask.
 
     """
+    import numpy.ma as ma
     import matplotlib.pyplot as plt
     from matplotlib.cm import get_cmap
     import matplotlib.gridspec as gridspec
@@ -219,6 +220,8 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
 
     cmap = plt.cm.cividis
     cmap.set_bad('white')
+    #cmap = plt.cm.get_cmap('cividis').copy()
+    #cmap.set_bad((1, 1, 1, 1)) # solid white
 
     cmap1 = get_cmap('tab20') # or tab20b or tab20c
     colors1 = [cmap1(i) for i in range(20)]
@@ -293,22 +296,23 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
         wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images[iobj, :, :], axis=0)
         wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
         wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
-        wimg[wimg == 0.] = np.nan
+        #wimg[wmask] = np.nan
+        #wmask = wimg == 0.
+        wimg = ma.masked_array(wimg, mask=wimg==0., fill_value=np.nan)
 
         wmodel = np.sum(opt_invvar * opt_models[iobj, :, :, :], axis=0)
         wnorm = np.sum(opt_invvar, axis=0)
         wmodel[wnorm > 0.] /= wnorm[wnorm > 0.] / pixscale**2 # [nanomaggies/arcsec**2]
 
-        try:
-            #norm = matched_norm(wimg, wmodel)
-            norm = get_norm(wimg)
-        except:
-            norm = None
-        ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
-                             norm=norm)
-        norm = get_norm(wmodel)
-        ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
-                             norm=norm)
+        S, norm = matched_norm(wimg, wmodel)
+        #norm = matched_norm(wimg, wmodel)
+
+        #cmap = plt.cm.get_cmap('cividis').copy()
+        #cmap.set_bad('white')
+        ax[1+iobj, 0].imshow(S(wimg), cmap=cmap, origin='lower',
+                             interpolation='none', norm=norm)
+        ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower',
+                             interpolation='none', norm=norm)
         #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
         #pdb.set_trace()
         #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
