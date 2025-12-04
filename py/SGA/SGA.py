@@ -2679,7 +2679,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         # Satellite bit.
         if len(overlapping_indices) > 0:
             max_sma_neighbor = max(geo_final[jobj, 2] for jobj in overlapping_indices)
-            if sma_i < SATELLITE_FRAC * max_sma_neighbor:
+            if sma < SATELLITE_FRAC * max_sma_neighbor:
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['SATELLITE']
 
         # Blended bit.

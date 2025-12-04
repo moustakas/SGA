@@ -1,0 +1,4 @@
+# This file contains the set of objects that should use moment, not
+# Tractor centers during ellipse-fitting.
+objname,comment
+UM 461,Famous dwarf

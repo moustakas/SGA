@@ -569,6 +569,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
         if vi_sample == 1:
             # sample 001 - GM=1, in size range, no bits set at all, ellipse clean, not LVD
+            print('HACK!')
             diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
             I = gm1 & diam_cut & not_LVD & (fullsample['SAMPLE'] == 0)
             #I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
@@ -576,8 +577,13 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             sample = fullsample
         elif vi_sample == 2:
             # sample 002 - GM=1, in size range, ellipse clean, at least one of {MCLOUDS,GCLPNE,NEARSTAR,INSTAR} set, and not LVD
-            diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-            I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
+            #diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
+            #I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
+            print('HACK!')
+            sort_by_groupname = True
+            _, rem = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5,
+                                         diamcolumn=diamcolumn)
+            I = (gm1 & (fullsample[diamcolumn] < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem['GROUP_NAME'])
             fullsample = fullsample[I]
             sample = fullsample
         elif vi_sample == 3:
