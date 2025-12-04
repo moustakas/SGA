@@ -27,13 +27,15 @@ FITMODE = dict(
 # SGA fitting modes
 ELLIPSEMODE = dict(
     FIXGEO = 2**0,      # fix ellipse geometry
-    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting
+    RESOLVED = 2**1,    # no Tractor catalogs or ellipse-fitting (always implies FIXGEO)
     FORCEPSF = 2**2,    # force PSF source detection and photometry within the SGA mask;
-                        # subtract but do not threshold-mask Gaia stars
-    FORCEGAIA = 2**3,   # force PSF source detection and photometry within the SGA mask;
+    FORCEGAIA = 2**3,   # force Gaia source detection and photometry within the whole field
     LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
     MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
                         # mask (e.g., within a cluster environment)
+    MOMENTPOS = 2**6,   # use the light-weighted (not Tractor) center
+    TRACTORGEO = 2**7,  # use the Tractor (not light-weighted) geometry
+    RADWEIGHT = 2**8,   # derive the moment geometry after weighting radially as r^1.5
 )
 
 ELLIPSEBIT = dict(
@@ -41,6 +43,11 @@ ELLIPSEBIT = dict(
     BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
     LARGESHIFT = 2**2,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
     LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
+    MAJORGAL = 2**4,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
+    OVERLAP = 2**5,            # any part of the initial SGA ellipse overlaps another SGA ellipse
+    SATELLITE = 2**6,          # satellite of another larger galaxy
+    TRACTORGEO = 2**7,         # used the Tractor (not light-weighted) geometry
+    RADWEIGHT = 2**8,          # moment geometry derived using radial weighting
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
@@ -881,11 +888,12 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
                             sma_array_arcsec[I], mu=mu, mu_err=mu_err, mu_iso=thresh,
                             nmonte=nmonte, sky_sigma=0.02, smooth_win=3, random_state=seed)
                         if res['lower_limit']:
-                            log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
+                            if thresh == 26.:
+                                log.warning(f'mu({filt}) never reaches {thresh:.0f} mag/arcsec2.')
                         else:
                             if np.isfinite(res['a_iso']) and np.isfinite(res['a_iso_err']):
-                                log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
-                                          f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
+                                #log.debug(f"{filt}: R{thresh:.0f} = {res['a_iso']:.2f} ± " + \
+                                #          f"{res['a_iso_err']:.2f}")# [success={res['success_rate']:.2%}]")
                                 results[f'R{thresh:.0f}_{filt.upper()}'] = res['a_iso']         # [arcsec]
                                 results[f'R{thresh:.0f}_ERR_{filt.upper()}'] = res['a_iso_err'] # [arcsec]
                             else:
@@ -1217,31 +1225,6 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                     ap.plot(color='k', lw=1, ax=xx)
                 refap.plot(color=colors2[1], lw=2, ls='--', ax=xx)
 
-                ## col 1 - linear SB profiles
-                #xx = ax[idata, 1]
-                #for filt in bands:
-                #    xx.fill_between(sbprofiles_obj['SMA']**0.25,
-                #                    sbprofiles_obj[f'sb_{filt}']-sbprofiles_obj[f'sb_err_{filt}'],
-                #                    sbprofiles_obj[f'sb_{filt}']+sbprofiles_obj[f'sb_err_{filt}'],
-                #                    label=filt, alpha=0.6)
-                #xx.set_xlim(ax[0, 1].get_xlim())
-                #if idata == ndataset-1:
-                #    xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
-                #else:
-                #    xx.set_xticks([])
-                #
-                #xx.relim()
-                #xx.autoscale_view()
-                #
-                #xx_twin = xx.twinx()
-                #xx_twin.set_ylim(xx.get_ylim())
-                #kill_left_y(xx)
-                #
-                #if idata == 1:
-                #    xx_twin.set_ylabel(r'Surface Brightness (nanomaggies arcsec$^{-2}$)')
-                #
-                #xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
-
                 # col 1 - mag SB profiles
                 if linear:
                     yminmax = [1e8, -1e8]
@@ -1307,23 +1290,10 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                 xx.invert_yaxis()
                 xx_twin.invert_yaxis()
 
-                #y0, y1 = xx.get_ylim()
-                #span_dec = abs(np.log10(y1) - np.log10(y0))
-                #if span_dec < 1.:
-                #    # within ~one decade: 1–2–5 per decade
-                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
-                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())  # no minor labels
-                #else:
-                #    # multiple decades: decades only
-                #    xx_twin.yaxis.set_major_locator(ticker.LogLocator(base=10))
-                #    xx_twin.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:g}'))
-                #    xx_twin.yaxis.set_minor_formatter(ticker.NullFormatter())
-
                 if idata == 1:
                     xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
 
-                xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--')
+                xx.axvline(x=semia**0.25, color=colors2[1], lw=2, ls='--', label=f'R(mom)={semia:.2f} arcsec')
                 hndls, _ = xx.get_legend_handles_labels()
                 if hndls:
                     xx.legend(loc='upper right', fontsize=8)
@@ -1403,8 +1373,8 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
                 sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures) # [arcsec]
 
                 opt_sma_array_pix, info = build_sma_opt(
-                    s95_pix=semia_pix, ba=ba, psf_fwhm_pix=psf_fwhm_pix,
-                    inner_step_pix=1., min_pixels_per_annulus=25,
+                    s95_pix=max(semia_pix, 3*psf_fwhm_pix), ba=ba, psf_fwhm_pix=psf_fwhm_pix,
+                    inner_step_pix=1., min_pixels_per_annulus=15,
                     frac_step=0.15, amax_factor=3.)
                 sma_array_pix = np.copy(opt_sma_array_pix)
             else:
@@ -1439,8 +1409,8 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
                          unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
-                         unwise_pixscale=2.75, galex=True, unwise=True,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+                         unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
+                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=False,
                          nmonte=75, seed=42, verbose=False, skip_ellipse=False,
                          nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
@@ -1471,12 +1441,34 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
     data, tractor, sample, samplesrcs, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
-        niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
-        unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, verbose=verbose, qaplot=False, cleanup=False,
-        skip_ellipse=skip_ellipse, htmlgalaxydir=htmlgalaxydir)
+        pixscale=pixscale, galex_pixscale=galex_pixscale,
+        unwise_pixscale=unwise_pixscale, unwise=unwise, galex=galex,
+        verbose=verbose, skip_ellipse=skip_ellipse)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
+        return err
+
+    FMAJOR_geo = 0.01
+    FMAJOR_final = 0.1
+
+    try:
+        err = 1
+
+        # mask aggressively to determine the geometry; use FMAJOR_geo
+        # plus mask_minor_galaxies=True (outside the ellipse)
+        data, sample = build_multiband_mask(
+            data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
+            mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
+            mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
+
+    except:
+        err = 0
+        log.critical(f'Exception raised on {galaxydir}/{galaxy}')
+        import traceback
+        traceback.print_exc()
+
+    if err == 0:
+        log.warning(f'Problem building image masks for {galaxydir}/{galaxy}')
         return err
 
     # special case: completely empty Tractor catalog (e.g.,
@@ -1488,24 +1480,24 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     if skip_ellipse:
         results_obj = []
         sbprofiles_obj = []
+
         for iobj, obj in enumerate(sample):
+            sma_moment_arcsec = obj['SMA_MOMENT']
+            sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures)
+
             results_dataset = []
             sbprofiles_dataset = []
-            for idata, dataset in enumerate(datasets):
+            for dataset in datasets:
                 if dataset == 'opt':
-                    allbands = data['all_opt_bands'] # always griz in north & south
-                    sma_moment_arcsec = obj['SMA_MOMENT']  # [arsec]
-                    sma_apertures_arcsec = sma_moment_arcsec * np.array(apertures) # [arcsec]
+                    allbands = data['all_opt_bands']
                 else:
                     allbands = data[f'{dataset}_bands']
 
-                results_dataset1 = results_datamodel(obj, allbands, dataset, sma_apertures_arcsec, sbthresh)
+                results_dataset1 = results_datamodel(obj, allbands, dataset,sma_apertures_arcsec, sbthresh)
                 sbprofiles_dataset1 = Table()
                 #sbprofiles_dataset1 = sbprofiles_datamodel(sma_array*pixscale, allbands)
                 results_dataset.append(results_dataset1)
                 sbprofiles_dataset.append(sbprofiles_dataset1)
-            results_obj.append(results_dataset)
-            sbprofiles_obj.append(sbprofiles_dataset)
 
         results = list(zip(*results_obj))       # [ndatasets][nobj]
         sbprofiles = list(zip(*sbprofiles_obj)) # [ndatasets][nobj]
@@ -1516,39 +1508,66 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
             nmonte=0, seed=seed, debug=False)
 
-        GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
-        input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
+        if update_geometry:
+            input_geo_initial = None
+            niter_geometry = 1 # 2
+        else:
+            input_geo_initial = np.zeros((len(sample), 5)) # [bx,by,sma,ba,pa]
+            niter_geometry = 1 # not used by build_multiband_mask
 
+        #sma_moment0 = sample['SMA_MOMENT'].copy() # original values
         for iobj, obj in enumerate(sample):
-            [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
+            bx, by, sma_mom, ba_mom, pa_mom = [
+                obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
 
-            # if fixgeo, use the moment geometry
-            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-                input_geo_initial[iobj, :] = [bx, by, sma/pixscale, ba, pa]
-            else:
-                # estimate R(26)
-                tab = Table(obj['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT', 'ELLIPSEMODE'])
+            # if FIXGEO or TRACTORGEO use the input geometry
+            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
+                if not update_geometry:
+                    input_geo_initial[iobj, :] = [bx, by, sma_mom/pixscale, ba_mom, pa_mom]
+                continue
+
+            # estimate R(26) from first-pass profiles
+            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE'])
+            for thresh in sbthresh:
                 for filt in bands:
-                    for thresh in sbthresh:
-                        col = f'R{thresh:.0f}_{filt.upper()}'
-                        colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
-                        tab[col] = results[0][iobj][col]
-                        tab[colerr] = results[0][iobj][colerr]
-                radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
-                #print(tab)
-                #print(radius, radius_err, radius_ref, radius_weight)
-                input_geo_initial[iobj, :] = [bx, by, radius[0]/pixscale, ba, pa]
+                    col = f'R{thresh:.0f}_{filt.upper()}'
+                    colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
+                    tab[col] = results[0][iobj][col]
+                    tab[colerr] = results[0][iobj][colerr]
+            radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
+            r26_arcsec = float(radius[0])
 
+            # merge R26 with the existing SMA_MASK in arcsec
+            sma_moment_arcsec = obj['SMA_MOMENT']
+            sma_mask_arcsec = obj['SMA_MASK']
+
+            log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
+                     f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
+
+            if sma_mask_arcsec <= 0.:
+                sma_mask_arcsec = r26_arcsec
+            else:
+                sma_mask_arcsec = max(sma_mask_arcsec, r26_arcsec)
+
+            sample['SMA_MASK'][iobj] = sma_mask_arcsec
+            if not update_geometry:
+                # pass explicit/fixed geometry to build_multiband_mask
+                input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba_mom, pa_mom]
+
+        # pull back on the masking for the final iteration
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
-                                            galmask_margin=0., niter_geometry=1,
-                                            qaplot=qaplot, htmlgalaxydir=htmlgalaxydir)
+                                            mask_nearby=mask_nearby, qaplot=qaplot,
+                                            FMAJOR_geo=FMAJOR_geo, FMAJOR_final=FMAJOR_final,
+                                            mask_minor_galaxies=False,
+                                            niter_geometry=niter_geometry,
+                                            htmlgalaxydir=htmlgalaxydir)
 
         # ellipse-fit over objects and then datasets
         results, sbprofiles = wrap_multifit(
             data, sample, datasets, unpack_maskbits_function,
             sbthresh, apertures, SGAMASKBITS, mp=mp,
-            nmonte=nmonte, seed=seed, debug=qaplot)
+            nmonte=nmonte, seed=seed, debug=False)#qaplot)
 
         if qaplot:
             qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,

@@ -34,6 +34,18 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=6
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=7
 
+# some tests
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=999 --version=v0.11
+
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=900 --version=v0.11 # GCLPNE
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=901 --version=v0.11 # PSF / isolated
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=902 --version=v0.11 # PSF / in group
+
+
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-testbricks-v0.21 --final-sample --region=dr11-south --vi-sample=1 --version=v0.21
+
+
 """
 
 import pdb # for debugging
@@ -280,17 +292,20 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                         xx.spines[spine].set_color('white')
 
                     if len(tractor) > 0:
-                        I = ((tractor['type'] != 'PSF') * (tractor['type'] != 'DUP') *
-                             (tractor['shape_r'] > 0.5))
+                        I = (tractor['ref_cat'] == 'L4')
+                        #I = ((tractor['type'] != 'PSF') * (tractor['type'] != 'DUP') *
+                        #     (tractor['shape_r'] > 0.5))
                         #I = tractor['shape_r'] >= 0.
                         #I = tractor['shape_r'] > 1.
-                        if np.sum(I) > 0 and False:
+                        if np.sum(I) > 0:# and False:
                             if np.sum(I) > 50:
                                 alpha = 0.5
+                                s = 10
                             else:
-                                alpha = 0.9
+                                alpha = 1.0
+                                s = 25
                             xx.scatter(tractor['bx'][I], height-tractor['by'][I],
-                                       marker='x', s=10, color='red', alpha=alpha)
+                                       marker='x', s=s, color='red', alpha=alpha)
 
                         J = np.logical_or(tractor['type'] == 'PSF', tractor['type'] == 'DUP')
                         #print(galaxy[indx[iax]], np.sum(J))
@@ -446,8 +461,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
 
 def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1,
                nperpdf=4096, ncol=4, nrow=2, datadir=None, lvd_resolved=False,
-               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False, vi_sample=None,
-               final_sample=False, no_groups=False, show_tractor_ellipse=True,
+               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False, version=None,
+               vi_sample=None, final_sample=False, no_groups=False, show_tractor_ellipse=True,
                show_initial_ellipse=True, verbose=False, mindiam=0., maxdiam=1e3):
     """
     nperpdf - maximum number of galaxies per pdf
@@ -456,6 +471,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     """
     from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
     from SGA.parent import remove_small_groups
     from SGA.coadds import REGIONBITS
 
@@ -508,12 +524,17 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         fullsample = sample
 
     elif vi_sample:
-        version = SGA_version()
+        if version is None:
+            version = SGA_version()
         subdir = f'vi-{version}'
         qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/pdf'
         txtdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/txt'
+        viewdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/viewer'
 
-        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+        print('HACK!!!!')
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-testbricks-v0.21.fits')
+        #samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+
         #regions = fitsio.read(samplefile, 'ELLIPSE', columns='REGION')
         #rows = np.where(regions & REGIONBITS[region] != 0)[0]
         fullsample = Table(fitsio.read(samplefile, 'ELLIPSE'))#, rows=rows))
@@ -549,7 +570,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         if vi_sample == 1:
             # sample 001 - GM=1, in size range, no bits set at all, ellipse clean, not LVD
             diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-            I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
+            I = gm1 & diam_cut & not_LVD & (fullsample['SAMPLE'] == 0)
+            #I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
             fullsample = fullsample[I]
             sample = fullsample
         elif vi_sample == 2:
@@ -604,12 +626,43 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             bad_group_names  = uniq_gnames[any_bad]   # at least one member ellipse_bad
 
             if vi_sample == 6:
-                # sample 006 - groups with 2 or more members, ellipse_ok & ~is_LVD
+                # sample 006 - groups with 2 or more members, all ellipse_ok & ~is_LVD
                 fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], good_group_names)]
             elif vi_sample == 7:
-                # sample 007 - groups with 2 or more members, ellipse_bad & ~is_LVD
+                # sample 007 - groups with 2 or more members, any ellipse_bad & ~is_LVD
                 fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], bad_group_names)]
 
+            sample = fullsample[fullsample['GROUP_PRIMARY']]
+        elif (vi_sample >= 900) & (vi_sample < 950):
+            sort_by_groupname = False
+            if vi_sample == 900:
+                I = ((fullsample['SAMPLE'] & SAMPLE['GCLPNE'] != 0) * (fullsample['D26'] > 0.5))
+            elif vi_sample == 901 or vi_sample == 902:
+                fulltractor = Table(fitsio.read(samplefile, 'TRACTOR', columns=['type', 'shape_r']))
+                if vi_sample == 901:
+                    I = ((fulltractor['type'] == 'PSF') * (fullsample['D26'] > 0.5) * (fullsample['GROUP_MULT'] == 1))
+                elif vi_sample == 902:
+                    I = ((fulltractor['type'] == 'PSF') * (fullsample['D26'] > 0.5) * (fullsample['GROUP_MULT'] > 1))
+            fullsample = fullsample[I]
+            sample = fullsample[fullsample['GROUP_PRIMARY']]
+        elif vi_sample > 950:
+            sort_by_groupname = False
+            #I = (((fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0) *
+            #     ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) == 0) *
+            #     (fullsample['D26'] > 0.5))
+            res = Table(fitsio.read(os.path.join(sga_dir(), 'sample', 'vi-v0.11', 'results-vi-v0.11.fits')))
+            if vi_sample == 999:
+                res = res[res['CLASS'] == 'Help!']
+            elif vi_sample == 998:
+                res = res[res['CLASS'] == 'Not a (large) galaxy']
+            elif vi_sample == 997:
+                res = res[res['CLASS'] == 'Bad geometry']
+            elif vi_sample == 996:
+                res = res[res['CLASS'] == 'Bad center']
+            else:
+                raise ValueError('Write me')
+            I = np.isin(fullsample['OBJNAME'], res['OBJNAME'])
+            fullsample = fullsample[I]
             sample = fullsample[fullsample['GROUP_PRIMARY']]
         else:
             raise ValueError('Write me')
@@ -637,6 +690,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         os.makedirs(qadir, exist_ok=True)
     if txtdir and not os.path.isdir(txtdir):
         os.makedirs(txtdir, exist_ok=True)
+    if viewdir and not os.path.isdir(viewdir):
+        os.makedirs(viewdir, exist_ok=True)
 
     galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
                                              group=not no_groups,
@@ -676,7 +731,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                 log.warning(f"Overriding layer={layer}-->ls-dr11-early-v2")
                 layer = 'ls-dr11-early-v2'
 
-            pdb.set_trace()
             do_cutouts(sample[~I][M], layer=layer, group=not no_groups,
                        fits_cutouts=False, maxdiam_arcmin=MAXDIAM, mp=mp,
                        cutoutdir=os.path.join(cutoutdir, region))
@@ -699,9 +753,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     #for ipdf in [70]:#range(npdf):
         # special case the VI work: custom name and write out a text file
         istart = ipdf*nperpdf
-        iend = (ipdf+1)*nperpdf
-        if iend > ngal-1:
-            iend = ngal-1
+        iend = min((ipdf+1)*nperpdf, ngal)
         indx = np.arange(istart, iend)
 
         thisfullsample = fullsample[indx]
@@ -718,6 +770,12 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         if vi_sample:
             pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
             txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
+
+            viewfile = os.path.join(viewdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
+            view = thisfullsample['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA']
+            view.rename_columns(['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+            view['radius'] *= 60./2.
+            view.write(viewfile, overwrite=True)
 
             with open(txtfile, 'w') as F:
                 for obj in thisfullsample['OBJNAME'].value:
@@ -746,6 +804,8 @@ if __name__ == '__main__':
     parser.add_argument('--first', type=int, help='Index of first object to process.')
     parser.add_argument('--last', type=int, help='Index of last object to process.')
     parser.add_argument('--galaxylist', type=str, default=None, help='Comma-separated list of galaxy names to process.')
+
+    parser.add_argument('--version', type=str, default=None, help='SGA version.')
 
     parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
     parser.add_argument('--mindiam', default=0., type=float, help='minimum diameter')
@@ -776,7 +836,7 @@ if __name__ == '__main__':
                last=args.last, galaxylist=args.galaxylist, mp=args.mp,
                lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
                lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd,
-               vi_sample=args.vi_sample, ncol=args.ncol, nrow=args.nrow,
+               version=args.version, vi_sample=args.vi_sample, ncol=args.ncol, nrow=args.nrow,
                nperpdf=args.nperpdf, show_tractor_ellipse=args.show_tractor_ellipse,
                show_initial_ellipse=args.show_initial_ellipse,
                final_sample=args.final_sample, no_groups=args.no_groups,

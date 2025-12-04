@@ -290,6 +290,20 @@ def _process_cluster(members: list[int]) -> np.ndarray:
     return np.asarray(edges, dtype=np.int64)
 
 
+def make_singleton_group(cat, group_id_start=0):
+    out = cat.copy(copy_data=True)
+    n = len(out)
+    names = [radec_to_groupname(out['RA'][k], out['DEC'][k]) for k in range(n)]
+    out['GROUP_ID'] = np.arange(group_id_start, group_id_start+n, dtype=np.int32)
+    out['GROUP_NAME'] = np.array(names, dtype='U10').squeeze()
+    out['GROUP_MULT'] = np.ones(n, dtype=np.int16)
+    out['GROUP_PRIMARY'] = np.ones(n, dtype=bool)
+    out['GROUP_RA'] = out['RA'].astype(np.float64, copy=False)
+    out['GROUP_DEC'] = out['DEC'].astype(np.float64, copy=False)
+    out['GROUP_DIAMETER'] = out['DIAM'].astype(np.float32, copy=False)
+    return out
+
+
 def build_group_catalog(
     cat: Table,
     group_id_start: int = 0,
@@ -312,6 +326,8 @@ def build_group_catalog(
     merge_centers: bool = True,                # merge groups with centers within threshold
     merge_sep_arcsec: float = 52.,             # merge groups closer than this value
     min_group_diam_arcsec: float = 30.,        # minimum group diameter [arcsec]
+    manual_merge_pairs: list[tuple[str, str]] | None = None,
+    name_column: str = "OBJNAME",
 ) -> Table:
     """
     Build a mosaic-friendly group catalog using a hybrid anisotropic rule.
@@ -440,7 +456,31 @@ def build_group_catalog(
                 dsu.union(int(reps[i]), int(reps[j]))
                 j = nxcent[j]
 
-    # Final roots after optional center merge
+    # manually merge certain groups
+    if manual_merge_pairs:
+        # map object names -> row indices (assume names are unique; if not, take first match)
+        names_arr = np.asarray(cat[name_column]).astype(str)
+        index_of = {n: i for i, n in enumerate(names_arr)}
+
+        merged_pairs = 0
+        missing = []
+        for a_name, b_name in manual_merge_pairs:
+            ia = index_of.get(str(a_name))
+            ib = index_of.get(str(b_name))
+            if ia is None or ib is None:
+                missing.append((a_name, b_name))
+                continue
+            dsu.union(int(ia), int(ib))
+            merged_pairs += 1
+
+        if missing:
+            log.warning("manual_merge_pairs: %d pair(s) had missing name(s): %s",
+                        len(missing), missing[:5])
+        if merged_pairs:
+            log.info("manual_merge_pairs: merged %d pair(s) by hand.", merged_pairs)
+
+
+    # Final roots
     roots = np.array([dsu.find(i) for i in range(N)], dtype=np.int64)
     uniq, inv = np.unique(roots, return_inverse=True)
     group_ids = (inv + group_id_start).astype(np.int32, copy=False)

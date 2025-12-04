@@ -14,25 +14,28 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from astropy.table import Table
 from scipy import odr
-from sklearn.linear_model import HuberRegressor
 from importlib import resources
+from dataclasses import dataclass
 
 from SGA.coadds import GRIZ as BANDS
 from SGA.logger import log
+
+
+_CALIB_CACHE = {}
 
 #from SGA.SGA import SBTHRESH
 SBTHRESH = [23, 24, 25, 26]
 #SBTHRESH = [24, 25, 26]
 
-from dataclasses import dataclass
-
-
 warnings.filterwarnings(
     'ignore',
     message='divide by zero encountered in divide',
     category=RuntimeWarning,
-    module='scipy.odr._odrpack'
-)
+    module='scipy.odr._odrpack')
+
+
+def clear_calibration_cache():
+    _CALIB_CACHE.clear()
 
 
 def _as_float(col) -> np.ndarray:
@@ -137,18 +140,32 @@ def save_calibration(cal: Calibration, path: str) -> None:
 
 
 def load_calibration(path: Optional[str] = None) -> Calibration:
-    """Load a Calibration object from a TSV file.
+    """Load a Calibration object from a TSV file, with caching.
     If no path is provided, use the packaged default under SGA/data/SGA2025.
-
     """
+
+    import os
+    from importlib import resources
+
+    # Resolve the calibration file path
     if path is None:
         path = resources.files("SGA").joinpath("data/SGA2025/r26-calibration-coeff.tsv")
-        log.debug(f"Read calibration file: {path}")
 
+    # Normalize to absolute string key for caching
+    key = os.path.abspath(str(path))
+
+    # Cache hit
+    if key in _CALIB_CACHE:
+        #log.debug(f"Loaded cached calibration file: {path}")
+        return _CALIB_CACHE[key]
+
+    # --- Load from disk (your original logic) ---
     lines = [ln.strip() for ln in open(path, "r") if ln.strip()]
     if not lines or not lines[0].startswith("name"):
         raise ValueError(f"Malformed calibration file: {path}")
+
     channels: Dict[str, ChannelCalib] = {}
+
     for ln in lines[1:]:
         name, a, b, tau, sdef, covars_json, c_json = ln.split("\t")
         channels[name] = ChannelCalib(
@@ -161,7 +178,12 @@ def load_calibration(path: Optional[str] = None) -> Calibration:
             sigma_obs_default=(float(sdef) if sdef != "" else None),
         )
 
-    return Calibration(channels=channels, target_name="r26")
+    cal = Calibration(channels=channels, target_name="r26")
+    log.debug(f"Read calibration file: {path}")
+
+    # Store in cache
+    _CALIB_CACHE[key] = cal
+    return cal
 
 
 def _to_log_and_sigma(r: np.ndarray, sigma_r: Optional[np.ndarray]) -> Tuple[np.ndarray, Optional[np.ndarray]]:
@@ -648,13 +670,8 @@ def _infer_one(
     if include_direct_r26 and "r26" in measurements:
         x_lin = measurements["r26"]
         sx_lin = sigmas.get("r26", None)
-        if (
-            np.isfinite(x_lin)
-            and x_lin > 0.0
-            and sx_lin is not None
-            and np.isfinite(sx_lin)
-            and sx_lin > 0.0
-        ):
+        if (np.isfinite(x_lin) and x_lin > 0.0 and sx_lin is not None
+            and np.isfinite(sx_lin) and sx_lin > 0.0):
             yj = float(np.log(x_lin))
             var_j = float((sx_lin / x_lin) ** 2)
             var_j = max(var_j, var_floor_log)
@@ -663,23 +680,14 @@ def _infer_one(
             v_list.append(var_j)
             w_dict["r26"] = w
 
-    # Use calibrated channels with hierarchy:
-    # only channels at the deepest available isophotal threshold,
-    # plus non-threshold channels like 'moment'.
-    for name, ch in cal.channels.items():
-        if name not in measurements:
-            continue
 
-        th = _channel_threshold(name)
+    def _add_channel(name: str):
+        nonlocal y_list, v_list, w_dict
 
-        # Enforce the threshold hierarchy:
-        # if we have any isophotal measurements, ignore shallower ones
-        if deepest_th is not None and th is not None and th < deepest_th:
-            continue  # e.g., if deepest=26, drop 25/24/23; if deepest=25, drop 24/23
-
+        ch = cal.channels[name]
         x_lin = measurements[name]
         if not np.isfinite(x_lin) or x_lin <= 0.0:
-            continue
+            return
 
         x_log = float(np.log(x_lin))
         sx_lin = sigmas.get(name, None)
@@ -711,6 +719,35 @@ def _infer_one(
         y_list.append(yj)
         v_list.append(var_j)
         w_dict[name] = w
+
+    # 1) First pass: only calibrated *isophotal* channels at deepest_th.
+    #    Non-threshold channels like 'moment' are deliberately skipped.
+    if deepest_th is not None:
+        for name, ch in cal.channels.items():
+            if name not in measurements:
+                continue
+            th = _channel_threshold(name)
+
+            # only use isophotal channels at the deepest available threshold
+            if th is None:
+                continue
+            if th < deepest_th:
+                continue
+
+            _add_channel(name)
+
+    # 2) Fallback: if we still have no usable measurements (no r26, no
+    #    deepest-th isophotal channels), allow non-threshold channels
+    #    like 'moment' as "radius of last resort".
+    if not y_list:
+        for name, ch in cal.channels.items():
+            if name not in measurements:
+                continue
+            th = _channel_threshold(name)
+            if th is not None:
+                continue  # only non-threshold channels here (e.g., 'moment')
+
+            _add_channel(name)
 
     if not y_list:
         return np.nan, np.nan, {}
@@ -774,8 +811,7 @@ def infer_best_r26(
         y, sy, wdict = _infer_one(
             meas_i, sig_i, cal,
             covars_row=zi,
-            include_direct_r26=include_direct_r26
-        )
+            include_direct_r26=include_direct_r26)
 
         if np.isfinite(y):
             R = np.exp(y)                         # arcsec (radius)

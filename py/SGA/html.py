@@ -170,6 +170,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     """Diagnostic QA for the output of build_multiband_mask.
 
     """
+    import numpy.ma as ma
     import matplotlib.pyplot as plt
     from matplotlib.cm import get_cmap
     import matplotlib.gridspec as gridspec
@@ -219,6 +220,8 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
 
     cmap = plt.cm.cividis
     cmap.set_bad('white')
+    #cmap = plt.cm.get_cmap('cividis').copy()
+    #cmap.set_bad((1, 1, 1, 1)) # solid white
 
     cmap1 = get_cmap('tab20') # or tab20b or tab20c
     colors1 = [cmap1(i) for i in range(20)]
@@ -293,22 +296,23 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
         wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images[iobj, :, :], axis=0)
         wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
         wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
-        wimg[wimg == 0.] = np.nan
+        #wimg[wmask] = np.nan
+        #wmask = wimg == 0.
+        wimg = ma.masked_array(wimg, mask=wimg==0., fill_value=np.nan)
 
         wmodel = np.sum(opt_invvar * opt_models[iobj, :, :, :], axis=0)
         wnorm = np.sum(opt_invvar, axis=0)
         wmodel[wnorm > 0.] /= wnorm[wnorm > 0.] / pixscale**2 # [nanomaggies/arcsec**2]
 
-        try:
-            #norm = matched_norm(wimg, wmodel)
-            norm = get_norm(wimg)
-        except:
-            norm = None
-        ax[1+iobj, 0].imshow(wimg, cmap=cmap, origin='lower', interpolation='none',
-                             norm=norm)
-        norm = get_norm(wmodel)
-        ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower', interpolation='none',
-                             norm=norm)
+        S, norm = matched_norm(wimg, wmodel)
+        #norm = matched_norm(wimg, wmodel)
+
+        #cmap = plt.cm.get_cmap('cividis').copy()
+        #cmap.set_bad('white')
+        ax[1+iobj, 0].imshow(S(wimg), cmap=cmap, origin='lower',
+                             interpolation='none', norm=norm)
+        ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower',
+                             interpolation='none', norm=norm)
         #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
         #pdb.set_trace()
         #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
@@ -377,19 +381,6 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     fig.savefig(qafile)
     plt.close()
     log.info(f'Wrote {qafile}')
-
-
-def _get_sma_sbthresh(obj, bands):
-    val, label = 0., None
-    for thresh in [26., 25., 24.]:
-        for filt in ['R']:#bands:
-            col = f'R{thresh:.0f}_{filt}'
-            if col in obj.colnames:
-                val = obj[col]
-                label = r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
-                if val > 0.:
-                    return val, label
-    return val, label
 
 
 def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
@@ -759,7 +750,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
     sbcolors = sbprofile_colors()
     cmap2a = get_cmap('Dark2')
     cmap2b = get_cmap('Paired')
-    colors2 = [cmap2a(1), cmap2b(3)]
+    colors2 = [cmap2a(1), cmap2b(3), cmap2a(2)]
     #colors2 = [cmap2(i) for i in range(5)]
 
     for iobj, obj in enumerate(ellipse):
@@ -805,7 +796,9 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
             ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
             ellipse_eps = 1 - obj['BA_MOMENT']
 
+            sma_mask = obj['SMA_MASK'] # [arcsec]
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
+            label_mask = r'$R(mask)='+f'{sma_mask:.1f}'+r'$ arcsec'
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if idata == 0:
                 sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(Table(obj), radius_arcsec=True)
@@ -819,6 +812,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                                        pa=ellipse_pa, sma=sma_moment/pixscale) # sma in pixels
                 refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
                                            refg.sma*(1. - refg.eps), refg.pa)
+                refap_sma_mask = EllipticalAperture((refg.x0, refg.y0), sma_mask/pixscale,
+                                                    sma_mask/pixscale*(1. - refg.eps), refg.pa)
 
                 refap_sma_sbthresh = EllipticalAperture((refg.x0, refg.y0), sma_sbthresh/pixscale,
                                                sma_sbthresh/pixscale*(1. - refg.eps), refg.pa)
@@ -858,6 +853,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
                                             sma*(1. - refg.eps), refg.pa)
                     ap.plot(color='k', lw=1, ax=xx)
                 refap.plot(color=colors2[0], lw=2, ls='--', ax=xx)
+                refap_sma_mask.plot(color=colors2[2], lw=2, ls='-', ax=xx)
                 refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='-', ax=xx)
 
                 # col 1 - mag SB profiles
@@ -933,14 +929,15 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
 
                 if sma_sbthresh > 0.:
                     xx.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
+                xx.axvline(x=sma_mask**0.25, color=colors2[2], lw=2, ls='-', label=label_mask)
                 xx.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
 
                 hndls, _ = xx.get_legend_handles_labels()
                 if hndls:
                     if sma_sbthresh > 0.:
-                        split = -2
+                        split = -3
                     else:
-                        split = -1
+                        split = -2
                     if idata == 0:
                         # split into two legends
                         leg1 = xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
@@ -997,9 +994,9 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
 
     data, tractor, sample, samplesrcs, err = read_multiband_function(
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
-        niter_geometry=2, pixscale=pixscale, galex_pixscale=galex_pixscale,
+        pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, build_mask=False, read_jpg=True)
+        galex=galex, read_jpg=True)
 
     multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
                       barlabel=barlabel, clobber=clobber)

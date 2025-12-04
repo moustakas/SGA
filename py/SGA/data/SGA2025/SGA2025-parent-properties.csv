@@ -5,6 +5,7 @@
 objname,ra,dec,diam,pa,ba,comment
 NGC 4151,-99.,-99.,7.0,-99.,-99.,Extended disk
 NGC 247,-99.,-99.,32.0,-99.,-99.,Extended disk
+NGC 4630,190.630169,3.958581,-99.,-99.,-99.,Better coordinates
 ESO 054-IG 014 NED02,54.2256,-68.8329,-99.,-99.,-99.,Better coordinates
 ESO 116-IG 004 NED02,44.2145,-57.6683,-99.,-99.,-99.,Better coordinates
 ESO 108-IG 002,325.7414,-63.2377,0.34,-99.,-99.,Better coordinates and diameter
@@ -29,3 +30,379 @@ WISEA J024315.37-662538.4,-99.,-99.,1.3,-99.,-99.,Extended envelope
 2MASX J18465170-6318523,-99.,-99.,3.0,-99.,-99.,Extended envelope
 NGC 2325,-99.,-99.,5.0,-99.,-99.,Extended envelope
 WISEA J000553.98-724644.5,-99.,-99.,1.0,-99.,-99.,Extended envelope
+MESSIER 105,-99.,-99.,8.5,-99.,-99.,Extended envelope
+NGC 3384,-99.,-99.,7.5,-99.,-99.,Extended envelope
+CGCG 261-056 NED01,-99.,-99.,0.7,-99.,-99.,Smaller than initial size
+FGC 093A,120.5851,74.4246,0.84,45.,0.15,Very bad initial position
+FGC 107A,141.5384,37.9970,0.55,45.,0.15,Very bad initial position
+ESO 336- G 011,-99.,-99.,-99.,-99.,0.9,Bad b/a
+PGC1065811,1.8566,-3.8711,-99.,-99.,-99.,Better coordinates
+UGC 00570 NED02,-99.,-99.,0.4,-99.,-99.,Smaller than initial size
+ESO 352- G 035,19.465708,-33.156028,-99.,-99.,-99.,Better coordinates
+ESO 052-IG 001 NED01,-99.,-99.,1.2,-99.,-99.,Extended envelope
+WISEA J020423.64-753851.1,-99.,-99.,1.4,-99.,-99.,Extended envelope
+WISEA J024349.08+145322.5,-99.,-99.,1.5,-99.,-99.,Extended envelope
+WISEA J042014.12-512637.5,-99.,-99.,1.5,-99.,-99.,Extended envelope
+2MASS J04201404-5126514,-99.,-99.,1.5,-99.,-99.,Extended envelope
+WISEA J045350.59-514309.6,73.4605,-51.7196,-99.,-99.,-99.,Better coordinates
+WISEA J045349.65+004044.0,-99.,-99.,1.2,-99.,-99.,Extended envelope
+NGC 2305,-99.,-99.,3.2,-99.,-99.,Extended envelope
+2MASX J07081135-4909525,-99.,-99.,1.8,-99.,-99.,Extended envelope
+WISEA J070829.54-491250.6,-99.,-99.,2.2,-99.,-99.,Extended envelope
+2MASX J07141634+1920264,-99.,-99.,0.8,-99.,-99.,Extended envelope
+2MASX J07545738-0222120,-99.,-99.,1.2,-99.,-99.,Extended envelope
+WISEA J112228.12+241743.6,-99.,-99.,0.3,0.0,1.0,Smaller than initial size
+NGC 3651 NED02,-99.,-99.,0.5,-99.,-99.,Smaller than initial size
+NGC 3651 NED01,-99.,-99.,2.2,-99.,-99.,Extended envelope
+NGC 3778,-99.,-99.,2.0,-99.,-99.,Extended envelope
+WISEA J120850.19-153214.6,-99.,-99.,0.6,-99.,-99.,Extended envelope
+ESO 321- G?020,184.9876,-39.6638,-99.,-99.,-99.,Better coordinates
+MCG -07-26-006,-99.,-99.,1.8,-99.,-99.,Extended envelope
+NGC 4782,-99.,-99.,4.0,-99.,-99.,Extended envelope
+NGC 4783,-99.,-99.,2.5,-99.,-99.,Extended envelope
+ESO 323- G 077,-99.,-99.,2.0,161.4,0.652,Extended envelope and better geometry
+MCG -03-34-056,-99.,-99.,1.6,-99.,-99.,Extended envelope
+NGC 5222 NED02,-99.,-99.,0.7,-99.,-99.,Smaller than initial size
+NGC 5222 NED01,-99.,-99.,1.8,-99.,-99.,Extended envelope
+PGC 1438924,203.7462,13.7320,-99.,-99.,-99.,Better coordinates
+ESO 444-IG 089 NED01,-99.,-99.,0.4,0.0,1.0,Smaller than initial size and better geometry
+IC 4312,-99.,-99.,2.2,117.0,0.92,Extended envelope and better geometry
+UGC 08763 NED02,-99.,-99.,1.8,-99.0,0.8,Extended envelope and better geometry
+UGC 08763 NED01,-99.,-99.,0.7,-99.,-99.,Smaller than initial size
+WISEA J143424.24-385006.0,-99.,-99.,0.8,0.0,-99.0,Extended envelope and better geometry
+VV 762 NED01,-99.,-99.,0.5,-99.,-99.,Smaller than initial size
+WISEA J150212.66-410400.1,-99.,-99.,1.0,-99.,-99.,Extended envelope
+WISEA J151140.97-111127.5,-99.,-99.,1.0,-99.,-99.,Extended envelope
+WISEA J153903.37+133812.0,-99.,-99.,1.2,-99.,-99.,Extended envelope
+NGC 6041A,-99.,-99.,1.7,-99.,-99.,Extended envelope
+NGC 6041B,-99.,-99.,0.5,-99.,-99.,Smaller than initial size
+WISEA J164411.26-075114.7,-99.,-99.,0.7,-99.,-99.,Extended envelope
+FAIRALL 1439,-99.,-99.,1.0,-99.,-99.,Extended envelope
+WISEA J180706.85+260849.2,-99.,-99.,1.0,-99.,-99.,Extended envelope
+WISEA J184845.94-571408.2,-99.,-99.,1.0,-99.,-99.,Extended envelope
+WISEA J185131.51-550746.1,-99.,-99.,1.2,-99.,-99.,Extended envelope
+WISEA J185454.36-465138.8,-99.,-99.,1.8,-99.,-99.,Extended envelope
+IC 4801,-99.,-99.,2.2,-99.,-99.,Extended envelope
+WISEA J190504.92-385450.5,-99.,-99.,0.4,0.0,1.0,Smaller than initial size and better geometry
+WISEA J191506.11-171351.0,-99.,-99.,1.0,-99.,-99.,Extended envelope
+MCG -06-44-014,-99.,-99.,1.4,-99.,-99.,Extended envelope
+NGC 6854,-99.,-99.,4.3,-99.,-99.,Extended envelope
+NGC 6854B,-99.,-99.,0.5,-99.,-99.,Smaller than initial size
+MCG -04-50-008,-99.,-99.,0.8,-99.,-99.,Extended envelope
+ESO 530- G 020,-99.,-99.,1.0,-99.,-99.,Extended envelope
+PGC 131568,322.4089,-41.8788,0.5,0.0,1.0,Smaller than initial size and better geometry
+WISEA J215710.68-712901.6,-99.,-99.,0.8,-99.,-99.,Extended envelope
+ESO 237-IG 040 NED02,-99.,-99.,1.0,-99.,-99.,Extended envelope
+WISEA J222716.03-024920.3,336.8164,-2.8233,-99.,-99.,-99.,Better coordinates
+WISEA J223547.75-743651.7,-99.,-99.,1.7,-99.,-99.,Extended envelope
+WISEA J000142.50-334607.9,0.4291,-33.7693,-99.,-99.,-99.,Better coordinates
+UGC 07910 NED02,-99.,-99.,1.0,-99.,-99.,Extended envelope
+III Zw 066,186.82405883635172,14.147236516618312,1.4,42.0,0.62,Centered on a star
+CGCG 290-060,-99.,-99.,1.0,-99.,-99.,Extended envelope
+VCC 1017,186.8826,9.5958,-99.,15.0,-99.,Better coordinates and PA
+WISEA J200056.55-553753.7,-99.,-99.,1.5,-99.,-99.,Extended envelope
+KUG 0048-201,-99.,-99.,1.1,-99.,-99.,Smaller than initial size
+WISEA J233059.02+163529.6,-99.,-99.,0.7,-99.,-99.,Larger
+GALEXASC J225721.34+275854.9,-99.,-99.,0.6,-99.,-99.,Larger
+WISEA J094017.60+130136.5,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J230841.56+214129.3,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J215632.58+075346.9,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J230450.34+224708.0,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J011032.33+295735.4,-99.,-99.,0.7,-99.,-99.,Larger
+LSBC F583-02,-99.,-99.,1.5,-99.,-99.,Larger
+WISEA J003733.44-065519.9,-99.,-99.,1.2,-99.,-99.,Extended envelope
+WISEA J231407.94+064440.3,-99.,-99.,0.7,-99.,-99.,Larger
+CGCG 287-072,-99.,-99.,1.5,-99.,-99.,Extended envelope
+WISEA J230009.18+242102.6,-99.,-99.,1.0,-99.,-99.,Extended envelope
+GALEXASC J232858.64+312343.2,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J023239.82+211210.0,-99.,-99.,1.0,15.0,0.2,Larger and better geometry
+2MASX J08332375-0750189,-99.,-99.,1.1,-99.,-99.,Larger
+WISEA J043319.19-631101.6,-99.,-99.,1.1,-99.,-99.,Larger
+UGC 11671 NED02,-99.,-99.,1.3,135.0,-99.0,Larger and better geometry
+UGC 11671 NED01,-99.,-99.,0.9,15.0,-99.0,Larger and better geometry
+CGCG 190-047,-99.,-99.,1.1,-99.,-99.,Larger
+SDSS J112924.40+222401.4,-99.,-99.,1.1,-99.,-99.,Larger
+WISEA J000350.57+333920.5,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000320.30+323043.9,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000258.65+202311.3,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000217.60+085716.9,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000221.31+340406.3,-99.,-99.,0.7,-99.,-99.,Larger
+FAIRALL 0624,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J000046.46-465728.9,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000251.23+094206.5,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000341.70+102052.2,-99.,-99.,0.9,-99.,-99.,Larger
+WISEA J000138.85+222143.8,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000333.47+033647.5,-99.,-99.,0.9,-99.,-99.,Larger
+WISEA J000216.04-031401.5,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J000244.50-295440.3,-99.,-99.,0.8,-99.,-99.,Larger
+WISEA J000332.28-802138.3,-99.,-99.,0.7,-99.,-99.,Larger
+CGCG 093-035,-99.,-99.,0.8,-99.,-99.,Larger
+WISEA J074328.09+510352.7,-99.,-99.,0.7,-99.,-99.,Larger
+AM 1953-553 NED01,-99.,-99.,0.9,0.0,1.0,Larger and better geometry
+WISEA J223430.64-470305.3,-99.,-99.,0.7,-99.,-99.,Larger
+APMBGC 235+059-099,314.1934,-48.0884,-99.0,15.0,-99.0,Better coordinates and PA
+PGC 711419,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J012444.86-735323.8,-99.,-99.,0.6,-99.,-99.,Larger
+LCRS B221542.3-390904,-99.,-99.,1.8,160.0,0.7,Larger and better geometry
+LCRS B210253.3-385829,-99.,-99.,0.7,-99.,-99.,Larger
+LCRS B210245.5-385807,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J203050.47-353242.3,-99.,-99.,1.2,-99.,-99.,Larger
+WISEA J222032.58-350948.3,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J201451.73-243022.6,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J170219.34-010304.8,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J210209.84-243200.6,-99.,-99.,1.0,-99.,-99.,Larger
+IC 5358,-99.,-99.,3.5,-99.,-99.,Larger
+WISEA J204811.66-174903.8,-99.,-99.,1.0,-99.,-99.,Larger
+2MASS J00025806-3547517,0.74195833,-35.7976944,0.7,0.0,1.0,
+2MASX J20420438-3513067,310.51824999999997,-35.21852777777778,1.4,140.0,0.96,
+CGCG 409-020 NED01,7.576249999,6.9677500,0.5,70.0,0.80,
+CGCG 409-020 NED02,7.576791666,6.9605555,0.3,50.0,0.72,
+WISEA J000141.58-435140.3,0.423541666,-43.86138888,0.7,0.0,0.619,
+WISEA J000216.18+082743.0,0.56733333,8.4619166666,0.7,80.0,0.58,
+WISEA J000245.47-295850.1,0.689458,-29.98066666,0.5,175.0,0.7,
+WISEA J000300.85-372111.8,0.753625,-37.353333,0.7,170.0,0.78,
+WISEA J000302.87-372059.9,0.762,-37.35,0.7,0.0,1.0,
+WISEA J222028.78-350834.3,335.11991666666665,-35.14286111111111,1.0,110.0,0.82,
+WISEA J234723.25-280708.5,356.8468333333333,-28.119055555555555,0.7,125.0,0.84,
+WISEA J215425.37-434836.7,-99.,-99.,0.5,-99.,-99.,Larger
+WISEA J065728.84-332649.5,-99.,-99.,1.5,-99.,-99.,Larger
+WISEA J065730.74-332731.7,-99.,-99.,0.8,-99.,-99.,Larger
+ESO 600- G 014,-99.,-99.,1.7,-99.,-99.,Larger
+2MASS J21522197-1932486,-99.,-99.,0.8,-99.,-99.,Larger
+WISEA J232614.19-240630.4,-99.,-99.,1.0,-99.,-99.,Larger
+VPC 0896 NED02,-99.,-99.,0.8,-99.,-99.,Larger
+FGC 0584,102.9253,81.7566,-99.0,145.0,-99.0,Better coordinates and PA
+WISEA J105044.45+660526.9,162.6828,66.0914,-99.,-99.,-99.,Better coordinates
+WISEA J182241.24+420322.6,275.6714,42.0559,-99.,-99.,-99.,Better coordinates
+WISEA J064349.61+331310.0,100.9570,33.2184,-99.,-99.,-99.,Better coordinates
+WISEA J181303.13+464058.4,273.264038,46.682413,-99.,-99.,-99.,Better coordinates
+WISEA J072629.92+542954.6,111.627198,54.497593,0.795,97.3,0.72,Better coordinates and geometry
+WISEA J183328.53+594300.1,278.3676,59.7174,-99.,-99.,-99.,Better coordinates
+2MASS J09541953+3741446,148.5821,37.6971,-99.,-99.,-99.,Better coordinates
+2MASS J08155449+7107167,123.9768,71.1227,-99.,-99.,-99.,Better coordinates
+UGC 03829 NED01,-99.,-99.,1.3,-99.,-99.,Larger
+NGC 6166 NED01,-99.,-99.,4.0,-99.,-99.,Significantly larger
+ABELL 3574:KYDISC 00009,-99.,-99.,0.7,0.0,1.0,Better geometry
+WISEA J134741.71-302131.3,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J221215.11-762605.5,333.0621,-76.4351,-99.0,90.0,-99.0,Better coordinates and PA
+MCG -04-14-013,-99.,-99.,3.0,-99.,-99.,Larger
+MCG -04-14-016,-99.,-99.,0.8,-99.,-99.,Larger
+WISEA J152809.04-435928.9,-99.,-99.,1.0,-99.,-99.,Larger
+ESO 385- G 028,-99.,-99.,1.6,0.0,1.0,Larger and better geometry
+WISEA J002036.07-312217.4,-99.,-99.,1.2,-99.,-99.,Larger
+WISEA J002035.52-312155.9,5.1486,-31.3647,-99.,-99.,-99.,Better coordinates
+ESO 396- G 011,-99.,-99.,0.9,-99.,-99.,Larger
+WISEA J133920.82-314039.1,-99.,-99.,1.2,0.0,1.0,Larger and better geometry
+ESO 425- G 016,-99.,-99.,1.2,0.0,1.0,Larger and better geometry
+CGCG 027-001,-99.,-99.,0.8,-99.,-99.,Larger
+ESO 388- G 003,233.9675,-37.3593,-99.0,30.0,-99.0,Better coordinates and PA
+WISEA J231832.12-270830.2,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J080024.53-052925.8,-99.,-99.,1.0,-99.,-99.,Larger
+ESO 322- G 098,192.3483,-42.6491,1.1,-99.,-99.,Larger and better coordinates
+PGC 617565,158.0584,-37.7926,1.0,-99.,-99.,Larger and better coordinates
+2MASS J08445242-5926535,131.2167,-59.4488,-99.,-99.,-99.,Better coordinates
+WISEA J063457.70-295231.8,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J122453.03-481804.4,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J192744.90-584251.7,-99.,-99.,1.0,-99.,-99.,Larger
+GALEXASC J045911.48-745224.4,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J223214.69-311345.1,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J062928.87-464828.9,97.3704,-46.8081,0.7,0.0,1.0,Larger and better coordinates
+WISEA J153541.26-714722.2,-99.,-99.,0.7,-99.,-99.,Larger
+ESO 325- G 040,-99.,-99.,0.9,0.0,1.0,Larger and better geometry
+WISEA J071623.75-531750.5,-99.,-99.,0.6,-99.,-99.,Larger
+WISEA J100713.82-262330.9,-99.,-99.,0.8,0.0,1.0,Larger and better geometry
+WISEA J183110.97-561524.8,277.7967,-56.2555,-99.,-99.,-99.,Better coordinates
+WISEA J140521.17-422746.4,-99.,-99.,0.7,0.0,1.0,Larger and better geometry
+ESO 563- G 027,132.6264,-19.4292,-99.0,34.0,-99.0,Better coordinates and PA
+GALEXASC J102134.26-203354.6,-99.,-99.,0.5,0.0,1.0,Larger and better geometry
+WISEA J082646.36-200814.5,-99.,-99.,1.6,-99.,-99.,Larger
+WISEA J072501.91+180848.7,-99.,-99.,0.7,-99.,-99.,Larger
+ESO 183-IG 023 NED03,283.1639,-55.9816,-99.,-99.,-99.,Better coordinates
+ESO 055- G 022,-99.,-99.,1.0,-99.,-99.,Larger
+PKS 1955-692,-99.,-99.,1.2,30.0,0.8,Larger and better geometry
+WISEA J224053.62-695820.3,-99.,-99.,0.6,-99.,-99.,Larger
+WISEA J210727.93-252951.8,-99.,-99.,0.7,105.0,0.52,Larger and better geometry
+PGC1001582,164.4825,-8.6028,0.35,-99.,-99.,Smaller than initial size
+ESO 123- G 013,-99.,-99.,1.5,-99.,0.4,Larger and better geometry
+WISEA J142930.32-352614.9,217.3756,-35.4383,-99.,-99.,-99.,Better coordinates
+WISEA J150700.63-350604.9,-99.,-99.,0.8,-99.,-99.,Larger
+WISEA J164005.50-755938.0,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J164004.67-760005.1,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J144248.29-363446.3,-99.,-99.,-99.,0.0,1.0,Better geometry
+WISEA J191542.29-403714.8,-99.,-99.,0.7,-99.,-99.,Larger
+WISEA J125731.15-171720.8,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J202451.91-182352.2,-99.,-99.,0.7,-99.,0.9,Larger and better ba
+2MASS J14142199-1353574,213.5918,-13.8992,-99.,-99.,-99.,Better coordinates
+WISEA J104232.53-473938.3,-99.,-99.,1.2,-99.,-99.,Larger
+2MFGC 03571,66.1040,5.9294,-99.,-99.,-99.,Better coordinates
+WISEA J170138.49-661838.3,-99.,-99.,0.8,-99.,0.7,Larger
+WISEA J043517.24-845250.0,-99.,-99.,0.8,-99.,0.7,Larger
+WISEA J172110.67-634236.3,-99.,-99.,0.7,0.0,1.0,Larger and better geometry
+ESO 388- G?005,-99.,-99.,1.0,0.0,1.0,Larger and better geometry
+ESO 264- G 033,160.1838,-47.1846,-99.,-99.,-99.,Better coordinates
+WISEA J124925.99-404255.0,-99.,-99.,0.7,-99.,0.7,Larger
+2MASX J14403641-4551564,220.1491,-45.8654,0.7,0.0,1.0,Larger and better geometry
+WISEA J203312.13-775623.7,-99.,-99.,0.6,-99.,0.7,Larger
+WISEA J233446.18-232404.9,-99.,-99.,1.0,-99.,0.7,Larger
+GALEXASC J011443.91-053110.7,18.6826,-5.5199,0.8,0.0,1.0,Larger and better geometry
+ESO 103- G 046,-99.,-99.,1.4,0.0,1.0,Larger and better geometry
+ESO 374- G 009,-99.,-99.,1.4,-99.,0.7,Larger
+WISEA J140944.13-115856.6,212.4335,-11.9821,0.8,-99.0,-99.0,Larger and better coordinates
+ESO 221- G 019,209.5033,-48.0511,-99.,-99.,-99.,Better coordinates
+WISEA J102539.78-303945.3,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J095802.23-405708.3,-99.,-99.,1.0,-99.,-99.,Larger
+ESO 574- G 035,192.263583,-21.796278,1.0,19.0,0.8,Larger and better geometry
+IV Zw 049 NOTES01,-99.,-99.,1.0,-99.,-99.,Larger
+AM 2119-595 NED02,-99.,-99.,1.0,0.0,1.0,Smaller and better geometry
+ESO 140- G 038,-99.,-99.,1.5,-99.,-99.,Larger
+ESO 139- G 020,-99.,-99.,1.0,-99.,-99.,Larger
+NGC 7592A,-99.,-99.,2.15,85.0,0.5,Interacting; fixgeo
+6dF J2041187-160427,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J204116.53-160530.8,-99.,-99.,0.7,-99.,-99.,Larger
+ESO 018- G 006,-99.,-99.,1.0,-99.,0.8,Larger and better ba
+WISEA J085631.37-651842.2,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J201822.16-415347.7,-99.,-99.,1.3,-99.,-99.,Larger
+2MASX J13312752-3149140,-99.,-99.,1.4,-99.,-99.,Larger
+WISEA J133133.52-314846.3,-99.,-99.,0.8,-99.,-99.,Larger
+MC 1302-170,-99.,-99.,1.0,-99.,-99.,Larger
+VCC 1384,-99.,-99.,0.9,-99.,-99.,Larger
+WISEA J144851.66-782009.8,-99.,-99.,1.5,-99.,-99.,Larger
+WISEA J161259.89-655437.2,-99.,-99.,0.9,-99.,-99.,Larger
+WISEA J120247.73-515611.2,-99.,-99.,0.8,-99.,-99.,Larger
+WISEA J173204.60+015429.5,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J062239.22-243649.6,-99.,-99.,1.8,-99.,-99.,Larger
+WISEA J164823.95-061619.7,-99.,-99.,0.9,-99.,-99.,Larger
+WISEA J145343.38-373239.9,-99.,-99.,0.7,-99.,-99.,Larger
+CGCG 140-030 NED01,-99.,-99.,0.6,-99.,-99.,Larger
+CGCG 140-030 NED02,-99.,-99.,0.5,-99.,-99.,Larger
+ESO 004- G 006,57.3994,-83.9625,1.4,0.0,1.0,Larger and better geometry
+MCG -01-07-003,-99.,-99.,1.9,0.0,1.0,Larger and better geometry
+PGC1684168,214.114042,23.256250,-99.,-99.,-99.,Better coordinates
+ESO 255- G 010,-99.,-99.,1.6,-99.,-99.,Larger
+WISEA J075738.00-585926.3,-99.,-99.,0.9,-99.,-99.,Larger
+WISEA J083809.07+251722.7,-99.,-99.,0.5,-99.,-99.,Larger
+WISEA J155250.61-080236.7,238.2113,-8.0443,0.4,0.0,1.0,Better coordinates and geometry
+WISEA J203044.06-534508.9,307.6826,-53.7519,-99.,-99.,-99.,Better coordinates
+2MASS J07093693-4401259,107.4020,-44.0237,-99.,-99.,-99.,Better coordinates
+WISEA J121946.26-314034.1,184.9436,-31.6757,-99.,-99.,-99.,Better coordinates
+WISEA J110055.40-480740.9,165.2314,-48.1285,-99.,-99.,-99.,Better coordinates
+WISEA J110708.40+002153.4,166.7850,0.3641,-99.,-99.,-99.,Better coordinates
+WISEA J201937.68-400128.2,304.9069,-40.0236,-99.,-99.,-99.,Better coordinates
+WISEA J233359.38+163544.6,353.4980,16.5942,-99.,-99.,-99.,Better coordinates
+WISEA J114502.70-145310.7,176.2604,-14.8864,-99.,-99.,-99.,Better coordinates
+WISEA J091434.39-263732.3,138.6443,-26.6251,-99.,-99.,-99.,Better coordinates
+WISEA J204430.58-530813.2,311.1285,-53.1362,-99.,-99.,-99.,Better coordinates
+WISEA J201044.06-200220.9,302.6837,-20.0398,-99.,-99.,-99.,Better coordinates
+2MASS J19564307-6112592,299.1784,-61.2151,-99.,-99.,-99.,Better coordinates
+WISEA J205149.99-591143.7,197.9810,-37.3622,-99.,-99.,-99.,Better coordinates
+WISEA J051419.36+051058.3,78.5798,5.1840,-99.,-99.,-99.,Better coordinates
+WISEA J124641.46-151733.5,191.6719,-15.2935,-99.,-99.,-99.,Better coordinates
+WISEA J155919.59-243259.0,239.8314,-24.5497,-99.,-99.,-99.,Better coordinates
+WISEA J201737.74-274652.0,304.4068,-27.7806,-99.,-99.,-99.,Better coordinates
+FAIRALL 1160,286.9934,-38.0063,-99.,-99.,-99.,Better coordinates
+WISEA J172251.19+160203.8,260.7133,16.0347,-99.,-99.,-99.,Better coordinates
+WISEA J053440.76-182246.3,83.6680,-18.3783,-99.,-99.,-99.,Better coordinates
+2MASS J06294114-2846308,97.4232,-28.7746,-99.,-99.,-99.,Better coordinates
+WISEA J154301.82-275427.7,235.7594,-27.9075,-99.,-99.,-99.,Better coordinates
+2MFGC 15242,299.9013,-24.7636,-99.,-99.,-99.,Better coordinates
+WISEA J195658.20-530833.5,299.2423,-53.1426,-99.,-99.,-99.,Better coordinates
+WISEA J004833.01-323638.0,12.1373,-32.6094,-99.,-99.,-99.,Better coordinates
+PGC 641911,211.9484,-36.0079,-99.,-99.,-99.,Better coordinates
+WISEA J034249.63-182023.8,55.7069,-18.3377,-99.,-99.,-99.,Better coordinates
+GIN 075,19.8198,-13.9023,-99.,-99.,-99.,Better coordinates
+WISEA J065815.78+275138.1,104.5640,27.8604,-99.,-99.,-99.,Better coordinates
+2MASS J07391820-4851552,114.8263,-48.8659,-99.,-99.,-99.,Better coordinates
+WISEA J191846.47-402349.3,289.6919,-40.3966,-99.,-99.,-99.,Better coordinates
+2MASS J13175189-3308561,199.4647,-33.1490,-99.,-99.,-99.,Better coordinates
+WISEA J045719.69-770053.4,74.3334,-77.0157,-99.,-99.,-99.,Better coordinates
+WISEA J211528.49+184832.2,318.8698,18.8100,-99.,-99.,-99.,Better coordinates
+WISEA J185547.62-614619.2,283.9497,-61.7737,-99.,-99.,-99.,Better coordinates
+WISEA J130441.60-123003.5,196.1725,-12.5025,-99.,-99.,-99.,Better coordinates
+2MASS J14283328-1905262,217.1402,-19.0906,-99.,-99.,-99.,Better coordinates
+WISEA J181949.40-835903.3,274.9488,-83.9844,-99.,-99.,-99.,Better coordinates
+2MASS J22332557-3115394,338.3587,-31.2607,-99.,-99.,-99.,Better coordinates
+2MASS J12255785-3928284,186.4915,-39.4734,-99.,-99.,-99.,Better coordinates
+2MASS J00560773-7749001,14.0343,-77.8151,-99.,-99.,-99.,Better coordinates
+WISEA J172715.31+201116.0,261.8122,20.1881,-99.,-99.,-99.,Better coordinates
+WISEA J214702.69-693441.8,326.7609,-69.5781,-99.,-99.,-99.,Better coordinates
+WISEA J210426.91+150508.6,316.1112,15.0867,-99.,-99.,-99.,Better coordinates
+2MASS J18202813-5706285,275.1171,-57.1072,-99.,-99.,-99.,Better coordinates
+WISEA J205059.64-175032.4,312.7493,-17.8424,-99.,-99.,-99.,Better coordinates
+PGC1041143,7.3502,-5.7292,-99.,-99.,-99.,Better coordinates
+VCC 1714,189.3551,14.3122,-99.,-99.,-99.,Better coordinates
+WISEA J220136.87-171106.9,330.4018,-17.1849,-99.,-99.,-99.,Better coordinates
+WISEA J210727.30-575833.2,316.8636,-57.9758,-99.,-99.,-99.,Better coordinates
+WISEA J210228.61-081854.6,315.6192,-8.3155,-99.,-99.,-99.,Better coordinates
+WISEA J152721.60-173125.7,231.8383,-17.5240,-99.,-99.,-99.,Better coordinates
+WISEA J134740.14-492125.5,206.9174,-49.3571,-99.,-99.,-99.,Better coordinates
+PGC 611251,213.0297,-38.2448,-99.,-99.,-99.,Better coordinates
+ESO 529- G 012,313.8974,-25.2137,-99.,150.0,-99.,Better coordinates and PA
+WISEA J045943.47+044347.8,74.9316,4.7292,-99.,-99.,-99.,Better coordinates
+WISEA J051630.84-160749.1,79.1288,-16.1277,-99.,-99.,-99.,Better coordinates
+WISEA J043111.83-181324.2,67.7992,-18.2249,-99.,-99.,-99.,Better coordinates
+WISEA J172838.30-663930.4,262.1600,-66.6582,-99.,-99.,-99.,Better coordinates
+WISEA J094945.21-240624.2,147.4385,-24.1044,-99.,-99.,-99.,Better coordinates
+WISEA J192029.93-503920.7,290.1272,-50.6558,-99.,-99.,-99.,Better coordinates
+WISEA J072414.90-502507.8,111.0635,-50.4205,-99.,-99.,-99.,Better coordinates
+ESO 089- G?005,117.6563,-64.2638,-99.,-99.,-99.,Better coordinates; merger
+2MASS J12552757-5117462,193.8635,-51.2976,-99.,-99.,-99.,Better coordinates
+WISEA J154434.06-214852.5,236.1407,-21.8147,-99.,-99.,-99.,Better coordinates
+WISEA J123221.75-504757.1,188.0895,-50.7989,-99.,-99.,-99.,Better coordinates
+WISEA J095219.85-341403.2,148.0834,-34.2344,-99.,-99.,-99.,Better coordinates
+ESO 341- G?020,313.5184,-39.4673,-99.,-99.,-99.,Better coordinates
+ESO 338- G 016,294.4834,-40.3127,-99.,-99.,-99.,Better coordinates
+WISEA J125122.91-463649.6,192.8457,-46.6150,-99.,-99.,-99.,Better coordinates
+AM 0103-572 NED01,16.3480,-57.2314,-99.,-99.,-99.,Better coordinates
+2MASS J08514261-6159238,132.9311,-61.9927,-99.,-99.,-99.,Better coordinates
+SDSS J165653.97+202125.3,254.2249,20.3572,-99.,-99.,-99.,Better coordinates
+WISEA J103110.15-434731.8,157.7932,-43.7932,-99.,-99.,-99.,Better coordinates
+WISEA J203201.11-131058.0,308.0056,-13.1862,-99.,-99.,-99.,Better coordinates
+PGC 577369,156.3099,-41.2642,-99.,-99.,-99.,Better coordinates
+2MASS J15494763-3848467,237.4494,-38.8132,-99.,-99.,-99.,Better coordinates
+WISEA J193313.02-530607.6,293.3077,-53.1025,-99.,-99.,-99.,Better coordinates
+WISEA J174201.15+031200.2,265.5037,3.1991,0.8,0.0,1.0,Better coordinates and geometry
+LCSB S0956P,96.4599,-22.5721,-99.,-99.,-99.,Better coordinates
+PGC 896201,216.1180,-16.5895,-99.,-99.,-99.,Better coordinates
+WISEA J082650.58-143229.4,126.7128,-14.5434,-99.,-99.,-99.,Better coordinates
+PGC 875848,294.6568,-17.8908,-99.,-99.,-99.,Better coordinates
+WISEA J135601.73-395731.4,209.0059,-39.9596,-99.,-99.,-99.,Better coordinates
+2MASS J14530597-3956245,223.2766,-39.9380,-99.,-99.,-99.,Better coordinates
+WISEA J191255.62-363231.3,288.2303,-36.5410,-99.,-99.,-99.,Better coordinates
+ESO 459- G 008,288.8407,-31.6415,-99.,-99.,-99.,Better coordinates
+WISEA J134837.25-290024.3,207.1584,-29.0060,-99.,-99.,-99.,Better coordinates
+WISEA J161027.36-670955.7,242.6142,-67.1654,-99.,-99.,-99.,Better coordinates
+WISEA J131046.29-161323.4,197.6921,-16.2263,1.0,-99.,-99.,Larger and better coordinates
+WISEA J071742.93-500453.1,109.4282,-50.0828,-99.,-99.,-99.,Better coordinates
+WISEA J135710.13-093709.3,209.2914,-9.6174,-99.,-99.,-99.,Better coordinates
+2MASS J12174893-4319041,184.4569,-43.3169,-99.,-99.,-99.,Better coordinates
+WISEA J004201.21-640442.2,10.4980,-64.0797,-99.,-99.,-99.,Better coordinates
+2MASS J13183729-5135085,199.6572,-51.5854,-99.,-99.,-99.,Better coordinates
+WISEA J152311.07-384733.0,230.7998,-38.7920,0.7,-99.,-99.,Larger and better coordinates
+WISEA J001316.74-605139.9,3.3166,-60.8563,-99.,-99.,-99.,Better coordinates
+2MASS J13570904-4351054,209.2874,-43.8527,-99.,-99.,-99.,Better coordinates
+ESO 381- G 025,191.9577,-32.9374,-99.,-99.,-99.,Better coordinates
+WISEA J072716.15-671749.9,111.8172,-67.2967,-99.,-99.,-99.,Better coordinates
+2MFGC 14595,282.1629,-39.9291,-99.,-99.,-99.,Better coordinates
+WISEA J100225.19-405909.3,150.6078,-40.9876,-99.,-99.,-99.,Better coordinates
+WISEA J101913.54-391735.2,154.8091,-39.2948,-99.,-99.,-99.,Better coordinates
+ESO 449- G 008,230.7662,-31.7995,-99.,-99.,-99.,Better coordinates
+WISEA J130211.89-763539.7,195.5484,-76.5925,-99.,-99.,-99.,Better coordinates
+2MASX J12492028-5035313,192.3389,-50.5945,-99.,-99.,-99.,Better coordinates
+ESO 279- G?014,269.9009,-46.6479,-99.,0.0,1.0,Better coordinates and geometry
+WISEA J190701.52-391657.9,286.7578,-39.2802,-99.,-99.,-99.,Better coordinates
+ESO 318- G 025,164.6855,-38.7396,-99.,-99.,-99.,Better coordinates
+ESO 319- G 001,166.4842,-38.9125,-99.,-99.,-99.,Better coordinates
+PGC1 2807118 NED001,70.9353,2.9940,1.3,0.0,1.0,Better coordinates and geometry
+WISEA J140132.04-481516.1,210.3831,-48.2567,-99.,-99.,-99.,Better coordinates
+WISEA J143207.43-471244.2,218.0290,-47.2118,-99.,-99.,-99.,Better coordinates
+FGC 2541,357.4041,27.9316,-99.,-99.,-99.,Better coordinates
+VCC 0583,185.6881,15.5007,-99.,-99.,-99.,Better coordinates
+NGC 2573A,348.097912,-89.126179,-99.,-99.,-99.,Better coordinates
+WISEA J043209.56-172933.1,-99.,-99.,0.6,-99.,-99.,Larger
+ESO 372- G 018,-99.,-99.,-99.,35.0,-99.,Better PA
+WISEA J221656.85-172526.0,-99.,-99.,0.8,-99.,-99.,Larger
+2MASX J23121995-2130098,-99.,-99.,1.0,-99.,-99.,Larger
+WISEA J002038.01-254507.2,-99.,-99.,0.6,-99.,-99.,Larger
+WISEA J224431.68-174411.4,-99.,-99.,0.6,-99.,-99.,Larger
+WISEA J230835.58-195335.6,-99.,-99.,1.3,-99.,-99.,Larger
+WISEA J225055.83-162422.0,-99.,-99.,1.3,-99.,-99.,Larger

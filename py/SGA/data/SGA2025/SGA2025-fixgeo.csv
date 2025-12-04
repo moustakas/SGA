@@ -4,120 +4,115 @@
 #
 # These objects all get the 'FIXGEO' SGAFITMODE and FITMODE bit set.
 #
-objname,region,comment
+objname,comment
 #
-# LVD - dr9-north
-#
-Clump III,dr9-north,LVD
-Clump I,dr9-north,LVD
-d1014+68,dr9-north,LVD
-d0944+69,dr9-north,LVD
-dw1315+4123,dr9-north,LVD
-M101 Dw9,dr9-north,LVD
-[KKH2011]S11,dr9-north,LVD
-d1006+67,dr9-north,LVD
-BK3N,dr9-north,LVD
-d1041+70,dr9-north,LVD
-d0939+71,dr9-north,LVD
-MADCASH-1,dr9-north,LVD
-d0955+70,dr9-north,LVD
-d0926+70,dr9-north,LVD
-dw1330+4731,dr9-north,LVD
-NGC 5055-dwTBG1,dr9-north,LVD
-d0934+70,dr9-north,LVD
-DDO 169NW,dr9-north,LVD
-M101-DF3,dr9-north,LVD
-d0959+68,dr9-north,LVD
-F8D1,dr9-north,LVD
-Canes Venatici II,dr9-north,LVD
-A0952+69,dr9-north,LVD
-Willman 1,dr9-north,LVD
-GARLAND,dr9-north,LVD
-#
-# LVD - dr11-south
-#
-dw1110+0037,dr11-south,LVD
-Bedin 1,dr11-south,LVD
-LeG21,dr11-south,LVD
-dw1111+0049,dr11-south,LVD
-dw1000m0831,dr11-south,LVD
-dw1046+1244,dr11-south,LVD
-dw1048p1259,dr11-south,LVD
-Scl-MM-Dw4,dr11-south,LVD
-dw1109-0016,dr11-south,LVD
-dw1300+1843,dr11-south,LVD
-CenA-MM-Dw5,dr11-south,LVD
-dw1340-30,dr11-south,LVD
-dw1004m0737,dr11-south,LVD
-dw1323-40b,dr11-south,LVD
-CenA-MM-Dw6,dr11-south,LVD
-dw1323-40a,dr11-south,LVD
-CenA-MM-Dw4,dr11-south,LVD
-Pegasus V,dr11-south,LVD
-dw1124p1240,dr11-south,LVD
-dw1335-29,dr11-south,LVD
-CenA-MM-Dw2,dr11-south,LVD
-dw1322-39,dr11-south,LVD
-Scl-MM-Dw1,dr11-south,LVD
-M96-DF2,dr11-south,LVD
-CenA-MM-Dw7,dr11-south,LVD
-Leo K,dr11-south,LVD
-Pisces VII,dr11-south,LVD
-Pegasus W,dr11-south,LVD
-Leo M,dr11-south,LVD
-Andromeda XI,dr11-south,LVD
-Andromeda XIII,dr11-south,LVD
-Virgo II,dr11-south,LVD
-Pictor I,dr11-south,LVD
-Pisces II,dr11-south,LVD
-Andromeda XXII,dr11-south,LVD
-Pegasus VII,dr11-south,LVD
-Andromeda XVI,dr11-south,LVD
-Leo T,dr11-south,LVD
-Phoenix II,dr11-south,LVD
-Horologium I,dr11-south,LVD
-CenA-MM-Dw1,dr11-south,LVD
-Leo Minor I,dr11-south,LVD
-Andromeda XXIX,dr11-south,LVD
-Andromeda XIV,dr11-south,LVD
-Virgo I,dr11-south,LVD
-Eridanus II,dr11-south,LVD
-Hydra II,dr11-south,LVD
-Grus I,dr11-south,LVD
-Andromeda XII,dr11-south,LVD
-Pegasus III,dr11-south,LVD
-Pegasus IV,dr11-south,LVD
-Columba I,dr11-south,LVD
-Leo V,dr11-south,LVD
-Horologium II,dr11-south,LVD
-CenA-MM-Dw3,dr11-south,LVD
-Cetus II,dr11-south,LVD
-Tucana V,dr11-south,LVD
-Aquarius III,dr11-south,LVD
-Segue 2,dr11-south,LVD
-Leo VI,dr11-south,LVD
-Reticulum III,dr11-south,LVD
-Centaurus I,dr11-south,LVD
-Scl-MM-Dw2,dr11-south,LVD
-Bootes II,dr11-south,LVD
-Fornax,dr11-south,LVD
-Sculptor,dr11-south,LVD
-Leo II,dr11-south,LVD
-Leo I,dr11-south,LVD
-Antlia B,dr11-south,LVD
-WISEA J203133.10-070501.5,dr11-south,In 'PN A66 70'
-DDO 154,dr11-south,LVD
-ESO 451- G 012,dr11-south,near star
-WISEA J205942.51-414751.8,dr11-south,geometry algorithm failure
-FGCE 0721,dr11-south,geometry algorithm failure
-NGC 5291,dr11-south,extended blue light
-#
-# LVD - dr9-north & dr11-south
-#
-UGCA 292,dr9-north;dr11-south,LVD
-KK 17,dr9-north;dr11-south,LVD
-KK 69,dr9-north;dr11-south,LVD
-Bootes V,dr9-north;dr11-south,LVD
-NGC 4631-dw1,dr9-north;dr11-south,LVD
-NGC 4631-dw2,dr9-north;dr11-south,LVD
-NGC 4631-dw3,dr9-north;dr11-south,LVD
+Clump III,LVD
+Clump I,LVD
+d1014+68,LVD
+d0944+69,LVD
+dw1315+4123,LVD
+M101 Dw9,LVD
+[KKH2011]S11,LVD
+d1006+67,LVD
+BK3N,LVD
+d1041+70,LVD
+d0939+71,LVD
+MADCASH-1,LVD
+d0955+70,LVD
+d0926+70,LVD
+dw1330+4731,LVD
+NGC 5055-dwTBG1,LVD
+d0934+70,LVD
+dw1329-45,LVD
+DDO 169NW,LVD
+M101-DF3,LVD
+d0959+68,LVD
+F8D1,LVD
+Canes Venatici II,LVD
+A0952+69,LVD
+Willman 1,LVD
+GARLAND,LVD
+dw1110+0037,LVD
+Bedin 1,LVD
+LeG21,LVD
+dw1111+0049,LVD
+dw1000m0831,LVD
+dw1046+1244,LVD
+dw1048p1259,LVD
+Scl-MM-Dw4,LVD
+dw1109-0016,LVD
+dw1300+1843,LVD
+CenA-MM-Dw5,LVD
+dw1340-30,LVD
+dw1004m0737,LVD
+dw1323-40b,LVD
+CenA-MM-Dw6,LVD
+dw1323-40a,LVD
+CenA-MM-Dw4,LVD
+Pegasus V,LVD
+dw1124p1240,LVD
+dw1335-29,LVD
+CenA-MM-Dw2,LVD
+dw1322-39,LVD
+Scl-MM-Dw1,LVD
+M96-DF2,LVD
+CenA-MM-Dw7,LVD
+Leo K,LVD
+Pisces VII,LVD
+Pegasus W,LVD
+Leo M,LVD
+Andromeda XI,LVD
+Andromeda XIII,LVD
+Virgo II,LVD
+Pictor I,LVD
+Pisces II,LVD
+Andromeda XXII,LVD
+Pegasus VII,LVD
+Andromeda XVI,LVD
+Leo T,LVD
+Phoenix II,LVD
+Horologium I,LVD
+CenA-MM-Dw1,LVD
+Leo Minor I,LVD
+Andromeda XXIX,LVD
+Andromeda XIV,LVD
+Virgo I,LVD
+Eridanus II,LVD
+Hydra II,LVD
+Grus I,LVD
+Andromeda XII,LVD
+Pegasus III,LVD
+Pegasus IV,LVD
+Columba I,LVD
+Leo V,LVD
+Horologium II,LVD
+CenA-MM-Dw3,LVD
+Cetus II,LVD
+Tucana V,LVD
+Aquarius III,LVD
+Segue 2,LVD
+Leo VI,LVD
+Reticulum III,LVD
+Centaurus I,LVD
+Scl-MM-Dw2,LVD
+Bootes II,LVD
+Fornax,LVD
+Sculptor,LVD
+Leo II,LVD
+Leo I,LVD
+Antlia B,LVD
+DDO 154,LVD
+UGCA 292,LVD
+KK 17,LVD
+KK 69,LVD
+Bootes V,LVD
+NGC 4631-dw1,LVD
+NGC 4631-dw2,LVD
+NGC 4631-dw3,LVD
+UGCA 330,very bright star
+WISEA J203133.10-070501.5,In 'PN A66 70'
+ESO 451- G 012,near star
+FGCE 0721,geometry algorithm failure
+NGC 5291,extended blue light
+SGC 2311.8-4353,ultra LSB
+NGC 7592A,Merger

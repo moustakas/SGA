@@ -2917,84 +2917,390 @@ def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
     return out, rem
 
 
+def update_geometry_from_reffiles(parent, diam, ba, pa, diam_ref, reffiles,
+                                  REGIONBITS, veto_objnames=None,
+                                  region_order=['dr9-north', 'dr11-south']):
+    # optionally update initial diameters
+    ref_version = reffiles['ref_version']
+    log.info(f'Updating initial diameters using reference version {ref_version}')
+
+    for region in region_order:  # dr11-south wins in overlaps
+        bit = REGIONBITS[region]
+        reffile = reffiles[region]
+
+        ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=[
+            'OBJNAME', 'REGION', 'RA', 'DEC', 'GROUP_MULT',
+            'BA', 'PA', 'D26', 'D26_REF']))
+        if ref_version == 'v0.11':
+            # not all ellipse diameters in v0.11 were reliable
+            ref_tab = ref_tab[ref_tab['GROUP_MULT'] == 1]
+        log.info(f'Read {len(ref_tab):,d} objects from {reffile}')
+
+        # match by OBJNAME
+        m_parent, m_ref = match(parent['OBJNAME'], ref_tab['OBJNAME'])
+
+        # only objects whose REGION includes this bit
+        keep = (parent['REGION'][m_parent] & bit) != 0
+        if veto_objnames is not None:
+            not_veto  = ~np.isin(parent['OBJNAME'][m_parent], list(veto_objnames))
+            keep = keep & not_veto
+
+        idx_p = m_parent[keep]
+        idx_r = m_ref[keep]
+
+        # reference geometry
+        ref_diam = ref_tab['D26'][idx_r].value # [arcmin]
+        ref_ba = ref_tab['BA'][idx_r].value
+        ref_pa = ref_tab['PA'][idx_r].value
+        ref_ref = ref_version + '/' + ref_tab['D26_REF'][idx_r].value
+
+        diam[idx_p] = ref_diam # [arcsec]
+        ba[idx_p] = ref_ba
+        pa[idx_p] = ref_pa
+        diam_ref[idx_p] = ref_ref
+
+        # update coordinates?
+
+    return diam, ba, pa, diam_ref
+
+
+def find_blended_groups(small_groups, g_sorted, RA_sorted, DEC_sorted,
+                        D_sorted, uniq, idx_start, idx_end):
+    """Return group names among `small_groups` where at least one
+    pair of circularized ellipses overlaps.
+
+    Parameters
+    ----------
+    small_groups : array-like
+        Group names (as in uniq[]) whose members all have D < mindiam.
+    g_sorted : array
+        GROUP_NAME column sorted by name and filtered to gm2_notLVD rows.
+    RA_sorted, DEC_sorted : arrays
+        Sorted RA, DEC values aligned with g_sorted.
+    D_sorted : array
+        Sorted diameters (arcmin) aligned with g_sorted.
+    uniq : array
+        Unique group names (sorted) corresponding to g_sorted.
+    idx_start, idx_end : arrays
+        Start and end indices into the sorted arrays for each uniq[] entry.
+
+    Returns
+    -------
+    np.ndarray
+        Sorted unique group names for which overlap was detected.
+
+    """
+    blended = []
+
+    for gname in small_groups:
+        # locate this group's slice in sorted arrays
+        k = np.where(uniq == gname)[0][0]
+        i0, i1 = idx_start[k], idx_end[k]
+
+        ra  = RA_sorted[i0:i1]
+        dec = DEC_sorted[i0:i1]
+        d   = D_sorted[i0:i1]
+        r   = 0.5 * d   # circularized radius (arcmin)
+
+        n = len(ra)
+        if n < 2:
+            continue
+
+        found = False
+
+        for ii in range(n - 1):
+            for jj in range(ii + 1, n):
+
+                # Tangent-plane separation (arcmin)
+                dec_mean = 0.5 * (dec[ii] + dec[jj]) * np.pi / 180.0
+                dx = (ra[jj] - ra[ii]) * np.cos(dec_mean) * 60.0
+                dy = (dec[jj] - dec[ii]) * 60.0
+                dist2 = dx*dx + dy*dy
+
+                # overlap check
+                thresh = r[ii] + r[jj]
+                if dist2 <= thresh * thresh:
+                    blended.append(gname)
+                    found = True
+                    break
+
+            if found:
+                break
+
+    return np.unique(blended)
+
+
+def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
+                                     SAMPLE, ELLIPSEBIT, mindiam=0.5,
+                                     veto_objnames=None):
+    """Update parent['REGION'] by removing this region for objects that
+    do NOT fall in VI samples 001–007, based on a previous-version catalog
+    `ref_tab` for a single region.
+
+    Parameters
+    ----------
+    parent : astropy.table.Table
+        Current parent catalog (modified in-place; also returned).
+    ref_tab : astropy.table.Table
+        Previous-version regional catalog with GROUP_* and ellipse info
+        (equivalent to `fullsample`).
+    region : str
+        'dr9-north' or 'dr11-south', etc. Must be a key in REGIONBITS.
+    REGIONBITS : dict
+        Mapping from region_name -> bit value.
+    SAMPLE : dict
+        SAMPLE bit dictionary with keys LVD, MCLOUDS, GCLPNE, NEARSTAR, INSTAR.
+
+    Returns
+    -------
+    parent_new : astropy.table.Table
+        Parent with this region bit removed where appropriate, and rows
+        with REGION==0 dropped.
+
+    """
+    bit = REGIONBITS[region]
+
+    LVD      = SAMPLE['LVD']
+    MCLOUDS  = SAMPLE['MCLOUDS']
+    GCLPNE   = SAMPLE['GCLPNE']
+    NEARSTAR = SAMPLE['NEARSTAR']
+    INSTAR   = SAMPLE['INSTAR']
+
+    gm1    = (ref_tab['GROUP_MULT'] == 1)
+    not_LVD = (ref_tab['SAMPLE'] & LVD) == 0
+    is_LVD  = (ref_tab['SAMPLE'] & LVD) != 0
+
+    ellipse_ok  = (ref_tab['ELLIPSEBIT'] == 0)
+    ellipse_bad = (ref_tab['ELLIPSEBIT'] != 0)
+
+    sample_flags = (ref_tab['SAMPLE'] & (MCLOUDS | GCLPNE | NEARSTAR | INSTAR)) != 0
+
+    D = ref_tab['D26']
+
+    # 001–004: GM=1, non-LVD, D≥0.5
+    mask_001_004 = gm1 & not_LVD & (D >= mindiam)
+
+    # 005: all members of LVD groups
+    LVD_group_names = np.unique(ref_tab['GROUP_NAME'][is_LVD])
+    mask_005 = np.isin(ref_tab['GROUP_NAME'], LVD_group_names)
+
+    # 006–007: non-LVD, GM≥2, at least one member with D≥mindiam
+    #          OR at least one overlapping circularized pair
+    gm2_notLVD = (ref_tab['GROUP_MULT'] >= 2) & not_LVD
+
+    D_all   = ref_tab['DIAM_INIT'] # use initial diameter not D26!
+    RA_all  = ref_tab['RA_INIT']
+    DEC_all = ref_tab['DEC_INIT']
+    g_all   = ref_tab['GROUP_NAME']
+
+    D   = D_all[gm2_notLVD]
+    RA  = RA_all[gm2_notLVD]
+    DEC = DEC_all[gm2_notLVD]
+    g   = g_all[gm2_notLVD]
+
+    order = np.argsort(g)
+    g_sorted   = g[order]
+    D_sorted   = D[order]
+    RA_sorted  = RA[order]
+    DEC_sorted = DEC[order]
+
+    uniq, idx_start = np.unique(g_sorted, return_index=True)
+    idx_end = np.append(idx_start[1:], len(g_sorted))
+
+    group_maxD = np.maximum.reduceat(D_sorted, idx_start) # groups kept by diameter only
+    good_groups_diam = uniq[group_maxD >= mindiam]
+
+    # groups with all members below mindiam
+    small_groups = uniq[group_maxD < mindiam]
+
+    # find small groups with overlapping circularized ellipses
+    blended_groups = find_blended_groups(
+        small_groups, g_sorted, RA_sorted, DEC_sorted, D_sorted,
+        uniq, idx_start, idx_end)
+
+    good_groups = np.union1d(good_groups_diam, blended_groups) # diameter OR blended
+    mask_006_007 = gm2_notLVD & np.isin(g_all, good_groups)
+
+    # union of 001–007 in ref_tab
+    mask_all = mask_001_004 | mask_005 | mask_006_007
+
+    # OBJNAMEs in this region that PASS the 001–007 selection
+    keep_names = set(ref_tab['OBJNAME'][mask_all])
+
+    # For parent rows in this region and present in ref_tab:
+    #parent = parent.copy()
+    in_region = (parent['REGION'] & bit) != 0
+    in_ref = np.isin(parent['OBJNAME'], ref_tab['OBJNAME'])
+
+    # Objects that fail samples 001–007
+    fails = in_region & in_ref & ~np.isin(parent['OBJNAME'], list(keep_names))
+
+    # Apply veto: do NOT drop veto_names
+    if veto_objnames is not None:
+        veto_mask = np.isin(parent['OBJNAME'], list(veto_objnames))
+        fails &= ~veto_mask
+
+    parent['REGION'][fails] -= bit
+
+    # report the numbers but don't actually trim
+    I = parent['REGION'] != 0
+    log.info(f'Removing {np.sum(~I):,d}/{np.sum(in_region):,d} objects with ' + \
+             f'D(26)<0.5 from region {region}')
+
+    return parent
+
+
+def set_overlap_bit(cat, SAMPLE):
+    """
+    Flag ellipse-overlap within each group by setting SAMPLE['OVERLAP'].
+
+    Assumes `cat` has columns: GROUP_NAME, GROUP_MULT, RA, DEC, DIAM (arcmin), BA, PA (deg, astronomical).
+    Modifies `cat['SAMPLE']` in place by OR'ing the OVERLAP bit for members that
+    overlap at least one other member in their group.
+
+    Parameters
+    ----------
+    cat : astropy.table.Table
+        Input catalog, modified in place.
+    SAMPLE : dict
+        Bitmask dictionary that includes key 'OVERLAP'.
+
+    """
+    OVERLAP_BIT = SAMPLE['OVERLAP']
+    DEG2RAD = np.pi / 180.0
+    ARCMIN_PER_DEG = 60.0
+
+    def _angdiff_deg(a, b):
+        """(a-b) wrapped to (-180, 180] deg."""
+        return (a - b + 180.0) % 360.0 - 180.0
+
+    def _dir_radius_arcmin(a_arc, b_arc, pa_rad, bearing_rad):
+        """
+        Radius (arcmin) of an ellipse with semi-axes (a_arc, b_arc) and PA=pa_rad
+        along a ray at `bearing_rad` (astronomical: 0°=N, 90°=E).
+        """
+        d = bearing_rad - pa_rad
+        # wrap to [-pi, pi] for numerical stability
+        d = np.where(d > np.pi, d - 2.0*np.pi, d)
+        d = np.where(d < -np.pi, d + 2.0*np.pi, d)
+        denom = np.hypot(b_arc * np.cos(d), a_arc * np.sin(d))
+        # fallback to circular if degenerate
+        out = (a_arc * b_arc) / np.where(denom > 0.0, denom, 1.0)
+        out = np.where(denom > 0.0, out, a_arc)
+        return out
+
+    # Work only on groups with >1 member
+    mask_mult = (cat['GROUP_MULT'] > 1)
+    if not np.any(mask_mult):
+        return  # nothing to do
+
+    # Unique group names among multi-member groups
+    gnames = np.asarray(cat['GROUP_NAME'][mask_mult]).astype(str)
+    ugroups = np.unique(gnames)
+
+    # Column views (avoid repeated table lookups)
+    RA_all   = np.asarray(cat['RA'], dtype=float)
+    DEC_all  = np.asarray(cat['DEC'], dtype=float)
+    DIAM_all = np.asarray(cat['DIAM'], dtype=float)  # arcmin
+    BA_all   = np.asarray(cat['BA'], dtype=float) if 'BA' in cat.colnames else np.full(len(cat), np.nan)
+    PA_all   = np.asarray(cat['PA'], dtype=float) if 'PA' in cat.colnames else np.full(len(cat), np.nan)
+    GNAME    = np.asarray(cat['GROUP_NAME']).astype(str)
+
+    for gname in ugroups:
+        I = np.where(GNAME == gname)[0]
+        if I.size < 2:
+            continue
+
+        # Local tangent-plane scale for this group
+        dec0 = float(np.median(DEC_all[I]))
+        cosd0 = np.cos(dec0 * DEG2RAD)
+
+        # Per-member geometry
+        ra  = RA_all[I]
+        dec = DEC_all[I]
+        diam = DIAM_all[I]                        # arcmin
+        a_arc = 0.5 * diam                        # semi-major (arcmin)
+
+        ba   = BA_all[I]
+        pa   = PA_all[I]
+        ba_eff = np.where(np.isfinite(ba) & (ba > 0.0), ba, 1.0)  # circular if missing/invalid
+        b_arc = ba_eff * a_arc
+        pa_rad = np.where(np.isfinite(pa), pa, 0.0) * DEG2RAD
+
+        overlapped = np.zeros(I.size, dtype=bool)
+
+        # Pairwise checks (upper triangle)
+        for ii in range(I.size - 1):
+            # Local deltas (deg), wrap RA
+            dx_deg = _angdiff_deg(ra[ii+1:], ra[ii]) * cosd0
+            dy_deg = (dec[ii+1:] - dec[ii])
+
+            # Convert to arcmin and compute separations + bearings
+            dx_am = dx_deg * ARCMIN_PER_DEG
+            dy_am = dy_deg * ARCMIN_PER_DEG
+            sep_am = np.hypot(dx_am, dy_am)
+            bearing_ij = np.arctan2(dx_am, dy_am)      # rad, 0=N, 90=E
+            bearing_ji = np.arctan2(-dx_am, -dy_am)
+
+            # Directional radii along the center-center line
+            ri_dir = _dir_radius_arcmin(a_arc[ii],         b_arc[ii],         pa_rad[ii],         bearing_ij)
+            rj_dir = _dir_radius_arcmin(a_arc[ii+1:],      b_arc[ii+1:],      pa_rad[ii+1:],      bearing_ji)
+
+            # Overlap condition: separation <= sum of directional radii
+            touches = sep_am <= (ri_dir + rj_dir)
+            if np.any(touches):
+                overlapped[ii] = True
+                overlapped[ii+1:][touches] = True
+
+        if np.any(overlapped):
+            cat['SAMPLE'][I[overlapped]] |= OVERLAP_BIT
+
+
 def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
+    from astropy.table import Column
     from desiutil.dust import SFDMap
-    from SGA.geometry import choose_geometry
+    from SGA.geometry import choose_geometry, in_ellipse_mask, ellipses_overlap
     from SGA.SGA import sga2025_name, SAMPLE, SGA_version
-    from SGA.ellipse import ELLIPSEMODE, FITMODE
+    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
     from SGA.io import radec_to_groupname
-    from SGA.groups import build_group_catalog
+    from SGA.groups import build_group_catalog, make_singleton_group
     from SGA.coadds import REGIONBITS
     from SGA.sky import find_close, in_ellipse_mask_sky
-    #from SGA.brick import brickname as get_brickname
 
 
     version = SGA_version(parent=True)
+    version_vicuts = SGA_version(vicuts=True)
     version_nocuts = SGA_version(nocuts=True)
     version_archive = SGA_version(archive=True)
     parentdir = os.path.join(sga_dir(), 'parent')
     outdir = os.path.join(sga_dir(), 'sample')
 
     outfile = os.path.join(outdir, f'SGA2025-parent-{version}.fits')
+    kdoutfile = os.path.join(outdir, f'SGA2025-parent-{version}.kd.fits')
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
 
-
-    # mapping between minimum diameter cut and version number
-    mindiam_by_version = {'default': 20., 'v0.10': 20., 'v0.11': 20., 'v0.12': 27.}
-
-    # reference catalog for updating initial diameters from the literature
-    #reffiles = None
-    reffiles = {
-        'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
-        'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
-    }
-
     cols = ['OBJNAME', 'RA', 'DEC', 'PGC', 'REGION']
 
     # merge the two regions
-    parent = []
+    parent, lvd_dwarfs = [], []
     for region in ['dr11-south', 'dr9-north']:
         catfile = os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
         cat = Table(fitsio.read(catfile))#, rows=np.arange(5000)))
         log.info(f'Read {len(cat):,d} objects from {catfile}')
 
-        # need to make sure we keep all LVD dwarfs
-        lvd_dwarfs = cat['OBJNAME'][cat['ROW_LVD'] != -99].value
-
-        ## Remove all sources smaller than MINDIAM with no other source
-        ## within XX arcsec.
-        #if False:
-        #    mindiam = 30. # [arcsec]
-        #    minsep = 60.  # [arcsec]
-        #
-        #    primaries, groups = find_close(cat, cat, rad_arcsec=minsep, isolated=True)
-        #    diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-        #    I = ((primaries['ROW_LVD'] == -99) * ~primaries['IN_LMC'] * ~primaries['IN_SMC'] * (diam < mindiam))
-        #    log.info(f'Removing {np.sum(I):,d}/{len(cat):,d} isolated (separation>{minsep:.1f} arcsec) ' + \
-        #             f'objects with diameter<{mindiam:.1f} arcsec.')
-        #    cat = cat[~np.isin(cat['OBJNAME'], primaries['OBJNAME'][I])]
-        #
-        #    diam, ba, pa, ref = choose_geometry(cat, mindiam=0.)
-        #    I = np.logical_or.reduce((cat['ROW_LVD'] != -99, cat['IN_LMC'],
-        #                              cat['IN_SMC'], diam > mindiam))
-        #
-        #    cat = cat[I]
-        #    log.info(f'Selected {np.sum(I):,d} objects (excluding LVD dwarfs) with ' + \
-        #             f'diameter > {mindiam:.1f} arcsec.')
-
-        # make sure we haven't dropped any LVD dwarfs
-        assert(np.all(np.isin(lvd_dwarfs, cat['OBJNAME'])))
+        lvd_dwarfs.append(cat['OBJNAME'][cat['ROW_LVD'] != -99].value)
 
         # add the region bit
         cat['REGION'] = np.int16(REGIONBITS[region])
         parent.append(cat)
 
     parent = vstack(parent)
+    lvd_dwarfs = np.unique(np.hstack(lvd_dwarfs))
 
     # merge north-south duplicates
     parent.remove_columns(['NCCD', 'FILTERS']) # can be useful to see in the duplicates
@@ -3015,21 +3321,30 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Combined parent sample has {len(parent):,d} unique objects.')
     assert(np.sum(parent['REGION'] == 3) == len(dup) == len(dups[cc>1]))
 
+    # make sure we haven't dropped any LVD dwarfs
+    assert(np.all(np.isin(lvd_dwarfs, parent['OBJNAME'])))
+
+
     # add additional sources by-hand
     def _empty_parent(cat, N=1):
-        empty = cat.copy()
-        for col in empty.colnames:
-            if empty[col].dtype == bool:
-                empty[col] = False
+        """Return a new Table with same columns/dtypes as `cat`,
+        length N, initialized with your null values.
+        """
+        empty = Table(masked=False)
+
+        for col in cat.itercols():
+            name = col.name
+            dt = col.dtype
+            if dt.kind == 'b':                      # bool
+                data = np.zeros(N, dtype=dt)
+            elif dt.kind in 'iu' or dt.kind == 'f': # int / uint and float
+                fill = 99 if name in ['STARMAG', 'STARDIST', 'STARFDIST'] else -99
+                data = np.full(N, fill, dtype=dt)
+            elif dt.kind in 'SU':                   # fixed-length string
+                data = np.full(N, '', dtype=dt)
             else:
-                empty[col] *= 0
-                if not empty[col].dtype.type is np.str_:
-                    if col in ['STARMAG', 'STARDIST', 'STARFDIST']:
-                        empty[col] += 99 # null value
-                    else:
-                        empty[col] += -99 # null value
-        if N > 1:
-            empty = vstack([oneempty for oneempty in empty])
+                data = np.full(N, -99, dtype=dt)
+            empty[name] = Column(data, name=name, dtype=dt)
         return empty
 
 
@@ -3040,34 +3355,57 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         assert(len(custom) == len(np.unique(custom['OBJNAME'])))
     except:
         log.info('Warning: duplicates in parent-custom file!')
-        #raise ValueError()
         oo, cc = np.unique(custom['OBJNAME'], return_counts=True)
         log.info(oo[cc>1])
-        pdb.set_trace()
+        raise ValueError()
+
+    # special handling of SREGION; if masked then it's both regions
+    if hasattr(custom['SREGION'], 'mask'):
+        custom['SREGION'] = custom['SREGION'].filled('')
+    custom['REGION'] = np.zeros(len(custom), dtype=parent['REGION'].dtype)
+    for iobj, reg in enumerate(custom['SREGION']):
+        if reg == '':
+            custom['REGION'][iobj] = REGIONBITS['dr11-south'] + REGIONBITS['dr9-north']
+        else:
+            custom['REGION'][iobj] = REGIONBITS[reg]
+    custom.remove_columns(['SREGION', 'COMMENT'])
 
     moreparent = _empty_parent(parent[:1], len(custom))
     for col in custom.colnames:
         if col == 'COMMENT':
             continue
-        moreparent[col] = custom[col]
-
-    # special handling of REGION; if masked then it's both regions
-    for iobj, (reg, mask) in enumerate(zip(custom['REGION'].value, custom['REGION'].mask)):
-        if mask:
-            moreparent['REGION'][iobj] = REGIONBITS['dr11-south'] + REGIONBITS['dr9-north']
-        else:
-            moreparent['REGION'][iobj] = REGIONBITS[reg]
-    print('double-check the masked logic here')
-    pdb.set_trace()
-    #moreparent[custom.colnames[:-1]]
+        moreparent[col] = np.asarray(custom[col], dtype=parent[col].dtype)
+    #moreparent[custom.colnames]
 
     # update the Gaia masking bits
     add_gaia_masking(moreparent)
 
-    # assign a unique parent_row
-    all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
-    moreparent['ROW_PARENT'] = np.max(all_parent_rows) + np.arange(len(moreparent)) + 1
+    # Some objects were dropped in the 'archive' step but restored via
+    # the custom file; restore their properties here.
+    nocuts_objnames = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='OBJNAME')
+    rows = np.isin(nocuts_objnames, moreparent['OBJNAME'])
+    if np.any(rows):
+        rows = np.where(np.isin(nocuts_objnames, moreparent['OBJNAME']))[0]
+        nocuts = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), rows=rows))
+        m_parent, m_nocuts = match(moreparent['OBJNAME'], nocuts['OBJNAME'])
+        for col in nocuts.colnames:
+            if col in custom.colnames: # do not overwrite the custom file
+                continue
+            moreparent[col][m_parent] = nocuts[col][m_nocuts]
+
+    # assign a unique parent_row for new objects
+    I = np.where(moreparent['ROW_PARENT'] < 0)[0]
+    if len(I) > 0:
+        all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
+        moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
     parent = vstack((parent, moreparent))
+    if len(parent) != len(np.unique(parent['ROW_PARENT'])):
+        log.info('Duplicate ROW_PARENT values between parent and moreparent!')
+        oo, cc = np.unique(parent['ROW_PARENT'], return_counts=True)
+        log.info(oo[cc>1])
+        bb = parent[np.isin(parent['ROW_PARENT'], oo[cc>1])]['OBJNAME', 'ROW_PARENT'] ; bb = bb[np.argsort(bb['ROW_PARENT'])] ; bb
+        pdb.set_trace()
+    assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
     # Read and process the "parent-drop" file; update REGION for
     # objects indicated in that file.
@@ -3099,18 +3437,13 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(f'Dropping {np.sum(Idrop):,d}/{np.sum(Iregion):,d} objects in {region} based on VI')
         parent['REGION'][Iparent] -= bit
 
-    try:
-        assert(np.all(parent['REGION'] > 0))
-    except:
-        pdb.set_trace()
+    # totally out of the sample...
+    I = parent['REGION'] == 0
+    if np.any(I):
+        parent = parent[~I]
 
-    # specify mindiam
-    if version in mindiam_by_version.keys():
-        mindiam = mindiam_by_version[version] # [arcsec]
-    else:
-        mindiam = mindiam_by_version['default'] # [arcsec]
-
-    diam, ba, pa, ref, mag, band = choose_geometry(
+    mindiam = 20.
+    diam, ba, pa, diam_ref, mag, band = choose_geometry(
         parent, mindiam=mindiam, get_mag=True)
     origdiam, _, _, _ = choose_geometry(parent, mindiam=0.)
 
@@ -3132,6 +3465,73 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     diam /= 60. # [arcmin]
     assert(np.all(diam > 0.))
 
+
+    # use "reference" diameters
+    reffiles = {
+        # The v0.12 parent catalog was constructed by updating the
+        # initial diameters from the v0.11 values.
+        'v0.12': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            },
+        # In v0.20 and v0.21 use the v0.11 measurements to throw out small galaxies.
+        'v0.20': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            },
+        'v0.21': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            },
+    }
+    if version == 'v0.12':
+        # in v0.11 the 'fixgeo' geometry was inadvertently
+        # overwritten, so don't update those diameters
+        veto = []
+        for action in ['fixgeo', 'resolved']:
+            actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
+            veto.append(Table.read(actfile, format='csv', comment='#'))
+        veto = vstack(veto)
+        veto_objnames = set(np.unique(veto['objname'].tolist()))
+
+        diam, ba, pa, diam_ref = update_geometry_from_reffiles(
+            parent, diam, ba, pa, diam_ref, reffiles[version],
+            REGIONBITS, veto_objnames=veto_objnames)
+    elif version == 'v0.20' or version == 'v0.21':
+        # Apply D(26)>0.5 diameter cuts but do not drop objects from the
+        # "properties" or "custom" catalog.
+        propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
+        customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
+        props = Table.read(propsfile, format='csv', comment='#')
+        custom = Table.read(customfile, format='csv', comment='#')
+
+        veto_objnames = np.unique(np.hstack([props['objname'], custom['OBJNAME']]))
+        veto_objnames = set(veto_objnames.tolist())
+
+        for region in ['dr9-north', 'dr11-south']:
+            reffile = reffiles[version][region]
+            ref_tab = Table(fitsio.read(reffile, 'ELLIPSE', columns=[
+                'OBJNAME', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'RA', 'DEC',
+                'GROUP_NAME', 'GROUP_MULT', 'RA_INIT', 'DEC_INIT', 'DIAM_INIT',
+                'BA', 'PA', 'D26', 'D26_REF']))
+            parent = remove_small_groups_and_galaxies(
+                parent, ref_tab, region, REGIONBITS, SAMPLE,
+                ELLIPSEBIT, mindiam=0.5, veto_objnames=veto_objnames)
+
+        # Drop objects with REGION==0.
+        I = parent['REGION'] != 0
+        parent = parent[I]
+        diam = diam[I]
+        ba = ba[I]
+        pa = pa[I]
+        diam_ref = diam_ref[I]
+        mag = mag[I]
+        band = band[I]
+        assert(np.all(np.isin(lvd_dwarfs, parent['OBJNAME'])))
+
     # one final update of coordinates and geometry based on VI
     propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
     props = Table.read(propsfile, format='csv', comment='#')
@@ -3141,7 +3541,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     except:
         log.info('Warning: duplicates in parent-properties file!')
         #raise ValueError()
-        oo, cc = np.unique(proprs['objname'], return_counts=True)
+        oo, cc = np.unique(props['objname'], return_counts=True)
         log.info(oo[cc>1])
         pdb.set_trace()
 
@@ -3179,59 +3579,23 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 elif col == 'ba':
                     ba[I] = newval
 
-    # If there is a reference catalog of diameters, use it here.
-    if reffiles:
-        prevdiam = np.zeros(len(parent))
-        for region in ['dr9-north', 'dr11-south']:
-            reffile = reffiles[region]
-            ref = Table(fitsio.read(reffile, 'ELLIPSE', columns=['OBJNAME', 'REGION', 'D26', 'D26_ERR']))
-            log.info(f'Read {len(ref):,d} objects from {reffile}')
-
-            # this will prefer dr11-south initial diameters over
-            # dr9-north since dr11-south goes last
-            m1, m2 = match(parent['OBJNAME'], ref['OBJNAME'])
-
-            pdb.set_trace()
-            # after REGION is updated in the dr11/dr9 catalog for
-            # sources on the edge (see SGA.py, line 915), there should
-            # be no "missing" sources in "bb", below.
-            I = parent['REGION'] & REGIONBITS[region] != 0
-            bb = parent[I]
-            bb[~np.isin(bb['OBJNAME'], ref['OBJNAME'])]
-
-            J = np.where(prevdiam[I[m1]] < 60.*prev['D26'][m2])[0]
-            prevdiam[I[m1[J]]] = 60.*prev['D26'][m2[J]]
-
-
-    pdb.set_trace()
-
-
-
-    ## Pre-process the morphology column.
-    #allmorph = []
-    #for objtype, morph, basic_morph in zip(
-    #        parent['OBJTYPE'].value, parent['MORPH'].value,
-    #        parent['BASIC_MORPH'].value):
-    #    morph1 = np.array([objtype, morph, basic_morph])
-    #    morph1 = ';'.join(morph1[morph1 != '']).replace('  ', '')
-    #    allmorph.append(morph1)
-
-    #log.warning('Consider removing sources that are too close to bright stars.')
 
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
-    samplebits[parent['ROW_LVD'] != -99] += SAMPLE['LVD']       # 2^0 - LVD dwarfs
+    samplebits[parent['ROW_LVD'] != -99] |= SAMPLE['LVD']       # 2^0 - LVD dwarfs
     for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
-        samplebits[parent[f'IN_{cloud}']] += SAMPLE['MCLOUDS']
-    samplebits[parent['IN_GCLPNE']] += SAMPLE['GCLPNE']         # 2^2 - GC/PNe
-    samplebits[parent['STARFDIST'] < 1.2] += SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
-    samplebits[parent['STARFDIST'] < 0.5] += SAMPLE['INSTAR']   # 2^4 - INSTAR
+        samplebits[parent[f'IN_{cloud}']] |= SAMPLE['MCLOUDS']
+    samplebits[parent['IN_GCLPNE']] |= SAMPLE['GCLPNE']         # 2^2 - GC/PNe
+    samplebits[parent['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
+    samplebits[parent['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']   # 2^4 - INSTAR
 
     # Assign the ELLIPSEMODE bits. Rederive the set of objects in each
     # file so those files can be updated without having to rerun
     # build_parent_archive.
     ellipsemode = np.zeros(len(parent), np.int32)
-    for action in ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking']:
+    actions = ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking',
+               'momentpos', 'tractorgeo', 'radweight', '']
+    for action in actions:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
             log.warning(f'No action file {actfile} found; skipping.')
@@ -3245,24 +3609,24 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         if np.any(cc > 1):
             log.warning(f'duplicates in action file {actfile}')
             log.info(oo[cc>1])
-            pdb.set_trace()
+            raise ValueError()
 
         # make sure every object is in the current catalog
         I = np.isin(parent['OBJNAME'].value, act['objname'].value)
         if np.sum(I) != len(act):
             log.warning(f'The parent catalog is missing the following objects in {actfile}')
             log.info(act[~np.isin(act['objname'].value, parent['OBJNAME'].value)])
-            pdb.set_trace()
+            raise ValueError()
 
-        ellipsemode[I] += ELLIPSEMODE[action.upper()]
+        ellipsemode[I] |= ELLIPSEMODE[action.upper()]
 
     # RESOLVED always implies FIXGEO!
-    ellipsemode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] += ELLIPSEMODE['FIXGEO']
+    ellipsemode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] |= ELLIPSEMODE['FIXGEO']
 
     # FITMODE is used by legacypipe
     fitmode = np.zeros(len(parent), np.int32)
-    fitmode[ellipsemode & ELLIPSEMODE['FIXGEO'] != 0] += FITMODE['FIXGEO']
-    fitmode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] += FITMODE['RESOLVED']
+    fitmode[ellipsemode & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
+    fitmode[ellipsemode & ELLIPSEMODE['RESOLVED'] != 0] |= FITMODE['RESOLVED']
 
     # build the final catalog.
     grp = parent['REGION', 'OBJNAME', 'PGC']
@@ -3276,7 +3640,12 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     grp['PA'] = pa.astype('f4')
     grp['MAG'] = mag.astype('f4')
     #grp['MAG_BAND'] = band
-    grp['DIAM_REF'] = ref
+    grp['DIAM_REF'] = diam_ref
+
+    # apply an additional diameter cut:
+    if float(version[1:]) >= 0.13:
+        print('APPLY VI CUTS!')
+        #pdb.set_trace()
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
@@ -3294,24 +3663,18 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info('Adopting ROW_PARENT for SGAID')
         sgaid = parent['ROW_PARENT'][srt].value
     grp.add_column(sgaid, name='SGAID', index=0)
-
     assert(len(grp) == len(np.unique(grp['SGAID'])))
 
-    # Build the group catalog but without the RESOLVED or FORCEPSF
-    # samples (e.g., SMC, LMC).
-    print('Check the logic of I and make sure we get complementary sets.')
-    pdb.set_trace()
-    I = np.logical_or(grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0,
-                      grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
-    out1 = build_group_catalog(grp[I], mp=mp)
-    try:
-        #test = grp[~I]
-        #out2 = build_group_catalog(test[:10000], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
-        out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
-    except:
-        pdb.set_trace()
+
+    # Build the group catalog but make sure the RESOLVED and FORCEPSF
+    # samples (e.g., SMC, LMC) are alone.
+    I = np.logical_or((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0,
+                      (grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
+    out1 = make_singleton_group(grp[I], group_id_start=0)
+    #out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
+    out2 = build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1, mp=mp)
     out = vstack((out1, out2))
-    del out1, out2
+    #del out1, out2
 
     # assign SGAGROUP from GROUP_NAME and check for duplicates
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
@@ -3356,6 +3719,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(f"Stripped region bits (kept groups) for {len(strip_groups):,d} groups:")
         log.info(f"  {','.join(strip_groups)}")
 
+    # For each unique group, assign the OVERLAP sample bit.
+    set_overlap_bit(out, SAMPLE)
+
     # one more check!
     try:
         assert(np.all(np.isin(lvd_dwarfs, out['OBJNAME'])))
@@ -3365,6 +3731,11 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
     out.write(outfile, overwrite=True)
+
+    cmd = f'startree -i {outfile} -o {kdoutfile} -T -P -k -n stars'
+    log.info(cmd)
+    _ = os.system(cmd)
+
 
     ## Quick check that we have all LVD dwarfs: Yes! 623 (81) LVD
     ## objects within (outside) the DR11 imaging footprint.

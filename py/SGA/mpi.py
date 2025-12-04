@@ -66,6 +66,7 @@ def mpi_args():
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing files.')
+    parser.add_argument('--qaplot', action='store_true', help='Build some QA plots (for testing).')
 
     parser.add_argument('--lvd', action='store_true', help='Read the parent LVD sample.')
     parser.add_argument('--wisesize', action='store_true', help='Read the wisesize parent sample.')
