@@ -2871,7 +2871,8 @@ def build_parent_archive(verbose=False, overwrite=False):
 
 
 def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
-                        diamcolumn='D26', exclude_group_names=None):
+                        diamcolumn='D26', diamerrcolumn=None,
+                        exclude_group_names=None):
     """Return a new catalog containing only groups with at least
     `minmult` members whose *all* members have diameters between
     `mindiam` and `maxdiam` based on `diamcolumn` (in arcminutes).
@@ -2893,6 +2894,9 @@ def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
 
     gname = cat['GROUP_NAME'][mask_multi]
     diam = cat[diamcolumn][mask_multi]
+    if diamerrcolumn is not None:
+        diamerr = cat[diamerrcolumn][mask_multi]
+        diam += diamerr # lower limit
 
     # Sort by group name so each group is contiguous
     order = np.argsort(gname)

@@ -559,6 +559,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         sample_flags = (fullsample['SAMPLE'] & (MCLOUDS | GCLPNE | NEARSTAR | INSTAR)) != 0
 
         diamcolumn = 'D26'
+        diamerrcolumn = 'D26_ERR'
         sort_by_groupname = False
 
         # samples 001–007 are mutually exclusive.
@@ -581,9 +582,14 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             #I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
             print('HACK!')
             sort_by_groupname = True
-            _, rem = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5,
-                                         diamcolumn=diamcolumn)
-            I = (gm1 & (fullsample[diamcolumn] < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem['GROUP_NAME'])
+            #_, rem = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5, diamcolumn=diamcolumn)#, diamerrcolumn=diamerrcolumn)
+            #I = (gm1 & (fullsample[diamcolumn] < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem['GROUP_NAME'])
+            _, rem1 = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5, diamcolumn=diamcolumn)#, diamerrcolumn=diamerrcolumn)
+            I1 = (gm1 & (fullsample[diamcolumn] < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem1['GROUP_NAME'])
+            _, rem2 = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5, diamcolumn=diamcolumn, diamerrcolumn=diamerrcolumn)
+            I2 = (gm1 & ((fullsample[diamcolumn]+fullsample[diamerrcolumn]) < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem2['GROUP_NAME'])
+            I = ( (np.isin(fullsample['GROUP_NAME'], rem1['GROUP_NAME']) & ~np.isin(fullsample['GROUP_NAME'], rem2['GROUP_NAME'])) |
+                  (gm1 & ((fullsample[diamcolumn]+fullsample[diamerrcolumn]) < 0.5)) & ~(gm1 & (fullsample[diamcolumn] < 0.5)) )
             fullsample = fullsample[I]
             sample = fullsample
         elif vi_sample == 3:
