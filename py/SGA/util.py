@@ -251,3 +251,27 @@ def match(A, B, check_for_dups=True):
 
     # AR to get back to original indexes
     return np.argsort(A)[maskA], np.argsort(B)[maskB]
+
+
+def find_csv_badline(fname):
+
+    try:
+        t = Table.read(fname, format='csv', comment='#')
+    except ascii.InconsistentTableError as e:
+        # Extract the line number from the error message
+        msg = str(e)
+        # Astropy reports “…data line 157”
+        for token in msg.split():
+            if token.isdigit():
+                bad_line_num = int(token)
+                break
+        else:
+            raise  # did not find a line number; rethrow
+
+        # Print the actual offending line
+        with open(fname) as f:
+            for i, line in enumerate(f, start=1):
+                if i == bad_line_num:
+                    print(f"\nOffending line {bad_line_num}:")
+                    print(line.rstrip())
+                    break

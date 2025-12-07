@@ -3394,12 +3394,18 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     if len(I) > 0:
         all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
         moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
+
+    keep_in_custom = moreparent[~np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]
+    move_to_properties = moreparent[np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]
+    move_to_properties['OBJNAME', 'RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT'].write('junk.csv', format='csv')
+
     parent = vstack((parent, moreparent))
     if len(parent) != len(np.unique(parent['ROW_PARENT'])):
         log.info('Duplicate ROW_PARENT values between parent and moreparent!')
         oo, cc = np.unique(parent['ROW_PARENT'], return_counts=True)
         log.info(oo[cc>1])
         bb = parent[np.isin(parent['ROW_PARENT'], oo[cc>1])]['OBJNAME', 'ROW_PARENT'] ; bb = bb[np.argsort(bb['ROW_PARENT'])] ; bb
+
         pdb.set_trace()
     assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
@@ -3471,13 +3477,18 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
             },
-        # In v0.20 and v0.21 use the v0.11 measurements to throw out small galaxies.
+        # In v0.20-v0.22 use the v0.11 measurements to throw out small galaxies.
         'v0.20': {
             'ref_version': 'v0.11',
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
             },
         'v0.21': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            },
+        'v0.22': {
             'ref_version': 'v0.11',
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
@@ -3496,7 +3507,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         diam, ba, pa, diam_ref = update_geometry_from_reffiles(
             parent, diam, ba, pa, diam_ref, reffiles[version],
             REGIONBITS, veto_objnames=veto_objnames)
-    elif version == 'v0.20' or version == 'v0.21':
+    elif version == 'v0.20' or version == 'v0.21' or version == 'v0.22':
         # Apply D(26)>0.5 diameter cuts but do not drop objects from the
         # "properties" or "custom" catalog.
         propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
@@ -3577,21 +3588,20 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
 
     # Assign the SAMPLE bits.
-    print('NEED TO RECOMPUTE IN_LMC AND IN_GCLPNE!')
-    pdb.set_trace()
-
     samplebits = np.zeros(len(parent), np.int32)
     samplebits[parent['ROW_LVD'] != -99] |= SAMPLE['LVD']       # 2^0 - LVD dwarfs
     samplebits[parent['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
     samplebits[parent['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']   # 2^4 - INSTAR
 
     # Re-populate the LMC/SMC and GCLPNE bits since we've added objects.
+    for cloud in ['LMC', 'SMC']:
+        in_mcloud = find_in_mclouds(cat, mcloud=cloud)
+        samplebits[in_mcloud] |= SAMPLE['MCLOUDS'] # 2^1 - Magellanic Clouds
 
-    for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
-        samplebits[parent[f'IN_{cloud}']] |= SAMPLE['MCLOUDS']
-    samplebits[parent['IN_GCLPNE']] |= SAMPLE['GCLPNE']         # 2^2 - GC/PNe
+    in_gclpne = find_in_gclpne(cat)
+    samplebits[in_gclpne] |= SAMPLE['GCLPNE']      # 2^2 - GC/PNe
 
-
+    pdb.set_trace()
 
     # Assign the ELLIPSEMODE bits. Rederive the set of objects in each
     # file so those files can be updated without having to rerun

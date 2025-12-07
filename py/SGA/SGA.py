@@ -96,7 +96,7 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # tons of VI results
         #version = 'v0.21'
 
-        # more VI; D<0.5 arcmin systems in the test region removed
+        # more VI; D<0.5 arcmin systems in the test region removed; SGA2020 galaxies added
         version = 'v0.22'
 
         # VI of groups with overlapping ellipses
