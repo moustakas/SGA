@@ -2821,9 +2821,10 @@ def find_in_mclouds(cat, mcloud='LMC'):
     # flag objects in the LMC and SMC
 
     from SGA.sky import in_ellipse_mask_sky
+    from SGA.geometry import choose_geometry
 
-    cloud = cat[cat['OBJNAME'] == mcloud]
-    if len(cloud) == 0:
+    gal = cat[cat['OBJNAME'] == mcloud]
+    if len(gal) == 0:
         msg = f'Magellanic Cloud {mcloud} not found in input catalog!'
         log.critical(msg)
         raise ValueError(msg)
@@ -3559,13 +3560,15 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(oo[cc>1])
         pdb.set_trace()
 
+    miss = props[~np.isin(props['objname'], parent['OBJNAME'].value)]
+    if len(miss) > 0:
+        log.info(f'The following objects in {propsfile} are missing from parent:')
+        log.info(miss)
+        pdb.set_trace()
+
     for prop in props:
         objname = prop['objname']
         I = np.where(objname == parent['OBJNAME'].value)[0]
-        if len(I) != 1:
-            log.info(f'Problem finding {objname}!')
-            pdb.set_trace()
-
         for col in ['ra', 'dec', 'diam', 'pa', 'ba']:
             newval = prop[col]
             if col == 'ra' or col == 'dec':
@@ -3578,7 +3581,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 oldval = ba[I[0]]
 
             if newval != -99.:
-                log.info(f'{objname} {col}: {oldval} --> {newval}')
+                pass
+                #log.info(f'{objname} {col}: {oldval} --> {newval}')
             else:
                 pass
                 #log.info(f'  Retaining {col}: {oldval}')
@@ -3602,20 +3606,18 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # Re-populate the LMC/SMC and GCLPNE bits since we've added objects.
     for cloud in ['LMC', 'SMC']:
-        in_mcloud = find_in_mclouds(cat, mcloud=cloud)
+        in_mcloud = find_in_mclouds(parent, mcloud=cloud)
         samplebits[in_mcloud] |= SAMPLE['MCLOUDS'] # 2^1 - Magellanic Clouds
 
-    in_gclpne = find_in_gclpne(cat)
+    in_gclpne = find_in_gclpne(parent)
     samplebits[in_gclpne] |= SAMPLE['GCLPNE']      # 2^2 - GC/PNe
-
-    pdb.set_trace()
 
     # Assign the ELLIPSEMODE bits. Rederive the set of objects in each
     # file so those files can be updated without having to rerun
     # build_parent_archive.
     ellipsemode = np.zeros(len(parent), np.int32)
     actions = ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking',
-               'momentpos', 'tractorgeo', 'radweight', '']
+               'momentpos', 'tractorgeo', 'radweight']
     for action in actions:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
