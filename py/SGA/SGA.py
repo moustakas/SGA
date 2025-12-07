@@ -94,18 +94,21 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.20'
 
         # tons of VI results
-        version = 'v0.21'
+        #version = 'v0.21'
+
+        # more VI; D<0.5 arcmin systems in the test region removed
+        version = 'v0.22'
 
         # VI of groups with overlapping ellipses
-        #version = 'v0.22'
+        #version = 'v0.30'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
         #version = 'v0.11' # parent_version = v0.10 --> v0.11
         #version = 'v0.12' # parent_version = v0.11 --> v0.12
         #version = 'v0.20' # parent_version = v0.12 --> v0.20
-        version = 'v0.21' # parent_version = v0.20 --> v0.21
-        #version = 'v0.22'  # parent_version = v0.21 --> v0.22
+        #version = 'v0.21' # parent_version = v0.20 --> v0.21
+        version = 'v0.22'  # parent_version = v0.21 --> v0.22
     return version
 
 

@@ -3585,6 +3585,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
 
     # Assign the SAMPLE bits.
+    print('NEED TO RECOMPUTE IN_LMC AND IN_GCLPNE!')
+    pdb.set_trace()
+
     samplebits = np.zeros(len(parent), np.int32)
     samplebits[parent['ROW_LVD'] != -99] |= SAMPLE['LVD']       # 2^0 - LVD dwarfs
     for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
