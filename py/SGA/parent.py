@@ -3699,7 +3699,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     grp['DEC'] = parent['DEC']
     grp['DIAM'] = diam.astype('f4') # [arcmin]
     grp['BA'] = ba.astype('f4')
-    grp['PA'] = pa.astype('f4')
+    grp['PA'] = (pa % 180.).astype('f4')
     grp['MAG'] = mag.astype('f4')
     #grp['MAG_BAND'] = band
     grp['DIAM_REF'] = diam_ref
