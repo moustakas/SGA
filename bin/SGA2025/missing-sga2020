@@ -1,0 +1,138 @@
+#!/usr/bin/env python
+
+
+import os, pdb
+import numpy as np
+import fitsio
+from astropy.coordinates import SkyCoord, Angle
+import astropy.units as u
+from astropy.table import Table, vstack
+
+from SGA.SGA import sga_dir
+from SGA.external import read_sga2020
+from SGA.geometry import ellipses_overlap
+
+
+def ellipses_overlap(ra1, dec1, a1, b1, pa1,
+                     ra2, dec2, a2, b2, pa2):
+    """
+    Minimal, brute-force ellipse–ellipse overlap test in sky coords.
+    a,b in arcsec. PA in degrees (east of north).
+    Project onto tangent plane and check distance between centers.
+    """
+
+    # crude but sufficient: if center separation < sum of major axes
+    # (after projecting to tangent plane)
+    c1 = SkyCoord(ra1*u.deg, dec1*u.deg)
+    c2 = SkyCoord(ra2*u.deg, dec2*u.deg)
+    sep = c1.separation(c2).arcsec
+
+    # More accurate would rotate axes etc., but for mismatch detection
+    # this is enough to avoid false negatives.
+    return sep < (a1 + a2)
+
+
+def find_missing_sga_objects(sga, cat, match_radius_arcsec=30.):
+    """
+    Return the subset of SGA rows that do NOT appear in cat,
+    as determined first by a positional match and then by ellipse overlap.
+
+    DIAM is in arcminutes in both tables.
+    """
+
+    # Build coordinate arrays
+    coord_sga = SkyCoord(sga['RA'] * u.deg, sga['DEC'] * u.deg)
+    coord_cat = SkyCoord(cat['RA'] * u.deg, cat['DEC'] * u.deg)
+
+    # KD-tree match
+    idx, sep2d, _ = coord_sga.match_to_catalog_sky(coord_cat)
+
+    # convert diameters to arcsec major/minor axes
+    a_sga = (sga['DIAM'] * 60.) / 2.       # arcsec
+    b_sga = a_sga * sga['BA']
+
+    a_cat = (cat['DIAM'][idx] * 60.) / 2.  # arcsec
+    b_cat = a_cat * cat['BA'][idx]
+
+    pa_sga = sga['PA']   # deg
+    pa_cat = cat['PA'][idx]  # deg
+
+    # initial positional filter
+    pos_match = sep2d.arcsec <= match_radius_arcsec
+
+    # for coarse matches, test ellipse overlap
+    keep = np.ones(len(sga), bool)
+
+    for i in range(len(sga)):
+        if not pos_match[i]:
+            continue
+
+        # ellipse–ellipse check
+        if ellipses_overlap(
+                sga['RA'][i], sga['DEC'][i], a_sga[i], b_sga[i], pa_sga[i],
+                cat['RA'][idx[i]], cat['DEC'][idx[i]], a_cat[i], b_cat[i], pa_cat[i]):
+            keep[i] = False
+
+    # rows that do NOT match anything in cat
+    missing = sga[keep]
+
+    return missing
+
+
+if __name__ == '__main__':
+    sga = read_sga2020()
+    sga = sga['GALAXY', 'RA', 'DEC', 'D26', 'BA', 'PA', 'MAG_LEDA', 'PGC', 'ROW']
+    sga.rename_column('D26', 'DIAM')
+
+    cat = Table(fitsio.read(os.path.join(sga_dir(), 'sample', 'SGA2025-parent-v0.21.fits')))
+    cat = cat['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'] # [cat['SAMPLE'] & 1 == 0]
+
+    miss = find_missing_sga_objects(sga, cat, match_radius_arcsec=30.)
+    out = miss[(miss['PGC'] != -1) * (miss['DIAM'] > 40/60.)]
+
+    nocuts = Table(fitsio.read(os.path.join(sga_dir(), 'parent', 'SGA2025-parent-nocuts-v0.10.fits')))
+    I = np.isin(nocuts['PGC'], out['PGC'])
+    cat2 = nocuts[I]
+    cat2 = cat2[np.argsort(cat2['DIAM_SGA2020'])[::-1]]
+
+    out2 = out[~np.isin(out['PGC'], cat2['PGC'])]
+    out2 = out2[np.argsort(out2['DIAM'])[::-1]]
+
+    cat2.write('sga2020-missing-in-nocuts.fits', overwrite=True)
+    out2.write('sga2020-missing-notin-nocuts.fits', overwrite=True)
+
+    out2_viewer = out2.copy()
+    out2_viewer.rename_columns(['GALAXY', 'RA', 'DEC', 'BA', 'PA', 'DIAM'],
+                               ['name', 'ra', 'dec', 'abRatio', 'posAngle', 'radius'])
+    out2_viewer['radius'] *= 60/2
+    out2_viewer.remove_columns(['PGC', 'ROW'])
+
+    north = out2_viewer['dec'] > 30.
+    south = ~north
+    out2_viewer[north].write('viewer-sga2020-missing-notin-nocuts-north.fits', overwrite=True)
+    out2_viewer[south].write('viewer-sga2020-missing-notin-nocuts-south.fits', overwrite=True)
+
+    with open('sga2020-missing-notin-nocuts.txt', 'w') as F:
+        for row in out2[north]:
+            F.write(f'{row["GALAXY"]},dr9-north,{row["RA"]},{row["DEC"]},{row["DIAM"]:.3f},{row["PA"]:.3f},{row["BA"]:.3f},{row["MAG_LEDA"]:.3f},SGA2020 nocuts missing\n')
+        for row in out2[south]:
+            F.write(f'{row["GALAXY"]},dr11-south,{row["RA"]},{row["DEC"]},{row["DIAM"]:.3f},{row["PA"]:.3f},{row["BA"]:.3f},{row["MAG_LEDA"]:.3f},SGA2020 nocuts missing\n')
+
+    # in nocuts
+    cat2_viewer = cat2["OBJNAME", "RA", "DEC", "BA_SGA2020", "PA_SGA2020", "DIAM_SGA2020"]
+    cat2_viewer.rename_columns(["OBJNAME", "RA", "DEC", "BA_SGA2020", "PA_SGA2020", "DIAM_SGA2020"],
+                               ["name", "ra", "dec", "abRatio", "posAngle", "radius"])
+    cat2_viewer["radius"] *= 60/2
+
+    north = cat2_viewer["dec"] > 30.
+    south = ~north
+    cat2_viewer[north].write("viewer-sga2020-missing-in-nocuts-north.fits", overwrite=True)
+    cat2_viewer[south].write("viewer-sga2020-missing-in-nocuts-south.fits", overwrite=True)
+
+    with open("sga2020-missing-in-nocuts.txt", "w") as F:
+        for row in cat2[north]:
+            F.write(f'{row["OBJNAME"]},dr9-north,{row["RA"]},{row["DEC"]},{row["DIAM_SGA2020"]:.3f},{row["PA_SGA2020"]:.3f},{row["BA_SGA2020"]:.3f},{row["MAG_LIT"]:.3f},SGA2020 in nocuts\n')
+        for row in cat2[south]:
+            F.write(f'{row["OBJNAME"]},dr11-south,{row["RA"]},{row["DEC"]},{row["DIAM_SGA2020"]:.3f},{row["PA_SGA2020"]:.3f},{row["BA_SGA2020"]:.3f},{row["MAG_LIT"]:.3f},SGA2020 in nocuts\n')
+
+    pdb.set_trace()
