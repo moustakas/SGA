@@ -2581,7 +2581,6 @@ def build_parent_archive(verbose=False, overwrite=False):
     from astropy.table import join
     from SGA.external import read_custom_external
     from SGA.geometry import choose_geometry
-    from SGA.sky import in_ellipse_mask_sky
 
     version_archive = SGA_version(archive=True)
     final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version_archive}.fits')
@@ -2702,63 +2701,11 @@ def build_parent_archive(verbose=False, overwrite=False):
     del refcat
 
     # flag objects in the LMC and SMC
-    cat['IN_LMC'] = np.zeros(len(cat), bool)
-    cat['IN_SMC'] = np.zeros(len(cat), bool)
     for cloud in ['LMC', 'SMC']:
-        gal = cat[cat['OBJNAME'] == cloud]
-        racen, deccen = gal['RA'].value, gal['DEC'].value
-        #gal['DIAM_HYPERLEDA', 'PA_HYPERLEDA', 'BA_HYPERLEDA', 'DIAM_LIT', 'DIAM_LIT_REF', 'PA_LIT', 'BA_LIT']
-
-        diam, ba, pa, _ = choose_geometry(gal)
-
-        semia = diam / 2. / 3600. # [degrees]
-        semib = ba * semia
-
-        I = np.where(in_ellipse_mask_sky(
-            racen, deccen, semia, semib, pa,
-            cat['RA'].value, cat['DEC'].value))
-        cat[f'IN_{cloud}'][I] = True
-
-        #alldiam, _, _, _ = choose_geometry(cat[I], mindiam=0.)
-
-        #out = Table()
-        ##out['name'] = cat['OBJNAME'][I]
-        #out['ra'] = cat['RA'][I]
-        #out['dec'] = cat['DEC'][I]
-        #out.write('ioannis/tmp/junk.fits', overwrite=True)
-        #
-        #from astropy.coordinates import SkyCoord
-        #import astropy.units as u
-        #coord = SkyCoord(ra=racen*u.deg, dec=deccen*u.deg)
-        #coord_cat = SkyCoord(ra=cat['RA'].value*u.deg, dec=cat['DEC'].value*u.deg)
-        #sep = coord.separation(coord_cat)
-        #I = sep < 5. * u.deg
-        #
-        #out = Table()
-        ##out['name'] = cat['OBJNAME'][I]
-        #out['ra'] = cat['RA'][I]
-        #out['dec'] = cat['DEC'][I]
-        #out.write('ioannis/tmp/junk2.fits', overwrite=True)
-        #cat[I][alldiam/60>1]['OBJNAME', ].write('junk.txt', format='csv', overwrite=True)
+        cat[f'IN_{cloud}'] = find_in_mclouds(cat, mcloud=cloud)
 
     # flag objects in GCl / PNe
-    cat['IN_GCLPNE'] = np.zeros(len(cat), bool)
-
-    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
-    gcl = Table(fitsio.read(gclfile))
-    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
-    for cl in gcl:
-        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
-                                cl['pa'], cat['RA'].value, cat['DEC'].value)
-        if np.any(I):
-            cat['IN_GCLPNE'][I] = True
-            #for gal in cat['OBJNAME'][I].value:
-            #    if cl['type'] == 'GCl':
-            #        print(f"{gal},drop,cluster,in GCl '{cl["name"]}'")
-            #    elif cl['type'] == 'PNe':
-            #        print(f"{gal},drop,cluster,in PNe '{cl["name"]}'")
-    #cat['IN_GCLPNE']write('junk.fits', overwrite=True)
-
+    cat['IN_GCLPNE'] = find_in_gclpne(cat)
 
     # apply cuts based on the photometry files
     #log.info('Processing the photometry files')
@@ -2868,6 +2815,51 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
     cat.write(final_outfile, overwrite=True)
+
+
+def find_in_mclouds(cat, mcloud='LMC'):
+    # flag objects in the LMC and SMC
+
+    from SGA.sky import in_ellipse_mask_sky
+
+    cloud = cat[cat['OBJNAME'] == mcloud]
+    if len(cloud) == 0:
+        msg = f'Magellanic Cloud {mcloud} not found in input catalog!'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    racen, deccen = gal['RA'].value, gal['DEC'].value
+    #gal['DIAM_HYPERLEDA', 'PA_HYPERLEDA', 'BA_HYPERLEDA', 'DIAM_LIT', 'DIAM_LIT_REF', 'PA_LIT', 'BA_LIT']
+
+    diam, ba, pa, _ = choose_geometry(gal)
+    semia = diam / 2. / 3600. # [degrees]
+    semib = ba * semia
+
+    in_mcloud = in_ellipse_mask_sky(
+        racen, deccen, semia, semib, pa,
+        cat['RA'].value, cat['DEC'].value)
+
+    return in_mcloud
+
+
+def find_in_gclpne(cat):
+    # flag objects in GCl / PNe
+
+    from SGA.sky import in_ellipse_mask_sky
+
+    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
+    gcl = Table(fitsio.read(gclfile))
+    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
+
+    in_gclpne = np.zeros(len(cat), bool)
+
+    for cl in gcl:
+        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
+                                cl['pa'], cat['RA'].value, cat['DEC'].value)
+        if np.any(I):
+            in_gclpne[I] = True
+
+    return in_gclpne
 
 
 def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
@@ -3590,11 +3582,16 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     samplebits = np.zeros(len(parent), np.int32)
     samplebits[parent['ROW_LVD'] != -99] |= SAMPLE['LVD']       # 2^0 - LVD dwarfs
+    samplebits[parent['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
+    samplebits[parent['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']   # 2^4 - INSTAR
+
+    # Re-populate the LMC/SMC and GCLPNE bits since we've added objects.
+
     for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
         samplebits[parent[f'IN_{cloud}']] |= SAMPLE['MCLOUDS']
     samplebits[parent['IN_GCLPNE']] |= SAMPLE['GCLPNE']         # 2^2 - GC/PNe
-    samplebits[parent['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
-    samplebits[parent['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']   # 2^4 - INSTAR
+
+
 
     # Assign the ELLIPSEMODE bits. Rederive the set of objects in each
     # file so those files can be updated without having to rerun
