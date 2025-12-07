@@ -3395,9 +3395,16 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
         moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
 
-    keep_in_custom = moreparent[~np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]
-    move_to_properties = moreparent[np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]
-    move_to_properties['OBJNAME', 'RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT'].write('junk.csv', format='csv')
+    #####################
+    ## hack!
+    #keep_in_custom_objname = moreparent[~np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]['OBJNAME']
+    #custom = Table.read(customfile, format='csv', comment='#')
+    #keep_in_custom = custom[np.isin(custom['OBJNAME'], keep_in_custom_objname)]
+    #keep_in_custom.write('keep_in_custom.csv', format='csv', overwrite=True)
+    #
+    #move_to_properties = moreparent[np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]
+    #move_to_properties['COMMENT'] = 'Moved from custom'
+    #move_to_properties['OBJNAME', 'RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT', 'COMMENT'].write('move-to-properties.csv', format='csv', overwrite=True)
 
     parent = vstack((parent, moreparent))
     if len(parent) != len(np.unique(parent['ROW_PARENT'])):
