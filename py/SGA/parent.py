@@ -3413,8 +3413,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         oo, cc = np.unique(parent['ROW_PARENT'], return_counts=True)
         log.info(oo[cc>1])
         bb = parent[np.isin(parent['ROW_PARENT'], oo[cc>1])]['OBJNAME', 'ROW_PARENT'] ; bb = bb[np.argsort(bb['ROW_PARENT'])] ; bb
-
         pdb.set_trace()
+
     assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
     # Read and process the "parent-drop" file; update REGION for
@@ -3440,7 +3440,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     drop = drop[~drop['region'].mask]
     for region in ['dr11-south', 'dr9-north']:
         bit = REGIONBITS[region]
-
         Idrop = drop['region'] == region
         Iregion = (parent['REGION'] & bit != 0)
         Iparent = Iregion * np.isin(parent['OBJNAME'], drop['objname'][Idrop])
@@ -3597,6 +3596,46 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 elif col == 'ba':
                     ba[I] = newval
 
+    # Also re-update geometry based on the custom file since the
+    # values can get overwritten by choose_diameter (e.g., KUG
+    # 1206+425 has an SGA-2020 diameter that we don't want).
+    log.info('One more geometry update using the customfile.')
+    customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
+    custom = Table.read(customfile, format='csv', comment='#')
+    for cust in custom:
+        objname = cust['OBJNAME']
+        I = np.where(objname == parent['OBJNAME'].value)[0]
+        if len(I) == 0:
+            pdb.set_trace()
+        else:
+            for col in ['RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT']:
+                newval = cust[col]
+                if col == 'RA' or col == 'DEC':
+                    oldval = parent[col.upper()][I[0]]
+                elif col == 'DIAM_LIT':
+                    oldval = diam[I[0]]
+                elif col == 'PA_LIT':
+                    oldval = pa[I[0]]
+                elif col == 'BA_LIT':
+                    oldval = ba[I[0]]
+
+                if newval != -99. and newval != oldval:
+                    log.info(f'{objname} {col}: {oldval} --> {newval}')
+                    pass
+                else:
+                    pass
+                    #log.info(f'  Retaining {col}: {oldval}')
+
+                if newval != -99. and newval != oldval:
+                    if col == 'RA' or col == 'DEC':
+                        parent[col.upper()][I] = newval
+                    elif col == 'DIAM_LIT':
+                        diam[I] = newval
+                    elif col == 'PA_LIT':
+                        pa[I] = newval
+                    elif col == 'BA_LIT':
+                        ba[I] = newval
+
 
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
@@ -3665,10 +3704,9 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #grp['MAG_BAND'] = band
     grp['DIAM_REF'] = diam_ref
 
-    # apply an additional diameter cut:
-    if float(version[1:]) >= 0.13:
-        print('APPLY VI CUTS!')
-        #pdb.set_trace()
+    ## apply an additional diameter cut:
+    #if float(version[1:]) >= 0.13:
+    #    print('APPLY VI CUTS!')
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
