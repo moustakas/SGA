@@ -3453,7 +3453,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
 
     # cleanup magnitudes
     band[band == ''] = 'V' # default
-    I = mag > 20.
+    I = (mag > 20.) | (mag < 0.)
     if np.any(I):
         mag[I] = 20.
 
