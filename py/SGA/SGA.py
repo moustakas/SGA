@@ -798,14 +798,14 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         #log.warning(f'Group directory {gdir} does not exist.')
         for obj in grpsample:
             log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table()
+        return Table(), Table(), obj
 
     # gather the ellipse catalogs
     ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
     if len(ellipsefiles) == 0:
         for obj in grpsample:
             log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table()
+        return Table(), Table(), obj
 
     refid_array = grpsample['SGAID'].value
     nsample = len(refid_array)
@@ -849,7 +849,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if not np.all(I):
         for obj in grpsample:
             log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table()
+        return Table(), Table(), obj
 
     tractor_sga = []
 
@@ -933,7 +933,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         tractor_sga = vstack(tractor_sga)
         tractor = vstack((tractor, tractor_sga))
 
-    return ellipse, tractor
+    return ellipse, tractor, Table()
 
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
@@ -1073,6 +1073,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         #allraslices = comm.bcast(allraslices, root=0)
 
     # outer loop on RA slices
+    allmissing_allslices = []
     for islice, raslice in enumerate(raslices_todo):
         #log.info(f'Rank {rank:03}: working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
         if rank == 0:
@@ -1099,6 +1100,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 if len(indx) == 0:
                     ellipse = Table()
                     tractor = Table()
+                    missing = Table()
                 else:
                     #log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
                     out = []
@@ -1116,23 +1118,28 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                     out = list(zip(*out))
                     ellipse = vstack(out[0])
                     tractor = vstack(out[1])
+                    missing = vstack(out[2])
 
                 #log.info(f'Rank {rank:03} RA slice {raslice}: sending ellipse (Tractor) table ' + \
                 #         f'with {len(ellipse):,d} ({len(tractor):,d}) rows to rank 000')
                 comm.send(ellipse, dest=0, tag=2)
                 comm.send(tractor, dest=0, tag=3)
+                comm.send(missing, dest=0, tag=4)
             else:
                 # ...to rank 0.
-                allellipse, alltractor = [], []
+                allellipse, alltractor, allmissing = [], [], []
                 for onerank in np.arange(size-1)+1:
                     ellipse = comm.recv(source=onerank, tag=2)
                     tractor = comm.recv(source=onerank, tag=3)
+                    missing = comm.recv(source=onerank, tag=4)
                     #log.info(f'Rank {rank:03} RA slice {raslice}: received ellipse (Tractor) catalogs ' + \
                     #         f'with {len(ellipse):,d} ({len(tractor):,d}) objects from rank {onerank:03}')
                     allellipse.append(ellipse)
                     alltractor.append(tractor)
+                    allmissing.append(missing)
                 allellipse = vstack(allellipse)
                 alltractor = vstack(alltractor)
+                allmissing = vstack(allmissing)
         else:
             #log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
             out = []
@@ -1146,6 +1153,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             out = list(zip(*out))
             allellipse = vstack(out[0])
             alltractor = vstack(out[1])
+            allmissing = vstack(out[2])
 
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
@@ -1153,6 +1161,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
             fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
             #print()
+
+            allmissing_allslices.append(allmissing)
 
     if rank == 0:
         dt, unit = get_dt(t0)
@@ -1255,9 +1265,10 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         # parameters (type, sersic, etc.) will be frozen and cause
         # problem.
         I = (out['ref_id'] != -1) * (out['type'] == '') * (out['fitmode'] == 0)
-        log.warning(f'Removing {np.sum(I):,d} SGA sources dropped by Tractor; ' + \
-                    'these should be removed in the parent catalog!')
-        out = out[~I]
+        if np.any(I):
+            log.warning(f'Removing {np.sum(I):,d} SGA sources dropped by Tractor; ' + \
+                        'these should be removed in the parent catalog!')
+            out = out[~I]
 
         # Set freeze for everything except "special" (ignore_source)
         # objects with a non-zero FITMODE at this point in the script.
@@ -1276,6 +1287,14 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         write_kdfile(outfile_ellipse, kdoutfile_ellipse)
         log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
+
+        # In the end, there should not be any "missing" systems.
+        if len(allmissing_allslices) > 0:
+            missingfile = os.path.join(sga_dir(), 'sample', f'{outprefix}-{version}-{region}-missing.fits')
+            allmissing_allslices = vstack(allmissing_allslices)
+            allmissing_allslices.write(missingfile, overwrite=True)
+            log.info(f'Wrote {len(allmissing_allslices):,d} objects to {missingfile}')
+
 
         dt, unit = get_dt(t0)
         log.info(f'Rank {rank:03} all done in {dt:.3f} {unit}')
