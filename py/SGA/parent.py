@@ -2581,7 +2581,6 @@ def build_parent_archive(verbose=False, overwrite=False):
     from astropy.table import join
     from SGA.external import read_custom_external
     from SGA.geometry import choose_geometry
-    from SGA.sky import in_ellipse_mask_sky
 
     version_archive = SGA_version(archive=True)
     final_outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version_archive}.fits')
@@ -2702,63 +2701,11 @@ def build_parent_archive(verbose=False, overwrite=False):
     del refcat
 
     # flag objects in the LMC and SMC
-    cat['IN_LMC'] = np.zeros(len(cat), bool)
-    cat['IN_SMC'] = np.zeros(len(cat), bool)
     for cloud in ['LMC', 'SMC']:
-        gal = cat[cat['OBJNAME'] == cloud]
-        racen, deccen = gal['RA'].value, gal['DEC'].value
-        #gal['DIAM_HYPERLEDA', 'PA_HYPERLEDA', 'BA_HYPERLEDA', 'DIAM_LIT', 'DIAM_LIT_REF', 'PA_LIT', 'BA_LIT']
-
-        diam, ba, pa, _ = choose_geometry(gal)
-
-        semia = diam / 2. / 3600. # [degrees]
-        semib = ba * semia
-
-        I = np.where(in_ellipse_mask_sky(
-            racen, deccen, semia, semib, pa,
-            cat['RA'].value, cat['DEC'].value))
-        cat[f'IN_{cloud}'][I] = True
-
-        #alldiam, _, _, _ = choose_geometry(cat[I], mindiam=0.)
-
-        #out = Table()
-        ##out['name'] = cat['OBJNAME'][I]
-        #out['ra'] = cat['RA'][I]
-        #out['dec'] = cat['DEC'][I]
-        #out.write('ioannis/tmp/junk.fits', overwrite=True)
-        #
-        #from astropy.coordinates import SkyCoord
-        #import astropy.units as u
-        #coord = SkyCoord(ra=racen*u.deg, dec=deccen*u.deg)
-        #coord_cat = SkyCoord(ra=cat['RA'].value*u.deg, dec=cat['DEC'].value*u.deg)
-        #sep = coord.separation(coord_cat)
-        #I = sep < 5. * u.deg
-        #
-        #out = Table()
-        ##out['name'] = cat['OBJNAME'][I]
-        #out['ra'] = cat['RA'][I]
-        #out['dec'] = cat['DEC'][I]
-        #out.write('ioannis/tmp/junk2.fits', overwrite=True)
-        #cat[I][alldiam/60>1]['OBJNAME', ].write('junk.txt', format='csv', overwrite=True)
+        cat[f'IN_{cloud}'] = find_in_mclouds(cat, mcloud=cloud)
 
     # flag objects in GCl / PNe
-    cat['IN_GCLPNE'] = np.zeros(len(cat), bool)
-
-    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
-    gcl = Table(fitsio.read(gclfile))
-    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
-    for cl in gcl:
-        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
-                                cl['pa'], cat['RA'].value, cat['DEC'].value)
-        if np.any(I):
-            cat['IN_GCLPNE'][I] = True
-            #for gal in cat['OBJNAME'][I].value:
-            #    if cl['type'] == 'GCl':
-            #        print(f"{gal},drop,cluster,in GCl '{cl["name"]}'")
-            #    elif cl['type'] == 'PNe':
-            #        print(f"{gal},drop,cluster,in PNe '{cl["name"]}'")
-    #cat['IN_GCLPNE']write('junk.fits', overwrite=True)
-
+    cat['IN_GCLPNE'] = find_in_gclpne(cat)
 
     # apply cuts based on the photometry files
     #log.info('Processing the photometry files')
@@ -2868,6 +2815,52 @@ def build_parent_archive(verbose=False, overwrite=False):
     log.info(f'Writing {len(cat):,d} objects to {final_outfile}')
     cat.meta['EXTNAME'] = 'PARENT-ARCHIVE'
     cat.write(final_outfile, overwrite=True)
+
+
+def find_in_mclouds(cat, mcloud='LMC'):
+    # flag objects in the LMC and SMC
+
+    from SGA.sky import in_ellipse_mask_sky
+    from SGA.geometry import choose_geometry
+
+    gal = cat[cat['OBJNAME'] == mcloud]
+    if len(gal) == 0:
+        msg = f'Magellanic Cloud {mcloud} not found in input catalog!'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    racen, deccen = gal['RA'].value, gal['DEC'].value
+    #gal['DIAM_HYPERLEDA', 'PA_HYPERLEDA', 'BA_HYPERLEDA', 'DIAM_LIT', 'DIAM_LIT_REF', 'PA_LIT', 'BA_LIT']
+
+    diam, ba, pa, _ = choose_geometry(gal)
+    semia = diam / 2. / 3600. # [degrees]
+    semib = ba * semia
+
+    in_mcloud = in_ellipse_mask_sky(
+        racen, deccen, semia, semib, pa,
+        cat['RA'].value, cat['DEC'].value)
+
+    return in_mcloud
+
+
+def find_in_gclpne(cat):
+    # flag objects in GCl / PNe
+
+    from SGA.sky import in_ellipse_mask_sky
+
+    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
+    gcl = Table(fitsio.read(gclfile))
+    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
+
+    in_gclpne = np.zeros(len(cat), bool)
+
+    for cl in gcl:
+        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
+                                cl['pa'], cat['RA'].value, cat['DEC'].value)
+        if np.any(I):
+            in_gclpne[I] = True
+
+    return in_gclpne
 
 
 def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
@@ -3402,6 +3395,18 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     if len(I) > 0:
         all_parent_rows = fitsio.read(os.path.join(parentdir, f'SGA2025-parent-nocuts-{version_nocuts}.fits'), columns='ROW_PARENT')
         moreparent['ROW_PARENT'][I] = np.max(all_parent_rows) + np.arange(len(I)) + 1
+
+    #####################
+    ## hack!
+    #keep_in_custom_objname = moreparent[~np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]['OBJNAME']
+    #custom = Table.read(customfile, format='csv', comment='#')
+    #keep_in_custom = custom[np.isin(custom['OBJNAME'], keep_in_custom_objname)]
+    #keep_in_custom.write('keep_in_custom.csv', format='csv', overwrite=True)
+    #
+    #move_to_properties = moreparent[np.isin(moreparent['ROW_PARENT'], parent['ROW_PARENT'])]
+    #move_to_properties['COMMENT'] = 'Moved from custom'
+    #move_to_properties['OBJNAME', 'RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT', 'COMMENT'].write('move-to-properties.csv', format='csv', overwrite=True)
+
     parent = vstack((parent, moreparent))
     if len(parent) != len(np.unique(parent['ROW_PARENT'])):
         log.info('Duplicate ROW_PARENT values between parent and moreparent!')
@@ -3409,6 +3414,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(oo[cc>1])
         bb = parent[np.isin(parent['ROW_PARENT'], oo[cc>1])]['OBJNAME', 'ROW_PARENT'] ; bb = bb[np.argsort(bb['ROW_PARENT'])] ; bb
         pdb.set_trace()
+
     assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
     # Read and process the "parent-drop" file; update REGION for
@@ -3434,7 +3440,6 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     drop = drop[~drop['region'].mask]
     for region in ['dr11-south', 'dr9-north']:
         bit = REGIONBITS[region]
-
         Idrop = drop['region'] == region
         Iregion = (parent['REGION'] & bit != 0)
         Iparent = Iregion * np.isin(parent['OBJNAME'], drop['objname'][Idrop])
@@ -3479,13 +3484,18 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
             },
-        # In v0.20 and v0.21 use the v0.11 measurements to throw out small galaxies.
+        # In v0.20-v0.22 use the v0.11 measurements to throw out small galaxies.
         'v0.20': {
             'ref_version': 'v0.11',
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
             },
         'v0.21': {
+            'ref_version': 'v0.11',
+            'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
+            'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
+            },
+        'v0.22': {
             'ref_version': 'v0.11',
             'dr9-north': os.path.join(outdir, 'SGA2025-v0.11-dr9-north.fits'),
             'dr11-south': os.path.join(outdir, 'SGA2025-v0.11-dr11-south.fits'),
@@ -3504,7 +3514,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         diam, ba, pa, diam_ref = update_geometry_from_reffiles(
             parent, diam, ba, pa, diam_ref, reffiles[version],
             REGIONBITS, veto_objnames=veto_objnames)
-    elif version == 'v0.20' or version == 'v0.21':
+    elif version == 'v0.20' or version == 'v0.21' or version == 'v0.22':
         # Apply D(26)>0.5 diameter cuts but do not drop objects from the
         # "properties" or "custom" catalog.
         propsfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-properties.csv')
@@ -3549,13 +3559,15 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
         log.info(oo[cc>1])
         pdb.set_trace()
 
+    miss = props[~np.isin(props['objname'], parent['OBJNAME'].value)]
+    if len(miss) > 0:
+        log.info(f'The following objects in {propsfile} are missing from parent:')
+        log.info(miss)
+        pdb.set_trace()
+
     for prop in props:
         objname = prop['objname']
         I = np.where(objname == parent['OBJNAME'].value)[0]
-        if len(I) != 1:
-            log.info(f'Problem finding {objname}!')
-            pdb.set_trace()
-
         for col in ['ra', 'dec', 'diam', 'pa', 'ba']:
             newval = prop[col]
             if col == 'ra' or col == 'dec':
@@ -3568,7 +3580,8 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 oldval = ba[I[0]]
 
             if newval != -99.:
-                log.info(f'{objname} {col}: {oldval} --> {newval}')
+                pass
+                #log.info(f'{objname} {col}: {oldval} --> {newval}')
             else:
                 pass
                 #log.info(f'  Retaining {col}: {oldval}')
@@ -3583,22 +3596,67 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 elif col == 'ba':
                     ba[I] = newval
 
+    # Also re-update geometry based on the custom file since the
+    # values can get overwritten by choose_diameter (e.g., KUG
+    # 1206+425 has an SGA-2020 diameter that we don't want).
+    log.info('One more geometry update using the customfile.')
+    customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
+    custom = Table.read(customfile, format='csv', comment='#')
+    for cust in custom:
+        objname = cust['OBJNAME']
+        I = np.where(objname == parent['OBJNAME'].value)[0]
+        if len(I) == 0:
+            pdb.set_trace()
+        else:
+            for col in ['RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT']:
+                newval = cust[col]
+                if col == 'RA' or col == 'DEC':
+                    oldval = parent[col.upper()][I[0]]
+                elif col == 'DIAM_LIT':
+                    oldval = diam[I[0]]
+                elif col == 'PA_LIT':
+                    oldval = pa[I[0]]
+                elif col == 'BA_LIT':
+                    oldval = ba[I[0]]
+
+                if newval != -99. and newval != oldval:
+                    log.info(f'{objname} {col}: {oldval} --> {newval}')
+                    pass
+                else:
+                    pass
+                    #log.info(f'  Retaining {col}: {oldval}')
+
+                if newval != -99. and newval != oldval:
+                    if col == 'RA' or col == 'DEC':
+                        parent[col.upper()][I] = newval
+                    elif col == 'DIAM_LIT':
+                        diam[I] = newval
+                    elif col == 'PA_LIT':
+                        pa[I] = newval
+                    elif col == 'BA_LIT':
+                        ba[I] = newval
+
 
     # Assign the SAMPLE bits.
     samplebits = np.zeros(len(parent), np.int32)
     samplebits[parent['ROW_LVD'] != -99] |= SAMPLE['LVD']       # 2^0 - LVD dwarfs
-    for cloud in ['LMC', 'SMC']:                                # 2^1 - Magellanic Clouds
-        samplebits[parent[f'IN_{cloud}']] |= SAMPLE['MCLOUDS']
-    samplebits[parent['IN_GCLPNE']] |= SAMPLE['GCLPNE']         # 2^2 - GC/PNe
     samplebits[parent['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR'] # 2^3 - NEARSTAR
     samplebits[parent['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']   # 2^4 - INSTAR
+
+    # Re-populate the LMC/SMC and GCLPNE bits since we've added objects.
+    for cloud in ['LMC', 'SMC']:
+        in_mcloud = find_in_mclouds(parent, mcloud=cloud)
+        samplebits[in_mcloud] |= SAMPLE['MCLOUDS'] # 2^1 - Magellanic Clouds
+
+    in_gclpne = find_in_gclpne(parent)
+    samplebits[in_gclpne] |= SAMPLE['GCLPNE']      # 2^2 - GC/PNe
 
     # Assign the ELLIPSEMODE bits. Rederive the set of objects in each
     # file so those files can be updated without having to rerun
     # build_parent_archive.
     ellipsemode = np.zeros(len(parent), np.int32)
     actions = ['fixgeo', 'resolved', 'forcepsf', 'lessmasking', 'moremasking',
-               'momentpos', 'tractorgeo', 'radweight', '']
+               'momentpos', 'tractorgeo', 'radweight']
     for action in actions:
         actfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-{action}.csv')
         if not os.path.isfile(actfile):
@@ -3641,15 +3699,14 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     grp['DEC'] = parent['DEC']
     grp['DIAM'] = diam.astype('f4') # [arcmin]
     grp['BA'] = ba.astype('f4')
-    grp['PA'] = pa.astype('f4')
+    grp['PA'] = (pa % 180.).astype('f4')
     grp['MAG'] = mag.astype('f4')
     #grp['MAG_BAND'] = band
     grp['DIAM_REF'] = diam_ref
 
-    # apply an additional diameter cut:
-    if float(version[1:]) >= 0.13:
-        print('APPLY VI CUTS!')
-        #pdb.set_trace()
+    ## apply an additional diameter cut:
+    #if float(version[1:]) >= 0.13:
+    #    print('APPLY VI CUTS!')
 
     # Add SFD dust
     SFD = SFDMap(scaling=1.0)
