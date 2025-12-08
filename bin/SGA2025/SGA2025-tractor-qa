@@ -45,6 +45,8 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-testbricks-v0.21 --final-sample --region=dr11-south --vi-sample=1 --version=v0.21
 
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --version=v0.22
+
 
 """
 
@@ -249,7 +251,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     txt += [geo]
                 else:
                     txt = [obj["OBJNAME"], #obj["SGANAME"],
-                           r'$(\alpha,\delta)$='+f'({objra:.7f},{objdec:.6f})',
+                           r'$(\alpha,\delta)$='+f'({objra0:.7f},{objdec0:.6f})',
                            geo0]
                 txt_ul = '\n'.join(txt)
                 xx.text(0.03, 0.97, txt_ul, transform=xx.transAxes, ha='left',
@@ -681,11 +683,37 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     else:
         qadir = os.path.join(sga_dir(), 'parent', 'qa')
+        txtdir = os.path.join(sga_dir(), 'parent', 'txt')
+        viewdir = os.path.join(sga_dir(), 'parent', 'viewer')
+
         if no_groups:
             pdfsuffix = '-no-groups'
         else:
             pdfsuffix = ''
         pdfbase = f'qa-tractor-{region}-sample{pdfsuffix}'
+
+        #########################
+        sort_by_groupname = False
+
+        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.)
+        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.) & (fullsample['GROUP_DIAMETER'] <= 1.5)
+        I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 0.75) & (fullsample['GROUP_DIAMETER'] <= 1.)
+        I_sdss = np.char.startswith(fullsample['OBJNAME'].astype(str), "SDSS")
+
+        # Find groups satisfying each condition
+        groups_with_overlap = set(fullsample['GROUP_NAME'][I_overlap])
+        groups_with_sdss = set(fullsample['GROUP_NAME'][I_sdss])
+
+        # Intersection = groups meeting BOTH conditions
+        groups_target = groups_with_overlap & groups_with_sdss
+
+        # Extract all rows from those groups
+        rows = np.isin(fullsample['GROUP_NAME'], list(groups_target))
+        I = rows & I_sdss
+
+        #########################
+        fullsample = fullsample[I]
+        sample = fullsample
 
         # We still want to see and label nearby companions in
         # 'fullsample', i.e., without any diameter cuts.
@@ -783,11 +811,12 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
             txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
 
-            viewfile = os.path.join(viewdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
-            view = thisfullsample['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA']
-            view.rename_columns(['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-            view['radius'] *= 60./2.
-            view.write(viewfile, overwrite=True)
+            if viewdir:
+                viewfile = os.path.join(viewdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
+                view = thisfullsample['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA']
+                view.rename_columns(['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+                view['radius'] *= 60./2.
+                view.write(viewfile, overwrite=True)
 
             with open(txtfile, 'w') as F:
                 for obj in thisfullsample['OBJNAME'].value:
@@ -795,6 +824,20 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             log.info(f'Wrote {txtfile}')
         else:
             pdffile = os.path.join(qadir, f'{pdfbase}-{ipdf+1:03}.pdf')
+            txtfile = os.path.join(txtdir, f'cat-{pdfbase}-{ipdf+1:03}.txt')
+
+            if viewdir:
+                viewfile = os.path.join(viewdir, f'viewer-{pdfbase}-{ipdf+1:03}.fits')
+                view = thisfullsample['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
+                view.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+                view['radius'] *= 60./2.
+                view.write(viewfile, overwrite=True)
+
+            with open(txtfile, 'w') as F:
+                for obj in thisfullsample['OBJNAME'].value:
+                    F.write(f'{obj}\n')
+            log.info(f'Wrote {txtfile}')
+
 
         if os.path.isfile(pdffile):
             log.info(f'Skipping existing file {pdffile}')
