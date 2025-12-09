@@ -1062,7 +1062,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #print('Hack!')
+        print('Hack!')
+        raslices_todo = np.arange(5) + 180
         #raslices_todo = ['134', '162']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 

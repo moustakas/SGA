@@ -4107,26 +4107,6 @@ def build_parent(mp=1, base_version='v0.22', overwrite=False):
     base['REGION'] = new_region
     log.info(f'After consolidation: {len(base):,d} unique objects')
 
-    ## ------------------------------------------------------------------
-    ## SGAID policy: keep existing if present; else use ROW_PARENT; else assign
-    ## ------------------------------------------------------------------
-    #if 'SGAID' not in base.colnames:
-    #    base['SGAID'] = np.array(base['ROW_PARENT'], copy=True) if 'ROW_PARENT' in base.colnames else \
-    #                    np.arange(len(base), dtype=np.int64)
-    #else:
-    #    # fill any non-positive or missing SGAID from ROW_PARENT or new assignment
-    #    sgaid = np.asarray(base['SGAID']).astype(np.int64)
-    #    needs = (sgaid <= 0)
-    #    if np.any(needs):
-    #        if 'ROW_PARENT' in base.colnames:
-    #            sgaid[needs] = np.asarray(base['ROW_PARENT'])[needs].astype(np.int64)
-    #            needs = (sgaid <= 0)
-    #        if np.any(needs):
-    #            start = int(np.nanmax(sgaid)) + 1
-    #            sgaid[needs] = start + np.arange(np.sum(needs))
-    #    base['SGAID'] = sgaid
-
-
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
     ov = load_overlays(overlay_dir)
     nocuts_file = os.path.join(parentdir, f'SGA2025-parent-nocuts-{nocuts_version}.fits')
