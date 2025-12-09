@@ -1052,18 +1052,17 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         allraslices = get_raslice(sample['GROUP_RA'].value)
         uraslices = sorted(set(allraslices))
+        #uraslices = (np.arange(5) + 180).astype(str)
 
         raslices_todo = []
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
-            if os.path.isfile(slicefile) and not clobber:
-                log.warning(f'Skipping existing catalog {slicefile}')
-                continue
+            #if os.path.isfile(slicefile) and not clobber:
+            #    log.warning(f'Skipping existing catalog {slicefile}')
+            #    continue
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        print('Hack!')
-        raslices_todo = np.arange(5) + 180
         #raslices_todo = ['134', '162']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
@@ -1181,9 +1180,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         ellipse, tractor = [], []
         for islice, raslice in enumerate(uraslices):
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
-            if not os.path.isfile(slicefile):
-                log.info(f'Skipping missing file {slicefile}')
-                continue
+            #if not os.path.isfile(slicefile):
+            #    log.info(f'Skipping missing file {slicefile}')
+            #    continue
             ellipse.append(Table(fitsio.read(slicefile, 'ELLIPSE')))
             tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
             #os.remove(slicefile)
