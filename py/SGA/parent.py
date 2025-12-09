@@ -10,7 +10,7 @@ import numpy as np
 import fitsio
 from glob import glob
 from importlib import resources
-from collections import Counter
+from collections import Counter, namedtuple
 from astropy.table import Table, vstack, hstack
 from astrometry.libkd.spherematch import match_radec
 
@@ -3253,7 +3253,7 @@ def set_overlap_bit(cat, SAMPLE):
             cat['SAMPLE'][I[overlapped]] |= OVERLAP_BIT
 
 
-def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
+def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
@@ -3825,3 +3825,461 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #ax2.scatter(sslvdmiss['RA'], sslvdmiss['DEC'], s=20, alpha=0.5, marker='s')
     #ax2.scatter(miss['RA'], miss['DEC'], s=20, alpha=0.5, marker='x', color='k')
     #fig.savefig('ioannis/tmp/junk.png')
+
+
+Overlays = namedtuple('Overlays', 'adds updates drops flags')
+
+
+def _require_columns(tab, required, name):
+    """Raise if any required column is missing."""
+    missing = [c for c in required if c not in tab.colnames]
+    if missing:
+        raise ValueError(f"{name}: missing required columns: {missing}")
+
+
+def _read_csv_if_exists(path, required=None, name='table'):
+    """Read CSV if present; return empty Table with required columns otherwise."""
+    if not os.path.isfile(path):
+        tab = Table()
+        if required:
+            for c in required:
+                # heuristic dtypes for an empty shell table
+                if c in ('OBJNAME', 'FIELD', 'COLUMN', 'REASON'):
+                    tab[c] = np.array([], dtype='U64')
+                else:
+                    tab[c] = np.array([], dtype=float)
+        return tab
+    tab = Table.read(path, format='csv', comment='#')
+    if required:
+        _require_columns(tab, required, name)
+    return tab
+
+
+def load_overlays(overlay_dir):
+    """
+    Load overlays from overlay_dir and return a container with
+    .adds, .updates, .drops, .flags (each an Astropy Table, possibly empty).
+    """
+    adds = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'adds.csv'),
+        required=('OBJNAME','RA','DEC','REGION','DIAM','BA','PA'),
+        name='adds.csv')
+    updates = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'updates.csv'),
+        required=('OBJNAME','FIELD','NEW_VALUE'),
+        name='updates.csv')
+    drops = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'drops.csv'),
+        required=('OBJNAME',),
+        name='drops.csv')
+    flags = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'flags.csv'),
+        required=('OBJNAME','COLUMN'),
+        name='flags.csv')
+
+    # simple sanity checks
+    if len(np.unique(adds['OBJNAME'])) != len(adds):
+        raise ValueError("adds.csv: duplicate OBJNAME entries are not allowed.")
+    if len(np.unique(drops['OBJNAME'])) != len(drops):
+        raise ValueError("drops.csv: duplicate OBJNAME entries are not allowed.")
+
+    # normalize optional columns
+    if 'REASON' not in updates.colnames:
+        updates['REASON'] = np.array([], dtype='U64')
+    if 'SET_BITS' not in flags.colnames:
+        flags['SET_BITS'] = np.array([0]*len(flags), dtype=np.int64)
+    if 'CLEAR_BITS' not in flags.colnames:
+        flags['CLEAR_BITS'] = np.array([0]*len(flags), dtype=np.int64)
+
+    return Overlays(adds=adds, updates=updates, drops=drops, flags=flags)
+
+
+def apply_drops_inplace(parent, drops):
+    """Remove rows whose OBJNAME appears in drops (exact match)."""
+    if len(drops) == 0:
+        return
+    keep = ~np.isin(parent['OBJNAME'], drops['OBJNAME'])
+    parent[:] = parent[keep]
+
+
+def apply_updates_inplace(parent, updates):
+    """For each (OBJNAME, FIELD, NEW_VALUE) row, set parent[FIELD] accordingly."""
+
+    if len(updates) == 0:
+        return
+
+    for row in updates:
+        obj = row['OBJNAME']
+        fld = row['FIELD']
+        idx = np.where(parent['OBJNAME'] == obj)[0]
+        if idx.size == 0:
+            raise ValueError(f"updates: OBJNAME not found: {obj}")
+        # cast to parent dtype
+        dt = parent[fld].dtype
+        val = row['NEW_VALUE']
+        if dt.kind in 'f':
+            parent[fld][idx] = float(val)
+        elif dt.kind in 'iu':
+            parent[fld][idx] = int(round(float(val)))
+        elif dt.kind in 'SU':
+            parent[fld][idx] = str(val)
+        else:
+            parent[fld][idx] = val
+
+    # keep PA in [0,180) if PA was touched at all
+    if 'PA' in parent.colnames:
+        parent['PA'] = (parent['PA'].astype(float) % 180.).astype(parent['PA'].dtype)
+
+
+def apply_adds_inplace(parent, adds, regionbits, nocuts):
+    """
+    Append rows from adds. If OBJNAME exists in `nocuts`, start from that row
+    (restored properties); otherwise fill minimal defaults. Then overwrite with
+    add-file fields (OBJNAME, RA, DEC, REGION, DIAM, BA, PA, [MAG]).
+    """
+    import numpy as np
+    from astropy.table import vstack, Table
+
+    if len(adds) == 0:
+        return
+
+    # next SGAID / ROW_PARENT
+    next_sgaid = int(np.max(parent['SGAID'])) + 1 if len(parent) else 0
+    next_row_parent = int(np.max(parent['ROW_PARENT'])) + 1 if 'ROW_PARENT' in parent.colnames and len(parent) else 0
+
+    # small helper: one-row Table with parent schema, filled with defaults
+    def _empty_row():
+        row = {}
+        for c in parent.colnames:
+            dt = parent[c].dtype
+            if dt.kind in 'f':   row[c] = np.array([-99.0], dtype=dt)
+            elif dt.kind in 'iu':row[c] = np.array([0], dtype=dt)
+            elif dt.kind in 'SU':row[c] = np.array([''], dtype=dt)
+            else:                row[c] = np.array([-99], dtype=dt)
+        return Table(row)
+
+    # columns we prefer to copy from nocuts if available
+    # (adjust this list if you want more carried over)
+    prefer_from_nocuts = [
+        'ROW_PARENT','PGC','SAMPLE','ELLIPSEMODE','FITMODE',
+        'EBV','REGION','MAG','DIAM','BA','PA','RA','DEC'
+    ]
+
+    new_rows = []
+    for add in adds:
+        obj = add['OBJNAME']
+
+        # reject if already present
+        if np.any(parent['OBJNAME'] == obj):
+            raise ValueError(f"adds: OBJNAME already in parent: {obj}")
+
+        # start from nocuts row if present; else empty default
+        noc_ix = np.where(nocuts['OBJNAME'] == obj)[0] if 'OBJNAME' in nocuts.colnames else []
+        if len(noc_ix) == 1:
+            base = _empty_row()
+            src = nocuts[noc_ix[0]]
+            for c in prefer_from_nocuts:
+                if c in parent.colnames and c in src.colnames:
+                    base[c][0] = src[c]
+        else:
+            base = _empty_row()
+
+        # mandatory identifiers
+        base['OBJNAME'][0] = str(obj)
+        base['SGAID'][0]   = next_sgaid; next_sgaid += 1
+
+        # ROW_PARENT: keep nocuts if it exists, else assign a new one
+        if 'ROW_PARENT' in base.colnames:
+            if int(base['ROW_PARENT'][0]) <= 0:
+                base['ROW_PARENT'][0] = next_row_parent
+                next_row_parent += 1
+
+        # overwrite with add-file values (authoritative)
+        base['RA'][0]     = float(add['RA'])
+        base['DEC'][0]    = float(add['DEC'])
+        base['DIAM'][0]   = float(add['DIAM'])    # arcmin (match your parent units)
+        base['BA'][0]     = float(add['BA'])
+        base['PA'][0]     = float(add['PA']) % 180.0
+        # REGION: string → bit
+        reg_str = str(add['REGION']).strip()
+        base['REGION'][0] = int(regionbits[reg_str])
+
+        # optional MAG if present
+        if 'MAG' in adds.colnames and 'MAG' in parent.colnames:
+            base['MAG'][0] = float(add['MAG'])
+
+        new_rows.append(base)
+
+    if new_rows:
+        parent[:] = vstack([parent] + new_rows)
+
+
+def build_parent(mp=1, base_version='v0.22', overwrite=False):
+    """Build a new parent catalog starting from `base_version` ellipse
+    catalog, apply versioned overlays (adds/updates/drops/flags),
+    re-derive bits, build groups, and write a single FITS output.
+
+    Notes
+    -----
+    - Assumes overlay helpers are already available in scope:
+      load_overlays, apply_drops_inplace, apply_adds_inplace,
+      apply_updates_inplace, apply_flags_inplace.
+    - Uses nocuts v0.22 only to restore properties for rows added via overlays.
+    - SGAID stability: carried from ellipse (or ROW_PARENT) when present;
+      new rows get monotonically increasing SGAID.
+
+    """
+    import os
+    import numpy as np
+    import fitsio
+    from astropy.table import Table, vstack
+
+    from desiutil.dust import SFDMap
+    from SGA.logger import log
+    from SGA.io import sga_dir
+    from SGA.SGA import SGA_version, SAMPLE
+    from SGA.coadds import REGIONBITS
+    from SGA.geometry import choose_geometry
+    from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
+    from SGA.ellipse import ELLIPSEMODE, FITMODE
+    from SGA.sky import find_in_mclouds, find_in_gclpne
+
+    # Paths & versions
+    parent_version = SGA_version(parent=True)      # -> 'v0.30' (target)
+    nocuts_version = SGA_version(nocuts=True)      # -> 'v0.22'
+    outdir       = os.path.join(sga_dir(), 'sample')
+    parentdir    = os.path.join(sga_dir(), 'parent')
+    overlay_dir  = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{parent_version}') # e.g., .../overlays/v0.30
+    outfile      = os.path.join(outdir, f'SGA2025-parent-{parent_version}.fits')
+    kdoutfile    = os.path.join(outdir, f'SGA2025-parent-{parent_version}.kd.fits')
+
+    if os.path.isfile(outfile) and not overwrite:
+        log.info(f'Parent catalog {outfile} exists; use --overwrite')
+        return
+
+    # Read the base ellipse catalogs for dr11-south and
+    # dr9-north. Consolidate duplicates by OBJNAME, combining REGION
+    # bits (but prefering DR11 if duplicated).
+    base = []
+    for region in REGIONBITS.keys():
+        base_ellipse_file = os.path.join(outdir, f'SGA2025-ellipse-{base_version}-{region}.fits')
+        base1 = Table(fitsio.read(base_ellipse_file))
+        log.info(f'Read {len(base1):,d} rows from {base_ellipse_file}')
+        base.append(base1)
+    base = vstack(base)
+    del base1
+
+    # If duplicated OBJNAMEs exist (e.g., one per region), combine
+    # deterministically.
+    if len(np.unique(base['OBJNAME'])) != len(base):
+        log.info('Consolidating duplicate OBJNAME entries (combining REGION bits; ' + \
+                 'prefer more BANDS, tie→dr11-south)')
+
+        # precompute a band-count per row; handle missing/masked gracefully
+        def _nbands_val(v):
+            try:
+                s = (v or '').strip()
+            except Exception:
+                s = ''
+            # count distinct letters to be safe ('griz' -> 4, 'gi' -> 2)
+            return len(set(s)) if s else 0
+
+        nbands = np.array([_nbands_val(b) for b in base['BANDS']], dtype=int)
+        dr11_bit = REGIONBITS['dr11-south']
+
+        def _prefer_idx(rows):
+            # prefer the row with the largest band count
+            best = np.max(nbands[rows])
+            cand = [i for i in rows if nbands[i] == best]
+            # tie-breaker: prefer a dr11-south row
+            cand_dr11 = [i for i in cand if (int(base['REGION'][i]) & dr11_bit) != 0]
+            return cand_dr11[0] if cand_dr11 else cand[0]
+
+        uniq, inv = np.unique(base['OBJNAME'], return_inverse=True)
+        keep_idx = []
+        new_region = np.zeros(len(uniq), dtype=base['REGION'].dtype)
+        for k in range(len(uniq)):
+            rows = np.where(inv == k)[0]
+            new_region[k] = int(np.bitwise_or.reduce(base['REGION'][rows]))
+            keep_idx.append(_prefer_idx(rows))
+
+    base = base[keep_idx]
+    base['REGION'] = new_region
+    log.info(f'After consolidation: {len(base):,d} unique objects')
+
+    ## ------------------------------------------------------------------
+    ## SGAID policy: keep existing if present; else use ROW_PARENT; else assign
+    ## ------------------------------------------------------------------
+    #if 'SGAID' not in base.colnames:
+    #    base['SGAID'] = np.array(base['ROW_PARENT'], copy=True) if 'ROW_PARENT' in base.colnames else \
+    #                    np.arange(len(base), dtype=np.int64)
+    #else:
+    #    # fill any non-positive or missing SGAID from ROW_PARENT or new assignment
+    #    sgaid = np.asarray(base['SGAID']).astype(np.int64)
+    #    needs = (sgaid <= 0)
+    #    if np.any(needs):
+    #        if 'ROW_PARENT' in base.colnames:
+    #            sgaid[needs] = np.asarray(base['ROW_PARENT'])[needs].astype(np.int64)
+    #            needs = (sgaid <= 0)
+    #        if np.any(needs):
+    #            start = int(np.nanmax(sgaid)) + 1
+    #            sgaid[needs] = start + np.arange(np.sum(needs))
+    #    base['SGAID'] = sgaid
+
+
+    # Apply overlays (drops, adds [with nocuts restore], updates, flags)
+    ov = load_overlays(overlay_dir)
+    nocuts_file = os.path.join(parentdir, f'SGA2025-parent-nocuts-{nocuts_version}.fits')
+    nocuts = Table(fitsio.read(nocuts_file))
+    log.info(f'Read nocuts reference {len(nocuts):,d} rows from {nocuts_file}')
+
+    # Drops
+    apply_drops_inplace(base, ov.drops)
+
+    # Adds (restore from nocuts when available)
+    apply_adds_inplace(base, ov.adds, REGIONBITS, nocuts)
+
+    # Updates (cell-level)
+    apply_updates_inplace(base, ov.updates)
+
+    # Optional flags (bit set/clear). If you don’t use flags yet, no-op.
+    if len(ov.flags):
+        apply_flags_inplace(base, ov.flags)
+
+    pdb.set_trace()
+
+
+    # ------------------------------------------------------------------
+    # Minimal geometry / magnitudes and sanity
+    # ------------------------------------------------------------------
+    # Choose working geometry (diam in arcmin here), PA into [0,180)
+    mindiam = 20.0  # arcsec; match prior policy for lower limits
+    diam, ba, pa, diam_ref, mag, band = choose_geometry(base, mindiam=mindiam, get_mag=True)
+    pa = (pa % 180.0).astype('f4')
+    diam = diam.astype('f4')
+    ba = ba.astype('f4')
+
+    # Cleanup magnitudes (fallbacks)
+    band[band == ''] = 'V'
+    badmag = (mag > 20.0) | (mag < 0.0)
+    if np.any(badmag):
+        mag[badmag] = 20.0
+    mag = mag.astype('f4')
+
+    # EBV
+    SFD = SFDMap(scaling=1.0)
+    ebv = SFD.ebv(base['RA'].astype(float), base['DEC'].astype(float)).astype('f4')
+
+    # Compose the working parent table
+    grp = base['REGION', 'OBJNAME', 'PGC'] if 'PGC' in base.colnames else base['REGION', 'OBJNAME']
+    if 'PGC' not in grp.colnames:
+        from astropy.table import Column
+        grp.add_column(Column(np.full(len(grp), -99, dtype='i4'), name='PGC'))
+    grp['SAMPLE']      = np.zeros(len(grp), np.int32)
+    grp['ELLIPSEMODE'] = np.zeros(len(grp), np.int32)
+    grp['FITMODE']     = np.zeros(len(grp), np.int32)
+    grp['RA']          = base['RA'].astype('f8')
+    grp['DEC']         = base['DEC'].astype('f8')
+    grp['DIAM']        = diam.astype('f4') / 60.0  # arcmin -> arcmin (choose_geometry likely returned arcsec; adapt if needed)
+    grp['BA']          = ba.astype('f4')
+    grp['PA']          = pa.astype('f4')
+    grp['MAG']         = mag.astype('f4')
+    grp['DIAM_REF']    = diam_ref
+    grp['EBV']         = ebv
+    grp.add_column(base['SGAID'].astype(np.int64), name='SGAID', index=0)
+
+    # SAMPLE bits (recompute minimal subset deterministically; extend as you like)
+    # LVD dwarfs
+    if 'ROW_LVD' in base.colnames:
+        grp['SAMPLE'][base['ROW_LVD'] != -99] |= SAMPLE['LVD']
+    # NEARSTAR / INSTAR from distances if present
+    if 'STARFDIST' in base.colnames:
+        grp['SAMPLE'][base['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR']
+        grp['SAMPLE'][base['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']
+    # MCLOUDS / GCLPNE spatial flags
+    in_LMC = find_in_mclouds(grp, mcloud='LMC')
+    in_SMC = find_in_mclouds(grp, mcloud='SMC')
+    grp['SAMPLE'][in_LMC | in_SMC] |= SAMPLE['MCLOUDS']
+    in_gclpne = find_in_gclpne(grp)
+    grp['SAMPLE'][in_gclpne] |= SAMPLE['GCLPNE']
+
+    # ELLIPSEMODE / FITMODE hooks (optional external files → flags overlay preferred)
+    # Ensure implied bits:
+    grp['FITMODE'][ (grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'])     != 0 ] |= FITMODE['FIXGEO']
+    grp['FITMODE'][ (grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'])   != 0 ] |= FITMODE['RESOLVED']
+    grp['ELLIPSEMODE'][ (grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0 ] |= ELLIPSEMODE['FIXGEO']
+
+    # Sort by diameter descending (as before)
+    srt = np.argsort(grp['DIAM'])[::-1]
+    grp = grp[srt]
+
+    # ------------------------------------------------------------------
+    # Build groups (singleton for RESOLVED/FORCEPSF; rest via build_group_catalog)
+    # ------------------------------------------------------------------
+    special = ((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0) | \
+              ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
+
+    if np.any(special):
+        out1 = make_singleton_group(grp[special], group_id_start=0)
+        gid_start = int(np.max(out1['GROUP_ID'])) + 1
+    else:
+        from astropy.table import Table
+        out1 = Table(grp[:0]).copy()
+        gid_start = 0
+
+    out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
+    out  = vstack((out1, out2)) if len(out1) else out2
+
+    # Assign SGAGROUP name and check duplicates among primaries
+    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
+    out.add_column(groupname, name='SGAGROUP', index=1)
+    prim = out['GROUP_PRIMARY']
+    gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
+    if np.any(cc > 1):
+        log.critical('Duplicate group names among primaries detected.')
+        raise ValueError('Duplicate SGAGROUP among primaries')
+
+    # Harmonize REGION bits within groups (keep only bits common to all members; drop groups with none)
+    keep_mask = np.ones(len(out), dtype=bool)
+    drop_ids = []
+    strip_groups = []
+    for gid in np.unique(out['GROUP_ID'][out['GROUP_MULT'] > 1]):
+        J = (out['GROUP_ID'] == gid)
+        allowed = int(np.bitwise_and.reduce(np.asarray(out['REGION'][J])))
+        if allowed == 0:
+            drop_ids.append(gid)
+            continue
+        new_reg = (out['REGION'][J] & allowed)
+        if np.any(new_reg != out['REGION'][J]):
+            out['REGION'][J] = new_reg
+            strip_groups.append(out['GROUP_NAME'][J][0])
+    if drop_ids:
+        M = np.isin(out['GROUP_ID'], drop_ids)
+        log.info(f"Dropping {len(np.unique(drop_ids)):,d} groups with no common REGION bit ({np.sum(M):,d} members).")
+        keep_mask &= ~M
+    out = out[keep_mask]
+    if strip_groups:
+        strip_groups = np.unique(strip_groups)
+        log.info(f"Stripped REGION bits (kept groups) for {len(strip_groups):,d} groups.")
+
+    # OVERLAP bit
+    set_overlap_bit(out, SAMPLE)
+
+    # Final sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
+    if len(np.unique(out['SGAID'])) != len(out):
+        raise ValueError('Non-unique SGAID in final parent')
+    if not np.all(out['DIAM'] > 0):
+        raise ValueError('Non-positive DIAM in final parent')
+    if not np.all((out['BA'] > 0) & (out['BA'] <= 1)):
+        raise ValueError('BA out of range')
+    if not np.all((out['PA'] >= 0) & (out['PA'] < 180)):
+        raise ValueError('PA out of range')
+
+    # Write
+    log.info(f'Writing {len(out):,d} objects to {outfile}')
+    out.meta['EXTNAME'] = 'PARENT'
+    out.write(outfile, overwrite=True)
+
+    cmd = f'startree -i {outfile} -o {kdoutfile} -T -P -k -n stars'
+    log.info(cmd)
+    _ = os.system(cmd)
