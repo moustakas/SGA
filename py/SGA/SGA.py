@@ -798,14 +798,14 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         #log.warning(f'Group directory {gdir} does not exist.')
         for obj in grpsample:
             log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table(), obj
+        return Table(), Table(), grpsample
 
     # gather the ellipse catalogs
     ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
     if len(ellipsefiles) == 0:
         for obj in grpsample:
             log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table(), obj
+        return Table(), Table(), grpsample
 
     refid_array = grpsample['SGAID'].value
     nsample = len(refid_array)
@@ -849,7 +849,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if not np.all(I):
         for obj in grpsample:
             log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table(), obj
+        return Table(), Table(), grpsample
 
     tractor_sga = []
 
@@ -1052,6 +1052,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         allraslices = get_raslice(sample['GROUP_RA'].value)
         uraslices = sorted(set(allraslices))
+        uraslices = ['180']
         #uraslices = (np.arange(5) + 180).astype(str)
 
         raslices_todo = []
