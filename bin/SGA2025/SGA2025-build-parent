@@ -95,7 +95,7 @@ def main():
 
     if args.parent:
         from SGA.parent import build_parent
-        build_parent(mp=args.mp, overwrite=args.overwrite, verbose=args.verbose)
+        build_parent(mp=args.mp, overwrite=args.overwrite)
 
     if args.qa_footprint:
         from SGA.parent import qa_footprint

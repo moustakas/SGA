@@ -97,10 +97,10 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.21'
 
         # more VI; D<0.5 arcmin systems in the test region removed; SGA2020 galaxies added
-        version = 'v0.22'
+        #version = 'v0.22'
 
-        # VI of groups with overlapping ellipses
-        #version = 'v0.30'
+        # major refactor of build_parent
+        version = 'v0.30'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10

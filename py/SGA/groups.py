@@ -596,3 +596,346 @@ def build_group_catalog(
 def qa(*args, **kwargs):
     """Placeholder QA hook (no-op)."""
     log.info("qa(): no-op placeholder.")
+
+
+def set_overlap_bit(cat, SAMPLE):
+    """
+    Flag ellipse-overlap within each group by setting SAMPLE['OVERLAP'].
+
+    Assumes `cat` has columns: GROUP_NAME, GROUP_MULT, RA, DEC, DIAM (arcmin), BA, PA (deg, astronomical).
+    Modifies `cat['SAMPLE']` in place by OR'ing the OVERLAP bit for members that
+    overlap at least one other member in their group.
+
+    Parameters
+    ----------
+    cat : astropy.table.Table
+        Input catalog, modified in place.
+    SAMPLE : dict
+        Bitmask dictionary that includes key 'OVERLAP'.
+
+    """
+    OVERLAP_BIT = SAMPLE['OVERLAP']
+    DEG2RAD = np.pi / 180.0
+    ARCMIN_PER_DEG = 60.0
+
+    def _angdiff_deg(a, b):
+        """(a-b) wrapped to (-180, 180] deg."""
+        return (a - b + 180.0) % 360.0 - 180.0
+
+    def _dir_radius_arcmin(a_arc, b_arc, pa_rad, bearing_rad):
+        """
+        Radius (arcmin) of an ellipse with semi-axes (a_arc, b_arc) and PA=pa_rad
+        along a ray at `bearing_rad` (astronomical: 0°=N, 90°=E).
+        """
+        d = bearing_rad - pa_rad
+        # wrap to [-pi, pi] for numerical stability
+        d = np.where(d > np.pi, d - 2.0*np.pi, d)
+        d = np.where(d < -np.pi, d + 2.0*np.pi, d)
+        denom = np.hypot(b_arc * np.cos(d), a_arc * np.sin(d))
+        # fallback to circular if degenerate
+        out = (a_arc * b_arc) / np.where(denom > 0.0, denom, 1.0)
+        out = np.where(denom > 0.0, out, a_arc)
+        return out
+
+    # Work only on groups with >1 member
+    mask_mult = (cat['GROUP_MULT'] > 1)
+    if not np.any(mask_mult):
+        return  # nothing to do
+
+    # Unique group names among multi-member groups
+    gnames = np.asarray(cat['GROUP_NAME'][mask_mult]).astype(str)
+    ugroups = np.unique(gnames)
+
+    # Column views (avoid repeated table lookups)
+    RA_all   = np.asarray(cat['RA'], dtype=float)
+    DEC_all  = np.asarray(cat['DEC'], dtype=float)
+    DIAM_all = np.asarray(cat['DIAM'], dtype=float)  # arcmin
+    BA_all   = np.asarray(cat['BA'], dtype=float) if 'BA' in cat.colnames else np.full(len(cat), np.nan)
+    PA_all   = np.asarray(cat['PA'], dtype=float) if 'PA' in cat.colnames else np.full(len(cat), np.nan)
+    GNAME    = np.asarray(cat['GROUP_NAME']).astype(str)
+
+    for gname in ugroups:
+        I = np.where(GNAME == gname)[0]
+        if I.size < 2:
+            continue
+
+        # Local tangent-plane scale for this group
+        dec0 = float(np.median(DEC_all[I]))
+        cosd0 = np.cos(dec0 * DEG2RAD)
+
+        # Per-member geometry
+        ra  = RA_all[I]
+        dec = DEC_all[I]
+        diam = DIAM_all[I]                        # arcmin
+        a_arc = 0.5 * diam                        # semi-major (arcmin)
+
+        ba   = BA_all[I]
+        pa   = PA_all[I]
+        ba_eff = np.where(np.isfinite(ba) & (ba > 0.0), ba, 1.0)  # circular if missing/invalid
+        b_arc = ba_eff * a_arc
+        pa_rad = np.where(np.isfinite(pa), pa, 0.0) * DEG2RAD
+
+        overlapped = np.zeros(I.size, dtype=bool)
+
+        # Pairwise checks (upper triangle)
+        for ii in range(I.size - 1):
+            # Local deltas (deg), wrap RA
+            dx_deg = _angdiff_deg(ra[ii+1:], ra[ii]) * cosd0
+            dy_deg = (dec[ii+1:] - dec[ii])
+
+            # Convert to arcmin and compute separations + bearings
+            dx_am = dx_deg * ARCMIN_PER_DEG
+            dy_am = dy_deg * ARCMIN_PER_DEG
+            sep_am = np.hypot(dx_am, dy_am)
+            bearing_ij = np.arctan2(dx_am, dy_am)      # rad, 0=N, 90=E
+            bearing_ji = np.arctan2(-dx_am, -dy_am)
+
+            # Directional radii along the center-center line
+            ri_dir = _dir_radius_arcmin(a_arc[ii],         b_arc[ii],         pa_rad[ii],         bearing_ij)
+            rj_dir = _dir_radius_arcmin(a_arc[ii+1:],      b_arc[ii+1:],      pa_rad[ii+1:],      bearing_ji)
+
+            # Overlap condition: separation <= sum of directional radii
+            touches = sep_am <= (ri_dir + rj_dir)
+            if np.any(touches):
+                overlapped[ii] = True
+                overlapped[ii+1:][touches] = True
+
+        if np.any(overlapped):
+            cat['SAMPLE'][I[overlapped]] |= OVERLAP_BIT
+
+
+def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
+                        diamcolumn='D26', diamerrcolumn=None,
+                        exclude_group_names=None):
+    """Return a new catalog containing only groups with at least
+    `minmult` members whose *all* members have diameters between
+    `mindiam` and `maxdiam` based on `diamcolumn` (in arcminutes).
+
+    Early catalogs had duplicate GROUP_IDs, so use GROUP_NAME.
+
+    """
+    # Groups to exclude entirely (e.g. LVD groups)
+    if exclude_group_names is None:
+        exclude_mask = np.zeros(len(cat), dtype=bool)
+    else:
+        exclude_mask = np.isin(cat['GROUP_NAME'], exclude_group_names)
+
+    # Only consider groups with >= minmult members
+    mask_multi = cat['GROUP_MULT'] >= minmult
+    if maxmult is not None:
+        mask_multi *= (cat['GROUP_MULT'] <= maxmult)
+    mask_multi &= ~exclude_mask
+
+    gname = cat['GROUP_NAME'][mask_multi]
+    diam = cat[diamcolumn][mask_multi]
+    if diamerrcolumn is not None:
+        diamerr = cat[diamerrcolumn][mask_multi]
+        diam += diamerr # lower limit
+
+    # Sort by group name so each group is contiguous
+    order = np.argsort(gname)
+    gname_sorted = gname[order]
+    diam_sorted = diam[order]
+
+    # For each group, find start index and per-group min/max diameter
+    unique_gnames, idx_start = np.unique(gname_sorted, return_index=True)
+    group_max = np.maximum.reduceat(diam_sorted, idx_start)
+
+    # Groups where ALL members are < mindiam  ⇒ max < mindiam
+    rem_group_names = unique_gnames[group_max < mindiam]
+    rem_rows = np.isin(cat['GROUP_NAME'], rem_group_names) & mask_multi
+    keep_rows = (~rem_rows) & mask_multi
+
+    rem = cat[rem_rows]
+    rem = rem[np.lexsort((rem[diamcolumn], rem['GROUP_NAME']))]
+
+    out = cat[keep_rows]
+    out = out[np.lexsort((out[diamcolumn], out['GROUP_NAME']))]
+
+    return out, rem
+
+
+def find_blended_groups(small_groups, g_sorted, RA_sorted, DEC_sorted,
+                        D_sorted, uniq, idx_start, idx_end):
+    """Return group names among `small_groups` where at least one
+    pair of circularized ellipses overlaps.
+
+    Parameters
+    ----------
+    small_groups : array-like
+        Group names (as in uniq[]) whose members all have D < mindiam.
+    g_sorted : array
+        GROUP_NAME column sorted by name and filtered to gm2_notLVD rows.
+    RA_sorted, DEC_sorted : arrays
+        Sorted RA, DEC values aligned with g_sorted.
+    D_sorted : array
+        Sorted diameters (arcmin) aligned with g_sorted.
+    uniq : array
+        Unique group names (sorted) corresponding to g_sorted.
+    idx_start, idx_end : arrays
+        Start and end indices into the sorted arrays for each uniq[] entry.
+
+    Returns
+    -------
+    np.ndarray
+        Sorted unique group names for which overlap was detected.
+
+    """
+    blended = []
+
+    for gname in small_groups:
+        # locate this group's slice in sorted arrays
+        k = np.where(uniq == gname)[0][0]
+        i0, i1 = idx_start[k], idx_end[k]
+
+        ra  = RA_sorted[i0:i1]
+        dec = DEC_sorted[i0:i1]
+        d   = D_sorted[i0:i1]
+        r   = 0.5 * d   # circularized radius (arcmin)
+
+        n = len(ra)
+        if n < 2:
+            continue
+
+        found = False
+
+        for ii in range(n - 1):
+            for jj in range(ii + 1, n):
+
+                # Tangent-plane separation (arcmin)
+                dec_mean = 0.5 * (dec[ii] + dec[jj]) * np.pi / 180.0
+                dx = (ra[jj] - ra[ii]) * np.cos(dec_mean) * 60.0
+                dy = (dec[jj] - dec[ii]) * 60.0
+                dist2 = dx*dx + dy*dy
+
+                # overlap check
+                thresh = r[ii] + r[jj]
+                if dist2 <= thresh * thresh:
+                    blended.append(gname)
+                    found = True
+                    break
+
+            if found:
+                break
+
+    return np.unique(blended)
+
+
+def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
+                                     SAMPLE, ELLIPSEBIT, mindiam=0.5,
+                                     veto_objnames=None):
+    """Update parent['REGION'] by removing this region for objects that
+    do NOT fall in VI samples 001–007, based on a previous-version catalog
+    `ref_tab` for a single region.
+
+    Parameters
+    ----------
+    parent : astropy.table.Table
+        Current parent catalog (modified in-place; also returned).
+    ref_tab : astropy.table.Table
+        Previous-version regional catalog with GROUP_* and ellipse info
+        (equivalent to `fullsample`).
+    region : str
+        'dr9-north' or 'dr11-south', etc. Must be a key in REGIONBITS.
+    REGIONBITS : dict
+        Mapping from region_name -> bit value.
+    SAMPLE : dict
+        SAMPLE bit dictionary with keys LVD, MCLOUDS, GCLPNE, NEARSTAR, INSTAR.
+
+    Returns
+    -------
+    parent_new : astropy.table.Table
+        Parent with this region bit removed where appropriate, and rows
+        with REGION==0 dropped.
+
+    """
+    bit = REGIONBITS[region]
+
+    LVD      = SAMPLE['LVD']
+    MCLOUDS  = SAMPLE['MCLOUDS']
+    GCLPNE   = SAMPLE['GCLPNE']
+    NEARSTAR = SAMPLE['NEARSTAR']
+    INSTAR   = SAMPLE['INSTAR']
+
+    gm1    = (ref_tab['GROUP_MULT'] == 1)
+    not_LVD = (ref_tab['SAMPLE'] & LVD) == 0
+    is_LVD  = (ref_tab['SAMPLE'] & LVD) != 0
+
+    ellipse_ok  = (ref_tab['ELLIPSEBIT'] == 0)
+    ellipse_bad = (ref_tab['ELLIPSEBIT'] != 0)
+
+    sample_flags = (ref_tab['SAMPLE'] & (MCLOUDS | GCLPNE | NEARSTAR | INSTAR)) != 0
+
+    D = ref_tab['D26']
+
+    # 001–004: GM=1, non-LVD, D≥0.5
+    mask_001_004 = gm1 & not_LVD & (D >= mindiam)
+
+    # 005: all members of LVD groups
+    LVD_group_names = np.unique(ref_tab['GROUP_NAME'][is_LVD])
+    mask_005 = np.isin(ref_tab['GROUP_NAME'], LVD_group_names)
+
+    # 006–007: non-LVD, GM≥2, at least one member with D≥mindiam
+    #          OR at least one overlapping circularized pair
+    gm2_notLVD = (ref_tab['GROUP_MULT'] >= 2) & not_LVD
+
+    D_all   = ref_tab['DIAM_INIT'] # use initial diameter not D26!
+    RA_all  = ref_tab['RA_INIT']
+    DEC_all = ref_tab['DEC_INIT']
+    g_all   = ref_tab['GROUP_NAME']
+
+    D   = D_all[gm2_notLVD]
+    RA  = RA_all[gm2_notLVD]
+    DEC = DEC_all[gm2_notLVD]
+    g   = g_all[gm2_notLVD]
+
+    order = np.argsort(g)
+    g_sorted   = g[order]
+    D_sorted   = D[order]
+    RA_sorted  = RA[order]
+    DEC_sorted = DEC[order]
+
+    uniq, idx_start = np.unique(g_sorted, return_index=True)
+    idx_end = np.append(idx_start[1:], len(g_sorted))
+
+    group_maxD = np.maximum.reduceat(D_sorted, idx_start) # groups kept by diameter only
+    good_groups_diam = uniq[group_maxD >= mindiam]
+
+    # groups with all members below mindiam
+    small_groups = uniq[group_maxD < mindiam]
+
+    # find small groups with overlapping circularized ellipses
+    blended_groups = find_blended_groups(
+        small_groups, g_sorted, RA_sorted, DEC_sorted, D_sorted,
+        uniq, idx_start, idx_end)
+
+    good_groups = np.union1d(good_groups_diam, blended_groups) # diameter OR blended
+    mask_006_007 = gm2_notLVD & np.isin(g_all, good_groups)
+
+    # union of 001–007 in ref_tab
+    mask_all = mask_001_004 | mask_005 | mask_006_007
+
+    # OBJNAMEs in this region that PASS the 001–007 selection
+    keep_names = set(ref_tab['OBJNAME'][mask_all])
+
+    # For parent rows in this region and present in ref_tab:
+    #parent = parent.copy()
+    in_region = (parent['REGION'] & bit) != 0
+    in_ref = np.isin(parent['OBJNAME'], ref_tab['OBJNAME'])
+
+    # Objects that fail samples 001–007
+    fails = in_region & in_ref & ~np.isin(parent['OBJNAME'], list(keep_names))
+
+    # Apply veto: do NOT drop veto_names
+    if veto_objnames is not None:
+        veto_mask = np.isin(parent['OBJNAME'], list(veto_objnames))
+        fails &= ~veto_mask
+
+    parent['REGION'][fails] -= bit
+
+    # report the numbers but don't actually trim
+    I = parent['REGION'] != 0
+    log.info(f'Removing {np.sum(~I):,d}/{np.sum(in_region):,d} objects with ' + \
+             f'D(26)<0.5 from region {region}')
+
+    return parent
