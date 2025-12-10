@@ -693,7 +693,7 @@ def get_basefiles_one(obj, objname, cutoutdir, width=None, group=False,
 def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
                default_bands=['g', 'r', 'i', 'z'], comm=None, mp=1, group=False,
                cutoutdir='.', base_cutoutdir='.', maxdiam_arcmin=25., rescale=False,
-               overwrite=False, fits_cutouts=True, ivar_cutouts=False,
+               diamcolumn=None, overwrite=False, fits_cutouts=True, ivar_cutouts=False,
                unwise_cutouts=False, galex_cutouts=False, dry_run=False,
                verbose=False, use_catalog_objname=False):
 
@@ -705,8 +705,10 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
     if rank == 0:
         t0 = time.time()
         mindiam = default_width * default_pixscale # [arcsec]
-        # Is this a parent / sphere-grouped catalog?
-        if group:
+        if diamcolumn:
+            diam = cat[diamcolumn].value * 60. # [arcsec]
+        elif group:
+            # Is this a parent / sphere-grouped catalog?
             diam = cat['GROUP_DIAMETER'].value * 60. # [arcsec]
         else:
             diam, _, _, _ = choose_geometry(cat, mindiam=mindiam)

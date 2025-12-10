@@ -368,7 +368,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             raise ValueError(msg)
 
     if final_sample:
-        raise ValueError('This code block is not correct...')
         if tractor:
             ext = 'TRACTOR'
         else:
@@ -1056,6 +1055,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         raslices_todo = []
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
+            missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
             #if os.path.isfile(slicefile) and not clobber:
             #    log.warning(f'Skipping existing catalog {slicefile}')
             #    continue
@@ -1072,7 +1072,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         #allraslices = comm.bcast(allraslices, root=0)
 
     # outer loop on RA slices
-    allmissing_allslices = []
+    #allmissing_allslices = []
     for islice, raslice in enumerate(raslices_todo):
         #log.info(f'Rank {rank:03}: working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
         if rank == 0:
@@ -1161,7 +1161,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
             #print()
 
-            allmissing_allslices.append(allmissing)
+            if len(allmissing) > 0:
+                missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
+                log.info(f'Writing {len(allmissing):,d} sources to {missfile}')
+                fitsio.write(missfile, allmissing.as_array(), extname='PARENT', clobber=True)
+            #allmissing_allslices.append(allmissing)
 
     if rank == 0:
         dt, unit = get_dt(t0)
@@ -1176,15 +1180,21 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         t1 = time.time()
         #log.info(f'Rank {rank:03} gathering catalogs from {len(raslices_todo)} RA slices.')
 
-        ellipse, tractor = [], []
+        ellipse, tractor, missing = [], [], []
         for islice, raslice in enumerate(uraslices):
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
-            #if not os.path.isfile(slicefile):
-            #    log.info(f'Skipping missing file {slicefile}')
-            #    continue
-            ellipse.append(Table(fitsio.read(slicefile, 'ELLIPSE')))
-            tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
-            #os.remove(slicefile)
+            if not os.path.isfile(slicefile):
+                log.info(f'Skipping missing file {slicefile}')
+            else:
+                ellipse.append(Table(fitsio.read(slicefile, 'ELLIPSE')))
+                tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
+                #os.remove(slicefile)
+
+            missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
+            if os.path.isfile(missfile):
+                missing.append(Table(fitsio.read(missfile)))
+                #os.remove(missfile)
+
         if len(ellipse) == 0:
             log.warning('No ellipse catalogs to stack; returning')
             return
@@ -1192,6 +1202,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         ellipse = vstack(ellipse)
         tractor = vstack(tractor)
         nobj = len(ellipse)
+
+        if len(missing) > 0:
+            missing = vstack(missing)
 
         dt, unit = get_dt(t1)
         log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
@@ -1276,6 +1289,18 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         log.info(f'Setting fitmode=FREEZE for the remaining {np.sum(I):,d}/{len(out):,d} SGA+Tractor sources.')
         out['fitmode'][I] |= FITMODE['FREEZE']
 
+        # In the end, there should not be any "missing" systems but
+        # until then we want the output catalog to include all objects
+        # from the parent SGA.
+        pdb.set_trace()
+        if len(missing) > 0:
+            missfile = os.path.join(sga_dir(), 'sample', f'{outprefix}-{version}-{region}-missing.fits')
+            missing.write(missfile, overwrite=True)
+            log.info(f'Wrote {len(missing):,d} objects to {missfile}')
+
+            pdb.set_trace()
+
+
         hdu_primary = fits.PrimaryHDU()
         hdu_out = fits.convenience.table_to_hdu(out)
         hdu_out.header['EXTNAME'] = 'SGA2025'
@@ -1286,14 +1311,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         write_kdfile(outfile_ellipse, kdoutfile_ellipse)
         log.info(f'Wrote {len(out):,d} objects to {kdoutfile_ellipse}')
-
-        # In the end, there should not be any "missing" systems.
-        if len(allmissing_allslices) > 0:
-            missingfile = os.path.join(sga_dir(), 'sample', f'{outprefix}-{version}-{region}-missing.fits')
-            allmissing_allslices = vstack(allmissing_allslices)
-            allmissing_allslices.write(missingfile, overwrite=True)
-            log.info(f'Wrote {len(allmissing_allslices):,d} objects to {missingfile}')
-
 
         dt, unit = get_dt(t0)
         log.info(f'Rank {rank:03} all done in {dt:.3f} {unit}')

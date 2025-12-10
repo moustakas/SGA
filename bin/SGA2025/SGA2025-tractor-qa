@@ -106,13 +106,16 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
             log.warning(msg)
             raise ValueError(msg)
         image = imread(imagefile)
-        assert(image.shape[0] == width[0])
+        try:
+            assert(image.shape[0] == width[0])
+        except:
+            pdb.set_trace()
 
-        # if this object had GROUP_PRIMARY=False then there's also a
-        # Tractor catalog
-        if os.path.isdir(galaxydir):
-        #if cutout_galaxy == 'SGA2025_J0150.925+068.693':
-            raise ValueError('WRITE ME!!')
+        ## if this object had GROUP_PRIMARY=False then there's also a
+        ## Tractor catalog
+        #if os.path.isdir(galaxydir):
+        ##if cutout_galaxy == 'SGA2025_J0150.925+068.693':
+        #    raise ValueError('WRITE ME!!')
 
         return Table(), Table(), image, wcs
 
@@ -171,7 +174,7 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
 
 def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
               datadir=None, cutoutdir=None, region='dr11-south', no_groups=False,
-              show_tractor_ellipse=True, show_initial_ellipse=True,
+              diamcolumn='DIAM', show_tractor_ellipse=True, show_initial_ellipse=True,
               final_sample=False, verbose=False):
 
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
@@ -266,13 +269,17 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
                 if obj['CUTOUT'] or no_groups:
-                    groupdiam = obj['DIAM'] * 60., # [arcsec]
+                    groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
+                    #groupdiam = obj[diamcolumn] * 60., # [arcsec]
+                    print(galaxy[indx[iax]], groupdiam)
                     if final_sample:
                         groupra = obj['RA']
                         groupdec = obj['DEC']
                     else:
-                        groupra = obj['RA_INIT']
-                        groupdec = obj['DEC_INIT']
+                        groupra = obj['RA']
+                        groupdec = obj['DEC']
+                        #groupra = obj['RA_INIT']
+                        #groupdec = obj['DEC_INIT']
                 else:
                     groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
                     groupra = obj['GROUP_RA']
@@ -599,9 +606,12 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
                                                  group=not no_groups,
                                                  datadir=cutoutdir)
+        raslices = get_raslice(sample['GROUP_RA'][~I])
         #M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
-        M = [not os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
-             for gdir, gal in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy))]
+        #M = [not os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
+        #     for gdir, gal in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy))]
+        M = [not os.path.isfile(os.path.join(cutoutdir, region, raslice, f'{gal}.jpeg'))
+             for gdir, gal, raslice in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy), np.atleast_1d(raslices))]
 
         log.info(f'Generating cutouts for {np.sum(M):,d}/{np.sum(~I):,d} ' + \
                  'objects with missing pipeline results.')
@@ -615,7 +625,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                 layer = 'ls-dr11-early-v2'
 
             do_cutouts(sample[~I][M], layer=layer, group=not no_groups,
-                       fits_cutouts=False, maxdiam_arcmin=MAXDIAM, mp=mp,
+                       diamcolumn='GROUP_DIAMETER', fits_cutouts=False,
+                       maxdiam_arcmin=MAXDIAM, mp=mp,
                        cutoutdir=os.path.join(cutoutdir, region))
 
 
@@ -626,6 +637,10 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     else:
         sample = sample[np.argsort(sample[diamcolumn])]
         fullsample = fullsample[np.argsort(fullsample[diamcolumn])]
+
+    print('HACK!')
+    sample = sample[:128]
+    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
     # figure out how many PDF documents / subsamples based on nperpdf
     ngal = len(fullsample)
@@ -650,46 +665,30 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             thissample = thissample[np.argsort(thissample[diamcolumn])]
             thisfullsample = thisfullsample[np.argsort(thisfullsample[diamcolumn])]
 
-        if vi_sample:
-            pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
-            txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
+        pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
+        txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
 
-            if viewdir:
-                viewfile = os.path.join(viewdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
-                view = thisfullsample['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA']
-                view.rename_columns(['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-                view['radius'] *= 60./2.
-                view.write(viewfile, overwrite=True)
+        if viewdir:
+            viewfile = os.path.join(viewdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
+            view = thisfullsample['OBJNAME', 'RA', 'DEC', diamcolumn, 'BA', 'PA']
+            view.rename_columns(['OBJNAME', 'RA', 'DEC', diamcolumn, 'BA', 'PA'],
+                                ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+            view['radius'] *= 60./2.
+            view.write(viewfile, overwrite=True)
 
-            with open(txtfile, 'w') as F:
-                for obj in thisfullsample['OBJNAME'].value:
-                    F.write(f'{obj}\n')
-            log.info(f'Wrote {txtfile}')
-        else:
-            pdffile = os.path.join(qadir, f'{pdfbase}-{ipdf+1:03}.pdf')
-            txtfile = os.path.join(txtdir, f'cat-{pdfbase}-{ipdf+1:03}.txt')
+        with open(txtfile, 'w') as F:
+            for obj in thisfullsample['OBJNAME'].value:
+                F.write(f'{obj}\n')
+        log.info(f'Wrote {txtfile}')
 
-            if viewdir:
-                viewfile = os.path.join(viewdir, f'viewer-{pdfbase}-{ipdf+1:03}.fits')
-                view = thisfullsample['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
-                view.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-                view['radius'] *= 60./2.
-                view.write(viewfile, overwrite=True)
-
-            with open(txtfile, 'w') as F:
-                for obj in thisfullsample['OBJNAME'].value:
-                    F.write(f'{obj}\n')
-            log.info(f'Wrote {txtfile}')
-
-
-        if os.path.isfile(pdffile):
-            log.info(f'Skipping existing file {pdffile}')
-            continue
+        #if os.path.isfile(pdffile):
+        #    log.info(f'Skipping existing file {pdffile}')
+        #    continue
 
         annotated(thissample, thisfullsample, pdffile, region=region,
                   datadir=datadir, cutoutdir=cutoutdir,
-                  ncol=ncol, nrow=nrow, verbose=verbose,
-                  show_tractor_ellipse=show_tractor_ellipse,
+                  diamcolumn=diamcolumn, ncol=ncol, nrow=nrow,
+                  verbose=verbose, show_tractor_ellipse=show_tractor_ellipse,
                   show_initial_ellipse=show_initial_ellipse,
                   final_sample=final_sample, no_groups=no_groups)
 
