@@ -3553,7 +3553,10 @@ def apply_adds(parent, adds, regionbits, nocuts):
     log.info(f'Adding {len(adds):,d} objects from adds.csv')
 
     # next SGAID
-    next_sgaid = int(np.max(parent['SGAID'])) + 1
+    maxsgaid = np.max(parent['SGAID'])
+    maxrow = np.max(nocuts['ROW_PARENT'])
+    next_sgaid = int(max(maxsgaid, maxrow)) + 1
+    print(next_sgaid)
 
     def _empty_row():
         row = {}
@@ -3593,13 +3596,19 @@ def apply_adds(parent, adds, regionbits, nocuts):
             base['PGC'] = src['PGC']
             base['SGAID'] = src['ROW_PARENT']
         else:
-            base['SGAID'][0]   = next_sgaid
+            base['SGAID'][0] = next_sgaid
             next_sgaid += 1
 
         new_rows.append(base)
+        print(next_sgaid)
 
     if new_rows:
         parent = vstack([parent] + new_rows)
+
+    try:
+        assert(len(parent) == len(np.unique(parent['SGAID'])))
+    except:
+        pdb.set_trace()
 
     return parent
 
@@ -3831,11 +3840,19 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         miss_base['DIAM_REF'] = miss['DIAM_REF'].astype('U14')
         log.info(f'Adding {len(miss):,d} objects with missing Tractor or ellipse-fitting results.')
 
+        # Remove objects in miss_base (in one region) which were
+        # successfully processed in the second region.
+        miss_base = miss_base[~np.isin(miss_base['SGAID'], ell_base['SGAID'])]
+
         # Combine ellipse-derived base with missing
         base = vstack((ell_base, miss_base), metadata_conflicts='silent')
-        del ell_base, miss_base
-
+    else:
+        base = ell_base
     log.info(f'Final base catalog contains {len(base):,d} objects.')
+    try:
+        assert(len(base) == len(np.unique(base['SGAID'])))
+    except:
+        pdb.set_trace()
 
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
     ov = load_overlays(overlay_dir)
@@ -3846,6 +3863,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     base = apply_drops(base, ov.drops)
     base = apply_adds(base, ov.adds, REGIONBITS, nocuts)
     apply_updates_inplace(base, ov.updates)
+    try:
+        assert(len(base) == len(np.unique(base['SGAID'])))
+    except:
+        pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
@@ -3878,7 +3899,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     grp['SAMPLE'][in_LMC | in_SMC] |= SAMPLE['MCLOUDS']
     grp['SAMPLE'][in_gclpne] |= SAMPLE['GCLPNE']
 
-    apply_flags_inplace(grp, ov.flags, ELLIPSEMODE, FITMODE)
+    log.info(f'Applying ELLIPSEMODE flags to {len(ov.flags):,d} objects.')
+    apply_flags_inplace(grp, ov.flags, ELLIPSEMODE)
 
     # populate FITMODE, which is used by legacypipe
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
@@ -3900,7 +3922,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
     out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
     out = vstack((out1, out2))
-    del out1, out2, grp
+    #del out1, out2, grp
 
     # Assign SGAGROUP name and check duplicates among primaries
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
@@ -3910,6 +3932,11 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     if np.any(cc > 1):
         log.critical('Duplicate group names among primaries detected.')
         raise ValueError('Duplicate SGAGROUP among primaries')
+
+    try:
+        assert(len(out) == len(np.unique(out['SGAID'])))
+    except:
+        pdb.set_trace()
 
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
@@ -3937,6 +3964,11 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)
+
+    try:
+        assert(len(out) == len(np.unique(out['SGAID'])))
+    except:
+        pdb.set_trace()
 
     # Final sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
     if len(np.unique(out['SGAID'])) != len(out):
