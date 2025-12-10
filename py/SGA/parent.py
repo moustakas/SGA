@@ -3505,12 +3505,12 @@ def load_overlays(overlay_dir):
     return Overlays(adds=adds, updates=updates, drops=drops, flags=flags)
 
 
-def apply_drops_inplace(parent, drops):
+def apply_drops(parent, drops):
     """Remove rows whose OBJNAME appears in drops (exact match)."""
     if len(drops) == 0:
         return
     keep = ~np.isin(parent['OBJNAME'], drops['OBJNAME'])
-    parent[:] = parent[keep]
+    return parent[keep]
 
 
 def apply_updates_inplace(parent, updates):
@@ -3542,11 +3542,12 @@ def apply_updates_inplace(parent, updates):
         parent['PA'] = (parent['PA'].astype(float) % 180.).astype(parent['PA'].dtype)
 
 
-def apply_adds_inplace(parent, adds, regionbits, nocuts):
+def apply_adds(parent, adds, regionbits, nocuts):
     """
     Append rows from adds. If OBJNAME exists in `nocuts`, start from that row
     (restored properties); otherwise fill minimal defaults. Then overwrite with
     add-file fields (OBJNAME, RA, DEC, REGION, DIAM, BA, PA, [MAG]).
+
     """
     if len(adds) == 0:
         return
@@ -3618,8 +3619,11 @@ def apply_adds_inplace(parent, adds, regionbits, nocuts):
 
         new_rows.append(base)
 
+    pdb.set_trace()
     if new_rows:
-        parent[:] = vstack([parent] + new_rows)
+        parent = vstack([parent] + new_rows)
+
+    return parent
 
 
 def build_parent(mp=1, base_version='v0.22', overwrite=False):
@@ -3786,8 +3790,10 @@ def build_parent(mp=1, base_version='v0.22', overwrite=False):
     nocuts = Table(fitsio.read(nocuts_file))
     log.info(f'Read nocuts reference {len(nocuts):,d} rows from {nocuts_file}')
 
-    apply_drops_inplace(base, ov.drops)
-    apply_adds_inplace(base, ov.adds, REGIONBITS, nocuts)
+    print(len(base))
+    base = apply_drops(base, ov.drops)
+    print(len(base))
+    base = apply_adds(base, ov.adds, REGIONBITS, nocuts)
     apply_updates_inplace(base, ov.updates)
 
     if len(ov.flags):
