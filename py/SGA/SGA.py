@@ -358,8 +358,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     """
     import fitsio
 
-    if lvd:
-        no_groups = True # NB
+    #if lvd:
+    #    no_groups = True # NB
 
     if first and last:
         if first > last:

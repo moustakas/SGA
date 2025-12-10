@@ -105,10 +105,11 @@ def main():
     args = mpi_args()
     set_legacysurvey_dir(args.region, rank=rank)
 
-    if args.lvd:
-        no_groups = True
-    else:
-        no_groups = args.no_groups
+    #if args.lvd:
+    #    no_groups = True
+    #else:
+    #    no_groups = args.no_groups
+    no_groups = args.no_groups
 
     if no_groups:
         RACOLUMN = 'RA'
