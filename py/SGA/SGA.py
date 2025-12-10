@@ -1052,8 +1052,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         allraslices = get_raslice(sample['GROUP_RA'].value)
         uraslices = sorted(set(allraslices))
-        uraslices = ['180']
-        #uraslices = (np.arange(5) + 180).astype(str)
 
         raslices_todo = []
         for raslice in uraslices:
