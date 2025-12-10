@@ -622,6 +622,7 @@ def set_overlap_bit(cat, SAMPLE):
         """(a-b) wrapped to (-180, 180] deg."""
         return (a - b + 180.0) % 360.0 - 180.0
 
+
     def _dir_radius_arcmin(a_arc, b_arc, pa_rad, bearing_rad):
         """
         Radius (arcmin) of an ellipse with semi-axes (a_arc, b_arc) and PA=pa_rad

@@ -44,7 +44,8 @@ def find_in_mclouds(cat, mcloud='LMC'):
 
 def find_in_gclpne(cat):
     # flag objects in GCl / PNe
-
+    from importlib import resources
+    import fitsio
     from SGA.sky import in_ellipse_mask_sky
 
     gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
