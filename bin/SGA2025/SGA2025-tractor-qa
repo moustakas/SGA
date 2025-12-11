@@ -19,7 +19,7 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
 VI campaign:
 
 ## v0.22
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --vi-sample=5
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --vi-sample=1 --final-sample
 
 
 
@@ -638,9 +638,10 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         sample = sample[np.argsort(sample[diamcolumn])]
         fullsample = fullsample[np.argsort(fullsample[diamcolumn])]
 
-    print('HACK!')
-    sample = sample[:128]
-    fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+    #print('HACK!')
+    #sample = sample[:128]
+    #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+    pdb.set_trace()
 
     # figure out how many PDF documents / subsamples based on nperpdf
     ngal = len(fullsample)

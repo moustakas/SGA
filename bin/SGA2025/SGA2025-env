@@ -18,6 +18,7 @@ echo "LEGACYPIPE_CODE_DIR="$LEGACYPIPE_CODE_DIR
 
 #export SGA_CODE_DIR=/global/homes/i/ioannis/tmp/SGA
 export SGA_CODE_DIR=/global/homes/i/ioannis/code/SGA
+#export SGA_CODE_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/v0.22-scripts/SGA
 echo "SGA_CODE_DIR="$SGA_CODE_DIR
 
 export PYTHONPATH=$SGA_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH

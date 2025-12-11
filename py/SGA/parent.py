@@ -3532,13 +3532,29 @@ def apply_updates_inplace(parent, updates):
         parent['PA'] = (parent['PA'].astype(float) % 180.).astype(parent['PA'].dtype)
 
 
-def apply_drops(parent, drops):
-    """Remove rows whose OBJNAME appears in drops (exact match)."""
-    if len(drops) == 0:
-        return
-    log.info(f'Dropping {len(drops):,d} objects from drops.csv')
-    keep = ~np.isin(parent['OBJNAME'], drops['OBJNAME'])
-    return parent[keep]
+def apply_drops(parent, drops, REGIONBITS):
+
+    names = np.asarray(parent['OBJNAME']).astype(str)
+    reg   = np.asarray(parent['REGION']).astype(np.int32).copy()
+
+    for obj, rgn in zip(drops['OBJNAME'], drops['REGION']):
+        idx = np.flatnonzero(names == str(obj))
+        if idx.size == 0:
+            continue
+        s = '' if rgn is None else str(rgn).strip()
+        try:
+            if s:  # drop from one region
+                reg[idx] &= ~int(REGIONBITS[s])
+            else:   # blank -> drop entirely
+                reg[idx] = 0
+        except KeyError:
+            # treat placeholders like '--' as blank
+            reg[idx] = 0
+
+    keep = reg != 0
+    out = parent[keep]
+    out['REGION'] = reg[keep].astype(parent['REGION'].dtype, copy=False)
+    return out
 
 
 def apply_adds(parent, adds, regionbits, nocuts):
@@ -3812,42 +3828,44 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     ell_base['MAG'] = ell['MAG_INIT'].astype(np.float32)
     ell_base['DIAM_REF'] = np.char.add(base_version, np.char.add('/', ell['D26_REF'])).astype('U14')
 
-    # Read "missing" catalog (same base_version as ellipse)
-    miss = []
-    for region in ['dr11-south', 'dr9-north']:
-        missing_file = os.path.join(outdir, f'SGA2025-{base_version}-{region}-missing.fits')
-        miss1 = Table(fitsio.read(missing_file))
-        log.info(f'Read {len(miss1):,d} rows from {missing_file}')
-        miss.append(miss1)
-    if len(miss) > 0:
-        miss = vstack(miss)
-        _, uindx = np.unique(miss['OBJNAME'], return_index=True)
-        miss = miss[uindx]
+    ## Read "missing" catalog (same base_version as ellipse)
+    #miss = []
+    #for region in ['dr11-south', 'dr9-north']:
+    #    missing_file = os.path.join(outdir, f'SGA2025-{base_version}-{region}-missing.fits')
+    #    miss1 = Table(fitsio.read(missing_file))
+    #    log.info(f'Read {len(miss1):,d} rows from {missing_file}')
+    #    miss.append(miss1)
+    #if len(miss) > 0:
+    #    miss = vstack(miss)
+    #    _, uindx = np.unique(miss['OBJNAME'], return_index=True)
+    #    miss = miss[uindx]
+    #
+    #    miss_base = Table()
+    #    miss_base['SGAID'] = miss['SGAID'].astype(np.int64)
+    #    miss_base['REGION'] = miss['REGION'].astype(np.int16)
+    #    miss_base['OBJNAME'] = miss['OBJNAME'].astype('U30')
+    #    miss_base['PGC'] = miss['PGC'].astype(np.int64)
+    #    miss_base['SAMPLE'] = miss['SAMPLE'].astype(np.int32)
+    #    miss_base['RA'] = miss['RA'].astype(np.float64)
+    #    miss_base['DEC'] = miss['DEC'].astype(np.float64)
+    #    miss_base['DIAM'] = miss['DIAM'].astype(np.float32)
+    #    miss_base['DIAM_ERR'] = np.zeros(len(miss_base), np.float32)
+    #    miss_base['BA'] = miss['BA'].astype(np.float32)
+    #    miss_base['PA'] = (miss['PA'].astype(float) % 180.).astype(np.float32)
+    #    miss_base['MAG'] = miss['MAG'].astype(np.float32)
+    #    miss_base['DIAM_REF'] = miss['DIAM_REF'].astype('U14')
+    #    log.info(f'Adding {len(miss):,d} objects with missing Tractor or ellipse-fitting results.')
+    #
+    #    # Remove objects in miss_base (in one region) which were
+    #    # successfully processed in the second region.
+    #    miss_base = miss_base[~np.isin(miss_base['SGAID'], ell_base['SGAID'])]
+    #
+    #    # Combine ellipse-derived base with missing
+    #    base = vstack((ell_base, miss_base), metadata_conflicts='silent')
+    #else:
+    #    base = ell_base
 
-        miss_base = Table()
-        miss_base['SGAID'] = miss['SGAID'].astype(np.int64)
-        miss_base['REGION'] = miss['REGION'].astype(np.int16)
-        miss_base['OBJNAME'] = miss['OBJNAME'].astype('U30')
-        miss_base['PGC'] = miss['PGC'].astype(np.int64)
-        miss_base['SAMPLE'] = miss['SAMPLE'].astype(np.int32)
-        miss_base['RA'] = miss['RA'].astype(np.float64)
-        miss_base['DEC'] = miss['DEC'].astype(np.float64)
-        miss_base['DIAM'] = miss['DIAM'].astype(np.float32)
-        miss_base['DIAM_ERR'] = np.zeros(len(miss_base), np.float32)
-        miss_base['BA'] = miss['BA'].astype(np.float32)
-        miss_base['PA'] = (miss['PA'].astype(float) % 180.).astype(np.float32)
-        miss_base['MAG'] = miss['MAG'].astype(np.float32)
-        miss_base['DIAM_REF'] = miss['DIAM_REF'].astype('U14')
-        log.info(f'Adding {len(miss):,d} objects with missing Tractor or ellipse-fitting results.')
-
-        # Remove objects in miss_base (in one region) which were
-        # successfully processed in the second region.
-        miss_base = miss_base[~np.isin(miss_base['SGAID'], ell_base['SGAID'])]
-
-        # Combine ellipse-derived base with missing
-        base = vstack((ell_base, miss_base), metadata_conflicts='silent')
-    else:
-        base = ell_base
+    base = ell_base
     log.info(f'Final base catalog contains {len(base):,d} objects.')
     try:
         assert(len(base) == len(np.unique(base['SGAID'])))
@@ -3860,7 +3878,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     nocuts = Table(fitsio.read(nocuts_file, columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
     log.info(f'Read {len(nocuts):,d} rows from {nocuts_file}')
 
-    base = apply_drops(base, ov.drops)
+    base = apply_drops(base, ov.drops, REGIONBITS)
     base = apply_adds(base, ov.adds, REGIONBITS, nocuts)
     apply_updates_inplace(base, ov.updates)
     try:
