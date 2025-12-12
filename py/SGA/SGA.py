@@ -97,7 +97,7 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.21'
 
         # more VI; D<0.5 arcmin systems in the test region removed; SGA2020 galaxies added
-        #version = 'v0.22'
+        version = 'v0.22'
 
         # major refactor of build_parent
         version = 'v0.30'
@@ -644,7 +644,7 @@ def SGA_geometry(ellipse):
     return diam, ba, pa, diam_err, diam_ref, diam_weight
 
 
-def SGA_datamodel(ellipse, bands, all_bands):
+def SGA_datamodel(ellipse, bands, all_bands, copy=True):
     import astropy.units as u
     from astropy.table import Column, MaskedColumn
 
@@ -751,24 +751,25 @@ def SGA_datamodel(ellipse, bands, all_bands):
         out.add_column(Column(name=col[0], data=np.zeros(nobj, dtype=col[1]), unit=col[2]))
 
     # copy over the data
-    check = []
-    for col in out.colnames:
-        if col in ellipse.colnames:
-            val = ellipse[col]
-            if not (isinstance(val, str) or 'U' in str(val.dtype)):
-                if type(val) is MaskedColumn:
-                    I = val.mask
-                else:
-                    I = np.logical_or(np.isnan(val.value), np.logical_not(np.isfinite(val.value)))
-                if np.any(I):
-                    log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
-                    I = np.where(I)[0]
-                    check.append(I)
-                    val[I] = 0
-            out[col] = val
-    if len(check) > 0:
-        check = np.unique(np.hstack(check))
-        print(','.join(ellipse['GROUP_NAME'][check].value))
+    if copy:
+        check = []
+        for col in out.colnames:
+            if col in ellipse.colnames:
+                val = ellipse[col]
+                if not (isinstance(val, str) or 'U' in str(val.dtype)):
+                    if type(val) is MaskedColumn:
+                        I = val.mask
+                    else:
+                        I = np.logical_or(np.isnan(val.value), np.logical_not(np.isfinite(val.value)))
+                    if np.any(I):
+                        log.warning(f'Zeroing out {np.sum(I):,d} masked (or NaN) {col} values.')
+                        I = np.where(I)[0]
+                        check.append(I)
+                        val[I] = 0
+                out[col] = val
+        if len(check) > 0:
+            check = np.unique(np.hstack(check))
+            print(','.join(ellipse['GROUP_NAME'][check].value))
 
     return out
 
@@ -872,11 +873,12 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
                                                  'ref_cat', 'ref_id', 'maskbits'])
         I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
 
-        # if np.sum(I)==0, this is a problem...
+        # if np.sum(I)==0, this is a problem...; add to "missing" catalog.
         if np.sum(I) == 0:
             log.warning(f'No sources in {tractorfile}')
-            tractor = Table()
-            tractor_sga = Table()
+            #tractor = Table()
+            #tractor_sga = Table()
+            return Table(), Table(), grpsample
         else:
             J = I * np.logical_or((refs['maskbits'] & MASKBITS['GALAXY'] != 0),
                                   refs['ref_cat'] == REFCAT)
@@ -1057,9 +1059,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
-            #if os.path.isfile(slicefile) and not clobber:
-            #    log.warning(f'Skipping existing catalog {slicefile}')
-            #    continue
+            if os.path.isfile(slicefile):# and not clobber:
+                log.warning(f'Skipping existing catalog {slicefile}')
+                continue
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
@@ -1209,7 +1211,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         dt, unit = get_dt(t1)
         log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
-                 f'{len(tractor):,d} Tractor sources from {len(raslices_todo)} RA ' + \
+                 f'{len(tractor):,d} Tractor sources from {len(uraslices)} RA ' + \
                  f'slices took {dt:.3f} {unit}.')
 
         I = np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])
@@ -1238,6 +1240,44 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         tractor_sga = tractor[I[m2]]
 
         tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
+
+        # In the end, there should not be any "missing" systems but
+        # until then we want the output catalog to include all objects
+        # from the parent SGA.
+        if len(missing) > 0:
+            missfile = os.path.join(sga_dir(), 'sample', f'{outprefix}-{version}-{region}-missing.fits')
+            missing = missing[np.argsort(missing['DIAM'])]
+            missing.write(missfile, overwrite=True)
+            log.info(f'Wrote {len(missing):,d} objects to {missfile}')
+
+            from SGA.SGA import read_sample
+            _, ff = read_sample(region=region)
+            assert(len(ff) == (len(outellipse)+len(missing)))
+
+            outellipse_missing = SGA_datamodel(missing, bands, all_bands, copy=False)
+            for col in missing.colnames:
+                if col in outellipse_missing.colnames:
+                    print(f'Copying {col}')
+                    outellipse_missing[col] = missing[col]
+            for col, newcol in zip(['DIAM', 'BA', 'PA', 'MAG', 'DIAM', 'DIAM_REF'],
+                                   ['DIAM_INIT', 'BA_INIT', 'PA_INIT', 'MAG_INIT', 'D26', 'D26_REF']):
+                outellipse_missing[newcol] = missing[col]
+            log.info(f'Mocking an ellipse catalog for {len(outellipse_missing):,d} sources with missing ellipse catalogs')
+
+            from SGA.io import empty_tractor
+            tractor_sga_missing = vstack([empty_tractor()] * len(outellipse_missing))
+            tractor_sga_missing['ref_cat'] = REFCAT
+            tractor_sga_missing['ref_id'] = outellipse_missing[REFIDCOLUMN]
+
+            outellipse = vstack((outellipse, outellipse_missing))
+            tractor_sga = vstack((tractor_sga, tractor_sga_missing))
+
+            srt = np.argsort(outellipse['SGAID'])
+            outellipse = outellipse[srt]
+            tractor_sga = tractor_sga[srt]
+
+        assert(len(outellipse) == len(np.unique(outellipse['SGAID'])))
+        assert(len(outellipse) == len(np.unique(outellipse['OBJNAME'])))
 
         # Write out outfile with the ELLIPSE and TRACTOR HDUs.
         hdu_primary = fits.PrimaryHDU()
@@ -1281,6 +1321,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         if np.any(I):
             log.warning(f'Removing {np.sum(I):,d} SGA sources dropped by Tractor; ' + \
                         'these should be removed in the parent catalog!')
+            out[I].write(f'check-{region}.fits', overwrite=True)
             out = out[~I]
 
         # Set freeze for everything except "special" (ignore_source)
@@ -1289,18 +1330,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         log.info(f'Not setting fitmode=FREEZE for {np.sum(~I):,d}/{len(out):,d} special SGA sources.')
         log.info(f'Setting fitmode=FREEZE for the remaining {np.sum(I):,d}/{len(out):,d} SGA+Tractor sources.')
         out['fitmode'][I] |= FITMODE['FREEZE']
-
-        # In the end, there should not be any "missing" systems but
-        # until then we want the output catalog to include all objects
-        # from the parent SGA.
-        pdb.set_trace()
-        if len(missing) > 0:
-            missfile = os.path.join(sga_dir(), 'sample', f'{outprefix}-{version}-{region}-missing.fits')
-            missing.write(missfile, overwrite=True)
-            log.info(f'Wrote {len(missing):,d} objects to {missfile}')
-
-            pdb.set_trace()
-
 
         hdu_primary = fits.PrimaryHDU()
         hdu_out = fits.convenience.table_to_hdu(out)
