@@ -356,7 +356,6 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
 
                     # draw the initial and final ellipse geometry...
                     if final_sample:
-                        (xpix, ypix) = wcs.wcs_world2pix(objra, objdec, 0)
                         (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
                         if show_initial_ellipse:
                             overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
@@ -365,6 +364,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                                              draw_majorminor_axes=False, jpeg=True)
                             #xx.scatter(xpix0, height-ypix0, marker='x',
                             #           facecolor='none', s=40, color='white')
+                        (xpix, ypix) = wcs.wcs_world2pix(objra, objdec, 0)
                         overplot_ellipse(diam, ba, pa, xpix, ypix,
                                          height_pixels=width, pixscale=pixscale,
                                          ax=xx, color='cyan', linewidth=2, linestyle='-',
