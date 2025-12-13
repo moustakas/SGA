@@ -32,6 +32,8 @@ Author: ChatGPT (SGA-2025 helper)
 
 
 SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.10-dr11-south.fits r26-calibration-coeff.tsv
+SGA2025-calibrate-r26 calibrate /global/homes/i/ioannis/SGA2025/sample/SGA2025-v0.22-dr11-south.fits r26-calibration-coeff.tsv
+
 
 
 """

@@ -101,7 +101,6 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # major refactor of build_parent
         version = 'v0.30'
-        version = 'v0.22'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
