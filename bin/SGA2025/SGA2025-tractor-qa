@@ -50,7 +50,7 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=902 --version=v0.11 # PSF / in group
 
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-testbricks-v0.21 --final-sample --region=dr11-south --vi-sample=1 --version=v0.21
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --final-sample --region=dr11-south --vi-sample=2 --version=v0.22
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --version=v0.22
 
@@ -498,6 +498,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     sample, fullsample = read_sample(region=region, first=first,
                                      last=last, galaxylist=galaxylist,
+                                     version=version,
                                      no_groups=no_groups,
                                      final_sample=final_sample,
                                      mindiam=mindiam, maxdiam=maxdiam)
@@ -533,6 +534,11 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         log.warning('Removing LMC, SMC (coadds are too large).')
         fullsample = fullsample[~np.isin(fullsample['OBJNAME'], ['LMC', 'SMC'])]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
+    elif vi_sample == 2:
+        sort_by_groupname = False
+        I = ((fullsample['D26']+fullsample['D26_ERR']) < 0.5) & (fullsample['GROUP_MULT'] == 1) & (fullsample['SAMPLE'] == 0)
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
         sort_by_groupname = False
         if no_groups:
@@ -541,7 +547,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             pdfsuffix = ''
         pdfbase = f'qa-tractor-{region}-sample{pdfsuffix}'
 
-        pdb.set_trace()
         #########################
         sort_by_groupname = False
 
@@ -641,7 +646,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     #print('HACK!')
     #sample = sample[:128]
     #fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
-    pdb.set_trace()
 
     # figure out how many PDF documents / subsamples based on nperpdf
     ngal = len(fullsample)
