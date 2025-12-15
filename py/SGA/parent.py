@@ -3811,6 +3811,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
         log.info(f'Combined catalog contains {len(ell):,d} unique objects')
 
+    pdb.set_trace()
+
     # Project ellipse to parent base model
     # Map: D26→DIAM; DIAM_REF := f"{parent_version}/{D26_REF}"
     ell_base = Table()
@@ -3871,6 +3873,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         assert(len(base) == len(np.unique(base['SGAID'])))
     except:
         pdb.set_trace()
+
+    pdb.set_trace()
 
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
     ov = load_overlays(overlay_dir)
