@@ -97,10 +97,11 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.21'
 
         # more VI; D<0.5 arcmin systems in the test region removed; SGA2020 galaxies added
-        version = 'v0.22'
+        #version = 'v0.22'
 
         # major refactor of build_parent
         version = 'v0.30'
+        #version = 'v0.22'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -108,7 +109,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.12' # parent_version = v0.11 --> v0.12
         #version = 'v0.20' # parent_version = v0.12 --> v0.20
         #version = 'v0.21' # parent_version = v0.20 --> v0.21
-        version = 'v0.22'  # parent_version = v0.21 --> v0.22
+        #version = 'v0.22'  # parent_version = v0.21 --> v0.22
+        version = 'v0.30'  # parent_version = v0.22 --> v0.30
     return version
 
 
@@ -348,8 +350,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
                 no_groups=False, lvd=False, wisesize=False, final_sample=False,
-                tractor=False, test_bricks=False, region='dr11-south', mindiam=0.,
-                maxdiam=1e3, maxmult=None):
+                version=None, tractor=False, test_bricks=False, region='dr11-south',
+                mindiam=0., maxdiam=1e3, maxmult=None):
     """Read/generate the parent SGA catalog.
 
     mindiam,maxdiam in arcmin
@@ -372,7 +374,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             ext = 'TRACTOR'
         else:
             ext = 'ELLIPSE'
-        version = SGA_version()
+        if version is None:
+            version = SGA_version()
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
     else:
         ext = 'PARENT'
