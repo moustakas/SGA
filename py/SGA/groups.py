@@ -218,9 +218,12 @@ def _contains_pair(i: int, j: int, dx_deg: float, dy_deg: float, scale: float) -
     return r <= r_boundary
 
 
-def _process_cluster(members: list[int]) -> np.ndarray:
+def _process_cluster(members: list[int], contain_search_arcmin: float=15.0/60.0) -> np.ndarray:
     """Process a single precluster and return edges (i, j) to union (E×2 int64)."""
     p = _G_params
+    contain = bool(p.get('contain', True))
+    contain_margin = float(p.get('contain_margin', 0.50))
+    big_diam = float(p.get('big_diam', 3.0))
     RA = _G_RA
     DEC = _G_DEC
 
@@ -271,6 +274,15 @@ def _process_cluster(members: list[int]) -> np.ndarray:
                     ddx = dx[kk] - dx[k]
                     ddy = dy[kk] - dy[k]
                     dd_arcmin = math.hypot(ddx, ddy) * ARCMIN_PER_DEG
+
+                    # make sure we link, e.g., NGC5194 and NGC5195
+                    sum_a = (_G_a_arc[i_global] + _G_a_arc[j_global]) * (1.0 + contain_margin)  # arcmin
+                    if contain and dd_arcmin <= contain_search_arcmin:
+                        if _contains_pair(i_global, j_global, ddx, ddy, 1.0 + contain_margin) or \
+                           _contains_pair(j_global, i_global, -ddx, -ddy, 1.0 + contain_margin):
+                            edges.append((i_global, j_global))
+                            continue
+
                     if dd_arcmin > dmax_arcmin:
                         continue
 
@@ -325,6 +337,7 @@ def build_group_catalog(
     contain_margin: float = 0.50,              # expansion on axes (1+margin)
     merge_centers: bool = True,                # merge groups with centers within threshold
     merge_sep_arcsec: float = 52.,             # merge groups closer than this value
+    contain_search_arcmin: float 10.0/60.0,    # initial check for wide-separation, large-galaxy pairs
     min_group_diam_arcsec: float = 30.,        # minimum group diameter [arcsec]
     manual_merge_pairs: list[tuple[str, str]] | None = None,
     name_column: str = "OBJNAME",
@@ -390,7 +403,7 @@ def build_group_catalog(
     if mp is None or mp <= 1:
         _init_pool(RA, DEC, DIAM, BA, PA, params)
         for members in clusters:
-            edges = _process_cluster(members)
+            edges = _process_cluster(members, contain_search_arcmin=contain_search_arcmin)
             if edges.size:
                 for a, b in edges:
                     dsu.union(int(a), int(b))
@@ -399,7 +412,7 @@ def build_group_catalog(
         mp = int(mp)
         with ProcessPoolExecutor(max_workers=mp, initializer=_init_pool,
                                  initargs=(RA, DEC, DIAM, BA, PA, params)) as ex:
-            futures = [ex.submit(_process_cluster, members) for members in clusters]
+            futures = [ex.submit(_process_cluster, members, contain_search_arcmin) for members in clusters]
             for fut in as_completed(futures):
                 edges = fut.result()
                 if edges.size:
