@@ -218,7 +218,7 @@ def _contains_pair(i: int, j: int, dx_deg: float, dy_deg: float, scale: float) -
     return r <= r_boundary
 
 
-def _process_cluster(members: list[int], contain_search_arcmin: float=15.0/60.0) -> np.ndarray:
+def _process_cluster(members: list[int], contain_search_arcmin: float=10.0) -> np.ndarray:
     """Process a single precluster and return edges (i, j) to union (E×2 int64)."""
     p = _G_params
     contain = bool(p.get('contain', True))
@@ -337,8 +337,8 @@ def build_group_catalog(
     contain_margin: float = 0.50,            # expansion on axes (1+margin)
     merge_centers: bool = True,              # merge groups with centers within threshold
     merge_sep_arcsec: float = 52.,           # merge groups closer than this value
-    contain_search_arcmin: float 10.0,       # initial check for wide-separation, large-galaxy pairs
-    min_group_diam_arcsec: float = 30.,       # minimum group diameter [arcsec]
+    contain_search_arcmin: float = 10.,      # initial check for wide-separation, large-galaxy pairs
+    min_group_diam_arcsec: float = 30.,      # minimum group diameter [arcsec]
     manual_merge_pairs: list[tuple[str, str]] | None = None,
     name_column: str = "OBJNAME",
 ) -> Table:

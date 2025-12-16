@@ -164,9 +164,9 @@ def main():
         sample, fullsample = read_sample(
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, maxmult=args.maxmult,
-            galaxylist=args.galaxylist, no_groups=no_groups,
-            lvd=args.lvd, wisesize=args.wisesize, region=region,
-            test_bricks=args.test_bricks, verbose=args.verbose)
+            version=args.version, galaxylist=args.galaxylist,
+            no_groups=no_groups, lvd=args.lvd, wisesize=args.wisesize,
+            region=region, test_bricks=args.test_bricks, verbose=args.verbose)
 
         if len(fullsample) > 0:
             # pre-compute the SkyCoord object

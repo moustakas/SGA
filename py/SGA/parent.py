@@ -3481,7 +3481,7 @@ def load_overlays(overlay_dir):
         name='updates.csv')
     drops = _read_csv_if_exists(
         os.path.join(overlay_dir, 'drops.csv'),
-        required=('OBJNAME',),
+        required=('OBJNAME', 'REGION'),
         name='drops.csv')
     flags = _read_csv_if_exists(
         os.path.join(overlay_dir, 'flags.csv'),
@@ -3490,9 +3490,15 @@ def load_overlays(overlay_dir):
 
     # simple sanity checks
     if len(np.unique(adds['OBJNAME'])) != len(adds):
-        raise ValueError("adds.csv: duplicate OBJNAME entries are not allowed.")
+        log.critical("adds.csv: duplicate OBJNAME entries are not allowed.")
+        oo, cc = np.unique(adds['OBJNAME'], return_counts=True)
+        print(oo[cc>1])
+        raise ValueError()
     if len(np.unique(drops['OBJNAME'])) != len(drops):
-        raise ValueError("drops.csv: duplicate OBJNAME entries are not allowed.")
+        log.critical("drops.csv: duplicate OBJNAME entries are not allowed.")
+        oo, cc = np.unique(drops['OBJNAME'], return_counts=True)
+        print(oo[cc>1])
+        raise ValueError()
 
     # normalize optional columns
     if 'REASON' not in updates.colnames:
@@ -3535,7 +3541,7 @@ def apply_updates_inplace(parent, updates):
 def apply_drops(parent, drops, REGIONBITS):
 
     names = np.asarray(parent['OBJNAME']).astype(str)
-    reg   = np.asarray(parent['REGION']).astype(np.int32).copy()
+    reg = np.asarray(parent['REGION']).astype(np.int32).copy()
 
     for obj, rgn in zip(drops['OBJNAME'], drops['REGION']):
         idx = np.flatnonzero(names == str(obj))
@@ -3552,6 +3558,8 @@ def apply_drops(parent, drops, REGIONBITS):
             reg[idx] = 0
 
     keep = reg != 0
+    log.info(f'Removing {np.sum(~keep):,d}/{len(parent):,d} objects from drops.csv file')
+
     out = parent[keep]
     out['REGION'] = reg[keep].astype(parent['REGION'].dtype, copy=False)
     return out
@@ -3572,7 +3580,7 @@ def apply_adds(parent, adds, regionbits, nocuts):
     maxsgaid = np.max(parent['SGAID'])
     maxrow = np.max(nocuts['ROW_PARENT'])
     next_sgaid = int(max(maxsgaid, maxrow)) + 1
-    print(next_sgaid)
+    #print(next_sgaid)
 
     def _empty_row():
         row = {}
@@ -3616,7 +3624,7 @@ def apply_adds(parent, adds, regionbits, nocuts):
             next_sgaid += 1
 
         new_rows.append(base)
-        print(next_sgaid)
+        #print(next_sgaid)
 
     if new_rows:
         parent = vstack([parent] + new_rows)
@@ -3720,7 +3728,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     from SGA.coadds import REGIONBITS
     from SGA.groups import (build_group_catalog, make_singleton_group, set_overlap_bit,
                             remove_small_groups)
-    from SGA.ellipse import ELLIPSEMODE, FITMODE
+    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
     from SGA.sky import find_in_mclouds, find_in_gclpne
 
     # Paths & versions
@@ -3811,61 +3819,59 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
         log.info(f'Combined catalog contains {len(ell):,d} unique objects')
 
-    pdb.set_trace()
-
     # Project ellipse to parent base model
     # Map: D26→DIAM; DIAM_REF := f"{parent_version}/{D26_REF}"
     ell_base = Table()
     ell_base['SGAID'] = ell['SGAID'].astype(np.int64)
     ell_base['REGION'] = ell['REGION'].astype(np.int16)
     ell_base['OBJNAME'] = ell['OBJNAME'].astype('U30')
-    ell_base['PGC'] = (ell['PGC'] if 'PGC' in ell.colnames else np.full(len(ell), -99, dtype=np.int64)).astype(np.int64)
-    ell_base['SAMPLE'] = ell['SAMPLE'].astype(np.int32)
+    ell_base['PGC'] = ell['PGC'].astype(np.int32)
+    ell_base['SAMPLE'] = np.zeros(len(ell), np.int32) # ell['SAMPLE'].astype(np.int32)
     ell_base['RA'] = ell['RA'].astype(np.float64)
     ell_base['DEC'] = ell['DEC'].astype(np.float64)
     ell_base['DIAM'] = ell['D26'].astype(np.float32)
     ell_base['DIAM_ERR'] = ell['D26_ERR'].astype(np.float32)
     ell_base['BA'] = ell['BA'].astype(np.float32)
-    ell_base['PA'] = (ell['PA'].astype(float) % 180.).astype(np.float32)
+    ell_base['PA'] = (ell['PA'] % 180.).astype(np.float32)
     ell_base['MAG'] = ell['MAG_INIT'].astype(np.float32)
     ell_base['DIAM_REF'] = np.char.add(base_version, np.char.add('/', ell['D26_REF'])).astype('U14')
 
-    ## Read "missing" catalog (same base_version as ellipse)
-    #miss = []
-    #for region in ['dr11-south', 'dr9-north']:
-    #    missing_file = os.path.join(outdir, f'SGA2025-{base_version}-{region}-missing.fits')
-    #    miss1 = Table(fitsio.read(missing_file))
-    #    log.info(f'Read {len(miss1):,d} rows from {missing_file}')
-    #    miss.append(miss1)
-    #if len(miss) > 0:
-    #    miss = vstack(miss)
-    #    _, uindx = np.unique(miss['OBJNAME'], return_index=True)
-    #    miss = miss[uindx]
-    #
-    #    miss_base = Table()
-    #    miss_base['SGAID'] = miss['SGAID'].astype(np.int64)
-    #    miss_base['REGION'] = miss['REGION'].astype(np.int16)
-    #    miss_base['OBJNAME'] = miss['OBJNAME'].astype('U30')
-    #    miss_base['PGC'] = miss['PGC'].astype(np.int64)
-    #    miss_base['SAMPLE'] = miss['SAMPLE'].astype(np.int32)
-    #    miss_base['RA'] = miss['RA'].astype(np.float64)
-    #    miss_base['DEC'] = miss['DEC'].astype(np.float64)
-    #    miss_base['DIAM'] = miss['DIAM'].astype(np.float32)
-    #    miss_base['DIAM_ERR'] = np.zeros(len(miss_base), np.float32)
-    #    miss_base['BA'] = miss['BA'].astype(np.float32)
-    #    miss_base['PA'] = (miss['PA'].astype(float) % 180.).astype(np.float32)
-    #    miss_base['MAG'] = miss['MAG'].astype(np.float32)
-    #    miss_base['DIAM_REF'] = miss['DIAM_REF'].astype('U14')
-    #    log.info(f'Adding {len(miss):,d} objects with missing Tractor or ellipse-fitting results.')
-    #
-    #    # Remove objects in miss_base (in one region) which were
-    #    # successfully processed in the second region.
-    #    miss_base = miss_base[~np.isin(miss_base['SGAID'], ell_base['SGAID'])]
-    #
-    #    # Combine ellipse-derived base with missing
-    #    base = vstack((ell_base, miss_base), metadata_conflicts='silent')
-    #else:
-    #    base = ell_base
+    # Not all ellipse entries are reliable; read the base_parent
+    # catalog so we can revert as appropriate.
+    parent_basebasefile = os.path.join(outdir, f'SGA2025-parent-{base_version}.fits')
+    parent_base = Table(fitsio.read(parent_basebasefile))
+    log.info(f'Read {len(parent_base):,d} rows from {parent_basebasefile}')
+
+    assert(len(ell) == len(ell_base))
+    assert(len(ell) == len(parent_base))
+
+    m_ell, m_parent = match(ell['OBJNAME'], parent_base['OBJNAME'])
+    ell = ell[m_ell]
+    ell_base = ell_base[m_ell]
+    parent_base = parent_base[m_parent]
+
+    if base_version == 'v0.22':
+        # Restore all objects with large shifts caused by erroneous
+        # Tractor models and also the geometry measured for all LVD
+        # sources.
+        I = (ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) | (ell['SAMPLE'] & SAMPLE['LVD'] != 0)
+        if np.any(I):
+            log.info(f'Reverting positions and ellipse geometry for {np.sum(I):,d} objects.')
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+                ell_base[col][I] = parent_base[col][I]
+
+        #import matplotlib.pyplot as plt
+        #I = np.abs((ell_base['DIAM'] - parent_base['DIAM']) / (0.5 * (ell_base['DIAM'] + parent_base['DIAM']))) > 0.5
+        #plt.clf()
+        #plt.scatter(ell_base['DIAM'], parent_base['DIAM'], s=1)
+        #plt.scatter(ell_base['DIAM'][I], parent_base['DIAM'][I], s=1, color='red', alpha=0.5)
+        #plt.xscale('log')
+        #plt.yscale('log')
+        #plt.xlabel(f'Ellipse ({base_version})')
+        #plt.ylabel(f'Parent ({parent_version})')
+        #plt.axvline(x=0.5, color='k')
+        #plt.savefig('ioannis/tmp/junk.png')
 
     base = ell_base
     log.info(f'Final base catalog contains {len(base):,d} objects.')
@@ -3873,8 +3879,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         assert(len(base) == len(np.unique(base['SGAID'])))
     except:
         pdb.set_trace()
-
-    pdb.set_trace()
 
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
     ov = load_overlays(overlay_dir)
@@ -3889,6 +3893,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         assert(len(base) == len(np.unique(base['SGAID'])))
     except:
         pdb.set_trace()
+
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
