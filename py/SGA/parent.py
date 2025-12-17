@@ -3726,8 +3726,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     from desiutil.dust import SFDMap
     from SGA.SGA import SGA_version, SAMPLE
     from SGA.coadds import REGIONBITS
-    from SGA.groups import (build_group_catalog, make_singleton_group, set_overlap_bit,
-                            remove_small_groups)
+    from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
     from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
     from SGA.sky import find_in_mclouds, find_in_gclpne
 
@@ -3861,6 +3860,16 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
             for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                 ell_base[col][I] = parent_base[col][I]
 
+        I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
+        bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
+        bb = bb[np.argsort(bb['DIAM'])]
+        bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+        bb['radius'] *= 60. / 2.
+        bb.write('viewer.fits', overwrite=True)
+        _ = [print(f'{nn},') for nn in bb['name'].value]
+
+        pdb.set_trace()
+
         #import matplotlib.pyplot as plt
         #I = np.abs((ell_base['DIAM'] - parent_base['DIAM']) / (0.5 * (ell_base['DIAM'] + parent_base['DIAM']))) > 0.5
         #plt.clf()
@@ -3946,8 +3955,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         from astropy.table import Table
         out1 = Table(grp[:0]).copy()
         gid_start = 0
-
     out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
+
     out = vstack((out1, out2))
     #del out1, out2, grp
 
