@@ -3860,15 +3860,13 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
             for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                 ell_base[col][I] = parent_base[col][I]
 
-        I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
-        bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
-        bb = bb[np.argsort(bb['DIAM'])]
-        bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-        bb['radius'] *= 60. / 2.
-        bb.write('viewer.fits', overwrite=True)
-        _ = [print(f'{nn},') for nn in bb['name'].value]
-
-        pdb.set_trace()
+        #I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
+        #bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
+        #bb = bb[np.argsort(bb['DIAM'])]
+        #bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+        #bb['radius'] *= 60. / 2.
+        #bb.write('viewer.fits', overwrite=True)
+        #_ = [print(f'{nn},') for nn in bb['name'].value]
 
         #import matplotlib.pyplot as plt
         #I = np.abs((ell_base['DIAM'] - parent_base['DIAM']) / (0.5 * (ell_base['DIAM'] + parent_base['DIAM']))) > 0.5
@@ -3902,7 +3900,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         assert(len(base) == len(np.unique(base['SGAID'])))
     except:
         pdb.set_trace()
-
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
