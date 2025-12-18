@@ -61,6 +61,7 @@ def directional_radius(a_arc, b_arc, pa_rad, bearing_rad):
     -------
     float or ndarray
         Radius in arcmin along specified bearing
+
     """
     # Convert to arrays for uniform handling
     a_arc = np.asarray(a_arc)
@@ -92,7 +93,29 @@ def directional_radius(a_arc, b_arc, pa_rad, bearing_rad):
 
 
 def contains_point(a_arc, b_arc, pa_rad, dx_deg, dy_deg, scale=1.0):
-    """Check if point (dx, dy) lies inside scaled ellipse."""
+    """
+    Check if point (dx, dy) lies inside scaled ellipse.
+
+    Note: This checks if a POINT is inside an ellipse, not ellipse-ellipse overlap.
+    For ellipse overlap, use ellipses_overlap().
+
+    Parameters
+    ----------
+    a_arc, b_arc : float
+        Semi-major and semi-minor axes (arcmin)
+    pa_rad : float
+        Position angle (radians, astronomical convention)
+    dx_deg, dy_deg : float
+        Point offset in local tangent plane (degrees)
+    scale : float
+        Scale factor for ellipse (>1 expands)
+
+    Returns
+    -------
+    bool
+        True if point is inside scaled ellipse
+
+    """
     if a_arc <= 0.0 or b_arc <= 0.0:
         return False
 
@@ -106,6 +129,49 @@ def contains_point(a_arc, b_arc, pa_rad, dx_deg, dy_deg, scale=1.0):
     r_boundary = directional_radius(a_arc, b_arc, pa_rad, bearing)
 
     return r_point <= scale * r_boundary
+
+
+def ellipses_overlap(a1, b1, pa1_rad, a2, b2, pa2_rad, dx_deg, dy_deg, scale=1.0):
+    """
+    Check if two scaled ellipses overlap.
+
+    This is the proper test for determining if two galaxies are close enough
+    to be considered overlapping/interacting.
+
+    Parameters
+    ----------
+    a1, b1 : float
+        Semi-major and semi-minor axes of ellipse 1 (arcmin)
+    pa1_rad : float
+        Position angle of ellipse 1 (radians, astronomical convention)
+    a2, b2 : float
+        Semi-major and semi-minor axes of ellipse 2 (arcmin)
+    pa2_rad : float
+        Position angle of ellipse 2 (radians, astronomical convention)
+    dx_deg, dy_deg : float
+        Offset from ellipse 1 center to ellipse 2 center (degrees)
+    scale : float
+        Scale factor applied to both ellipses (e.g., 1.5 = 50% margin)
+
+    Returns
+    -------
+    bool
+        True if the scaled ellipses overlap
+
+    """
+    # Separation between centers
+    sep_arcmin = math.hypot(dx_deg, dy_deg) * ARCMIN_PER_DEG
+
+    # Bearing from 1 to 2 and vice versa
+    bearing_12 = math.atan2(dx_deg, dy_deg)
+    bearing_21 = math.atan2(-dx_deg, -dy_deg)
+
+    # Directional radii along the center-center line
+    r1_dir = directional_radius(a1, b1, pa1_rad, bearing_12)
+    r2_dir = directional_radius(a2, b2, pa2_rad, bearing_21)
+
+    # Ellipses overlap if separation <= sum of scaled directional radii
+    return sep_arcmin <= scale * (r1_dir + r2_dir)
 
 
 # ============================================================================
@@ -215,7 +281,16 @@ class State:
         return directional_radius(self.a_arc[i], self.b_arc[i], self.pa_rad[i], bearing)
 
     def contains(self, i, j, dx_deg, dy_deg, scale):
+        """Check if j's center is inside i's scaled ellipse."""
         return contains_point(self.a_arc[i], self.b_arc[i], self.pa_rad[i], dx_deg, dy_deg, scale)
+
+    def overlaps(self, i, j, dx_deg, dy_deg, scale):
+        """Check if i and j's scaled ellipses overlap."""
+        return ellipses_overlap(
+            self.a_arc[i], self.b_arc[i], self.pa_rad[i],
+            self.a_arc[j], self.b_arc[j], self.pa_rad[j],
+            dx_deg, dy_deg, scale
+        )
 
 
 # ============================================================================
@@ -286,16 +361,16 @@ def should_link(i, j, ddx, ddy, sep, state, scale, search_arcmin):
     """Determine if pair should be linked."""
     p = state.params
 
-    # Containment check for close wide pairs
+    # Ellipse overlap check for close pairs
     if p.contain and sep <= search_arcmin:
-        if state.contains(i, j, ddx, ddy, scale) or state.contains(j, i, -ddx, -ddy, scale):
+        if state.overlaps(i, j, ddx, ddy, scale):
             return True
 
     if sep > p.dmax_arcmin:
         return False
 
-    # Standard containment
-    if p.contain and (state.contains(i, j, ddx, ddy, scale) or state.contains(j, i, -ddx, -ddy, scale)):
+    # Standard ellipse overlap check
+    if p.contain and state.overlaps(i, j, ddx, ddy, scale):
         return True
 
     # Threshold check
@@ -323,7 +398,9 @@ def _worker_wrapper(args):
 # ============================================================================
 
 def report_group_statistics(cat, params, links, n_preclusters, timing):
-    """Generate detailed statistics about the grouping results."""
+    """Generate detailed statistics about the grouping results.
+
+    """
 
     # Get unique groups
     group_ids = cat['GROUP_ID']
@@ -434,10 +511,9 @@ def build_group_catalog(
     anisotropic=True, link_mode="hybrid", big_diam=3.0,
     mfac_backbone=1.3, mfac_sat=1.5, k_floor=0.40, q_floor=0.20,
     name_via="radec", sphere_link_arcmin=None, grid_cell_arcmin=None,
-    mp=1, contain=True, contain_margin=0.50, merge_centers=True,
+    mp=1, contain=True, contain_margin=0.75, merge_centers=True,
     merge_sep_arcsec=52.0, contain_search_arcmin=5.0,
-    min_group_diam_arcsec=30.0, manual_merge_pairs=None, name_column="OBJNAME"
-):
+    min_group_diam_arcsec=30.0, manual_merge_pairs=None, name_column="OBJNAME"):
     """
     Build galaxy group catalog with hybrid anisotropic linking.
 
@@ -460,6 +536,7 @@ def build_group_catalog(
     -------
     Table
         Input catalog with added GROUP_* columns
+
     """
     t0 = time.time()
 
@@ -782,37 +859,20 @@ def set_overlap_bit(cat, SAMPLE):
 
         # Pairwise overlap checks (upper triangle only)
         for ii in range(I.size - 1):
-            # Compute separations to all subsequent members
+            # Compute offsets to all subsequent members
             dx_deg = angdiff_deg(ra[ii+1:], ra[ii]) * cosd0
             dy_deg = dec[ii+1:] - dec[ii]
 
-            # Convert to arcmin
-            dx_am = dx_deg * ARCMIN_PER_DEG
-            dy_am = dy_deg * ARCMIN_PER_DEG
-            sep_am = np.hypot(dx_am, dy_am)
-
-            # Bearings along center-center lines
-            bearing_ij = np.arctan2(dx_am, dy_am)
-            bearing_ji = np.arctan2(-dx_am, -dy_am)
-
-            # Directional radii along these bearings
-            ri_dir = directional_radius(
-                a_arc[ii], b_arc[ii], pa_rad[ii], bearing_ij
-            )
-
-            rj_dir = directional_radius(
-                a_arc[ii+1:], b_arc[ii+1:], pa_rad[ii+1:], bearing_ji
-            )
-
-            # Overlap condition: separation ≤ sum of directional radii
-            touches = sep_am <= (ri_dir + rj_dir)
-
-            if np.any(touches):
-                overlapped[ii] = True
-                # Mark which subsequent members overlap
-                indices = np.where(touches)[0]
-                overlapped[ii+1+indices] = True
+            # Check ellipse overlap using the same function as linking
+            for kk, (dx, dy) in enumerate(zip(dx_deg, dy_deg)):
+                jj = ii + 1 + kk
+                if ellipses_overlap(a_arc[ii], b_arc[ii], pa_rad[ii],
+                                   a_arc[jj], b_arc[jj], pa_rad[jj],
+                                   dx, dy, scale=1.0):  # No margin for overlap bit
+                    overlapped[ii] = True
+                    overlapped[jj] = True
 
         # Set the OVERLAP bit for overlapping members
         if np.any(overlapped):
             cat['SAMPLE'][I[overlapped]] |= OVERLAP_BIT
+
