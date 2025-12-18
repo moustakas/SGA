@@ -1739,6 +1739,8 @@ def _compute_major_minor_masks(flux_sga, allgalsrcs, galsrcs_optflux,
     if (objsrc is not None) and use_tractor_position_obj:
         sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec,
                                     allgalsrcs.ra, allgalsrcs.dec)
+        #print('#############', sep_arcsec)
+        pdb.set_trace()
         major_mask &= (sep_arcsec > objsrc.shape_r)
 
     return major_mask, minor_mask
@@ -2465,6 +2467,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
                 # Optionally do not mask within the current SGA ellipse itself.
+                #print('HACK!')
                 opt_galmask[inellipse] = False
 
             # apply the mask_nearby mask
@@ -2869,8 +2872,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         data[f'{prefix}_sigma'] /= pixscale**2  # [nanomaggies/arcsec**2]
 
     # optionally build a QA figure
-    if qaplot:
+    if True:#qaplot:
         qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
+    pdb.set_trace()
 
     # clean-up
     if cleanup:
@@ -3134,6 +3138,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         cols += [f'flux_{filt}' for filt in opt_bands]
         cols += [f'flux_ivar_{filt}' for filt in opt_bands]
         cols += [f'nobs_{filt}' for filt in opt_bands]
+        cols += [f'fracin_{filt}' for filt in opt_bands]
+        cols += [f'fracflux_{filt}' for filt in opt_bands]
         #cols += [f'mw_transmission_{filt}' for filt in all_opt_bands]
         cols += [f'psfdepth_{filt}' for filt in all_opt_bands] # NB: all optical bands
         cols += [f'psfsize_{filt}' for filt in all_opt_bands]

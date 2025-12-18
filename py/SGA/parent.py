@@ -3853,20 +3853,28 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         # Restore all objects with large shifts caused by erroneous
         # Tractor models and also the geometry measured for all LVD
         # sources.
-        I = (ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) | (ell['SAMPLE'] & SAMPLE['LVD'] != 0)
+        I = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) | (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
+             (ell['GROUP_MULT'] > 1))
         if np.any(I):
             log.info(f'Reverting positions and ellipse geometry for {np.sum(I):,d} objects.')
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                 ell_base[col][I] = parent_base[col][I]
 
+        # After much inspection,
+        np.sum(np.abs(1.-ell_base['DIAM'].value/parent_base['DIAM'].value) > 0.2)
+        pdb.set_trace()
+
+
         #I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
-        #bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
-        #bb = bb[np.argsort(bb['DIAM'])]
-        #bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-        #bb['radius'] *= 60. / 2.
-        #bb.write('viewer.fits', overwrite=True)
-        #_ = [print(f'{nn},') for nn in bb['name'].value]
+        I = (ell_base['DIAM'] < 0.3) & (ell['GROUP_MULT'] == 1) & (ell['SAMPLE'] & SAMPLE['LVD'] == 0)
+        bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
+        bb = bb[np.argsort(bb['DIAM'])]
+        bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+        bb['radius'] *= 60. / 2.
+        bb.write('viewer.fits', overwrite=True)
+        _ = [print(f'{nn},') for nn in bb['name'].value]
+        pdb.set_trace()
 
         #import matplotlib.pyplot as plt
         #I = np.abs((ell_base['DIAM'] - parent_base['DIAM']) / (0.5 * (ell_base['DIAM'] + parent_base['DIAM']))) > 0.5
@@ -3966,11 +3974,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         log.critical('Duplicate group names among primaries detected.')
         raise ValueError('Duplicate SGAGROUP among primaries')
 
-    try:
-        assert(len(out) == len(np.unique(out['SGAID'])))
-    except:
-        pdb.set_trace()
-
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
     keep_mask = np.ones(len(out), dtype=bool)
@@ -3997,11 +4000,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)
-
-    try:
-        assert(len(out) == len(np.unique(out['SGAID'])))
-    except:
-        pdb.set_trace()
 
     # Final sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
     if len(np.unique(out['SGAID'])) != len(out):

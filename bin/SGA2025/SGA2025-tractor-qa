@@ -52,7 +52,7 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --final-sample --region=dr11-south --vi-sample=2 --version=v0.22
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --version=v0.22
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --version=v0.30 --vi-sample=2
 
 
 """
@@ -488,7 +488,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     """
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
-    from SGA.groups import remove_small_groups
     from SGA.coadds import REGIONBITS
 
 
@@ -536,7 +535,9 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     elif vi_sample == 2:
         sort_by_groupname = False
-        I = ((fullsample['D26']+fullsample['D26_ERR']) < 0.5) & (fullsample['GROUP_MULT'] == 1) & (fullsample['SAMPLE'] == 0)
+        #I = ((fullsample['D26']+fullsample['D26_ERR']) < 0.5) & (fullsample['GROUP_MULT'] == 1) & (fullsample['SAMPLE'] == 0)
+        #I = (fullsample['DIAM'] > 0.) & (fullsample['DIAM'] < 0.1) & (fullsample['GROUP_MULT'] == 1) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        I = (fullsample['DIAM'] < 1.) & (fullsample['GROUP_MULT'] == 1) & np.char.startswith(fullsample['OBJNAME'].astype(str), "DESI")
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
@@ -783,6 +784,7 @@ def junk():
         fullsample = fullsample[I]
         sample = fullsample
     elif vi_sample == 2:
+        from SGA.groups import remove_small_groups
         # sample 002 - GM=1, in size range, ellipse clean, at least one of {MCLOUDS,GCLPNE,NEARSTAR,INSTAR} set, and not LVD
         #diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
         #I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
