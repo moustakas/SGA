@@ -1446,8 +1446,8 @@ def unpack_maskbits(maskbits, bands=['g', 'r', 'i', 'z'],
         return masks_perband
 
 
-def _update_masks(brightstarmask, gaiamask, refmask, galmask, mask_perband,
-                  bands, sz, MASKDICT=None, build_maskbits=False,
+def _update_masks(brightstarmask, gaiamask, refmask, galmask,
+                  mask_perband, bands, sz, MASKDICT=None, build_maskbits=False,
                   do_resize=False, verbose=False):
     """Update the masks.
 
@@ -1740,7 +1740,6 @@ def _compute_major_minor_masks(flux_sga, allgalsrcs, galsrcs_optflux,
         sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec,
                                     allgalsrcs.ra, allgalsrcs.dec)
         #print('#############', sep_arcsec)
-        pdb.set_trace()
         major_mask &= (sep_arcsec > objsrc.shape_r)
 
     return major_mask, minor_mask
@@ -1920,19 +1919,27 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
 
 
-    def make_sourcemask(srcs, wcs, band, psf, sigma=None, nsigma=1.5):
+    def make_sourcemask(srcs, wcs, band, psf, sigma=None, stars=False):
         """Build a model image and threshold mask from a table of
         Tractor sources; also optionally subtract that model from an
         input image.
 
         """
+        from legacypipe.bits import MASKBITS
         from scipy.ndimage.morphology import binary_dilation
         from SGA.coadds import srcs2image
+
+        if stars:
+            nsigma = 1.0
+        else:
+            nsigma = 1.5
 
         model = srcs2image(srcs, wcs, band=band.lower(), pixelized_psf=psf)
         if sigma:
             mask = model > nsigma*sigma # True=significant flux
             mask = binary_dilation(mask*1, iterations=2) > 0
+            #if stars:
+            #    B = [(src.maskbits & MASKBITS['BRIGHT'] != 0) | (src.maskbits & MASKBITS['MEDIUM'] != 0) for src in srcs]
         else:
             mask = np.zeros(model.shape, bool)
 
@@ -2208,6 +2215,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # Bright-star mask.
     opt_brightstarmask = data['brightstarmask']
+    opt_brightstarmask_core = data['brightstarmask_core']
 
     # Nearby-galaxy mask.
     opt_nearbymask = np.zeros(sz, bool)
@@ -2228,7 +2236,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if len(psfsrcs) > 0:
             msk, model = make_sourcemask(
                 psfsrcs, opt_wcs, filt, data[f'{filt}_psf'],
-                data[f'{filt}_skysigma'])
+                data[f'{filt}_skysigma'], stars=True)
             opt_models[:, iband, :, :] += model[np.newaxis, :, :]
             opt_images[iband, :, :] = data[filt] - model
             opt_gaiamask = np.logical_or(opt_gaiamask, msk)
@@ -2433,6 +2441,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # mask edges aggressively to not bias our 'moment' geometry
             _mask_edges(iter_brightstarmask)
 
+            # never veto the "core" brightstarmask
+            iter_brightstarmask |= opt_brightstarmask_core
+
             # Build a galaxy mask from extended sources, split into
             # "major" and "minor" based on flux ratio relative to the
             # SGA source.
@@ -2467,7 +2478,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
                 # Optionally do not mask within the current SGA ellipse itself.
-                #print('HACK!')
                 opt_galmask[inellipse] = False
 
             # apply the mask_nearby mask
@@ -2475,9 +2485,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
-            opt_masks_obj = _update_masks(iter_brightstarmask, opt_gaiamask_obj,
-                                          iter_refmask, opt_galmask,
-                                          opt_mask_perband, opt_bands,
+            opt_masks_obj = _update_masks(iter_brightstarmask, opt_gaiamask_obj, iter_refmask,
+                                          opt_galmask, opt_mask_perband, opt_bands,
                                           sz, verbose=False)
 
             # Optionally update the geometry from the masked, coadded
@@ -2667,6 +2676,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
 
+        # never veto the "core" brightstarmask
+        final_brightstarmask |= opt_brightstarmask_core
+
         # Build the final galaxy mask
         opt_galmask = np.zeros(sz, bool)
         opt_models_obj = opt_models[iobj, :, :, :]
@@ -2854,8 +2866,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             galmask = opt_maskbits[iobj, :, :] & OPTMASKBITS['galaxy'] != 0
 
             maskbits[iobj, :, :] = _update_masks(
-                brightstarmask, gaiamask, refmask, galmask, mask_perband,
-                bands, sz, build_maskbits=True, MASKDICT=MASKDICT,
+                brightstarmask, gaiamask, refmask, galmask,
+                mask_perband, bands, sz, build_maskbits=True, MASKDICT=MASKDICT,
                 do_resize=True)
 
         data[f'{prefix}_images'] = images_final # [nanomaggies]
@@ -2879,6 +2891,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # clean-up
     if cleanup:
         del data['brightstarmask']
+        del data['brightstarmask_core']
         for filt in all_data_bands:
             del data[filt]
             for col in ['psf', 'mask']:
@@ -2918,6 +2931,10 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         log.info(f'Read {len(sample)} source(s) from {samplefile}')
         for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'MAG']:
             sample.rename_column(col, f'{col}_INIT')
+        #print('###########################')
+        #sample['DIAM_INIT'] = 1.5
+        #sample['PA_INIT'] = 117.807724
+        #sample['BA_INIT'] = 0.5671569
         sample.rename_column('DIAM_REF', 'DIAM_INIT_REF')
         sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                           index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
@@ -3134,7 +3151,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         tractorfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["tractor"]}.fits')
 
         cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
-                'sersic', 'shape_r', 'shape_e1', 'shape_e2']
+                'sersic', 'shape_r', 'shape_e1', 'shape_e2', 'maskbits']
         cols += [f'flux_{filt}' for filt in opt_bands]
         cols += [f'flux_ivar_{filt}' for filt in opt_bands]
         cols += [f'nobs_{filt}' for filt in opt_bands]
@@ -3266,6 +3283,21 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         # Read the basic imaging data and masks and build the multiband
         # masks.
         data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
+
+
+    if not skip_ellipse:
+        # build a brightstarmask "core" mask
+        from legacypipe.runs import get_survey
+        from legacypipe.reference import get_reference_sources, get_reference_map
+
+        survey = get_survey(run)
+        refstars, _ = get_reference_sources(survey, data['opt_wcs'].wcs,
+                                            bands=data['opt_bands'],
+                                            tycho_stars=True, gaia_stars=True,
+                                            large_galaxies=False, star_clusters=False)
+        refstars.radius /= 2. # shrink!
+        refmap = get_reference_map(data['opt_wcs'].wcs, refstars)
+        data['brightstarmask_core'] = refmap > 0
 
     # add MW dust extinction
     for filt in data['all_bands']: # NB: all bands

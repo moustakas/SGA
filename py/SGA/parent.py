@@ -3853,28 +3853,56 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         # Restore all objects with large shifts caused by erroneous
         # Tractor models and also the geometry measured for all LVD
         # sources.
-        I = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) | (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
-             (ell['GROUP_MULT'] > 1))
+
+        # After much inspection, I decided to also restore the
+        # geometry for every object in v0.22 where the diameter,
+        # position angle, or ellipticity changed by more than 20% from
+        # its initial / parent values.
+        d_old = parent_base['DIAM'].value
+        d_new = ell_base['DIAM'].value
+        ba_old = parent_base['BA'].value
+        ba_new = ell_base['BA'].value
+        pa_old = parent_base['PA'].value  # degrees, [0,180)
+        pa_new = ell_base['PA'].value
+
+        # 1) keep your existing special cases
+        I1 = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) |
+              (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
+              (ell['GROUP_MULT'] > 1))
+
+        # 2) relative change > 20% for DIAM and BA (guard old<=0)
+        I2 = (d_old > 0) & (np.abs(d_new - d_old) / d_old > 0.20)
+
+        # BA can be near zero; use relative when possible, else absolute > 0.20
+        I3_rel = (ba_old > 0) & (np.abs(ba_new - ba_old) / ba_old > 0.20)
+        I3_abs = (ba_old <= 0) & (np.abs(ba_new - ba_old) > 0.20)
+        I3 = I3_rel | I3_abs
+
+        # 3) PA: use wrapped angular difference in [0,90], then compare to 20% of 180° (=36°)
+        # (i.e., “20% change” interpreted on the 180° periodicity)
+        dpa = np.abs(((pa_new - pa_old + 90.0) % 180.0) - 90.0)  # wrapped |ΔPA| in degrees
+        I4 = dpa > (0.20 * 180.0)  # 36 degrees
+
+        I = I1 | I2 | I3 | I4
+        ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
+        parent_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
+        pdb.set_trace()
+
         if np.any(I):
             log.info(f'Reverting positions and ellipse geometry for {np.sum(I):,d} objects.')
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                 ell_base[col][I] = parent_base[col][I]
 
-        # After much inspection,
-        np.sum(np.abs(1.-ell_base['DIAM'].value/parent_base['DIAM'].value) > 0.2)
-        pdb.set_trace()
 
-
-        #I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
-        I = (ell_base['DIAM'] < 0.3) & (ell['GROUP_MULT'] == 1) & (ell['SAMPLE'] & SAMPLE['LVD'] == 0)
-        bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
-        bb = bb[np.argsort(bb['DIAM'])]
-        bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-        bb['radius'] *= 60. / 2.
-        bb.write('viewer.fits', overwrite=True)
-        _ = [print(f'{nn},') for nn in bb['name'].value]
-        pdb.set_trace()
+        ##I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
+        #I = (ell_base['DIAM'] < 0.3) & (ell['GROUP_MULT'] == 1) & (ell['SAMPLE'] & SAMPLE['LVD'] == 0)
+        #bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
+        #bb = bb[np.argsort(bb['DIAM'])]
+        #bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+        #bb['radius'] *= 60. / 2.
+        #bb.write('viewer.fits', overwrite=True)
+        #_ = [print(f'{nn},') for nn in bb['name'].value]
 
         #import matplotlib.pyplot as plt
         #I = np.abs((ell_base['DIAM'] - parent_base['DIAM']) / (0.5 * (ell_base['DIAM'] + parent_base['DIAM']))) > 0.5
