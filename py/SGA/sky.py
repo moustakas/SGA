@@ -16,6 +16,53 @@ from SGA.coadds import PIXSCALE
 from SGA.logger import log
 
 
+def find_in_mclouds(cat, mcloud='LMC'):
+    # flag objects in the LMC and SMC
+
+    from SGA.sky import in_ellipse_mask_sky
+    from SGA.geometry import choose_geometry
+
+    gal = cat[cat['OBJNAME'] == mcloud]
+    if len(gal) == 0:
+        msg = f'Magellanic Cloud {mcloud} not found in input catalog!'
+        log.critical(msg)
+        raise ValueError(msg)
+
+    racen, deccen = gal['RA'].value, gal['DEC'].value
+    #gal['DIAM_HYPERLEDA', 'PA_HYPERLEDA', 'BA_HYPERLEDA', 'DIAM_LIT', 'DIAM_LIT_REF', 'PA_LIT', 'BA_LIT']
+
+    diam, ba, pa, _ = choose_geometry(gal)
+    semia = diam / 2. / 3600. # [degrees]
+    semib = ba * semia
+
+    in_mcloud = in_ellipse_mask_sky(
+        racen, deccen, semia, semib, pa,
+        cat['RA'].value, cat['DEC'].value)
+
+    return in_mcloud
+
+
+def find_in_gclpne(cat):
+    # flag objects in GCl / PNe
+    from importlib import resources
+    import fitsio
+    from SGA.sky import in_ellipse_mask_sky
+
+    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
+    gcl = Table(fitsio.read(gclfile))
+    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
+
+    in_gclpne = np.zeros(len(cat), bool)
+
+    for cl in gcl:
+        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
+                                cl['pa'], cat['RA'].value, cat['DEC'].value)
+        if np.any(I):
+            in_gclpne[I] = True
+
+    return in_gclpne
+
+
 def map_bxby(bx, by, from_wcs, to_wcs):
     """Map, (bx, by) coordinates from one WCS to another (e.g.,
     optical-->GALEX).

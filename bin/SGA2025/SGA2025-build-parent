@@ -20,16 +20,16 @@ srun --ntasks=64 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scrip
   SGA2025-build-parent --in-footprint --region=dr11-south
 
 
-cp ~/SGA2025/sample/SGA2025-parent-refcat-v0.22.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
+cp ~/SGA2025/sample/SGA2025-parent-refcat-v0.30.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
 chgrp cosmo /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
 chmod g-w /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
 
 pushd /global/cfs/cdirs/cosmo/webapp/viewer-dev/data/sga2025
-cp ~/SGA2025/sample/SGA2025-parent-v0.22.kd.fits .
+cp ~/SGA2025/sample/SGA2025-parent-v0.30.kd.fits .
 rm SGA2025-parent-latest.kd.fits
 chgrp cosmo *.fits
 chmod g-w *.fits
-ln -s SGA2025-parent-v0.22.kd.fits SGA2025-parent-latest.kd.fits
+ln -s SGA2025-parent-v0.30.kd.fits SGA2025-parent-latest.kd.fits
 
 
 """
@@ -95,7 +95,7 @@ def main():
 
     if args.parent:
         from SGA.parent import build_parent
-        build_parent(mp=args.mp, overwrite=args.overwrite, verbose=args.verbose)
+        build_parent(mp=args.mp, overwrite=args.overwrite)
 
     if args.qa_footprint:
         from SGA.parent import qa_footprint

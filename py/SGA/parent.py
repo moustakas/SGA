@@ -10,7 +10,7 @@ import numpy as np
 import fitsio
 from glob import glob
 from importlib import resources
-from collections import Counter
+from collections import Counter, namedtuple
 from astropy.table import Table, vstack, hstack
 from astrometry.libkd.spherematch import match_radec
 
@@ -2817,103 +2817,6 @@ def build_parent_archive(verbose=False, overwrite=False):
     cat.write(final_outfile, overwrite=True)
 
 
-def find_in_mclouds(cat, mcloud='LMC'):
-    # flag objects in the LMC and SMC
-
-    from SGA.sky import in_ellipse_mask_sky
-    from SGA.geometry import choose_geometry
-
-    gal = cat[cat['OBJNAME'] == mcloud]
-    if len(gal) == 0:
-        msg = f'Magellanic Cloud {mcloud} not found in input catalog!'
-        log.critical(msg)
-        raise ValueError(msg)
-
-    racen, deccen = gal['RA'].value, gal['DEC'].value
-    #gal['DIAM_HYPERLEDA', 'PA_HYPERLEDA', 'BA_HYPERLEDA', 'DIAM_LIT', 'DIAM_LIT_REF', 'PA_LIT', 'BA_LIT']
-
-    diam, ba, pa, _ = choose_geometry(gal)
-    semia = diam / 2. / 3600. # [degrees]
-    semib = ba * semia
-
-    in_mcloud = in_ellipse_mask_sky(
-        racen, deccen, semia, semib, pa,
-        cat['RA'].value, cat['DEC'].value)
-
-    return in_mcloud
-
-
-def find_in_gclpne(cat):
-    # flag objects in GCl / PNe
-
-    from SGA.sky import in_ellipse_mask_sky
-
-    gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
-    gcl = Table(fitsio.read(gclfile))
-    log.info(f'Read {len(gcl):,d} objects from {gclfile}')
-
-    in_gclpne = np.zeros(len(cat), bool)
-
-    for cl in gcl:
-        I = in_ellipse_mask_sky(cl['ra'], cl['dec'], cl['radius'], cl['ba']*cl['radius'],
-                                cl['pa'], cat['RA'].value, cat['DEC'].value)
-        if np.any(I):
-            in_gclpne[I] = True
-
-    return in_gclpne
-
-
-def remove_small_groups(cat, minmult=2, maxmult=None, mindiam=0.5,
-                        diamcolumn='D26', diamerrcolumn=None,
-                        exclude_group_names=None):
-    """Return a new catalog containing only groups with at least
-    `minmult` members whose *all* members have diameters between
-    `mindiam` and `maxdiam` based on `diamcolumn` (in arcminutes).
-
-    Early catalogs had duplicate GROUP_IDs, so use GROUP_NAME.
-
-    """
-    # Groups to exclude entirely (e.g. LVD groups)
-    if exclude_group_names is None:
-        exclude_mask = np.zeros(len(cat), dtype=bool)
-    else:
-        exclude_mask = np.isin(cat['GROUP_NAME'], exclude_group_names)
-
-    # Only consider groups with >= minmult members
-    mask_multi = cat['GROUP_MULT'] >= minmult
-    if maxmult is not None:
-        mask_multi *= (cat['GROUP_MULT'] <= maxmult)
-    mask_multi &= ~exclude_mask
-
-    gname = cat['GROUP_NAME'][mask_multi]
-    diam = cat[diamcolumn][mask_multi]
-    if diamerrcolumn is not None:
-        diamerr = cat[diamerrcolumn][mask_multi]
-        diam += diamerr # lower limit
-
-    # Sort by group name so each group is contiguous
-    order = np.argsort(gname)
-    gname_sorted = gname[order]
-    diam_sorted = diam[order]
-
-    # For each group, find start index and per-group min/max diameter
-    unique_gnames, idx_start = np.unique(gname_sorted, return_index=True)
-    group_max = np.maximum.reduceat(diam_sorted, idx_start)
-
-    # Groups where ALL members are < mindiam  ⇒ max < mindiam
-    rem_group_names = unique_gnames[group_max < mindiam]
-    rem_rows = np.isin(cat['GROUP_NAME'], rem_group_names) & mask_multi
-    keep_rows = (~rem_rows) & mask_multi
-
-    rem = cat[rem_rows]
-    rem = rem[np.lexsort((rem[diamcolumn], rem['GROUP_NAME']))]
-
-    out = cat[keep_rows]
-    out = out[np.lexsort((out[diamcolumn], out['GROUP_NAME']))]
-
-    return out, rem
-
-
 def update_geometry_from_reffiles(parent, diam, ba, pa, diam_ref, reffiles,
                                   REGIONBITS, veto_objnames=None,
                                   region_order=['dr9-north', 'dr11-south']):
@@ -2961,299 +2864,7 @@ def update_geometry_from_reffiles(parent, diam, ba, pa, diam_ref, reffiles,
     return diam, ba, pa, diam_ref
 
 
-def find_blended_groups(small_groups, g_sorted, RA_sorted, DEC_sorted,
-                        D_sorted, uniq, idx_start, idx_end):
-    """Return group names among `small_groups` where at least one
-    pair of circularized ellipses overlaps.
-
-    Parameters
-    ----------
-    small_groups : array-like
-        Group names (as in uniq[]) whose members all have D < mindiam.
-    g_sorted : array
-        GROUP_NAME column sorted by name and filtered to gm2_notLVD rows.
-    RA_sorted, DEC_sorted : arrays
-        Sorted RA, DEC values aligned with g_sorted.
-    D_sorted : array
-        Sorted diameters (arcmin) aligned with g_sorted.
-    uniq : array
-        Unique group names (sorted) corresponding to g_sorted.
-    idx_start, idx_end : arrays
-        Start and end indices into the sorted arrays for each uniq[] entry.
-
-    Returns
-    -------
-    np.ndarray
-        Sorted unique group names for which overlap was detected.
-
-    """
-    blended = []
-
-    for gname in small_groups:
-        # locate this group's slice in sorted arrays
-        k = np.where(uniq == gname)[0][0]
-        i0, i1 = idx_start[k], idx_end[k]
-
-        ra  = RA_sorted[i0:i1]
-        dec = DEC_sorted[i0:i1]
-        d   = D_sorted[i0:i1]
-        r   = 0.5 * d   # circularized radius (arcmin)
-
-        n = len(ra)
-        if n < 2:
-            continue
-
-        found = False
-
-        for ii in range(n - 1):
-            for jj in range(ii + 1, n):
-
-                # Tangent-plane separation (arcmin)
-                dec_mean = 0.5 * (dec[ii] + dec[jj]) * np.pi / 180.0
-                dx = (ra[jj] - ra[ii]) * np.cos(dec_mean) * 60.0
-                dy = (dec[jj] - dec[ii]) * 60.0
-                dist2 = dx*dx + dy*dy
-
-                # overlap check
-                thresh = r[ii] + r[jj]
-                if dist2 <= thresh * thresh:
-                    blended.append(gname)
-                    found = True
-                    break
-
-            if found:
-                break
-
-    return np.unique(blended)
-
-
-def remove_small_groups_and_galaxies(parent, ref_tab, region, REGIONBITS,
-                                     SAMPLE, ELLIPSEBIT, mindiam=0.5,
-                                     veto_objnames=None):
-    """Update parent['REGION'] by removing this region for objects that
-    do NOT fall in VI samples 001–007, based on a previous-version catalog
-    `ref_tab` for a single region.
-
-    Parameters
-    ----------
-    parent : astropy.table.Table
-        Current parent catalog (modified in-place; also returned).
-    ref_tab : astropy.table.Table
-        Previous-version regional catalog with GROUP_* and ellipse info
-        (equivalent to `fullsample`).
-    region : str
-        'dr9-north' or 'dr11-south', etc. Must be a key in REGIONBITS.
-    REGIONBITS : dict
-        Mapping from region_name -> bit value.
-    SAMPLE : dict
-        SAMPLE bit dictionary with keys LVD, MCLOUDS, GCLPNE, NEARSTAR, INSTAR.
-
-    Returns
-    -------
-    parent_new : astropy.table.Table
-        Parent with this region bit removed where appropriate, and rows
-        with REGION==0 dropped.
-
-    """
-    bit = REGIONBITS[region]
-
-    LVD      = SAMPLE['LVD']
-    MCLOUDS  = SAMPLE['MCLOUDS']
-    GCLPNE   = SAMPLE['GCLPNE']
-    NEARSTAR = SAMPLE['NEARSTAR']
-    INSTAR   = SAMPLE['INSTAR']
-
-    gm1    = (ref_tab['GROUP_MULT'] == 1)
-    not_LVD = (ref_tab['SAMPLE'] & LVD) == 0
-    is_LVD  = (ref_tab['SAMPLE'] & LVD) != 0
-
-    ellipse_ok  = (ref_tab['ELLIPSEBIT'] == 0)
-    ellipse_bad = (ref_tab['ELLIPSEBIT'] != 0)
-
-    sample_flags = (ref_tab['SAMPLE'] & (MCLOUDS | GCLPNE | NEARSTAR | INSTAR)) != 0
-
-    D = ref_tab['D26']
-
-    # 001–004: GM=1, non-LVD, D≥0.5
-    mask_001_004 = gm1 & not_LVD & (D >= mindiam)
-
-    # 005: all members of LVD groups
-    LVD_group_names = np.unique(ref_tab['GROUP_NAME'][is_LVD])
-    mask_005 = np.isin(ref_tab['GROUP_NAME'], LVD_group_names)
-
-    # 006–007: non-LVD, GM≥2, at least one member with D≥mindiam
-    #          OR at least one overlapping circularized pair
-    gm2_notLVD = (ref_tab['GROUP_MULT'] >= 2) & not_LVD
-
-    D_all   = ref_tab['DIAM_INIT'] # use initial diameter not D26!
-    RA_all  = ref_tab['RA_INIT']
-    DEC_all = ref_tab['DEC_INIT']
-    g_all   = ref_tab['GROUP_NAME']
-
-    D   = D_all[gm2_notLVD]
-    RA  = RA_all[gm2_notLVD]
-    DEC = DEC_all[gm2_notLVD]
-    g   = g_all[gm2_notLVD]
-
-    order = np.argsort(g)
-    g_sorted   = g[order]
-    D_sorted   = D[order]
-    RA_sorted  = RA[order]
-    DEC_sorted = DEC[order]
-
-    uniq, idx_start = np.unique(g_sorted, return_index=True)
-    idx_end = np.append(idx_start[1:], len(g_sorted))
-
-    group_maxD = np.maximum.reduceat(D_sorted, idx_start) # groups kept by diameter only
-    good_groups_diam = uniq[group_maxD >= mindiam]
-
-    # groups with all members below mindiam
-    small_groups = uniq[group_maxD < mindiam]
-
-    # find small groups with overlapping circularized ellipses
-    blended_groups = find_blended_groups(
-        small_groups, g_sorted, RA_sorted, DEC_sorted, D_sorted,
-        uniq, idx_start, idx_end)
-
-    good_groups = np.union1d(good_groups_diam, blended_groups) # diameter OR blended
-    mask_006_007 = gm2_notLVD & np.isin(g_all, good_groups)
-
-    # union of 001–007 in ref_tab
-    mask_all = mask_001_004 | mask_005 | mask_006_007
-
-    # OBJNAMEs in this region that PASS the 001–007 selection
-    keep_names = set(ref_tab['OBJNAME'][mask_all])
-
-    # For parent rows in this region and present in ref_tab:
-    #parent = parent.copy()
-    in_region = (parent['REGION'] & bit) != 0
-    in_ref = np.isin(parent['OBJNAME'], ref_tab['OBJNAME'])
-
-    # Objects that fail samples 001–007
-    fails = in_region & in_ref & ~np.isin(parent['OBJNAME'], list(keep_names))
-
-    # Apply veto: do NOT drop veto_names
-    if veto_objnames is not None:
-        veto_mask = np.isin(parent['OBJNAME'], list(veto_objnames))
-        fails &= ~veto_mask
-
-    parent['REGION'][fails] -= bit
-
-    # report the numbers but don't actually trim
-    I = parent['REGION'] != 0
-    log.info(f'Removing {np.sum(~I):,d}/{np.sum(in_region):,d} objects with ' + \
-             f'D(26)<0.5 from region {region}')
-
-    return parent
-
-
-def set_overlap_bit(cat, SAMPLE):
-    """
-    Flag ellipse-overlap within each group by setting SAMPLE['OVERLAP'].
-
-    Assumes `cat` has columns: GROUP_NAME, GROUP_MULT, RA, DEC, DIAM (arcmin), BA, PA (deg, astronomical).
-    Modifies `cat['SAMPLE']` in place by OR'ing the OVERLAP bit for members that
-    overlap at least one other member in their group.
-
-    Parameters
-    ----------
-    cat : astropy.table.Table
-        Input catalog, modified in place.
-    SAMPLE : dict
-        Bitmask dictionary that includes key 'OVERLAP'.
-
-    """
-    OVERLAP_BIT = SAMPLE['OVERLAP']
-    DEG2RAD = np.pi / 180.0
-    ARCMIN_PER_DEG = 60.0
-
-    def _angdiff_deg(a, b):
-        """(a-b) wrapped to (-180, 180] deg."""
-        return (a - b + 180.0) % 360.0 - 180.0
-
-    def _dir_radius_arcmin(a_arc, b_arc, pa_rad, bearing_rad):
-        """
-        Radius (arcmin) of an ellipse with semi-axes (a_arc, b_arc) and PA=pa_rad
-        along a ray at `bearing_rad` (astronomical: 0°=N, 90°=E).
-        """
-        d = bearing_rad - pa_rad
-        # wrap to [-pi, pi] for numerical stability
-        d = np.where(d > np.pi, d - 2.0*np.pi, d)
-        d = np.where(d < -np.pi, d + 2.0*np.pi, d)
-        denom = np.hypot(b_arc * np.cos(d), a_arc * np.sin(d))
-        # fallback to circular if degenerate
-        out = (a_arc * b_arc) / np.where(denom > 0.0, denom, 1.0)
-        out = np.where(denom > 0.0, out, a_arc)
-        return out
-
-    # Work only on groups with >1 member
-    mask_mult = (cat['GROUP_MULT'] > 1)
-    if not np.any(mask_mult):
-        return  # nothing to do
-
-    # Unique group names among multi-member groups
-    gnames = np.asarray(cat['GROUP_NAME'][mask_mult]).astype(str)
-    ugroups = np.unique(gnames)
-
-    # Column views (avoid repeated table lookups)
-    RA_all   = np.asarray(cat['RA'], dtype=float)
-    DEC_all  = np.asarray(cat['DEC'], dtype=float)
-    DIAM_all = np.asarray(cat['DIAM'], dtype=float)  # arcmin
-    BA_all   = np.asarray(cat['BA'], dtype=float) if 'BA' in cat.colnames else np.full(len(cat), np.nan)
-    PA_all   = np.asarray(cat['PA'], dtype=float) if 'PA' in cat.colnames else np.full(len(cat), np.nan)
-    GNAME    = np.asarray(cat['GROUP_NAME']).astype(str)
-
-    for gname in ugroups:
-        I = np.where(GNAME == gname)[0]
-        if I.size < 2:
-            continue
-
-        # Local tangent-plane scale for this group
-        dec0 = float(np.median(DEC_all[I]))
-        cosd0 = np.cos(dec0 * DEG2RAD)
-
-        # Per-member geometry
-        ra  = RA_all[I]
-        dec = DEC_all[I]
-        diam = DIAM_all[I]                        # arcmin
-        a_arc = 0.5 * diam                        # semi-major (arcmin)
-
-        ba   = BA_all[I]
-        pa   = PA_all[I]
-        ba_eff = np.where(np.isfinite(ba) & (ba > 0.0), ba, 1.0)  # circular if missing/invalid
-        b_arc = ba_eff * a_arc
-        pa_rad = np.where(np.isfinite(pa), pa, 0.0) * DEG2RAD
-
-        overlapped = np.zeros(I.size, dtype=bool)
-
-        # Pairwise checks (upper triangle)
-        for ii in range(I.size - 1):
-            # Local deltas (deg), wrap RA
-            dx_deg = _angdiff_deg(ra[ii+1:], ra[ii]) * cosd0
-            dy_deg = (dec[ii+1:] - dec[ii])
-
-            # Convert to arcmin and compute separations + bearings
-            dx_am = dx_deg * ARCMIN_PER_DEG
-            dy_am = dy_deg * ARCMIN_PER_DEG
-            sep_am = np.hypot(dx_am, dy_am)
-            bearing_ij = np.arctan2(dx_am, dy_am)      # rad, 0=N, 90=E
-            bearing_ji = np.arctan2(-dx_am, -dy_am)
-
-            # Directional radii along the center-center line
-            ri_dir = _dir_radius_arcmin(a_arc[ii],         b_arc[ii],         pa_rad[ii],         bearing_ij)
-            rj_dir = _dir_radius_arcmin(a_arc[ii+1:],      b_arc[ii+1:],      pa_rad[ii+1:],      bearing_ji)
-
-            # Overlap condition: separation <= sum of directional radii
-            touches = sep_am <= (ri_dir + rj_dir)
-            if np.any(touches):
-                overlapped[ii] = True
-                overlapped[ii+1:][touches] = True
-
-        if np.any(overlapped):
-            cat['SAMPLE'][I[overlapped]] |= OVERLAP_BIT
-
-
-def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
+def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     """Build the parent catalog.
 
     """
@@ -3531,7 +3142,7 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
                 'OBJNAME', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'RA', 'DEC',
                 'GROUP_NAME', 'GROUP_MULT', 'RA_INIT', 'DEC_INIT', 'DIAM_INIT',
                 'BA', 'PA', 'D26', 'D26_REF']))
-            parent = remove_small_groups_and_galaxies(
+            parent, _ = remove_small_groups_and_galaxies(
                 parent, ref_tab, region, REGIONBITS, SAMPLE,
                 ELLIPSEBIT, mindiam=0.5, veto_objnames=veto_objnames)
 
@@ -3825,3 +3436,615 @@ def build_parent(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
     #ax2.scatter(sslvdmiss['RA'], sslvdmiss['DEC'], s=20, alpha=0.5, marker='s')
     #ax2.scatter(miss['RA'], miss['DEC'], s=20, alpha=0.5, marker='x', color='k')
     #fig.savefig('ioannis/tmp/junk.png')
+
+
+Overlays = namedtuple('Overlays', 'adds updates drops flags')
+
+
+def _require_columns(tab, required, name):
+    """Raise if any required column is missing."""
+    missing = [c for c in required if c not in tab.colnames]
+    if missing:
+        raise ValueError(f"{name}: missing required columns: {missing}")
+
+
+def _read_csv_if_exists(path, required=None, name='table'):
+    """Read CSV if present; return empty Table with required columns otherwise."""
+    if not os.path.isfile(path):
+        tab = Table()
+        if required:
+            for c in required:
+                # heuristic dtypes for an empty shell table
+                if c in ('OBJNAME', 'FIELD', 'COLUMN', 'REASON'):
+                    tab[c] = np.array([], dtype='U64')
+                else:
+                    tab[c] = np.array([], dtype=float)
+        return tab
+    tab = Table.read(path, format='csv', comment='#')
+    if required:
+        _require_columns(tab, required, name)
+    return tab
+
+
+def load_overlays(overlay_dir):
+    """
+    Load overlays from overlay_dir and return a container with
+    .adds, .updates, .drops, .flags (each an Astropy Table, possibly empty).
+    """
+    adds = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'adds.csv'),
+        required=('OBJNAME', 'REGION', 'RA', 'DEC', 'DIAM', 'BA', 'PA'),
+        name='adds.csv')
+    updates = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'updates.csv'),
+        required=('OBJNAME', 'FIELD', 'NEW_VALUE'),
+        name='updates.csv')
+    drops = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'drops.csv'),
+        required=('OBJNAME', 'REGION'),
+        name='drops.csv')
+    flags = _read_csv_if_exists(
+        os.path.join(overlay_dir, 'flags.csv'),
+        required=('target', 'value', 'column', 'op', 'bits'),
+        name='flags.csv')
+
+    # simple sanity checks
+    if len(np.unique(adds['OBJNAME'])) != len(adds):
+        log.critical("adds.csv: duplicate OBJNAME entries are not allowed.")
+        oo, cc = np.unique(adds['OBJNAME'], return_counts=True)
+        print(oo[cc>1])
+        raise ValueError()
+    if len(np.unique(drops['OBJNAME'])) != len(drops):
+        log.critical("drops.csv: duplicate OBJNAME entries are not allowed.")
+        oo, cc = np.unique(drops['OBJNAME'], return_counts=True)
+        print(oo[cc>1])
+        raise ValueError()
+
+    # normalize optional columns
+    if 'REASON' not in updates.colnames:
+        updates['REASON'] = np.array([], dtype='U64')
+
+    return Overlays(adds=adds, updates=updates, drops=drops, flags=flags)
+
+
+def apply_updates_inplace(parent, updates):
+    """For each (OBJNAME, FIELD, NEW_VALUE) row, set parent[FIELD] accordingly."""
+
+    if len(updates) == 0:
+        return
+    log.info(f'Updating parameter values for {len(updates):,d} object(s) using updates.csv')
+
+    for row in updates:
+        obj = row['OBJNAME']
+        fld = row['FIELD']
+        idx = np.where(parent['OBJNAME'] == obj)[0]
+        if idx.size == 0:
+            raise ValueError(f"updates: OBJNAME not found: {obj}")
+        # cast to parent dtype
+        dt = parent[fld].dtype
+        val = row['NEW_VALUE']
+        log.info(f'{obj} {fld}: {parent[fld][idx][0]} --> {val}')
+        if dt.kind in 'f':
+            parent[fld][idx] = float(val)
+        elif dt.kind in 'iu':
+            parent[fld][idx] = int(round(float(val)))
+        elif dt.kind in 'SU':
+            parent[fld][idx] = str(val)
+        else:
+            parent[fld][idx] = val
+
+    # keep PA in [0,180) if PA was touched at all
+    if 'PA' in parent.colnames:
+        parent['PA'] = (parent['PA'].astype(float) % 180.).astype(parent['PA'].dtype)
+
+
+def apply_drops(parent, drops, REGIONBITS):
+
+    names = np.asarray(parent['OBJNAME']).astype(str)
+    reg = np.asarray(parent['REGION']).astype(np.int32).copy()
+
+    for obj, rgn in zip(drops['OBJNAME'], drops['REGION']):
+        idx = np.flatnonzero(names == str(obj))
+        if idx.size == 0:
+            continue
+        s = '' if rgn is None else str(rgn).strip()
+        try:
+            if s:  # drop from one region
+                reg[idx] &= ~int(REGIONBITS[s])
+            else:   # blank -> drop entirely
+                reg[idx] = 0
+        except KeyError:
+            # treat placeholders like '--' as blank
+            reg[idx] = 0
+
+    keep = reg != 0
+    log.info(f'Removing {np.sum(~keep):,d}/{len(parent):,d} objects from drops.csv file')
+
+    out = parent[keep]
+    out['REGION'] = reg[keep].astype(parent['REGION'].dtype, copy=False)
+    return out
+
+
+def apply_adds(parent, adds, regionbits, nocuts):
+    """
+    Append rows from adds. If OBJNAME exists in `nocuts`, start from that row
+    (restored properties); otherwise fill minimal defaults. Then overwrite with
+    add-file fields (OBJNAME, RA, DEC, REGION, DIAM, BA, PA, [MAG]).
+
+    """
+    if len(adds) == 0:
+        return
+    log.info(f'Adding {len(adds):,d} objects from adds.csv')
+
+    # next SGAID
+    maxsgaid = np.max(parent['SGAID'])
+    maxrow = np.max(nocuts['ROW_PARENT'])
+    next_sgaid = int(max(maxsgaid, maxrow)) + 1
+    #print(next_sgaid)
+
+    def _empty_row():
+        row = {}
+        for c in parent.colnames:
+            dt = parent[c].dtype
+            if dt.kind in 'f':   row[c] = np.array([-99.0], dtype=dt)
+            elif dt.kind in 'iu':row[c] = np.array([0], dtype=dt)
+            elif dt.kind in 'SU':row[c] = np.array([''], dtype=dt)
+            else:                row[c] = np.array([-99], dtype=dt)
+        return Table(row)
+
+    new_rows = []
+    for add in adds:
+        obj = add['OBJNAME']
+
+        # reject if already present
+        if np.any(parent['OBJNAME'] == obj):
+            log.warning(f"adds: OBJNAME already in parent: {obj}")
+            continue
+
+        base = _empty_row()
+        base['OBJNAME'][0] = str(obj)
+        base['RA'][0] = float(add['RA'])
+        base['DEC'][0] = float(add['DEC'])
+        base['DIAM'][0] = float(add['DIAM'])
+        base['DIAM_REF'][0] = 'VI'
+        base['BA'][0] = float(add['BA'])
+        base['PA'][0] = float(add['PA']) % 180.0
+
+        # REGION: if masked, set both bits; else map the single key
+        reg_val = add['REGION']
+        if np.ma.is_masked(reg_val):
+            base['REGION'][0] = int(regionbits['dr11-south']) | int(regionbits['dr9-north'])
+        else:
+            base['REGION'][0] = int(regionbits[str(reg_val).strip()])
+
+        # add from nocuts
+        noc_ix = np.where(nocuts['OBJNAME'] == obj)[0]
+        if len(noc_ix) == 1:
+            src = nocuts[noc_ix[0]]
+            base['PGC'] = src['PGC']
+            base['SGAID'] = src['ROW_PARENT']
+        else:
+            base['SGAID'][0] = next_sgaid
+            next_sgaid += 1
+
+        new_rows.append(base)
+        #print(next_sgaid)
+
+    if new_rows:
+        parent = vstack([parent] + new_rows)
+
+    try:
+        assert(len(parent) == len(np.unique(parent['SGAID'])))
+    except:
+        pdb.set_trace()
+
+    return parent
+
+
+def apply_flags_inplace(parent, flags, ELLIPSEMODE):
+    """
+    Apply consolidated flags to `parent` in place.
+
+    Parameters
+    ----------
+    parent : astropy.table.Table
+        Must contain columns: 'OBJNAME', 'ELLIPSEMODE'
+    flags : astropy.table.Table
+        Consolidated flags table with columns:
+        ['target','value','column','op','bits'], where:
+          - target == 'OBJNAME'
+          - value  == object name (string)
+          - column in {'ELLIPSEMODE'}
+          - op in {'set','clear'}
+          - bits is comma-separated actions already consolidated
+            (and already enforcing RESOLVED ⇒ FIXGEO).
+    ELLIPSEMODE : dict
+        Bit dictionaries with UPPER-CASE keys (e.g., {'FIXGEO': 1<<0, ...}).
+
+    """
+    from collections import defaultdict
+
+    # Prebuild index by OBJNAME
+    name_to_rows = defaultdict(list)
+    objnames = np.asarray(parent['OBJNAME']).astype(str)
+    for i, nm in enumerate(objnames):
+        name_to_rows[nm].append(i)
+
+    # Lowercase maps for CSV bit names
+    ellipse_map = {k.lower(): v for k, v in ELLIPSEMODE.items()}
+    def bits_to_mask(column, bits_str):
+        bits = [b.strip().lower() for b in str(bits_str).split(',') if b.strip()]
+        if column == 'ELLIPSEMODE':
+            mapping = ellipse_map
+        else:
+            raise ValueError(f'Unknown column {column!r}')
+        mask = 0
+        for b in bits:
+            try:
+                mask |= mapping[b]
+            except KeyError:
+                raise KeyError(f'Unknown bit {b!r} for {column}')
+        return mask
+
+    # Apply row-by-row
+    for row in flags:
+        # Expect only OBJNAME targets
+        target = str(row['target']).strip().upper()
+        if target != 'OBJNAME':
+            continue  # ignore anything else
+
+        value  = str(row['value']).strip()
+        column = str(row['column']).strip().upper()   # 'ELLIPSEMODE'
+        op     = str(row['op']).strip().lower()       # 'set' or 'clear'
+        mask   = bits_to_mask(column, row['bits'])
+
+        idxs = name_to_rows.get(value, [])
+        if not idxs:
+            continue  # silently skip unknown names
+
+        arr = parent[column]
+        if op == 'set':
+            arr[idxs] = arr[idxs] | mask
+        elif op == 'clear':
+            arr[idxs] = arr[idxs] & ~mask
+        else:
+            raise ValueError(f'Unknown op {op!r}')
+
+
+def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
+    """Build a new parent catalog starting from `base_version` ellipse
+    catalog, apply versioned overlays (adds/updates/drops/flags),
+    re-derive bits, build groups, and write a single FITS output.
+
+    Notes
+    -----
+    - Assumes overlay helpers are already available in scope:
+      load_overlays, apply_drops_inplace, apply_adds_inplace,
+      apply_updates_inplace, apply_flags_inplace.
+    - Uses nocuts v0.22 only to restore properties for rows added via overlays.
+    - SGAID stability: carried from ellipse (or ROW_PARENT) when present;
+      new rows get monotonically increasing SGAID.
+
+    """
+    from astropy.table import Table
+    from desiutil.dust import SFDMap
+    from SGA.SGA import SGA_version, SAMPLE
+    from SGA.coadds import REGIONBITS
+    from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
+    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
+    from SGA.sky import find_in_mclouds, find_in_gclpne
+
+    # Paths & versions
+    parent_version = SGA_version(parent=True)      # -> 'v0.30' (target)
+    nocuts_version = SGA_version(nocuts=True)      # -> 'v0.22'
+    outdir = os.path.join(sga_dir(), 'sample')
+    parentdir = os.path.join(sga_dir(), 'parent')
+    overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{parent_version}') # e.g., .../overlays/v0.30
+    outfile = os.path.join(outdir, f'SGA2025-parent-{parent_version}.fits')
+    kdoutfile = os.path.join(outdir, f'SGA2025-parent-{parent_version}.kd.fits')
+
+    if os.path.isfile(outfile) and not overwrite:
+        log.info(f'Parent catalog {outfile} exists; use --overwrite')
+        return
+
+    # Read the base ellipse catalogs for dr11-south and
+    # dr9-north. Consolidate duplicates by OBJNAME, combining REGION
+    # bits (but prefering DR11 if duplicated).
+    ell = []
+    for region in ['dr11-south', 'dr9-north']:
+        basefile = os.path.join(outdir, f'SGA2025-{base_version}-{region}.fits')
+        ell1 = Table(fitsio.read(basefile))
+        log.info(f'Read {len(ell1):,d} rows from {basefile}')
+        ell.append(ell1)
+    ell = vstack(ell)
+
+    # Consolidate duplicate OBJNAMEs (combine REGION bits), prefer more BANDS; tie→dr11-south
+    if len(np.unique(ell['OBJNAME'])) != len(ell):
+        #log.info('Consolidating duplicate OBJNAME entries')
+
+        # Precompute band counts and DR11 bit for preference
+        def _nbands_val(v):
+            try:
+                s = (v or '').strip()
+            except Exception:
+                s = ''
+            return len(set(s)) if s else 0
+
+        nbands   = np.array([_nbands_val(b) for b in ell['BANDS']], dtype=int)
+        dr11_bit = REGIONBITS['dr11-south']
+
+        def _prefer_idx(rows):
+            best = np.max(nbands[rows])
+            cand = rows[nbands[rows] == best]
+            # tie-breaker: prefer a dr11-south row
+            for i in cand:
+                if (int(ell['REGION'][i]) & dr11_bit) != 0:
+                    return i
+            return cand[0]
+
+        names = np.asarray(ell['OBJNAME'])
+        uniq, inv, counts = np.unique(names, return_inverse=True, return_counts=True)
+
+        # Keep all singletons immediately
+        row_is_singleton = (counts[inv] == 1)
+        keep_single = np.flatnonzero(row_is_singleton)
+
+        # Process only duplicate groups
+        dup_uinds = np.flatnonzero(counts > 1)
+        keep_dup = []
+        new_reg_vals = []
+
+        for ui in dup_uinds:
+            rows = np.flatnonzero(inv == ui)
+            keep = _prefer_idx(rows)
+            keep_dup.append(keep)
+            new_reg_vals.append(int(np.bitwise_or.reduce(ell['REGION'][rows])))
+
+        keep_dup = np.array(keep_dup, dtype=int)
+
+        # Build final index list (preserve original order)
+        keep_all = np.concatenate([keep_single, keep_dup])
+        keep_all.sort()
+
+        ell = ell[keep_all]  # subset
+
+        # Update REGION for the kept rows that came from duplicate groups
+        # Map original kept index -> new REGION, then assign in the subset
+        orig_to_newreg = dict(zip(keep_dup.tolist(), new_reg_vals))
+        # find, inside the subset, which rows came from dup keeps
+        subset_orig_idx = keep_all  # original indices before subsetting
+        update_pos = [i for i, orig in enumerate(subset_orig_idx) if orig in orig_to_newreg]
+        if update_pos:
+            reg = np.array(ell['REGION'], copy=True)
+            for i in update_pos:
+                reg[i] = orig_to_newreg[subset_orig_idx[i]]
+            ell['REGION'] = reg
+
+        log.info(f'Combined catalog contains {len(ell):,d} unique objects')
+
+    # Project ellipse to parent base model
+    # Map: D26→DIAM; DIAM_REF := f"{parent_version}/{D26_REF}"
+    ell_base = Table()
+    ell_base['SGAID'] = ell['SGAID'].astype(np.int64)
+    ell_base['REGION'] = ell['REGION'].astype(np.int16)
+    ell_base['OBJNAME'] = ell['OBJNAME'].astype('U30')
+    ell_base['PGC'] = ell['PGC'].astype(np.int32)
+    ell_base['SAMPLE'] = np.zeros(len(ell), np.int32) # ell['SAMPLE'].astype(np.int32)
+    ell_base['RA'] = ell['RA'].astype(np.float64)
+    ell_base['DEC'] = ell['DEC'].astype(np.float64)
+    ell_base['DIAM'] = ell['D26'].astype(np.float32)
+    ell_base['DIAM_ERR'] = ell['D26_ERR'].astype(np.float32)
+    ell_base['BA'] = ell['BA'].astype(np.float32)
+    ell_base['PA'] = (ell['PA'] % 180.).astype(np.float32)
+    ell_base['MAG'] = ell['MAG_INIT'].astype(np.float32)
+    ell_base['DIAM_REF'] = np.char.add(base_version, np.char.add('/', ell['D26_REF'])).astype('U14')
+
+    # Not all ellipse entries are reliable; read the base_parent
+    # catalog so we can revert as appropriate.
+    parent_basebasefile = os.path.join(outdir, f'SGA2025-parent-{base_version}.fits')
+    parent_base = Table(fitsio.read(parent_basebasefile))
+    log.info(f'Read {len(parent_base):,d} rows from {parent_basebasefile}')
+
+    assert(len(ell) == len(ell_base))
+    assert(len(ell) == len(parent_base))
+
+    m_ell, m_parent = match(ell['OBJNAME'], parent_base['OBJNAME'])
+    ell = ell[m_ell]
+    ell_base = ell_base[m_ell]
+    parent_base = parent_base[m_parent]
+
+    if base_version == 'v0.22':
+        # Restore all objects with large shifts caused by erroneous
+        # Tractor models and also the geometry measured for all LVD
+        # sources.
+
+        # After much inspection, I decided to also restore the
+        # geometry for every object in v0.22 where the diameter,
+        # position angle, or ellipticity changed by more than 20% from
+        # its initial / parent values.
+        d_old = parent_base['DIAM'].value
+        d_new = ell_base['DIAM'].value
+        ba_old = parent_base['BA'].value
+        ba_new = ell_base['BA'].value
+        pa_old = parent_base['PA'].value  # degrees, [0,180)
+        pa_new = ell_base['PA'].value
+
+        # 1) keep your existing special cases
+        I1 = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) |
+              (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
+              (ell['GROUP_MULT'] > 1))
+
+        # 2) relative change > 20% for DIAM and BA (guard old<=0)
+        I2 = (d_old > 0) & (np.abs(d_new - d_old) / d_old > 0.20)
+
+        # BA can be near zero; use relative when possible, else absolute > 0.20
+        I3_rel = (ba_old > 0) & (np.abs(ba_new - ba_old) / ba_old > 0.20)
+        I3_abs = (ba_old <= 0) & (np.abs(ba_new - ba_old) > 0.20)
+        I3 = I3_rel | I3_abs
+
+        # 3) PA: use wrapped angular difference in [0,90], then compare to 20% of 180° (=36°)
+        # (i.e., “20% change” interpreted on the 180° periodicity)
+        dpa = np.abs(((pa_new - pa_old + 90.0) % 180.0) - 90.0)  # wrapped |ΔPA| in degrees
+        I4 = dpa > (0.20 * 180.0)  # 36 degrees
+
+        I = I1 | I2 | I3 | I4
+        #ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
+        #parent_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
+        if np.any(I):
+            log.info(f'Restoring positions and ellipse geometry for {np.sum(I):,d} objects.')
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+                ell_base[col][I] = parent_base[col][I]
+
+        ##I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
+        #I = (ell_base['DIAM'] < 0.3) & (ell['GROUP_MULT'] == 1) & (ell['SAMPLE'] & SAMPLE['LVD'] == 0)
+        #bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
+        #bb = bb[np.argsort(bb['DIAM'])]
+        #bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
+        #bb['radius'] *= 60. / 2.
+        #bb.write('viewer.fits', overwrite=True)
+        #_ = [print(f'{nn},') for nn in bb['name'].value]
+
+        #import matplotlib.pyplot as plt
+        #I = np.abs((ell_base['DIAM'] - parent_base['DIAM']) / (0.5 * (ell_base['DIAM'] + parent_base['DIAM']))) > 0.5
+        #plt.clf()
+        #plt.scatter(ell_base['DIAM'], parent_base['DIAM'], s=1)
+        #plt.scatter(ell_base['DIAM'][I], parent_base['DIAM'][I], s=1, color='red', alpha=0.5)
+        #plt.xscale('log')
+        #plt.yscale('log')
+        #plt.xlabel(f'Ellipse ({base_version})')
+        #plt.ylabel(f'Parent ({parent_version})')
+        #plt.axvline(x=0.5, color='k')
+        #plt.savefig('ioannis/tmp/junk.png')
+
+    base = ell_base
+    log.info(f'Final base catalog contains {len(base):,d} objects.')
+    try:
+        assert(len(base) == len(np.unique(base['SGAID'])))
+    except:
+        pdb.set_trace()
+
+    # Apply overlays (drops, adds [with nocuts restore], updates, flags)
+    ov = load_overlays(overlay_dir)
+    nocuts_file = os.path.join(parentdir, f'SGA2025-parent-nocuts-{nocuts_version}.fits')
+    nocuts = Table(fitsio.read(nocuts_file, columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
+    log.info(f'Read {len(nocuts):,d} rows from {nocuts_file}')
+
+    base = apply_drops(base, ov.drops, REGIONBITS)
+    base = apply_adds(base, ov.adds, REGIONBITS, nocuts)
+    apply_updates_inplace(base, ov.updates)
+    try:
+        assert(len(base) == len(np.unique(base['SGAID'])))
+    except:
+        pdb.set_trace()
+
+    # re-add the Gaia masking bits
+    add_gaia_masking(base)
+
+    # Initialize the output data model
+    grp = base['SGAID', 'REGION', 'OBJNAME', 'PGC']
+    grp['SAMPLE'] = np.zeros(len(grp), np.int32) # zero out
+    grp['ELLIPSEMODE'] = np.zeros(len(grp), np.int32)
+    grp['FITMODE'] = np.zeros(len(grp), np.int32)
+    grp['RA'] = base['RA'].astype('f8')
+    grp['DEC'] = base['DEC'].astype('f8')
+    grp['DIAM'] = base['DIAM'].astype('f4')
+    grp['BA'] = base['BA'].astype('f4')
+    grp['PA'] = base['PA'].astype('f4')
+    grp['MAG'] = base['MAG'].astype('f4')
+    grp['DIAM_REF'] = base['DIAM_REF']
+
+    SFD = SFDMap(scaling=1.0)
+    grp['EBV'] = SFD.ebv(base['RA'].astype(float), base['DEC'].astype(float)).astype('f4')
+
+    # Populate the SAMPLE bits.
+    grp['SAMPLE'][base['SAMPLE'] & SAMPLE['LVD'] != 0] |= SAMPLE['LVD']
+
+    grp['SAMPLE'][base['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR']
+    grp['SAMPLE'][base['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']
+
+    in_LMC = find_in_mclouds(grp, mcloud='LMC')
+    in_SMC = find_in_mclouds(grp, mcloud='SMC')
+    in_gclpne = find_in_gclpne(grp)
+    grp['SAMPLE'][in_LMC | in_SMC] |= SAMPLE['MCLOUDS']
+    grp['SAMPLE'][in_gclpne] |= SAMPLE['GCLPNE']
+
+    log.info(f'Applying ELLIPSEMODE flags to {len(ov.flags):,d} objects.')
+    apply_flags_inplace(grp, ov.flags, ELLIPSEMODE)
+
+    # populate FITMODE, which is used by legacypipe
+    grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
+    grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0] |= FITMODE['RESOLVED']
+
+    # Sort by diameter descending and then build the group catalog
+    srt = np.argsort(grp['DIAM'])[::-1]
+    grp = grp[srt]
+
+    special = ((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0) | \
+              ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
+    if np.any(special):
+        out1 = make_singleton_group(grp[special], group_id_start=0)
+        gid_start = int(np.max(out1['GROUP_ID'])) + 1
+    else:
+        from astropy.table import Table
+        out1 = Table(grp[:0]).copy()
+        gid_start = 0
+    out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
+
+    out = vstack((out1, out2))
+    #del out1, out2, grp
+
+    # Assign SGAGROUP name and check duplicates among primaries
+    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
+    out.add_column(groupname, name='SGAGROUP', index=1)
+    prim = out['GROUP_PRIMARY']
+    gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
+    if np.any(cc > 1):
+        log.critical('Duplicate group names among primaries detected.')
+        raise ValueError('Duplicate SGAGROUP among primaries')
+
+    # Harmonize REGION bits within groups (keep only bits common to
+    # all members; drop groups with none).
+    keep_mask = np.ones(len(out), dtype=bool)
+    drop_ids = []
+    strip_groups = []
+    for gid in np.unique(out['GROUP_ID'][out['GROUP_MULT'] > 1]):
+        J = (out['GROUP_ID'] == gid)
+        allowed = int(np.bitwise_and.reduce(np.asarray(out['REGION'][J])))
+        if allowed == 0:
+            drop_ids.append(gid)
+            continue
+        new_reg = (out['REGION'][J] & allowed)
+        if np.any(new_reg != out['REGION'][J]):
+            out['REGION'][J] = new_reg
+            strip_groups.append(out['GROUP_NAME'][J][0])
+    if drop_ids:
+        M = np.isin(out['GROUP_ID'], drop_ids)
+        log.info(f"Dropping {len(np.unique(drop_ids)):,d} groups with no common REGION bit ({np.sum(M):,d} members).")
+        keep_mask &= ~M
+    out = out[keep_mask]
+    if strip_groups:
+        strip_groups = np.unique(strip_groups)
+        log.info(f"Stripped REGION bits (kept groups) for {len(strip_groups):,d} groups.")
+
+    # OVERLAP bit
+    set_overlap_bit(out, SAMPLE)
+
+    # Final sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
+    if len(np.unique(out['SGAID'])) != len(out):
+        raise ValueError('Non-unique SGAID in final parent')
+    if not np.all(out['DIAM'] > 0):
+        raise ValueError('Non-positive DIAM in final parent')
+    if not np.all((out['BA'] > 0) & (out['BA'] <= 1)):
+        raise ValueError('BA out of range')
+    if not np.all((out['PA'] >= 0) & (out['PA'] < 180)):
+        raise ValueError('PA out of range')
+
+    # Write
+    log.info(f'Writing {len(out):,d} objects to {outfile}')
+    out.meta['EXTNAME'] = 'PARENT'
+    out.write(outfile, overwrite=True)
+
+    cmd = f'startree -i {outfile} -o {kdoutfile} -T -P -k -n stars'
+    log.info(cmd)
+    _ = os.system(cmd)
