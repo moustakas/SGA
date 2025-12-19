@@ -1717,7 +1717,7 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     log.info(f'Wrote {qafile}')
 
 
-def _compute_major_minor_masks(flux_sga, allgalsrcs, galsrcs_optflux,
+def _compute_major_minor_masks(flux_sga, fracflux_sga, allgalsrcs, galsrcs_optflux,
                                FMAJOR, objsrc, use_tractor_position_obj,
                                arcsec_between):
     """Classify Tractor galaxies into major / minor companions.
@@ -1736,10 +1736,9 @@ def _compute_major_minor_masks(flux_sga, allgalsrcs, galsrcs_optflux,
     # If we have Tractor geometry and are using Tractor positions,
     # optionally ignore all sources that may be a shred of the SGA
     # itself.
-    if (objsrc is not None) and use_tractor_position_obj:
+    if (objsrc is not None) and use_tractor_position_obj and fracflux_sga > 0.2:
         sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec,
                                     allgalsrcs.ra, allgalsrcs.dec)
-        #print('#############', sep_arcsec)
         major_mask &= (sep_arcsec > objsrc.shape_r)
 
     return major_mask, minor_mask
@@ -2456,8 +2455,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     mask_allgals=True)
             else:
                 flux_sga = sample['OPTFLUX'][iobj]
+                fracflux_sga = sample['FRACFLUX'][iobj]
                 major_mask, minor_mask = _compute_major_minor_masks(
-                    flux_sga, allgalsrcs, galsrcs_optflux,
+                    flux_sga, fracflux_sga, allgalsrcs, galsrcs_optflux,
                     FMAJOR_geo, objsrc, use_tractor_position_obj,
                     arcsec_between)
 
@@ -2690,8 +2690,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 mask_allgals=True)
         else:
             flux_sga = sample['OPTFLUX'][iobj]
+            fracflux_sga = sample['FRACFLUX'][iobj]
             major_mask, minor_mask = _compute_major_minor_masks(
-                flux_sga, allgalsrcs, galsrcs_optflux,
+                flux_sga, fracflux_sga, allgalsrcs, galsrcs_optflux,
                 FMAJOR_final, objsrc, use_tractor_position_obj,
                 arcsec_between)
 
@@ -2704,10 +2705,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
             #import matplotlib.pyplot as plt
-            #plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x')
-            #plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10)
-            #plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=15, color='red')
-            #plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=15, color='blue')
+            #plt.clf()
+            #plt.imshow(opt_galmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
+
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x', label=f'SGA {iobj}')
+            #plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10, label='All galaxies')
+            #plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=25, color='red', label='Major galaxies')
+            #plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=25, color='blue', label='Minor galaxies')
+            #plt.legend()
             #plt.savefig('ioannis/tmp/junk.png')
             if np.any(minor_mask) and mask_minor_galaxies:
                 _, galmask_minor, opt_models_obj = update_galmask(
@@ -2718,6 +2726,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
             # Optionally do not mask within the current SGA ellipse itself.
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(opt_models_obj[1, :, :], origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
             opt_galmask[inellipse] = False
 
         # apply the mask_nearby mask
@@ -2786,8 +2798,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         flux_sga = sample['OPTFLUX'][iobj]
         if flux_sga > 0 and len(allgalsrcs) > 0:
+            fracflux_sga = sample['FRACFLUX'][iobj]
             major_mask, _ = _compute_major_minor_masks(
-                flux_sga, allgalsrcs, galsrcs_optflux,
+                flux_sga, fracflux_sga, allgalsrcs, galsrcs_optflux,
                 FMAJOR_final, objsrc, use_tractor_position_obj,
                 arcsec_between)
 
@@ -2950,6 +2963,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         #sample['BY_INIT'] = (y0 - 1.).astype('f4')
 
         sample['OPTFLUX'] = np.zeros(len(sample), 'f4') # brightest band
+        sample['FRACFLUX'] = np.zeros(len(sample), 'f4') # brightest band
 
         # optical bands
         sample['BANDS'] = np.zeros(len(sample), f'<U{len(bands)}')
@@ -2988,6 +3002,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                         log.warning(f'ref_id={refid} fit by Tractor as PSF (or DUP)')
                         #sample['PSF'][iobj] = True
                     sample['OPTFLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
+                                                   for filt in opt_bands])
+                    sample['FRACFLUX'][iobj] = max([getattr(tractor[I[0]], f'fracflux_{filt}')
                                                    for filt in opt_bands])
                     sample['RA_TRACTOR'][iobj] = tractor[I[0]].ra
                     sample['DEC_TRACTOR'][iobj] = tractor[I[0]].dec
