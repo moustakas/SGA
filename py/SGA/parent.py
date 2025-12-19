@@ -3610,8 +3610,12 @@ def apply_adds(parent, adds, regionbits, nocuts):
         base['BA'][0] = float(add['BA'])
         base['PA'][0] = float(add['PA']) % 180.0
 
-        reg_str = str(add['REGION']).strip()
-        base['REGION'][0] = int(regionbits[reg_str])
+        # REGION: if masked, set both bits; else map the single key
+        reg_val = add['REGION']
+        if np.ma.is_masked(reg_val):
+            base['REGION'][0] = int(regionbits['dr11-south']) | int(regionbits['dr9-north'])
+        else:
+            base['REGION'][0] = int(regionbits[str(reg_val).strip()])
 
         # add from nocuts
         noc_ix = np.where(nocuts['OBJNAME'] == obj)[0]
@@ -3884,16 +3888,13 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         I4 = dpa > (0.20 * 180.0)  # 36 degrees
 
         I = I1 | I2 | I3 | I4
-        ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
-        parent_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
-        pdb.set_trace()
-
+        #ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
+        #parent_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I][:10]
         if np.any(I):
-            log.info(f'Reverting positions and ellipse geometry for {np.sum(I):,d} objects.')
+            log.info(f'Restoring positions and ellipse geometry for {np.sum(I):,d} objects.')
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                 ell_base[col][I] = parent_base[col][I]
-
 
         ##I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
         #I = (ell_base['DIAM'] < 0.3) & (ell['GROUP_MULT'] == 1) & (ell['SAMPLE'] & SAMPLE['LVD'] == 0)
