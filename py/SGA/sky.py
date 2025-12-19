@@ -19,7 +19,6 @@ from SGA.logger import log
 def find_in_mclouds(cat, mcloud='LMC'):
     # flag objects in the LMC and SMC
 
-    from SGA.sky import in_ellipse_mask_sky
     from SGA.geometry import choose_geometry
 
     gal = cat[cat['OBJNAME'] == mcloud]
@@ -46,7 +45,6 @@ def find_in_gclpne(cat):
     # flag objects in GCl / PNe
     from importlib import resources
     import fitsio
-    from SGA.sky import in_ellipse_mask_sky
 
     gclfile = str(resources.files('legacypipe').joinpath('data/NGC-star-clusters.fits'))
     gcl = Table(fitsio.read(gclfile))

@@ -379,7 +379,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
     else:
         ext = 'PARENT'
-        version = SGA_version(parent=True)
+        if version is None:
+            version = SGA_version(parent=True)
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-parent-{version}.fits')
 
     if not os.path.isfile(samplefile):
@@ -638,11 +639,11 @@ def SGA_diameter(ellipse, radius_arcsec=False):
         return d26, d26_err, d26_ref, d26_weight
 
 
-def SGA_geometry(ellipse):
+def SGA_geometry(ellipse, radius_arcsec=False):
 
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    diam, diam_err, diam_ref, diam_weight = SGA_diameter(ellipse)
+    diam, diam_err, diam_ref, diam_weight = SGA_diameter(ellipse, radius_arcsec=radius_arcsec)
     return diam, ba, pa, diam_err, diam_ref, diam_weight
 
 
@@ -786,10 +787,11 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     import fitsio
     from os import getpid
     from glob import glob
-    from legacypipe.bits import MASKBITS
+    #from legacypipe.bits import MASKBITS
 
     from SGA.io import empty_tractor
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
+    from SGA.sky import in_ellipse_mask_sky
 
 
     # sample group name and directory
@@ -857,9 +859,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     tractor_sga = []
 
     # Read the Tractor catalog for all the SGA sources as well as for
-    # all sources within the SGA ellipse (using MASKBITS). NB:
-    # RESOLVED sources (len(ellipse)==1, always) are expected to not
-    # have a Tractor catalog.
+    # all sources within the SGA ellipse. NB: RESOLVED sources
+    # (len(ellipse)==1, always) are expected to not have a Tractor
+    # catalog.
     tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
     if not os.path.isfile(tractorfile):
         if len(ellipse) == 1 and ellipse['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
@@ -878,12 +880,18 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         # if np.sum(I)==0, this is a problem...; add to "missing" catalog.
         if np.sum(I) == 0:
             log.warning(f'No sources in {tractorfile}')
-            #tractor = Table()
-            #tractor_sga = Table()
             return Table(), Table(), grpsample
         else:
-            J = I * np.logical_or((refs['maskbits'] & MASKBITS['GALAXY'] != 0),
-                                  refs['ref_cat'] == REFCAT)
+            # NB: Do not use maskbits because that was based on the
+            # old geometry.
+            #isin = (refs['maskbits'] & MASKBITS['GALAXY'] != 0) # wrong!
+            isin = np.zeros(len(refs), bool)
+            rad, ba, pa, _, _, _ = SGA_geometry(ellipse, radius_arcsec=True)
+            for iobj in range(nsample):
+                isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600., rad[iobj]*ba[iobj]/3600.,
+                                            pa[iobj], np.asarray(refs['ra']), np.asarray(refs['dec']))
+            J = np.logical_and(I, np.logical_or(isin, refs['ref_cat'] == REFCAT))
+
             # J can be empty if the initial geometry is so pathological
             # that the SGA source doesn't get MASKBITS set (or that the
             # SGA source is dropped *and* there are no sources within the

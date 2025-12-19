@@ -167,7 +167,6 @@ def main():
             version=args.version, galaxylist=args.galaxylist,
             no_groups=no_groups, lvd=args.lvd, wisesize=args.wisesize,
             region=region, test_bricks=args.test_bricks, verbose=args.verbose)
-
         if len(fullsample) > 0:
             # pre-compute the SkyCoord object
             c_fullsample = SkyCoord(fullsample[RACOLUMN]*u.deg, fullsample[DECCOLUMN]*u.deg)
@@ -241,9 +240,9 @@ def main():
 
     if args.build_catalog:
         build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
-                      datadir=datadir, no_groups=no_groups, unwise=args.unwise,
-                      galex=args.galex, wisesize=args.wisesize, verbose=args.verbose,
-                      test_bricks=args.test_bricks, clobber=args.clobber)
+                      datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
+                      wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
+                      clobber=args.clobber)
         return
 
     # need at least one keyword at this point
