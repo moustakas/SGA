@@ -3919,10 +3919,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
     base = ell_base
     log.info(f'Final base catalog contains {len(base):,d} objects.')
-    try:
-        assert(len(base) == len(np.unique(base['SGAID'])))
-    except:
-        pdb.set_trace()
 
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
     ov = load_overlays(overlay_dir)
@@ -3933,10 +3929,19 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     base = apply_drops(base, ov.drops, REGIONBITS)
     base = apply_adds(base, ov.adds, REGIONBITS, nocuts)
     apply_updates_inplace(base, ov.updates)
+
     try:
-        assert(len(base) == len(np.unique(base['SGAID'])))
+        if len(np.unique(base['SGAID'])) != len(base):
+            raise ValueError('Non-unique SGAID in final parent')
+        if not np.all(base['DIAM'] > 0.):
+            raise ValueError('Non-positive DIAM in final parent')
+        if not np.all((base['BA'] > 0.) & (base['BA'] <= 1.)):
+            pdb.set_trace()
+            raise ValueError('BA out of range')
+        if not np.all((base['PA'] >= 0.) & (base['PA'] < 180.)):
+            raise ValueError('PA out of range')
     except:
-        pdb.set_trace()
+        ell_base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
@@ -4033,11 +4038,11 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     # Final sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
     if len(np.unique(out['SGAID'])) != len(out):
         raise ValueError('Non-unique SGAID in final parent')
-    if not np.all(out['DIAM'] > 0):
+    if not np.all(out['DIAM'] > 0.):
         raise ValueError('Non-positive DIAM in final parent')
-    if not np.all((out['BA'] > 0) & (out['BA'] <= 1)):
+    if not np.all((out['BA'] > 0.) & (out['BA'] <= 1.)):
         raise ValueError('BA out of range')
-    if not np.all((out['PA'] >= 0) & (out['PA'] < 180)):
+    if not np.all((out['PA'] >= 0.) & (out['PA'] < 180.)):
         raise ValueError('PA out of range')
 
     # Write
