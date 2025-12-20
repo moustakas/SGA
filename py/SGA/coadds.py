@@ -341,10 +341,40 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     return ccds
 
 
+def custom_cutouts(onegal, run, pixscale=0.262, bands=GRIZ):
+    """
+    SGA2025_08089m6975-ccds.fits
+    SGA2025_08089m6975-coadds.isdone
+    SGA2025_08089m6975-coadds.log
+    SGA2025_08089m6975-ellipse.isfail
+    SGA2025_08089m6975-ellipse.log
+    SGA2025_08089m6975-image-g.fits.fz
+    SGA2025_08089m6975-image-i.fits.fz
+    SGA2025_08089m6975-image.jpg
+    SGA2025_08089m6975-image-r.fits.fz
+    SGA2025_08089m6975-image-z.fits.fz
+    SGA2025_08089m6975-invvar-g.fits.fz
+    SGA2025_08089m6975-invvar-i.fits.fz
+    SGA2025_08089m6975-invvar-r.fits.fz
+    SGA2025_08089m6975-invvar-z.fits.fz
+    SGA2025_08089m6975-sample.fits
+
+    """
+    from SGA.cutouts import cutout_one
+
+    pdb.set_trace()
+    cutout_one(sample[~I][M], layer=layer, group=not no_groups,
+               diamcolumn='GROUP_DIAMETER', fits_cutouts=False,
+               maxdiam_arcmin=MAXDIAM, mp=mp,
+               cutoutdir=os.path.join(cutoutdir, region))
+
+
+    return 1
+
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   release=1000, pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
                   nsatur=2, rgb_stretch=1.5, racolumn='GROUP_RA', deccolumn='GROUP_DEC',
-                  force_psf_detection=False, fit_on_coadds=False,
+                  force_psf_detection=False, fit_on_coadds=False, just_cutouts=False,
                   use_gpu=False, ngpu=1, threads_per_gpu=8, subsky_radii=None,
                   just_coadds=False, missing_ok=False, force=False, cleanup=True,
                   unwise=True, galex=False, no_gaia=False, no_tycho=False,
@@ -372,6 +402,12 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     #usebands = np.array(sorted(set(ccds.filter)))
     #log.info(f'Bands touching this brick: {",".join(usebands)}')
     #bands = usebands
+
+    # just cutouts -- no pipeline
+    if just_cutouts:
+        custom_cutouts(onegal, width, run, pixscale=pixscale, bands=bands)
+        return 1, stagesuffix
+
 
     # Run the pipeline!
     cmdargs = f'--radec {onegal[racolumn]} {onegal[deccolumn]} '

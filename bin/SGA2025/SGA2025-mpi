@@ -378,10 +378,10 @@ def main():
             # RESOLVED sources: no fitting, just coadds (and should
             # always have GROUP_MULT==1)
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
-                just_coadds = True
+                just_cutouts = True
                 # special-case LMC and SMC!
                 # galex, unwise pixscale??
-                if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC'])):
+                if np.any(np.isin(onegal['OBJNAME'], ['LMC'])):
                     pixscale = 60. # [arcsec]
                 elif np.any(np.isin(onegal['OBJNAME'], ['SMC'])):
                     pixscale = 30. # [arcsec]
@@ -390,8 +390,8 @@ def main():
                 else:
                     pixscale = args.pixscale
             else:
-                just_coadds = args.just_coadds
                 pixscale = args.pixscale
+                just_cutouts = False
 
             # FORCEGAIA (not yet implemented); may be useful for e.g., Leo I
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEGAIA'] != 0:
@@ -407,9 +407,9 @@ def main():
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     release=release, pixscale=pixscale, bands=bands, mp=args.mp,
-                    nsigma=args.nsigma, just_coadds=just_coadds,
+                    nsigma=args.nsigma, just_coadds=args.just_coadds,
                     force_psf_detection=force_psf_detection,
-                    fit_on_coadds=args.fit_on_coadds,
+                    fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu,
                     threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
@@ -423,9 +423,9 @@ def main():
                     err, _ = custom_coadds(
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
                         release=release, pixscale=pixscale, bands=bands, mp=args.mp,
-                        nsigma=args.nsigma, just_coadds=just_coadds,
+                        nsigma=args.nsigma, just_coadds=args.just_coadds,
                         force_psf_detection=force_psf_detection,
-                        fit_on_coadds=args.fit_on_coadds,
+                        fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu,
                         threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
