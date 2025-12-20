@@ -2905,9 +2905,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         data[f'{prefix}_sigma'] /= pixscale**2  # [nanomaggies/arcsec**2]
 
     # optionally build a QA figure
-    if True:#qaplot:
+    if qaplot:
         qa_multiband_mask(data, sample, htmlgalaxydir=htmlgalaxydir)
-    pdb.set_trace()
 
     # clean-up
     if cleanup:

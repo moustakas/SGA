@@ -1419,7 +1419,10 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
     """
     from astropy.table import Table
+    from SGA.util import get_dt
     from SGA.SGA import SGA_diameter, build_multiband_mask
+
+    tall = time()
 
     datasets = ['opt']
     if unwise:
@@ -1578,5 +1581,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         from SGA.io import write_ellipsefit
         err = write_ellipsefit(data, sample, datasets, results, sbprofiles,
                                SGAMASKBITS, verbose=verbose)
+
+    dt, unit = get_dt(tall)
+    log.info(f'Total time for ellipse-fitting: {dt:.3f} {unit}')
 
     return err
