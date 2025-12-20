@@ -3829,7 +3829,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     ell_base['REGION'] = ell['REGION'].astype(np.int16)
     ell_base['OBJNAME'] = ell['OBJNAME'].astype('U30')
     ell_base['PGC'] = ell['PGC'].astype(np.int32)
-    ell_base['SAMPLE'] = np.zeros(len(ell), np.int32) # ell['SAMPLE'].astype(np.int32)
     ell_base['RA'] = ell['RA'].astype(np.float64)
     ell_base['DEC'] = ell['DEC'].astype(np.float64)
     ell_base['DIAM'] = ell['D26'].astype(np.float32)
@@ -3838,6 +3837,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     ell_base['PA'] = (ell['PA'] % 180.).astype(np.float32)
     ell_base['MAG'] = ell['MAG_INIT'].astype(np.float32)
     ell_base['DIAM_REF'] = np.char.add(base_version, np.char.add('/', ell['D26_REF'])).astype('U14')
+
+    # reset SAMPLE except for LVD
+    ell_base['SAMPLE'] = np.zeros(len(ell), np.int32) # ell['SAMPLE'].astype(np.int32)
+    ell_base['SAMPLE'][ell['SAMPLE'] & SAMPLE['LVD'] != 0] |= SAMPLE['LVD']
 
     # Not all ellipse entries are reliable; read the base_parent
     # catalog so we can revert as appropriate.
@@ -3964,7 +3967,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
     # Populate the SAMPLE bits.
     grp['SAMPLE'][base['SAMPLE'] & SAMPLE['LVD'] != 0] |= SAMPLE['LVD']
-
     grp['SAMPLE'][base['STARFDIST'] < 1.2] |= SAMPLE['NEARSTAR']
     grp['SAMPLE'][base['STARFDIST'] < 0.5] |= SAMPLE['INSTAR']
 

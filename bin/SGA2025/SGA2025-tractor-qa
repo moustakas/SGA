@@ -54,6 +54,8 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --final-sample
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --version=v0.30 --vi-sample=2
 
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.30 --region=dr11-south --vi-sample=1
+
 
 """
 
