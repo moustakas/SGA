@@ -13,6 +13,9 @@ from astropy.table import Table, vstack, join
 from SGA.logger import log
 
 
+VEGA2AB = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
+
+
 def set_legacysurvey_dir(region='dr9-north', rank=None):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
         msg = 'Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!'
@@ -281,8 +284,6 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
     from astrometry.util.util import Tan
     from legacypipe.survey import LegacySurveyWcs, ConstantFitsWcs
 
-
-    VEGA2AB = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
 
     all_data_bands = data['all_data_bands']
     opt_bands = data['opt_bands']

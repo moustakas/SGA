@@ -908,11 +908,11 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             if len(rem) > 0:
                 tractor.remove_rows(rem)
 
-            # 18111p0189,18009m0110
-            if tractor['gaia_phot_variable_flag'].dtype == '<U13':
-                #print('FIXING PROBLEM!')
-                tractor.remove_column('gaia_phot_variable_flag')
-                tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), bool)
+            ## 18111p0189,18009m0110
+            #if tractor['gaia_phot_variable_flag'].dtype == '<U13':
+            #    #print('FIXING PROBLEM!')
+            #    tractor.remove_column('gaia_phot_variable_flag')
+            #    tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), bool)
 
             # Tractor catalog of SGA source(s)
             for ellipse1 in ellipse:
@@ -932,10 +932,10 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
                     assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
                     #tractor_sga1 = empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
                     tractor_sga1 = empty_tractor()
-                    if tractor_sga1['gaia_phot_variable_flag'].dtype == '<U13':
-                        #print('FIXING PROBLEM! SGA')
-                        tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
-                        tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), bool)
+                    #if tractor_sga1['gaia_phot_variable_flag'].dtype == '<U13':
+                    #    #print('FIXING PROBLEM! SGA')
+                    #    tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
+                    #    tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), bool)
                     tractor_sga1['ref_cat'] = REFCAT
                     tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
                     tractor_sga.append(tractor_sga1)
@@ -993,11 +993,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     t0 = time.time()
 
     if rank == 0:
-        print()
-        print('###################')
-        print('REMOVE THE gaia_phot_variable_flag STUFF!')
-        print('###################')
-        print()
+        #print()
+        #print('###################')
+        #print('REMOVE THE gaia_phot_variable_flag STUFF!')
+        #print('###################')
+        #print()
 
         all_bands = np.copy(bands)
         opt_bands = ''.join(bands)

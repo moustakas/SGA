@@ -97,7 +97,6 @@ from SGA.geometry import choose_geometry
 
 #from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
 #from SGA.ellipse import choose_geometry, parse_geometry
-#from SGA.coadds import PIXSCALE, GALEX_PIXSCALE, UNWISE_PIXSCALE
 
 from SGA.logger import log
 

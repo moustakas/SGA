@@ -341,43 +341,111 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     return ccds
 
 
-def custom_cutouts(onegal, run, pixscale=0.262, bands=GRIZ):
+def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
+                   bands=GRIZ, galex=False, unwise=False):
     """
     SGA2025_08089m6975-ccds.fits
-    SGA2025_08089m6975-coadds.isdone
-    SGA2025_08089m6975-coadds.log
-    SGA2025_08089m6975-ellipse.isfail
-    SGA2025_08089m6975-ellipse.log
+    SGA2025_08089m6975-image.jpg
     SGA2025_08089m6975-image-g.fits.fz
     SGA2025_08089m6975-image-i.fits.fz
-    SGA2025_08089m6975-image.jpg
     SGA2025_08089m6975-image-r.fits.fz
     SGA2025_08089m6975-image-z.fits.fz
     SGA2025_08089m6975-invvar-g.fits.fz
     SGA2025_08089m6975-invvar-i.fits.fz
     SGA2025_08089m6975-invvar-r.fits.fz
     SGA2025_08089m6975-invvar-z.fits.fz
-    SGA2025_08089m6975-sample.fits
 
     """
+    import fitsio
+    import shutil
+    from SGA.io import make_header, VEGA2AB
     from SGA.cutouts import cutout_one
 
-    pdb.set_trace()
-    cutout_one(sample[~I][M], layer=layer, group=not no_groups,
-               diamcolumn='GROUP_DIAMETER', fits_cutouts=False,
-               maxdiam_arcmin=MAXDIAM, mp=mp,
-               cutoutdir=os.path.join(cutoutdir, region))
+    dry_run = False
+    fits_cutouts = True
+    ivar_cutouts = False
+    unwise_cutouts = unwise # False
+    galex_cutouts = galex # False
 
+    basefile = os.path.join(output_dir, galaxy)
+    #cutout_one(basefile, obj['GROUP_RA'], obj['GROUP_DEC'],
+    #           width, pixscale, layer, bands, dry_run, fits_cutouts,
+    #           ivar_cutouts, unwise_cutouts, galex_cutouts, 0, 0)
+
+    # now rearrange the files to match our file / data model
+    fitssuffixes = ['', ]
+    jpgsuffixes = ['', ]
+    outjpgsuffixes = ['', ]
+    allbands = [bands.copy(), ]
+    allpixscale = [[pixscale]*len(bands), ]
+    if unwise:
+        fitssuffixes += ['-unwise']
+        jpgsuffixes += ['-W1W2', ]
+        outjpgsuffixes += ['-W1W2', ]
+        allbands += [['W1', 'W2', 'W3', 'W4', ], ]
+        allpixscale += [[UNWISE_PIXSCALE]*4, ]
+    if galex:
+        fitssuffixes += ['-galex']
+        jpgsuffixes += ['-galex', ]
+        outjpgsuffixes += ['-FUVNUV', ]
+        allbands += [['FUV', 'NUV', ], ]
+        allpixscale += [[GALEX_PIXSCALE]*2, ]
+
+    for fitssuffix, jpgsuffix, outjpgsuffix, allband, allpixscale in zip(
+            fitssuffixes, jpgsuffixes, outjpgsuffixes, allbands, allpixscale):
+        infile = os.path.join(output_dir, f'{galaxy}{jpgsuffix}.jpeg')
+        outfile = os.path.join(output_dir, f'{galaxy}-image{outjpgsuffix}.jpg')
+        shutil.copy2(infile, outfile)
+        log.info(f'Copying {infile} --> {outfile}')
+
+        fitsfile = os.path.join(output_dir, f'{galaxy}{fitssuffix}.fits')
+        try:
+            imgs, hdr = fitsio.read(fitsfile, header=True)
+        except:
+            msg = f'There was a problem reading {fitsfile} ({obj["OBJNAME"]})'
+            log.critical(msg)
+            return 0
+
+        hdr.delete('VERSION')
+        hdr.delete('BANDS')
+        hdr.delete('COMMENT')
+        for iband in range(len(bands)):
+            hdr.delete(f'BAND{iband}')
+
+        for iband, band in enumerate(allband):
+            outfile = os.path.join(output_dir, f'{galaxy}-image-{band}.fits')
+
+            # convert WISE images from Vega nanomaggies to AB nanomaggies
+            # https://www.legacysurvey.org/dr9/description/#photometry
+            if band in VEGA2AB.keys():
+                imgs[iband, :, :] *= 10.**(-0.4 * VEGA2AB[band])
+
+            primhdr = fitsio.FITSHDR()
+            primhdr['EXTEND'] = 'T'
+
+            extra = {
+                'PIXSCALE': (allpixscale[iband], 'pixel scale (arcsec/pixel)'),
+                'FILTERX': (band, 'Filter short name'),
+                'PHOTSYS': ('AB', 'photometric system'),
+                'MAGZERO': (22.5, 'Magnitude zeropoint'),
+                'BUNIT': ('nanomaggy', 'AB mag = 22.5 - 2.5*log10(nanomaggy)'),
+            }
+            outhdr = make_header(hdr, keys=hdr.keys(), extra=extra, extname=f'IMAGE_{band}')
+            fitsio.write(outfile, None, header=primhdr, clobber=True)
+            fitsio.write(outfile, imgs[iband, :, :], header=outhdr)
+            log.info(f'Wrote {outfile}')
+
+    # cleanup...
 
     return 1
 
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                  release=1000, pixscale=PIXSCALE, bands=GRIZ, mp=1, nsigma=None,
-                  nsatur=2, rgb_stretch=1.5, racolumn='GROUP_RA', deccolumn='GROUP_DEC',
-                  force_psf_detection=False, fit_on_coadds=False, just_cutouts=False,
-                  use_gpu=False, ngpu=1, threads_per_gpu=8, subsky_radii=None,
-                  just_coadds=False, missing_ok=False, force=False, cleanup=True,
-                  unwise=True, galex=False, no_gaia=False, no_tycho=False,
+                  release=1000, pixscale=PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
+                  nsigma=None, nsatur=2, rgb_stretch=1.5, racolumn='GROUP_RA',
+                  deccolumn='GROUP_DEC', force_psf_detection=False, fit_on_coadds=False,
+                  just_cutouts=False, use_gpu=False, ngpu=1, threads_per_gpu=8,
+                  subsky_radii=None, just_coadds=False, missing_ok=False, force=False,
+                  cleanup=True, unwise=True, galex=False, no_gaia=False, no_tycho=False,
                   verbose=False):
     """Build a custom set of large-galaxy coadds.
 
@@ -405,8 +473,10 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
 
     # just cutouts -- no pipeline
     if just_cutouts:
-        custom_cutouts(onegal, width, run, pixscale=pixscale, bands=bands)
-        return 1, stagesuffix
+        err = custom_cutouts(onegal, galaxy, survey.output_dir, width, layer,
+                             pixscale=pixscale, bands=bands, galex=galex,
+                             unwise=unwise)
+        return err, stagesuffix
 
 
     # Run the pipeline!

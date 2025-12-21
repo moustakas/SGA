@@ -92,7 +92,7 @@ def main():
     from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE, REFCAT,
                          sga_dir, sga_data_dir, sga_html_dir, SGA_version,
                          read_sample, missing_files, get_galaxy_galaxydir,
-                         build_catalog, get_radius_mosaic)
+                         get_radius_mosaic)
 
     try:
         from mpi4py import MPI
@@ -190,15 +190,12 @@ def main():
     # results work on the full sample, so do that here and then
     # return.
     if rank == 0:
-        if args.htmlindex:
-            SGA.html.make_html(sample, survey=None, pixscale=args.pixscale,
-                               racolumn=RACOLUMN, deccolumn=DECCOLUMN,
-                               mp=args.mp, clobber=args.clobber,
-                               region=args.region, makeplots=False,
-                               verbose=args.verbose, htmldir=args.htmldir,
-                               htmlhome=args.htmlhome,
-                               html_raslices=args.html_raslices,
-                               args=args)
+        if args.build_catalog:
+            from SGA.SGA import build_catalog
+            build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
+                          datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
+                          wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
+                          clobber=args.clobber)
             return
 
         if args.build_refcat:
@@ -215,12 +212,23 @@ def main():
             ref['dec'] = fullsample['DEC']
             ref['ref_id'] = fullsample['SGAID']
             ref['mag'] = fullsample['MAG']
+            ref['fitmode'] = fullsample['FITMODE']
             ref['pa'] = fullsample['PA']
             ref['ba'] = fullsample['BA']
             ref['diam'] = fullsample['DIAM'] # [arcmin]
+
+            # some objects added by hand have no fluxes
+            I = ref['mag'] < 0.
+            if np.any(I):
+                ref['mag'][I] = 17.
+
             for col in ['pa', 'ba', 'diam', 'mag']:
                 assert(np.all(np.isfinite(ref[col])))
-            ref['fitmode'] = fullsample['FITMODE']
+            assert(np.all(ref['diam'] > 0.))
+            assert(np.all(ref['mag'] > 0.))
+            assert(np.all((ref['ba'] > 0.) & (ref['ba'] <= 1.)))
+            assert(np.all((ref['pa'] >= 0.) & (ref['pa'] <= 180.)))
+            assert(len(ref) == len(np.unique(ref['ref_id'])))
 
             log.info(f'Writing {ngal} galaxies to {refcatfile}')
 
@@ -238,15 +246,9 @@ def main():
 
             return
 
-    if args.build_catalog:
-        build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
-                      datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
-                      wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
-                      clobber=args.clobber)
-        return
-
     # need at least one keyword at this point
-    if args.coadds is False and args.ellipse is False and args.htmlplots is False:
+    if (args.coadds is False and args.ellipse is False and args.htmlplots is False and
+        args.htmlindex is False):
         log.warning('Need to specify at least one of --coadds, --ellipse, or ' + \
                     '--htmlplots; nothing to do.')
         return
@@ -261,6 +263,12 @@ def main():
             no_groups=no_groups, clobber=args.clobber,
             verbose=args.verbose, datadir=datadir, htmldir=htmldir,
             size=size, mp=args.mp)
+
+        if args.htmlindex:
+            from SGA.html import make_html
+            make_html(sample[groups[0]], mp=args.mp, clobber=args.clobber,
+                      region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
+            return
 
         if args.diameter_file:
             if len(groups) > 0:
@@ -379,12 +387,17 @@ def main():
             # always have GROUP_MULT==1)
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
                 just_cutouts = True
+                layer = f'ls-{args.region}'
+                if args.region == 'dr11-south':
+                    log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
+                    layer = 'ls-dr11-early-v2'
+
                 # special-case LMC and SMC!
                 # galex, unwise pixscale??
                 if np.any(np.isin(onegal['OBJNAME'], ['LMC'])):
                     pixscale = 60. # [arcsec]
                 elif np.any(np.isin(onegal['OBJNAME'], ['SMC'])):
-                    pixscale = 30. # [arcsec]
+                    pixscale = 60. # [arcsec]
                 elif np.any(np.isin(onegal['OBJNAME'], ['Antlia II'])):
                     pixscale = 10. # [arcsec]
                 else:
@@ -392,6 +405,7 @@ def main():
             else:
                 pixscale = args.pixscale
                 just_cutouts = False
+                layer = None
 
             # FORCEGAIA (not yet implemented); may be useful for e.g., Leo I
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEGAIA'] != 0:
@@ -410,7 +424,7 @@ def main():
                     nsigma=args.nsigma, just_coadds=args.just_coadds,
                     force_psf_detection=force_psf_detection,
                     fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
-                    use_gpu=args.use_gpu, ngpu=args.ngpu,
+                    use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
                     unwise=args.unwise, galex=args.galex,
@@ -426,7 +440,7 @@ def main():
                         nsigma=args.nsigma, just_coadds=args.just_coadds,
                         force_psf_detection=force_psf_detection,
                         fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
-                        use_gpu=args.use_gpu, ngpu=args.ngpu,
+                        use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
                         unwise=args.unwise, galex=args.galex,
@@ -522,21 +536,12 @@ def main():
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
                              unpack_maskbits, SGAMASKBITS, APERTURES,
-                             #radius_mosaic_arcsec=radius_mosaic_arcsec,
                              barlen=barlen, barlabel=barlabel, run=run,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
                              verbose=args.verbose, clobber=args.clobber)
+            done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
-            #onegal, galaxy, pixscale=args.pixscale,
-            #mp=args.mp, verbose=args.verbose, debug=args.debug,
-            #clobber=args.clobber,
-            #htmldir=htmldir, datadir=datadir,
-            #barlen=barlen, barlabel=barlabel,
-            #galex=args.galex, unwise=args.unwise,
-            #region=args.region,
-            #get_galaxy_galaxydir=get_galaxy_galaxydir,
-            #read_multiband=read_multiband)
 
     if comm:
         comm.barrier()

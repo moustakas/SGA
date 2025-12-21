@@ -9,6 +9,7 @@ import pdb
 
 import os, sys, re, time
 import numpy as np
+import fitsio
 from glob import glob
 import multiprocessing
 from astropy.table import Table, vstack
@@ -17,6 +18,7 @@ from SGA.geometry import choose_geometry
 from SGA.io import get_raslice
 from SGA.SGA import sga2025_name
 from SGA.logger import log
+from SGA.coadds import PIXSCALE, GALEX_PIXSCALE, UNWISE_PIXSCALE
 
 
 def get_pixscale_and_width(diam, mindiam=None, rescale=False, maxdiam_arcmin=25.,
@@ -563,19 +565,19 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
         allbands += [optical_bands, ]
     if unwise_cutouts:
         unwise_width = int(optical_width * optical_pixscale / UNWISE_PIXSCALE)
-        unwise_suffixes = ['-W1W2.fits', '-W3W4.fits', ]
+        unwise_suffixes = ['-W1W2.jpeg', '-W1W2.fits', '-W3W4.fits', ]
         suffixes += unwise_suffixes
-        layers += ['unwise-neo7', 'unwise-w3w4', ]
-        pixscales += [UNWISE_PIXSCALE, UNWISE_PIXSCALE, ]
-        widths += [unwise_width, unwise_width, ]
-        allbands += [['1', '2'], ['3', '4'], ]
+        layers += ['unwise-neo7', 'unwise-neo7', 'unwise-w3w4', ]
+        pixscales += [UNWISE_PIXSCALE, UNWISE_PIXSCALE, UNWISE_PIXSCALE, ]
+        widths += [unwise_width, unwise_width, unwise_width, ]
+        allbands += [['1', '2'], ['1', '2'], ['3', '4'], ]
     if galex_cutouts:
         galex_width = int(optical_width * optical_pixscale / GALEX_PIXSCALE)
-        suffixes += ['-galex.fits', ]
-        layers += ['galex', ]
-        pixscales += [GALEX_PIXSCALE, ]
-        widths += [galex_width, ]
-        allbands += [['f', 'n'], ]
+        suffixes += ['-galex.jpeg', '-galex.fits', ]
+        layers += ['galex', 'galex', ]
+        pixscales += [GALEX_PIXSCALE, GALEX_PIXSCALE, ]
+        widths += [galex_width, galex_width, ]
+        allbands += [['f', 'n'], ['f', 'n'], ]
 
     for suffix, layer, pixscale, width, bands in zip(suffixes, layers, pixscales, widths, allbands):
         outfile = basefile+suffix
@@ -604,7 +606,7 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
 
     # merge the W1W2 and W3W4 files
     if unwise_cutouts:
-        for ii, suffix in enumerate(unwise_suffixes):
+        for ii, suffix in enumerate(unwise_suffixes[1:]): # offset from jpeg
             infile = basefile+suffix
             if ii == 0:
                 hdr = fitsio.read_header(infile)
