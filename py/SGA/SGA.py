@@ -481,10 +481,13 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    # select the LVD sample; remember that --lvd always implies --no-groups
+    # select the LVD sample
     if lvd:
-        sample = sample[sample['SAMPLE'] & SAMPLE['LVD'] != 0]
-        fullsample = sample
+        is_LVD  = (fullsample['SAMPLE'] & SAMPLE['LVD']) != 0
+        LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
+        I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
         if len(sample) == 0:
             return sample, fullsample
 
