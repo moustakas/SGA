@@ -2508,8 +2508,21 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                           opt_galmask, opt_mask_perband, opt_bands,
                                           sz, verbose=False)
 
-            # Optionally update the geometry from the masked, coadded
-            # optical image.
+            # Generate a detection image and pixel mask for use with
+            # find_galaxy_in_cutout even if we're not updating the
+            # geometry.
+            wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images_obj, axis=0)
+            wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
+            wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
+
+            wmasks = np.zeros_like(opt_images_obj, bool)
+            for iband, filt in enumerate(opt_bands):
+                wmasks[iband, :, :] = ((~opt_masks_obj[iband, :, :]) * \
+                                       (opt_images_obj[iband, :, :] > opt_skysigmas[filt]))
+            # True=any pixel is >5*skynoise and positive in the
+            # coadded image.
+            wmask = np.any(wmasks, axis=0) * (wimg > 0.)
+
             if (not geometry_mode) or (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0):
                 if (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
                     log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
@@ -2523,20 +2536,22 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     #if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
                         #log.info('FIXGEO bit set; fixing the elliptical geometry.')
                     geo_iter = geo_init
+
+                # Recompute sma_moment with the updated mask even when
+                # not updating the geometry; fix bx, by, ba, and pa to
+                # their previously determined values. NB: set
+                # use_tractor_position=True as a trick to fix (bx,by);
+                # this isn't necessarily the Tractor position).
+                props = find_galaxy_in_cutout(
+                    wimg, bx, by, sma_mask, ba, pa, wmask=wmask,
+                    moment_method=moment_method, input_ba_pa=(ba, pa),
+                    radial_power=radial_power,
+                    use_radial_weight=use_radial_weight_obj[iobj],
+                    use_tractor_position=True)
+                (_, _, sma_new, _, _) = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
+                    moment_method=moment_method, use_tractor_position=use_tractor_position_obj)
+                geo_iter[2] = sma_new
             else:
-                # generate a detection image and pixel mask for use with find_galaxy_in_cutout
-                wimg = np.sum(opt_invvar * np.logical_not(opt_masks_obj) * opt_images_obj, axis=0)
-                wnorm = np.sum(opt_invvar * np.logical_not(opt_masks_obj), axis=0)
-                wimg[wnorm > 0.] /= wnorm[wnorm > 0.]
-
-                wmasks = np.zeros_like(opt_images_obj, bool)
-                for iband, filt in enumerate(opt_bands):
-                    wmasks[iband, :, :] = ((~opt_masks_obj[iband, :, :]) * \
-                                           (opt_images_obj[iband, :, :] > opt_skysigmas[filt]))
-                # True=any pixel is >5*skynoise and positive in the
-                # coadded image.
-                wmask = np.any(wmasks, axis=0) * (wimg > 0.)
-
                 # Optionally use Tractor for small overlapping satellites.
                 if use_tractor_geometry and use_tractor_geometry_obj[iobj]:
                     if objsrc is None or objsrc.type == 'PSF':
@@ -2553,6 +2568,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     radial_power=radial_power,
                     use_radial_weight=use_radial_weight_obj[iobj],
                     use_tractor_position=use_tractor_position_obj)
+
                 geo_iter = get_geometry(opt_pixscale, props=props, ref_tractor=objsrc,
                     moment_method=moment_method, use_tractor_position=use_tractor_position_obj)
 
