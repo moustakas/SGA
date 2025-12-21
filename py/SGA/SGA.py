@@ -2331,7 +2331,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # If the MOREMASKING bit is set, mask all extended sources,
         # whether or not they're inside the elliptical mask.
-        if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0:
+        print('HACK!!!!!!!!!!!!!!!!!!!!!!!!!! Remove False!')
+        if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0 and False:
             #log.info('MOREMASKING bit set; masking all extended sources.')
             mask_allgals_arr[iobj] = True
 

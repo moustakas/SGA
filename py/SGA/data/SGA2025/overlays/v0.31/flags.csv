@@ -1,5 +1,4 @@
 target,value,column,op,bits
-OBJNAME,2MASS J13113005-0120286,ELLIPSEMODE,set,moremasking
 OBJNAME,2MASX J00261720-7233033,ELLIPSEMODE,set,lessmasking
 OBJNAME,A0952+69,ELLIPSEMODE,set,fixgeo
 OBJNAME,Andromeda II,ELLIPSEMODE,set,"fixgeo,resolved"
@@ -42,11 +41,9 @@ OBJNAME,Coma Berenices,ELLIPSEMODE,set,"fixgeo,resolved"
 OBJNAME,Crater II,ELLIPSEMODE,set,"fixgeo,resolved"
 OBJNAME,DDO 154,ELLIPSEMODE,set,fixgeo
 OBJNAME,DDO 169NW,ELLIPSEMODE,set,fixgeo
-OBJNAME,DUKST 411-021,ELLIPSEMODE,set,moremasking
 OBJNAME,Draco,ELLIPSEMODE,set,"fixgeo,resolved"
 OBJNAME,Draco II,ELLIPSEMODE,set,"fixgeo,resolved"
 OBJNAME,ESO 050- G 010,ELLIPSEMODE,set,lessmasking
-OBJNAME,ESO 324- G 025 NED03,ELLIPSEMODE,set,moremasking
 OBJNAME,ESO 385- G 028,ELLIPSEMODE,set,radweight
 OBJNAME,ESO 396- G 011,ELLIPSEMODE,set,radweight
 OBJNAME,ESO 422- G 034,ELLIPSEMODE,set,radweight
@@ -65,7 +62,6 @@ OBJNAME,Horologium I,ELLIPSEMODE,set,fixgeo
 OBJNAME,Horologium II,ELLIPSEMODE,set,fixgeo
 OBJNAME,Hydra II,ELLIPSEMODE,set,fixgeo
 OBJNAME,Hydrus I,ELLIPSEMODE,set,"fixgeo,resolved"
-OBJNAME,III Zw 040 NOTES02,ELLIPSEMODE,set,moremasking
 OBJNAME,KK 17,ELLIPSEMODE,set,fixgeo
 OBJNAME,KK 69,ELLIPSEMODE,set,fixgeo
 OBJNAME,LMC,ELLIPSEMODE,set,"fixgeo,resolved"
