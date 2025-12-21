@@ -35,7 +35,7 @@ ELLIPSEMODE = dict(
                         # mask (e.g., within a cluster environment)
     MOMENTPOS = 2**6,   # use the light-weighted (not Tractor) center
     TRACTORGEO = 2**7,  # use the Tractor (not light-weighted) geometry
-    RADWEIGHT = 2**8,   # derive the moment geometry after weighting radially as r^1.5
+    NORADWEIGHT = 2**8, # derive the moment geometry without radial weighting
 )
 
 ELLIPSEBIT = dict(
@@ -47,7 +47,7 @@ ELLIPSEBIT = dict(
     OVERLAP = 2**5,            # any part of the initial SGA ellipse overlaps another SGA ellipse
     SATELLITE = 2**6,          # satellite of another larger galaxy
     TRACTORGEO = 2**7,         # used the Tractor (not light-weighted) geometry
-    RADWEIGHT = 2**8,          # moment geometry derived using radial weighting
+    NORADWEIGHT = 2**8,        # moment geometry derived without radial weighting
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
