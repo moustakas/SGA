@@ -2323,18 +2323,19 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         else:
             use_tractor_position_obj = use_tractor_position
 
-        # If the LESSMASKING bit is set, do not use the Gaia threshold mask.
+        # If the LESSMASKING bit is set, do not use the Gaia threshold
+        # mask.
         opt_gaiamask_obj = np.copy(opt_gaiamask)
         if obj['ELLIPSEMODE'] & ELLIPSEMODE['LESSMASKING'] != 0:
             #log.info('LESSMASKING bit set; no Gaia threshold-masking.')
             opt_gaiamask_obj[:, :] = False
 
-        # If the MOREMASKING bit is set, mask all extended sources,
-        # whether or not they're inside the elliptical mask.
-        print('HACK!!!!!!!!!!!!!!!!!!!!!!!!!! Remove False!')
-        if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0 and False:
-            #log.info('MOREMASKING bit set; masking all extended sources.')
-            mask_allgals_arr[iobj] = True
+        ## DEPRECATED - If the MOREMASKING bit is set, mask all
+        ## extended sources, whether or not they're inside the
+        ## elliptical mask.
+        #if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0:
+        #    #log.info('MOREMASKING bit set; masking all extended sources.')
+        #    mask_allgals_arr[iobj] = True
 
         # Find all reference sources (not dropped by Tractor) except
         # the one we're working on.
