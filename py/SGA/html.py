@@ -1048,16 +1048,18 @@ def find_group_directory(htmldir, region, group_name):
 
 def get_galaxy_names(group_dir, group_name):
     """Extract unique galaxy names from filenames in the directory."""
-    galaxy_names = set()
-    for file in group_dir.glob("qa-SGA2025_J*"):
-        stem = file.stem
+    import numpy as np
+    from glob import glob
+    galaxy_names = []
+    for onefile in glob(os.path.join(group_dir, "qa-SGA2025_J*")):
+        stem = os.path.basename(onefile)
         if stem.startswith("qa-SGA2025_"):
             remainder = stem.replace("qa-SGA2025_", "", 1)
             parts = remainder.rsplit("-", 1)
             if len(parts) >= 2:
                 galaxy_name = parts[0]
-                galaxy_names.add(galaxy_name)
-    return sorted(galaxy_names)
+                galaxy_names.append(galaxy_name)
+    return np.unique(galaxy_names).tolist()
 
 
 def generate_html(htmldir, region, group_name, clobber=False):
@@ -1137,8 +1139,8 @@ def generate_html(htmldir, region, group_name, clobber=False):
         html_lines.append("        <div class='galaxy-row'>")
         for img_type in per_galaxy_types:
             filename = "qa-SGA2025_{}-{}.png".format(galaxy_name, img_type)
-            filepath = group_dir / filename
-            if filepath.exists():
+            filepath = os.path.join(group_dir, filename)
+            if os.path.isfile(filepath):
                 html_lines.append("            <img src='{}' alt='{}'>".format(filename, filename))
             else:
                 html_lines.append("            <img src='' alt='{}'>".format(filename))
