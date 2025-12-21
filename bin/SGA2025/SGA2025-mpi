@@ -47,20 +47,9 @@ def get_logfile(galaxy, galaxydir, stagesuffix):
     return logfile
 
 
-def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
+def restore_logger(fh=None, debug=False):
     import logging
 
-    donefile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}')
-    if err == 0:
-        log.warning(f'Problem processing {galaxydir}/{galaxy}; please check the log file.')
-        donefile = f'{donefile}.isfail'
-    else:
-        donefile = f'{donefile}.isdone'
-
-    # equivalent to 'touch'
-    open(donefile, 'w').close()
-
-    # restore the logger
     if fh is not None:
         unhook_legacypipe_and_root(fh, restore_console=True, debug=debug)
 
@@ -78,6 +67,22 @@ def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
             ch.setLevel(logging.INFO)
             ch.setFormatter(LOGFMT)
             log.addHandler(ch)
+
+
+def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
+
+    donefile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}')
+    if err == 0:
+        log.warning(f'Problem processing {galaxydir}/{galaxy}; please check the log file.')
+        donefile = f'{donefile}.isfail'
+    else:
+        donefile = f'{donefile}.isdone'
+
+    # equivalent to 'touch'
+    open(donefile, 'w').close()
+
+    # restore the logger
+    restore_logger(fh=fh, debug=debug)
 
 def main():
     """Top-level wrapper.
@@ -464,6 +469,7 @@ def main():
 
             if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
                 log.warning('Coadds must be generated before running ellipse-fitting.')
+                restore_logger(fh=fh, debug=args.debug)
                 continue
 
             # Always write out the individual galaxies for this mosaic
@@ -526,6 +532,7 @@ def main():
 
             if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-ellipse.isdone')):
                 log.warning('Ellipse-fitting must be done before generating plots.')
+                restore_logger(fh=fh, debug=args.debug)
                 continue
 
             if not os.path.isdir(htmlgalaxydir):
