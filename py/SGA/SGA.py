@@ -351,7 +351,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
                 no_groups=False, lvd=False, wisesize=False, final_sample=False,
                 version=None, tractor=False, test_bricks=False, region='dr11-south',
-                mindiam=0., maxdiam=1e3, maxmult=None):
+                mindiam=0., maxdiam=1e3, minmult=None, maxmult=None, beta=True):
     """Read/generate the parent SGA catalog.
 
     mindiam,maxdiam in arcmin
@@ -381,7 +381,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         ext = 'PARENT'
         if version is None:
             version = SGA_version(parent=True)
-        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-parent-{version}.fits')
+        if beta:
+            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-parent-{version}.fits')
+        else:
+            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-parent-{version}.fits')
 
     if not os.path.isfile(samplefile):
         msg = f'Sample file {samplefile} not found.'
@@ -394,7 +397,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         else:
             #cols = ['D26', 'GROUP_PRIMARY']
             cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
-            if maxmult is not None:
+            if maxmult or minmult:
                 cols += ['GROUP_MULT']
         info = fitsio.read(samplefile, ext=ext, columns=cols)
         if no_groups:
@@ -405,7 +408,9 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             I = ((info['GROUP_DIAMETER'] > mindiam) *
                  (info['GROUP_DIAMETER'] <= maxdiam) *
                  info['GROUP_PRIMARY'])
-            if maxmult is not None:
+            if minmult:
+                I *= info['GROUP_MULT'] >= minmult
+            if maxmult:
                 I *= info['GROUP_MULT'] <= maxmult
             rows = np.where(I)[0]
     else:
@@ -415,7 +420,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             cols = ['DIAM']
         else:
             cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
-            if maxmult is not None:
+            if maxmult or minmult:
                 cols += ['GROUP_MULT']
         info = fitsio.read(samplefile, ext=ext, columns=cols)
         if no_groups:
@@ -426,7 +431,9 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             I = ((info['GROUP_DIAMETER'] > mindiam) *
                  (info['GROUP_DIAMETER'] <= maxdiam) *
                  info['GROUP_PRIMARY'])
-            if maxmult is not None:
+            if minmult:
+                I *= info['GROUP_MULT'] >= minmult
+            if maxmult:
                 I *= info['GROUP_MULT'] <= maxmult
             rows = np.where(I)[0]
 

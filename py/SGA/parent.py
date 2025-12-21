@@ -3740,8 +3740,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     outdir = os.path.join(sga_dir(), 'sample')
     parentdir = os.path.join(sga_dir(), 'parent')
     overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{parent_version}') # e.g., .../overlays/v0.30
-    outfile = os.path.join(outdir, f'SGA2025-parent-{parent_version}.fits')
-    kdoutfile = os.path.join(outdir, f'SGA2025-parent-{parent_version}.kd.fits')
+    outfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.fits')
+    kdoutfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.kd.fits')
 
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
