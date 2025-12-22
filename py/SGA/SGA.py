@@ -2267,10 +2267,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-    # Per-object overrides from ELLIPSEMODE bits and other ELLIPSEBIT bits.
-    sample['ELLIPSEBIT'] &= ~(ELLIPSEBIT['NORADWEIGHT'] | ELLIPSEBIT['TRACTORGEO'] |
-                              ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'] |
-                              ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'])
+    # Clear bits which may change between the initial and final geometry.
+    sample['ELLIPSEBIT'] &= ~(ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'] |
+                              ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'])
     for iobj in range(nsample):
         # If TRACTORGEO is set, force Tractor-based geometry for this object.
         if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0:
@@ -2291,6 +2290,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['SATELLITE']
         if overlap_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
+
+        if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['MOMENTPOS']) != 0:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
 
     # Minimum semi-major axis used for masks (not for stored geometry).
@@ -2528,7 +2530,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     if geo_iter[2] <= 0.:
                         log.warning(f'Semi-major axis for {obj["OBJNAME"]} is zero or negative; adopting initial geometry.')
                         sample['ELLIPSEMODE'][iobj] &= ~ELLIPSEMODE['TRACTORGEO']
+                        sample['ELLIPSEBIT'][iobj] &= ~ELLIPSEBIT['TRACTORGEO']
                         sample['ELLIPSEMODE'][iobj] |= ELLIPSEMODE['FIXGEO']
+                        sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
                         geo_iter = geo_init
                 else:
                     if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
@@ -2791,7 +2795,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if jobj == iobj:
                 continue
             bx_j, by_j, sma_j, ba_j, pa_j = geo_final[jobj, :]
-            sma_j = max(max(sma, SMA_MASK_MIN_PIX), sample['SMA_MASK'][jobj] / opt_pixscale)
+            sma_j = max(max(sma_j, SMA_MASK_MIN_PIX), sample['SMA_MASK'][jobj] / opt_pixscale)
             if sma_j <= 0:
                 continue
             if ellipses_overlap(bx, by, sma_mask, ba, pa,

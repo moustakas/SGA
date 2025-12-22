@@ -48,8 +48,9 @@ ELLIPSEBIT = dict(
     MAJORGAL = 2**6,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
     OVERLAP = 2**7,            # any part of the initial SGA ellipse overlaps another SGA ellipse
     SATELLITE = 2**8,          # satellite of another larger galaxy
-    TRACTORGEO = 2**9,         # used the Tractor (not light-weighted) geometry
-    NORADWEIGHT = 2**10,       # moment geometry derived without radial weighting
+    MOMENTPOS = 2**9,          # light-weighted (not Tractor) center
+    TRACTORGEO = 2**10,        # used the Tractor (not light-weighted) geometry
+    NORADWEIGHT = 2**11,       # moment geometry derived without radial weighting
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
