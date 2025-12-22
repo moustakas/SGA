@@ -101,7 +101,11 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # major refactor of build_parent
         version = 'v0.30'
-        #version = 'v0.22'
+
+        # significant trimming of small galaxies; new ELLIPSEBIT
+        # (NORADWEIGHT and FIXGEO)
+        #version = 'v0.40'
+
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -111,6 +115,7 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.21' # parent_version = v0.20 --> v0.21
         #version = 'v0.22'  # parent_version = v0.21 --> v0.22
         version = 'v0.30'  # parent_version = v0.22 --> v0.30
+        #version = 'v0.40'  # parent_version = v0.30 --> v0.40
     return version
 
 
@@ -2526,8 +2531,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         sample['ELLIPSEMODE'][iobj] |= ELLIPSEMODE['FIXGEO']
                         geo_iter = geo_init
                 else:
-                    #if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+                    if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
                         #log.info('FIXGEO bit set; fixing the elliptical geometry.')
+                        sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
                     geo_iter = geo_init
 
                 # Recompute sma_moment with the updated mask even when
@@ -3027,7 +3033,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                     samplesrcs.append(tractor[I])
                     if tractor[I[0]].type in ['PSF', 'DUP']:
                         log.warning(f'ref_id={refid} fit by Tractor as PSF (or DUP)')
-                        #sample['PSF'][iobj] = True
+                        sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORPSF']
                     sample['OPTFLUX'][iobj] = max([getattr(tractor[I[0]], f'flux_{filt}')
                                                    for filt in opt_bands])
                     sample['FRACFLUX'][iobj] = max([getattr(tractor[I[0]], f'fracflux_{filt}')

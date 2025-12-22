@@ -40,14 +40,16 @@ ELLIPSEMODE = dict(
 
 ELLIPSEBIT = dict(
     NOTRACTOR = 2**0,          # SGA source has no corresponding Tractor source
-    BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
-    LARGESHIFT = 2**2,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
-    LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
-    MAJORGAL = 2**4,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
-    OVERLAP = 2**5,            # any part of the initial SGA ellipse overlaps another SGA ellipse
-    SATELLITE = 2**6,          # satellite of another larger galaxy
-    TRACTORGEO = 2**7,         # used the Tractor (not light-weighted) geometry
-    NORADWEIGHT = 2**8,        # moment geometry derived without radial weighting
+    TRACTORPSF = 2**1,         # SGA source fit by Tractor as a PSF
+    FIXGEO = 2**2,             # fixed ellipse geometry (from ELLIPSEMODE)
+    BLENDED = 2**3,            # SGA center is located within the elliptical mask of another SGA source
+    LARGESHIFT = 2**4,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
+    LARGESHIFT_TRACTOR = 2**5, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
+    MAJORGAL = 2**6,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
+    OVERLAP = 2**7,            # any part of the initial SGA ellipse overlaps another SGA ellipse
+    SATELLITE = 2**8,          # satellite of another larger galaxy
+    TRACTORGEO = 2**9,         # used the Tractor (not light-weighted) geometry
+    NORADWEIGHT = 2**10,       # moment geometry derived without radial weighting
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
