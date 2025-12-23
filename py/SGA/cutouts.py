@@ -538,8 +538,9 @@ def _cutout_one(args):
 
 
 def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
-               optical_layer, optical_bands, dry_run, fits_cutouts,
-               ivar_cutouts, unwise_cutouts, galex_cutouts, rank, iobj):
+               unwise_pixscale, galex_pixscale, optical_layer, optical_bands,
+               dry_run, fits_cutouts, ivar_cutouts, unwise_cutouts,
+               galex_cutouts, rank, iobj):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
@@ -693,11 +694,12 @@ def get_basefiles_one(obj, objname, cutoutdir, width=None, group=False,
 
 
 def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
-               default_bands=['g', 'r', 'i', 'z'], comm=None, mp=1, group=False,
-               cutoutdir='.', base_cutoutdir='.', maxdiam_arcmin=25., rescale=False,
-               diamcolumn=None, overwrite=False, fits_cutouts=True, ivar_cutouts=False,
-               unwise_cutouts=False, galex_cutouts=False, dry_run=False,
-               verbose=False, use_catalog_objname=False):
+               unwise_pixscale=2.75, galex_pixscale=1.5, default_bands=['g', 'r', 'i', 'z'],
+               comm=None, mp=1, group=False, cutoutdir='.', base_cutoutdir='.',
+               maxdiam_arcmin=25., rescale=False, diamcolumn=None, overwrite=False,
+               fits_cutouts=True, ivar_cutouts=False, unwise_cutouts=False,
+               galex_cutouts=False, dry_run=False, verbose=False,
+               use_catalog_objname=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -755,8 +757,9 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         return
 
     mpargs = [(basefiles[indx[iobj]], allra[indx[iobj]], alldec[indx[iobj]],
-               width[indx[iobj]], pixscale[indx[iobj]], layer, default_bands,
-               dry_run, fits_cutouts, ivar_cutouts, unwise_cutouts, galex_cutouts,
+               width[indx[iobj]], pixscale[indx[iobj]], unwise_pixscale,
+               galex_pixscale, layer, default_bands, dry_run, fits_cutouts,
+               ivar_cutouts, unwise_cutouts, galex_cutouts,
                rank, iobj) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:

@@ -342,6 +342,7 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 
 
 def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
+                   unwise_pixscale=UNWISE_PIXSCALE, galex_pixscale=GALEX_PIXSCALE,
                    bands=GRIZ, galex=False, unwise=False):
     """
     SGA2025_08089m6975-ccds.fits
@@ -368,9 +369,10 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
     galex_cutouts = galex # False
 
     basefile = os.path.join(output_dir, galaxy)
-    #cutout_one(basefile, obj['GROUP_RA'], obj['GROUP_DEC'],
-    #           width, pixscale, layer, bands, dry_run, fits_cutouts,
-    #           ivar_cutouts, unwise_cutouts, galex_cutouts, 0, 0)
+    cutout_one(basefile, obj['GROUP_RA'], obj['GROUP_DEC'],
+               width, pixscale, unwise_pixscale, galex_pixscale,
+               layer, bands, dry_run, fits_cutouts, ivar_cutouts,
+               unwise_cutouts, galex_cutouts, 0, 0)
 
     # now rearrange the files to match our file / data model
     fitssuffixes = ['', ]
@@ -436,11 +438,20 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
             log.info(f'Wrote {outfile}')
 
     # cleanup...
+    cleanfiles = [f'{basefile}.fits', f'{basefile}.jpeg']
+    if unwise:
+        cleanfiles += [f'{basefile}-unwise.fits', f'{basefile}-W1W2.jpeg']
+    if galex:
+        cleanfiles += [f'{basefile}-galex.fits', f'{basefile}-galex.jpeg']
+    for cleanfile in cleanfiles:
+        os.remove(cleanfile)
 
     return 1
 
+
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                  release=1000, pixscale=PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
+                  release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
+                  galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
                   nsigma=None, nsatur=2, rgb_stretch=1.5, racolumn='GROUP_RA',
                   deccolumn='GROUP_DEC', force_psf_detection=False, fit_on_coadds=False,
                   just_cutouts=False, use_gpu=False, ngpu=1, threads_per_gpu=8,
@@ -475,7 +486,8 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     if just_cutouts:
         err = custom_cutouts(onegal, galaxy, survey.output_dir, width, layer,
                              pixscale=pixscale, bands=bands, galex=galex,
-                             unwise=unwise)
+                             unwise=unwise, unwise_pixscale=unwise_pixscale,
+                             galex_pixscale=galex_pixscale)
         return err, stagesuffix
 
 

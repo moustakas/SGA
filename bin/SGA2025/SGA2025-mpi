@@ -405,18 +405,24 @@ def main():
                     log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
                     layer = 'ls-dr11-early-v2'
 
-                # special-case LMC and SMC!
-                # galex, unwise pixscale??
-                if np.any(np.isin(onegal['OBJNAME'], ['LMC'])):
-                    pixscale = 60. # [arcsec]
-                elif np.any(np.isin(onegal['OBJNAME'], ['SMC'])):
-                    pixscale = 60. # [arcsec]
-                elif np.any(np.isin(onegal['OBJNAME'], ['Antlia II'])):
-                    pixscale = 10. # [arcsec]
+                if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC', 'Antlia II'])):
+                    #pixscale = 60. # [arcsec]
+                    pixscale = args.pixscale * 100               # [arcsec]
+                    galex_pixscale = args.galex_pixscale * 100
+                    unwise_pixscale = args.unwise_pixscale * 100
+                elif np.any(np.isin(onegal['OBJNAME'], ['Crater II', 'Bootes III'])):
+                    #pixscale = 10. # [arcsec]
+                    pixscale = args.pixscale * 50               # [arcsec]
+                    galex_pixscale = args.galex_pixscale * 50
+                    unwise_pixscale = args.unwise_pixscale * 50
                 else:
                     pixscale = args.pixscale
+                    galex_pixscale = args.galex_pixscale
+                    unwise_pixscale = args.unwise_pixscale
             else:
                 pixscale = args.pixscale
+                galex_pixscale = args.galex_pixscale
+                unwise_pixscale = args.unwise_pixscale
                 just_cutouts = False
                 layer = None
 
@@ -434,6 +440,7 @@ def main():
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     release=release, pixscale=pixscale, bands=bands, mp=args.mp,
+                    unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                     nsigma=args.nsigma, just_coadds=args.just_coadds,
                     force_psf_detection=force_psf_detection,
                     fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
@@ -450,6 +457,7 @@ def main():
                     err, _ = custom_coadds(
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
                         release=release, pixscale=pixscale, bands=bands, mp=args.mp,
+                        unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                         nsigma=args.nsigma, just_coadds=args.just_coadds,
                         force_psf_detection=force_psf_detection,
                         fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,

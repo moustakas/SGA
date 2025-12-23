@@ -1110,7 +1110,7 @@ def generate_html(htmldir, region, group_name, clobber=False):
         "        <p><strong>Group:</strong> {}</p>".format(group_name),
         "        <p><strong>Region:</strong> {}</p>".format(region),
         "        <p><strong>Directory:</strong> {}</p>".format(group_dir),
-        "        <p><strong>Number of galaxies:</strong> {}</p>".format(len(galaxy_names)),
+        "        <p><strong>Number of galaxies:</strong> {}</p>".format(max(len(galaxy_names), 1)),
         "    </div>",
         "",
         "    <div class='section'>",
