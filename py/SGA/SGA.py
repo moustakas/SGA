@@ -2956,6 +2956,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     """
     import fitsio
+    from matplotlib.image import imread
     from astropy.table import Table
     from astrometry.util.fits import fits_table
     from astrometry.util.util import Tan
@@ -2964,6 +2965,9 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     from SGA.util import mwdust_transmission
     from SGA.io import _read_image_data
     from SGA.ellipse import ELLIPSEBIT
+
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
 
 
     def _read_sample(opt_refband, tractor):
@@ -3143,7 +3147,13 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                 filt2imfile[filt][imtype] = imfile
                 datacount += 1
             else:
-                log.debug(f'Missing {imfile}')
+                # try without the .fz extension (e.g., RESOLVED mosaics)
+                imfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile[filt][imtype]}-{filt}.fits')
+                if os.path.isfile(imfile):
+                    filt2imfile[filt][imtype] = imfile
+                    datacount += 1
+                else:
+                    log.debug(f'Missing {imfile}')
 
         if datacount == 0:
             pass
@@ -3281,35 +3291,32 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                 [pixscale, galex_pixscale, unwise_pixscale],
                 ['opt', 'galex', 'unwise']):
 
-            if dataset == 'opt':
-                hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
-                wcs = Tan(hdr)
-                if 'MJD_MEAN' in hdr:
-                    mjd_tai = hdr['MJD_MEAN'] # [TAI]
-                    wcs = LegacySurveyWcs(wcs, TAITime(None, mjd=mjd_tai))
-                else:
-                    wcs = ConstantFitsWcs(wcs)
-                opt_sz = (int(wcs.wcs.imageh), int(wcs.wcs.imagew))
-                sz = (int(wcs.wcs.imageh), int(wcs.wcs.imagew))
-                data[f'{dataset}_wcs'] = wcs
-                data[f'{dataset}_hdr'] = hdr
+            hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
+            wcs = Tan(hdr)
+            if 'MJD_MEAN' in hdr:
+                mjd_tai = hdr['MJD_MEAN'] # [TAI]
+                wcs = LegacySurveyWcs(wcs, TAITime(None, mjd=mjd_tai))
             else:
-                # https://github.com/legacysurvey/legacypipe/issues/777
-                log.warning('FIXME! --- Need legacypipe/#777 to be addressed!')
-                factor = pixscale / this_pixscale
-                sz = (int(opt_sz[0] * factor), int(opt_sz[1] * factor))
-                crpix = sz[0] / 2. + 0.5
+                wcs = ConstantFitsWcs(wcs)
+            opt_sz = (int(wcs.wcs.imageh), int(wcs.wcs.imagew))
+            sz = (int(wcs.wcs.imageh), int(wcs.wcs.imagew))
+            data[f'{dataset}_wcs'] = wcs
+            data[f'{dataset}_hdr'] = hdr
 
-                img = np.zeros((sz[0], sz[1]), 'f4')
-                wcs2 = Tan(*[float(xx) for xx in [wcs.wcs.crval[0], wcs.wcs.crval[1], crpix,
-                                                  crpix, wcs.wcs.cd[0] / factor, wcs.wcs.cd[1] / factor,
-                                                  wcs.wcs.cd[2] / factor, wcs.wcs.cd[3] / factor,
-                                                  sz[0], sz[1]]])
-                thdr = fitsio.FITSHDR()
-                wcs2.add_to_header(thdr)
-                data[f'{dataset}_hdr'] = thdr
-                data[f'{dataset}_wcs'] = wcs2
-
+            ## https://github.com/legacysurvey/legacypipe/issues/777
+            #factor = pixscale / this_pixscale
+            #sz = (int(opt_sz[0] * factor), int(opt_sz[1] * factor))
+            #crpix = sz[0] / 2. + 0.5
+            #
+            #img = np.zeros((sz[0], sz[1]), 'f4')
+            #wcs2 = Tan(*[float(xx) for xx in [wcs.wcs.crval[0], wcs.wcs.crval[1], crpix,
+            #                                  crpix, wcs.wcs.cd[0] / factor, wcs.wcs.cd[1] / factor,
+            #                                  wcs.wcs.cd[2] / factor, wcs.wcs.cd[3] / factor,
+            #                                  sz[0], sz[1]]])
+            #thdr = fitsio.FITSHDR()
+            #wcs2.add_to_header(thdr)
+            #data[f'{dataset}_hdr'] = thdr
+            #data[f'{dataset}_wcs'] = wcs2
 
             if filt == opt_refband:
                 data['opt_hdr'] = hdr
@@ -3324,6 +3331,25 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             # empty models and maskbits images
             data[f'{dataset}_models'] = np.zeros((len(sample), len(these_bands), *sz), 'f4')
             data[f'{dataset}_maskbits'] = np.zeros((len(sample), *sz), np.int32)
+
+            if read_jpg:
+                if filt == opt_refband:
+                    prefix = 'opt'
+                    suffix = ''
+                elif filt == galex_refband:
+                    prefix = 'galex'
+                    suffix = '-FUVNUV'
+                elif filt == unwise_refband:
+                    prefix = 'unwise'
+                    suffix = '-W1W2'
+
+                for imtype in ['image', 'model', 'resid']:
+                    jpgfile = os.path.join(data['galaxydir'], f"{data['galaxy']}-{imtype}{suffix}.jpg")
+                    if os.path.isfile(jpgfile):
+                        jpg = imread(jpgfile)
+                        data[f'{prefix}_jpg_{imtype}'] = jpg
+                    else:
+                        data[f'{prefix}_jpg_{imtype}'] = np.zeros_like(data['opt_jpg_image'])
 
     else:
         # Read the basic imaging data and masks and build the multiband

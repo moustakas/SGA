@@ -54,6 +54,8 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                 [data[f'opt_jpg_{imtype}'], data[f'unwise_jpg_{imtype}'], data[f'galex_jpg_{imtype}']],
                 [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
                 [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
+
+
             xx.imshow(wimg)
 
             # add the scale bar
@@ -897,9 +899,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
 def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_function,
                unpack_maskbits_function, SGAMASKBITS, APERTURES, run='south', mp=1,
                bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
-               unwise_pixscale=2.75, galex=True, unwise=True,
+               skip_ellipse=False, unwise_pixscale=2.75, galex=True, unwise=True,
                barlen=None, barlabel=None, verbose=False, clobber=False):
-               #radius_mosaic_arcsec=None,
     """Make QA plots.
 
     """
@@ -921,10 +922,16 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, read_jpg=True)
+        galex=galex, skip_ellipse=skip_ellipse, read_jpg=True)
 
     multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
                       barlabel=barlabel, clobber=clobber)
+
+    # all done!
+    if skip_ellipse:
+        dt, unit = get_dt(tall)
+        log.info(f'Total time to generate plots: {dt:.3f} {unit}')
+        return 1
 
     nsample = len(sample)
 

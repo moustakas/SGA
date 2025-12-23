@@ -350,6 +350,8 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
                     if os.path.isfile(jpgfile):
                         jpg = imread(jpgfile)
                         data[f'{prefix}_jpg_{imtype}'] = jpg
+                    else:
+                        data[f'{prefix}_jpg_{imtype}'] = None
 
         # convert WISE images from Vega nanomaggies to AB nanomaggies
         # https://www.legacysurvey.org/dr9/description/#photometry
