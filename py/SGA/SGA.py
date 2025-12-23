@@ -2300,11 +2300,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
-        #if satellite_obj[iobj]:
-        #    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['SATELLITE']
-        #if overlap_obj[iobj]:
-        #    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
-
         # Set MOMENTPOS bit if either: (1) ELLIPSEMODE has it, or (2)
         # not using Tractor positions
         if not use_tractor_position_obj[iobj]:

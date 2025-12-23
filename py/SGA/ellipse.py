@@ -1413,9 +1413,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=False,
-                         nmonte=75, seed=42, verbose=False, skip_ellipse=False,
-                         nowrite=False, clobber=False, qaplot=False,
+                         use_tractor_position=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+                         update_geometry=False, nmonte=75, seed=42, verbose=False,
+                         skip_ellipse=False, nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
@@ -1464,6 +1464,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         # plus mask_minor_galaxies=True (outside the ellipse)
         data, sample = build_multiband_mask(
             data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
+            use_tractor_position=use_tractor_position,
             mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
             mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
 
@@ -1566,6 +1567,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             mask_nearby=mask_nearby, qaplot=qaplot,
                                             FMAJOR_geo=FMAJOR_geo, FMAJOR_final=FMAJOR_final,
                                             mask_minor_galaxies=False,
+                                            use_tractor_position=use_tractor_position,
                                             niter_geometry=niter_geometry,
                                             htmlgalaxydir=htmlgalaxydir)
 

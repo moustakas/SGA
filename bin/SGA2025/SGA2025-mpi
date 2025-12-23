@@ -528,6 +528,7 @@ def main():
                                        unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
                                        mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
                                        nmonte=args.nmonte, seed=args.seed, mask_nearby=mask_nearby,
+                                       use_tractor_position=args.use_tractor_position,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
