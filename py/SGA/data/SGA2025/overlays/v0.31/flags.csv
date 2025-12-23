@@ -107,6 +107,7 @@ OBJNAME,Tucana IV,ELLIPSEMODE,set,"fixgeo,resolved"
 OBJNAME,Tucana V,ELLIPSEMODE,set,fixgeo
 OBJNAME,UGCA 292,ELLIPSEMODE,set,fixgeo
 OBJNAME,UGCA 330,ELLIPSEMODE,set,fixgeo
+OBJNAME,ESO 410-G005,ELLIPSEMODE,set,momentpos
 OBJNAME,UM 461,ELLIPSEMODE,set,momentpos
 OBJNAME,Ursa Major I,ELLIPSEMODE,set,"fixgeo,resolved"
 OBJNAME,Ursa Major II,ELLIPSEMODE,set,"fixgeo,resolved"

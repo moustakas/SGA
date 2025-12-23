@@ -2270,14 +2270,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-    #sample['ELLIPSEMODE'] |= ELLIPSEMODE['MOMENTPOS'] # for testing
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
     for iobj in range(nsample):
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['MOMENTPOS'] != 0:
             use_tractor_position_obj[iobj] = False
-
 
     # Clear bits which may change between the initial and final
     # geometry. Note: SATELLITE and OVERLAP ELLIPSEBIT bits will be
@@ -2307,7 +2305,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         #if overlap_obj[iobj]:
         #    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
 
-        if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['MOMENTPOS']) != 0:
+        # Set MOMENTPOS bit if either: (1) ELLIPSEMODE has it, or (2)
+        # not using Tractor positions
+        if not use_tractor_position_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0:
