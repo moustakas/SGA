@@ -279,7 +279,7 @@ def main():
 
         if args.htmlindex:
             from SGA.html import make_html
-            make_html(sample[groups[0]], mp=args.mp, clobber=args.clobber,
+            make_html(sample[groups[0]], fullsample, mp=args.mp, clobber=args.clobber,
                       region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
             return
 

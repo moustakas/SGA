@@ -1091,7 +1091,7 @@ def find_group_directory(htmldir, region, group_name):
         return group_dir
     return None
 
-def generate_group_html(group_data, sample, htmldir, region, prev_group, next_group, clobber=False):
+def generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber=False):
     """Generate HTML QA page for a single galaxy group."""
     group_name = group_data['GROUP_NAME'][0]
     group_dir = find_group_directory(htmldir, region, group_name)
@@ -1102,6 +1102,7 @@ def generate_group_html(group_data, sample, htmldir, region, prev_group, next_gr
     if output_file.exists() and not clobber:
         log.info("Skipping (exists): {}".format(output_file))
         return True
+    fullgroup_data = fullsample[np.isin(fullsample['GROUP_NAME'], group_data['GROUP_NAME'])]
     objname = group_data['OBJNAME'][0]
     group_ra = group_data['GROUP_RA'][0]
     group_dec = group_data['GROUP_DEC'][0]
@@ -1137,8 +1138,9 @@ def generate_group_html(group_data, sample, htmldir, region, prev_group, next_gr
         "        td { padding: 8px; border: 1px solid #ddd; }",
         "        .section { margin: 30px 0; }",
         "        .group-images img { display: block; max-width: 100%; margin: 10px 0; }",
-        "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; }",
-        "        .galaxy-row img { flex: 1; max-width: 32%; height: auto; }",
+        "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; justify-content: space-between; }",
+        "        .galaxy-row a { display: block; flex: 0 0 32%; }",
+        "        .galaxy-row img { width: 100%; height: auto; display: block; }",
         "        .galaxy-row div { flex: 1; max-width: 32%; }",
         "        img { border: 1px solid #ddd; }",
         "    </style>",
@@ -1169,14 +1171,14 @@ def generate_group_html(group_data, sample, htmldir, region, prev_group, next_gr
     html_lines.append("        <tr><td>Multiplicity</td><td>{}</td></tr>".format(group_mult))
     html_lines.append("        <tr><td>Region</td><td>{}</td></tr>".format(region))
     html_lines.append("    </table>")
-    if len(group_data) > 0:
+    if len(fullgroup_data) > 0:
         html_lines.append("    <h3>Galaxy Properties</h3>")
         html_lines.append("    <table>")
         html_lines.append("        <tr>")
         html_lines.append("            <th>Object Name</th><th>SGA ID</th><th>RA</th><th>Dec</th>")
         html_lines.append("            <th>Diam (arcmin)</th><th>Mag</th><th>b/a</th><th>PA</th><th>Primary</th>")
         html_lines.append("        </tr>")
-        for row in group_data:
+        for row in fullgroup_data:
             html_lines.append("        <tr>")
             html_lines.append("            <td>{}</td>".format(row['OBJNAME']))
             html_lines.append("            <td>{}</td>".format(row['SGAID']))
@@ -1192,10 +1194,10 @@ def generate_group_html(group_data, sample, htmldir, region, prev_group, next_gr
         html_lines.append("    <h3>Additional Metadata</h3>")
         html_lines.append("    <table>")
         html_lines.append("        <tr>")
-        html_lines.append("            <th>Object Name</th><th>PGC</th><th>Sample</th><th>Ellipse Mode</th>")
-        html_lines.append("            <th>Fit Mode</th><th>E(B-V)</th><th>Diam Ref</th>")
+        html_lines.append("            <th>Object Name</th><th>PGC</th><th>SAMPLE</th><th>ELLIPSEMODE</th>")
+        html_lines.append("            <th>FITMODE</th><th>E(B-V)</th><th>Diam Ref</th>")
         html_lines.append("        </tr>")
-        for row in group_data:
+        for row in fullgroup_data:
             sample_flags = ', '.join(decode_bitmask(row['SAMPLE'], SAMPLE))
             ellipse_flags = ', '.join(decode_bitmask(row['ELLIPSEMODE'], ELLIPSEMODE))
             fit_flags = ', '.join(decode_bitmask(row['FITMODE'], FITMODE))
@@ -1217,14 +1219,14 @@ def generate_group_html(group_data, sample, htmldir, region, prev_group, next_gr
     ])
     filepath = group_dir / group_files[0]
     if filepath.exists():
-        html_lines.append("            <img src='{}' alt='{}'>".format(group_files[0], group_files[0]))
+        html_lines.append("            <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto;'></a>".format(group_files[0], group_files[0], group_files[0]))
     else:
         html_lines.append("            <img src='' alt='{}' style='display:none;'>".format(group_files[0]))
         html_lines.append("            <p style='color: #888;'>Missing: {}</p>".format(group_files[0]))
     html_lines.append("            <h3>Ellipse Masking & Geometry</h3>")
     filepath = group_dir / group_files[1]
     if filepath.exists():
-        html_lines.append("            <img src='{}' alt='{}'>".format(group_files[1], group_files[1]))
+        html_lines.append("            <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto;'></a>".format(group_files[1], group_files[1], group_files[1]))
     else:
         html_lines.append("            <img src='' alt='{}' style='display:none;'>".format(group_files[1]))
         html_lines.append("            <p style='color: #888;'>Missing: {}</p>".format(group_files[1]))
@@ -1245,10 +1247,9 @@ def generate_group_html(group_data, sample, htmldir, region, prev_group, next_gr
         for img_type in per_galaxy_types:
             filename = "qa-SGA2025_{}-{}.png".format(galaxy_name, img_type)
             filepath = group_dir / filename
-            if filepath.exists():
-                html_lines.append("            <img src='{}' alt='{}'>".format(filename, filename))
-            else:
-                html_lines.append("            <img src='' alt='{}'>".format(filename))
+            if not filepath.exists():
+                raise FileNotFoundError("Missing required file: {}".format(filepath))
+            html_lines.append("            <a href='{}'><img src='{}' alt='{}'></a>".format(filename, filename, filename))
         html_lines.append("        </div>")
     html_lines.append("    </div>")
     html_lines.extend([
@@ -1263,11 +1264,11 @@ def generate_group_html(group_data, sample, htmldir, region, prev_group, next_gr
 
 def generate_group_html_wrapper(args):
     """Wrapper for multiprocessing."""
-    idx, group_name, sample, htmldir, region, all_groups, clobber = args
+    idx, group_name, sample, fullsample, htmldir, region, all_groups, clobber = args
     group_data = sample[sample['GROUP_NAME'] == group_name]
     prev_group = all_groups[idx - 1] if idx > 0 else None
     next_group = all_groups[idx + 1] if idx < len(all_groups) - 1 else None
-    return generate_group_html(group_data, sample, htmldir, region, prev_group, next_group, clobber)
+    return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
 
 def generate_index(htmldir, region, sample):
     """Generate searchable index.html with links to all group pages."""
@@ -1326,10 +1327,10 @@ def generate_index(htmldir, region, sample):
         "    </div>",
         "    <div class='summary' id='summary'>Showing {} groups</div>".format(len(unique_groups)),
         "    <div class='nav'>",
-        "        <strong>Jump to RA slice:</strong><br>",
+        "        <strong>Jump to an RA slice:</strong><br><br>",
     ]
     for raslice in sorted(groups_by_raslice.keys()):
-        html_lines.append("        <a href='#raslice-{}'>{}</a>".format(raslice, raslice))
+        html_lines.append("        <a href='#raslice-{}' onclick='openSlice(\"{}\"); return true;'>{}</a>".format(raslice, raslice, raslice))
     html_lines.append("    </div>")
     for raslice in sorted(groups_by_raslice.keys()):
         html_lines.append("    <div class='raslice-section'>")
@@ -1410,6 +1411,11 @@ def generate_index(htmldir, region, sample):
         "        table.style.display = 'none';",
         "    }",
         "}",
+        "function openSlice(raslice) {",
+        "    var header = document.getElementById('raslice-' + raslice);",
+        "    var table = header.nextElementSibling;",
+        "    table.style.display = '';",
+        "}",
         "function sortTable(th, col) {",
         "    var table = th.closest('table');",
         "    var tbody = table.getElementsByTagName('tbody')[0];",
@@ -1442,14 +1448,16 @@ def generate_index(htmldir, region, sample):
         f.write('\n'.join(html_lines))
     log.info("Generated index: {}".format(index_file))
 
-def make_html(sample, htmldir=None, region='dr11-south', mp=1, clobber=False, maketrends=False):
+def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False, maketrends=False):
     """
     Generate HTML QA pages for SGA galaxy groups.
 
     Parameters:
     -----------
     sample : astropy.table.Table
-        Table containing all galaxy group data
+        Table containing GROUP_PRIMARY galaxies only
+    fullsample : astropy.table.Table
+        Table containing all galaxies (including non-primary group members)
     htmldir : str
         Base HTML directory (default: $SGA_HTML_DIR)
     region : str
@@ -1475,9 +1483,9 @@ def make_html(sample, htmldir=None, region='dr11-south', mp=1, clobber=False, ma
             group_data = sample[sample['GROUP_NAME'] == group_name]
             prev_group = unique_groups[idx - 1] if idx > 0 else None
             next_group = unique_groups[idx + 1] if idx < len(unique_groups) - 1 else None
-            generate_group_html(group_data, sample, htmldir, region, prev_group, next_group, clobber)
+            generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
     else:
-        pool_args = [(idx, gn, sample, htmldir, region, unique_groups, clobber)
+        pool_args = [(idx, gn, sample, fullsample, htmldir, region, unique_groups, clobber)
                      for idx, gn in enumerate(unique_groups)]
         with multiprocessing.Pool(processes=mp) as pool:
             pool.map(generate_group_html_wrapper, pool_args)
