@@ -1041,8 +1041,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             else:
                 outprefix = 'SGA2025'
                 if False:
-                    version = 'test'
-                    outprefix = 'SGA2025-test'
+                    print('Hack!')
+                    version = 'iband'
+                    outprefix = 'SGA2025-iband'
             outfile = f'{outprefix}-{version}-{region}.fits'
             kdoutfile = f'{outprefix}-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
@@ -2278,7 +2279,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             use_tractor_position_obj[iobj] = False
 
 
-    # Clear bits which may change between the initial and final geometry.
+    # Clear bits which may change between the initial and final
+    # geometry. Note: SATELLITE and OVERLAP ELLIPSEBIT bits will be
+    # set with the final geometry, below, but we clear them here
+    # conservatively.
     sample['ELLIPSEBIT'] &= ~(ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'] |
                               ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'])
     for iobj in range(nsample):
@@ -2297,13 +2301,17 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['NORADWEIGHT']
         if use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
-        if satellite_obj[iobj]:
-            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['SATELLITE']
-        if overlap_obj[iobj]:
-            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
+
+        #if satellite_obj[iobj]:
+        #    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['SATELLITE']
+        #if overlap_obj[iobj]:
+        #    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['OVERLAP']
 
         if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['MOMENTPOS']) != 0:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
+
+        if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
 
 
     # Minimum semi-major axis used for masks (not for stored geometry).
@@ -2524,17 +2532,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
                     log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
                     geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
-                    if geo_iter[2] <= 0.:
-                        log.warning(f'Semi-major axis for {obj["OBJNAME"]} is zero or negative; adopting initial geometry.')
-                        sample['ELLIPSEMODE'][iobj] &= ~ELLIPSEMODE['TRACTORGEO']
-                        sample['ELLIPSEBIT'][iobj] &= ~ELLIPSEBIT['TRACTORGEO']
-                        sample['ELLIPSEMODE'][iobj] |= ELLIPSEMODE['FIXGEO']
-                        sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
-                        geo_iter = geo_init
                 else:
                     if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-                        #log.info('FIXGEO bit set; fixing the elliptical geometry.')
-                        sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
+                        log.info('FIXGEO bit set; fixing the elliptical geometry.')
                     geo_iter = geo_init
 
                 # Recompute sma_moment with the updated mask even when
@@ -2589,6 +2589,19 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
+            if sma <= 0.:
+                msg = f'Semi-major axis for {obj["OBJNAME"]} is zero or negative.'
+                log.critical(msg)
+                raise ValueError(msg)
+            if (ba < 1e-2) or (ba > 1.):
+                msg = f'Ellipticity b/a is unphysical for {obj["OBJNAME"]}.'
+                log.critical(msg)
+                raise ValueError(msg)
+            if (pa < 0.) or (pa > 180.):
+                msg = f'Position angle is out of bounds for {obj["OBJNAME"]}.'
+                log.critical(msg)
+                raise ValueError(msg)
+
             log.info(f'  Iteration {iiter+1}/{niter_actual}: (bx,by)=({bx_init:.1f},{by_init:.1f})-->({bx:.1f},{by:.1f}) ' + \
                      f'b/a={ba_init:.2f}-->{ba:.2f} PA={pa_init:.1f}-->{pa:.1f} degree ' + \
                      f'sma={sma_init*opt_pixscale:.2f}-->{sma*opt_pixscale:.2f} arcsec ' + \
@@ -2822,9 +2835,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         for indx in refindx:
             [refbx, refby, refsma, refba, refpa] = geo_final[indx, :]
             refsma = max(max(refsma, SMA_MASK_MIN_PIX), sample['SMA_MASK'][indx] / opt_pixscale)
-            Iclose = ellipses_overlap(bx, by, sma_mask, ba, pa,
-                                      refbx, refby, refsma, refba, refpa)
-            if Iclose:
+            center_inside = in_ellipse_mask(refbx, width-refby, refsma, refsma*refba,
+                                            refpa, bx, width-by)
+            if center_inside:
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['BLENDED']
                 break
 
