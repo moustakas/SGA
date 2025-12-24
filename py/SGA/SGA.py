@@ -487,8 +487,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     if lvd:
         from SGA.ellipse import ELLIPSEMODE
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
-        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
+        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
+        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
         #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
@@ -2270,8 +2270,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-    print('Testing!!')
-    sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
+    #print('Testing!!')
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['MOMENTPOS']
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
@@ -2594,6 +2595,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if (ba < 1e-2) or (ba > 1.):
                 msg = f'Ellipticity b/a is unphysical for {obj["OBJNAME"]}.'
                 log.critical(msg)
+                pdb.set_trace()
                 raise ValueError(msg)
             if (pa < 0.) or (pa > 180.):
                 msg = f'Position angle is out of bounds for {obj["OBJNAME"]}.'
@@ -2994,9 +2996,10 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'MAG']:
             sample.rename_column(col, f'{col}_INIT')
         #print('###########################')
-        #sample['DIAM_INIT'] = 1.5
-        #sample['PA_INIT'] = 117.807724
-        #sample['BA_INIT'] = 0.5671569
+        #print('Hack!')
+        #sample['DIAM_INIT'] = 1.1
+        #sample['PA_INIT'] = 0.0
+        #sample['BA_INIT'] = 1.0
         sample.rename_column('DIAM_REF', 'DIAM_INIT_REF')
         sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
                           index=np.where(np.array(sample.colnames) == 'DIAM_INIT')[0][0])
