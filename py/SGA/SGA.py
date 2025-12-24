@@ -2270,6 +2270,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
+    print('HACK!!')
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
+    sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
@@ -2523,15 +2526,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # coadded image.
             wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-            if (not geometry_mode) or (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0):
-                if (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
-                    log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
-                    geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
-                else:
-                    if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
-                        log.info('FIXGEO bit set; fixing the elliptical geometry.')
-                    geo_iter = geo_init
-
+            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+                log.info('FIXGEO bit set; fixing the elliptical geometry.')
+                geo_iter = geo_init
+            elif (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
+                log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
+                geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
+            elif not geometry_mode:
                 # Recompute sma_moment with the updated mask even when
                 # not updating the geometry; fix bx, by, ba, and pa to
                 # their previously determined values. NB: set
@@ -2547,6 +2548,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_pixscale, props=props, ref_tractor=objsrc,
                     moment_method=moment_method,
                     use_tractor_position=use_tractor_position_obj[iobj])
+                geo_iter = geo_init
                 geo_iter[2] = sma_new
             else:
                 # Optionally use Tractor for small overlapping satellites.
