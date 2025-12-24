@@ -32,7 +32,7 @@ ELLIPSEMODE = dict(
     FORCEGAIA = 2**3,   # force Gaia source detection and photometry within the whole field
     LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
     MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
-                        # mask (e.g., within a cluster environment)
+                        # ellipse (e.g., within a cluster environment)
     MOMENTPOS = 2**6,   # use the light-weighted (not Tractor) center
     TRACTORGEO = 2**7,  # use the Tractor (not light-weighted) geometry
     NORADWEIGHT = 2**8, # derive the moment geometry without radial weighting
@@ -51,6 +51,9 @@ ELLIPSEBIT = dict(
     MOMENTPOS = 2**9,          # light-weighted (not Tractor) center
     TRACTORGEO = 2**10,        # used the Tractor (not light-weighted) geometry
     NORADWEIGHT = 2**11,       # moment geometry derived without radial weighting
+    LESSMASKING = 2**12,       # Gaia stars were subtracted but not threshold-masked
+    MOREMASKING = 2**13,       # extended sources were threshold-masked even within the SGA ellipse
+    FAILGEO = 2**14,           # failed to derive the ellipse geometry (reverted to initial geometry)
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds

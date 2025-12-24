@@ -2311,6 +2311,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
 
+        if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['LESSMASKING'] != 0:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LESSMASKING']
+
+        if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['MOREMASKING'] != 0:
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOREMASKING']
+
 
     # Minimum semi-major axis used for masks (not for stored geometry).
     SMA_MASK_MIN_ARCSEC = 5.0 # [arcsec]
@@ -2337,8 +2343,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             #log.info('LESSMASKING bit set; no Gaia threshold-masking.')
             opt_gaiamask_obj[:, :] = False
 
-        ## DEPRECATED - If the MOREMASKING bit is set, mask all
-        ## extended sources, whether or not they're inside the
+        ## Possibly deprected - If the MOREMASKING bit is set, mask
+        ## all extended sources, whether or not they're inside the
         ## elliptical mask.
         #if obj['ELLIPSEMODE'] & ELLIPSEMODE['MOREMASKING'] != 0:
         #    #log.info('MOREMASKING bit set; masking all extended sources.')
@@ -2588,24 +2594,28 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
-            if sma <= 0.:
-                msg = f'Semi-major axis for {obj["OBJNAME"]} is zero or negative.'
-                log.critical(msg)
-                raise ValueError(msg)
-            if (ba < 1e-2) or (ba > 1.):
-                msg = f'Ellipticity b/a is unphysical for {obj["OBJNAME"]}.'
-                log.critical(msg)
-                pdb.set_trace()
-                raise ValueError(msg)
-            if (pa < 0.) or (pa > 180.):
-                msg = f'Position angle is out of bounds for {obj["OBJNAME"]}.'
-                log.critical(msg)
-                raise ValueError(msg)
 
             log.info(f'  Iteration {iiter+1}/{niter_actual}: (bx,by)=({bx_init:.1f},{by_init:.1f})-->({bx:.1f},{by:.1f}) ' + \
                      f'b/a={ba_init:.2f}-->{ba:.2f} PA={pa_init:.1f}-->{pa:.1f} degree ' + \
                      f'sma={sma_init*opt_pixscale:.2f}-->{sma*opt_pixscale:.2f} arcsec ' + \
                      f'[sma_mask={sma_mask*opt_pixscale:.2f} arcsec]')
+
+            # Validate geometry; revert to initial if invalid
+            geometry_failed = False
+            if sma <= 0.:
+                log.warning(f'Semi-major axis for {obj["OBJNAME"]} is zero or negative; reverting to initial geometry.')
+                geometry_failed = True
+            elif (ba < 1e-2) or (ba > 1.):
+                log.warning(f'Ellipticity b/a={ba:.3f} is unphysical for {obj["OBJNAME"]}; reverting to initial geometry.')
+                geometry_failed = True
+            elif (pa < 0.) or (pa > 180.):
+                log.warning(f'Position angle PA={pa:.1f} is out of bounds for {obj["OBJNAME"]}; reverting to initial geometry.')
+                geometry_failed = True
+
+            if geometry_failed:
+                [bx, by, sma, ba, pa] = geo_init
+                sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FAILGEO']
+                break
 
         # store shifts
         dshift_arcsec_arr[iobj] = dshift_arcsec
