@@ -2270,9 +2270,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-    print('HACK!!')
     #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
-    sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
