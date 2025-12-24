@@ -489,8 +489,9 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     # select the LVD sample
     if lvd:
         from SGA.ellipse import ELLIPSEMODE
+        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
-        is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
+        #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]
@@ -2270,8 +2271,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
-    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
+    print('Testing!!')
+    sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)

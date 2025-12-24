@@ -160,7 +160,8 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     sz = (width, width)
 
     GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
-    GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
+    GEOFINALCOLS = ['BX', 'BY', 'SMA_MASK', 'BA_MOMENT', 'PA_MOMENT']
+    #GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
 
     # coadded optical, IR, and UV images and initial geometry
     imgbands = [opt_bands, data['unwise_bands'], data['galex_bands']]
@@ -1276,6 +1277,9 @@ def generate_index(htmldir, region, sample):
     group_info = {}
     for group_name in unique_groups:
         raslice = group_name[:3]
+        group_dir = find_group_directory(htmldir, region, group_name)
+        if group_dir is None:
+            continue
         if raslice not in groups_by_raslice:
             groups_by_raslice[raslice] = []
         groups_by_raslice[raslice].append(group_name)
@@ -1348,8 +1352,6 @@ def generate_index(htmldir, region, sample):
         for group_name in groups_by_raslice[raslice]:
             info = group_info[group_name]
             group_dir = find_group_directory(htmldir, region, group_name)
-            if group_dir is None:
-                continue
             html_path = "{}/{}/{}/{}.html".format(region, raslice, group_name, group_name)
             montage_file = "qa-SGA2025_{}-montage.png".format(group_name)
             montage_path = group_dir / montage_file
@@ -1476,16 +1478,21 @@ def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobb
     else:
         htmldir = Path(htmldir)
     unique_groups = np.unique(sample['GROUP_NAME'])
-    log.info("Generating HTML for {} groups in region {}".format(len(unique_groups), region))
+    valid_groups = []
+    for group_name in unique_groups:
+        if find_group_directory(htmldir, region, group_name) is not None:
+            valid_groups.append(group_name)
+    valid_groups = np.array(valid_groups)
+    log.info("Generating HTML for {} groups in region {}".format(len(valid_groups), region))
     if mp == 1:
-        for idx, group_name in enumerate(unique_groups):
+        for idx, group_name in enumerate(valid_groups):
             group_data = sample[sample['GROUP_NAME'] == group_name]
-            prev_group = unique_groups[idx - 1] if idx > 0 else None
-            next_group = unique_groups[idx + 1] if idx < len(unique_groups) - 1 else None
+            prev_group = valid_groups[idx - 1] if idx > 0 else None
+            next_group = valid_groups[idx + 1] if idx < len(valid_groups) - 1 else None
             generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
     else:
-        pool_args = [(idx, gn, sample, fullsample, htmldir, region, unique_groups, clobber)
-                     for idx, gn in enumerate(unique_groups)]
+        pool_args = [(idx, gn, sample, fullsample, htmldir, region, valid_groups, clobber)
+                     for idx, gn in enumerate(valid_groups)]
         with multiprocessing.Pool(processes=mp) as pool:
             pool.map(generate_group_html_wrapper, pool_args)
     generate_index(htmldir, region, sample)

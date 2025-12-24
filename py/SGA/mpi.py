@@ -54,6 +54,8 @@ def mpi_args():
 
     parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
     parser.add_argument('--test-bricks', action='store_true', help='Read the sample of test bricks.')
+    parser.add_argument('--noradweight', dest='use_radial_weight', action='store_false',
+                        help='No radial weighting when determining moment geometry.')
     parser.add_argument('--momentpos', dest='use_tractor_position', action='store_false',
                         help='Use the light-weighted (not Tractor) position during ellipse-fitting.')
 
