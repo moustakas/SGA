@@ -365,9 +365,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     """
     import fitsio
 
-    #if lvd:
-    #    no_groups = True # NB
-
     if first and last:
         if first > last:
             msg = f'Index first cannot be greater than index last, {first} > {last}'
@@ -489,6 +486,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     # select the LVD sample
     if lvd:
         from SGA.ellipse import ELLIPSEMODE
+        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
+        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
         #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
@@ -2271,8 +2270,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-    print('Testing!!')
-    sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
+    #print('Testing!!')
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
@@ -2462,8 +2461,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # mask edges aggressively to not bias our 'moment' geometry
             _mask_edges(iter_brightstarmask)
 
-            # never veto the "core" brightstarmask
-            iter_brightstarmask |= opt_brightstarmask_core
+            # never veto the "core" brightstarmask except for FIXGEO
+            # or TRACTORGEO
+            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
+                iter_brightstarmask |= opt_brightstarmask_core
 
             # Build a galaxy mask from extended sources, split into
             # "major" and "minor" based on flux ratio relative to the
@@ -2720,8 +2721,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
 
-        # never veto the "core" brightstarmask
-        final_brightstarmask |= opt_brightstarmask_core
+        # never veto the "core" brightstarmask except for FIXGEO
+        # or TRACTORGEO
+        if sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
+            final_brightstarmask |= opt_brightstarmask_core
 
         # Build the final galaxy mask
         opt_galmask = np.zeros(sz, bool)
