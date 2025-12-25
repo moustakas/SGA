@@ -3519,6 +3519,7 @@ def apply_updates_inplace(parent, updates):
         fld = row['FIELD']
         idx = np.where(parent['OBJNAME'] == obj)[0]
         if idx.size == 0:
+            #continue
             raise ValueError(f"updates: OBJNAME not found: {obj}")
         # cast to parent dtype
         dt = parent[fld].dtype
@@ -3636,7 +3637,9 @@ def apply_adds(parent, adds, regionbits, nocuts):
     try:
         assert(len(parent) == len(np.unique(parent['SGAID'])))
     except:
-        pdb.set_trace()
+        msg = 'Non-unique SGAID values!'
+        log.critical(msg)
+        raise ValueError(msg)
 
     return parent
 
