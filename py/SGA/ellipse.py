@@ -32,22 +32,28 @@ ELLIPSEMODE = dict(
     FORCEGAIA = 2**3,   # force Gaia source detection and photometry within the whole field
     LESSMASKING = 2**4, # subtract but do not threshold-mask Gaia stars
     MOREMASKING = 2**5, # threshold-mask extended sources even within the SGA
-                        # mask (e.g., within a cluster environment)
+                        # ellipse (e.g., within a cluster environment)
     MOMENTPOS = 2**6,   # use the light-weighted (not Tractor) center
     TRACTORGEO = 2**7,  # use the Tractor (not light-weighted) geometry
-    RADWEIGHT = 2**8,   # derive the moment geometry after weighting radially as r^1.5
+    NORADWEIGHT = 2**8, # derive the moment geometry without radial weighting
 )
 
 ELLIPSEBIT = dict(
     NOTRACTOR = 2**0,          # SGA source has no corresponding Tractor source
-    BLENDED = 2**1,            # SGA center is located within the elliptical mask of another SGA source
-    LARGESHIFT = 2**2,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
-    LARGESHIFT_TRACTOR = 2**3, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
-    MAJORGAL = 2**4,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
-    OVERLAP = 2**5,            # any part of the initial SGA ellipse overlaps another SGA ellipse
-    SATELLITE = 2**6,          # satellite of another larger galaxy
-    TRACTORGEO = 2**7,         # used the Tractor (not light-weighted) geometry
-    RADWEIGHT = 2**8,          # moment geometry derived using radial weighting
+    TRACTORPSF = 2**1,         # SGA source fit by Tractor as a PSF
+    FIXGEO = 2**2,             # fixed ellipse geometry (from ELLIPSEMODE)
+    BLENDED = 2**3,            # SGA center is located within the elliptical mask of another SGA source
+    LARGESHIFT = 2**4,         # >MAXSHIFT_ARCSEC shift between the initial and final ellipse position
+    LARGESHIFT_TRACTOR = 2**5, # >MAXSHIFT_ARCSEC shift between the Tractor and final ellipse position
+    MAJORGAL = 2**6,           # nearby bright galaxy (>=XX% of the SGA source) subtracted
+    OVERLAP = 2**7,            # any part of the initial SGA ellipse overlaps another SGA ellipse
+    SATELLITE = 2**8,          # satellite of another larger galaxy
+    MOMENTPOS = 2**9,          # light-weighted (not Tractor) center
+    TRACTORGEO = 2**10,        # used the Tractor (not light-weighted) geometry
+    NORADWEIGHT = 2**11,       # moment geometry derived without radial weighting
+    LESSMASKING = 2**12,       # Gaia stars were subtracted but not threshold-masked
+    MOREMASKING = 2**13,       # extended sources were threshold-masked even within the SGA ellipse
+    FAILGEO = 2**14,           # failed to derive the ellipse geometry (reverted to initial geometry)
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
@@ -1375,7 +1381,7 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
                 opt_sma_array_pix, info = build_sma_opt(
                     s95_pix=max(semia_pix, 3*psf_fwhm_pix), ba=ba, psf_fwhm_pix=psf_fwhm_pix,
                     inner_step_pix=1., min_pixels_per_annulus=15,
-                    frac_step=0.15, amax_factor=3.)
+                    frac_step=0.15, amax_factor=5.)
                 sma_array_pix = np.copy(opt_sma_array_pix)
             else:
                 allbands = bands
@@ -1410,9 +1416,10 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
                          bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
                          unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES, update_geometry=False,
-                         nmonte=75, seed=42, verbose=False, skip_ellipse=False,
-                         nowrite=False, clobber=False, qaplot=False,
+                         use_tractor_position=True, use_radial_weight=True,
+                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+                         update_geometry=False, nmonte=75, seed=42, verbose=False,
+                         skip_ellipse=False, nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
@@ -1461,6 +1468,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         # plus mask_minor_galaxies=True (outside the ellipse)
         data, sample = build_multiband_mask(
             data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
+            use_tractor_position=use_tractor_position,
+            use_radial_weight=use_radial_weight,
             mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
             mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
 
@@ -1563,6 +1572,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             mask_nearby=mask_nearby, qaplot=qaplot,
                                             FMAJOR_geo=FMAJOR_geo, FMAJOR_final=FMAJOR_final,
                                             mask_minor_galaxies=False,
+                                            use_tractor_position=use_tractor_position,
+                                            use_radial_weight=use_radial_weight,
                                             niter_geometry=niter_geometry,
                                             htmlgalaxydir=htmlgalaxydir)
 

@@ -9,6 +9,7 @@ import pdb
 
 import os, sys, re, time
 import numpy as np
+import fitsio
 from glob import glob
 import multiprocessing
 from astropy.table import Table, vstack
@@ -17,6 +18,7 @@ from SGA.geometry import choose_geometry
 from SGA.io import get_raslice
 from SGA.SGA import sga2025_name
 from SGA.logger import log
+from SGA.coadds import PIXSCALE, GALEX_PIXSCALE, UNWISE_PIXSCALE
 
 
 def get_pixscale_and_width(diam, mindiam=None, rescale=False, maxdiam_arcmin=25.,
@@ -536,8 +538,9 @@ def _cutout_one(args):
 
 
 def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
-               optical_layer, optical_bands, dry_run, fits_cutouts,
-               ivar_cutouts, unwise_cutouts, galex_cutouts, rank, iobj):
+               unwise_pixscale, galex_pixscale, optical_layer, optical_bands,
+               dry_run, fits_cutouts, ivar_cutouts, unwise_cutouts,
+               galex_cutouts, rank, iobj):
     """
     pixscale = 0.262
     width = int(30 / pixscale)   # =114
@@ -563,19 +566,19 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
         allbands += [optical_bands, ]
     if unwise_cutouts:
         unwise_width = int(optical_width * optical_pixscale / UNWISE_PIXSCALE)
-        unwise_suffixes = ['-W1W2.fits', '-W3W4.fits', ]
+        unwise_suffixes = ['-W1W2.jpeg', '-W1W2.fits', '-W3W4.fits', ]
         suffixes += unwise_suffixes
-        layers += ['unwise-neo7', 'unwise-w3w4', ]
-        pixscales += [UNWISE_PIXSCALE, UNWISE_PIXSCALE, ]
-        widths += [unwise_width, unwise_width, ]
-        allbands += [['1', '2'], ['3', '4'], ]
+        layers += ['unwise-neo7', 'unwise-neo7', 'unwise-w3w4', ]
+        pixscales += [UNWISE_PIXSCALE, UNWISE_PIXSCALE, UNWISE_PIXSCALE, ]
+        widths += [unwise_width, unwise_width, unwise_width, ]
+        allbands += [['1', '2'], ['1', '2'], ['3', '4'], ]
     if galex_cutouts:
         galex_width = int(optical_width * optical_pixscale / GALEX_PIXSCALE)
-        suffixes += ['-galex.fits', ]
-        layers += ['galex', ]
-        pixscales += [GALEX_PIXSCALE, ]
-        widths += [galex_width, ]
-        allbands += [['f', 'n'], ]
+        suffixes += ['-galex.jpeg', '-galex.fits', ]
+        layers += ['galex', 'galex', ]
+        pixscales += [GALEX_PIXSCALE, GALEX_PIXSCALE, ]
+        widths += [galex_width, galex_width, ]
+        allbands += [['f', 'n'], ['f', 'n'], ]
 
     for suffix, layer, pixscale, width, bands in zip(suffixes, layers, pixscales, widths, allbands):
         outfile = basefile+suffix
@@ -604,7 +607,7 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
 
     # merge the W1W2 and W3W4 files
     if unwise_cutouts:
-        for ii, suffix in enumerate(unwise_suffixes):
+        for ii, suffix in enumerate(unwise_suffixes[1:]): # offset from jpeg
             infile = basefile+suffix
             if ii == 0:
                 hdr = fitsio.read_header(infile)
@@ -691,11 +694,12 @@ def get_basefiles_one(obj, objname, cutoutdir, width=None, group=False,
 
 
 def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
-               default_bands=['g', 'r', 'i', 'z'], comm=None, mp=1, group=False,
-               cutoutdir='.', base_cutoutdir='.', maxdiam_arcmin=25., rescale=False,
-               diamcolumn=None, overwrite=False, fits_cutouts=True, ivar_cutouts=False,
-               unwise_cutouts=False, galex_cutouts=False, dry_run=False,
-               verbose=False, use_catalog_objname=False):
+               unwise_pixscale=2.75, galex_pixscale=1.5, default_bands=['g', 'r', 'i', 'z'],
+               comm=None, mp=1, group=False, cutoutdir='.', base_cutoutdir='.',
+               maxdiam_arcmin=25., rescale=False, diamcolumn=None, overwrite=False,
+               fits_cutouts=True, ivar_cutouts=False, unwise_cutouts=False,
+               galex_cutouts=False, dry_run=False, verbose=False,
+               use_catalog_objname=False):
 
     if comm is None:
         rank, size = 0, 1
@@ -753,8 +757,9 @@ def do_cutouts(cat, layer='ls-dr9', default_width=152, default_pixscale=0.262,
         return
 
     mpargs = [(basefiles[indx[iobj]], allra[indx[iobj]], alldec[indx[iobj]],
-               width[indx[iobj]], pixscale[indx[iobj]], layer, default_bands,
-               dry_run, fits_cutouts, ivar_cutouts, unwise_cutouts, galex_cutouts,
+               width[indx[iobj]], pixscale[indx[iobj]], unwise_pixscale,
+               galex_pixscale, layer, default_bands, dry_run, fits_cutouts,
+               ivar_cutouts, unwise_cutouts, galex_cutouts,
                rank, iobj) for iobj in range(len(indx))]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:

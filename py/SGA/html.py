@@ -1,98 +1,23 @@
+#!/usr/bin/env python
 """
 SGA.html
 ========
 
-Code to generate HTML content.
+Generate HTML QA pages for SGA galaxy groups with searchable index.
 
 """
 import pdb
 
-import os, subprocess
+import os
 import numpy as np
 from astropy.table import Table, vstack, join
+from pathlib import Path
+from glob import glob
+import multiprocessing
+from SGA.SGA import SAMPLE, RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
+from SGA.ellipse import FITMODE, ELLIPSEMODE, REF_APERTURES
 
-from SGA.ellipse import REF_APERTURES
-from SGA.SGA import RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
 from SGA.logger import log
-
-
-def _get_cutouts_one(args):
-    """Wrapper function for the multiprocessing."""
-    return get_cutouts_one(*args)
-
-
-def get_cutouts_one(group, clobber=False):
-    """Get viewer cutouts for a single galaxy."""
-
-    layer = get_layer(group)
-    groupname = get_groupname(group)
-
-    diam = group_diameter(group) # [arcmin]
-    size = np.ceil(diam * 60 / PIXSCALE).astype('int') # [pixels]
-
-    imageurl = '{}/?ra={:.8f}&dec={:.8f}&pixscale={:.3f}&size={:g}&layer={}'.format(
-        cutouturl, group['ra'], group['dec'], PIXSCALE, size, layer)
-
-    jpgfile = os.path.join(jpgdir, '{}.jpg'.format(groupname))
-    cmd = 'wget --continue -O {:s} "{:s}"' .format(jpgfile, imageurl)
-    if os.path.isfile(jpgfile) and not clobber:
-        print('File {} exists...skipping.'.format(jpgfile))
-    else:
-        if os.path.isfile(jpgfile):
-            os.remove(jpgfile)
-        print(cmd)
-        os.system(cmd)
-
-
-def get_cutouts(groupsample, mp=1, clobber=False):
-    """Get viewer cutouts of the whole sample."""
-
-    cutoutargs = list()
-    for gg in groupsample:
-        cutoutargs.append( (gg, clobber) )
-
-    if mp > 1:
-        p = multiprocessing.Pool(mp)
-        p.map(_get_cutouts_one, cutoutargs)
-        p.close()
-    else:
-        for args in cutoutargs:
-            _get_cutouts_one(args)
-    return
-
-
-def html_javadate():
-    """Return a string that embeds a date in a webpage using Javascript.
-
-    """
-    import textwrap
-
-    js = textwrap.dedent("""
-    <SCRIPT LANGUAGE="JavaScript">
-    var months = new Array(13);
-    months[1] = "January";
-    months[2] = "February";
-    months[3] = "March";
-    months[4] = "April";
-    months[5] = "May";
-    months[6] = "June";
-    months[7] = "July";
-    months[8] = "August";
-    months[9] = "September";
-    months[10] = "October";
-    months[11] = "November";
-    months[12] = "December";
-    var dateObj = new Date(document.lastModified)
-    var lmonth = months[dateObj.getMonth() + 1]
-    var date = dateObj.getDate()
-    var fyear = dateObj.getYear()
-    if (fyear < 2000)
-    fyear = fyear + 1900
-    document.write(" " + fyear + " " + lmonth + " " + date)
-    </SCRIPT>
-    """)
-
-    return js
 
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
@@ -133,6 +58,8 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                 [data[f'opt_jpg_{imtype}'], data[f'unwise_jpg_{imtype}'], data[f'galex_jpg_{imtype}']],
                 [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
                 [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
+
+
             xx.imshow(wimg)
 
             # add the scale bar
@@ -976,14 +903,17 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
 def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_function,
                unpack_maskbits_function, SGAMASKBITS, APERTURES, run='south', mp=1,
                bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
-               unwise_pixscale=2.75, galex=True, unwise=True,
+               skip_ellipse=False, unwise_pixscale=2.75, galex=True, unwise=True,
                barlen=None, barlabel=None, verbose=False, clobber=False):
-               #radius_mosaic_arcsec=None,
     """Make QA plots.
 
     """
-    from glob import glob
     import fitsio
+    from time import time
+    from glob import glob
+    from SGA.util import get_dt
+
+    tall = time()
 
     allbands = ''.join(bands)
     datasets = ['opt']
@@ -996,10 +926,16 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, read_jpg=True)
+        galex=galex, skip_ellipse=skip_ellipse, read_jpg=True)
 
     multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
                       barlabel=barlabel, clobber=clobber)
+
+    # all done!
+    if skip_ellipse:
+        dt, unit = get_dt(tall)
+        log.info(f'Total time to generate plots: {dt:.3f} {unit}')
+        return 1
 
     nsample = len(sample)
 
@@ -1106,656 +1042,460 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                            SGAMASKBITS, barlen=barlen, barlabel=barlabel,
                            clobber=clobber)
 
+    dt, unit = get_dt(tall)
+    log.info(f'Total time to generate plots: {dt:.3f} {unit}')
     return 1
 
+def decode_bitmask(value, bitdict):
+    """Decode a bitmask value into list of flag names."""
+    flags = []
+    for name, bit in bitdict.items():
+        if value & bit:
+            flags.append(name)
+    return flags if flags else ['None']
 
-def skyserver_link(sdss_objid):
-    return 'http://skyserver.sdss.org/dr14/en/tools/explore/summary.aspx?id={:d}'.format(sdss_objid)
+def get_raslice(ra):
+    """Get RA slice from RA in degrees."""
+    return "{:03d}".format(int(ra) % 360)
 
+def get_galaxy_names(group_dir):
+    """Extract unique galaxy names from filenames in the directory."""
+    galaxy_names = []
+    for onefile in glob(os.path.join(group_dir, "qa-SGA2025_J*")):
+        stem = os.path.basename(onefile)
+        if stem.startswith("qa-SGA2025_"):
+            remainder = stem.replace("qa-SGA2025_", "", 1)
+            parts = remainder.rsplit("-", 1)
+            if len(parts) >= 2:
+                galaxy_name = parts[0]
+                galaxy_names.append(galaxy_name)
+    return np.unique(galaxy_names).tolist()
 
-# Get the viewer link
-def viewer_link(ra, dec, width, sga=False, manga=False, dr10=False):
-    baseurl = 'http://legacysurvey.org/viewer-dev/'
-    if width > 1200:
-        zoom = 13
-    elif (width > 400) * (width < 1200):
-        zoom = 14
+def get_sky_viewer_url(ra, dec, diameter, region):
+    """Generate Legacy Survey sky viewer URL."""
+    if region == 'dr11-south':
+        layer = 'ls-dr11-early-v2'
     else:
-        zoom = 15
+        layer = 'ls-dr9-north'
+    diam_arcmin = diameter
+    zoom = max(11, min(16, int(14 - np.log10(max(0.3, diam_arcmin)))))
+    #zoom = max(10, min(16, int(16 - np.log10(max(1.0, diam_arcmin)))))
+    url = "https://www.legacysurvey.org/viewer-dev/?ra={:.4f}&dec={:.4f}&layer={}&zoom={}&sga2025-parent".format(
+        ra, dec, layer, zoom)
+    return url
 
-    if dr10:
-        drlayer = 'ls-dr10'
+def find_group_directory(htmldir, region, group_name):
+    """Find the directory for a given group using raslice from group_name."""
+    raslice = group_name[:3]
+    group_dir = htmldir / region / raslice / group_name
+    if group_dir.exists():
+        return group_dir
+    return None
+
+def generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber=False):
+    """Generate HTML QA page for a single galaxy group."""
+    group_name = group_data['GROUP_NAME'][0]
+    group_dir = find_group_directory(htmldir, region, group_name)
+    if group_dir is None:
+        log.warning("Error: Could not find directory for group {} in region {}".format(group_name, region))
+        return False
+    output_file = group_dir / "{}.html".format(group_name)
+    if output_file.exists() and not clobber:
+        log.info("Skipping (exists): {}".format(output_file))
+        return True
+    fullgroup_data = fullsample[np.isin(fullsample['GROUP_NAME'], group_data['GROUP_NAME'])]
+    objname = group_data['OBJNAME'][0]
+    group_ra = group_data['GROUP_RA'][0]
+    group_dec = group_data['GROUP_DEC'][0]
+    group_diam = group_data['GROUP_DIAMETER'][0]
+    group_mult = group_data['GROUP_MULT'][0]
+    raslice = group_name[:3]
+    sky_url = get_sky_viewer_url(group_ra, group_dec, group_diam, region)
+    group_files = [
+        "qa-SGA2025_{}-montage.png".format(group_name),
+        "qa-SGA2025_{}-ellipsemask.png".format(group_name),
+    ]
+    per_galaxy_types = ["sbprofiles", "cog", "sed"]
+    per_galaxy_titles = ["Surface Brightness", "Curve of Growth", "Spectral Energy Distribution"]
+    galaxy_names = get_galaxy_names(str(group_dir))
+    html_lines = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head>",
+        "    <title>SGA2025: {}</title>".format(objname),
+        "    <style>",
+        "        body { font-family: Arial, sans-serif; margin: 0; padding: 60px 20px 20px 20px; }",
+        "        .navbar { position: fixed; top: 0; left: 0; right: 0; background-color: #333; padding: 10px 20px; z-index: 1000; }",
+        "        .navbar a { color: white; text-decoration: none; margin-right: 20px; font-weight: bold; }",
+        "        .navbar a:hover { text-decoration: underline; }",
+        "        .breadcrumb { color: #666; margin-bottom: 10px; font-size: 14px; }",
+        "        .breadcrumb a { color: #0066cc; text-decoration: none; }",
+        "        .breadcrumb a:hover { text-decoration: underline; }",
+        "        h1 { color: #333; margin-bottom: 5px; }",
+        "        h2 { color: #555; margin-top: 5px; font-weight: normal; font-size: 18px; }",
+        "        h3 { color: #555; margin-top: 20px; margin-bottom: 10px; }",
+        "        table { border-collapse: collapse; margin: 20px 0; }",
+        "        th { background-color: #f0f0f0; padding: 8px; border: 1px solid #ddd; text-align: left; }",
+        "        td { padding: 8px; border: 1px solid #ddd; }",
+        "        .section { margin: 30px 0; }",
+        "        .group-images img { display: block; max-width: 100%; margin: 10px 0; }",
+        "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; justify-content: space-between; }",
+        "        .galaxy-row a { display: block; flex: 0 0 32%; }",
+        "        .galaxy-row img { width: 100%; height: auto; display: block; }",
+        "        .galaxy-row div { flex: 1; max-width: 32%; }",
+        "        img { border: 1px solid #ddd; }",
+        "    </style>",
+        "</head>",
+        "<body>",
+        "    <div class='navbar'>",
+        "        <a href='../../../index-{}.html'>Home</a>".format(region),
+        "        <a href='../../{}/{}/{}.html'>Previous ({})</a>".format(prev_group[:3], prev_group, prev_group, prev_group) if prev_group else "",
+        "        <a href='../../{}/{}/{}.html'>Next ({})</a>".format(next_group[:3], next_group, next_group, next_group) if next_group else "",
+        "        <a href='{}' target='_blank'>Sky Viewer</a>".format(sky_url),
+        "    </div>",
+        "    <div class='breadcrumb'>",
+        "        <a href='../../../index-{}.html'>Home</a> &gt; ".format(region),
+        "        <a href='../../../index-{}.html#raslice-{}'>{}</a> &gt; ".format(region, raslice, region),
+        "        <a href='../../../index-{}.html#raslice-{}'>RA {}</a> &gt; {}".format(region, raslice, raslice, objname),
+        "    </div>",
+        "    <h1>{}</h1>".format(objname),
+        "    <h2>Group: {} | RA Slice: {}</h2>".format(group_name, raslice),
+    ]
+    html_lines.append("    <h3>Group Properties</h3>")
+    html_lines.append("    <table>")
+    html_lines.append("        <tr><th>Property</th><th>Value</th></tr>")
+    html_lines.append("        <tr><td>Group Name</td><td>{}</td></tr>".format(group_name))
+    html_lines.append("        <tr><td>Object Name</td><td>{}</td></tr>".format(objname))
+    html_lines.append("        <tr><td>RA (deg)</td><td>{:.6f}</td></tr>".format(group_ra))
+    html_lines.append("        <tr><td>Dec (deg)</td><td>{:.6f}</td></tr>".format(group_dec))
+    html_lines.append("        <tr><td>Diameter (arcmin)</td><td>{:.2f}</td></tr>".format(group_diam))
+    html_lines.append("        <tr><td>Multiplicity</td><td>{}</td></tr>".format(group_mult))
+    html_lines.append("        <tr><td>Region</td><td>{}</td></tr>".format(region))
+    html_lines.append("    </table>")
+    if len(fullgroup_data) > 0:
+        html_lines.append("    <h3>Galaxy Properties</h3>")
+        html_lines.append("    <table>")
+        html_lines.append("        <tr>")
+        html_lines.append("            <th>Object Name</th><th>SGA ID</th><th>RA</th><th>Dec</th>")
+        html_lines.append("            <th>Diam (arcmin)</th><th>Mag</th><th>b/a</th><th>PA</th><th>Primary</th>")
+        html_lines.append("        </tr>")
+        for row in fullgroup_data:
+            html_lines.append("        <tr>")
+            html_lines.append("            <td>{}</td>".format(row['OBJNAME']))
+            html_lines.append("            <td>{}</td>".format(row['SGAID']))
+            html_lines.append("            <td>{:.6f}</td>".format(row['RA']))
+            html_lines.append("            <td>{:.6f}</td>".format(row['DEC']))
+            html_lines.append("            <td>{:.2f}</td>".format(row['DIAM']))
+            html_lines.append("            <td>{:.2f}</td>".format(row['MAG']))
+            html_lines.append("            <td>{:.3f}</td>".format(row['BA']))
+            html_lines.append("            <td>{:.1f}</td>".format(row['PA']))
+            html_lines.append("            <td>{}</td>".format('Yes' if row['GROUP_PRIMARY'] else 'No'))
+            html_lines.append("        </tr>")
+        html_lines.append("    </table>")
+        html_lines.append("    <h3>Additional Metadata</h3>")
+        html_lines.append("    <table>")
+        html_lines.append("        <tr>")
+        html_lines.append("            <th>Object Name</th><th>PGC</th><th>SAMPLE</th><th>ELLIPSEMODE</th>")
+        html_lines.append("            <th>FITMODE</th><th>E(B-V)</th><th>Diam Ref</th>")
+        html_lines.append("        </tr>")
+        for row in fullgroup_data:
+            sample_flags = ', '.join(decode_bitmask(row['SAMPLE'], SAMPLE))
+            ellipse_flags = ', '.join(decode_bitmask(row['ELLIPSEMODE'], ELLIPSEMODE))
+            fit_flags = ', '.join(decode_bitmask(row['FITMODE'], FITMODE))
+            html_lines.append("        <tr>")
+            html_lines.append("            <td>{}</td>".format(row['OBJNAME']))
+            html_lines.append("            <td>{}</td>".format(row['PGC'] if row['PGC'] > 0 else '-'))
+            html_lines.append("            <td>{}</td>".format(sample_flags))
+            html_lines.append("            <td>{}</td>".format(ellipse_flags))
+            html_lines.append("            <td>{}</td>".format(fit_flags))
+            html_lines.append("            <td>{:.3f}</td>".format(row['EBV']))
+            html_lines.append("            <td>{}</td>".format(row['DIAM_REF']))
+            html_lines.append("        </tr>")
+        html_lines.append("    </table>")
+    html_lines.extend([
+        "",
+        "    <div class='section'>",
+        "        <div class='group-images'>",
+        "            <h3>Multiwavelength Montage</h3>",
+    ])
+    filepath = group_dir / group_files[0]
+    if filepath.exists():
+        html_lines.append("            <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto;'></a>".format(group_files[0], group_files[0], group_files[0]))
     else:
-        drlayer = 'ls-dr9'
+        html_lines.append("            <img src='' alt='{}' style='display:none;'>".format(group_files[0]))
+        html_lines.append("            <p style='color: #888;'>Missing: {}</p>".format(group_files[0]))
+    html_lines.append("            <h3>Ellipse Masking & Geometry</h3>")
+    filepath = group_dir / group_files[1]
+    if filepath.exists():
+        html_lines.append("            <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto;'></a>".format(group_files[1], group_files[1], group_files[1]))
+    else:
+        html_lines.append("            <img src='' alt='{}' style='display:none;'>".format(group_files[1]))
+        html_lines.append("            <p style='color: #888;'>Missing: {}</p>".format(group_files[1]))
+    html_lines.extend([
+        "        </div>",
+        "    </div>",
+    ])
+    html_lines.extend([
+        "",
+        "    <div class='section'>",
+        "        <div class='galaxy-row'>",
+    ])
+    for title in per_galaxy_titles:
+        html_lines.append("            <div><h3>{}</h3></div>".format(title))
+    html_lines.append("        </div>")
+    for galaxy_name in galaxy_names:
+        html_lines.append("        <div class='galaxy-row'>")
+        for img_type in per_galaxy_types:
+            filename = "qa-SGA2025_{}-{}.png".format(galaxy_name, img_type)
+            filepath = group_dir / filename
+            if not filepath.exists():
+                raise FileNotFoundError("Missing required file: {}".format(filepath))
+            html_lines.append("            <a href='{}'><img src='{}' alt='{}'></a>".format(filename, filename, filename))
+        html_lines.append("        </div>")
+    html_lines.append("    </div>")
+    html_lines.extend([
+        "",
+        "</body>",
+        "</html>",
+    ])
+    with open(output_file, 'w') as f:
+        f.write('\n'.join(html_lines))
+    log.info("Generated: {}".format(output_file))
+    return True
 
-    layer1 = ''
-    if sga:
-        layer1 = '&sga&sga-parent'
-    if manga:
-        layer1 = layer1+'&manga'
+def generate_group_html_wrapper(args):
+    """Wrapper for multiprocessing."""
+    idx, group_name, sample, fullsample, htmldir, region, all_groups, clobber = args
+    group_data = sample[sample['GROUP_NAME'] == group_name]
+    prev_group = all_groups[idx - 1] if idx > 0 else None
+    next_group = all_groups[idx + 1] if idx < len(all_groups) - 1 else None
+    return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
 
-    viewer = '{}?ra={:.6f}&dec={:.6f}&zoom={:g}&layer={}{}'.format(
-        baseurl, ra, dec, zoom, drlayer, layer1)
-
-    return viewer
-
-
-def build_htmlhome(sample, htmldir, htmlhome='index.html', pixscale=0.262,
-                   racolumn=RACOLUMN, deccolumn=DECCOLUMN, diamcolumn=DIAMCOLUMN,
-                   html_raslices=True):
-    """Build the home (index.html) page and, optionally, the trends.html top-level
-    page.
-
-    """
-    htmlhomefile = os.path.join(htmldir, htmlhome)
-    print('Building {}'.format(htmlhomefile))
-
-    js = html_javadate()
-
-    # group by RA slices
-    raslices = np.array([SGA.io.get_raslice(ra) for ra in sample[racolumn]])
-    #rasorted = raslices)
-
-    with open(htmlhomefile, 'w') as html:
-        html.write('<html><body>\n')
-        html.write('<style type="text/css">\n')
-        html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
-        html.write('p {display: inline-block;;}\n')
-        html.write('</style>\n')
-
-        html.write('<h1>Virgo Filaments</h1>\n')
-
-        html.write('<p style="width: 75%">\n')
-        html.write("""This project is super neat.</p>\n""")
-
-        # The default is to organize the sample by RA slice, but support both options here.
-        if html_raslices:
-            html.write('<p>The web-page visualizations are organized by one-degree slices of right ascension.</p><br />\n')
-
-            html.write('<table>\n')
-            html.write('<tr><th>RA Slice</th><th>Number of Galaxies</th></tr>\n')
-            for raslice in sorted(set(raslices)):
-                inslice = np.where(raslice == raslices)[0]
-                html.write('<tr><td><a href="RA{0}.html"><h3>{0}</h3></a></td><td>{1}</td></tr>\n'.format(raslice, len(inslice)))
-            html.write('</table>\n')
-        else:
-            html.write('<br /><br />\n')
-            html.write('<table>\n')
-            html.write('<tr>\n')
-            html.write('<th> </th>\n')
-            #html.write('<th>Index</th>\n')
-            html.write('<th>ID</th>\n')
-            html.write('<th>Galaxy</th>\n')
-            html.write('<th>RA</th>\n')
-            html.write('<th>Dec</th>\n')
-            html.write('<th>Diameter (arcmin)</th>\n')
-            html.write('<th>Viewer</th>\n')
-            html.write('</tr>\n')
-
-            galaxy, galaxydir, htmlgalaxydir = SGA.io.get_galaxy_galaxydir(sample, html=True)
-            for gal, galaxy1, htmlgalaxydir1 in zip(sample, np.atleast_1d(galaxy), np.atleast_1d(htmlgalaxydir)):
-
-                htmlfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], '{}.html'.format(galaxy1))
-                pngfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], '{}-custom-montage-grz.png'.format(galaxy1))
-                thumbfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], 'thumb2-{}-custom-montage-grz.png'.format(galaxy1))
-
-                ra1, dec1, diam1 = gal[racolumn], gal[deccolumn], gal[diamcolumn]
-                link = viewer_link(ra1, dec1, diam1*2*60/pixscale, sga=True)
-
-                html.write('<tr>\n')
-                html.write('<td><a href="{0}"><img src="{1}" height="auto" width="100%"></a></td>\n'.format(pngfile1, thumbfile1))
-                #html.write('<td>{}</td>\n'.format(gal['INDEX']))
-                html.write('<td>{}</td>\n'.format(gal[REFIDCOLUMN]))
-                html.write('<td><a href="{}">{}</a></td>\n'.format(htmlfile1, galaxy1))
-                html.write('<td>{:.7f}</td>\n'.format(ra1))
-                html.write('<td>{:.7f}</td>\n'.format(dec1))
-                html.write('<td>{:.4f}</td>\n'.format(diam1))
-                html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(link))
-                html.write('</tr>\n')
-            html.write('</table>\n')
-
-        # close up shop
-        html.write('<br /><br />\n')
-        html.write('<b><i>Last updated {}</b></i>\n'.format(js))
-        html.write('</html></body>\n')
-
-    # Optionally build the individual pages (one per RA slice).
-    if html_raslices:
-        for raslice in sorted(set(raslices)):
-            inslice = np.where(raslice == raslices)[0]
-            galaxy, galaxydir, htmlgalaxydir = SGA.io.get_galaxy_galaxydir(sample[inslice], region=region, html=True)
-
-            slicefile = os.path.join(htmldir, 'RA{}.html'.format(raslice))
-            print('Building {}'.format(slicefile))
-
-            with open(slicefile, 'w') as html:
-                html.write('<html><body>\n')
-                html.write('<style type="text/css">\n')
-                html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
-                html.write('p {width: "75%";}\n')
-                html.write('</style>\n')
-
-                html.write('<h3>RA Slice {}</h3>\n'.format(raslice))
-
-                html.write('<table>\n')
-                html.write('<tr>\n')
-                #html.write('<th>Number</th>\n')
-                html.write('<th> </th>\n')
-                #html.write('<th>Index</th>\n')
-                html.write('<th>ID</th>\n')
-                html.write('<th>Galaxy</th>\n')
-                html.write('<th>RA</th>\n')
-                html.write('<th>Dec</th>\n')
-                html.write('<th>Diameter (arcmin)</th>\n')
-                html.write('<th>Viewer</th>\n')
-
-                html.write('</tr>\n')
-                for gal, galaxy1, htmlgalaxydir1 in zip(sample[inslice], np.atleast_1d(galaxy), np.atleast_1d(htmlgalaxydir)):
-
-                    htmlfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], '{}.html'.format(galaxy1))
-                    pngfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], '{}-custom-montage-grz.png'.format(galaxy1))
-                    thumbfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], 'thumb2-{}-custom-montage-grz.png'.format(galaxy1))
-
-                    ra1, dec1, diam1 = gal[racolumn], gal[deccolumn], gal[diamcolumn]
-                    link = viewer_link(ra1, dec1, diam1*2*60/pixscale, sga=True)
-
-                    html.write('<tr>\n')
-                    #html.write('<td>{:g}</td>\n'.format(count))
-                    #print(gal['INDEX'], gal[REFIDCOLUMN], gal['GALAXY'])
-                    html.write('<td><a href="{0}"><img src="{1}" height="auto" width="100%"></a></td>\n'.format(pngfile1, thumbfile1))
-                    #html.write('<td>{}</td>\n'.format(gal['INDEX']))
-                    html.write('<td>{}</td>\n'.format(gal[REFIDCOLUMN]))
-                    html.write('<td><a href="{}">{}</a></td>\n'.format(htmlfile1, galaxy1))
-                    html.write('<td>{:.7f}</td>\n'.format(ra1))
-                    html.write('<td>{:.7f}</td>\n'.format(dec1))
-                    html.write('<td>{:.4f}</td>\n'.format(diam1))
-                    #html.write('<td>{:.5f}</td>\n'.format(gal[zcolumn]))
-                    #html.write('<td>{:.4f}</td>\n'.format(gal['LAMBDA_CHISQ']))
-                    #html.write('<td>{:.3f}</td>\n'.format(gal['P_CEN'][0]))
-                    html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(link))
-                    #html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(_skyserver_link(gal)))
-                    html.write('</tr>\n')
-                html.write('</table>\n')
-                #count += 1
-
-                html.write('<br /><br />\n')
-                html.write('<b><i>Last updated {}</b></i>\n'.format(js))
-                html.write('</html></body>\n')
-
-
-
-def _build_htmlpage_one(args):
-    """Wrapper function for the multiprocessing."""
-    return build_htmlpage_one(*args)
-
-
-def build_htmlpage_one(ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, htmldir,
-                       racolumn, deccolumn, diamcolumn, pixscale, nextgalaxy, prevgalaxy,
-                       nexthtmlgalaxydir, prevhtmlgalaxydir, verbose, clobber):
-    """Build the web page for a single galaxy.
-
-    """
-    import fitsio
-    from glob import glob
-    import SGA.io
-
-    if not os.path.exists(htmlgalaxydir1):
-        os.makedirs(htmlgalaxydir1)
-
-    htmlfile = os.path.join(htmlgalaxydir1, '{}.html'.format(galaxy1))
-    if os.path.isfile(htmlfile) and not clobber:
-        print('File {} exists and clobber=False'.format(htmlfile))
-        return
-
-    nexthtmlgalaxydir1 = os.path.join('{}'.format(nexthtmlgalaxydir[ii].replace(htmldir, '')[1:]), '{}.html'.format(nextgalaxy[ii]))
-    prevhtmlgalaxydir1 = os.path.join('{}'.format(prevhtmlgalaxydir[ii].replace(htmldir, '')[1:]), '{}.html'.format(prevgalaxy[ii]))
-
-    js = html_javadate()
-
-    # Support routines--
-
-    def _read_ccds_tractor_sample(prefix):
-        nccds, tractor, sample = None, None, None
-
-        ccdsfile = glob(os.path.join(galaxydir1, '{}-{}-ccds-*.fits'.format(galaxy1, prefix))) # north or south
-        if len(ccdsfile) > 0:
-            nccds = fitsio.FITS(ccdsfile[0])[1].get_nrows()
-
-        # samplefile can exist without tractorfile when using --just-coadds
-        samplefile = os.path.join(galaxydir1, '{}-sample.fits'.format(galaxy1))
-        #samplefile = os.path.join(galaxydir1, '{}-{}-sample.fits'.format(galaxy1, prefix))
-        if os.path.isfile(samplefile):
-            sample = astropy.table.Table(fitsio.read(samplefile, upper=True))
-            if verbose:
-                print('Read {} galaxy(ies) from {}'.format(len(sample), samplefile))
-
-        tractorfile = os.path.join(galaxydir1, '{}-{}-tractor.fits'.format(galaxy1, prefix))
-        if os.path.isfile(tractorfile):
-            cols = ['ref_cat', 'ref_id', 'type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2',
-                    'flux_g', 'flux_r', 'flux_z', 'flux_ivar_g', 'flux_ivar_r', 'flux_ivar_z',
-                    'flux_fuv', 'flux_nuv', 'flux_ivar_fuv', 'flux_ivar_nuv', 
-                    'flux_w1', 'flux_w2', 'flux_w3', 'flux_w4',
-                    'flux_ivar_w1', 'flux_ivar_w2', 'flux_ivar_w3', 'flux_ivar_w4']
-            tractor = astropy.table.Table(fitsio.read(tractorfile, lower=True, columns=cols))#, rows=irows
-
-            # We just care about the galaxies in our sample
-            if prefix == 'custom':
-                wt, ws = [], []
-                for ii, sid in enumerate(sample[REFIDCOLUMN]):
-                    ww = np.where((tractor['ref_cat'] != '  ') * (tractor['ref_id'] == sid))[0]
-                    if len(ww) > 0:
-                        wt.append(ww)
-                        ws.append(ii)
-                if len(wt) == 0:
-                    print('All galaxy(ies) in {} field dropped from Tractor!'.format(galaxydir1))
-                    tractor = None
-                else:
-                    wt = np.hstack(wt)
-                    ws = np.hstack(ws)
-                    tractor = tractor[wt]
-                    sample = sample[ws]
-                    srt = np.argsort(tractor['flux_r'])[::-1]
-                    tractor = tractor[srt]
-                    sample = sample[srt]
-                    assert(np.all(tractor['ref_id'] == sample[REFIDCOLUMN]))
-
-        return nccds, tractor, sample
-
-    def _html_group_properties(html, gal):
-        """Build the table of group properties.
-
-        """
-        ra1, dec1, diam1 = gal[racolumn], gal[deccolumn], gal[diamcolumn]
-        link = viewer_link(ra1, dec1, diam1*2*60/pixscale, sga=True)
-
-        html.write('<h2>Group Properties</h2>\n')
-
-        html.write('<table>\n')
-        html.write('<tr>\n')
-        #html.write('<th>Number</th>\n')
-        #html.write('<th>Index<br />(Primary)</th>\n')
-        html.write('<th>ID<br />(Primary)</th>\n')
-        html.write('<th>Group Name</th>\n')
-        html.write('<th>Group RA</th>\n')
-        html.write('<th>Group Dec</th>\n')
-        html.write('<th>Group Diameter<br />(arcmin)</th>\n')
-        #html.write('<th>Richness</th>\n')
-        #html.write('<th>Pcen</th>\n')
-        html.write('<th>Viewer</th>\n')
-        #html.write('<th>SkyServer</th>\n')
-        html.write('</tr>\n')
-
-        html.write('<tr>\n')
-        #html.write('<td>{:g}</td>\n'.format(ii))
-        #print(gal['INDEX'], gal[REFIDCOLUMN], gal['GALAXY'])
-        #html.write('<td>{}</td>\n'.format(gal['INDEX']))
-        html.write('<td>{}</td>\n'.format(gal[REFIDCOLUMN]))
-        html.write('<td>{}</td>\n'.format(gal['GROUP_NAME']))
-        html.write('<td>{:.7f}</td>\n'.format(ra1))
-        html.write('<td>{:.7f}</td>\n'.format(dec1))
-        html.write('<td>{:.4f}</td>\n'.format(diam1))
-        #html.write('<td>{:.5f}</td>\n'.format(gal[zcolumn]))
-        #html.write('<td>{:.4f}</td>\n'.format(gal['LAMBDA_CHISQ']))
-        #html.write('<td>{:.3f}</td>\n'.format(gal['P_CEN'][0]))
-        html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(link))
-        #html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(_skyserver_link(gal)))
-        html.write('</tr>\n')
-        html.write('</table>\n')
-
-        # Add the properties of each galaxy.
-        html.write('<h3>Group Members</h3>\n')
-        html.write('<table>\n')
-        html.write('<tr>\n')
-        html.write('<th>ID</th>\n')
-        html.write('<th>Galaxy</th>\n')
-        #html.write('<th>Morphology</th>\n')
-        html.write('<th>RA</th>\n')
-        html.write('<th>Dec</th>\n')
-        html.write('<th>D(25)<br />(arcmin)</th>\n')
-        #html.write('<th>PA<br />(deg)</th>\n')
-        #html.write('<th>e</th>\n')
-        html.write('</tr>\n')
-        for groupgal in sample:
-            #if '031705' in gal['GALAXY']:
-            #    print(groupgal['GALAXY'])
-            html.write('<tr>\n')
-            html.write('<td>{}</td>\n'.format(groupgal[REFIDCOLUMN]))
-            html.write('<td>{}</td>\n'.format(groupgal[REFIDCOLUMN]))
-            #typ = groupgal['MORPHTYPE'].strip()
-            #if typ == '' or typ == 'nan':
-            #    typ = '...'
-            #html.write('<td>{}</td>\n'.format(typ))
-            html.write('<td>{:.7f}</td>\n'.format(groupgal['RA']))
-            html.write('<td>{:.7f}</td>\n'.format(groupgal['DEC']))
-            html.write('<td>{:.4f}</td>\n'.format(groupgal['DIAM']))
-            #if np.isnan(groupgal['PA']):
-            #    pa = 0.0
-            #else:
-            #    pa = groupgal['PA']
-            #html.write('<td>{:.2f}</td>\n'.format(pa))
-            #html.write('<td>{:.3f}</td>\n'.format(1-groupgal['BA']))
-            html.write('</tr>\n')
-        html.write('</table>\n')
-
-    def _html_image_mosaics(html):
-        html.write('<h2>Image Mosaics</h2>\n')
-
-        if False:
-            html.write('<table>\n')
-            html.write('<tr><th colspan="3">Mosaic radius</th><th colspan="3">Point-source depth<br />(5-sigma, mag)</th><th colspan="3">Image quality<br />(FWHM, arcsec)</th></tr>\n')
-            html.write('<tr><th>kpc</th><th>arcsec</th><th>grz pixels</th><th>g</th><th>r</th><th>z</th><th>g</th><th>r</th><th>z</th></tr>\n')
-            html.write('<tr><td>{:.0f}</td><td>{:.3f}</td><td>{:.1f}</td>'.format(
-                radius_mosaic_kpc, radius_mosaic_arcsec, radius_mosaic_pixels))
-            if bool(ellipse):
-                html.write('<td>{:.2f}<br />({:.2f}-{:.2f})</td><td>{:.2f}<br />({:.2f}-{:.2f})</td><td>{:.2f}<br />({:.2f}-{:.2f})</td>'.format(
-                    ellipse['psfdepth_g'], ellipse['psfdepth_min_g'], ellipse['psfdepth_max_g'],
-                    ellipse['psfdepth_r'], ellipse['psfdepth_min_r'], ellipse['psfdepth_max_r'],
-                    ellipse['psfdepth_z'], ellipse['psfdepth_min_z'], ellipse['psfdepth_max_z']))
-                html.write('<td>{:.3f}<br />({:.3f}-{:.3f})</td><td>{:.3f}<br />({:.3f}-{:.3f})</td><td>{:.3f}<br />({:.3f}-{:.3f})</td></tr>\n'.format(
-                    ellipse['psfsize_g'], ellipse['psfsize_min_g'], ellipse['psfsize_max_g'],
-                    ellipse['psfsize_r'], ellipse['psfsize_min_r'], ellipse['psfsize_max_r'],
-                    ellipse['psfsize_z'], ellipse['psfsize_min_z'], ellipse['psfsize_max_z']))
-            html.write('</table>\n')
-            #html.write('<br />\n')
-
-        pngfile, thumbfile = '{}-custom-montage-grz.png'.format(galaxy1), 'thumb-{}-custom-montage-grz.png'.format(galaxy1)
-        html.write('<p>Color mosaics showing the data (left panel), model (middle panel), and residuals (right panel).</p>\n')
-        html.write('<table width="90%">\n')
-        for bandsuffix in ('grz', 'FUVNUV', 'W1W2'):
-            pngfile, thumbfile = '{}-custom-montage-{}.png'.format(galaxy1, bandsuffix), 'thumb-{}-custom-montage-{}.png'.format(galaxy1, bandsuffix)
-            html.write('<tr><td><a href="{0}"><img src="{1}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
-                pngfile, thumbfile))
-        html.write('</table>\n')
-
-    def _html_ellipsefit_and_photometry(html, tractor, sample):
-        html.write('<h2>Elliptical Isophote Analysis</h2>\n')
-        if tractor is None:
-            html.write('<p>Tractor catalog not available.</p>\n')
-            html.write('<h3>Geometry</h3>\n')
-            html.write('<h3>Photometry</h3>\n')
-            return
-
-        html.write('<h3>Geometry</h3>\n')
-        html.write('<table>\n')
-        html.write('<tr><th></th>\n')
-        html.write('<th colspan="5">Tractor</th>\n')
-        html.write('<th colspan="3">Ellipse Moments</th>\n')
-        html.write('<th colspan="3">Surface Brightness<br /> Threshold Radii<br />(arcsec)</th>\n')
-        html.write('<th colspan="3">Half-light Radii<br />(arcsec)</th>\n')
-        html.write('</tr>\n')
-
-        html.write('<tr><th>Galaxy</th>\n')
-        html.write('<th>Type</th><th>n</th><th>r(50)<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>\n')
-        html.write('<th>Size<br />(arcsec)</th><th>PA<br />(deg)</th><th>e</th>\n')
-        html.write('<th>R(24)</th><th>R(25)</th><th>R(26)</th>\n')
-        html.write('<th>g(50)</th><th>r(50)</th><th>z(50)</th>\n')
-        html.write('</tr>\n')
-
-        for ss, tt in zip(sample, tractor):
-            ee = np.hypot(tt['shape_e1'], tt['shape_e2'])
-            ba = (1 - ee) / (1 + ee)
-            pa = 180 - (-np.rad2deg(np.arctan2(tt['shape_e2'], tt['shape_e1']) / 2))
-            pa = pa % 180
-
-            html.write('<tr><td>{}</td>\n'.format(ss[REFIDCOLUMN]))
-            html.write('<td>{}</td><td>{:.2f}</td><td>{:.3f}</td><td>{:.2f}</td><td>{:.3f}</td>\n'.format(
-                tt['type'], tt['sersic'], tt['shape_r'], pa, 1-ba))
-
-            galaxyid = str(tt['ref_id'])
-            ellipse = SGA.io.read_ellipsefit(galaxy1, galaxydir1, filesuffix='custom',
-                                             galaxy_id=galaxyid, verbose=False)
-            if bool(ellipse):
-                html.write('<td>{:.3f}</td><td>{:.2f}</td><td>{:.3f}</td>\n'.format(
-                    ellipse['sma_moment'], ellipse['pa_moment'], ellipse['eps_moment']))
-                    #ellipse['majoraxis']*ellipse['refpixscale'], ellipse['pa_moment'], ellipse['eps_moment']))
-
-                rr = []
-                if 'sma_sb24' in ellipse.keys():
-                    for rad in [ellipse['sma_sb24'], ellipse['sma_sb25'], ellipse['sma_sb26']]:
-                        if rad < 0:
-                            rr.append('...')
-                        else:
-                            rr.append('{:.3f}'.format(rad))
-                    html.write('<td>{}</td><td>{}</td><td>{}</td>\n'.format(rr[0], rr[1], rr[2]))
-                else:
-                    html.write('<td>...</td><td>...</td><td>...</td>\n')
-
-                rr = []
-                if 'cog_sma50_g' in ellipse.keys():
-                    for rad in [ellipse['cog_sma50_g'], ellipse['cog_sma50_r'], ellipse['cog_sma50_z']]:
-                        if rad < 0:
-                            rr.append('...')
-                        else:
-                            rr.append('{:.3f}'.format(rad))
-                    html.write('<td>{}</td><td>{}</td><td>{}</td>\n'.format(rr[0], rr[1], rr[2]))
-                else:
-                    html.write('<td>...</td><td>...</td><td>...</td>\n')                
+def generate_index(htmldir, region, sample):
+    """Generate searchable index.html with links to all group pages."""
+    unique_groups = np.unique(sample['GROUP_NAME'])
+    groups_by_raslice = {}
+    group_info = {}
+    for group_name in unique_groups:
+        raslice = group_name[:3]
+        group_dir = find_group_directory(htmldir, region, group_name)
+        if group_dir is None:
+            continue
+        if raslice not in groups_by_raslice:
+            groups_by_raslice[raslice] = []
+        groups_by_raslice[raslice].append(group_name)
+        group_data = sample[sample['GROUP_NAME'] == group_name][0]
+        group_info[group_name] = {
+            'objname': group_data['OBJNAME'],
+            'ra': group_data['GROUP_RA'],
+            'dec': group_data['GROUP_DEC'],
+            'diam': group_data['GROUP_DIAMETER'],
+            'mult': group_data['GROUP_MULT'],
+        }
+    for raslice in groups_by_raslice:
+        groups_by_raslice[raslice].sort()
+    html_lines = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head>",
+        "    <title>SGA2025 Index - {}</title>".format(region),
+        "    <style>",
+        "        body { font-family: Arial, sans-serif; margin: 20px; }",
+        "        h1 { color: #333; }",
+        "        .search-container { margin: 20px 0; }",
+        "        #searchInput { width: 100%; max-width: 600px; padding: 10px; font-size: 16px; border: 2px solid #ddd; }",
+        "        .summary { color: #666; margin: 10px 0; }",
+        "        .nav { background-color: #f0f0f0; padding: 15px; margin-bottom: 20px; }",
+        "        .nav a { margin-right: 10px; }",
+        "        .raslice-section { margin-bottom: 40px; }",
+        "        h2 { color: #555; margin-top: 30px; cursor: pointer; }",
+        "        h2:hover { color: #0066cc; }",
+        "        table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }",
+        "        th { background-color: #f0f0f0; padding: 10px; border: 1px solid #ddd; text-align: left; cursor: pointer; }",
+        "        th:hover { background-color: #e0e0e0; }",
+        "        td { padding: 10px; border: 1px solid #ddd; }",
+        "        td.name { width: 30%; }",
+        "        td.thumbnail { padding: 0; width: 20%; }",
+        "        td.objname { width: 25%; font-weight: bold; }",
+        "        td.coords { width: 25%; font-size: 14px; }",
+        "        img { border: 1px solid #ccc; }",
+        "        a { text-decoration: none; color: #0066cc; }",
+        "        a:hover { text-decoration: underline; }",
+        "        .hidden { display: none; }",
+        "    </style>",
+        "</head>",
+        "<body>",
+        "    <h1>SGA2025 Group Index - {}</h1>".format(region),
+        "    <div class='search-container'>",
+        "        <input type='text' id='searchInput' placeholder='Search by object name or group name...' onkeyup='filterTable()'>",
+        "    </div>",
+        "    <div class='summary' id='summary'>Showing {} groups</div>".format(len(unique_groups)),
+        "    <div class='nav'>",
+        "        <strong>Jump to an RA slice:</strong><br><br>",
+    ]
+    for raslice in sorted(groups_by_raslice.keys()):
+        html_lines.append("        <a href='#raslice-{}' onclick='openSlice(\"{}\"); return true;'>{}</a>".format(raslice, raslice, raslice))
+    html_lines.append("    </div>")
+    for raslice in sorted(groups_by_raslice.keys()):
+        html_lines.append("    <div class='raslice-section'>")
+        html_lines.append("    <h2 id='raslice-{}' onclick='toggleSection(this)'>RA Slice {} ({} groups)</h2>".format(
+            raslice, raslice, len(groups_by_raslice[raslice])))
+        html_lines.append("    <table class='data-table' style='display: none;'>")
+        html_lines.append("        <thead>")
+        html_lines.append("            <tr>")
+        html_lines.append("                <th onclick='sortTable(this, 0)'>Object Name</th>")
+        html_lines.append("                <th onclick='sortTable(this, 1)'>Group Name</th>")
+        html_lines.append("                <th onclick='sortTable(this, 2)'>RA / Dec</th>")
+        html_lines.append("                <th>Preview</th>")
+        html_lines.append("            </tr>")
+        html_lines.append("        </thead>")
+        html_lines.append("        <tbody>")
+        for group_name in groups_by_raslice[raslice]:
+            info = group_info[group_name]
+            group_dir = find_group_directory(htmldir, region, group_name)
+            html_path = "{}/{}/{}/{}.html".format(region, raslice, group_name, group_name)
+            montage_file = "qa-SGA2025_{}-montage.png".format(group_name)
+            montage_path = group_dir / montage_file
+            sky_url = get_sky_viewer_url(info['ra'], info['dec'], info['diam'], region)
+            html_lines.append("        <tr>")
+            html_lines.append("            <td class='objname'><a href='{}'>{}</a></td>".format(html_path, info['objname']))
+            html_lines.append("            <td class='name'>{}</td>".format(group_name))
+            html_lines.append("            <td class='coords'>{:.4f}, {:.4f}<br>Diam: {:.2f}' (mult={}) <a href='{}' target='_blank'>[Sky]</a></td>".format(
+                info['ra'], info['dec'], info['diam'], info['mult'], sky_url))
+            if montage_path.exists():
+                thumbnail_path = "{}/{}/{}/{}".format(region, raslice, group_name, montage_file)
+                html_lines.append("            <td class='thumbnail'><a href='{}'><div style='width: 100px; height: 75px; overflow: hidden;'><img src='{}' alt='Montage' style='display: block; max-width: none; width: 300px;'></div></a></td>".format(html_path, thumbnail_path))
             else:
-                html.write('<td>...</td><td>...</td><td>...</td>\n')
-                html.write('<td>...</td><td>...</td><td>...</td>\n')
-                html.write('<td>...</td><td>...</td><td>...</td>\n')
-                html.write('<td>...</td><td>...</td><td>...</td>\n')
-            html.write('</tr>\n')
-        html.write('</table>\n')
-        
-        html.write('<h3>Photometry</h3>\n')
-        html.write('<table>\n')
-        #html.write('<tr><th></th><th></th>\n')
-        #html.write('<th colspan="3"></th>\n')
-        #html.write('<th colspan="12">Curve of Growth</th>\n')
-        #html.write('</tr>\n')
-        html.write('<tr><th></th>\n')
-        html.write('<th colspan="9">Tractor</th>\n')
-        html.write('<th colspan="9">Curve of Growth</th>\n')
-        #html.write('<th colspan="3">&lt R(24)<br />arcsec</th>\n')
-        #html.write('<th colspan="3">&lt R(25)<br />arcsec</th>\n')
-        #html.write('<th colspan="3">&lt R(26)<br />arcsec</th>\n')
-        #html.write('<th colspan="3">Integrated</th>\n')
-        html.write('</tr>\n')
+                html_lines.append("            <td class='thumbnail'>No preview</td>")
+            html_lines.append("        </tr>")
+        html_lines.append("        </tbody>")
+        html_lines.append("    </table>")
+        html_lines.append("    </div>")
+    html_lines.extend([
+        "",
+        "<script>",
+        "function filterTable() {",
+        "    var input = document.getElementById('searchInput');",
+        "    var filter = input.value.toUpperCase();",
+        "    var sections = document.getElementsByClassName('raslice-section');",
+        "    var totalVisible = 0;",
+        "    for (var i = 0; i < sections.length; i++) {",
+        "        var table = sections[i].getElementsByClassName('data-table')[0];",
+        "        var tbody = table.getElementsByTagName('tbody')[0];",
+        "        var rows = tbody.getElementsByTagName('tr');",
+        "        var visibleInTable = 0;",
+        "        for (var j = 0; j < rows.length; j++) {",
+        "            var objname = rows[j].getElementsByTagName('td')[0].textContent;",
+        "            var groupname = rows[j].getElementsByTagName('td')[1].textContent;",
+        "            if (objname.toUpperCase().indexOf(filter) > -1 || groupname.toUpperCase().indexOf(filter) > -1) {",
+        "                rows[j].style.display = '';",
+        "                visibleInTable++;",
+        "                totalVisible++;",
+        "            } else {",
+        "                rows[j].style.display = 'none';",
+        "            }",
+        "        }",
+        "        if (filter === '' || visibleInTable === 0) {",
+        "            sections[i].style.display = filter === '' ? '' : 'none';",
+        "            table.style.display = 'none';",
+        "        } else {",
+        "            sections[i].style.display = '';",
+        "            table.style.display = '';",
+        "        }",
+        "    }",
+        "    document.getElementById('summary').textContent = 'Showing ' + totalVisible + ' groups';",
+        "}",
+        "function toggleSection(header) {",
+        "    var table = header.nextElementSibling;",
+        "    if (table.style.display === 'none') {",
+        "        table.style.display = '';",
+        "    } else {",
+        "        table.style.display = 'none';",
+        "    }",
+        "}",
+        "function openSlice(raslice) {",
+        "    var header = document.getElementById('raslice-' + raslice);",
+        "    var table = header.nextElementSibling;",
+        "    table.style.display = '';",
+        "}",
+        "function sortTable(th, col) {",
+        "    var table = th.closest('table');",
+        "    var tbody = table.getElementsByTagName('tbody')[0];",
+        "    var rows = Array.from(tbody.getElementsByTagName('tr'));",
+        "    var ascending = th.dataset.sort !== 'asc';",
+        "    rows.sort(function(a, b) {",
+        "        var aVal = a.getElementsByTagName('td')[col].textContent.trim();",
+        "        var bVal = b.getElementsByTagName('td')[col].textContent.trim();",
+        "        if (col === 2) {",
+        "            aVal = parseFloat(aVal.split(',')[0]);",
+        "            bVal = parseFloat(bVal.split(',')[0]);",
+        "        }",
+        "        if (aVal < bVal) return ascending ? -1 : 1;",
+        "        if (aVal > bVal) return ascending ? 1 : -1;",
+        "        return 0;",
+        "    });",
+        "    rows.forEach(function(row) { tbody.appendChild(row); });",
+        "    var headers = table.getElementsByTagName('th');",
+        "    for (var i = 0; i < headers.length; i++) {",
+        "        headers[i].dataset.sort = '';",
+        "    }",
+        "    th.dataset.sort = ascending ? 'asc' : 'desc';",
+        "}",
+        "</script>",
+        "</body>",
+        "</html>",
+    ])
+    index_file = htmldir / "index-{}.html".format(region)
+    with open(index_file, 'w') as f:
+        f.write('\n'.join(html_lines))
+    log.info("Generated index: {}".format(index_file))
 
-        html.write('<tr><th>Galaxy</th>\n')
-        html.write('<th>FUV</th><th>NUV</th><th>g</th><th>r</th><th>z</th><th>W1</th><th>W2</th><th>W3</th><th>W4</th>\n')
-        html.write('<th>FUV</th><th>NUV</th><th>g</th><th>r</th><th>z</th><th>W1</th><th>W2</th><th>W3</th><th>W4</th>\n')
-        html.write('</tr>\n')
-
-        for tt, ss in zip(tractor, sample):
-            fuv, nuv, g, r, z, w1, w2, w3, w4 = _get_mags(tt, pipeline=True)
-            html.write('<tr><td>{}</td>\n'.format(ss[REFIDCOLUMN]))
-            html.write('<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>\n'.format(
-                fuv, nuv, g, r, z, w1, w2, w3, w4))
-
-            galaxyid = str(tt['ref_id'])
-            ellipse = SGA.io.read_ellipsefit(galaxy1, galaxydir1, filesuffix='custom',
-                                             galaxy_id=galaxyid, verbose=False)
-            if bool(ellipse):# and 'cog_mtot_fuv' in ellipse.keys():
-                #g, r, z = _get_mags(ellipse, R24=True)
-                #html.write('<td>{}</td><td>{}</td><td>{}</td>\n'.format(g, r, z))
-                #g, r, z = _get_mags(ellipse, R25=True)
-                #html.write('<td>{}</td><td>{}</td><td>{}</td>\n'.format(g, r, z))
-                #g, r, z = _get_mags(ellipse, R26=True)
-                #html.write('<td>{}</td><td>{}</td><td>{}</td>\n'.format(g, r, z))
-                fuv, nuv, g, r, z, w1, w2, w3, w4 = _get_mags(ellipse, cog=True)                
-                html.write('<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>\n'.format(
-                    fuv, nuv, g, r, z, w1, w2, w3, w4))
-                #g, r, z = _get_mags(ellipse, cog=True)
-                #html.write('<td>{}</td><td>{}</td><td>{}</td>\n'.format(g, r, z))
-            else:
-                html.write('<td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td>\n')
-                html.write('<td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td>\n')
-            html.write('</tr>\n')
-        html.write('</table>\n')
-
-        # Galaxy-specific mosaics--
-        for igal in np.arange(len(tractor['ref_id'])):
-            galaxyid = str(tractor['ref_id'][igal])
-            #html.write('<h4>{}</h4>\n'.format(galaxyid))
-            html.write('<h4>{}</h4>\n'.format(sample[REFIDCOLUMN][igal]))
-
-            ellipse = SGA.io.read_ellipsefit(galaxy1, galaxydir1, filesuffix='custom',
-                                             galaxy_id=galaxyid, verbose=verbose)
-            if not bool(ellipse):
-                html.write('<p>Ellipse-fitting not done or failed.</p>\n')
-                continue
-
-            html.write('<table width="90%">\n')
-
-            html.write('<tr>\n')
-            pngfile = '{}-custom-ellipse-{}-multiband-FUVNUV.png'.format(galaxy1, galaxyid)
-            thumbfile = 'thumb-{}-custom-ellipse-{}-multiband-FUVNUV.png'.format(galaxy1, galaxyid)
-            html.write('<td><a href="{0}"><img src="{1}" alt="Missing file {1}" height="auto" align="left" width="60%"></a></td>\n'.format(pngfile, thumbfile))
-            html.write('</tr>\n')
-
-            html.write('<tr>\n')
-            pngfile = '{}-custom-ellipse-{}-multiband.png'.format(galaxy1, galaxyid)
-            thumbfile = 'thumb-{}-custom-ellipse-{}-multiband.png'.format(galaxy1, galaxyid)
-            html.write('<td><a href="{0}"><img src="{1}" alt="Missing file {1}" height="auto" align="left" width="80%"></a></td>\n'.format(pngfile, thumbfile))
-            html.write('</tr>\n')
-
-            html.write('<tr>\n')
-            pngfile = '{}-custom-ellipse-{}-multiband-W1W2.png'.format(galaxy1, galaxyid)
-            thumbfile = 'thumb-{}-custom-ellipse-{}-multiband-W1W2.png'.format(galaxy1, galaxyid)
-            html.write('<td><a href="{0}"><img src="{1}" alt="Missing file {1}" height="auto" align="left" width="100%"></a></td>\n'.format(pngfile, thumbfile))
-            html.write('</tr>\n')
-
-            html.write('</table>\n')
-            html.write('<br />\n')
-
-            html.write('<table width="90%">\n')
-            html.write('<tr>\n')
-            pngfile = '{}-custom-ellipse-{}-sbprofile.png'.format(galaxy1, galaxyid)
-            html.write('<td width="50%"><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(pngfile))
-            pngfile = '{}-custom-ellipse-{}-cog.png'.format(galaxy1, galaxyid)
-            html.write('<td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(pngfile))
-            html.write('</tr>\n')
-
-            html.write('<tr>\n')
-            pngfile = '{}-custom-ellipse-{}-sed.png'.format(galaxy1, galaxyid)
-            html.write('<td width="50%"><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td>\n'.format(pngfile))
-            html.write('</tr>\n')
-            
-            html.write('</table>\n')
-            #html.write('<br />\n')
-
-    def _html_ccd_diagnostics(html):
-        html.write('<h2>CCD Diagnostics</h2>\n')
-
-        html.write('<table width="90%">\n')
-        pngfile = '{}-ccdpos.png'.format(galaxy1)
-        html.write('<tr><td><a href="{0}"><img src="{0}" alt="Missing file {0}" height="auto" width="100%"></a></td></tr>\n'.format(
-            pngfile))
-        html.write('</table>\n')
-        #html.write('<br />\n')
-        
-    # Read the catalogs and then build the page--
-    nccds, tractor, sample = _read_ccds_tractor_sample(prefix='custom')
-
-    with open(htmlfile, 'w') as html:
-        html.write('<html><body>\n')
-        html.write('<style type="text/css">\n')
-        html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black}\n')
-        html.write('</style>\n')
-
-        # Top navigation menu--
-        html.write('<h1>{}</h1>\n'.format(galaxy1))
-        raslice = SGA.io.get_raslice(gal[racolumn])
-        html.write('<h4>RA Slice {}</h4>\n'.format(raslice))
-
-        html.write('<a href="../../{}">Home</a>\n'.format(htmlhome))
-        html.write('<br />\n')
-        html.write('<a href="../../{}">Next ({})</a>\n'.format(nexthtmlgalaxydir1, nextgalaxy[ii]))
-        html.write('<br />\n')
-        html.write('<a href="../../{}">Previous ({})</a>\n'.format(prevhtmlgalaxydir1, prevgalaxy[ii]))
-
-        _html_group_properties(html, gal)
-        _html_image_mosaics(html)
-        _html_ellipsefit_and_photometry(html, tractor, sample)
-        #_html_maskbits(html)
-        #_html_ccd_diagnostics(html)
-
-        html.write('<br /><br />\n')
-        html.write('<a href="../../{}">Home</a>\n'.format(htmlhome))
-        html.write('<br />\n')
-        html.write('<a href="../../{}">Next ({})</a>\n'.format(nexthtmlgalaxydir1, nextgalaxy[ii]))
-        html.write('<br />\n')
-        html.write('<a href="../../{}">Previous ({})</a>\n'.format(prevhtmlgalaxydir1, prevgalaxy[ii]))
-        html.write('<br />\n')
-
-        html.write('<br /><b><i>Last updated {}</b></i>\n'.format(js))
-        html.write('<br />\n')
-        html.write('</html></body>\n')
-
-
-
-def make_html(sample=None, datadir=None, htmldir=None, bands=['g', 'r', 'i', 'z'],
-              refband='r', region='dr11-south', pixscale=0.262, zcolumn='Z', intflux=None,
-              racolumn='GROUP_RA', deccolumn='GROUP_DEC', diamcolumn='GROUP_DIAMETER',
-              first=None, last=None, galaxylist=None,
-              mp=1, survey=None, makeplots=False,
-              htmlhome='index.html', html_raslices=False,
-              clobber=False, verbose=True, maketrends=False, ccdqa=False,
-              args=None):
-    """Make the HTML pages.
-
+def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False, maketrends=False):
     """
-    import subprocess
-    from astrometry.util.multiproc import multiproc
+    Generate HTML QA pages for SGA galaxy groups.
 
-    import SGA.io
-    from SGA.coadds import _mosaic_width
-
-    #datadir = SGA.io.sga_data_dir()
-    #htmldir = SGA.io.sga_html_dir()
-    datadir = os.path.join(SGA.io.sga_data_dir(), region)
-    htmldir = os.path.join(SGA.io.sga_html_dir(), region)
-    if not os.path.exists(htmldir):
-        os.makedirs(htmldir)
-
-    if sample is None:
-        sample = SGA.read_sample(first=first, last=last, galaxylist=galaxylist)
-
-    if type(sample) is astropy.table.row.Row:
-        sample = astropy.table.Table(sample)
-
-    # Only create pages for the set of galaxies with a montage.
-    keep = np.arange(len(sample))
-    _, missing, done, _ = SGA.io.missing_files(sample=sample, region=region, htmldir=htmldir,
-                                               htmlindex=True)
-
-    if len(done[0]) == 0:
-        print('No galaxies with complete montages!')
-        return
-
-    print('Keeping {}/{} galaxies with complete montages.'.format(len(done[0]), len(sample)))
-    sample = sample[done[0]]
-    #galaxy, galaxydir, htmlgalaxydir = get_galaxy_galaxydir(sample, html=True)
-
-    # Build the home (index.html) page (always, irrespective of clobber)--
-    build_htmlhome(sample, htmldir, htmlhome=htmlhome, pixscale=pixscale,
-                   racolumn=racolumn, deccolumn=deccolumn, diamcolumn=diamcolumn,
-                   html_raslices=html_raslices)
-
-    # Now build the individual pages in parallel.
-    if html_raslices:
-        raslices = np.array([SGA.io.get_raslice(ra) for ra in sample[racolumn]])
-        rasorted = np.argsort(raslices)
-        galaxy, galaxydir, htmlgalaxydir = SGA.io.get_galaxy_galaxydir(sample[rasorted], region=region, html=True)
+    Parameters:
+    -----------
+    sample : astropy.table.Table
+        Table containing GROUP_PRIMARY galaxies only
+    fullsample : astropy.table.Table
+        Table containing all galaxies (including non-primary group members)
+    htmldir : str
+        Base HTML directory (default: $SGA_HTML_DIR)
+    region : str
+        Region name (default: dr11-south)
+    mp : int
+        Number of processes for multiprocessing (default: 1)
+    clobber : bool
+        Overwrite existing HTML files (default: False)
+    maketrends : bool
+        Generate trend plots (not yet implemented)
+    """
+    if htmldir is None:
+        htmldir_env = os.environ.get("SGA_HTML_DIR")
+        if not htmldir_env:
+            raise ValueError("htmldir not provided and SGA_HTML_DIR not set")
+        htmldir = Path(htmldir_env)
     else:
-        rasorted = np.arange(len(sample))
-        galaxy, galaxydir, htmlgalaxydir = SGA.io.get_galaxy_galaxydir(sample, region=region, html=True)
-
-    nextgalaxy = np.roll(np.atleast_1d(galaxy), -1)
-    prevgalaxy = np.roll(np.atleast_1d(galaxy), 1)
-    nexthtmlgalaxydir = np.roll(np.atleast_1d(htmlgalaxydir), -1)
-    prevhtmlgalaxydir = np.roll(np.atleast_1d(htmlgalaxydir), 1)
-
-    mp = multiproc(nthreads=mp)
-    args = []
-    for ii, (gal, galaxy1, galaxydir1, htmlgalaxydir1) in enumerate(zip(
-        sample[rasorted], np.atleast_1d(galaxy), np.atleast_1d(galaxydir), np.atleast_1d(htmlgalaxydir))):
-        args.append([ii, gal, galaxy1, galaxydir1, htmlgalaxydir1, htmlhome, htmldir,
-                     racolumn, deccolumn, diamcolumn, pixscale, nextgalaxy,
-                     prevgalaxy, nexthtmlgalaxydir, prevhtmlgalaxydir, verbose,
-                     clobber])
-    ok = mp.map(_build_htmlpage_one, args)
-
-    return 1
+        htmldir = Path(htmldir)
+    unique_groups = np.unique(sample['GROUP_NAME'])
+    valid_groups = []
+    for group_name in unique_groups:
+        if find_group_directory(htmldir, region, group_name) is not None:
+            valid_groups.append(group_name)
+    valid_groups = np.array(valid_groups)
+    log.info("Generating HTML for {} groups in region {}".format(len(valid_groups), region))
+    if mp == 1:
+        for idx, group_name in enumerate(valid_groups):
+            group_data = sample[sample['GROUP_NAME'] == group_name]
+            prev_group = valid_groups[idx - 1] if idx > 0 else None
+            next_group = valid_groups[idx + 1] if idx < len(valid_groups) - 1 else None
+            generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
+    else:
+        pool_args = [(idx, gn, sample, fullsample, htmldir, region, valid_groups, clobber)
+                     for idx, gn in enumerate(valid_groups)]
+        with multiprocessing.Pool(processes=mp) as pool:
+            pool.map(generate_group_html_wrapper, pool_args)
+    generate_index(htmldir, region, sample)
+    log.info("HTML generation complete!")
+    return

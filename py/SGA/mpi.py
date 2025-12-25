@@ -24,6 +24,7 @@ def mpi_args():
 
     parser.add_argument('--mindiam', default=0., type=float, help='Minimum diameter (arcmin).')
     parser.add_argument('--maxdiam', default=1e3, type=float, help='Maximum diameter (arcmin).')
+    parser.add_argument('--minmult', default=None, type=int, help='Only read primary groups with minmult or more members.')
     parser.add_argument('--maxmult', default=None, type=int, help='Only read primary groups with up to maxmult members.')
 
     parser.add_argument('--coadds', action='store_true', help='Build the large-galaxy coadds.')
@@ -53,6 +54,10 @@ def mpi_args():
 
     parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
     parser.add_argument('--test-bricks', action='store_true', help='Read the sample of test bricks.')
+    parser.add_argument('--noradweight', dest='use_radial_weight', action='store_false',
+                        help='No radial weighting when determining moment geometry.')
+    parser.add_argument('--momentpos', dest='use_tractor_position', action='store_false',
+                        help='Use the light-weighted (not Tractor) position during ellipse-fitting.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')

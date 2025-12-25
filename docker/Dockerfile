@@ -1,4 +1,4 @@
-FROM legacysurvey/legacypipe:gpu-1.4.15
+FROM legacysurvey/legacypipe:gpu-1.4.17
 
 RUN for x in \
   ipython \
@@ -32,7 +32,7 @@ RUN git config --global --add safe.directory /src/SGA \
   && git config --global --add safe.directory /src/desiutil
 
 # updates
-RUN cd /src/SGA && git pull && echo 4
+RUN cd /src/SGA && git pull && echo 0
 
 ENV PYTHONPATH=/src/SGA/py:/src/desiutil/py:$PYTHONPATH
 
