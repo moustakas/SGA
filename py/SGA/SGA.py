@@ -2163,9 +2163,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         mask[sz[0]-edge:, :] = True
 
 
+    #print('Testing!!')
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
+    #sample['ELLIPSEMODE'] |= ELLIPSEMODE['FIXGEO']
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['MOMENTPOS']
+    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
+
     if FMAJOR_final is None:
         FMAJOR_final = FMAJOR_geo
-
 
     nsample = len(sample)
 
@@ -2270,14 +2275,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap)
 
-    #print('Testing!!')
-    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
-    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['MOMENTPOS']
-
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
     for iobj in range(nsample):
-        if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['MOMENTPOS'] != 0:
+        if sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['MOMENTPOS'] | ELLIPSEMODE['FIXGEO']) != 0:
             use_tractor_position_obj[iobj] = False
 
     # Clear bits which may change between the initial and final
@@ -2305,7 +2306,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Set MOMENTPOS bit if either: (1) ELLIPSEMODE has it, or (2)
         # not using Tractor positions
-        if not use_tractor_position_obj[iobj]:
+        if (not use_tractor_position_obj[iobj] and
+            sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] == 0):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0:
