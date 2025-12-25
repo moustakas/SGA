@@ -214,14 +214,6 @@ def main():
     # results work on the full sample, so do that here and then
     # return.
     if rank == 0:
-        if args.build_catalog:
-            from SGA.SGA import build_catalog
-            build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
-                          datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
-                          wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
-                          clobber=args.clobber)
-            return
-
         if args.build_refcat:
             # Build a reference catalog for use with the
             # pipeline. Satellites can belong to more than one group,
@@ -269,6 +261,14 @@ def main():
             _ = os.system(cmd)
 
             return
+
+    if args.build_catalog:
+        from SGA.SGA import build_catalog
+        build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
+                      datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
+                      wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
+                      clobber=args.clobber)
+        return
 
     # need at least one keyword at this point
     if (args.coadds is False and args.ellipse is False and args.htmlplots is False and
