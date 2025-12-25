@@ -2619,8 +2619,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 geometry_failed = True
 
             if geometry_failed:
-                [bx, by, sma, ba, pa] = geo_init
                 sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FAILGEO']
+                geo_iter = geo_init.copy()
+                [bx, by, sma, ba, pa] = geo_iter
                 break
 
         # store shifts
