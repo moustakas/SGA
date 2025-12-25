@@ -187,7 +187,8 @@ def main():
         from importlib import resources
         from SGA.parent import load_overlays, apply_flags_inplace
         overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/v0.40')
-        ov = load_overlays(str(overlay_dir))
+        ov = load_overlays(overlay_dir)
+        apply_flags_inplace(sample, ov.flags, ELLIPSEMODE)
         apply_flags_inplace(fullsample, ov.flags, ELLIPSEMODE)
 
         if len(fullsample) > 0:

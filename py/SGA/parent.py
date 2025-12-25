@@ -3471,22 +3471,10 @@ def load_overlays(overlay_dir):
     Load overlays from overlay_dir and return a container with
     .adds, .updates, .drops, .flags (each an Astropy Table, possibly empty).
     """
-    adds = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'adds.csv'),
-        required=('OBJNAME', 'REGION', 'RA', 'DEC', 'DIAM', 'BA', 'PA'),
-        name='adds.csv')
-    updates = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'updates.csv'),
-        required=('OBJNAME', 'FIELD', 'NEW_VALUE'),
-        name='updates.csv')
-    drops = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'drops.csv'),
-        required=('OBJNAME', 'REGION'),
-        name='drops.csv')
-    flags = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'flags.csv'),
-        required=('target', 'value', 'column', 'op', 'bits'),
-        name='flags.csv')
+    adds = _read_csv_if_exists(overlay_dir / 'adds.csv', required=('OBJNAME', 'REGION', 'RA', 'DEC', 'DIAM', 'BA', 'PA'), name='adds.csv')
+    updates = _read_csv_if_exists(overlay_dir / 'updates.csv', required=('OBJNAME', 'FIELD', 'NEW_VALUE'), name='updates.csv')
+    drops = _read_csv_if_exists(overlay_dir / 'drops.csv', required=('OBJNAME', 'REGION'), name='drops.csv')
+    flags = _read_csv_if_exists(overlay_dir / 'flags.csv', required=('target', 'value', 'column', 'op', 'bits'), name='flags.csv')
 
     # simple sanity checks
     if len(np.unique(adds['OBJNAME'])) != len(adds):
