@@ -1078,7 +1078,8 @@ def get_sky_viewer_url(ra, dec, diameter, region):
     else:
         layer = 'ls-dr9-north'
     diam_arcmin = diameter
-    zoom = max(11, min(16, int(16 - np.log10(max(1.0, diam_arcmin)))))
+    zoom = max(11, min(16, int(14 - np.log10(max(0.3, diam_arcmin)))))
+    #zoom = max(10, min(16, int(16 - np.log10(max(1.0, diam_arcmin)))))
     url = "https://www.legacysurvey.org/viewer-dev/?ra={:.4f}&dec={:.4f}&layer={}&zoom={}&sga2025-parent".format(
         ra, dec, layer, zoom)
     return url

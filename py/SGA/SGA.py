@@ -1749,6 +1749,7 @@ def _compute_major_minor_masks(flux_sga, fracflux_sga, allgalsrcs, galsrcs_optfl
     """Classify Tractor galaxies into major / minor companions.
 
     Returns (major_mask, minor_mask), both boolean arrays of length len(allgalsrcs).
+
     """
     if len(allgalsrcs) == 0 or flux_sga <= 0.0:
         major_mask = np.zeros(len(allgalsrcs), bool)
@@ -1759,10 +1760,13 @@ def _compute_major_minor_masks(flux_sga, fracflux_sga, allgalsrcs, galsrcs_optfl
     major_mask = (R_flux >= FMAJOR)
     minor_mask = ~major_mask
 
-    # If we have Tractor geometry and are using Tractor positions,
-    # optionally ignore all sources that may be a shred of the SGA
-    # itself.
-    if (objsrc is not None) and use_tractor_position_obj and fracflux_sga > 0.2:
+    # Optionally ignore all sources that may be a shred of the SGA
+    # itself. We originally included the condition "and
+    # use_tractor_position_obj" but then MOMENTPOS was resulting in
+    # many more "major" sources. The logic is not ideal because we
+    # don't check how far the moment and Tractor positions are, but
+    # proceed for now.
+    if (objsrc is not None) and fracflux_sga > 0.2:
         sep_arcsec = arcsec_between(objsrc.ra, objsrc.dec,
                                     allgalsrcs.ra, allgalsrcs.dec)
         major_mask &= (sep_arcsec > objsrc.shape_r)
