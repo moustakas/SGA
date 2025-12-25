@@ -184,11 +184,11 @@ def main():
         #galaxy, galaxydir = get_galaxy_galaxydir(sample, region=args.region, datadir=datadir)
         #_=[print(gdir+'/*ellipse*') for gdir in galaxydir]
 
-        from importlib import resources
-        from SGA.parent import load_overlays, apply_flags_inplace
-        overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/v0.40')
-        ov = load_overlays(overlay_dir)
-        apply_flags_inplace(fullsample, ov.flags, ELLIPSEMODE)
+        #from importlib import resources
+        #from SGA.parent import load_overlays, apply_flags_inplace
+        #overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/v0.40')
+        #ov = load_overlays(overlay_dir)
+        #apply_flags_inplace(fullsample, ov.flags, ELLIPSEMODE)
 
         if len(fullsample) > 0:
             # pre-compute the SkyCoord object
