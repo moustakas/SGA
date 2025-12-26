@@ -100,11 +100,10 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.22'
 
         # major refactor of build_parent
-        version = 'v0.30'
+        #version = 'v0.30'
 
-        # significant trimming of small galaxies; new ELLIPSEBIT
-        # (NORADWEIGHT and FIXGEO)
-        #version = 'v0.40'
+        # significant trimming of small galaxies; numerous new ELLIPSEBIT
+        version = 'v0.40'
 
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
@@ -114,8 +113,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.20' # parent_version = v0.12 --> v0.20
         #version = 'v0.21' # parent_version = v0.20 --> v0.21
         #version = 'v0.22'  # parent_version = v0.21 --> v0.22
-        version = 'v0.30'  # parent_version = v0.22 --> v0.30
-        #version = 'v0.40'  # parent_version = v0.30 --> v0.40
+        #version = 'v0.30'  # parent_version = v0.22 --> v0.30
+        version = 'v0.40'  # parent_version = v0.30 --> v0.40
     return version
 
 
@@ -1171,10 +1170,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
-            log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
-            fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
-            fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
-            #print()
+            if len(allellipse) > 0:
+                log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
+                fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
+                fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
+                #print()
 
             if len(allmissing) > 0:
                 missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')

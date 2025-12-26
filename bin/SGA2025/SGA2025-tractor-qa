@@ -15,13 +15,13 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
 
-
 VI campaign:
+
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=3
+
 
 ## v0.22
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --vi-sample=1 --final-sample
-
-
 
 
 ## v0.11
@@ -52,7 +52,6 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --final-sample --region=dr11-south --vi-sample=2 --version=v0.22
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --version=v0.30 --vi-sample=2
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.30 --region=dr11-south --vi-sample=1
 
@@ -254,7 +253,6 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     objra0, objdec0, diam0, ba0, pa0 = obj['RA'], obj['DEC'], obj['DIAM']*60., obj['BA'], obj['PA']
                     geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
 
-
                 if final_sample:
                     txt = [obj["OBJNAME"], obj["GROUP_NAME"],
                            r'$(\alpha,\delta)$='+f'({objra:.7f},{objdec:.6f})']
@@ -262,7 +260,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                         txt += [geo0]
                     txt += [geo]
                 else:
-                    txt = [obj["OBJNAME"], #obj["SGANAME"],
+                    txt = [obj["OBJNAME"], obj["GROUP_NAME"], #obj["SGANAME"],
                            r'$(\alpha,\delta)$='+f'({objra0:.7f},{objdec0:.6f})',
                            geo0]
                 txt_ul = '\n'.join(txt)
@@ -273,15 +271,13 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                 if obj['CUTOUT'] or no_groups:
                     groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
                     #groupdiam = obj[diamcolumn] * 60., # [arcsec]
-                    print(galaxy[indx[iax]], groupdiam)
+                    #print(galaxy[indx[iax]], groupdiam)
                     if final_sample:
                         groupra = obj['RA']
                         groupdec = obj['DEC']
                     else:
-                        groupra = obj['RA']
-                        groupdec = obj['DEC']
-                        #groupra = obj['RA_INIT']
-                        #groupdec = obj['DEC_INIT']
+                        groupra = obj['GROUP_RA']
+                        groupdec = obj['GROUP_DEC']
                 else:
                     groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
                     groupra = obj['GROUP_RA']
@@ -293,6 +289,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     diam=groupdiam, cutout_galaxy=cutout_galaxy[indx[iax]],
                     cutout_galaxydir=cutout_galaxydir[indx[iax]],
                     cutout=obj['CUTOUT'])
+                #print(groupra, groupdec, wcs.wcs.crval)
 
                 if image is None:
                     txt_ll = 'No Tractor catalog'
@@ -377,6 +374,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     else:
                         if show_initial_ellipse:
                             (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
+                            #print(xpix0, ypix0, objra0, objdec0)
                             overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
                                              height_pixels=width, pixscale=pixscale,
                                              ax=xx, color='white', linestyle='-',
@@ -542,6 +540,16 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         I = (fullsample['DIAM'] < 1.) & (fullsample['GROUP_MULT'] == 1) & np.char.startswith(fullsample['OBJNAME'].astype(str), "DESI")
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
+    elif vi_sample == 3:
+        sort_by_groupname = True
+        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 0.75) & (fullsample['GROUP_DIAMETER'] <= 1.)
+        I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0)
+        I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "PGC")
+        groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
+
+        I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
         sort_by_groupname = False
         if no_groups:
@@ -552,26 +560,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
         #########################
         sort_by_groupname = False
-
-        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.)
-        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.) & (fullsample['GROUP_DIAMETER'] <= 1.5)
-        I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 0.75) & (fullsample['GROUP_DIAMETER'] <= 1.)
-        I_sdss = np.char.startswith(fullsample['OBJNAME'].astype(str), "SDSS")
-
-        # Find groups satisfying each condition
-        groups_with_overlap = set(fullsample['GROUP_NAME'][I_overlap])
-        groups_with_sdss = set(fullsample['GROUP_NAME'][I_sdss])
-
-        # Intersection = groups meeting BOTH conditions
-        groups_target = groups_with_overlap & groups_with_sdss
-
-        # Extract all rows from those groups
-        rows = np.isin(fullsample['GROUP_NAME'], list(groups_target))
-        I = rows & I_sdss
-
-        #########################
-        fullsample = fullsample[I]
-        sample = fullsample
 
         # We still want to see and label nearby companions in
         # 'fullsample', i.e., without any diameter cuts.
@@ -604,7 +592,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     sample['CUTOUT'] = np.zeros(len(sample), bool)
     fullsample['CUTOUT'] = np.zeros(len(fullsample), bool)
     if np.sum(~I) > 0:
-        if np.sum(~I) > 500:
+        if np.sum(~I) > 2000:
             log.warning('Are you sure you want to generate cutouts for more than 500 objects!!')
             raise ValueError()
 

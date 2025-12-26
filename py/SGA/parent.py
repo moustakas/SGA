@@ -3499,7 +3499,7 @@ def apply_updates_inplace(parent, updates):
     """For each (OBJNAME, FIELD, NEW_VALUE) row, set parent[FIELD] accordingly."""
 
     if len(updates) == 0:
-        return
+        return parent
     log.info(f'Updating parameter values for {len(updates):,d} object(s) using updates.csv')
 
     for row in updates:
@@ -3562,7 +3562,7 @@ def apply_adds(parent, adds, regionbits, nocuts):
 
     """
     if len(adds) == 0:
-        return
+        return parent
     log.info(f'Adding {len(adds):,d} objects from adds.csv')
 
     # next SGAID
@@ -3702,7 +3702,7 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
     re-derive bits, build groups, and write a single FITS output.
@@ -3814,7 +3814,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         log.info(f'Combined catalog contains {len(ell):,d} unique objects')
 
     # Project ellipse to parent base model
-    # Map: D26→DIAM; DIAM_REF := f"{parent_version}/{D26_REF}"
     ell_base = Table()
     ell_base['SGAID'] = ell['SGAID'].astype(np.int64)
     ell_base['REGION'] = ell['REGION'].astype(np.int16)
@@ -3827,15 +3826,19 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     ell_base['BA'] = ell['BA'].astype(np.float32)
     ell_base['PA'] = (ell['PA'] % 180.).astype(np.float32)
     ell_base['MAG'] = ell['MAG_INIT'].astype(np.float32)
-    ell_base['DIAM_REF'] = np.char.add(base_version, np.char.add('/', ell['D26_REF'])).astype('U14')
+    ell_base['DIAM_REF'] = ell['D26_REF'].astype('U14')
+
+    I = ell['D26_ERR'] != 0. # re-measured (ellipse, not "missing") diameters
+    if np.any(I):
+        ell_base['DIAM_REF'][I] = np.char.add(f'{base_version}/', ell_base['DIAM_REF'][I])
 
     # reset SAMPLE except for LVD
     ell_base['SAMPLE'] = np.zeros(len(ell), np.int32) # ell['SAMPLE'].astype(np.int32)
     ell_base['SAMPLE'][ell['SAMPLE'] & SAMPLE['LVD'] != 0] |= SAMPLE['LVD']
 
-    # Not all ellipse entries are reliable; read the base_parent
-    # catalog so we can revert as appropriate.
-    parent_basebasefile = os.path.join(outdir, f'SGA2025-parent-{base_version}.fits')
+    # Not all ellipse entries are present or reliable; read the
+    # base_parent catalog so we can revert as appropriate.
+    parent_basebasefile = os.path.join(outdir, f'SGA2025-beta-parent-{base_version}.fits')
     parent_base = Table(fitsio.read(parent_basebasefile))
     log.info(f'Read {len(parent_base):,d} rows from {parent_basebasefile}')
 
@@ -3911,7 +3914,17 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         #plt.axvline(x=0.5, color='k')
         #plt.savefig('ioannis/tmp/junk.png')
 
-    base = ell_base
+    elif base_version == 'v0.30':
+        assert(np.all(parent_base['SGAID'] == ell['SGAID']))
+        assert(np.all(parent_base['SGAID'] == ell_base['SGAID']))
+
+        not_LVD = ell['SAMPLE'] & SAMPLE['LVD'] == 0
+        I = not_LVD & (ell['D26_ERR'] != 0.) & ((ell['D26']+ell['D26_ERR']) < mindiam)
+        log.info(f'Removing {np.sum(I):,d}/{len(ell):,d} galaxies with D(26)<{mindiam:.2f} arcmin')
+        base = ell_base[~I]
+    else:
+        base = ell_base
+
     log.info(f'Final base catalog contains {len(base):,d} objects.')
 
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
@@ -3935,7 +3948,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         if not np.all((base['PA'] >= 0.) & (base['PA'] < 180.)):
             raise ValueError('PA out of range')
     except:
-        ell_base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
+        base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
