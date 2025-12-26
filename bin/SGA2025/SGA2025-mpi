@@ -294,13 +294,19 @@ def main():
                       region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
             return
 
-        if args.diameter_file:
+        if args.diameter_file or args.galaxylist_file:
             if len(groups) > 0:
                 todo = np.hstack(groups)
-                with open(args.diameter_file, 'w') as F:
-                    for diam in sample[DIAMCOLUMN][todo].value:
-                        F.write(f'{diam}\n')
-                log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+                if args.diameter_file:
+                    with open(args.diameter_file, 'w') as F:
+                        for diam in sample[DIAMCOLUMN][todo].value:
+                            F.write(f'{diam}\n')
+                    log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+                elif args.galaxylist_file:
+                    with open(args.galaxylist_file, 'w') as F:
+                        for gal in sample['GROUP_NAME'][todo].value:
+                            F.write(f'{gal}\n')
+                    log.info(f'Wrote {len(todo):,d} objects to {args.galaxylist_file}')
             else:
                 log.warning('All done!')
             return
