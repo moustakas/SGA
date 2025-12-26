@@ -322,7 +322,9 @@ class Grid:
 # ============================================================================
 
 def process_cluster(members, state, contain_search_arcmin=15.0/60.0):
-    """Find linkages within a precluster."""
+    """Find linkages within a precluster.
+
+    """
     if len(members) < 2:
         return np.empty((0, 2), dtype=np.int64)
 
@@ -358,7 +360,9 @@ def process_cluster(members, state, contain_search_arcmin=15.0/60.0):
 
 
 def should_link(i, j, ddx, ddy, sep, state, scale, search_arcmin):
-    """Determine if pair should be linked."""
+    """Determine if pair should be linked.
+
+    """
     p = state.params
 
     # Ellipse overlap check for close pairs
@@ -387,6 +391,96 @@ _WORKER_STATE = None
 def _init_worker(state):
     global _WORKER_STATE
     _WORKER_STATE = state
+
+def _merge_overlapping_groups(dsu, state, contain_margin):
+    """
+    Merge groups where members have overlapping ellipses.
+
+    This catches cases like IC 4278 inside NGC 5194 that were missed
+    during initial linking due to exceeding dmax.
+
+    Parameters
+    ----------
+    dsu : DSU
+        Disjoint set union structure (modified in place)
+    state : State
+        Group finder state with galaxy properties
+    contain_margin : float
+        Margin for ellipse overlap (e.g., 0.75 = 75% expansion)
+
+    Returns
+    -------
+    int
+        Number of group pairs merged
+
+    """
+    # Get current provisional groups
+    roots = np.array([dsu.find(i) for i in range(state.n)])
+    unique_roots = np.unique(roots)
+
+    # For each group, compute bounding box for spatial pruning
+    group_bounds = {}
+    for root in unique_roots:
+        idx = np.where(roots == root)[0]
+        ra_min, ra_max = state.ra[idx].min(), state.ra[idx].max()
+        dec_min, dec_max = state.dec[idx].min(), state.dec[idx].max()
+        # Add padding based on largest member
+        padding_deg = state.diam[idx].max() * (1.0 + contain_margin) / ARCMIN_PER_DEG
+        group_bounds[root] = {
+            'ra_min': ra_min - padding_deg,
+            'ra_max': ra_max + padding_deg,
+            'dec_min': dec_min - padding_deg,
+            'dec_max': dec_max + padding_deg,
+            'members': idx
+        }
+
+    # Check all pairs of groups for overlapping members
+    n_merges = 0
+    scale = 1.0 + contain_margin
+
+    for i, root_i in enumerate(unique_roots):
+        bounds_i = group_bounds[root_i]
+
+        for root_j in unique_roots[i+1:]:
+            bounds_j = group_bounds[root_j]
+
+            # Quick bounding box overlap check
+            if (bounds_i['ra_max'] < bounds_j['ra_min'] or
+                bounds_i['ra_min'] > bounds_j['ra_max'] or
+                bounds_i['dec_max'] < bounds_j['dec_min'] or
+                bounds_i['dec_min'] > bounds_j['dec_max']):
+                continue
+
+            # Check if any member from group i overlaps any member from group j
+            found_overlap = False
+            for idx_i in bounds_i['members']:
+                if found_overlap:
+                    break
+
+                # Local tangent plane centered on object i
+                dec0 = state.dec[idx_i]
+                cosd0 = math.cos(dec0 * DEG2RAD)
+                ra0 = state.ra[idx_i]
+
+                for idx_j in bounds_j['members']:
+                    # Compute offset
+                    dx_deg = angdiff_deg(state.ra[idx_j], ra0) * cosd0
+                    dy_deg = state.dec[idx_j] - dec0
+
+                    # Check ellipse overlap
+                    if ellipses_overlap(
+                        state.a_arc[idx_i], state.b_arc[idx_i], state.pa_rad[idx_i],
+                        state.a_arc[idx_j], state.b_arc[idx_j], state.pa_rad[idx_j],
+                        dx_deg, dy_deg, scale):
+
+                        # Merge the groups
+                        if dsu.union(int(idx_i), int(idx_j)):
+                            n_merges += 1
+                        found_overlap = True
+                        break
+
+    return n_merges
+
 
 def _worker_wrapper(args):
     members, search = args
@@ -663,7 +757,15 @@ def build_group_catalog(
             if n_manual > 0:
                 log.info(f"Manual merge: {n_manual} pair(s) successfully merged")
 
-    # Step 5: Compute final groups
+    # Step 5: Merge groups with overlapping ellipses
+    if contain:
+        t_overlap_start = time.time()
+        n_overlap_merges = _merge_overlapping_groups(dsu, state, contain_margin)
+        t_overlap_end = time.time()
+        if n_overlap_merges > 0:
+            log.info(f"Overlap merge: {n_overlap_merges} group pair(s) merged in {t_overlap_end-t_overlap_start:.2f}s")
+
+    # Step 6: Compute final groups
     roots = np.array([dsu.find(i) for i in range(state.n)])
     uniq, inv = np.unique(roots, return_inverse=True)
     group_ids = (inv + group_id_start).astype(np.int32)
@@ -693,6 +795,8 @@ def build_group_catalog(
             sep = math.hypot(dra, state.dec[k]-dec_c) * ARCMIN_PER_DEG
             max_ext = max(max_ext, sep + 0.5*state.diam[k])
         grp_diam[gi] = max(2.0*max_ext, min_group_diam_arcsec/60.0)
+        
+        # Primary is the member with the largest DIAM
         grp_primary[gi] = idx[np.argmax(state.diam[idx])]
 
     # Annotate catalog
@@ -755,6 +859,7 @@ def make_singleton_group(cat, group_id_start=0):
     Create singleton groups (one object per group).
 
     Ensures data model matches build_group_catalog output for safe vstacking.
+
     """
     n = len(cat)
 
@@ -793,7 +898,9 @@ def make_singleton_group(cat, group_id_start=0):
 
 
 def qa(*args, **kwargs):
-    """Placeholder QA hook (no-op)."""
+    """Placeholder QA hook (no-op).
+
+    """
     log.info("qa(): no-op placeholder")
 
 
@@ -813,6 +920,7 @@ def set_overlap_bit(cat, SAMPLE):
         Input catalog, modified in place.
     SAMPLE : dict
         Bitmask dictionary that includes key 'OVERLAP'.
+
     """
     OVERLAP_BIT = SAMPLE['OVERLAP']
 
