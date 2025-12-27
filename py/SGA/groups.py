@@ -399,6 +399,8 @@ def _merge_overlapping_groups(dsu, state, contain_margin):
     This catches cases like IC 4278 inside NGC 5194 that were missed
     during initial linking due to exceeding dmax.
 
+    Uses spatial indexing for efficient overlap detection.
+
     Parameters
     ----------
     dsu : DSU
@@ -418,62 +420,93 @@ def _merge_overlapping_groups(dsu, state, contain_margin):
     roots = np.array([dsu.find(i) for i in range(state.n)])
     unique_roots = np.unique(roots)
 
-    # For each group, compute bounding box for spatial pruning
-    group_bounds = {}
+    # Only check groups that could plausibly overlap
+    # (i.e., large groups or groups with large members)
+    scale = 1.0 + contain_margin
+    max_search_radius = 10.0  # arcmin - don't check groups beyond this
+
+    candidates = []
     for root in unique_roots:
         idx = np.where(roots == root)[0]
-        ra_min, ra_max = state.ra[idx].min(), state.ra[idx].max()
-        dec_min, dec_max = state.dec[idx].min(), state.dec[idx].max()
-        # Add padding based on largest member
-        padding_deg = state.diam[idx].max() * (1.0 + contain_margin) / ARCMIN_PER_DEG
-        group_bounds[root] = {
-            'ra_min': ra_min - padding_deg,
-            'ra_max': ra_max + padding_deg,
-            'dec_min': dec_min - padding_deg,
-            'dec_max': dec_max + padding_deg,
+        max_diam = state.diam[idx].max()
+        # Only consider if max member is > 1' or group has 10+ members
+        if max_diam > 1.0 or len(idx) >= 10:
+            candidates.append((root, idx, max_diam))
+
+    if len(candidates) == 0:
+        return 0
+
+    # Build spatial index for candidate groups
+    group_positions = {}
+    for root, idx, max_diam in candidates:
+        ra_center = np.median(state.ra[idx])
+        dec_center = np.median(state.dec[idx])
+        # Effective radius for overlap search
+        radius = max_diam * scale / ARCMIN_PER_DEG  # degrees
+        group_positions[root] = {
+            'ra': ra_center,
+            'dec': dec_center,
+            'radius': radius,
             'members': idx
         }
 
-    # Check all pairs of groups for overlapping members
+    # Check pairs of candidate groups
     n_merges = 0
-    scale = 1.0 + contain_margin
+    checked_pairs = set()
 
-    for i, root_i in enumerate(unique_roots):
-        bounds_i = group_bounds[root_i]
+    for i, (root_i, _, _) in enumerate(candidates):
+        pos_i = group_positions[root_i]
 
-        for root_j in unique_roots[i+1:]:
-            bounds_j = group_bounds[root_j]
+        for j, (root_j, _, _) in enumerate(candidates[i+1:], i+1):
+            pos_j = group_positions[root_j]
 
-            # Quick bounding box overlap check
-            if (bounds_i['ra_max'] < bounds_j['ra_min'] or
-                bounds_i['ra_min'] > bounds_j['ra_max'] or
-                bounds_i['dec_max'] < bounds_j['dec_min'] or
-                bounds_i['dec_min'] > bounds_j['dec_max']):
+            # Skip if already merged
+            if dsu.find(root_i) == dsu.find(root_j):
                 continue
 
-            # Check if any member from group i overlaps any member from group j
+            # Quick distance check
+            cosd = math.cos(0.5 * (pos_i['dec'] + pos_j['dec']) * DEG2RAD)
+            dra = angdiff_deg(pos_j['ra'], pos_i['ra']) * cosd
+            ddec = pos_j['dec'] - pos_i['dec']
+            sep_deg = math.hypot(dra, ddec)
+
+            # Skip if centers too far apart
+            if sep_deg > (pos_i['radius'] + pos_j['radius'] + max_search_radius / ARCMIN_PER_DEG):
+                continue
+
+            # Check for member overlap (only if groups are close)
+            pair_key = (min(root_i, root_j), max(root_i, root_j))
+            if pair_key in checked_pairs:
+                continue
+            checked_pairs.add(pair_key)
+
+            # Check members for overlap
             found_overlap = False
-            for idx_i in bounds_i['members']:
+            for idx_i in pos_i['members']:
                 if found_overlap:
                     break
 
-                # Local tangent plane centered on object i
                 dec0 = state.dec[idx_i]
                 cosd0 = math.cos(dec0 * DEG2RAD)
                 ra0 = state.ra[idx_i]
 
-                for idx_j in bounds_j['members']:
-                    # Compute offset
+                for idx_j in pos_j['members']:
                     dx_deg = angdiff_deg(state.ra[idx_j], ra0) * cosd0
                     dy_deg = state.dec[idx_j] - dec0
 
-                    # Check ellipse overlap
+                    # Quick distance check before expensive overlap test
+                    sep = math.hypot(dx_deg, dy_deg) * ARCMIN_PER_DEG
+                    max_possible_overlap = (state.a_arc[idx_i] + state.a_arc[idx_j]) * scale
+
+                    if sep > max_possible_overlap:
+                        continue
+
+                    # Full overlap check
                     if ellipses_overlap(
                         state.a_arc[idx_i], state.b_arc[idx_i], state.pa_rad[idx_i],
                         state.a_arc[idx_j], state.b_arc[idx_j], state.pa_rad[idx_j],
                         dx_deg, dy_deg, scale):
 
-                        # Merge the groups
                         if dsu.union(int(idx_i), int(idx_j)):
                             n_merges += 1
                         found_overlap = True
