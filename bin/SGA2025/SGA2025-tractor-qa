@@ -17,7 +17,8 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
 
 VI campaign:
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=3 --mp=32
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=4 --mp=32
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr11-south --version=v0.40 --vi-sample=4 --mp=32
 
 
 ## v0.22
@@ -548,6 +549,11 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
 
         I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+    elif vi_sample == 4:
+        sort_by_groupname = True
+        I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:

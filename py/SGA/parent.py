@@ -3935,6 +3935,12 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
 
     base = apply_drops(base, ov.drops, REGIONBITS)
     base = apply_adds(base, ov.adds, REGIONBITS, nocuts)
+
+    miss = ~np.isin(ov.updates['OBJNAME'].value, base['OBJNAME'])
+    if np.any(miss):
+        log.critical("The following objects in the updates.csv file are missing")
+        print(ov.updates['OBJNAME'][miss])
+        raise ValueError()
     apply_updates_inplace(base, ov.updates)
 
     try:
@@ -3943,7 +3949,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
         if not np.all(base['DIAM'] > 0.):
             raise ValueError('Non-positive DIAM in final parent')
         if not np.all((base['BA'] > 0.) & (base['BA'] <= 1.)):
-            pdb.set_trace()
             raise ValueError('BA out of range')
         if not np.all((base['PA'] >= 0.) & (base['PA'] < 180.)):
             raise ValueError('PA out of range')
