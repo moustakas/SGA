@@ -17,7 +17,7 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
 
 VI campaign:
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=3
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=3 --mp=32
 
 
 ## v0.22
@@ -544,7 +544,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         sort_by_groupname = True
         #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 0.75) & (fullsample['GROUP_DIAMETER'] <= 1.)
         I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0)
-        I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "PGC")
+        I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "2MASS") # PGC
         groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
 
         I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
