@@ -70,7 +70,7 @@ def directional_radius(a_arc, b_arc, pa_rad, bearing_rad):
     bearing_rad = np.asarray(bearing_rad)
 
     # Determine if output should be scalar (all inputs are 0-d)
-    scalar_output = (a_arc.ndim == 0 and b_arc.ndim == 0 and 
+    scalar_output = (a_arc.ndim == 0 and b_arc.ndim == 0 and
                      pa_rad.ndim == 0 and bearing_rad.ndim == 0)
 
     # Handle degenerate cases for scalar
@@ -396,6 +396,8 @@ def _check_group_pair_overlap(args):
     """
     Worker function to check if two groups have overlapping members.
 
+    Vectorized version for performance.
+
     Returns
     -------
     tuple or None
@@ -413,29 +415,37 @@ def _check_group_pair_overlap(args):
     if sep_deg > (pos_i['radius'] + pos_j['radius'] + max_search_radius / ARCMIN_PER_DEG):
         return None
 
-    # Check members for overlap
-    for idx_i in pos_i['members']:
-        dec0 = state.dec[idx_i]
-        cosd0 = math.cos(dec0 * DEG2RAD)
-        ra0 = state.ra[idx_i]
+    idx_i = pos_i['members']
+    idx_j = pos_j['members']
 
-        for idx_j in pos_j['members']:
-            dx_deg = angdiff_deg(state.ra[idx_j], ra0) * cosd0
-            dy_deg = state.dec[idx_j] - dec0
+    # Vectorized setup for group i
+    dec0_i = state.dec[idx_i]
+    cosd0_i = np.cos(dec0_i * DEG2RAD)
+    ra0_i = state.ra[idx_i]
 
-            # Quick distance check before expensive overlap test
-            sep = math.hypot(dx_deg, dy_deg) * ARCMIN_PER_DEG
-            max_possible_overlap = (state.a_arc[idx_i] + state.a_arc[idx_j]) * scale
+    # For each member of group i, compute offsets to ALL members of group j
+    for ki, i_idx in enumerate(idx_i):
+        # Vectorized offset calculation to all j members
+        dx_deg = angdiff_deg(state.ra[idx_j], ra0_i[ki]) * cosd0_i[ki]
+        dy_deg = state.dec[idx_j] - dec0_i[ki]
 
-            if sep > max_possible_overlap:
-                continue
+        # Vectorized separation
+        sep = np.hypot(dx_deg, dy_deg) * ARCMIN_PER_DEG
+        max_possible = (state.a_arc[i_idx] + state.a_arc[idx_j]) * scale
 
-            # Full overlap check
+        # Quick rejection
+        candidates = np.where(sep <= max_possible)[0]
+        if len(candidates) == 0:
+            continue
+
+        # Check only promising candidates
+        for kj in candidates:
+            j_idx = idx_j[kj]
             if ellipses_overlap(
-                state.a_arc[idx_i], state.b_arc[idx_i], state.pa_rad[idx_i],
-                state.a_arc[idx_j], state.b_arc[idx_j], state.pa_rad[idx_j],
-                dx_deg, dy_deg, scale):
-                return (int(idx_i), int(idx_j))
+                state.a_arc[i_idx], state.b_arc[i_idx], state.pa_rad[i_idx],
+                state.a_arc[j_idx], state.b_arc[j_idx], state.pa_rad[j_idx],
+                dx_deg[kj], dy_deg[kj], scale):
+                return (int(i_idx), int(j_idx))
 
     return None
 
@@ -514,27 +524,31 @@ def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
     y = cosd * np.sin(ra_rad)
     z = np.sin(dec_rad)
 
-    # Build pair list with spatial filtering
+    # Build pair list with spatial filtering (vectorized)
     pair_args = []
-    max_sep_deg = 2 * max(group_radius) + max_search_radius / ARCMIN_PER_DEG
 
-    for i in range(n_groups - 1):
-        # Vectorized distance to all remaining groups
-        dx = x[i+1:] - x[i]
-        dy = y[i+1:] - y[i]
-        dz = z[i+1:] - z[i]
+    if n_groups > 1:
+        # Create index arrays for all pairs
+        i_idx, j_idx = np.triu_indices(n_groups, k=1)
+
+        # Vectorized distance computation for all pairs
+        dx = x[j_idx] - x[i_idx]
+        dy = y[j_idx] - y[i_idx]
+        dz = z[j_idx] - z[i_idx]
         chord_dist = np.sqrt(dx*dx + dy*dy + dz*dz)
 
-        # Angular separation (small angle approximation is fine for filtering)
-        # For small angles: chord ≈ 2*sin(theta/2) ≈ theta
+        # Angular separation
         ang_sep = 2 * np.arcsin(np.clip(chord_dist / 2, -1, 1)) * RAD2DEG
 
         # Only check pairs that could plausibly overlap
-        max_reach = group_radius[i] + group_radius[i+1:] + max_search_radius / ARCMIN_PER_DEG
+        max_reach = group_radius[i_idx] + group_radius[j_idx] + max_search_radius / ARCMIN_PER_DEG
         close_enough = ang_sep <= max_reach
 
-        for j_offset in np.where(close_enough)[0]:
-            j = i + 1 + j_offset
+        # Build argument list for close pairs
+        close_pairs = np.where(close_enough)[0]
+        for pair_idx in close_pairs:
+            i = i_idx[pair_idx]
+            j = j_idx[pair_idx]
             pair_args.append((
                 candidate_roots[i], candidate_roots[j],
                 {'ra': group_ra[i], 'dec': group_dec[i],
@@ -866,35 +880,59 @@ def build_group_catalog(
         if n_overlap_merges > 0:
             log.info(f"Overlap merge: {n_overlap_merges} group pair(s) merged in {t_overlap_end-t_overlap_start:.2f}s")
 
-    # Step 6: Compute final groups
+    # Step 6: Compute final groups (vectorized where possible)
     roots = np.array([dsu.find(i) for i in range(state.n)])
     uniq, inv = np.unique(roots, return_inverse=True)
     group_ids = (inv + group_id_start).astype(np.int32)
     mult = np.bincount(inv, minlength=len(uniq))
 
-    grp_ra, grp_dec, grp_diam = np.zeros(len(uniq)), np.zeros(len(uniq)), np.zeros(len(uniq))
+    grp_ra = np.zeros(len(uniq))
+    grp_dec = np.zeros(len(uniq))
+    grp_diam = np.zeros(len(uniq))
     grp_primary = np.zeros(len(uniq), dtype=np.int64)
 
+    # Vectorized group center computation using bincount
+    ra_rad = state.ra * DEG2RAD
+    dec_rad = state.dec * DEG2RAD
+    cosd = np.cos(dec_rad)
+    w = np.clip(state.diam, 1e-3, None)
+
+    # Weighted Cartesian coordinates
+    wx = cosd * np.cos(ra_rad) * w
+    wy = cosd * np.sin(ra_rad) * w
+    wz = np.sin(dec_rad) * w
+
+    # Sum by group using bincount
+    sum_wx = np.bincount(inv, weights=wx, minlength=len(uniq))
+    sum_wy = np.bincount(inv, weights=wy, minlength=len(uniq))
+    sum_wz = np.bincount(inv, weights=wz, minlength=len(uniq))
+    sum_w = np.bincount(inv, weights=w, minlength=len(uniq))
+
+    # Normalize and convert back to spherical
+    x_norm = sum_wx / sum_w
+    y_norm = sum_wy / sum_w
+    z_norm = sum_wz / sum_w
+    norm = np.sqrt(x_norm*x_norm + y_norm*y_norm + z_norm*z_norm)
+    x_norm /= norm
+    y_norm /= norm
+    z_norm /= norm
+
+    grp_ra = (np.arctan2(y_norm, x_norm) % (2*np.pi)) * RAD2DEG
+    grp_dec = np.arctan2(z_norm, np.hypot(x_norm, y_norm)) * RAD2DEG
+
+    # Compute diameters (still needs loop but optimized)
     for gi, r in enumerate(uniq):
         idx = np.where(roots==r)[0]
-        w = np.clip(state.diam[idx], 1e-3, None)
-        ra_rad, dec_rad = state.ra[idx]*DEG2RAD, state.dec[idx]*DEG2RAD
-        cosd = np.cos(dec_rad)
-        x = (cosd*np.cos(ra_rad)*w).sum()/w.sum()
-        y = (cosd*np.sin(ra_rad)*w).sum()/w.sum()
-        z = (np.sin(dec_rad)*w).sum()/w.sum()
-        norm = math.sqrt(x*x+y*y+z*z)
-        if norm > 0:
-            x, y, z = x/norm, y/norm, z/norm
-        ra_c = (math.atan2(y,x)%(2*math.pi))*RAD2DEG
-        dec_c = math.atan2(z,math.hypot(x,y))*RAD2DEG
-        grp_ra[gi], grp_dec[gi] = ra_c, dec_c
+        ra_c, dec_c = grp_ra[gi], grp_dec[gi]
 
-        max_ext = 0.0
-        for k in idx:
-            dra = angdiff_deg(state.ra[k], ra_c) * math.cos(dec_c*DEG2RAD)
-            sep = math.hypot(dra, state.dec[k]-dec_c) * ARCMIN_PER_DEG
-            max_ext = max(max_ext, sep + 0.5*state.diam[k])
+        # Vectorized distance computation
+        cosd_c = math.cos(dec_c * DEG2RAD)
+        dra = angdiff_deg(state.ra[idx], ra_c) * cosd_c
+        ddec = state.dec[idx] - dec_c
+        sep = np.hypot(dra, ddec) * ARCMIN_PER_DEG
+        extent = sep + 0.5 * state.diam[idx]
+        max_ext = extent.max()
+
         grp_diam[gi] = max(2.0*max_ext, min_group_diam_arcsec/60.0)
 
         # Primary is the member with the largest DIAM
@@ -1066,18 +1104,25 @@ def set_overlap_bit(cat, SAMPLE):
 
         overlapped = np.zeros(I.size, dtype=bool)
 
-        # Pairwise overlap checks (upper triangle only)
+        # Pairwise overlap checks (upper triangle only, vectorized inner loop)
         for ii in range(I.size - 1):
-            # Compute offsets to all subsequent members
+            # Vectorized offset computation to all subsequent members
             dx_deg = angdiff_deg(ra[ii+1:], ra[ii]) * cosd0
             dy_deg = dec[ii+1:] - dec[ii]
 
-            # Check ellipse overlap using the same function as linking
-            for kk, (dx, dy) in enumerate(zip(dx_deg, dy_deg)):
+            # Vectorized separation
+            sep = np.hypot(dx_deg, dy_deg) * ARCMIN_PER_DEG
+            max_possible = (a_arc[ii] + a_arc[ii+1:]) * 1.0
+
+            # Quick rejection
+            candidates = np.where(sep <= max_possible)[0]
+
+            # Check only promising candidates
+            for kk in candidates:
                 jj = ii + 1 + kk
                 if ellipses_overlap(a_arc[ii], b_arc[ii], pa_rad[ii],
                                    a_arc[jj], b_arc[jj], pa_rad[jj],
-                                   dx, dy, scale=1.0):  # No margin for overlap bit
+                                   dx_deg[kk], dy_deg[kk], scale=1.0):  # No margin for overlap bit
                     overlapped[ii] = True
                     overlapped[jj] = True
 
