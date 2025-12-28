@@ -721,7 +721,7 @@ def build_group_catalog(
     mfac_backbone=1.3, mfac_sat=1.5, k_floor=0.40, q_floor=0.20,
     name_via="radec", sphere_link_arcmin=None, grid_cell_arcmin=None,
     mp=1, contain=True, contain_margin=0.75, merge_centers=True,
-    merge_sep_arcsec=52.0, contain_search_arcmin=5.0,
+    merge_sep_arcsec=52.0, contain_search_arcmin=30.0,
     min_group_diam_arcsec=30.0, manual_merge_pairs=None, name_column="OBJNAME"):
     """
     Build galaxy group catalog with hybrid anisotropic linking.
