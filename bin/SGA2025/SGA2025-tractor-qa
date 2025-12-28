@@ -557,11 +557,13 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         #I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
         I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) &
                      (fullsample['GROUP_DIAMETER'] >= 0) & (fullsample['GROUP_DIAMETER'] < 2.0))
-        I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "SDSS") # PGC
+        I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "2MASS") # "SDSS") # PGC
         groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
         I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
+        print(np.sum(I))
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
+        pdb.set_trace()
     else:
         sort_by_groupname = False
         if no_groups:

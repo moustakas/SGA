@@ -3484,8 +3484,10 @@ def load_overlays(overlay_dir):
         raise ValueError()
     if len(np.unique(drops['OBJNAME'])) != len(drops):
         log.critical("drops.csv: duplicate OBJNAME entries are not allowed.")
-        oo, cc = np.unique(drops['OBJNAME'], return_counts=True)
-        print(oo[cc>1])
+        oo, uindx, cc = np.unique(drops['OBJNAME'].value, return_counts=True, return_index=True)
+        uindx.sort()
+        drops[uindx].write('udrops.csv', format='csv', overwrite=True)
+        log.warning(f'Wrote udrops.csv with {len(uindx):,d}/{len(drops):,d} unique rows.')
         raise ValueError()
 
     # normalize optional columns
@@ -3954,6 +3956,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
             raise ValueError('PA out of range')
     except:
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
+
+    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
