@@ -560,7 +560,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "SDSS") # PGC
         groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
         I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
-        pdb.set_trace()
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
