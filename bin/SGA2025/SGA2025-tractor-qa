@@ -290,6 +290,8 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     diam=groupdiam, cutout_galaxy=cutout_galaxy[indx[iax]],
                     cutout_galaxydir=cutout_galaxydir[indx[iax]],
                     cutout=obj['CUTOUT'])
+                #if sga is None:
+                #    pdb.set_trace()
                 #print(groupra, groupdec, wcs.wcs.crval)
 
                 if image is None:
@@ -547,13 +549,18 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0)
         I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "2MASS") # PGC
         groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
-
         I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     elif vi_sample == 4:
         sort_by_groupname = True
-        I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
+        #I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
+        I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) &
+                     (fullsample['GROUP_DIAMETER'] >= 0) & (fullsample['GROUP_DIAMETER'] < 2.0))
+        I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "SDSS") # PGC
+        groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
+        I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
+        pdb.set_trace()
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
@@ -630,7 +637,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                        diamcolumn='GROUP_DIAMETER', fits_cutouts=False,
                        maxdiam_arcmin=MAXDIAM, mp=mp,
                        cutoutdir=os.path.join(cutoutdir, region))
-
 
     # sort by diameter (?)
     if sort_by_groupname:
