@@ -547,7 +547,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         sort_by_groupname = True
 
         overlap_mask = (
-            (fullsample['GROUP_MULT'] > 6) &
+            (fullsample['GROUP_MULT'] > 4) & (fullsample['GROUP_MULT'] <= 6) &
             (fullsample['GROUP_DIAMETER'] < 5.) &
             (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) &
             (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
