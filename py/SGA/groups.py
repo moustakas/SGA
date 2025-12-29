@@ -483,16 +483,32 @@ def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
     scale = 1.0 + contain_margin
     max_search_radius = 10.0  # arcmin
 
+    # Compute max diameter per group
+    group_max_diam = np.zeros(unique_roots.max()+1)
+    np.maximum.at(group_max_diam, roots, state.diam)
+
+    # Separate large and small groups
+    # We need to check: large-large (overlap) and large-small (containment)
+    # We skip: small-small (too many pairs, unlikely to overlap)
+    large_threshold = 1.0  # arcmin
+    large_mask = group_max_diam[unique_roots] > large_threshold
+    large_indices = np.where(large_mask)[0]
+    small_indices = np.where(~large_mask)[0]
+
+    n_large = len(large_indices)
+    n_small = len(small_indices)
+
+    if n_large == 0:
+        return 0
+
+    log.info(f"Overlap merge: {n_large:,d} large groups (>{large_threshold}'), {n_small:,d} small groups")
+
     # Build spatial index for all groups
     n_groups = len(unique_roots)
     group_ra = np.zeros(n_groups)
     group_dec = np.zeros(n_groups)
     group_radius = np.zeros(n_groups)
     group_members = []
-
-    # Compute group properties
-    group_max_diam = np.zeros(unique_roots.max()+1)
-    np.maximum.at(group_max_diam, roots, state.diam)
 
     for i, root in enumerate(unique_roots):
         idx = np.where(roots == root)[0]
@@ -501,50 +517,39 @@ def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
         group_dec[i] = np.median(state.dec[idx])
         group_radius[i] = group_max_diam[root] * scale / ARCMIN_PER_DEG
 
-    if n_groups < 2:
-        return 0
-
-    # Build all pair indices at once
-    n_pairs = n_groups * (n_groups - 1) // 2
-
-    log.info(f"Overlap merge: checking {n_pairs:,d} group pairs from {n_groups:,d} groups")
-
-    # Vectorized distance matrix for quick rejection
-    # This avoids building pairs that are obviously too far apart
+    # Cartesian coordinates for distance computation
     cosd = np.cos(group_dec * DEG2RAD)
     ra_rad = group_ra * DEG2RAD
     dec_rad = group_dec * DEG2RAD
-
-    # Cartesian coordinates for distance computation
     x = cosd * np.cos(ra_rad)
     y = cosd * np.sin(ra_rad)
     z = np.sin(dec_rad)
 
-    # Build pair list with spatial filtering (vectorized)
+    # Build pair list: large-large + large-small
     pair_args = []
 
-    if n_groups > 1:
-        # Create index arrays for all pairs
-        i_idx, j_idx = np.triu_indices(n_groups, k=1)
+    # 1. Large vs Large pairs
+    if n_large > 1:
+        i_idx, j_idx = np.triu_indices(n_large, k=1)
+        i_global = large_indices[i_idx]
+        j_global = large_indices[j_idx]
 
-        # Vectorized distance computation for all pairs
-        dx = x[j_idx] - x[i_idx]
-        dy = y[j_idx] - y[i_idx]
-        dz = z[j_idx] - z[i_idx]
+        # Vectorized distance computation
+        dx = x[j_global] - x[i_global]
+        dy = y[j_global] - y[i_global]
+        dz = z[j_global] - z[i_global]
         chord_dist = np.sqrt(dx*dx + dy*dy + dz*dz)
-
-        # Angular separation
         ang_sep = 2 * np.arcsin(np.clip(chord_dist / 2, -1, 1)) * RAD2DEG
 
-        # Only check pairs that could plausibly overlap
-        max_reach = group_radius[i_idx] + group_radius[j_idx] + max_search_radius / ARCMIN_PER_DEG
+        # Check proximity
+        max_reach = group_radius[i_global] + group_radius[j_global] + max_search_radius / ARCMIN_PER_DEG
         close_enough = ang_sep <= max_reach
 
-        # Build argument list for close pairs
+        # Build argument list
         close_pairs = np.where(close_enough)[0]
         for pair_idx in close_pairs:
-            i = i_idx[pair_idx]
-            j = j_idx[pair_idx]
+            i = i_global[pair_idx]
+            j = j_global[pair_idx]
             pair_args.append((
                 unique_roots[i], unique_roots[j],
                 {'ra': group_ra[i], 'dec': group_dec[i],
@@ -554,11 +559,38 @@ def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
                 state, scale, max_search_radius
             ))
 
+    # 2. Large vs Small pairs (for containment)
+    if n_large > 0 and n_small > 0:
+        # For each large group, check all small groups
+        for large_idx in large_indices:
+            # Vectorized distance to all small groups
+            dx = x[small_indices] - x[large_idx]
+            dy = y[small_indices] - y[large_idx]
+            dz = z[small_indices] - z[large_idx]
+            chord_dist = np.sqrt(dx*dx + dy*dy + dz*dz)
+            ang_sep = 2 * np.arcsin(np.clip(chord_dist / 2, -1, 1)) * RAD2DEG
+
+            # Check proximity
+            max_reach = group_radius[large_idx] + group_radius[small_indices] + max_search_radius / ARCMIN_PER_DEG
+            close_enough = ang_sep <= max_reach
+
+            # Build argument list
+            close_small = small_indices[close_enough]
+            for small_idx in close_small:
+                pair_args.append((
+                    unique_roots[large_idx], unique_roots[small_idx],
+                    {'ra': group_ra[large_idx], 'dec': group_dec[large_idx],
+                     'radius': group_radius[large_idx], 'members': group_members[large_idx]},
+                    {'ra': group_ra[small_idx], 'dec': group_dec[small_idx],
+                     'radius': group_radius[small_idx], 'members': group_members[small_idx]},
+                    state, scale, max_search_radius
+                ))
+
     total_pairs = len(pair_args)
     if total_pairs == 0:
         return 0
 
-    log.info(f"  Spatial filtering reduced to {total_pairs:,d} plausible pairs")
+    log.info(f"  Spatial filtering: {total_pairs:,d} plausible pairs to check")
 
     # Process pairs
     n_merges = 0
