@@ -3514,7 +3514,7 @@ def apply_updates_inplace(parent, updates):
         # cast to parent dtype
         dt = parent[fld].dtype
         val = row['NEW_VALUE']
-        log.info(f'{obj} {fld}: {parent[fld][idx][0]} --> {val}')
+        #log.info(f'{obj} {fld}: {parent[fld][idx][0]} --> {val}')
         if dt.kind in 'f':
             parent[fld][idx] = float(val)
         elif dt.kind in 'iu':
@@ -3957,8 +3957,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
     except:
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
 
-    pdb.set_trace()
-
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
@@ -4002,26 +4000,23 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
 
     special = ((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0) | \
               ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
-    if np.any(special):
-        out1 = make_singleton_group(grp[special], group_id_start=0)
-        gid_start = int(np.max(out1['GROUP_ID'])) + 1
-    else:
-        from astropy.table import Table
-        out1 = Table(grp[:0]).copy()
-        gid_start = 0
+    out1 = make_singleton_group(grp[special], group_id_start=0)
+    gid_start = int(np.max(out1['GROUP_ID'])) + 1
     out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
-
     out = vstack((out1, out2))
-    #del out1, out2, grp
+
 
     # Assign SGAGROUP name and check duplicates among primaries
-    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
-    out.add_column(groupname, name='SGAGROUP', index=1)
-    prim = out['GROUP_PRIMARY']
-    gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
-    if np.any(cc > 1):
-        log.critical('Duplicate group names among primaries detected.')
-        raise ValueError('Duplicate SGAGROUP among primaries')
+    try:
+        groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
+        out.add_column(groupname, name='SGAGROUP', index=1)
+        prim = out['GROUP_PRIMARY']
+        gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
+        if np.any(cc > 1):
+            log.critical('Duplicate group names among primaries detected.')
+            raise ValueError('Duplicate SGAGROUP among primaries')
+    except:
+        pdb.set_trace()
 
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).

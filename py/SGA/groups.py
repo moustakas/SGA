@@ -341,7 +341,7 @@ def process_cluster(members, state, contain_search_arcmin=15.0/60.0):
     grid = Grid(dx, dy, p.cell_arcmin / ARCMIN_PER_DEG)
 
     edges = []
-    scale = 1.0 + p.contain_margin
+    scale = 1.0  # Use unscaled ellipses for initial linking
 
     for k in range(len(members)):
         i = int(idx[k])
@@ -483,35 +483,31 @@ def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
     scale = 1.0 + contain_margin
     max_search_radius = 10.0  # arcmin
 
-    # Vectorized candidate selection
-    group_sizes = np.bincount(roots, minlength=unique_roots.max()+1)
+    # Build spatial index for all groups
+    n_groups = len(unique_roots)
+    group_ra = np.zeros(n_groups)
+    group_dec = np.zeros(n_groups)
+    group_radius = np.zeros(n_groups)
+    group_members = []
+
+    # Compute group properties
     group_max_diam = np.zeros(unique_roots.max()+1)
     np.maximum.at(group_max_diam, roots, state.diam)
 
-    candidate_mask = (group_max_diam[unique_roots] > 1.0) | (group_sizes[unique_roots] >= 10)
-    candidate_roots = unique_roots[candidate_mask]
-
-    if len(candidate_roots) == 0:
-        return 0
-
-    # Vectorized group center computation
-    group_ra = np.zeros(len(candidate_roots))
-    group_dec = np.zeros(len(candidate_roots))
-    group_radius = np.zeros(len(candidate_roots))
-    group_members = []
-
-    for i, root in enumerate(candidate_roots):
+    for i, root in enumerate(unique_roots):
         idx = np.where(roots == root)[0]
         group_members.append(idx)
         group_ra[i] = np.median(state.ra[idx])
         group_dec[i] = np.median(state.dec[idx])
         group_radius[i] = group_max_diam[root] * scale / ARCMIN_PER_DEG
 
+    if n_groups < 2:
+        return 0
+
     # Build all pair indices at once
-    n_groups = len(candidate_roots)
     n_pairs = n_groups * (n_groups - 1) // 2
 
-    log.info(f"Overlap merge: checking {n_pairs:,d} group pairs from {n_groups:,d} candidate groups")
+    log.info(f"Overlap merge: checking {n_pairs:,d} group pairs from {n_groups:,d} groups")
 
     # Vectorized distance matrix for quick rejection
     # This avoids building pairs that are obviously too far apart
@@ -550,7 +546,7 @@ def _merge_overlapping_groups(dsu, state, contain_margin, mp=1):
             i = i_idx[pair_idx]
             j = j_idx[pair_idx]
             pair_args.append((
-                candidate_roots[i], candidate_roots[j],
+                unique_roots[i], unique_roots[j],
                 {'ra': group_ra[i], 'dec': group_dec[i],
                  'radius': group_radius[i], 'members': group_members[i]},
                 {'ra': group_ra[j], 'dec': group_dec[j],
@@ -820,7 +816,36 @@ def build_group_catalog(
     t2 = time.time()
     log.info(f"[2/3] Linking: {links} links in {t2-t1:.2f}s")
 
-    # Step 3: Merge centers
+    # Step 3: Manual merges
+    n_manual = 0
+    if manual_merge_pairs:
+        if name_column not in cat.colnames:
+            log.warning(f"Manual merge requested but column '{name_column}' not found, skipping")
+        else:
+            name_map = {str(n): i for i, n in enumerate(cat[name_column])}
+            missing = []
+            for a, b in manual_merge_pairs:
+                ia, ib = name_map.get(str(a)), name_map.get(str(b))
+                if ia is None or ib is None:
+                    missing.append((a, b))
+                    continue
+                if dsu.union(ia, ib):
+                    n_manual += 1
+
+            if missing:
+                log.warning(f"Manual merge: {len(missing)} pair(s) had missing names: {missing[:3]}")
+            if n_manual > 0:
+                log.info(f"Manual merge: {n_manual} pair(s) successfully merged")
+
+    # Step 4: Merge groups with overlapping ellipses
+    if contain:
+        t_overlap_start = time.time()
+        n_overlap_merges = _merge_overlapping_groups(dsu, state, contain_margin, mp)
+        t_overlap_end = time.time()
+        if n_overlap_merges > 0:
+            log.info(f"Overlap merge: {n_overlap_merges} group pair(s) merged in {t_overlap_end-t_overlap_start:.2f}s")
+
+    # Step 5: Merge centers (after overlap merge to catch all groups)
     if merge_centers:
         roots = np.array([dsu.find(i) for i in range(state.n)])
         uniq = np.unique(roots)
@@ -850,35 +875,6 @@ def build_group_catalog(
             while j != -1:
                 dsu.union(reps[uniq[i]], reps[uniq[j]])
                 j = nxcent[j]
-
-    # Step 4: Manual merges
-    n_manual = 0
-    if manual_merge_pairs:
-        if name_column not in cat.colnames:
-            log.warning(f"Manual merge requested but column '{name_column}' not found, skipping")
-        else:
-            name_map = {str(n): i for i, n in enumerate(cat[name_column])}
-            missing = []
-            for a, b in manual_merge_pairs:
-                ia, ib = name_map.get(str(a)), name_map.get(str(b))
-                if ia is None or ib is None:
-                    missing.append((a, b))
-                    continue
-                if dsu.union(ia, ib):
-                    n_manual += 1
-
-            if missing:
-                log.warning(f"Manual merge: {len(missing)} pair(s) had missing names: {missing[:3]}")
-            if n_manual > 0:
-                log.info(f"Manual merge: {n_manual} pair(s) successfully merged")
-
-    # Step 5: Merge groups with overlapping ellipses
-    if contain:
-        t_overlap_start = time.time()
-        n_overlap_merges = _merge_overlapping_groups(dsu, state, contain_margin, mp)
-        t_overlap_end = time.time()
-        if n_overlap_merges > 0:
-            log.info(f"Overlap merge: {n_overlap_merges} group pair(s) merged in {t_overlap_end-t_overlap_start:.2f}s")
 
     # Step 6: Compute final groups (vectorized where possible)
     roots = np.array([dsu.find(i) for i in range(state.n)])
