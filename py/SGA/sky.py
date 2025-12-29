@@ -16,6 +16,35 @@ from SGA.coadds import PIXSCALE
 from SGA.logger import log
 
 
+def to_skyviewer_table(cat):
+    """
+    Convert SGA catalog to sky viewer format with spatially-cycled colors.
+
+    Colors cycle on ~1 degree scale to distinguish nearby groups.
+
+    """
+    # Color palette (6 distinct colors)
+    colors = ['red', 'blue', 'green', 'yellow', 'cyan', 'orange']
+
+    # Assign colors based on RA/Dec bins (~1 degree cells)
+    ra_bin = np.floor(cat['RA']).astype(int) % len(colors)
+    dec_bin = np.floor(cat['DEC']).astype(int) % len(colors)
+    color_idx = (ra_bin + dec_bin) % len(colors)
+    color_array = np.array([colors[i] for i in color_idx])
+
+    # Build output table
+    out = Table()
+    out['name'] = cat['OBJNAME']
+    out['ra'] = cat['RA']
+    out['dec'] = cat['DEC']
+    out['radius'] = (cat['DIAM'] * 60.0 / 2.0).astype(np.float32)  # arcmin -> arcsec, diam -> radius
+    out['abRatio'] = cat['BA']
+    out['posAngle'] = cat['PA']
+    out['color'] = color_array
+
+    return out
+
+
 def find_in_mclouds(cat, mcloud='LMC'):
     # flag objects in the LMC and SMC
 
