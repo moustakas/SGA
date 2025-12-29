@@ -3957,6 +3957,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
     except:
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
 
+    pdb.set_trace()
+
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
