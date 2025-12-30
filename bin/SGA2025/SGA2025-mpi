@@ -653,8 +653,11 @@ def main():
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
     if len(groups[rank]) > 0:
-        log.info(f'Rank {rank:03d} finished {len(groups[rank]):,d}) objects ' + \
+        log.info(f'Rank {rank:03d} finished {len(groups[rank]):,d} object(s) ' + \
                  f'in {(time.time()-t0)/60.:.3f} minutes')
+
+    if comm:
+        comm.barrier()
 
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
