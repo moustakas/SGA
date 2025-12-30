@@ -548,8 +548,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
         min_mult, max_mult = 4, 4
         #min_max_diam, max_max_diam = 0.0, 0.5
-        min_max_diam, max_max_diam = 0.5, 1.
-        #min_max_diam, max_max_diam = 1., 1e3
+        #min_max_diam, max_max_diam = 0.5, 1.
+        min_max_diam, max_max_diam = 1., 1e3
 
         # Find groups where largest member is within diameter range
         max_diam_per_group = np.zeros(fullsample['GROUP_ID'].max() + 1, dtype=np.float32)

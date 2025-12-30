@@ -450,6 +450,7 @@ def main():
              f'on rank {rank} with {args.mp} cores on {time.asctime()}')
 
     # The rest of the pipeline--
+    t0 = time.time()
     if rank == 0:
         tall = time.time()
 
@@ -651,9 +652,9 @@ def main():
                              verbose=args.verbose, clobber=args.clobber)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
-
-    if comm:
-        comm.barrier()
+    if len(groups[rank]) > 0:
+        log.info(f'Rank {rank:03d} finished {len(groups[rank]):,d}) objects ' + \
+                 f'in {(time.time()-t0)/60.:.3f} minutes')
 
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
@@ -674,7 +675,6 @@ def main():
         else:
             stilltodo = 0
         log.info(f'{suffix.upper()} left to do: {stilltodo:,d} / {ntodo:,d}.')
-
 
 
 if __name__ == '__main__':
