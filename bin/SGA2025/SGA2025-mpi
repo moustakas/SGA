@@ -379,93 +379,61 @@ def main():
         groups = comm.bcast(groups, root=0)
         suffix = comm.bcast(suffix, root=0)
 
+    # Report summary (rank 0 only)
     if rank == 0:
-        if len(groups) == 0:
-            ntodo = 0
-        else:
-            ntodo = len(np.hstack(groups))
+        ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
                  f'{len(sample):,d} divided across {size} rank(s).')
     if comm:
         comm.barrier()
 
-    if len(groups) == 0:
+    # Determine if this rank has work
+    has_work = len(groups) > 0 and len(groups[rank]) > 0
+
+    # Report completion status for this rank
+    if not has_work:
         log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
                  f'{rank} are complete!')
-        if args.count:
-            if rank == 0:
-                if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                             f'{len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[DIAMCOLUMN][fail[rank]]):
-                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
-        return
-    elif len(groups[rank]) == 0:
-        log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
-                 f'{rank} are complete!')
-        if args.count:
-            if rank == 0:
-                if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                             f'{len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[DIAMCOLUMN][fail[rank]]):
-                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
-        return
     else:
         log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
-        if args.analyze and args.coadds:
-            if rank == 0:
-                # analysis of previous submissions
-                todo = np.hstack(groups)
-                if len(todo) > 0:
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[todo], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    sort_groups_by_attempts(galaxy, galaxydir, sample[todo], diamcolumn=DIAMCOLUMN)
-        elif args.count:
-            if rank == 0:
-                if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                             f'{len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[DIAMCOLUMN][fail[rank]]):
-                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
-                if args.debug:
-                    if len(fail[rank]) > 0:
-                        log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                                 f'{len(sample):,d}')
-                        galaxy, galaxydir = get_galaxy_galaxydir(
-                            sample[fail[rank]], region=args.region,
-                            group=not no_groups, datadir=datadir, htmldir=htmldir)
-                        for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                                sample[DIAMCOLUMN][fail[rank]]):
-                            print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
 
-                    todo = np.hstack(groups)
-                    if len(todo) > 0:
-                        log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
-                        galaxy, galaxydir = get_galaxy_galaxydir(
-                            sample[todo], region=args.region,
-                            group=not no_groups,
-                            datadir=datadir, htmldir=htmldir)
-                        for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
-                                                     sample['OBJNAME'][todo],
-                                                     sample[DIAMCOLUMN][todo]):
-                            log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
-                            #log.info(f'  {ii} {dd} ({obj}; d={diam:.3f} arcmin)')
-                            #log.info(f'{dd}')
-            return
+    # Handle special modes (rank 0 only)
+    if rank == 0:
+        # Always report failures if present
+        if len(fail[rank]) > 0:
+            log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
+                     f'{len(sample):,d}')
+            galaxy, galaxydir = get_galaxy_galaxydir(
+                sample[fail[rank]], region=args.region,
+                group=not no_groups, datadir=datadir, htmldir=htmldir)
+            for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                                    sample[DIAMCOLUMN][fail[rank]]):
+                print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+
+        # Analysis mode
+        if args.analyze and args.coadds and has_work:
+            todo = np.hstack(groups)
+            galaxy, galaxydir = get_galaxy_galaxydir(
+                sample[todo], region=args.region,
+                group=not no_groups, datadir=datadir, htmldir=htmldir)
+            sort_groups_by_attempts(galaxy, galaxydir, sample[todo], diamcolumn=DIAMCOLUMN)
+
+        # Debug mode: print detailed todo list
+        if args.count and args.debug and has_work:
+            todo = np.hstack(groups)
+            log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
+            galaxy, galaxydir = get_galaxy_galaxydir(
+                sample[todo], region=args.region,
+                group=not no_groups,
+                datadir=datadir, htmldir=htmldir)
+            for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
+                                         sample['OBJNAME'][todo],
+                                         sample[DIAMCOLUMN][todo]):
+                log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
+
+    # Exit early for count/analyze modes
+    if args.count or (args.analyze and args.coadds):
+        return
 
     # Loop on the remaining objects.
     log.info(f'Starting {len(groups[rank])} {suffix.upper()} ' + \
