@@ -93,6 +93,68 @@ def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
     # restore the logger
     restore_logger(fh=fh, debug=debug)
 
+
+def sort_groups_by_attempts(galaxy, galaxydir, sample, diamcolumn='DIAM'):
+    """
+    Sort galaxy groups by number of attempts (highest to lowest).
+
+    Parameters
+    ----------
+    galaxy : array-like
+        Group names (e.g., 'SGA2025_19895p4202')
+    galaxydir : array-like
+        Group directories
+    sample : Table
+        Catalog with OBJNAME and diameter columns
+    diamcolumn : str
+        Name of diameter column in sample
+
+    Prints sorted list grouped by attempt count.
+
+    """
+    import glob
+
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
+
+    attempts = []
+    for gname, gdir in zip(galaxy, galaxydir):
+        # Look for log files matching pattern
+        logpattern = os.path.join(gdir, f'{gname}-coadds.log*')
+        logfiles = glob.glob(logpattern)
+        attempts.append(len(logfiles))
+
+    attempts = np.array(attempts)
+
+    # Sort by attempts (descending)
+    sort_idx = np.argsort(attempts)[::-1]
+
+    # Group by attempt count and print
+    unique_attempts = np.unique(attempts[sort_idx])[::-1]  # High to low
+
+    for iattempt, n_attempt in enumerate(unique_attempts):
+        mask = attempts == n_attempt
+        indices = np.where(mask)[0]
+
+        if n_attempt == 0:
+            log.info(f"\n=== Not yet attempted ({len(indices)} groups) ===")
+        else:
+            log.info(f"\n=== {n_attempt} attempt(s) ({len(indices)} groups) ===")
+
+        todo = []
+        for idx in indices:
+            gdir = galaxydir[idx]
+            obj = sample['OBJNAME'][idx]
+            diam = sample[diamcolumn][idx]
+            log.info(f'{gdir} "{obj}" (d={diam:.3f} arcmin)')
+            todo.append(os.path.basename(gdir))
+
+
+    if len(todo) > 0:
+        print()
+        print(','.join(todo))
+
+
 def main():
     """Top-level wrapper.
 
@@ -359,7 +421,16 @@ def main():
         return
     else:
         log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
-        if args.count:
+        if args.analyze and args.coadds:
+            if rank == 0:
+                # analysis of previous submissions
+                todo = np.hstack(groups)
+                if len(todo) > 0:
+                    galaxy, galaxydir = get_galaxy_galaxydir(
+                        sample[todo], region=args.region,
+                        group=not no_groups, datadir=datadir, htmldir=htmldir)
+                    sort_groups_by_attempts(galaxy, galaxydir, sample[todo], diamcolumn=DIAMCOLUMN)
+        elif args.count:
             if rank == 0:
                 if len(fail[rank]) > 0:
                     log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
