@@ -546,10 +546,10 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     elif vi_sample == 3:
         sort_by_groupname = True
 
-        min_mult, max_mult = 2, 2 # 4, 4
-        #min_max_diam, max_max_diam = 0.0, 0.5
+        min_mult, max_mult = 3, 3 # 4, 4
+        min_max_diam, max_max_diam = 0.0, 0.5
         #min_max_diam, max_max_diam = 0.5, 1.
-        min_max_diam, max_max_diam = 1., 1e3
+        #min_max_diam, max_max_diam = 1., 1e3
 
         # Find groups where largest member is within diameter range
         max_diam_per_group = np.zeros(fullsample['GROUP_ID'].max() + 1, dtype=np.float32)
@@ -581,7 +581,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         #I = np.isin(fullsample['GROUP_ID'], problematic_group_ids)
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
-        pdb.set_trace()
     elif vi_sample == 4:
         sort_by_groupname = True
         #I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
