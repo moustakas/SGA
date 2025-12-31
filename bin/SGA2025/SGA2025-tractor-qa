@@ -569,16 +569,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                         minlength=fullsample['GROUP_ID'].max() + 1) >= 2)[0]
 
         I = np.isin(fullsample['GROUP_ID'], problematic_group_ids)
-        print(np.sum(I))
 
-        #overlap_mask = ((fullsample['GROUP_MULT'] == 4) & #(fullsample['GROUP_MULT'] <= 6) &
-        #                (fullsample['GROUP_DIAMETER'] < 5.) &
-        #                (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) &
-        #                (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-        #overlap_counts = np.bincount(fullsample['GROUP_ID'][overlap_mask],
-        #                             minlength=fullsample['GROUP_ID'].max() + 1)
-        #problematic_group_ids = np.where(overlap_counts >= 2)[0]
-        #I = np.isin(fullsample['GROUP_ID'], problematic_group_ids)
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     elif vi_sample == 4:
@@ -593,6 +584,61 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         pdb.set_trace()
+    elif vi_sample == 5:
+        from SGA.groups import angdiff_deg, contains_point, DEG2RAD
+
+        sort_by_groupname = True
+
+        # Select mult 2-3 groups (excluding LVD)
+        overlap_mask = (
+            (fullsample['GROUP_MULT'] == 2) &
+            #(fullsample['GROUP_MULT'] >= 2) &
+            #(fullsample['GROUP_MULT'] <= 3) &
+            (fullsample['GROUP_DIAMETER'] < 5.) &
+            (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        )
+
+        # Look for small members (DIAM < max_diam_shred) fall inside
+        # large members (DIAM >= min_diam_host).
+        max_diam_shred = 0.5
+        min_diam_host = 1.
+
+        unique_groups = np.unique(fullsample['GROUP_NAME'][overlap_mask])
+        blended_group_ids = []
+
+        for gname in unique_groups:
+            idx = np.where(fullsample['GROUP_NAME'] == gname)[0]
+            if len(idx) < 2:
+                continue
+
+            # Check if small member is inside large member's ellipse
+            for i in idx:
+                if fullsample['DIAM'][i] >= max_diam_shred:
+                    continue  # Skip - not a potential shred
+
+                # Check against larger members
+                others = idx[(idx != i) & (fullsample['DIAM'][idx] >= min_diam_host)]
+                if len(others) == 0:
+                    continue
+
+                dx_deg = angdiff_deg(fullsample['RA'][i], fullsample['RA'][others]) * np.cos(fullsample['DEC'][others] * DEG2RAD)
+                dy_deg = fullsample['DEC'][i] - fullsample['DEC'][others]
+
+                if np.any(contains_point(
+                    0.5 * fullsample['DIAM'][others],
+                    0.5 * fullsample['DIAM'][others] * fullsample['BA'][others],
+                    fullsample['PA'][others] * DEG2RAD,
+                    dx_deg, dy_deg, scale=1.0
+                )):
+                    blended_group_ids.append(fullsample['GROUP_ID'][i])
+                    break
+
+        I = np.isin(fullsample['GROUP_ID'], np.unique(blended_group_ids))
+
+        print(np.sum(I))
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+
     else:
         sort_by_groupname = False
         if no_groups:
