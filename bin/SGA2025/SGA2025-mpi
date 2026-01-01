@@ -440,6 +440,7 @@ def main():
                                          sample['OBJNAME'][todo],
                                          sample[DIAMCOLUMN][todo]):
                 log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
+                #print(dd)
 
     # Exit early for count/analyze modes
     if args.count or (args.analyze and args.coadds):
