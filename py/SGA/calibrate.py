@@ -406,8 +406,12 @@ def _fit_channel_bisector_robust(x_log, sx_log, y_log, sy_log, Z,
         if np.isfinite(med_sx) and med_sx > 0:
             sdef = float(med_sx)
         else:
+            # Conservatively use full residual scale (not subtracting tau^2)
+            # when per-object errors are missing
             sdef = float(resid_scale_y / (abs(beta[1]) + 1e-9))
     else:
+        # Conservatively use full residual scale (not subtracting tau^2)
+        # when per-object errors are missing
         sdef = float(resid_scale_y / (abs(beta[1]) + 1e-9))
 
     return beta, tau, sdef
@@ -415,12 +419,44 @@ def _fit_channel_bisector_robust(x_log, sx_log, y_log, sy_log, Z,
 
 def calibrate_from_table(tbl, calib_path, covariates=None, covariate_names=None,
                          r26_min_anchor=10.):
-    """Fit calibration from table with valid R26_R measurements.
+    """Fit R26 calibration coefficients from a table of isophotal radii.
 
-    Identifies anchor objects (valid R26_R and R26_ERR_R > 0), fits each channel
-    via robust bisector regression, and writes calibration TSV.
+    Uses objects with valid R26_R measurements as anchors to establish the
+    relationship log(R26) = a + b*log(R_channel) for each photometric channel.
+    Fitting uses robust bisector regression (Isobe+ 1990) with iterative
+    sigma-clipping to reject outliers.
 
-    Returns Calibration object.
+    Parameters
+    ----------
+    tbl : astropy.table.Table
+        Input table with columns R{TH}_{BAND} and R{TH}_ERR_{BAND} for each
+        threshold (23, 24, 25, 26) and band (G, R, I, Z). Must include R26_R
+        and R26_ERR_R for anchor selection. May include SMA_MOMENT.
+    calib_path : str
+        Output path for the TSV calibration file.
+    covariates : ndarray, optional
+        Additional covariates for the fit (not currently used).
+    covariate_names : list of str, optional
+        Names for the covariates.
+    r26_min_anchor : float, optional
+        Minimum R26_R radius (arcsec) for anchor selection. Objects with
+        smaller R26 are excluded from calibration. Default 10 arcsec.
+
+    Returns
+    -------
+    Calibration
+        Calibration object containing fitted coefficients for each channel.
+
+    Notes
+    -----
+    The calibration model is:
+        log(R26) = a + b * log(R_channel) + tau * N(0,1)
+
+    where tau is the intrinsic scatter. For each channel, the output includes:
+        a, b : regression coefficients
+        tau : intrinsic scatter in log-space
+        sigma_obs_default : default measurement uncertainty for objects
+            missing per-object errors
     """
     table, sigma, N = _collect_channels_from_table(tbl)
 
@@ -464,12 +500,10 @@ def calibrate_from_table(tbl, calib_path, covariates=None, covariate_names=None,
         Z = None
         if covariates is not None:
             Z = np.asarray(covariates, dtype=float)[anchor_mask, :]
-            Z = Z[m, :]
-        yl = y_log[m]
-        syl = None if sy_log is None else sy_log[m]
 
+        # Pass full arrays; _fit_channel_bisector_robust applies its own masking
         beta, tau, sdef = _fit_channel_bisector_robust(
-            x_log[m], None if sx_log is None else sx_log[m], yl, syl, Z=None,
+            x_log, sx_log, y_log, sy_log, Z=None,
             r26_min_anchor=r26_min_anchor, clip_sigma=3.0, max_iter=5)
 
         a = float(beta[0])
@@ -592,11 +626,49 @@ def _infer_one(measurements, sigmas, cal, var_floor_log=1e-4, covars_row=None,
 
 def infer_best_r26(tbl, calib_path=None, covariates=None, add_columns=False,
                    include_direct_r26=True):
-    """Apply calibration to infer D26 diameters for all objects.
+    """Infer D26 diameters by applying calibration to available channels.
 
-    Returns (D26, D26_ERR, D26_REF, D26_WEIGHT) arrays in arcmin.
-    D26_REF indicates which channel had highest weight.
-    Optionally adds these as columns to the input table.
+    For each object, applies the calibration model log(R26) = a + b*log(R_channel)
+    to all available channels at the deepest isophotal threshold, then combines
+    estimates using inverse-variance weighting.
+
+    Parameters
+    ----------
+    tbl : astropy.table.Table
+        Input table with columns R{TH}_{BAND} and optionally R{TH}_ERR_{BAND}.
+        May include SMA_MOMENT as a fallback channel.
+    calib_path : str, optional
+        Path to calibration TSV file. If None, uses the packaged default.
+    covariates : ndarray, optional
+        Covariate values if the calibration includes covariates.
+    add_columns : bool, optional
+        If True, add D26, D26_ERR, D26_REF, D26_WEIGHT columns to tbl.
+    include_direct_r26 : bool, optional
+        If True and R26_R is available with valid errors, include it directly
+        in the weighted combination. Default True.
+
+    Returns
+    -------
+    D26 : ndarray
+        Inferred diameter at 26 mag/arcsec^2 in arcmin.
+    D26_ERR : ndarray
+        1-sigma uncertainty on D26 in arcmin.
+    D26_REF : ndarray
+        Channel name that contributed highest weight for each object.
+    D26_WEIGHT : ndarray
+        Weight of the highest-contributing channel.
+
+    Notes
+    -----
+    Channel selection logic:
+    1. Identify the deepest available isophotal threshold for each object
+    2. Use only channels at that threshold (e.g., if r25 exists but r26 doesn't,
+       use all *25 channels but not *24 or *23)
+    3. If no isophotal channels are available, fall back to 'moment' channel
+    4. Combine estimates via inverse-variance weighting
+
+    The variance for each channel estimate includes both measurement error
+    (propagated through the calibration slope) and intrinsic scatter (tau).
     """
     cal = load_calibration(calib_path)
     table, sigma, N = _collect_channels_from_table(tbl)
