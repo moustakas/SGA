@@ -544,11 +544,11 @@ def _infer_one(measurements, sigmas, cal, var_floor_log=1e-4, covars_row=None,
                 raise ValueError(f"Covariate vector required (len {len(ch.c)}) for channel {name}.")
             z_term = float(np.dot(ch.c, covars_row))
 
-        b = ch.b if ch.b != 0.0 else 1e-9
+        # Forward model: log(R26) = a + b * log(R_channel) + z_term
+        yj = ch.a + ch.b * x_log + z_term
 
-        yj = (x_log - ch.a - z_term) / b
-
-        var_j = ((0.0 if sx_log is None else sx_log**2) + ch.tau**2) / (b**2)
+        # Variance: Var(y) = b^2 * Var(x) + tau^2
+        var_j = (ch.b**2) * (sx_log**2 if sx_log else 0.0) + ch.tau**2
         var_j = max(var_j, var_floor_log)
 
         w = 1.0 / var_j
