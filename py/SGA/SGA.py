@@ -1027,8 +1027,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                     print('Hack!')
                     version = 'iband'
                     outprefix = 'SGA2025-iband'
-            outfile = f'{outprefix}-{version}-{region}.fits'
-            kdoutfile = f'{outprefix}-{version}-{region}.fits'
+            outfile = f'{outprefix}-beta-{version}-{region}.fits'
+            kdoutfile = f'{outprefix}-beta-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
             kdoutfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.kd.fits'
 
