@@ -17,10 +17,7 @@ export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2
 
 #export LEGACYPIPE_CODE_DIR=/global/homes/i/ioannis/code/legacypipe
 export LEGACYPIPE_CODE_DIR=/global/common/software/desi/users/ioannis/legacypipe
-
-#export SGA_CODE_DIR=/global/homes/i/ioannis/tmp/SGA
 export SGA_CODE_DIR=/global/homes/i/ioannis/code/SGA
-#export SGA_CODE_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/v0.22-scripts/SGA
 
 echo "SGA_CODE_DIR="$SGA_CODE_DIR
 echo "LEGACYPIPE_CODE_DIR="$LEGACYPIPE_CODE_DIR

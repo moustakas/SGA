@@ -1029,10 +1029,10 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 outprefix = 'SGA2025-wisesize'
             else:
                 outprefix = 'SGA2025'
-                if False:
-                    print('Hack!')
-                    version = 'iband'
-                    outprefix = 'SGA2025-iband'
+                if False:#True:
+                    print('TESTING!!!')
+                    version = 'test'
+                    outprefix = 'SGA2025-test'
             outfile = f'{outprefix}-beta-{version}-{region}.fits'
             kdoutfile = f'{outprefix}-beta-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
@@ -1082,7 +1082,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #raslices_todo = ['134', '162']#, '001']#, '002']
+        #raslices_todo = ['140']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -2160,7 +2160,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     #print('Testing!!')
     #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
     #sample['ELLIPSEMODE'] |= ELLIPSEMODE['FIXGEO']
-    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['MOMENTPOS']
+    #sample['ELLIPSEMODE'] |= ELLIPSEMODE['MOMENTPOS']
     #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
 
     if FMAJOR_final is None:

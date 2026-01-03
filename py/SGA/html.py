@@ -106,6 +106,8 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     from SGA.sky import map_bxby
     from SGA.qa import overplot_ellipse, get_norm, matched_norm
 
+    #import fitsio
+    #tt = Table(fitsio.read('/pscratch/sd/i/ioannis/SGA2025-v0.40/dr11-south/140/14041p0867/SGA2025_14041p0867-tractor.fits'))
 
     if not os.path.isdir(htmlgalaxydir):
         os.makedirs(htmlgalaxydir, exist_ok=True)
@@ -240,7 +242,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
                              interpolation='none', norm=norm)
         ax[1+iobj, 1].imshow(wmodel, cmap=cmap, origin='lower',
                              interpolation='none', norm=norm)
-        #ax[1+iobj, 1].scatter(allgalsrcs.bx, allgalsrcs.by, color='red', marker='s')
+        #ax[1+iobj, 1].scatter(tt['bx'], tt['by'], color='red', marker='s', s=5)
         #pdb.set_trace()
         #fig, xx = plt.subplots(1, 2, sharex=True, sharey=True)
         #xx[0].imshow(wimg, origin='lower', norm=norm)
@@ -1023,6 +1025,11 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
 
         data[f'{dataset}_invvar'] = np.stack([data[f'{filt}_invvar'] for filt in data[f'{dataset}_bands']])
 
+    # ellipse mask
+    multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
+                           SGAMASKBITS, barlen=barlen, barlabel=barlabel,
+                           clobber=clobber)
+
     # photometry - curve of growth and SED
     ellipse_sed(data, ellipse, htmlgalaxydir, run=run, tractor=samplesrcs,
                 apertures=APERTURES, clobber=clobber)
@@ -1036,11 +1043,6 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                        unpack_maskbits_function, SGAMASKBITS,
                        REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
                        linear=False, clobber=clobber)
-
-    # ellipse mask
-    multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
-                           SGAMASKBITS, barlen=barlen, barlabel=barlabel,
-                           clobber=clobber)
 
     dt, unit = get_dt(tall)
     log.info(f'Total time to generate plots: {dt:.3f} {unit}')
