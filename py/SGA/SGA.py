@@ -380,7 +380,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             ext = 'ELLIPSE'
         if version is None:
             version = SGA_version()
-        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+        if beta:
+            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
+        else:
+            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
     else:
         ext = 'PARENT'
         if version is None:

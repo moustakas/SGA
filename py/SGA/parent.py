@@ -3704,7 +3704,7 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
     re-derive bits, build groups, and write a single FITS output.
@@ -3745,9 +3745,41 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
     # bits (but prefering DR11 if duplicated).
     ell = []
     for region in ['dr11-south', 'dr9-north']:
-        basefile = os.path.join(outdir, f'SGA2025-{base_version}-{region}.fits')
+        basefile = os.path.join(outdir, f'SGA2025-beta-{base_version}-{region}.fits')
         ell1 = Table(fitsio.read(basefile))
         log.info(f'Read {len(ell1):,d} rows from {basefile}')
+
+        # In v0.40 there was a bug in SGA_diameter, so...
+        if base_version == 'v0.40':
+            from SGA.SGA import SGA_diameter
+
+            # re-measured (ellipse, not "missing") diameters of just
+            # isolated galaxies + some other sanity cuts until we can
+            # inspect everything
+            diam, diam_err, diam_ref, diam_weight = SGA_diameter(ell1)
+
+            I = ((ell1['D26_ERR'] != 0.) & (diam_ref != 'mom') &
+                 (ell1['GROUP_MULT'] == 1) &
+                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] == 0) &
+                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] == 0) &
+                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) &
+                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR'] == 0) &
+                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] == 0))
+
+            pdb.set_trace()
+
+            #import matplotlib.pyplot as plt
+            #fig, ax = plt.subplots()
+            #for ref in set(ell1['D26_REF'][I]):
+            #    J = np.where(ref == ell1['D26_REF'][I])[0]
+            #    ax.scatter(ell1['D26'][I][J], diam[I][J], s=1, label=ref)
+            #ax.legend()
+            #ax.set_xlim(0.2, 18)
+            #ax.set_ylim(0.2, 18)
+            #ax.plot([0.2, 18], [0.2, 18], color='k')
+            #fig.savefig('ioannis/tmp/junk.png')
+            # ell1[I][np.where((ell1['D26'][I]) > 14 * (diam[I] < 12))[0]]['OBJNAME', 'RA', 'DEC', 'D26', 'DIAM_INIT']
+
         ell.append(ell1)
     ell = vstack(ell)
 
@@ -3851,6 +3883,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.30', overwrite=False):
     ell = ell[m_ell]
     ell_base = ell_base[m_ell]
     parent_base = parent_base[m_parent]
+
+    pdb.set_trace()
 
     if base_version == 'v0.22':
         # Restore all objects with large shifts caused by erroneous
