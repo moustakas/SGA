@@ -11,6 +11,7 @@ SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=6 --final-sample --mp=32
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr11-south --version=v0.40 --vi-sample=6 --final-sample --mp=32
 
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=3 --mp=32
@@ -630,14 +631,13 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                     break
 
         I = np.isin(fullsample['GROUP_ID'], np.unique(blended_group_ids))
-
-        print(np.sum(I))
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     elif vi_sample == 6:
         sort_by_groupname = True
-        I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0
+        I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0)
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
