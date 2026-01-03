@@ -896,8 +896,13 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             tractor = Table()
     else:
         refs = fitsio.read(tractorfile, columns=['brick_primary', 'ra', 'dec', 'type', 'fitbits',
-                                                 'ref_cat', 'ref_id', 'maskbits'])
-        I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
+                                                 'ref_cat', 'ref_id']
+
+        # NB: Do not remove Gaia/DUP sources; those will be handled in
+        # legacypipe; also note that all sources should have
+        # brick_primary=True
+        I = refs['brick_primary']
+        #I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
 
         # if np.sum(I)==0, this is a problem...; add to "missing" catalog.
         if np.sum(I) == 0:
@@ -910,8 +915,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             isin = np.zeros(len(refs), bool)
             rad, ba, pa, _, _, _ = SGA_geometry(ellipse, radius_arcsec=True)
             for iobj in range(nsample):
-                isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600., rad[iobj]*ba[iobj]/3600.,
-                                            pa[iobj], np.asarray(refs['ra']), np.asarray(refs['dec']))
+                isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600.,
+                                            rad[iobj]*ba[iobj]/3600., pa[iobj], np.asarray(refs['ra']),
+                                            np.asarray(refs['dec']))
             J = np.logical_and(I, np.logical_or(isin, refs['ref_cat'] == REFCAT))
 
             # J can be empty if the initial geometry is so pathological
