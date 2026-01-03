@@ -3766,6 +3766,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
                  (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR'] == 0) &
                  (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] == 0))
 
+            print('IC 4721A is an example object where we do not want the larger, newer diameter.')
             pdb.set_trace()
 
             #import matplotlib.pyplot as plt

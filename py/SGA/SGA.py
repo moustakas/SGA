@@ -896,7 +896,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             tractor = Table()
     else:
         refs = fitsio.read(tractorfile, columns=['brick_primary', 'ra', 'dec', 'type', 'fitbits',
-                                                 'ref_cat', 'ref_id']
+                                                 'ref_cat', 'ref_id'])
 
         # NB: Do not remove Gaia/DUP sources; those will be handled in
         # legacypipe; also note that all sources should have
