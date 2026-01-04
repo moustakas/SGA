@@ -624,7 +624,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     return sample, fullsample
 
 
-def SGA_diameter(ellipse, region, radius_arcsec=False):
+def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False):
     """Compute D26 diameter from ellipse measurements.
 
     Parameters
@@ -632,10 +632,15 @@ def SGA_diameter(ellipse, region, radius_arcsec=False):
     ellipse : astropy.table.Table
         Table with isophotal radii (R{TH}_{BAND} columns), ELLIPSEMODE, and SMA_MOMENT.
     region : str
-        Survey region ('dr9-north', 'dr11-south', etc.).
+        Survey region ('dr9-north', 'dr9-south', 'dr9-south-ngc5128', etc.).
         Required to handle region-specific data quality issues.
     radius_arcsec : bool, optional
         If True, return radius in arcsec instead of diameter in arcmin.
+    censor_all_zband : bool, optional
+        If True and region is 'dr9-north', censor all z-band profiles. If False
+        (default), only censor z-band for rows that have valid isophotal radii
+        in other bands (g, r, i), preserving z-band as fallback when it's the
+        only available measurement.
 
     Returns
     -------
@@ -663,9 +668,22 @@ def SGA_diameter(ellipse, region, radius_arcsec=False):
 
     # Censor unreliable z-band profiles in dr9-north
     if region == 'dr9-north':
-        for col in ellipse.colnames:
-            if col.startswith('R2') and ('_Z' in col):
+        z_cols = [col for col in ellipse.colnames if col.startswith('R2') and '_Z' in col]
+
+        if censor_all_zband:
+            for col in z_cols:
                 ellipse[col] = np.nan
+        else:
+            # Only censor z-band for rows that have other valid isophotal radii
+            gri_cols = [col for col in ellipse.colnames
+                        if col.startswith('R2') and ('_G' in col or '_R' in col or '_I' in col)
+                        and '_ERR' not in col]
+            if gri_cols:
+                has_gri = np.zeros(len(ellipse), dtype=bool)
+                for col in gri_cols:
+                    has_gri |= np.isfinite(ellipse[col]) & (ellipse[col] > 0)
+                for col in z_cols:
+                    ellipse[col] = np.where(has_gri, np.nan, ellipse[col])
 
     d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
 
