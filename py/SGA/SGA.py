@@ -637,7 +637,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     return sample, fullsample
 
 
-def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False):
+def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
+                 verbose=False):
     """Compute D26 diameter from ellipse measurements.
 
     Parameters
@@ -654,6 +655,9 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False):
         (default), only censor z-band for rows that have valid isophotal radii
         in other bands (g, r, i), preserving z-band as fallback when it's the
         only available measurement.
+    verbose : bool, optional
+        If True, print per-object diagnostic output showing available radii
+        and the resulting D26.
 
     Returns
     -------
@@ -712,6 +716,26 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False):
         d26_err[I] = 0.
         d26_ref[I] = 'fix'
         d26_weight[I] = 1.
+
+    if verbose:
+        for i in range(len(ellipse)):
+            for thresholds in [[24, 23], [26, 25]]:
+                parts = []
+                for th in thresholds:
+                    for band in ['R', 'I', 'Z', 'G']:
+                        rcol = f'R{th}_{band}'
+                        ecol = f'R{th}_ERR_{band}'
+                        if rcol in ellipse.colnames:
+                            r = ellipse[rcol][i]
+                            if np.isfinite(r) and r > 0:
+                                e = ellipse[ecol][i] if ecol in ellipse.colnames else 0
+                                if np.isfinite(e) and e > 0:
+                                    parts.append(f"{band}({th})={r:.1f}±{e:.2f}")
+                                else:
+                                    parts.append(f"{band}({th})={r:.1f}")
+                if parts:
+                    log.info(" ".join(parts) + " arcsec")
+            log.info(f"D(26)={d26[i]:.3f}±{d26_err[i]:.3f} arcmin [ref={d26_ref[i]}]")
 
     if radius_arcsec:
         r26 = d26 / 2. * 60.

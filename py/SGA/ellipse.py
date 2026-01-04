@@ -1425,7 +1425,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     in a given group or coadd.
 
     """
-    from astropy.table import Table
+    from astropy.table import Table, vstack
     from SGA.util import get_dt
     from SGA.SGA import SGA_diameter, build_multiband_mask
 
@@ -1582,6 +1582,13 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             data, sample, datasets, unpack_maskbits_function,
             sbthresh, apertures, SGAMASKBITS, mp=mp,
             nmonte=nmonte, seed=seed, debug=False)#qaplot)
+
+        # nice summary
+        for iobj, (res, obj) in enumerate(zip(results[0], sample)):
+            res['ELLIPSEMODE'] = obj['ELLIPSEMODE']
+            res['SMA_MOMENT'] = obj['SMA_MOMENT']
+            log.info(f'Final isophotal radii for galaxy {iobj+1}/{len(sample)}:')
+            _ = SGA_diameter(res, region, verbose=True)
 
         if qaplot:
             qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
