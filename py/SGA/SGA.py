@@ -621,6 +621,13 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
+    if version == 'v0.40':
+        print('HACK!!!')
+        redo = Table.read('/global/u2/i/ioannis/redo-galdir.txt', format='csv')['C'].value
+        base = np.array([os.path.basename(path) for path in redo])
+        sample = sample[np.isin(sample['GROUP_NAME'], base)]
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
+
     return sample, fullsample
 
 

@@ -3704,71 +3704,37 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
-    """Build a new parent catalog starting from `base_version` ellipse
-    catalog, apply versioned overlays (adds/updates/drops/flags),
-    re-derive bits, build groups, and write a single FITS output.
-
-    Notes
-    -----
-    - Assumes overlay helpers are already available in scope:
-      load_overlays, apply_drops_inplace, apply_adds_inplace,
-      apply_updates_inplace, apply_flags_inplace.
-    - Uses nocuts v0.22 only to restore properties for rows added via overlays.
-    - SGAID stability: carried from ellipse (or ROW_PARENT) when present;
-      new rows get monotonically increasing SGAID.
+def read_base_ellipse(outdir, base_version):
+    """Read the base ellipse catalogs for dr11-south and
+    dr9-north. Consolidate duplicates by OBJNAME, combining REGION
+    bits (but prefering DR11 if duplicated).
 
     """
-    from astropy.table import Table
-    from desiutil.dust import SFDMap
-    from SGA.SGA import SGA_version, SAMPLE
+    from SGA.SGA import SAMPLE
     from SGA.coadds import REGIONBITS
-    from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
-    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
-    from SGA.sky import find_in_mclouds, find_in_gclpne
 
-    # Paths & versions
-    parent_version = SGA_version(parent=True)      # -> 'v0.30' (target)
-    nocuts_version = SGA_version(nocuts=True)      # -> 'v0.22'
-    outdir = os.path.join(sga_dir(), 'sample')
-    parentdir = os.path.join(sga_dir(), 'parent')
-    overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{parent_version}') # e.g., .../overlays/v0.30
-    outfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.fits')
-    kdoutfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.kd.fits')
-
-    if os.path.isfile(outfile) and not overwrite:
-        log.info(f'Parent catalog {outfile} exists; use --overwrite')
-        return
-
-    # Read the base ellipse catalogs for dr11-south and
-    # dr9-north. Consolidate duplicates by OBJNAME, combining REGION
-    # bits (but prefering DR11 if duplicated).
     ell = []
     for region in ['dr11-south', 'dr9-north']:
         basefile = os.path.join(outdir, f'SGA2025-beta-{base_version}-{region}.fits')
         ell1 = Table(fitsio.read(basefile))
         log.info(f'Read {len(ell1):,d} rows from {basefile}')
 
-        # In v0.40 there was a bug in SGA_diameter, so...
+        # In v0.40 there was a bug in SGA_diameter, so
+        # recompute. We'll censor below.
         if base_version == 'v0.40':
             from SGA.SGA import SGA_diameter
+            diam, diam_err, diam_ref, _ = SGA_diameter(ell1, region)
 
-            # re-measured (ellipse, not "missing") diameters of just
-            # isolated galaxies + some other sanity cuts until we can
-            # inspect everything
-            diam, diam_err, diam_ref, diam_weight = SGA_diameter(ell1, region)
-
-            I = ((ell1['D26_ERR'] != 0.) & (diam_ref != 'mom') &
-                 (ell1['GROUP_MULT'] == 1) &
-                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] == 0) &
-                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] == 0) &
-                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) &
-                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR'] == 0) &
-                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] == 0))
-            for col in ['D26', 'D26_ERR', 'D26_REF', 'D'
-
-            print('IC 4721A is an example object where we do not want the larger, newer diameter.')
-            pdb.set_trace()
+            I = (ell1['D26_ERR'] != 0.)
+            #I = ((ell1['D26_ERR'] != 0.) & (diam_ref != 'mom') &
+            #     (ell1['GROUP_MULT'] == 1) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] == 0))
+            for col, val in zip(['D26', 'D26_ERR', 'D26_REF'], [diam[I], diam_err[I], diam_ref[I]]):
+                ell1[col][I] = val
 
             #import matplotlib.pyplot as plt
             #fig, ax = plt.subplots()
@@ -3886,7 +3852,53 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
     ell_base = ell_base[m_ell]
     parent_base = parent_base[m_parent]
 
-    pdb.set_trace()
+    assert(np.all(parent_base['SGAID'] == ell['SGAID']))
+    assert(np.all(parent_base['SGAID'] == ell_base['SGAID']))
+
+    return ell, ell_base, parent_base
+
+
+def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
+
+    """Build a new parent catalog starting from `base_version` ellipse
+    catalog, apply versioned overlays (adds/updates/drops/flags),
+    re-derive bits, build groups, and write a single FITS output.
+
+    Notes
+    -----
+    - Assumes overlay helpers are already available in scope:
+      load_overlays, apply_drops_inplace, apply_adds_inplace,
+      apply_updates_inplace, apply_flags_inplace.
+    - Uses nocuts v0.22 only to restore properties for rows added via overlays.
+    - SGAID stability: carried from ellipse (or ROW_PARENT) when present;
+      new rows get monotonically increasing SGAID.
+
+    """
+    from astropy.table import Table
+    from desiutil.dust import SFDMap
+    from SGA.SGA import SGA_version, SAMPLE, SGA_diameter
+    from SGA.coadds import REGIONBITS
+    from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
+    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
+    from SGA.sky import find_in_mclouds, find_in_gclpne
+
+    # Paths & versions
+    parent_version = SGA_version(parent=True)      # -> 'v0.30' (target)
+    nocuts_version = SGA_version(nocuts=True)      # -> 'v0.22'
+    outdir = os.path.join(sga_dir(), 'sample')
+    parentdir = os.path.join(sga_dir(), 'parent')
+    overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{parent_version}') # e.g., .../overlays/v0.30
+    outfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.fits')
+    kdoutfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.kd.fits')
+
+    if os.path.isfile(outfile) and not overwrite:
+        log.info(f'Parent catalog {outfile} exists; use --overwrite')
+        return
+
+    # Read the base ellipse catalogs for dr11-south and
+    # dr9-north.
+    ell, ell_base, parent_base = read_base_ellipse(outdir, base_version)
+    assert(np.all(np.isfinite(ell['D26'])))
 
     if base_version == 'v0.22':
         # Restore all objects with large shifts caused by erroneous
@@ -3904,7 +3916,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
         pa_old = parent_base['PA'].value  # degrees, [0,180)
         pa_new = ell_base['PA'].value
 
-        # 1) keep your existing special cases
+        # 1) keep existing special cases
         I1 = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) |
               (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
               (ell['GROUP_MULT'] > 1))
@@ -3953,13 +3965,48 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
         #plt.savefig('ioannis/tmp/junk.png')
 
     elif base_version == 'v0.30':
-        assert(np.all(parent_base['SGAID'] == ell['SGAID']))
-        assert(np.all(parent_base['SGAID'] == ell_base['SGAID']))
-
-        not_LVD = ell['SAMPLE'] & SAMPLE['LVD'] == 0
-        I = not_LVD & (ell['D26_ERR'] != 0.) & ((ell['D26']+ell['D26_ERR']) < mindiam)
+        I = ((ell['SAMPLE'] & SAMPLE['LVD']) == 0) & (ell['D26_ERR'] != 0.) & ((ell['D26']+ell['D26_ERR']) < mindiam)
         log.info(f'Removing {np.sum(I):,d}/{len(ell):,d} galaxies with D(26)<{mindiam:.2f} arcmin')
         base = ell_base[~I]
+
+    elif base_version == 'v0.40':
+        # buggy diameters in v0.30, so re-compute and then restore the
+        # objects that are actually larger than 30 arcsec
+        vell, vell_base, vparent_base = read_base_ellipse(outdir, 'v0.30')
+
+        I = ((vell['SAMPLE'] & SAMPLE['LVD']) == 0) & (vell['D26_ERR'] != 0.) & ((vell['D26']+vell['D26_ERR']) < mindiam)
+        vell = vell[I]
+        vell_base = vell_base[I]
+        vparent_base = vparent_base[I]
+
+        diam, diam_err, diam_ref, _ = SGA_diameter(vell, 'dr11-south')
+        I = ((diam+diam_err) > mindiam) & (vell['GROUP_MULT'] == 1)
+        log.info(f'Restoring {np.sum(I):,d} galaxies incorrectly dropped in v0.30.')
+
+        ell = vstack((ell, vell[I]))
+        ell_base = vstack((ell_base, vell_base[I]))
+        parent_base = vstack((parent_base, vparent_base[I]))
+
+        # still not ready to trust the new diameters in groups; IC
+        # 4721A is an example object where we do not want the larger,
+        # newer diameter
+        I1 = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) |
+              (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
+              (ell['GROUP_MULT'] > 1))
+
+        d_old = parent_base['DIAM'].value
+        d_new = ell_base['DIAM'].value
+        I2 = (d_old > 0) & (np.abs(d_new - d_old) / d_old > 0.20)
+
+        I = I1 | I2
+        if np.any(I):
+            log.info(f'Restoring original ellipse geometry for {np.sum(I):,d} objects.')
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+                ell_base[col][I] = parent_base[col][I]
+
+        base = ell_base
+
     else:
         base = ell_base
 
@@ -4029,6 +4076,11 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
     # populate FITMODE, which is used by legacypipe
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0] |= FITMODE['RESOLVED']
+
+    try:
+        assert(np.all(np.isfinite(grp['DIAM'])))
+    except:
+        pdb.set_trace()
 
     # Sort by diameter descending and then build the group catalog
     srt = np.argsort(grp['DIAM'])[::-1]
