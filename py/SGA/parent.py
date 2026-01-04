@@ -3756,7 +3756,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
             # re-measured (ellipse, not "missing") diameters of just
             # isolated galaxies + some other sanity cuts until we can
             # inspect everything
-            diam, diam_err, diam_ref, diam_weight = SGA_diameter(ell1)
+            diam, diam_err, diam_ref, diam_weight = SGA_diameter(ell1, region)
 
             I = ((ell1['D26_ERR'] != 0.) & (diam_ref != 'mom') &
                  (ell1['GROUP_MULT'] == 1) &
@@ -3765,6 +3765,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
                  (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) &
                  (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR'] == 0) &
                  (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] == 0))
+            for col in ['D26', 'D26_ERR', 'D26_REF', 'D'
 
             print('IC 4721A is an example object where we do not want the larger, newer diameter.')
             pdb.set_trace()

@@ -507,8 +507,8 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 
 
 
-def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwise', 'galex'],
-                clobber=False):
+def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
+                datasets=['opt', 'unwise', 'galex'], clobber=False):
     """
     curve of growth
 
@@ -550,7 +550,8 @@ def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwi
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if dataset == 'opt':
-                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(Table(obj), radius_arcsec=True)
+                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(
+                    Table(obj), region, radius_arcsec=True)
                 sma_sbthresh = sma_sbthresh[0]
                 label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
 
@@ -637,7 +638,7 @@ def ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir, datasets=['opt', 'unwi
 
 
 
-def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
+def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                        unpack_maskbits_function, MASKBITS, REFIDCOLUMN,
                        datasets=['opt', 'unwise', 'galex'],
                        linear=False, clobber=False):
@@ -730,7 +731,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
             label_mask = r'$R(mask)='+f'{sma_mask:.1f}'+r'$ arcsec'
             label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
             if idata == 0:
-                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(Table(obj), radius_arcsec=True)
+                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(
+                    Table(obj), region, radius_arcsec=True)
                 sma_sbthresh = sma_sbthresh[0]
                 label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
                 #r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
@@ -903,10 +905,11 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
 
 
 def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_function,
-               unpack_maskbits_function, SGAMASKBITS, APERTURES, run='south', mp=1,
-               bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
-               skip_ellipse=False, unwise_pixscale=2.75, galex=True, unwise=True,
-               barlen=None, barlabel=None, verbose=False, clobber=False):
+               unpack_maskbits_function, SGAMASKBITS, APERTURES, region='dr11-south',
+               run='south', mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262,
+               galex_pixscale=1.5, unwise_pixscale=2.75, skip_ellipse=False,
+               galex=True, unwise=True, barlen=None, barlabel=None, verbose=False,
+               clobber=False):
     """Make QA plots.
 
     """
@@ -1034,12 +1037,11 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     ellipse_sed(data, ellipse, htmlgalaxydir, run=run, tractor=samplesrcs,
                 apertures=APERTURES, clobber=clobber)
 
-    ellipse_cog(data, ellipse, sbprofiles, htmlgalaxydir,
-                datasets=['opt', 'unwise', 'galex'],
-                clobber=clobber)
+    ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
+                datasets=['opt', 'unwise', 'galex'], clobber=clobber)
 
     # surface-brightness profiles
-    ellipse_sbprofiles(data, ellipse, sbprofiles, htmlgalaxydir,
+    ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                        unpack_maskbits_function, SGAMASKBITS,
                        REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
                        linear=False, clobber=clobber)

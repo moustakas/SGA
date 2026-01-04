@@ -624,48 +624,105 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     return sample, fullsample
 
 
-def SGA_diameter(ellipse, radius_arcsec=False):
-    """
-    radius_arcsec - do not convert to diameter in arcmin
+def SGA_diameter(ellipse, region, radius_arcsec=False):
+    """Compute D26 diameter from ellipse measurements.
+
+    Parameters
+    ----------
+    ellipse : astropy.table.Table
+        Table with isophotal radii (R{TH}_{BAND} columns), ELLIPSEMODE, and SMA_MOMENT.
+    region : str
+        Survey region ('dr9-north', 'dr11-south', etc.).
+        Required to handle region-specific data quality issues.
+    radius_arcsec : bool, optional
+        If True, return radius in arcsec instead of diameter in arcmin.
+
+    Returns
+    -------
+    d26 : ndarray
+        D26 diameter in arcmin (or R26 radius in arcsec if radius_arcsec=True).
+    d26_err : ndarray
+        1-sigma uncertainty.
+    d26_ref : ndarray
+        Channel that contributed highest weight ('r26', 'g25', 'mom', 'fix', etc.).
+    d26_weight : ndarray
+        Weight of the highest-contributing channel.
 
     """
     from SGA.ellipse import ELLIPSEMODE
     from SGA.calibrate import infer_best_r26
 
     for col in ['ELLIPSEMODE', 'SMA_MOMENT']:
-        if not col in ellipse.colnames:
+        if col not in ellipse.colnames:
             msg = f'Missing mandatory column {col}'
             log.critical(msg)
             raise ValueError(msg)
+
+    # Work on a copy to avoid modifying the input table
+    ellipse = ellipse.copy()
+
+    # Censor unreliable z-band profiles in dr9-north
+    if region == 'dr9-north':
+        for col in ellipse.colnames:
+            if col.startswith('R2') and ('_Z' in col):
+                ellipse[col] = np.nan
 
     d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
 
     I = np.isin(d26_ref, 'moment')
     if np.any(I):
-        d26_ref[I] = 'mom' # shorten for the data model
+        d26_ref[I] = 'mom'
     d26_ref = d26_ref.astype('<U3')
 
-    # fixed geometry
-    I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
+    # Fixed geometry
+    I = (ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) != 0
     if np.any(I):
-        d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60. # [arcmin]
-        d26_err[I] = 0. # no error
+        d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60.
+        d26_err[I] = 0.
         d26_ref[I] = 'fix'
         d26_weight[I] = 1.
 
     if radius_arcsec:
-        r26 = d26 / 2. * 60. # [radius, arcsec]
-        r26_err = d26_err / 2. * 60. # [radius, arcsec]
+        r26 = d26 / 2. * 60.
+        r26_err = d26_err / 2. * 60.
         return r26, r26_err, d26_ref, d26_weight
     else:
         return d26, d26_err, d26_ref, d26_weight
 
 
-def SGA_geometry(ellipse, radius_arcsec=False):
+def SGA_geometry(ellipse, region, radius_arcsec=False):
+    """Extract galaxy geometry (size and shape) from ellipse measurements.
 
+    Parameters
+    ----------
+    ellipse : astropy.table.Table
+        Table with isophotal radii, BA_MOMENT, PA_MOMENT, ELLIPSEMODE, and SMA_MOMENT.
+    region : str
+        Survey region ('dr9-north', 'dr9-south', etc.). Passed to SGA_diameter
+        to handle region-specific data quality issues.
+    radius_arcsec : bool, optional
+        If True, return radius in arcsec instead of diameter in arcmin.
+
+    Returns
+    -------
+    diam : ndarray
+        D26 diameter in arcmin (or R26 radius in arcsec if radius_arcsec=True).
+    ba : ndarray
+        Axis ratio (b/a) from moment analysis.
+    pa : ndarray
+        Position angle in degrees (astronomical convention) from moment analysis.
+    diam_err : ndarray
+        1-sigma uncertainty on diameter.
+    diam_ref : ndarray
+        Channel that contributed highest weight ('r26', 'g25', 'mom', 'fix', etc.).
+    diam_weight : ndarray
+        Weight of the highest-contributing channel.
+
+    """
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    diam, diam_err, diam_ref, diam_weight = SGA_diameter(ellipse, radius_arcsec=radius_arcsec)
+    diam, diam_err, diam_ref, diam_weight = SGA_diameter(
+        ellipse, region, radius_arcsec=radius_arcsec)
     return diam, ba, pa, diam_err, diam_ref, diam_weight
 
 
@@ -913,7 +970,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             # old geometry.
             #isin = (refs['maskbits'] & MASKBITS['GALAXY'] != 0) # wrong!
             isin = np.zeros(len(refs), bool)
-            rad, ba, pa, _, _, _ = SGA_geometry(ellipse, radius_arcsec=True)
+            rad, ba, pa, _, _, _ = SGA_geometry(ellipse, region, radius_arcsec=True)
             for iobj in range(nsample):
                 isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600.,
                                             rad[iobj]*ba[iobj]/3600., pa[iobj], np.asarray(refs['ra']),
@@ -1247,7 +1304,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         outellipse = SGA_datamodel(ellipse, bands, all_bands)
 
         # final geometry
-        diam, ba, pa, diam_err, diam_ref, _ = SGA_geometry(outellipse)
+        diam, ba, pa, diam_err, diam_ref, _ = SGA_geometry(outellipse, region)
         for col, val in zip(['D26', 'BA', 'PA', 'D26_ERR', 'D26_REF'],
                             [diam, ba, pa, diam_err, diam_ref]):
             outellipse[col] = val

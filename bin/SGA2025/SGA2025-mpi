@@ -619,10 +619,10 @@ def main():
                 mask_nearby = None
 
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                       unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
-                                       mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
-                                       nmonte=args.nmonte, seed=args.seed, mask_nearby=mask_nearby,
-                                       use_tractor_position=args.use_tractor_position,
+                                       unpack_maskbits, SGAMASKBITS, region=args.region,
+                                       run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
+                                       apertures=APERTURES, nmonte=args.nmonte, seed=args.seed,
+                                       mask_nearby=mask_nearby, use_tractor_position=args.use_tractor_position,
                                        use_radial_weight=args.use_radial_weight,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
@@ -650,8 +650,8 @@ def main():
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
                              unpack_maskbits, SGAMASKBITS, APERTURES,
-                             barlen=barlen, barlabel=barlabel, run=run,
-                             skip_ellipse=skip_ellipse,
+                             args.region, barlen=barlen, barlabel=barlabel,
+                             run=run, skip_ellipse=skip_ellipse,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
                              verbose=args.verbose, clobber=args.clobber)
