@@ -621,12 +621,18 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
-    if version == 'v0.40':
+    #if version == 'v0.40':
+    #    print('HACK!!!')
+    #    redo = Table.read('/global/u2/i/ioannis/redo-galdir.txt', format='csv')['C'].value
+    #    base = np.array([os.path.basename(path) for path in redo])
+    #    sample = sample[np.isin(sample['GROUP_NAME'], base)]
+    #    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
+
+    if version == 'v0.50' and False:
         print('HACK!!!')
-        redo = Table.read('/global/u2/i/ioannis/redo-galdir.txt', format='csv')['C'].value
-        base = np.array([os.path.basename(path) for path in redo])
-        sample = sample[np.isin(sample['GROUP_NAME'], base)]
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
+        redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
+        fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     return sample, fullsample
 
@@ -2548,6 +2554,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 inellipse2 = in_ellipse_mask(bx, width-by, sma_veto, sma_veto*ba,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
+            else:
+                inellipse2 = inellipse # used below
 
             # mask edges aggressively to not bias our 'moment' geometry
             _mask_edges(iter_brightstarmask)
@@ -2556,6 +2564,22 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # or TRACTORGEO
             if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
                 iter_brightstarmask |= opt_brightstarmask_core
+
+            # if more than XX% of the pixels are masked by the core of
+            # the star, fall back to the initial geometry and fail
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(iter_brightstarmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
+            denom = iter_brightstarmask[inellipse2].size
+            if denom > 0: # should always be true...
+                frac = np.sum(iter_brightstarmask[inellipse2]) / denom
+                if frac > 0.3:
+                    log.warning(f'Nearly fully masked by bright-star core (F={100.*frac:.1f}%>30%); reverting to initial geometry.')
+                    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FAILGEO']
+                    geo_iter = geo_init.copy()
+                    [bx, by, sma, ba, pa] = geo_iter
+                    break
 
             # Build a galaxy mask from extended sources, split into
             # "major" and "minor" based on flux ratio relative to the

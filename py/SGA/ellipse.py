@@ -1556,7 +1556,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
                      f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
-
             if sma_mask_arcsec <= 0.:
                 sma_mask_arcsec = r26_arcsec
             else:
