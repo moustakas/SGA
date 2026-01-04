@@ -644,8 +644,10 @@ def infer_best_r26(tbl, calib_path=None, covariates=None, add_columns=False,
     add_columns : bool, optional
         If True, add D26, D26_ERR, D26_REF, D26_WEIGHT columns to tbl.
     include_direct_r26 : bool, optional
-        If True and R26_R is available with valid errors, include it directly
-        in the weighted combination. Default True.
+        If True (default) and R26_R is available with valid errors, include
+        the direct R26_R measurement in the inverse-variance weighted
+        combination alongside calibrated estimates from other bands (i26, z26,
+        g26). If False, use only the calibrated estimates from non-r bands.
 
     Returns
     -------
@@ -669,6 +671,7 @@ def infer_best_r26(tbl, calib_path=None, covariates=None, add_columns=False,
 
     The variance for each channel estimate includes both measurement error
     (propagated through the calibration slope) and intrinsic scatter (tau).
+
     """
     cal = load_calibration(calib_path)
     table, sigma, N = _collect_channels_from_table(tbl)

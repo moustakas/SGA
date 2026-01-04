@@ -730,9 +730,9 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
                             if np.isfinite(r) and r > 0:
                                 e = ellipse[ecol][i] if ecol in ellipse.colnames else 0
                                 if np.isfinite(e) and e > 0:
-                                    parts.append(f"{band}({th})={r:.1f}±{e:.2f}")
+                                    parts.append(f"{band.lower()}({th})={r:.1f}±{e:.2f}")
                                 else:
-                                    parts.append(f"{band}({th})={r:.1f}")
+                                    parts.append(f"{band.lower()}({th})={r:.1f}")
                 if parts:
                     log.info(" ".join(parts) + " arcsec")
             log.info(f"D(26)={d26[i]:.3f}±{d26_err[i]:.3f} arcmin [ref={d26_ref[i]}]")
