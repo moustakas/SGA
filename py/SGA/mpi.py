@@ -128,7 +128,7 @@ def weighted_partition(weights, n):
 
 
 def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
-                    small_bricks_first=False):
+                    small_bricks_first=True):#False):
     """
     Partition tasks into `size` buckets with ~equal total weight, then
     sort each bucket so smaller bricks are processed first.
