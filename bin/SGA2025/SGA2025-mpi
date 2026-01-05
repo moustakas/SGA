@@ -470,7 +470,7 @@ def main():
             os.makedirs(galaxydir, exist_ok=True)
 
         log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
-                 f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]} arcmin]')
+                 f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]:.3f} arcmin]')
 
         logfile = get_logfile(galaxy, galaxydir, suffix)
         fh = setup_logging(logfile, debug=args.debug)
