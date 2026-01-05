@@ -2433,7 +2433,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     # Minimum semi-major axis used for masks (not for stored geometry).
-    SMA_MASK_MIN_ARCSEC = 5.0 # [arcsec]
+    SMA_MASK_MIN_ARCSEC = 10. # [arcsec]
     SMA_MASK_MIN_PIX = SMA_MASK_MIN_ARCSEC / opt_pixscale
 
     # are we allowed to change the geometry in this call?
