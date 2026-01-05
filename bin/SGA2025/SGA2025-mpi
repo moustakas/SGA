@@ -370,8 +370,8 @@ def main():
                     log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
                 elif args.galaxylist_file:
                     with open(args.galaxylist_file, 'w') as F:
-                        for gal in sample['GROUP_NAME'][todo].value:
-                            F.write(f'{gal}\n')
+                        for gal, diam in zip(sample['GROUP_NAME'][todo].value, sample['GROUP_DIAMETER'][todo].value):
+                            F.write(f'{gal},{diam}\n')
                     log.info(f'Wrote {len(todo):,d} objects to {args.galaxylist_file}')
             else:
                 log.warning('All done!')
