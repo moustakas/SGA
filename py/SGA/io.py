@@ -619,7 +619,7 @@ def empty_tractor(cat=None):
             ('ls_id_dr11', '>i8'),
             ('release', '>i2'),
             ('brickid', '>i4'),
-            ('brickname', '<U8'),
+            ('brickname', '<U19'), # e.g., custom-238547p24261
             ('objid', '>i4'),
             ('brick_primary', '|b1'),
             ('maskbits', '>i4'),

@@ -1413,11 +1413,11 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 
 
 def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function,
-                         unpack_maskbits_function, SGAMASKBITS, run='south', mp=1,
-                         bands=['g', 'r', 'i', 'z'], pixscale=0.262, galex_pixscale=1.5,
-                         unwise_pixscale=2.75, mask_nearby=None, galex=True, unwise=True,
-                         use_tractor_position=True, use_radial_weight=True,
-                         sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
+                         unpack_maskbits_function, SGAMASKBITS, region='dr11-south',
+                         run='south', mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262,
+                         galex_pixscale=1.5, unwise_pixscale=2.75, mask_nearby=None,
+                         galex=True, unwise=True, use_tractor_position=True,
+                         use_radial_weight=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
                          update_geometry=False, nmonte=75, seed=42, verbose=False,
                          skip_ellipse=False, nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
@@ -1425,7 +1425,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     in a given group or coadd.
 
     """
-    from astropy.table import Table
+    from astropy.table import Table, vstack
     from SGA.util import get_dt
     from SGA.SGA import SGA_diameter, build_multiband_mask
 
@@ -1546,7 +1546,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                     colerr = f'R{thresh:.0f}_ERR_{filt.upper()}'
                     tab[col] = results[0][iobj][col]
                     tab[colerr] = results[0][iobj][colerr]
-            radius, radius_err, radius_ref, radius_weight = SGA_diameter(tab, radius_arcsec=True)
+            radius, radius_err, radius_ref, radius_weight = SGA_diameter(
+                tab, region, radius_arcsec=True)
             r26_arcsec = float(radius[0])
 
             # merge R26 with the existing SMA_MASK in arcsec
@@ -1555,7 +1556,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
                      f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
-
             if sma_mask_arcsec <= 0.:
                 sma_mask_arcsec = r26_arcsec
             else:
@@ -1582,6 +1582,13 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             data, sample, datasets, unpack_maskbits_function,
             sbthresh, apertures, SGAMASKBITS, mp=mp,
             nmonte=nmonte, seed=seed, debug=False)#qaplot)
+
+        # nice summary
+        for iobj, (res, obj) in enumerate(zip(results[0], sample)):
+            res['ELLIPSEMODE'] = obj['ELLIPSEMODE']
+            res['SMA_MOMENT'] = obj['SMA_MOMENT']
+            log.info(f'Final isophotal radii for galaxy {iobj+1}/{len(sample)}:')
+            _ = SGA_diameter(res, region, verbose=True)
 
         if qaplot:
             qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,

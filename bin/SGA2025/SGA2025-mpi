@@ -93,6 +93,68 @@ def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
     # restore the logger
     restore_logger(fh=fh, debug=debug)
 
+
+def sort_groups_by_attempts(galaxy, galaxydir, sample, diamcolumn='DIAM'):
+    """
+    Sort galaxy groups by number of attempts (highest to lowest).
+
+    Parameters
+    ----------
+    galaxy : array-like
+        Group names (e.g., 'SGA2025_19895p4202')
+    galaxydir : array-like
+        Group directories
+    sample : Table
+        Catalog with OBJNAME and diameter columns
+    diamcolumn : str
+        Name of diameter column in sample
+
+    Prints sorted list grouped by attempt count.
+
+    """
+    import glob
+
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
+
+    attempts = []
+    for gname, gdir in zip(galaxy, galaxydir):
+        # Look for log files matching pattern
+        logpattern = os.path.join(gdir, f'{gname}-coadds.log*')
+        logfiles = glob.glob(logpattern)
+        attempts.append(len(logfiles))
+
+    attempts = np.array(attempts)
+
+    # Sort by attempts (descending)
+    sort_idx = np.argsort(attempts)[::-1]
+
+    # Group by attempt count and print
+    unique_attempts = np.unique(attempts[sort_idx])[::-1]  # High to low
+
+    for iattempt, n_attempt in enumerate(unique_attempts):
+        mask = attempts == n_attempt
+        indices = np.where(mask)[0]
+
+        if n_attempt == 0:
+            log.info(f"\n=== Not yet attempted ({len(indices)} groups) ===")
+        else:
+            log.info(f"\n=== {n_attempt} attempt(s) ({len(indices)} groups) ===")
+
+        todo = []
+        for idx in indices:
+            gdir = galaxydir[idx]
+            obj = sample['OBJNAME'][idx]
+            diam = sample[diamcolumn][idx]
+            log.info(f'{gdir} "{obj}" (d={diam:.3f} arcmin)')
+            todo.append(os.path.basename(gdir))
+
+
+    if len(todo) > 0:
+        print()
+        print(','.join(todo))
+
+
 def main():
     """Top-level wrapper.
 
@@ -117,6 +179,10 @@ def main():
 
     args = mpi_args()
     set_legacysurvey_dir(args.region, rank=rank)
+
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('spawn')
 
     #if args.lvd:
     #    no_groups = True
@@ -188,6 +254,7 @@ def main():
         #from SGA.parent import load_overlays, apply_flags_inplace
         #overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/v0.40')
         #ov = load_overlays(overlay_dir)
+        #apply_flags_inplace(sample, ov.flags, ELLIPSEMODE)
         #apply_flags_inplace(fullsample, ov.flags, ELLIPSEMODE)
 
         if len(fullsample) > 0:
@@ -213,14 +280,6 @@ def main():
     # results work on the full sample, so do that here and then
     # return.
     if rank == 0:
-        if args.build_catalog:
-            from SGA.SGA import build_catalog
-            build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
-                          datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
-                          wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
-                          clobber=args.clobber)
-            return
-
         if args.build_refcat:
             # Build a reference catalog for use with the
             # pipeline. Satellites can belong to more than one group,
@@ -269,6 +328,14 @@ def main():
 
             return
 
+    if args.build_catalog:
+        from SGA.SGA import build_catalog
+        build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
+                      datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
+                      wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
+                      clobber=args.clobber)
+        return
+
     # need at least one keyword at this point
     if (args.coadds is False and args.ellipse is False and args.htmlplots is False and
         args.htmlindex is False):
@@ -293,13 +360,19 @@ def main():
                       region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
             return
 
-        if args.diameter_file:
+        if args.diameter_file or args.galaxylist_file:
             if len(groups) > 0:
                 todo = np.hstack(groups)
-                with open(args.diameter_file, 'w') as F:
-                    for diam in sample[DIAMCOLUMN][todo].value:
-                        F.write(f'{diam}\n')
-                log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+                if args.diameter_file:
+                    with open(args.diameter_file, 'w') as F:
+                        for diam in sample[DIAMCOLUMN][todo].value:
+                            F.write(f'{diam}\n')
+                    log.info(f'Wrote {len(todo):,d} objects to {args.diameter_file}')
+                elif args.galaxylist_file:
+                    with open(args.galaxylist_file, 'w') as F:
+                        for gal, diam in zip(sample['GROUP_NAME'][todo].value, sample['GROUP_DIAMETER'][todo].value):
+                            F.write(f'{gal},{diam}\n')
+                    log.info(f'Wrote {len(todo):,d} objects to {args.galaxylist_file}')
             else:
                 log.warning('All done!')
             return
@@ -310,90 +383,79 @@ def main():
         groups = comm.bcast(groups, root=0)
         suffix = comm.bcast(suffix, root=0)
 
+    # Report summary (rank 0 only)
     if rank == 0:
-        if len(groups) == 0:
-            ntodo = 0
-        else:
-            ntodo = len(np.hstack(groups))
+        ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
                  f'{len(sample):,d} divided across {size} rank(s).')
     if comm:
         comm.barrier()
 
-    if len(groups) == 0:
+    # Determine if this rank has work
+    has_work = len(groups) > 0 and len(groups[rank]) > 0
+
+    # Report completion status for this rank
+    if not has_work:
         log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
                  f'{rank} are complete!')
-        if args.count:
-            if rank == 0:
-                if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                             f'{len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[DIAMCOLUMN][fail[rank]]):
-                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
-        return
-    elif len(groups[rank]) == 0:
-        log.info(f'{suffix.upper()} for all {len(sample):,d} galaxies on rank ' + \
-                 f'{rank} are complete!')
-        if args.count:
-            if rank == 0:
-                if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                             f'{len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[DIAMCOLUMN][fail[rank]]):
-                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+        if rank == 0 and len(fail[rank]) > 0:
+            log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
+                     f'{len(sample):,d}')
+            galaxy, galaxydir = get_galaxy_galaxydir(
+                sample[fail[rank]], region=args.region,
+                group=not no_groups, datadir=datadir, htmldir=htmldir)
+            for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                                    sample[DIAMCOLUMN][fail[rank]]):
+                print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
         return
     else:
         log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
-        if args.count:
-            if rank == 0:
-                if len(fail[rank]) > 0:
-                    log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                             f'{len(sample):,d}')
-                    galaxy, galaxydir = get_galaxy_galaxydir(
-                        sample[fail[rank]], region=args.region,
-                        group=not no_groups, datadir=datadir, htmldir=htmldir)
-                    for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                            sample[DIAMCOLUMN][fail[rank]]):
-                        print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
-                if args.debug:
-                    if len(fail[rank]) > 0:
-                        log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
-                                 f'{len(sample):,d}')
-                        galaxy, galaxydir = get_galaxy_galaxydir(
-                            sample[fail[rank]], region=args.region,
-                            group=not no_groups, datadir=datadir, htmldir=htmldir)
-                        for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                                sample[DIAMCOLUMN][fail[rank]]):
-                            print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
 
-                    todo = np.hstack(groups)
-                    if len(todo) > 0:
-                        log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
-                        galaxy, galaxydir = get_galaxy_galaxydir(
-                            sample[todo], region=args.region,
-                            group=not no_groups,
-                            datadir=datadir, htmldir=htmldir)
-                        for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
-                                                     sample['OBJNAME'][todo],
-                                                     sample[DIAMCOLUMN][todo]):
-                            log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
-                            #log.info(f'  {ii} {dd} ({obj}; d={diam:.3f} arcmin)')
-                            #log.info(f'{dd}')
-            return
+    # Handle special modes (rank 0 only)
+    if rank == 0:
+        # Always report failures if present
+        if len(fail[rank]) > 0:
+            log.info(f'{suffix.upper()} failures: {len(fail[rank]):,d} / ' + \
+                     f'{len(sample):,d}')
+            galaxy, galaxydir = get_galaxy_galaxydir(
+                sample[fail[rank]], region=args.region,
+                group=not no_groups, datadir=datadir, htmldir=htmldir)
+            for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                                    sample[DIAMCOLUMN][fail[rank]]):
+                print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+
+        # Analysis mode
+        if args.analyze and args.coadds and has_work:
+            todo = np.hstack(groups)
+            galaxy, galaxydir = get_galaxy_galaxydir(
+                sample[todo], region=args.region,
+                group=not no_groups, datadir=datadir, htmldir=htmldir)
+            sort_groups_by_attempts(galaxy, galaxydir, sample[todo], diamcolumn=DIAMCOLUMN)
+
+        # Debug mode: print detailed todo list
+        if args.count and args.debug and has_work:
+            todo = np.hstack(groups)
+            log.info(f'{suffix.upper()} todo: {len(todo):,d} / {len(sample):,d}')
+            galaxy, galaxydir = get_galaxy_galaxydir(
+                sample[todo], region=args.region,
+                group=not no_groups,
+                datadir=datadir, htmldir=htmldir)
+            for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
+                                         sample['OBJNAME'][todo],
+                                         sample[DIAMCOLUMN][todo]):
+                log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
+                #print(dd)
+
+    # Exit early for count/analyze modes
+    if args.count or (args.analyze and args.coadds):
+        return
 
     # Loop on the remaining objects.
     log.info(f'Starting {len(groups[rank])} {suffix.upper()} ' + \
              f'on rank {rank} with {args.mp} cores on {time.asctime()}')
 
     # The rest of the pipeline--
+    t0 = time.time()
     if rank == 0:
         tall = time.time()
 
@@ -557,10 +619,10 @@ def main():
                 mask_nearby = None
 
             err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                       unpack_maskbits, SGAMASKBITS, run=run, bands=bands,
-                                       mp=args.mp, sbthresh=SBTHRESH, apertures=APERTURES,
-                                       nmonte=args.nmonte, seed=args.seed, mask_nearby=mask_nearby,
-                                       use_tractor_position=args.use_tractor_position,
+                                       unpack_maskbits, SGAMASKBITS, region=args.region,
+                                       run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
+                                       apertures=APERTURES, nmonte=args.nmonte, seed=args.seed,
+                                       mask_nearby=mask_nearby, use_tractor_position=args.use_tractor_position,
                                        use_radial_weight=args.use_radial_weight,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
@@ -588,13 +650,16 @@ def main():
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
                              unpack_maskbits, SGAMASKBITS, APERTURES,
-                             barlen=barlen, barlabel=barlabel, run=run,
-                             skip_ellipse=skip_ellipse,
+                             args.region, barlen=barlen, barlabel=barlabel,
+                             run=run, skip_ellipse=skip_ellipse,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
                              verbose=args.verbose, clobber=args.clobber)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
+    if len(groups[rank]) > 0:
+        log.info(f'Rank {rank:03d} finished {len(groups[rank]):,d} object(s) ' + \
+                 f'in {(time.time()-t0)/60.:.3f} minutes')
 
     if comm:
         comm.barrier()
@@ -618,7 +683,6 @@ def main():
         else:
             stilltodo = 0
         log.info(f'{suffix.upper()} left to do: {stilltodo:,d} / {ntodo:,d}.')
-
 
 
 if __name__ == '__main__':

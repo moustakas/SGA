@@ -3471,22 +3471,10 @@ def load_overlays(overlay_dir):
     Load overlays from overlay_dir and return a container with
     .adds, .updates, .drops, .flags (each an Astropy Table, possibly empty).
     """
-    adds = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'adds.csv'),
-        required=('OBJNAME', 'REGION', 'RA', 'DEC', 'DIAM', 'BA', 'PA'),
-        name='adds.csv')
-    updates = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'updates.csv'),
-        required=('OBJNAME', 'FIELD', 'NEW_VALUE'),
-        name='updates.csv')
-    drops = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'drops.csv'),
-        required=('OBJNAME', 'REGION'),
-        name='drops.csv')
-    flags = _read_csv_if_exists(
-        os.path.join(overlay_dir, 'flags.csv'),
-        required=('target', 'value', 'column', 'op', 'bits'),
-        name='flags.csv')
+    adds = _read_csv_if_exists(overlay_dir / 'adds.csv', required=('OBJNAME', 'REGION', 'RA', 'DEC', 'DIAM', 'BA', 'PA'), name='adds.csv')
+    updates = _read_csv_if_exists(overlay_dir / 'updates.csv', required=('OBJNAME', 'FIELD', 'NEW_VALUE'), name='updates.csv')
+    drops = _read_csv_if_exists(overlay_dir / 'drops.csv', required=('OBJNAME', 'REGION'), name='drops.csv')
+    flags = _read_csv_if_exists(overlay_dir / 'flags.csv', required=('target', 'value', 'column', 'op', 'bits'), name='flags.csv')
 
     # simple sanity checks
     if len(np.unique(adds['OBJNAME'])) != len(adds):
@@ -3496,8 +3484,10 @@ def load_overlays(overlay_dir):
         raise ValueError()
     if len(np.unique(drops['OBJNAME'])) != len(drops):
         log.critical("drops.csv: duplicate OBJNAME entries are not allowed.")
-        oo, cc = np.unique(drops['OBJNAME'], return_counts=True)
-        print(oo[cc>1])
+        oo, uindx, cc = np.unique(drops['OBJNAME'].value, return_counts=True, return_index=True)
+        uindx.sort()
+        drops[uindx].write('udrops.csv', format='csv', overwrite=True)
+        log.warning(f'Wrote udrops.csv with {len(uindx):,d}/{len(drops):,d} unique rows.')
         raise ValueError()
 
     # normalize optional columns
@@ -3511,7 +3501,7 @@ def apply_updates_inplace(parent, updates):
     """For each (OBJNAME, FIELD, NEW_VALUE) row, set parent[FIELD] accordingly."""
 
     if len(updates) == 0:
-        return
+        return parent
     log.info(f'Updating parameter values for {len(updates):,d} object(s) using updates.csv')
 
     for row in updates:
@@ -3524,7 +3514,7 @@ def apply_updates_inplace(parent, updates):
         # cast to parent dtype
         dt = parent[fld].dtype
         val = row['NEW_VALUE']
-        log.info(f'{obj} {fld}: {parent[fld][idx][0]} --> {val}')
+        #log.info(f'{obj} {fld}: {parent[fld][idx][0]} --> {val}')
         if dt.kind in 'f':
             parent[fld][idx] = float(val)
         elif dt.kind in 'iu':
@@ -3574,7 +3564,7 @@ def apply_adds(parent, adds, regionbits, nocuts):
 
     """
     if len(adds) == 0:
-        return
+        return parent
     log.info(f'Adding {len(adds):,d} objects from adds.csv')
 
     # next SGAID
@@ -3714,50 +3704,50 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
-    """Build a new parent catalog starting from `base_version` ellipse
-    catalog, apply versioned overlays (adds/updates/drops/flags),
-    re-derive bits, build groups, and write a single FITS output.
-
-    Notes
-    -----
-    - Assumes overlay helpers are already available in scope:
-      load_overlays, apply_drops_inplace, apply_adds_inplace,
-      apply_updates_inplace, apply_flags_inplace.
-    - Uses nocuts v0.22 only to restore properties for rows added via overlays.
-    - SGAID stability: carried from ellipse (or ROW_PARENT) when present;
-      new rows get monotonically increasing SGAID.
+def read_base_ellipse(outdir, base_version):
+    """Read the base ellipse catalogs for dr11-south and
+    dr9-north. Consolidate duplicates by OBJNAME, combining REGION
+    bits (but prefering DR11 if duplicated).
 
     """
-    from astropy.table import Table
-    from desiutil.dust import SFDMap
-    from SGA.SGA import SGA_version, SAMPLE
+    from SGA.SGA import SAMPLE
     from SGA.coadds import REGIONBITS
-    from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
-    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
-    from SGA.sky import find_in_mclouds, find_in_gclpne
 
-    # Paths & versions
-    parent_version = SGA_version(parent=True)      # -> 'v0.30' (target)
-    nocuts_version = SGA_version(nocuts=True)      # -> 'v0.22'
-    outdir = os.path.join(sga_dir(), 'sample')
-    parentdir = os.path.join(sga_dir(), 'parent')
-    overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{parent_version}') # e.g., .../overlays/v0.30
-    outfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.fits')
-    kdoutfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.kd.fits')
-
-    if os.path.isfile(outfile) and not overwrite:
-        log.info(f'Parent catalog {outfile} exists; use --overwrite')
-        return
-
-    # Read the base ellipse catalogs for dr11-south and
-    # dr9-north. Consolidate duplicates by OBJNAME, combining REGION
-    # bits (but prefering DR11 if duplicated).
     ell = []
     for region in ['dr11-south', 'dr9-north']:
-        basefile = os.path.join(outdir, f'SGA2025-{base_version}-{region}.fits')
+        basefile = os.path.join(outdir, f'SGA2025-beta-{base_version}-{region}.fits')
         ell1 = Table(fitsio.read(basefile))
         log.info(f'Read {len(ell1):,d} rows from {basefile}')
+
+        # In v0.40 there was a bug in SGA_diameter, so
+        # recompute. We'll censor below.
+        if base_version == 'v0.40':
+            from SGA.SGA import SGA_diameter
+            diam, diam_err, diam_ref, _ = SGA_diameter(ell1, region)
+
+            I = (ell1['D26_ERR'] != 0.)
+            #I = ((ell1['D26_ERR'] != 0.) & (diam_ref != 'mom') &
+            #     (ell1['GROUP_MULT'] == 1) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR'] == 0) &
+            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] == 0))
+            for col, val in zip(['D26', 'D26_ERR', 'D26_REF'], [diam[I], diam_err[I], diam_ref[I]]):
+                ell1[col][I] = val
+
+            #import matplotlib.pyplot as plt
+            #fig, ax = plt.subplots()
+            #for ref in set(ell1['D26_REF'][I]):
+            #    J = np.where(ref == ell1['D26_REF'][I])[0]
+            #    ax.scatter(ell1['D26'][I][J], diam[I][J], s=1, label=ref)
+            #ax.legend()
+            #ax.set_xlim(0.2, 18)
+            #ax.set_ylim(0.2, 18)
+            #ax.plot([0.2, 18], [0.2, 18], color='k')
+            #fig.savefig('ioannis/tmp/junk.png')
+            # ell1[I][np.where((ell1['D26'][I]) > 14 * (diam[I] < 12))[0]]['OBJNAME', 'RA', 'DEC', 'D26', 'DIAM_INIT']
+
         ell.append(ell1)
     ell = vstack(ell)
 
@@ -3826,7 +3816,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         log.info(f'Combined catalog contains {len(ell):,d} unique objects')
 
     # Project ellipse to parent base model
-    # Map: D26→DIAM; DIAM_REF := f"{parent_version}/{D26_REF}"
     ell_base = Table()
     ell_base['SGAID'] = ell['SGAID'].astype(np.int64)
     ell_base['REGION'] = ell['REGION'].astype(np.int16)
@@ -3839,15 +3828,19 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     ell_base['BA'] = ell['BA'].astype(np.float32)
     ell_base['PA'] = (ell['PA'] % 180.).astype(np.float32)
     ell_base['MAG'] = ell['MAG_INIT'].astype(np.float32)
-    ell_base['DIAM_REF'] = np.char.add(base_version, np.char.add('/', ell['D26_REF'])).astype('U14')
+    ell_base['DIAM_REF'] = ell['D26_REF'].astype('U14')
+
+    I = ell['D26_ERR'] != 0. # re-measured (ellipse, not "missing") diameters
+    if np.any(I):
+        ell_base['DIAM_REF'][I] = np.char.add(f'{base_version}/', ell_base['DIAM_REF'][I])
 
     # reset SAMPLE except for LVD
     ell_base['SAMPLE'] = np.zeros(len(ell), np.int32) # ell['SAMPLE'].astype(np.int32)
     ell_base['SAMPLE'][ell['SAMPLE'] & SAMPLE['LVD'] != 0] |= SAMPLE['LVD']
 
-    # Not all ellipse entries are reliable; read the base_parent
-    # catalog so we can revert as appropriate.
-    parent_basebasefile = os.path.join(outdir, f'SGA2025-parent-{base_version}.fits')
+    # Not all ellipse entries are present or reliable; read the
+    # base_parent catalog so we can revert as appropriate.
+    parent_basebasefile = os.path.join(outdir, f'SGA2025-beta-parent-{base_version}.fits')
     parent_base = Table(fitsio.read(parent_basebasefile))
     log.info(f'Read {len(parent_base):,d} rows from {parent_basebasefile}')
 
@@ -3858,6 +3851,54 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     ell = ell[m_ell]
     ell_base = ell_base[m_ell]
     parent_base = parent_base[m_parent]
+
+    assert(np.all(parent_base['SGAID'] == ell['SGAID']))
+    assert(np.all(parent_base['SGAID'] == ell_base['SGAID']))
+
+    return ell, ell_base, parent_base
+
+
+def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
+
+    """Build a new parent catalog starting from `base_version` ellipse
+    catalog, apply versioned overlays (adds/updates/drops/flags),
+    re-derive bits, build groups, and write a single FITS output.
+
+    Notes
+    -----
+    - Assumes overlay helpers are already available in scope:
+      load_overlays, apply_drops_inplace, apply_adds_inplace,
+      apply_updates_inplace, apply_flags_inplace.
+    - Uses nocuts v0.22 only to restore properties for rows added via overlays.
+    - SGAID stability: carried from ellipse (or ROW_PARENT) when present;
+      new rows get monotonically increasing SGAID.
+
+    """
+    from astropy.table import Table
+    from desiutil.dust import SFDMap
+    from SGA.SGA import SGA_version, SAMPLE, SGA_diameter
+    from SGA.coadds import REGIONBITS
+    from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
+    from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
+    from SGA.sky import find_in_mclouds, find_in_gclpne
+
+    # Paths & versions
+    parent_version = SGA_version(parent=True)      # -> 'v0.30' (target)
+    nocuts_version = SGA_version(nocuts=True)      # -> 'v0.22'
+    outdir = os.path.join(sga_dir(), 'sample')
+    parentdir = os.path.join(sga_dir(), 'parent')
+    overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{parent_version}') # e.g., .../overlays/v0.30
+    outfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.fits')
+    kdoutfile = os.path.join(outdir, f'SGA2025-beta-parent-{parent_version}.kd.fits')
+
+    if os.path.isfile(outfile) and not overwrite:
+        log.info(f'Parent catalog {outfile} exists; use --overwrite')
+        return
+
+    # Read the base ellipse catalogs for dr11-south and
+    # dr9-north.
+    ell, ell_base, parent_base = read_base_ellipse(outdir, base_version)
+    assert(np.all(np.isfinite(ell['D26'])))
 
     if base_version == 'v0.22':
         # Restore all objects with large shifts caused by erroneous
@@ -3875,7 +3916,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         pa_old = parent_base['PA'].value  # degrees, [0,180)
         pa_new = ell_base['PA'].value
 
-        # 1) keep your existing special cases
+        # 1) keep existing special cases
         I1 = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) |
               (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
               (ell['GROUP_MULT'] > 1))
@@ -3923,7 +3964,52 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         #plt.axvline(x=0.5, color='k')
         #plt.savefig('ioannis/tmp/junk.png')
 
-    base = ell_base
+    elif base_version == 'v0.30':
+        I = ((ell['SAMPLE'] & SAMPLE['LVD']) == 0) & (ell['D26_ERR'] != 0.) & ((ell['D26']+ell['D26_ERR']) < mindiam)
+        log.info(f'Removing {np.sum(I):,d}/{len(ell):,d} galaxies with D(26)<{mindiam:.2f} arcmin')
+        base = ell_base[~I]
+
+    elif base_version == 'v0.40':
+        # buggy diameters in v0.30, so re-compute and then restore the
+        # objects that are actually larger than 30 arcsec
+        vell, vell_base, vparent_base = read_base_ellipse(outdir, 'v0.30')
+
+        I = ((vell['SAMPLE'] & SAMPLE['LVD']) == 0) & (vell['D26_ERR'] != 0.) & ((vell['D26']+vell['D26_ERR']) < mindiam)
+        vell = vell[I]
+        vell_base = vell_base[I]
+        vparent_base = vparent_base[I]
+
+        diam, diam_err, diam_ref, _ = SGA_diameter(vell, 'dr11-south')
+        I = ((diam+diam_err) > mindiam) & (vell['GROUP_MULT'] == 1)
+        log.info(f'Restoring {np.sum(I):,d} galaxies incorrectly dropped in v0.30.')
+
+        ell = vstack((ell, vell[I]))
+        ell_base = vstack((ell_base, vell_base[I]))
+        parent_base = vstack((parent_base, vparent_base[I]))
+
+        # still not ready to trust the new diameters in groups; IC
+        # 4721A is an example object where we do not want the larger,
+        # newer diameter
+        I1 = ((ell['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) |
+              (ell['SAMPLE'] & SAMPLE['LVD'] != 0) |
+              (ell['GROUP_MULT'] > 1))
+
+        d_old = parent_base['DIAM'].value
+        d_new = ell_base['DIAM'].value
+        I2 = (d_old > 0) & (np.abs(d_new - d_old) / d_old > 0.20)
+
+        I = I1 | I2
+        if np.any(I):
+            log.info(f'Restoring original ellipse geometry for {np.sum(I):,d} objects.')
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+                ell_base[col][I] = parent_base[col][I]
+
+        base = ell_base
+
+    else:
+        base = ell_base
+
     log.info(f'Final base catalog contains {len(base):,d} objects.')
 
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
@@ -3934,6 +4020,12 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
 
     base = apply_drops(base, ov.drops, REGIONBITS)
     base = apply_adds(base, ov.adds, REGIONBITS, nocuts)
+
+    miss = ~np.isin(ov.updates['OBJNAME'].value, base['OBJNAME'])
+    if np.any(miss):
+        log.critical("The following objects in the updates.csv file are missing")
+        print(ov.updates['OBJNAME'][miss])
+        raise ValueError()
     apply_updates_inplace(base, ov.updates)
 
     try:
@@ -3942,12 +4034,11 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
         if not np.all(base['DIAM'] > 0.):
             raise ValueError('Non-positive DIAM in final parent')
         if not np.all((base['BA'] > 0.) & (base['BA'] <= 1.)):
-            pdb.set_trace()
             raise ValueError('BA out of range')
         if not np.all((base['PA'] >= 0.) & (base['PA'] < 180.)):
             raise ValueError('PA out of range')
     except:
-        ell_base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
+        base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
@@ -3986,32 +4077,34 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.22', overwrite=False):
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0] |= FITMODE['RESOLVED']
 
+    try:
+        assert(np.all(np.isfinite(grp['DIAM'])))
+    except:
+        pdb.set_trace()
+
     # Sort by diameter descending and then build the group catalog
     srt = np.argsort(grp['DIAM'])[::-1]
     grp = grp[srt]
 
     special = ((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0) | \
               ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
-    if np.any(special):
-        out1 = make_singleton_group(grp[special], group_id_start=0)
-        gid_start = int(np.max(out1['GROUP_ID'])) + 1
-    else:
-        from astropy.table import Table
-        out1 = Table(grp[:0]).copy()
-        gid_start = 0
+    out1 = make_singleton_group(grp[special], group_id_start=0)
+    gid_start = int(np.max(out1['GROUP_ID'])) + 1
     out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
-
     out = vstack((out1, out2))
-    #del out1, out2, grp
+
 
     # Assign SGAGROUP name and check duplicates among primaries
-    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
-    out.add_column(groupname, name='SGAGROUP', index=1)
-    prim = out['GROUP_PRIMARY']
-    gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
-    if np.any(cc > 1):
-        log.critical('Duplicate group names among primaries detected.')
-        raise ValueError('Duplicate SGAGROUP among primaries')
+    try:
+        groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
+        out.add_column(groupname, name='SGAGROUP', index=1)
+        prim = out['GROUP_PRIMARY']
+        gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
+        if np.any(cc > 1):
+            log.critical('Duplicate group names among primaries detected.')
+            raise ValueError('Duplicate SGAGROUP among primaries')
+    except:
+        pdb.set_trace()
 
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).

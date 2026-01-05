@@ -100,12 +100,13 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.22'
 
         # major refactor of build_parent
-        version = 'v0.30'
+        #version = 'v0.30'
 
-        # significant trimming of small galaxies; new ELLIPSEBIT
-        # (NORADWEIGHT and FIXGEO)
+        # significant trimming of small galaxies; numerous new ELLIPSEBIT
         #version = 'v0.40'
 
+        # tons of additional sample cleanup
+        version = 'v0.50'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -114,8 +115,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.20' # parent_version = v0.12 --> v0.20
         #version = 'v0.21' # parent_version = v0.20 --> v0.21
         #version = 'v0.22'  # parent_version = v0.21 --> v0.22
-        version = 'v0.30'  # parent_version = v0.22 --> v0.30
+        #version = 'v0.30'  # parent_version = v0.22 --> v0.30
         #version = 'v0.40'  # parent_version = v0.30 --> v0.40
+        version = 'v0.50'  # parent_version = v0.40 --> v0.50
     return version
 
 
@@ -378,7 +380,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             ext = 'ELLIPSE'
         if version is None:
             version = SGA_version()
-        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+        if beta:
+            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
+        else:
+            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
     else:
         ext = 'PARENT'
         if version is None:
@@ -616,51 +621,163 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
 
+    #if version == 'v0.40':
+    #    print('HACK!!!')
+    #    redo = Table.read('/global/u2/i/ioannis/redo-galdir.txt', format='csv')['C'].value
+    #    base = np.array([os.path.basename(path) for path in redo])
+    #    sample = sample[np.isin(sample['GROUP_NAME'], base)]
+    #    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
+
+    if version == 'v0.50' and False:
+        print('HACK!!!')
+        redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
+        fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+
     return sample, fullsample
 
 
-def SGA_diameter(ellipse, radius_arcsec=False):
-    """
-    radius_arcsec - do not convert to diameter in arcmin
+def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
+                 verbose=False):
+    """Compute D26 diameter from ellipse measurements.
+
+    Parameters
+    ----------
+    ellipse : astropy.table.Table
+        Table with isophotal radii (R{TH}_{BAND} columns), ELLIPSEMODE, and SMA_MOMENT.
+    region : str
+        Survey region ('dr9-north', 'dr9-south', 'dr9-south-ngc5128', etc.).
+        Required to handle region-specific data quality issues.
+    radius_arcsec : bool, optional
+        If True, return radius in arcsec instead of diameter in arcmin.
+    censor_all_zband : bool, optional
+        If True and region is 'dr9-north', censor all z-band profiles. If False
+        (default), only censor z-band for rows that have valid isophotal radii
+        in other bands (g, r, i), preserving z-band as fallback when it's the
+        only available measurement.
+    verbose : bool, optional
+        If True, print per-object diagnostic output showing available radii
+        and the resulting D26.
+
+    Returns
+    -------
+    d26 : ndarray
+        D26 diameter in arcmin (or R26 radius in arcsec if radius_arcsec=True).
+    d26_err : ndarray
+        1-sigma uncertainty.
+    d26_ref : ndarray
+        Channel that contributed highest weight ('r26', 'g25', 'mom', 'fix', etc.).
+    d26_weight : ndarray
+        Weight of the highest-contributing channel.
 
     """
     from SGA.ellipse import ELLIPSEMODE
     from SGA.calibrate import infer_best_r26
 
     for col in ['ELLIPSEMODE', 'SMA_MOMENT']:
-        if not col in ellipse.colnames:
+        if col not in ellipse.colnames:
             msg = f'Missing mandatory column {col}'
             log.critical(msg)
             raise ValueError(msg)
+
+    # Work on a copy to avoid modifying the input table
+    ellipse = ellipse.copy()
+
+    # Censor unreliable z-band profiles in dr9-north
+    if region == 'dr9-north':
+        z_cols = [col for col in ellipse.colnames if col.startswith('R2') and '_Z' in col]
+
+        if censor_all_zband:
+            for col in z_cols:
+                ellipse[col] = np.nan
+        else:
+            # Only censor z-band for rows that have other valid isophotal radii
+            gri_cols = [col for col in ellipse.colnames
+                        if col.startswith('R2') and ('_G' in col or '_R' in col or '_I' in col)
+                        and '_ERR' not in col]
+            if gri_cols:
+                has_gri = np.zeros(len(ellipse), dtype=bool)
+                for col in gri_cols:
+                    has_gri |= np.isfinite(ellipse[col]) & (ellipse[col] > 0)
+                for col in z_cols:
+                    ellipse[col] = np.where(has_gri, np.nan, ellipse[col])
 
     d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
 
     I = np.isin(d26_ref, 'moment')
     if np.any(I):
-        d26_ref[I] = 'mom' # shorten for the data model
+        d26_ref[I] = 'mom'
     d26_ref = d26_ref.astype('<U3')
 
-    # fixed geometry
-    I = ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
+    # Fixed geometry
+    I = (ellipse['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) != 0
     if np.any(I):
-        d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60. # [arcmin]
-        d26_err[I] = 0. # no error
+        d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60.
+        d26_err[I] = 0.
         d26_ref[I] = 'fix'
         d26_weight[I] = 1.
 
+    if verbose:
+        for i in range(len(ellipse)):
+            for thresholds in [[24, 23], [26, 25]]:
+                parts = []
+                for th in thresholds:
+                    for band in ['R', 'I', 'Z', 'G']:
+                        rcol = f'R{th}_{band}'
+                        ecol = f'R{th}_ERR_{band}'
+                        if rcol in ellipse.colnames:
+                            r = ellipse[rcol][i]
+                            if np.isfinite(r) and r > 0:
+                                e = ellipse[ecol][i] if ecol in ellipse.colnames else 0
+                                if np.isfinite(e) and e > 0:
+                                    parts.append(f"{band.lower()}({th})={r:.1f}±{e:.2f}")
+                                else:
+                                    parts.append(f"{band.lower()}({th})={r:.1f}")
+                if parts:
+                    log.info(" ".join(parts) + " arcsec")
+            log.info(f"D(26)={d26[i]:.3f}±{d26_err[i]:.3f} arcmin [ref={d26_ref[i]}]")
+
     if radius_arcsec:
-        r26 = d26 / 2. * 60. # [radius, arcsec]
-        r26_err = d26_err / 2. * 60. # [radius, arcsec]
+        r26 = d26 / 2. * 60.
+        r26_err = d26_err / 2. * 60.
         return r26, r26_err, d26_ref, d26_weight
     else:
         return d26, d26_err, d26_ref, d26_weight
 
 
-def SGA_geometry(ellipse, radius_arcsec=False):
+def SGA_geometry(ellipse, region, radius_arcsec=False):
+    """Extract galaxy geometry (size and shape) from ellipse measurements.
 
+    Parameters
+    ----------
+    ellipse : astropy.table.Table
+        Table with isophotal radii, BA_MOMENT, PA_MOMENT, ELLIPSEMODE, and SMA_MOMENT.
+    region : str
+        Survey region ('dr9-north', 'dr9-south', etc.). Passed to SGA_diameter
+        to handle region-specific data quality issues.
+    radius_arcsec : bool, optional
+        If True, return radius in arcsec instead of diameter in arcmin.
+
+    Returns
+    -------
+    diam : ndarray
+        D26 diameter in arcmin (or R26 radius in arcsec if radius_arcsec=True).
+    ba : ndarray
+        Axis ratio (b/a) from moment analysis.
+    pa : ndarray
+        Position angle in degrees (astronomical convention) from moment analysis.
+    diam_err : ndarray
+        1-sigma uncertainty on diameter.
+    diam_ref : ndarray
+        Channel that contributed highest weight ('r26', 'g25', 'mom', 'fix', etc.).
+    diam_weight : ndarray
+        Weight of the highest-contributing channel.
+
+    """
     ba = ellipse['BA_MOMENT'].value
     pa = ellipse['PA_MOMENT'].value
-    diam, diam_err, diam_ref, diam_weight = SGA_diameter(ellipse, radius_arcsec=radius_arcsec)
+    diam, diam_err, diam_ref, diam_weight = SGA_diameter(
+        ellipse, region, radius_arcsec=radius_arcsec)
     return diam, ba, pa, diam_err, diam_ref, diam_weight
 
 
@@ -891,8 +1008,13 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             tractor = Table()
     else:
         refs = fitsio.read(tractorfile, columns=['brick_primary', 'ra', 'dec', 'type', 'fitbits',
-                                                 'ref_cat', 'ref_id', 'maskbits'])
-        I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
+                                                 'ref_cat', 'ref_id'])
+
+        # NB: Do not remove Gaia/DUP sources; those will be handled in
+        # legacypipe; also note that all sources should have
+        # brick_primary=True
+        I = refs['brick_primary']
+        #I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
 
         # if np.sum(I)==0, this is a problem...; add to "missing" catalog.
         if np.sum(I) == 0:
@@ -903,10 +1025,11 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             # old geometry.
             #isin = (refs['maskbits'] & MASKBITS['GALAXY'] != 0) # wrong!
             isin = np.zeros(len(refs), bool)
-            rad, ba, pa, _, _, _ = SGA_geometry(ellipse, radius_arcsec=True)
+            rad, ba, pa, _, _, _ = SGA_geometry(ellipse, region, radius_arcsec=True)
             for iobj in range(nsample):
-                isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600., rad[iobj]*ba[iobj]/3600.,
-                                            pa[iobj], np.asarray(refs['ra']), np.asarray(refs['dec']))
+                isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600.,
+                                            rad[iobj]*ba[iobj]/3600., pa[iobj], np.asarray(refs['ra']),
+                                            np.asarray(refs['dec']))
             J = np.logical_and(I, np.logical_or(isin, refs['ref_cat'] == REFCAT))
 
             # J can be empty if the initial geometry is so pathological
@@ -924,12 +1047,6 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
                            (tractor['ref_cat'] == REFCAT))[0]
             if len(rem) > 0:
                 tractor.remove_rows(rem)
-
-            ## 18111p0189,18009m0110
-            #if tractor['gaia_phot_variable_flag'].dtype == '<U13':
-            #    #print('FIXING PROBLEM!')
-            #    tractor.remove_column('gaia_phot_variable_flag')
-            #    tractor['gaia_phot_variable_flag'] = np.zeros(len(tractor), bool)
 
             # Tractor catalog of SGA source(s)
             for ellipse1 in ellipse:
@@ -949,10 +1066,6 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
                     assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
                     #tractor_sga1 = empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
                     tractor_sga1 = empty_tractor()
-                    #if tractor_sga1['gaia_phot_variable_flag'].dtype == '<U13':
-                    #    #print('FIXING PROBLEM! SGA')
-                    #    tractor_sga1.remove_column('gaia_phot_variable_flag') # bool ????
-                    #    tractor_sga1['gaia_phot_variable_flag'] = np.zeros(len(tractor_sga1), bool)
                     tractor_sga1['ref_cat'] = REFCAT
                     tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
                     tractor_sga.append(tractor_sga1)
@@ -1010,12 +1123,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     t0 = time.time()
 
     if rank == 0:
-        #print()
-        #print('###################')
-        #print('REMOVE THE gaia_phot_variable_flag STUFF!')
-        #print('###################')
-        #print()
-
         all_bands = np.copy(bands)
         opt_bands = ''.join(bands)
         datasets = [opt_bands]
@@ -1040,12 +1147,12 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 outprefix = 'SGA2025-wisesize'
             else:
                 outprefix = 'SGA2025'
-                if False:
-                    print('Hack!')
-                    version = 'iband'
-                    outprefix = 'SGA2025-iband'
-            outfile = f'{outprefix}-{version}-{region}.fits'
-            kdoutfile = f'{outprefix}-{version}-{region}.fits'
+                if False:#True:
+                    print('TESTING!!!')
+                    version = 'test'
+                    outprefix = 'SGA2025-test'
+            outfile = f'{outprefix}-beta-{version}-{region}.fits'
+            kdoutfile = f'{outprefix}-beta-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
             kdoutfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.kd.fits'
 
@@ -1093,7 +1200,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #raslices_todo = ['134', '162']#, '001']#, '002']
+        #raslices_todo = ['140']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -1187,10 +1294,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
-            log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
-            fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
-            fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
-            #print()
+            if len(allellipse) > 0:
+                log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
+                fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
+                fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
+                #print()
 
             if len(allmissing) > 0:
                 missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
@@ -1251,7 +1359,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         outellipse = SGA_datamodel(ellipse, bands, all_bands)
 
         # final geometry
-        diam, ba, pa, diam_err, diam_ref, _ = SGA_geometry(outellipse)
+        diam, ba, pa, diam_err, diam_ref, _ = SGA_geometry(outellipse, region)
         for col, val in zip(['D26', 'BA', 'PA', 'D26_ERR', 'D26_REF'],
                             [diam, ba, pa, diam_err, diam_ref]):
             outellipse[col] = val
@@ -2170,7 +2278,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     #print('Testing!!')
     #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
     #sample['ELLIPSEMODE'] |= ELLIPSEMODE['FIXGEO']
-    #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['MOMENTPOS']
+    #sample['ELLIPSEMODE'] |= ELLIPSEMODE['MOMENTPOS']
     #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
 
     if FMAJOR_final is None:
@@ -2470,6 +2578,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 inellipse2 = in_ellipse_mask(bx, width-by, sma_veto, sma_veto*ba,
                                              pa, xgrid, ygrid_flip)
                 iter_brightstarmask[inellipse2] = False
+            else:
+                inellipse2 = inellipse # used below
 
             # mask edges aggressively to not bias our 'moment' geometry
             _mask_edges(iter_brightstarmask)
@@ -2478,6 +2588,22 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # or TRACTORGEO
             if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
                 iter_brightstarmask |= opt_brightstarmask_core
+
+            # if more than XX% of the pixels are masked by the core of
+            # the star, fall back to the initial geometry and fail
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(iter_brightstarmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
+            denom = iter_brightstarmask[inellipse2].size
+            if denom > 0: # should always be true...
+                frac = np.sum(iter_brightstarmask[inellipse2]) / denom
+                if frac > 0.3:
+                    log.warning(f'Nearly fully masked by bright-star core (F={100.*frac:.1f}%>30%); reverting to initial geometry.')
+                    sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FAILGEO']
+                    geo_iter = geo_init.copy()
+                    [bx, by, sma, ba, pa] = geo_iter
+                    break
 
             # Build a galaxy mask from extended sources, split into
             # "major" and "minor" based on flux ratio relative to the

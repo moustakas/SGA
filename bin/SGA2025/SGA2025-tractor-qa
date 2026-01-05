@@ -10,18 +10,16 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.10 --last=10
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-ignore
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-lvd --lvd-forcepsf
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=6 --final-sample --mp=32
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr11-south --version=v0.40 --vi-sample=6 --final-sample --mp=32
 
 
-VI campaign:
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=3 --mp=32
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr11-south --version=v0.40 --vi-sample=3 --mp=32
+
 
 ## v0.22
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --vi-sample=1 --final-sample
-
-
 
 
 ## v0.11
@@ -52,7 +50,6 @@ SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --final-sample --region=dr11-south --vi-sample=2 --version=v0.22
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --version=v0.30 --vi-sample=2
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.30 --region=dr11-south --vi-sample=1
 
@@ -254,7 +251,6 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     objra0, objdec0, diam0, ba0, pa0 = obj['RA'], obj['DEC'], obj['DIAM']*60., obj['BA'], obj['PA']
                     geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
 
-
                 if final_sample:
                     txt = [obj["OBJNAME"], obj["GROUP_NAME"],
                            r'$(\alpha,\delta)$='+f'({objra:.7f},{objdec:.6f})']
@@ -262,7 +258,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                         txt += [geo0]
                     txt += [geo]
                 else:
-                    txt = [obj["OBJNAME"], #obj["SGANAME"],
+                    txt = [obj["OBJNAME"], obj["GROUP_NAME"], #obj["SGANAME"],
                            r'$(\alpha,\delta)$='+f'({objra0:.7f},{objdec0:.6f})',
                            geo0]
                 txt_ul = '\n'.join(txt)
@@ -273,15 +269,13 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                 if obj['CUTOUT'] or no_groups:
                     groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
                     #groupdiam = obj[diamcolumn] * 60., # [arcsec]
-                    print(galaxy[indx[iax]], groupdiam)
+                    #print(galaxy[indx[iax]], groupdiam)
                     if final_sample:
                         groupra = obj['RA']
                         groupdec = obj['DEC']
                     else:
-                        groupra = obj['RA']
-                        groupdec = obj['DEC']
-                        #groupra = obj['RA_INIT']
-                        #groupdec = obj['DEC_INIT']
+                        groupra = obj['GROUP_RA']
+                        groupdec = obj['GROUP_DEC']
                 else:
                     groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
                     groupra = obj['GROUP_RA']
@@ -293,6 +287,9 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     diam=groupdiam, cutout_galaxy=cutout_galaxy[indx[iax]],
                     cutout_galaxydir=cutout_galaxydir[indx[iax]],
                     cutout=obj['CUTOUT'])
+                #if sga is None:
+                #    pdb.set_trace()
+                #print(groupra, groupdec, wcs.wcs.crval)
 
                 if image is None:
                     txt_ll = 'No Tractor catalog'
@@ -377,6 +374,7 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
                     else:
                         if show_initial_ellipse:
                             (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
+                            #print(xpix0, ypix0, objra0, objdec0)
                             overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
                                              height_pixels=width, pixscale=pixscale,
                                              ax=xx, color='white', linestyle='-',
@@ -542,6 +540,106 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         I = (fullsample['DIAM'] < 1.) & (fullsample['GROUP_MULT'] == 1) & np.char.startswith(fullsample['OBJNAME'].astype(str), "DESI")
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
+    elif vi_sample == 3:
+        sort_by_groupname = True
+
+        min_mult, max_mult = 3, 3 # 4, 4
+        min_max_diam, max_max_diam = 0.0, 0.5
+        #min_max_diam, max_max_diam = 0.5, 1.
+        #min_max_diam, max_max_diam = 1., 1e3
+
+        # Find groups where largest member is within diameter range
+        max_diam_per_group = np.zeros(fullsample['GROUP_ID'].max() + 1, dtype=np.float32)
+        np.maximum.at(max_diam_per_group, fullsample['GROUP_ID'], fullsample['DIAM'])
+
+        overlap_mask = (
+            (max_diam_per_group[fullsample['GROUP_ID']] >= min_max_diam) &
+            (max_diam_per_group[fullsample['GROUP_ID']] < max_max_diam) &
+            (fullsample['GROUP_MULT'] >= min_mult) &
+            (fullsample['GROUP_MULT'] <= max_mult) &
+            (fullsample['GROUP_DIAMETER'] < 5.) &
+            (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) &
+            (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+
+        problematic_group_ids = np.where(
+            np.bincount(fullsample['GROUP_ID'][overlap_mask],
+                        minlength=fullsample['GROUP_ID'].max() + 1) >= 2)[0]
+
+        I = np.isin(fullsample['GROUP_ID'], problematic_group_ids)
+
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+    elif vi_sample == 4:
+        sort_by_groupname = True
+        #I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
+        I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) &
+                     (fullsample['GROUP_DIAMETER'] >= 0) & (fullsample['GROUP_DIAMETER'] < 2.0))
+        I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "2MASS") # "SDSS") # PGC
+        groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
+        I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
+        print(np.sum(I))
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+        pdb.set_trace()
+    elif vi_sample == 5:
+        from SGA.groups import angdiff_deg, contains_point, DEG2RAD
+
+        sort_by_groupname = True
+
+        # Select mult 2-3 groups (excluding LVD)
+        overlap_mask = (
+            (fullsample['GROUP_MULT'] == 2) &
+            #(fullsample['GROUP_MULT'] >= 2) &
+            #(fullsample['GROUP_MULT'] <= 3) &
+            (fullsample['GROUP_DIAMETER'] < 5.) &
+            (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        )
+
+        # Look for small members (DIAM < max_diam_shred) fall inside
+        # large members (DIAM >= min_diam_host).
+        max_diam_shred = 0.5
+        min_diam_host = 1.
+
+        unique_groups = np.unique(fullsample['GROUP_NAME'][overlap_mask])
+        blended_group_ids = []
+
+        for gname in unique_groups:
+            idx = np.where(fullsample['GROUP_NAME'] == gname)[0]
+            if len(idx) < 2:
+                continue
+
+            # Check if small member is inside large member's ellipse
+            for i in idx:
+                if fullsample['DIAM'][i] >= max_diam_shred:
+                    continue  # Skip - not a potential shred
+
+                # Check against larger members
+                others = idx[(idx != i) & (fullsample['DIAM'][idx] >= min_diam_host)]
+                if len(others) == 0:
+                    continue
+
+                dx_deg = angdiff_deg(fullsample['RA'][i], fullsample['RA'][others]) * np.cos(fullsample['DEC'][others] * DEG2RAD)
+                dy_deg = fullsample['DEC'][i] - fullsample['DEC'][others]
+
+                if np.any(contains_point(
+                    0.5 * fullsample['DIAM'][others],
+                    0.5 * fullsample['DIAM'][others] * fullsample['BA'][others],
+                    fullsample['PA'][others] * DEG2RAD,
+                    dx_deg, dy_deg, scale=1.0
+                )):
+                    blended_group_ids.append(fullsample['GROUP_ID'][i])
+                    break
+
+        I = np.isin(fullsample['GROUP_ID'], np.unique(blended_group_ids))
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+
+    elif vi_sample == 6:
+        sort_by_groupname = True
+        I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0)
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
         sort_by_groupname = False
         if no_groups:
@@ -552,26 +650,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
         #########################
         sort_by_groupname = False
-
-        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.)
-        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.) & (fullsample['GROUP_DIAMETER'] <= 1.5)
-        I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 0.75) & (fullsample['GROUP_DIAMETER'] <= 1.)
-        I_sdss = np.char.startswith(fullsample['OBJNAME'].astype(str), "SDSS")
-
-        # Find groups satisfying each condition
-        groups_with_overlap = set(fullsample['GROUP_NAME'][I_overlap])
-        groups_with_sdss = set(fullsample['GROUP_NAME'][I_sdss])
-
-        # Intersection = groups meeting BOTH conditions
-        groups_target = groups_with_overlap & groups_with_sdss
-
-        # Extract all rows from those groups
-        rows = np.isin(fullsample['GROUP_NAME'], list(groups_target))
-        I = rows & I_sdss
-
-        #########################
-        fullsample = fullsample[I]
-        sample = fullsample
 
         # We still want to see and label nearby companions in
         # 'fullsample', i.e., without any diameter cuts.
@@ -604,7 +682,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     sample['CUTOUT'] = np.zeros(len(sample), bool)
     fullsample['CUTOUT'] = np.zeros(len(fullsample), bool)
     if np.sum(~I) > 0:
-        if np.sum(~I) > 500:
+        if np.sum(~I) > 2000:
             log.warning('Are you sure you want to generate cutouts for more than 500 objects!!')
             raise ValueError()
 
@@ -636,7 +714,6 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                        diamcolumn='GROUP_DIAMETER', fits_cutouts=False,
                        maxdiam_arcmin=MAXDIAM, mp=mp,
                        cutoutdir=os.path.join(cutoutdir, region))
-
 
     # sort by diameter (?)
     if sort_by_groupname:

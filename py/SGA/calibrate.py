@@ -11,9 +11,7 @@ import os
 import json
 import warnings
 import numpy as np
-from typing import Dict, List, Optional, Tuple
 from astropy.table import Table
-from scipy import odr
 from importlib import resources
 from dataclasses import dataclass
 
@@ -23,9 +21,7 @@ from SGA.logger import log
 
 _CALIB_CACHE = {}
 
-#from SGA.SGA import SBTHRESH
 SBTHRESH = [23, 24, 25, 26]
-#SBTHRESH = [24, 25, 26]
 
 warnings.filterwarnings(
     'ignore',
@@ -35,41 +31,46 @@ warnings.filterwarnings(
 
 
 def clear_calibration_cache():
+    """Clear the in-memory calibration cache."""
     _CALIB_CACHE.clear()
 
 
-def _as_float(col) -> np.ndarray:
-    """Return numpy float array from an astropy Column; prefers .value if available."""
-    try:
+def _as_float(col):
+    """Return numpy float array from an astropy Column."""
+    if hasattr(col, 'value'):
         return np.asarray(col.value, dtype=float)
-    except Exception:
-        return np.asarray(col, dtype=float)
+    return np.asarray(col, dtype=float)
 
 
-def _channel_key(th: int, band: str) -> str:
-    return f"{band.lower()}{th}"  # e.g., 'r26', 'g24'
+def _channel_key(th, band):
+    """Return channel key string, e.g. 'r26', 'g24'."""
+    return f"{band.lower()}{th}"
 
 
-def _collect_channels_from_table(tbl: Table) -> Tuple[Dict[str, np.ndarray], Dict[str, Optional[np.ndarray]], int]:
-    """Extract per-channel arrays (linear radii in arcsec) and their
-    1σ errors, with zeros treated as missing.
+def _collect_channels_from_table(tbl):
+    """Extract per-channel arrays (linear radii in arcsec) and their errors.
 
-    Returns (table_dict, sigma_dict, N).
+    Zeros and non-finite values are treated as missing (set to NaN).
+    Includes an extra channel 'moment' from column 'SMA_MOMENT' if present.
 
-    Includes an extra channel 'moment' from column 'SMA_MOMENT' (no σ
-    column).
-
+    Returns
+    -------
+    table : dict
+        Channel name -> array of radii (arcsec)
+    sigma : dict
+        Channel name -> array of 1-sigma errors or None
+    N : int
+        Number of rows in input table
     """
     N = len(tbl)
-    table: Dict[str, np.ndarray] = {}
-    sigma: Dict[str, Optional[np.ndarray]] = {}
+    table = {}
+    sigma = {}
 
-    # Isophotal channels
     for th in SBTHRESH:
         for band in np.char.upper(BANDS):
             base = f"R{th:.0f}_{band}"
             err = f"R{th:.0f}_ERR_{band}"
-            key = _channel_key(th, band)  # e.g., r26
+            key = _channel_key(th, band)
             if base in tbl.colnames:
                 vals = _as_float(tbl[base])
                 vals[(~np.isfinite(vals)) | (vals <= 0.0)] = np.nan
@@ -81,7 +82,6 @@ def _collect_channels_from_table(tbl: Table) -> Tuple[Dict[str, np.ndarray], Dic
                 else:
                     sigma[key] = None
 
-    # Moment channel
     if "SMA_MOMENT" in tbl.colnames:
         vals = _as_float(tbl["SMA_MOMENT"])
         vals[(~np.isfinite(vals)) | (vals <= 0.0)] = np.nan
@@ -93,36 +93,29 @@ def _collect_channels_from_table(tbl: Table) -> Tuple[Dict[str, np.ndarray], Dic
 
 @dataclass
 class ChannelCalib:
+    """Calibration coefficients for a single channel."""
     name: str
     a: float
     b: float
     tau: float
-    covar_names: List[str]
-    c: np.ndarray                  # shape (K,) possibly empty
-    sigma_obs_default: Optional[float]  # default σ_log(x) if per-object σ missing
+    covar_names: list
+    c: np.ndarray
+    sigma_obs_default: float
 
 
 @dataclass
 class Calibration:
-    channels: Dict[str, ChannelCalib]
-    target_name: str = "r26"       # fixed target
+    """Container for all channel calibrations."""
+    channels: dict
+    target_name: str = "r26"
 
 
-def save_calibration(cal: Calibration, path: str) -> None:
-    """Write ASCII TSV with columns: name a b tau sigma_obs_default
-    covar_names c_json.
+def save_calibration(cal, path):
+    """Write calibration to TSV file.
 
-    Model:
-      logR26,r = = a + b log R25,g + c1 logq + c2 (g−r)
+    Columns: name, a, b, tau, sigma_obs_default, covar_names, c_json
 
-    name - The channel name (e.g., r25, g24, moment, etc.)
-    a - Intercept in the log–log linear mapping y = a + bx + c^T z
-    b - Slope multiplying the predictor x = log R_X (threshold)
-    tau - Extra (“intrinsic”) scatter term for that channel in log-space
-    sigma_obs_default - Default uncertainty in log(x) if no per-object σ is available
-    covar_names - JSON list of covariate names (if you fit with additional regressors)
-    c_json - JSON list of the numerical coefficients c c corresponding to those covariates
-
+    The model is: log(R26_R) = a + b * log(R_channel)
     """
     rows = ["\t".join(["name", "a", "b", "tau", "sigma_obs_default", "covar_names", "c_json"])]
     for ch in cal.channels.values():
@@ -139,33 +132,24 @@ def save_calibration(cal: Calibration, path: str) -> None:
         f.write("\n".join(rows))
 
 
-def load_calibration(path: Optional[str] = None) -> Calibration:
-    """Load a Calibration object from a TSV file, with caching.
-    If no path is provided, use the packaged default under SGA/data/SGA2025.
+def load_calibration(path=None):
+    """Load calibration from TSV file with caching.
+
+    If path is None, uses the packaged default under SGA/data/SGA2025.
     """
-
-    import os
-    from importlib import resources
-
-    # Resolve the calibration file path
     if path is None:
         path = resources.files("SGA").joinpath("data/SGA2025/r26-calibration-coeff.tsv")
 
-    # Normalize to absolute string key for caching
     key = os.path.abspath(str(path))
 
-    # Cache hit
     if key in _CALIB_CACHE:
-        #log.debug(f"Loaded cached calibration file: {path}")
         return _CALIB_CACHE[key]
 
-    # --- Load from disk (your original logic) ---
     lines = [ln.strip() for ln in open(path, "r") if ln.strip()]
     if not lines or not lines[0].startswith("name"):
         raise ValueError(f"Malformed calibration file: {path}")
 
-    channels: Dict[str, ChannelCalib] = {}
-
+    channels = {}
     for ln in lines[1:]:
         name, a, b, tau, sdef, covars_json, c_json = ln.split("\t")
         channels[name] = ChannelCalib(
@@ -181,40 +165,34 @@ def load_calibration(path: Optional[str] = None) -> Calibration:
     cal = Calibration(channels=channels, target_name="r26")
     log.debug(f"Read calibration file: {path}")
 
-    # Store in cache
     _CALIB_CACHE[key] = cal
     return cal
 
 
-def _to_log_and_sigma(r: np.ndarray, sigma_r: Optional[np.ndarray]) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+def _to_log_and_sigma(r, sigma_r):
+    """Convert linear radius and error to log-space."""
     y = np.log(r)
     if sigma_r is None:
         return y, None
-    return y, sigma_r / np.clip(r, 1e-300, None)  # σ_log ≈ σ_R / R
+    return y, sigma_r / np.clip(r, 1e-300, None)
 
 
-def _channel_threshold(name: str) -> Optional[int]:
-    """Return isophotal threshold (e.g. 23,24,25,26) or None for non-isophotal."""
-    if name == "r26":
-        return 26
+def _channel_threshold(name):
+    """Return isophotal threshold (23, 24, 25, 26) or None for non-isophotal."""
     if name == "moment":
         return None
-    # expect names like 'g24', 'r25', 'z26', etc.
+    if name == "r26":
+        return 26
     try:
         return int(name[-2:])
     except ValueError:
         return None
 
 
-def _hierarchy_rank(name: str) -> int:
-    """
-    Rank channels for diagnostic display and combination logic.
-
-    Lower rank = earlier in grid (upper-left).
-    """
+def _hierarchy_rank(name):
+    """Rank channels for display ordering. Lower rank = earlier in grid."""
     if name == "moment":
         return 0
-
     th = _channel_threshold(name)
     if th == 23:
         return 1
@@ -224,42 +202,26 @@ def _hierarchy_rank(name: str) -> int:
         return 3
     if th == 26:
         return 4
-
-    # Any weird/unclassified channels go last
     return 99
 
 
-def _plot_calibration_diagnostics(
-    plot_data: Dict[str, Dict[str, np.ndarray]],
-    cal: Calibration,
-    calib_path: str,
-) -> None:
-    """Make a multi-panel diagnostic plot of channel vs R26_R with fits."""
+def _plot_calibration_diagnostics(plot_data, cal, calib_path):
+    """Make multi-panel diagnostic plot of channel vs R26_R with fits."""
     if not plot_data:
         return
 
     import matplotlib.pyplot as plt
-    import os
-    import numpy as np
 
     base, _ = os.path.splitext(str(calib_path))
     png_path = base + ".png"
 
-    # Compute total scatter per channel from calibration:
-    # σ_tot = sqrt(tau^2 + sigma_obs_default^2)
-    scatters: Dict[str, float] = {}
+    scatters = {}
     for name, ch in cal.channels.items():
         sdef = ch.sigma_obs_default or 0.0
         scatters[name] = float(np.sqrt(ch.tau ** 2 + sdef ** 2))
 
-    # Channels we can actually plot
     available = [n for n in plot_data.keys() if n in cal.channels]
-
-    # Sort by (hierarchy rank, descending scatter)
-    names = sorted(
-        available,
-        key=lambda n: (_hierarchy_rank(n), -scatters.get(n, 0.0)),
-    )
+    names = sorted(available, key=lambda n: (_hierarchy_rank(n), -scatters.get(n, 0.0)))
 
     n = len(names)
     if n == 0:
@@ -268,12 +230,7 @@ def _plot_calibration_diagnostics(
     ncols = 4
     nrows = int(np.ceil(n / ncols))
 
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(4 * ncols, 4 * nrows),
-        sharey=True,
-        #squeeze=False
-    )
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), sharey=True)
     axes_flat = axes.ravel()
 
     for idx, name in enumerate(names):
@@ -301,7 +258,6 @@ def _plot_calibration_diagnostics(
             sdef = ch.sigma_obs_default or 0.0
             s_tot = np.sqrt(tau**2 + sdef**2)
 
-            # Model: log R26_R = a + b log x  => R26_R(x) = exp(a + b log x)
             x_min = np.nanmin(xx)
             x_max = np.nanmax(xx)
             if np.isfinite(x_min) and np.isfinite(x_max) and x_max > x_min:
@@ -311,24 +267,14 @@ def _plot_calibration_diagnostics(
                 y_fit = np.exp(ylog_fit)
                 (line,) = ax.plot(x_grid, y_fit, "k-", lw=1)
 
-                label = (
-                    f"a={a:.3f}, b={b:.3f}, "
-                    f"tau={tau:.3f}, sdef={sdef:.3f}, σ_tot={s_tot:.3f}"
-                )
-                ax.legend(
-                    [line],
-                    [label],
-                    fontsize=7,
-                    loc="upper left",
-                    frameon=False,
-                )
+                label = f"a={a:.3f}, b={b:.3f}, tau={tau:.3f}, sdef={sdef:.3f}, σ_tot={s_tot:.3f}"
+                ax.legend([line], [label], fontsize=7, loc="upper left", frameon=False)
 
         ax.set_xlabel(f"{name} [arcsec]")
         if idx % ncols == 0:
             ax.set_ylabel("R26_R [arcsec]")
         ax.set_title(f"{name} (σ_tot={s_tot:.3f})")
 
-    # Turn off unused panels
     for j in range(len(names), len(axes_flat)):
         axes_flat[j].set_axis_off()
 
@@ -339,56 +285,57 @@ def _plot_calibration_diagnostics(
     log.info(f"Wrote calibration diagnostic plot to {png_path}")
 
 
-def _fit_channel_bisector_robust(
-    x_log: np.ndarray,
-    sx_log: Optional[np.ndarray],
-    y_log: np.ndarray,
-    sy_log: Optional[np.ndarray],
-    Z: Optional[np.ndarray],
-    r26_min_anchor: float = 15.0,
-    clip_sigma: float = 3.0,
-    max_iter: int = 5,
-) -> Tuple[np.ndarray, float, float]:
+def _compute_bisector(xx, yy, eps=1e-12):
+    """Compute least-squares bisector fit for y = a + b*x.
+
+    Uses the Isobe+ 1990 bisector method: average of Y|X and X|Y regressions.
+
+    Returns (a, b) intercept and slope.
     """
-    Robust symmetric fit for y = a + b*x (+ c^T z) in log-space using a
-    least-squares bisector with iterative sigma clipping on orthogonal residuals.
+    A1 = np.column_stack([np.ones_like(xx), xx])
+    coef1 = np.linalg.lstsq(A1, yy, rcond=None)[0]
+    a1, b1 = coef1[0], coef1[1]
 
-    For now, covariates Z are ignored (the relation is 2-parameter: a, b).
-    If Z is not None, they are dropped for this channel.
+    A2 = np.column_stack([np.ones_like(yy), yy])
+    coef2 = np.linalg.lstsq(A2, xx, rcond=None)[0]
+    a2x, b2x = coef2[0], coef2[1]
 
-    Parameters
-    ----------
-    x_log : array
-        log(proxy radius) for anchor objects.
-    sx_log : array or None
-        1σ uncertainty in log(proxy radius), or None.
-    y_log : array
-        log(R26_R) for anchor objects.
-    sy_log : array or None
-        1σ uncertainty in log(R26_R), or None.
-    Z : array or None
-        Ignored in this implementation (set to None upstream).
-    clip_sigma : float
-        Sigma-clipping threshold for orthogonal residuals.
-    max_iter : int
-        Maximum number of clipping iterations.
+    if b2x == 0:
+        return a1, b1
 
-    Returns
-    -------
-    beta : array
-        [a, b]; no covariates in this implementation.
-    tau : float
-        Extra scatter term in log-space (in y-direction).
-    sigma_obs_default : float
-        Default σ_log(x) for this channel when per-object errors are missing.
+    m1 = b1
+    m2 = 1.0 / b2x
 
+    denom = m1 - m2
+    if abs(denom) < eps:
+        x0 = np.mean(xx)
+        y0 = np.mean(yy)
+    else:
+        x0 = ((-a2x / b2x) - a1) / denom
+        y0 = a1 + m1 * x0
+
+    theta1 = np.arctan(m1)
+    theta2 = np.arctan(m2)
+    mb = np.tan(0.5 * (theta1 + theta2))
+    a = y0 - mb * x0
+    b = mb
+
+    return a, b
+
+
+def _fit_channel_bisector_robust(x_log, sx_log, y_log, sy_log, Z,
+                                  r26_min_anchor=15.0, clip_sigma=3.0, max_iter=5):
+    """Robust symmetric fit for y = a + b*x in log-space.
+
+    Uses least-squares bisector with iterative sigma clipping on orthogonal
+    residuals. Covariates Z are currently ignored.
+
+    Returns (beta, tau, sigma_obs_default) where beta = [a, b].
     """
     eps = 1e-12
 
-    # Base mask: finite and positive radii
     m = np.isfinite(x_log) & np.isfinite(y_log)
 
-    # Apply minimum R26_R cut if requested
     if r26_min_anchor is not None and r26_min_anchor > 0.0:
         y_min_log = np.log(r26_min_anchor)
         m &= (y_log >= y_min_log)
@@ -396,12 +343,8 @@ def _fit_channel_bisector_robust(
     x = x_log[m]
     y = y_log[m]
     if x.size < 3:
-        # Degenerate: default to identity with modest scatter
         return np.array([0.0, 1.0], dtype=float), 0.0, 0.1
 
-    # Ignore covariates for now
-    # (If you decide you truly need Z, we can extend this to a robust TLS in higher dimensions.)
-    # Iterative sigma-clipped LS-bisector (Isobe+ 1990 style)
     mask = np.ones_like(x, dtype=bool)
 
     for _ in range(max_iter):
@@ -410,100 +353,38 @@ def _fit_channel_bisector_robust(
         if xx.size < 3:
             break
 
-        # OLS Y|X: yy = a1 + b1 * xx
-        A1 = np.column_stack([np.ones_like(xx), xx])
-        b1, a1 = np.linalg.lstsq(A1, yy, rcond=None)[0][1], np.linalg.lstsq(A1, yy, rcond=None)[0][0]
+        a, b = _compute_bisector(xx, yy, eps)
 
-        # OLS X|Y: xx = a2 + b2 * yy  => yy = (-a2/b2) + (1/b2) * xx
-        A2 = np.column_stack([np.ones_like(yy), yy])
-        b2x, a2x = np.linalg.lstsq(A2, xx, rcond=None)[0][1], np.linalg.lstsq(A2, xx, rcond=None)[0][0]
-        if b2x == 0:
-            # Fallback: if pathological, just use Y|X
-            b = b1
-            a = a1
-        else:
-            m1 = b1
-            m2 = 1.0 / b2x
-
-            # Intersection of the two regression lines
-            # y = a1 + m1 x
-            # y = -a2x/b2x + (1/b2x) x
-            denom = (m1 - m2)
-            if abs(denom) < eps:
-                # Nearly parallel; anchor at means
-                x0 = np.mean(xx)
-                y0 = np.mean(yy)
-            else:
-                x0 = ((-a2x / b2x) - a1) / (m1 - m2)
-                y0 = a1 + m1 * x0
-
-            # Bisector slope: angle-bisector between m1 and m2
-            theta1 = np.arctan(m1)
-            theta2 = np.arctan(m2)
-            mb = np.tan(0.5 * (theta1 + theta2))
-            a = y0 - mb * x0
-            b = mb
-
-        # Orthogonal residuals to the current bisector line
-        # distance = (y - (a + b x)) / sqrt(1 + b^2)
         denom = np.sqrt(1.0 + b * b)
         r_orth = (y - (a + b * x)) / (denom + eps)
 
-        # Robust scale via MAD
         mad = np.nanmedian(np.abs(r_orth[mask] - np.nanmedian(r_orth[mask])))
         sigma = 1.4826 * mad if np.isfinite(mad) and mad > 0 else np.nanstd(r_orth[mask])
 
         if not np.isfinite(sigma) or sigma == 0.0:
-            # No sensible scatter; stop iterating
             break
 
         new_mask = np.abs(r_orth) <= clip_sigma * sigma
 
         if new_mask.sum() == mask.sum():
-            # Converged
             mask = new_mask
             break
 
         mask = new_mask
 
-    # Final fit from last iteration
     xx = x[mask]
     yy = y[mask]
     if xx.size < 3:
-        # Fallback to simple Y|X on all points
         A = np.column_stack([np.ones_like(x), x])
         a, b = np.linalg.lstsq(A, y, rcond=None)[0]
     else:
-        A1 = np.column_stack([np.ones_like(xx), xx])
-        b1, a1 = np.linalg.lstsq(A1, yy, rcond=None)[0][1], np.linalg.lstsq(A1, yy, rcond=None)[0][0]
-
-        A2 = np.column_stack([np.ones_like(yy), yy])
-        b2x, a2x = np.linalg.lstsq(A2, xx, rcond=None)[0][1], np.linalg.lstsq(A2, xx, rcond=None)[0][0]
-        if b2x == 0:
-            a, b = a1, b1
-        else:
-            m1 = b1
-            m2 = 1.0 / b2x
-            denom = (m1 - m2)
-            if abs(denom) < eps:
-                x0 = np.mean(xx)
-                y0 = np.mean(yy)
-            else:
-                x0 = ((-a2x / b2x) - a1) / (m1 - m2)
-                y0 = a1 + m1 * x0
-            theta1 = np.arctan(m1)
-            theta2 = np.arctan(m2)
-            mb = np.tan(0.5 * (theta1 + theta2))
-            a = y0 - mb * x0
-            b = mb
+        a, b = _compute_bisector(xx, yy, eps)
 
     beta = np.array([float(a), float(b)], dtype=float)
 
-    # Now estimate tau, sigma_obs_default in y-direction
     y_pred = beta[0] + beta[1] * x
     resid_y = y - y_pred
 
-    # Measurement variance term (if any)
     meas_var = np.zeros_like(resid_y)
     if sy_log is not None:
         sy = sy_log[m]
@@ -512,7 +393,6 @@ def _fit_channel_bisector_robust(
         sx = sx_log[m]
         meas_var += (beta[1] ** 2) * np.where(np.isfinite(sx), sx**2, 0.0)
 
-    # Robust residual scale in y
     mad_y = np.nanmedian(np.abs(resid_y[mask] - np.nanmedian(resid_y[mask])))
     resid_scale_y = 1.4826 * mad_y if np.isfinite(mad_y) and mad_y > 0 else np.nanstd(resid_y[mask])
 
@@ -520,44 +400,72 @@ def _fit_channel_bisector_robust(
     tau2 = max(0.0, resid_scale_y**2 - mean_meas_var)
     tau = float(np.sqrt(tau2))
 
-    # Default σ_log(x): if we have sxl, use its median; else infer from residuals
     if sx_log is not None:
         sx = sx_log[m]
         med_sx = np.nanmedian(sx[np.isfinite(sx)])
         if np.isfinite(med_sx) and med_sx > 0:
             sdef = float(med_sx)
         else:
+            # Conservatively use full residual scale (not subtracting tau^2)
+            # when per-object errors are missing
             sdef = float(resid_scale_y / (abs(beta[1]) + 1e-9))
     else:
+        # Conservatively use full residual scale (not subtracting tau^2)
+        # when per-object errors are missing
         sdef = float(resid_scale_y / (abs(beta[1]) + 1e-9))
 
     return beta, tau, sdef
 
 
-def calibrate_from_table(
-    tbl: Table,
-    calib_path: str,
-    *,
-    covariates: Optional[np.ndarray] = None,
-    covariate_names: Optional[List[str]] = None,
-    r26_min_anchor: float = 10.,
-) -> Calibration:
-    """Identify calibration anchor (objects with valid R26_R and
-    R26_ERR_R > 0), fit channels via ODR, and write calibration TSV.
+def calibrate_from_table(tbl, calib_path, covariates=None, covariate_names=None,
+                         r26_min_anchor=10.):
+    """Fit R26 calibration coefficients from a table of isophotal radii.
 
-    Returns Calibration object.
+    Uses objects with valid R26_R measurements as anchors to establish the
+    relationship log(R26) = a + b*log(R_channel) for each photometric channel.
+    Fitting uses robust bisector regression (Isobe+ 1990) with iterative
+    sigma-clipping to reject outliers.
 
+    Parameters
+    ----------
+    tbl : astropy.table.Table
+        Input table with columns R{TH}_{BAND} and R{TH}_ERR_{BAND} for each
+        threshold (23, 24, 25, 26) and band (G, R, I, Z). Must include R26_R
+        and R26_ERR_R for anchor selection. May include SMA_MOMENT.
+    calib_path : str
+        Output path for the TSV calibration file.
+    covariates : ndarray, optional
+        Additional covariates for the fit (not currently used).
+    covariate_names : list of str, optional
+        Names for the covariates.
+    r26_min_anchor : float, optional
+        Minimum R26_R radius (arcsec) for anchor selection. Objects with
+        smaller R26 are excluded from calibration. Default 10 arcsec.
+
+    Returns
+    -------
+    Calibration
+        Calibration object containing fitted coefficients for each channel.
+
+    Notes
+    -----
+    The calibration model is:
+        log(R26) = a + b * log(R_channel) + tau * N(0,1)
+
+    where tau is the intrinsic scatter. For each channel, the output includes:
+        a, b : regression coefficients
+        tau : intrinsic scatter in log-space
+        sigma_obs_default : default measurement uncertainty for objects
+            missing per-object errors
     """
     table, sigma, N = _collect_channels_from_table(tbl)
 
-    # Build anchor target y from R26_R
     if "r26" not in table:
         raise ValueError("Input table lacks R26_R column required for calibration.")
 
     y_lin = table["r26"]
     sy_lin = sigma.get("r26", None)
 
-    # Anchor mask: valid y and sy
     anchor_mask = np.isfinite(y_lin) & (y_lin > 0.0)
     if sy_lin is not None:
         anchor_mask &= np.isfinite(sy_lin) & (sy_lin > 0.0)
@@ -566,13 +474,12 @@ def calibrate_from_table(
     if n_anchor < 100:
         log.warning(f"small anchor set size = {n_anchor}")
 
-    y_log, sy_log = _to_log_and_sigma(y_lin[anchor_mask], None if sy_lin is None else sy_lin[anchor_mask])
+    y_log, sy_log = _to_log_and_sigma(y_lin[anchor_mask],
+                                       None if sy_lin is None else sy_lin[anchor_mask])
 
-    # For diagnostics: store x,y in linear space for each channel on the anchor set
-    plot_data: Dict[str, Dict[str, np.ndarray]] = {}
+    plot_data = {}
+    channels = {}
 
-    # Channels to calibrate: all except the target
-    channels: Dict[str, ChannelCalib] = {}
     for name, x_lin_full in table.items():
         if name == "r26":
             continue
@@ -584,41 +491,28 @@ def calibrate_from_table(
         sx_lin = None if sx_lin_full is None else sx_lin_full[anchor_mask]
         x_log, sx_log = _to_log_and_sigma(x_lin, sx_lin)
 
-        # Mask rows where x_log is finite (y_log already finite by construction)
         m = np.isfinite(x_log)
         if not np.any(m):
             continue
 
-        # Save linear-space data for diagnostics (only rows used in the fit)
-        plot_data[name] = {
-            "x": x_lin[m],
-            "y": y_lin[anchor_mask][m],
-        }
+        plot_data[name] = {"x": x_lin[m], "y": y_lin[anchor_mask][m]}
 
         Z = None
         if covariates is not None:
             Z = np.asarray(covariates, dtype=float)[anchor_mask, :]
-            Z = Z[m, :]
-        yl = y_log[m]
-        syl = None if sy_log is None else sy_log[m]
 
+        # Pass full arrays; _fit_channel_bisector_robust applies its own masking
         beta, tau, sdef = _fit_channel_bisector_robust(
-            x_log[m],
-            None if sx_log is None else sx_log[m],
-            yl,
-            syl,
-            Z=None,              # ignore covariates for now; they weren't used anyway
-            r26_min_anchor=r26_min_anchor,
-            clip_sigma=3.0,
-            max_iter=5,
-        )
-        a = float(beta[0]); b = float(beta[1]); c = beta[2:].copy() if len(beta) > 2 else np.array([], dtype=float)
+            x_log, sx_log, y_log, sy_log, Z=None,
+            r26_min_anchor=r26_min_anchor, clip_sigma=3.0, max_iter=5)
+
+        a = float(beta[0])
+        b = float(beta[1])
+        c = beta[2:].copy() if len(beta) > 2 else np.array([], dtype=float)
 
         channels[name] = ChannelCalib(
             name=name, a=a, b=b, tau=float(tau),
-            covar_names=(covariate_names or []), c=c,
-            sigma_obs_default=sdef
-        )
+            covar_names=(covariate_names or []), c=c, sigma_obs_default=sdef)
 
         log.info(f"Calibrated {name:>6s}: a={a:.4f}  b={b:.4f}  tau={tau:.4f}  sdef={sdef:.4f}  (N={np.sum(m)})")
 
@@ -626,39 +520,22 @@ def calibrate_from_table(
     save_calibration(cal, calib_path)
     log.info(f"Wrote calibration to {calib_path}  (channels={len(channels)})")
 
-    # Generate diagnostic plot
     _plot_calibration_diagnostics(plot_data, cal, calib_path)
 
     return cal
 
 
-def _channel_threshold(name: str) -> Optional[int]:
-    """Return isophotal threshold (e.g. 23,24,25,26) or None for non-isophotal."""
-    if name == "moment":
-        return None
-    if name == "r26":
-        return 26  # direct target measurement
-    # names like 'g24', 'r25', 'z26'
-    try:
-        th = int(name[-2:])
-        return th
-    except ValueError:
-        return None
+def _infer_one(measurements, sigmas, cal, var_floor_log=1e-4, covars_row=None,
+               include_direct_r26=True):
+    """Combine channels to infer log(R_r26) for a single object.
 
+    Uses inverse-variance weighting of calibrated channel estimates.
+    Falls back to 'moment' channel only if no isophotal channels available.
 
-def _infer_one(
-    measurements: Dict[str, float],
-    sigmas: Dict[str, Optional[float]],
-    cal: Calibration,
-    var_floor_log: float = 1e-4,
-    covars_row: Optional[np.ndarray] = None,
-    include_direct_r26: bool = True,
-) -> Tuple[float, float, Dict[str, float]]:
-    """Combine channels to infer log R_r26 for a single object."""
-
+    Returns (y_hat, sigma_y, weight_dict).
+    """
     y_list, v_list, w_dict = [], [], {}
 
-    # Determine deepest available isophotal level for this object
     th_available = []
     for name in measurements.keys():
         th = _channel_threshold(name)
@@ -666,7 +543,6 @@ def _infer_one(
             th_available.append(th)
     deepest_th = max(th_available) if th_available else None
 
-    # Optionally include direct R26_R as a measurement
     if include_direct_r26 and "r26" in measurements:
         x_lin = measurements["r26"]
         sx_lin = sigmas.get("r26", None)
@@ -680,10 +556,7 @@ def _infer_one(
             v_list.append(var_j)
             w_dict["r26"] = w
 
-
-    def _add_channel(name: str):
-        nonlocal y_list, v_list, w_dict
-
+    def _add_channel(name):
         ch = cal.channels[name]
         x_lin = measurements[name]
         if not np.isfinite(x_lin) or x_lin <= 0.0:
@@ -702,17 +575,14 @@ def _infer_one(
         z_term = 0.0
         if ch.c.size > 0:
             if covars_row is None or len(covars_row) != len(ch.c):
-                raise ValueError(
-                    f"Covariate vector required (len {len(ch.c)}) for channel {name}."
-                )
+                raise ValueError(f"Covariate vector required (len {len(ch.c)}) for channel {name}.")
             z_term = float(np.dot(ch.c, covars_row))
 
-        b = ch.b if ch.b != 0.0 else 1e-9
+        # Forward model: log(R26) = a + b * log(R_channel) + z_term
+        yj = ch.a + ch.b * x_log + z_term
 
-        # Invert mapping: x_log = a + b*y + z_term  => y = (x_log - a - z_term)/b
-        yj = (x_log - ch.a - z_term) / b
-
-        var_j = ((0.0 if sx_log is None else sx_log**2) + ch.tau**2) / (b**2)
+        # Variance: Var(y) = b^2 * Var(x) + tau^2
+        var_j = (ch.b**2) * (sx_log**2 if sx_log else 0.0) + ch.tau**2
         var_j = max(var_j, var_floor_log)
 
         w = 1.0 / var_j
@@ -720,33 +590,26 @@ def _infer_one(
         v_list.append(var_j)
         w_dict[name] = w
 
-    # 1) First pass: only calibrated *isophotal* channels at deepest_th.
-    #    Non-threshold channels like 'moment' are deliberately skipped.
+    # First pass: only calibrated isophotal channels at deepest threshold
     if deepest_th is not None:
         for name, ch in cal.channels.items():
             if name not in measurements:
                 continue
             th = _channel_threshold(name)
-
-            # only use isophotal channels at the deepest available threshold
             if th is None:
                 continue
             if th < deepest_th:
                 continue
-
             _add_channel(name)
 
-    # 2) Fallback: if we still have no usable measurements (no r26, no
-    #    deepest-th isophotal channels), allow non-threshold channels
-    #    like 'moment' as "radius of last resort".
+    # Fallback: use non-threshold channels like 'moment' as last resort
     if not y_list:
         for name, ch in cal.channels.items():
             if name not in measurements:
                 continue
             th = _channel_threshold(name)
             if th is not None:
-                continue  # only non-threshold channels here (e.g., 'moment')
-
+                continue
             _add_channel(name)
 
     if not y_list:
@@ -761,25 +624,58 @@ def _infer_one(
     return y_hat, sigma_y, w_dict
 
 
-def infer_best_r26(
-    tbl: Table,
-    *,
-    calib_path: str = None,
-    covariates: Optional[np.ndarray] = None,
-    add_columns: bool = False,
-    include_direct_r26: bool = True,
-) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
-    """Apply stored calibration to an Astropy Table and return arrays
-    of D26 and D26_ERR (diameter in arcmin). Optionally add columns to
-    the table.
+def infer_best_r26(tbl, calib_path=None, covariates=None, add_columns=False,
+                   include_direct_r26=True):
+    """Infer D26 diameters by applying calibration to available channels.
 
-    Returns (D26, D26_ERR, D26_REF, D26_WEIGHT)
+    For each object, applies the calibration model log(R26) = a + b*log(R_channel)
+    to all available channels at the deepest isophotal threshold, then combines
+    estimates using inverse-variance weighting.
+
+    Parameters
+    ----------
+    tbl : astropy.table.Table
+        Input table with columns R{TH}_{BAND} and optionally R{TH}_ERR_{BAND}.
+        May include SMA_MOMENT as a fallback channel.
+    calib_path : str, optional
+        Path to calibration TSV file. If None, uses the packaged default.
+    covariates : ndarray, optional
+        Covariate values if the calibration includes covariates.
+    add_columns : bool, optional
+        If True, add D26, D26_ERR, D26_REF, D26_WEIGHT columns to tbl.
+    include_direct_r26 : bool, optional
+        If True (default) and R26_R is available with valid errors, include
+        the direct R26_R measurement in the inverse-variance weighted
+        combination alongside calibrated estimates from other bands (i26, z26,
+        g26). If False, use only the calibrated estimates from non-r bands.
+
+    Returns
+    -------
+    D26 : ndarray
+        Inferred diameter at 26 mag/arcsec^2 in arcmin.
+    D26_ERR : ndarray
+        1-sigma uncertainty on D26 in arcmin.
+    D26_REF : ndarray
+        Channel name that contributed highest weight for each object.
+    D26_WEIGHT : ndarray
+        Weight of the highest-contributing channel.
+
+    Notes
+    -----
+    Channel selection logic:
+    1. Identify the deepest available isophotal threshold for each object
+    2. Use only channels at that threshold (e.g., if r25 exists but r26 doesn't,
+       use all *25 channels but not *24 or *23)
+    3. If no isophotal channels are available, fall back to 'moment' channel
+    4. Combine estimates via inverse-variance weighting
+
+    The variance for each channel estimate includes both measurement error
+    (propagated through the calibration slope) and intrinsic scatter (tau).
 
     """
     cal = load_calibration(calib_path)
     table, sigma, N = _collect_channels_from_table(tbl)
 
-    # Prepare output (float32)
     D26 = np.full(N, np.nan, dtype=np.float32)
     D26_ERR = np.full(N, np.nan, dtype=np.float32)
     D26_REF = np.array([""] * N, dtype="U12")
@@ -790,8 +686,8 @@ def infer_best_r26(
         raise ValueError("Calibration expects covariates, but none were provided.")
 
     for i in range(N):
-        meas_i: Dict[str, float] = {}
-        sig_i: Dict[str, Optional[float]] = {}
+        meas_i = {}
+        sig_i = {}
         for name, arr in table.items():
             xi = arr[i]
             if np.isfinite(xi) and xi > 0.0:
@@ -804,20 +700,14 @@ def infer_best_r26(
                     sig_i[name] = None if (not np.isfinite(si) or si <= 0.0) else float(si)
         zi = None if not any_cov else np.asarray(covariates[i, :], dtype=float)
 
-        #print("channels in calibration:", sorted(cal.channels.keys()))
-        #print("measurements:", meas_i)
-        #print("sigmas:", sig_i)
-
-        y, sy, wdict = _infer_one(
-            meas_i, sig_i, cal,
-            covars_row=zi,
-            include_direct_r26=include_direct_r26)
+        y, sy, wdict = _infer_one(meas_i, sig_i, cal, covars_row=zi,
+                                   include_direct_r26=include_direct_r26)
 
         if np.isfinite(y):
-            R = np.exp(y)                         # arcsec (radius)
-            sR = R * sy                           # arcsec (radius 1σ)
-            D = (2.0 * R) / 60.0                  # arcmin (diameter)
-            sD = (2.0 * sR) / 60.0                # arcmin
+            R = np.exp(y)
+            sR = R * sy
+            D = (2.0 * R) / 60.0
+            sD = (2.0 * sR) / 60.0
             D26[i] = np.float32(D)
             D26_ERR[i] = np.float32(sD)
             if wdict:
@@ -826,7 +716,6 @@ def infer_best_r26(
                 D26_WEIGHT[i] = np.float32(wdict[kmax])
 
     if add_columns:
-        # Remove if present, then add with requested names/dtypes
         for colname in ("D26", "D26_ERR", "D26_REF", "D26_WEIGHT"):
             if colname in tbl.colnames:
                 tbl.remove_column(colname)
