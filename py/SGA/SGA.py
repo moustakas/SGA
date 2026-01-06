@@ -409,11 +409,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         info = fitsio.read(samplefile, ext=ext, columns=cols)
         if no_groups:
             rows = np.where(
-                (info['DIAM'] > mindiam) *
-                (info['DIAM'] <= maxdiam))[0]
+                (info['DIAM'] >= mindiam) *
+                (info['DIAM'] < maxdiam))[0]
         else:
-            I = ((info['GROUP_DIAMETER'] > mindiam) *
-                 (info['GROUP_DIAMETER'] <= maxdiam) *
+            I = ((info['GROUP_DIAMETER'] >= mindiam) *
+                 (info['GROUP_DIAMETER'] < maxdiam) *
                  info['GROUP_PRIMARY'])
             if minmult:
                 I *= info['GROUP_MULT'] >= minmult
@@ -432,11 +432,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         info = fitsio.read(samplefile, ext=ext, columns=cols)
         if no_groups:
             rows = np.where(
-                (info['DIAM'] > mindiam) *
-                (info['DIAM'] <= maxdiam))[0]
+                (info['DIAM'] >= mindiam) *
+                (info['DIAM'] < maxdiam))[0]
         else:
-            I = ((info['GROUP_DIAMETER'] > mindiam) *
-                 (info['GROUP_DIAMETER'] <= maxdiam) *
+            I = ((info['GROUP_DIAMETER'] >= mindiam) *
+                 (info['GROUP_DIAMETER'] < maxdiam) *
                  info['GROUP_PRIMARY'])
             if minmult:
                 I *= info['GROUP_MULT'] >= minmult

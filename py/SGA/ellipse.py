@@ -466,7 +466,7 @@ def isophotal_radius_mc(
     mu,               # surface brightness [mag/arcsec^2]
     mu_err,           # 1σ uncertainties (same shape as mu)
     mu_iso,           # target isophote (e.g., 25.0)
-    nmonte=100,
+    nmonte=50,
     sky_sigma=None,   # optional global sky mag error (additive, per draw)
     smooth_win=3,     # odd window for gentle pre-smoothing; set None/1 to disable
     random_state=None,
@@ -735,7 +735,7 @@ def results_datamodel(obj, bands, dataset, sma_apertures_arcsec, sbthresh):
 
 def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
              bands=['g', 'r', 'i', 'z'], opt_wcs=None, wcs=None,
-             opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=100,
+             opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=50,
              allbands=None, integrmode='median', nclip=3, sclip=3,
              seed=42, sbthresh=REF_SBTHRESH, sma_apertures_arcsec=None,
              debug=False):
@@ -1332,7 +1332,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
 
 
 def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
-                  sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=100,
+                  sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=50,
                   seed=42, debug=False):
     """Simple wrapper on multifit.
 
@@ -1418,7 +1418,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          galex_pixscale=1.5, unwise_pixscale=2.75, mask_nearby=None,
                          galex=True, unwise=True, use_tractor_position=True,
                          use_radial_weight=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         update_geometry=False, nmonte=75, seed=42, verbose=False,
+                         update_geometry=False, nmonte=50, seed=42, verbose=False,
                          skip_ellipse=False, nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
