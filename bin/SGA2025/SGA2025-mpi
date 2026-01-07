@@ -141,18 +141,20 @@ def sort_groups_by_attempts(galaxy, galaxydir, sample, diamcolumn='DIAM'):
         else:
             log.info(f"\n=== {n_attempt} attempt(s) ({len(indices)} groups) ===")
 
-        todo = []
+        todo, diams = [], []
         for idx in indices:
             gdir = galaxydir[idx]
             obj = sample['OBJNAME'][idx]
             diam = sample[diamcolumn][idx]
             log.info(f'{gdir} "{obj}" (d={diam:.3f} arcmin)')
             todo.append(os.path.basename(gdir))
+            diams.append(diam)
 
 
     if len(todo) > 0:
         print()
-        print(','.join(todo))
+        #print(','.join(todo))
+        _ = [print(f'{one},{diam}') for one, diam in zip(todo, diams)]
 
 
 def main():
