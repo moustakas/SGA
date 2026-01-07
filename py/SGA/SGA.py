@@ -993,9 +993,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     tractor_sga = []
 
     # Read the Tractor catalog for all the SGA sources as well as for
-    # all sources within the SGA ellipse. NB: RESOLVED sources
-    # (len(ellipse)==1, always) are expected to not have a Tractor
-    # catalog.
+    # all sources within the SGA ellipse. NB: RESOLVED groups are
+    # *expected* to not have an ellipse catalog (and to always have
+    # len(ellipse)==1).
     tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
     if not os.path.isfile(tractorfile):
         if len(ellipse) == 1 and ellipse['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
@@ -1006,6 +1006,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             tractor_sga1['ref_id'] = ellipse[REFIDCOLUMN]
             tractor_sga.append(tractor_sga1)
             tractor = Table()
+        else:
+            raise ValueError('Unexpected case')
     else:
         refs = fitsio.read(tractorfile, columns=['brick_primary', 'ra', 'dec', 'type', 'fitbits',
                                                  'ref_cat', 'ref_id'])
@@ -1194,13 +1196,13 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
-            if os.path.isfile(slicefile):# and not clobber:
+            if os.path.isfile(slicefile) and not clobber:
                 log.warning(f'Skipping existing catalog {slicefile}')
                 continue
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #raslices_todo = ['140']#, '001']#, '002']
+        raslices_todo = ['238']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -1508,7 +1510,7 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
         if psfsizecol in tractor.columns():
             good = np.where(tractor.get(psfsizecol)[these] > 0)[0]
             if len(good) == 0:
-                log.warning(f'No good measurements of the PSF size in band {filt}!')
+                log.info(f'No good measurements of the PSF size in band {filt}')
                 #data[psfsigmacol] = np.float32(0.0)
                 #data[psfsizecol] = np.float32(0.0)
             else:
@@ -1524,7 +1526,7 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
         if psfdepthcol in tractor.columns():
             good = np.where(tractor.get(psfdepthcol)[these] > 0)[0]
             if len(good) == 0:
-                log.warning(f'No good measurements of the PSF depth in band {filt}!')
+                log.info(f'No good measurements of the PSF depth in band {filt}.')
                 #data[psfdepthcol] = np.float32(0.0)
             else:
                 psfdepth = tractor.get(psfdepthcol)[these][good] # [AB mag, 5-sigma]
@@ -3536,7 +3538,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     for filt in data['all_bands']: # NB: all bands
         sample[f'MW_TRANSMISSION_{filt.upper()}'] = mwdust_transmission(
             sample['EBV'], band=filt, run=data['run'])
-
 
     return data, tractor, sample, samplesrcs, err
 

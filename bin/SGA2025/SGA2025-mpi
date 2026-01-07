@@ -586,6 +586,8 @@ def main():
                 restore_logger(fh=fh, debug=args.debug)
                 continue
 
+            log.info(f'Working on {galaxydir}')
+
             # Always write out the individual galaxies for this mosaic
             # if doing ellipse-fitting to make sure we get the latest
             # catalog parameters.
