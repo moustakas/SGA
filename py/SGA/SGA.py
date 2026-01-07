@@ -1202,7 +1202,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        raslices_todo = ['238']#, '001']#, '002']
+        #raslices_todo = ['150']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -1351,6 +1351,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
                  f'{len(tractor):,d} Tractor sources from {len(uraslices)} RA ' + \
                  f'slices took {dt:.3f} {unit}.')
+        #pdb.set_trace()
 
         I = np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])
         if not np.all(I):
