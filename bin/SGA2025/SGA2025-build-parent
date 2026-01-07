@@ -25,11 +25,18 @@ chgrp cosmo /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
 chmod g-w /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
 
 pushd /global/cfs/cdirs/cosmo/webapp/viewer-dev/data/sga2025
+
 cp ~/SGA2025/sample/SGA2025-beta-parent-v0.50.kd.fits .
 rm SGA2025-parent-latest.kd.fits
+ln -s SGA2025-beta-parent-v0.50.kd.fits SGA2025-parent-latest.kd.fits
+
+cp ~/SGA2025/sample/SGA2025-ellipse-v0.50-dr9-north.kd.fits .
+rm SGA2025-ellipse-north-latest.kd.fits
+ln -s SGA2025-ellipse-v0.50-dr9-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
+
 chgrp cosmo *.fits
 chmod g-w *.fits
-ln -s SGA2025-beta-parent-v0.50.kd.fits SGA2025-parent-latest.kd.fits
+
 
 """
 def main():
