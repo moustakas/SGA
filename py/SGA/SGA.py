@@ -503,6 +503,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
+    #if True:
+    #    from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
+    #    I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
+    #    fullsample = fullsample[J]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #    pdb.set_trace()
+
     if wisesize:
         from SGA.util import match
 
@@ -2268,7 +2276,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         return galsrcs, opt_galmask, opt_models
 
 
-    def _mask_edges(mask, frac=0.1):
+    def _mask_edges(mask, frac=0.05):
         # Mask a XX% border.
         sz = mask.shape
         edge = int(frac*sz[0])
@@ -2584,9 +2592,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             else:
                 inellipse2 = inellipse # used below
 
-            # mask edges aggressively to not bias our 'moment' geometry
-            _mask_edges(iter_brightstarmask)
-
             # never veto the "core" brightstarmask except for FIXGEO
             # or TRACTORGEO
             if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
@@ -2594,9 +2599,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # if more than XX% of the pixels are masked by the core of
             # the star, fall back to the initial geometry and fail
+            #plt.imshow(iter_brightstarmask, origin='lower')
             #import matplotlib.pyplot as plt
             #plt.clf()
-            #plt.imshow(iter_brightstarmask, origin='lower')
+            #plt.imshow(inellipse2, origin='lower')
             #plt.savefig('ioannis/tmp/junk.png')
             denom = iter_brightstarmask[inellipse2].size
             if denom > 0: # should always be true...
@@ -2607,6 +2613,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     geo_iter = geo_init.copy()
                     [bx, by, sma, ba, pa] = geo_iter
                     break
+
+            # mask edges aggressively to not bias our 'moment'
+            # geometry *after* setting FAILGEO
+            _mask_edges(iter_brightstarmask)
 
             # Build a galaxy mask from extended sources, split into
             # "major" and "minor" based on flux ratio relative to the

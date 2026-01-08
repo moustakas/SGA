@@ -246,8 +246,9 @@ def main():
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
             version=args.version, galaxylist=args.galaxylist,
-            no_groups=no_groups, lvd=args.lvd, wisesize=args.wisesize,
-            region=region, test_bricks=args.test_bricks, verbose=args.verbose)
+            no_groups=no_groups, lvd=args.lvd, final_sample=args.final_sample,
+            wisesize=args.wisesize, region=region, test_bricks=args.test_bricks,
+            verbose=args.verbose)
 
         #galaxy, galaxydir = get_galaxy_galaxydir(sample, region=args.region, datadir=datadir)
         #_=[print(gdir+'/*ellipse*') for gdir in galaxydir]
