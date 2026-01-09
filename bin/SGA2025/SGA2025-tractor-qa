@@ -638,7 +638,21 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
     elif vi_sample == 6:
         sort_by_groupname = True
-        I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+
+        # Mask for non-LVD objects with FAILGEO
+        failgeo_mask = (
+            (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) &
+            (fullsample['GROUP_MULT'] == 1) &
+            #(fullsample['GROUP_MULT'] > 1) &
+            (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+        failgeo_counts = np.bincount(fullsample['GROUP_ID'][failgeo_mask],
+                                      minlength=fullsample['GROUP_ID'].max() + 1)
+        nonlvd_mask = (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        total_counts = np.bincount(fullsample['GROUP_ID'][nonlvd_mask],
+                                   minlength=fullsample['GROUP_ID'].max() + 1)
+        all_failgeo_group_ids = np.where((failgeo_counts > 0) & (failgeo_counts == total_counts))[0]
+        I = np.isin(fullsample['GROUP_ID'], all_failgeo_group_ids)
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0)
         fullsample = fullsample[I]

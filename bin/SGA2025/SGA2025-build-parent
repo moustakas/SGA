@@ -34,6 +34,10 @@ cp ~/SGA2025/sample/SGA2025-ellipse-v0.50-dr9-north.kd.fits .
 rm SGA2025-ellipse-north-latest.kd.fits
 ln -s SGA2025-ellipse-v0.50-dr9-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
 
+cp ~/SGA2025/sample/SGA2025-ellipse-v0.50-dr11-south.kd.fits .
+rm SGA2025-ellipse-south-latest.kd.fits
+ln -s SGA2025-ellipse-v0.50-dr11-south.kd.fits SGA2025-ellipse-south-latest.kd.fits
+
 chgrp cosmo *.fits
 chmod g-w *.fits
 
