@@ -10,7 +10,8 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.50 --vi-sample=6 --final-sample --mp=32
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.50 --region=dr9-north --version=v0.50 --vi-sample=6 --final-sample --mp=32
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.50 --region=dr11-south --version=v0.50 --vi-sample=6 --final-sample --mp=32
 
 
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=6 --final-sample --mp=32
@@ -639,22 +640,27 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     elif vi_sample == 6:
         sort_by_groupname = True
 
-        # Mask for non-LVD objects with FAILGEO
-        failgeo_mask = (
-            (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) &
-            (fullsample['GROUP_MULT'] == 1) &
-            #(fullsample['GROUP_MULT'] > 1) &
-            (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-        failgeo_counts = np.bincount(fullsample['GROUP_ID'][failgeo_mask],
-                                      minlength=fullsample['GROUP_ID'].max() + 1)
-        nonlvd_mask = (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-        total_counts = np.bincount(fullsample['GROUP_ID'][nonlvd_mask],
-                                   minlength=fullsample['GROUP_ID'].max() + 1)
-        all_failgeo_group_ids = np.where((failgeo_counts > 0) & (failgeo_counts == total_counts))[0]
-        I = np.isin(fullsample['GROUP_ID'], all_failgeo_group_ids)
+        ## Mask for non-LVD objects with FAILGEO
+        #failgeo_mask = (
+        #    (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) &
+        #    (fullsample['GROUP_MULT'] == 1) &
+        #    #(fullsample['GROUP_MULT'] > 1) &
+        #    (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+        #failgeo_counts = np.bincount(fullsample['GROUP_ID'][failgeo_mask],
+        #                              minlength=fullsample['GROUP_ID'].max() + 1)
+        #nonlvd_mask = (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        #total_counts = np.bincount(fullsample['GROUP_ID'][nonlvd_mask],
+        #                           minlength=fullsample['GROUP_ID'].max() + 1)
+        #all_failgeo_group_ids = np.where((failgeo_counts > 0) & (failgeo_counts == total_counts))[0]
+        #I = np.isin(fullsample['GROUP_ID'], all_failgeo_group_ids)
+
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        I = (np.char.startswith(fullsample['OBJNAME'].astype(str), "PGC") & (fullsample['D26'] > 0.5) &
+             (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0)
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        #I = (fullsample['GROUP_MULT'] > 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
