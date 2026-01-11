@@ -638,7 +638,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     elif vi_sample == 6:
-        sort_by_groupname = True
+        sort_by_groupname = False
 
         ## Mask for non-LVD objects with FAILGEO
         #failgeo_mask = (
@@ -655,12 +655,16 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         #I = np.isin(fullsample['GROUP_ID'], all_failgeo_group_ids)
 
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-        I = (np.char.startswith(fullsample['OBJNAME'].astype(str), "PGC") & (fullsample['D26'] > 0.5) &
+        tractor = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/sample/SGA2025-beta-v0.50-dr11-south.fits', 'TRACTOR'))
+        assert(np.all(tractor['ref_id'] == fullsample['SGAID']))
+
+        I = ((tractor['shape_r'] < 1.) & (fullsample['D26'] > 0.5) &
              (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+        #I = (np.char.startswith(fullsample['OBJNAME'].astype(str), "2MAS") & (fullsample['D26'] > 0.5) &
+        #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['GROUP_MULT'] > 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
