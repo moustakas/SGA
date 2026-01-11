@@ -141,18 +141,20 @@ def sort_groups_by_attempts(galaxy, galaxydir, sample, diamcolumn='DIAM'):
         else:
             log.info(f"\n=== {n_attempt} attempt(s) ({len(indices)} groups) ===")
 
-        todo = []
+        todo, diams = [], []
         for idx in indices:
             gdir = galaxydir[idx]
             obj = sample['OBJNAME'][idx]
             diam = sample[diamcolumn][idx]
             log.info(f'{gdir} "{obj}" (d={diam:.3f} arcmin)')
             todo.append(os.path.basename(gdir))
+            diams.append(diam)
 
 
     if len(todo) > 0:
         print()
-        print(','.join(todo))
+        #print(','.join(todo))
+        _ = [print(f'{one},{diam}') for one, diam in zip(todo, diams)]
 
 
 def main():
@@ -180,9 +182,9 @@ def main():
     args = mpi_args()
     set_legacysurvey_dir(args.region, rank=rank)
 
-    if args.mp > 1 and 'NERSC_HOST' in os.environ:
-        import multiprocessing
-        multiprocessing.set_start_method('spawn')
+    #if args.mp > 1 and 'NERSC_HOST' in os.environ:
+    #    import multiprocessing
+    #    multiprocessing.set_start_method('spawn')
 
     #if args.lvd:
     #    no_groups = True
@@ -244,8 +246,9 @@ def main():
             first=args.first, last=args.last, mindiam=args.mindiam,
             maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
             version=args.version, galaxylist=args.galaxylist,
-            no_groups=no_groups, lvd=args.lvd, wisesize=args.wisesize,
-            region=region, test_bricks=args.test_bricks, verbose=args.verbose)
+            no_groups=no_groups, lvd=args.lvd, final_sample=args.final_sample,
+            wisesize=args.wisesize, region=region, test_bricks=args.test_bricks,
+            verbose=args.verbose)
 
         #galaxy, galaxydir = get_galaxy_galaxydir(sample, region=args.region, datadir=datadir)
         #_=[print(gdir+'/*ellipse*') for gdir in galaxydir]
@@ -404,9 +407,10 @@ def main():
             galaxy, galaxydir = get_galaxy_galaxydir(
                 sample[fail[rank]], region=args.region,
                 group=not no_groups, datadir=datadir, htmldir=htmldir)
-            for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                    sample[DIAMCOLUMN][fail[rank]]):
-                print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+            for ii, dd, obj, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                                         sample['OBJNAME'][fail[rank]],
+                                         sample[DIAMCOLUMN][fail[rank]]):
+                print(f'  {ii} {dd} [{obj} D={diam:.3f} arcmin]')
         return
     else:
         log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
@@ -420,9 +424,10 @@ def main():
             galaxy, galaxydir = get_galaxy_galaxydir(
                 sample[fail[rank]], region=args.region,
                 group=not no_groups, datadir=datadir, htmldir=htmldir)
-            for ii, dd, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                    sample[DIAMCOLUMN][fail[rank]]):
-                print(f'  {ii} {dd} (d={diam:.3f} arcmin)')
+            for ii, dd, obj, diam in zip(fail[rank], np.atleast_1d(galaxydir),
+                                         sample['OBJNAME'][fail[rank]],
+                                         sample[DIAMCOLUMN][fail[rank]]):
+                print(f'  {ii} {dd} [{obj} D={diam:.3f} arcmin]')
 
         # Analysis mode
         if args.analyze and args.coadds and has_work:
@@ -443,7 +448,7 @@ def main():
             for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
                                          sample['OBJNAME'][todo],
                                          sample[DIAMCOLUMN][todo]):
-                log.info(f'{dd} "{obj}" (d={diam:.3f} arcmin)')
+                log.info(f'{dd} [{obj} D={diam:.3f} arcmin]')
                 #print(dd)
 
     # Exit early for count/analyze modes
@@ -468,7 +473,7 @@ def main():
             os.makedirs(galaxydir, exist_ok=True)
 
         log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
-                 f'{galaxydir} (index {ii:,d})')
+                 f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]:.3f} arcmin]')
 
         logfile = get_logfile(galaxy, galaxydir, suffix)
         fh = setup_logging(logfile, debug=args.debug)
@@ -581,6 +586,8 @@ def main():
                 log.warning('Coadds must be generated before running ellipse-fitting.')
                 restore_logger(fh=fh, debug=args.debug)
                 continue
+
+            log.info(f'Working on {galaxydir}')
 
             # Always write out the individual galaxies for this mosaic
             # if doing ellipse-fitting to make sure we get the latest

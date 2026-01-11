@@ -409,11 +409,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         info = fitsio.read(samplefile, ext=ext, columns=cols)
         if no_groups:
             rows = np.where(
-                (info['DIAM'] > mindiam) *
-                (info['DIAM'] <= maxdiam))[0]
+                (info['DIAM'] >= mindiam) *
+                (info['DIAM'] < maxdiam))[0]
         else:
-            I = ((info['GROUP_DIAMETER'] > mindiam) *
-                 (info['GROUP_DIAMETER'] <= maxdiam) *
+            I = ((info['GROUP_DIAMETER'] >= mindiam) *
+                 (info['GROUP_DIAMETER'] < maxdiam) *
                  info['GROUP_PRIMARY'])
             if minmult:
                 I *= info['GROUP_MULT'] >= minmult
@@ -432,11 +432,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         info = fitsio.read(samplefile, ext=ext, columns=cols)
         if no_groups:
             rows = np.where(
-                (info['DIAM'] > mindiam) *
-                (info['DIAM'] <= maxdiam))[0]
+                (info['DIAM'] >= mindiam) *
+                (info['DIAM'] < maxdiam))[0]
         else:
-            I = ((info['GROUP_DIAMETER'] > mindiam) *
-                 (info['GROUP_DIAMETER'] <= maxdiam) *
+            I = ((info['GROUP_DIAMETER'] >= mindiam) *
+                 (info['GROUP_DIAMETER'] < maxdiam) *
                  info['GROUP_PRIMARY'])
             if minmult:
                 I *= info['GROUP_MULT'] >= minmult
@@ -502,6 +502,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         if len(sample) == 0:
             return sample, fullsample
+
+    #if True:
+    #    from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
+    #    I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
+    #    fullsample = fullsample[J]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #    pdb.set_trace()
 
     if wisesize:
         from SGA.util import match
@@ -993,9 +1001,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     tractor_sga = []
 
     # Read the Tractor catalog for all the SGA sources as well as for
-    # all sources within the SGA ellipse. NB: RESOLVED sources
-    # (len(ellipse)==1, always) are expected to not have a Tractor
-    # catalog.
+    # all sources within the SGA ellipse. NB: RESOLVED groups are
+    # *expected* to not have an ellipse catalog (and to always have
+    # len(ellipse)==1).
     tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
     if not os.path.isfile(tractorfile):
         if len(ellipse) == 1 and ellipse['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
@@ -1006,6 +1014,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             tractor_sga1['ref_id'] = ellipse[REFIDCOLUMN]
             tractor_sga.append(tractor_sga1)
             tractor = Table()
+        else:
+            raise ValueError('Unexpected case')
     else:
         refs = fitsio.read(tractorfile, columns=['brick_primary', 'ra', 'dec', 'type', 'fitbits',
                                                  'ref_cat', 'ref_id'])
@@ -1194,13 +1204,13 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
-            if os.path.isfile(slicefile):# and not clobber:
+            if os.path.isfile(slicefile) and not clobber:
                 log.warning(f'Skipping existing catalog {slicefile}')
                 continue
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #raslices_todo = ['140']#, '001']#, '002']
+        #raslices_todo = ['150']#, '001']#, '002']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -1349,6 +1359,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
                  f'{len(tractor):,d} Tractor sources from {len(uraslices)} RA ' + \
                  f'slices took {dt:.3f} {unit}.')
+        #pdb.set_trace()
 
         I = np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])
         if not np.all(I):
@@ -1508,7 +1519,7 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
         if psfsizecol in tractor.columns():
             good = np.where(tractor.get(psfsizecol)[these] > 0)[0]
             if len(good) == 0:
-                log.warning(f'No good measurements of the PSF size in band {filt}!')
+                log.info(f'No good measurements of the PSF size in band {filt}')
                 #data[psfsigmacol] = np.float32(0.0)
                 #data[psfsizecol] = np.float32(0.0)
             else:
@@ -1524,7 +1535,7 @@ def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
         if psfdepthcol in tractor.columns():
             good = np.where(tractor.get(psfdepthcol)[these] > 0)[0]
             if len(good) == 0:
-                log.warning(f'No good measurements of the PSF depth in band {filt}!')
+                log.info(f'No good measurements of the PSF depth in band {filt}.')
                 #data[psfdepthcol] = np.float32(0.0)
             else:
                 psfdepth = tractor.get(psfdepthcol)[these][good] # [AB mag, 5-sigma]
@@ -2265,7 +2276,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         return galsrcs, opt_galmask, opt_models
 
 
-    def _mask_edges(mask, frac=0.1):
+    def _mask_edges(mask, frac=0.05):
         # Mask a XX% border.
         sz = mask.shape
         edge = int(frac*sz[0])
@@ -2433,7 +2444,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     # Minimum semi-major axis used for masks (not for stored geometry).
-    SMA_MASK_MIN_ARCSEC = 5.0 # [arcsec]
+    SMA_MASK_MIN_ARCSEC = 10. # [arcsec]
     SMA_MASK_MIN_PIX = SMA_MASK_MIN_ARCSEC / opt_pixscale
 
     # are we allowed to change the geometry in this call?
@@ -2581,9 +2592,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             else:
                 inellipse2 = inellipse # used below
 
-            # mask edges aggressively to not bias our 'moment' geometry
-            _mask_edges(iter_brightstarmask)
-
             # never veto the "core" brightstarmask except for FIXGEO
             # or TRACTORGEO
             if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
@@ -2591,9 +2599,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # if more than XX% of the pixels are masked by the core of
             # the star, fall back to the initial geometry and fail
+            #plt.imshow(iter_brightstarmask, origin='lower')
             #import matplotlib.pyplot as plt
             #plt.clf()
-            #plt.imshow(iter_brightstarmask, origin='lower')
+            #plt.imshow(inellipse2, origin='lower')
             #plt.savefig('ioannis/tmp/junk.png')
             denom = iter_brightstarmask[inellipse2].size
             if denom > 0: # should always be true...
@@ -2604,6 +2613,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     geo_iter = geo_init.copy()
                     [bx, by, sma, ba, pa] = geo_iter
                     break
+
+            # mask edges aggressively to not bias our 'moment'
+            # geometry *after* setting FAILGEO
+            _mask_edges(iter_brightstarmask)
 
             # Build a galaxy mask from extended sources, split into
             # "major" and "minor" based on flux ratio relative to the
@@ -3536,7 +3549,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     for filt in data['all_bands']: # NB: all bands
         sample[f'MW_TRANSMISSION_{filt.upper()}'] = mwdust_transmission(
             sample['EBV'], band=filt, run=data['run'])
-
 
     return data, tractor, sample, samplesrcs, err
 

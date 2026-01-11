@@ -40,6 +40,39 @@ cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIA
         'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
 
 
+def to_skyviewer_table(cat):
+    """
+    Convert SGA catalog to sky viewer format with spatially-cycled colors.
+
+    Colors cycle on ~arcmin scale to distinguish nearby groups.
+
+    """
+    # Larger color palette (20-24 colors)
+    colors = [
+        'red', 'blue', 'green', 'yellow', 'cyan', 'orange', 'magenta', 'lime',
+        'pink', 'purple', 'brown', 'navy', 'teal', 'olive', 'maroon', 'aqua',
+        'coral', 'gold', 'indigo', 'violet', 'khaki', 'salmon', 'plum', 'tan'
+    ]
+
+    # Bin on arcmin scale (~36 arcsec ~ 0.01 deg)
+    ra_bin = np.floor(cat['GROUP_RA'] * 100).astype(int) % len(colors)
+    dec_bin = np.floor(cat['GROUP_DEC'] * 100).astype(int) % len(colors)
+    color_idx = (ra_bin + dec_bin) % len(colors)
+    color_array = np.array([colors[i] for i in color_idx])
+
+    # Build output table
+    out = Table()
+    out['name'] = cat['OBJNAME']
+    out['ra'] = cat['RA']
+    out['dec'] = cat['DEC']
+    out['radius'] = (cat['DIAM'] * 60.0 / 2.0).astype(np.float32)
+    out['abRatio'] = cat['BA']
+    out['posAngle'] = cat['PA']
+    out['color'] = color_array
+
+    return out
+
+
 def plot_style(font_scale=1.2, paper=False, talk=True):
 
     import seaborn as sns

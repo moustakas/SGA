@@ -77,6 +77,7 @@ def mpi_args():
     parser.add_argument('--qaplot', action='store_true', help='Build some QA plots (for testing).')
 
     parser.add_argument('--lvd', action='store_true', help='Read the parent LVD sample.')
+    parser.add_argument('--final-sample', action='store_true', help='Read the final sample.')
     parser.add_argument('--wisesize', action='store_true', help='Read the wisesize parent sample.')
 
     parser.add_argument('--use-gpu', action='store_true', help='Launch the GPU version of legacypipe (only with --coadds).')
@@ -128,7 +129,7 @@ def weighted_partition(weights, n):
 
 
 def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
-                    small_bricks_first=False):
+                    small_bricks_first=True):#False):
     """
     Partition tasks into `size` buckets with ~equal total weight, then
     sort each bucket so smaller bricks are processed first.

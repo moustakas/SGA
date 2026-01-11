@@ -466,7 +466,7 @@ def isophotal_radius_mc(
     mu,               # surface brightness [mag/arcsec^2]
     mu_err,           # 1σ uncertainties (same shape as mu)
     mu_iso,           # target isophote (e.g., 25.0)
-    nmonte=100,
+    nmonte=50,
     sky_sigma=None,   # optional global sky mag error (additive, per draw)
     smooth_win=3,     # odd window for gentle pre-smoothing; set None/1 to disable
     random_state=None,
@@ -735,7 +735,7 @@ def results_datamodel(obj, bands, dataset, sma_apertures_arcsec, sbthresh):
 
 def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
              bands=['g', 'r', 'i', 'z'], opt_wcs=None, wcs=None,
-             opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=100,
+             opt_pixscale=0.262, pixscale=0.262, mp=1, nmonte=50,
              allbands=None, integrmode='median', nclip=3, sclip=3,
              seed=42, sbthresh=REF_SBTHRESH, sma_apertures_arcsec=None,
              debug=False):
@@ -1332,7 +1332,7 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
 
 
 def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
-                  sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=100,
+                  sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=50,
                   seed=42, debug=False):
     """Simple wrapper on multifit.
 
@@ -1418,7 +1418,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          galex_pixscale=1.5, unwise_pixscale=2.75, mask_nearby=None,
                          galex=True, unwise=True, use_tractor_position=True,
                          use_radial_weight=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         update_geometry=False, nmonte=75, seed=42, verbose=False,
+                         update_geometry=False, nmonte=50, seed=42, verbose=False,
                          skip_ellipse=False, nowrite=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
@@ -1445,7 +1445,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
     # dr11-south/203/20337p3381=WISEA J133330.14+334903.2), so we
     # should exit cleanly.
     ccdsfile = os.path.join(galaxydir, f'{galaxy}-ccds.fits')
-    if not os.path.isfile(ccdsfile):
+    if not skip_ellipse and not os.path.isfile(ccdsfile):
         log.info('No CCDs touching this brick; nothing to do.')
         return 1
 
@@ -1456,36 +1456,6 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         verbose=verbose, skip_ellipse=skip_ellipse)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
-        return err
-
-    FMAJOR_geo = 0.01
-    FMAJOR_final = 0.1
-
-    try:
-        err = 1
-
-        # mask aggressively to determine the geometry; use FMAJOR_geo
-        # plus mask_minor_galaxies=True (outside the ellipse)
-        data, sample = build_multiband_mask(
-            data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
-            use_tractor_position=use_tractor_position,
-            use_radial_weight=use_radial_weight,
-            mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
-            mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
-
-    except:
-        err = 0
-        log.critical(f'Exception raised on {galaxydir}/{galaxy}')
-        import traceback
-        traceback.print_exc()
-
-    if err == 0:
-        log.warning(f'Problem building image masks for {galaxydir}/{galaxy}')
-        return err
-
-    # special case: completely empty Tractor catalog (e.g.,
-    # r9-north/326/32630p0027)
-    if err == 1 and not bool(data):
         return err
 
     # if skipping ellipse-fitting just initialize the data model and write out
@@ -1511,9 +1481,42 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 results_dataset.append(results_dataset1)
                 sbprofiles_dataset.append(sbprofiles_dataset1)
 
+            results_obj.append(results_dataset)
+            sbprofiles_obj.append(sbprofiles_dataset)
+
         results = list(zip(*results_obj))       # [ndatasets][nobj]
         sbprofiles = list(zip(*sbprofiles_obj)) # [ndatasets][nobj]
     else:
+        FMAJOR_geo = 0.01
+        FMAJOR_final = 0.1
+
+        try:
+            err = 1
+
+            # mask aggressively to determine the geometry; use FMAJOR_geo
+            # plus mask_minor_galaxies=True (outside the ellipse)
+            data, sample = build_multiband_mask(
+                data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
+                use_tractor_position=use_tractor_position,
+                use_radial_weight=use_radial_weight,
+                mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
+                mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
+
+        except:
+            err = 0
+            log.critical(f'Exception raised on {galaxydir}/{galaxy}')
+            import traceback
+            traceback.print_exc()
+
+        if err == 0:
+            log.warning(f'Problem building image masks for {galaxydir}/{galaxy}')
+            return err
+
+        # special case: completely empty Tractor catalog (e.g.,
+        # r9-north/326/32630p0027)
+        if err == 1 and not bool(data):
+            return err
+
         # First fit just the optical and then update the mask.
         results, sbprofiles = wrap_multifit(
             data, sample, ['opt'], unpack_maskbits_function,
