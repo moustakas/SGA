@@ -535,6 +535,12 @@ def main():
             else:
                 force_psf_detection = False
 
+            # for large mosaics, turn off iterative source detection
+            if onegal[DIAMCOLUMN] > 5.:
+                no_iterative = True
+            else:
+                no_iterative = args.no_iterative
+
             if args.debug:
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
@@ -542,6 +548,7 @@ def main():
                     unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                     nsigma=args.nsigma, just_coadds=args.just_coadds,
                     force_psf_detection=force_psf_detection,
+                    no_iterative=no_iterative,
                     fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
@@ -559,6 +566,7 @@ def main():
                         unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                         nsigma=args.nsigma, just_coadds=args.just_coadds,
                         force_psf_detection=force_psf_detection,
+                        no_iterative=no_iterative,
                         fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,
