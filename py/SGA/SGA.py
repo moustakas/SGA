@@ -1214,7 +1214,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #raslices_todo = ['150']#, '001']#, '002']
+        #raslices_todo = ['097']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
