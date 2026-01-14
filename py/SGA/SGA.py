@@ -107,6 +107,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # tons of additional sample cleanup
         version = 'v0.50'
+
+        # more cleanup
+        #version = 'v0.60'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -118,6 +121,7 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.30'  # parent_version = v0.22 --> v0.30
         #version = 'v0.40'  # parent_version = v0.30 --> v0.40
         version = 'v0.50'  # parent_version = v0.40 --> v0.50
+        #version = 'v0.60'  # parent_version = v0.50 --> v0.60
     return version
 
 

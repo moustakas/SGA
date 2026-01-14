@@ -3704,7 +3704,7 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def read_base_ellipse(outdir, base_version):
+def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
     dr9-north. Consolidate duplicates by OBJNAME, combining REGION
     bits (but prefering DR11 if duplicated).
@@ -3747,6 +3747,21 @@ def read_base_ellipse(outdir, base_version):
             #ax.plot([0.2, 18], [0.2, 18], color='k')
             #fig.savefig('ioannis/tmp/junk.png')
             # ell1[I][np.where((ell1['D26'][I]) > 14 * (diam[I] < 12))[0]]['OBJNAME', 'RA', 'DEC', 'D26', 'DIAM_INIT']
+
+        elif base_version == 'v0.50':
+
+            d26_ul = ell1['D26'] + ell1['D26_ERR']
+            max_diam_per_group = np.zeros(ell1['GROUP_ID'].max() + 1, dtype=np.float32)
+            np.maximum.at(max_diam_per_group, ell1['GROUP_ID'], d26_ul)
+
+            I = (max_diam_per_group[ell1['GROUP_ID']] < mindiam) & (ell1['SAMPLE'] & SAMPLE['LVD'] == 0) & (ell1['GROUP_MULT'] == 1)
+
+            from SGA.qa import to_skyviewer_table
+            _ell = ell1[I].copy()
+            _ell.rename_column('D26', 'DIAM')
+            view = to_skyviewer_table(_ell)
+            #view.write('viewer.fits', overwrite=True)
+            pdb.set_trace()
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -3858,7 +3873,7 @@ def read_base_ellipse(outdir, base_version):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -3897,7 +3912,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
 
     # Read the base ellipse catalogs for dr11-south and
     # dr9-north.
-    ell, ell_base, parent_base = read_base_ellipse(outdir, base_version)
+    ell, ell_base, parent_base = read_base_ellipse(outdir, base_version, mindiam=mindiam)
     assert(np.all(np.isfinite(ell['D26'])))
 
     if base_version == 'v0.22':
@@ -4007,6 +4022,12 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
 
         base = ell_base
 
+    elif base_version == 'v0.50':
+
+
+        pdb.set_trace()
+
+
     else:
         base = ell_base
 
@@ -4039,6 +4060,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
             raise ValueError('PA out of range')
     except:
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
+
+    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)

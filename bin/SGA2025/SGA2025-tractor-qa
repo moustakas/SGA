@@ -10,6 +10,9 @@ salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
 SGA2025-shifter
 source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
+SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.50 --region=dr9-north --version=v0.50 --vi-sample=7 --final-sample --mp=32
+
+
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.50 --region=dr9-north --version=v0.50 --vi-sample=6 --final-sample --mp=32
 SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.50 --region=dr11-south --version=v0.50 --vi-sample=6 --final-sample --mp=32
 
@@ -665,6 +668,12 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['GROUP_MULT'] > 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+
+    elif vi_sample == 7:
+        sort_by_groupname = False
+        I = (fullsample['GROUP_MULT'] > 1) & (fullsample['BA'] < 0.1) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
