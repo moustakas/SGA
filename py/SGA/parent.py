@@ -3712,6 +3712,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """
     from SGA.SGA import SAMPLE
     from SGA.coadds import REGIONBITS
+    from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
 
     ell = []
     for region in ['dr11-south', 'dr9-north']:
@@ -3754,14 +3755,26 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             max_diam_per_group = np.zeros(ell1['GROUP_ID'].max() + 1, dtype=np.float32)
             np.maximum.at(max_diam_per_group, ell1['GROUP_ID'], d26_ul)
 
-            I = (max_diam_per_group[ell1['GROUP_ID']] < mindiam) & (ell1['SAMPLE'] & SAMPLE['LVD'] == 0) & (ell1['GROUP_MULT'] == 1)
+            I = (
+                (ell1['SAMPLE'] & SAMPLE['LVD'] == 0) &
+                (ell1['SAMPLE'] & SAMPLE['NEARSTAR'] == 0) &           # going to redo
+                (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) & # still need to check
+                #(ell1['D26_ERR'] != 0) &                               # do not include missing
+                (max_diam_per_group[ell1['GROUP_ID']] < mindiam)
+            )
+            groups_to_remove = np.unique(ell1['GROUP_NAME'][I])
+            I = np.isin(ell1['GROUP_NAME'], groups_to_remove)
+            check = ell1[I]
 
-            from SGA.qa import to_skyviewer_table
-            _ell = ell1[I].copy()
-            _ell.rename_column('D26', 'DIAM')
-            view = to_skyviewer_table(_ell)
+            #from SGA.qa import to_skyviewer_table
+            #check = check[np.argsort(check['D26'])]#[::-1]]
+            #check.rename_column('D26', 'DIAM')
+            ##view = to_skyviewer_table(check[check['GROUP_MULT'] > 2])
+            #view = to_skyviewer_table(check[:100])
             #view.write('viewer.fits', overwrite=True)
-            pdb.set_trace()
+
+            log.info(f'Removing {np.sum(I):,d}/{len(ell1):,d} {region} galaxies with D(26)<{mindiam:.2f} arcmin')
+            ell1 = ell1[~I]
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -3859,8 +3872,12 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     parent_base = Table(fitsio.read(parent_basebasefile))
     log.info(f'Read {len(parent_base):,d} rows from {parent_basebasefile}')
 
+    # in v0.50 and higher the ellipse catalogs were reliable enough
+    # that we could start to trim "small" galaxies from the sample
+    # (see above), so only do the assert for earlier versions
+    if float(base_version[1:]) < 0.5:
+        assert(len(ell) == len(parent_base))
     assert(len(ell) == len(ell_base))
-    assert(len(ell) == len(parent_base))
 
     m_ell, m_parent = match(ell['OBJNAME'], parent_base['OBJNAME'])
     ell = ell[m_ell]
@@ -4023,11 +4040,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
         base = ell_base
 
     elif base_version == 'v0.50':
-
-
-        pdb.set_trace()
-
-
+        # no additional cuts
+        base = ell_base
     else:
         base = ell_base
 

@@ -106,10 +106,10 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.40'
 
         # tons of additional sample cleanup
-        version = 'v0.50'
+        #version = 'v0.50'
 
         # more cleanup
-        #version = 'v0.60'
+        version = 'v0.60'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -120,8 +120,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.22'  # parent_version = v0.21 --> v0.22
         #version = 'v0.30'  # parent_version = v0.22 --> v0.30
         #version = 'v0.40'  # parent_version = v0.30 --> v0.40
-        version = 'v0.50'  # parent_version = v0.40 --> v0.50
-        #version = 'v0.60'  # parent_version = v0.50 --> v0.60
+        #version = 'v0.50'  # parent_version = v0.40 --> v0.50
+        version = 'v0.60'  # parent_version = v0.50 --> v0.60
     return version
 
 
@@ -640,11 +640,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     #    sample = sample[np.isin(sample['GROUP_NAME'], base)]
     #    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
 
-    if version == 'v0.50' and False:
-        print('HACK!!!')
-        redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
-        fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #if version == 'v0.50' and False:
+    #    print('HACK!!!')
+    #    redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
+    #    fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     return sample, fullsample
 
