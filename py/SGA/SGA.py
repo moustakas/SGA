@@ -683,7 +683,7 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
         Weight of the highest-contributing channel.
 
     """
-    from SGA.ellipse import ELLIPSEMODE
+    from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
     from SGA.calibrate import infer_best_r26
 
     for col in ['ELLIPSEMODE', 'SMA_MOMENT']:
@@ -694,6 +694,15 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
 
     # Work on a copy to avoid modifying the input table
     ellipse = ellipse.copy()
+
+    # Censor the 26 mag/arcsec2 isophotes if the FAILGEO bit is set
+    # (near a bright star).
+    if 'ELLIPSEBIT' in ellipse.colnames:
+        I = ellipse['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0
+        if np.any(I):
+            r26_cols = [col for col in ellipse.colnames if col.startswith('R26_')]
+            for col in r26_cols:
+                ellipse[col][I] = np.nan
 
     # Censor unreliable z-band profiles in dr9-north
     if region == 'dr9-north':
