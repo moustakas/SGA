@@ -2452,7 +2452,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     SMA_MASK_MIN_PIX = SMA_MASK_MIN_ARCSEC / opt_pixscale
 
     # are we allowed to change the geometry in this call?
-    geometry_mode = (input_geo_initial is None)
+    update_geometry = input_geo_initial is None
 
     # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
@@ -2548,7 +2548,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Next, iteratively update the source geometry unless
         # FIXGEO or TRACTORGEO have been set.
-        if geometry_mode:
+        if update_geometry:
             if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
                 niter_actual = 1
             else:
@@ -2689,7 +2689,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             elif (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
                 log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
                 geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
-            elif not geometry_mode:
+            elif not update_geometry:
                 # Recompute sma_moment with the updated mask even when
                 # not updating the geometry; fix bx, by, ba, and pa to
                 # their previously determined values. NB: set
@@ -2730,7 +2730,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     moment_method=moment_method,
                     use_tractor_position=use_tractor_position_obj[iobj])
 
-            if geometry_mode:
+            if update_geometry:
                 ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
 
                 dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
@@ -2777,7 +2777,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_refmask_all[iobj, :, :] = opt_refmask
         opt_gaiamask_obj_all[iobj, :, :] = opt_gaiamask_obj
 
-    if geometry_mode:
+    if update_geometry:
         # enforce minimum separation between centers
         ra_final, dec_final = opt_wcs.wcs.pixelxy2radec(
             (geo_final[:, 0] + 1.), (geo_final[:, 1] + 1.))
