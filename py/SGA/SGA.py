@@ -2493,24 +2493,26 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # For *previously* completed objects, use the final, not
             # initial geometry.
             if indx < iobj:
-                [bxr, byr, smar, bar, par] = geo_final[indx, :]
+                [bxr, byr, smar_moment, bar, par] = geo_final[indx, :]
+                # Use SMA_MASK for masking, not moment SMA
+                smar = max(max(smar_moment, SMA_MASK_MIN_PIX), sample['SMA_MASK'][indx] / opt_pixscale)
             else:
-                if input_geo_initial is not None:
-                    bxr, byr, smar, bar, par = input_geo_initial[indx, :]
-                else:
-                    if use_tractor_geometry and use_tractor_geometry_obj[indx]:
-                        if refsrc is None:
-                            bxr, byr, smar, bar, par = get_geometry(
-                                opt_pixscale, table=refsample,
-                                use_sma_mask=True)
-                        else:
-                            bxr, byr, smar, bar, par = get_geometry(
-                                opt_pixscale, tractor=refsrc)
+                # always use get_geometry with use_sma_mask=True for
+                # future refs; don't use input_geo_initial for
+                # reference objects.
+                if use_tractor_geometry and use_tractor_geometry_obj[indx]:
+                    if refsrc is None:
+                        bxr, byr, smar, bar, par = get_geometry(
+                            opt_pixscale, table=refsample,
+                            use_sma_mask=True)
                     else:
                         bxr, byr, smar, bar, par = get_geometry(
-                            opt_pixscale, table=refsample, ref_tractor=refsrc,
-                            use_tractor_position=use_tractor_position_obj[indx],
-                            use_sma_mask=True)
+                            opt_pixscale, tractor=refsrc)
+                else:
+                    bxr, byr, smar, bar, par = get_geometry(
+                        opt_pixscale, table=refsample, ref_tractor=refsrc,
+                        use_tractor_position=use_tractor_position_obj[indx],
+                        use_sma_mask=True)
 
             opt_refmask1 = in_ellipse_mask(bxr, width-byr, smar*ref_factor,
                                            bar*smar*ref_factor,
@@ -2777,6 +2779,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_refmask_all[iobj, :, :] = opt_refmask
         opt_gaiamask_obj_all[iobj, :, :] = opt_gaiamask_obj
 
+        # Store SMA_MASK for this object so subsequent objects can use
+        # it for building their reference masks.
+        [bx_final, by_final, sma_final, ba_final, pa_final] = geo_iter
+        sma_floor_pix = obj['SMA_MASK'] / opt_pixscale
+        sma_mask_final = max(max(sma_final, SMA_MASK_MIN_PIX), sma_floor_pix)
+        sample['SMA_MASK'][iobj] = sma_mask_final * opt_pixscale  # [arcsec]
+
     if update_geometry:
         # enforce minimum separation between centers
         ra_final, dec_final = opt_wcs.wcs.pixelxy2radec(
@@ -2823,7 +2832,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if j == iobj:
                     continue
 
-                bx_j, by_j, sma_j, ba_j, pa_j = geo_final[j, :]
+                bx_j, by_j, sma_j_moment, ba_j, pa_j = geo_final[j, :]
+                # Use SMA_MASK for masking, not moment SMA
+                sma_j = max(max(sma_j_moment, SMA_MASK_MIN_PIX), sample['SMA_MASK'][j] / opt_pixscale)
                 if sma_j <= 0:
                     continue
 

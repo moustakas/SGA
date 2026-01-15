@@ -1566,8 +1566,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             sample['SMA_MASK'][iobj] = sma_mask_arcsec
             if not update_geometry:
-                # pass explicit/fixed geometry to build_multiband_mask
-                #input_geo_initial[iobj, :] = [bx, by, sma_mask_arcsec/pixscale, ba_mom, pa_mom]
+                # NB: build_multiband_mask expects sma_moment_arcsec
+                # *not* sma_mask_arcsec.
                 input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba_mom, pa_mom]
 
         # pull back on the masking for the final iteration
