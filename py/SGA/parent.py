@@ -4040,8 +4040,22 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
         base = ell_base
 
     elif base_version == 'v0.50':
-        # no additional cuts
+
+        # still not ready to trust the new diameters in groups with
+        # the overlap bit set or near bright stars; IC 4721A is an
+        # example object where we do not want the larger, newer
+        # diameter
+        I = (
+            (ell['SAMPLE'] & SAMPLE['NEARSTAR'] != 0) |
+            (ell['ELLIPSEBIT'] & ELLIPSEBIT['OVERLAP'] != 0)
+        )
+
+        log.info(f'Restoring original ellipse geometry for {np.sum(I):,d} objects.')
+        ell_base['DIAM_ERR'][I] = 0.
+        for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+            ell_base[col][I] = parent_base[col][I]
         base = ell_base
+
     else:
         base = ell_base
 
@@ -4074,8 +4088,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
             raise ValueError('PA out of range')
     except:
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
-
-    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
