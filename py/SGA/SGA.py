@@ -515,6 +515,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     #    sample = fullsample[fullsample['GROUP_PRIMARY']]
     #    pdb.set_trace()
 
+    #if True:
+    #    redo = np.unique(Table.read('/global/u2/i/ioannis/rerun.txt', format='ascii')['col1'].value)
+    #    fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+
     if wisesize:
         from SGA.util import match
 

@@ -535,18 +535,23 @@ def main():
             else:
                 force_psf_detection = False
 
-            # for large mosaics, turn off iterative source detection
+            # for very large mosaics, turn off iterative source detection and increase nsigma
             if onegal[DIAMCOLUMN] > 5.:
                 no_iterative = True
+                if args.nsigma is None:
+                    nsigma = 10
+                else:
+                    nsigma = args.nsigma
             else:
                 no_iterative = args.no_iterative
+                nsigma = args.nsigma
 
             if args.debug:
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     release=release, pixscale=pixscale, bands=bands, mp=args.mp,
                     unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
-                    nsigma=args.nsigma, just_coadds=args.just_coadds,
+                    nsigma=nsigma, just_coadds=args.just_coadds,
                     force_psf_detection=force_psf_detection,
                     no_iterative=no_iterative,
                     fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
@@ -564,7 +569,7 @@ def main():
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
                         release=release, pixscale=pixscale, bands=bands, mp=args.mp,
                         unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
-                        nsigma=args.nsigma, just_coadds=args.just_coadds,
+                        nsigma=nsigma, just_coadds=args.just_coadds,
                         force_psf_detection=force_psf_detection,
                         no_iterative=no_iterative,
                         fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,

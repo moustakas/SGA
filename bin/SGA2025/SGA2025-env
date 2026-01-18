@@ -29,10 +29,15 @@ export PYTHONPATH=$SGA_CODE_DIR/py:$LEGACYPIPE_CODE_DIR/py:$PYTHONPATH
 export PATH=$SGA_CODE_DIR/bin/SGA2025:$PATH
 
 export SGA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025
-export SGA_DATA_DIR=$PSCRATCH/SGA2025-data
-export SGA_HTML_DIR=/pscratch/sd/i/ioannis/SGA2025-html
+#export SGA_DATA_DIR=$PSCRATCH/SGA2025-data
+export SGA_DATA_DIR=$PSCRATCH/SGA2025-v0.60
+#export SGA_HTML_DIR=/pscratch/sd/i/ioannis/SGA2025-html
 #export SGA_DATA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA2025-data
+export SGA_HTML_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA2025-html
 #export SGA_HTML_DIR=/global/cfs/cdirs/cosmo/www/temp/ioannis/SGA2025-html
+echo "SGA_DIR"=$SGA_DIR
+echo "SGA_DATA_DIR"=$SGA_DATA_DIR
+echo "SGA_HTML_DIR"=$SGA_HTML_DIR
 
 export LEGACY_SURVEY_BASEDIR=$COSMO/work/legacysurvey
 #export LEGACY_SURVEY_DIR=$COSMO/work/legacysurvey/dr9
