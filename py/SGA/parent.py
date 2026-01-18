@@ -3755,13 +3755,10 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             max_diam_per_group = np.zeros(ell1['GROUP_ID'].max() + 1, dtype=np.float32)
             np.maximum.at(max_diam_per_group, ell1['GROUP_ID'], d26_ul)
 
-            I = (
-                (ell1['SAMPLE'] & SAMPLE['LVD'] == 0) &
-                (ell1['SAMPLE'] & SAMPLE['NEARSTAR'] == 0) &           # going to redo
+            I = ((ell1['SAMPLE'] & SAMPLE['LVD'] == 0) &
                 (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) & # still need to check
-                #(ell1['D26_ERR'] != 0) &                               # do not include missing
-                (max_diam_per_group[ell1['GROUP_ID']] < mindiam)
-            )
+                #(ell1['D26_ERR'] != 0) &                              # do not include missing
+                (max_diam_per_group[ell1['GROUP_ID']] < mindiam))
             groups_to_remove = np.unique(ell1['GROUP_NAME'][I])
             I = np.isin(ell1['GROUP_NAME'], groups_to_remove)
             check = ell1[I]
@@ -4040,20 +4037,17 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
         base = ell_base
 
     elif base_version == 'v0.50':
-
-        # still not ready to trust the new diameters in groups with
-        # the overlap bit set or near bright stars; IC 4721A is an
-        # example object where we do not want the larger, newer
-        # diameter
-        I = (
-            (ell['SAMPLE'] & SAMPLE['NEARSTAR'] != 0) |
-            (ell['ELLIPSEBIT'] & ELLIPSEBIT['OVERLAP'] != 0)
-        )
-
-        log.info(f'Restoring original ellipse geometry for {np.sum(I):,d} objects.')
-        ell_base['DIAM_ERR'][I] = 0.
-        for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
-            ell_base[col][I] = parent_base[col][I]
+        ## still not ready to trust the new diameters in groups with
+        ## the overlap bit set or near bright stars; IC 4721A is an
+        ## example object where we do not want the larger, newer
+        ## diameter
+        #I = ((ell['SAMPLE'] & SAMPLE['NEARSTAR'] != 0) |
+        #    (ell['ELLIPSEBIT'] & ELLIPSEBIT['OVERLAP'] != 0))
+        #
+        #log.info(f'Restoring original ellipse geometry for {np.sum(I):,d} objects.')
+        #ell_base['DIAM_ERR'][I] = 0.
+        #for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+        #    ell_base[col][I] = parent_base[col][I]
         base = ell_base
 
     else:
