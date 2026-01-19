@@ -1,4 +1,4 @@
-FROM legacysurvey/legacypipe:gpu-mem-1.1
+FROM legacysurvey/legacypipe:gpu-mem-1.2
 
 RUN for x in \
   ipython \
