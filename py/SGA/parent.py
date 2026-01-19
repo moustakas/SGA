@@ -3704,7 +3704,7 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def read_base_ellipse(outdir, base_version):
+def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
     dr9-north. Consolidate duplicates by OBJNAME, combining REGION
     bits (but prefering DR11 if duplicated).
@@ -3712,6 +3712,7 @@ def read_base_ellipse(outdir, base_version):
     """
     from SGA.SGA import SAMPLE
     from SGA.coadds import REGIONBITS
+    from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
 
     ell = []
     for region in ['dr11-south', 'dr9-north']:
@@ -3747,6 +3748,30 @@ def read_base_ellipse(outdir, base_version):
             #ax.plot([0.2, 18], [0.2, 18], color='k')
             #fig.savefig('ioannis/tmp/junk.png')
             # ell1[I][np.where((ell1['D26'][I]) > 14 * (diam[I] < 12))[0]]['OBJNAME', 'RA', 'DEC', 'D26', 'DIAM_INIT']
+
+        elif base_version == 'v0.50':
+
+            d26_ul = ell1['D26'] + ell1['D26_ERR']
+            max_diam_per_group = np.zeros(ell1['GROUP_ID'].max() + 1, dtype=np.float32)
+            np.maximum.at(max_diam_per_group, ell1['GROUP_ID'], d26_ul)
+
+            I = ((ell1['SAMPLE'] & SAMPLE['LVD'] == 0) &
+                (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) & # still need to check
+                #(ell1['D26_ERR'] != 0) &                              # do not include missing
+                (max_diam_per_group[ell1['GROUP_ID']] < mindiam))
+            groups_to_remove = np.unique(ell1['GROUP_NAME'][I])
+            I = np.isin(ell1['GROUP_NAME'], groups_to_remove)
+            check = ell1[I]
+
+            #from SGA.qa import to_skyviewer_table
+            #check = check[np.argsort(check['D26'])]#[::-1]]
+            #check.rename_column('D26', 'DIAM')
+            ##view = to_skyviewer_table(check[check['GROUP_MULT'] > 2])
+            #view = to_skyviewer_table(check[:100])
+            #view.write('viewer.fits', overwrite=True)
+
+            log.info(f'Removing {np.sum(I):,d}/{len(ell1):,d} {region} galaxies with D(26)<{mindiam:.2f} arcmin')
+            ell1 = ell1[~I]
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -3844,8 +3869,12 @@ def read_base_ellipse(outdir, base_version):
     parent_base = Table(fitsio.read(parent_basebasefile))
     log.info(f'Read {len(parent_base):,d} rows from {parent_basebasefile}')
 
+    # in v0.50 and higher the ellipse catalogs were reliable enough
+    # that we could start to trim "small" galaxies from the sample
+    # (see above), so only do the assert for earlier versions
+    if float(base_version[1:]) < 0.5:
+        assert(len(ell) == len(parent_base))
     assert(len(ell) == len(ell_base))
-    assert(len(ell) == len(parent_base))
 
     m_ell, m_parent = match(ell['OBJNAME'], parent_base['OBJNAME'])
     ell = ell[m_ell]
@@ -3858,7 +3887,7 @@ def read_base_ellipse(outdir, base_version):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -3897,7 +3926,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
 
     # Read the base ellipse catalogs for dr11-south and
     # dr9-north.
-    ell, ell_base, parent_base = read_base_ellipse(outdir, base_version)
+    ell, ell_base, parent_base = read_base_ellipse(outdir, base_version, mindiam=mindiam)
     assert(np.all(np.isfinite(ell['D26'])))
 
     if base_version == 'v0.22':
@@ -4005,6 +4034,20 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.40', overwrite=False):
             for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                 ell_base[col][I] = parent_base[col][I]
 
+        base = ell_base
+
+    elif base_version == 'v0.50':
+        ## still not ready to trust the new diameters in groups with
+        ## the overlap bit set or near bright stars; IC 4721A is an
+        ## example object where we do not want the larger, newer
+        ## diameter
+        #I = ((ell['SAMPLE'] & SAMPLE['NEARSTAR'] != 0) |
+        #    (ell['ELLIPSEBIT'] & ELLIPSEBIT['OVERLAP'] != 0))
+        #
+        #log.info(f'Restoring original ellipse geometry for {np.sum(I):,d} objects.')
+        #ell_base['DIAM_ERR'][I] = 0.
+        #for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+        #    ell_base[col][I] = parent_base[col][I]
         base = ell_base
 
     else:

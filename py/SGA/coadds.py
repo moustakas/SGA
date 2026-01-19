@@ -452,12 +452,12 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
-                  nsigma=None, nsatur=2, rgb_stretch=1.5, racolumn='GROUP_RA',
-                  deccolumn='GROUP_DEC', force_psf_detection=False, fit_on_coadds=False,
-                  just_cutouts=False, use_gpu=False, ngpu=1, threads_per_gpu=8,
-                  subsky_radii=None, just_coadds=False, missing_ok=False, force=False,
-                  cleanup=True, unwise=True, galex=False, no_gaia=False, no_tycho=False,
-                  verbose=False):
+                  nsigma=None, nsatur=2, rgb_stretch=1.5, no_iterative=False,
+                  racolumn='GROUP_RA', deccolumn='GROUP_DEC', force_psf_detection=False,
+                  fit_on_coadds=False, just_cutouts=False, use_gpu=False, ngpu=1,
+                  threads_per_gpu=8, subsky_radii=None, just_coadds=False, missing_ok=False,
+                  force=False, cleanup=True, unwise=True, galex=False, no_gaia=False,
+                  no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
 
     """
@@ -552,10 +552,12 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         cmdargs += '--no-galaxy-forcepsf '
     if fit_on_coadds:
         cmdargs += '--fit-on-coadds --no-ivar-reweighting '
+    if no_iterative:
+        cmdargs += '--no-iterative '
 
     # GPU stuff
     if use_gpu:
-        cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu={ngpu} --gpumode=2 '
+        cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu={ngpu} --gpumode=2 '#--verbose '
 
     try:
         log.info(f'runbrick {cmdargs}')

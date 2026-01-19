@@ -106,7 +106,10 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.40'
 
         # tons of additional sample cleanup
-        version = 'v0.50'
+        #version = 'v0.50'
+
+        # more cleanup
+        version = 'v0.60'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -117,7 +120,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.22'  # parent_version = v0.21 --> v0.22
         #version = 'v0.30'  # parent_version = v0.22 --> v0.30
         #version = 'v0.40'  # parent_version = v0.30 --> v0.40
-        version = 'v0.50'  # parent_version = v0.40 --> v0.50
+        #version = 'v0.50'  # parent_version = v0.40 --> v0.50
+        version = 'v0.60'  # parent_version = v0.50 --> v0.60
     return version
 
 
@@ -511,6 +515,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     #    sample = fullsample[fullsample['GROUP_PRIMARY']]
     #    pdb.set_trace()
 
+    #if True:
+    #    redo = np.unique(Table.read('/global/u2/i/ioannis/rerun.txt', format='ascii')['col1'].value)
+    #    fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+
     if wisesize:
         from SGA.util import match
 
@@ -636,11 +645,11 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     #    sample = sample[np.isin(sample['GROUP_NAME'], base)]
     #    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
 
-    if version == 'v0.50' and False:
-        print('HACK!!!')
-        redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
-        fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #if version == 'v0.50' and False:
+    #    print('HACK!!!')
+    #    redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
+    #    fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     return sample, fullsample
 
@@ -679,7 +688,7 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
         Weight of the highest-contributing channel.
 
     """
-    from SGA.ellipse import ELLIPSEMODE
+    from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
     from SGA.calibrate import infer_best_r26
 
     for col in ['ELLIPSEMODE', 'SMA_MOMENT']:
@@ -690,6 +699,15 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
 
     # Work on a copy to avoid modifying the input table
     ellipse = ellipse.copy()
+
+    # Censor the 26 mag/arcsec2 isophotes if the FAILGEO bit is set
+    # (near a bright star).
+    if 'ELLIPSEBIT' in ellipse.colnames:
+        I = ellipse['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0
+        if np.any(I):
+            r26_cols = [col for col in ellipse.colnames if col.startswith('R26_')]
+            for col in r26_cols:
+                ellipse[col][I] = np.nan
 
     # Censor unreliable z-band profiles in dr9-north
     if region == 'dr9-north':
@@ -1204,13 +1222,13 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
-            if os.path.isfile(slicefile) and not clobber:
+            if os.path.isfile(slicefile):# and not clobber:
                 log.warning(f'Skipping existing catalog {slicefile}')
                 continue
             raslices_todo.append(raslice)
         raslices_todo = np.array(raslices_todo)
 
-        #raslices_todo = ['150']#, '001']#, '002']
+        #raslices_todo = ['097']
         #raslices_todo = raslices_todo[131:]
 
     if comm:
@@ -1359,7 +1377,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
                  f'{len(tractor):,d} Tractor sources from {len(uraslices)} RA ' + \
                  f'slices took {dt:.3f} {unit}.')
-        #pdb.set_trace()
 
         I = np.isin(ellipse[REFIDCOLUMN], tractor['ref_id'])
         if not np.all(I):
@@ -2448,7 +2465,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     SMA_MASK_MIN_PIX = SMA_MASK_MIN_ARCSEC / opt_pixscale
 
     # are we allowed to change the geometry in this call?
-    geometry_mode = (input_geo_initial is None)
+    update_geometry = input_geo_initial is None
 
     # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
@@ -2489,24 +2506,26 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # For *previously* completed objects, use the final, not
             # initial geometry.
             if indx < iobj:
-                [bxr, byr, smar, bar, par] = geo_final[indx, :]
+                [bxr, byr, smar_moment, bar, par] = geo_final[indx, :]
+                # Use SMA_MASK for masking, not moment SMA
+                smar = max(max(smar_moment, SMA_MASK_MIN_PIX), sample['SMA_MASK'][indx] / opt_pixscale)
             else:
-                if input_geo_initial is not None:
-                    bxr, byr, smar, bar, par = input_geo_initial[indx, :]
-                else:
-                    if use_tractor_geometry and use_tractor_geometry_obj[indx]:
-                        if refsrc is None:
-                            bxr, byr, smar, bar, par = get_geometry(
-                                opt_pixscale, table=refsample,
-                                use_sma_mask=True)
-                        else:
-                            bxr, byr, smar, bar, par = get_geometry(
-                                opt_pixscale, tractor=refsrc)
+                # always use get_geometry with use_sma_mask=True for
+                # future refs; don't use input_geo_initial for
+                # reference objects.
+                if use_tractor_geometry and use_tractor_geometry_obj[indx]:
+                    if refsrc is None:
+                        bxr, byr, smar, bar, par = get_geometry(
+                            opt_pixscale, table=refsample,
+                            use_sma_mask=True)
                     else:
                         bxr, byr, smar, bar, par = get_geometry(
-                            opt_pixscale, table=refsample, ref_tractor=refsrc,
-                            use_tractor_position=use_tractor_position_obj[indx],
-                            use_sma_mask=True)
+                            opt_pixscale, tractor=refsrc)
+                else:
+                    bxr, byr, smar, bar, par = get_geometry(
+                        opt_pixscale, table=refsample, ref_tractor=refsrc,
+                        use_tractor_position=use_tractor_position_obj[indx],
+                        use_sma_mask=True)
 
             opt_refmask1 = in_ellipse_mask(bxr, width-byr, smar*ref_factor,
                                            bar*smar*ref_factor,
@@ -2544,7 +2563,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Next, iteratively update the source geometry unless
         # FIXGEO or TRACTORGEO have been set.
-        if geometry_mode:
+        if update_geometry:
             if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
                 niter_actual = 1
             else:
@@ -2685,7 +2704,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             elif (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
                 log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
                 geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
-            elif not geometry_mode:
+            elif not update_geometry:
                 # Recompute sma_moment with the updated mask even when
                 # not updating the geometry; fix bx, by, ba, and pa to
                 # their previously determined values. NB: set
@@ -2726,7 +2745,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     moment_method=moment_method,
                     use_tractor_position=use_tractor_position_obj[iobj])
 
-            if geometry_mode:
+            if update_geometry:
                 ra_iter, dec_iter = opt_wcs.wcs.pixelxy2radec(geo_iter[0] + 1., geo_iter[1] + 1.)
 
                 dshift_arcsec = arcsec_between(obj['RA_INIT'], obj['DEC_INIT'], ra_iter, dec_iter)
@@ -2773,7 +2792,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         opt_refmask_all[iobj, :, :] = opt_refmask
         opt_gaiamask_obj_all[iobj, :, :] = opt_gaiamask_obj
 
-    if geometry_mode:
+        # Store SMA_MASK for this object so subsequent objects can use
+        # it for building their reference masks.
+        [bx_final, by_final, sma_final, ba_final, pa_final] = geo_iter
+        sma_floor_pix = obj['SMA_MASK'] / opt_pixscale
+        sma_mask_final = max(max(sma_final, SMA_MASK_MIN_PIX), sma_floor_pix)
+        sample['SMA_MASK'][iobj] = sma_mask_final * opt_pixscale  # [arcsec]
+
+    if update_geometry:
         # enforce minimum separation between centers
         ra_final, dec_final = opt_wcs.wcs.pixelxy2radec(
             (geo_final[:, 0] + 1.), (geo_final[:, 1] + 1.))
@@ -2819,7 +2845,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 if j == iobj:
                     continue
 
-                bx_j, by_j, sma_j, ba_j, pa_j = geo_final[j, :]
+                bx_j, by_j, sma_j_moment, ba_j, pa_j = geo_final[j, :]
+                # Use SMA_MASK for masking, not moment SMA
+                sma_j = max(max(sma_j_moment, SMA_MASK_MIN_PIX), sample['SMA_MASK'][j] / opt_pixscale)
                 if sma_j <= 0:
                     continue
 

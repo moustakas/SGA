@@ -1542,7 +1542,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 continue
 
             # estimate R(26) from first-pass profiles
-            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE'])
+            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE', 'ELLIPSEBIT'])
             for thresh in sbthresh:
                 for filt in bands:
                     col = f'R{thresh:.0f}_{filt.upper()}'
@@ -1566,7 +1566,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             sample['SMA_MASK'][iobj] = sma_mask_arcsec
             if not update_geometry:
-                # pass explicit/fixed geometry to build_multiband_mask
+                # NB: build_multiband_mask expects sma_moment_arcsec
+                # *not* sma_mask_arcsec.
                 input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba_mom, pa_mom]
 
         # pull back on the masking for the final iteration
@@ -1589,6 +1590,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         # nice summary
         for iobj, (res, obj) in enumerate(zip(results[0], sample)):
             res['ELLIPSEMODE'] = obj['ELLIPSEMODE']
+            res['ELLIPSEBIT'] = obj['ELLIPSEBIT']
             res['SMA_MOMENT'] = obj['SMA_MOMENT']
             log.info(f'Final isophotal radii for galaxy {iobj+1}/{len(sample)}:')
             _ = SGA_diameter(res, region, verbose=True)
