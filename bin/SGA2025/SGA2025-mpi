@@ -542,9 +542,16 @@ def main():
                     nsigma = 10
                 else:
                     nsigma = args.nsigma
+                fit_on_coadds = True
             else:
                 no_iterative = args.no_iterative
                 nsigma = args.nsigma
+                fit_on_coadds = args.fit_on_coadds
+
+            no_iterative = True
+            nsigma = 10
+            fit_on_coadds = True
+            log.info('Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
 
             if args.debug:
                 err, _ = custom_coadds(
@@ -554,7 +561,7 @@ def main():
                     nsigma=nsigma, just_coadds=args.just_coadds,
                     force_psf_detection=force_psf_detection,
                     no_iterative=no_iterative,
-                    fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
+                    fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
@@ -572,7 +579,7 @@ def main():
                         nsigma=nsigma, just_coadds=args.just_coadds,
                         force_psf_detection=force_psf_detection,
                         no_iterative=no_iterative,
-                        fit_on_coadds=args.fit_on_coadds, just_cutouts=just_cutouts,
+                        fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
