@@ -341,7 +341,7 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     return ccds
 
 
-def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
+def custom_cutouts(obj, galaxy, output_dir, width, layer, ccds=None, pixscale=0.262,
                    unwise_pixscale=UNWISE_PIXSCALE, galex_pixscale=GALEX_PIXSCALE,
                    bands=GRIZ, galex=False, unwise=False, ivar_cutouts=False,
                    cleanup=True):
@@ -362,6 +362,11 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
     import shutil
     from SGA.io import make_header, VEGA2AB
     from SGA.cutouts import cutout_one
+
+    if ccds:
+        ccdsfile = os.path.join(output_dir, f'{galaxy}-ccds.fits')
+        ccds.writeto(ccdsfile, extname='CCDS', clobber=True)
+        log.info(f'Wrote {ccdsfile}')
 
     dry_run = False
     fits_cutouts = True
@@ -501,7 +506,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     # just cutouts -- no pipeline
     if just_cutouts:
         err = custom_cutouts(onegal, galaxy, survey.output_dir, width, layer,
-                             pixscale=pixscale, bands=bands, galex=galex,
+                             ccds, pixscale=pixscale, bands=bands, galex=galex,
                              unwise=unwise, unwise_pixscale=unwise_pixscale,
                              galex_pixscale=galex_pixscale, ivar_cutouts=ivar_cutouts,
                              cleanup=cleanup)
