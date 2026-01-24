@@ -150,11 +150,14 @@ def sort_groups_by_attempts(galaxy, galaxydir, sample, diamcolumn='DIAM'):
             todo.append(os.path.basename(gdir))
             diams.append(diam)
 
+        if len(todo) > 0:
+            print()
+            print(','.join(todo))
 
-    if len(todo) > 0:
-        print()
-        #print(','.join(todo))
-        _ = [print(f'{one},{diam}') for one, diam in zip(todo, diams)]
+    #if len(todo) > 0:
+    #    print()
+    #    print(','.join(todo))
+    #    #_ = [print(f'{one},{diam}') for one, diam in zip(todo, diams)]
 
 
 def main():
@@ -499,6 +502,7 @@ def main():
             # always have GROUP_MULT==1)
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
                 just_cutouts = True
+                ivar_cutouts = False
                 layer = f'ls-{args.region}'
                 if args.region == 'dr11-south':
                     log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
@@ -522,8 +526,17 @@ def main():
                 pixscale = args.pixscale
                 galex_pixscale = args.galex_pixscale
                 unwise_pixscale = args.unwise_pixscale
-                just_cutouts = False
-                layer = None
+                if args.skip_tractor:
+                    just_cutouts = True
+                    ivar_cutouts = True
+                    layer = f'ls-{args.region}'
+                    if args.region == 'dr11-south':
+                        log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
+                        layer = 'ls-dr11-early-v2'
+                else:
+                    just_cutouts = False
+                    ivar_cutouts = False
+                    layer = None
 
             # FORCEGAIA (not yet implemented); may be useful for e.g., Leo I
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEGAIA'] != 0:
@@ -535,23 +548,24 @@ def main():
             else:
                 force_psf_detection = False
 
-            # for very large mosaics, turn off iterative source detection and increase nsigma
-            if onegal[DIAMCOLUMN] > 5.:
-                no_iterative = True
-                if args.nsigma is None:
-                    nsigma = 10
-                else:
-                    nsigma = args.nsigma
-                fit_on_coadds = True
-            else:
-                no_iterative = args.no_iterative
-                nsigma = args.nsigma
-                fit_on_coadds = args.fit_on_coadds
+            ## for very large mosaics, turn off iterative source detection and increase nsigma
+            #if onegal[DIAMCOLUMN] > 5.:
+            #    no_iterative = True
+            #    if args.nsigma is None:
+            #        nsigma = 10
+            #    else:
+            #        nsigma = args.nsigma
+            #    fit_on_coadds = True
+            #else:
+            #    no_iterative = args.no_iterative
+            #    nsigma = args.nsigma
+            #    fit_on_coadds = args.fit_on_coadds
 
             no_iterative = True
             nsigma = 10
             fit_on_coadds = True
-            log.info('Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
+            if not just_cutouts:
+                log.info('Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
 
             if args.debug:
                 err, _ = custom_coadds(
@@ -562,6 +576,7 @@ def main():
                     force_psf_detection=force_psf_detection,
                     no_iterative=no_iterative,
                     fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
+                    ivar_cutouts=ivar_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
@@ -580,6 +595,7 @@ def main():
                         force_psf_detection=force_psf_detection,
                         no_iterative=no_iterative,
                         fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
+                        ivar_cutouts=ivar_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,

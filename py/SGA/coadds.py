@@ -343,7 +343,7 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 
 def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
                    unwise_pixscale=UNWISE_PIXSCALE, galex_pixscale=GALEX_PIXSCALE,
-                   bands=GRIZ, galex=False, unwise=False):
+                   bands=GRIZ, galex=False, unwise=False, ivar_cutouts=False):
     """
     SGA2025_08089m6975-ccds.fits
     SGA2025_08089m6975-image.jpg
@@ -364,7 +364,7 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
 
     dry_run = False
     fits_cutouts = True
-    ivar_cutouts = False
+    ivar_cutouts = ivar_cutouts
     unwise_cutouts = unwise # False
     galex_cutouts = galex # False
 
@@ -454,10 +454,10 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
                   nsigma=None, nsatur=2, rgb_stretch=1.5, no_iterative=False,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC', force_psf_detection=False,
-                  fit_on_coadds=False, just_cutouts=False, use_gpu=False, ngpu=1,
-                  threads_per_gpu=8, subsky_radii=None, just_coadds=False, missing_ok=False,
-                  force=False, cleanup=True, unwise=True, galex=False, no_gaia=False,
-                  no_tycho=False, verbose=False):
+                  fit_on_coadds=False, just_cutouts=False, ivar_cutouts=False, use_gpu=False,
+                  ngpu=1, threads_per_gpu=8, subsky_radii=None, just_coadds=False,
+                  missing_ok=False, force=False, cleanup=True, unwise=True, galex=False,
+                  no_gaia=False, no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
 
     """
@@ -487,7 +487,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         err = custom_cutouts(onegal, galaxy, survey.output_dir, width, layer,
                              pixscale=pixscale, bands=bands, galex=galex,
                              unwise=unwise, unwise_pixscale=unwise_pixscale,
-                             galex_pixscale=galex_pixscale)
+                             galex_pixscale=galex_pixscale, ivar_cutouts=ivar_cutouts)
         return err, stagesuffix
 
 
