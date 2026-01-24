@@ -343,7 +343,8 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
 
 def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
                    unwise_pixscale=UNWISE_PIXSCALE, galex_pixscale=GALEX_PIXSCALE,
-                   bands=GRIZ, galex=False, unwise=False, ivar_cutouts=False):
+                   bands=GRIZ, galex=False, unwise=False, ivar_cutouts=False,
+                   cleanup=True):
     """
     SGA2025_08089m6975-ccds.fits
     SGA2025_08089m6975-image.jpg
@@ -403,16 +404,21 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
         fitsfile = os.path.join(output_dir, f'{galaxy}{fitssuffix}.fits')
         try:
             imgs, hdr = fitsio.read(fitsfile, header=True)
+            for key in ['VERSION', 'BANDS', 'COMMENT']:
+                hdr.delete(key)
+            for iband in range(len(bands)):
+                hdr.delete(f'BAND{iband}')
+
+            if ivar_cutouts:
+                ivars, ivarhdr = fitsio.read(fitsfile, ext=1, header=True)
+                for key in ['VERSION', 'BANDS', 'COMMENT']:
+                    ivarhdr.delete(key)
+                for iband in range(len(bands)):
+                    ivarhdr.delete(f'BAND{iband}')
         except:
             msg = f'There was a problem reading {fitsfile} ({obj["OBJNAME"]})'
             log.critical(msg)
             return 0
-
-        hdr.delete('VERSION')
-        hdr.delete('BANDS')
-        hdr.delete('COMMENT')
-        for iband in range(len(bands)):
-            hdr.delete(f'BAND{iband}')
 
         for iband, band in enumerate(allband):
             outfile = os.path.join(output_dir, f'{galaxy}-image-{band}.fits')
@@ -421,6 +427,8 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
             # https://www.legacysurvey.org/dr9/description/#photometry
             if band in VEGA2AB.keys():
                 imgs[iband, :, :] *= 10.**(-0.4 * VEGA2AB[band])
+                if ivar_cutouts:
+                    ivars[iband, :, :] /= (10.**(-0.4 * VEGA2AB[band]))**2.
 
             primhdr = fitsio.FITSHDR()
             primhdr['EXTEND'] = 'T'
@@ -437,14 +445,22 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
             fitsio.write(outfile, imgs[iband, :, :], header=outhdr)
             log.info(f'Wrote {outfile}')
 
+            if ivar_cutouts:
+                outfile = os.path.join(output_dir, f'{galaxy}-invvar-{band}.fits')
+                outhdr = make_header(ivarhdr, keys=ivarhdr.keys(), extra=extra, extname=f'INVVAR_{band}')
+                fitsio.write(outfile, None, header=primhdr, clobber=True)
+                fitsio.write(outfile, ivars[iband, :, :], header=outhdr)
+                log.info(f'Wrote {outfile}')
+
     # cleanup...
-    cleanfiles = [f'{basefile}.fits', f'{basefile}.jpeg']
-    if unwise:
-        cleanfiles += [f'{basefile}-unwise.fits', f'{basefile}-W1W2.jpeg']
-    if galex:
-        cleanfiles += [f'{basefile}-galex.fits', f'{basefile}-galex.jpeg']
-    for cleanfile in cleanfiles:
-        os.remove(cleanfile)
+    if cleanup:
+        cleanfiles = [f'{basefile}.fits', f'{basefile}.jpeg']
+        if unwise:
+            cleanfiles += [f'{basefile}-unwise.fits', f'{basefile}-W1W2.jpeg']
+        if galex:
+            cleanfiles += [f'{basefile}-galex.fits', f'{basefile}-galex.jpeg']
+        for cleanfile in cleanfiles:
+            os.remove(cleanfile)
 
     return 1
 
@@ -487,7 +503,8 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         err = custom_cutouts(onegal, galaxy, survey.output_dir, width, layer,
                              pixscale=pixscale, bands=bands, galex=galex,
                              unwise=unwise, unwise_pixscale=unwise_pixscale,
-                             galex_pixscale=galex_pixscale, ivar_cutouts=ivar_cutouts)
+                             galex_pixscale=galex_pixscale, ivar_cutouts=ivar_cutouts,
+                             cleanup=cleanup)
         return err, stagesuffix
 
 
