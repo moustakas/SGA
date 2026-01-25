@@ -475,19 +475,16 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
                     gaia_stars=True, large_galaxies=False, star_clusters=False)
                 refmap = get_reference_map(wcs.wcs, refstars)
 
+                # from runbrick.stage_image_coadds
                 MASKBITS = survey.get_maskbits()
+                maskbits = np.zeros(refmap.shape, dtype=maskbits_type)
                 for key in ['BRIGHT', 'MEDIUM', 'GALAXY', 'CLUSTER', 'RESOLVED', 'MCLOUDS']:
                     maskbits |= MASKBITS[key] * ((refmap & REF_MAP_BITS[key]) > 0)
-                maskbitsfile = os.path.join(output_dir, f'{galaxy}-maskbits.fits')
 
+                maskbitsfile = os.path.join(output_dir, f'{galaxy}-maskbits.fits')
                 log.info(f'Wrote {maskbitsfile}')
 
-
-                pdb.set_trace()
-
                 need_maskbits = False
-
-    pdb.set_trace()
 
     # cleanup...
     if cleanup:
