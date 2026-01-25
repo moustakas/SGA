@@ -502,7 +502,8 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
-                  nsigma=None, nsatur=2, rgb_stretch=1.5, no_iterative=False,
+                  nsigma=None, saddle_fraction=None, saddle_min=None, nsatur=2,
+                  rgb_stretch=1.5, no_iterative=False,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC', force_psf_detection=False,
                   fit_on_coadds=False, just_cutouts=False, ivar_cutouts=False, use_gpu=False,
                   ngpu=1, threads_per_gpu=8, subsky_radii=None, just_coadds=False,
@@ -554,9 +555,12 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
 
     if rgb_stretch:
         cmdargs += f'--rgb-stretch={rgb_stretch:.2f} '
-
     if nsigma:
         cmdargs += f'--nsigma={nsigma:.0f} '
+    if saddle_fraction:
+        cmdargs += f'--saddle-fraction={saddle_fraction:.2f} '
+    if saddle_min:
+        cmdargs += f'--saddle-min={saddle_min:.1f} '
 
     #cmdargs += '--write-stage=tims --write-stage=srcs '
     cmdargs += '--write-stage=srcs '

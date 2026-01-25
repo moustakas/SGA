@@ -564,6 +564,9 @@ def main():
             no_iterative = True
             nsigma = 10
             fit_on_coadds = True
+            saddle_fraction = 0.2
+            saddle_min = 4.
+
             if not just_cutouts:
                 log.info('Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
 
@@ -572,8 +575,8 @@ def main():
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     release=release, pixscale=pixscale, bands=bands, mp=args.mp,
                     unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
-                    nsigma=nsigma, just_coadds=args.just_coadds,
-                    force_psf_detection=force_psf_detection,
+                    nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
+                    just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                     no_iterative=no_iterative,
                     fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
                     ivar_cutouts=ivar_cutouts,
@@ -591,8 +594,8 @@ def main():
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
                         release=release, pixscale=pixscale, bands=bands, mp=args.mp,
                         unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
-                        nsigma=nsigma, just_coadds=args.just_coadds,
-                        force_psf_detection=force_psf_detection,
+                        nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
+                        just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                         no_iterative=no_iterative,
                         fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
                         ivar_cutouts=ivar_cutouts,
