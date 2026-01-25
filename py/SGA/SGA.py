@@ -3151,7 +3151,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                    sort_by_flux=True, run='south', pixscale=0.262,
                    galex_pixscale=1.5, unwise_pixscale=2.75,
                    galex=True, unwise=True, verbose=False, read_jpg=False,
-                   skip_ellipse=False):
+                   skip_ellipse=False, skip_tractor=False):
     """Read the multi-band images (converted to surface brightness) in
     preparation for ellipse-fitting.
 
@@ -3294,6 +3294,9 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         # only images (no models, PSFs, etc.) if skip_ellipse=True
         if skip_ellipse:
             filt2imfile.update({band: {'image': 'image'}})
+        elif skip_tractor:
+            filt2imfile.update({band: {'image': 'image',
+                                       'invvar': 'invvar',}})
         else:
             filt2imfile.update({band: {'image': 'image',
                                        'model': 'model',
@@ -3310,6 +3313,9 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         for band in unwise_bands:
             if skip_ellipse:
                 filt2imfile.update({band: {'image': 'image'}})
+            elif skip_tractor:
+                filt2imfile.update({band: {'image': 'image',
+                                           'invvar': 'invvar',}})
             else:
                 filt2imfile.update({band: {'image': 'image',
                                            'model': 'model',
@@ -3323,6 +3329,9 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         for band in galex_bands:
             if skip_ellipse:
                 filt2imfile.update({band: {'image': 'image'}})
+            elif skip_tractor:
+                filt2imfile.update({band: {'image': 'image',
+                                           'invvar': 'invvar',}})
             else:
                 filt2imfile.update({band: {'image': 'image',
                                            'model': 'model',
@@ -3332,6 +3341,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     # OK to miss files (e.g., -model, -psf) for some classes of
     # objects (e.g., RESOLVED) that we do not ellipse-fit.
     if skip_ellipse:
+        missing_ok = True
+    elif skip_tractor:
         missing_ok = True
     else:
         missing_ok = False
@@ -3402,6 +3413,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
     # Intercept objects (e.g., RESOLVED) that we do not ellipse-fit.
     if skip_ellipse:
+        tractor = None
+    elif skip_tractor:
         tractor = None
     else:
         # We ~have~ to read the tractor catalog using fits_table because we will
@@ -3504,21 +3517,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             sz = (int(wcs.wcs.imageh), int(wcs.wcs.imagew))
             data[f'{dataset}_wcs'] = wcs
             data[f'{dataset}_hdr'] = hdr
-
-            ## https://github.com/legacysurvey/legacypipe/issues/777
-            #factor = pixscale / this_pixscale
-            #sz = (int(opt_sz[0] * factor), int(opt_sz[1] * factor))
-            #crpix = sz[0] / 2. + 0.5
-            #
-            #img = np.zeros((sz[0], sz[1]), 'f4')
-            #wcs2 = Tan(*[float(xx) for xx in [wcs.wcs.crval[0], wcs.wcs.crval[1], crpix,
-            #                                  crpix, wcs.wcs.cd[0] / factor, wcs.wcs.cd[1] / factor,
-            #                                  wcs.wcs.cd[2] / factor, wcs.wcs.cd[3] / factor,
-            #                                  sz[0], sz[1]]])
-            #thdr = fitsio.FITSHDR()
-            #wcs2.add_to_header(thdr)
-            #data[f'{dataset}_hdr'] = thdr
-            #data[f'{dataset}_wcs'] = wcs2
 
             if filt == opt_refband:
                 data['opt_hdr'] = hdr

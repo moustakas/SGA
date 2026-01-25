@@ -300,12 +300,15 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
         # variance image.
         if verbose:
             log.info(f'Reading {filt2imfile[filt]["image"]}')
-            log.info(f'Reading {filt2imfile[filt]["model"]}')
             log.info(f'Reading {filt2imfile[filt]["invvar"]}')
         hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
         image = fitsio.read(filt2imfile[filt]['image'])
         invvar = fitsio.read(filt2imfile[filt]['invvar'])
-        model = fitsio.read(filt2imfile[filt]['model'])
+        if 'model' in filt2imfile[filt].keys():
+            log.info(f'Reading {filt2imfile[filt]["model"]}')
+            model = fitsio.read(filt2imfile[filt]['model'])
+        else:
+            model = None
 
         if np.any(invvar < 0):
             log.warning(f'Found {np.sum(invvar<0):,d} negative pixels in the ' + \
@@ -358,13 +361,17 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
         if filt in unwise_bands:
             image *= 10.**(-0.4 * VEGA2AB[filt])
             invvar /= (10.**(-0.4 * VEGA2AB[filt]))**2.
-            model *= 10.**(-0.4 * VEGA2AB[filt])
+            if model is not None:
+                model *= 10.**(-0.4 * VEGA2AB[filt])
 
-        if verbose:
-            log.info(f'Reading {filt2imfile[filt]["psf"]}')
-        psfimg = fitsio.read(filt2imfile[filt]['psf'])
-        psfimg /= psfimg.sum()
-        data[f'{filt}_psf'] = PixelizedPSF(psfimg)
+        if 'psf' in filt2imfile[filt].keys():
+            if verbose:
+                log.info(f'Reading {filt2imfile[filt]["psf"]}')
+            psfimg = fitsio.read(filt2imfile[filt]['psf'])
+            psfimg /= psfimg.sum()
+            data[f'{filt}_psf'] = PixelizedPSF(psfimg)
+        else:
+            data[f'{filt}_psf'] = None
 
         # Generate a basic per-band mask, including allmask for the
         # optical bands and wisemask for the unwise bands.

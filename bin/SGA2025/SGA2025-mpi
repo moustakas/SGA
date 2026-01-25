@@ -671,6 +671,7 @@ def main():
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
                                        clobber=args.clobber, skip_ellipse=skip_ellipse,
+                                       skip_tractor=args.skip_tractor,
                                        htmlgalaxydir=htmlgalaxydir)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 

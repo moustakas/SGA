@@ -341,10 +341,10 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     return ccds
 
 
-def custom_cutouts(obj, galaxy, output_dir, width, layer, ccds=None, pixscale=0.262,
-                   unwise_pixscale=UNWISE_PIXSCALE, galex_pixscale=GALEX_PIXSCALE,
-                   bands=GRIZ, galex=False, unwise=False, ivar_cutouts=False,
-                   cleanup=True):
+def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
+                   pixscale=0.262, unwise_pixscale=UNWISE_PIXSCALE,
+                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, galex=False,
+                   unwise=False, ivar_cutouts=False, cleanup=True):
     """
     SGA2025_08089m6975-ccds.fits
     SGA2025_08089m6975-image.jpg
@@ -360,9 +360,15 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, ccds=None, pixscale=0.
     """
     import fitsio
     import shutil
+    from astrometry.util.util import Tan
+    from tractor.tractortime import TAITime
+    from legacypipe.bits import REF_MAP_BITS, maskbits_type
+    from legacypipe.reference import get_reference_sources, get_reference_map
+    from legacypipe.survey import LegacySurveyWcs
     from SGA.io import make_header, VEGA2AB
     from SGA.cutouts import cutout_one
 
+    # CCDs file
     if ccds:
         ccdsfile = os.path.join(output_dir, f'{galaxy}-ccds.fits')
         ccds.writeto(ccdsfile, extname='CCDS', clobber=True)
@@ -375,10 +381,11 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, ccds=None, pixscale=0.
     galex_cutouts = galex # False
 
     basefile = os.path.join(output_dir, galaxy)
-    cutout_one(basefile, obj['GROUP_RA'], obj['GROUP_DEC'],
-               width, pixscale, unwise_pixscale, galex_pixscale,
-               layer, bands, dry_run, fits_cutouts, ivar_cutouts,
-               unwise_cutouts, galex_cutouts, 0, 0)
+    print('HACK!')
+    #cutout_one(basefile, obj['GROUP_RA'], obj['GROUP_DEC'],
+    #           width, pixscale, unwise_pixscale, galex_pixscale,
+    #           layer, bands, dry_run, fits_cutouts, ivar_cutouts,
+    #           unwise_cutouts, galex_cutouts, 0, 0)
 
     # now rearrange the files to match our file / data model
     fitssuffixes = ['', ]
@@ -399,6 +406,8 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, ccds=None, pixscale=0.
         allbands += [['FUV', 'NUV', ], ]
         allpixscale += [[GALEX_PIXSCALE]*2, ]
 
+
+    need_maskbits = True
     for fitssuffix, jpgsuffix, outjpgsuffix, allband, allpixscale in zip(
             fitssuffixes, jpgsuffixes, outjpgsuffixes, allbands, allpixscale):
         infile = os.path.join(output_dir, f'{galaxy}{jpgsuffix}.jpeg')
@@ -457,6 +466,29 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, ccds=None, pixscale=0.
                 fitsio.write(outfile, ivars[iband, :, :], header=outhdr)
                 log.info(f'Wrote {outfile}')
 
+            # maskbits image
+            if need_maskbits and band in bands:
+                wcs = LegacySurveyWcs(Tan(hdr), TAITime(None, mjd=np.mean(ccds.mjd_obs)))
+
+                refstars, _ = get_reference_sources(
+                    survey, wcs.wcs, bands=bands, tycho_stars=True,
+                    gaia_stars=True, large_galaxies=False, star_clusters=False)
+                refmap = get_reference_map(wcs.wcs, refstars)
+
+                MASKBITS = survey.get_maskbits()
+                for key in ['BRIGHT', 'MEDIUM', 'GALAXY', 'CLUSTER', 'RESOLVED', 'MCLOUDS']:
+                    maskbits |= MASKBITS[key] * ((refmap & REF_MAP_BITS[key]) > 0)
+                maskbitsfile = os.path.join(output_dir, f'{galaxy}-maskbits.fits')
+
+                log.info(f'Wrote {maskbitsfile}')
+
+
+                pdb.set_trace()
+
+                need_maskbits = False
+
+    pdb.set_trace()
+
     # cleanup...
     if cleanup:
         cleanfiles = [f'{basefile}.fits', f'{basefile}.jpeg']
@@ -506,8 +538,8 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     # just cutouts -- no pipeline
     if just_cutouts:
         err = custom_cutouts(onegal, galaxy, survey.output_dir, width, layer,
-                             ccds, pixscale=pixscale, bands=bands, galex=galex,
-                             unwise=unwise, unwise_pixscale=unwise_pixscale,
+                             survey, ccds=ccds, pixscale=pixscale, bands=bands,
+                             galex=galex, unwise=unwise, unwise_pixscale=unwise_pixscale,
                              galex_pixscale=galex_pixscale, ivar_cutouts=ivar_cutouts,
                              cleanup=cleanup)
         return err, stagesuffix
