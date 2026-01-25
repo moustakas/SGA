@@ -568,7 +568,7 @@ def main():
             saddle_min = 4.
 
             if not just_cutouts:
-                log.info('Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
 
             if args.debug:
                 err, _ = custom_coadds(

@@ -454,16 +454,16 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
                 'MAGZERO': (22.5, 'Magnitude zeropoint'),
                 'BUNIT': ('nanomaggy', 'AB mag = 22.5 - 2.5*log10(nanomaggy)'),
             }
-            outhdr = make_header(hdr, keys=hdr.keys(), extra=extra, extname=f'IMAGE_{band}')
+            outhdr = make_header(hdr, keys=hdr.keys(), extra=extra)
             fitsio.write(outfile, None, header=primhdr, clobber=True)
-            fitsio.write(outfile, imgs[iband, :, :], header=outhdr)
+            fitsio.write(outfile, imgs[iband, :, :], header=outhdr, extname=f'IMAGE_{band.upper()}')
             log.info(f'Wrote {outfile}')
 
             if ivar_cutouts:
                 outfile = os.path.join(output_dir, f'{galaxy}-invvar-{band}.fits')
-                outhdr = make_header(ivarhdr, keys=ivarhdr.keys(), extra=extra, extname=f'INVVAR_{band}')
+                outhdr = make_header(ivarhdr, keys=ivarhdr.keys(), extra=extra)
                 fitsio.write(outfile, None, header=primhdr, clobber=True)
-                fitsio.write(outfile, ivars[iband, :, :], header=outhdr)
+                fitsio.write(outfile, ivars[iband, :, :], header=outhdr, extname=f'INVVAR_{band.upper()}')
                 log.info(f'Wrote {outfile}')
 
             # maskbits image
@@ -482,6 +482,13 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
                     maskbits |= MASKBITS[key] * ((refmap & REF_MAP_BITS[key]) > 0)
 
                 maskbitsfile = os.path.join(output_dir, f'{galaxy}-maskbits.fits')
+
+                outhdr = make_header(hdr, keys=hdr.keys(),
+                                     extra={'PIXSCALE': (allpixscale[iband], 'pixel scale (arcsec/pixel)')})
+                for key in ['SURVEY']:
+                    outhdr.delete(key)
+                fitsio.write(maskbitsfile, None, header=primhdr, clobber=True)
+                fitsio.write(maskbitsfile, maskbits, header=outhdr, extname='MASKBITS')
                 log.info(f'Wrote {maskbitsfile}')
 
                 need_maskbits = False

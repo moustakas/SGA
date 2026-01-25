@@ -265,7 +265,7 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
         raise IOError(msg)
 
 
-def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
+def _read_image_data(data, filt2imfile, read_jpg=False, skip_tractor=False, verbose=False):
     """Helper function for the project-specific read_multiband method.
 
     Read the multi-band images and inverse variance images and pack them into a
@@ -377,9 +377,10 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
         # optical bands and wisemask for the unwise bands.
         mask = invvar <= 0 # True-->bad
 
-        if filt in opt_bands:
-            mask = np.logical_or(mask, data[f'allmask_{filt}'])
-            del data[f'allmask_{filt}']
+        if not skip_tractor:
+            if filt in opt_bands:
+                mask = np.logical_or(mask, data[f'allmask_{filt}'])
+                del data[f'allmask_{filt}']
 
         # add wisemask for W1/W2, if present, but we have to resize
         if data['wisemask'] is not None and filt in unwise_bands[:2]:
@@ -455,7 +456,7 @@ def table_to_fitsio(tbl):
     return data, names, units
 
 
-def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
+def make_header(src_hdr, keys, extname=None, bunit=None, extra=None):
     """
     Build a FITSHDR copying specific keys from an existing fitsio FITSHDR.
 
@@ -484,10 +485,6 @@ def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
                 val = src_hdr[k]
                 com = src_hdr.get_comment(k) if hasattr(src_hdr, 'get_comment') else ''
                 hdr.add_record({'name': k, 'value': val, 'comment': com})
-    if extname is not None:
-        hdr['EXTNAME'] = extname
-    if bunit is not None:
-        hdr['BUNIT'] = bunit
     if extra:
         for k, v in extra.items():
             if isinstance(v, tuple) and len(v) == 2:
@@ -495,6 +492,10 @@ def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
                 hdr.add_record({'name': k, 'value': val, 'comment': com})
             else:
                 hdr[k] = v
+    if bunit is not None:
+        hdr['BUNIT'] = bunit
+    if extname is not None:
+        hdr['EXTNAME'] = extname
 
     return hdr
 

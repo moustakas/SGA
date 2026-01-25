@@ -2333,16 +2333,20 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     for filt in opt_bands:
         opt_skysigmas[filt] = data[f'{filt}_skysigma']
 
-    Ipsf = ((tractor.type == 'PSF') * (tractor.type != 'DUP') *
-            (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG') *
-            np.logical_or(tractor.ref_cat == 'GE', tractor.ref_cat == 'G3'))
-    psfsrcs = tractor[Ipsf]
+    if tractor is not None:
+        Ipsf = ((tractor.type == 'PSF') * (tractor.type != 'DUP') *
+                (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG') *
+                (tractor.ref_cat == 'G3'))
+        psfsrcs = tractor[Ipsf]
 
-    # Flux-based classification of extended Tractor galaxies.
-    Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
-            #(tractor.shape_r > 0.1) *
-            (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
-    allgalsrcs = tractor[Igal]
+        # Flux-based classification of extended Tractor galaxies.
+        Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
+                #(tractor.shape_r > 0.1) *
+                (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
+        allgalsrcs = tractor[Igal]
+    else:
+        psfsrcs = []
+        allgalsrcs = []
 
     galsrcs_optflux = np.zeros(len(allgalsrcs), 'f4')
     galsrcs_optsb = np.zeros(len(allgalsrcs), 'f4')
@@ -3414,50 +3418,53 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     # Intercept objects (e.g., RESOLVED) that we do not ellipse-fit.
     if skip_ellipse:
         tractor = None
-    elif skip_tractor:
-        tractor = None
     else:
-        # We ~have~ to read the tractor catalog using fits_table because we will
-        # turn these catalog entries into Tractor sources later.
-        tractorfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["tractor"]}.fits')
-
-        cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
-                'sersic', 'shape_r', 'shape_e1', 'shape_e2', 'maskbits']
-        cols += [f'flux_{filt}' for filt in opt_bands]
-        cols += [f'flux_ivar_{filt}' for filt in opt_bands]
-        cols += [f'nobs_{filt}' for filt in opt_bands]
-        cols += [f'fracin_{filt}' for filt in opt_bands]
-        cols += [f'fracflux_{filt}' for filt in opt_bands]
-        #cols += [f'mw_transmission_{filt}' for filt in all_opt_bands]
-        cols += [f'psfdepth_{filt}' for filt in all_opt_bands] # NB: all optical bands
-        cols += [f'psfsize_{filt}' for filt in all_opt_bands]
-        if galex:
-            cols += [f'flux_{filt.lower()}' for filt in galex_bands]
-            cols += [f'flux_ivar_{filt.lower()}' for filt in galex_bands]
-            cols += [f'psfdepth_{filt.lower()}' for filt in galex_bands]
-        if unwise:
-            cols += [f'flux_{filt.lower()}' for filt in unwise_bands]
-            cols += [f'flux_ivar_{filt.lower()}' for filt in unwise_bands]
-            cols += [f'psfdepth_{filt.lower()}' for filt in unwise_bands]
-
-        # make sure there are sources
-        with fitsio.FITS(tractorfile) as F:
-            if F['CATALOG'].get_nrows() == 0:
-                log.warning('No sources in brick!')
-                return {}, None, None, None, 1
-
-        prim = fitsio.read(tractorfile, columns='brick_primary')
-        tractor = fits_table(tractorfile, rows=np.where(prim)[0], columns=cols)
-        if len(tractor) == 0:
-            log.warning('No brick_primary sources in brick!')
-            return {}, None, None, None, 1
+        if skip_tractor:
+            tractor = None
+            maskbitsfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["maskbits"]}.fits')
         else:
-            log.info(f'Read {len(tractor):,d} brick_primary sources from {tractorfile}')
+            maskbitsfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["maskbits"]}.fits.fz')
+
+            # We ~have~ to read the tractor catalog using fits_table because we will
+            # turn these catalog entries into Tractor sources later.
+            tractorfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["tractor"]}.fits')
+
+            cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
+                    'sersic', 'shape_r', 'shape_e1', 'shape_e2', 'maskbits']
+            cols += [f'flux_{filt}' for filt in opt_bands]
+            cols += [f'flux_ivar_{filt}' for filt in opt_bands]
+            cols += [f'nobs_{filt}' for filt in opt_bands]
+            cols += [f'fracin_{filt}' for filt in opt_bands]
+            cols += [f'fracflux_{filt}' for filt in opt_bands]
+            #cols += [f'mw_transmission_{filt}' for filt in all_opt_bands]
+            cols += [f'psfdepth_{filt}' for filt in all_opt_bands] # NB: all optical bands
+            cols += [f'psfsize_{filt}' for filt in all_opt_bands]
+            if galex:
+                cols += [f'flux_{filt.lower()}' for filt in galex_bands]
+                cols += [f'flux_ivar_{filt.lower()}' for filt in galex_bands]
+                cols += [f'psfdepth_{filt.lower()}' for filt in galex_bands]
+            if unwise:
+                cols += [f'flux_{filt.lower()}' for filt in unwise_bands]
+                cols += [f'flux_ivar_{filt.lower()}' for filt in unwise_bands]
+                cols += [f'psfdepth_{filt.lower()}' for filt in unwise_bands]
+
+            # make sure there are sources
+            with fitsio.FITS(tractorfile) as F:
+                if F['CATALOG'].get_nrows() == 0:
+                    log.warning('No sources in brick!')
+                    return {}, None, None, None, 1
+
+            prim = fitsio.read(tractorfile, columns='brick_primary')
+            tractor = fits_table(tractorfile, rows=np.where(prim)[0], columns=cols)
+            if len(tractor) == 0:
+                log.warning('No brick_primary sources in brick!')
+                return {}, None, None, None, 1
+            else:
+                log.info(f'Read {len(tractor):,d} brick_primary sources from {tractorfile}')
+
 
         # Read the maskbits image and build the starmask.
-        maskbitsfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["maskbits"]}.fits.fz')
-        if verbose:
-            log.info(f'Reading {maskbitsfile}')
+        log.info(f'Reading {maskbitsfile}')
         F = fitsio.FITS(maskbitsfile)
         maskbits = F['MASKBITS'].read()
 
@@ -3554,7 +3561,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     else:
         # Read the basic imaging data and masks and build the multiband
         # masks.
-        data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, verbose=verbose)
+        data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, skip_tractor=skip_tractor,
+                                verbose=verbose)
 
 
     if not skip_ellipse:
