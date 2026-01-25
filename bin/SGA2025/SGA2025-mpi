@@ -699,6 +699,7 @@ def main():
                              unpack_maskbits, SGAMASKBITS, APERTURES,
                              args.region, barlen=barlen, barlabel=barlabel,
                              run=run, skip_ellipse=skip_ellipse,
+                             skip_tractor=args.skip_tractor,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
                              verbose=args.verbose, clobber=args.clobber)

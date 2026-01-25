@@ -568,7 +568,7 @@ def cutout_one(basefile, ra, dec, optical_width, optical_pixscale,
         unwise_width = int(optical_width * optical_pixscale / UNWISE_PIXSCALE)
         unwise_suffixes = ['-W1W2.jpeg', '-W1W2.fits', '-W3W4.fits', ]
         suffixes += unwise_suffixes
-        layers += ['unwise-neo11', 'unwise-neo11', 'unwise-w3w4', ]
+        layers += ['unwise-neo7', 'unwise-neo7', 'unwise-w3w4', ]
         pixscales += [UNWISE_PIXSCALE, UNWISE_PIXSCALE, UNWISE_PIXSCALE, ]
         widths += [unwise_width, unwise_width, unwise_width, ]
         allbands += [['1', '2'], ['1', '2'], ['3', '4'], ]

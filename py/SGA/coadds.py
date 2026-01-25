@@ -381,11 +381,10 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
     galex_cutouts = galex # False
 
     basefile = os.path.join(output_dir, galaxy)
-    print('HACK!')
-    #cutout_one(basefile, obj['GROUP_RA'], obj['GROUP_DEC'],
-    #           width, pixscale, unwise_pixscale, galex_pixscale,
-    #           layer, bands, dry_run, fits_cutouts, ivar_cutouts,
-    #           unwise_cutouts, galex_cutouts, 0, 0)
+    cutout_one(basefile, obj['GROUP_RA'], obj['GROUP_DEC'],
+               width, pixscale, unwise_pixscale, galex_pixscale,
+               layer, bands, dry_run, fits_cutouts, ivar_cutouts,
+               unwise_cutouts, galex_cutouts, 0, 0)
 
     # now rearrange the files to match our file / data model
     fitssuffixes = ['', ]
