@@ -54,6 +54,7 @@ ELLIPSEBIT = dict(
     LESSMASKING = 2**12,       # Gaia stars were subtracted but not threshold-masked
     MOREMASKING = 2**13,       # extended sources were threshold-masked even within the SGA ellipse
     FAILGEO = 2**14,           # failed to derive the ellipse geometry (reverted to initial geometry)
+    SKIPTRACTOR = 2**15,       # skip Tractor fitting entirely
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds

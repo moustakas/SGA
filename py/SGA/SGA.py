@@ -498,8 +498,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
-        is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
+        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
+        #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]
@@ -3227,6 +3227,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
         if tractor is None:
             samplesrcs = [None] * len(sample)
+            sample['ELLIPSEBIT'] |= ELLIPSEBIT['SKIPTRACTOR']
         else:
             samplesrcs = []
             for iobj, refid in enumerate(sample[REFIDCOLUMN].value):
@@ -3500,7 +3501,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         sample['SMA_MOMENT'] = sample['SMA_INIT'] # [arcsec]
         sample['BA_MOMENT'] = sample['BA_INIT']
         sample['PA_MOMENT'] = sample['PA_INIT']
-        sample['ELLIPSEBIT'] |= ELLIPSEBIT['NOTRACTOR']
+        sample['ELLIPSEBIT'] |= ELLIPSEBIT['SKIPTRACTOR']
 
         # FIXME - duplicate code from io._read_image_data
         from tractor.tractortime import TAITime
@@ -3561,7 +3562,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     else:
         # Read the basic imaging data and masks and build the multiband
         # masks.
-        data = _read_image_data(data, filt2imfile, read_jpg=read_jpg, skip_tractor=skip_tractor,
+        data = _read_image_data(data, filt2imfile, read_jpg=read_jpg,
+                                skip_tractor=skip_tractor,
                                 verbose=verbose)
 
 
