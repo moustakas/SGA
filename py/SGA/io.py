@@ -208,43 +208,32 @@ def _missing_files_one(args):
 
 def missing_files_one(checkfile, dependsfile, overwrite):
     """Simple support script for missing_files."""
-
     from pathlib import Path
+
+    # If already done and not overwriting
     if Path(checkfile).exists() and overwrite is False:
-        # Is the stage that this stage depends on done, too?
-        #log.warning(checkfile, dependsfile, overwrite)
         if dependsfile is None:
             return 'done'
+        elif Path(dependsfile).exists():
+            return 'done'
         else:
-            if Path(dependsfile).exists():
-                return 'done'
-            else:
-                return 'todo'
-    else:
-        #log.warning(f'missing_files_one {checkfile}')
-        # Did this object fail?
-        # fragile!
-        if checkfile[-6:] == 'isdone':
-            failfile = checkfile[:-6]+'isfail'
-            if Path(failfile).exists():
-                if overwrite is False:
-                    return 'fail'
-                else:
-                    os.remove(failfile)
-                    return 'todo'
-            else:
-                return 'todo'
-        else:
-            if dependsfile is not None:
-                if os.path.isfile(dependsfile):
-                    return 'todo'
-                else:
-                    log.warning(f'Missing depends file {dependsfile}')
-                    return 'fail'
-            else:
-                return 'todo'
+            # Weird state: checkfile exists but dependency doesn't?
+            return 'done'
 
-        return 'todo'
+    # Check for failure marker
+    if checkfile.endswith('.isdone'):
+        failfile = checkfile[:-6] + 'isfail'
+        if Path(failfile).exists():
+            if overwrite:
+                os.remove(failfile)
+            else:
+                return 'fail'
+
+    # Check if dependency is ready
+    if dependsfile is not None and not Path(dependsfile).exists():
+        return 'wait'
+
+    return 'todo'
 
 
 def read_fits_catalog(catfile, ext=1, columns=None, rows=None):

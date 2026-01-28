@@ -339,16 +339,22 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     itodo = np.where(todo == 'todo')[0]
     idone = np.where(todo == 'done')[0]
     ifail = np.where(todo == 'fail')[0]
+    iwait = np.where(todo == 'wait')[0]
 
     if len(ifail) > 0:
         fail_indices = [indices[ifail]]
     else:
-        fail_indices = [np.array([])]
+        fail_indices = [np.array([], int)]
+
+    if len(iwait) > 0:
+        wait_indices = [indices[iwait]]
+    else:
+        wait_indices = [np.array([], int)]
 
     if len(idone) > 0:
         done_indices = [indices[idone]]
     else:
-        done_indices = [np.array([])]
+        done_indices = [np.array([], int)]
 
     if len(itodo) > 0:
         todo_indices, loads = distribute_work(sample[DIAMCOL].value, itodo=itodo,
@@ -356,7 +362,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     else:
         todo_indices = []
 
-    return suffix, todo_indices, done_indices, fail_indices
+    return suffix, todo_indices, done_indices, fail_indices, wait_indices
 
 
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
@@ -498,8 +504,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
-        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
-        #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
+        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
+        is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]

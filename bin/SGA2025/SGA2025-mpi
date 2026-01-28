@@ -352,7 +352,7 @@ def main():
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
     if rank == 0:
-        suffix, groups, _, fail = missing_files(
+        suffix, groups, _, fail, wait = missing_files(
             sample=sample, region=args.region, bricks=bricks,
             coadds=args.coadds, ellipse=args.ellipse,
             htmlplots=args.htmlplots, htmlindex=args.htmlindex,
@@ -391,9 +391,14 @@ def main():
 
     # Report summary (rank 0 only)
     if rank == 0:
+        nwait = len(wait[rank])
         ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
+        if nwait > 0:
+            log.info(f'{suffix.upper()} waiting for previous stage: {nwait:,d} / ' + \
+                     f'{len(sample):,d}')
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
                  f'{len(sample):,d} divided across {size} rank(s).')
+
     if comm:
         comm.barrier()
 
@@ -715,16 +720,16 @@ def main():
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
                  f'after {(time.time()-tall)/60.:.3f} minutes')
-        _, groups, _, _ = missing_files(sample=sample, region=args.region,
-                                        bricks=bricks, coadds=args.coadds,
-                                        ellipse=args.ellipse,
-                                        htmlplots=args.htmlplots,
-                                        htmlindex=args.htmlindex,
-                                        #clobber=args.clobber,
-                                        no_groups=no_groups,
-                                        verbose=args.verbose,
-                                        datadir=datadir, htmldir=htmldir,
-                                        size=size, mp=args.mp)
+        _, groups, _, _, _ = missing_files(sample=sample, region=args.region,
+                                           bricks=bricks, coadds=args.coadds,
+                                           ellipse=args.ellipse,
+                                           htmlplots=args.htmlplots,
+                                           htmlindex=args.htmlindex,
+                                           #clobber=args.clobber,
+                                           no_groups=no_groups,
+                                           verbose=args.verbose,
+                                           datadir=datadir, htmldir=htmldir,
+                                           size=size, mp=args.mp)
 
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))
