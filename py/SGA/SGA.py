@@ -1061,9 +1061,12 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             isin = np.zeros(len(refs), bool)
             rad, ba, pa, _, _, _ = SGA_geometry(ellipse, region, radius_arcsec=True)
             for iobj in range(nsample):
-                isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600.,
-                                            rad[iobj]*ba[iobj]/3600., pa[iobj], np.asarray(refs['ra']),
-                                            np.asarray(refs['dec']))
+                try:
+                    isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600.,
+                                                rad[iobj]*ba[iobj]/3600., pa[iobj], np.asarray(refs['ra']),
+                                                np.asarray(refs['dec']))
+                except:
+                    pdb.set_trace()
             J = np.logical_and(I, np.logical_or(isin, refs['ref_cat'] == REFCAT))
 
             # J can be empty if the initial geometry is so pathological
@@ -1170,7 +1173,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         version = SGA_version()
         #version = 'v0.10b'
         if test_bricks:
-            version = 'testbricks-v0.21'
+            version = 'testbricks-v0.60'
             outprefix = 'SGA2025'
             outfile = f'{outprefix}-{version}.fits'
             kdoutfile = f'{outprefix}-{version}.fits'
