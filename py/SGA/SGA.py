@@ -519,7 +519,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     #    J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
     #    fullsample = fullsample[J]
     #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #    pdb.set_trace()
 
     #if True:
     #    redo = np.unique(Table.read('/global/u2/i/ioannis/rerun.txt', format='ascii')['col1'].value)
@@ -1047,8 +1046,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         # NB: Do not remove Gaia/DUP sources; those will be handled in
         # legacypipe; also note that all sources should have
         # brick_primary=True
-        I = refs['brick_primary']
-        #I = refs['brick_primary'] * (refs['ref_cat'] != 'G3') * (refs['type'] != 'DUP')
+        I = refs['brick_primary'] * (refs['type'] != 'DUP')
+        #I = refs['brick_primary'] * (refs['ref_cat'] != 'G3')
 
         # if np.sum(I)==0, this is a problem...; add to "missing" catalog.
         if np.sum(I) == 0:
@@ -1465,7 +1464,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         # Write out outfile_ellipse by combining the ellipse and
         # tractor catalogs.
         ellipse_cols = ['RA', 'DEC', 'SGAID', 'MAG_INIT', 'PA', 'BA', 'D26', 'FITMODE']
-        tractor_cols = ['type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
+        tractor_cols = ['ref_cat', 'type', 'sersic', 'shape_r', 'shape_e1', 'shape_e2', ] + \
             [f'flux_{filt}' for filt in bands]
 
         out_sga = outellipse[ellipse_cols]
@@ -1478,7 +1477,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         out_nosga = hstack((out_nosga, tractor_nosga[tractor_cols]))
         out_nosga['ra'] = tractor_nosga['ra']
         out_nosga['dec'] = tractor_nosga['dec']
-        out_nosga['ref_id'] = -1
+        out_nosga['ref_id'] = tractor_nosga['ref_id']
 
         out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
         out = vstack((out_sga, out_nosga))

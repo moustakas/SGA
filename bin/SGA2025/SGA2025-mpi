@@ -643,10 +643,10 @@ def main():
                 sample_thisgroup = fullsample[I]
 
             samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
-            import fitsio
-            if len(sample_thisgroup) != len(fitsio.read(samplefile)):
-                print(galaxydir)
-            continue
+            #import fitsio
+            #if len(sample_thisgroup) != len(fitsio.read(samplefile)):
+            #    print(galaxydir)
+            #continue
 
             log.info(f'Writing {len(sample_thisgroup)} galaxy(ies) to {samplefile}')
             tmpfile = samplefile+'.tmp'
