@@ -59,8 +59,9 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                 [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
                 [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
 
-
-            xx.imshow(wimg)
+            # can be None for --skip-tractor
+            if wimg is not None:
+                xx.imshow(wimg)
 
             # add the scale bar
             if ii == 0 and iax == 0:
@@ -908,8 +909,8 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                unpack_maskbits_function, SGAMASKBITS, APERTURES, region='dr11-south',
                run='south', mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262,
                galex_pixscale=1.5, unwise_pixscale=2.75, skip_ellipse=False,
-               galex=True, unwise=True, barlen=None, barlabel=None, verbose=False,
-               clobber=False):
+               skip_tractor=False, galex=True, unwise=True, barlen=None, barlabel=None,
+               verbose=False, clobber=False):
     """Make QA plots.
 
     """
@@ -931,7 +932,8 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, skip_ellipse=skip_ellipse, read_jpg=True)
+        galex=galex, skip_ellipse=skip_ellipse, skip_tractor=skip_tractor,
+        read_jpg=True)
 
     multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
                       barlabel=barlabel, clobber=clobber)

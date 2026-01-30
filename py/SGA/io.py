@@ -208,43 +208,32 @@ def _missing_files_one(args):
 
 def missing_files_one(checkfile, dependsfile, overwrite):
     """Simple support script for missing_files."""
-
     from pathlib import Path
+
+    # If already done and not overwriting
     if Path(checkfile).exists() and overwrite is False:
-        # Is the stage that this stage depends on done, too?
-        #log.warning(checkfile, dependsfile, overwrite)
         if dependsfile is None:
             return 'done'
+        elif Path(dependsfile).exists():
+            return 'done'
         else:
-            if Path(dependsfile).exists():
-                return 'done'
-            else:
-                return 'todo'
-    else:
-        #log.warning(f'missing_files_one {checkfile}')
-        # Did this object fail?
-        # fragile!
-        if checkfile[-6:] == 'isdone':
-            failfile = checkfile[:-6]+'isfail'
-            if Path(failfile).exists():
-                if overwrite is False:
-                    return 'fail'
-                else:
-                    os.remove(failfile)
-                    return 'todo'
-            else:
-                return 'todo'
-        else:
-            if dependsfile is not None:
-                if os.path.isfile(dependsfile):
-                    return 'todo'
-                else:
-                    log.warning(f'Missing depends file {dependsfile}')
-                    return 'fail'
-            else:
-                return 'todo'
+            # Weird state: checkfile exists but dependency doesn't?
+            return 'done'
 
-        return 'todo'
+    # Check for failure marker
+    if checkfile.endswith('.isdone'):
+        failfile = checkfile[:-6] + 'isfail'
+        if Path(failfile).exists():
+            if overwrite:
+                os.remove(failfile)
+            else:
+                return 'fail'
+
+    # Check if dependency is ready
+    if dependsfile is not None and not Path(dependsfile).exists():
+        return 'wait'
+
+    return 'todo'
 
 
 def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
@@ -265,7 +254,7 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
         raise IOError(msg)
 
 
-def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
+def _read_image_data(data, filt2imfile, read_jpg=False, skip_tractor=False, verbose=False):
     """Helper function for the project-specific read_multiband method.
 
     Read the multi-band images and inverse variance images and pack them into a
@@ -300,12 +289,15 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
         # variance image.
         if verbose:
             log.info(f'Reading {filt2imfile[filt]["image"]}')
-            log.info(f'Reading {filt2imfile[filt]["model"]}')
             log.info(f'Reading {filt2imfile[filt]["invvar"]}')
         hdr = fitsio.read_header(filt2imfile[filt]['image'], ext=1)
         image = fitsio.read(filt2imfile[filt]['image'])
         invvar = fitsio.read(filt2imfile[filt]['invvar'])
-        model = fitsio.read(filt2imfile[filt]['model'])
+        if 'model' in filt2imfile[filt].keys():
+            log.info(f'Reading {filt2imfile[filt]["model"]}')
+            model = fitsio.read(filt2imfile[filt]['model'])
+        else:
+            model = None
 
         if np.any(invvar < 0):
             log.warning(f'Found {np.sum(invvar<0):,d} negative pixels in the ' + \
@@ -358,21 +350,26 @@ def _read_image_data(data, filt2imfile, read_jpg=False, verbose=False):
         if filt in unwise_bands:
             image *= 10.**(-0.4 * VEGA2AB[filt])
             invvar /= (10.**(-0.4 * VEGA2AB[filt]))**2.
-            model *= 10.**(-0.4 * VEGA2AB[filt])
+            if model is not None:
+                model *= 10.**(-0.4 * VEGA2AB[filt])
 
-        if verbose:
-            log.info(f'Reading {filt2imfile[filt]["psf"]}')
-        psfimg = fitsio.read(filt2imfile[filt]['psf'])
-        psfimg /= psfimg.sum()
-        data[f'{filt}_psf'] = PixelizedPSF(psfimg)
+        if 'psf' in filt2imfile[filt].keys():
+            if verbose:
+                log.info(f'Reading {filt2imfile[filt]["psf"]}')
+            psfimg = fitsio.read(filt2imfile[filt]['psf'])
+            psfimg /= psfimg.sum()
+            data[f'{filt}_psf'] = PixelizedPSF(psfimg)
+        else:
+            data[f'{filt}_psf'] = None
 
         # Generate a basic per-band mask, including allmask for the
         # optical bands and wisemask for the unwise bands.
         mask = invvar <= 0 # True-->bad
 
-        if filt in opt_bands:
-            mask = np.logical_or(mask, data[f'allmask_{filt}'])
-            del data[f'allmask_{filt}']
+        if not skip_tractor:
+            if filt in opt_bands:
+                mask = np.logical_or(mask, data[f'allmask_{filt}'])
+                del data[f'allmask_{filt}']
 
         # add wisemask for W1/W2, if present, but we have to resize
         if data['wisemask'] is not None and filt in unwise_bands[:2]:
@@ -448,7 +445,7 @@ def table_to_fitsio(tbl):
     return data, names, units
 
 
-def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
+def make_header(src_hdr, keys, extname=None, bunit=None, extra=None):
     """
     Build a FITSHDR copying specific keys from an existing fitsio FITSHDR.
 
@@ -477,10 +474,6 @@ def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
                 val = src_hdr[k]
                 com = src_hdr.get_comment(k) if hasattr(src_hdr, 'get_comment') else ''
                 hdr.add_record({'name': k, 'value': val, 'comment': com})
-    if extname is not None:
-        hdr['EXTNAME'] = extname
-    if bunit is not None:
-        hdr['BUNIT'] = bunit
     if extra:
         for k, v in extra.items():
             if isinstance(v, tuple) and len(v) == 2:
@@ -488,6 +481,10 @@ def make_header(src_hdr, keys, *, extname=None, bunit=None, extra=None):
                 hdr.add_record({'name': k, 'value': val, 'comment': com})
             else:
                 hdr[k] = v
+    if bunit is not None:
+        hdr['BUNIT'] = bunit
+    if extname is not None:
+        hdr['EXTNAME'] = extname
 
     return hdr
 

@@ -54,6 +54,7 @@ ELLIPSEBIT = dict(
     LESSMASKING = 2**12,       # Gaia stars were subtracted but not threshold-masked
     MOREMASKING = 2**13,       # extended sources were threshold-masked even within the SGA ellipse
     FAILGEO = 2**14,           # failed to derive the ellipse geometry (reverted to initial geometry)
+    SKIPTRACTOR = 2**15,       # skip Tractor fitting entirely
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
@@ -1419,8 +1420,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          galex=True, unwise=True, use_tractor_position=True,
                          use_radial_weight=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
                          update_geometry=False, nmonte=50, seed=42, verbose=False,
-                         skip_ellipse=False, nowrite=False, clobber=False, qaplot=False,
-                         htmlgalaxydir=None):
+                         skip_tractor=False, skip_ellipse=False, nowrite=False, clobber=False,
+                         qaplot=False, htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
 
@@ -1453,7 +1454,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise, galex=galex,
-        verbose=verbose, skip_ellipse=skip_ellipse)
+        verbose=verbose, skip_ellipse=skip_ellipse, skip_tractor=skip_tractor)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err

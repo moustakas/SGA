@@ -69,6 +69,7 @@ def mpi_args():
     parser.add_argument('--galaxylist-file', default=None, type=str, help='Write a galaxy list file for use with generate_sga_jobs.sh')
 
     #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
+    parser.add_argument('--skip-tractor', action='store_true', help='With --coadds or --ellipse, do not run Tractor.')
     parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')

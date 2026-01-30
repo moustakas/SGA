@@ -150,11 +150,14 @@ def sort_groups_by_attempts(galaxy, galaxydir, sample, diamcolumn='DIAM'):
             todo.append(os.path.basename(gdir))
             diams.append(diam)
 
+        if len(todo) > 0:
+            print()
+            print(','.join(todo))
 
-    if len(todo) > 0:
-        print()
-        #print(','.join(todo))
-        _ = [print(f'{one},{diam}') for one, diam in zip(todo, diams)]
+    #if len(todo) > 0:
+    #    print()
+    #    print(','.join(todo))
+    #    #_ = [print(f'{one},{diam}') for one, diam in zip(todo, diams)]
 
 
 def main():
@@ -349,7 +352,7 @@ def main():
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
     if rank == 0:
-        suffix, groups, _, fail = missing_files(
+        suffix, groups, _, fail, wait = missing_files(
             sample=sample, region=args.region, bricks=bricks,
             coadds=args.coadds, ellipse=args.ellipse,
             htmlplots=args.htmlplots, htmlindex=args.htmlindex,
@@ -388,9 +391,14 @@ def main():
 
     # Report summary (rank 0 only)
     if rank == 0:
+        nwait = len(wait[rank])
         ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
+        if nwait > 0:
+            log.info(f'{suffix.upper()} waiting for previous stage: {nwait:,d} / ' + \
+                     f'{len(sample):,d}')
         log.info(f'{suffix.upper()} left to do: {ntodo:,d} / ' + \
                  f'{len(sample):,d} divided across {size} rank(s).')
+
     if comm:
         comm.barrier()
 
@@ -499,6 +507,7 @@ def main():
             # always have GROUP_MULT==1)
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
                 just_cutouts = True
+                ivar_cutouts = False
                 layer = f'ls-{args.region}'
                 if args.region == 'dr11-south':
                     log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
@@ -522,8 +531,17 @@ def main():
                 pixscale = args.pixscale
                 galex_pixscale = args.galex_pixscale
                 unwise_pixscale = args.unwise_pixscale
-                just_cutouts = False
-                layer = None
+                if args.skip_tractor:
+                    just_cutouts = True
+                    ivar_cutouts = True
+                    layer = f'ls-{args.region}'
+                    if args.region == 'dr11-south':
+                        log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
+                        layer = 'ls-dr11-early-v2'
+                else:
+                    just_cutouts = False
+                    ivar_cutouts = False
+                    layer = None
 
             # FORCEGAIA (not yet implemented); may be useful for e.g., Leo I
             if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEGAIA'] != 0:
@@ -535,33 +553,38 @@ def main():
             else:
                 force_psf_detection = False
 
-            # for very large mosaics, turn off iterative source detection and increase nsigma
-            if onegal[DIAMCOLUMN] > 5.:
-                no_iterative = True
-                if args.nsigma is None:
-                    nsigma = 10
-                else:
-                    nsigma = args.nsigma
-                fit_on_coadds = True
-            else:
-                no_iterative = args.no_iterative
-                nsigma = args.nsigma
-                fit_on_coadds = args.fit_on_coadds
+            ## for very large mosaics, turn off iterative source detection and increase nsigma
+            #if onegal[DIAMCOLUMN] > 5.:
+            #    no_iterative = True
+            #    if args.nsigma is None:
+            #        nsigma = 10
+            #    else:
+            #        nsigma = args.nsigma
+            #    fit_on_coadds = True
+            #else:
+            #    no_iterative = args.no_iterative
+            #    nsigma = args.nsigma
+            #    fit_on_coadds = args.fit_on_coadds
 
             no_iterative = True
             nsigma = 10
             fit_on_coadds = True
-            log.info('Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
+            saddle_fraction = 0.2
+            saddle_min = 4.
+
+            if not just_cutouts:
+                log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
 
             if args.debug:
                 err, _ = custom_coadds(
                     onegal, galaxy, survey, run, radius_mosaic_arcsec,
                     release=release, pixscale=pixscale, bands=bands, mp=args.mp,
                     unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
-                    nsigma=nsigma, just_coadds=args.just_coadds,
-                    force_psf_detection=force_psf_detection,
+                    nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
+                    just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                     no_iterative=no_iterative,
                     fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
+                    ivar_cutouts=ivar_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
@@ -576,10 +599,11 @@ def main():
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
                         release=release, pixscale=pixscale, bands=bands, mp=args.mp,
                         unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
-                        nsigma=nsigma, just_coadds=args.just_coadds,
-                        force_psf_detection=force_psf_detection,
+                        nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
+                        just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                         no_iterative=no_iterative,
                         fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
+                        ivar_cutouts=ivar_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
@@ -619,6 +643,11 @@ def main():
                 sample_thisgroup = fullsample[I]
 
             samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
+            #import fitsio
+            #if len(sample_thisgroup) != len(fitsio.read(samplefile)):
+            #    print(galaxydir)
+            #continue
+
             log.info(f'Writing {len(sample_thisgroup)} galaxy(ies) to {samplefile}')
             tmpfile = samplefile+'.tmp'
             sample_thisgroup.write(tmpfile, overwrite=True, format='fits')
@@ -655,6 +684,7 @@ def main():
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
                                        clobber=args.clobber, skip_ellipse=skip_ellipse,
+                                       skip_tractor=args.skip_tractor,
                                        htmlgalaxydir=htmlgalaxydir)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
@@ -679,6 +709,7 @@ def main():
                              unpack_maskbits, SGAMASKBITS, APERTURES,
                              args.region, barlen=barlen, barlabel=barlabel,
                              run=run, skip_ellipse=skip_ellipse,
+                             skip_tractor=args.skip_tractor,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
                              verbose=args.verbose, clobber=args.clobber)
@@ -694,16 +725,16 @@ def main():
     if rank == 0:
         log.info(f'Finished {ntodo} {suffix.upper()} at {time.asctime()} ' + \
                  f'after {(time.time()-tall)/60.:.3f} minutes')
-        _, groups, _, _ = missing_files(sample=sample, region=args.region,
-                                        bricks=bricks, coadds=args.coadds,
-                                        ellipse=args.ellipse,
-                                        htmlplots=args.htmlplots,
-                                        htmlindex=args.htmlindex,
-                                        #clobber=args.clobber,
-                                        no_groups=no_groups,
-                                        verbose=args.verbose,
-                                        datadir=datadir, htmldir=htmldir,
-                                        size=size, mp=args.mp)
+        _, groups, _, _, _ = missing_files(sample=sample, region=args.region,
+                                           bricks=bricks, coadds=args.coadds,
+                                           ellipse=args.ellipse,
+                                           htmlplots=args.htmlplots,
+                                           htmlindex=args.htmlindex,
+                                           #clobber=args.clobber,
+                                           no_groups=no_groups,
+                                           verbose=args.verbose,
+                                           datadir=datadir, htmldir=htmldir,
+                                           size=size, mp=args.mp)
 
         if len(groups) > 0:
             stilltodo = len(np.hstack(groups))
