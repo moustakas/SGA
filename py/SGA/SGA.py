@@ -1024,15 +1024,23 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     tractor_sga = []
 
     # Read the Tractor catalog for all the SGA sources as well as for
-    # all sources within the SGA ellipse. NB: RESOLVED groups are
-    # *expected* to not have an ellipse catalog (and to always have
-    # len(ellipse)==1).
+    # all sources within the SGA ellipse.
     tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
     if not os.path.isfile(tractorfile):
+        # RESOLVED groups are *expected* to not have an ellipse
+        # catalog (and to always have len(ellipse)==1).
         if len(ellipse) == 1 and ellipse['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
             #log.warning('Sources with ELLIPSEMODEL["RESOLVED"] do not have Tractor catalogs.')
             tractor_sga1 = empty_tractor()
             # should we add ra,dec,shape_{r,e1,e2}??
+            tractor_sga1['ref_cat'] = REFCAT
+            tractor_sga1['ref_id'] = ellipse[REFIDCOLUMN]
+            tractor_sga.append(tractor_sga1)
+            tractor = Table()
+        # If SKIPTRACTOR is set, there is no Tractor catalog (for the
+        # whole mosaic) but there are ellipse catalogs.
+        elif np.any(ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0):
+            tractor_sga1 = empty_tractor()
             tractor_sga1['ref_cat'] = REFCAT
             tractor_sga1['ref_id'] = ellipse[REFIDCOLUMN]
             tractor_sga.append(tractor_sga1)
