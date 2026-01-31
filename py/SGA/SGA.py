@@ -942,181 +942,314 @@ def SGA_datamodel(ellipse, bands, all_bands, copy=True):
     return out
 
 
-def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
-    """Gather the ellipse-fitting results for a single group.
+def _create_mock_ellipse_from_sample(grpsample):
+    """Create mock ellipse catalog from parent sample when processing failed.
 
-    No tractor or ellipse catalog for this object:
-    dr11-south/203/20337p3381
+    Sets SKIPTRACTOR bit, FIXGEO fitmode, and populates geometry from initial values.
 
     """
+    from SGA.ellipse import ELLIPSEBIT, FITMODE
+
+    n = len(grpsample)
+
+    ellipse = Table()
+
+    # Copy identifying columns
+    for col in [REFIDCOLUMN, 'OBJNAME', 'GROUP_ID', 'GROUP_NAME', 'GROUP_MULT',
+                'GROUP_PRIMARY', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
+                'REGION', 'PGC', 'SAMPLE']:
+        if col in grpsample.colnames:
+            ellipse[col] = grpsample[col]
+
+    # Geometry from initial values
+    ellipse['RA'] = grpsample['RA']
+    ellipse['DEC'] = grpsample['DEC']
+    ellipse['SMA_MOMENT'] = grpsample['DIAM'] * 60. / 2.  # arcmin -> arcsec radius
+    ellipse['BA_MOMENT'] = grpsample['BA'] if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
+    ellipse['PA_MOMENT'] = grpsample['PA'] if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+
+    # Copy initial geometry columns
+    ellipse['RA_INIT'] = grpsample['RA']
+    ellipse['DEC_INIT'] = grpsample['DEC']
+    ellipse['DIAM_INIT'] = grpsample['DIAM']
+    ellipse['BA_INIT'] = grpsample['BA'] if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
+    ellipse['PA_INIT'] = grpsample['PA'] if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['MAG_INIT'] = grpsample['MAG'] if 'MAG' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['DIAM_REF_INIT'] = grpsample['DIAM_REF'] if 'DIAM_REF' in grpsample.colnames else np.full(n, '', dtype='U9')
+
+    ellipse['ELLIPSEBIT'] = np.full(n, ELLIPSEBIT['SKIPTRACTOR'], dtype=np.int32)
+    ellipse['ELLIPSEMODE'] = np.zeros(n, dtype=np.int32)
+    ellipse['FITMODE'] = np.full(n, FITMODE['FIXGEO'], dtype=np.int32)
+
+    return ellipse
+
+
+def _create_mock_tractor_sga(refids):
+    """Create mock Tractor catalog entries for SKIPTRACTOR/NOTRACTOR sources."""
+    from SGA.io import empty_tractor
+
+    tractor_list = []
+    for refid in refids:
+        t = empty_tractor()
+        t['ref_cat'] = REFCAT
+        t['ref_id'] = refid
+        tractor_list.append(t)
+
+    return vstack(tractor_list) if tractor_list else Table()
+
+
+def _build_tractor_sga_entries(tractor, ellipse):
+    """Build mock Tractor entries for SGA sources not in Tractor catalog.
+
+    Also sets FITMODE['FIXGEO'] on ellipse for NOTRACTOR sources.
+
+    """
+    from SGA.ellipse import ELLIPSEBIT, FITMODE
+
+    tractor_sga_list = []
+    notractor_indices = []
+
+    for i in range(len(ellipse)):
+        if len(tractor) > 0:
+            match = (
+                (tractor['ref_id'] == ellipse[REFIDCOLUMN][i]) &
+                (tractor['ref_cat'] == REFCAT)
+            )
+            n_match = np.sum(match)
+
+            if n_match > 1:
+                raise IOError('Multiple SGA sources in Tractor catalog!')
+
+            if n_match == 1:
+                continue
+
+        # No match - verify NOTRACTOR bit
+        assert ellipse['ELLIPSEBIT'][i] & ELLIPSEBIT['NOTRACTOR'] != 0
+        notractor_indices.append(i)
+
+    # Set FIXGEO for NOTRACTOR sources
+    if notractor_indices:
+        ellipse['FITMODE'][notractor_indices] |= FITMODE['FIXGEO']
+
+    # Create mock tractor entries
+    if notractor_indices:
+        notractor_refids = ellipse[REFIDCOLUMN][notractor_indices]
+        tractor_sga = _create_mock_tractor_sga(notractor_refids)
+    else:
+        tractor_sga = Table()
+
+    return tractor_sga
+
+
+def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
+    """Gather ellipse-fitting results for a single group."""
     import fitsio
-    from os import getpid
     from glob import glob
-    #from legacypipe.bits import MASKBITS
 
     from SGA.io import empty_tractor
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
     from SGA.sky import in_ellipse_mask_sky
 
-
-    # sample group name and directory
+    # --- Locate group directory ---
     grp, gdir = get_galaxy_galaxydir(
         grpsample[0], region=region,
         group=not no_groups, datadir=datadir)
 
     if not os.path.isdir(gdir):
-        #log.warning(f'Group directory {gdir} does not exist.')
         for obj in grpsample:
-            log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table(), grpsample
+            log.warning(f'Missing directory {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        ellipse = _create_mock_ellipse_from_sample(grpsample)
+        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return ellipse, tractor, Table()
 
-    # gather the ellipse catalogs
+    # --- Read ellipse catalogs ---
+    ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands)
+    if ellipse is None:
+        for obj in grpsample:
+            log.warning(f'Missing ellipse files {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        ellipse = _create_mock_ellipse_from_sample(grpsample)
+        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return ellipse, tractor, Table()
+
+    # --- Validate ellipse catalogs match input sample ---
+    refid_array = grpsample['SGAID'].value
+    if not np.all(np.isin(ellipse[REFIDCOLUMN], refid_array)):
+        for obj in grpsample:
+            log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        ellipse = _create_mock_ellipse_from_sample(grpsample)
+        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return ellipse, tractor, Table()
+
+    # --- Read Tractor catalog ---
+    tractor, tractor_sga = _read_tractor_catalog(
+        gdir, grp, ellipse, refid_array, region)
+
+    # Append mock SGA entries to tractor
+    if len(tractor_sga) > 0:
+        tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
+
+    return ellipse, tractor, Table()
+
+
+def _read_ellipse_catalogs(gdir, datasets, opt_bands):
+    """Read and join ellipse catalogs across datasets.
+
+    Returns None if no ellipse files found or on read error.
+    """
+    import fitsio
+    from glob import glob
+
     ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
     if len(ellipsefiles) == 0:
-        for obj in grpsample:
-            log.warning(f'Missing {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table(), grpsample
+        return None
 
-    refid_array = grpsample['SGAID'].value
-    nsample = len(refid_array)
-
-    if len(ellipsefiles) > nsample:
-        msg = f'Found vestigial ellipse files in {gdir}; please remove!'
-        log.critical(msg)
-        raise IOError(msg)
-
-
-    ellipse = []
+    ellipse_list = []
     for ellipsefile in ellipsefiles:
-        # fragile!!
-        sganame = os.path.basename(ellipsefile).split('-')[:-2]
-        if len(sganame) == 1:
-            sganame = sganame[0]
-        else:
-            sganame = '-'.join(sganame)
+        # Extract SGA name from filename (fragile)
+        sganame_parts = os.path.basename(ellipsefile).split('-')[:-2]
+        sganame = sganame_parts[0] if len(sganame_parts) == 1 else '-'.join(sganame_parts)
 
-        # loop on datasets and join
+        # Join across datasets
+        ellipse1 = None
         for idata, dataset in enumerate(datasets):
             ellipsefile_dataset = os.path.join(gdir, f'{sganame}-ellipse-{dataset}.fits')
             try:
                 ellipse_dataset = Table(fitsio.read(ellipsefile_dataset, ext='ELLIPSE'))
-            except:
-                msg = f'Problem reading {ellipsefile_dataset}!'
-                log.critical(msg)
-                break
+            except Exception:
+                log.critical(f'Problem reading {ellipsefile_dataset}!')
+                return None
 
             if idata == 0:
                 ellipse1 = ellipse_dataset
             else:
                 ellipse1 = join(ellipse1, ellipse_dataset)
 
-        ellipse.append(ellipse1)
+        ellipse_list.append(ellipse1)
 
-    if len(ellipse) > 0:
-        ellipse = vstack(ellipse)
+    return vstack(ellipse_list) if ellipse_list else None
 
-    I = np.isin(ellipse[REFIDCOLUMN], refid_array)
-    if not np.all(I):
-        for obj in grpsample:
-            log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        return Table(), Table(), grpsample
+
+def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
+    """Read Tractor catalog and extract SGA source entries.
+
+    Returns
+    -------
+    tractor : Table
+        All relevant Tractor sources (SGA + sources within ellipses)
+    tractor_sga : Table
+        Mock entries for SGA sources without Tractor matches
+
+    """
+    import fitsio
+    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE, FITMODE
+    from SGA.sky import in_ellipse_mask_sky
+
+    tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
+
+    # --- Case 1: No Tractor file ---
+    if not os.path.isfile(tractorfile):
+        tractor, tractor_sga = _handle_missing_tractor_file(ellipse)
+        return tractor, tractor_sga
+
+    # --- Case 2: Tractor file exists ---
+    refs = fitsio.read(tractorfile, columns=[
+        'brick_primary', 'ra', 'dec', 'type', 'fitbits', 'ref_cat', 'ref_id'])
+
+    # Filter to valid sources
+    valid = refs['brick_primary'] & (refs['type'] != 'DUP')
+    if np.sum(valid) == 0:
+        log.warning(f'No sources in {tractorfile}')
+        return Table(), Table()
+
+    # Find sources inside SGA ellipses
+    isin = _sources_in_ellipses(refs, ellipse, region)
+
+    # Select: valid AND (inside ellipse OR is SGA source)
+    keep = valid & (isin | (refs['ref_cat'] == REFCAT))
+
+    if np.sum(keep) == 0:
+        tractor = Table()
+    else:
+        tractor = Table(fitsio.read(tractorfile, rows=np.where(keep)[0]))
+
+        # Remove SGA sources that don't belong to this group
+        foreign_sga = (
+            (tractor['ref_cat'] == REFCAT) &
+            ~np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])
+        )
+        if np.any(foreign_sga):
+            tractor.remove_rows(np.where(foreign_sga)[0])
+
+    # Build tractor_sga entries for NOTRACTOR sources (also sets FIXGEO on ellipse)
+    tractor_sga = _build_tractor_sga_entries(tractor, ellipse)
+
+    return tractor, tractor_sga
+
+
+def _handle_missing_tractor_file(ellipse):
+    """Handle cases where Tractor file doesn't exist."""
+    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE, FITMODE
+
+    # RESOLVED sources don't have Tractor catalogs (FIXGEO already set in parent)
+    if len(ellipse) == 1 and (ellipse['ELLIPSEMODE'][0] & ELLIPSEMODE['RESOLVED'] != 0):
+        tractor_sga = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return Table(), tractor_sga
+
+    # SKIPTRACTOR means no Tractor for whole mosaic
+    if np.any(ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0):
+        skiptractor_mask = (ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0
+        ellipse['FITMODE'][skiptractor_mask] |= FITMODE['FIXGEO']
+        tractor_sga = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return Table(), tractor_sga
+
+    raise ValueError('Unexpected case: no Tractor file but no RESOLVED/SKIPTRACTOR flag')
+
+
+def _sources_in_ellipses(refs, ellipse, region):
+    """Return boolean mask of refs that fall inside any SGA ellipse."""
+    from SGA.sky import in_ellipse_mask_sky
+
+    isin = np.zeros(len(refs), bool)
+    rad, ba, pa, _, _, _ = SGA_geometry(ellipse, region, radius_arcsec=True)
+
+    for iobj in range(len(ellipse)):
+        isin |= in_ellipse_mask_sky(
+            ellipse['RA'][iobj], ellipse['DEC'][iobj],
+            rad[iobj] / 3600., rad[iobj] * ba[iobj] / 3600., pa[iobj],
+            np.asarray(refs['ra']), np.asarray(refs['dec']))
+
+    return isin
+
+
+def _build_tractor_sga_entries(tractor, ellipse):
+    """Build mock Tractor entries for SGA sources not in Tractor catalog."""
+    from SGA.io import empty_tractor
+    from SGA.ellipse import ELLIPSEBIT
 
     tractor_sga = []
 
-    # Read the Tractor catalog for all the SGA sources as well as for
-    # all sources within the SGA ellipse.
-    tractorfile = os.path.join(gdir, f'{grp}-tractor.fits')
-    if not os.path.isfile(tractorfile):
-        # RESOLVED groups are *expected* to not have an ellipse
-        # catalog (and to always have len(ellipse)==1).
-        if len(ellipse) == 1 and ellipse['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
-            #log.warning('Sources with ELLIPSEMODEL["RESOLVED"] do not have Tractor catalogs.')
-            tractor_sga1 = empty_tractor()
-            # should we add ra,dec,shape_{r,e1,e2}??
-            tractor_sga1['ref_cat'] = REFCAT
-            tractor_sga1['ref_id'] = ellipse[REFIDCOLUMN]
-            tractor_sga.append(tractor_sga1)
-            tractor = Table()
-        # If SKIPTRACTOR is set, there is no Tractor catalog (for the
-        # whole mosaic) but there are ellipse catalogs.
-        elif np.any(ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0):
-            tractor_sga1 = empty_tractor()
-            tractor_sga1['ref_cat'] = REFCAT
-            tractor_sga1['ref_id'] = ellipse[REFIDCOLUMN]
-            tractor_sga.append(tractor_sga1)
-            tractor = Table()
-        else:
-            raise ValueError('Unexpected case')
-    else:
-        refs = fitsio.read(tractorfile, columns=['brick_primary', 'ra', 'dec', 'type', 'fitbits',
-                                                 'ref_cat', 'ref_id'])
+    for ellipse1 in ellipse:
+        if len(tractor) > 0:
+            match = (
+                (tractor['ref_id'] == ellipse1[REFIDCOLUMN]) &
+                (tractor['ref_cat'] == REFCAT)
+            )
+            n_match = np.sum(match)
 
-        # NB: Do not remove Gaia/DUP sources; those will be handled in
-        # legacypipe; also note that all sources should have
-        # brick_primary=True
-        I = refs['brick_primary'] * (refs['type'] != 'DUP')
-        #I = refs['brick_primary'] * (refs['ref_cat'] != 'G3')
+            if n_match > 1:
+                raise IOError(f'Multiple SGA sources in Tractor catalog!')
 
-        # if np.sum(I)==0, this is a problem...; add to "missing" catalog.
-        if np.sum(I) == 0:
-            log.warning(f'No sources in {tractorfile}')
-            return Table(), Table(), grpsample
-        else:
-            # NB: Do not use maskbits because that was based on the
-            # old geometry.
-            #isin = (refs['maskbits'] & MASKBITS['GALAXY'] != 0) # wrong!
-            isin = np.zeros(len(refs), bool)
-            rad, ba, pa, _, _, _ = SGA_geometry(ellipse, region, radius_arcsec=True)
-            for iobj in range(nsample):
-                isin |= in_ellipse_mask_sky(ellipse['RA'][iobj], ellipse['DEC'][iobj], rad[iobj]/3600.,
-                                            rad[iobj]*ba[iobj]/3600., pa[iobj], np.asarray(refs['ra']),
-                                            np.asarray(refs['dec']))
-            J = np.logical_and(I, np.logical_or(isin, refs['ref_cat'] == REFCAT))
+            if n_match == 1:
+                continue  # Already in tractor, no mock needed
 
-            # J can be empty if the initial geometry is so pathological
-            # that the SGA source doesn't get MASKBITS set (or that the
-            # SGA source is dropped *and* there are no sources within the
-            # initial elliptical geometry).
-            if np.sum(J) == 0:
-                I = np.where(I)[0]
-            else:
-                I = np.where(J)[0]
-            tractor = Table(fitsio.read(tractorfile, rows=I))
+        # No match - verify NOTRACTOR bit and create mock entry
+        assert ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
+        tractor_sga1 = empty_tractor()
+        tractor_sga1['ref_cat'] = REFCAT
+        tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
+        tractor_sga.append(tractor_sga1)
 
-            # Remove SGA Tractor sources that don't "belong" to this group.
-            rem = np.where(np.logical_not(np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])) *
-                           (tractor['ref_cat'] == REFCAT))[0]
-            if len(rem) > 0:
-                tractor.remove_rows(rem)
-
-            # Tractor catalog of SGA source(s)
-            for ellipse1 in ellipse:
-                I = np.where((tractor['ref_id'] == ellipse1[REFIDCOLUMN]) *
-                             (tractor['ref_cat'] == REFCAT))[0]
-                if len(I) > 1:
-                    msg = f'Multiple SGA sources in {gdir} Tractor catalog!'
-                    log.critical(msg)
-                    raise IOError(msg)
-
-                # If there's no match, confirm that the NOTRACTOR bit was set,
-                # read a blank catalog, and then move on. Should never happen!
-                # dr11-south/195/19533p2848/SDSS J130120.01+282848.5
-                #if len(I) == 1:
-                #    tractor_sga.append(tractor[I])
-                if len(I) == 0:
-                    assert(ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0)
-                    #tractor_sga1 = empty_tractor(Table(fitsio.read(tractorfile, rows=[0])))
-                    tractor_sga1 = empty_tractor()
-                    tractor_sga1['ref_cat'] = REFCAT
-                    tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
-                    tractor_sga.append(tractor_sga1)
-
-    # add the custom tractor_sga catalogs
-    if len(tractor_sga) > 0:
-        tractor_sga = vstack(tractor_sga)
-        tractor = vstack((tractor, tractor_sga))
-
-    return ellipse, tractor, Table()
+    return tractor_sga
 
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
@@ -1418,41 +1551,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
 
-        # In the end, there should not be any "missing" systems but
-        # until then we want the output catalog to include all objects
-        # from the parent SGA.
-        if len(missing) > 0:
-            missfile = os.path.join(sga_dir(), 'sample', f'{outprefix}-{version}-{region}-missing.fits')
-            missing = missing[np.argsort(missing['DIAM'])]
-            missing.write(missfile, overwrite=True)
-            log.info(f'Wrote {len(missing):,d} objects to {missfile}')
-
-            from SGA.SGA import read_sample
-            _, ff = read_sample(region=region)
-            assert(len(ff) == (len(outellipse)+len(missing)))
-
-            outellipse_missing = SGA_datamodel(missing, bands, all_bands, copy=False)
-            for col in missing.colnames:
-                if col in outellipse_missing.colnames:
-                    print(f'Copying {col}')
-                    outellipse_missing[col] = missing[col]
-            for col, newcol in zip(['DIAM', 'BA', 'PA', 'MAG', 'DIAM', 'DIAM_REF'],
-                                   ['DIAM_INIT', 'BA_INIT', 'PA_INIT', 'MAG_INIT', 'D26', 'D26_REF']):
-                outellipse_missing[newcol] = missing[col]
-            log.info(f'Mocking an ellipse catalog for {len(outellipse_missing):,d} sources with missing ellipse catalogs')
-
-            from SGA.io import empty_tractor
-            tractor_sga_missing = vstack([empty_tractor()] * len(outellipse_missing))
-            tractor_sga_missing['ref_cat'] = REFCAT
-            tractor_sga_missing['ref_id'] = outellipse_missing[REFIDCOLUMN]
-
-            outellipse = vstack((outellipse, outellipse_missing))
-            tractor_sga = vstack((tractor_sga, tractor_sga_missing))
-
-            srt = np.argsort(outellipse['SGAID'])
-            outellipse = outellipse[srt]
-            tractor_sga = tractor_sga[srt]
-
         assert(len(outellipse) == len(np.unique(outellipse['SGAID'])))
         assert(len(outellipse) == len(np.unique(outellipse['OBJNAME'])))
 
@@ -1490,6 +1588,13 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
         out = vstack((out_sga, out_nosga))
 
+        # Set FITMODE for sources not already marked FIXGEO
+        # (FIXGEO is set in build_catalog_one for SKIPTRACTOR/NOTRACTOR/RESOLVED)
+        I = out['fitmode'] == 0
+        log.info(f'Setting FITMODE=FREEZE for {np.sum(I):,d}/{len(out):,d} '+ \
+                 f'sources (remaining {np.sum(~I):,d} have FIXGEO)')
+        out['fitmode'][I] |= FITMODE['FREEZE']
+
         # Remove sources dropped by Tractor which have a non-zero FITMODE
         # (e.g., FIXGEO, RESOLVED) because otherwise their empty
         # parameters (type, sersic, etc.) will be frozen and cause
@@ -1501,11 +1606,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             out[I].write(f'check-{region}.fits', overwrite=True)
             out = out[~I]
 
-        # Set freeze for everything except "special" (ignore_source)
-        # objects with a non-zero FITMODE at this point in the script.
+        # Set FREEZE for sources not already marked with FIXGEO or RESOLVED
+        # (those are set upstream in build_catalog_one)
         I = out['fitmode'] == 0
-        log.info(f'Not setting fitmode=FREEZE for {np.sum(~I):,d}/{len(out):,d} special SGA sources.')
-        log.info(f'Setting fitmode=FREEZE for the remaining {np.sum(I):,d}/{len(out):,d} SGA+Tractor sources.')
+        log.info(f'Setting FITMODE=FREEZE for {np.sum(I):,d}/{len(out):,d} sources ' + \
+                 f'(remaining {np.sum(~I):,d} have FIXGEO/RESOLVED)')
         out['fitmode'][I] |= FITMODE['FREEZE']
 
         hdu_primary = fits.PrimaryHDU()
