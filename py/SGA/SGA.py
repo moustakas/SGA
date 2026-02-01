@@ -955,7 +955,7 @@ def _create_mock_ellipse_from_sample(grpsample):
     ellipse = Table()
 
     # Copy identifying columns
-    for col in [REFIDCOLUMN, 'OBJNAME', 'GROUP_ID', 'GROUP_NAME', 'GROUP_MULT',
+    for col in [REFIDCOLUMN, 'SGAGROUP', 'OBJNAME', 'GROUP_ID', 'GROUP_NAME', 'GROUP_MULT',
                 'GROUP_PRIMARY', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
                 'REGION', 'PGC', 'SAMPLE']:
         if col in grpsample.colnames:
@@ -1060,7 +1060,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             log.warning(f'Missing directory {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         ellipse = _create_mock_ellipse_from_sample(grpsample)
         tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
-        return ellipse, tractor, Table()
+        return ellipse, tractor
 
     # --- Read ellipse catalogs ---
     ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands)
@@ -1069,7 +1069,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             log.warning(f'Missing ellipse files {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         ellipse = _create_mock_ellipse_from_sample(grpsample)
         tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
-        return ellipse, tractor, Table()
+        return ellipse, tractor
 
     # --- Validate ellipse catalogs match input sample ---
     refid_array = grpsample['SGAID'].value
@@ -1078,10 +1078,11 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
             log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         ellipse = _create_mock_ellipse_from_sample(grpsample)
         tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
-        return ellipse, tractor, Table()
+        return ellipse, tractor
 
     # --- Read Tractor catalog ---
-    tractor, tractor_sga = _read_tractor_catalog(gdir, grp, ellipse, refid_array, region)
+    tractor, tractor_sga = _read_tractor_catalog(
+        gdir, grp, ellipse, refid_array, region)
 
     # Append mock SGA entries to tractor
     if len(tractor_sga) > 0:
@@ -1090,7 +1091,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if len(tractor) > 0 and 'col0' in tractor.colnames:
         raise ValueError('col0 found in tractor table')
 
-    return ellipse, tractor, Table()
+    return ellipse, tractor
 
 
 def _read_ellipse_catalogs(gdir, datasets, opt_bands):
@@ -1345,7 +1346,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         raslices_todo = []
         for raslice in uraslices:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
-            missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
             if os.path.isfile(slicefile):# and not clobber:
                 log.warning(f'Skipping existing catalog {slicefile}')
                 continue
@@ -1362,7 +1362,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         #allraslices = comm.bcast(allraslices, root=0)
 
     # outer loop on RA slices
-    #allmissing_allslices = []
     for islice, raslice in enumerate(raslices_todo):
         #log.info(f'Rank {rank:03}: working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
         if rank == 0:
@@ -1389,7 +1388,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 if len(indx) == 0:
                     ellipse = Table()
                     tractor = Table()
-                    missing = Table()
                 else:
                     #log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
                     out = []
@@ -1407,28 +1405,23 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                     out = list(zip(*out))
                     ellipse = vstack(out[0])
                     tractor = vstack(out[1])
-                    missing = vstack(out[2])
 
                 #log.info(f'Rank {rank:03} RA slice {raslice}: sending ellipse (Tractor) table ' + \
                 #         f'with {len(ellipse):,d} ({len(tractor):,d}) rows to rank 000')
                 comm.send(ellipse, dest=0, tag=2)
                 comm.send(tractor, dest=0, tag=3)
-                comm.send(missing, dest=0, tag=4)
             else:
                 # ...to rank 0.
-                allellipse, alltractor, allmissing = [], [], []
+                allellipse, alltractor = [], []
                 for onerank in np.arange(size-1)+1:
                     ellipse = comm.recv(source=onerank, tag=2)
                     tractor = comm.recv(source=onerank, tag=3)
-                    missing = comm.recv(source=onerank, tag=4)
                     #log.info(f'Rank {rank:03} RA slice {raslice}: received ellipse (Tractor) catalogs ' + \
                     #         f'with {len(ellipse):,d} ({len(tractor):,d}) objects from rank {onerank:03}')
                     allellipse.append(ellipse)
                     alltractor.append(tractor)
-                    allmissing.append(missing)
                 allellipse = vstack(allellipse)
                 alltractor = vstack(alltractor)
-                allmissing = vstack(allmissing)
         else:
             #log.info(f'Rank {rank:03} RA slice {raslice}: working on {len(indx):,d} groups')
             out = []
@@ -1442,7 +1435,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             out = list(zip(*out))
             allellipse = vstack(out[0])
             alltractor = vstack(out[1])
-            allmissing = vstack(out[2])
 
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
@@ -1450,13 +1442,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
                 fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
                 fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
-                #print()
-
-            if len(allmissing) > 0:
-                missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
-                log.info(f'Writing {len(allmissing):,d} sources to {missfile}')
-                fitsio.write(missfile, allmissing.as_array(), extname='PARENT', clobber=True)
-            #allmissing_allslices.append(allmissing)
 
     if rank == 0:
         dt, unit = get_dt(t0)
@@ -1471,7 +1456,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         t1 = time.time()
         #log.info(f'Rank {rank:03} gathering catalogs from {len(raslices_todo)} RA slices.')
 
-        ellipse, tractor, missing = [], [], []
+        ellipse, tractor = [], []
         for islice, raslice in enumerate(uraslices):
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             if not os.path.isfile(slicefile):
@@ -1481,11 +1466,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 tractor.append(Table(fitsio.read(slicefile, 'TRACTOR')))
                 #os.remove(slicefile)
 
-            missfile = os.path.join(datadir, region, f'{outprefix}-{raslice}-missing.fits')
-            if os.path.isfile(missfile):
-                missing.append(Table(fitsio.read(missfile)))
-                #os.remove(missfile)
-
         if len(ellipse) == 0:
             log.warning('No ellipse catalogs to stack; returning')
             return
@@ -1493,9 +1473,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         ellipse = vstack(ellipse)
         tractor = vstack(tractor)
         nobj = len(ellipse)
-
-        if len(missing) > 0:
-            missing = vstack(missing)
 
         dt, unit = get_dt(t1)
         log.info(f'Gathered ellipse measurements for {nobj:,d} unique objects and ' + \
