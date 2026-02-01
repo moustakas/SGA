@@ -1065,8 +1065,8 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     # --- Read ellipse catalogs ---
     ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands)
     if ellipse is None:
-        for obj in grpsample:
-            log.warning(f'Missing ellipse files {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        #for obj in grpsample:
+        #    log.warning(f'Missing ellipse files {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         ellipse = _create_mock_ellipse_from_sample(grpsample)
         tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
         return ellipse, tractor
@@ -1087,9 +1087,6 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     # Append mock SGA entries to tractor
     if len(tractor_sga) > 0:
         tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
-
-    if len(tractor) > 0 and 'col0' in tractor.colnames:
-        raise ValueError('col0 found in tractor table')
 
     return ellipse, tractor
 
@@ -1325,21 +1322,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # outer loop is on RA slice
     if rank == 0:
-        #I = sample['REGION'] & REGIONBITS[region] != 0
-        #J = fullsample['REGION'] & REGIONBITS[region] != 0
-        #sample_region = sample[I]
-        #fullsample_region = fullsample[J]
-
-        # testing
-        #sample = sample[sample['GROUP_MULT'] > 1]
-        #sample = sample[:700]
-        #log.info(f'Trimmed to {len(sample):,d} groups in region={region}')
-
-        #from SGA.brick import brickname as get_brickname
-        #bricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
-        #I = np.isin(bricks, ['1943p265'])
-        #sample = sample[I]
-
         allraslices = get_raslice(sample['GROUP_RA'].value)
         uraslices = sorted(set(allraslices))
 
@@ -1498,12 +1480,17 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             log.warning(f'Negative or infinite diameters for {np.sum(I):,d} objects!')
             #outellipse[outellipse['D26'] == 0.]['SGAGROUP', 'OBJNAME', 'R24_R', 'R25_R', 'R26_R', 'D26']
 
+        #I_skip = (outellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0
+        #skip_refids = outellipse[REFIDCOLUMN][I_skip]
+        #in_tractor = np.isin(skip_refids, tractor['ref_id'])
+        #log.info(f'SKIPTRACTOR entries in outellipse before match: {np.sum(I_skip)}')
+        #log.info(f'SKIPTRACTOR ref_ids in tractor: {np.sum(in_tractor)}/{len(skip_refids)}')
+
         # separate out (and sort) the tractor catalog of the SGA sources
         I = np.where(tractor['ref_cat'] == REFCAT)[0]
         m1, m2 = match(outellipse[REFIDCOLUMN], tractor['ref_id'][I])
         outellipse = outellipse[m1]
         tractor_sga = tractor[I[m2]]
-
         tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
 
         assert(len(outellipse) == len(np.unique(outellipse['SGAID'])))
@@ -1543,30 +1530,18 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         out_sga = hstack((out_sga, tractor_sga[tractor_cols]))
         out = vstack((out_sga, out_nosga))
 
-        # Set FITMODE for sources not already marked FIXGEO
-        # (FIXGEO is set in build_catalog_one for SKIPTRACTOR/NOTRACTOR/RESOLVED)
+        # FITMODE=FIXGEO is set in build_catalog_one for
+        # SKIPTRACTOR/NOTRACTOR/RESOLVED, so set FITMODE=FREEZE for
+        # the remaining sources.
         I = out['fitmode'] == 0
-        log.info(f'Setting FITMODE=FREEZE for {np.sum(I):,d}/{len(out):,d} '+ \
-                 f'sources (remaining {np.sum(~I):,d} have FIXGEO)')
+        log.info(f'Setting fitmode=FREEZE for {np.sum(I):,d}/{len(out):,d} objects.')
         out['fitmode'][I] |= FITMODE['FREEZE']
 
-        # Remove sources dropped by Tractor which have a non-zero FITMODE
-        # (e.g., FIXGEO, RESOLVED) because otherwise their empty
-        # parameters (type, sersic, etc.) will be frozen and cause
-        # problem.
-        I = (out['ref_id'] != -1) * (out['type'] == '') * (out['fitmode'] == 0)
-        if np.any(I):
-            log.warning(f'Removing {np.sum(I):,d} SGA sources dropped by Tractor; ' + \
-                        'these should be removed in the parent catalog!')
-            out[I].write(f'check-{region}.fits', overwrite=True)
-            out = out[~I]
+        I = out['fitmode'] & (FITMODE['FIXGEO'] | FITMODE['RESOLVED']) == (FITMODE['RESOLVED'] | FITMODE['FIXGEO'])
+        log.info(f'Found {np.sum(I):,d}/{len(out):,d} objects with fitmode=FIXGEO & RESOLVED')
 
-        # Set FREEZE for sources not already marked with FIXGEO or RESOLVED
-        # (those are set upstream in build_catalog_one)
-        I = out['fitmode'] == 0
-        log.info(f'Setting FITMODE=FREEZE for {np.sum(I):,d}/{len(out):,d} sources ' + \
-                 f'(remaining {np.sum(~I):,d} have FIXGEO/RESOLVED)')
-        out['fitmode'][I] |= FITMODE['FREEZE']
+        I = (out['fitmode'] & FITMODE['FIXGEO'] != 0) & (out['fitmode'] & FITMODE['RESOLVED'] == 0)
+        log.info(f'Found {np.sum(I):,d}/{len(out):,d} objects with fitmode=FIXGEO & not RESOLVED')
 
         hdu_primary = fits.PrimaryHDU()
         hdu_out = fits.convenience.table_to_hdu(out)
