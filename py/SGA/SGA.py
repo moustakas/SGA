@@ -1055,9 +1055,10 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         grpsample[0], region=region,
         group=not no_groups, datadir=datadir)
 
+    # entire directory missing (not yet started)
     if not os.path.isdir(gdir):
-        for obj in grpsample:
-            log.warning(f'Missing directory {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        #for obj in grpsample:
+        #    log.warning(f'Missing directory {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
         ellipse = _create_mock_ellipse_from_sample(grpsample)
         tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
         return ellipse, tractor

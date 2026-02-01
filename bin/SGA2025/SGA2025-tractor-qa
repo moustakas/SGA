@@ -666,7 +666,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
         #I = (np.char.startswith(fullsample['OBJNAME'].astype(str), "2MAS") & (fullsample['D26'] > 0.5) &
         #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-        I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         #I = (fullsample['GROUP_MULT'] > 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
         fullsample = fullsample[I]
