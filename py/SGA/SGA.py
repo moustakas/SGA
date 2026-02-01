@@ -988,6 +988,11 @@ def _create_mock_tractor_sga(refids):
     """Create mock Tractor catalog entries for SKIPTRACTOR/NOTRACTOR sources."""
     from SGA.io import empty_tractor
 
+    refids = np.atleast_1d(refids)
+
+    if len(refids) == 0:
+        return Table()
+
     tractor_list = []
     for refid in refids:
         t = empty_tractor()
@@ -995,15 +1000,11 @@ def _create_mock_tractor_sga(refids):
         t['ref_id'] = refid
         tractor_list.append(t)
 
-    return vstack(tractor_list) if tractor_list else Table()
+    return vstack(tractor_list)
 
 
 def _build_tractor_sga_entries(tractor, ellipse):
-    """Build mock Tractor entries for SGA sources not in Tractor catalog.
-
-    Also sets FITMODE['FIXGEO'] on ellipse for NOTRACTOR sources.
-
-    """
+    """Build mock Tractor entries for SGA sources not in Tractor catalog."""
     from SGA.ellipse import ELLIPSEBIT, FITMODE
 
     tractor_sga_list = []
@@ -1031,10 +1032,9 @@ def _build_tractor_sga_entries(tractor, ellipse):
     if notractor_indices:
         ellipse['FITMODE'][notractor_indices] |= FITMODE['FIXGEO']
 
-    # Create mock tractor entries
+    # Create mock tractor entries and return as Table (not list)
     if notractor_indices:
-        notractor_refids = ellipse[REFIDCOLUMN][notractor_indices]
-        tractor_sga = _create_mock_tractor_sga(notractor_refids)
+        tractor_sga = _create_mock_tractor_sga(ellipse[REFIDCOLUMN][notractor_indices])
     else:
         tractor_sga = Table()
 
@@ -1081,12 +1081,14 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         return ellipse, tractor, Table()
 
     # --- Read Tractor catalog ---
-    tractor, tractor_sga = _read_tractor_catalog(
-        gdir, grp, ellipse, refid_array, region)
+    tractor, tractor_sga = _read_tractor_catalog(gdir, grp, ellipse, refid_array, region)
 
     # Append mock SGA entries to tractor
     if len(tractor_sga) > 0:
         tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
+
+    if len(tractor) > 0 and 'col0' in tractor.colnames:
+        raise ValueError('col0 found in tractor table')
 
     return ellipse, tractor, Table()
 
@@ -1141,6 +1143,7 @@ def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
 
     """
     import fitsio
+    from SGA.io import empty_tractor
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE, FITMODE
     from SGA.sky import in_ellipse_mask_sky
 
@@ -1172,11 +1175,17 @@ def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
     else:
         tractor = Table(fitsio.read(tractorfile, rows=np.where(keep)[0]))
 
+        # check the data model
+        dm = empty_tractor()
+        missing_in_tractor = set(dm.colnames) - set(tractor.colnames)
+        extra_in_tractor = set(tractor.colnames) - set(dm.colnames)
+        if missing_in_tractor or extra_in_tractor:
+            raise ValueError(f'Tractor schema mismatch in {tractorfile}: '
+                             f'missing={missing_in_tractor}, extra={extra_in_tractor}')
+
         # Remove SGA sources that don't belong to this group
-        foreign_sga = (
-            (tractor['ref_cat'] == REFCAT) &
-            ~np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN])
-        )
+        foreign_sga = ((tractor['ref_cat'] == REFCAT) &
+            ~np.isin(tractor['ref_id'], ellipse[REFIDCOLUMN]))
         if np.any(foreign_sga):
             tractor.remove_rows(np.where(foreign_sga)[0])
 
@@ -1219,37 +1228,6 @@ def _sources_in_ellipses(refs, ellipse, region):
             np.asarray(refs['ra']), np.asarray(refs['dec']))
 
     return isin
-
-
-def _build_tractor_sga_entries(tractor, ellipse):
-    """Build mock Tractor entries for SGA sources not in Tractor catalog."""
-    from SGA.io import empty_tractor
-    from SGA.ellipse import ELLIPSEBIT
-
-    tractor_sga = []
-
-    for ellipse1 in ellipse:
-        if len(tractor) > 0:
-            match = (
-                (tractor['ref_id'] == ellipse1[REFIDCOLUMN]) &
-                (tractor['ref_cat'] == REFCAT)
-            )
-            n_match = np.sum(match)
-
-            if n_match > 1:
-                raise IOError(f'Multiple SGA sources in Tractor catalog!')
-
-            if n_match == 1:
-                continue  # Already in tractor, no mock needed
-
-        # No match - verify NOTRACTOR bit and create mock entry
-        assert ellipse1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
-        tractor_sga1 = empty_tractor()
-        tractor_sga1['ref_cat'] = REFCAT
-        tractor_sga1['ref_id'] = ellipse1[REFIDCOLUMN]
-        tractor_sga.append(tractor_sga1)
-
-    return tractor_sga
 
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
