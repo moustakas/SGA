@@ -283,7 +283,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         dependson = '-coadds.isdone'
     elif htmlplots:
         suffix = 'html'
-        filesuffix = '-montage.png'
+        filesuffix = '-html.isdone'
         dependson = None # '-image.jpg'
         galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir, region=region,
@@ -513,12 +513,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    #if True:
-    #    from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
-    #    I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
-    #    fullsample = fullsample[J]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    if True:
+        print('HACK!!')
+        from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
+        I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+        J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
+        fullsample = fullsample[J]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     #if True:
     #    redo = np.unique(Table.read('/global/u2/i/ioannis/rerun.txt', format='ascii')['col1'].value)

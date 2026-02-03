@@ -154,7 +154,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     #cmap.set_bad((1, 1, 1, 1)) # solid white
 
     cmap1 = get_cmap('tab20') # or tab20b or tab20c
-    colors1 = [cmap1(i) for i in range(20)]
+    colors1 = [cmap1(i) for i in range(50)]
 
     cmap2 = get_cmap('Dark2')
     colors2 = [cmap2(i) for i in range(5)]
@@ -1115,6 +1115,28 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     group_dec = group_data['GROUP_DEC'][0]
     group_diam = group_data['GROUP_DIAMETER'][0]
     group_mult = group_data['GROUP_MULT'][0]
+
+    if 'DIAM_INIT' in fullgroup_data.colnames:
+        diamcol = 'DIAM_INIT'
+    else:
+        diamcol = 'DIAM'
+    if 'DIAM_REF_INIT' in fullgroup_data.colnames:
+        diamrefcol = 'DIAM_REF_INIT'
+    else:
+        diamrefcol = 'DIAM_REF'
+    if 'MAG_INIT' in fullgroup_data.colnames:
+        magcol = 'MAG_INIT'
+    else:
+        magcol = 'MAG'
+    if 'BA_INIT' in fullgroup_data.colnames:
+        bacol = 'BA_INIT'
+    else:
+        bacol = 'BA'
+    if 'PA_INIT' in fullgroup_data.colnames:
+        pacol = 'PA_INIT'
+    else:
+        pacol = 'PA'
+
     raslice = group_name[:3]
     sky_url = get_sky_viewer_url(group_ra, group_dec, group_diam, region)
     group_files = [
@@ -1191,10 +1213,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             html_lines.append("            <td>{}</td>".format(row['SGAID']))
             html_lines.append("            <td>{:.6f}</td>".format(row['RA']))
             html_lines.append("            <td>{:.6f}</td>".format(row['DEC']))
-            html_lines.append("            <td>{:.2f}</td>".format(row['DIAM']))
-            html_lines.append("            <td>{:.2f}</td>".format(row['MAG']))
-            html_lines.append("            <td>{:.3f}</td>".format(row['BA']))
-            html_lines.append("            <td>{:.1f}</td>".format(row['PA']))
+            html_lines.append("            <td>{:.2f}</td>".format(row[diamcol]))
+            html_lines.append("            <td>{:.2f}</td>".format(row[magcol]))
+            html_lines.append("            <td>{:.3f}</td>".format(row[bacol]))
+            html_lines.append("            <td>{:.1f}</td>".format(row[pacol]))
             html_lines.append("            <td>{}</td>".format('Yes' if row['GROUP_PRIMARY'] else 'No'))
             html_lines.append("        </tr>")
         html_lines.append("    </table>")
@@ -1215,7 +1237,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             html_lines.append("            <td>{}</td>".format(ellipse_flags))
             html_lines.append("            <td>{}</td>".format(fit_flags))
             html_lines.append("            <td>{:.3f}</td>".format(row['EBV']))
-            html_lines.append("            <td>{}</td>".format(row['DIAM_REF']))
+            html_lines.append("            <td>{}</td>".format(row[diamrefcol]))
             html_lines.append("        </tr>")
         html_lines.append("    </table>")
     html_lines.extend([
