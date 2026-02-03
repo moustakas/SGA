@@ -513,7 +513,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
+    if False:#True:
         print('HACK!!')
         from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
         I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
@@ -710,7 +710,7 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
     # Censor the 26 mag/arcsec2 isophotes if the FAILGEO bit is set
     # (near a bright star).
     if 'ELLIPSEBIT' in ellipse.colnames:
-        I = ellipse['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0
+        I = ellipse['ELLIPSEBIT'] & (ELLIPSEBIT['FAILGEO'] | ELLIPSEBIT['NORADWEIGHT']) != 0
         if np.any(I):
             r26_cols = [col for col in ellipse.colnames if col.startswith('R26_')]
             for col in r26_cols:

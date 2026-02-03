@@ -4116,6 +4116,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
     log.info(f'Applying ELLIPSEMODE flags to {len(ov.flags):,d} objects.')
     apply_flags_inplace(grp, ov.flags, ELLIPSEMODE)
 
+    # MCLOUDS/GCLPNE/NEARSTAR/INSTAR all imply NORADWEIGHT
+    I = (grp['SAMPLE'] & (SAMPLE['MCLOUDS'] | SAMPLE['GCLPNE'] | SAMPLE['NEARSTAR'] | SAMPLE['INSTAR'])) != 0
+    grp['ELLIPSEMODE'][I] |= ELLIPSEMODE['NORADWEIGHT']
+
     # populate FITMODE, which is used by legacypipe
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0] |= FITMODE['RESOLVED']
