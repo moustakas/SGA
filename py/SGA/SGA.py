@@ -1499,8 +1499,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         assert(len(outellipse) == len(np.unique(outellipse['SGAID'])))
         assert(len(outellipse) == len(np.unique(outellipse['OBJNAME'])))
 
-        print('Need to ensure GROUP_ID is unique!')
-        pdb.set_trace()
+        log.warning('Need to ensure GROUP_ID is unique!!!')
 
         # Write out outfile with the ELLIPSE and TRACTOR HDUs.
         hdu_primary = fits.PrimaryHDU()
