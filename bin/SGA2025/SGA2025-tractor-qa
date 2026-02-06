@@ -12,7 +12,7 @@ source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
 SGA2025-tractor-qa --region=dr11-south --version=v0.60 --vi-sample=1 --final-sample --mp=32
 SGA2025-tractor-qa --region=dr11-south --version=v0.60 --vi-sample=2 --final-sample --mp=32
-SGA2025-tractor-qa --region=dr11-south --version=v0.60 --vi-sample=3 --final-sample --mp=32
+SGA2025-tractor-qa --region=dr11-south --version=v0.60 --vi-sample=3 --final-sample --mp=32 --nperpdf=512
 
 
 SGA2025-tractor-qa --region=dr9-north --version=v0.60 --vi-sample=6 --final-sample --mp=32
@@ -131,8 +131,8 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
         return Table(), Table(), image, wcs
 
 
-    imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
-    #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
+    #imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
+    imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
     #imagefile = os.path.join(galaxydir, f'{galaxy}-resid.jpg')
     tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
 
@@ -562,137 +562,9 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     elif vi_sample == 3:
         # isolated and diameter-limited
         sort_by_groupname = False
-        I = (fullsample[DIAMCOLUMN] > 3.5) & (fullsample[DIAMCOLUMN] < 1e3) & (fullsample['GROUP_MULT'] == 1) & ~is_LVD
+        I = (fullsample[DIAMCOLUMN] > 3.0) & (fullsample[DIAMCOLUMN] < 1e3) & (fullsample['GROUP_MULT'] == 1) & ~is_LVD
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #elif vi_sample == 3:
-    #    sort_by_groupname = True
-    #
-    #    min_mult, max_mult = 3, 3 # 4, 4
-    #    min_max_diam, max_max_diam = 0.0, 0.5
-    #    #min_max_diam, max_max_diam = 0.5, 1.
-    #    #min_max_diam, max_max_diam = 1., 1e3
-    #
-    #    # Find groups where largest member is within diameter range
-    #    max_diam_per_group = np.zeros(fullsample['GROUP_ID'].max() + 1, dtype=np.float32)
-    #    np.maximum.at(max_diam_per_group, fullsample['GROUP_ID'], fullsample['DIAM'])
-    #
-    #    overlap_mask = (
-    #        (max_diam_per_group[fullsample['GROUP_ID']] >= min_max_diam) &
-    #        (max_diam_per_group[fullsample['GROUP_ID']] < max_max_diam) &
-    #        (fullsample['GROUP_MULT'] >= min_mult) &
-    #        (fullsample['GROUP_MULT'] <= max_mult) &
-    #        (fullsample['GROUP_DIAMETER'] < 5.) &
-    #        (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) &
-    #        (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #
-    #    problematic_group_ids = np.where(
-    #        np.bincount(fullsample['GROUP_ID'][overlap_mask],
-    #                    minlength=fullsample['GROUP_ID'].max() + 1) >= 2)[0]
-    #
-    #    I = np.isin(fullsample['GROUP_ID'], problematic_group_ids)
-    #
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #elif vi_sample == 4:
-    #    sort_by_groupname = True
-    #    #I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
-    #    I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) &
-    #                 (fullsample['GROUP_DIAMETER'] >= 0) & (fullsample['GROUP_DIAMETER'] < 2.0))
-    #    I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "2MASS") # "SDSS") # PGC
-    #    groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
-    #    I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
-    #    print(np.sum(I))
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #    pdb.set_trace()
-    #elif vi_sample == 5:
-    #    from SGA.groups import angdiff_deg, contains_point, DEG2RAD
-    #
-    #    sort_by_groupname = True
-    #
-    #    # Select mult 2-3 groups (excluding LVD)
-    #    overlap_mask = (
-    #        (fullsample['GROUP_MULT'] == 2) &
-    #        #(fullsample['GROUP_MULT'] >= 2) &
-    #        #(fullsample['GROUP_MULT'] <= 3) &
-    #        (fullsample['GROUP_DIAMETER'] < 5.) &
-    #        (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    )
-    #
-    #    # Look for small members (DIAM < max_diam_shred) fall inside
-    #    # large members (DIAM >= min_diam_host).
-    #    max_diam_shred = 0.5
-    #    min_diam_host = 1.
-    #
-    #    unique_groups = np.unique(fullsample['GROUP_NAME'][overlap_mask])
-    #    blended_group_ids = []
-    #
-    #    for gname in unique_groups:
-    #        idx = np.where(fullsample['GROUP_NAME'] == gname)[0]
-    #        if len(idx) < 2:
-    #            continue
-    #
-    #        # Check if small member is inside large member's ellipse
-    #        for i in idx:
-    #            if fullsample['DIAM'][i] >= max_diam_shred:
-    #                continue  # Skip - not a potential shred
-    #
-    #            # Check against larger members
-    #            others = idx[(idx != i) & (fullsample['DIAM'][idx] >= min_diam_host)]
-    #            if len(others) == 0:
-    #                continue
-    #
-    #            dx_deg = angdiff_deg(fullsample['RA'][i], fullsample['RA'][others]) * np.cos(fullsample['DEC'][others] * DEG2RAD)
-    #            dy_deg = fullsample['DEC'][i] - fullsample['DEC'][others]
-    #
-    #            if np.any(contains_point(
-    #                0.5 * fullsample['DIAM'][others],
-    #                0.5 * fullsample['DIAM'][others] * fullsample['BA'][others],
-    #                fullsample['PA'][others] * DEG2RAD,
-    #                dx_deg, dy_deg, scale=1.0
-    #            )):
-    #                blended_group_ids.append(fullsample['GROUP_ID'][i])
-    #                break
-    #
-    #    I = np.isin(fullsample['GROUP_ID'], np.unique(blended_group_ids))
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #
-    #elif vi_sample == 6:
-    #    ## Mask for non-LVD objects with FAILGEO
-    #    #failgeo_mask = (
-    #    #    (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) &
-    #    #    (fullsample['GROUP_MULT'] == 1) &
-    #    #    #(fullsample['GROUP_MULT'] > 1) &
-    #    #    (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #    #failgeo_counts = np.bincount(fullsample['GROUP_ID'][failgeo_mask],
-    #    #                              minlength=fullsample['GROUP_ID'].max() + 1)
-    #    #nonlvd_mask = (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #total_counts = np.bincount(fullsample['GROUP_ID'][nonlvd_mask],
-    #    #                           minlength=fullsample['GROUP_ID'].max() + 1)
-    #    #all_failgeo_group_ids = np.where((failgeo_counts > 0) & (failgeo_counts == total_counts))[0]
-    #    #I = np.isin(fullsample['GROUP_ID'], all_failgeo_group_ids)
-    #
-    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #tractor = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/sample/SGA2025-beta-v0.50-dr11-south.fits', 'TRACTOR'))
-    #    #assert(np.all(tractor['ref_id'] == fullsample['SGAID']))
-    #
-    #    #I = ((tractor['shape_r'] < 1.) & (fullsample['D26'] > 0.5) &
-    #    #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #    #I = (np.char.startswith(fullsample['OBJNAME'].astype(str), "2MAS") & (fullsample['D26'] > 0.5) &
-    #    #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #    #I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
-    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #I = (fullsample['GROUP_MULT'] > 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #
-    #
-    #elif vi_sample == 7:
-    #    sort_by_groupname = False
-    #    I = (fullsample['GROUP_MULT'] > 1) & (fullsample['BA'] < 0.1) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
     else:
         sort_by_groupname = False
         if no_groups:
@@ -790,7 +662,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
     log.info(f'Generating {npdf} PDF documents for {ngal:,d} galaxies with {nperpdf} objects per PDF.')
 
     for ipdf in range(npdf):
-    #for ipdf in [70]:#range(npdf):
+    #for ipdf in [2]:
         # special case the VI work: custom name and write out a text file
         istart = ipdf*nperpdf
         iend = min((ipdf+1)*nperpdf, ngal)
@@ -819,8 +691,9 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
             view.write(viewfile, overwrite=True)
 
         with open(txtfile, 'w') as F:
-            for obj in thisfullsample['OBJNAME'].value:
-                F.write(f'{obj}\n')
+            for obj, grp in zip(thisfullsample['OBJNAME'].value, thisfullsample['GROUP_NAME'].value):
+                F.write(f'{grp}\n')
+                #F.write(f'{obj},{grp}\n')
         log.info(f'Wrote {txtfile}')
 
         #if os.path.isfile(pdffile):
@@ -833,6 +706,7 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
                   verbose=verbose, show_tractor_ellipse=show_tractor_ellipse,
                   show_initial_ellipse=show_initial_ellipse,
                   final_sample=final_sample, no_groups=no_groups)
+        #pdb.set_trace()
 
 
 if __name__ == '__main__':
@@ -1063,3 +937,132 @@ def junk():
         else:
             diamcolumn = DIAMCOLUMN
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
+
+    #elif vi_sample == 3:
+    #    sort_by_groupname = True
+    #
+    #    min_mult, max_mult = 3, 3 # 4, 4
+    #    min_max_diam, max_max_diam = 0.0, 0.5
+    #    #min_max_diam, max_max_diam = 0.5, 1.
+    #    #min_max_diam, max_max_diam = 1., 1e3
+    #
+    #    # Find groups where largest member is within diameter range
+    #    max_diam_per_group = np.zeros(fullsample['GROUP_ID'].max() + 1, dtype=np.float32)
+    #    np.maximum.at(max_diam_per_group, fullsample['GROUP_ID'], fullsample['DIAM'])
+    #
+    #    overlap_mask = (
+    #        (max_diam_per_group[fullsample['GROUP_ID']] >= min_max_diam) &
+    #        (max_diam_per_group[fullsample['GROUP_ID']] < max_max_diam) &
+    #        (fullsample['GROUP_MULT'] >= min_mult) &
+    #        (fullsample['GROUP_MULT'] <= max_mult) &
+    #        (fullsample['GROUP_DIAMETER'] < 5.) &
+    #        (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) &
+    #        (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+    #
+    #    problematic_group_ids = np.where(
+    #        np.bincount(fullsample['GROUP_ID'][overlap_mask],
+    #                    minlength=fullsample['GROUP_ID'].max() + 1) >= 2)[0]
+    #
+    #    I = np.isin(fullsample['GROUP_ID'], problematic_group_ids)
+    #
+    #    fullsample = fullsample[I]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #elif vi_sample == 4:
+    #    sort_by_groupname = True
+    #    #I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
+    #    I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) &
+    #                 (fullsample['GROUP_DIAMETER'] >= 0) & (fullsample['GROUP_DIAMETER'] < 2.0))
+    #    I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "2MASS") # "SDSS") # PGC
+    #    groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
+    #    I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
+    #    print(np.sum(I))
+    #    fullsample = fullsample[I]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #    pdb.set_trace()
+    #elif vi_sample == 5:
+    #    from SGA.groups import angdiff_deg, contains_point, DEG2RAD
+    #
+    #    sort_by_groupname = True
+    #
+    #    # Select mult 2-3 groups (excluding LVD)
+    #    overlap_mask = (
+    #        (fullsample['GROUP_MULT'] == 2) &
+    #        #(fullsample['GROUP_MULT'] >= 2) &
+    #        #(fullsample['GROUP_MULT'] <= 3) &
+    #        (fullsample['GROUP_DIAMETER'] < 5.) &
+    #        (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    )
+    #
+    #    # Look for small members (DIAM < max_diam_shred) fall inside
+    #    # large members (DIAM >= min_diam_host).
+    #    max_diam_shred = 0.5
+    #    min_diam_host = 1.
+    #
+    #    unique_groups = np.unique(fullsample['GROUP_NAME'][overlap_mask])
+    #    blended_group_ids = []
+    #
+    #    for gname in unique_groups:
+    #        idx = np.where(fullsample['GROUP_NAME'] == gname)[0]
+    #        if len(idx) < 2:
+    #            continue
+    #
+    #        # Check if small member is inside large member's ellipse
+    #        for i in idx:
+    #            if fullsample['DIAM'][i] >= max_diam_shred:
+    #                continue  # Skip - not a potential shred
+    #
+    #            # Check against larger members
+    #            others = idx[(idx != i) & (fullsample['DIAM'][idx] >= min_diam_host)]
+    #            if len(others) == 0:
+    #                continue
+    #
+    #            dx_deg = angdiff_deg(fullsample['RA'][i], fullsample['RA'][others]) * np.cos(fullsample['DEC'][others] * DEG2RAD)
+    #            dy_deg = fullsample['DEC'][i] - fullsample['DEC'][others]
+    #
+    #            if np.any(contains_point(
+    #                0.5 * fullsample['DIAM'][others],
+    #                0.5 * fullsample['DIAM'][others] * fullsample['BA'][others],
+    #                fullsample['PA'][others] * DEG2RAD,
+    #                dx_deg, dy_deg, scale=1.0
+    #            )):
+    #                blended_group_ids.append(fullsample['GROUP_ID'][i])
+    #                break
+    #
+    #    I = np.isin(fullsample['GROUP_ID'], np.unique(blended_group_ids))
+    #    fullsample = fullsample[I]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #
+    #elif vi_sample == 6:
+    #    ## Mask for non-LVD objects with FAILGEO
+    #    #failgeo_mask = (
+    #    #    (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) &
+    #    #    (fullsample['GROUP_MULT'] == 1) &
+    #    #    #(fullsample['GROUP_MULT'] > 1) &
+    #    #    (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+    #    #failgeo_counts = np.bincount(fullsample['GROUP_ID'][failgeo_mask],
+    #    #                              minlength=fullsample['GROUP_ID'].max() + 1)
+    #    #nonlvd_mask = (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    #total_counts = np.bincount(fullsample['GROUP_ID'][nonlvd_mask],
+    #    #                           minlength=fullsample['GROUP_ID'].max() + 1)
+    #    #all_failgeo_group_ids = np.where((failgeo_counts > 0) & (failgeo_counts == total_counts))[0]
+    #    #I = np.isin(fullsample['GROUP_ID'], all_failgeo_group_ids)
+    #
+    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    #tractor = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/sample/SGA2025-beta-v0.50-dr11-south.fits', 'TRACTOR'))
+    #    #assert(np.all(tractor['ref_id'] == fullsample['SGAID']))
+    #
+    #    #I = ((tractor['shape_r'] < 1.) & (fullsample['D26'] > 0.5) &
+    #    #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+    #    #I = (np.char.startswith(fullsample['OBJNAME'].astype(str), "2MAS") & (fullsample['D26'] > 0.5) &
+    #    #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+    #    #I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
+    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    #I = (fullsample['GROUP_MULT'] > 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #
+    #
+    #elif vi_sample == 7:
+    #    sort_by_groupname = False
+    #    I = (fullsample['GROUP_MULT'] > 1) & (fullsample['BA'] < 0.1) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
+    #    fullsample = fullsample[I]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
