@@ -131,8 +131,8 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
         return Table(), Table(), image, wcs
 
 
-    #imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
-    imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
+    imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
+    #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
     #imagefile = os.path.join(galaxydir, f'{galaxy}-resid.jpg')
     tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
 
@@ -556,7 +556,11 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     elif vi_sample == 2:
         sort_by_groupname = False
-        I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & ~is_LVD
+        f1 = Table(fitsio.read('/global/homes/i/ioannis/badlist_ad_1.fits'))
+        f2 = Table(fitsio.read('/global/homes/i/ioannis/badlist_ad_2.fits'))
+        I = np.isin(fullsample['SGAID'], np.unique(np.hstack((f1['NAME'].value, f2['NAME'].value))))
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['GROUP_MULT'] == 1) & ~is_LVD
+        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & ~is_LVD
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
     elif vi_sample == 3:
@@ -692,7 +696,8 @@ def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1
 
         with open(txtfile, 'w') as F:
             for obj, grp in zip(thisfullsample['OBJNAME'].value, thisfullsample['GROUP_NAME'].value):
-                F.write(f'{grp}\n')
+                F.write(f'{obj}\n')
+                #F.write(f'{grp}\n')
                 #F.write(f'{obj},{grp}\n')
         log.info(f'Wrote {txtfile}')
 
