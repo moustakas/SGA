@@ -2106,7 +2106,7 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
-                         FMAJOR_geo=0.01, FMAJOR_final=None, ref_factor=1.0,
+                         FMAJOR_geo=0.01, FMAJOR_final=None, ref_factor=2.0,
                          moment_method='rms', maxshift_arcsec=MAXSHIFT_ARCSEC,
                          radial_power=0.7, SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
@@ -2204,7 +2204,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, P.ba, P.pa, sma)
 
         if debug:
-            print('FIXME!')
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -2215,6 +2214,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
+            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
