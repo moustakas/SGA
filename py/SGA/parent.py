@@ -3773,6 +3773,26 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             log.info(f'Removing {np.sum(I):,d}/{len(ell1):,d} {region} galaxies with D(26)<{mindiam:.2f} arcmin')
             ell1 = ell1[~I]
 
+        elif base_version == 'v0.60':
+            #import astropy.units as u
+            #from astropy.coordinates import SkyCoord
+            #
+            #prev = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-v0.50-{region}.fits')))
+            #I = (prev['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0)
+            #prev = prev[I]
+            #
+            #c_prev_init = SkyCoord(prev['RA_INIT']*u.deg, prev['DEC_INIT']*u.deg)
+            #c_prev = SkyCoord(prev['RA']*u.deg, prev['DEC']*u.deg)
+            #sep = c_prev.separation(c_prev_init).to(u.arcsec)
+            #
+            #
+            #m_ell, m_prev = match(ell1['OBJNAME'], prev['OBJNAME'])
+            #
+            #prev_tofix = prev[m_prev]
+            #ell_tofix = ell1[m_ell]
+            #c_ell = SkyCoord(ell_tofix['RA']*u.deg, ell_tofix['DEC']*u.deg)
+            #c_prev = SkyCoord(prev_tofix['RA']*u.deg, prev_tofix['DEC']*u.deg)
+
         ell.append(ell1)
     ell = vstack(ell)
 
@@ -3887,7 +3907,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -4050,6 +4070,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
         #    ell_base[col][I] = parent_base[col][I]
         base = ell_base
 
+    elif base_version == 'v0.60':
+        base = ell_base
+    elif base_version == 'v0.70':
+        base = ell_base
     else:
         base = ell_base
 
