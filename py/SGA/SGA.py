@@ -1043,57 +1043,6 @@ def _build_tractor_sga_entries(tractor, ellipse):
     return tractor_sga
 
 
-def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
-    """Gather ellipse-fitting results for a single group."""
-    import fitsio
-    from glob import glob
-
-    from SGA.io import empty_tractor
-    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
-    from SGA.sky import in_ellipse_mask_sky
-
-    # --- Locate group directory ---
-    grp, gdir = get_galaxy_galaxydir(
-        grpsample[0], region=region,
-        group=not no_groups, datadir=datadir)
-
-    # entire directory missing (not yet started)
-    if not os.path.isdir(gdir):
-        #for obj in grpsample:
-        #    log.warning(f'Missing directory {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        ellipse = _create_mock_ellipse_from_sample(grpsample)
-        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
-        return ellipse, tractor
-
-    # --- Read ellipse catalogs ---
-    ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands)
-    if ellipse is None:
-        #for obj in grpsample:
-        #    log.warning(f'Missing ellipse files {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        ellipse = _create_mock_ellipse_from_sample(grpsample)
-        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
-        return ellipse, tractor
-
-    # --- Validate ellipse catalogs match input sample ---
-    refid_array = grpsample['SGAID'].value
-    if not np.all(np.isin(ellipse[REFIDCOLUMN], refid_array)):
-        for obj in grpsample:
-            log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
-        ellipse = _create_mock_ellipse_from_sample(grpsample)
-        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
-        return ellipse, tractor
-
-    # --- Read Tractor catalog ---
-    tractor, tractor_sga = _read_tractor_catalog(
-        gdir, grp, ellipse, refid_array, region)
-
-    # Append mock SGA entries to tractor
-    if len(tractor_sga) > 0:
-        tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
-
-    return ellipse, tractor
-
-
 def _read_ellipse_catalogs(gdir, datasets, opt_bands):
     """Read and join ellipse catalogs across datasets.
 
@@ -1229,6 +1178,60 @@ def _sources_in_ellipses(refs, ellipse, region):
             np.asarray(refs['ra']), np.asarray(refs['dec']))
 
     return isin
+
+
+def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
+    """Gather ellipse-fitting results for a single group."""
+    import fitsio
+    from glob import glob
+
+    from SGA.io import empty_tractor
+    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
+    from SGA.sky import in_ellipse_mask_sky
+
+    # --- Locate group directory ---
+    grp, gdir = get_galaxy_galaxydir(
+        grpsample[0], region=region,
+        group=not no_groups, datadir=datadir)
+
+    # entire directory missing (not yet started)
+    if not os.path.isdir(gdir):
+        #for obj in grpsample:
+        #    log.warning(f'Missing directory {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        ellipse = _create_mock_ellipse_from_sample(grpsample)
+        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return ellipse, tractor
+
+    # --- Read ellipse catalogs ---
+    ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands)
+    if ellipse is None:
+        #for obj in grpsample:
+        #    log.warning(f'Missing ellipse files {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        ellipse = _create_mock_ellipse_from_sample(grpsample)
+        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return ellipse, tractor
+
+    # --- Validate ellipse catalogs match input sample ---
+    refid_array = grpsample['SGAID'].value
+    if not np.all(np.isin(ellipse[REFIDCOLUMN], refid_array)):
+        for obj in grpsample:
+            log.warning(f'Mismatch ref_id {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
+        ellipse = _create_mock_ellipse_from_sample(grpsample)
+        tractor = _create_mock_tractor_sga(ellipse[REFIDCOLUMN])
+        return ellipse, tractor
+
+    # --- Read Tractor catalog ---
+    tractor, tractor_sga = _read_tractor_catalog(
+        gdir, grp, ellipse, refid_array, region)
+
+    # Append mock SGA entries to tractor
+    if len(tractor_sga) > 0:
+        tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
+
+    #if np.any(np.isin(grpsample['GROUP_NAME'], ['02327m8659'])):
+    #    pdb.set_trace()
+
+    return ellipse, tractor
 
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
