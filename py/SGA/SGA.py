@@ -1226,7 +1226,7 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
         return ellipse, tractor
 
     # --- Read ellipse catalogs ---
-    ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands)
+    ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample)
     if ellipse is None:
         #for obj in grpsample:
         #    log.warning(f'Missing ellipse files {gdir} {obj["OBJNAME"]} d={obj[DIAMCOLUMN]:.3f} arcmin')
