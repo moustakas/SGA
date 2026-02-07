@@ -954,6 +954,12 @@ def _create_mock_ellipse_from_sample(grpsample):
 
     n = len(grpsample)
 
+    # Validate GROUP_ID consistency within grpsample
+    if 'GROUP_ID' in grpsample.colnames:
+        unique_gids = np.unique(grpsample['GROUP_ID'])
+        if len(unique_gids) > 1:
+            raise ValueError(f'Inconsistent GROUP_ID in grpsample: {unique_gids}')
+
     ellipse = Table()
 
     # Copy identifying columns
@@ -1043,10 +1049,11 @@ def _build_tractor_sga_entries(tractor, ellipse):
     return tractor_sga
 
 
-def _read_ellipse_catalogs(gdir, datasets, opt_bands):
+def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
     """Read and join ellipse catalogs across datasets.
 
     Returns None if no ellipse files found or on read error.
+
     """
     import fitsio
     from glob import glob
@@ -1078,7 +1085,23 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands):
 
         ellipse_list.append(ellipse1)
 
-    return vstack(ellipse_list) if ellipse_list else None
+    ellipse = vstack(ellipse_list) if ellipse_list else None
+
+    # Validate GROUP_ID matches grpsample
+    if ellipse is not None and 'GROUP_ID' in ellipse.colnames and 'GROUP_ID' in grpsample.colnames:
+        for i, row in enumerate(ellipse):
+            sgaid = row[REFIDCOLUMN]
+            match_idx = np.where(grpsample[REFIDCOLUMN] == sgaid)[0]
+            if len(match_idx) > 0:
+                expected_gid = grpsample['GROUP_ID'][match_idx[0]]
+                actual_gid = row['GROUP_ID']
+                if expected_gid != actual_gid:
+                    print(f'Ellipse file may be out of date: {gdir}')
+                    #raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
+                    #                 f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
+                    #                 f'Ellipse file may be out of date: {gdir}')
+
+    return ellipse
 
 
 def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
@@ -1427,7 +1450,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             if len(allellipse) > 0:
-                log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
+                #log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
                 fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
                 fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
 
