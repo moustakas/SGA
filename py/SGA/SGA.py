@@ -1096,10 +1096,10 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
                 expected_gid = grpsample['GROUP_ID'][match_idx[0]]
                 actual_gid = row['GROUP_ID']
                 if expected_gid != actual_gid:
-                    print(f'Ellipse file may be out of date: {gdir}')
-                    #raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
-                    #                 f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
-                    #                 f'Ellipse file may be out of date: {gdir}')
+                    rint(f'Ellipse file may be out of date: {gdir}')
+                    raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
+                                     f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
+                                     f'Ellipse file may be out of date: {gdir}')
 
     return ellipse
 
