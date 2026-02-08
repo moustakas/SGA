@@ -228,3 +228,151 @@ def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
               f"max load={loads.max():.6g}, rel_imbalance={imbalance:.2%}")
 
     return todo_indices, loads
+
+
+def parse_tractor_log(logfile):
+    """
+    Extract key metrics from a Tractor log file.
+
+    If some fields are missing from the main log (e.g., due to checkpoint recovery),
+    falls back to reading the first rotated log (-coadds_log.0).
+
+    Parameters
+    ----------
+    logfile : str or Path
+        Path to log file (or base path without log file)
+
+    Returns
+    -------
+    dict
+        Parsed metrics: group_name, width, nccd, nblob, nsources, runtime, nattempts, ncheckpoint
+
+    """
+    import re
+    import sys
+    from pathlib import Path
+    import glob
+
+
+    def count_attempts(logfile):
+        """
+        Count number of fitting attempts by finding rotated log files.
+
+        Pattern: base-coadds.log with rotations as base-coadds_log.0, base-coadds_log.1, etc.
+        The .0 file is the first/original attempt.
+
+        Returns
+        -------
+        int
+            Number of attempts (1 if only base log exists, 2+ if rotated logs exist)
+
+        """
+        logfile = Path(logfile)
+        logstr = str(logfile)
+
+        # Handle rotation pattern: -coadds.log → -coadds_log.*
+        if logstr.endswith('-coadds.log'):
+            base_pattern = logstr.replace('-coadds.log', '-coadds.log.*')
+        elif logstr.endswith('-coadds_log'):
+            base_pattern = logstr + '.*'
+        else:
+            base_pattern = logstr + '.*'
+
+        # Find all rotated versions
+        rotated = glob.glob(base_pattern)
+
+        # Total attempts = main log + rotated logs
+        return 1 + len(rotated)
+
+
+    logfile = Path(logfile)
+
+    result = {
+        'group_name': None,
+        'width': None,
+        'nccd': None,
+        'nblob': None,
+        'nsources': None,
+        'runtime': None,
+        'nattempts': None,
+        'ncheckpoint': None
+    }
+
+    # Handle case where logfile doesn't exist
+    if not logfile.exists():
+        match = re.search(r'/(\d+[pm]\d+)/', str(logfile))
+        if match:
+            result['group_name'] = match.group(1)
+        result['width'] = 0
+        result['nccd'] = 0
+        result['nblob'] = 0
+        result['nsources'] = 0
+        result['runtime'] = 0.0
+        result['nattempts'] = 0
+        result['ncheckpoint'] = 0
+        return result
+
+    # Count attempts
+    result['nattempts'] = count_attempts(logfile)
+
+    # Parse main log
+    with open(logfile) as f:
+        for line in f:
+            if 'outdir=' in line and result['group_name'] is None:
+                m = re.search(r'--outdir=.+?/(\d+[pm]\d+)', line)
+                if m:
+                    result['group_name'] = m.group(1)
+
+            if '--width=' in line and result['width'] is None:
+                m = re.search(r'--width=(\d+)', line)
+                if m:
+                    result['width'] = int(m.group(1))
+
+            if 'Keeping' in line and 'CCDs' in line:
+                m = re.search(r'Keeping (\d+) CCDs', line)
+                if m:
+                    result['nccd'] = int(m.group(1))
+
+            if 'Keeping' in line and 'checkpointed results' in line:
+                m = re.search(r'Keeping (\d+) of \d+ checkpointed results', line)
+                if m:
+                    result['ncheckpoint'] = int(m.group(1))
+
+            if 'Sources detected:' in line:
+                m = re.search(r'Sources detected: (\d+) in (\d+) blobs', line)
+                if m:
+                    result['nsources'] = int(m.group(1))
+                    result['nblob'] = int(m.group(2))
+
+            if line.startswith('Total runtime:'):
+                m = re.search(r'Total runtime: ([\d.]+)', line)
+                if m:
+                    runtime_sec = float(m.group(1))
+                    result['runtime'] = runtime_sec / 60.0
+
+    # If checkpoint recovery, some fields may be missing - check rotated logs
+    if result['ncheckpoint'] is not None and result['ncheckpoint'] > 0:
+        # Try all rotated logs in order: _log.0, _log.1, _log.2, etc.
+        for i in range(10):  # Check up to 10 rotations
+            fallback_log = Path(str(logfile).replace('-coadds.log', f'-coadds_log.{i}'))
+            if not fallback_log.exists():
+                break
+
+            with open(fallback_log) as f:
+                for line in f:
+                    if result['nccd'] is None and 'Keeping' in line and 'CCDs' in line:
+                        m = re.search(r'Keeping (\d+) CCDs', line)
+                        if m:
+                            result['nccd'] = int(m.group(1))
+
+                    if result['nsources'] is None and 'Sources detected:' in line:
+                        m = re.search(r'Sources detected: (\d+) in (\d+) blobs', line)
+                        if m:
+                            result['nsources'] = int(m.group(1))
+                            result['nblob'] = int(m.group(2))
+
+            # Stop if we found everything
+            if result['nccd'] is not None and result['nsources'] is not None:
+                break
+
+    return result

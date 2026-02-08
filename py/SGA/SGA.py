@@ -486,6 +486,15 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
+    if True:
+        log.info('Refitting!')
+        refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
+        refit = Table(fitsio.read(refitfile))
+        refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+
+
     # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
