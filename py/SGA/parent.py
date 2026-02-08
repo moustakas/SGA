@@ -4051,6 +4051,8 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             diag = flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0)
             #bb = diag[diag['NEEDS_REFIT']] ; bb = bb[np.argsort(bb['DIAM_ORIG'])]
 
+            pdb.set_trace()
+
             # Add refit flag to ell1 before vstacking
             m_ell, m_diag = match(ell1['SGAID'], diag['SGAID'])
             ell1['REFIT'] = np.zeros(len(ell1), dtype=bool)
