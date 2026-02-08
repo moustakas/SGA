@@ -486,7 +486,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
+    if False:#True:
         log.info('Refitting!')
         refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
         refit = Table(fitsio.read(refitfile))
