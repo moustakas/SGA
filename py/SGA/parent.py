@@ -4047,11 +4047,17 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             ell1 = ell1[~I]
 
         elif base_version == 'v0.60':
+            # Fix a bug in the diameters of SKIPTRACTOR sources before proceeding.
+            from SGA.SGA import SGA_diameter
+            diam, diam_err, diam_ref, _ = SGA_diameter(ell1, region)
+            I = ell1['D26'] != diam
+            if np.any(I):
+                for col, val in zip(['D26', 'D26_ERR', 'D26_REF'], [diam[I], diam_err[I], diam_ref[I]]):
+                    ell1[col][I] = val
+
             diag = diagnose_drift(ell1, outdir)
             diag = flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0)
             #bb = diag[diag['NEEDS_REFIT']] ; bb = bb[np.argsort(bb['DIAM_ORIG'])]
-
-            pdb.set_trace()
 
             # Add refit flag to ell1 before vstacking
             m_ell, m_diag = match(ell1['SGAID'], diag['SGAID'])
