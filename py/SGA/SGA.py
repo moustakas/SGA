@@ -763,11 +763,12 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
         d26_ref[I] = 'fix'
         d26_weight[I] = 1.
 
-    # If the SKIPTRACTOR bit is set revert to the initial geometry
-    # (otherwise SMA_MOMENT will be used and D26 will be significantly
-    # larger than its initial size.)
+    # If the SKIPTRACTOR bit is set and SMA_MOMENT is the only radius
+    # measurement, revert to the initial geometry (otherwise
+    # SMA_MOMENT will be used and D26 will be significantly larger
+    # than its initial size.)
     if 'ELLIPSEBIT' in ellipse.colnames:
-        I = ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0
+        I = (ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0) & (d26_ref == 'mom')
         if np.any(I):
             d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60. # [arcmin]
             d26_err[I] = 0.

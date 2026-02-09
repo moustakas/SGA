@@ -360,13 +360,17 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
     """
     import fitsio
     import shutil
+    from time import time
     from astrometry.util.util import Tan
     from tractor.tractortime import TAITime
     from legacypipe.bits import REF_MAP_BITS, maskbits_type
     from legacypipe.reference import get_reference_sources, get_reference_map
     from legacypipe.survey import LegacySurveyWcs
+    from SGA.util import get_dt
     from SGA.io import make_header, VEGA2AB
     from SGA.cutouts import cutout_one
+
+    tall = time()
 
     # CCDs file
     if ccds:
@@ -501,6 +505,9 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
             cleanfiles += [f'{basefile}-galex.fits', f'{basefile}-galex.jpeg']
         for cleanfile in cleanfiles:
             os.remove(cleanfile)
+
+    dt, unit = get_dt(tall)
+    log.info(f'Total time for custom cutouts: {dt:.3f} {unit}')
 
     return 1
 
