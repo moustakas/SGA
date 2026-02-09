@@ -2552,10 +2552,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
-        # Set MOMENTPOS bit if either: (1) ELLIPSEMODE has it; or (2)
-        # not using Tractor positions
+        # Set MOMENTPOS bit: using moment positions (not Tractor, not fixed)
         if (not use_tractor_position_obj[iobj] and
-            (not fixgeo or (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] == 0))):
+            (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] == 0) and
+            not fixgeo):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
         if fixgeo or (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0):
