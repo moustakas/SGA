@@ -3704,6 +3704,279 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
+def diagnose_drift(ell60, outdir):
+    """Compare v0.60 positions to original initial positions."""
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+
+    from SGA.ellipse import ELLIPSEBIT
+    from SGA.SGA import SAMPLE
+
+    # v0.60 current results
+    #ell60 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-beta-v0.60-dr11-south.fits')))
+
+    # v0.22 should have the original initial values (or go to nocuts if needed)
+    #ell22 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-v0.10-dr11-south.fits')))
+    #ell22 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-v0.22-dr11-south.fits')))
+    #I = (ell22['RA_INIT'] == 0.) & (ell22['DEC_INIT'] == 0.)
+    #if np.any(I):
+    #    ell22['RA_INIT'][I] = ell22['RA'][I]
+    #    ell22['DEC_INIT'][I] = ell22['DEC'][I]
+
+    ell22 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+    for ver in ['v0.30', 'v0.40', 'v0.50', 'v0.60']:
+        overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{ver}')
+        ov = load_overlays(overlay_dir)
+        I = np.isin(ov.updates['OBJNAME'], ell22['OBJNAME'])
+        ovup = ov.updates[I]
+        apply_updates_inplace(ell22, ovup)
+
+    ell22.rename_columns(['RA', 'DEC', 'DIAM', 'BA', 'PA', 'DIAM_REF'],
+                         ['RA_INIT', 'DEC_INIT', 'DIAM_INIT', 'BA_INIT', 'PA_INIT', 'DIAM_INIT_REF'])
+
+    # Match by OBJNAME
+    ell60 = ell60.copy()
+    m60, m22 = match(ell60['OBJNAME'], ell22['OBJNAME'])
+    ell60 = ell60[m60]
+    ell22 = ell22[m22]
+
+    # Position drift from original initial to current measured
+    # Original initial positions (from v0.22, which should be untouched)
+    c_init = SkyCoord(ell22['RA_INIT']*u.deg, ell22['DEC_INIT']*u.deg)
+
+    # Current measured positions
+    c_now = SkyCoord(ell60['RA']*u.deg, ell60['DEC']*u.deg)
+
+    pos_drift_arcsec = c_init.separation(c_now).to(u.arcsec).value
+
+    # Diameter drift
+    diam_init = ell22['DIAM_INIT']
+    diam_now = ell60['D26']
+    diam_ratio = diam_now / np.clip(diam_init, 0.01, None)
+
+    # BA drift
+    ba_init = ell22['BA_INIT']
+    ba_now = ell60['BA']
+    ba_diff = np.abs(ba_now - ba_init)
+
+    # PA drift (wrapped)
+    pa_init = ell22['PA_INIT']
+    pa_now = ell60['PA']
+    pa_diff = np.abs(((pa_now - pa_init + 90.0) % 180.0) - 90.0)
+
+    # Summary statistics
+    log.info(f"Position drift (arcsec): median={np.median(pos_drift_arcsec):.2f}, "
+             f"90%={np.percentile(pos_drift_arcsec, 90):.2f}, "
+             f"99%={np.percentile(pos_drift_arcsec, 99):.2f}, "
+             f"max={np.max(pos_drift_arcsec):.2f}")
+
+    log.info(f"Diameter ratio (new/init): median={np.median(diam_ratio):.2f}, "
+             f"10%={np.percentile(diam_ratio, 10):.2f}, "
+             f"90%={np.percentile(diam_ratio, 90):.2f}")
+
+    out = Table({
+        'OBJNAME': ell60['OBJNAME'],
+        'SGAID': ell60['SGAID'],
+        'RA': ell60['RA'],
+        'DEC': ell60['DEC'],
+        'GROUP_MULT': ell60['GROUP_MULT'],
+        'ELLIPSEBIT': ell60['ELLIPSEBIT'],
+        'IS_LVD': ell60['SAMPLE'] & SAMPLE['LVD'] != 0,
+        'D26': ell60['D26'],
+        'RA_ORIG': ell22['RA_INIT'],
+        'DEC_ORIG': ell22['DEC_INIT'],
+        'DIAM_ORIG': diam_init,
+        'DIAM_ORIG_REF': ell22['DIAM_INIT_REF'],
+        'PA_ORIG': pa_init,
+        'BA_ORIG': ba_init,
+        'pos_drift_arcsec': pos_drift_arcsec,
+        'diam_ratio': diam_ratio,
+        'ba_diff': ba_diff,
+        'pa_diff': pa_diff,
+    })
+
+    return out
+
+
+def flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0):
+    """Flag objects that likely have corrupted geometry."""
+    from SGA.ellipse import ELLIPSEBIT
+
+    # 1. Large position drift
+    large_pos_drift = diag['pos_drift_arcsec'] > pos_thresh_arcsec
+
+    # 2. Extreme diameter change
+    extreme_diam = (diag['diam_ratio'] < diam_ratio_lo) | (diag['diam_ratio'] > diam_ratio_hi)
+
+    # 3. Already flagged LARGESHIFT
+    has_largeshift = (diag['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
+
+    # 4. In a group (higher risk of contamination)
+    in_group = diag['GROUP_MULT'] > 1
+
+    # 5. NOTRACTOR or SKIPTRACTOR (known problems)
+    has_notractor = (diag['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0
+    has_skiptractor = (diag['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0
+
+    # Combine criteria
+    needs_refit = (
+        large_pos_drift |
+        extreme_diam |
+        has_largeshift |
+        has_notractor |
+        has_skiptractor
+    )
+
+    # Higher scrutiny for groups
+    group_suspicious = in_group & (
+        (diag['pos_drift_arcsec'] > 2.0) |  # lower threshold for groups
+        (diag['diam_ratio'] < 0.5) |
+        (diag['diam_ratio'] > 2.0)
+    )
+    needs_refit |= group_suspicious
+
+    log.info(f"Flagged for refit: {np.sum(needs_refit):,d}/{len(diag):,d}")
+    log.info(f"  - Large position drift (>{pos_thresh_arcsec}\"): {np.sum(large_pos_drift):,d}")
+    log.info(f"  - Extreme diameter change: {np.sum(extreme_diam):,d}")
+    log.info(f"  - LARGESHIFT bit: {np.sum(has_largeshift):,d}")
+    log.info(f"  - NOTRACTOR: {np.sum(has_notractor):,d}")
+    log.info(f"  - SKIPTRACTOR: {np.sum(has_skiptractor):,d}")
+    log.info(f"  - Suspicious groups: {np.sum(group_suspicious):,d}")
+
+    # Check the catastrophic position drifts
+    catastrophic = diag[diag['pos_drift_arcsec'] > 30.]  # > 1 arcmin
+    log.info(f"Catastrophic drift (>30\"): {len(catastrophic):,d}")
+    print(catastrophic['OBJNAME', 'SGAID', 'GROUP_MULT', 'pos_drift_arcsec', 'diam_ratio'][:20])
+
+    # Breakdown of large position drift by group membership
+    large_drift = diag['pos_drift_arcsec'] > 5.0
+    log.info(f"Large drift in singles: {np.sum(large_drift & (diag['GROUP_MULT'] == 1)):,d}")
+    log.info(f"Large drift in groups: {np.sum(large_drift & (diag['GROUP_MULT'] > 1)):,d}")
+
+    # Overlap between categories
+    log.info(f"LARGESHIFT AND large_drift: {np.sum((diag['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) & large_drift):,d}")
+    log.info(f"LARGESHIFT but NOT large_drift: {np.sum((diag['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] != 0) & ~large_drift):,d}")
+
+    in_group = diag['GROUP_MULT'] > 1
+    group_pos_drift = in_group & (diag['pos_drift_arcsec'] > 2.0)
+    group_diam_small = in_group & (diag['diam_ratio'] < 0.5)
+    group_diam_large = in_group & (diag['diam_ratio'] > 2.0)
+
+    log.info(f"Groups with pos drift >2\": {np.sum(group_pos_drift):,d}")
+    log.info(f"Groups with diam_ratio <0.5: {np.sum(group_diam_small):,d}")
+    log.info(f"Groups with diam_ratio >2.0: {np.sum(group_diam_large):,d}")
+
+    # The diam_ratio > 2.0 in groups — are these mostly small initial diameters?
+    group_large_ratio = (diag['GROUP_MULT'] > 1) & (diag['diam_ratio'] > 2.0)
+
+    print(f"Median DIAM_INIT for group diam_ratio>2: {np.median(diag['DIAM_ORIG'][group_large_ratio]):.2f}")
+    print(f"Median D26 for group diam_ratio>2: {np.median(diag['D26'][group_large_ratio]):.2f}")
+
+    # Breakdown by initial size
+    small_init = diag['DIAM_ORIG'] < 0.5
+    med_init = (diag['DIAM_ORIG'] >= 0.5) & (diag['DIAM_ORIG'] < 1.0)
+    large_init = diag['DIAM_ORIG'] >= 1.0
+
+    log.info(f"Groups diam_ratio>2, DIAM_INIT<0.5': {np.sum(group_large_ratio & small_init):,d}")
+    log.info(f"Groups diam_ratio>2, DIAM_INIT 0.5-1': {np.sum(group_large_ratio & med_init):,d}")
+    log.info(f"Groups diam_ratio>2, DIAM_INIT>1': {np.sum(group_large_ratio & large_init):,d}")
+
+    # Check position drift for these — if position also moved, more suspicious
+    log.info(f"Groups diam_ratio>2 AND pos_drift>2\": {np.sum(group_large_ratio & (diag['pos_drift_arcsec'] > 2.0)):,d}")
+
+    # More targeted group flagging: require BOTH diameter increase AND position drift
+    group_suspicious_refined = (diag['GROUP_MULT'] > 1) & (
+        (diag['pos_drift_arcsec'] > 2.0) |  # position moved
+        (diag['diam_ratio'] < 0.5) |         # shrunk significantly (likely real problem)
+        ((diag['diam_ratio'] > 2.0) & (diag['pos_drift_arcsec'] > 1.0)) |  # grew AND moved
+        ((diag['diam_ratio'] > 3.0) & (diag['DIAM_ORIG'] > 0.5))  # grew 3x for non-tiny galaxy
+    )
+    log.info(f"Refined suspicious groups: {np.sum(group_suspicious_refined):,d}")
+
+    # Recalculate total with refined group criterion
+    large_pos_drift = diag['pos_drift_arcsec'] > 5.0
+    extreme_diam = (diag['diam_ratio'] < 0.3) | (diag['diam_ratio'] > 3.0)
+    has_largeshift = (diag['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
+    has_notractor = (diag['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0
+    has_skiptractor = (diag['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0
+
+    group_suspicious_refined = (diag['GROUP_MULT'] > 1) & (
+        (diag['pos_drift_arcsec'] > 2.0) |
+        (diag['diam_ratio'] < 0.5) |
+        ((diag['diam_ratio'] > 2.0) & (diag['pos_drift_arcsec'] > 1.0)) |
+        ((diag['diam_ratio'] > 3.0) & (diag['DIAM_ORIG'] > 0.5))
+    )
+
+    needs_refit_refined = (
+        large_pos_drift |
+        extreme_diam |
+        has_largeshift |
+        #has_notractor |
+        #has_skiptractor |
+        group_suspicious_refined
+    )
+
+    log.info(f"Refined total for refit: {np.sum(needs_refit_refined):,d}/{len(diag):,d}")
+
+    largeshift_no_drift = ((diag['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0) & (diag['pos_drift_arcsec'] <= 5.0)
+
+    # Were these "fixed" in a previous version?
+    print(f"LARGESHIFT but no drift - median pos_drift: {np.median(diag['pos_drift_arcsec'][largeshift_no_drift]):.2f}")
+    print(f"LARGESHIFT but no drift - median diam_ratio: {np.median(diag['diam_ratio'][largeshift_no_drift]):.2f}")
+    print(f"LARGESHIFT but no drift - in groups: {np.sum(diag['GROUP_MULT'][largeshift_no_drift] > 1):,d}")
+
+    # Objects with LARGESHIFT that appear stable now
+    largeshift_stable = (
+        ((diag['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0) &
+        (diag['pos_drift_arcsec'] <= 5.0) &
+        (diag['diam_ratio'] > 0.5) &
+        (diag['diam_ratio'] < 2.0)
+    )
+    log.info(f"LARGESHIFT but stable: {np.sum(largeshift_stable):,d}")
+
+    # Exclude these from refit
+    needs_refit_final = needs_refit_refined & ~largeshift_stable
+    log.info(f"Final total for refit: {np.sum(needs_refit_final):,d}/{len(diag):,d}")
+
+    is_lvd = diag['IS_LVD']
+    log.info(f"LVD sources flagged for refit: {np.sum(needs_refit_refined & is_lvd):,d}/{np.sum(is_lvd):,d}")
+
+    lvd_not_flagged = is_lvd & ~needs_refit_final
+    log.info(f"LVD not flagged - median pos_drift: {np.median(diag['pos_drift_arcsec'][lvd_not_flagged]):.2f}")
+    log.info(f"LVD not flagged - median diam_ratio: {np.median(diag['diam_ratio'][lvd_not_flagged]):.2f}")
+    log.info(f"LVD not flagged - max pos_drift: {np.max(diag['pos_drift_arcsec'][lvd_not_flagged]):.2f}")
+
+    diag['NEEDS_REFIT'] = needs_refit_final
+
+    return diag
+
+
+def additional_sanity_checks(ell60, ell22):
+    """More checks to catch problematic objects."""
+
+    # 1. Objects where flux is zero but D26 is large (Tractor dropped it)
+    zero_flux = (ell60['FLUX_R'] == 0) & (ell60['D26'] > 0.5)
+
+    # 2. Objects with valid D26_ERR but suspiciously small D26
+    small_but_measured = (ell60['D26_ERR'] > 0) & (ell60['D26'] < 0.2)
+
+    # 3. BA became unphysical
+    bad_ba = (ell60['BA'] <= 0) | (ell60['BA'] > 1)
+
+    # 4. Compare to v0.22 measured values (not just init)
+    # If v0.22 had a good measurement and v0.60 differs wildly, suspicious
+    m60, m22 = match(ell60['OBJNAME'], ell22['OBJNAME'])
+    v22_had_measurement = ell22['D26_ERR'][m22] > 0
+    diam_changed_from_v22 = np.abs(ell60['D26'][m60] - ell22['D26'][m22]) / np.clip(ell22['D26'][m22], 0.1, None)
+    v22_to_v60_drift = v22_had_measurement & (diam_changed_from_v22 > 0.5)
+
+    log.info(f"Zero flux but large D26: {np.sum(zero_flux):,d}")
+    log.info(f"Small D26 but measured: {np.sum(small_but_measured):,d}")
+    log.info(f"Unphysical BA: {np.sum(bad_ba):,d}")
+    log.info(f"Large change from v0.22 measurement: {np.sum(v22_to_v60_drift):,d}")
+
+
+
 def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
     dr9-north. Consolidate duplicates by OBJNAME, combining REGION
@@ -3773,6 +4046,39 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             log.info(f'Removing {np.sum(I):,d}/{len(ell1):,d} {region} galaxies with D(26)<{mindiam:.2f} arcmin')
             ell1 = ell1[~I]
 
+        elif base_version == 'v0.60':
+            # Fix a bug in the diameters of SKIPTRACTOR sources before proceeding.
+            from SGA.SGA import SGA_diameter
+            diam, diam_err, diam_ref, _ = SGA_diameter(ell1, region)
+            I = ell1['D26'] != diam
+            if np.any(I):
+                for col, val in zip(['D26', 'D26_ERR', 'D26_REF'], [diam[I], diam_err[I], diam_ref[I]]):
+                    ell1[col][I] = val
+
+            diag = diagnose_drift(ell1, outdir)
+            diag = flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0)
+            #bb = diag[diag['NEEDS_REFIT']] ; bb = bb[np.argsort(bb['DIAM_ORIG'])]
+
+            # Add refit flag to ell1 before vstacking
+            m_ell, m_diag = match(ell1['SGAID'], diag['SGAID'])
+            ell1['REFIT'] = np.zeros(len(ell1), dtype=bool)
+            ell1['RA_ORIG'] = np.zeros(len(ell1), dtype='f8')
+            ell1['DEC_ORIG'] = np.zeros(len(ell1), dtype='f8')
+            ell1['DIAM_ORIG'] = np.zeros(len(ell1), dtype='f4')
+            ell1['DIAM_ORIG_REF'] = np.zeros(len(ell1), dtype='<U14')
+            ell1['PA_ORIG'] = np.zeros(len(ell1), dtype='f4')
+            ell1['BA_ORIG'] = np.zeros(len(ell1), dtype='f4')
+
+            ell1['REFIT'][m_ell] = diag['NEEDS_REFIT'][m_diag]
+            ell1['RA_ORIG'][m_ell] = diag['RA_ORIG'][m_diag]
+            ell1['DEC_ORIG'][m_ell] = diag['DEC_ORIG'][m_diag]
+            ell1['DIAM_ORIG'][m_ell] = diag['DIAM_ORIG'][m_diag]
+            ell1['DIAM_ORIG_REF'][m_ell] = diag['DIAM_ORIG_REF'][m_diag]
+            ell1['PA_ORIG'][m_ell] = diag['PA_ORIG'][m_diag]
+            ell1['BA_ORIG'][m_ell] = diag['BA_ORIG'][m_diag]
+
+            log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for refit')
+
         ell.append(ell1)
     ell = vstack(ell)
 
@@ -3792,6 +4098,11 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
         dr11_bit = REGIONBITS['dr11-south']
 
         def _prefer_idx(rows):
+            # First prefer unflagged (REFIT=False)
+            unflagged = [i for i in rows if not ell['REFIT'][i]]
+            if unflagged:
+                rows = np.array(unflagged)
+
             best = np.max(nbands[rows])
             cand = rows[nbands[rows] == best]
             # tie-breaker: prefer a dr11-south row
@@ -3887,7 +4198,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -3972,27 +4283,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
             for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                 ell_base[col][I] = parent_base[col][I]
 
-        ##I = (ell_base['DIAM'] < 0.5) & (parent_base['DIAM'] > 1.) & ((1.-ell_base['DIAM']/parent_base['DIAM']) > 0.2)
-        #I = (ell_base['DIAM'] < 0.3) & (ell['GROUP_MULT'] == 1) & (ell['SAMPLE'] & SAMPLE['LVD'] == 0)
-        #bb = ell_base['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][I]
-        #bb = bb[np.argsort(bb['DIAM'])]
-        #bb.rename_columns(['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'], ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-        #bb['radius'] *= 60. / 2.
-        #bb.write('viewer.fits', overwrite=True)
-        #_ = [print(f'{nn},') for nn in bb['name'].value]
-
-        #import matplotlib.pyplot as plt
-        #I = np.abs((ell_base['DIAM'] - parent_base['DIAM']) / (0.5 * (ell_base['DIAM'] + parent_base['DIAM']))) > 0.5
-        #plt.clf()
-        #plt.scatter(ell_base['DIAM'], parent_base['DIAM'], s=1)
-        #plt.scatter(ell_base['DIAM'][I], parent_base['DIAM'][I], s=1, color='red', alpha=0.5)
-        #plt.xscale('log')
-        #plt.yscale('log')
-        #plt.xlabel(f'Ellipse ({base_version})')
-        #plt.ylabel(f'Parent ({parent_version})')
-        #plt.axvline(x=0.5, color='k')
-        #plt.savefig('ioannis/tmp/junk.png')
-
     elif base_version == 'v0.30':
         I = ((ell['SAMPLE'] & SAMPLE['LVD']) == 0) & (ell['D26_ERR'] != 0.) & ((ell['D26']+ell['D26_ERR']) < mindiam)
         log.info(f'Removing {np.sum(I):,d}/{len(ell):,d} galaxies with D(26)<{mindiam:.2f} arcmin')
@@ -4050,6 +4340,20 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
         #    ell_base[col][I] = parent_base[col][I]
         base = ell_base
 
+    elif base_version == 'v0.60':
+        I = ell['REFIT'].astype(bool)
+        if np.any(I):
+            log.info(f'Restoring initial geometry for {np.sum(I):,d} objects for refit')
+            ell_base['DIAM_ERR'][I] = 0.
+            for col, init_col in [('RA', 'RA_ORIG'), ('DEC', 'DEC_ORIG'),
+                                  ('DIAM', 'DIAM_ORIG'), ('DIAM_REF', 'DIAM_ORIG_REF'),
+                                  ('PA', 'PA_ORIG'), ('BA', 'BA_ORIG')]:
+                ell_base[col][I] = ell[init_col][I]
+
+            out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
+            out = out[np.argsort(out['DIAM_ORIG'])]
+            out.write(os.path.join(outdir, 'SGA2025-v0.70-refit.fits'), overwrite=True)
+        base = ell_base
     else:
         base = ell_base
 
@@ -4115,6 +4419,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.50', overwrite=False):
 
     log.info(f'Applying ELLIPSEMODE flags to {len(ov.flags):,d} objects.')
     apply_flags_inplace(grp, ov.flags, ELLIPSEMODE)
+
+    # MCLOUDS/GCLPNE/NEARSTAR/INSTAR all imply NORADWEIGHT
+    I = (grp['SAMPLE'] & (SAMPLE['MCLOUDS'] | SAMPLE['GCLPNE'] | SAMPLE['NEARSTAR'] | SAMPLE['INSTAR'])) != 0
+    grp['ELLIPSEMODE'][I] |= ELLIPSEMODE['NORADWEIGHT']
 
     # populate FITMODE, which is used by legacypipe
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']

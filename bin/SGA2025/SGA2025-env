@@ -14,7 +14,8 @@ export COSMO=/dvs_ro/cfs/cdirs/cosmo
 #export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.30.kd.fits
 #export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.40.kd.fits
 #export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.50.kd.fits
-export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.60.kd.fits
+#export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.60.kd.fits
+export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.70.kd.fits
 
 #echo 'USING LEGACYPIPE/MAIN!!'
 #export LEGACYPIPE_CODE_DIR=/global/homes/i/ioannis/code/legacypipe
@@ -30,7 +31,7 @@ export PATH=$SGA_CODE_DIR/bin/SGA2025:$PATH
 
 export SGA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025
 #export SGA_DATA_DIR=$PSCRATCH/SGA2025-data
-export SGA_DATA_DIR=$PSCRATCH/SGA2025-v0.60
+export SGA_DATA_DIR=$PSCRATCH/SGA2025-v0.70
 #export SGA_HTML_DIR=/pscratch/sd/i/ioannis/SGA2025-html
 #export SGA_DATA_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA2025-data
 export SGA_HTML_DIR=/global/cfs/cdirs/desicollab/users/ioannis/SGA2025-html
