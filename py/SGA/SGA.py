@@ -2160,7 +2160,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          moment_method='rms', maxshift_arcsec=MAXSHIFT_ARCSEC,
                          radial_power=0.7, SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
-                         use_tractor_position=True, use_radial_weight=True,
+                         use_tractor_position=True, use_radial_weight=True, fixgeo=False,
                          use_radial_weight_for_overlaps=True, use_tractor_geometry=True,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -2526,7 +2526,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
     for iobj in range(nsample):
-        if sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['MOMENTPOS'] | ELLIPSEMODE['FIXGEO']) != 0:
+        if fixgeo or (sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['MOMENTPOS'] | ELLIPSEMODE['FIXGEO']) != 0):
             use_tractor_position_obj[iobj] = False
 
     # Clear bits which may change between the initial and final
@@ -2552,13 +2552,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
-        # Set MOMENTPOS bit if either: (1) ELLIPSEMODE has it, or (2)
+        # Set MOMENTPOS bit if either: (1) ELLIPSEMODE has it; or (2)
         # not using Tractor positions
         if (not use_tractor_position_obj[iobj] and
-            sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] == 0):
+            (not fixgeo or (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] == 0))):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
-        if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0:
+        if fixgeo or (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
 
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['LESSMASKING'] != 0:
@@ -2672,7 +2672,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         # Next, iteratively update the source geometry unless
         # FIXGEO or TRACTORGEO have been set.
         if update_geometry:
-            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
+            if fixgeo or (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0):
                 niter_actual = 1
             else:
                 niter_actual = niter_geometry
@@ -2721,7 +2721,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # never veto the "core" brightstarmask except for FIXGEO
             # or TRACTORGEO
-            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
+            if not fixgeo and (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0):
                 iter_brightstarmask |= opt_brightstarmask_core
 
             # if more than XX% of the pixels are masked by the core of
@@ -2806,7 +2806,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # coadded image.
             wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+            if fixgeo or (obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0):
                 log.info('FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
             elif (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
@@ -3017,7 +3017,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # never veto the "core" brightstarmask except for FIXGEO
         # or TRACTORGEO
-        if sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
+        if not fixgeo and (sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0):
             final_brightstarmask |= opt_brightstarmask_core
 
         # Build the final galaxy mask

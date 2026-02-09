@@ -60,6 +60,7 @@ def mpi_args():
                         help='No radial weighting when determining moment geometry.')
     parser.add_argument('--momentpos', dest='use_tractor_position', action='store_false',
                         help='Use the light-weighted (not Tractor) position during ellipse-fitting.')
+    parser.add_argument('--fixgeo', action='store_true', help='Use fixed ellipse geometry (irrespective of if the ELLIPSEMODE bit is set.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
