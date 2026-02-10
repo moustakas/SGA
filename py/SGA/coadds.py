@@ -59,7 +59,7 @@ def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
 
     if pixelized_psf is None:
         vv = psf_sigma**2.
-        psf = GaussianMixturePSFGaussianMixturePSF(1., 0., 0., vv, vv, 0.)
+        psf = GaussianMixturePSF(1., 0., 0., vv, vv, 0.)
     else:
         psf = pixelized_psf
 
