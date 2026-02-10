@@ -77,6 +77,15 @@ def skip_ellipse_or_not(row):
     else:
         return False
 
+def skip_tractor_or_not(galaxydir):
+    # If the images are not fz-compressed, then set --skip-tractor
+    from glob import glob
+    imfiles = glob(os.path.join(galaxydir, '*-image-*.fits*'))
+    if np.any(np.char.endswith(imfiles, '.fz')):
+        return False
+    else:
+        return True
+
 
 def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
 
@@ -661,6 +670,7 @@ def main():
                 args.qaplot = False # True # always
 
             skip_ellipse = skip_ellipse_or_not(onegal)
+            skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
 
             # Find other objects not in this group (excluding RESOLVED
             # sources) which may contaminate the actual group members.
@@ -684,7 +694,7 @@ def main():
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
                                        clobber=args.clobber, skip_ellipse=skip_ellipse,
-                                       skip_tractor=args.skip_tractor,
+                                       skip_tractor=skip_tractor,
                                        htmlgalaxydir=htmlgalaxydir)
             done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
@@ -698,6 +708,7 @@ def main():
                     log.warning('Ellipse-fitting must be done before generating plots.')
                     restore_logger(fh=fh, debug=args.debug)
                     continue
+            skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
 
             if not os.path.isdir(htmlgalaxydir):
                 os.makedirs(htmlgalaxydir, exist_ok=True)
@@ -709,7 +720,7 @@ def main():
                              unpack_maskbits, SGAMASKBITS, APERTURES,
                              args.region, barlen=barlen, barlabel=barlabel,
                              run=run, skip_ellipse=skip_ellipse,
-                             skip_tractor=args.skip_tractor,
+                             skip_tractor=skip_tractor,
                              bands=bands, mp=args.mp, pixscale=args.pixscale,
                              unwise=args.unwise, galex=args.galex,
                              verbose=args.verbose, clobber=args.clobber)
