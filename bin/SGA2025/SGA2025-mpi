@@ -671,6 +671,10 @@ def main():
 
             skip_ellipse = skip_ellipse_or_not(onegal)
             skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
+            if skip_tractor:
+                fixgeo = True
+            else:
+                fixgeo = args.fixgeo
 
             # Find other objects not in this group (excluding RESOLVED
             # sources) which may contaminate the actual group members.
@@ -689,7 +693,7 @@ def main():
                                        run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
                                        apertures=APERTURES, nmonte=args.nmonte, seed=args.seed,
                                        mask_nearby=mask_nearby, use_tractor_position=args.use_tractor_position,
-                                       fixgeo=args.fixgeo, use_radial_weight=args.use_radial_weight,
+                                       fixgeo=fixgeo, use_radial_weight=args.use_radial_weight,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
