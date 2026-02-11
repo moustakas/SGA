@@ -1122,7 +1122,6 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
                 actual_gid = row['GROUP_ID']
                 if expected_gid != actual_gid:
                     print(f'Ellipse file may be out of date: {gdir}')
-                    pdb.set_trace()
                     raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
                                      f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
                                      f'Ellipse file may be out of date: {gdir}')
@@ -1276,9 +1275,6 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     # Append mock SGA entries to tractor
     if len(tractor_sga) > 0:
         tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
-
-    #if np.any(np.isin(grpsample['GROUP_NAME'], ['02327m8659'])):
-    #    pdb.set_trace()
 
     return ellipse, tractor
 
@@ -1476,7 +1472,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             if len(allellipse) > 0:
-                #log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
+                log.info(f'Writing {len(allellipse):,d} groups [{len(alltractor):,d} Tractor sources] to {slicefile}')
                 fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
                 fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
 
@@ -2265,7 +2261,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \

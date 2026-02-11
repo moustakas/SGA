@@ -31,13 +31,13 @@ cp ~/SGA2025/sample/SGA2025-beta-parent-v0.70.kd.fits .
 rm SGA2025-parent-latest.kd.fits
 ln -s SGA2025-beta-parent-v0.70.kd.fits SGA2025-parent-latest.kd.fits
 
-cp ~/SGA2025/sample/SGA2025-ellipse-v0.60-dr9-north.kd.fits .
+cp ~/SGA2025/sample/SGA2025-ellipse-v0.70-dr9-north.kd.fits .
 rm SGA2025-ellipse-north-latest.kd.fits
-ln -s SGA2025-ellipse-v0.60-dr9-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
+ln -s SGA2025-ellipse-v0.70-dr9-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
 
-cp ~/SGA2025/sample/SGA2025-ellipse-v0.61-dr11-south.kd.fits .
+cp ~/SGA2025/sample/SGA2025-ellipse-v0.70-dr11-south.kd.fits .
 rm SGA2025-ellipse-south-latest.kd.fits
-ln -s SGA2025-ellipse-v0.61-dr11-south.kd.fits SGA2025-ellipse-south-latest.kd.fits
+ln -s SGA2025-ellipse-v0.70-dr11-south.kd.fits SGA2025-ellipse-south-latest.kd.fits
 
 chgrp cosmo *.fits ; chmod g-w *.fits
 
