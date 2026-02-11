@@ -441,10 +441,12 @@ def main():
             galaxy, galaxydir = get_galaxy_galaxydir(
                 sample[fail[rank]], region=args.region,
                 group=not no_groups, datadir=datadir, htmldir=htmldir)
-            for ii, dd, obj, diam in zip(fail[rank], np.atleast_1d(galaxydir),
-                                         sample['OBJNAME'][fail[rank]],
-                                         sample[DIAMCOLUMN][fail[rank]]):
-                print(f'  {ii} {dd} [{obj} D={diam:.3f} arcmin]')
+            for ii, dd, obj, diam, mult in zip(
+                    fail[rank], np.atleast_1d(galaxydir),
+                    sample['OBJNAME'][fail[rank]],
+                    sample[DIAMCOLUMN][fail[rank]],
+                    sample['GROUP_MULT'][fail[rank]]):
+                print(f'  {ii} {dd} [{obj} D={diam:.3f} arcmin M={mult}]')
 
         # Analysis mode
         if args.analyze and args.coadds and has_work:
@@ -462,10 +464,12 @@ def main():
                 sample[todo], region=args.region,
                 group=not no_groups,
                 datadir=datadir, htmldir=htmldir)
-            for ii, dd, obj, diam in zip(todo, np.atleast_1d(galaxydir),
-                                         sample['OBJNAME'][todo],
-                                         sample[DIAMCOLUMN][todo]):
-                log.info(f'{dd} [{obj} D={diam:.3f} arcmin]')
+            for ii, dd, obj, diam, mult in zip(
+                    todo, np.atleast_1d(galaxydir),
+                    sample['OBJNAME'][todo],
+                    sample[DIAMCOLUMN][todo],
+                    sample['GROUP_MULT'][todo]):
+                log.info(f'{dd} [{obj} D={diam:.3f} arcmin M={mult}]')
                 #print(dd)
 
     # Exit early for count/analyze modes
@@ -490,7 +494,7 @@ def main():
             os.makedirs(galaxydir, exist_ok=True)
 
         log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
-                 f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]:.3f} arcmin]')
+                 f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]:.3f} arcmin M={onegal["GROUP_MULT"]}]')
 
         logfile = get_logfile(galaxy, galaxydir, suffix)
         fh = setup_logging(logfile, debug=args.debug)
