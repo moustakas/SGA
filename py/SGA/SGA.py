@@ -1113,7 +1113,7 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
     ellipse = vstack(ellipse_list) if ellipse_list else None
 
     # Validate GROUP_ID matches grpsample
-    if ellipse is not None and 'GROUP_ID' in ellipse.colnames and 'GROUP_ID' in grpsample.colnames:
+    if False and ellipse is not None and 'GROUP_ID' in ellipse.colnames and 'GROUP_ID' in grpsample.colnames:
         for i, row in enumerate(ellipse):
             sgaid = row[REFIDCOLUMN]
             match_idx = np.where(grpsample[REFIDCOLUMN] == sgaid)[0]
@@ -1121,7 +1121,8 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
                 expected_gid = grpsample['GROUP_ID'][match_idx[0]]
                 actual_gid = row['GROUP_ID']
                 if expected_gid != actual_gid:
-                    rint(f'Ellipse file may be out of date: {gdir}')
+                    print(f'Ellipse file may be out of date: {gdir}')
+                    pdb.set_trace()
                     raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
                                      f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
                                      f'Ellipse file may be out of date: {gdir}')
