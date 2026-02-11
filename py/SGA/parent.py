@@ -3704,7 +3704,7 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def diagnose_drift(ell60, outdir):
+def diagnose_drift(ell60, outdir, ref_version='v0.10'):
     """Compare v0.60 positions to original initial positions."""
     import astropy.units as u
     from astropy.coordinates import SkyCoord
@@ -3723,7 +3723,11 @@ def diagnose_drift(ell60, outdir):
     #    ell22['RA_INIT'][I] = ell22['RA'][I]
     #    ell22['DEC_INIT'][I] = ell22['DEC'][I]
 
-    ell22 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+    if ref_version == 'v0.10':
+        ell22 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+    else:
+        ell22 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-{ref_version}.fits')))
+
     for ver in ['v0.30', 'v0.40', 'v0.50', 'v0.60']:
         overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{ver}')
         ov = load_overlays(overlay_dir)
@@ -4055,7 +4059,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
                 for col, val in zip(['D26', 'D26_ERR', 'D26_REF'], [diam[I], diam_err[I], diam_ref[I]]):
                     ell1[col][I] = val
 
-            diag = diagnose_drift(ell1, outdir)
+            diag = diagnose_drift(ell1, outdir, ref_version='v0.10')
             diag = flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0)
             #bb = diag[diag['NEEDS_REFIT']] ; bb = bb[np.argsort(bb['DIAM_ORIG'])]
 
@@ -4078,6 +4082,41 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             ell1['BA_ORIG'][m_ell] = diag['BA_ORIG'][m_diag]
 
             log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for refit')
+
+        elif base_version == 'v0.70':
+            #diag = diagnose_drift(ell1, outdir, ref_version='v0.70')
+            #diag = flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0)
+            #diag[diag['IS_LVD'] & diag['NEEDS_REFIT']]
+
+            # remove small members and groups
+            d26_ul = ell1['D26'] + ell1['D26_ERR']
+
+            # Build max diameter per group using GROUP_NAME
+            unique_groups, group_indices = np.unique(ell1['GROUP_NAME'], return_inverse=True)
+            max_diam_per_group = np.zeros(len(unique_groups), dtype=np.float32)
+            np.maximum.at(max_diam_per_group, group_indices, d26_ul)
+
+            # Check if group's max diameter is below threshold AND not LVD
+            group_too_small = max_diam_per_group[group_indices] < mindiam
+            not_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) == 0
+
+            I = not_lvd & group_too_small
+            groups_to_remove = np.unique(ell1['GROUP_NAME'][I])
+            I = np.isin(ell1['GROUP_NAME'], groups_to_remove)
+
+            from SGA.qa import to_skyviewer_table
+            check = ell1[I]
+            check = check[np.argsort(check['D26'])]#[::-1]]
+            check.rename_column('D26', 'DIAM')
+            ##view = to_skyviewer_table(check[check['GROUP_MULT'] > 2])
+            view = to_skyviewer_table(check)
+            view.write(f'view-remove-{region}.fits', overwrite=True)
+
+            log.info(f'Removing {np.sum(I):,d}/{len(ell1):,d} {region} galaxies with D(26)<{mindiam:.2f} arcmin')
+            ell1 = ell1[~I]
+
+            # no refitting flag
+            ell1['REFIT'] = np.zeros(len(ell1), dtype=bool)
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -4198,7 +4237,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.70', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -4354,6 +4393,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, 'SGA2025-v0.70-refit.fits'), overwrite=True)
         base = ell_base
+    elif base_version == 'v0.70':
+        base = ell_base
     else:
         base = ell_base
 
@@ -4386,6 +4427,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
             raise ValueError('PA out of range')
     except:
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
+
+    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
