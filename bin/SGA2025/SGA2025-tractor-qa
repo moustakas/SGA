@@ -1,83 +1,30 @@
 #!/usr/bin/env python
+"""
+SGA2025 Tractor QA — Refactored
 
-"""QA of Tractor modeling results.
+Generates PDF QA documents organized by:
+  - Track: lvd, not-lvd, skiptractor
+  - Tier: pipeline failures, large shifts, clean
+  - Group multiplicity: GM=1, GM=2, GM=3, GM>3
 
-NB: This diagnostic routine should be used for a relatively small
-number of objects (~hundreds).
-
-
-salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
-SGA2025-shifter
-source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
-
-SGA2025-tractor-qa --region=dr11-south --version=v0.60 --vi-sample=1 --final-sample --mp=32
-SGA2025-tractor-qa --region=dr11-south --version=v0.60 --vi-sample=2 --final-sample --mp=32
-SGA2025-tractor-qa --region=dr11-south --version=v0.60 --vi-sample=3 --final-sample --mp=32 --nperpdf=512
-
-
-SGA2025-tractor-qa --region=dr9-north --version=v0.60 --vi-sample=6 --final-sample --mp=32
-
-
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.50 --region=dr9-north --version=v0.50 --vi-sample=6 --final-sample --mp=32
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.50 --region=dr11-south --version=v0.50 --vi-sample=6 --final-sample --mp=32
-
-
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=6 --final-sample --mp=32
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr11-south --version=v0.40 --vi-sample=6 --final-sample --mp=32
-
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr9-north --version=v0.40 --vi-sample=3 --mp=32
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.40 --region=dr11-south --version=v0.40 --vi-sample=3 --mp=32
-
-
-## v0.22
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --region=dr11-south --vi-sample=1 --final-sample
-
-
-## v0.11
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr11-south --vi-sample=1
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr11-south --vi-sample=2
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr11-south --vi-sample=3
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=4
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=5
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=6
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=7
-
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr9-north --vi-sample=1
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr9-north --vi-sample=2
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --hide-tractor-ellipse --hide-initial-ellipse --region=dr9-north --vi-sample=3
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=4
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=5
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=6
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=7
-
-# some tests
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=999 --version=v0.11
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr11-south --vi-sample=999 --version=v0.11
-
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=900 --version=v0.11 # GCLPNE
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=901 --version=v0.11 # PSF / isolated
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.11 --final-sample --region=dr9-north --vi-sample=902 --version=v0.11 # PSF / in group
-
-
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.22 --final-sample --region=dr11-south --vi-sample=2 --version=v0.22
-
-
-SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.30 --region=dr11-south --vi-sample=1
-
+Usage:
+  SGA2025-tractor-qa --region=dr11-south --version=v0.70 --final-sample \\
+      --mindiam=0.5 --maxdiam=5.0 --track=all --mp=32
 
 """
 
-import pdb # for debugging
-
 import os
+import math
 from glob import glob
+from dataclasses import dataclass
+from typing import Optional, List, Tuple, Dict
+
 import numpy as np
-from astropy.table import Table, vstack
+from astropy.table import Table, Column
 import fitsio
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.gridspec as gridspec
 from matplotlib.image import imread
 
 from PIL import Image
@@ -86,19 +33,271 @@ Image.MAX_IMAGE_PIXELS = None
 from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
                      read_sample, DIAMCOLUMN, REFIDCOLUMN, SAMPLE,
                      REFCAT, SGA_version)
-from SGA.ellipse import ELLIPSEMODE
+from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
 from SGA.io import get_raslice
 from SGA.geometry import get_tractor_ellipse
 from SGA.qa import overplot_ellipse
 from SGA.logger import log
 
 
-MAXDIAM = 3. # [arcmin]
+# ============================================================================
+# Constants and Bitmasks
+# ============================================================================
 
+MAXDIAM_CUTOUT = 3.0  # arcmin - max diameter for cutout generation
+
+# Convenience masks
+PIPELINE_FAIL_BITS = ELLIPSEBIT['FAILGEO'] | ELLIPSEBIT['NOTRACTOR'] | ELLIPSEBIT['TRACTORPSF']
+LARGE_SHIFT_BITS = ELLIPSEBIT['LARGESHIFT'] | ELLIPSEBIT['LARGESHIFT_TRACTOR']
+NEAR_STAR_BITS = SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']
+
+# Annotation bits (shown in legend, not used for tier classification)
+STRUCTURAL_BITS = {
+    'BLENDED': ELLIPSEBIT['BLENDED'],
+    'OVERLAP': ELLIPSEBIT['OVERLAP'],
+    'SATELLITE': ELLIPSEBIT['SATELLITE'],
+}
+
+MODE_BITS = {
+    'FIXGEO': ELLIPSEBIT['FIXGEO'],
+    'MOMENTPOS': ELLIPSEBIT['MOMENTPOS'],
+    'TRACTORGEO': ELLIPSEBIT['TRACTORGEO'],
+    'NORADWEIGHT': ELLIPSEBIT['NORADWEIGHT'],
+    'LESSMASKING': ELLIPSEBIT['LESSMASKING'],
+    'MOREMASKING': ELLIPSEBIT['MOREMASKING'],
+}
+
+SAMPLE_ANNOTATION_BITS = {
+    'NEARSTAR': SAMPLE['NEARSTAR'],
+    'INSTAR': SAMPLE['INSTAR'],
+    'GCLPNE': SAMPLE['GCLPNE'],
+    'MCLOUDS': SAMPLE['MCLOUDS'],
+}
+
+
+# ============================================================================
+# Classification Logic
+# ============================================================================
+
+@dataclass
+class SampleClassification:
+    """Classification result for a single object."""
+    track: str        # 'lvd', 'not-lvd', 'skiptractor'
+    tier: int         # 1=pipeline fail, 2=large shift, 3=clean
+    gm_bin: str       # 'gm1', 'gm2', 'gm3', 'gm4plus'
+    annotations: List[str]  # bits to show in legend
+    tier_bits: List[str]    # bits that triggered tier 1 or 2
+
+
+def classify_object(row, has_ellipsebit: bool) -> SampleClassification:
+    """
+    Classify a single catalog row into track/tier/gm_bin.
+
+    Parameters
+    ----------
+    row : astropy Row
+        Single row from catalog
+    has_ellipsebit : bool
+        True for ellipse catalog (v0.70), False for parent catalog (v0.80)
+
+    Returns
+    -------
+    SampleClassification
+
+    """
+    sample_bits = row['SAMPLE']
+    ellipse_bits = row['ELLIPSEBIT'] if has_ellipsebit else 0
+    group_mult = row['GROUP_MULT']
+
+    # Determine track
+    is_lvd = (sample_bits & SAMPLE['LVD']) != 0
+    is_skiptractor = has_ellipsebit and ((ellipse_bits & ELLIPSEBIT['SKIPTRACTOR']) != 0)
+
+    if is_lvd:
+        track = 'lvd'
+    elif is_skiptractor:
+        track = 'skiptractor'
+    else:
+        track = 'not-lvd'
+
+    # Determine tier (only meaningful if has_ellipsebit)
+    tier_bits = []
+    if has_ellipsebit:
+        near_star = (sample_bits & NEAR_STAR_BITS) != 0
+
+        # Check pipeline failure bits (only if not near star)
+        pipeline_fail = False
+        if not near_star:
+            if ellipse_bits & ELLIPSEBIT['FAILGEO']:
+                tier_bits.append('FAILGEO')
+                pipeline_fail = True
+            if ellipse_bits & ELLIPSEBIT['NOTRACTOR']:
+                tier_bits.append('NOTRACTOR')
+                pipeline_fail = True
+            if ellipse_bits & ELLIPSEBIT['TRACTORPSF']:
+                tier_bits.append('TRACTORPSF')
+                pipeline_fail = True
+
+        # Check large shift bits
+        # Note: LARGESHIFT_TRACTOR is expected/incidental if MOMENTPOS is set,
+        # so it doesn't trigger tier 2 in that case (but still gets annotated)
+        large_shift = False
+        has_momentpos = (ellipse_bits & ELLIPSEBIT['MOMENTPOS']) != 0
+
+        if ellipse_bits & ELLIPSEBIT['LARGESHIFT']:
+            tier_bits.append('LARGESHIFT')
+            large_shift = True
+        if ellipse_bits & ELLIPSEBIT['LARGESHIFT_TRACTOR']:
+            tier_bits.append('LARGESHIFT_TRACTOR')
+            # Only triggers tier 2 if MOMENTPOS is NOT set
+            if not has_momentpos:
+                large_shift = True
+
+        if pipeline_fail:
+            tier = 1
+        elif large_shift:
+            tier = 2
+        else:
+            tier = 3
+    else:
+        # Parent catalog: no tier classification, everything is "clean"
+        tier = 3
+
+    # Group multiplicity bin
+    if group_mult == 1:
+        gm_bin = 'gm1'
+    elif group_mult == 2:
+        gm_bin = 'gm2'
+    elif group_mult == 3:
+        gm_bin = 'gm3'
+    else:
+        gm_bin = 'gm4plus'
+
+    # Collect annotations
+    annotations = []
+    if has_ellipsebit:
+        for name, bit in STRUCTURAL_BITS.items():
+            if ellipse_bits & bit:
+                annotations.append(name)
+        for name, bit in MODE_BITS.items():
+            if ellipse_bits & bit:
+                annotations.append(name)
+    for name, bit in SAMPLE_ANNOTATION_BITS.items():
+        if sample_bits & bit:
+            annotations.append(name)
+
+    return SampleClassification(track, tier, gm_bin, annotations, tier_bits)
+
+
+def classify_catalog(cat, has_ellipsebit: bool) -> Table:
+    """
+    Add classification columns to catalog.
+
+    Adds columns: QA_TRACK, QA_TIER, QA_GM_BIN, QA_ANNOTATIONS, QA_TIER_BITS
+
+    """
+    n = len(cat)
+
+    tracks = []
+    tiers = []
+    gm_bins = []
+    annotations_list = []
+    tier_bits_list = []
+
+    for row in cat:
+        cls = classify_object(row, has_ellipsebit)
+        tracks.append(cls.track)
+        tiers.append(cls.tier)
+        gm_bins.append(cls.gm_bin)
+        annotations_list.append(','.join(cls.annotations) if cls.annotations else '')
+        tier_bits_list.append(','.join(cls.tier_bits) if cls.tier_bits else '')
+
+    cat['QA_TRACK'] = Column(tracks, dtype='U12')
+    cat['QA_TIER'] = Column(tiers, dtype=np.int16)
+    cat['QA_GM_BIN'] = Column(gm_bins, dtype='U8')
+    cat['QA_ANNOTATIONS'] = Column(annotations_list, dtype='U64')
+    cat['QA_TIER_BITS'] = Column(tier_bits_list, dtype='U64')
+
+    return cat
+
+
+def filter_sample(cat, track: Optional[str], tier: Optional[int],
+                  mindiam: float, maxdiam: float, diamcolumn: str) -> Table:
+    """
+    Filter catalog by track, tier, and diameter range.
+
+    Parameters
+    ----------
+    cat : Table
+        Classified catalog (must have QA_* columns)
+    track : str or None
+        'lvd', 'not-lvd', 'skiptractor', or None for all
+    tier : int or None
+        1, 2, 3, or None for all
+    mindiam, maxdiam : float
+        Diameter range in arcmin
+    diamcolumn : str
+        Column name for diameter ('D26' or 'DIAM')
+
+    Returns
+    -------
+    Table
+        Filtered catalog
+
+    """
+    mask = np.ones(len(cat), dtype=bool)
+
+    # Diameter cut
+    diam = cat[diamcolumn]
+    mask &= (diam >= mindiam) & (diam < maxdiam)
+
+    # Track filter
+    if track is not None:
+        mask &= (cat['QA_TRACK'] == track)
+
+    # Tier filter
+    if tier is not None:
+        mask &= (cat['QA_TIER'] == tier)
+
+    return cat[mask]
+
+
+def partition_by_gm(cat, use_gmbins: bool = True) -> Dict[str, Table]:
+    """
+    Partition catalog by group multiplicity bin.
+
+    Parameters
+    ----------
+    cat : Table
+        Catalog with QA_GM_BIN column
+    use_gmbins : bool
+        If True, split into gm1/gm2/gm3/gm4plus
+        If False, return all objects under 'gm_any'
+
+    Returns
+    -------
+    dict
+        Keys: 'gm1', 'gm2', 'gm3', 'gm4plus' (or 'gm_any')
+        Values: filtered Table (may be empty)
+
+    """
+    if not use_gmbins:
+        return {'gm_any': cat}
+
+    result = {}
+    for gm_bin in ['gm1', 'gm2', 'gm3', 'gm4plus']:
+        mask = cat['QA_GM_BIN'] == gm_bin
+        result[gm_bin] = cat[mask]
+    return result
+
+
+# ============================================================================
+# Cutout and Image Handling
+# ============================================================================
 
 def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
                 cutout_galaxy=None, cutout_galaxydir=None, cutout=False):
-
+    """Read image and Tractor catalog for a galaxy."""
     from astropy.wcs import WCS
 
     if cutout:
@@ -106,100 +305,337 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
         from SGA.cutouts import get_pixscale_and_width
 
         pixscale, width = get_pixscale_and_width(
-            np.atleast_1d(diam), maxdiam_arcmin=MAXDIAM)
+            np.atleast_1d(diam), maxdiam_arcmin=MAXDIAM_CUTOUT)
         wcs = simple_wcs(ra, dec, width[0], pixscale[0])
 
-        # strip the galaxy subdirectory
         imagefile = os.path.join(os.path.dirname(cutout_galaxydir), f'{cutout_galaxy}.jpeg')
         if not os.path.isfile(imagefile):
-            msg = f'Cutout for {cutout_galaxydir} not found'
-            log.warning(msg)
-            pdb.set_trace()
-            raise ValueError(msg)
+            log.warning(f'Cutout for {cutout_galaxydir} not found')
+            return Table(), Table(), None, None
+
         image = imread(imagefile)
-        try:
-            assert(image.shape[0] == width[0])
-        except:
-            pdb.set_trace()
-
-        ## if this object had GROUP_PRIMARY=False then there's also a
-        ## Tractor catalog
-        #if os.path.isdir(galaxydir):
-        ##if cutout_galaxy == 'SGA2025_J0150.925+068.693':
-        #    raise ValueError('WRITE ME!!')
-
         return Table(), Table(), image, wcs
 
-
     imagefile = os.path.join(galaxydir, f'{galaxy}-image.jpg')
-    #imagefile = os.path.join(galaxydir, f'{galaxy}-model.jpg')
-    #imagefile = os.path.join(galaxydir, f'{galaxy}-resid.jpg')
     tractorfile = os.path.join(galaxydir, f'{galaxy}-tractor.fits')
 
-    # this should never happen since we check for images earlier
     if not os.path.isfile(imagefile) and not os.path.isfile(tractorfile):
         log.warning(f'Missing pipeline outputs for {galaxydir}/{galaxy}')
         return Table(), Table(), None, None
 
-    #if not os.path.isfile(tractorfile):
-    #    log.warning(f'Missing {tractorfile}')
-    #    return Table(), Table(), None, None
-
-    # OK to have an image but no Tractor catalog (e.g., LVD / resolved)
+    # Read Tractor catalog
+    sga = Table()
+    tractor = Table()
     if os.path.isfile(tractorfile):
-        cols = np.array(['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
-                         'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
-                         'flux_r', 'flux_i', 'flux_z'])
-        #allcols = np.array(fitsio.FITS(tractorfile)[1].get_colnames())
-        #cols = cols[np.isin(cols, allcols)]
-        #print(galaxydir)
+        cols = ['bx', 'by', 'ra', 'dec', 'type', 'sersic', 'shape_r',
+                'shape_e1', 'shape_e2', 'ref_cat', 'ref_id', 'flux_g',
+                'flux_r', 'flux_i', 'flux_z']
         tractor = Table(fitsio.read(tractorfile, columns=cols))
 
-        I = (np.logical_or(tractor['ref_cat'] == 'LG', tractor['ref_cat'] == REFCAT) * \
-             (tractor['ref_id'] == refid))
-        if np.sum(I) == 0:
-            sga = Table()
-        else:
+        I = ((tractor['ref_cat'] == 'LG') | (tractor['ref_cat'] == REFCAT)) & \
+            (tractor['ref_id'] == refid)
+        if np.sum(I) > 0:
             sga = tractor[I]
-            #tractor = tractor[~I]
     else:
         log.warning(f'Missing tractor catalog {tractorfile}')
-        sga = Table()
-        tractor = Table()
 
     if not os.path.isfile(imagefile):
-        msg = f'Images should never be missing at this point! {galaxydir}/{galaxy}'
-        log.critical(msg)
-        raise ValueError(msg)
+        log.critical(f'Image missing: {galaxydir}/{galaxy}')
+        return Table(), Table(), None, None
 
     image = imread(imagefile)
-    for band in ['g', 'r', 'i', 'z']:
-        fitsfile1 = os.path.join(galaxydir, f'{galaxy}-image-{band}.fits.fz')
-        fitsfile2 = os.path.join(galaxydir, f'{galaxy}-image-{band}.fits')
-        if os.path.isfile(fitsfile1):
-            fitsfile = fitsfile1
-        elif os.path.isfile(fitsfile2):
-            fitsfile = fitsfile2
-        else:
-            fitsfile = None
-        if fitsfile:
-            hdr = fitsio.read_header(fitsfile, ext=1)
-            wcs = WCS(hdr, naxis=2)
-            break
 
+    # Get WCS from FITS image
+    wcs = None
+    for band in ['g', 'r', 'i', 'z']:
+        for ext in ['.fits.fz', '.fits']:
+            fitsfile = os.path.join(galaxydir, f'{galaxy}-image-{band}{ext}')
+            if os.path.isfile(fitsfile):
+                hdr = fitsio.read_header(fitsfile, ext=1)
+                wcs = WCS(hdr, naxis=2)
+                break
+        if wcs is not None:
+            break
 
     return sga, tractor, image, wcs
 
 
-def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
-              datadir=None, cutoutdir=None, region='dr11-south', no_groups=False,
-              diamcolumn='DIAM', show_tractor_ellipse=True, show_initial_ellipse=True,
-              final_sample=False, verbose=False):
+def ensure_cutouts(sample, fullsample, region, datadir, cutoutdir, mp=1, no_groups=False):
+    """
+    Check for existing images and generate cutouts for missing ones.
 
+    Modifies sample and fullsample in place to add 'CUTOUT' column.
+
+    """
+    galaxy, galaxydir = get_galaxy_galaxydir(
+        sample, region=region, group=not no_groups, datadir=datadir)
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
+
+    # Check which have images
+    has_image = np.array([
+        os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
+        for gdir, gal in zip(galaxydir, galaxy)
+    ])
+
+    log.info(f'Found {np.sum(has_image):,d}/{len(sample):,d} objects with pipeline results.')
+
+    sample['CUTOUT'] = np.zeros(len(sample), bool)
+    fullsample['CUTOUT'] = np.zeros(len(fullsample), bool)
+
+    if np.sum(~has_image) == 0:
+        return
+
+    # Mark objects needing cutouts
+    group_names = sample['GROUP_NAME'][~has_image]
+    sample['CUTOUT'] = np.isin(sample['GROUP_NAME'], group_names)
+    fullsample['CUTOUT'] = np.isin(fullsample['GROUP_NAME'], group_names)
+
+    # Check which cutouts already exist
+    missing_sample = sample[~has_image]
+    galaxy_missing, _ = get_galaxy_galaxydir(
+        missing_sample, region=region, group=not no_groups, datadir=cutoutdir)
+    raslices = get_raslice(missing_sample['GROUP_RA'])
+
+    needs_cutout = np.array([
+        not os.path.isfile(os.path.join(cutoutdir, region, raslice, f'{gal}.jpeg'))
+        for gal, raslice in zip(np.atleast_1d(galaxy_missing), np.atleast_1d(raslices))
+    ])
+
+    n_needed = np.sum(needs_cutout)
+    log.info(f'Generating cutouts for {n_needed:,d}/{np.sum(~has_image):,d} objects.')
+
+    if n_needed > 0:
+        from SGA.cutouts import do_cutouts
+
+        layer = f'ls-{region}'
+        if region == 'dr11-south':
+            log.warning(f"Overriding layer={layer}-->ls-dr11-early-v2")
+            layer = 'ls-dr11-early-v2'
+
+        do_cutouts(
+            missing_sample[needs_cutout],
+            layer=layer,
+            group=not no_groups,
+            diamcolumn='GROUP_DIAMETER',
+            fits_cutouts=False,
+            maxdiam_arcmin=MAXDIAM_CUTOUT,
+            mp=mp,
+            cutoutdir=os.path.join(cutoutdir, region)
+        )
+
+
+# ============================================================================
+# Annotation and Plotting
+# ============================================================================
+
+def format_annotations(annotations_str: str) -> str:
+    """Format annotation string for display."""
+    if not annotations_str:
+        return ''
+    return annotations_str.replace(',', ' | ')
+
+
+def annotated_page(ax, obj, fullsample, galaxy, galaxydir,
+                   cutout_galaxy, cutout_galaxydir,
+                   region, datadir, cutoutdir, diamcolumn,
+                   show_tractor_ellipse, show_initial_ellipse,
+                   final_sample, no_groups, show_group):
+    """
+    Draw a single annotated panel for one object.
+
+    """
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
+
+    # Get geometry columns based on catalog type
+    if final_sample:
+        objra, objdec = obj['RA'], obj['DEC']
+        diam, ba, pa = obj['D26'] * 60., obj['BA'], obj['PA']
+        geo_label = f'D(26)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}'
+
+        objra0, objdec0 = obj['RA_INIT'], obj['DEC_INIT']
+        diam0, ba0, pa0 = obj['DIAM_INIT'] * 60., obj['BA_INIT'], obj['PA_INIT']
+        geo0_label = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+    else:
+        objra0, objdec0 = obj['RA'], obj['DEC']
+        diam0, ba0, pa0 = obj['DIAM'] * 60., obj['BA'], obj['PA']
+        geo0_label = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
+        objra, objdec = objra0, objdec0
+        diam, ba, pa = diam0, ba0, pa0
+        geo_label = None
+
+    # Build upper-left text
+    group_mult = obj['GROUP_MULT'] if 'GROUP_MULT' in obj.colnames else 1
+    txt_ul_lines = [
+        obj["OBJNAME"],
+        f'{obj["GROUP_NAME"]} (M={group_mult})',
+        f'({objra:.7f}, {objdec:.6f})',
+    ]
+    if show_initial_ellipse and final_sample:
+        txt_ul_lines.append(geo0_label)
+    if geo_label:
+        txt_ul_lines.append(geo_label)
+
+    # Add annotations
+    if 'QA_ANNOTATIONS' in obj.colnames and obj['QA_ANNOTATIONS']:
+        ann_str = format_annotations(obj['QA_ANNOTATIONS'])
+        if ann_str:
+            txt_ul_lines.append(f'[{ann_str}]')
+
+    txt_ul = '\n'.join(txt_ul_lines)
+
+    # Determine group center and diameter for image
+    if obj['CUTOUT'] or no_groups:
+        if final_sample:
+            groupra, groupdec = obj['RA'], obj['DEC']
+        else:
+            groupra, groupdec = obj['GROUP_RA'], obj['GROUP_DEC']
+        groupdiam = obj['GROUP_DIAMETER'] * 60.
+    else:
+        groupra, groupdec = obj['GROUP_RA'], obj['GROUP_DEC']
+        groupdiam = obj['GROUP_DIAMETER'] * 60.
+
+    # Read image
+    sga, tractor, image, wcs = read_coadds(
+        galaxy, galaxydir, refid=obj[REFIDCOLUMN],
+        ra=groupra, dec=groupdec, diam=groupdiam,
+        cutout_galaxy=cutout_galaxy, cutout_galaxydir=cutout_galaxydir,
+        cutout=obj['CUTOUT']
+    )
+
+    if image is None:
+        ax.text(0.5, 0.5, 'No image available', transform=ax.transAxes,
+                ha='center', va='center', fontsize=12)
+        ax.axis('off')
+        return
+
+    height, width, _ = image.shape
+    pixscale = get_pixscale(wcs)[0] * 3600.  # arcsec/pixel
+
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.imshow(image, origin='lower', interpolation='none')
+    ax.invert_yaxis()  # JPEG is flipped
+
+    for spine in ax.spines.values():
+        spine.set_color('white')
+
+    # Plot Tractor sources
+    if len(tractor) > 0:
+        I = tractor['ref_cat'] == 'L4'
+        if np.sum(I) > 0:
+            alpha = 0.5 if np.sum(I) > 50 else 1.0
+            s = 10 if np.sum(I) > 50 else 25
+            ax.scatter(tractor['bx'][I], height - tractor['by'][I],
+                       marker='x', s=s, color='red', alpha=alpha)
+
+    # Draw initial ellipse
+    if show_initial_ellipse:
+        xpix0, ypix0 = wcs.wcs_world2pix(objra0, objdec0, 0)
+        overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
+                         height_pixels=width, pixscale=pixscale,
+                         ax=ax, color='white', linewidth=0.3 if final_sample else 1,
+                         linestyle='-', draw_majorminor_axes=not final_sample, jpeg=True)
+
+    # Draw final ellipse (if different)
+    if final_sample:
+        xpix, ypix = wcs.wcs_world2pix(objra, objdec, 0)
+        overplot_ellipse(diam, ba, pa, xpix, ypix,
+                         height_pixels=width, pixscale=pixscale,
+                         ax=ax, color='cyan', linewidth=2, linestyle='-',
+                         draw_majorminor_axes=True, jpeg=True)
+        ax.scatter(xpix, height - ypix, marker='s', facecolor='none', s=40, color='cyan')
+
+    # Draw Tractor ellipse
+    txt_ll = ''
+    txt_ur = ''
+    if len(sga) > 0 and show_tractor_ellipse:
+        r50 = sga['shape_r'][0]
+        e1, e2 = sga['shape_e1'][0], sga['shape_e2'][0]
+        tractor_diam, tractor_ba, tractor_pa = get_tractor_ellipse(r50, e1, e2)
+
+        xpix_t, ypix_t = wcs.wcs_world2pix(sga['ra'][0], sga['dec'][0], 0)
+        overplot_ellipse(2. * r50, tractor_ba, tractor_pa, xpix_t, ypix_t,
+                         height_pixels=height, pixscale=pixscale,
+                         ax=ax, color='yellow', linewidth=1, linestyle='--',
+                         draw_majorminor_axes=True, jpeg=True)
+        ax.scatter(sga['bx'], height - sga['by'], marker='s',
+                   facecolor='none', s=40, color='yellow')
+
+        typ = sga['type'][0]
+        txt_ur = typ
+        if typ != 'PSF':
+            geo_tractor = f'r(50)={r50:.1f}" b/a={tractor_ba:.2f} PA={tractor_pa:.1f}'
+            txt_ll = geo_tractor
+
+    # For tiers 1-2, show the triggering bits in lower-left
+    if 'QA_TIER' in obj.colnames and obj['QA_TIER'] in (1, 2):
+        tier_bits_str = obj.get('QA_TIER_BITS', '')
+        if tier_bits_str:
+            tier_label = f"[{tier_bits_str.replace(',', ' | ')}]"
+            if txt_ll:
+                txt_ll = f"{tier_label}\n{txt_ll}"
+            else:
+                txt_ll = tier_label
+
+    # Draw other group members if show_group
+    if show_group and not no_groups:
+        for otherobj in fullsample:
+            if otherobj[REFIDCOLUMN] == obj[REFIDCOLUMN]:
+                continue
+            if otherobj['GROUP_NAME'] != obj['GROUP_NAME']:
+                continue
+            other_ra, other_dec = otherobj['RA'], otherobj['DEC']
+            if final_sample and 'D26' in otherobj.colnames:
+                other_diam = otherobj['D26'] * 60.
+            else:
+                other_diam = otherobj['DIAM'] * 60.
+            other_ba = otherobj['BA']
+            other_pa = otherobj['PA']
+
+            xpix_o, ypix_o = wcs.wcs_world2pix(other_ra, other_dec, 0)
+
+            # Draw ellipse with thin red curve
+            overplot_ellipse(other_diam, other_ba, other_pa, xpix_o, ypix_o,
+                             height_pixels=width, pixscale=pixscale,
+                             ax=ax, color='red', linestyle='-', linewidth=0.5,
+                             draw_majorminor_axes=False, jpeg=True)
+
+            # Mark center with x
+            ax.scatter(xpix_o, height - ypix_o, marker='x', s=25, color='red', linewidths=0.5)
+
+    # Text labels
+    ax.text(0.03, 0.97, txt_ul, transform=ax.transAxes, ha='left', va='top',
+            color='white', linespacing=1.5, fontsize=8,
+            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+    if txt_ll and show_tractor_ellipse:
+        ax.text(0.03, 0.03, txt_ll, transform=ax.transAxes, ha='left', va='bottom',
+                color='white', linespacing=1.5, fontsize=8,
+                bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+    if txt_ur and show_tractor_ellipse:
+        ax.text(0.97, 0.97, txt_ur, transform=ax.transAxes, ha='right', va='top',
+                color='white', linespacing=1.5, fontsize=8,
+                bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
+
+    ax.margins(0)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+
+def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
+                 diamcolumn, ncol=4, nrow=2, inches_per_panel=4.,
+                 show_tractor_ellipse=True, show_initial_ellipse=True,
+                 final_sample=False, no_groups=False, show_group=True,
+                 verbose=False):
+    """
+    Generate PDF with annotated galaxy images.
+
+    """
     import matplotlib as mpl
 
-    # reduces file size
+    # PDF optimization settings
     mpl.rcParams["pdf.compression"] = 9
     mpl.rcParams['path.simplify'] = True
     mpl.rcParams["path.simplify_threshold"] = 1.0
@@ -207,867 +643,405 @@ def annotated(sample, fullsample, pdffile, ncol=4, nrow=2, inches_per_panel=4.,
     mpl.rcParams["ps.fonttype"] = 42
     mpl.rcParams["pdf.use14corefonts"] = True
 
-    if no_groups:
-        showsample = sample
-    else:
-        # each group member gets its own panel
-        showsample = fullsample
+    # Get paths for all objects
+    showsample = fullsample if not no_groups else sample
 
-    galaxy, galaxydir = get_galaxy_galaxydir(showsample, region=region,
-                                             group=not no_groups,
-                                             datadir=datadir)
-    I = showsample['CUTOUT'].value
+    galaxy, galaxydir = get_galaxy_galaxydir(
+        showsample, region=region, group=not no_groups, datadir=datadir)
+    galaxy = np.atleast_1d(galaxy)
+    galaxydir = np.atleast_1d(galaxydir)
+
+    # Handle cutouts
+    I = showsample['CUTOUT'].value if 'CUTOUT' in showsample.colnames else np.zeros(len(showsample), bool)
     if np.any(I):
         cutout_galaxy = np.copy(galaxy)
         cutout_galaxydir = np.copy(galaxydir)
-        cgalaxy, cgalaxydir = get_galaxy_galaxydir(showsample[I], region=region,
-                                                   group=not no_groups,
-                                                   datadir=cutoutdir)
+        cgalaxy, cgalaxydir = get_galaxy_galaxydir(
+            showsample[I], region=region, group=not no_groups, datadir=cutoutdir)
         cutout_galaxy[I] = cgalaxy
         cutout_galaxydir[I] = cgalaxydir
     else:
         cutout_galaxy = [None] * len(showsample)
         cutout_galaxydir = [None] * len(showsample)
 
-    galaxy = np.atleast_1d(galaxy)
-    galaxydir = np.atleast_1d(galaxydir)
-
     nobj = len(showsample)
-    allindx = np.arange(nobj)
-
     nperpage = ncol * nrow
     npage = int(np.ceil(nobj / nperpage))
 
     pdf = PdfPages(pdffile)
+
     for ipage in range(npage):
-        if verbose:
+        if (ipage + 1) % 64 == 0 or verbose:
             log.info(f'Building page {ipage+1:,d}/{npage:,d}')
-        else:
-            if (ipage+1) % 64 == 0:
-                log.info(f'Building page {ipage+1:,d}/{npage:,d}')
-        indx = allindx[ipage*nperpage:(ipage+1)*nperpage]
 
-        fig, ax = plt.subplots(nrow, ncol,
-                               figsize=(inches_per_panel*ncol,
-                                        inches_per_panel*nrow),
-                               gridspec_kw={'wspace': 0.02, 'hspace': 0.02},
-                               constrained_layout=True)
-        ax = ax.ravel()
+        i_start = ipage * nperpage
+        i_end = min((ipage + 1) * nperpage, nobj)
 
-        for iax, xx in enumerate(ax):
-            if iax < len(indx):
-                obj = showsample[indx[iax]]
-                #print(obj['OBJNAME'])
+        fig, axes = plt.subplots(
+            nrow, ncol,
+            figsize=(inches_per_panel * ncol, inches_per_panel * nrow),
+            gridspec_kw={'wspace': 0.02, 'hspace': 0.02},
+            constrained_layout=True
+        )
+        axes = axes.ravel()
 
-                if final_sample:
-                    #diam, ba, pa = obj['D26']*60., obj['BA'], obj['PA']
-                    objra, objdec, diam, ba, pa = obj['RA'], obj['DEC'], obj['D26']*60., obj['BA'], obj['PA']
-                    geo = f'D(26)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}'
-
-                    #diam0, ba0, pa0 = obj['DIAM_INIT']*60., obj['BA_INIT'], obj['PA_INIT']
-                    objra0, objdec0, diam0, ba0, pa0 = obj['RA_INIT'], obj['DEC_INIT'], obj['DIAM_INIT']*60., obj['BA_INIT'], obj['PA_INIT']
-                    geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
-                else:
-                    objra0, objdec0, diam0, ba0, pa0 = obj['RA'], obj['DEC'], obj['DIAM']*60., obj['BA'], obj['PA']
-                    geo0 = f'D(25)={diam0:.1f}" b/a={ba0:.2f} PA={pa0:.1f}'
-
-                if final_sample:
-                    txt = [obj["OBJNAME"], obj["GROUP_NAME"],
-                           r'$(\alpha,\delta)$='+f'({objra:.7f},{objdec:.6f})']
-                    if show_initial_ellipse:
-                        txt += [geo0]
-                    txt += [geo]
-                else:
-                    txt = [obj["OBJNAME"], obj["GROUP_NAME"], #obj["SGANAME"],
-                           r'$(\alpha,\delta)$='+f'({objra0:.7f},{objdec0:.6f})',
-                           geo0]
-                txt_ul = '\n'.join(txt)
-                xx.text(0.03, 0.97, txt_ul, transform=xx.transAxes, ha='left',
-                        va='top', color='white', linespacing=1.5, fontsize=9,
+        for iax, ax in enumerate(axes):
+            idx = i_start + iax
+            if idx < nobj:
+                obj = showsample[idx]
+                annotated_page(
+                    ax, obj, fullsample,
+                    galaxy[idx], galaxydir[idx],
+                    cutout_galaxy[idx], cutout_galaxydir[idx],
+                    region, datadir, cutoutdir, diamcolumn,
+                    show_tractor_ellipse, show_initial_ellipse,
+                    final_sample, no_groups, show_group
+                )
+                # Add index label
+                ax.text(0.97, 0.03, str(idx + 1), transform=ax.transAxes,
+                        ha='right', va='bottom', color='white', fontsize=9,
                         bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
-                if obj['CUTOUT'] or no_groups:
-                    groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
-                    #groupdiam = obj[diamcolumn] * 60., # [arcsec]
-                    #print(galaxy[indx[iax]], groupdiam)
-                    if final_sample:
-                        groupra = obj['RA']
-                        groupdec = obj['DEC']
-                    else:
-                        groupra = obj['GROUP_RA']
-                        groupdec = obj['GROUP_DEC']
-                else:
-                    groupdiam = obj['GROUP_DIAMETER'] * 60., # [arcsec]
-                    groupra = obj['GROUP_RA']
-                    groupdec = obj['GROUP_DEC']
-
-                sga, tractor, image, wcs = read_coadds(
-                    galaxy[indx[iax]], galaxydir[indx[iax]],
-                    refid=obj[REFIDCOLUMN], ra=groupra, dec=groupdec,
-                    diam=groupdiam, cutout_galaxy=cutout_galaxy[indx[iax]],
-                    cutout_galaxydir=cutout_galaxydir[indx[iax]],
-                    cutout=obj['CUTOUT'])
-                #if sga is None:
-                #    pdb.set_trace()
-                #print(groupra, groupdec, wcs.wcs.crval)
-
-                if image is None:
-                    txt_ll = 'No Tractor catalog'
-                    txt_ur = None
-                else:
-                    height, width, _ = image.shape
-                    pixscale = get_pixscale(wcs)[0] * 3600. # [arcsec/pixel]
-
-                    xx.set_xlim(0, width)
-                    xx.set_ylim(0, height)
-
-                    xx.imshow(image, origin='lower', interpolation='none')
-                    xx.invert_yaxis() # JPEG is flipped relative to FITS
-                    for spine in ['bottom', 'top', 'right', 'left']:
-                        xx.spines[spine].set_color('white')
-
-                    if len(tractor) > 0:
-                        I = (tractor['ref_cat'] == 'L4')
-                        #I = ((tractor['type'] != 'PSF') * (tractor['type'] != 'DUP') *
-                        #     (tractor['shape_r'] > 0.5))
-                        #I = tractor['shape_r'] >= 0.
-                        #I = tractor['shape_r'] > 1.
-                        if np.sum(I) > 0:# and False:
-                            if np.sum(I) > 50:
-                                alpha = 0.5
-                                s = 10
-                            else:
-                                alpha = 1.0
-                                s = 25
-                            xx.scatter(tractor['bx'][I], height-tractor['by'][I],
-                                       marker='x', s=s, color='red', alpha=alpha)
-
-                        J = np.logical_or(tractor['type'] == 'PSF', tractor['type'] == 'DUP')
-                        #print(galaxy[indx[iax]], np.sum(J))
-                        if np.sum(J) > 0 and False:
-                            if np.sum(J) > 50:
-                                s = 1
-                                alpha = 0.5
-                            else:
-                                s = 10
-                                alpha = 0.9
-                            xx.scatter(tractor['bx'][J], height-tractor['by'][J],
-                                       marker='o', s=s, color='white', alpha=alpha)
-
-                    if len(sga) > 0:
-                        from SGA.geometry import get_tractor_ellipse
-                        _, ba_tractor, pa_tractor = get_tractor_ellipse(sga['shape_r'][0], sga['shape_e1'][0], sga['shape_e2'][0])
-                        if final_sample:
-                            if verbose:
-                                print(f"{obj['OBJNAME']:28} {diam:05.0f} arcsec   {objra:.7f} {objdec:.7f} " + \
-                                      f"{sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba_tractor:.3f} {pa_tractor:.1f}")
-                        else:
-                            if verbose:
-                                print(f"{obj['OBJNAME']:28} {diam0:05.0f} arcsec   {objra0:.7f} {objdec0:.7f} " + \
-                                      f"{sga['ra'][0]:.7f} {sga['dec'][0]:.7f} {ba_tractor:.3f} {pa_tractor:.1f}")
-                    else:
-                        if final_sample:
-                            if verbose:
-                                print(f"{obj['OBJNAME']:28} {diam:05.0f} arcsec   {objra:.7f} {objdec:.7f}")
-                        else:
-                            if verbose:
-                                print(f"{obj['OBJNAME']:28} {diam0:05.0f} arcsec   {objra0:.7f} {objdec0:.7f}")
-
-                    # draw the initial and final ellipse geometry...
-                    if final_sample:
-                        (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
-                        if show_initial_ellipse:
-                            overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
-                                             height_pixels=width, pixscale=pixscale,
-                                             ax=xx, color='white', linewidth=0.3, linestyle='-',
-                                             draw_majorminor_axes=False, jpeg=True)
-                            #xx.scatter(xpix0, height-ypix0, marker='x',
-                            #           facecolor='none', s=40, color='white')
-                        (xpix, ypix) = wcs.wcs_world2pix(objra, objdec, 0)
-                        overplot_ellipse(diam, ba, pa, xpix, ypix,
-                                         height_pixels=width, pixscale=pixscale,
-                                         ax=xx, color='cyan', linewidth=2, linestyle='-',
-                                         draw_majorminor_axes=True, jpeg=True)
-                        xx.scatter(xpix, height-ypix, marker='s',
-                                   facecolor='none', s=40, color='cyan')
-
-                    else:
-                        if show_initial_ellipse:
-                            (xpix0, ypix0) = wcs.wcs_world2pix(objra0, objdec0, 0)
-                            #print(xpix0, ypix0, objra0, objdec0)
-                            overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
-                                             height_pixels=width, pixscale=pixscale,
-                                             ax=xx, color='white', linestyle='-',
-                                             draw_majorminor_axes=True, jpeg=True)
-
-
-                    if len(sga) > 0:
-                        typ, nn = sga['type'][0], sga['sersic'][0]
-                        ra, dec = sga['ra'][0], sga['dec'][0]
-                        r50 = sga['shape_r'][0]
-                        e1, e2 = sga['shape_e1'][0], sga['shape_e2'][0]
-                        diam, ba, pa = get_tractor_ellipse(r50, e1, e2)
-
-                        mag = []
-                        for band in ['g', 'r', 'i', 'z']:
-                            if f'flux_{band}' in sga.colnames:
-                                flux = sga[f'flux_{band}'][0]
-                                if flux > 0.:
-                                    mag.append(f'{band}={22.5-2.5*np.log10(flux):.2f}')
-                        mag = ' '.join(mag)
-
-                        if typ == 'PSF':
-                            pass
-                        elif typ == 'REX':
-                            geo = f'r(50)={r50:.1f}"'
-                        elif typ == 'SER':
-                            typ = f'{typ} (n={nn:.1f})'
-                            geo = f'r(50)={r50:.1f}" b/a={ba:.2f} PA={pa:.1f}'
-                        else:
-                            geo = f'r(50)={r50:.1f}" b/a={ba:.2f} PA={pa:.1f}'
-
-                        txt_ur = f'{typ}'
-                        if typ == 'PSF':
-                            txt_ll = '\n'.join([r'$(\alpha,\delta)$='+f'({ra:.7f},{dec:.6f})', mag])
-                        else:
-                            txt_ll = '\n'.join([geo, r'$(\alpha,\delta)$='+f'({ra:.7f},{dec:.6f})', mag])
-                    else:
-                        if len(tractor) > 0:
-                            txt_ur = None
-                            txt_ll = 'SGA source dropped'
-                        else:
-                            txt_ur = None
-                            txt_ll = 'Missing Tractor catalog'
-
-                # label the other objects in the group
-                if no_groups:
-                    for otherobj in fullsample:
-                        if otherobj[REFIDCOLUMN] == obj[REFIDCOLUMN]:
-                            continue
-                        (xpix, ypix) = wcs.wcs_world2pix(otherobj['RA'], otherobj['DEC'], 0)
-                        diam0, ba0, pa0 = otherobj['DIAM']*60., otherobj['BA'], otherobj['PA']
-                        overplot_ellipse(diam0, ba0, pa0, xpix, ypix,
-                                         height_pixels=width, pixscale=pixscale,
-                                         ax=xx, color='white', linestyle='-',
-                                         draw_majorminor_axes=False, jpeg=True)
-
-                xx.margins(0)
-                xx.set_xticks([])
-                xx.set_yticks([])
-
-                if txt_ll and show_tractor_ellipse:
-                    xx.text(0.03, 0.03, txt_ll, transform=xx.transAxes,
-                            ha='left', va='bottom', color='white',
-                            linespacing=1.5, fontsize=9,
-                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
-                if txt_ur and show_tractor_ellipse:
-                    xx.text(0.97, 0.97, txt_ur, transform=xx.transAxes,
-                            ha='right', va='top', color='white',
-                            linespacing=1.5, fontsize=9,
-                            bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
-                if len(sga) > 0 and show_tractor_ellipse:
-                    # ...and the Tractor model
-                    (xpix, ypix) = wcs.wcs_world2pix(sga['ra'], sga['dec'], 0)
-                    overplot_ellipse(2.*r50, ba, pa, xpix, ypix,
-                                     height_pixels=height, pixscale=pixscale,
-                                     ax=xx, color='yellow', linewidth=1, linestyle='--',
-                                     draw_majorminor_axes=True, jpeg=True)
-                    xx.scatter(sga['bx'], height-sga['by'], marker='s',
-                               facecolor='none', s=40, color='yellow')
-
-                xx.text(0.97, 0.03, str(indx[iax]+1), transform=xx.transAxes,
-                        ha='right', va='bottom', color='white',
-                        linespacing=1.5, fontsize=9,
-                        bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
-
             else:
-                xx.axis('off')
+                ax.axis('off')
+
         pdf.savefig(fig, bbox_inches='tight')
         plt.close()
-        if verbose:
-            print()
 
     pdf.close()
     log.info(f'Wrote {pdffile}')
 
-    plt.rcParams['path.simplify'] = False # restore
+    mpl.rcParams['path.simplify'] = False
 
 
-def qa_tractor(region='dr11-south', first=None, last=None, galaxylist=None, mp=1,
-               nperpdf=4096, ncol=4, nrow=2, datadir=None, lvd_resolved=False,
-               lvd_fixgeo=False, lvd_forcepsf=False, lvd=False, version=None,
-               vi_sample=None, final_sample=False, no_groups=False, show_tractor_ellipse=True,
-               show_initial_ellipse=True, verbose=False, mindiam=0., maxdiam=1e3):
+# ============================================================================
+# Output Directory and File Management
+# ============================================================================
+
+def get_output_dir(basedir: str, region: str, mindiam: float, maxdiam: float,
+                   track: str, tier: int, gm_bin: str) -> str:
     """
-    nperpdf - maximum number of galaxies per pdf
-    ncol - number of columns on each pdf page
-    nrow - number of rows on each pdf page
+    Get output directory path for a specific track/tier/gm combination.
+
+    Does NOT create the directory - caller should create only if needed.
 
     """
-    from SGA.SGA import SAMPLE
-    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
-    from SGA.coadds import REGIONBITS
+    diam_str = f'diam_{mindiam:.1f}_{maxdiam:.1f}'
+    return os.path.join(basedir, region, diam_str, track, f'tier{tier}_{gm_bin}')
 
 
+def get_pdf_filename(outdir: str, track: str, tier: int, gm_bin: str,
+                     region: str, subset: int = 1) -> str:
+    """Generate PDF filename."""
+    return os.path.join(outdir, f'qa-{track}-tier{tier}-{gm_bin}-{region}-{subset:03d}.pdf')
+
+
+def get_txt_filename(outdir: str, track: str, tier: int, gm_bin: str,
+                     region: str, subset: int = 1) -> str:
+    """Generate text catalog filename."""
+    return os.path.join(outdir, f'cat-{track}-tier{tier}-{gm_bin}-{region}-{subset:03d}.txt')
+
+
+def get_viewer_filename(outdir: str, track: str, tier: int, gm_bin: str,
+                        region: str, subset: int = 1) -> str:
+    """Generate viewer FITS filename."""
+    return os.path.join(outdir, f'viewer-{track}-tier{tier}-{gm_bin}-{region}-{subset:03d}.fits')
+
+
+def write_txt_file(sample, txtfile: str, diamcolumn: str):
+    """Write text file with object names for VI."""
+    with open(txtfile, 'w') as f:
+        for obj in sample:
+            f.write(f'{obj["OBJNAME"]}\n')
+    log.info(f'Wrote {txtfile}')
+
+
+def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
+    """Write FITS file for Legacy Survey viewer overlay."""
+    view = sample['OBJNAME', 'RA', 'DEC', diamcolumn, 'BA', 'PA'].copy()
+    view.rename_columns(
+        ['OBJNAME', 'RA', 'DEC', diamcolumn, 'BA', 'PA'],
+        ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle']
+    )
+    # Convert diameter to radius in arcsec
+    view['radius'] = view['radius'] * 60. / 2.
+    view.write(viewerfile, overwrite=True)
+    log.info(f'Wrote {viewerfile}')
+
+
+# ============================================================================
+# Main QA Function
+# ============================================================================
+
+def qa_tractor(region='dr11-south', version=None, datadir=None,
+               mindiam=0.5, maxdiam=5.0, track='all', tier='all',
+               final_sample=False, no_groups=False, show_group=True,
+               show_tractor_ellipse=True, show_initial_ellipse=True,
+               use_gmbins=True,
+               ncol=4, nrow=2, nperpdf=4096, mp=1, verbose=False,
+               first=None, last=None, galaxylist=None):
+    """
+    Generate QA PDFs organized by track, tier, and group multiplicity.
+
+    Parameters
+    ----------
+    region : str
+        'dr9-north' or 'dr11-south'
+    version : str
+        Catalog version (e.g., 'v0.70')
+    datadir : str
+        Override $SGA_DATA_DIR
+    mindiam, maxdiam : float
+        Diameter range in arcmin
+    track : str
+        'all', 'lvd', 'not-lvd', or 'skiptractor'
+    tier : str or int
+        'all', 1, 2, or 3
+    final_sample : bool
+        If True, read ellipse catalog (D26); else parent catalog (DIAM)
+    no_groups : bool
+        If True, show individual objects not group cutouts
+    show_group : bool
+        If True, annotate other group members on image
+    use_gmbins : bool
+        If True, split by GM=1/2/3/4+; if False, use 'gm_any' for all
+    ncol, nrow : int
+        PDF page layout
+    nperpdf : int
+        Max objects per PDF file
+    mp : int
+        Multiprocessing workers for cutout generation
+
+    """
     if datadir is None:
         datadir = sga_data_dir()
     cutoutdir = os.path.join(datadir, 'cutouts')
 
-    sample, fullsample = read_sample(region=region, first=first,
-                                     last=last, galaxylist=galaxylist,
-                                     version=version,
-                                     no_groups=no_groups,
-                                     final_sample=final_sample,
-                                     mindiam=mindiam, maxdiam=maxdiam)
-
     if version is None:
         version = SGA_version()
 
-    if vi_sample:
-        subdir = f'vi-{version}'
-        qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/pdf'
-        txtdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/txt'
-        viewdir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/{subdir}/viewer'
+    # Read catalog
+    sample, fullsample = read_sample(
+        region=region, first=first, last=last, galaxylist=galaxylist,
+        version=version, no_groups=no_groups, final_sample=final_sample,
+        mindiam=0., maxdiam=1e6  # We'll filter later
+    )
+
+    # Determine catalog type and diameter column
+    has_ellipsebit = 'ELLIPSEBIT' in fullsample.colnames
+    diamcolumn = 'D26' if final_sample else 'DIAM'
+
+    log.info(f'Catalog type: {"ellipse" if has_ellipsebit else "parent"}, '
+             f'diameter column: {diamcolumn}')
+
+    # Classify all objects
+    log.info('Classifying objects...')
+    fullsample = classify_catalog(fullsample, has_ellipsebit)
+    sample = classify_catalog(sample, has_ellipsebit)
+
+    # Determine which tracks and tiers to process
+    if track == 'all':
+        tracks = ['lvd', 'not-lvd', 'skiptractor']
     else:
-        qadir = os.path.join(sga_dir(), 'parent', 'qa')
-        txtdir = os.path.join(sga_dir(), 'parent', 'txt')
-        viewdir = os.path.join(sga_dir(), 'parent', 'viewer')
+        tracks = [track]
 
-    if final_sample:
-        diamcolumn = 'D26'
-        diamerrcolumn = 'D26_ERR'
+    if tier == 'all':
+        tiers = [1, 2, 3] if has_ellipsebit else [3]
     else:
-        diamcolumn = 'DIAM'
-        diamerrcolumn = None
+        tiers = [int(tier)]
 
-    is_LVD  = (fullsample['SAMPLE'] & SAMPLE['LVD']) != 0
+    # Set up output base directory
+    qadir = os.path.join(sga_dir(), 'qa', f'qa-{version}')
 
-    if vi_sample == 1:
-        # all groups containing one or more LVD dwarf
-        sort_by_groupname = False
-        LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
-        I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
-        fullsample = fullsample[I]
-        # Need to remove SMC, LMC
-        log.warning('Removing LMC, SMC (coadds are too large).')
-        fullsample = fullsample[~np.isin(fullsample['OBJNAME'], ['LMC', 'SMC'])]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-    elif vi_sample == 2:
-        sort_by_groupname = False
-        f1 = Table(fitsio.read('/global/homes/i/ioannis/badlist_ad_1.fits'))
-        f2 = Table(fitsio.read('/global/homes/i/ioannis/badlist_ad_2.fits'))
-        I = np.isin(fullsample['SGAID'], np.unique(np.hstack((f1['NAME'].value, f2['NAME'].value))))
-        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['GROUP_MULT'] == 1) & ~is_LVD
-        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & ~is_LVD
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-    elif vi_sample == 3:
-        # isolated and diameter-limited
-        sort_by_groupname = False
-        I = (fullsample[DIAMCOLUMN] > 3.0) & (fullsample[DIAMCOLUMN] < 1e3) & (fullsample['GROUP_MULT'] == 1) & ~is_LVD
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-    else:
-        sort_by_groupname = False
-        if no_groups:
-            pdfsuffix = '-no-groups'
-        else:
-            pdfsuffix = ''
-        pdfbase = f'qa-tractor-{region}-sample{pdfsuffix}'
+    # Process each track/tier/gm combination
+    for proc_track in tracks:
+        for proc_tier in tiers:
+            # Filter sample
+            filtered = filter_sample(
+                sample if no_groups else fullsample,
+                track=proc_track, tier=proc_tier,
+                mindiam=mindiam, maxdiam=maxdiam, diamcolumn=diamcolumn
+            )
 
-        #########################
-        sort_by_groupname = False
+            if len(filtered) == 0:
+                log.info(f'No objects in {proc_track}/tier{proc_tier} '
+                         f'(diam {mindiam:.1f}-{maxdiam:.1f}), skipping.')
+                continue
 
-        # We still want to see and label nearby companions in
-        # 'fullsample', i.e., without any diameter cuts.
-        if no_groups:
-            diamcolumn = 'DIAM'
-            _, fullsample = read_sample(region=region)
-        else:
-            diamcolumn = DIAMCOLUMN
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
+            # Get GROUP_PRIMARY subset for cutout checking
+            filtered_primary = filtered[filtered['GROUP_PRIMARY']] if 'GROUP_PRIMARY' in filtered.colnames else filtered
+
+            # Get fullsample subset for this track/tier
+            filtered_fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], filtered['GROUP_NAME'])]
+
+            # Ensure cutouts exist for this subset only
+            log.info(f'Checking images for {proc_track}/tier{proc_tier} ({len(filtered_primary):,d} groups)...')
+            ensure_cutouts(filtered_primary, filtered_fullsample, region, datadir, cutoutdir, mp=mp, no_groups=no_groups)
+
+            # Partition by group multiplicity
+            gm_partitions = partition_by_gm(filtered, use_gmbins=use_gmbins)
+
+            for gm_bin, gm_sample in gm_partitions.items():
+                if len(gm_sample) == 0:
+                    continue
+
+                # Create output directory only now that we have objects
+                outdir = get_output_dir(qadir, region, mindiam, maxdiam,
+                                        proc_track, proc_tier, gm_bin)
+                os.makedirs(outdir, exist_ok=True)
+
+                nobj = len(gm_sample)
+
+                log.info(f'{proc_track}/tier{proc_tier}/{gm_bin}: {nobj:,d} objects')
+
+                # Sort by diameter
+                gm_sample = gm_sample[np.argsort(gm_sample[diamcolumn])]
+
+                # Propagate CUTOUT flags from filtered_fullsample
+                gm_sample = gm_sample.copy()
+                cutout_lookup = {name: cut for name, cut in zip(filtered_fullsample['GROUP_NAME'], filtered_fullsample['CUTOUT'])}
+                gm_sample['CUTOUT'] = [cutout_lookup.get(name, False) for name in gm_sample['GROUP_NAME']]
+
+                # Get corresponding fullsample for group annotations
+                if no_groups:
+                    gm_fullsample = filtered_fullsample[np.isin(filtered_fullsample['GROUP_NAME'], gm_sample['GROUP_NAME'])]
+                else:
+                    gm_fullsample = gm_sample
+
+                # Split into PDFs
+                npdf = int(np.ceil(nobj / nperpdf))
+                for ipdf in range(npdf):
+                    i_start = ipdf * nperpdf
+                    i_end = min((ipdf + 1) * nperpdf, nobj)
+
+                    this_sample = gm_sample[i_start:i_end]
+                    this_fullsample = gm_fullsample[np.isin(
+                        gm_fullsample['GROUP_NAME'], this_sample['GROUP_NAME'])]
+
+                    # Generate filenames
+                    pdffile = get_pdf_filename(
+                        outdir, proc_track, proc_tier, gm_bin, region, ipdf + 1)
+                    txtfile = get_txt_filename(
+                        outdir, proc_track, proc_tier, gm_bin, region, ipdf + 1)
+                    viewerfile = get_viewer_filename(
+                        outdir, proc_track, proc_tier, gm_bin, region, ipdf + 1)
+
+                    # Write auxiliary files
+                    write_txt_file(this_fullsample, txtfile, diamcolumn)
+                    write_viewer_file(this_fullsample, viewerfile, diamcolumn)
+
+                    # Generate PDF
+                    generate_pdf(
+                        this_sample, this_fullsample, pdffile,
+                        region=region, datadir=datadir, cutoutdir=cutoutdir,
+                        diamcolumn=diamcolumn, ncol=ncol, nrow=nrow,
+                        show_tractor_ellipse=show_tractor_ellipse,
+                        show_initial_ellipse=show_initial_ellipse,
+                        final_sample=final_sample, no_groups=no_groups,
+                        show_group=show_group, verbose=verbose
+                    )
+
+    log.info('QA generation complete.')
 
 
-    # make the output directories
-    if not os.path.isdir(qadir):
-        os.makedirs(qadir, exist_ok=True)
-    if txtdir and not os.path.isdir(txtdir):
-        os.makedirs(txtdir, exist_ok=True)
-    if viewdir and not os.path.isdir(viewdir):
-        os.makedirs(viewdir, exist_ok=True)
-
-    galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
-                                             group=not no_groups,
-                                             datadir=datadir)
-    #I = np.array([os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)])
-    I = np.array([os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
-                  for gdir, gal in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy))])
-    log.info(f'Found {np.sum(I):,d}/{len(sample):,d} ' + \
-             '(GROUP_PRIMARY) objects with pipeline results.')
-
-    # check for cutouts and, if missing, generate them
-    sample['CUTOUT'] = np.zeros(len(sample), bool)
-    fullsample['CUTOUT'] = np.zeros(len(fullsample), bool)
-    if np.sum(~I) > 0:
-        if np.sum(~I) > 2000:
-            log.warning('Are you sure you want to generate cutouts for more than 500 objects!!')
-            raise ValueError()
-
-        group_names = sample['GROUP_NAME'][~I]
-        sample['CUTOUT'][np.isin(sample['GROUP_NAME'], group_names)] = True
-        fullsample['CUTOUT'][np.isin(fullsample['GROUP_NAME'], group_names)] = True
-
-        #sample['CUTOUT'][~I] = True
-        #fullsample['CUTOUT'][np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'][~I])] = True
-
-        galaxy, galaxydir = get_galaxy_galaxydir(sample[~I], region=region,
-                                                 group=not no_groups,
-                                                 datadir=cutoutdir)
-        raslices = get_raslice(sample['GROUP_RA'][~I])
-        #M = [not os.path.isdir(gdir) for gdir in np.atleast_1d(galaxydir)]
-        #M = [not os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
-        #     for gdir, gal in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy))]
-        M = [not os.path.isfile(os.path.join(cutoutdir, region, raslice, f'{gal}.jpeg'))
-             for gdir, gal, raslice in zip(np.atleast_1d(galaxydir), np.atleast_1d(galaxy), np.atleast_1d(raslices))]
-
-        log.info(f'Generating cutouts for {np.sum(M):,d}/{np.sum(~I):,d} ' + \
-                 'objects with missing pipeline results.')
-
-        if np.sum(M) > 0:
-            from SGA.cutouts import do_cutouts
-
-            layer = f'ls-{region}'
-            if region == 'dr11-south':
-                log.warning(f"Overriding layer={layer}-->ls-dr11-early-v2")
-                layer = 'ls-dr11-early-v2'
-
-            do_cutouts(sample[~I][M], layer=layer, group=not no_groups,
-                       diamcolumn='GROUP_DIAMETER', fits_cutouts=False,
-                       maxdiam_arcmin=MAXDIAM, mp=mp,
-                       cutoutdir=os.path.join(cutoutdir, region))
-
-    # sort by diameter (?)
-    if sort_by_groupname:
-        fullsample = fullsample[np.lexsort((fullsample[diamcolumn], fullsample['GROUP_NAME']))]
-        sample = sample[np.argsort(sample['GROUP_NAME'])]
-    else:
-        sample = sample[np.argsort(sample[diamcolumn])]
-        fullsample = fullsample[np.argsort(fullsample[diamcolumn])]
-
-    #print('HACK!')
-    #sample = sample[:128]
-    #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
-    # figure out how many PDF documents / subsamples based on nperpdf
-    ngal = len(fullsample)
-    npdf = int(np.ceil(ngal / nperpdf))
-    log.info(f'Generating {npdf} PDF documents for {ngal:,d} galaxies with {nperpdf} objects per PDF.')
-
-    for ipdf in range(npdf):
-    #for ipdf in [2]:
-        # special case the VI work: custom name and write out a text file
-        istart = ipdf*nperpdf
-        iend = min((ipdf+1)*nperpdf, ngal)
-        indx = np.arange(istart, iend)
-
-        thisfullsample = fullsample[indx]
-        thissample = sample[np.isin(sample['GROUP_NAME'], thisfullsample['GROUP_NAME'])]
-
-        # re-sort by diameter (?)
-        if sort_by_groupname:
-            thisfullsample = thisfullsample[np.lexsort((thisfullsample[diamcolumn], thisfullsample['GROUP_NAME']))]
-            thissample = thissample[np.argsort(thissample['GROUP_NAME'])]
-        else:
-            thissample = thissample[np.argsort(thissample[diamcolumn])]
-            thisfullsample = thisfullsample[np.argsort(thisfullsample[diamcolumn])]
-
-        pdffile = os.path.join(qadir, f'qa-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.pdf')
-        txtfile = os.path.join(txtdir, f'cat-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.txt')
-
-        if viewdir:
-            viewfile = os.path.join(viewdir, f'viewer-sample{vi_sample:03}-subset{ipdf+1:03}-{region}.fits')
-            view = thisfullsample['OBJNAME', 'RA', 'DEC', diamcolumn, 'BA', 'PA']
-            view.rename_columns(['OBJNAME', 'RA', 'DEC', diamcolumn, 'BA', 'PA'],
-                                ['name', 'ra', 'dec', 'radius', 'abRatio', 'posAngle'])
-            view['radius'] *= 60./2.
-            view.write(viewfile, overwrite=True)
-
-        with open(txtfile, 'w') as F:
-            for obj, grp in zip(thisfullsample['OBJNAME'].value, thisfullsample['GROUP_NAME'].value):
-                F.write(f'{obj}\n')
-                #F.write(f'{grp}\n')
-                #F.write(f'{obj},{grp}\n')
-        log.info(f'Wrote {txtfile}')
-
-        #if os.path.isfile(pdffile):
-        #    log.info(f'Skipping existing file {pdffile}')
-        #    continue
-
-        annotated(thissample, thisfullsample, pdffile, region=region,
-                  datadir=datadir, cutoutdir=cutoutdir,
-                  diamcolumn=diamcolumn, ncol=ncol, nrow=nrow,
-                  verbose=verbose, show_tractor_ellipse=show_tractor_ellipse,
-                  show_initial_ellipse=show_initial_ellipse,
-                  final_sample=final_sample, no_groups=no_groups)
-        #pdb.set_trace()
-
+# ============================================================================
+# CLI
+# ============================================================================
 
 if __name__ == '__main__':
-
     import argparse
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--first', type=int, help='Index of first object to process.')
-    parser.add_argument('--last', type=int, help='Index of last object to process.')
-    parser.add_argument('--galaxylist', type=str, default=None, help='Comma-separated list of galaxy names to process.')
+    parser = argparse.ArgumentParser(
+        description='Generate SGA2025 Tractor QA PDFs',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # All tracks/tiers for ellipse catalog, 0.5-5 arcmin
+  %(prog)s --region=dr11-south --version=v0.70 --final-sample --mindiam=0.5 --maxdiam=5.0
 
-    parser.add_argument('--version', type=str, default=None, help='SGA version.')
+  # Just LVD track
+  %(prog)s --region=dr11-south --version=v0.70 --final-sample --track=lvd
 
-    parser.add_argument('--mp', default=1, type=int, help='number of multiprocessing processes per MPI rank.')
-    parser.add_argument('--mindiam', default=0., type=float, help='minimum diameter')
-    parser.add_argument('--maxdiam', default=1e3, type=float, help='minimum diameter')
-    parser.add_argument('--ncol', default=4, type=int, help='number of columns on each PDF page')
-    parser.add_argument('--nrow', default=2, type=int, help='number of rows on each PDF page')
-    parser.add_argument('--nperpdf', default=4096, type=int, help='number of panels per PDF document')
+  # Just pipeline failures (tier 1)
+  %(prog)s --region=dr11-south --version=v0.70 --final-sample --tier=1
 
-    parser.add_argument('--vi-sample', default=None, type=int, help='VI sample to generate.')
-    parser.add_argument('--hide-tractor-ellipse', dest='show_tractor_ellipse', action='store_false',
-                        help='Hide the Tractor ellipse geometry')
-    parser.add_argument('--hide-initial-ellipse', dest='show_initial_ellipse', action='store_false',
-                        help='Hide the initial ellipse geometry')
+  # Parent catalog (no ELLIPSEBIT)
+  %(prog)s --region=dr11-south --version=v0.80 --mindiam=1.0 --maxdiam=10.0
+"""
+    )
 
-    parser.add_argument('--lvd-resolved', action='store_true', help='Generate QA for the LVD/resolved sample.')
-    parser.add_argument('--lvd-fixgeo', action='store_true', help='Generate QA for the LVD/fixgeo sample.')
-    parser.add_argument('--lvd-forcepsf', action='store_true', help='Generate QA for the LVD/force-PSF sample.')
-    parser.add_argument('--lvd', action='store_true', help='Generate QA for the remaining LVD sample.')
-    parser.add_argument('--no-groups', action='store_true', help='Do not show group cutouts.')
-    parser.add_argument('--final-sample', action='store_true', help='Read the final SGA-2025 sample.')
-    parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
-    parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
+    parser.add_argument('--region', default='dr11-south',
+                        choices=['dr9-north', 'dr11-south'],
+                        help='Survey region')
+    parser.add_argument('--version', type=str, default=None,
+                        help='Catalog version (e.g., v0.70)')
+    parser.add_argument('--datadir', type=str, default=None,
+                        help='Override $SGA_DATA_DIR')
+
+    parser.add_argument('--mindiam', type=float, default=0.5,
+                        help='Minimum diameter in arcmin (default: 0.5)')
+    parser.add_argument('--maxdiam', type=float, default=5.0,
+                        help='Maximum diameter in arcmin (default: 5.0)')
+
+    parser.add_argument('--track', type=str, default='all',
+                        choices=['all', 'lvd', 'not-lvd', 'skiptractor'],
+                        help='Track to process (default: all)')
+    parser.add_argument('--tier', type=str, default='all',
+                        help='Tier to process: 1, 2, 3, or all (default: all)')
+
+    parser.add_argument('--final-sample', action='store_true',
+                        help='Read ellipse catalog (D26) instead of parent (DIAM)')
+    parser.add_argument('--no-groups', action='store_true',
+                        help='Show individual objects, not group cutouts')
+    parser.add_argument('--no-show-group', dest='show_group', action='store_false',
+                        help='Do not annotate other group members')
+    parser.add_argument('--no-gmbins', dest='use_gmbins', action='store_false',
+                        help='Do not split by group multiplicity (use gm_any)')
+    parser.add_argument('--hide-tractor-ellipse', dest='show_tractor_ellipse',
+                        action='store_false',
+                        help='Hide Tractor ellipse overlay')
+    parser.add_argument('--hide-initial-ellipse', dest='show_initial_ellipse',
+                        action='store_false',
+                        help='Hide initial ellipse overlay')
+
+    parser.add_argument('--ncol', type=int, default=4,
+                        help='Columns per PDF page (default: 4)')
+    parser.add_argument('--nrow', type=int, default=2,
+                        help='Rows per PDF page (default: 2)')
+    parser.add_argument('--nperpdf', type=int, default=4096,
+                        help='Max objects per PDF (default: 4096)')
+    parser.add_argument('--mp', type=int, default=1,
+                        help='Multiprocessing workers (default: 1)')
+
+    parser.add_argument('--first', type=int, help='First object index')
+    parser.add_argument('--last', type=int, help='Last object index')
+    parser.add_argument('--galaxylist', type=str, default=None,
+                        help='Comma-separated list of galaxy names')
+
+    parser.add_argument('--verbose', action='store_true',
+                        help='Verbose output')
 
     args = parser.parse_args()
 
-    qa_tractor(datadir=args.datadir, region=args.region, first=args.first,
-               last=args.last, galaxylist=args.galaxylist, mp=args.mp,
-               lvd_resolved=args.lvd_resolved, lvd_fixgeo=args.lvd_fixgeo,
-               lvd_forcepsf=args.lvd_forcepsf, lvd=args.lvd,
-               version=args.version, vi_sample=args.vi_sample, ncol=args.ncol, nrow=args.nrow,
-               nperpdf=args.nperpdf, show_tractor_ellipse=args.show_tractor_ellipse,
-               show_initial_ellipse=args.show_initial_ellipse,
-               final_sample=args.final_sample, no_groups=args.no_groups,
-               mindiam=args.mindiam, maxdiam=args.maxdiam, verbose=args.verbose)
-
-
-def junk():
-    LVD      = SAMPLE['LVD']
-    MCLOUDS  = SAMPLE['MCLOUDS']
-    GCLPNE   = SAMPLE['GCLPNE']
-    NEARSTAR = SAMPLE['NEARSTAR']
-    INSTAR   = SAMPLE['INSTAR']
-
-    gm1 = (fullsample['GROUP_MULT'] == 1)
-    gm2 = (fullsample['GROUP_MULT'] == 2)
-    gm3 = (fullsample['GROUP_MULT'] > 2)
-
-    not_LVD = (fullsample['SAMPLE'] & LVD) == 0
-    is_LVD  = (fullsample['SAMPLE'] & LVD) != 0
-
-    ellipse_ok  = (fullsample['ELLIPSEBIT'] == 0)
-    ellipse_bad = (fullsample['ELLIPSEBIT'] != 0)
-
-    sample_flags = (fullsample['SAMPLE'] & (MCLOUDS | GCLPNE | NEARSTAR | INSTAR)) != 0
-
-    diamcolumn = 'D26'
-    diamerrcolumn = 'D26_ERR'
-    sort_by_groupname = False
-
-    # samples 001–007 are mutually exclusive.
-    # Their union includes:
-    #   * all non-LVD objects with GROUP_MULT == 1 and D26 ≥ 0.5;
-    #   * all LVD groups’ primaries (except explicitly dropped LMC/SMC);
-    #   * all non-LVD groups’ primaries with GROUP_MULT ≥ 2 and at least one member having D26 ≥ 0.5.
-
-    if vi_sample == 1:
-        # sample 001 - GM=1, in size range, no bits set at all, ellipse clean, not LVD
-        print('HACK!')
-        diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-        I = gm1 & diam_cut & not_LVD & (fullsample['SAMPLE'] == 0)
-        #I = gm1 & diam_cut & not_LVD & ellipse_ok & (fullsample['SAMPLE'] == 0)
-        fullsample = fullsample[I]
-        sample = fullsample
-    elif vi_sample == 2:
-        from SGA.groups import remove_small_groups
-        # sample 002 - GM=1, in size range, ellipse clean, at least one of {MCLOUDS,GCLPNE,NEARSTAR,INSTAR} set, and not LVD
-        #diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-        #I = gm1 & diam_cut & not_LVD & ellipse_ok & sample_flags
-        print('HACK!')
-        sort_by_groupname = True
-        #_, rem = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5, diamcolumn=diamcolumn)#, diamerrcolumn=diamerrcolumn)
-        #I = (gm1 & (fullsample[diamcolumn] < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem['GROUP_NAME'])
-        _, rem1 = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5, diamcolumn=diamcolumn)#, diamerrcolumn=diamerrcolumn)
-        I1 = (gm1 & (fullsample[diamcolumn] < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem1['GROUP_NAME'])
-        _, rem2 = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5, diamcolumn=diamcolumn, diamerrcolumn=diamerrcolumn)
-        I2 = (gm1 & ((fullsample[diamcolumn]+fullsample[diamerrcolumn]) < 0.5)) | np.isin(fullsample['GROUP_NAME'], rem2['GROUP_NAME'])
-        I = ( (np.isin(fullsample['GROUP_NAME'], rem1['GROUP_NAME']) & ~np.isin(fullsample['GROUP_NAME'], rem2['GROUP_NAME'])) |
-              (gm1 & ((fullsample[diamcolumn]+fullsample[diamerrcolumn]) < 0.5)) & ~(gm1 & (fullsample[diamcolumn] < 0.5)) )
-        fullsample = fullsample[I]
-        sample = fullsample
-    elif vi_sample == 3:
-        # sample 003 - GM=1, in size range, not LVD, any ellipse problem
-        diam_cut = (fullsample[diamcolumn] >= 0.5) & (fullsample[diamcolumn] < 5.)
-        I = gm1 & diam_cut & not_LVD & ellipse_bad
-        fullsample = fullsample[I]
-        sample = fullsample
-    elif vi_sample == 4:
-        # sample 004 - GM=1, D(26)>5, not LVD, any ellipse problem
-        diam_cut = (fullsample[diamcolumn] >= 5.)
-        I = gm1 & diam_cut & not_LVD
-        fullsample = fullsample[I]
-        sample = fullsample
-    elif vi_sample == 5:
-        # sample 005 - all groups containing one or more LVD dwarfs
-        sort_by_groupname = True
-        LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
-        I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
-        pdb.set_trace()
-        fullsample = fullsample[I]
-        # Need to remove SMC, LMC
-        log.warning('Removing LMC, SMC (coadds are too large).')
-        fullsample = fullsample[~np.isin(fullsample['OBJNAME'], ['LMC', 'SMC'])]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-    elif vi_sample == 6 or vi_sample == 7:
-        sort_by_groupname = True
-        LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
-        fullsample_67, _ = remove_small_groups(fullsample, minmult=2, maxmult=None, mindiam=0.5,
-                                               diamcolumn=diamcolumn, exclude_group_names=LVD_group_names)
-
-        # split on ELLIPSEBIT
-        gnames = fullsample_67['GROUP_NAME']
-        ellipse_bad = fullsample_67['ELLIPSEBIT'] != 0
-        order = np.argsort(gnames)
-        gnames_sorted = gnames[order]
-        bad_sorted = ellipse_bad[order]
-
-        # Unique group IDs and start indices
-        uniq_gnames, idx_start = np.unique(gnames_sorted, return_index=True)
-
-        # For each group: does it have ANY bad member? Convert
-        # bool→int so we can use reduceat with max.
-        any_bad = np.maximum.reduceat(bad_sorted.astype(int), idx_start).astype(bool)
-
-        good_group_names = uniq_gnames[~any_bad]  # all members ellipse_ok
-        bad_group_names  = uniq_gnames[any_bad]   # at least one member ellipse_bad
-
-        if vi_sample == 6:
-            # sample 006 - groups with 2 or more members, all ellipse_ok & ~is_LVD
-            fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], good_group_names)]
-        elif vi_sample == 7:
-            # sample 007 - groups with 2 or more members, any ellipse_bad & ~is_LVD
-            fullsample = fullsample_67[np.isin(fullsample_67['GROUP_NAME'], bad_group_names)]
-
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-    elif (vi_sample >= 900) & (vi_sample < 950):
-        sort_by_groupname = False
-        if vi_sample == 900:
-            I = ((fullsample['SAMPLE'] & SAMPLE['GCLPNE'] != 0) * (fullsample['D26'] > 0.5))
-        elif vi_sample == 901 or vi_sample == 902:
-            fulltractor = Table(fitsio.read(samplefile, 'TRACTOR', columns=['type', 'shape_r']))
-            if vi_sample == 901:
-                I = ((fulltractor['type'] == 'PSF') * (fullsample['D26'] > 0.5) * (fullsample['GROUP_MULT'] == 1))
-            elif vi_sample == 902:
-                I = ((fulltractor['type'] == 'PSF') * (fullsample['D26'] > 0.5) * (fullsample['GROUP_MULT'] > 1))
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-    elif vi_sample > 950:
-        sort_by_groupname = False
-        #I = (((fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0) *
-        #     ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO']) == 0) *
-        #     (fullsample['D26'] > 0.5))
-        res = Table(fitsio.read(os.path.join(sga_dir(), 'sample', 'vi-v0.11', 'results-vi-v0.11.fits')))
-        if vi_sample == 999:
-            res = res[res['CLASS'] == 'Help!']
-        elif vi_sample == 998:
-            res = res[res['CLASS'] == 'Not a (large) galaxy']
-        elif vi_sample == 997:
-            res = res[res['CLASS'] == 'Bad geometry']
-        elif vi_sample == 996:
-            res = res[res['CLASS'] == 'Bad center']
-        else:
-            raise ValueError('Write me')
-        I = np.isin(fullsample['OBJNAME'], res['OBJNAME'])
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-    else:
-        qadir = os.path.join(sga_dir(), 'parent', 'qa')
-        txtdir = os.path.join(sga_dir(), 'parent', 'txt')
-        viewdir = os.path.join(sga_dir(), 'parent', 'viewer')
-
-        if no_groups:
-            pdfsuffix = '-no-groups'
-        else:
-            pdfsuffix = ''
-        pdfbase = f'qa-tractor-{region}-sample{pdfsuffix}'
-
-        #########################
-        sort_by_groupname = False
-
-        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.)
-        #I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 1.) & (fullsample['GROUP_DIAMETER'] <= 1.5)
-        I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0) & (fullsample['GROUP_DIAMETER'] > 0.75) & (fullsample['GROUP_DIAMETER'] <= 1.)
-        I_sdss = np.char.startswith(fullsample['OBJNAME'].astype(str), "SDSS")
-
-        # Find groups satisfying each condition
-        groups_with_overlap = set(fullsample['GROUP_NAME'][I_overlap])
-        groups_with_sdss = set(fullsample['GROUP_NAME'][I_sdss])
-
-        # Intersection = groups meeting BOTH conditions
-        groups_target = groups_with_overlap & groups_with_sdss
-
-        # Extract all rows from those groups
-        rows = np.isin(fullsample['GROUP_NAME'], list(groups_target))
-        I = rows & I_sdss
-
-        #########################
-        fullsample = fullsample[I]
-        sample = fullsample
-
-        # We still want to see and label nearby companions in
-        # 'fullsample', i.e., without any diameter cuts.
-        if no_groups:
-            diamcolumn = 'DIAM'
-            _, fullsample = read_sample(region=region)
-        else:
-            diamcolumn = DIAMCOLUMN
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
-    #elif vi_sample == 3:
-    #    sort_by_groupname = True
-    #
-    #    min_mult, max_mult = 3, 3 # 4, 4
-    #    min_max_diam, max_max_diam = 0.0, 0.5
-    #    #min_max_diam, max_max_diam = 0.5, 1.
-    #    #min_max_diam, max_max_diam = 1., 1e3
-    #
-    #    # Find groups where largest member is within diameter range
-    #    max_diam_per_group = np.zeros(fullsample['GROUP_ID'].max() + 1, dtype=np.float32)
-    #    np.maximum.at(max_diam_per_group, fullsample['GROUP_ID'], fullsample['DIAM'])
-    #
-    #    overlap_mask = (
-    #        (max_diam_per_group[fullsample['GROUP_ID']] >= min_max_diam) &
-    #        (max_diam_per_group[fullsample['GROUP_ID']] < max_max_diam) &
-    #        (fullsample['GROUP_MULT'] >= min_mult) &
-    #        (fullsample['GROUP_MULT'] <= max_mult) &
-    #        (fullsample['GROUP_DIAMETER'] < 5.) &
-    #        (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) &
-    #        (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #
-    #    problematic_group_ids = np.where(
-    #        np.bincount(fullsample['GROUP_ID'][overlap_mask],
-    #                    minlength=fullsample['GROUP_ID'].max() + 1) >= 2)[0]
-    #
-    #    I = np.isin(fullsample['GROUP_ID'], problematic_group_ids)
-    #
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #elif vi_sample == 4:
-    #    sort_by_groupname = True
-    #    #I = (fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) & (fullsample['DIAM'] < 0.4)
-    #    I_overlap = ((fullsample['SAMPLE'] & SAMPLE['OVERLAP'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0) &
-    #                 (fullsample['GROUP_DIAMETER'] >= 0) & (fullsample['GROUP_DIAMETER'] < 2.0))
-    #    I_prefix = np.char.startswith(fullsample['OBJNAME'].astype(str), "2MASS") # "SDSS") # PGC
-    #    groups_target = set(fullsample['GROUP_NAME'][I_overlap]) & set(fullsample['GROUP_NAME'][I_prefix])
-    #    I = np.isin(fullsample['GROUP_NAME'], list(groups_target))
-    #    print(np.sum(I))
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #    pdb.set_trace()
-    #elif vi_sample == 5:
-    #    from SGA.groups import angdiff_deg, contains_point, DEG2RAD
-    #
-    #    sort_by_groupname = True
-    #
-    #    # Select mult 2-3 groups (excluding LVD)
-    #    overlap_mask = (
-    #        (fullsample['GROUP_MULT'] == 2) &
-    #        #(fullsample['GROUP_MULT'] >= 2) &
-    #        #(fullsample['GROUP_MULT'] <= 3) &
-    #        (fullsample['GROUP_DIAMETER'] < 5.) &
-    #        (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    )
-    #
-    #    # Look for small members (DIAM < max_diam_shred) fall inside
-    #    # large members (DIAM >= min_diam_host).
-    #    max_diam_shred = 0.5
-    #    min_diam_host = 1.
-    #
-    #    unique_groups = np.unique(fullsample['GROUP_NAME'][overlap_mask])
-    #    blended_group_ids = []
-    #
-    #    for gname in unique_groups:
-    #        idx = np.where(fullsample['GROUP_NAME'] == gname)[0]
-    #        if len(idx) < 2:
-    #            continue
-    #
-    #        # Check if small member is inside large member's ellipse
-    #        for i in idx:
-    #            if fullsample['DIAM'][i] >= max_diam_shred:
-    #                continue  # Skip - not a potential shred
-    #
-    #            # Check against larger members
-    #            others = idx[(idx != i) & (fullsample['DIAM'][idx] >= min_diam_host)]
-    #            if len(others) == 0:
-    #                continue
-    #
-    #            dx_deg = angdiff_deg(fullsample['RA'][i], fullsample['RA'][others]) * np.cos(fullsample['DEC'][others] * DEG2RAD)
-    #            dy_deg = fullsample['DEC'][i] - fullsample['DEC'][others]
-    #
-    #            if np.any(contains_point(
-    #                0.5 * fullsample['DIAM'][others],
-    #                0.5 * fullsample['DIAM'][others] * fullsample['BA'][others],
-    #                fullsample['PA'][others] * DEG2RAD,
-    #                dx_deg, dy_deg, scale=1.0
-    #            )):
-    #                blended_group_ids.append(fullsample['GROUP_ID'][i])
-    #                break
-    #
-    #    I = np.isin(fullsample['GROUP_ID'], np.unique(blended_group_ids))
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #
-    #elif vi_sample == 6:
-    #    ## Mask for non-LVD objects with FAILGEO
-    #    #failgeo_mask = (
-    #    #    (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) &
-    #    #    (fullsample['GROUP_MULT'] == 1) &
-    #    #    #(fullsample['GROUP_MULT'] > 1) &
-    #    #    (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #    #failgeo_counts = np.bincount(fullsample['GROUP_ID'][failgeo_mask],
-    #    #                              minlength=fullsample['GROUP_ID'].max() + 1)
-    #    #nonlvd_mask = (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #total_counts = np.bincount(fullsample['GROUP_ID'][nonlvd_mask],
-    #    #                           minlength=fullsample['GROUP_ID'].max() + 1)
-    #    #all_failgeo_group_ids = np.where((failgeo_counts > 0) & (failgeo_counts == total_counts))[0]
-    #    #I = np.isin(fullsample['GROUP_ID'], all_failgeo_group_ids)
-    #
-    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #tractor = Table(fitsio.read('/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/sample/SGA2025-beta-v0.50-dr11-south.fits', 'TRACTOR'))
-    #    #assert(np.all(tractor['ref_id'] == fullsample['SGAID']))
-    #
-    #    #I = ((tractor['shape_r'] < 1.) & (fullsample['D26'] > 0.5) &
-    #    #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #    #I = (np.char.startswith(fullsample['OBJNAME'].astype(str), "2MAS") & (fullsample['D26'] > 0.5) &
-    #    #     (fullsample['GROUP_MULT'] == 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
-    #    #I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
-    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    #I = (fullsample['GROUP_MULT'] > 1) & (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #
-    #
-    #elif vi_sample == 7:
-    #    sort_by_groupname = False
-    #    I = (fullsample['GROUP_MULT'] > 1) & (fullsample['BA'] < 0.1) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    qa_tractor(
+        region=args.region,
+        version=args.version,
+        datadir=args.datadir,
+        mindiam=args.mindiam,
+        maxdiam=args.maxdiam,
+        track=args.track,
+        tier=args.tier,
+        final_sample=args.final_sample,
+        no_groups=args.no_groups,
+        show_group=args.show_group,
+        use_gmbins=args.use_gmbins,
+        show_tractor_ellipse=args.show_tractor_ellipse,
+        show_initial_ellipse=args.show_initial_ellipse,
+        ncol=args.ncol,
+        nrow=args.nrow,
+        nperpdf=args.nperpdf,
+        mp=args.mp,
+        first=args.first,
+        last=args.last,
+        galaxylist=args.galaxylist,
+        verbose=args.verbose,
+    )
