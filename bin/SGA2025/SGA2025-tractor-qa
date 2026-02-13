@@ -11,6 +11,11 @@ Usage:
   SGA2025-tractor-qa --region=dr11-south --version=v0.70 --final-sample \\
       --mindiam=0.5 --maxdiam=5.0 --track=all --mp=32
 
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.70 --region=dr11-south --version=v0.70 --final-sample \
+    --track=not-lvd --mp=32 --mindiam=5 --maxdiam=1e3
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.70 --region=dr11-south --version=v0.70 --final-sample \
+    --track=not-lvd --mp=32 --mindiam=2 --maxdiam=5
+
 """
 
 import os
@@ -191,26 +196,94 @@ def classify_object(row, has_ellipsebit: bool) -> SampleClassification:
 
 def classify_catalog(cat, has_ellipsebit: bool) -> Table:
     """
-    Add classification columns to catalog.
+    Add classification columns to catalog (vectorized).
 
     Adds columns: QA_TRACK, QA_TIER, QA_GM_BIN, QA_ANNOTATIONS, QA_TIER_BITS
 
     """
     n = len(cat)
 
-    tracks = []
-    tiers = []
-    gm_bins = []
-    annotations_list = []
-    tier_bits_list = []
+    sample_bits = np.asarray(cat['SAMPLE'])
+    ellipse_bits = np.asarray(cat['ELLIPSEBIT']) if has_ellipsebit else np.zeros(n, dtype=np.int64)
+    group_mult = np.asarray(cat['GROUP_MULT'])
 
-    for row in cat:
-        cls = classify_object(row, has_ellipsebit)
-        tracks.append(cls.track)
-        tiers.append(cls.tier)
-        gm_bins.append(cls.gm_bin)
-        annotations_list.append(','.join(cls.annotations) if cls.annotations else '')
-        tier_bits_list.append(','.join(cls.tier_bits) if cls.tier_bits else '')
+    # === Track classification ===
+    is_lvd = (sample_bits & SAMPLE['LVD']) != 0
+    is_skiptractor = (ellipse_bits & ELLIPSEBIT['SKIPTRACTOR']) != 0 if has_ellipsebit else np.zeros(n, dtype=bool)
+
+    tracks = np.where(is_lvd, 'lvd',
+              np.where(is_skiptractor, 'skiptractor', 'not-lvd'))
+
+    # === Tier classification ===
+    tiers = np.full(n, 3, dtype=np.int16)
+
+    if has_ellipsebit:
+        near_star = (sample_bits & NEAR_STAR_BITS) != 0
+        has_momentpos = (ellipse_bits & ELLIPSEBIT['MOMENTPOS']) != 0
+
+        # Pipeline failures (only if not near star)
+        has_failgeo = (ellipse_bits & ELLIPSEBIT['FAILGEO']) != 0
+        has_notractor = (ellipse_bits & ELLIPSEBIT['NOTRACTOR']) != 0
+        has_tractorpsf = (ellipse_bits & ELLIPSEBIT['TRACTORPSF']) != 0
+        pipeline_fail = (has_failgeo | has_notractor | has_tractorpsf) & ~near_star
+
+        # Large shifts
+        has_largeshift = (ellipse_bits & ELLIPSEBIT['LARGESHIFT']) != 0
+        has_largeshift_tractor = (ellipse_bits & ELLIPSEBIT['LARGESHIFT_TRACTOR']) != 0
+        # LARGESHIFT_TRACTOR only triggers tier 2 if MOMENTPOS is NOT set
+        large_shift = has_largeshift | (has_largeshift_tractor & ~has_momentpos)
+
+        tiers = np.where(pipeline_fail, 1,
+                 np.where(large_shift, 2, 3))
+
+    # === GM bin classification ===
+    gm_bins = np.where(group_mult == 1, 'gm1',
+               np.where(group_mult == 2, 'gm2',
+                np.where(group_mult == 3, 'gm3', 'gm4plus')))
+
+    # === Annotations (these need string building, but we can vectorize the bit checks) ===
+    # Pre-compute all bit flags
+    if has_ellipsebit:
+        struct_flags = {name: (ellipse_bits & bit) != 0 for name, bit in STRUCTURAL_BITS.items()}
+        mode_flags = {name: (ellipse_bits & bit) != 0 for name, bit in MODE_BITS.items()}
+    else:
+        struct_flags = {}
+        mode_flags = {}
+    sample_flags = {name: (sample_bits & bit) != 0 for name, bit in SAMPLE_ANNOTATION_BITS.items()}
+
+    # Build annotation strings (unavoidable loop but over dict items, not rows)
+    annotations_list = []
+    for i in range(n):
+        ann = []
+        for name, flags in struct_flags.items():
+            if flags[i]:
+                ann.append(name)
+        for name, flags in mode_flags.items():
+            if flags[i]:
+                ann.append(name)
+        for name, flags in sample_flags.items():
+            if flags[i]:
+                ann.append(name)
+        annotations_list.append(','.join(ann) if ann else '')
+
+    # === Tier bits (for tier 1-2 objects) ===
+    if has_ellipsebit:
+        tier_bits_list = []
+        for i in range(n):
+            bits = []
+            if has_failgeo[i] and not (sample_bits[i] & NEAR_STAR_BITS):
+                bits.append('FAILGEO')
+            if has_notractor[i] and not (sample_bits[i] & NEAR_STAR_BITS):
+                bits.append('NOTRACTOR')
+            if has_tractorpsf[i] and not (sample_bits[i] & NEAR_STAR_BITS):
+                bits.append('TRACTORPSF')
+            if has_largeshift[i]:
+                bits.append('LARGESHIFT')
+            if has_largeshift_tractor[i]:
+                bits.append('LARGESHIFT_TRACTOR')
+            tier_bits_list.append(','.join(bits) if bits else '')
+    else:
+        tier_bits_list = [''] * n
 
     cat['QA_TRACK'] = Column(tracks, dtype='U12')
     cat['QA_TIER'] = Column(tiers, dtype=np.int16)
@@ -436,13 +509,18 @@ def format_annotations(annotations_str: str) -> str:
     return annotations_str.replace(',', ' | ')
 
 
-def annotated_page(ax, obj, fullsample, galaxy, galaxydir,
+def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
                    cutout_galaxy, cutout_galaxydir,
                    region, datadir, cutoutdir, diamcolumn,
                    show_tractor_ellipse, show_initial_ellipse,
                    final_sample, no_groups, show_group):
     """
     Draw a single annotated panel for one object.
+
+    Parameters
+    ----------
+    group_members_dict : dict
+        Pre-indexed dict mapping GROUP_NAME -> list of member rows
 
     """
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
@@ -580,10 +658,10 @@ def annotated_page(ax, obj, fullsample, galaxy, galaxydir,
 
     # Draw other group members if show_group
     if show_group and not no_groups:
-        for otherobj in fullsample:
-            if otherobj[REFIDCOLUMN] == obj[REFIDCOLUMN]:
-                continue
-            if otherobj['GROUP_NAME'] != obj['GROUP_NAME']:
+        group_name = obj['GROUP_NAME']
+        obj_refid = obj[REFIDCOLUMN]
+        for otherobj in group_members_dict.get(group_name, []):
+            if otherobj[REFIDCOLUMN] == obj_refid:
                 continue
             other_ra, other_dec = otherobj['RA'], otherobj['DEC']
             if final_sample and 'D26' in otherobj.colnames:
@@ -634,6 +712,7 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
 
     """
     import matplotlib as mpl
+    from collections import defaultdict
 
     # PDF optimization settings
     mpl.rcParams["pdf.compression"] = 9
@@ -664,6 +743,11 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
         cutout_galaxy = [None] * len(showsample)
         cutout_galaxydir = [None] * len(showsample)
 
+    # Pre-index fullsample by GROUP_NAME for efficient lookup
+    group_members_dict = defaultdict(list)
+    for row in fullsample:
+        group_members_dict[row['GROUP_NAME']].append(row)
+
     nobj = len(showsample)
     nperpage = ncol * nrow
     npage = int(np.ceil(nobj / nperpage))
@@ -690,7 +774,7 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
             if idx < nobj:
                 obj = showsample[idx]
                 annotated_page(
-                    ax, obj, fullsample,
+                    ax, obj, group_members_dict,
                     galaxy[idx], galaxydir[idx],
                     cutout_galaxy[idx], cutout_galaxydir[idx],
                     region, datadir, cutoutdir, diamcolumn,
@@ -752,7 +836,7 @@ def write_txt_file(sample, txtfile: str, diamcolumn: str):
     with open(txtfile, 'w') as f:
         for obj in sample:
             f.write(f'{obj["OBJNAME"]}\n')
-    log.info(f'Wrote {txtfile}')
+    log.debug(f'Wrote {txtfile}')
 
 
 def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
@@ -765,7 +849,7 @@ def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
     # Convert diameter to radius in arcsec
     view['radius'] = view['radius'] * 60. / 2.
     view.write(viewerfile, overwrite=True)
-    log.info(f'Wrote {viewerfile}')
+    log.debug(f'Wrote {viewerfile}')
 
 
 # ============================================================================
@@ -850,7 +934,8 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         tiers = [int(tier)]
 
     # Set up output base directory
-    qadir = os.path.join(sga_dir(), 'qa', f'qa-{version}')
+    #qadir = os.path.join(sga_dir(), 'qa', f'qa-{version}')
+    qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/vi-{version}'
 
     # Process each track/tier/gm combination
     for proc_track in tracks:
@@ -901,11 +986,17 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                 cutout_lookup = {name: cut for name, cut in zip(filtered_fullsample['GROUP_NAME'], filtered_fullsample['CUTOUT'])}
                 gm_sample['CUTOUT'] = [cutout_lookup.get(name, False) for name in gm_sample['GROUP_NAME']]
 
-                # Get corresponding fullsample for group annotations
-                if no_groups:
-                    gm_fullsample = filtered_fullsample[np.isin(filtered_fullsample['GROUP_NAME'], gm_sample['GROUP_NAME'])]
-                else:
-                    gm_fullsample = gm_sample
+                # For group annotations, we need ALL members of these groups,
+                # not just the ones that passed the tier filter.
+                # Use the original unfiltered fullsample to get complete group membership.
+                group_names_in_sample = np.unique(gm_sample['GROUP_NAME'])
+                gm_fullsample_for_annotation = fullsample[np.isin(fullsample['GROUP_NAME'], group_names_in_sample)]
+
+                # Propagate CUTOUT flags to the annotation sample too
+                gm_fullsample_for_annotation = gm_fullsample_for_annotation.copy()
+                gm_fullsample_for_annotation['CUTOUT'] = [
+                    cutout_lookup.get(name, False) for name in gm_fullsample_for_annotation['GROUP_NAME']
+                ]
 
                 # Split into PDFs
                 npdf = int(np.ceil(nobj / nperpdf))
@@ -914,8 +1005,10 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                     i_end = min((ipdf + 1) * nperpdf, nobj)
 
                     this_sample = gm_sample[i_start:i_end]
-                    this_fullsample = gm_fullsample[np.isin(
-                        gm_fullsample['GROUP_NAME'], this_sample['GROUP_NAME'])]
+
+                    # Get all group members for annotation (from unfiltered fullsample)
+                    this_fullsample = gm_fullsample_for_annotation[np.isin(
+                        gm_fullsample_for_annotation['GROUP_NAME'], this_sample['GROUP_NAME'])]
 
                     # Generate filenames
                     pdffile = get_pdf_filename(
@@ -925,9 +1018,9 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                     viewerfile = get_viewer_filename(
                         outdir, proc_track, proc_tier, gm_bin, region, ipdf + 1)
 
-                    # Write auxiliary files
-                    write_txt_file(this_fullsample, txtfile, diamcolumn)
-                    write_viewer_file(this_fullsample, viewerfile, diamcolumn)
+                    # Write auxiliary files (both use this_sample - the flagged objects only)
+                    write_txt_file(this_sample, txtfile, diamcolumn)
+                    write_viewer_file(this_sample, viewerfile, diamcolumn)
 
                     # Generate PDF
                     generate_pdf(

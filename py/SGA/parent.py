@@ -4088,6 +4088,8 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             #diag = flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0)
             #diag[diag['IS_LVD'] & diag['NEEDS_REFIT']]
 
+            pdb.set_trace()
+
             # remove small members and groups
             d26_ul = ell1['D26'] + ell1['D26_ERR']
 
