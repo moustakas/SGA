@@ -3980,127 +3980,207 @@ def additional_sanity_checks(ell60, ell22):
     log.info(f"Large change from v0.22 measurement: {np.sum(v22_to_v60_drift):,d}")
 
 
-def flag_shrunk_lvd(ell1, parent_orig, m_ell, m_parent, shrink_thresh=0.5):
-    """Flag LVD sources whose D26 shrunk significantly from initial.
+def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
+    """Prepare v0.70 ellipse catalog for v0.80 parent building.
+
+    Reads original v0.10 parent, applies overlay updates, flags objects
+    for restoration or removal.
 
     Parameters
     ----------
     ell1 : Table
-        Ellipse catalog for this region
-    parent_orig : Table
-        Original parent catalog (v0.10 with overlays applied)
-    m_ell, m_parent : arrays
-        Match indices from match(ell1['OBJNAME'], parent_orig['OBJNAME'])
-    shrink_thresh : float
-        Flag if D26/DIAM_ORIG < shrink_thresh
+        v0.70 ellipse catalog for one region
+    outdir : str
+        Directory containing parent catalogs
+    region : str
+        'dr11-south' or 'dr9-north'
+    mindiam : float
+        Minimum diameter threshold in arcmin
 
     Returns
     -------
-    restore_mask : boolean array
-        True for objects needing geometry restoration
+    ell1 : Table
+        Modified catalog with RESTORE column and _ORIG columns added,
+        small group members removed
+
     """
     from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
 
-    is_lvd = (ell1['SAMPLE'][m_ell] & SAMPLE['LVD']) != 0
-    diam_ratio = ell1['D26'][m_ell] / np.clip(parent_orig['DIAM'][m_parent], 0.01, None)
+    # Read original parent and apply all overlay updates
+    parent_orig = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+    for ver in ['v0.30', 'v0.40', 'v0.50', 'v0.60', 'v0.70']:
+        overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{ver}')
+        ov = load_overlays(overlay_dir)
+        I = np.isin(ov.updates['OBJNAME'], parent_orig['OBJNAME'])
+        ovup = ov.updates[I]
+        apply_updates_inplace(parent_orig, ovup)
 
-    # LVD sources that shrunk by more than threshold
-    shrunk = is_lvd & (diam_ratio < shrink_thresh)
+    # Match ell1 to parent_orig
+    m_ell, m_parent = match(ell1['OBJNAME'], parent_orig['OBJNAME'])
 
-    # Map back to full ell1 indices
-    restore_mask = np.zeros(len(ell1), dtype=bool)
-    restore_mask[m_ell[shrunk]] = True
+    # --- Flag LVD sources that shrunk ---
+    is_lvd = np.zeros(len(ell1), dtype=bool)
+    is_lvd[m_ell] = (ell1['SAMPLE'][m_ell] & SAMPLE['LVD']) != 0
 
-    if np.any(restore_mask):
-        log.info(f"LVD sources shrunk to <{shrink_thresh*100:.0f}% of initial: {np.sum(restore_mask):,d}")
-
-    return restore_mask
-
-
-def flag_small_moment_diameters(ell1, parent_orig, m_ell, m_parent, shrink_thresh=0.5):
-    """Flag objects with D26_REF='mom' that shrunk significantly from initial.
-
-    Parameters
-    ----------
-    ell1 : Table
-        Ellipse catalog for this region
-    parent_orig : Table
-        Original parent catalog (v0.10 with overlays applied)
-    m_ell, m_parent : arrays
-        Match indices from match(ell1['OBJNAME'], parent_orig['OBJNAME'])
-    shrink_thresh : float
-        Flag if D26/DIAM_ORIG < shrink_thresh
-
-    Returns
-    -------
-    restore_mask : boolean array
-        True for objects needing geometry restoration
-    """
-    d26_ref = np.char.strip(ell1['D26_REF'].astype(str))
-    is_mom = (d26_ref == 'mom') | np.char.endswith(d26_ref, '/mom')
-
-    # Compare to original diameter
     diam_ratio = np.ones(len(ell1), dtype=np.float32)
     diam_ratio[m_ell] = ell1['D26'][m_ell] / np.clip(parent_orig['DIAM'][m_parent], 0.01, None)
 
-    shrunk = diam_ratio < shrink_thresh
+    shrunk_lvd = is_lvd & (diam_ratio < 0.5)
+    log.info(f"LVD sources shrunk to <50% of initial: {np.sum(shrunk_lvd):,d}")
 
-    restore_mask = is_mom & shrunk
+    # --- Flag moment-based diameters that shrunk ---
+    d26_ref = np.char.strip(ell1['D26_REF'].astype(str))
+    is_mom = (d26_ref == 'mom') | np.char.endswith(d26_ref, '/mom')
+    shrunk_mom = is_mom & (diam_ratio < 0.5)
+    log.info(f"Objects with D26_REF='mom' and shrunk to <50% of initial: {np.sum(shrunk_mom):,d}")
 
-    if np.any(restore_mask):
-        log.info(f"Objects with D26_REF='mom' and shrunk to <{shrink_thresh*100:.0f}% of initial: {np.sum(restore_mask):,d}")
+    # --- Flag small group members for removal ---
+    remove = _flag_small_for_removal(ell1, mindiam=mindiam)
 
-    return restore_mask
+    # --- Combine restoration flags ---
+    restore = shrunk_lvd | shrunk_mom
+
+    # --- Add tracking columns ---
+    ell1['RESTORE'] = restore
+    ell1['RA_ORIG'] = np.zeros(len(ell1), dtype='f8')
+    ell1['DEC_ORIG'] = np.zeros(len(ell1), dtype='f8')
+    ell1['DIAM_ORIG'] = np.zeros(len(ell1), dtype='f4')
+    ell1['DIAM_ORIG_REF'] = np.zeros(len(ell1), dtype='<U14')
+    ell1['PA_ORIG'] = np.zeros(len(ell1), dtype='f4')
+    ell1['BA_ORIG'] = np.zeros(len(ell1), dtype='f4')
+
+    ell1['RA_ORIG'][m_ell] = parent_orig['RA'][m_parent]
+    ell1['DEC_ORIG'][m_ell] = parent_orig['DEC'][m_parent]
+    ell1['DIAM_ORIG'][m_ell] = parent_orig['DIAM'][m_parent]
+    ell1['DIAM_ORIG_REF'][m_ell] = parent_orig['DIAM_REF'][m_parent]
+    ell1['PA_ORIG'][m_ell] = parent_orig['PA'][m_parent]
+    ell1['BA_ORIG'][m_ell] = parent_orig['BA'][m_parent]
+
+    log.info(f'{region}: {np.sum(restore):,d}/{len(ell1):,d} flagged for geometry restoration')
+    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+    #from SGA.qa import to_skyviewer_table
+    #check = ell1[remove]
+    #check = check[np.argsort(check['D26'])]#[::-1]]
+    #check.rename_column('D26', 'DIAM')
+    #view = to_skyviewer_table(check[100:])
+    #view.write('viewer.fits', overwrite=True)
+
+    ell1 = ell1[~remove]
+
+    pdb.set_trace()
+
+    return ell1
 
 
+def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False):
+    """Flag small group members for removal.
 
-def flag_small_group_members(ell1, mindiam=0.5):
-    """
-    Flag small group members that can be safely removed.
+    Removal criteria:
+    - GROUP_MULT=1: remove if (D26+D26_ERR) < mindiam
+    - GROUP_MULT>1, not interacting: remove if (D26+D26_ERR) < 20 arcsec
+    - GROUP_MULT>1, interacting: remove if much smaller than companions
 
-    Logic:
-    - Keep all LVD sources
-    - Keep the largest member of each group (GROUP_PRIMARY)
-    - For other members < mindiam: flag for removal
+    Always keep:
+    - LVD sources
+    - GROUP_PRIMARY
 
-    Returns boolean mask of objects to REMOVE.
+    Parameters
+    ----------
+    ell1 : Table
+        Ellipse catalog
+    mindiam : float
+        Minimum diameter for singletons (arcmin)
+    keep_one_survivor : bool
+        If True, keep the largest member if all would be removed
+
     """
     from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
 
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
     is_primary = ell1['GROUP_PRIMARY']
 
-    d26_ul = ell1['D26'] + ell1['D26_ERR']
-    is_small = d26_ul < mindiam
+    d26 = np.asarray(ell1['D26'], dtype=np.float32)
+    d26_err = np.asarray(ell1['D26_ERR'], dtype=np.float32)
+    d26_ul = d26 + d26_err
 
-    # Remove: small, not LVD, not primary
-    remove = is_small & ~is_lvd & ~is_primary
+    mult = ell1['GROUP_MULT']
+    is_singleton = mult == 1
+    is_in_group = mult > 1
+
+    has_overlap = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['OVERLAP']) != 0
+    has_blended = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['BLENDED']) != 0
+    is_interacting = has_overlap | has_blended
+
+    # Case 1: Singletons - remove if d26_ul < mindiam
+    remove_singleton = is_singleton & (d26_ul < mindiam) & ~is_lvd & ~is_primary
+
+    # Case 2: In group, not interacting - remove if d26_ul < 20 arcsec
+    small_thresh = 20. / 60.  # 20 arcsec in arcmin
+    remove_group_noninteracting = is_in_group & ~is_interacting & (d26_ul < small_thresh) & ~is_lvd & ~is_primary
+
+    # Case 3: In group, interacting - check diameter ratio to companions
+    unique_groups, group_indices = np.unique(ell1['GROUP_NAME'], return_inverse=True)
+    n_groups = len(unique_groups)
+
+    # Compute max D26 per group
+    max_d26_per_group = np.zeros(n_groups, dtype=np.float32)
+    np.maximum.at(max_d26_per_group, group_indices, d26)
+
+    # Compute second-max D26 per group
+    is_group_max = d26 == max_d26_per_group[group_indices]
+    d26_masked = d26.copy()
+    d26_masked[is_group_max] = -np.inf
+    second_max_per_group = np.full(n_groups, -np.inf, dtype=np.float32)
+    np.maximum.at(second_max_per_group, group_indices, d26_masked)
+    second_max_per_group[second_max_per_group == -np.inf] = 0.
+
+    # max_other_d26: for each object, max D26 of other members
+    max_other_d26 = np.where(is_group_max,
+                              second_max_per_group[group_indices],
+                              max_d26_per_group[group_indices])
+    max_other_d26[is_singleton] = 0.
+
+    # Remove interacting source if:
+    # - D26 < 20 arcsec AND
+    # - largest companion > mindiam AND
+    # - ratio to largest companion < 0.5
+    very_small = d26 < small_thresh
+    companion_large = max_other_d26 > mindiam
+    ratio_to_companion = d26 / np.clip(max_other_d26, 0.01, None)
+    much_smaller = ratio_to_companion < 0.5
+
+    remove_group_interacting = (is_in_group & is_interacting & very_small &
+                                 companion_large & much_smaller & ~is_lvd & ~is_primary)
+
+    remove = remove_singleton | remove_group_noninteracting | remove_group_interacting
 
     # Safety check: ensure at least one member survives per group
-    unique_groups, group_indices = np.unique(ell1['GROUP_NAME'], return_inverse=True)
+    if keep_one_survivor:
+        keep = ~remove
+        any_kept_per_group = np.zeros(n_groups, dtype=bool)
+        np.logical_or.at(any_kept_per_group, group_indices, keep)
 
-    keep = ~remove
-    for gi in range(len(unique_groups)):
-        group_mask = group_indices == gi
-        if not np.any(keep[group_mask]):
-            # All members would be removed - keep the largest
-            group_diams = d26_ul[group_mask]
-            largest_idx = np.where(group_mask)[0][np.argmax(group_diams)]
-            remove[largest_idx] = False
+        no_survivors = ~any_kept_per_group[group_indices]
+        is_largest_in_doomed_group = no_survivors & is_group_max
+        remove[is_largest_in_doomed_group] = False
 
+    # Statistics
     log.info(f"Small group member removal:")
-    log.info(f"  Small, non-LVD, non-primary: {np.sum(is_small & ~is_lvd & ~is_primary):,d}")
+    log.info(f"  Singletons (d26_ul < {mindiam}): {np.sum(remove_singleton):,d}")
+    log.info(f"  Group, non-interacting (d26_ul < 20\"): {np.sum(remove_group_noninteracting):,d}")
+    log.info(f"  Group, interacting shreds: {np.sum(remove_group_interacting):,d}")
     log.info(f"  Total flagged for removal: {np.sum(remove):,d}")
 
-    # Breakdown by group multiplicity
-    mult = ell1['GROUP_MULT']
-    for m in [2, 3, 4, 5]:
+    for m in [1, 2, 3, 4, 5]:
         if m < 5:
             mask = (mult == m) & remove
-            log.info(f"  Removing from mult={m} groups: {np.sum(mask):,d}")
+            log.info(f"    Removing from mult={m}: {np.sum(mask):,d}")
         else:
             mask = (mult >= m) & remove
-            log.info(f"  Removing from mult>={m} groups: {np.sum(mask):,d}")
+            log.info(f"    Removing from mult>={m}: {np.sum(mask):,d}")
 
     return remove
 
@@ -4208,129 +4288,9 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for refit')
 
         elif base_version == 'v0.70':
-            # Read original parent once for this region
-            parent_orig = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+            ell1 = prepare_v070_ellipse(ell1, outdir, region, mindiam=mindiam)
 
-            # Apply overlay updates to get corrected original geometry
-            for ver in ['v0.30', 'v0.40', 'v0.50', 'v0.60', 'v0.70']:
-                overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{ver}')
-                ov = load_overlays(overlay_dir)
-                I = np.isin(ov.updates['OBJNAME'], parent_orig['OBJNAME'])
-                ovup = ov.updates[I]
-                apply_updates_inplace(parent_orig, ovup)
-
-            # Match ell1 to parent_orig
-            m_ell, m_parent = match(ell1['OBJNAME'], parent_orig['OBJNAME'])
-
-            # Flag LVD sources that shrunk
-            shrunk_lvd = flag_shrunk_lvd(ell1, parent_orig, m_ell, m_parent, shrink_thresh=0.5)
-
-            # Flag problematic moment-based diameters
-            small_mom = flag_small_moment_diameters(ell1, parent_orig, m_ell, m_parent, shrink_thresh=0.5)
-
-            # Combine restoration flags
-            restore = shrunk_lvd | small_mom
-
-            # Add columns for tracking
-            ell1['RESTORE'] = restore
-            ell1['RA_ORIG'] = np.zeros(len(ell1), dtype='f8')
-            ell1['DEC_ORIG'] = np.zeros(len(ell1), dtype='f8')
-            ell1['DIAM_ORIG'] = np.zeros(len(ell1), dtype='f4')
-            ell1['DIAM_ORIG_REF'] = np.zeros(len(ell1), dtype='<U14')
-            ell1['PA_ORIG'] = np.zeros(len(ell1), dtype='f4')
-            ell1['BA_ORIG'] = np.zeros(len(ell1), dtype='f4')
-
-            ell1['RA_ORIG'][m_ell] = parent_orig['RA'][m_parent]
-            ell1['DEC_ORIG'][m_ell] = parent_orig['DEC'][m_parent]
-            ell1['DIAM_ORIG'][m_ell] = parent_orig['DIAM'][m_parent]
-            ell1['DIAM_ORIG_REF'][m_ell] = parent_orig['DIAM_REF'][m_parent]
-            ell1['PA_ORIG'][m_ell] = parent_orig['PA'][m_parent]
-            ell1['BA_ORIG'][m_ell] = parent_orig['BA'][m_parent]
-
-            log.info(f'{region}: {np.sum(restore):,d}/{len(ell1):,d} flagged for geometry restoration')
-
-            # Flag small group members for removal
-            remove_small = flag_small_group_members(ell1, mindiam=mindiam)
-            log.info(f'{region}: Removing {np.sum(remove_small):,d}/{len(ell1):,d} small group members')
-
-            ######################
-            # Diagnostics for small group member removal
-            is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
-            is_primary = ell1['GROUP_PRIMARY']
-            d26_ul = ell1['D26'] + ell1['D26_ERR']
-            is_small = d26_ul < mindiam
-            mult = ell1['GROUP_MULT']
-
-            remove = is_small & ~is_lvd & ~is_primary
-
-            # What are we removing?
-            removed = ell1[remove]
-
-            # Initial diameter distribution of removed objects
-            log.info(f"Removed objects - DIAM_INIT: min={np.min(removed['DIAM_INIT']):.2f}, "
-                     f"median={np.median(removed['DIAM_INIT']):.2f}, max={np.max(removed['DIAM_INIT']):.2f}")
-
-            # How many had large initial diameters but shrunk?
-            shrunk_significantly = remove & (ell1['DIAM_INIT'] > mindiam)
-            log.info(f"Removed but DIAM_INIT > {mindiam}: {np.sum(shrunk_significantly):,d}")
-
-            # How many are genuinely small in both?
-            small_both = remove & (ell1['DIAM_INIT'] < mindiam)
-            log.info(f"Removed and DIAM_INIT < {mindiam}: {np.sum(small_both):,d}")
-
-            # D26_REF breakdown for removed objects
-            from collections import Counter
-            ref_counts = Counter(removed['D26_REF'])
-            log.info(f"D26_REF breakdown: {dict(ref_counts)}")
-
-            # Focus on the problematic ones: initially large but shrunk
-            shrunk_significantly = remove & (ell1['DIAM_INIT'] > mindiam)
-            problematic = ell1[shrunk_significantly]
-
-            # How much did they shrink?
-            shrink_ratio = problematic['D26'] / problematic['DIAM_INIT']
-            log.info(f"Shrink ratio (D26/DIAM_INIT): min={np.min(shrink_ratio):.2f}, "
-                     f"median={np.median(shrink_ratio):.2f}, max={np.max(shrink_ratio):.2f}")
-
-            # Breakdown by how severely they shrunk
-            log.info(f"  Shrunk to <25% of initial: {np.sum(shrink_ratio < 0.25):,d}")
-            log.info(f"  Shrunk to 25-50% of initial: {np.sum((shrink_ratio >= 0.25) & (shrink_ratio < 0.5)):,d}")
-            log.info(f"  Shrunk to 50-75% of initial: {np.sum((shrink_ratio >= 0.5) & (shrink_ratio < 0.75)):,d}")
-            log.info(f"  Shrunk to 75-100% of initial: {np.sum(shrink_ratio >= 0.75):,d}")
-
-            # D26_REF for these
-            from collections import Counter
-            ref_counts = Counter(problematic['D26_REF'])
-            log.info(f"D26_REF breakdown for shrunk: {dict(ref_counts)}")
-
-            # Group multiplicity
-            log.info(f"Group mult for shrunk: 2={np.sum(problematic['GROUP_MULT']==2):,d}, "
-                     f"3={np.sum(problematic['GROUP_MULT']==3):,d}, "
-                     f"4={np.sum(problematic['GROUP_MULT']==4):,d}, "
-                     f"5+={np.sum(problematic['GROUP_MULT']>=5):,d}")
-
-
-            ###############
             pdb.set_trace()
-
-            ell1 = ell1[~remove_small]
-            pdb.set_trace()
-
-            # remove small members and groups
-            d26_ul = ell1['D26'] + ell1['D26_ERR']
-
-            # Build max diameter per group using GROUP_NAME
-            unique_groups, group_indices = np.unique(ell1['GROUP_NAME'], return_inverse=True)
-            max_diam_per_group = np.zeros(len(unique_groups), dtype=np.float32)
-            np.maximum.at(max_diam_per_group, group_indices, d26_ul)
-
-            # Check if group's max diameter is below threshold AND not LVD
-            group_too_small = max_diam_per_group[group_indices] < mindiam
-            not_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) == 0
-
-            I = not_lvd & group_too_small
-            groups_to_remove = np.unique(ell1['GROUP_NAME'][I])
-            I = np.isin(ell1['GROUP_NAME'], groups_to_remove)
 
             from SGA.qa import to_skyviewer_table
             check = ell1[I]
