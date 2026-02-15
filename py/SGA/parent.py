@@ -4018,6 +4018,7 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
 
     # Match ell1 to parent_orig
     m_ell, m_parent = match(ell1['OBJNAME'], parent_orig['OBJNAME'])
+    parent_in_ell = np.isin(ell1['OBJNAME'], parent_orig['OBJNAME'])
 
     # --- Flag LVD sources that shrunk ---
     is_lvd = np.zeros(len(ell1), dtype=bool)
@@ -4032,14 +4033,18 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
     # --- Flag moment-based diameters that shrunk ---
     d26_ref = np.char.strip(ell1['D26_REF'].astype(str))
     is_mom = (d26_ref == 'mom') | np.char.endswith(d26_ref, '/mom')
-    shrunk_mom = is_mom & (diam_ratio < 0.5)
+    shrunk_mom = parent_in_ell & is_mom & (diam_ratio < 0.5)
     log.info(f"Objects with D26_REF='mom' and shrunk to <50% of initial: {np.sum(shrunk_mom):,d}")
+
+    ## --- Restore NOTRACTOR sources --
+    #notractor = parent_in_ell & (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FIXGEO'] == 0)
 
     # --- Flag small group members for removal ---
     remove = _flag_small_for_removal(ell1, mindiam=mindiam)
 
     # --- Combine restoration flags ---
     refit = shrunk_mom
+    #refit = shrunk_mom | notractor
     #refit = shrunk_lvd | shrunk_mom
 
     # --- Add tracking columns ---
@@ -4057,6 +4062,10 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
     ell1['DIAM_ORIG_REF'][m_ell] = parent_orig['DIAM_REF'][m_parent]
     ell1['PA_ORIG'][m_ell] = parent_orig['PA'][m_parent]
     ell1['BA_ORIG'][m_ell] = parent_orig['BA'][m_parent]
+    try:
+        assert(np.all(ell1['RA_ORIG'][refit] != 0.))
+    except:
+        pdb.set_trace()
 
     log.info(f'{region}: {np.sum(refit):,d}/{len(ell1):,d} flagged for geometry restoration')
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
@@ -4547,6 +4556,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.70', overwrite=False):
             for col, init_col in [('RA', 'RA_ORIG'), ('DEC', 'DEC_ORIG'),
                                   ('DIAM', 'DIAM_ORIG'), ('DIAM_REF', 'DIAM_ORIG_REF'),
                                   ('PA', 'PA_ORIG'), ('BA', 'BA_ORIG')]:
+                if ell[init_col][I] == 0.:
+                    pdb.set_trace()
                 ell_base[col][I] = ell[init_col][I]
 
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
@@ -4601,7 +4612,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.70', overwrite=False):
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
 
     # Check for sources within 3.6 arcsec of each other
-    coords = SkyCoord(out['RA'] * u.deg, out['DEC'] * u.deg)
+    coords = SkyCoord(base['RA'] * u.deg, base['DEC'] * u.deg)
     idx1, idx2, sep, _ = coords.search_around_sky(coords, 3.6 * u.arcsec)
 
     # Remove self-matches
@@ -4610,7 +4621,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.70', overwrite=False):
         # Get unique pairs (avoid counting i,j and j,i twice)
         pairs = np.array(sorted(set(tuple(sorted((i, j))) for i, j in zip(idx1[not_self], idx2[not_self]))))
         raise ValueError(f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
-                         f"{out['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
+                         f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
