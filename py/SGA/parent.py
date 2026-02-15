@@ -4693,8 +4693,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.70', overwrite=False):
     unique_groups, group_indices = np.unique(out['GROUP_ID'], return_inverse=True)
     n_groups = len(unique_groups)
 
-    # Compute bitwise AND of REGION for each group
-    region_and_per_group = np.full(n_groups, 0xFFFF, dtype=np.int16)  # start with all bits set
+    # Compute bitwise AND of REGION for each group; start with all bits set
+    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
     np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
 
     # Get the allowed bits for each row
