@@ -516,7 +516,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
                   nsigma=None, saddle_fraction=None, saddle_min=None, nsatur=2,
-                  rgb_stretch=1.5, no_iterative=False,
+                  rgb_stretch=1.5, no_iterative=False, no_segmentation=False,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC', force_psf_detection=False,
                   fit_on_coadds=False, just_cutouts=False, ivar_cutouts=False, use_gpu=False,
                   ngpu=1, threads_per_gpu=8, subsky_radii=None, just_coadds=False,
@@ -622,6 +622,8 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         cmdargs += '--fit-on-coadds --no-ivar-reweighting '
     if no_iterative:
         cmdargs += '--no-iterative '
+    if no_segmentation:
+        cmdargs += '--no-segmentation '
 
     # GPU stuff
     if use_gpu:
