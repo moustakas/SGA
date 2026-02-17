@@ -11,9 +11,9 @@ Usage:
   SGA2025-tractor-qa --region=dr11-south --version=v0.70 --final-sample \\
       --mindiam=0.5 --maxdiam=5.0 --track=all --mp=32
 
-  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.70 --region=dr11-south --version=v0.70 --final-sample \
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.80 --region=dr11-south --version=v0.80 --final-sample \
     --track=not-lvd --mp=32 --mindiam=5 --maxdiam=1e3
-  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.70 --region=dr11-south --version=v0.70 --final-sample \
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.80 --region=dr11-south --version=v0.80 --final-sample \
     --track=not-lvd --mp=32 --mindiam=2 --maxdiam=5
 
 """
