@@ -1478,7 +1478,8 @@ def generate_index(htmldir, region, sample):
         f.write('\n'.join(html_lines))
     log.info("Generated index: {}".format(index_file))
 
-def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False, maketrends=False):
+
+def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False):
     """
     Generate HTML QA pages for SGA galaxy groups.
 
@@ -1496,8 +1497,7 @@ def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobb
         Number of processes for multiprocessing (default: 1)
     clobber : bool
         Overwrite existing HTML files (default: False)
-    maketrends : bool
-        Generate trend plots (not yet implemented)
+
     """
     if htmldir is None:
         htmldir_env = os.environ.get("SGA_HTML_DIR")

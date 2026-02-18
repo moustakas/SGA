@@ -371,8 +371,12 @@ def main():
 
         if args.htmlindex:
             from SGA.html import make_html
-            make_html(sample[groups[0]], fullsample, mp=args.mp, clobber=args.clobber,
-                      region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
+            ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
+            if ntodo > 0:
+                make_html(sample[groups[0]], fullsample, mp=args.mp, clobber=args.clobber,
+                          region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
+            else:
+                log.warning('All done!')
             return
 
         if args.diameter_file or args.galaxylist_file:

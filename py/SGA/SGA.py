@@ -297,7 +297,8 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
             group=group, html=True)
     elif htmlindex:
         suffix = 'htmlindex'
-        filesuffix = '-montage.png'
+        #filesuffix = '-montage.png'
+        filesuffix = '.html'
         galaxy, _, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir,
             region=region, group=group, html=True)
@@ -490,14 +491,18 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
-        log.info('Refitting!')
-        refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
-        refit = Table(fitsio.read(refitfile))
-        refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
+    if True:
+        nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
+        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
+        fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
 
+        #log.info('Refitting!')
+        #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
+        #refit = Table(fitsio.read(refitfile))
+        #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
+        #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
+        #sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     # select objects in the set of test bricks
     if test_bricks:

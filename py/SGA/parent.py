@@ -4238,6 +4238,9 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
 
     pdb.set_trace()
 
+    print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
+
+
     ell1 = ell1[~remove]
 
     return ell1
