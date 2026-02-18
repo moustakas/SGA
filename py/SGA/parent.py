@@ -4084,6 +4084,165 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
     return ell1
 
 
+def prepare_v080_ellipse(ell1, region, mindiam=0.5):
+    """Prepare v0.80 ellipse catalog for v0.90 parent building.
+
+    Flags objects for restoration or removal based on:
+    - NOTRACTOR sources with significant geometry/position shifts
+    - Moment-based diameters that shrunk significantly
+    - LARGESHIFT or LARGESHIFT_TRACTOR bits set
+
+    Parameters
+    ----------
+    ell1 : Table
+        v0.80 ellipse catalog for one region
+    region : str
+        'dr11-south' or 'dr9-north'
+    mindiam : float
+        Minimum diameter threshold in arcmin
+
+    Returns
+    -------
+    ell1 : Table
+        Modified catalog with RESTORE column added,
+        small group members removed
+    """
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    # --- Flag NOTRACTOR sources with significant shifts ---
+    has_notractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0
+
+    # Position shift from initial
+    pos_shift_arcsec = np.hypot(
+        (ell1['RA'] - ell1['RA_INIT']) * np.cos(np.deg2rad(ell1['DEC'])) * 3600,
+        (ell1['DEC'] - ell1['DEC_INIT']) * 3600
+    )
+    pos_shifted = pos_shift_arcsec > 5.0  # 5 arcsec threshold
+
+    # Diameter ratio
+    diam_ratio = ell1['D26'] / np.clip(ell1['DIAM_INIT'], 0.01, None)
+    diam_shifted = (diam_ratio < 0.5) | (diam_ratio > 2.0)
+
+    # BA/PA shifts
+    ba_shifted = np.abs(ell1['BA'] - ell1['BA_INIT']) > 0.2
+    pa_diff = np.abs(((ell1['PA'] - ell1['PA_INIT'] + 90.0) % 180.0) - 90.0)
+    pa_shifted = pa_diff > 30.0
+
+    notractor_problem = has_notractor & (pos_shifted | diam_shifted | ba_shifted | pa_shifted)
+    log.info(f"NOTRACTOR sources with significant shifts: {np.sum(notractor_problem):,d}")
+
+    # --- Flag moment-based diameters that shrunk ---
+    d26_ref = np.char.strip(ell1['D26_REF'].astype(str))
+    is_mom = (d26_ref == 'mom') | np.char.endswith(d26_ref, '/mom')
+    shrunk_mom = is_mom & (diam_ratio < 0.5)
+    log.info(f"Objects with D26_REF='mom' and shrunk to <50% of initial: {np.sum(shrunk_mom):,d}")
+
+    severe_shrink = (diam_ratio < 0.3) & ~is_mom
+    log.info(f"Non-moment sources shrunk to <30% of initial: {np.sum(severe_shrink):,d}")
+
+    # --- Flag zero-flux sources with valid D26 (likely Tractor failure) ---
+    zero_flux_problem = (ell1['OPTFLUX'] == 0) & (ell1['D26'] > 0.3)
+    log.info(f"Objects with FLUX_R=0 but D26>0.3: {np.sum(zero_flux_problem):,d}")
+
+    # --- Flag LARGESHIFT sources ---
+    has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
+    has_largeshift_tractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR']) != 0
+    largeshift_problem = has_largeshift | has_largeshift_tractor
+    log.info(f"Objects with LARGESHIFT or LARGESHIFT_TRACTOR: {np.sum(largeshift_problem):,d}")
+
+    # --- Combine restoration flags ---
+    restore = notractor_problem | shrunk_mom | severe_shrink | largeshift_problem
+    # Don't include zero_flux_problem yet until we understand it better
+    ell1['RESTORE'] = restore
+
+    log.info(f'{region}: {np.sum(restore):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    remove = _flag_small_for_removal(ell1, mindiam=mindiam)
+    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+    # --- Additional diagnostics ---
+
+    # 1. Breakdown of LARGESHIFT sources
+    log.info(f"  LARGESHIFT only: {np.sum(has_largeshift & ~has_largeshift_tractor):,d}")
+    log.info(f"  LARGESHIFT_TRACTOR only: {np.sum(has_largeshift_tractor & ~has_largeshift):,d}")
+    log.info(f"  Both LARGESHIFT bits: {np.sum(has_largeshift & has_largeshift_tractor):,d}")
+
+    # 2. LARGESHIFT in groups vs singletons
+    in_group = ell1['GROUP_MULT'] > 1
+    log.info(f"  LARGESHIFT in singletons: {np.sum(largeshift_problem & ~in_group):,d}")
+    log.info(f"  LARGESHIFT in groups: {np.sum(largeshift_problem & in_group):,d}")
+
+    # 3. Shrunken moment sources - details
+    if np.any(shrunk_mom):
+        shrunk = ell1[shrunk_mom]
+        log.info(f"  Shrunk moment sources - DIAM_INIT range: {np.min(shrunk['DIAM_INIT']):.2f} - {np.max(shrunk['DIAM_INIT']):.2f}")
+        log.info(f"  Shrunk moment sources - D26 range: {np.min(shrunk['D26']):.2f} - {np.max(shrunk['D26']):.2f}")
+        log.info(f"  Shrunk moment sources - in groups: {np.sum(shrunk['GROUP_MULT'] > 1):,d}")
+        # Print worst cases
+        ratio = shrunk['D26'] / shrunk['DIAM_INIT']
+        worst_idx = np.argsort(ratio)[:5]
+        log.info(f"  Worst shrunk moment sources:")
+        for idx in worst_idx:
+            log.info(f"    {shrunk['OBJNAME'][idx]}: DIAM_INIT={shrunk['DIAM_INIT'][idx]:.2f}, D26={shrunk['D26'][idx]:.2f}, ratio={ratio[idx]:.2f}")
+
+    # 4. Objects with very small D26 but large DIAM_INIT (potential problems beyond moment)
+    severe_shrink = (diam_ratio < 0.3) & ~is_mom
+    log.info(f"Non-moment sources shrunk to <30% of initial: {np.sum(severe_shrink):,d}")
+    if np.any(severe_shrink):
+        severe = ell1[severe_shrink]
+        log.info(f"  D26_REF breakdown: {dict(zip(*np.unique(severe['D26_REF'], return_counts=True)))}")
+
+    # 5. NOTRACTOR breakdown
+    if np.any(has_notractor):
+        log.info(f"NOTRACTOR breakdown:")
+        log.info(f"  Total NOTRACTOR: {np.sum(has_notractor):,d}")
+        log.info(f"  - with pos shift >5\": {np.sum(has_notractor & pos_shifted):,d}")
+        log.info(f"  - with diam ratio <0.5 or >2: {np.sum(has_notractor & diam_shifted):,d}")
+        log.info(f"  - with BA shift >0.2: {np.sum(has_notractor & ba_shifted):,d}")
+        log.info(f"  - with PA shift >30°: {np.sum(has_notractor & pa_shifted):,d}")
+        log.info(f"  - in groups: {np.sum(has_notractor & in_group):,d}")
+
+    # 6. LVD sources check
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+    lvd_flagged = is_lvd & restore
+    log.info(f"LVD sources flagged for restoration: {np.sum(lvd_flagged):,d}/{np.sum(is_lvd):,d}")
+    if np.any(lvd_flagged):
+        lvd_prob = ell1[lvd_flagged]
+        log.info(f"  LVD flagged - reasons:")
+        log.info(f"    NOTRACTOR problem: {np.sum((ell1['ELLIPSEBIT'][lvd_flagged] & ELLIPSEBIT['NOTRACTOR']) != 0):,d}")
+        log.info(f"    Shrunk moment: {np.sum(shrunk_mom[is_lvd]):,d}")
+        log.info(f"    LARGESHIFT: {np.sum(largeshift_problem[is_lvd]):,d}")
+
+    # 7. Objects with zero flux but valid D26
+    zero_flux_problem = (ell1['OPTFLUX'] == 0) & (ell1['D26'] > 0.3)
+    log.info(f"Objects with FLUX_R=0 but D26>0.3: {np.sum(zero_flux_problem):,d}")
+
+    # Zero-flux diagnostics
+    if np.any(zero_flux_problem):
+        zf = ell1[zero_flux_problem]
+        log.info(f"  Zero-flux breakdown:")
+        log.info(f"    In groups: {np.sum(zf['GROUP_MULT'] > 1):,d}")
+        log.info(f"    D26_REF: {dict(zip(*np.unique(zf['D26_REF'], return_counts=True)))}")
+        log.info(f"    Has NOTRACTOR: {np.sum((zf['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0):,d}")
+        log.info(f"    Has SKIPTRACTOR: {np.sum((zf['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0):,d}")
+        log.info(f"    D26 range: {np.min(zf['D26']):.2f} - {np.max(zf['D26']):.2f}")
+
+        # Check other flux bands
+        for band in ['G', 'I', 'Z']:
+            col = f'FLUX_{band}'
+            if col in zf.colnames:
+                nonzero = np.sum(zf[col] != 0)
+                log.info(f"    {col} nonzero: {nonzero:,d}")
+
+    pdb.set_trace()
+
+    ell1 = ell1[~remove]
+
+    return ell1
+
+
 def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False):
     """Flag small group members for removal.
 
@@ -4285,6 +4444,10 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
         elif base_version == 'v0.70':
             ell1 = prepare_v070_ellipse(ell1, outdir, region, mindiam=mindiam)
 
+        elif base_version == 'v0.80':
+            ell1 = prepare_v080_ellipse(ell1, region, mindiam=mindiam)
+            pdb.set_trace()
+
         ell.append(ell1)
     ell = vstack(ell)
 
@@ -4404,7 +4567,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.70', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
