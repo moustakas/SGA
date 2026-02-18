@@ -33,7 +33,7 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
         os.makedirs(htmlgalaxydir, exist_ok=True)
 
     #qafile = os.path.join('ioannis/tmp2/junk.png')
-    qafile = os.path.join(htmlgalaxydir, f'qa-{data["galaxy"]}-montage.png')
+    qafile = os.path.join(htmlgalaxydir, f'{data["galaxy"]}-montage.png')
     if os.path.isfile(qafile) and not clobber:
         log.info(f'File {qafile} exists and clobber=False')
         return
@@ -113,7 +113,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     if not os.path.isdir(htmlgalaxydir):
         os.makedirs(htmlgalaxydir, exist_ok=True)
 
-    qafile = os.path.join(htmlgalaxydir, f'qa-{data["galaxy"]}-ellipsemask.png')
+    qafile = os.path.join(htmlgalaxydir, f'{data["galaxy"]}-ellipsemask.png')
     if os.path.isfile(qafile) and not clobber:
         log.info(f'File {qafile} exists and clobber=False')
         return
@@ -372,7 +372,7 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
     for iobj, obj in enumerate(ellipse):
 
         sganame = obj['SGANAME'].replace(' ', '_')
-        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-sed.png')
+        qafile = os.path.join(htmlgalaxydir, f'{sganame}-sed.png')
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
@@ -526,7 +526,7 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
     for iobj, obj in enumerate(ellipse):
 
         sganame = obj['SGANAME'].replace(' ', '_')
-        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-cog.png')
+        qafile = os.path.join(htmlgalaxydir, f'{sganame}-cog.png')
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
@@ -687,7 +687,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     for iobj, obj in enumerate(ellipse):
 
         sganame = obj['SGANAME'].replace(' ', '_')
-        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-sbprofiles.png')
+        qafile = os.path.join(htmlgalaxydir, f'{sganame}-sbprofiles.png')
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
@@ -1067,10 +1067,10 @@ def get_raslice(ra):
 def get_galaxy_names(group_dir):
     """Extract unique galaxy names from filenames in the directory."""
     galaxy_names = []
-    for onefile in glob(os.path.join(group_dir, "qa-SGA2025_J*")):
+    for onefile in glob(os.path.join(group_dir, "SGA2025_J*")):
         stem = os.path.basename(onefile)
-        if stem.startswith("qa-SGA2025_"):
-            remainder = stem.replace("qa-SGA2025_", "", 1)
+        if stem.startswith("SGA2025_"):
+            remainder = stem.replace("SGA2025_", "", 1)
             parts = remainder.rsplit("-", 1)
             if len(parts) >= 2:
                 galaxy_name = parts[0]
@@ -1140,8 +1140,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     raslice = group_name[:3]
     sky_url = get_sky_viewer_url(group_ra, group_dec, group_diam, region)
     group_files = [
-        "qa-SGA2025_{}-montage.png".format(group_name),
-        "qa-SGA2025_{}-ellipsemask.png".format(group_name),
+        "SGA2025_{}-montage.png".format(group_name),
+        "SGA2025_{}-ellipsemask.png".format(group_name),
     ]
     per_galaxy_types = ["sbprofiles", "cog", "sed"]
     per_galaxy_titles = ["Surface Brightness", "Curve of Growth", "Spectral Energy Distribution"]
@@ -1274,7 +1274,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     for galaxy_name in galaxy_names:
         html_lines.append("        <div class='galaxy-row'>")
         for img_type in per_galaxy_types:
-            filename = "qa-SGA2025_{}-{}.png".format(galaxy_name, img_type)
+            filename = "SGA2025_{}-{}.png".format(galaxy_name, img_type)
             filepath = group_dir / filename
             if not filepath.exists():
                 raise FileNotFoundError("Missing required file: {}".format(filepath))
@@ -1382,7 +1382,7 @@ def generate_index(htmldir, region, sample):
             info = group_info[group_name]
             group_dir = find_group_directory(htmldir, region, group_name)
             html_path = "{}/{}/{}/{}.html".format(region, raslice, group_name, group_name)
-            montage_file = "qa-SGA2025_{}-montage.png".format(group_name)
+            montage_file = "SGA2025_{}-montage.png".format(group_name)
             montage_path = group_dir / montage_file
             sky_url = get_sky_viewer_url(info['ra'], info['dec'], info['diam'], region)
             html_lines.append("        <tr>")
