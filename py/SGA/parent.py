@@ -4155,28 +4155,37 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
     log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
 
-    # Flag categories A, B, C for restoration; D is ambiguous
-    restore = cat_a | cat_b | cat_c
+    # Flag categories A, B, C, and D for restoration
+    restore = cat_a | cat_b | cat_c | cat_d
     ell1['RESTORE'] = restore
 
     log.info(f'{region}: {np.sum(restore):,d}/{len(ell1):,d} flagged for geometry restoration')
 
-    if np.any(restore):
-        check = ell1[restore]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
-                              'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
-        check['POS_SHIFT'] = pos_shift_arcsec[restore]
-        check['DIAM_RATIO'] = diam_ratio[restore]
-        check['CATEGORY'] = np.where(cat_a[restore], 'A', np.where(cat_b[restore], 'B', 'C'))
-        view = to_skyviewer_table(check, diamcol='D26')
-        view.write('viewer.fits', overwrite=True)
+    log.info(f"  LVD in restore: {np.sum(restore & is_lvd):,d}")
+    log.info(f"  LVD in Category D: {np.sum(cat_d & is_lvd):,d}")
 
-        _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
+    #check = ell1[cat_d & ~is_lvd]
+    #check = check[np.argsort(check['D26'])[::-1]]
+    #view = to_skyviewer_table(check[:50], diamcol='D26')
+    #view.write('viewer.fits', overwrite=True)
 
-    pdb.set_trace()
+    #if np.any(restore):
+    #    check = ell1[restore]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
+    #                          'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
+    #    check['POS_SHIFT'] = pos_shift_arcsec[restore]
+    #    check['DIAM_RATIO'] = diam_ratio[restore]
+    #    check['CATEGORY'] = np.where(cat_a[restore], 'A', np.where(cat_b[restore], 'B', 'C'))
+    #    view = to_skyviewer_table(check, diamcol='D26')
+    #    view.write('viewer.fits', overwrite=True)
+    #
+    #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
 
     # --- Flag small group members for removal ---
     remove = _flag_small_for_removal(ell1, mindiam=mindiam)
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+    view = to_skyviewer_table(ell1[remove], diamcol='D26')
+    view.write('viewer.fits', overwrite=True)
 
     print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
     pdb.set_trace()
