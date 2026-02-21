@@ -18,7 +18,7 @@ from SGA.SGA import sga_dir, SGA_version
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.util import match, match_to
 from SGA.sky import choose_primary, resolve_close
-from SGA.qa import qa_skypatch, multipage_skypatch
+from SGA.qa import qa_skypatch, multipage_skypatch, to_skyviewer_table
 
 from SGA.logger import log
 
@@ -4070,7 +4070,6 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
     log.info(f'{region}: {np.sum(refit):,d}/{len(ell1):,d} flagged for geometry restoration')
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
-    #from SGA.qa import to_skyviewer_table
     ##check = ell1[remove]
     ##check = ell1[shrunk_lvd]
     #check = ell1[shrunk_mom]
@@ -4087,10 +4086,10 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
 def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     """Prepare v0.80 ellipse catalog for v0.90 parent building.
 
-    Flags objects for restoration or removal based on:
-    - NOTRACTOR sources with significant geometry/position shifts
-    - Moment-based diameters that shrunk significantly
-    - LARGESHIFT or LARGESHIFT_TRACTOR bits set
+    Focuses on LARGESHIFT sources, which may indicate:
+    - Tractor modeling failures (should revert)
+    - Bona fide positional shifts (should keep)
+    - Catalog errors / spurious sources (should investigate)
 
     Parameters
     ----------
@@ -4110,136 +4109,77 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
-    # --- Flag NOTRACTOR sources with significant shifts ---
-    has_notractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
 
-    # Position shift from initial
+    # --- LARGESHIFT analysis ---
+    has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
+    has_largeshift_tractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR']) != 0
+    largeshift_any = has_largeshift | has_largeshift_tractor
+
+    log.info(f"LARGESHIFT analysis:")
+    log.info(f"  Total with any LARGESHIFT bit: {np.sum(largeshift_any):,d}")
+    log.info(f"    - LARGESHIFT only: {np.sum(has_largeshift & ~has_largeshift_tractor):,d}")
+    log.info(f"    - LARGESHIFT_TRACTOR only: {np.sum(has_largeshift_tractor & ~has_largeshift):,d}")
+    log.info(f"    - Both bits: {np.sum(has_largeshift & has_largeshift_tractor):,d}")
+    log.info(f"  In singletons: {np.sum(largeshift_any & ~in_group):,d}")
+    log.info(f"  In groups: {np.sum(largeshift_any & in_group):,d}")
+    log.info(f"  LVD sources: {np.sum(largeshift_any & is_lvd):,d}")
+
+    # Characterize the shifts
     pos_shift_arcsec = np.hypot(
         (ell1['RA'] - ell1['RA_INIT']) * np.cos(np.deg2rad(ell1['DEC'])) * 3600,
         (ell1['DEC'] - ell1['DEC_INIT']) * 3600
     )
-    pos_shifted = pos_shift_arcsec > 5.0  # 5 arcsec threshold
-
-    # Diameter ratio
     diam_ratio = ell1['D26'] / np.clip(ell1['DIAM_INIT'], 0.01, None)
-    diam_shifted = (diam_ratio < 0.5) | (diam_ratio > 2.0)
 
-    # BA/PA shifts
-    ba_shifted = np.abs(ell1['BA'] - ell1['BA_INIT']) > 0.2
-    pa_diff = np.abs(((ell1['PA'] - ell1['PA_INIT'] + 90.0) % 180.0) - 90.0)
-    pa_shifted = pa_diff > 30.0
+    ls = ell1[largeshift_any]
+    ls_pos = pos_shift_arcsec[largeshift_any]
+    ls_diam = diam_ratio[largeshift_any]
 
-    notractor_problem = has_notractor & (pos_shifted | diam_shifted | ba_shifted | pa_shifted)
-    log.info(f"NOTRACTOR sources with significant shifts: {np.sum(notractor_problem):,d}")
+    log.info(f"  Position shift (arcsec): median={np.median(ls_pos):.1f}, 90%={np.percentile(ls_pos, 90):.1f}, max={np.max(ls_pos):.1f}")
+    log.info(f"  Diameter ratio: median={np.median(ls_diam):.2f}, 10%={np.percentile(ls_diam, 10):.2f}, 90%={np.percentile(ls_diam, 90):.2f}")
 
-    # --- Flag moment-based diameters that shrunk ---
-    d26_ref = np.char.strip(ell1['D26_REF'].astype(str))
-    is_mom = (d26_ref == 'mom') | np.char.endswith(d26_ref, '/mom')
-    shrunk_mom = is_mom & (diam_ratio < 0.5)
-    log.info(f"Objects with D26_REF='mom' and shrunk to <50% of initial: {np.sum(shrunk_mom):,d}")
+    # Categorize LARGESHIFT sources by characteristics
+    # Category A: Large position shift AND diameter grew (possible Tractor failure / contamination)
+    cat_a = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio > 1.5)
+    # Category B: Large position shift AND diameter shrunk (possible wrong source modeled)
+    cat_b = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio < 0.7)
+    # Category C: Small position shift but large diameter change (Tractor modeling issue)
+    cat_c = largeshift_any & (pos_shift_arcsec <= 10) & ((diam_ratio < 0.5) | (diam_ratio > 2.0))
+    # Category D: Moderate shifts (unclear - may be legitimate)
+    cat_d = largeshift_any & ~cat_a & ~cat_b & ~cat_c
 
-    severe_shrink = (diam_ratio < 0.3) & ~is_mom
-    log.info(f"Non-moment sources shrunk to <30% of initial: {np.sum(severe_shrink):,d}")
+    log.info(f"  Category A (pos>10\", diam grew >50%): {np.sum(cat_a):,d} — likely contamination")
+    log.info(f"  Category B (pos>10\", diam shrunk >30%): {np.sum(cat_b):,d} — possibly wrong source")
+    log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
+    log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
 
-    # --- Flag zero-flux sources with valid D26 (likely Tractor failure) ---
-    zero_flux_problem = (ell1['OPTFLUX'] == 0) & (ell1['D26'] > 0.3)
-    log.info(f"Objects with FLUX_R=0 but D26>0.3: {np.sum(zero_flux_problem):,d}")
-
-    # --- Flag LARGESHIFT sources ---
-    has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
-    has_largeshift_tractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR']) != 0
-    largeshift_problem = has_largeshift | has_largeshift_tractor
-    log.info(f"Objects with LARGESHIFT or LARGESHIFT_TRACTOR: {np.sum(largeshift_problem):,d}")
-
-    # --- Combine restoration flags ---
-    restore = notractor_problem | shrunk_mom | severe_shrink | largeshift_problem
-    # Don't include zero_flux_problem yet until we understand it better
+    # Flag categories A, B, C for restoration; D is ambiguous
+    restore = cat_a | cat_b | cat_c
     ell1['RESTORE'] = restore
 
     log.info(f'{region}: {np.sum(restore):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    if np.any(restore):
+        check = ell1[restore]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
+                              'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
+        check['POS_SHIFT'] = pos_shift_arcsec[restore]
+        check['DIAM_RATIO'] = diam_ratio[restore]
+        check['CATEGORY'] = np.where(cat_a[restore], 'A', np.where(cat_b[restore], 'B', 'C'))
+        view = to_skyviewer_table(check, diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+
+        _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
+
+    pdb.set_trace()
 
     # --- Flag small group members for removal ---
     remove = _flag_small_for_removal(ell1, mindiam=mindiam)
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
-    # --- Additional diagnostics ---
-
-    # 1. Breakdown of LARGESHIFT sources
-    log.info(f"  LARGESHIFT only: {np.sum(has_largeshift & ~has_largeshift_tractor):,d}")
-    log.info(f"  LARGESHIFT_TRACTOR only: {np.sum(has_largeshift_tractor & ~has_largeshift):,d}")
-    log.info(f"  Both LARGESHIFT bits: {np.sum(has_largeshift & has_largeshift_tractor):,d}")
-
-    # 2. LARGESHIFT in groups vs singletons
-    in_group = ell1['GROUP_MULT'] > 1
-    log.info(f"  LARGESHIFT in singletons: {np.sum(largeshift_problem & ~in_group):,d}")
-    log.info(f"  LARGESHIFT in groups: {np.sum(largeshift_problem & in_group):,d}")
-
-    # 3. Shrunken moment sources - details
-    if np.any(shrunk_mom):
-        shrunk = ell1[shrunk_mom]
-        log.info(f"  Shrunk moment sources - DIAM_INIT range: {np.min(shrunk['DIAM_INIT']):.2f} - {np.max(shrunk['DIAM_INIT']):.2f}")
-        log.info(f"  Shrunk moment sources - D26 range: {np.min(shrunk['D26']):.2f} - {np.max(shrunk['D26']):.2f}")
-        log.info(f"  Shrunk moment sources - in groups: {np.sum(shrunk['GROUP_MULT'] > 1):,d}")
-        # Print worst cases
-        ratio = shrunk['D26'] / shrunk['DIAM_INIT']
-        worst_idx = np.argsort(ratio)[:5]
-        log.info(f"  Worst shrunk moment sources:")
-        for idx in worst_idx:
-            log.info(f"    {shrunk['OBJNAME'][idx]}: DIAM_INIT={shrunk['DIAM_INIT'][idx]:.2f}, D26={shrunk['D26'][idx]:.2f}, ratio={ratio[idx]:.2f}")
-
-    # 4. Objects with very small D26 but large DIAM_INIT (potential problems beyond moment)
-    severe_shrink = (diam_ratio < 0.3) & ~is_mom
-    log.info(f"Non-moment sources shrunk to <30% of initial: {np.sum(severe_shrink):,d}")
-    if np.any(severe_shrink):
-        severe = ell1[severe_shrink]
-        log.info(f"  D26_REF breakdown: {dict(zip(*np.unique(severe['D26_REF'], return_counts=True)))}")
-
-    # 5. NOTRACTOR breakdown
-    if np.any(has_notractor):
-        log.info(f"NOTRACTOR breakdown:")
-        log.info(f"  Total NOTRACTOR: {np.sum(has_notractor):,d}")
-        log.info(f"  - with pos shift >5\": {np.sum(has_notractor & pos_shifted):,d}")
-        log.info(f"  - with diam ratio <0.5 or >2: {np.sum(has_notractor & diam_shifted):,d}")
-        log.info(f"  - with BA shift >0.2: {np.sum(has_notractor & ba_shifted):,d}")
-        log.info(f"  - with PA shift >30°: {np.sum(has_notractor & pa_shifted):,d}")
-        log.info(f"  - in groups: {np.sum(has_notractor & in_group):,d}")
-
-    # 6. LVD sources check
-    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
-    lvd_flagged = is_lvd & restore
-    log.info(f"LVD sources flagged for restoration: {np.sum(lvd_flagged):,d}/{np.sum(is_lvd):,d}")
-    if np.any(lvd_flagged):
-        lvd_prob = ell1[lvd_flagged]
-        log.info(f"  LVD flagged - reasons:")
-        log.info(f"    NOTRACTOR problem: {np.sum((ell1['ELLIPSEBIT'][lvd_flagged] & ELLIPSEBIT['NOTRACTOR']) != 0):,d}")
-        log.info(f"    Shrunk moment: {np.sum(shrunk_mom[is_lvd]):,d}")
-        log.info(f"    LARGESHIFT: {np.sum(largeshift_problem[is_lvd]):,d}")
-
-    # 7. Objects with zero flux but valid D26
-    zero_flux_problem = (ell1['OPTFLUX'] == 0) & (ell1['D26'] > 0.3)
-    log.info(f"Objects with FLUX_R=0 but D26>0.3: {np.sum(zero_flux_problem):,d}")
-
-    # Zero-flux diagnostics
-    if np.any(zero_flux_problem):
-        zf = ell1[zero_flux_problem]
-        log.info(f"  Zero-flux breakdown:")
-        log.info(f"    In groups: {np.sum(zf['GROUP_MULT'] > 1):,d}")
-        log.info(f"    D26_REF: {dict(zip(*np.unique(zf['D26_REF'], return_counts=True)))}")
-        log.info(f"    Has NOTRACTOR: {np.sum((zf['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR']) != 0):,d}")
-        log.info(f"    Has SKIPTRACTOR: {np.sum((zf['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0):,d}")
-        log.info(f"    D26 range: {np.min(zf['D26']):.2f} - {np.max(zf['D26']):.2f}")
-
-        # Check other flux bands
-        for band in ['G', 'I', 'Z']:
-            col = f'FLUX_{band}'
-            if col in zf.colnames:
-                nonzero = np.sum(zf[col] != 0)
-                log.info(f"    {col} nonzero: {nonzero:,d}")
-
-    pdb.set_trace()
-
     print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
-
+    pdb.set_trace()
 
     ell1 = ell1[~remove]
 
