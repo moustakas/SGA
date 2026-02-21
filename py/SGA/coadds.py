@@ -628,6 +628,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     # GPU stuff
     if use_gpu:
         cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu={ngpu} --gpumode=2 '#--verbose '
+        #cmdargs += f'--threads-per-gpu={threads_per_gpu} --ngpu={ngpu} '#--verbose '
 
     try:
         log.info(f'runbrick {cmdargs}')
