@@ -1546,11 +1546,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         #log.info(f'SKIPTRACTOR entries in outellipse before match: {np.sum(I_skip)}')
         #log.info(f'SKIPTRACTOR ref_ids in tractor: {np.sum(in_tractor)}/{len(skip_refids)}')
 
-        pdb.set_trace()
         # separate out (and sort) the tractor catalog of the SGA sources
         I = np.where(tractor['ref_cat'] == REFCAT)[0]
         m1, m2 = match(outellipse[REFIDCOLUMN], tractor['ref_id'][I])
-        pdb.set_trace()
         outellipse = outellipse[m1]
         tractor_sga = tractor[I[m2]]
         tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]
