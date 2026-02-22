@@ -4169,16 +4169,17 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     #view = to_skyviewer_table(check[:50], diamcol='D26')
     #view.write('viewer.fits', overwrite=True)
 
-    #if np.any(restore):
-    #    check = ell1[restore]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
-    #                          'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
-    #    check['POS_SHIFT'] = pos_shift_arcsec[restore]
-    #    check['DIAM_RATIO'] = diam_ratio[restore]
-    #    check['CATEGORY'] = np.where(cat_a[restore], 'A', np.where(cat_b[restore], 'B', 'C'))
-    #    view = to_skyviewer_table(check, diamcol='D26')
-    #    view.write('viewer.fits', overwrite=True)
-    #
-    #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
+    if np.any(restore):
+        check = ell1[restore]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
+                              'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
+        check['POS_SHIFT'] = pos_shift_arcsec[restore]
+        check['DIAM_RATIO'] = diam_ratio[restore]
+        check['CATEGORY'] = np.where(cat_a[restore], 'A', np.where(cat_b[restore], 'B', 'C'))
+        view = to_skyviewer_table(check, diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+
+        _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
+        pdb.set_trace()
 
     # --- Flag small group members for removal ---
     remove = _flag_small_for_removal(ell1, mindiam=mindiam)
@@ -4187,8 +4188,7 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     view = to_skyviewer_table(ell1[remove], diamcol='D26')
     view.write('viewer.fits', overwrite=True)
 
-    print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
-    pdb.set_trace()
+    #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
 
     ell1 = ell1[~remove]
 
