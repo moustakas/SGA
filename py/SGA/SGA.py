@@ -110,9 +110,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # more cleanup
         #version = 'v0.70'
         # more cleanup
-        #version = 'v0.80'
+        version = 'v0.80'
         # first release candidate
-        version = 'v1.0'
+        #version = 'v1.0'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -126,8 +126,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.50'  # parent_version = v0.40 --> v0.50
         #version = 'v0.60'  # parent_version = v0.50 --> v0.60
         #version = 'v0.70'  # parent_version = v0.60 --> v0.70
-        #version = 'v0.80'  # parent_version = v0.70 --> v0.80
-        version = 'v1.0'  # parent_version = v0.80 --> v1.0
+        version = 'v0.80'  # parent_version = v0.70 --> v0.80
+        #version = 'v1.0'  # parent_version = v0.80 --> v1.0
     return version
 
 
@@ -491,18 +491,18 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
-        nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
-        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-
-        #log.info('Refitting!')
-        #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
-        #refit = Table(fitsio.read(refitfile))
-        #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
-        #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
-        #sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #if True:
+    #    nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
+    #    I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
+    #    fullsample = fullsample[I]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #
+    #    #log.info('Refitting!')
+    #    #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
+    #    #refit = Table(fitsio.read(refitfile))
+    #    #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
+    #    #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
+    #    #sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     # select objects in the set of test bricks
     if test_bricks:
@@ -1546,9 +1546,11 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         #log.info(f'SKIPTRACTOR entries in outellipse before match: {np.sum(I_skip)}')
         #log.info(f'SKIPTRACTOR ref_ids in tractor: {np.sum(in_tractor)}/{len(skip_refids)}')
 
+        pdb.set_trace()
         # separate out (and sort) the tractor catalog of the SGA sources
         I = np.where(tractor['ref_cat'] == REFCAT)[0]
         m1, m2 = match(outellipse[REFIDCOLUMN], tractor['ref_id'][I])
+        pdb.set_trace()
         outellipse = outellipse[m1]
         tractor_sga = tractor[I[m2]]
         tractor_nosga = tractor[np.delete(np.arange(len(tractor)), I)]

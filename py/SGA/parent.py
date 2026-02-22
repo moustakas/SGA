@@ -4111,6 +4111,7 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
 
     in_group = ell1['GROUP_MULT'] > 1
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+    pdb.set_trace()
 
     # --- LARGESHIFT analysis ---
     has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
