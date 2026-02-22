@@ -18,7 +18,7 @@ from SGA.SGA import sga_dir, SGA_version
 from SGA.coadds import PIXSCALE, BANDS
 from SGA.util import match, match_to
 from SGA.sky import choose_primary, resolve_close
-from SGA.qa import qa_skypatch, multipage_skypatch
+from SGA.qa import qa_skypatch, multipage_skypatch, to_skyviewer_table
 
 from SGA.logger import log
 
@@ -3704,7 +3704,7 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
             raise ValueError(f'Unknown op {op!r}')
 
 
-def diagnose_drift(ell60, outdir):
+def diagnose_drift(ell60, outdir, ref_version='v0.10'):
     """Compare v0.60 positions to original initial positions."""
     import astropy.units as u
     from astropy.coordinates import SkyCoord
@@ -3723,7 +3723,11 @@ def diagnose_drift(ell60, outdir):
     #    ell22['RA_INIT'][I] = ell22['RA'][I]
     #    ell22['DEC_INIT'][I] = ell22['DEC'][I]
 
-    ell22 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+    if ref_version == 'v0.10':
+        ell22 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+    else:
+        ell22 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-{ref_version}.fits')))
+
     for ver in ['v0.30', 'v0.40', 'v0.50', 'v0.60']:
         overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{ver}')
         ov = load_overlays(overlay_dir)
@@ -3976,6 +3980,331 @@ def additional_sanity_checks(ell60, ell22):
     log.info(f"Large change from v0.22 measurement: {np.sum(v22_to_v60_drift):,d}")
 
 
+def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
+    """Prepare v0.70 ellipse catalog for v0.80 parent building.
+
+    Reads original v0.10 parent, applies overlay updates, flags objects
+    for restoration or removal.
+
+    Parameters
+    ----------
+    ell1 : Table
+        v0.70 ellipse catalog for one region
+    outdir : str
+        Directory containing parent catalogs
+    region : str
+        'dr11-south' or 'dr9-north'
+    mindiam : float
+        Minimum diameter threshold in arcmin
+
+    Returns
+    -------
+    ell1 : Table
+        Modified catalog with RESTORE column and _ORIG columns added,
+        small group members removed
+
+    """
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    # Read original parent and apply all overlay updates
+    parent_orig = Table(fitsio.read(os.path.join(outdir, 'SGA2025-parent-v0.10.fits')))
+    for ver in ['v0.30', 'v0.40', 'v0.50', 'v0.60', 'v0.70']:
+        overlay_dir = resources.files('SGA').joinpath(f'data/SGA2025/overlays/{ver}')
+        ov = load_overlays(overlay_dir)
+        I = np.isin(ov.updates['OBJNAME'], parent_orig['OBJNAME'])
+        ovup = ov.updates[I]
+        apply_updates_inplace(parent_orig, ovup)
+
+    # Match ell1 to parent_orig
+    m_ell, m_parent = match(ell1['OBJNAME'], parent_orig['OBJNAME'])
+    parent_in_ell = np.isin(ell1['OBJNAME'], parent_orig['OBJNAME'])
+
+    # --- Flag LVD sources that shrunk ---
+    is_lvd = np.zeros(len(ell1), dtype=bool)
+    is_lvd[m_ell] = (ell1['SAMPLE'][m_ell] & SAMPLE['LVD']) != 0
+
+    diam_ratio = np.ones(len(ell1), dtype=np.float32)
+    diam_ratio[m_ell] = ell1['D26'][m_ell] / np.clip(parent_orig['DIAM'][m_parent], 0.01, None)
+
+    shrunk_lvd = is_lvd & (diam_ratio < 0.5)
+    log.info(f"LVD sources shrunk to <50% of initial: {np.sum(shrunk_lvd):,d}")
+
+    # --- Flag moment-based diameters that shrunk ---
+    d26_ref = np.char.strip(ell1['D26_REF'].astype(str))
+    is_mom = (d26_ref == 'mom') | np.char.endswith(d26_ref, '/mom')
+    shrunk_mom = parent_in_ell & is_mom & (diam_ratio < 0.5)
+    log.info(f"Objects with D26_REF='mom' and shrunk to <50% of initial: {np.sum(shrunk_mom):,d}")
+
+    ## --- Restore NOTRACTOR sources --
+    #notractor = parent_in_ell & (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0) & (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FIXGEO'] == 0)
+
+    # --- Flag small group members for removal ---
+    remove = _flag_small_for_removal(ell1, mindiam=mindiam)
+
+    # --- Combine restoration flags ---
+    refit = shrunk_mom
+    #refit = shrunk_mom | notractor
+    #refit = shrunk_lvd | shrunk_mom
+
+    # --- Add tracking columns ---
+    ell1['REFIT'] = refit
+    ell1['RA_ORIG'] = np.zeros(len(ell1), dtype='f8')
+    ell1['DEC_ORIG'] = np.zeros(len(ell1), dtype='f8')
+    ell1['DIAM_ORIG'] = np.zeros(len(ell1), dtype='f4')
+    ell1['DIAM_ORIG_REF'] = np.zeros(len(ell1), dtype='<U14')
+    ell1['PA_ORIG'] = np.zeros(len(ell1), dtype='f4')
+    ell1['BA_ORIG'] = np.zeros(len(ell1), dtype='f4')
+
+    ell1['RA_ORIG'][m_ell] = parent_orig['RA'][m_parent]
+    ell1['DEC_ORIG'][m_ell] = parent_orig['DEC'][m_parent]
+    ell1['DIAM_ORIG'][m_ell] = parent_orig['DIAM'][m_parent]
+    ell1['DIAM_ORIG_REF'][m_ell] = parent_orig['DIAM_REF'][m_parent]
+    ell1['PA_ORIG'][m_ell] = parent_orig['PA'][m_parent]
+    ell1['BA_ORIG'][m_ell] = parent_orig['BA'][m_parent]
+    try:
+        assert(np.all(ell1['RA_ORIG'][refit] != 0.))
+    except:
+        pdb.set_trace()
+
+    log.info(f'{region}: {np.sum(refit):,d}/{len(ell1):,d} flagged for geometry restoration')
+    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+    ##check = ell1[remove]
+    ##check = ell1[shrunk_lvd]
+    #check = ell1[shrunk_mom]
+    #check = check[np.argsort(check['D26'])]#[::-1]]
+    #check.rename_column('D26', 'DIAM')
+    #view = to_skyviewer_table(check)
+    #view.write('viewer.fits', overwrite=True)
+    #check['OBJNAME', 'GROUP_NAME', 'RA', 'DEC', 'DIAM', 'D26_REF', 'DIAM_ORIG', 'DIAM_ORIG_REF']
+    ell1 = ell1[~remove]
+
+    return ell1
+
+
+def prepare_v080_ellipse(ell1, region, mindiam=0.5):
+    """Prepare v0.80 ellipse catalog for v0.90 parent building.
+
+    Focuses on LARGESHIFT sources, which may indicate:
+    - Tractor modeling failures (should revert)
+    - Bona fide positional shifts (should keep)
+    - Catalog errors / spurious sources (should investigate)
+
+    Parameters
+    ----------
+    ell1 : Table
+        v0.80 ellipse catalog for one region
+    region : str
+        'dr11-south' or 'dr9-north'
+    mindiam : float
+        Minimum diameter threshold in arcmin
+
+    Returns
+    -------
+    ell1 : Table
+        Modified catalog with RESTORE column added,
+        small group members removed
+    """
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    # --- LARGESHIFT analysis ---
+    has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
+    has_largeshift_tractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR']) != 0
+    largeshift_any = has_largeshift | has_largeshift_tractor
+
+    log.info(f"LARGESHIFT analysis:")
+    log.info(f"  Total with any LARGESHIFT bit: {np.sum(largeshift_any):,d}")
+    log.info(f"    - LARGESHIFT only: {np.sum(has_largeshift & ~has_largeshift_tractor):,d}")
+    log.info(f"    - LARGESHIFT_TRACTOR only: {np.sum(has_largeshift_tractor & ~has_largeshift):,d}")
+    log.info(f"    - Both bits: {np.sum(has_largeshift & has_largeshift_tractor):,d}")
+    log.info(f"  In singletons: {np.sum(largeshift_any & ~in_group):,d}")
+    log.info(f"  In groups: {np.sum(largeshift_any & in_group):,d}")
+    log.info(f"  LVD sources: {np.sum(largeshift_any & is_lvd):,d}")
+
+    # Characterize the shifts
+    pos_shift_arcsec = np.hypot(
+        (ell1['RA'] - ell1['RA_INIT']) * np.cos(np.deg2rad(ell1['DEC'])) * 3600,
+        (ell1['DEC'] - ell1['DEC_INIT']) * 3600
+    )
+    diam_ratio = ell1['D26'] / np.clip(ell1['DIAM_INIT'], 0.01, None)
+
+    ls = ell1[largeshift_any]
+    ls_pos = pos_shift_arcsec[largeshift_any]
+    ls_diam = diam_ratio[largeshift_any]
+
+    log.info(f"  Position shift (arcsec): median={np.median(ls_pos):.1f}, 90%={np.percentile(ls_pos, 90):.1f}, max={np.max(ls_pos):.1f}")
+    log.info(f"  Diameter ratio: median={np.median(ls_diam):.2f}, 10%={np.percentile(ls_diam, 10):.2f}, 90%={np.percentile(ls_diam, 90):.2f}")
+
+    # Categorize LARGESHIFT sources by characteristics
+    # Category A: Large position shift AND diameter grew (possible Tractor failure / contamination)
+    cat_a = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio > 1.5)
+    # Category B: Large position shift AND diameter shrunk (possible wrong source modeled)
+    cat_b = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio < 0.7)
+    # Category C: Small position shift but large diameter change (Tractor modeling issue)
+    cat_c = largeshift_any & (pos_shift_arcsec <= 10) & ((diam_ratio < 0.5) | (diam_ratio > 2.0))
+    # Category D: Moderate shifts (unclear - may be legitimate)
+    cat_d = largeshift_any & ~cat_a & ~cat_b & ~cat_c
+
+    log.info(f"  Category A (pos>10\", diam grew >50%): {np.sum(cat_a):,d} — likely contamination")
+    log.info(f"  Category B (pos>10\", diam shrunk >30%): {np.sum(cat_b):,d} — possibly wrong source")
+    log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
+    log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
+
+    # Flag categories A, B, C, and D for restoration
+    restore = cat_a | cat_b | cat_c | cat_d
+    ell1['RESTORE'] = restore
+
+    log.info(f'{region}: {np.sum(restore):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    log.info(f"  LVD in restore: {np.sum(restore & is_lvd):,d}")
+    log.info(f"  LVD in Category D: {np.sum(cat_d & is_lvd):,d}")
+
+    #check = ell1[cat_d & ~is_lvd]
+    #check = check[np.argsort(check['D26'])[::-1]]
+    #view = to_skyviewer_table(check[:50], diamcol='D26')
+    #view.write('viewer.fits', overwrite=True)
+
+    #if np.any(restore):
+    #    check = ell1[restore]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
+    #                          'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
+    #    check['POS_SHIFT'] = pos_shift_arcsec[restore]
+    #    check['DIAM_RATIO'] = diam_ratio[restore]
+    #    check['CATEGORY'] = np.where(cat_a[restore], 'A', np.where(cat_b[restore], 'B', 'C'))
+    #    view = to_skyviewer_table(check, diamcol='D26')
+    #    view.write('viewer.fits', overwrite=True)
+    #
+    #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
+
+    # --- Flag small group members for removal ---
+    remove = _flag_small_for_removal(ell1, mindiam=mindiam)
+    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+    view = to_skyviewer_table(ell1[remove], diamcol='D26')
+    view.write('viewer.fits', overwrite=True)
+
+    print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
+    pdb.set_trace()
+
+    ell1 = ell1[~remove]
+
+    return ell1
+
+
+def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False):
+    """Flag small group members for removal.
+
+    Removal criteria:
+    - GROUP_MULT=1: remove if (D26+D26_ERR) < mindiam
+    - GROUP_MULT>1, not interacting: remove if (D26+D26_ERR) < 20 arcsec
+    - GROUP_MULT>1, interacting: remove if much smaller than companions
+
+    Always keep:
+    - LVD sources
+    - GROUP_PRIMARY
+
+    Parameters
+    ----------
+    ell1 : Table
+        Ellipse catalog
+    mindiam : float
+        Minimum diameter for singletons (arcmin)
+    keep_one_survivor : bool
+        If True, keep the largest member if all would be removed
+
+    """
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+    is_primary = ell1['GROUP_PRIMARY']
+
+    d26 = np.asarray(ell1['D26'], dtype=np.float32)
+    d26_err = np.asarray(ell1['D26_ERR'], dtype=np.float32)
+    d26_ul = d26 + d26_err
+
+    mult = ell1['GROUP_MULT']
+    is_singleton = mult == 1
+    is_in_group = mult > 1
+
+    has_overlap = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['OVERLAP']) != 0
+    has_blended = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['BLENDED']) != 0
+    is_interacting = has_overlap | has_blended
+
+    # Case 1: Singletons - remove if d26_ul < mindiam
+    remove_singleton = is_singleton & (d26_ul < mindiam) & ~is_lvd & ~is_primary
+
+    # Case 2: In group, not interacting - remove if d26_ul < 20 arcsec
+    small_thresh = 20. / 60.  # 20 arcsec in arcmin
+    remove_group_noninteracting = is_in_group & ~is_interacting & (d26_ul < small_thresh) & ~is_lvd & ~is_primary
+
+    # Case 3: In group, interacting - check diameter ratio to companions
+    unique_groups, group_indices = np.unique(ell1['GROUP_NAME'], return_inverse=True)
+    n_groups = len(unique_groups)
+
+    # Compute max D26 per group
+    max_d26_per_group = np.zeros(n_groups, dtype=np.float32)
+    np.maximum.at(max_d26_per_group, group_indices, d26)
+
+    # Compute second-max D26 per group
+    is_group_max = d26 == max_d26_per_group[group_indices]
+    d26_masked = d26.copy()
+    d26_masked[is_group_max] = -np.inf
+    second_max_per_group = np.full(n_groups, -np.inf, dtype=np.float32)
+    np.maximum.at(second_max_per_group, group_indices, d26_masked)
+    second_max_per_group[second_max_per_group == -np.inf] = 0.
+
+    # max_other_d26: for each object, max D26 of other members
+    max_other_d26 = np.where(is_group_max,
+                              second_max_per_group[group_indices],
+                              max_d26_per_group[group_indices])
+    max_other_d26[is_singleton] = 0.
+
+    # Remove interacting source if:
+    # - D26 < 20 arcsec AND
+    # - largest companion > mindiam AND
+    # - ratio to largest companion < 0.5
+    very_small = d26 < small_thresh
+    companion_large = max_other_d26 > mindiam
+    ratio_to_companion = d26 / np.clip(max_other_d26, 0.01, None)
+    much_smaller = ratio_to_companion < 0.5
+
+    remove_group_interacting = (is_in_group & is_interacting & very_small &
+                                 companion_large & much_smaller & ~is_lvd & ~is_primary)
+
+    remove = remove_singleton | remove_group_noninteracting | remove_group_interacting
+
+    # Safety check: ensure at least one member survives per group
+    if keep_one_survivor:
+        keep = ~remove
+        any_kept_per_group = np.zeros(n_groups, dtype=bool)
+        np.logical_or.at(any_kept_per_group, group_indices, keep)
+
+        no_survivors = ~any_kept_per_group[group_indices]
+        is_largest_in_doomed_group = no_survivors & is_group_max
+        remove[is_largest_in_doomed_group] = False
+
+    # Statistics
+    log.info(f"Small group member removal:")
+    log.info(f"  Singletons (d26_ul < {mindiam}): {np.sum(remove_singleton):,d}")
+    log.info(f"  Group, non-interacting (d26_ul < 20\"): {np.sum(remove_group_noninteracting):,d}")
+    log.info(f"  Group, interacting shreds: {np.sum(remove_group_interacting):,d}")
+    log.info(f"  Total flagged for removal: {np.sum(remove):,d}")
+
+    for m in [1, 2, 3, 4, 5]:
+        if m < 5:
+            mask = (mult == m) & remove
+            log.info(f"    Removing from mult={m}: {np.sum(mask):,d}")
+        else:
+            mask = (mult >= m) & remove
+            log.info(f"    Removing from mult>={m}: {np.sum(mask):,d}")
+
+    return remove
+
 
 def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
@@ -4000,13 +4329,6 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             diam, diam_err, diam_ref, _ = SGA_diameter(ell1, region)
 
             I = (ell1['D26_ERR'] != 0.)
-            #I = ((ell1['D26_ERR'] != 0.) & (diam_ref != 'mom') &
-            #     (ell1['GROUP_MULT'] == 1) &
-            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] == 0) &
-            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['TRACTORPSF'] == 0) &
-            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT'] == 0) &
-            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR'] == 0) &
-            #     (ell1['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] == 0))
             for col, val in zip(['D26', 'D26_ERR', 'D26_REF'], [diam[I], diam_err[I], diam_ref[I]]):
                 ell1[col][I] = val
 
@@ -4034,14 +4356,6 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
                 (max_diam_per_group[ell1['GROUP_ID']] < mindiam))
             groups_to_remove = np.unique(ell1['GROUP_NAME'][I])
             I = np.isin(ell1['GROUP_NAME'], groups_to_remove)
-            check = ell1[I]
-
-            #from SGA.qa import to_skyviewer_table
-            #check = check[np.argsort(check['D26'])]#[::-1]]
-            #check.rename_column('D26', 'DIAM')
-            ##view = to_skyviewer_table(check[check['GROUP_MULT'] > 2])
-            #view = to_skyviewer_table(check[:100])
-            #view.write('viewer.fits', overwrite=True)
 
             log.info(f'Removing {np.sum(I):,d}/{len(ell1):,d} {region} galaxies with D(26)<{mindiam:.2f} arcmin')
             ell1 = ell1[~I]
@@ -4055,7 +4369,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
                 for col, val in zip(['D26', 'D26_ERR', 'D26_REF'], [diam[I], diam_err[I], diam_ref[I]]):
                     ell1[col][I] = val
 
-            diag = diagnose_drift(ell1, outdir)
+            diag = diagnose_drift(ell1, outdir, ref_version='v0.10')
             diag = flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0)
             #bb = diag[diag['NEEDS_REFIT']] ; bb = bb[np.argsort(bb['DIAM_ORIG'])]
 
@@ -4078,6 +4392,13 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             ell1['BA_ORIG'][m_ell] = diag['BA_ORIG'][m_diag]
 
             log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for refit')
+
+        elif base_version == 'v0.70':
+            ell1 = prepare_v070_ellipse(ell1, outdir, region, mindiam=mindiam)
+
+        elif base_version == 'v0.80':
+            ell1 = prepare_v080_ellipse(ell1, region, mindiam=mindiam)
+            pdb.set_trace()
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -4198,7 +4519,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -4214,6 +4535,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
       new rows get monotonically increasing SGAID.
 
     """
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
     from astropy.table import Table
     from desiutil.dust import SFDMap
     from SGA.SGA import SGA_version, SAMPLE, SGA_diameter
@@ -4348,11 +4671,27 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
             for col, init_col in [('RA', 'RA_ORIG'), ('DEC', 'DEC_ORIG'),
                                   ('DIAM', 'DIAM_ORIG'), ('DIAM_REF', 'DIAM_ORIG_REF'),
                                   ('PA', 'PA_ORIG'), ('BA', 'BA_ORIG')]:
+                if ell[init_col][I] == 0.:
+                    pdb.set_trace()
                 ell_base[col][I] = ell[init_col][I]
 
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, 'SGA2025-v0.70-refit.fits'), overwrite=True)
+        base = ell_base
+    elif base_version == 'v0.70':
+        I = ell['REFIT'].astype(bool)
+        if np.any(I):
+            log.info(f'Restoring initial geometry for {np.sum(I):,d} objects for refit')
+            ell_base['DIAM_ERR'][I] = 0.
+            for col, init_col in [('RA', 'RA_ORIG'), ('DEC', 'DEC_ORIG'),
+                                  ('DIAM', 'DIAM_ORIG'), ('DIAM_REF', 'DIAM_ORIG_REF'),
+                                  ('PA', 'PA_ORIG'), ('BA', 'BA_ORIG')]:
+                ell_base[col][I] = ell[init_col][I]
+
+            out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
+            out = out[np.argsort(out['DIAM_ORIG'])]
+            out.write(os.path.join(outdir, 'SGA2025-v0.80-refit.fits'), overwrite=True)
         base = ell_base
     else:
         base = ell_base
@@ -4386,6 +4725,18 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
             raise ValueError('PA out of range')
     except:
         base[(base['BA'] <= 0.) | (base['BA'] > 1.)]['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA']
+
+    # Check for sources within 3.6 arcsec of each other
+    coords = SkyCoord(base['RA'] * u.deg, base['DEC'] * u.deg)
+    idx1, idx2, sep, _ = coords.search_around_sky(coords, 3.6 * u.arcsec)
+
+    # Remove self-matches
+    not_self = idx1 != idx2
+    if np.any(not_self):
+        # Get unique pairs (avoid counting i,j and j,i twice)
+        pairs = np.array(sorted(set(tuple(sorted((i, j))) for i, j in zip(idx1[not_self], idx2[not_self]))))
+        raise ValueError(f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
+                         f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
@@ -4427,11 +4778,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
     # populate FITMODE, which is used by legacypipe
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0] |= FITMODE['FIXGEO']
     grp['FITMODE'][grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0] |= FITMODE['RESOLVED']
-
-    try:
-        assert(np.all(np.isfinite(grp['DIAM'])))
-    except:
-        pdb.set_trace()
+    assert(np.all(np.isfinite(grp['DIAM'])))
 
     # Sort by diameter descending and then build the group catalog
     srt = np.argsort(grp['DIAM'])[::-1]
@@ -4443,7 +4790,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
     gid_start = int(np.max(out1['GROUP_ID'])) + 1
     out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
     out = vstack((out1, out2))
-
 
     # Assign SGAGROUP name and check duplicates among primaries
     try:
@@ -4459,27 +4805,34 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.60', overwrite=False):
 
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
-    keep_mask = np.ones(len(out), dtype=bool)
-    drop_ids = []
-    strip_groups = []
-    for gid in np.unique(out['GROUP_ID'][out['GROUP_MULT'] > 1]):
-        J = (out['GROUP_ID'] == gid)
-        allowed = int(np.bitwise_and.reduce(np.asarray(out['REGION'][J])))
-        if allowed == 0:
-            drop_ids.append(gid)
-            continue
-        new_reg = (out['REGION'][J] & allowed)
-        if np.any(new_reg != out['REGION'][J]):
-            out['REGION'][J] = new_reg
-            strip_groups.append(out['GROUP_NAME'][J][0])
-    if drop_ids:
-        M = np.isin(out['GROUP_ID'], drop_ids)
-        log.info(f"Dropping {len(np.unique(drop_ids)):,d} groups with no common REGION bit ({np.sum(M):,d} members).")
-        keep_mask &= ~M
-    out = out[keep_mask]
-    if strip_groups:
-        strip_groups = np.unique(strip_groups)
+    unique_groups, group_indices = np.unique(out['GROUP_ID'], return_inverse=True)
+    n_groups = len(unique_groups)
+
+    # Compute bitwise AND of REGION for each group; start with all bits set
+    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
+    np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
+
+    # Get the allowed bits for each row
+    allowed = region_and_per_group[group_indices]
+
+    # Groups to drop (no common bits AND mult > 1)
+    group_mult = out['GROUP_MULT']
+    drop_mask = (allowed == 0) & (group_mult > 1)
+
+    # Groups to strip (some bits removed but group kept)
+    new_region = out['REGION'] & allowed
+    strip_mask = (new_region != out['REGION']) & (allowed != 0) & (group_mult > 1)
+
+    # Apply changes
+    if np.any(strip_mask):
+        out['REGION'] = new_region
+        strip_groups = np.unique(out['GROUP_NAME'][strip_mask])
         log.info(f"Stripped REGION bits (kept groups) for {len(strip_groups):,d} groups.")
+
+    if np.any(drop_mask):
+        drop_ids = np.unique(out['GROUP_ID'][drop_mask])
+        log.info(f"Dropping {len(drop_ids):,d} groups with no common REGION bit ({np.sum(drop_mask):,d} members).")
+        out = out[~drop_mask]
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)

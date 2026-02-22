@@ -59,7 +59,7 @@ def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
 
     if pixelized_psf is None:
         vv = psf_sigma**2.
-        psf = GaussianMixturePSFGaussianMixturePSF(1., 0., 0., vv, vv, 0.)
+        psf = GaussianMixturePSF(1., 0., 0., vv, vv, 0.)
     else:
         psf = pixelized_psf
 
@@ -360,13 +360,17 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
     """
     import fitsio
     import shutil
+    from time import time
     from astrometry.util.util import Tan
     from tractor.tractortime import TAITime
     from legacypipe.bits import REF_MAP_BITS, maskbits_type
     from legacypipe.reference import get_reference_sources, get_reference_map
     from legacypipe.survey import LegacySurveyWcs
+    from SGA.util import get_dt
     from SGA.io import make_header, VEGA2AB
     from SGA.cutouts import cutout_one
+
+    tall = time()
 
     # CCDs file
     if ccds:
@@ -502,6 +506,9 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
         for cleanfile in cleanfiles:
             os.remove(cleanfile)
 
+    dt, unit = get_dt(tall)
+    log.info(f'Total time for custom cutouts: {dt:.3f} {unit}')
+
     return 1
 
 
@@ -509,7 +516,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
                   nsigma=None, saddle_fraction=None, saddle_min=None, nsatur=2,
-                  rgb_stretch=1.5, no_iterative=False,
+                  rgb_stretch=1.5, no_iterative=False, no_segmentation=False,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC', force_psf_detection=False,
                   fit_on_coadds=False, just_cutouts=False, ivar_cutouts=False, use_gpu=False,
                   ngpu=1, threads_per_gpu=8, subsky_radii=None, just_coadds=False,
@@ -615,10 +622,13 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         cmdargs += '--fit-on-coadds --no-ivar-reweighting '
     if no_iterative:
         cmdargs += '--no-iterative '
+    if no_segmentation:
+        cmdargs += '--no-segmentation '
 
     # GPU stuff
     if use_gpu:
         cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu={ngpu} --gpumode=2 '#--verbose '
+        #cmdargs += f'--threads-per-gpu={threads_per_gpu} --ngpu={ngpu} '#--verbose '
 
     try:
         log.info(f'runbrick {cmdargs}')

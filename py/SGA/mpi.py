@@ -56,10 +56,12 @@ def mpi_args():
     parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
     parser.add_argument('--test-bricks', action='store_true', help='Read the sample of test bricks.')
     parser.add_argument('--no-iterative', action='store_true', help='Turn off iterative source detection.')
+    parser.add_argument('--no-segmentation', action='store_true', help='Turn off Tractor segmentation.')
     parser.add_argument('--noradweight', dest='use_radial_weight', action='store_false',
                         help='No radial weighting when determining moment geometry.')
     parser.add_argument('--momentpos', dest='use_tractor_position', action='store_false',
                         help='Use the light-weighted (not Tractor) position during ellipse-fitting.')
+    parser.add_argument('--fixgeo', action='store_true', help='Use fixed ellipse geometry (irrespective of if the ELLIPSEMODE bit is set.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')

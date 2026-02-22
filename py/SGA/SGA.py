@@ -101,18 +101,18 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
 
         # major refactor of build_parent
         #version = 'v0.30'
-
         # significant trimming of small galaxies; numerous new ELLIPSEBIT
         #version = 'v0.40'
-
         # tons of additional sample cleanup
         #version = 'v0.50'
-
         # more cleanup
-        version = 'v0.60'
-
+        #version = 'v0.60'
         # more cleanup
-        version = 'v0.70'
+        #version = 'v0.70'
+        # more cleanup
+        #version = 'v0.80'
+        # more cleanup
+        version = 'v0.90'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -125,7 +125,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.40'  # parent_version = v0.30 --> v0.40
         #version = 'v0.50'  # parent_version = v0.40 --> v0.50
         #version = 'v0.60'  # parent_version = v0.50 --> v0.60
-        version = 'v0.70'  # parent_version = v0.50 --> v0.60
+        #version = 'v0.70'  # parent_version = v0.60 --> v0.70
+        #version = 'v0.80'  # parent_version = v0.70 --> v0.80
+        version = 'v0.90'  # parent_version = v0.80 --> v0.90
     return version
 
 
@@ -287,14 +289,16 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         dependson = '-coadds.isdone'
     elif htmlplots:
         suffix = 'html'
-        filesuffix = '-html.isdone'
+        #filesuffix = '-html.isdone'
+        filesuffix = '-montage.png'
         dependson = None # '-image.jpg'
         galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir, region=region,
             group=group, html=True)
     elif htmlindex:
         suffix = 'htmlindex'
-        filesuffix = '-montage.png'
+        #filesuffix = '-montage.png'
+        filesuffix = '.html'
         galaxy, _, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir,
             region=region, group=group, html=True)
@@ -316,6 +320,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     for igal, (gal, gdir) in enumerate(zip(np.atleast_1d(galaxy),
                                            np.atleast_1d(galaxydir))):
         checkfile = os.path.join(gdir, f'{gal}{filesuffix}')
+
         #print(checkfile)
         if dependson:
             if dependsondir:
@@ -486,14 +491,18 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
-        log.info('Refitting!')
-        refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
-        refit = Table(fitsio.read(refitfile))
-        refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
+    if True:
+        nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
+        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
+        fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
 
+        #log.info('Refitting!')
+        #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
+        #refit = Table(fitsio.read(refitfile))
+        #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
+        #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
+        #sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     # select objects in the set of test bricks
     if test_bricks:
@@ -763,11 +772,12 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
         d26_ref[I] = 'fix'
         d26_weight[I] = 1.
 
-    # If the SKIPTRACTOR bit is set revert to the initial geometry
-    # (otherwise SMA_MOMENT will be used and D26 will be significantly
-    # larger than its initial size.)
+    # If the SKIPTRACTOR bit is set and SMA_MOMENT is the only radius
+    # measurement, revert to the initial geometry (otherwise
+    # SMA_MOMENT will be used and D26 will be significantly larger
+    # than its initial size.)
     if 'ELLIPSEBIT' in ellipse.colnames:
-        I = ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0
+        I = (ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0) & (d26_ref == 'mom')
         if np.any(I):
             d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60. # [arcmin]
             d26_err[I] = 0.
@@ -1112,7 +1122,7 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
     ellipse = vstack(ellipse_list) if ellipse_list else None
 
     # Validate GROUP_ID matches grpsample
-    if ellipse is not None and 'GROUP_ID' in ellipse.colnames and 'GROUP_ID' in grpsample.colnames:
+    if False and ellipse is not None and 'GROUP_ID' in ellipse.colnames and 'GROUP_ID' in grpsample.colnames:
         for i, row in enumerate(ellipse):
             sgaid = row[REFIDCOLUMN]
             match_idx = np.where(grpsample[REFIDCOLUMN] == sgaid)[0]
@@ -1120,7 +1130,7 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
                 expected_gid = grpsample['GROUP_ID'][match_idx[0]]
                 actual_gid = row['GROUP_ID']
                 if expected_gid != actual_gid:
-                    rint(f'Ellipse file may be out of date: {gdir}')
+                    print(f'Ellipse file may be out of date: {gdir}')
                     raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
                                      f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
                                      f'Ellipse file may be out of date: {gdir}')
@@ -1274,9 +1284,6 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     # Append mock SGA entries to tractor
     if len(tractor_sga) > 0:
         tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
-
-    #if np.any(np.isin(grpsample['GROUP_NAME'], ['02327m8659'])):
-    #    pdb.set_trace()
 
     return ellipse, tractor
 
@@ -1474,7 +1481,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         if rank == 0:
             slicefile = os.path.join(datadir, region, f'{outprefix}-{raslice}.fits')
             if len(allellipse) > 0:
-                #log.info(f'Writing {len(allellipse):,d} ({len(alltractor):,d}) groups (Tractor sources) to {slicefile}')
+                log.info(f'Writing {len(allellipse):,d} groups [{len(alltractor):,d} Tractor sources] to {slicefile}')
                 fitsio.write(slicefile, allellipse.as_array(), extname='ELLIPSE', clobber=True)
                 fitsio.write(slicefile, alltractor.as_array(), extname='TRACTOR')
 
@@ -2159,7 +2166,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          moment_method='rms', maxshift_arcsec=MAXSHIFT_ARCSEC,
                          radial_power=0.7, SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
-                         use_tractor_position=True, use_radial_weight=True,
+                         use_tractor_position=True, use_radial_weight=True, fixgeo=False,
                          use_radial_weight_for_overlaps=True, use_tractor_geometry=True,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
@@ -2263,7 +2270,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
-            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -2525,7 +2531,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
     for iobj in range(nsample):
-        if sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['MOMENTPOS'] | ELLIPSEMODE['FIXGEO']) != 0:
+        if fixgeo or (sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['MOMENTPOS'] | ELLIPSEMODE['FIXGEO']) != 0):
             use_tractor_position_obj[iobj] = False
 
     # Clear bits which may change between the initial and final
@@ -2551,13 +2557,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
-        # Set MOMENTPOS bit if either: (1) ELLIPSEMODE has it, or (2)
-        # not using Tractor positions
+        # Set MOMENTPOS bit: using moment positions (not Tractor, not fixed)
         if (not use_tractor_position_obj[iobj] and
-            sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] == 0):
+            (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] == 0) and
+            not fixgeo):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
-        if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0:
+        if fixgeo or (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
 
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['LESSMASKING'] != 0:
@@ -2671,7 +2677,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         # Next, iteratively update the source geometry unless
         # FIXGEO or TRACTORGEO have been set.
         if update_geometry:
-            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
+            if fixgeo or (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0):
                 niter_actual = 1
             else:
                 niter_actual = niter_geometry
@@ -2720,7 +2726,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # never veto the "core" brightstarmask except for FIXGEO
             # or TRACTORGEO
-            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
+            if not fixgeo and (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0):
                 iter_brightstarmask |= opt_brightstarmask_core
 
             # if more than XX% of the pixels are masked by the core of
@@ -2805,7 +2811,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # coadded image.
             wmask = np.any(wmasks, axis=0) * (wimg > 0.)
 
-            if obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0:
+            if fixgeo or (obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0):
                 log.info('FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
             elif (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
@@ -3016,7 +3022,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # never veto the "core" brightstarmask except for FIXGEO
         # or TRACTORGEO
-        if sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0:
+        if not fixgeo and (sample['ELLIPSEMODE'][iobj] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) == 0):
             final_brightstarmask |= opt_brightstarmask_core
 
         # Build the final galaxy mask

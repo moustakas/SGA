@@ -40,7 +40,7 @@ cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIA
         'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
 
 
-def to_skyviewer_table(cat):
+def to_skyviewer_table(cat, diamcol='DIAM'):
     """
     Convert SGA catalog to sky viewer format with spatially-cycled colors.
 
@@ -65,7 +65,7 @@ def to_skyviewer_table(cat):
     out['name'] = cat['OBJNAME']
     out['ra'] = cat['RA']
     out['dec'] = cat['DEC']
-    out['radius'] = (cat['DIAM'] * 60.0 / 2.0).astype(np.float32)
+    out['radius'] = (cat[diamcol] * 60.0 / 2.0).astype(np.float32)
     out['abRatio'] = cat['BA']
     out['posAngle'] = cat['PA']
     out['color'] = color_array
