@@ -4186,7 +4186,7 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
 
     # --- Flag small group members for removal ---
-    remove = _flag_small_for_removal(ell1, mindiam=mindiam)
+    remove = _flag_small_for_removal(ell1, mindiam=mindiam) & (~np.isin(ell1['OBJNAME'], ['2MASX J12412771-1239485']))
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
     #view = to_skyviewer_table(ell1[remove], diamcol='D26')
@@ -4754,8 +4754,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
         pairs = np.array(sorted(set(tuple(sorted((i, j))) for i, j in zip(idx1[not_self], idx2[not_self]))))
         raise ValueError(f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
                          f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
-
-    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
