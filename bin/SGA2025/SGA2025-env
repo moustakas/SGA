@@ -16,7 +16,8 @@ export COSMO=/dvs_ro/cfs/cdirs/cosmo
 #export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.50.kd.fits
 #export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.60.kd.fits
 #export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.70.kd.fits
-export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.80.kd.fits
+#export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.80.kd.fits
+export LARGEGALAXIES_CAT=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v1.0.kd.fits
 
 #echo 'USING LEGACYPIPE/MAIN!!'
 #export LEGACYPIPE_CODE_DIR=/global/homes/i/ioannis/code/legacypipe
