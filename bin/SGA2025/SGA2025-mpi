@@ -587,7 +587,8 @@ def main():
             nsigma = 10
             saddle_fraction = 0.2
             saddle_min = 4.
-            fit_on_coadds = args.fit_on_coadds
+            fit_on_coadds = True
+            #fit_on_coadds = args.fit_on_coadds
 
             if not just_cutouts:
                 #log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
