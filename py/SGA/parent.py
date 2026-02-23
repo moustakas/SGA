@@ -4784,6 +4784,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
         pairs = np.array(sorted(set(tuple(sorted((i, j))) for i, j in zip(idx1[not_self], idx2[not_self]))))
         raise ValueError(f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
                          f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
+
     pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
