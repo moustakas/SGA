@@ -584,7 +584,7 @@ def main():
             #    fit_on_coadds = args.fit_on_coadds
 
             no_iterative = True
-            nsigma = 10
+            nsigma = 8
             saddle_fraction = 0.2
             saddle_min = 4.
             fit_on_coadds = True
