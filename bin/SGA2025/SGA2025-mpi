@@ -584,15 +584,15 @@ def main():
             #    fit_on_coadds = args.fit_on_coadds
 
             no_iterative = True
-            nsigma = 10
+            nsigma = 8
             saddle_fraction = 0.2
             saddle_min = 4.
-            fit_on_coadds = False # True
+            fit_on_coadds = True
+            #fit_on_coadds = args.fit_on_coadds
 
             if not just_cutouts:
-                log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
-                #log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
-                #fit_on_coadds = False
+                #log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
 
             if args.debug:
                 err, _ = custom_coadds(

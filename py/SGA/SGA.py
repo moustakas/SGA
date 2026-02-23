@@ -111,8 +111,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.70'
         # more cleanup
         #version = 'v0.80'
-        # more cleanup
-        version = 'v0.90'
+        # first release candidate
+        version = 'v1.0'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -127,7 +127,7 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.60'  # parent_version = v0.50 --> v0.60
         #version = 'v0.70'  # parent_version = v0.60 --> v0.70
         #version = 'v0.80'  # parent_version = v0.70 --> v0.80
-        version = 'v0.90'  # parent_version = v0.80 --> v0.90
+        version = 'v1.0'  # parent_version = v0.80 --> v1.0
     return version
 
 
@@ -491,18 +491,18 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
-        nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
-        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-
-        #log.info('Refitting!')
-        #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
-        #refit = Table(fitsio.read(refitfile))
-        #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
-        #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
-        #sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #if True:
+    #    nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
+    #    I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
+    #    fullsample = fullsample[I]
+    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    #
+    #    #log.info('Refitting!')
+    #    #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
+    #    #refit = Table(fitsio.read(refitfile))
+    #    #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
+    #    #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
+    #    #sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     # select objects in the set of test bricks
     if test_bricks:
@@ -543,11 +543,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
         fullsample = fullsample[J]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
-
-    #if True:
-    #    redo = np.unique(Table.read('/global/u2/i/ioannis/rerun.txt', format='ascii')['col1'].value)
-    #    fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     if wisesize:
         from SGA.util import match
@@ -1555,8 +1550,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
         assert(len(outellipse) == len(np.unique(outellipse['SGAID'])))
         assert(len(outellipse) == len(np.unique(outellipse['OBJNAME'])))
-
-        log.warning('Need to ensure GROUP_ID is unique!!!')
 
         # Write out outfile with the ELLIPSE and TRACTOR HDUs.
         hdu_primary = fits.PrimaryHDU()
