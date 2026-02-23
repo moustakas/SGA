@@ -5,7 +5,7 @@ Build a cross-platform docker container as documented [here](https://www.docker.
 
 First, pull the latest container:
 ```
-docker pull legacysurvey/legacypipe:main-gpu-1.2
+docker pull legacysurvey/legacypipe:main-gpu-1.3
 
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
