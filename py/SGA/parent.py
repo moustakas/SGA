@@ -4166,8 +4166,7 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     # Every object was inspected and either dropped or its geometry
     # was updated in the overlays files, so set REFIT to false
     # everywhere.
-    print('HACK!!!!!')
-    #refit = np.zeros(len(ell1), bool)
+    refit = np.zeros(len(ell1), bool)
     ell1['REFIT'] = refit
 
     log.info(f'{region}: {np.sum(refit):,d}/{len(ell1):,d} flagged for geometry restoration')
@@ -4180,27 +4179,24 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     #view = to_skyviewer_table(check[:50], diamcol='D26')
     #view.write('viewer.fits', overwrite=True)
 
-    if np.any(refit):
-        check = ell1[refit]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
-                              'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
-        check = check[np.argsort(check['D26'])[::-1]]
-        check['POS_SHIFT'] = pos_shift_arcsec[refit]
-        check['DIAM_RATIO'] = diam_ratio[refit]
-        check['CATEGORY'] = np.where(cat_a[refit], 'A', np.where(cat_b[refit], 'B', 'C'))
-        view = to_skyviewer_table(check, diamcol='D26')
-        view.write('viewer.fits', overwrite=True)
-
-        _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
-
-    pdb.set_trace()
+    #if np.any(refit):
+    #    check = ell1[refit]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
+    #                          'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
+    #    check = check[np.argsort(check['D26'])[::-1]]
+    #    check['POS_SHIFT'] = pos_shift_arcsec[refit]
+    #    check['DIAM_RATIO'] = diam_ratio[refit]
+    #    check['CATEGORY'] = np.where(cat_a[refit], 'A', np.where(cat_b[refit], 'B', 'C'))
+    #    view = to_skyviewer_table(check, diamcol='D26')
+    #    view.write('viewer.fits', overwrite=True)
+    #
+    #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
 
     # --- Flag small group members for removal ---
     remove = _flag_small_for_removal(ell1, mindiam=mindiam) & (~np.isin(ell1['OBJNAME'], ['2MASX J12412771-1239485']))
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
-    view = to_skyviewer_table(ell1[remove], diamcol='D26')
-    view.write('viewer.fits', overwrite=True)
-    pdb.set_trace()
+    #view = to_skyviewer_table(ell1[remove], diamcol='D26')
+    #view.write('viewer.fits', overwrite=True)
 
     #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
 
@@ -4765,6 +4761,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
         raise ValueError(f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
                          f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
 
+    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
