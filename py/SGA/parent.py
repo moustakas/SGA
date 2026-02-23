@@ -4191,20 +4191,43 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
 
     # --- Flag small group members for removal ---
-    remove = _flag_small_for_removal(ell1, mindiam=mindiam) & (~np.isin(ell1['OBJNAME'], ['2MASX J12412771-1239485']))
+    protect = [
+        # dr11-south
+        '2MASX J12412771-1239485', 'ESO 162- G 009', 'ESO 400- G 003',
+        'ESO 383-IG 082', 'FGCE 0737', 'FGCE 1004', 'FGCE 1089',
+        'FGCE 1295', 'FGCE 1401', 'FGCE 1704', 'FCCB 0590', 'FGC 0951',
+        '2MASS J00560773-7749001', 'APMUKS(BJ) B224006.94-651500.8',
+        'WISEA J131716.13-312736.1', 'WISEA J220136.87-171106.9',
+        'H{alpha} Dot 08', 'PGC354805', 'PGC599282',
+        # dr9-north
+        'FGC 093A',
+    ]
+
+    remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+    remove &= ~np.isin(ell1['OBJNAME'], protect)
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
-    #view = to_skyviewer_table(ell1[remove], diamcol='D26')
+    #remove2 = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=True)
+    #remove2 &= ~np.isin(ell1['OBJNAME'], protect)
+    #remove[remove2] = False
+    #
+    #check = ell1[remove]
+    #from collections import Counter
+    #allprefix = np.array(list(zip(*np.char.split(check['OBJNAME'].value, ' ').tolist()))[0])
+    #C = Counter(allprefix).most_common()
+    #
+    ##I = np.char.startswith(check['OBJNAME'], 'FGCE')
+    ##view = to_skyviewer_table(check[I], diamcol='D26')
+    #view = to_skyviewer_table(check, diamcol='D26')
     #view.write('viewer.fits', overwrite=True)
 
     #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
-
     ell1 = ell1[~remove]
 
     return ell1
 
 
-def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False):
+def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_primary=False):
     """Flag small group members for removal.
 
     Removal criteria:
@@ -4244,8 +4267,10 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False):
     has_blended = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['BLENDED']) != 0
     is_interacting = has_overlap | has_blended
 
-    # Case 1: Singletons - remove if d26_ul < mindiam
-    remove_singleton = is_singleton & (d26_ul < mindiam) & ~is_lvd & ~is_primary
+    # Case 1: Singletons - remove if d26_ul < mindiam (primary protection doesn't apply)
+    remove_singleton = is_singleton & (d26_ul < mindiam) & ~is_lvd
+    if protect_primary:
+        remove_singleton &= ~is_primary
 
     # Case 2: In group, not interacting - remove if d26_ul < 20 arcsec
     small_thresh = 20. / 60.  # 20 arcsec in arcmin
@@ -4759,7 +4784,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
         pairs = np.array(sorted(set(tuple(sorted((i, j))) for i, j in zip(idx1[not_self], idx2[not_self]))))
         raise ValueError(f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
                          f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
-
+    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
