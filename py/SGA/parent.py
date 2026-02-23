@@ -4109,10 +4109,9 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
-    print('HACK!!!!!')
-    nostar = ell1['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) != 0
-    I = np.isin(ell1['GROUP_NAME'], np.unique(ell1['GROUP_NAME'][nostar]))
-    ell1 = ell1[I]
+    #nostar = ell1['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) != 0
+    #I = np.isin(ell1['GROUP_NAME'], np.unique(ell1['GROUP_NAME'][nostar]))
+    #ell1 = ell1[I]
 
     in_group = ell1['GROUP_MULT'] > 1
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
