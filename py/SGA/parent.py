@@ -1035,7 +1035,6 @@ def update_properties(cat, verbose=False):
         I = np.where(objname == cat['OBJNAME'].value)[0]
         if len(I) != 1:
             log.info(f'Problem finding {objname}!')
-            pdb.set_trace()
             raise ValueError(f'Problem finding {objname}!')
         if verbose:
             log.info(f'{objname} ({cat["OBJTYPE"][I[0]]}):')
@@ -1985,12 +1984,9 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     #    check = check[np.argsort(check['PGC'])]
     #    check = check['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA']
     #
-    #    pdb.set_trace()
-    #
     #K = np.isin(parent['PGC'][I], dups)
     #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
     #check = check[np.argsort(check['PGC'])]
-    #pdb.set_trace()
     ####
 
     # NB: These 9 objects are not in my 'hyper' sample because they fail the
@@ -2087,7 +2083,6 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     #K = np.isin(parent['PGC'][I], dups)
     #check = parent['OBJNAME_NED', 'OBJNAME_LVD', 'PGC', 'RA_NEDLVS', 'RA_LVD', 'RA_HYPERLEDA', 'DEC_NEDLVS', 'DEC_LVD', 'DEC_HYPERLEDA', 'ROW_NEDLVS', 'ROW_LVD', 'ROW_HYPERLEDA'][I][K]
     #check = check[np.argsort(check['PGC'])]
-    #pdb.set_trace()
     ####
 
     # ned_lvd - not in parent sample (new)
@@ -2175,8 +2170,9 @@ def build_parent_nocuts(verbose=True, overwrite=False):
         try:
             assert(len(np.unique(parent[I][col])) == len(parent[I]))
         except:
-            log.info(f'Duplicate {col} values!')
-            pdb.set_trace()
+            msg = f'Duplicate {col} values!'
+            log.critical(msg)
+            raise ValueError(msg)
 
     # [7] include the custom-added objects plus the SMDGes sample
     print()
@@ -2272,9 +2268,10 @@ def build_parent_nocuts(verbose=True, overwrite=False):
         try:
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
         except:
-            log.info(f'Problem with column {col}!')
-            pdb.set_trace()
-            obj, cc = np.unique(parent[col][I], return_counts=True)
+            #obj, cc = np.unique(parent[col][I], return_counts=True)
+            msg = f'Problem with column {col}!'
+            log.critical(msg)
+            raise ValueError(msg)
 
     I = parent['PGC'] > 0
     assert(len(parent[I]) == len(np.unique(parent['PGC'][I])))
@@ -2289,8 +2286,9 @@ def build_parent_nocuts(verbose=True, overwrite=False):
         try:
             assert(len(parent[I]) == len(np.unique(parent[col][I])))
         except:
-            log.info(f'Duplicate entries of {col}!')
-            pdb.set_trace()
+            msg = f'Duplicate entries of {col}!'
+            log.critical(msg)
+            raise ValueError(msg)
 
     print()
     log.info('#####')
@@ -2421,8 +2419,6 @@ def build_parent_nocuts(verbose=True, overwrite=False):
     if len(rowfiles) > 0:
         log.warning('FIXME!')
         rows = np.arange(len(parent))
-        #pdb.set_trace()
-        # adjust ROWS so they're unique
     else:
         rows = np.arange(len(parent))
 
@@ -2469,21 +2465,21 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     lvdmiss = check_lvd(origcat)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
 
     # [1] Update individual-galaxy properties, including coordinates.
     cat1 = update_properties(origcat, verbose=verbose)
     lvdmiss = check_lvd(cat1)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
 
     # [2] Drop systems with uncommon prefixes (after VI).
     cat2 = remove_by_prefix(cat1, merger_type=None, verbose=verbose, build_qa=False)
     lvdmiss = check_lvd(cat2)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
     del cat1
 
     # [3] Resolve cross-identification errors in NED/HyperLeda.
@@ -2491,7 +2487,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     lvdmiss = check_lvd(cat3)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
     del cat2
 
     # [4] Resolve close (1 arcsec) pairs.
@@ -2499,7 +2495,7 @@ def build_parent_vicuts(verbose=False, overwrite=False):
     lvdmiss = check_lvd(cat4)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
     del cat3
 
     # [4] Visually drop GTrpl and GPair systems with and without measured
@@ -2597,7 +2593,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     lvdmiss = check_lvd(cat)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
 
     # read the ssl-legacysurvey results (including the veto file)
     log.info('Applying the ssl results')
@@ -2643,7 +2639,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     if np.sum(I) != len(veto):
         log.info('Missing objects in veto files!')
         log.info(veto[~np.isin(veto['objname'], ssl['OBJNAME'])])
-        pdb.set_trace()
+        raise ValueError()
     ssl = ssl[~I]
 
     # Add to the veto array any objects with an entry in either the
@@ -2654,7 +2650,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     if np.any(I):
         log.info(f'WARNING: need to add the following {np.sum(I):,d} objects to the appropriate veto file')
         log.info(ssl[I])
-        pdb.set_trace()
+        raise ValueError()
 
     actionsfile = resources.files('SGA').joinpath('data/SGA2025/SGA2025-vi-actions.csv')
     actions = Table.read(actionsfile, format='csv', comment='#')
@@ -2663,7 +2659,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     if np.any(I):
         log.info(f'WARNING: need to add the following {np.sum(I):,d} objects to the appropriate veto file')
         log.info(ssl[I])
-        pdb.set_trace()
+        raise ValueError()
 
     log.info(f'Removing {len(ssl):,d}/{len(cat):,d} objects based on SSL results.')
     cat = cat[~np.isin(cat['OBJNAME'], ssl['OBJNAME'])]
@@ -2671,7 +2667,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     lvdmiss = check_lvd(cat)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
 
     # Resolve more close pairs -- these choices were made after
     # investigating a bunch of QA.
@@ -2695,7 +2691,8 @@ def build_parent_archive(verbose=False, overwrite=False):
     lvdmiss = check_lvd(cat2)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
+
     cat = cat2
     cat = cat[np.argsort(cat['RA'].value)]
     del refcat
@@ -2773,7 +2770,7 @@ def build_parent_archive(verbose=False, overwrite=False):
     lvdmiss = check_lvd(cat)
     if lvdmiss is not None:
         log.info(lvdmiss)
-        pdb.set_trace()
+        raise ValueError()
 
     # For convenience, add dedicated Boolean columns for each external
     # file (which may be different than the ELLIPSEMODE and SAMPLE bits
@@ -2792,14 +2789,14 @@ def build_parent_archive(verbose=False, overwrite=False):
         if np.any(cc > 1):
             log.warning(f'duplicates in action file {actfile}')
             log.info(oo[cc>1])
-            pdb.set_trace()
+            raise ValueError()
 
         # make sure every object is in the current catalog
         I = np.isin(cat['OBJNAME'].value, act['objname'].value)
         if np.sum(I) != len(act):
             log.warning(f'The parent catalog is missing the following objects in {actfile}')
             log.info(act[~np.isin(act['objname'].value, cat['OBJNAME'].value)])
-            pdb.set_trace()
+            raise ValueError()
 
         # finally add a Boolean flag
         col = f'IN_{action.upper()}'
@@ -3024,7 +3021,7 @@ def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False)
         oo, cc = np.unique(parent['ROW_PARENT'], return_counts=True)
         log.info(oo[cc>1])
         bb = parent[np.isin(parent['ROW_PARENT'], oo[cc>1])]['OBJNAME', 'ROW_PARENT'] ; bb = bb[np.argsort(bb['ROW_PARENT'])] ; bb
-        pdb.set_trace()
+        raise ValueError()
 
     assert(len(parent) == len(np.unique(parent['ROW_PARENT'])))
 
@@ -3040,7 +3037,7 @@ def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False)
         #raise ValueError()
         oo, cc = np.unique(drop['objname'], return_counts=True)
         log.info(oo[cc>1])
-        pdb.set_trace()
+        raise ValueError()
 
     # drop crap from both/all regions
     Idrop = drop['region'].mask
@@ -3168,13 +3165,13 @@ def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False)
         #raise ValueError()
         oo, cc = np.unique(props['objname'], return_counts=True)
         log.info(oo[cc>1])
-        pdb.set_trace()
+        raise ValueError()
 
     miss = props[~np.isin(props['objname'], parent['OBJNAME'].value)]
     if len(miss) > 0:
         log.info(f'The following objects in {propsfile} are missing from parent:')
         log.info(miss)
-        pdb.set_trace()
+        raise ValueError()
 
     for prop in props:
         objname = prop['objname']
@@ -3217,7 +3214,7 @@ def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False)
         objname = cust['OBJNAME']
         I = np.where(objname == parent['OBJNAME'].value)[0]
         if len(I) == 0:
-            pdb.set_trace()
+            raise ValueError()
         else:
             for col in ['RA', 'DEC', 'DIAM_LIT', 'PA_LIT', 'BA_LIT']:
                 newval = cust[col]
@@ -3356,7 +3353,7 @@ def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False)
     gg, cc = np.unique(out['SGAGROUP'][I], return_counts=True)
     if len(gg[cc>1]) > 0:
         print('Duplicate groups!!')
-        pdb.set_trace()
+        raise ValueError()
 
     # After assigning groups, loop back through and make sure REGION
     # is the same for all group members, otherwise SGA.build_catalog
@@ -3398,7 +3395,7 @@ def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False)
     try:
         assert(np.all(np.isin(lvd_dwarfs, out['OBJNAME'])))
     except:
-        pdb.set_trace()
+        raise ValueError()
 
     log.info(f'Writing {len(out):,d} objects to {outfile}')
     out.meta['EXTNAME'] = 'PARENT'
@@ -4065,7 +4062,7 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
     try:
         assert(np.all(ell1['RA_ORIG'][refit] != 0.))
     except:
-        pdb.set_trace()
+        raise ValueError()
 
     log.info(f'{region}: {np.sum(refit):,d}/{len(ell1):,d} flagged for geometry restoration')
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
@@ -4833,26 +4830,22 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
 
     special = ((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0) | \
               ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
-    out1 = make_singleton_group(grp[special], group_id_start=0)
-    gid_start = int(np.max(out1['GROUP_ID'])) + 1
-    out2 = build_group_catalog(grp[~special], group_id_start=gid_start, mp=mp)
+    out1 = make_singleton_group(grp[special])
+    out2 = build_group_catalog(grp[~special], mp=mp)
     out = vstack((out1, out2))
 
     # Assign SGAGROUP name and check duplicates among primaries
-    try:
-        groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
-        out.add_column(groupname, name='SGAGROUP', index=1)
-        prim = out['GROUP_PRIMARY']
-        gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
-        if np.any(cc > 1):
-            log.critical('Duplicate group names among primaries detected.')
-            raise ValueError('Duplicate SGAGROUP among primaries')
-    except:
-        pdb.set_trace()
+    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
+    out.add_column(groupname, name='SGAGROUP', index=1)
+    prim = out['GROUP_PRIMARY']
+    gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
+    if np.any(cc > 1):
+        log.critical('Duplicate group names among primaries detected.')
+        raise ValueError('Duplicate SGAGROUP among primaries')
 
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
-    unique_groups, group_indices = np.unique(out['GROUP_ID'], return_inverse=True)
+    unique_groups, group_indices = np.unique(out['GROUP_NAME'], return_inverse=True)
     n_groups = len(unique_groups)
 
     # Compute bitwise AND of REGION for each group; start with all bits set
@@ -4877,8 +4870,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v0.80', overwrite=False):
         log.info(f"Stripped REGION bits (kept groups) for {len(strip_groups):,d} groups.")
 
     if np.any(drop_mask):
-        drop_ids = np.unique(out['GROUP_ID'][drop_mask])
-        log.info(f"Dropping {len(drop_ids):,d} groups with no common REGION bit ({np.sum(drop_mask):,d} members).")
+        drop_names = np.unique(out['GROUP_NAME'][drop_mask])
+        log.info(f"Dropping {len(drop_names):,d} groups with no common REGION bit ({np.sum(drop_mask):,d} members).")
         out = out[~drop_mask]
 
     # OVERLAP bit

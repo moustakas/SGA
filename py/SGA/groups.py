@@ -613,12 +613,16 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
     """
 
     # Get unique groups
-    group_ids = cat['GROUP_ID']
-    unique_groups = np.unique(group_ids)
+    group_names = cat['GROUP_NAME']
+    unique_groups, inv, first_occ = np.unique(group_names, return_inverse=True, return_index=True)
     n_groups = len(unique_groups)
 
     # Multiplicity distribution
-    mults = cat['GROUP_MULT']
+    mults = np.asarray(cat['GROUP_MULT'])
+    diams = np.asarray(cat['GROUP_DIAMETER'])
+
+    groups_mults = mults[first_occ]
+    unique_diams = diams[first_occ]
 
     # Binned multiplicity statistics
     n_singles = int(np.sum(mults == 1))
@@ -629,7 +633,6 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
     n_21plus = int(np.sum(mults > 20))
 
     # Group-level statistics (count groups not objects)
-    groups_mults = np.array([mults[group_ids == gid][0] for gid in unique_groups])
     n_groups_singles = int(np.sum(groups_mults == 1))
     n_groups_pairs = int(np.sum(groups_mults == 2))
     n_groups_3to5 = int(np.sum((groups_mults >= 3) & (groups_mults <= 5)))
@@ -638,8 +641,6 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
     n_groups_21plus = int(np.sum(groups_mults > 20))
 
     # Diameter statistics
-    diams = cat['GROUP_DIAMETER']
-    unique_diams = np.array([diams[group_ids == gid][0] for gid in unique_groups])
 
     # Large group thresholds (in arcmin)
     large_thresholds = [10.0, 20.0, 30.0, 40.0, 50.0]
@@ -653,8 +654,7 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
         gid = unique_groups[sorted_idx[i]]
         diam = unique_diams[sorted_idx[i]]
         mult = groups_mults[sorted_idx[i]]
-        gname = cat['GROUP_NAME'][group_ids == gid][0]
-        largest_groups.append((gid, gname, mult, diam))
+        largest_groups.append((gname, mult, diam))
 
     # Print summary
     log.info("="*80)
@@ -698,9 +698,8 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
     log.info("")
     if len(largest_groups) > 0:
         log.info(f"LARGEST {min(top_n, len(largest_groups))} GROUPS:")
-        for rank, (gid, gname, mult, diam) in enumerate(largest_groups, 1):
-            log.info(f"  {rank:2d}. {gname:10s} (ID={gid:6d}): "
-                     f"mult={mult:3d}, diameter={diam:6.2f}' ({diam/60:5.3f}°)")
+        for rank, (gname, mult, diam) in enumerate(largest_groups, 1):
+            log.info(f"  {rank:2d}. {gname:10s}: mult={mult:3d}, diameter={diam:6.2f}' ({diam/60:5.3f}°)")
         log.info("")
     # Warning for very large groups
     critical_threshold = 40.0
@@ -717,7 +716,7 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
 # ============================================================================
 
 def build_group_catalog(
-    cat, group_id_start=0, mfac=1.6, dmin=36.0/3600.0, dmax=5.0/60.0,
+    cat, mfac=1.6, dmin=36.0/3600.0, dmax=5.0/60.0,
     anisotropic=True, link_mode="hybrid", big_diam=3.0,
     mfac_backbone=1.3, mfac_sat=1.5, k_floor=0.40, q_floor=0.20,
     name_via="radec", sphere_link_arcmin=None, grid_cell_arcmin=None,
@@ -731,8 +730,6 @@ def build_group_catalog(
     ----------
     cat : Table
         Input catalog (must have RA, DEC, DIAM columns; BA, PA optional)
-    group_id_start : int
-        Starting group ID number
     mfac : float
         Link multiplier for small-small pairs
     dmin, dmax : float
@@ -884,7 +881,6 @@ def build_group_catalog(
     # Step 6: Compute final groups (vectorized where possible)
     roots = np.array([dsu.find(i) for i in range(state.n)])
     uniq, inv = np.unique(roots, return_inverse=True)
-    group_ids = (inv + group_id_start).astype(np.int32)
     mult = np.bincount(inv, minlength=len(uniq))
 
     grp_ra = np.zeros(len(uniq))
@@ -968,7 +964,6 @@ def build_group_catalog(
         else:
             cat.add_column(col)
 
-    add('GROUP_ID', group_ids, np.int32)
     add('GROUP_NAME', names, 'U10')
     add('GROUP_MULT', mult[inv].astype(np.int16))
     add('GROUP_PRIMARY', row_primary, bool)
@@ -994,7 +989,7 @@ def build_group_catalog(
 # Utility functions
 # ============================================================================
 
-def make_singleton_group(cat, group_id_start=0):
+def make_singleton_group(cat):
     """
     Create singleton groups (one object per group).
 
@@ -1026,7 +1021,6 @@ def make_singleton_group(cat, group_id_start=0):
             cat.add_column(col)
 
     # Add GROUP_* columns with exact same dtypes as build_group_catalog
-    add_column('GROUP_ID', np.arange(group_id_start, group_id_start + n), np.int32)
     add_column('GROUP_NAME', names, 'U10')
     add_column('GROUP_MULT', np.ones(n), np.int16)
     add_column('GROUP_PRIMARY', np.ones(n), bool)
@@ -1130,4 +1124,3 @@ def set_overlap_bit(cat, SAMPLE):
         # Set the OVERLAP bit for overlapping members
         if np.any(overlapped):
             cat['SAMPLE'][I[overlapped]] |= OVERLAP_BIT
-

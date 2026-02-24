@@ -440,8 +440,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 I *= info['GROUP_MULT'] <= maxmult
             rows = np.where(I)[0]
     else:
-        #cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
-        #        'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC', 'BRICKNAME']
         if no_groups:
             cols = ['DIAM']
         else:
@@ -487,7 +485,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             fullsample = sample
         else:
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
         if len(sample) == 0:
             return sample, fullsample
 
@@ -516,7 +514,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             fullsample = sample
         else:
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
         if len(sample) == 0:
             return sample, fullsample
 
@@ -572,8 +570,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         # build primary member sample and then we need to restore all
         # group members otherwise we run into problems in
         # build_catalog.
-        sample = sample[np.isin(sample['GROUP_ID'], fullsample['GROUP_ID'])]
-        fullsample = ofullsample[np.isin(ofullsample['GROUP_ID'], sample['GROUP_ID'])]
+        sample = sample[np.isin(sample['GROUP_NAME'], fullsample['GROUP_NAME'])]
+        fullsample = ofullsample[np.isin(ofullsample['GROUP_NAME'], sample['GROUP_NAME'])]
         log.info(f'Selecting {len(fullsample):,d}/{nfullobj:,d} ({len(sample):,d}/{nobj:,d}) wisesize groups (objects)')
 
 
@@ -587,14 +585,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.warning(f'Temporarily restricting to {np.sum(I):,d} LVD-RESOLVED sources!')
         sample = sample[I]
 
-        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     if False:#True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
         log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
         sample = sample[I]
-        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     ##############################
     # v0.10 had 30 duplicate groups (29 in dr11-south; 1 in
@@ -660,7 +658,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             fullsample = sample
         else:
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     #if version == 'v0.40':
     #    print('HACK!!!')
@@ -874,7 +872,7 @@ def SGA_datamodel(ellipse, bands, all_bands, copy=True):
         ('DIAM_REF_INIT', 'U9', None),
         #('BAND', 'U1', None),
         ('EBV', np.float32, u.mag),
-        ('GROUP_ID', np.int32, None),
+        #('GROUP_ID', np.int32, None),
         ('GROUP_NAME', 'U10', None),
         ('GROUP_MULT', np.int16, None),
         ('GROUP_PRIMARY', bool, None),
@@ -983,16 +981,10 @@ def _create_mock_ellipse_from_sample(grpsample):
 
     n = len(grpsample)
 
-    # Validate GROUP_ID consistency within grpsample
-    if 'GROUP_ID' in grpsample.colnames:
-        unique_gids = np.unique(grpsample['GROUP_ID'])
-        if len(unique_gids) > 1:
-            raise ValueError(f'Inconsistent GROUP_ID in grpsample: {unique_gids}')
-
     ellipse = Table()
 
     # Copy identifying columns
-    for col in [REFIDCOLUMN, 'SGAGROUP', 'OBJNAME', 'GROUP_ID', 'GROUP_NAME', 'GROUP_MULT',
+    for col in [REFIDCOLUMN, 'SGAGROUP', 'OBJNAME', 'GROUP_NAME', 'GROUP_MULT',
                 'GROUP_PRIMARY', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
                 'REGION', 'PGC', 'SAMPLE']:
         if col in grpsample.colnames:
@@ -1115,20 +1107,6 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
         ellipse_list.append(ellipse1)
 
     ellipse = vstack(ellipse_list) if ellipse_list else None
-
-    # Validate GROUP_ID matches grpsample
-    if False and ellipse is not None and 'GROUP_ID' in ellipse.colnames and 'GROUP_ID' in grpsample.colnames:
-        for i, row in enumerate(ellipse):
-            sgaid = row[REFIDCOLUMN]
-            match_idx = np.where(grpsample[REFIDCOLUMN] == sgaid)[0]
-            if len(match_idx) > 0:
-                expected_gid = grpsample['GROUP_ID'][match_idx[0]]
-                actual_gid = row['GROUP_ID']
-                if expected_gid != actual_gid:
-                    print(f'Ellipse file may be out of date: {gdir}')
-                    raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
-                                     f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
-                                     f'Ellipse file may be out of date: {gdir}')
 
     return ellipse
 
@@ -1431,8 +1409,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                     for count, grpindx in enumerate(indx):
                         #if count % 100 == 0:
                         #    log.info(f'Rank {rank:03} RA slice {raslice}: working on group {count+1:,d}/{len(indx):,d}')
-                        #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][igrp]].value
-                        grpsample = fullsample[fullsample['GROUP_ID'] == sample['GROUP_ID'][grpindx]]
+                        #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_NAME'] == sample['GROUP_NAME'][igrp]].value
+                        grpsample = fullsample[fullsample['GROUP_NAME'] == sample['GROUP_NAME'][grpindx]]
                         out1 = build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups)
                         #t1 = Table()
                         #t1['RA'] = [180.]
@@ -1465,8 +1443,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             for count, grpindx in enumerate(indx):
                 #if count % 100 == 0:
                 #    log.info(f'Rank {rank:03} RA slice {raslice}: working on group {count+1:,d}/{len(indx):,d}')
-                #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][igrp]].value
-                grpsample = fullsample[fullsample['GROUP_ID'] == sample['GROUP_ID'][grpindx]]
+                #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_NAME'] == sample['GROUP_NAME'][igrp]].value
+                grpsample = fullsample[fullsample['GROUP_NAME'] == sample['GROUP_NAME'][grpindx]]
                 out1 = build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups)
                 out.append(out1)
             out = list(zip(*out))
