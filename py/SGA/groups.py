@@ -614,7 +614,7 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
 
     # Get unique groups
     group_names = cat['GROUP_NAME']
-    unique_groups, inv, first_occ = np.unique(group_names, return_inverse=True, return_index=True)
+    unique_groups, first_occ, inv = np.unique(group_names, return_index=True, return_inverse=True)
     n_groups = len(unique_groups)
 
     # Multiplicity distribution

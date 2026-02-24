@@ -588,11 +588,14 @@ def main():
             saddle_fraction = 0.2
             saddle_min = 4.
             fit_on_coadds = True
+            no_segmentation = True
             #fit_on_coadds = args.fit_on_coadds
+            #no_segmentation = args.no_segmentation
 
             if not just_cutouts:
                 #log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
-                log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                #log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                pass
 
             if args.debug:
                 err, _ = custom_coadds(
@@ -601,7 +604,7 @@ def main():
                     unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                     nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
                     just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
-                    no_iterative=no_iterative, no_segmentation=args.no_segmentation,
+                    no_iterative=no_iterative, no_segmentation=no_segmentation,
                     fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
                     ivar_cutouts=ivar_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
@@ -620,7 +623,7 @@ def main():
                         unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                         nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
                         just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
-                        no_iterative=no_iterative, no_segmentation=args.no_segmentation,
+                        no_iterative=no_iterative, no_segmentation=no_segmentation,
                         fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
                         ivar_cutouts=ivar_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
