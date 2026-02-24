@@ -291,7 +291,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         suffix = 'html'
         #filesuffix = '-html.isdone'
         filesuffix = '-montage.png'
-        dependson = None # '-image.jpg'
+        dependson = '-ellipse.isdone' # None # '-image.jpg'
         galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir, region=region,
             group=group, html=True)
@@ -323,7 +323,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
         #print(checkfile)
         if dependson:
-            if dependsondir:
+            if dependsondir is not None:
                 missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal],
                                                          f'{gal}{dependson}'), clobber])
             else:
