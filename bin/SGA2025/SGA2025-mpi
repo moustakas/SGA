@@ -588,7 +588,7 @@ def main():
             saddle_fraction = 0.2
             saddle_min = 4.
             fit_on_coadds = True
-            no_segmentation = True
+            no_segmentation = False
             #fit_on_coadds = args.fit_on_coadds
             #no_segmentation = args.no_segmentation
 
