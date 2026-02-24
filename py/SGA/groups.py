@@ -651,7 +651,7 @@ def report_group_statistics(cat, params, links, n_preclusters, timing):
     sorted_idx = np.argsort(unique_diams)[::-1]
     largest_groups = []
     for i in range(min(top_n, len(sorted_idx))):
-        gid = unique_groups[sorted_idx[i]]
+        gname = unique_groups[sorted_idx[i]]
         diam = unique_diams[sorted_idx[i]]
         mult = groups_mults[sorted_idx[i]]
         largest_groups.append((gname, mult, diam))
