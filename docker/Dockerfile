@@ -1,4 +1,4 @@
-FROM legacysurvey/legacypipe:main-gpu-1.3.1
+FROM legacysurvey/legacypipe:main-gpu-1.4
 
 RUN for x in \
   ipython \
