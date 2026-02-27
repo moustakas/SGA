@@ -347,8 +347,8 @@ def main():
         from SGA.SGA import build_catalog
         build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
                       datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
-                      wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
-                      clobber=args.clobber)
+                      version=args.version, wisesize=args.wisesize, verbose=args.verbose,
+                      test_bricks=args.test_bricks, clobber=args.clobber)
         return
 
     # need at least one keyword at this point

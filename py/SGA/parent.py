@@ -4225,6 +4225,7 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
 
 
 def prepare_v100_ellipse(ell1, region, mindiam=0.5):
+
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 

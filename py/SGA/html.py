@@ -1120,8 +1120,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         diamcol = 'DIAM_INIT'
     else:
         diamcol = 'DIAM'
-    if 'DIAM_REF_INIT' in fullgroup_data.colnames:
-        diamrefcol = 'DIAM_REF_INIT'
+    if 'DIAM_INIT_REF' in fullgroup_data.colnames:
+        diamrefcol = 'DIAM_INIT_REF'
     else:
         diamrefcol = 'DIAM_REF'
     if 'MAG_INIT' in fullgroup_data.colnames:

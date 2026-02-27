@@ -112,7 +112,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # more cleanup
         #version = 'v0.80'
         # first release candidate
-        version = 'v1.0'
+        #version = 'v1.0'
+        # OVERLAP fixes
+        version = 'v1.1'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -127,7 +129,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.60'  # parent_version = v0.50 --> v0.60
         #version = 'v0.70'  # parent_version = v0.60 --> v0.70
         #version = 'v0.80'  # parent_version = v0.70 --> v0.80
-        version = 'v1.0'  # parent_version = v0.80 --> v1.0
+        #version = 'v1.0'  # parent_version = v0.80 --> v1.0
+        version = 'v1.1'  # parent_version = v1.0 --> v1.1
     return version
 
 
@@ -869,7 +872,7 @@ def SGA_datamodel(ellipse, bands, all_bands, copy=True):
         ('BA_INIT', np.float32, None),
         ('PA_INIT', np.float32, u.degree),
         ('MAG_INIT', np.float32, u.mag),
-        ('DIAM_REF_INIT', 'U9', None),
+        ('DIAM_INIT_REF', 'U14', None),
         #('BAND', 'U1', None),
         ('EBV', np.float32, u.mag),
         #('GROUP_ID', np.int32, None),
@@ -994,17 +997,17 @@ def _create_mock_ellipse_from_sample(grpsample):
     ellipse['RA'] = grpsample['RA']
     ellipse['DEC'] = grpsample['DEC']
     ellipse['SMA_MOMENT'] = grpsample['DIAM'] * 60. / 2.  # arcmin -> arcsec radius
-    ellipse['BA_MOMENT'] = grpsample['BA'] if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
-    ellipse['PA_MOMENT'] = grpsample['PA'] if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['BA_MOMENT'] = grpsample['BA']# if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
+    ellipse['PA_MOMENT'] = grpsample['PA']# if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
 
     # Copy initial geometry columns
     ellipse['RA_INIT'] = grpsample['RA']
     ellipse['DEC_INIT'] = grpsample['DEC']
     ellipse['DIAM_INIT'] = grpsample['DIAM']
-    ellipse['BA_INIT'] = grpsample['BA'] if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
-    ellipse['PA_INIT'] = grpsample['PA'] if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
-    ellipse['MAG_INIT'] = grpsample['MAG'] if 'MAG' in grpsample.colnames else np.zeros(n, dtype=np.float32)
-    ellipse['DIAM_REF_INIT'] = grpsample['DIAM_REF'] if 'DIAM_REF' in grpsample.colnames else np.full(n, '', dtype='U9')
+    ellipse['BA_INIT'] = grpsample['BA']# if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
+    ellipse['PA_INIT'] = grpsample['PA']# if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['MAG_INIT'] = grpsample['MAG']# if 'MAG' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['DIAM_INIT_REF'] = grpsample['DIAM_REF']# if 'DIAM_REF' in grpsample.colnames else np.full(n, '', dtype='U9')
 
     ellipse['ELLIPSEBIT'] = np.full(n, ELLIPSEBIT['SKIPTRACTOR'], dtype=np.int32)
     ellipse['ELLIPSEMODE'] = np.zeros(n, dtype=np.int32)
@@ -1258,13 +1261,16 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if len(tractor_sga) > 0:
         tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
 
+    if grp == 'SGA2025_28339m4001':
+        pdb.set_trace()
+
     return ellipse, tractor
 
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
-                  region='dr11-south', test_bricks=False, galex=True, unwise=True,
-                  wisesize=False, no_groups=False, datadir=None, verbose=False,
-                  clobber=False):
+                  region='dr11-south', version=None, test_bricks=False, galex=True,
+                  unwise=True, wisesize=False, no_groups=False, datadir=None,
+                  verbose=False, clobber=False):
     """Build the final catalog.
 
     FIXME - combine the north and south
@@ -1316,8 +1322,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             datasets += ['galex']
             all_bands = np.append(all_bands, ['FUV', 'NUV'])
 
-        version = SGA_version()
-        #version = 'v0.10b'
+        if version is None:
+            version = SGA_version()
+
         if test_bricks:
             version = 'testbricks-v0.60'
             outprefix = 'SGA2025'
@@ -2468,7 +2475,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     if mask_nearby:
         for mask_one in mask_nearby:
             ba, pa = mask_one['BA'], mask_one['PA']
-            sma_mask_nearby = mask_one['DIAM'] * 60. / 2. / opt_pixscale
+            sma_mask_nearby = mask_one['DIAM'] * 60. / opt_pixscale # / 2. double the mask!
             (_, bxm, bym) = opt_wcs.wcs.radec2pixelxy(mask_one['RA'], mask_one['DEC'])
             I = in_ellipse_mask(bxm-1., width-(bym-1.), sma_mask_nearby,
                                 sma_mask_nearby*ba, pa, xgrid, ygrid_flip)
