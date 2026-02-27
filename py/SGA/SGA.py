@@ -1261,9 +1261,6 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
     if len(tractor_sga) > 0:
         tractor = vstack((tractor, tractor_sga)) if len(tractor) > 0 else tractor_sga
 
-    if grp == 'SGA2025_28339m4001':
-        pdb.set_trace()
-
     return ellipse, tractor
 
 
