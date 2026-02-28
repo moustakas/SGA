@@ -2065,6 +2065,10 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
       - use_radial_weight: default radial-weighting preference (True/False)
       - use_radial_weight_for_overlaps: if False, *any* overlap disables radial weighting
 
+    Satellite classification:
+      - A galaxy is a satellite if it overlaps a larger/brighter neighbor AND
+        EITHER its size is < 50% of the neighbor OR its flux is < 10% of the neighbor
+
     """
     nsample = len(sample)
 
@@ -2115,8 +2119,24 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
         overlap_obj[iobj] = True
 
+        # Check if this is a satellite: smaller OR much fainter than any overlapping neighbor
         max_sma_neighbor = max(geo_overlap[jobj, 2] for jobj in overlapping_indices)
-        is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
+
+        # Size criterion: < 50% of largest overlapping neighbor
+        size_ratio = sma_i / max_sma_neighbor if max_sma_neighbor > 0 else 1.0
+        is_small = size_ratio < 0.5
+
+        # Flux criterion: < 10% of brightest overlapping neighbor (i.e., neighbor is > 10× brighter)
+        flux_i = sample['OPTFLUX'][iobj]
+        if flux_i > 0:
+            flux_ratios = [sample['OPTFLUX'][jobj] / flux_i for jobj in overlapping_indices]
+            max_flux_ratio = max(flux_ratios) if flux_ratios else 0
+            is_faint = max_flux_ratio > 10.0
+        else:
+            is_faint = False
+
+        # Satellite if EITHER small OR faint compared to overlapping neighbor
+        is_satellite = is_small or is_faint
 
         if is_satellite:
             satellite_obj[iobj] = True
@@ -2135,6 +2155,96 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
     return use_radial_weight_obj, use_tractor_geometry_obj, satellite_obj, overlap_obj
 
+
+def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
+                                use_tractor_geometry, use_tractor_geometry_obj,
+                                use_tractor_position_obj, get_geometry,
+                                opt_pixscale, SMA_MASK_MIN_PIX,
+                                in_ellipse_mask, width, xgrid, ygrid_flip, sz,
+                                current_bx=None, current_by=None):
+    """
+    Build protected core mask for reference (SGA) sources.
+
+    For each reference source, creates a compact elliptical core mask that
+    should not be unmasked even when inside the current galaxy's ellipse.
+    This prevents residual flux from other SGA sources from contaminating
+    moment calculations.
+
+    Parameters
+    ----------
+    iobj : int
+        Index of current galaxy being processed
+    refindx : array
+        Indices of all other reference sources (excludes iobj)
+    sample : Table
+        Sample table with SGA_MASK, etc.
+    samplesrcs : list
+        List of Tractor source objects
+    geo_final : array
+        Final geometry array [bx, by, sma, ba, pa] for completed objects
+    current_bx, current_by : float, optional
+        Current galaxy center for distance-based core sizing.
+        If None, uses fixed core fraction.
+
+    Returns
+    -------
+    core_mask : ndarray (bool)
+        2D mask with protected cores for all reference sources
+
+    """
+    core_mask = np.zeros(sz, bool)
+
+    if len(refindx) == 0:
+        return core_mask
+
+    if use_tractor_geometry_obj[iobj]:
+        return np.zeros(sz, bool)
+
+    for indx in refindx:
+        # Get geometry for this reference source
+        if indx < iobj:
+            # Previously completed: use stored final geometry
+            [bxr, byr, smar_moment, bar, par] = geo_final[indx, :]
+            smar = max(max(smar_moment, SMA_MASK_MIN_PIX),
+                      sample['SMA_MASK'][indx] / opt_pixscale)
+        else:
+            # Not yet completed: get from table or Tractor
+            if use_tractor_geometry and use_tractor_geometry_obj[indx]:
+                if samplesrcs[indx] is None:
+                    bxr, byr, smar, bar, par = get_geometry(
+                        opt_pixscale, table=sample[indx],
+                        use_sma_mask=True)
+                else:
+                    bxr, byr, smar, bar, par = get_geometry(
+                        opt_pixscale, tractor=samplesrcs[indx])
+            else:
+                bxr, byr, smar, bar, par = get_geometry(
+                    opt_pixscale, table=sample[indx],
+                    ref_tractor=samplesrcs[indx],
+                    use_tractor_position=use_tractor_position_obj[indx],
+                    use_sma_mask=True)
+
+        # Distance-based core sizing (if current position provided)
+        if current_bx is not None and current_by is not None:
+            sep_pix = np.hypot(current_bx - bxr, current_by - byr)
+            sep_arcsec = sep_pix * opt_pixscale
+
+            # Very close: larger core; separated: smaller core
+            if sep_arcsec < 1.5 * smar * opt_pixscale:
+                core_frac = 0.5  # 50% for close companions
+            else:
+                core_frac = 0.25  # 25% for separated companions
+        else:
+            # No distance info: use moderate core
+            core_frac = 0.3
+
+        smar_core = core_frac * smar
+        core_mask_one = in_ellipse_mask(bxr, width-byr, smar_core,
+                                        bar*smar_core, par,
+                                        xgrid, ygrid_flip)
+        core_mask = np.logical_or(core_mask, core_mask_one)
+
+    return core_mask
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR_geo=0.01, FMAJOR_final=None, ref_factor=2.0,
@@ -2425,7 +2535,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Flux-based classification of extended Tractor galaxies.
         Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
-                #(tractor.shape_r > 0.1) *
                 (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
         allgalsrcs = tractor[Igal]
     else:
@@ -2682,8 +2791,27 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # current ellipse mask of the current object...
             iter_brightstarmask = np.copy(opt_brightstarmask)
             iter_refmask = np.copy(opt_refmask)
+
+            # Build protected core mask for ALL other reference sources
+            iter_refmask_core = _build_reference_core_mask(
+                iobj, refindx, sample, samplesrcs, geo_final,
+                use_tractor_geometry, use_tractor_geometry_obj,
+                use_tractor_position_obj, get_geometry,
+                opt_pixscale, SMA_MASK_MIN_PIX,
+                in_ellipse_mask, width, xgrid, ygrid_flip, sz,
+                current_bx=bx, current_by=by)
+
+            # Unmask reference sources inside the current ellipse EXCEPT protected cores.
             iter_brightstarmask[inellipse] = False
             iter_refmask[inellipse] = False
+
+            # Restore protected cores
+            iter_refmask = np.logical_or(iter_refmask, iter_refmask_core)
+
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(iter_refmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
 
             # Expand the brightstarmask veto if the NEARSTAR or GCLPNE
             # bits are set (factor of XX), with a floor for very small
@@ -2759,53 +2887,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         opt_models=None, mask_allgals=False)
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
-                # For overlapping systems, add protective cores around other SGA sources
-                if overlap_obj[iobj]:
-                    log.info(f'  Galaxy {iobj+1} has OVERLAP=True; checking for SGA companion cores to mask')
-                    n_cores_added = 0
-
-                    for indx in refindx:
-                        # Only add cores for other overlapping SGA sources
-                        if overlap_obj[indx]:
-                            [bxr, byr, smar_moment, bar, par] = geo_iter[indx, :]
-                            pdb.set_trace()
-                            smar = max(max(smar_moment, SMA_MASK_MIN_PIX),
-                                      sample['SMA_MASK'][indx] / opt_pixscale)
-
-                            # Compute separation
-                            sep_pix = np.hypot(bx - bxr, by - byr)
-                            sep_arcsec = sep_pix * opt_pixscale
-
-                            # Mask a compact core (25% of ellipse size)
-                            smar_core = 0.25 * smar
-                            core_mask = in_ellipse_mask(bxr, width-byr, smar_core,
-                                                        bar*smar_core, par,
-                                                        xgrid, ygrid_flip)
-
-                            # Count pixels before/after
-                            n_before = np.sum(opt_galmask)
-                            opt_galmask = np.logical_or(opt_galmask, core_mask)
-                            n_after = np.sum(opt_galmask)
-                            n_added = n_after - n_before
-
-                            log.info(f'    Companion {indx+1}: sep={sep_arcsec:.1f}" sma={smar*opt_pixscale:.1f}" '
-                                     f'core={smar_core*opt_pixscale:.1f}" → added {n_added} core pixels')
-                            n_cores_added += 1
-
-                    if n_cores_added > 0:
-                        log.info(f'  Added {n_cores_added} SGA companion cores to galmask')
-                    else:
-                        log.info(f'  No overlapping SGA companions found for core masking')
-
-                # Then unmask the interior as usual
-                n_before_unmask = np.sum(opt_galmask)
-                opt_galmask[inellipse] = False
-                n_after_unmask = np.sum(opt_galmask)
-                n_unmasked = n_before_unmask - n_after_unmask
-
-                if overlap_obj[iobj]:
-                    log.info(f'  Unmasked {n_unmasked} pixels inside this galaxy\'s ellipse')
-
                 # Optionally do not mask within the current SGA ellipse itself.
                 opt_galmask[inellipse] = False
 
@@ -2832,18 +2913,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # True=any pixel is >5*skynoise and positive in the
             # coadded image.
             wmask = np.any(wmasks, axis=0) * (wimg > 0.)
-
-            ## For overlapping systems, isolate connected components.
-            #if overlap_obj[iobj]:
-            #    from scipy.ndimage import label
-            #    labeled, n_components = label(wmask)
-            #    if n_components > 1:
-            #        component_at_center = labeled[int(by), int(bx)]
-            #        if component_at_center > 0:
-            #            wmask_isolated = (labeled == component_at_center)
-            #            if np.sum(wmask) - np.sum(wmask_isolated) > 100:
-            #                wmask = wmask_isolated
-            #                log.info(f'  Isolated central component ({n_components} total)')
 
             if fixgeo or (obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0):
                 log.info('FIXGEO bit set; fixing the elliptical geometry.')
@@ -3042,8 +3111,21 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                     pa, xgrid, ygrid_flip)
         final_brightstarmask = np.copy(opt_brightstarmask)
         final_refmask = np.copy(opt_refmask_all[iobj])
+
+        # Build protected cores for final masks
+        final_refmask_core = _build_reference_core_mask(
+            iobj, np.delete(np.arange(nsample), iobj), sample, samplesrcs, geo_final,
+            use_tractor_geometry, use_tractor_geometry_obj,
+            use_tractor_position_obj, get_geometry,
+            opt_pixscale, SMA_MASK_MIN_PIX,
+            in_ellipse_mask, width, xgrid, ygrid_flip, sz,
+            current_bx=bx, current_by=by)
+
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
+
+        # Restore protected reference cores
+        final_refmask = np.logical_or(final_refmask, final_refmask_core)
 
         if (sample['SAMPLE'][iobj] & (SAMPLE['INSTAR'] | SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
             if 1.5*sma_mask*opt_pixscale < 10.: # [arcsec]
