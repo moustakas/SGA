@@ -570,26 +570,15 @@ def main():
             else:
                 force_psf_detection = False
 
-            ## for very large mosaics, turn off iterative source detection and increase nsigma
-            #if onegal[DIAMCOLUMN] > 5.:
-            #    no_iterative = True
-            #    if args.nsigma is None:
-            #        nsigma = 10
-            #    else:
-            #        nsigma = args.nsigma
-            #    fit_on_coadds = True
-            #else:
-            #    no_iterative = args.no_iterative
-            #    nsigma = args.nsigma
-            #    fit_on_coadds = args.fit_on_coadds
-
             no_iterative = True
-            nsigma = 8
+            nsigma = 6.0
             saddle_fraction = 0.2
             saddle_min = 4.
             fit_on_coadds = True
             no_segmentation = True
+            bright_masking = True
             #fit_on_coadds = args.fit_on_coadds
+            #bright_masking = args.bright_masking
             #no_segmentation = args.no_segmentation
 
             if not just_cutouts:
@@ -605,8 +594,8 @@ def main():
                     nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
                     just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                     no_iterative=no_iterative, no_segmentation=no_segmentation,
-                    fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
-                    ivar_cutouts=ivar_cutouts,
+                    fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
+                    just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
@@ -624,8 +613,8 @@ def main():
                         nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
                         just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                         no_iterative=no_iterative, no_segmentation=no_segmentation,
-                        fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
-                        ivar_cutouts=ivar_cutouts,
+                        fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
+                        just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
