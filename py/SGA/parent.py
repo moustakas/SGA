@@ -4906,10 +4906,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         msg = f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
         log.critical(msg)
         print(f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
-        pdb.set_trace()
         raise ValueError(msg)
-
-    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
