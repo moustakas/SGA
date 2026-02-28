@@ -2759,6 +2759,53 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         opt_models=None, mask_allgals=False)
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
+                # For overlapping systems, add protective cores around other SGA sources
+                if overlap_obj[iobj]:
+                    log.info(f'  Galaxy {iobj+1} has OVERLAP=True; checking for SGA companion cores to mask')
+                    n_cores_added = 0
+
+                    for indx in refindx:
+                        # Only add cores for other overlapping SGA sources
+                        if overlap_obj[indx]:
+                            [bxr, byr, smar_moment, bar, par] = geo_iter[indx, :]
+                            pdb.set_trace()
+                            smar = max(max(smar_moment, SMA_MASK_MIN_PIX),
+                                      sample['SMA_MASK'][indx] / opt_pixscale)
+
+                            # Compute separation
+                            sep_pix = np.hypot(bx - bxr, by - byr)
+                            sep_arcsec = sep_pix * opt_pixscale
+
+                            # Mask a compact core (25% of ellipse size)
+                            smar_core = 0.25 * smar
+                            core_mask = in_ellipse_mask(bxr, width-byr, smar_core,
+                                                        bar*smar_core, par,
+                                                        xgrid, ygrid_flip)
+
+                            # Count pixels before/after
+                            n_before = np.sum(opt_galmask)
+                            opt_galmask = np.logical_or(opt_galmask, core_mask)
+                            n_after = np.sum(opt_galmask)
+                            n_added = n_after - n_before
+
+                            log.info(f'    Companion {indx+1}: sep={sep_arcsec:.1f}" sma={smar*opt_pixscale:.1f}" '
+                                     f'core={smar_core*opt_pixscale:.1f}" → added {n_added} core pixels')
+                            n_cores_added += 1
+
+                    if n_cores_added > 0:
+                        log.info(f'  Added {n_cores_added} SGA companion cores to galmask')
+                    else:
+                        log.info(f'  No overlapping SGA companions found for core masking')
+
+                # Then unmask the interior as usual
+                n_before_unmask = np.sum(opt_galmask)
+                opt_galmask[inellipse] = False
+                n_after_unmask = np.sum(opt_galmask)
+                n_unmasked = n_before_unmask - n_after_unmask
+
+                if overlap_obj[iobj]:
+                    log.info(f'  Unmasked {n_unmasked} pixels inside this galaxy\'s ellipse')
+
                 # Optionally do not mask within the current SGA ellipse itself.
                 opt_galmask[inellipse] = False
 
@@ -2785,6 +2832,18 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # True=any pixel is >5*skynoise and positive in the
             # coadded image.
             wmask = np.any(wmasks, axis=0) * (wimg > 0.)
+
+            ## For overlapping systems, isolate connected components.
+            #if overlap_obj[iobj]:
+            #    from scipy.ndimage import label
+            #    labeled, n_components = label(wmask)
+            #    if n_components > 1:
+            #        component_at_center = labeled[int(by), int(bx)]
+            #        if component_at_center > 0:
+            #            wmask_isolated = (labeled == component_at_center)
+            #            if np.sum(wmask) - np.sum(wmask_isolated) > 100:
+            #                wmask = wmask_isolated
+            #                log.info(f'  Isolated central component ({n_components} total)')
 
             if fixgeo or (obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0):
                 log.info('FIXGEO bit set; fixing the elliptical geometry.')
