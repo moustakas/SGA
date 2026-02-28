@@ -4224,7 +4224,7 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
-def prepare_v100_ellipse(ell1, region, mindiam=0.5):
+def _prepare_v100_ellipse(ell1, region, mindiam=0.5):
 
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
@@ -4542,7 +4542,9 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             ell1 = prepare_v080_ellipse(ell1, region, mindiam=mindiam)
 
         elif base_version == 'v1.0':
-            ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
+            # no refitting; just drops, adds, and updates
+            ell1['REFIT'] = np.zeros(len(ell1), bool)
+            #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -4839,8 +4841,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         base = ell_base
     elif base_version == 'v0.80':
         I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
         if np.any(I):
-            log.info(f'Restoring initial geometry for {np.sum(I):,d} objects for refit')
             ell_base['DIAM_ERR'][I] = 0.
             for col, init_col in [('RA', 'RA_ORIG'), ('DEC', 'DEC_ORIG'),
                                   ('DIAM', 'DIAM_ORIG'), ('DIAM_REF', 'DIAM_ORIG_REF'),
@@ -4849,12 +4851,12 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
 
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
-            out.write(os.path.join(outdir, 'SGA2025-v0.90-refit.fits'), overwrite=True)
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
         base = ell_base
     elif base_version == 'v1.0':
         I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
         if np.any(I):
-            log.info(f'Restoring initial geometry for {np.sum(I):,d} objects for refit')
             ell_base['DIAM_ERR'][I] = 0.
             for col, init_col in [('RA', 'RA_ORIG'), ('DEC', 'DEC_ORIG'),
                                   ('DIAM', 'DIAM_ORIG'), ('DIAM_REF', 'DIAM_ORIG_REF'),
@@ -4863,7 +4865,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
 
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
-            out.write(os.path.join(outdir, 'SGA2025-v1.0-refit.fits'), overwrite=True)
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
         base = ell_base
     else:
         base = ell_base
@@ -4909,6 +4911,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         pairs = np.array(sorted(set(tuple(sorted((i, j))) for i, j in zip(idx1[not_self], idx2[not_self]))))
         raise ValueError(f"Found {len(pairs)} source pairs within 3.6 arcsec:\n"
                          f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
+
+    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
