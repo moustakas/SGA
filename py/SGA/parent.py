@@ -4908,7 +4908,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         print(f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
         raise ValueError(msg)
 
-    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
