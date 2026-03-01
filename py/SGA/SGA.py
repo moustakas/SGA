@@ -2245,22 +2245,24 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
                     use_tractor_position=use_tractor_position_obj[indx],
                     use_sma_mask=True)
 
-        # Distance-based core sizing (if current position provided)
-        if current_bx is not None and current_by is not None:
-            sep_pix = np.hypot(current_bx - bxr, current_by - byr)
-            sep_arcsec = sep_pix * opt_pixscale
+        core_frac = 0.3
 
-            # Very close: larger core; separated: smaller core
-            if sep_arcsec < 1.5 * smar * opt_pixscale:
-                core_frac = 0.5  # 50% for close companions
-            else:
-                core_frac = 0.25  # 25% for separated companions
-        else:
-            # No distance info: use moderate core
-            core_frac = 0.3
+        ## Distance-based core sizing (if current position provided)
+        #if current_bx is not None and current_by is not None:
+        #    sep_pix = np.hypot(current_bx - bxr, current_by - byr)
+        #    sep_arcsec = sep_pix * opt_pixscale
+        #
+        #    # Very close: larger core; separated: smaller core
+        #    if sep_arcsec < 1.5 * smar * opt_pixscale:
+        #        core_frac = 0.5  # 50% for close companions
+        #    else:
+        #        core_frac = 0.25  # 25% for separated companions
+        #else:
+        #    # No distance info: use moderate core
+        #    core_frac = 0.3
 
         # minimum masking radius of XX arcsec
-        smar_core = max(core_frac * smar, 20. / opt_pixscale)
+        smar_core = max(core_frac * smar, 10. / opt_pixscale)
         core_mask_one = in_ellipse_mask(bxr, width-byr, smar_core,
                                         bar*smar_core, par,
                                         xgrid, ygrid_flip)
