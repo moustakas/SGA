@@ -4878,7 +4878,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
     miss = ~np.isin(ov.updates['OBJNAME'].value, base['OBJNAME'])
     if np.any(miss):
         log.critical("The following objects in the updates.csv file are missing")
-        print(ov.updates['OBJNAME'][miss])
+        print(np.unique(ov.updates['OBJNAME'][miss]))
         raise ValueError()
     apply_updates_inplace(base, ov.updates)
 
@@ -4908,6 +4908,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         print(f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
         raise ValueError(msg)
 
+    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 

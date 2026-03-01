@@ -2185,8 +2185,7 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
                                 opt_pixscale, SMA_MASK_MIN_PIX,
                                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                                 current_bx=None, current_by=None):
-    """
-    Build protected core mask for reference (SGA) sources.
+    """Build protected core mask for reference (SGA) sources.
 
     For each reference source, creates a compact elliptical core mask that
     should not be unmasked even when inside the current galaxy's ellipse.
@@ -2212,7 +2211,8 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
     Returns
     -------
     core_mask : ndarray (bool)
-        2D mask with protected cores for all reference sources
+        2D mask with protected cores for all reference sources other
+        than the current galaxy.
 
     """
     core_mask = np.zeros(sz, bool)
@@ -2220,10 +2220,8 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
     if len(refindx) == 0:
         return core_mask
 
-    if use_tractor_geometry_obj[iobj]:
-        return np.zeros(sz, bool)
-
     for indx in refindx:
+
         # Get geometry for this reference source
         if indx < iobj:
             # Previously completed: use stored final geometry
@@ -2261,7 +2259,8 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
             # No distance info: use moderate core
             core_frac = 0.3
 
-        smar_core = core_frac * smar
+        # minimum masking radius of XX arcsec
+        smar_core = max(core_frac * smar, 20. / opt_pixscale)
         core_mask_one = in_ellipse_mask(bxr, width-byr, smar_core,
                                         bar*smar_core, par,
                                         xgrid, ygrid_flip)
@@ -2635,6 +2634,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             ellipses_overlap=ellipses_overlap, allgalsrcs=allgalsrcs,
             opt_bands=opt_bands)
 
+
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
     for iobj in range(nsample):
@@ -2823,6 +2823,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 opt_pixscale, SMA_MASK_MIN_PIX,
                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                 current_bx=bx, current_by=by)
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(iter_refmask_core, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
 
             # Unmask reference sources inside the current ellipse EXCEPT protected cores.
             iter_brightstarmask[inellipse] = False
