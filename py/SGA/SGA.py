@@ -10,6 +10,7 @@ import fitsio
 import numpy as np
 import numpy.ma as ma
 from astropy.table import Table, vstack, hstack, join
+from astrometry.util.starutil_numpy import arcsec_between
 
 from SGA.ellipse import MAXSHIFT_ARCSEC
 from SGA.logger import log
@@ -2055,7 +2056,7 @@ def _log_object_modes(log, iobj, obj, use_radial_weight, use_tractor_geometry_ob
 def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     opt_pixscale, use_tractor_position, use_radial_weight,
     use_radial_weight_for_overlaps, SATELLITE_FRAC, get_geometry,
-    ellipses_overlap):
+    ellipses_overlap, allgalsrcs, opt_bands):
     """
     Decide per-object:
       - use_radial_weight_obj[i]: whether to use radial weighting in moments
@@ -2087,9 +2088,6 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     # - Tractor-geometry override is off unless we decide "satellite"
     use_radial_weight_obj = np.full(nsample, bool(use_radial_weight), dtype=bool)
     use_tractor_geometry_obj = np.zeros(nsample, bool)
-
-    if nsample == 1:
-        return use_radial_weight_obj, use_tractor_geometry_obj, satellite_obj, overlap_obj
 
     for iobj in range(nsample):
         bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[iobj, :]
@@ -2152,6 +2150,31 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
         # Tractor geometry only for satellites
         use_tractor_geometry_obj[iobj] = bool(is_satellite)
+
+    # Quick cluster heuristic: count bright extended sources nearby
+    if len(allgalsrcs) > 0:
+        for iobj in range(nsample):
+            if use_radial_weight_obj[iobj]:  # Only check if radial weighting is on
+                # Count bright extended sources within 2× diameter
+                search_radius = sample['DIAM_INIT'][iobj] * 60.0 # [arcsec]
+
+                n_bright_nearby = 0
+                for src in allgalsrcs:
+                    sep_arcsec = arcsec_between(
+                        sample['RA_INIT'][iobj], sample['DEC_INIT'][iobj],
+                        src.ra, src.dec)
+                    if sep_arcsec < search_radius:
+                        # Count sources with > 10% flux
+                        flux_src = max([getattr(src, f'flux_{band}') for band in opt_bands])
+                        if flux_src > 0.1 * sample['OPTFLUX'][iobj]:
+                            n_bright_nearby += 1
+
+                # Disable radial weighting if many bright companions (cluster environment)
+                if n_bright_nearby >= 3:
+                    use_radial_weight_obj[iobj] = False
+                    log.info(f'Galaxy {iobj+1} [{sample["OBJNAME"][iobj]}]: '
+                             f'possible cluster: {n_bright_nearby} bright companions '
+                             f'within {search_radius/60:.1f}\' arcmin.')
 
     return use_radial_weight_obj, use_tractor_geometry_obj, satellite_obj, overlap_obj
 
@@ -2265,7 +2288,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     *disable* radial weighting for its moments.
 
     """
-    from astrometry.util.starutil_numpy import arcsec_between
     from SGA.geometry import in_ellipse_mask, ellipses_overlap
     from SGA.util import ivar2var
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
@@ -2610,7 +2632,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             use_tractor_position=use_tractor_position, use_radial_weight=use_radial_weight,
             use_radial_weight_for_overlaps=use_radial_weight_for_overlaps,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
-            ellipses_overlap=ellipses_overlap)
+            ellipses_overlap=ellipses_overlap, allgalsrcs=allgalsrcs,
+            opt_bands=opt_bands)
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
@@ -2887,8 +2910,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         opt_models=None, mask_allgals=False)
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
-                # Optionally do not mask within the current SGA ellipse itself.
-                opt_galmask[inellipse] = False
+                ## Optionally do not mask within the current SGA ellipse itself.
+                #opt_galmask[inellipse] = False
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -3187,12 +3210,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     mask_allgals=False)
                 opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
-            # Optionally do not mask within the current SGA ellipse itself.
-            #import matplotlib.pyplot as plt
-            #plt.clf()
-            #plt.imshow(opt_models_obj[1, :, :], origin='lower')
-            #plt.savefig('ioannis/tmp/junk.png')
-            opt_galmask[inellipse] = False
+            ## Optionally do not mask within the current SGA ellipse itself.
+            ##import matplotlib.pyplot as plt
+            ##plt.clf()
+            ##plt.imshow(opt_models_obj[1, :, :], origin='lower')
+            ##plt.savefig('ioannis/tmp/junk.png')
+            #opt_galmask[inellipse] = False
 
         # apply the mask_nearby mask
         opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
