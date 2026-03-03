@@ -4908,6 +4908,16 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         print(f"{base['OBJNAME', 'RA', 'DEC'][pairs[:10].flatten()]}")
         raise ValueError(msg)
 
+    # Sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
+    if len(np.unique(out['SGAID'])) != len(out):
+        raise ValueError('Non-unique SGAID in final parent')
+    if not np.all(out['DIAM'] > 0.):
+        raise ValueError('Non-positive DIAM in final parent')
+    if not np.all((out['BA'] > 0.) & (out['BA'] <= 1.)):
+        raise ValueError('BA out of range')
+    if not np.all((out['PA'] >= 0.) & (out['PA'] < 180.)):
+        raise ValueError('PA out of range')
+
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
@@ -5003,7 +5013,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)
 
-    # Final sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
+    # Sanity: unique SGAID; DIAM>0; 0<BA≤1; PA∈[0,180)
     if len(np.unique(out['SGAID'])) != len(out):
         raise ValueError('Non-unique SGAID in final parent')
     if not np.all(out['DIAM'] > 0.):
