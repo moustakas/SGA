@@ -353,7 +353,7 @@ def main():
 
     # need at least one keyword at this point
     if (args.coadds is False and args.ellipse is False and args.htmlplots is False and
-        args.htmlindex is False):
+        args.htmlindex is False and args.parse_tractor_logs is False):
         log.warning('Need to specify at least one of --coadds, --ellipse, or ' + \
                     '--htmlplots; nothing to do.')
         return
@@ -361,6 +361,12 @@ def main():
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
     if rank == 0:
+        if args.parse_tractor_logs:
+            from glob import glob
+            from SGA.mpi import parse_tractor_log
+            pdb.set_trace()
+            return
+
         suffix, groups, _, fail, wait = missing_files(
             sample=sample, region=args.region, bricks=bricks,
             coadds=args.coadds, ellipse=args.ellipse,
