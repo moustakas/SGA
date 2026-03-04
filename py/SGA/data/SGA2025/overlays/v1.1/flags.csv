@@ -1,4 +1,5 @@
 target,value,column,op,bits
+OBJNAME,NGC 7497,ELLIPSEMODE,set,noradweight
 OBJNAME,IC 3104,ELLIPSEMODE,set,noradweight
 OBJNAME,IC 1613,ELLIPSEMODE,set,forcepsf
 OBJNAME,NGC 55,ELLIPSEMODE,set,forcepsf
