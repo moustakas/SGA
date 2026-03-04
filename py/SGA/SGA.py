@@ -2056,7 +2056,7 @@ def _log_object_modes(log, iobj, obj, use_radial_weight, use_tractor_geometry_ob
 def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     opt_pixscale, use_tractor_position, use_radial_weight,
     use_radial_weight_for_overlaps, SATELLITE_FRAC, get_geometry,
-    ellipses_overlap, allgalsrcs, opt_bands):
+    ellipses_overlap, allgalsrcs, opt_bands, tractorgeo):
     """
     Decide per-object:
       - use_radial_weight_obj[i]: whether to use radial weighting in moments
@@ -2087,7 +2087,7 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     # - radial weighting follows global default
     # - Tractor-geometry override is off unless we decide "satellite"
     use_radial_weight_obj = np.full(nsample, bool(use_radial_weight), dtype=bool)
-    use_tractor_geometry_obj = np.zeros(nsample, bool)
+    use_tractor_geometry_obj = np.full(nsample, bool(tractorgeo), dtype=bool)
 
     for iobj in range(nsample):
         bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[iobj, :]
@@ -2180,9 +2180,8 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
 
 def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
-                                use_tractor_geometry, use_tractor_geometry_obj,
-                                use_tractor_position_obj, get_geometry,
-                                opt_pixscale, SMA_MASK_MIN_PIX,
+                                use_tractor_geometry_obj, use_tractor_position_obj,
+                                tractorgeo, get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
                                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                                 current_bx=None, current_by=None):
     """Build protected core mask for reference (SGA) sources.
@@ -2230,7 +2229,7 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
                       sample['SMA_MASK'][indx] / opt_pixscale)
         else:
             # Not yet completed: get from table or Tractor
-            if use_tractor_geometry and use_tractor_geometry_obj[indx]:
+            if tractorgeo or use_tractor_geometry_obj[indx]:
                 if samplesrcs[indx] is None:
                     bxr, byr, smar, bar, par = get_geometry(
                         opt_pixscale, table=sample[indx],
@@ -2270,13 +2269,14 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
 
     return core_mask
 
+
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR_geo=0.01, FMAJOR_final=None, ref_factor=2.0,
                          moment_method='rms', maxshift_arcsec=MAXSHIFT_ARCSEC,
                          radial_power=0.7, SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True, fixgeo=False,
-                         use_radial_weight_for_overlaps=True, use_tractor_geometry=True,
+                         tractorgeo=False, use_radial_weight_for_overlaps=True,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
@@ -2634,7 +2634,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             use_radial_weight_for_overlaps=use_radial_weight_for_overlaps,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
             ellipses_overlap=ellipses_overlap, allgalsrcs=allgalsrcs,
-            opt_bands=opt_bands)
+            opt_bands=opt_bands, tractorgeo=tractorgeo)
 
 
     # Pre-determine which objects will use Tractor or moment geometry.
@@ -2651,7 +2651,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                               ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'])
     for iobj in range(nsample):
         # If TRACTORGEO is set, force Tractor-based geometry for this object.
-        if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0:
+        if tractorgeo or ((sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0):
             use_tractor_geometry_obj[iobj] = True
             # Geometry is coming from Tractor, so radial weighting is irrelevant.
             use_radial_weight_obj[iobj] = False
@@ -2672,8 +2672,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             not fixgeo):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
-        if fixgeo or (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0):
+        if fixgeo or ((sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO']) != 0):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
+
+        if tractorgeo or ((sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0):
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['LESSMASKING'] != 0:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LESSMASKING']
@@ -2735,7 +2738,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # always use get_geometry with use_sma_mask=True for
                 # future refs; don't use input_geo_initial for
                 # reference objects.
-                if use_tractor_geometry and use_tractor_geometry_obj[indx]:
+                if tractorgeo or use_tractor_geometry_obj[indx]:
                     if refsrc is None:
                         bxr, byr, smar, bar, par = get_geometry(
                             opt_pixscale, table=refsample,
@@ -2820,9 +2823,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Build protected core mask for ALL other reference sources
             iter_refmask_core = _build_reference_core_mask(
                 iobj, refindx, sample, samplesrcs, geo_final,
-                use_tractor_geometry, use_tractor_geometry_obj,
-                use_tractor_position_obj, get_geometry,
-                opt_pixscale, SMA_MASK_MIN_PIX,
+                tractorgeo, use_tractor_geometry_obj, use_tractor_position_obj,
+                get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                 current_bx=bx, current_by=by)
             #import matplotlib.pyplot as plt
@@ -2946,7 +2948,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if fixgeo or (obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0):
                 log.info('FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
-            elif (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
+            elif tractorgeo or ((obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0) and objsrc is not None:
                 log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
                 geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
             elif not update_geometry:
@@ -2969,7 +2971,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 geo_iter[2] = sma_new
             else:
                 # Optionally use Tractor for small overlapping satellites.
-                if use_tractor_geometry and use_tractor_geometry_obj[iobj]:
+                if tractorgeo or use_tractor_geometry_obj[iobj]:
                     if objsrc is None or objsrc.type == 'PSF':
                         input_ba_pa = None
                     else:
@@ -3143,12 +3145,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Build protected cores for final masks
         final_refmask_core = _build_reference_core_mask(
-            iobj, np.delete(np.arange(nsample), iobj), sample, samplesrcs, geo_final,
-            use_tractor_geometry, use_tractor_geometry_obj,
-            use_tractor_position_obj, get_geometry,
-            opt_pixscale, SMA_MASK_MIN_PIX,
-            in_ellipse_mask, width, xgrid, ygrid_flip, sz,
-            current_bx=bx, current_by=by)
+            iobj, np.delete(np.arange(nsample), iobj), sample,
+            samplesrcs, geo_final, tractorgeo, use_tractor_geometry_obj,
+            use_tractor_position_obj, get_geometry, opt_pixscale,
+            SMA_MASK_MIN_PIX, in_ellipse_mask, width, xgrid, ygrid_flip,
+            sz, current_bx=bx, current_by=by)
 
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
@@ -3238,7 +3239,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if not use_radial_weight_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['NORADWEIGHT']
 
-        if use_tractor_geometry and use_tractor_geometry_obj[iobj]:
+        if tractorgeo or use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
         # Overlap bit. Note! use sma_mask because on the second pass
@@ -3685,7 +3686,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             tractorfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["tractor"]}.fits')
 
             cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
-                    'sersic', 'shape_r', 'shape_e1', 'shape_e2', 'maskbits']
+                    'sersic', 'shape_r', 'shape_e1', 'shape_e2', 'maskbits',
+                    'fitbits']
             cols += [f'flux_{filt}' for filt in opt_bands]
             cols += [f'flux_ivar_{filt}' for filt in opt_bands]
             cols += [f'nobs_{filt}' for filt in opt_bands]

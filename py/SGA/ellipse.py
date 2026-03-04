@@ -1418,10 +1418,10 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          run='south', mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262,
                          galex_pixscale=1.5, unwise_pixscale=2.75, mask_nearby=None,
                          galex=True, unwise=True, use_tractor_position=True, fixgeo=False,
-                         use_radial_weight=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         update_geometry=False, nmonte=50, seed=42, verbose=False,
-                         skip_tractor=False, skip_ellipse=False, nowrite=False, clobber=False,
-                         qaplot=False, htmlgalaxydir=None):
+                         tractorgeo=False, use_radial_weight=True, sbthresh=REF_SBTHRESH,
+                         apertures=REF_APERTURES, update_geometry=False, nmonte=50, seed=42,
+                         verbose=False, skip_tractor=False, skip_ellipse=False, nowrite=False,
+                         clobber=False, qaplot=False, htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
 
@@ -1500,8 +1500,9 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
                 use_tractor_position=use_tractor_position,
                 use_radial_weight=use_radial_weight, fixgeo=fixgeo,
-                mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
-                mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
+                tractorgeo=tractorgeo, mask_nearby=mask_nearby, niter_geometry=2,
+                FMAJOR_geo=FMAJOR_geo, mask_minor_galaxies=True,
+                htmlgalaxydir=htmlgalaxydir)
 
         except:
             err = 0
@@ -1537,7 +1538,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
 
             # if FIXGEO or TRACTORGEO use the input geometry
-            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
+            if (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0) or \
+               fixgeo or tractorgeo:
                 if not update_geometry:
                     input_geo_initial[iobj, :] = [bx, by, sma_mom/pixscale, ba_mom, pa_mom]
                 continue
@@ -1579,7 +1581,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             mask_minor_galaxies=False,
                                             use_tractor_position=use_tractor_position,
                                             use_radial_weight=use_radial_weight,
-                                            fixgeo=fixgeo, niter_geometry=niter_geometry,
+                                            fixgeo=fixgeo, tractorgeo=tractorgeo,
+                                            niter_geometry=niter_geometry,
                                             htmlgalaxydir=htmlgalaxydir)
 
         # ellipse-fit over objects and then datasets
