@@ -10,6 +10,7 @@ import fitsio
 import numpy as np
 import numpy.ma as ma
 from astropy.table import Table, vstack, hstack, join
+from astrometry.util.starutil_numpy import arcsec_between
 
 from SGA.ellipse import MAXSHIFT_ARCSEC
 from SGA.logger import log
@@ -112,7 +113,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # more cleanup
         #version = 'v0.80'
         # first release candidate
-        version = 'v1.0'
+        #version = 'v1.0'
+        # OVERLAP fixes
+        version = 'v1.1'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -127,7 +130,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.60'  # parent_version = v0.50 --> v0.60
         #version = 'v0.70'  # parent_version = v0.60 --> v0.70
         #version = 'v0.80'  # parent_version = v0.70 --> v0.80
-        version = 'v1.0'  # parent_version = v0.80 --> v1.0
+        #version = 'v1.0'  # parent_version = v0.80 --> v1.0
+        version = 'v1.1'  # parent_version = v1.0 --> v1.1
     return version
 
 
@@ -291,7 +295,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         suffix = 'html'
         #filesuffix = '-html.isdone'
         filesuffix = '-montage.png'
-        dependson = None # '-image.jpg'
+        dependson = '-ellipse.isdone' # None # '-image.jpg'
         galaxy, dependsondir, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir, region=region,
             group=group, html=True)
@@ -323,7 +327,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
         #print(checkfile)
         if dependson:
-            if dependsondir:
+            if dependsondir is not None:
                 missargs.append([checkfile, os.path.join(np.atleast_1d(dependsondir)[igal],
                                                          f'{gal}{dependson}'), clobber])
             else:
@@ -440,8 +444,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                 I *= info['GROUP_MULT'] <= maxmult
             rows = np.where(I)[0]
     else:
-        #cols = ['GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER', 'GROUP_MULT',
-        #        'GROUP_PRIMARY', 'GROUP_ID', 'SGAID', 'RA', 'DEC', 'BRICKNAME']
         if no_groups:
             cols = ['DIAM']
         else:
@@ -487,9 +489,17 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             fullsample = sample
         else:
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
         if len(sample) == 0:
             return sample, fullsample
+
+    if True:
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
+        dogroups = ((fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
+                    (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0))
+        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups]))
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     #if True:
     #    nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
@@ -516,7 +526,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             fullsample = sample
         else:
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
         if len(sample) == 0:
             return sample, fullsample
 
@@ -572,8 +582,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         # build primary member sample and then we need to restore all
         # group members otherwise we run into problems in
         # build_catalog.
-        sample = sample[np.isin(sample['GROUP_ID'], fullsample['GROUP_ID'])]
-        fullsample = ofullsample[np.isin(ofullsample['GROUP_ID'], sample['GROUP_ID'])]
+        sample = sample[np.isin(sample['GROUP_NAME'], fullsample['GROUP_NAME'])]
+        fullsample = ofullsample[np.isin(ofullsample['GROUP_NAME'], sample['GROUP_NAME'])]
         log.info(f'Selecting {len(fullsample):,d}/{nfullobj:,d} ({len(sample):,d}/{nobj:,d}) wisesize groups (objects)')
 
 
@@ -587,14 +597,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.warning(f'Temporarily restricting to {np.sum(I):,d} LVD-RESOLVED sources!')
         sample = sample[I]
 
-        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     if False:#True:
         from SGA.ellipse import ELLIPSEMODE
         I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
         log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
         sample = sample[I]
-        fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     ##############################
     # v0.10 had 30 duplicate groups (29 in dr11-south; 1 in
@@ -660,7 +670,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             fullsample = sample
         else:
-            fullsample = fullsample[np.isin(fullsample['GROUP_ID'], sample['GROUP_ID'])]
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     #if version == 'v0.40':
     #    print('HACK!!!')
@@ -727,7 +737,7 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
     # Censor the 26 mag/arcsec2 isophotes if the FAILGEO bit is set
     # (near a bright star).
     if 'ELLIPSEBIT' in ellipse.colnames:
-        I = ellipse['ELLIPSEBIT'] & (ELLIPSEBIT['FAILGEO'] | ELLIPSEBIT['NORADWEIGHT']) != 0
+        I = (ellipse['ELLIPSEBIT'] & (ELLIPSEBIT['FAILGEO'] | ELLIPSEBIT['NORADWEIGHT'])) != 0
         if np.any(I):
             r26_cols = [col for col in ellipse.colnames if col.startswith('R26_')]
             for col in r26_cols:
@@ -752,7 +762,33 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
                 for col in z_cols:
                     ellipse[col] = np.where(has_gri, np.nan, ellipse[col])
 
-    d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
+    # For LMC/SMC sources, censor isophotes where errors grow faster
+    # than radii (indicates profile flattening due to unresolved
+    # stellar background).
+    is_lmc_smc = np.zeros(len(ellipse), dtype=bool)
+    if 'SAMPLE' in ellipse.colnames:
+        is_lmc_smc = (ellipse['SAMPLE'] & SAMPLE['MCLOUDS']) != 0
+        if np.any(is_lmc_smc):
+            _censor_flattened_isophotes(ellipse, is_lmc_smc, min_bands_fail=2)
+
+    # Initialize output arrays
+    d26 = np.zeros(len(ellipse), dtype=np.float64)
+    d26_err = np.zeros(len(ellipse), dtype=np.float64)
+    d26_ref = np.empty(len(ellipse), dtype='<U6')
+    d26_weight = np.zeros(len(ellipse), dtype=np.float64)
+
+    # For LMC/SMC sources, use deepest uncensored isophote directly (no extrapolation)
+    if np.any(is_lmc_smc):
+        d26[is_lmc_smc], d26_err[is_lmc_smc], d26_ref[is_lmc_smc], d26_weight[is_lmc_smc] = \
+            _lmc_smc_diameter(ellipse, is_lmc_smc)
+
+    # For non-LMC/SMC sources, use calibration-based inference
+    if np.any(~is_lmc_smc):
+        d26_cal, d26_err_cal, d26_ref_cal, d26_weight_cal = infer_best_r26(ellipse)
+        d26[~is_lmc_smc] = d26_cal[~is_lmc_smc]
+        d26_err[~is_lmc_smc] = d26_err_cal[~is_lmc_smc]
+        d26_ref[~is_lmc_smc] = d26_ref_cal[~is_lmc_smc]
+        d26_weight[~is_lmc_smc] = d26_weight_cal[~is_lmc_smc]
 
     I = np.isin(d26_ref, 'moment')
     if np.any(I):
@@ -772,9 +808,9 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
     # SMA_MOMENT will be used and D26 will be significantly larger
     # than its initial size.)
     if 'ELLIPSEBIT' in ellipse.colnames:
-        I = (ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0) & (d26_ref == 'mom')
+        I = ((ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0) & (d26_ref == 'mom')
         if np.any(I):
-            d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60. # [arcmin]
+            d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60.
             d26_err[I] = 0.
             d26_ref[I] = 'ini'
             d26_weight[I] = 1.
@@ -805,6 +841,142 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
         return r26, r26_err, d26_ref, d26_weight
     else:
         return d26, d26_err, d26_ref, d26_weight
+
+
+def _lmc_smc_diameter(ellipse, mask):
+    """Compute diameter for LMC/SMC sources using deepest uncensored isophote.
+
+    Uses the r-band radius at the deepest available threshold directly,
+    falling back to i, z, g bands in that order. No calibration extrapolation
+    is applied since the profiles are affected by stellar crowding.
+
+    Parameters
+    ----------
+    ellipse : Table
+        Ellipse table (after censoring flattened isophotes).
+    mask : ndarray
+        Boolean mask of LMC/SMC sources.
+
+    Returns
+    -------
+    d26, d26_err, d26_ref, d26_weight : ndarrays
+        Diameter (arcmin), error, reference channel, and weight.
+
+    """
+    n = len(ellipse)
+    d26 = np.zeros(n, dtype=np.float64)
+    d26_err = np.zeros(n, dtype=np.float64)
+    d26_ref = np.full(n, '', dtype='<U6')
+    d26_weight = np.zeros(n, dtype=np.float64)
+
+    # Priority: deepest threshold first, r-band preferred
+    thresholds = [26, 25, 24, 23, 22]
+    bands = ['R', 'I', 'Z', 'G']
+
+    idx = np.where(mask)[0]
+    for i in idx:
+        found = False
+        for th in thresholds:
+            if found:
+                break
+            for band in bands:
+                rcol = f'R{th}_{band}'
+                ecol = f'R{th}_ERR_{band}'
+                if rcol not in ellipse.colnames:
+                    continue
+                r = ellipse[rcol][i]
+                if np.isfinite(r) and r > 0:
+                    e = ellipse[ecol][i] if ecol in ellipse.colnames else 0.0
+                    d26[i] = 2.0 * r / 60.0  # radius arcsec -> diameter arcmin
+                    d26_err[i] = 2.0 * e / 60.0 if np.isfinite(e) else 0.0
+                    d26_ref[i] = f'{band.lower()}{th}'
+                    d26_weight[i] = 1.0
+                    found = True
+                    break
+
+        # Fallback to moment if no isophotal radii available
+        if not found:
+            sma = ellipse['SMA_MOMENT'][i]
+            if np.isfinite(sma) and sma > 0:
+                d26[i] = 2.0 * sma / 60.0
+                d26_err[i] = 0.0
+                d26_ref[i] = 'mom'
+                d26_weight[i] = 1.0
+
+    n_lmc = int(np.sum(mask))
+    refs, counts = np.unique(d26_ref[mask], return_counts=True)
+    ref_str = ", ".join(f"{r}={c}" for r, c in zip(refs, counts) if r)
+    log.info(f'LMC/SMC diameters: N={n_lmc}, refs: {ref_str}')
+
+    return d26, d26_err, d26_ref, d26_weight
+
+
+def _censor_flattened_isophotes(ellipse, mask, min_bands_fail=2):
+    """Censor isophotes where errors grow faster than radii.
+
+    For LMC/SMC sources, surface brightness profiles can flatten due to
+    unresolved stellar backgrounds. This manifests as errors growing faster
+    than radii between adjacent thresholds. When detected, we censor the
+    fainter isophote to prevent unreliable extrapolation.
+
+    Parameters
+    ----------
+    ellipse : Table
+        Ellipse table (modified in place).
+    mask : ndarray
+        Boolean mask of rows to check (e.g., LMC/SMC sources).
+    min_bands_fail : int
+        Minimum number of bands that must fail the heuristic to censor.
+
+    """
+    bands = ['G', 'R', 'I', 'Z']
+    threshold_pairs = [(26, 25), (25, 24), (24, 23)]
+
+    n_lmc_smc = int(np.sum(mask))
+    n_censored_total = 0
+
+    for th_deep, th_shallow in threshold_pairs:
+        n_fail = np.zeros(len(ellipse), dtype=int)
+
+        for band in bands:
+            r_deep_col = f'R{th_deep}_{band}'
+            r_shallow_col = f'R{th_shallow}_{band}'
+            e_deep_col = f'R{th_deep}_ERR_{band}'
+            e_shallow_col = f'R{th_shallow}_ERR_{band}'
+
+            if not all(c in ellipse.colnames for c in [r_deep_col, r_shallow_col, e_deep_col, e_shallow_col]):
+                continue
+
+            r_deep = np.asarray(ellipse[r_deep_col], dtype=float)
+            r_shallow = np.asarray(ellipse[r_shallow_col], dtype=float)
+            e_deep = np.asarray(ellipse[e_deep_col], dtype=float)
+            e_shallow = np.asarray(ellipse[e_shallow_col], dtype=float)
+
+            valid = (mask & (r_deep > 0) & (r_shallow > 0) &
+                     (e_deep > 0) & (e_shallow > 0) &
+                     np.isfinite(r_deep) & np.isfinite(r_shallow) &
+                     np.isfinite(e_deep) & np.isfinite(e_shallow))
+
+            rad_ratio = np.where(valid, r_deep / r_shallow, 1.0)
+            err_ratio = np.where(valid, e_deep / e_shallow, 1.0)
+
+            n_fail += (valid & (err_ratio > rad_ratio)).astype(int)
+
+        # Censor the deeper threshold if enough bands fail
+        censor = mask & (n_fail >= min_bands_fail)
+        n_censor = int(np.sum(censor))
+        if n_censor > 0:
+            for band in bands:
+                for col in [f'R{th_deep}_{band}', f'R{th_deep}_ERR_{band}']:
+                    if col in ellipse.colnames:
+                        ellipse[col][censor] = np.nan
+            n_censored_total += n_censor
+            log.info(f'LMC/SMC isophote censoring: R{th_deep} censored for {n_censor} sources '
+                     f'(err_ratio > rad_ratio in {min_bands_fail}+ bands)')
+
+    #if n_censored_total > 0:
+    #    log.info(f'LMC/SMC isophote censoring: {n_censored_total} total censored '
+    #             f'out of {n_lmc_smc} LMC/SMC sources')
 
 
 def SGA_geometry(ellipse, region, radius_arcsec=False):
@@ -871,10 +1043,10 @@ def SGA_datamodel(ellipse, bands, all_bands, copy=True):
         ('BA_INIT', np.float32, None),
         ('PA_INIT', np.float32, u.degree),
         ('MAG_INIT', np.float32, u.mag),
-        ('DIAM_REF_INIT', 'U9', None),
+        ('DIAM_INIT_REF', 'U14', None),
         #('BAND', 'U1', None),
         ('EBV', np.float32, u.mag),
-        ('GROUP_ID', np.int32, None),
+        #('GROUP_ID', np.int32, None),
         ('GROUP_NAME', 'U10', None),
         ('GROUP_MULT', np.int16, None),
         ('GROUP_PRIMARY', bool, None),
@@ -983,16 +1155,10 @@ def _create_mock_ellipse_from_sample(grpsample):
 
     n = len(grpsample)
 
-    # Validate GROUP_ID consistency within grpsample
-    if 'GROUP_ID' in grpsample.colnames:
-        unique_gids = np.unique(grpsample['GROUP_ID'])
-        if len(unique_gids) > 1:
-            raise ValueError(f'Inconsistent GROUP_ID in grpsample: {unique_gids}')
-
     ellipse = Table()
 
     # Copy identifying columns
-    for col in [REFIDCOLUMN, 'SGAGROUP', 'OBJNAME', 'GROUP_ID', 'GROUP_NAME', 'GROUP_MULT',
+    for col in [REFIDCOLUMN, 'SGAGROUP', 'OBJNAME', 'GROUP_NAME', 'GROUP_MULT',
                 'GROUP_PRIMARY', 'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
                 'REGION', 'PGC', 'SAMPLE']:
         if col in grpsample.colnames:
@@ -1002,17 +1168,17 @@ def _create_mock_ellipse_from_sample(grpsample):
     ellipse['RA'] = grpsample['RA']
     ellipse['DEC'] = grpsample['DEC']
     ellipse['SMA_MOMENT'] = grpsample['DIAM'] * 60. / 2.  # arcmin -> arcsec radius
-    ellipse['BA_MOMENT'] = grpsample['BA'] if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
-    ellipse['PA_MOMENT'] = grpsample['PA'] if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['BA_MOMENT'] = grpsample['BA']# if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
+    ellipse['PA_MOMENT'] = grpsample['PA']# if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
 
     # Copy initial geometry columns
     ellipse['RA_INIT'] = grpsample['RA']
     ellipse['DEC_INIT'] = grpsample['DEC']
     ellipse['DIAM_INIT'] = grpsample['DIAM']
-    ellipse['BA_INIT'] = grpsample['BA'] if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
-    ellipse['PA_INIT'] = grpsample['PA'] if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
-    ellipse['MAG_INIT'] = grpsample['MAG'] if 'MAG' in grpsample.colnames else np.zeros(n, dtype=np.float32)
-    ellipse['DIAM_REF_INIT'] = grpsample['DIAM_REF'] if 'DIAM_REF' in grpsample.colnames else np.full(n, '', dtype='U9')
+    ellipse['BA_INIT'] = grpsample['BA']# if 'BA' in grpsample.colnames else np.ones(n, dtype=np.float32)
+    ellipse['PA_INIT'] = grpsample['PA']# if 'PA' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['MAG_INIT'] = grpsample['MAG']# if 'MAG' in grpsample.colnames else np.zeros(n, dtype=np.float32)
+    ellipse['DIAM_INIT_REF'] = grpsample['DIAM_REF']# if 'DIAM_REF' in grpsample.colnames else np.full(n, '', dtype='U9')
 
     ellipse['ELLIPSEBIT'] = np.full(n, ELLIPSEBIT['SKIPTRACTOR'], dtype=np.int32)
     ellipse['ELLIPSEMODE'] = np.zeros(n, dtype=np.int32)
@@ -1115,20 +1281,6 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
         ellipse_list.append(ellipse1)
 
     ellipse = vstack(ellipse_list) if ellipse_list else None
-
-    # Validate GROUP_ID matches grpsample
-    if False and ellipse is not None and 'GROUP_ID' in ellipse.colnames and 'GROUP_ID' in grpsample.colnames:
-        for i, row in enumerate(ellipse):
-            sgaid = row[REFIDCOLUMN]
-            match_idx = np.where(grpsample[REFIDCOLUMN] == sgaid)[0]
-            if len(match_idx) > 0:
-                expected_gid = grpsample['GROUP_ID'][match_idx[0]]
-                actual_gid = row['GROUP_ID']
-                if expected_gid != actual_gid:
-                    print(f'Ellipse file may be out of date: {gdir}')
-                    raise ValueError(f'GROUP_ID mismatch for SGAID {sgaid}: '
-                                     f'ellipse has {actual_gid}, grpsample has {expected_gid}. '
-                                     f'Ellipse file may be out of date: {gdir}')
 
     return ellipse
 
@@ -1284,9 +1436,9 @@ def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups
 
 
 def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
-                  region='dr11-south', test_bricks=False, galex=True, unwise=True,
-                  wisesize=False, no_groups=False, datadir=None, verbose=False,
-                  clobber=False):
+                  region='dr11-south', version=None, test_bricks=False, galex=True,
+                  unwise=True, wisesize=False, no_groups=False, datadir=None,
+                  verbose=False, clobber=False):
     """Build the final catalog.
 
     FIXME - combine the north and south
@@ -1338,8 +1490,9 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             datasets += ['galex']
             all_bands = np.append(all_bands, ['FUV', 'NUV'])
 
-        version = SGA_version()
-        #version = 'v0.10b'
+        if version is None:
+            version = SGA_version()
+
         if test_bricks:
             version = 'testbricks-v0.60'
             outprefix = 'SGA2025'
@@ -1431,8 +1584,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                     for count, grpindx in enumerate(indx):
                         #if count % 100 == 0:
                         #    log.info(f'Rank {rank:03} RA slice {raslice}: working on group {count+1:,d}/{len(indx):,d}')
-                        #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][igrp]].value
-                        grpsample = fullsample[fullsample['GROUP_ID'] == sample['GROUP_ID'][grpindx]]
+                        #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_NAME'] == sample['GROUP_NAME'][igrp]].value
+                        grpsample = fullsample[fullsample['GROUP_NAME'] == sample['GROUP_NAME'][grpindx]]
                         out1 = build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups)
                         #t1 = Table()
                         #t1['RA'] = [180.]
@@ -1465,8 +1618,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
             for count, grpindx in enumerate(indx):
                 #if count % 100 == 0:
                 #    log.info(f'Rank {rank:03} RA slice {raslice}: working on group {count+1:,d}/{len(indx):,d}')
-                #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_ID'] == sample['GROUP_ID'][igrp]].value
-                grpsample = fullsample[fullsample['GROUP_ID'] == sample['GROUP_ID'][grpindx]]
+                #refids = fullsample[REFIDCOLUMN][fullsample['GROUP_NAME'] == sample['GROUP_NAME'][igrp]].value
+                grpsample = fullsample[fullsample['GROUP_NAME'] == sample['GROUP_NAME'][grpindx]]
                 out1 = build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups)
                 out.append(out1)
             out = list(zip(*out))
@@ -2073,7 +2226,7 @@ def _log_object_modes(log, iobj, obj, use_radial_weight, use_tractor_geometry_ob
 def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     opt_pixscale, use_tractor_position, use_radial_weight,
     use_radial_weight_for_overlaps, SATELLITE_FRAC, get_geometry,
-    ellipses_overlap):
+    ellipses_overlap, allgalsrcs, opt_bands, tractorgeo):
     """
     Decide per-object:
       - use_radial_weight_obj[i]: whether to use radial weighting in moments
@@ -2082,6 +2235,10 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     Global knobs:
       - use_radial_weight: default radial-weighting preference (True/False)
       - use_radial_weight_for_overlaps: if False, *any* overlap disables radial weighting
+
+    Satellite classification:
+      - A galaxy is a satellite if it overlaps a larger/brighter neighbor AND
+        EITHER its size is < 50% of the neighbor OR its flux is < 10% of the neighbor
 
     """
     nsample = len(sample)
@@ -2100,10 +2257,7 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
     # - radial weighting follows global default
     # - Tractor-geometry override is off unless we decide "satellite"
     use_radial_weight_obj = np.full(nsample, bool(use_radial_weight), dtype=bool)
-    use_tractor_geometry_obj = np.zeros(nsample, bool)
-
-    if nsample == 1:
-        return use_radial_weight_obj, use_tractor_geometry_obj, satellite_obj, overlap_obj
+    use_tractor_geometry_obj = np.full(nsample, bool(tractorgeo), dtype=bool)
 
     for iobj in range(nsample):
         bx_i, by_i, sma_i, ba_i, pa_i = geo_overlap[iobj, :]
@@ -2133,8 +2287,24 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
 
         overlap_obj[iobj] = True
 
+        # Check if this is a satellite: smaller OR much fainter than any overlapping neighbor
         max_sma_neighbor = max(geo_overlap[jobj, 2] for jobj in overlapping_indices)
-        is_satellite = (sma_i < SATELLITE_FRAC * max_sma_neighbor)
+
+        # Size criterion: < 50% of largest overlapping neighbor
+        size_ratio = sma_i / max_sma_neighbor if max_sma_neighbor > 0 else 1.0
+        is_small = size_ratio < 0.5
+
+        # Flux criterion: < 10% of brightest overlapping neighbor (i.e., neighbor is > 10× brighter)
+        flux_i = sample['OPTFLUX'][iobj]
+        if flux_i > 0:
+            flux_ratios = [sample['OPTFLUX'][jobj] / flux_i for jobj in overlapping_indices]
+            max_flux_ratio = max(flux_ratios) if flux_ratios else 0
+            is_faint = max_flux_ratio > 10.0
+        else:
+            is_faint = False
+
+        # Satellite if EITHER small OR faint compared to overlapping neighbor
+        is_satellite = is_small or is_faint
 
         if is_satellite:
             satellite_obj[iobj] = True
@@ -2151,7 +2321,123 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
         # Tractor geometry only for satellites
         use_tractor_geometry_obj[iobj] = bool(is_satellite)
 
+    # Quick cluster heuristic: count bright extended sources nearby
+    if len(allgalsrcs) > 0:
+        for iobj in range(nsample):
+            if use_radial_weight_obj[iobj]:  # Only check if radial weighting is on
+                # Count bright extended sources within 2× diameter
+                search_radius = sample['DIAM_INIT'][iobj] * 60.0 # [arcsec]
+
+                n_bright_nearby = 0
+                for src in allgalsrcs:
+                    sep_arcsec = arcsec_between(
+                        sample['RA_INIT'][iobj], sample['DEC_INIT'][iobj],
+                        src.ra, src.dec)
+                    if sep_arcsec < search_radius:
+                        # Count sources with > 10% flux
+                        flux_src = max([getattr(src, f'flux_{band}') for band in opt_bands])
+                        if flux_src > 0.1 * sample['OPTFLUX'][iobj]:
+                            n_bright_nearby += 1
+
+                # Disable radial weighting if many bright companions (cluster environment)
+                if n_bright_nearby >= 3:
+                    use_radial_weight_obj[iobj] = False
+                    log.info(f'Galaxy {iobj+1} [{sample["OBJNAME"][iobj]}]: '
+                             f'possible cluster: {n_bright_nearby} bright companions '
+                             f'within {search_radius/60:.1f}\' arcmin.')
+
     return use_radial_weight_obj, use_tractor_geometry_obj, satellite_obj, overlap_obj
+
+
+def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
+                                use_tractor_geometry_obj, use_tractor_position_obj,
+                                tractorgeo, get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
+                                in_ellipse_mask, width, xgrid, ygrid_flip, sz,
+                                current_bx=None, current_by=None):
+    """Build protected core mask for reference (SGA) sources.
+
+    For each reference source, creates a compact elliptical core mask that
+    should not be unmasked even when inside the current galaxy's ellipse.
+    This prevents residual flux from other SGA sources from contaminating
+    moment calculations.
+
+    Parameters
+    ----------
+    iobj : int
+        Index of current galaxy being processed
+    refindx : array
+        Indices of all other reference sources (excludes iobj)
+    sample : Table
+        Sample table with SGA_MASK, etc.
+    samplesrcs : list
+        List of Tractor source objects
+    geo_final : array
+        Final geometry array [bx, by, sma, ba, pa] for completed objects
+    current_bx, current_by : float, optional
+        Current galaxy center for distance-based core sizing.
+        If None, uses fixed core fraction.
+
+    Returns
+    -------
+    core_mask : ndarray (bool)
+        2D mask with protected cores for all reference sources other
+        than the current galaxy.
+
+    """
+    core_mask = np.zeros(sz, bool)
+
+    if len(refindx) == 0:
+        return core_mask
+
+    for indx in refindx:
+
+        # Get geometry for this reference source
+        if indx < iobj:
+            # Previously completed: use stored final geometry
+            [bxr, byr, smar_moment, bar, par] = geo_final[indx, :]
+            smar = max(max(smar_moment, SMA_MASK_MIN_PIX),
+                      sample['SMA_MASK'][indx] / opt_pixscale)
+        else:
+            # Not yet completed: get from table or Tractor
+            if tractorgeo or use_tractor_geometry_obj[indx]:
+                if samplesrcs[indx] is None:
+                    bxr, byr, smar, bar, par = get_geometry(
+                        opt_pixscale, table=sample[indx],
+                        use_sma_mask=True)
+                else:
+                    bxr, byr, smar, bar, par = get_geometry(
+                        opt_pixscale, tractor=samplesrcs[indx])
+            else:
+                bxr, byr, smar, bar, par = get_geometry(
+                    opt_pixscale, table=sample[indx],
+                    ref_tractor=samplesrcs[indx],
+                    use_tractor_position=use_tractor_position_obj[indx],
+                    use_sma_mask=True)
+
+        core_frac = 0.3
+
+        ## Distance-based core sizing (if current position provided)
+        #if current_bx is not None and current_by is not None:
+        #    sep_pix = np.hypot(current_bx - bxr, current_by - byr)
+        #    sep_arcsec = sep_pix * opt_pixscale
+        #
+        #    # Very close: larger core; separated: smaller core
+        #    if sep_arcsec < 1.5 * smar * opt_pixscale:
+        #        core_frac = 0.5  # 50% for close companions
+        #    else:
+        #        core_frac = 0.25  # 25% for separated companions
+        #else:
+        #    # No distance info: use moderate core
+        #    core_frac = 0.3
+
+        # minimum masking radius of XX arcsec
+        smar_core = max(core_frac * smar, 10. / opt_pixscale)
+        core_mask_one = in_ellipse_mask(bxr, width-byr, smar_core,
+                                        bar*smar_core, par,
+                                        xgrid, ygrid_flip)
+        core_mask = np.logical_or(core_mask, core_mask_one)
+
+    return core_mask
 
 
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
@@ -2160,7 +2446,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          radial_power=0.7, SATELLITE_FRAC=0.3, mask_minor_galaxies=False,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True, fixgeo=False,
-                         use_radial_weight_for_overlaps=True, use_tractor_geometry=True,
+                         tractorgeo=False, use_radial_weight_for_overlaps=True,
                          cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
@@ -2173,7 +2459,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     *disable* radial weighting for its moments.
 
     """
-    from astrometry.util.starutil_numpy import arcsec_between
     from SGA.geometry import in_ellipse_mask, ellipses_overlap
     from SGA.util import ivar2var
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
@@ -2443,7 +2728,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         # Flux-based classification of extended Tractor galaxies.
         Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
-                #(tractor.shape_r > 0.1) *
                 (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
         allgalsrcs = tractor[Igal]
     else:
@@ -2490,7 +2774,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     if mask_nearby:
         for mask_one in mask_nearby:
             ba, pa = mask_one['BA'], mask_one['PA']
-            sma_mask_nearby = mask_one['DIAM'] * 60. / 2. / opt_pixscale
+            sma_mask_nearby = mask_one['DIAM'] * 60. / opt_pixscale # / 2. double the mask!
             (_, bxm, bym) = opt_wcs.wcs.radec2pixelxy(mask_one['RA'], mask_one['DEC'])
             I = in_ellipse_mask(bxm-1., width-(bym-1.), sma_mask_nearby,
                                 sma_mask_nearby*ba, pa, xgrid, ygrid_flip)
@@ -2519,7 +2803,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             use_tractor_position=use_tractor_position, use_radial_weight=use_radial_weight,
             use_radial_weight_for_overlaps=use_radial_weight_for_overlaps,
             SATELLITE_FRAC=SATELLITE_FRAC, get_geometry=get_geometry,
-            ellipses_overlap=ellipses_overlap)
+            ellipses_overlap=ellipses_overlap, allgalsrcs=allgalsrcs,
+            opt_bands=opt_bands, tractorgeo=tractorgeo)
+
 
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
@@ -2535,7 +2821,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                               ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'])
     for iobj in range(nsample):
         # If TRACTORGEO is set, force Tractor-based geometry for this object.
-        if (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0:
+        if tractorgeo or ((sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0):
             use_tractor_geometry_obj[iobj] = True
             # Geometry is coming from Tractor, so radial weighting is irrelevant.
             use_radial_weight_obj[iobj] = False
@@ -2556,8 +2842,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             not fixgeo):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['MOMENTPOS']
 
-        if fixgeo or (sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO'] != 0):
+        if fixgeo or ((sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['FIXGEO']) != 0):
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FIXGEO']
+
+        if tractorgeo or ((sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['TRACTORGEO']) != 0):
+            sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
         if sample['ELLIPSEMODE'][iobj] & ELLIPSEMODE['LESSMASKING'] != 0:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LESSMASKING']
@@ -2619,7 +2908,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # always use get_geometry with use_sma_mask=True for
                 # future refs; don't use input_geo_initial for
                 # reference objects.
-                if use_tractor_geometry and use_tractor_geometry_obj[indx]:
+                if tractorgeo or use_tractor_geometry_obj[indx]:
                     if refsrc is None:
                         bxr, byr, smar, bar, par = get_geometry(
                             opt_pixscale, table=refsample,
@@ -2700,8 +2989,30 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # current ellipse mask of the current object...
             iter_brightstarmask = np.copy(opt_brightstarmask)
             iter_refmask = np.copy(opt_refmask)
+
+            # Build protected core mask for ALL other reference sources
+            iter_refmask_core = _build_reference_core_mask(
+                iobj, refindx, sample, samplesrcs, geo_final,
+                tractorgeo, use_tractor_geometry_obj, use_tractor_position_obj,
+                get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
+                in_ellipse_mask, width, xgrid, ygrid_flip, sz,
+                current_bx=bx, current_by=by)
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(iter_refmask_core, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
+
+            # Unmask reference sources inside the current ellipse EXCEPT protected cores.
             iter_brightstarmask[inellipse] = False
             iter_refmask[inellipse] = False
+
+            # Restore protected cores
+            iter_refmask = np.logical_or(iter_refmask, iter_refmask_core)
+
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(iter_refmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
 
             # Expand the brightstarmask veto if the NEARSTAR or GCLPNE
             # bits are set (factor of XX), with a floor for very small
@@ -2777,8 +3088,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         opt_models=None, mask_allgals=False)
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
-                # Optionally do not mask within the current SGA ellipse itself.
-                opt_galmask[inellipse] = False
+                ## Optionally do not mask within the current SGA ellipse itself.
+                #opt_galmask[inellipse] = False
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -2807,7 +3118,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if fixgeo or (obj['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0):
                 log.info('FIXGEO bit set; fixing the elliptical geometry.')
                 geo_iter = geo_init
-            elif (obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0 and objsrc is not None:
+            elif tractorgeo or ((obj['ELLIPSEMODE'] & ELLIPSEMODE['TRACTORGEO']) != 0) and objsrc is not None:
                 log.info('TRACTORGEO bit set; fixing the elliptical geometry.')
                 geo_iter = get_geometry(opt_pixscale, tractor=objsrc)
             elif not update_geometry:
@@ -2830,7 +3141,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 geo_iter[2] = sma_new
             else:
                 # Optionally use Tractor for small overlapping satellites.
-                if use_tractor_geometry and use_tractor_geometry_obj[iobj]:
+                if tractorgeo or use_tractor_geometry_obj[iobj]:
                     if objsrc is None or objsrc.type == 'PSF':
                         input_ba_pa = None
                     else:
@@ -3001,8 +3312,20 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                                     pa, xgrid, ygrid_flip)
         final_brightstarmask = np.copy(opt_brightstarmask)
         final_refmask = np.copy(opt_refmask_all[iobj])
+
+        # Build protected cores for final masks
+        final_refmask_core = _build_reference_core_mask(
+            iobj, np.delete(np.arange(nsample), iobj), sample,
+            samplesrcs, geo_final, tractorgeo, use_tractor_geometry_obj,
+            use_tractor_position_obj, get_geometry, opt_pixscale,
+            SMA_MASK_MIN_PIX, in_ellipse_mask, width, xgrid, ygrid_flip,
+            sz, current_bx=bx, current_by=by)
+
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
+
+        # Restore protected reference cores
+        final_refmask = np.logical_or(final_refmask, final_refmask_core)
 
         if (sample['SAMPLE'][iobj] & (SAMPLE['INSTAR'] | SAMPLE['NEARSTAR'] | SAMPLE['GCLPNE'])) != 0:
             if 1.5*sma_mask*opt_pixscale < 10.: # [arcsec]
@@ -3064,12 +3387,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     mask_allgals=False)
                 opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
-            # Optionally do not mask within the current SGA ellipse itself.
-            #import matplotlib.pyplot as plt
-            #plt.clf()
-            #plt.imshow(opt_models_obj[1, :, :], origin='lower')
-            #plt.savefig('ioannis/tmp/junk.png')
-            opt_galmask[inellipse] = False
+            ## Optionally do not mask within the current SGA ellipse itself.
+            ##import matplotlib.pyplot as plt
+            ##plt.clf()
+            ##plt.imshow(opt_models_obj[1, :, :], origin='lower')
+            ##plt.savefig('ioannis/tmp/junk.png')
+            #opt_galmask[inellipse] = False
 
         # apply the mask_nearby mask
         opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -3086,7 +3409,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         if not use_radial_weight_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['NORADWEIGHT']
 
-        if use_tractor_geometry and use_tractor_geometry_obj[iobj]:
+        if tractorgeo or use_tractor_geometry_obj[iobj]:
             sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['TRACTORGEO']
 
         # Overlap bit. Note! use sma_mask because on the second pass
@@ -3533,7 +3856,8 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             tractorfile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["tractor"]}.fits')
 
             cols = ['ra', 'dec', 'bx', 'by', 'type', 'ref_cat', 'ref_id',
-                    'sersic', 'shape_r', 'shape_e1', 'shape_e2', 'maskbits']
+                    'sersic', 'shape_r', 'shape_e1', 'shape_e2', 'maskbits',
+                    'fitbits']
             cols += [f'flux_{filt}' for filt in opt_bands]
             cols += [f'flux_ivar_{filt}' for filt in opt_bands]
             cols += [f'nobs_{filt}' for filt in opt_bands]

@@ -347,13 +347,13 @@ def main():
         from SGA.SGA import build_catalog
         build_catalog(sample, fullsample, comm=comm, bands=bands, region=args.region,
                       datadir=datadir, no_groups=no_groups, unwise=args.unwise, galex=args.galex,
-                      wisesize=args.wisesize, verbose=args.verbose, test_bricks=args.test_bricks,
-                      clobber=args.clobber)
+                      version=args.version, wisesize=args.wisesize, verbose=args.verbose,
+                      test_bricks=args.test_bricks, clobber=args.clobber)
         return
 
     # need at least one keyword at this point
     if (args.coadds is False and args.ellipse is False and args.htmlplots is False and
-        args.htmlindex is False):
+        args.htmlindex is False and args.parse_tractor_logs is False):
         log.warning('Need to specify at least one of --coadds, --ellipse, or ' + \
                     '--htmlplots; nothing to do.')
         return
@@ -361,6 +361,12 @@ def main():
     # Determine how many more galaxies we need to analyze and divide them across
     # ranks.
     if rank == 0:
+        if args.parse_tractor_logs:
+            from glob import glob
+            from SGA.mpi import parse_tractor_log
+            pdb.set_trace()
+            return
+
         suffix, groups, _, fail, wait = missing_files(
             sample=sample, region=args.region, bricks=bricks,
             coadds=args.coadds, ellipse=args.ellipse,
@@ -570,29 +576,21 @@ def main():
             else:
                 force_psf_detection = False
 
-            ## for very large mosaics, turn off iterative source detection and increase nsigma
-            #if onegal[DIAMCOLUMN] > 5.:
-            #    no_iterative = True
-            #    if args.nsigma is None:
-            #        nsigma = 10
-            #    else:
-            #        nsigma = args.nsigma
-            #    fit_on_coadds = True
-            #else:
-            #    no_iterative = args.no_iterative
-            #    nsigma = args.nsigma
-            #    fit_on_coadds = args.fit_on_coadds
-
             no_iterative = True
-            nsigma = 8
+            nsigma = 6.0
             saddle_fraction = 0.2
             saddle_min = 4.
             fit_on_coadds = True
+            no_segmentation = True
+            bright_masking = True
             #fit_on_coadds = args.fit_on_coadds
+            #bright_masking = args.bright_masking
+            #no_segmentation = args.no_segmentation
 
             if not just_cutouts:
                 #log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
-                log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                #log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                pass
 
             if args.debug:
                 err, _ = custom_coadds(
@@ -601,9 +599,9 @@ def main():
                     unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                     nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
                     just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
-                    no_iterative=no_iterative, no_segmentation=args.no_segmentation,
-                    fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
-                    ivar_cutouts=ivar_cutouts,
+                    no_iterative=no_iterative, no_segmentation=no_segmentation,
+                    fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
+                    just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
                     force=args.force, cleanup=args.cleanup,
@@ -620,9 +618,9 @@ def main():
                         unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
                         nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
                         just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
-                        no_iterative=no_iterative, no_segmentation=args.no_segmentation,
-                        fit_on_coadds=fit_on_coadds, just_cutouts=just_cutouts,
-                        ivar_cutouts=ivar_cutouts,
+                        no_iterative=no_iterative, no_segmentation=no_segmentation,
+                        fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
+                        just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,
                         force=args.force, cleanup=args.cleanup,
@@ -703,7 +701,8 @@ def main():
                                        run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
                                        apertures=APERTURES, nmonte=args.nmonte, seed=args.seed,
                                        mask_nearby=mask_nearby, use_tractor_position=args.use_tractor_position,
-                                       fixgeo=fixgeo, use_radial_weight=args.use_radial_weight,
+                                       fixgeo=fixgeo, tractorgeo=args.tractorgeo,
+                                       use_radial_weight=args.use_radial_weight,
                                        pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
                                        galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                        galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,

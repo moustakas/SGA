@@ -401,10 +401,10 @@ def get_tractor_ellipse(r50, e1, e2):
     """
     e = np.hypot(e1, e2)
     ba = (1. - e) / (1. + e)
-    #e = (ba + 1.) / (ba - 1.)
+    #e = (1 - ba) / (1 + ba)
 
     phi = -np.rad2deg(np.arctan2(e2, e1) / 2.)
-    #angle = np.deg2rad(-2 * phi)
+    #angle = 2 * np.deg2rad(pa - 180.)
     #e1 = e * np.cos(angle)
     #e2 = e * np.sin(angle)
 

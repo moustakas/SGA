@@ -62,6 +62,7 @@ def mpi_args():
     parser.add_argument('--momentpos', dest='use_tractor_position', action='store_false',
                         help='Use the light-weighted (not Tractor) position during ellipse-fitting.')
     parser.add_argument('--fixgeo', action='store_true', help='Use fixed ellipse geometry (irrespective of if the ELLIPSEMODE bit is set.')
+    parser.add_argument('--tractorgeo', action='store_true', help='Use the Tractor geometry (irrespective of if the ELLIPSEMODE bit is set.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
@@ -69,10 +70,12 @@ def mpi_args():
 
     parser.add_argument('--diameter-file', default=None, type=str, help='Write a diameter file for use with generate_sga_jobs.sh')
     parser.add_argument('--galaxylist-file', default=None, type=str, help='Write a galaxy list file for use with generate_sga_jobs.sh')
+    parser.add_argument('--parse-tractor-logs', action='store_true', help='Parse existing Tractor logs.')
 
     #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
     parser.add_argument('--skip-tractor', action='store_true', help='With --coadds or --ellipse, do not run Tractor.')
     parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
+    parser.add_argument('--bright-masking', action='store_true', help='Mask bright sources not on the blob being fitted.')
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
