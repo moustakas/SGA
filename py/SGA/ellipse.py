@@ -1545,7 +1545,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 continue
 
             # estimate R(26) from first-pass profiles
-            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE', 'ELLIPSEBIT'])
+            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE', 'ELLIPSEBIT', 'SAMPLE'])
             for thresh in sbthresh:
                 for filt in bands:
                     col = f'R{thresh:.0f}_{filt.upper()}'
@@ -1593,6 +1593,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
         # nice summary
         for iobj, (res, obj) in enumerate(zip(results[0], sample)):
+            res['SAMPLE'] = obj['SAMPLE']
             res['ELLIPSEMODE'] = obj['ELLIPSEMODE']
             res['ELLIPSEBIT'] = obj['ELLIPSEBIT']
             res['SMA_MOMENT'] = obj['SMA_MOMENT']

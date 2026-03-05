@@ -729,7 +729,7 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
     # Censor the 26 mag/arcsec2 isophotes if the FAILGEO bit is set
     # (near a bright star).
     if 'ELLIPSEBIT' in ellipse.colnames:
-        I = ellipse['ELLIPSEBIT'] & (ELLIPSEBIT['FAILGEO'] | ELLIPSEBIT['NORADWEIGHT']) != 0
+        I = (ellipse['ELLIPSEBIT'] & (ELLIPSEBIT['FAILGEO'] | ELLIPSEBIT['NORADWEIGHT'])) != 0
         if np.any(I):
             r26_cols = [col for col in ellipse.colnames if col.startswith('R26_')]
             for col in r26_cols:
@@ -754,7 +754,33 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
                 for col in z_cols:
                     ellipse[col] = np.where(has_gri, np.nan, ellipse[col])
 
-    d26, d26_err, d26_ref, d26_weight = infer_best_r26(ellipse)
+    # For LMC/SMC sources, censor isophotes where errors grow faster
+    # than radii (indicates profile flattening due to unresolved
+    # stellar background).
+    is_lmc_smc = np.zeros(len(ellipse), dtype=bool)
+    if 'SAMPLE' in ellipse.colnames:
+        is_lmc_smc = (ellipse['SAMPLE'] & SAMPLE['MCLOUDS']) != 0
+        if np.any(is_lmc_smc):
+            _censor_flattened_isophotes(ellipse, is_lmc_smc, min_bands_fail=2)
+
+    # Initialize output arrays
+    d26 = np.zeros(len(ellipse), dtype=np.float64)
+    d26_err = np.zeros(len(ellipse), dtype=np.float64)
+    d26_ref = np.empty(len(ellipse), dtype='<U6')
+    d26_weight = np.zeros(len(ellipse), dtype=np.float64)
+
+    # For LMC/SMC sources, use deepest uncensored isophote directly (no extrapolation)
+    if np.any(is_lmc_smc):
+        d26[is_lmc_smc], d26_err[is_lmc_smc], d26_ref[is_lmc_smc], d26_weight[is_lmc_smc] = \
+            _lmc_smc_diameter(ellipse, is_lmc_smc)
+
+    # For non-LMC/SMC sources, use calibration-based inference
+    if np.any(~is_lmc_smc):
+        d26_cal, d26_err_cal, d26_ref_cal, d26_weight_cal = infer_best_r26(ellipse)
+        d26[~is_lmc_smc] = d26_cal[~is_lmc_smc]
+        d26_err[~is_lmc_smc] = d26_err_cal[~is_lmc_smc]
+        d26_ref[~is_lmc_smc] = d26_ref_cal[~is_lmc_smc]
+        d26_weight[~is_lmc_smc] = d26_weight_cal[~is_lmc_smc]
 
     I = np.isin(d26_ref, 'moment')
     if np.any(I):
@@ -774,9 +800,9 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
     # SMA_MOMENT will be used and D26 will be significantly larger
     # than its initial size.)
     if 'ELLIPSEBIT' in ellipse.colnames:
-        I = (ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR'] != 0) & (d26_ref == 'mom')
+        I = ((ellipse['ELLIPSEBIT'] & ELLIPSEBIT['SKIPTRACTOR']) != 0) & (d26_ref == 'mom')
         if np.any(I):
-            d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60. # [arcmin]
+            d26[I] = ellipse['SMA_MOMENT'][I] * 2. / 60.
             d26_err[I] = 0.
             d26_ref[I] = 'ini'
             d26_weight[I] = 1.
@@ -807,6 +833,142 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
         return r26, r26_err, d26_ref, d26_weight
     else:
         return d26, d26_err, d26_ref, d26_weight
+
+
+def _lmc_smc_diameter(ellipse, mask):
+    """Compute diameter for LMC/SMC sources using deepest uncensored isophote.
+
+    Uses the r-band radius at the deepest available threshold directly,
+    falling back to i, z, g bands in that order. No calibration extrapolation
+    is applied since the profiles are affected by stellar crowding.
+
+    Parameters
+    ----------
+    ellipse : Table
+        Ellipse table (after censoring flattened isophotes).
+    mask : ndarray
+        Boolean mask of LMC/SMC sources.
+
+    Returns
+    -------
+    d26, d26_err, d26_ref, d26_weight : ndarrays
+        Diameter (arcmin), error, reference channel, and weight.
+
+    """
+    n = len(ellipse)
+    d26 = np.zeros(n, dtype=np.float64)
+    d26_err = np.zeros(n, dtype=np.float64)
+    d26_ref = np.full(n, '', dtype='<U6')
+    d26_weight = np.zeros(n, dtype=np.float64)
+
+    # Priority: deepest threshold first, r-band preferred
+    thresholds = [26, 25, 24, 23, 22]
+    bands = ['R', 'I', 'Z', 'G']
+
+    idx = np.where(mask)[0]
+    for i in idx:
+        found = False
+        for th in thresholds:
+            if found:
+                break
+            for band in bands:
+                rcol = f'R{th}_{band}'
+                ecol = f'R{th}_ERR_{band}'
+                if rcol not in ellipse.colnames:
+                    continue
+                r = ellipse[rcol][i]
+                if np.isfinite(r) and r > 0:
+                    e = ellipse[ecol][i] if ecol in ellipse.colnames else 0.0
+                    d26[i] = 2.0 * r / 60.0  # radius arcsec -> diameter arcmin
+                    d26_err[i] = 2.0 * e / 60.0 if np.isfinite(e) else 0.0
+                    d26_ref[i] = f'{band.lower()}{th}'
+                    d26_weight[i] = 1.0
+                    found = True
+                    break
+
+        # Fallback to moment if no isophotal radii available
+        if not found:
+            sma = ellipse['SMA_MOMENT'][i]
+            if np.isfinite(sma) and sma > 0:
+                d26[i] = 2.0 * sma / 60.0
+                d26_err[i] = 0.0
+                d26_ref[i] = 'mom'
+                d26_weight[i] = 1.0
+
+    n_lmc = int(np.sum(mask))
+    refs, counts = np.unique(d26_ref[mask], return_counts=True)
+    ref_str = ", ".join(f"{r}={c}" for r, c in zip(refs, counts) if r)
+    log.info(f'LMC/SMC diameters: N={n_lmc}, refs: {ref_str}')
+
+    return d26, d26_err, d26_ref, d26_weight
+
+
+def _censor_flattened_isophotes(ellipse, mask, min_bands_fail=2):
+    """Censor isophotes where errors grow faster than radii.
+
+    For LMC/SMC sources, surface brightness profiles can flatten due to
+    unresolved stellar backgrounds. This manifests as errors growing faster
+    than radii between adjacent thresholds. When detected, we censor the
+    fainter isophote to prevent unreliable extrapolation.
+
+    Parameters
+    ----------
+    ellipse : Table
+        Ellipse table (modified in place).
+    mask : ndarray
+        Boolean mask of rows to check (e.g., LMC/SMC sources).
+    min_bands_fail : int
+        Minimum number of bands that must fail the heuristic to censor.
+
+    """
+    bands = ['G', 'R', 'I', 'Z']
+    threshold_pairs = [(26, 25), (25, 24), (24, 23)]
+
+    n_lmc_smc = int(np.sum(mask))
+    n_censored_total = 0
+
+    for th_deep, th_shallow in threshold_pairs:
+        n_fail = np.zeros(len(ellipse), dtype=int)
+
+        for band in bands:
+            r_deep_col = f'R{th_deep}_{band}'
+            r_shallow_col = f'R{th_shallow}_{band}'
+            e_deep_col = f'R{th_deep}_ERR_{band}'
+            e_shallow_col = f'R{th_shallow}_ERR_{band}'
+
+            if not all(c in ellipse.colnames for c in [r_deep_col, r_shallow_col, e_deep_col, e_shallow_col]):
+                continue
+
+            r_deep = np.asarray(ellipse[r_deep_col], dtype=float)
+            r_shallow = np.asarray(ellipse[r_shallow_col], dtype=float)
+            e_deep = np.asarray(ellipse[e_deep_col], dtype=float)
+            e_shallow = np.asarray(ellipse[e_shallow_col], dtype=float)
+
+            valid = (mask & (r_deep > 0) & (r_shallow > 0) &
+                     (e_deep > 0) & (e_shallow > 0) &
+                     np.isfinite(r_deep) & np.isfinite(r_shallow) &
+                     np.isfinite(e_deep) & np.isfinite(e_shallow))
+
+            rad_ratio = np.where(valid, r_deep / r_shallow, 1.0)
+            err_ratio = np.where(valid, e_deep / e_shallow, 1.0)
+
+            n_fail += (valid & (err_ratio > rad_ratio)).astype(int)
+
+        # Censor the deeper threshold if enough bands fail
+        censor = mask & (n_fail >= min_bands_fail)
+        n_censor = int(np.sum(censor))
+        if n_censor > 0:
+            for band in bands:
+                for col in [f'R{th_deep}_{band}', f'R{th_deep}_ERR_{band}']:
+                    if col in ellipse.colnames:
+                        ellipse[col][censor] = np.nan
+            n_censored_total += n_censor
+            log.info(f'LMC/SMC isophote censoring: R{th_deep} censored for {n_censor} sources '
+                     f'(err_ratio > rad_ratio in {min_bands_fail}+ bands)')
+
+    #if n_censored_total > 0:
+    #    log.info(f'LMC/SMC isophote censoring: {n_censored_total} total censored '
+    #             f'out of {n_lmc_smc} LMC/SMC sources')
 
 
 def SGA_geometry(ellipse, region, radius_arcsec=False):
