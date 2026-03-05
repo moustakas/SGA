@@ -373,7 +373,7 @@ def main():
             htmlplots=args.htmlplots, htmlindex=args.htmlindex,
             no_groups=no_groups, clobber=args.clobber,
             verbose=args.verbose, datadir=datadir, htmldir=htmldir,
-            size=size, mp=args.mp)
+            size=size, mp=args.mp, redo_failures=args.redo_failures)
 
         if args.htmlindex:
             from SGA.html import make_html

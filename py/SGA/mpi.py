@@ -73,6 +73,7 @@ def mpi_args():
     parser.add_argument('--parse-tractor-logs', action='store_true', help='Parse existing Tractor logs.')
 
     #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
+    parser.add_argument('--redo-failures', action='store_true', help='Select (and re-queue) just failures.')
     parser.add_argument('--skip-tractor', action='store_true', help='With --coadds or --ellipse, do not run Tractor.')
     parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
     parser.add_argument('--bright-masking', action='store_true', help='Mask bright sources not on the blob being fitted.')

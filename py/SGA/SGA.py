@@ -239,7 +239,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
                   clobber=False, clobber_overwrite=None,
                   no_groups=False, verbose=False, datadir=None, htmldir=None,
-                  size=1, mp=1):
+                  size=1, mp=1, redo_failures=False):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -355,7 +355,12 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     iwait = np.where(todo == 'wait')[0]
 
     if len(ifail) > 0:
-        fail_indices = [indices[ifail]]
+        if redo_failures:
+            log.info(f'Resetting {len(ifail):,d} failures.')
+            itodo = ifail
+            fail_indices = [np.array([], int)]
+        else:
+            fail_indices = [indices[ifail]]
     else:
         fail_indices = [np.array([], int)]
 
