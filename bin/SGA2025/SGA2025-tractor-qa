@@ -16,6 +16,8 @@ Usage:
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v0.80 --region=dr11-south --version=v0.80 --final-sample \
     --track=not-lvd --mp=32 --mindiam=2 --maxdiam=5
 
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.1 --region=dr11-south --version=v1.1 --mp=32 --custom-selection
+
 """
 
 import os
@@ -725,6 +727,10 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
     # Get paths for all objects
     showsample = fullsample if not no_groups else sample
 
+    # Ensure sorted by GROUP_NAME then diameter for display order
+    sort_idx = np.lexsort((showsample[diamcolumn], showsample['GROUP_NAME']))
+    showsample = showsample[sort_idx]
+
     galaxy, galaxydir = get_galaxy_galaxydir(
         showsample, region=region, group=not no_groups, datadir=datadir)
     galaxy = np.atleast_1d(galaxy)
@@ -860,7 +866,7 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                mindiam=0.5, maxdiam=5.0, track='all', tier='all',
                final_sample=False, no_groups=False, show_group=True,
                show_tractor_ellipse=True, show_initial_ellipse=True,
-               use_gmbins=True,
+               use_gmbins=True, custom_selection=False,
                ncol=4, nrow=2, nperpdf=4096, mp=1, verbose=False,
                first=None, last=None, galaxylist=None):
     """
@@ -909,6 +915,11 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         version=version, no_groups=no_groups, final_sample=final_sample,
         mindiam=0., maxdiam=1e6  # We'll filter later
     )
+
+    if custom_selection:
+        I = np.char.startswith(fullsample['OBJNAME'], 'DESI')
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     # Determine catalog type and diameter column
     has_ellipsebit = 'ELLIPSEBIT' in fullsample.colnames
@@ -978,8 +989,12 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
 
                 log.info(f'{proc_track}/tier{proc_tier}/{gm_bin}: {nobj:,d} objects')
 
-                # Sort by diameter
-                gm_sample = gm_sample[np.argsort(gm_sample[diamcolumn])]
+                ## Sort by diameter
+                #gm_sample = gm_sample[np.argsort(gm_sample[diamcolumn])]
+
+                # Sort by GROUP_NAME first (to keep group members together), then by diameter
+                sort_idx = np.lexsort((gm_sample[diamcolumn], gm_sample['GROUP_NAME']))
+                gm_sample = gm_sample[sort_idx]
 
                 # Propagate CUTOUT flags from filtered_fullsample
                 gm_sample = gm_sample.copy()
@@ -1009,6 +1024,10 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                     # Get all group members for annotation (from unfiltered fullsample)
                     this_fullsample = gm_fullsample_for_annotation[np.isin(
                         gm_fullsample_for_annotation['GROUP_NAME'], this_sample['GROUP_NAME'])]
+
+                    # Re-sort to keep group members together, then by diameter
+                    sort_idx = np.lexsort((this_fullsample[diamcolumn], this_fullsample['GROUP_NAME']))
+                    this_fullsample = this_fullsample[sort_idx]
 
                     # Generate filenames
                     pdffile = get_pdf_filename(
@@ -1070,9 +1089,9 @@ Examples:
     parser.add_argument('--datadir', type=str, default=None,
                         help='Override $SGA_DATA_DIR')
 
-    parser.add_argument('--mindiam', type=float, default=0.5,
+    parser.add_argument('--mindiam', type=float, default=0.,
                         help='Minimum diameter in arcmin (default: 0.5)')
-    parser.add_argument('--maxdiam', type=float, default=5.0,
+    parser.add_argument('--maxdiam', type=float, default=1e3,
                         help='Maximum diameter in arcmin (default: 5.0)')
 
     parser.add_argument('--track', type=str, default='all',
@@ -1081,6 +1100,8 @@ Examples:
     parser.add_argument('--tier', type=str, default='all',
                         help='Tier to process: 1, 2, 3, or all (default: all)')
 
+    parser.add_argument('--custom-selection', action='store_true',
+                        help='Custom selection (adjust code).')
     parser.add_argument('--final-sample', action='store_true',
                         help='Read ellipse catalog (D26) instead of parent (DIAM)')
     parser.add_argument('--no-groups', action='store_true',
@@ -1129,6 +1150,7 @@ Examples:
         use_gmbins=args.use_gmbins,
         show_tractor_ellipse=args.show_tractor_ellipse,
         show_initial_ellipse=args.show_initial_ellipse,
+        custom_selection=args.custom_selection,
         ncol=args.ncol,
         nrow=args.nrow,
         nperpdf=args.nperpdf,
