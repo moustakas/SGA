@@ -493,7 +493,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
+    if False:#True:
         print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
         adds = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/adds.csv', format='csv')
         updates = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/updates.csv', format='csv')
@@ -522,7 +522,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
-        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
+        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
+        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
         #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
         testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
         log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
