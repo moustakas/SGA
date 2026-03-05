@@ -2998,8 +2998,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Build protected core mask for ALL other reference sources
             iter_refmask_core = _build_reference_core_mask(
                 iobj, refindx, sample, samplesrcs, geo_final,
-                tractorgeo, use_tractor_geometry_obj, use_tractor_position_obj,
-                get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
+                use_tractor_geometry_obj, use_tractor_position_obj,
+                tractorgeo, get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                 current_bx=bx, current_by=by)
             #import matplotlib.pyplot as plt
@@ -3321,10 +3321,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         # Build protected cores for final masks
         final_refmask_core = _build_reference_core_mask(
             iobj, np.delete(np.arange(nsample), iobj), sample,
-            samplesrcs, geo_final, tractorgeo, use_tractor_geometry_obj,
-            use_tractor_position_obj, get_geometry, opt_pixscale,
-            SMA_MASK_MIN_PIX, in_ellipse_mask, width, xgrid, ygrid_flip,
-            sz, current_bx=bx, current_by=by)
+            samplesrcs, geo_final, use_tractor_geometry_obj,
+            use_tractor_position_obj, tractorgeo, get_geometry,
+            opt_pixscale, SMA_MASK_MIN_PIX, in_ellipse_mask, width,
+            xgrid, ygrid_flip, sz, current_bx=bx, current_by=by)
 
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
