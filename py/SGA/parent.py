@@ -4546,6 +4546,13 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             ell1['REFIT'] = np.ones(len(ell1), bool)
             #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
 
+        elif base_version == 'v1.1':
+            print('Check all LARGESHIFT, e.g., DESI J342.6409-51.6144!')
+            print('Read the drops and updates file and do not update galaxies in those affected groups.')
+            pdb.set_trace()
+            ell1['REFIT'] = np.ones(len(ell1), bool)
+            #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
+
         ell.append(ell1)
     ell = vstack(ell)
 

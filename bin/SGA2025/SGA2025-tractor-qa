@@ -727,10 +727,6 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
     # Get paths for all objects
     showsample = fullsample if not no_groups else sample
 
-    # Ensure sorted by GROUP_NAME then diameter for display order
-    sort_idx = np.lexsort((showsample[diamcolumn], showsample['GROUP_NAME']))
-    showsample = showsample[sort_idx]
-
     galaxy, galaxydir = get_galaxy_galaxydir(
         showsample, region=region, group=not no_groups, datadir=datadir)
     galaxy = np.atleast_1d(galaxy)
@@ -917,7 +913,10 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
     )
 
     if custom_selection:
-        I = np.char.startswith(fullsample['OBJNAME'], 'DESI')
+        #from collections import Counter
+        #prefix = np.array(list(zip(*np.char.split(fullcat['OBJNAME'].value, ' ').tolist()))[0])
+        #C = Counter(prefix).most_common()
+        I = np.char.startswith(fullsample['OBJNAME'], '2dFGRS')# & (fullsample['GROUP_MULT'] > 2)
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
 
