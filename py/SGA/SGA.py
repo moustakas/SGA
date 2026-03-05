@@ -493,7 +493,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
+    if True:
         print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
         adds = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/adds.csv', format='csv')
         updates = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/updates.csv', format='csv')
@@ -502,7 +502,16 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
                     np.isin(fullsample['OBJNAME'], np.unique(updates['OBJNAME'])) |
                     (fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
                     (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0))
-        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups]))
+
+        from SGA.brick import brickname as get_brickname
+        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
+        testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
+        log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
+        allbricks = get_brickname(fullsample['GROUP_RA'].value, fullsample['GROUP_DEC'].value)
+
+        I = (np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups])) |
+             np.isin(allbricks, testbricks))
+
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
 
