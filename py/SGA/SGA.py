@@ -493,6 +493,14 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
+    if True:
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
+        dogroups = ((fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
+                    (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0))
+        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups]))
+        fullsample = fullsample[I]
+        sample = fullsample[fullsample['GROUP_PRIMARY']]
+
     #if True:
     #    nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
     #    I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
