@@ -1,4 +1,5 @@
 target,value,column,op,bits
+OBJNAME,CGMW 4-3643,ELLIPSEMODE,set,tractorgeo
 OBJNAME,ESO 373- G 015,ELLIPSEMODE,set,tractorgeo
 OBJNAME,NGC 7497,ELLIPSEMODE,set,noradweight
 OBJNAME,IC 3104,ELLIPSEMODE,set,noradweight
