@@ -3048,7 +3048,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             denom = iter_brightstarmask[inellipse2].size
             if denom > 0: # should always be true...
                 frac = np.sum(iter_brightstarmask[inellipse2]) / denom
-                if frac > 0.3:
+                if frac > 0.4:
                     log.warning(f'Nearly fully masked by bright-star core (F={100.*frac:.1f}%>30%); reverting to initial geometry.')
                     sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FAILGEO']
                     geo_iter = geo_init.copy()
