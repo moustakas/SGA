@@ -500,15 +500,18 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
 
     if True:
         print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
+        from SGA.ellipse import ELLIPSEMODE
+        from SGA.brick import brickname as get_brickname
+
         adds = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/adds.csv', format='csv')
         updates = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/updates.csv', format='csv')
 
-        dogroups = (np.isin(fullsample['OBJNAME'], np.unique(adds['OBJNAME'])) |
-                    np.isin(fullsample['OBJNAME'], np.unique(updates['OBJNAME'])) |
-                    (fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
-                    (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0))
+        dogroups = ((np.isin(fullsample['OBJNAME'], np.unique(adds['OBJNAME'])) |
+                     np.isin(fullsample['OBJNAME'], np.unique(updates['OBJNAME'])) |
+                     (fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
+                     (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] == 0)) &
+                    (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0))
 
-        from SGA.brick import brickname as get_brickname
         testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
         testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
         log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
@@ -625,34 +628,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
-    ##############################
-    # v0.10 had 30 duplicate groups (29 in dr11-south; 1 in
-    # dr9-north); remove the duplicates here.
-    if version == 'v0.10':
-        dupgroups = [
-            '01298m3385','01747p1908','02097m0808','03152m3114','06833m1343','07544m1821','12066m0929','12991m0980',
-            '13264p1019','14230p3936','15224p0781','17788m3116','18407p1841','19454p2754','20114m2844','20405m0103',
-            '20722m1948','20748m1818','21013p1208','21208m2877','21882p1216','22721p0784','24739m1655','26426m0091',
-            '33922p1322','34799m1279','35482p2642','35555m4025','35846m1262','35893p1399']
-        drop = ['DUKST 351-033','2MASX J01095516+1904570','WISEA J012355.12-080514.3','WISEA J020605.35-310900.1',
-                'WISEA J043320.16-132621.2','WISEA J050147.86-181307.2','WISEA J080239.07-091758.5','WISEA J083939.57-094802.8',
-                'WISEA J085033.88+101123.9','WISEA J092912.50+392211.3','WISEA J100859.72+074842.9','WISEA J115133.31-311009.8',
-                'WISEA J121619.21+182509.4','WISEA J125809.70+273257.8','WISEA J132435.80-282653.3','UGC 08584 NED01',
-                'WISEA J134855.15-192913.8','WISEA J134955.46-181051.6','WISEA J140032.74+120521.4','WISEA J140821.57-284644.5',
-                'SDSS J143518.67+120938.6','WISEA J150852.22+075029.9','WISEA J162933.60-163306.0','WISEA J173704.33-005508.8',
-                'WISEA J223653.00+131314.7','WISEA J231159.69-124755.9','WISEA J233916.97+262513.0','WISEA J234212.09-401532.7',
-                'WISEA J235352.66-123739.4','WISEA J235543.52+140000.7']
-        if False:
-            I = np.isin(sample['OBJNAME'], drop)
-            fullsample = fullsample[np.isin(fullsample['OBJNAME'], drop)]
-            log.warning(f'version v0.10---keeping {np.sum(I)} objects in duplicate groups!')
-        else:
-            I = ~np.isin(sample['OBJNAME'], drop)
-            fullsample = fullsample[~np.isin(fullsample['OBJNAME'], drop)]
-            log.warning(f'version v0.10---dropping {np.sum(~I)} objects in duplicate groups!')
-        sample = sample[I]
-    ##############################
 
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
