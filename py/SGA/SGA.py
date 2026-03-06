@@ -498,7 +498,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
+    if False:#True:
         print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
         from SGA.ellipse import ELLIPSEMODE
         from SGA.brick import brickname as get_brickname
@@ -509,7 +509,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         dogroups = ((np.isin(fullsample['OBJNAME'], np.unique(adds['OBJNAME'])) |
                      np.isin(fullsample['OBJNAME'], np.unique(updates['OBJNAME'])) |
                      (fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
-                     (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] == 0)) &
+                     (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0)) &
                     (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0))
 
         testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
@@ -774,8 +774,11 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
 
     # For LMC/SMC sources, use deepest uncensored isophote directly (no extrapolation)
     if np.any(is_lmc_smc):
-        d26[is_lmc_smc], d26_err[is_lmc_smc], d26_ref[is_lmc_smc], d26_weight[is_lmc_smc] = \
-            _lmc_smc_diameter(ellipse, is_lmc_smc)
+        d26_lmc, d26_err_lmc, d26_ref_lmc, d26_weight_lmc = _lmc_smc_diameter(ellipse, is_lmc_smc)
+        d26[is_lmc_smc] = d26_lmc[is_lmc_smc]
+        d26_err[is_lmc_smc] = d26_err_lmc[is_lmc_smc]
+        d26_ref[is_lmc_smc] = d26_ref_lmc[is_lmc_smc]
+        d26_weight[is_lmc_smc] = d26_weight_lmc[is_lmc_smc]
 
     # For non-LMC/SMC sources, use calibration-based inference
     if np.any(~is_lmc_smc):
@@ -952,8 +955,11 @@ def _censor_flattened_isophotes(ellipse, mask, min_bands_fail=2):
                      np.isfinite(r_deep) & np.isfinite(r_shallow) &
                      np.isfinite(e_deep) & np.isfinite(e_shallow))
 
-            rad_ratio = np.where(valid, r_deep / r_shallow, 1.0)
-            err_ratio = np.where(valid, e_deep / e_shallow, 1.0)
+            # Protect division by only computing ratios for valid entries
+            rad_ratio = np.ones(len(ellipse), dtype=float)
+            err_ratio = np.ones(len(ellipse), dtype=float)
+            rad_ratio[valid] = r_deep[valid] / r_shallow[valid]
+            err_ratio[valid] = e_deep[valid] / e_shallow[valid]
 
             n_fail += (valid & (err_ratio > rad_ratio)).astype(int)
 
