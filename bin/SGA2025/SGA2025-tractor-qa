@@ -916,15 +916,15 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         from collections import Counter
         prefix = np.array(list(zip(*np.char.split(fullsample['OBJNAME'].value, ' ').tolist()))[0])
         C = Counter(prefix).most_common()
-        mn, mx = 11, 15 # 0, 10
-        I = (np.isin(prefix, [name for name, count in C if mn <= count < mx]) &
-             (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
+        mn, mx = 25, 50 # 11, 25 # 0, 11
+        namelist = [name for name, count in C if mn <= count < mx]
+        I = (np.isin(prefix, namelist) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0))
         #I = np.char.startswith(fullsample['OBJNAME'], '2dFGRS')# & (fullsample['GROUP_MULT'] > 2)
 
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         print(len(fullsample))
-        #import pdb ; pdb.set_trace()
+        import pdb ; pdb.set_trace()
 
 
     # Determine catalog type and diameter column

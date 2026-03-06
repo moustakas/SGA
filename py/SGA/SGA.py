@@ -498,7 +498,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
+    if True:
         print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
         from SGA.ellipse import ELLIPSEMODE
         from SGA.brick import brickname as get_brickname
