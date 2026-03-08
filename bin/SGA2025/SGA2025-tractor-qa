@@ -838,7 +838,9 @@ def write_txt_file(sample, txtfile: str, diamcolumn: str):
     """Write text file with object names for VI."""
     with open(txtfile, 'w') as f:
         for obj in sample:
-            f.write(f'{obj["OBJNAME"]}\n')
+            #f.write(f'{obj["OBJNAME"]},\n')
+            if np.char.startswith(obj['OBJNAME'], '2MASS'):
+                f.write(f'{obj["OBJNAME"]},\n')
     log.debug(f'Wrote {txtfile}')
 
 
@@ -914,20 +916,25 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
     )
 
     if custom_selection:
-        from collections import Counter
-        prefix = np.array(list(zip(*np.char.split(fullsample['OBJNAME'].value, ' ').tolist()))[0])
-        C = Counter(prefix).most_common()
-        mn, mx = 120, 1000 # 75, 120 # 50, 75 # 25, 50 # 11, 25 # 0, 11
-        namelist = [name for name, count in C if mn <= count < mx]
-        I = (np.isin(prefix, namelist) & ((fullsample['SAMPLE'] & SAMPLE['LVD']) == 0) & ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0))
-        #I = np.char.startswith(fullsample['OBJNAME'], '2dFGRS')# & (fullsample['GROUP_MULT'] > 2)
+        #from collections import Counter
+        #prefix = np.array(list(zip(*np.char.split(fullsample['OBJNAME'].value, ' ').tolist()))[0])
+        #C = Counter(prefix).most_common()
+        #mn, mx = 120, 1000 # 75, 120 # 50, 75 # 25, 50 # 11, 25 # 0, 11
+        #namelist = [name for name, count in C if mn <= count < mx]
+        #I = (np.isin(prefix, namelist) & ((fullsample['SAMPLE'] & SAMPLE['LVD']) == 0) & ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0))
+        ##I = np.char.startswith(fullsample['OBJNAME'], '2dFGRS')# & (fullsample['GROUP_MULT'] > 2)
+        #
+        #import pdb ; pdb.set_trace()
+        #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
+        #sample = fullsample[fullsample['GROUP_PRIMARY']]
 
-        import pdb ; pdb.set_trace()
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
+        is_2mass = np.char.startswith(fullsample['OBJNAME'].astype(str), '2MASS')
+        has_overlap = (fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0
+        target_groups = np.unique(fullsample['GROUP_NAME'][is_2mass & has_overlap])
+        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], target_groups)]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
-        print(len(fullsample))
-
-
+        log.info(f'Custom selection: {len(sample):,d} groups with 2MASS+OVERLAP members')
+        import pdb ; pdb.set_trace()
 
     # Determine catalog type and diameter column
     has_ellipsebit = 'ELLIPSEBIT' in fullsample.colnames
@@ -1047,18 +1054,17 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
 
                     # Write auxiliary files (both use this_sample - the flagged objects only)
                     write_txt_file(this_sample, txtfile, diamcolumn)
-                    write_viewer_file(this_sample, viewerfile, diamcolumn)
+                    #write_viewer_file(this_sample, viewerfile, diamcolumn)
 
-                    # Generate PDF
-                    generate_pdf(
-                        this_sample, this_fullsample, pdffile,
-                        region=region, datadir=datadir, cutoutdir=cutoutdir,
-                        diamcolumn=diamcolumn, ncol=ncol, nrow=nrow,
-                        show_tractor_ellipse=show_tractor_ellipse,
-                        show_initial_ellipse=show_initial_ellipse,
-                        final_sample=final_sample, no_groups=no_groups,
-                        show_group=show_group, verbose=verbose
-                    )
+                    ## Generate PDF
+                    #generate_pdf(
+                    #    this_sample, this_fullsample, pdffile,
+                    #    region=region, datadir=datadir, cutoutdir=cutoutdir,
+                    #    diamcolumn=diamcolumn, ncol=ncol, nrow=nrow,
+                    #    show_tractor_ellipse=show_tractor_ellipse,
+                    #    show_initial_ellipse=show_initial_ellipse,
+                    #    final_sample=final_sample, no_groups=no_groups,
+                    #    show_group=show_group, verbose=verbose)
 
     log.info('QA generation complete.')
 

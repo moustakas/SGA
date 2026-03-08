@@ -4282,10 +4282,10 @@ def prepare_v110_ellipse(ell1, region, mindiam=0.5):
     log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
     log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
 
-    # Flag categories A, B, C, and D for restoration
-    refit = cat_a | cat_b | cat_c | cat_d
+    # Flag categories A, B, and C (not D) for restoration
+    refit = cat_a | cat_b | cat_c
 
-    #check = ell1[cat_c & ~is_lvd]
+    #check = ell1[cat_d & ~is_lvd]
     #check = check[np.argsort(check['D26'])[::-1]]
     #view = to_skyviewer_table(check, diamcol='D26')
     #view.write('viewer.fits', overwrite=True)
@@ -4913,7 +4913,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
         raise ValueError('PA out of range')
 
     # re-add the Gaia masking bits
-    pdb.set_trace()
     add_gaia_masking(base)
 
     # Initialize the output data model
