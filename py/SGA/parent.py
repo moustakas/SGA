@@ -4224,10 +4224,13 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
-def _prepare_v100_ellipse(ell1, region, mindiam=0.5):
+def prepare_v110_ellipse(ell1, region, mindiam=0.5):
 
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
+
+    print('Check all LARGESHIFT, e.g., DESI J342.6409-51.6144!')
+    print('Read the drops and updates file and do not update galaxies in those affected groups.')
 
     in_group = ell1['GROUP_MULT'] > 1
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
@@ -4278,6 +4281,15 @@ def _prepare_v100_ellipse(ell1, region, mindiam=0.5):
     # Flag categories A, B, C, and D for restoration
     refit = cat_a | cat_b | cat_c | cat_d
 
+    check = ell1[cat_c & ~is_lvd]
+    check = check[np.argsort(check['D26'])[::-1]]
+    view = to_skyviewer_table(check, diamcol='D26')
+    view.write('viewer.fits', overwrite=True)
+    pdb.set_trace()
+
+    # refit all group members
+    ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
     # Every object was inspected and either dropped or its geometry
     # was updated in the overlays files, so set REFIT to false
     # everywhere.
@@ -4288,11 +4300,6 @@ def _prepare_v100_ellipse(ell1, region, mindiam=0.5):
 
     log.info(f"  LVD in refit: {np.sum(refit & is_lvd):,d}")
     log.info(f"  LVD in Category D: {np.sum(cat_d & is_lvd):,d}")
-
-    #check = ell1[cat_d & ~is_lvd]
-    #check = check[np.argsort(check['D26'])[::-1]]
-    #view = to_skyviewer_table(check[:50], diamcol='D26')
-    #view.write('viewer.fits', overwrite=True)
 
     #if np.any(refit):
     #    check = ell1[refit]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
@@ -4547,11 +4554,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
 
         elif base_version == 'v1.1':
-            print('Check all LARGESHIFT, e.g., DESI J342.6409-51.6144!')
-            print('Read the drops and updates file and do not update galaxies in those affected groups.')
-            pdb.set_trace()
-            ell1['REFIT'] = np.ones(len(ell1), bool)
-            #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
+            ell1 = prepare_v110_ellipse(ell1, region, mindiam=mindiam)
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -4672,7 +4675,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -4868,6 +4871,14 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
         base = ell_base
+    elif base_version == 'v1.1':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+        base = ell_base
     else:
         base = ell_base
 
@@ -4926,6 +4937,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         raise ValueError('PA out of range')
 
     # re-add the Gaia masking bits
+    pdb.set_trace()
     add_gaia_masking(base)
 
     # Initialize the output data model

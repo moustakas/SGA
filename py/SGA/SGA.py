@@ -115,7 +115,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # first release candidate
         #version = 'v1.0'
         # OVERLAP fixes
-        version = 'v1.1'
+        #version = 'v1.1'
+        # more cleanup, etc.
+        version = 'v1.2'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -131,7 +133,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.70'  # parent_version = v0.60 --> v0.70
         #version = 'v0.80'  # parent_version = v0.70 --> v0.80
         #version = 'v1.0'  # parent_version = v0.80 --> v1.0
-        version = 'v1.1'  # parent_version = v1.0 --> v1.1
+        #version = 'v1.1'  # parent_version = v1.0 --> v1.1
+        version = 'v1.2'  # parent_version = v1.1 --> v1.2
     return version
 
 
