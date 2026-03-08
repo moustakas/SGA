@@ -4229,6 +4229,10 @@ def prepare_v110_ellipse(ell1, region, mindiam=0.5):
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
+    # no v1.1 ellipse-fitting in dr9-north
+    if region == 'dr9-north':
+        return ell1
+
     print('Check all LARGESHIFT, e.g., DESI J342.6409-51.6144!')
     print('Read the drops and updates file and do not update galaxies in those affected groups.')
 
@@ -4281,63 +4285,35 @@ def prepare_v110_ellipse(ell1, region, mindiam=0.5):
     # Flag categories A, B, C, and D for restoration
     refit = cat_a | cat_b | cat_c | cat_d
 
-    check = ell1[cat_c & ~is_lvd]
-    check = check[np.argsort(check['D26'])[::-1]]
-    view = to_skyviewer_table(check, diamcol='D26')
-    view.write('viewer.fits', overwrite=True)
-    pdb.set_trace()
+    #check = ell1[cat_c & ~is_lvd]
+    #check = check[np.argsort(check['D26'])[::-1]]
+    #view = to_skyviewer_table(check, diamcol='D26')
+    #view.write('viewer.fits', overwrite=True)
 
     # refit all group members
     ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
 
-    # Every object was inspected and either dropped or its geometry
-    # was updated in the overlays files, so set REFIT to false
-    # everywhere.
-    refit = np.zeros(len(ell1), bool)
-    ell1['REFIT'] = refit
-
-    log.info(f'{region}: {np.sum(refit):,d}/{len(ell1):,d} flagged for geometry restoration')
-
-    log.info(f"  LVD in refit: {np.sum(refit & is_lvd):,d}")
-    log.info(f"  LVD in Category D: {np.sum(cat_d & is_lvd):,d}")
-
-    #if np.any(refit):
-    #    check = ell1[refit]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
-    #                          'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
-    #    check = check[np.argsort(check['D26'])[::-1]]
-    #    check['POS_SHIFT'] = pos_shift_arcsec[refit]
-    #    check['DIAM_RATIO'] = diam_ratio[refit]
-    #    check['CATEGORY'] = np.where(cat_a[refit], 'A', np.where(cat_b[refit], 'B', 'C'))
-    #    view = to_skyviewer_table(check, diamcol='D26')
-    #    view.write('viewer.fits', overwrite=True)
-    #
-    #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
 
     # --- Flag small group members for removal ---
-    #protect = []
+    if False:
+        protect = []
 
-    remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
-    #remove &= ~np.isin(ell1['OBJNAME'], protect)
-    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+        #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
+        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
 
-    pdb.set_trace()
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
-    #remove2 = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=True)
-    #remove2 &= ~np.isin(ell1['OBJNAME'], protect)
-    #remove[remove2] = False
-    #
-    #check = ell1[remove]
-    #from collections import Counter
-    #allprefix = np.array(list(zip(*np.char.split(check['OBJNAME'].value, ' ').tolist()))[0])
-    #C = Counter(allprefix).most_common()
-    #
-    ##I = np.char.startswith(check['OBJNAME'], 'FGCE')
-    ##view = to_skyviewer_table(check[I], diamcol='D26')
-    #view = to_skyviewer_table(check, diamcol='D26')
-    #view.write('viewer.fits', overwrite=True)
+        #check = ell1[remove]
+        #check = check[np.argsort(check['D26'])]
+        ##check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check[:20], diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
 
-    #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
-    ell1 = ell1[~remove]
+        ell1 = ell1[~remove]
 
     return ell1
 
