@@ -19,6 +19,9 @@ Usage:
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.1 --version=v1.1 --mp=32 --custom-selection --region=dr9-north
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.1 --version=v1.1 --mp=32 --custom-selection --region=dr11-south
 
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --missing-sga2020
+
+
 """
 
 import os
@@ -516,7 +519,8 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
                    cutout_galaxy, cutout_galaxydir,
                    region, datadir, cutoutdir, diamcolumn,
                    show_tractor_ellipse, show_initial_ellipse,
-                   final_sample, no_groups, show_group):
+                   final_sample, no_groups, show_group,
+                   sga2020_overlay=None):
     """
     Draw a single annotated panel for one object.
 
@@ -685,6 +689,25 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
             # Mark center with x
             ax.scatter(xpix_o, height - ypix_o, marker='x', s=25, color='red', linewidths=0.5)
 
+    # Draw SGA2020 ellipses in blue if provided
+    if sga2020_overlay is not None and len(sga2020_overlay) > 0:
+        # Find SGA2020 objects near this panel's center
+        for sga2020_obj in sga2020_overlay:
+            sga_ra, sga_dec = sga2020_obj['RA'], sga2020_obj['DEC']
+            sga_diam = sga2020_obj['D26'] * 60.  # arcsec
+            sga_ba = sga2020_obj['BA']
+            sga_pa = sga2020_obj['PA']
+
+            # Check if within image bounds (roughly)
+            xpix_s, ypix_s = wcs.wcs_world2pix(sga_ra, sga_dec, 0)
+            if 0 <= xpix_s <= width and 0 <= ypix_s <= height:
+                overplot_ellipse(sga_diam, sga_ba, sga_pa, xpix_s, ypix_s,
+                                 height_pixels=width, pixscale=pixscale,
+                                 ax=ax, color='blue', linestyle='-', linewidth=1.5,
+                                 draw_majorminor_axes=False, jpeg=True)
+                ax.scatter(xpix_s, height - ypix_s, marker='+', s=50, color='blue', linewidths=1.5)
+
+
     # Text labels
     ax.text(0.03, 0.97, txt_ul, transform=ax.transAxes, ha='left', va='top',
             color='white', linespacing=1.5, fontsize=8,
@@ -709,7 +732,7 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
                  diamcolumn, ncol=4, nrow=2, inches_per_panel=4.,
                  show_tractor_ellipse=True, show_initial_ellipse=True,
                  final_sample=False, no_groups=False, show_group=True,
-                 verbose=False):
+                 sga2020_overlay=None, verbose=False):
     """
     Generate PDF with annotated galaxy images.
 
@@ -782,7 +805,8 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
                     cutout_galaxy[idx], cutout_galaxydir[idx],
                     region, datadir, cutoutdir, diamcolumn,
                     show_tractor_ellipse, show_initial_ellipse,
-                    final_sample, no_groups, show_group
+                    final_sample, no_groups, show_group,
+                    sga2020_overlay,
                 )
                 # Add index label
                 ax.text(0.97, 0.03, str(idx + 1), transform=ax.transAxes,
@@ -857,6 +881,62 @@ def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
     log.debug(f'Wrote {viewerfile}')
 
 
+def find_missing_sga2020(sample, fullsample):
+
+    from SGA.external import read_sga2020
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+
+    # SGA2020 diameter range to check
+    sga2020_mindiam = 0.8  # arcmin
+    sga2020_maxdiam = 0.82  # arcmin
+
+    sga2020 = read_sga2020()
+    I = (sga2020['D26'] >= sga2020_mindiam) & (sga2020['D26'] < sga2020_maxdiam)
+    sga2020 = sga2020[I]
+    log.info(f'SGA2020 galaxies with D26 in [{sga2020_mindiam}, {sga2020_maxdiam}): {len(sga2020):,d}')
+
+    # Match to SGA2025
+    coords_2020 = SkyCoord(sga2020['RA'] * u.deg, sga2020['DEC'] * u.deg)
+    coords_2025 = SkyCoord(fullsample['RA'] * u.deg, fullsample['DEC'] * u.deg)
+    idx_2025, sep, _ = coords_2020.match_to_catalog_sky(coords_2025)
+
+    sep_arcmin = sep.to(u.arcmin).value
+    sep_in_diameters = sep_arcmin / sga2020['D26']
+    diam_ratio = fullsample['DIAM'][idx_2025] / sga2020['D26']
+
+    too_far = sep_in_diameters > 0.5
+    very_different_size = (sep_arcmin > 1.0) & ((diam_ratio < 0.3) | (diam_ratio > 3.0))
+    possibly_missing = too_far | very_different_size
+
+    log.info(f'Possibly missing: {np.sum(possibly_missing):,d}')
+
+    # Get SGA2020 groups with missing members
+    missing_sga2020_groups = np.unique(sga2020['GROUP_NAME'][possibly_missing])
+
+    # Store SGA2020 info for overlay (attach to fullsample for annotation)
+    # We'll pass this separately to generate_pdf
+    sga2020_overlay = sga2020[np.isin(sga2020['GROUP_NAME'], missing_sga2020_groups)]
+
+    # Filter SGA2025 fullsample to groups near missing SGA2020 objects
+    # Use a generous radius to catch nearby SGA2025 groups
+    missing_coords = SkyCoord(sga2020['RA'][possibly_missing] * u.deg,
+                              sga2020['DEC'][possibly_missing] * u.deg)
+    sga2025_coords = SkyCoord(fullsample['RA'] * u.deg, fullsample['DEC'] * u.deg)
+    idx_near, sep_near, _ = missing_coords.match_to_catalog_sky(sga2025_coords)
+    nearby_groups = np.unique(fullsample['GROUP_NAME'][idx_near[sep_near.to(u.arcmin).value < 5.0]])
+
+    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], nearby_groups)]
+    sample = fullsample[fullsample['GROUP_PRIMARY']]
+
+    log.info(f'SGA2025 groups near missing SGA2020: {len(sample):,d}')
+
+    # Store for later use in annotation
+    fullsample.meta['sga2020_overlay'] = sga2020_overlay
+
+    #import pdb ; pdb.set_trace()
+
+
 # ============================================================================
 # Main QA Function
 # ============================================================================
@@ -864,10 +944,10 @@ def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
 def qa_tractor(region='dr11-south', version=None, datadir=None,
                mindiam=0.5, maxdiam=5.0, track='all', tier='all',
                final_sample=False, no_groups=False, show_group=True,
-               show_tractor_ellipse=True, show_initial_ellipse=True,
-               use_gmbins=True, custom_selection=False,
-               ncol=4, nrow=2, nperpdf=4096, mp=1, verbose=False,
-               first=None, last=None, galaxylist=None):
+               missing_sga2020=False, show_tractor_ellipse=True,
+               show_initial_ellipse=True, use_gmbins=True,
+               custom_selection=False, ncol=4, nrow=2, nperpdf=4096,
+               mp=1, verbose=False, first=None, last=None, galaxylist=None):
     """
     Generate QA PDFs organized by track, tier, and group multiplicity.
 
@@ -934,6 +1014,11 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], target_groups)]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         log.info(f'Custom selection: {len(sample):,d} groups with 2MASS+OVERLAP members')
+
+    if missing_sga2020:
+        find_missing_sga2020(sample, fullsample)
+    else:
+        fullsample.meta['sga2020_overlay'] = None
 
     # Determine catalog type and diameter column
     has_ellipsebit = 'ELLIPSEBIT' in fullsample.colnames
@@ -1063,7 +1148,8 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                         show_tractor_ellipse=show_tractor_ellipse,
                         show_initial_ellipse=show_initial_ellipse,
                         final_sample=final_sample, no_groups=no_groups,
-                        show_group=show_group, verbose=verbose)
+                        show_group=show_group, verbose=verbose,
+                        sga2020_overlay=fullsample.meta['sga2020_overlay'])
 
     log.info('QA generation complete.')
 
@@ -1129,6 +1215,8 @@ Examples:
     parser.add_argument('--hide-initial-ellipse', dest='show_initial_ellipse',
                         action='store_false',
                         help='Hide initial ellipse overlay')
+    parser.add_argument('--missing-sga2020', action='store_true',
+                        help='QA for SGA2020 galaxies possibly missing from SGA2025')
 
     parser.add_argument('--ncol', type=int, default=4,
                         help='Columns per PDF page (default: 4)')
@@ -1163,6 +1251,7 @@ Examples:
         use_gmbins=args.use_gmbins,
         show_tractor_ellipse=args.show_tractor_ellipse,
         show_initial_ellipse=args.show_initial_ellipse,
+        missing_sga2020=args.missing_sga2020,
         custom_selection=args.custom_selection,
         ncol=args.ncol,
         nrow=args.nrow,
