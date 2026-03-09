@@ -934,7 +934,6 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], target_groups)]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         log.info(f'Custom selection: {len(sample):,d} groups with 2MASS+OVERLAP members')
-        import pdb ; pdb.set_trace()
 
     # Determine catalog type and diameter column
     has_ellipsebit = 'ELLIPSEBIT' in fullsample.colnames
@@ -1054,17 +1053,17 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
 
                     # Write auxiliary files (both use this_sample - the flagged objects only)
                     write_txt_file(this_sample, txtfile, diamcolumn)
-                    #write_viewer_file(this_sample, viewerfile, diamcolumn)
+                    write_viewer_file(this_sample, viewerfile, diamcolumn)
 
-                    ## Generate PDF
-                    #generate_pdf(
-                    #    this_sample, this_fullsample, pdffile,
-                    #    region=region, datadir=datadir, cutoutdir=cutoutdir,
-                    #    diamcolumn=diamcolumn, ncol=ncol, nrow=nrow,
-                    #    show_tractor_ellipse=show_tractor_ellipse,
-                    #    show_initial_ellipse=show_initial_ellipse,
-                    #    final_sample=final_sample, no_groups=no_groups,
-                    #    show_group=show_group, verbose=verbose)
+                    # Generate PDF
+                    generate_pdf(
+                        this_sample, this_fullsample, pdffile,
+                        region=region, datadir=datadir, cutoutdir=cutoutdir,
+                        diamcolumn=diamcolumn, ncol=ncol, nrow=nrow,
+                        show_tractor_ellipse=show_tractor_ellipse,
+                        show_initial_ellipse=show_initial_ellipse,
+                        final_sample=final_sample, no_groups=no_groups,
+                        show_group=show_group, verbose=verbose)
 
     log.info('QA generation complete.')
 
