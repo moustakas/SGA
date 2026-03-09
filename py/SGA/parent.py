@@ -4912,6 +4912,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
     if not np.all((base['PA'] >= 0.) & (base['PA'] < 180.)):
         raise ValueError('PA out of range')
 
+    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
