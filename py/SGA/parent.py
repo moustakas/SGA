@@ -15,7 +15,7 @@ from astropy.table import Table, vstack, hstack
 from astrometry.libkd.spherematch import match_radec
 
 from SGA.SGA import sga_dir, SGA_version
-from SGA.coadds import PIXSCALE, BANDS
+from SGA.coadds import PIXSCALE, BANDS, REGIONBITS
 from SGA.util import match, match_to
 from SGA.sky import choose_primary, resolve_close
 from SGA.qa import qa_skypatch, multipage_skypatch, to_skyviewer_table
@@ -3606,7 +3606,7 @@ def apply_adds(parent, adds, regionbits, nocuts):
             base['REGION'][0] = int(regionbits[str(reg_val).strip()])
 
         # add from nocuts
-        noc_ix = np.where(nocuts['OBJNAME'] == obj)[0]
+        noc_ix = np.where((nocuts['OBJNAME'] == obj) | (nocuts['OBJNAME_SGA2020'] == obj))[0]
         if len(noc_ix) == 1:
             src = nocuts[noc_ix[0]]
             base['PGC'] = src['PGC']
@@ -4431,6 +4431,72 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_
     return remove
 
 
+def harmonize_region_bits(out):
+    """Harmonize REGION bits within groups.
+
+    - Keep only bits common to all members
+    - Drop groups with no common bits (mult > 1 only)
+    - Singletons keep their original REGION
+
+    """
+    unique_groups, group_indices = np.unique(out['GROUP_NAME'], return_inverse=True)
+    n_groups = len(unique_groups)
+
+    # Compute bitwise AND of REGION for each group; start with all bits set
+    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
+    np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
+
+    # Get the allowed bits for each row
+    allowed = region_and_per_group[group_indices]
+
+    group_mult = out['GROUP_MULT']
+    is_singleton = group_mult == 1
+
+    # Groups to drop (no common bits AND mult > 1)
+    drop_mask = (allowed == 0) & ~is_singleton
+
+    # Groups to strip (some bits removed but group kept, mult > 1 only)
+    new_region = out['REGION'] & allowed
+    strip_mask = (new_region != out['REGION']) & (allowed != 0) & ~is_singleton
+
+    # Diagnostics for stripped groups
+    if np.any(strip_mask):
+        strip_groups = np.unique(out['GROUP_NAME'][strip_mask])
+        log.info(f"Stripping REGION bits for {len(strip_groups):,d} groups ({np.sum(strip_mask):,d} members):")
+
+        # Show details for first few
+        for gname in strip_groups[:5]:
+            gmask = out['GROUP_NAME'] == gname
+            old_regions = out['REGION'][gmask]
+            new_regions = new_region[gmask]
+            common = region_and_per_group[group_indices[gmask][0]]
+            log.info(f"  {gname}: {list(old_regions)} -> {list(new_regions)} (common={common})")
+
+        if len(strip_groups) > 5:
+            log.info(f"  ... and {len(strip_groups) - 5} more groups")
+
+        # Apply only to non-singletons where allowed != 0
+        out['REGION'][strip_mask] = new_region[strip_mask]
+
+    # Diagnostics for dropped groups
+    if np.any(drop_mask):
+        drop_names = np.unique(out['GROUP_NAME'][drop_mask])
+        log.info(f"Dropping {len(drop_names):,d} groups with no common REGION bit ({np.sum(drop_mask):,d} members):")
+
+        for gname in drop_names[:5]:
+            gmask = out['GROUP_NAME'] == gname
+            members = out['OBJNAME'][gmask]
+            regions = out['REGION'][gmask]
+            log.info(f"  {gname}: {list(members)} regions={list(regions)}")
+
+        if len(drop_names) > 5:
+            log.info(f"  ... and {len(drop_names) - 5} more groups")
+
+        out = out[~drop_mask]
+
+    return out
+
+
 def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
     dr9-north. Consolidate duplicates by OBJNAME, combining REGION
@@ -4672,7 +4738,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
     from astropy.table import Table
     from desiutil.dust import SFDMap
     from SGA.SGA import SGA_version, SAMPLE, SGA_diameter
-    from SGA.coadds import REGIONBITS
     from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
     from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
     from SGA.sky import find_in_mclouds, find_in_gclpne
@@ -4863,7 +4928,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
     ov = load_overlays(overlay_dir)
     nocuts_file = os.path.join(parentdir, f'SGA2025-parent-nocuts-{nocuts_version}.fits')
-    nocuts = Table(fitsio.read(nocuts_file, columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
+    nocuts = Table(fitsio.read(nocuts_file, columns=['OBJNAME', 'OBJNAME_SGA2020', 'PGC', 'ROW_PARENT']))
     log.info(f'Read {len(nocuts):,d} rows from {nocuts_file}')
 
     base = apply_drops(base, ov.drops, REGIONBITS)
@@ -4911,6 +4976,20 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
         raise ValueError('BA out of range')
     if not np.all((base['PA'] >= 0.) & (base['PA'] < 180.)):
         raise ValueError('PA out of range')
+
+    # repair REGION
+    for region in ['dr11-south', 'dr9-north']:
+        arch = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{nocuts_version}.fits'),
+                                 columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
+        I = np.isin(base['SGAID'], arch['ROW_PARENT']) & (base['REGION'] & REGIONBITS[region] == 0)
+        if np.sum(I) > 0:
+            log.info(f'Repairing {np.sum(I)} {region} REGION bits')
+            base['REGION'][I] |= REGIONBITS[region]
+
+            view = to_skyviewer_table(base[I])
+            view.write('viewer.fits', overwrite=True)
+
+        pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
@@ -4975,34 +5054,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
 
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
-    unique_groups, group_indices = np.unique(out['GROUP_NAME'], return_inverse=True)
-    n_groups = len(unique_groups)
-
-    # Compute bitwise AND of REGION for each group; start with all bits set
-    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
-    np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
-
-    # Get the allowed bits for each row
-    allowed = region_and_per_group[group_indices]
-
-    # Groups to drop (no common bits AND mult > 1)
-    group_mult = out['GROUP_MULT']
-    drop_mask = (allowed == 0) & (group_mult > 1)
-
-    # Groups to strip (some bits removed but group kept)
-    new_region = out['REGION'] & allowed
-    strip_mask = (new_region != out['REGION']) & (allowed != 0) & (group_mult > 1)
-
-    # Apply changes
-    if np.any(strip_mask):
-        out['REGION'] = new_region
-        strip_groups = np.unique(out['GROUP_NAME'][strip_mask])
-        log.info(f"Stripped REGION bits (kept groups) for {len(strip_groups):,d} groups.")
-
-    if np.any(drop_mask):
-        drop_names = np.unique(out['GROUP_NAME'][drop_mask])
-        log.info(f"Dropping {len(drop_names):,d} groups with no common REGION bit ({np.sum(drop_mask):,d} members).")
-        out = out[~drop_mask]
+    out = harmonize_region_bits(out)
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)

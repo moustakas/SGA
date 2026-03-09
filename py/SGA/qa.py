@@ -55,8 +55,13 @@ def to_skyviewer_table(cat, diamcol='DIAM'):
     ]
 
     # Bin on arcmin scale (~36 arcsec ~ 0.01 deg)
-    ra_bin = np.floor(cat['GROUP_RA'] * 100).astype(int) % len(colors)
-    dec_bin = np.floor(cat['GROUP_DEC'] * 100).astype(int) % len(colors)
+    if 'GROUP_RA' in cat.colnames:
+        ra_bin = np.floor(cat['GROUP_RA'] * 100).astype(int) % len(colors)
+        dec_bin = np.floor(cat['GROUP_DEC'] * 100).astype(int) % len(colors)
+    else:
+        ra_bin = np.floor(cat['RA'] * 100).astype(int) % len(colors)
+        dec_bin = np.floor(cat['DEC'] * 100).astype(int) % len(colors)
+
     color_idx = (ra_bin + dec_bin) % len(colors)
     color_array = np.array([colors[i] for i in color_idx])
 

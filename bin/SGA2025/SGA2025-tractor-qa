@@ -439,7 +439,8 @@ def read_coadds(galaxy, galaxydir, refid, ra=None, dec=None, diam=None,
     return sga, tractor, image, wcs
 
 
-def ensure_cutouts(sample, fullsample, region, datadir, cutoutdir, mp=1, no_groups=False):
+def ensure_cutouts(sample, fullsample, region, datadir, cutoutdir, mp=1, no_groups=False,
+                   missing_sga2020_mode=False):
     """
     Check for existing images and generate cutouts for missing ones.
 
@@ -451,11 +452,14 @@ def ensure_cutouts(sample, fullsample, region, datadir, cutoutdir, mp=1, no_grou
     galaxy = np.atleast_1d(galaxy)
     galaxydir = np.atleast_1d(galaxydir)
 
-    # Check which have images
-    has_image = np.array([
-        os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
-        for gdir, gal in zip(galaxydir, galaxy)
-    ])
+    # Check which have images (skip for missing_sga2020_mode - none will have pipeline outputs)
+    if missing_sga2020_mode:
+        has_image = np.zeros(len(sample), dtype=bool)
+    else:
+        has_image = np.array([
+            os.path.isfile(os.path.join(gdir, f'{gal}-image.jpg'))
+            for gdir, gal in zip(galaxydir, galaxy)
+        ])
 
     log.info(f'Found {np.sum(has_image):,d}/{len(sample):,d} objects with pipeline results.')
 
@@ -520,7 +524,7 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
                    region, datadir, cutoutdir, diamcolumn,
                    show_tractor_ellipse, show_initial_ellipse,
                    final_sample, no_groups, show_group,
-                   sga2020_overlay=None):
+                   sga2020_overlay=None, missing_sga2020_mode=False):
     """
     Draw a single annotated panel for one object.
 
@@ -528,12 +532,25 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
     ----------
     group_members_dict : dict
         Pre-indexed dict mapping GROUP_NAME -> list of member rows
+    sga2020_overlay : Table or None
+        For missing_sga2020_mode=False: SGA2020 sources to overlay in blue
+        For missing_sga2020_mode=True: SGA2025 sources to overlay in red
+    missing_sga2020_mode : bool
+        If True, primary catalog is SGA2020; overlay is SGA2025
 
     """
     from astropy.wcs.utils import proj_plane_pixel_scales as get_pixscale
 
     # Get geometry columns based on catalog type
-    if final_sample:
+    if missing_sga2020_mode:
+        # SGA2020 mock catalog - diameter is in DIAM (copied from D26)
+        objra, objdec = obj['RA'], obj['DEC']
+        diam, ba, pa = obj['DIAM'] * 60., obj['BA'], obj['PA']
+        geo_label = f'D(26)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}'
+        objra0, objdec0 = objra, objdec
+        diam0, ba0, pa0 = diam, ba, pa
+        geo0_label = geo_label
+    elif final_sample:
         objra, objdec = obj['RA'], obj['DEC']
         diam, ba, pa = obj['D26'] * 60., obj['BA'], obj['PA']
         geo_label = f'D(26)={diam:.1f}" b/a={ba:.2f} PA={pa:.1f}'
@@ -556,13 +573,13 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
         f'{obj["GROUP_NAME"]} (M={group_mult})',
         f'({objra:.7f}, {objdec:.6f})',
     ]
-    if show_initial_ellipse and final_sample:
+    if show_initial_ellipse and final_sample and not missing_sga2020_mode:
         txt_ul_lines.append(geo0_label)
     if geo_label:
         txt_ul_lines.append(geo_label)
 
-    # Add annotations
-    if 'QA_ANNOTATIONS' in obj.colnames and obj['QA_ANNOTATIONS']:
+    # Add annotations (skip for missing_sga2020_mode since no QA columns)
+    if not missing_sga2020_mode and 'QA_ANNOTATIONS' in obj.colnames and obj['QA_ANNOTATIONS']:
         ann_str = format_annotations(obj['QA_ANNOTATIONS'])
         if ann_str:
             txt_ul_lines.append(f'[{ann_str}]')
@@ -571,10 +588,7 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
 
     # Determine group center and diameter for image
     if obj['CUTOUT'] or no_groups:
-        if final_sample:
-            groupra, groupdec = obj['RA'], obj['DEC']
-        else:
-            groupra, groupdec = obj['GROUP_RA'], obj['GROUP_DEC']
+        groupra, groupdec = obj['GROUP_RA'], obj['GROUP_DEC']
         groupdiam = obj['GROUP_DIAMETER'] * 60.
     else:
         groupra, groupdec = obj['GROUP_RA'], obj['GROUP_DEC']
@@ -582,7 +596,7 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
 
     # Read image
     sga, tractor, image, wcs = read_coadds(
-        galaxy, galaxydir, refid=obj[REFIDCOLUMN],
+        galaxy, galaxydir, refid=obj[REFIDCOLUMN] if REFIDCOLUMN in obj.colnames else obj['SGAID'],
         ra=groupra, dec=groupdec, diam=groupdiam,
         cutout_galaxy=cutout_galaxy, cutout_galaxydir=cutout_galaxydir,
         cutout=obj['CUTOUT']
@@ -605,8 +619,8 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
     for spine in ax.spines.values():
         spine.set_color('white')
 
-    # Plot Tractor sources
-    if len(tractor) > 0:
+    # Plot Tractor sources (skip for missing_sga2020_mode)
+    if not missing_sga2020_mode and len(tractor) > 0:
         I = tractor['ref_cat'] == 'L4'
         if np.sum(I) > 0:
             alpha = 0.5 if np.sum(I) > 50 else 1.0
@@ -614,16 +628,16 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
             ax.scatter(tractor['bx'][I], height - tractor['by'][I],
                        marker='x', s=s, color='red', alpha=alpha)
 
-    # Draw initial ellipse
-    if show_initial_ellipse:
-        xpix0, ypix0 = wcs.wcs_world2pix(objra0, objdec0, 0)
-        overplot_ellipse(diam0, ba0, pa0, xpix0, ypix0,
-                         height_pixels=width, pixscale=pixscale,
-                         ax=ax, color='white', linewidth=0.3 if final_sample else 1,
-                         linestyle='-', draw_majorminor_axes=not final_sample, jpeg=True)
+    # Draw current object ellipse (white)
+    xpix0, ypix0 = wcs.wcs_world2pix(objra, objdec, 0)
+    overplot_ellipse(diam, ba, pa, xpix0, ypix0,
+                     height_pixels=width, pixscale=pixscale,
+                     ax=ax, color='white', linewidth=1.5, linestyle='-',
+                     draw_majorminor_axes=True, jpeg=True)
+    ax.scatter(xpix0, height - ypix0, marker='s', facecolor='none', s=40, color='white')
 
-    # Draw final ellipse (if different)
-    if final_sample:
+    # Draw final ellipse (cyan) for non-missing_sga2020_mode
+    if final_sample and not missing_sga2020_mode:
         xpix, ypix = wcs.wcs_world2pix(objra, objdec, 0)
         overplot_ellipse(diam, ba, pa, xpix, ypix,
                          height_pixels=width, pixscale=pixscale,
@@ -631,10 +645,10 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
                          draw_majorminor_axes=True, jpeg=True)
         ax.scatter(xpix, height - ypix, marker='s', facecolor='none', s=40, color='cyan')
 
-    # Draw Tractor ellipse
+    # Draw Tractor ellipse (skip for missing_sga2020_mode)
     txt_ll = ''
     txt_ur = ''
-    if len(sga) > 0 and show_tractor_ellipse:
+    if not missing_sga2020_mode and len(sga) > 0 and show_tractor_ellipse:
         r50 = sga['shape_r'][0]
         e1, e2 = sga['shape_e1'][0], sga['shape_e2'][0]
         tractor_diam, tractor_ba, tractor_pa = get_tractor_ellipse(r50, e1, e2)
@@ -653,8 +667,8 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
             geo_tractor = f'r(50)={r50:.1f}" b/a={tractor_ba:.2f} PA={tractor_pa:.1f}'
             txt_ll = geo_tractor
 
-    # For tiers 1-2, show the triggering bits in lower-left
-    if 'QA_TIER' in obj.colnames and obj['QA_TIER'] in (1, 2):
+    # For tiers 1-2, show the triggering bits in lower-left (skip for missing_sga2020_mode)
+    if not missing_sga2020_mode and 'QA_TIER' in obj.colnames and obj['QA_TIER'] in (1, 2):
         tier_bits_str = obj.get('QA_TIER_BITS', '')
         if tier_bits_str:
             tier_label = f"[{tier_bits_str.replace(',', ' | ')}]"
@@ -663,15 +677,18 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
             else:
                 txt_ll = tier_label
 
-    # Draw other group members if show_group
+    # Draw other group members
     if show_group and not no_groups:
         group_name = obj['GROUP_NAME']
-        obj_refid = obj[REFIDCOLUMN]
+        obj_id = obj[REFIDCOLUMN] if REFIDCOLUMN in obj.colnames else obj['SGAID']
         for otherobj in group_members_dict.get(group_name, []):
-            if otherobj[REFIDCOLUMN] == obj_refid:
+            other_id = otherobj[REFIDCOLUMN] if REFIDCOLUMN in otherobj.colnames else otherobj['SGAID']
+            if other_id == obj_id:
                 continue
             other_ra, other_dec = otherobj['RA'], otherobj['DEC']
-            if final_sample and 'D26' in otherobj.colnames:
+            if missing_sga2020_mode:
+                other_diam = otherobj['DIAM'] * 60.
+            elif final_sample and 'D26' in otherobj.colnames:
                 other_diam = otherobj['D26'] * 60.
             else:
                 other_diam = otherobj['DIAM'] * 60.
@@ -680,33 +697,37 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
 
             xpix_o, ypix_o = wcs.wcs_world2pix(other_ra, other_dec, 0)
 
-            # Draw ellipse with thin red curve
+            # For missing_sga2020_mode: other SGA2020 members in blue
+            # For normal mode: other SGA2025 members in red
+            member_color = 'blue' if missing_sga2020_mode else 'red'
+
             overplot_ellipse(other_diam, other_ba, other_pa, xpix_o, ypix_o,
                              height_pixels=width, pixscale=pixscale,
-                             ax=ax, color='red', linestyle='-', linewidth=0.5,
+                             ax=ax, color=member_color, linestyle='-', linewidth=0.5,
                              draw_majorminor_axes=False, jpeg=True)
+            ax.scatter(xpix_o, height - ypix_o, marker='x', s=25, color=member_color, linewidths=0.5)
 
-            # Mark center with x
-            ax.scatter(xpix_o, height - ypix_o, marker='x', s=25, color='red', linewidths=0.5)
-
-    # Draw SGA2020 ellipses in blue if provided
+    # Draw overlay sources
     if sga2020_overlay is not None and len(sga2020_overlay) > 0:
-        # Find SGA2020 objects near this panel's center
-        for sga2020_obj in sga2020_overlay:
-            sga_ra, sga_dec = sga2020_obj['RA'], sga2020_obj['DEC']
-            sga_diam = sga2020_obj['D26'] * 60.  # arcsec
-            sga_ba = sga2020_obj['BA']
-            sga_pa = sga2020_obj['PA']
+        # For missing_sga2020_mode: overlay is SGA2025, draw in red
+        # For normal mode: overlay is SGA2020, draw in blue
+        overlay_color = 'red' if missing_sga2020_mode else 'blue'
+        overlay_diam_col = 'DIAM' if missing_sga2020_mode else 'D26'
 
-            # Check if within image bounds (roughly)
-            xpix_s, ypix_s = wcs.wcs_world2pix(sga_ra, sga_dec, 0)
-            if 0 <= xpix_s <= width and 0 <= ypix_s <= height:
-                overplot_ellipse(sga_diam, sga_ba, sga_pa, xpix_s, ypix_s,
+        for overlay_obj in sga2020_overlay:
+            ov_ra, ov_dec = overlay_obj['RA'], overlay_obj['DEC']
+            ov_diam = overlay_obj[overlay_diam_col] * 60.  # arcsec
+            ov_ba = overlay_obj['BA']
+            ov_pa = overlay_obj['PA']
+
+            xpix_ov, ypix_ov = wcs.wcs_world2pix(ov_ra, ov_dec, 0)
+            if 0 <= xpix_ov <= width and 0 <= ypix_ov <= height:
+                overplot_ellipse(ov_diam, ov_ba, ov_pa, xpix_ov, ypix_ov,
                                  height_pixels=width, pixscale=pixscale,
-                                 ax=ax, color='blue', linestyle='-', linewidth=1.5,
+                                 ax=ax, color=overlay_color, linestyle='-', linewidth=1.0,
                                  draw_majorminor_axes=False, jpeg=True)
-                ax.scatter(xpix_s, height - ypix_s, marker='+', s=50, color='blue', linewidths=1.5)
-
+                ax.scatter(xpix_ov, height - ypix_ov, marker='+', s=50,
+                           color=overlay_color, linewidths=1.0)
 
     # Text labels
     ax.text(0.03, 0.97, txt_ul, transform=ax.transAxes, ha='left', va='top',
@@ -732,7 +753,7 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
                  diamcolumn, ncol=4, nrow=2, inches_per_panel=4.,
                  show_tractor_ellipse=True, show_initial_ellipse=True,
                  final_sample=False, no_groups=False, show_group=True,
-                 sga2020_overlay=None, verbose=False):
+                 sga2020_overlay=None, missing_sga2020_mode=False, verbose=False):
     """
     Generate PDF with annotated galaxy images.
 
@@ -806,7 +827,7 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
                     region, datadir, cutoutdir, diamcolumn,
                     show_tractor_ellipse, show_initial_ellipse,
                     final_sample, no_groups, show_group,
-                    sga2020_overlay,
+                    sga2020_overlay, missing_sga2020_mode,
                 )
                 # Add index label
                 ax.text(0.97, 0.03, str(idx + 1), transform=ax.transAxes,
@@ -862,9 +883,9 @@ def write_txt_file(sample, txtfile: str, diamcolumn: str):
     """Write text file with object names for VI."""
     with open(txtfile, 'w') as f:
         for obj in sample:
-            #f.write(f'{obj["OBJNAME"]},\n')
-            if np.char.startswith(obj['OBJNAME'], '2MASS'):
-                f.write(f'{obj["OBJNAME"]},\n')
+            f.write(f'{obj["OBJNAME"]},\n')
+            #if np.char.startswith(obj['OBJNAME'], '2MASS'):
+            #    f.write(f'{obj["OBJNAME"]},\n')
     log.debug(f'Wrote {txtfile}')
 
 
@@ -881,29 +902,47 @@ def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
     log.debug(f'Wrote {viewerfile}')
 
 
-def find_missing_sga2020(sample, fullsample):
+def find_missing_sga2020(fullsample_2025, sga2020_mindiam=1., sga2020_maxdiam=10.,
+                         region='dr11-south'):
+    """
+    Find SGA2020 groups with possibly missing members and build mock catalog.
 
+    Returns
+    -------
+    sample : Table
+        Mock SGA2025-like table of SGA2020 GROUP_PRIMARY objects
+    fullsample : Table
+        Mock SGA2025-like table of all SGA2020 group members
+    sga2025_overlay : Table
+        Nearby SGA2025 sources for overlay annotation
+
+    """
     from SGA.external import read_sga2020
     from astropy.coordinates import SkyCoord
     import astropy.units as u
 
-    # SGA2020 diameter range to check
-    sga2020_mindiam = 0.8  # arcmin
-    sga2020_maxdiam = 0.82  # arcmin
+    dec_cut = 32.
 
-    sga2020 = read_sga2020()
-    I = (sga2020['D26'] >= sga2020_mindiam) & (sga2020['D26'] < sga2020_maxdiam)
-    sga2020 = sga2020[I]
-    log.info(f'SGA2020 galaxies with D26 in [{sga2020_mindiam}, {sga2020_maxdiam}): {len(sga2020):,d}')
+    sga2020_full = read_sga2020()
+
+    # Select SGA2020 objects in diameter range for "missing" check
+    in_range = (sga2020_full['D26'] >= sga2020_mindiam) & (sga2020_full['D26'] < sga2020_maxdiam)
+    if region == 'dr11-south':
+        in_range &= sga2020_full['DEC'] < 32.275
+    else:
+        in_range &= sga2020_full['DEC'] > 32.275
+
+    sga2020_check = sga2020_full[in_range]
+    log.info(f'SGA2020 galaxies with D26 in [{sga2020_mindiam}, {sga2020_maxdiam}): {len(sga2020_check):,d}')
 
     # Match to SGA2025
-    coords_2020 = SkyCoord(sga2020['RA'] * u.deg, sga2020['DEC'] * u.deg)
-    coords_2025 = SkyCoord(fullsample['RA'] * u.deg, fullsample['DEC'] * u.deg)
+    coords_2020 = SkyCoord(sga2020_check['RA'] * u.deg, sga2020_check['DEC'] * u.deg)
+    coords_2025 = SkyCoord(fullsample_2025['RA'] * u.deg, fullsample_2025['DEC'] * u.deg)
     idx_2025, sep, _ = coords_2020.match_to_catalog_sky(coords_2025)
 
     sep_arcmin = sep.to(u.arcmin).value
-    sep_in_diameters = sep_arcmin / sga2020['D26']
-    diam_ratio = fullsample['DIAM'][idx_2025] / sga2020['D26']
+    sep_in_diameters = sep_arcmin / sga2020_check['D26']
+    diam_ratio = fullsample_2025['DIAM'][idx_2025] / sga2020_check['D26']
 
     too_far = sep_in_diameters > 0.5
     very_different_size = (sep_arcmin > 1.0) & ((diam_ratio < 0.3) | (diam_ratio > 3.0))
@@ -911,30 +950,56 @@ def find_missing_sga2020(sample, fullsample):
 
     log.info(f'Possibly missing: {np.sum(possibly_missing):,d}')
 
-    # Get SGA2020 groups with missing members
-    missing_sga2020_groups = np.unique(sga2020['GROUP_NAME'][possibly_missing])
+    if np.sum(possibly_missing) == 0:
+        log.warning('No possibly missing SGA2020 galaxies found.')
+        return None, None, None
 
-    # Store SGA2020 info for overlay (attach to fullsample for annotation)
-    # We'll pass this separately to generate_pdf
-    sga2020_overlay = sga2020[np.isin(sga2020['GROUP_NAME'], missing_sga2020_groups)]
+    # Get SGA2020 GROUP_NAMEs with at least one missing member
+    missing_group_names = np.unique(sga2020_check['GROUP_NAME'][possibly_missing])
+    log.info(f'SGA2020 groups with missing members: {len(missing_group_names):,d}')
 
-    # Filter SGA2025 fullsample to groups near missing SGA2020 objects
-    # Use a generous radius to catch nearby SGA2025 groups
-    missing_coords = SkyCoord(sga2020['RA'][possibly_missing] * u.deg,
-                              sga2020['DEC'][possibly_missing] * u.deg)
-    sga2025_coords = SkyCoord(fullsample['RA'] * u.deg, fullsample['DEC'] * u.deg)
-    idx_near, sep_near, _ = missing_coords.match_to_catalog_sky(sga2025_coords)
-    nearby_groups = np.unique(fullsample['GROUP_NAME'][idx_near[sep_near.to(u.arcmin).value < 5.0]])
+    # Keep ALL members of those groups from the full SGA2020 catalog
+    sga2020_groups = sga2020_full[np.isin(sga2020_full['GROUP_NAME'], missing_group_names)]
+    log.info(f'Total SGA2020 objects in those groups: {len(sga2020_groups):,d}')
 
-    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], nearby_groups)]
-    sample = fullsample[fullsample['GROUP_PRIMARY']]
+    # Build mock SGA2025-like table using existing SGA2020 columns
+    mock = Table()
+    mock['SGAID'] = np.arange(len(sga2020_groups), dtype=np.int64)
+    mock['OBJNAME'] = sga2020_groups['GALAXY']
+    mock['RA'] = sga2020_groups['RA']
+    mock['DEC'] = sga2020_groups['DEC']
+    mock['DIAM'] = sga2020_groups['D26']
+    mock['BA'] = sga2020_groups['BA']
+    mock['PA'] = sga2020_groups['PA']
+    mock['GROUP_NAME'] = sga2020_groups['GROUP_NAME']
+    mock['GROUP_MULT'] = sga2020_groups['GROUP_MULT']
+    mock['GROUP_RA'] = sga2020_groups['GROUP_RA']
+    mock['GROUP_DEC'] = sga2020_groups['GROUP_DEC']
+    mock['GROUP_DIAMETER'] = sga2020_groups['GROUP_DIAMETER']
+    mock['GROUP_PRIMARY'] = sga2020_groups['GROUP_PRIMARY']
+    mock['SAMPLE'] = np.zeros(len(sga2020_groups), dtype=np.int32)
+    mock['SGAGROUP'] = sga2020_groups['GROUP_NAME']
 
-    log.info(f'SGA2025 groups near missing SGA2020: {len(sample):,d}')
+    fullsample = mock
+    sample = mock[mock['GROUP_PRIMARY']]
 
-    # Store for later use in annotation
-    fullsample.meta['sga2020_overlay'] = sga2020_overlay
+    # Find nearby SGA2025 sources to overlay
+    group_coords = SkyCoord(sample['GROUP_RA'] * u.deg, sample['GROUP_DEC'] * u.deg)
+    sga2025_coords = SkyCoord(fullsample_2025['RA'] * u.deg, fullsample_2025['DEC'] * u.deg)
 
+    # For each SGA2025 source, find distance to nearest SGA2020 group center
+    idx_nearest_group, sep_to_group, _ = sga2025_coords.match_to_catalog_sky(group_coords)
+
+    # Keep SGA2025 sources within group diameter + margin
+    search_radii = sample['GROUP_DIAMETER'][idx_nearest_group]  # arcmin
+    within_group = sep_to_group.to(u.arcmin).value < (search_radii + 1.0)  # 1' margin
+
+    import pdb ; pdb.set_trace()
+    sga2025_overlay = fullsample_2025[within_group]
+    log.info(f'SGA2025 sources near missing SGA2020 groups: {len(sga2025_overlay):,d}')
     #import pdb ; pdb.set_trace()
+
+    return sample, fullsample, sga2025_overlay
 
 
 # ============================================================================
@@ -992,8 +1057,43 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
     sample, fullsample = read_sample(
         region=region, first=first, last=last, galaxylist=galaxylist,
         version=version, no_groups=no_groups, final_sample=final_sample,
-        mindiam=0., maxdiam=1e6  # We'll filter later
-    )
+        mindiam=0., maxdiam=1e6)  # We'll filter later
+
+    #if missing_sga2020:
+    #    from astropy.table import vstack
+    #    from SGA.coadds import REGIONBITS
+    #    sample, fullsample = read_sample(
+    #        region='dr11-south', first=first, last=last, galaxylist=galaxylist,
+    #        version=version, no_groups=no_groups, final_sample=final_sample,
+    #        mindiam=0., maxdiam=1e6)
+    #    sample_north, fullsample_north = read_sample(
+    #        region='dr9-north', first=first, last=last, galaxylist=galaxylist,
+    #        version=version, no_groups=no_groups, final_sample=final_sample,
+    #        mindiam=0., maxdiam=1e6)
+    #    sample = vstack((sample, sample_north[sample_north['REGION'] & REGIONBITS['dr11-south'] == 0]))
+    #    fullsample = vstack((fullsample, fullsample_north[fullsample_north['REGION'] & REGIONBITS['dr11-south'] == 0]))
+    #    del sample_north, fullsample_north
+    #else:
+    #    sample, fullsample = read_sample(
+    #        region=region, first=first, last=last, galaxylist=galaxylist,
+    #        version=version, no_groups=no_groups, final_sample=final_sample,
+    #        mindiam=0., maxdiam=1e6)  # We'll filter later
+
+    sga2020_overlay = None
+    missing_sga2020_mode = False
+
+    import pdb ; pdb.set_trace()
+    if missing_sga2020:
+        result = find_missing_sga2020(fullsample, region=region)
+        if result[0] is None:
+            log.warning('No missing SGA2020 groups found. Exiting.')
+            return
+        sample, fullsample, sga2020_overlay = result
+        missing_sga2020_mode = True
+        # Force cutouts for all (no pipeline outputs exist)
+        fullsample['CUTOUT'] = np.ones(len(fullsample), dtype=bool)
+        sample['CUTOUT'] = np.ones(len(sample), dtype=bool)
+        log.info(f'Missing SGA2020 mode: {len(sample):,d} groups, {len(fullsample):,d} objects')
 
     if custom_selection:
         #from collections import Counter
@@ -1004,7 +1104,6 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         #I = (np.isin(prefix, namelist) & ((fullsample['SAMPLE'] & SAMPLE['LVD']) == 0) & ((fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0))
         ##I = np.char.startswith(fullsample['OBJNAME'], '2dFGRS')# & (fullsample['GROUP_MULT'] > 2)
         #
-        #import pdb ; pdb.set_trace()
         #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
         #sample = fullsample[fullsample['GROUP_PRIMARY']]
 
@@ -1014,11 +1113,6 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], target_groups)]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         log.info(f'Custom selection: {len(sample):,d} groups with 2MASS+OVERLAP members')
-
-    if missing_sga2020:
-        find_missing_sga2020(sample, fullsample)
-    else:
-        fullsample.meta['sga2020_overlay'] = None
 
     # Determine catalog type and diameter column
     has_ellipsebit = 'ELLIPSEBIT' in fullsample.colnames
@@ -1056,7 +1150,6 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                 track=proc_track, tier=proc_tier,
                 mindiam=mindiam, maxdiam=maxdiam, diamcolumn=diamcolumn
             )
-
             if len(filtered) == 0:
                 log.info(f'No objects in {proc_track}/tier{proc_tier} '
                          f'(diam {mindiam:.1f}-{maxdiam:.1f}), skipping.')
@@ -1068,9 +1161,10 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
             # Get fullsample subset for this track/tier
             filtered_fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], filtered['GROUP_NAME'])]
 
-            # Ensure cutouts exist for this subset only
+            # Ensure cutouts exist for this subset only.
             log.info(f'Checking images for {proc_track}/tier{proc_tier} ({len(filtered_primary):,d} groups)...')
-            ensure_cutouts(filtered_primary, filtered_fullsample, region, datadir, cutoutdir, mp=mp, no_groups=no_groups)
+            ensure_cutouts(filtered_primary, filtered_fullsample, region, datadir, cutoutdir, mp=mp,
+                           no_groups=no_groups, missing_sga2020_mode=missing_sga2020_mode)
 
             # Partition by group multiplicity
             gm_partitions = partition_by_gm(filtered, use_gmbins=use_gmbins)
@@ -1149,7 +1243,8 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                         show_initial_ellipse=show_initial_ellipse,
                         final_sample=final_sample, no_groups=no_groups,
                         show_group=show_group, verbose=verbose,
-                        sga2020_overlay=fullsample.meta['sga2020_overlay'])
+                        sga2020_overlay=sga2020_overlay,
+                        missing_sga2020_mode=missing_sga2020_mode)
 
     log.info('QA generation complete.')
 
