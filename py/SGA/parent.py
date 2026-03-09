@@ -1422,7 +1422,8 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
             #allfccds = vstack((allfccds, ccds_done))
 
         if sga2020:
-            outcat = read_sga2020(columns=['GALAXY', 'RA', 'DEC'])
+            outcat = read_sga2020()
+            outcat.rename_column('ROW', 'ROW_PARENT')
         else:
             outcat = Table(fitsio.read(catfile)) # read the whole catalog
 
@@ -1440,7 +1441,7 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         outcat = outcat[np.argsort(outcat['ROW_PARENT'])]
 
         if sga2020:
-            cat.rename_columns(['OBJNAME', 'ROW_PARENT'], ['GALAXY', 'ROW'])
+            outcat.rename_column('ROW_PARENT', 'ROW')
             outfile = os.path.join(sga_dir(), 'parent', f'SGA2020-{region}.fits')
         else:
             version = SGA_version(archive=True)

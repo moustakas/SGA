@@ -21,9 +21,7 @@ Usage:
 
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --missing-sga2020
 
-
 """
-
 import os
 import math
 from glob import glob
@@ -884,11 +882,12 @@ def get_viewer_filename(outdir: str, track: str, tier: int, gm_bin: str,
     return os.path.join(outdir, f'viewer-{track}-tier{tier}-{gm_bin}-{region}-{subset:03d}.fits')
 
 
-def write_txt_file(sample, txtfile: str, diamcolumn: str):
+def write_txt_file(sample, txtfile, diamcolumn, region):
     """Write text file with object names for VI."""
     with open(txtfile, 'w') as f:
         for obj in sample:
-            f.write(f'{obj["OBJNAME"]},\n')
+            #f.write(f'{obj["OBJNAME"]},\n')
+            f.write(f"{obj['OBJNAME']},{region},{obj['RA']},{obj['DEC']},{obj['DIAM']:.3f},{obj['PA']:.1f},{obj['BA']:.3f},{obj['MAG']:.3f},SGA2020 dropped\n")
             #if np.char.startswith(obj['OBJNAME'], '2MASS'):
             #    f.write(f'{obj["OBJNAME"]},\n')
     log.debug(f'Wrote {txtfile}')
@@ -928,14 +927,14 @@ def find_missing_sga2020(fullsample_2025, sga2020_mindiam=0.7, sga2020_maxdiam=1
 
     dec_cut = 32.
 
-    sga2020_full = read_sga2020()
+    sga2020_full = read_sga2020(region=region)
 
     # Select SGA2020 objects in diameter range for "missing" check
     in_range = (sga2020_full['D26'] >= sga2020_mindiam) & (sga2020_full['D26'] < sga2020_maxdiam)
-    if region == 'dr11-south':
-        in_range &= sga2020_full['DEC'] < 32.275
-    else:
-        in_range &= sga2020_full['DEC'] > 32.275
+    #if region == 'dr11-south':
+    #    in_range &= sga2020_full['DEC'] < 32.275
+    #else:
+    #    in_range &= sga2020_full['DEC'] > 32.275
 
     sga2020_check = sga2020_full[in_range]
     log.info(f'SGA2020 galaxies with D26 in [{sga2020_mindiam}, {sga2020_maxdiam}): {len(sga2020_check):,d}')
@@ -983,6 +982,7 @@ def find_missing_sga2020(fullsample_2025, sga2020_mindiam=0.7, sga2020_maxdiam=1
     mock['DIAM'] = sga2020_groups['D26']
     mock['BA'] = sga2020_groups['BA']
     mock['PA'] = sga2020_groups['PA']
+    mock['MAG'] = sga2020_groups['MAG_LEDA']
     mock['GROUP_NAME'] = sga2020_groups['GROUP_NAME']
     mock['GROUP_MULT'] = sga2020_groups['GROUP_MULT']
     mock['GROUP_RA'] = sga2020_groups['GROUP_RA']
@@ -1030,7 +1030,7 @@ def find_missing_sga2020(fullsample_2025, sga2020_mindiam=0.7, sga2020_maxdiam=1
 # ============================================================================
 
 def qa_tractor(region='dr11-south', version=None, datadir=None,
-               mindiam=0.5, maxdiam=5.0, track='all', tier='all',
+               mindiam=0.0, maxdiam=1e3, track='all', tier='all',
                final_sample=False, no_groups=False, show_group=True,
                missing_sga2020=False, show_tractor_ellipse=True,
                show_initial_ellipse=True, use_gmbins=True,
@@ -1081,26 +1081,6 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         region=region, first=first, last=last, galaxylist=galaxylist,
         version=version, no_groups=no_groups, final_sample=final_sample,
         mindiam=0., maxdiam=1e6)  # We'll filter later
-
-    #if missing_sga2020:
-    #    from astropy.table import vstack
-    #    from SGA.coadds import REGIONBITS
-    #    sample, fullsample = read_sample(
-    #        region='dr11-south', first=first, last=last, galaxylist=galaxylist,
-    #        version=version, no_groups=no_groups, final_sample=final_sample,
-    #        mindiam=0., maxdiam=1e6)
-    #    sample_north, fullsample_north = read_sample(
-    #        region='dr9-north', first=first, last=last, galaxylist=galaxylist,
-    #        version=version, no_groups=no_groups, final_sample=final_sample,
-    #        mindiam=0., maxdiam=1e6)
-    #    sample = vstack((sample, sample_north[sample_north['REGION'] & REGIONBITS['dr11-south'] == 0]))
-    #    fullsample = vstack((fullsample, fullsample_north[fullsample_north['REGION'] & REGIONBITS['dr11-south'] == 0]))
-    #    del sample_north, fullsample_north
-    #else:
-    #    sample, fullsample = read_sample(
-    #        region=region, first=first, last=last, galaxylist=galaxylist,
-    #        version=version, no_groups=no_groups, final_sample=final_sample,
-    #        mindiam=0., maxdiam=1e6)  # We'll filter later
 
     sga2020_overlay = None
     missing_sga2020_mode = False
@@ -1254,7 +1234,7 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                         outdir, proc_track, proc_tier, gm_bin, region, ipdf + 1)
 
                     # Write auxiliary files (both use this_sample - the flagged objects only)
-                    write_txt_file(this_sample, txtfile, diamcolumn)
+                    write_txt_file(this_sample, txtfile, diamcolumn, region)
                     write_viewer_file(this_sample, viewerfile, diamcolumn)
 
                     # Generate PDF
