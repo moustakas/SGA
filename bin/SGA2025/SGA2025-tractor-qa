@@ -601,6 +601,9 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
         cutout_galaxy=cutout_galaxy, cutout_galaxydir=cutout_galaxydir,
         cutout=obj['CUTOUT']
     )
+    #if group_mult > 1:
+    #    print(obj['OBJNAME'], obj['GROUP_NAME'], obj['GROUP_RA'], obj['GROUP_DEC'], obj['RA'], obj['DEC'], groupra, groupdec, wcs.wcs.crval)
+    #    import pdb ; pdb.set_trace()
 
     if image is None:
         ax.text(0.5, 0.5, 'No image available', transform=ax.transAxes,
@@ -728,6 +731,8 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
                                  draw_majorminor_axes=False, jpeg=True)
                 ax.scatter(xpix_ov, height - ypix_ov, marker='+', s=50,
                            color=overlay_color, linewidths=1.0)
+                #if obj['GROUP_NAME'] == 'IC4025_GROUP': # 'NGC0897_GROUP':
+                #    import pdb ; pdb.set_trace()
 
     # Text labels
     ax.text(0.03, 0.97, txt_ul, transform=ax.transAxes, ha='left', va='top',
@@ -902,8 +907,8 @@ def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
     log.debug(f'Wrote {viewerfile}')
 
 
-def find_missing_sga2020(fullsample_2025, sga2020_mindiam=1., sga2020_maxdiam=10.,
-                         region='dr11-south'):
+def find_missing_sga2020(fullsample_2025, sga2020_mindiam=0.7, sga2020_maxdiam=1e3,
+                         sga2020_groups_only=False, region='dr11-south'):
     """
     Find SGA2020 groups with possibly missing members and build mock catalog.
 
@@ -958,11 +963,18 @@ def find_missing_sga2020(fullsample_2025, sga2020_mindiam=1., sga2020_maxdiam=10
     missing_group_names = np.unique(sga2020_check['GROUP_NAME'][possibly_missing])
     log.info(f'SGA2020 groups with missing members: {len(missing_group_names):,d}')
 
-    # Keep ALL members of those groups from the full SGA2020 catalog
-    sga2020_groups = sga2020_full[np.isin(sga2020_full['GROUP_NAME'], missing_group_names)]
-    log.info(f'Total SGA2020 objects in those groups: {len(sga2020_groups):,d}')
+    if sga2020_groups_only:
+        # Keep ALL members of those groups from the full SGA2020 catalog
+        sga2020_groups = sga2020_full[np.isin(sga2020_full['GROUP_NAME'], missing_group_names)]
+        log.info(f'Total SGA2020 objects in those groups: {len(sga2020_groups):,d}')
+    else:
+        # Keep only the missing objects themselves
+        sga2020_groups = sga2020_check[possibly_missing]
+        log.info(f'Missing SGA2020 objects only: {len(sga2020_groups):,d}')
 
     # Build mock SGA2025-like table using existing SGA2020 columns
+    #group_diameter = np.maximum(sga2020_groups['GROUP_DIAMETER'], sga2020_groups['D26'])
+
     mock = Table()
     mock['SGAID'] = np.arange(len(sga2020_groups), dtype=np.int64)
     mock['OBJNAME'] = sga2020_groups['GALAXY']
@@ -975,10 +987,21 @@ def find_missing_sga2020(fullsample_2025, sga2020_mindiam=1., sga2020_maxdiam=10
     mock['GROUP_MULT'] = sga2020_groups['GROUP_MULT']
     mock['GROUP_RA'] = sga2020_groups['GROUP_RA']
     mock['GROUP_DEC'] = sga2020_groups['GROUP_DEC']
-    mock['GROUP_DIAMETER'] = sga2020_groups['GROUP_DIAMETER']
+    mock['GROUP_DIAMETER'] = sga2020_groups['GROUP_DIAMETER'] # group_diameter
     mock['GROUP_PRIMARY'] = sga2020_groups['GROUP_PRIMARY']
     mock['SAMPLE'] = np.zeros(len(sga2020_groups), dtype=np.int32)
     mock['SGAGROUP'] = sga2020_groups['GROUP_NAME']
+
+    if sga2020_groups_only:
+        #mock['GROUP_DIAMETER'] = np.maximum(sga2020_groups['GROUP_DIAMETER'], sga2020_groups['D26'])
+        pass
+    else:
+        # Use per-object coordinates and diameter
+        mock['GROUP_RA'] = sga2020_groups['RA']
+        mock['GROUP_DEC'] = sga2020_groups['DEC']
+        mock['GROUP_DIAMETER'] = sga2020_groups['D26']
+        mock['GROUP_MULT'] = np.ones(len(sga2020_groups), dtype=np.int16)
+        mock['GROUP_PRIMARY'] = np.ones(len(sga2020_groups), dtype=bool)
 
     fullsample = mock
     sample = mock[mock['GROUP_PRIMARY']]
@@ -991,10 +1014,10 @@ def find_missing_sga2020(fullsample_2025, sga2020_mindiam=1., sga2020_maxdiam=10
     idx_nearest_group, sep_to_group, _ = sga2025_coords.match_to_catalog_sky(group_coords)
 
     # Keep SGA2025 sources within group diameter + margin
+    #search_radii = sample['GROUP_DIAMETER'][idx_nearest_group]  # arcmin
     search_radii = sample['GROUP_DIAMETER'][idx_nearest_group]  # arcmin
     within_group = sep_to_group.to(u.arcmin).value < (search_radii + 1.0)  # 1' margin
 
-    import pdb ; pdb.set_trace()
     sga2025_overlay = fullsample_2025[within_group]
     log.info(f'SGA2025 sources near missing SGA2020 groups: {len(sga2025_overlay):,d}')
     #import pdb ; pdb.set_trace()
@@ -1082,7 +1105,6 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
     sga2020_overlay = None
     missing_sga2020_mode = False
 
-    import pdb ; pdb.set_trace()
     if missing_sga2020:
         result = find_missing_sga2020(fullsample, region=region)
         if result[0] is None:
@@ -1094,6 +1116,7 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         fullsample['CUTOUT'] = np.ones(len(fullsample), dtype=bool)
         sample['CUTOUT'] = np.ones(len(sample), dtype=bool)
         log.info(f'Missing SGA2020 mode: {len(sample):,d} groups, {len(fullsample):,d} objects')
+        import pdb ; pdb.set_trace()
 
     if custom_selection:
         #from collections import Counter

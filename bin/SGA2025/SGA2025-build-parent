@@ -72,6 +72,7 @@ def main():
     parser.add_argument('--in-footprint', action='store_true',
                         help='Match the various external catalogs ' + \
                         'to the CCDs files.')
+    parser.add_argument('--sga2020', action='store_true', help='Match to the SGA2020')
 
     parser.add_argument('--qa-footprint', action='store_true',
                         help='Build QA of the in-footprint samples.')
@@ -102,7 +103,7 @@ def main():
         from mpi4py.util import pkl5
 
         comm = pkl5.Intracomm(MPI.COMM_WORLD)
-        in_footprint(region=args.region, comm=comm, ntest=args.ntest)
+        in_footprint(region=args.region, comm=comm, ntest=args.ntest, sga2020=args.sga2020)
 
     if args.parent:
         from SGA.parent import build_parent

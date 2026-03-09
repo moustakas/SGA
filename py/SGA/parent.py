@@ -1282,7 +1282,7 @@ def _read_existing_footprint(cat, region, version='v1.0'):
 
 
 def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
-                 bands=BANDS, ntest=None):
+                 bands=BANDS, ntest=None, sga2020=False):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
@@ -1304,29 +1304,37 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         t0 = time.time()
 
         # read the parent catalog
-        version = SGA_version(archive=True)
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
-
-        F = fitsio.FITS(catfile)
-        N = F[1].get_nrows()
-        if ntest is not None:
-            rng = np.random.default_rng(seed=1)
-            I = rng.choice(N, size=ntest, replace=False)
-            I = I[np.argsort(I)]
+        if sga2020:
+            from SGA.external import read_sga2020
+            version = None
+            cat = read_sga2020(columns=['GALAXY', 'RA', 'DEC'])
+            cat.rename_columns(['GALAXY', 'ROW'], ['OBJNAME', 'ROW_PARENT'])
+            cat['NCCD'] = np.zeros(len(cat), int)
+            cat['FILTERS'] = np.zeros(len(cat), '<U4')
         else:
-            #log.info('HACK TO JUST SELECT THE RC3!!')
-            #ref = fitsio.read(catfile, columns='DIAM_LIT_REF')
-            #I = np.where(ref == 'RC3')[0]
-            I = np.arange(N)
+            version = SGA_version(archive=True)
+            catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
 
-        #log.info('HACK!!')
-        #I = np.array([4784167, 4784170])
-        #I = np.array([2016776])
+            F = fitsio.FITS(catfile)
+            N = F[1].get_nrows()
+            if ntest is not None:
+                rng = np.random.default_rng(seed=1)
+                I = rng.choice(N, size=ntest, replace=False)
+                I = I[np.argsort(I)]
+            else:
+                #log.info('HACK TO JUST SELECT THE RC3!!')
+                #ref = fitsio.read(catfile, columns='DIAM_LIT_REF')
+                #I = np.where(ref == 'RC3')[0]
+                I = np.arange(N)
 
-        cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
-        cat['NCCD'] = np.zeros(len(cat), int)
-        cat['FILTERS'] = np.zeros(len(cat), '<U4')
-        log.info(f'Read {len(cat):,d} objects from {catfile}')
+            #log.info('HACK!!')
+            #I = np.array([4784167, 4784170])
+            #I = np.array([2016776])
+            cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
+
+            cat['NCCD'] = np.zeros(len(cat), int)
+            cat['FILTERS'] = np.zeros(len(cat), '<U4')
+            log.info(f'Read {len(cat):,d} objects from {catfile}')
 
         # sort by right ascension to try to speed things up...
         cat = cat[np.argsort(cat['RA'])]
@@ -1360,7 +1368,10 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
 
         # check for an existing CCDs catalog from previous runs of this code
         #cat, cat_done, ccds_done = _read_existing_footprint(cat, allccds, region, version=version)
-        cat, cat_done = _read_existing_footprint(cat, region, version=version)
+        if sga2020:
+            cat_done = Table()
+        else:
+            cat, cat_done = _read_existing_footprint(cat, region, version=version)
         #log.info('HACK!!')
         #cat_done = []
 
@@ -1410,7 +1421,11 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
             allfcat = vstack((allfcat, cat_done))
             #allfccds = vstack((allfccds, ccds_done))
 
-        outcat = Table(fitsio.read(catfile)) # read the whole catalog
+        if sga2020:
+            outcat = read_sga2020(columns=['GALAXY', 'RA', 'DEC'])
+        else:
+            outcat = Table(fitsio.read(catfile)) # read the whole catalog
+
         # match on position not ROW_PARENT, which can change
         cat_indx, fcat_indx, sep = match_radec(
             outcat['RA'].value, outcat['DEC'].value, allfcat['RA'].value,
@@ -1424,8 +1439,12 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         outcat['FILTERS'] = allfcat['FILTERS']
         outcat = outcat[np.argsort(outcat['ROW_PARENT'])]
 
-        version = SGA_version(archive=True)
-        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
+        if sga2020:
+            cat.rename_columns(['OBJNAME', 'ROW_PARENT'], ['GALAXY', 'ROW'])
+            outfile = os.path.join(sga_dir(), 'parent', f'SGA2020-{region}.fits')
+        else:
+            version = SGA_version(archive=True)
+            outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
         log.info(f'Writing {len(outcat):,d} objects to {outfile}')
         outcat.write(outfile, overwrite=True)
 
@@ -4988,8 +5007,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
 
             view = to_skyviewer_table(base[I])
             view.write('viewer.fits', overwrite=True)
-
-        pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
