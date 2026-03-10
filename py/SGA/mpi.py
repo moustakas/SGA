@@ -56,7 +56,7 @@ def mpi_args():
     parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
     parser.add_argument('--test-bricks', action='store_true', help='Read the sample of test bricks.')
     parser.add_argument('--no-iterative', action='store_true', help='Turn off iterative source detection.')
-    parser.add_argument('--no-segmentation', action='store_true', help='Turn off Tractor segmentation.')
+    parser.add_argument('--use-segmentation', action='store_false', dest='no_segmentation', help='Turn on Tractor segmentation during fitblobs.')
     parser.add_argument('--noradweight', dest='use_radial_weight', action='store_false',
                         help='No radial weighting when determining moment geometry.')
     parser.add_argument('--momentpos', dest='use_tractor_position', action='store_false',
@@ -73,6 +73,7 @@ def mpi_args():
     parser.add_argument('--parse-tractor-logs', action='store_true', help='Parse existing Tractor logs.')
 
     #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
+    parser.add_argument('--redo-failures', action='store_true', help='Select (and re-queue) just failures.')
     parser.add_argument('--skip-tractor', action='store_true', help='With --coadds or --ellipse, do not run Tractor.')
     parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
     parser.add_argument('--bright-masking', action='store_true', help='Mask bright sources not on the blob being fitted.')

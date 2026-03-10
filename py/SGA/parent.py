@@ -15,7 +15,7 @@ from astropy.table import Table, vstack, hstack
 from astrometry.libkd.spherematch import match_radec
 
 from SGA.SGA import sga_dir, SGA_version
-from SGA.coadds import PIXSCALE, BANDS
+from SGA.coadds import PIXSCALE, BANDS, REGIONBITS
 from SGA.util import match, match_to
 from SGA.sky import choose_primary, resolve_close
 from SGA.qa import qa_skypatch, multipage_skypatch, to_skyviewer_table
@@ -1282,7 +1282,7 @@ def _read_existing_footprint(cat, region, version='v1.0'):
 
 
 def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
-                 bands=BANDS, ntest=None):
+                 bands=BANDS, ntest=None, sga2020=False):
     """Find which objects are in the given survey footprint based on positional
     matching with a very generous (1 deg) search radius.
 
@@ -1304,29 +1304,37 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         t0 = time.time()
 
         # read the parent catalog
-        version = SGA_version(archive=True)
-        catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
-
-        F = fitsio.FITS(catfile)
-        N = F[1].get_nrows()
-        if ntest is not None:
-            rng = np.random.default_rng(seed=1)
-            I = rng.choice(N, size=ntest, replace=False)
-            I = I[np.argsort(I)]
+        if sga2020:
+            from SGA.external import read_sga2020
+            version = None
+            cat = read_sga2020(columns=['GALAXY', 'RA', 'DEC'])
+            cat.rename_columns(['GALAXY', 'ROW'], ['OBJNAME', 'ROW_PARENT'])
+            cat['NCCD'] = np.zeros(len(cat), int)
+            cat['FILTERS'] = np.zeros(len(cat), '<U4')
         else:
-            #log.info('HACK TO JUST SELECT THE RC3!!')
-            #ref = fitsio.read(catfile, columns='DIAM_LIT_REF')
-            #I = np.where(ref == 'RC3')[0]
-            I = np.arange(N)
+            version = SGA_version(archive=True)
+            catfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{version}.fits')
 
-        #log.info('HACK!!')
-        #I = np.array([4784167, 4784170])
-        #I = np.array([2016776])
+            F = fitsio.FITS(catfile)
+            N = F[1].get_nrows()
+            if ntest is not None:
+                rng = np.random.default_rng(seed=1)
+                I = rng.choice(N, size=ntest, replace=False)
+                I = I[np.argsort(I)]
+            else:
+                #log.info('HACK TO JUST SELECT THE RC3!!')
+                #ref = fitsio.read(catfile, columns='DIAM_LIT_REF')
+                #I = np.where(ref == 'RC3')[0]
+                I = np.arange(N)
 
-        cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
-        cat['NCCD'] = np.zeros(len(cat), int)
-        cat['FILTERS'] = np.zeros(len(cat), '<U4')
-        log.info(f'Read {len(cat):,d} objects from {catfile}')
+            #log.info('HACK!!')
+            #I = np.array([4784167, 4784170])
+            #I = np.array([2016776])
+            cat = Table(fitsio.read(catfile, columns=['OBJNAME', 'RA', 'DEC', 'ROW_PARENT'], rows=I))
+
+            cat['NCCD'] = np.zeros(len(cat), int)
+            cat['FILTERS'] = np.zeros(len(cat), '<U4')
+            log.info(f'Read {len(cat):,d} objects from {catfile}')
 
         # sort by right ascension to try to speed things up...
         cat = cat[np.argsort(cat['RA'])]
@@ -1360,7 +1368,10 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
 
         # check for an existing CCDs catalog from previous runs of this code
         #cat, cat_done, ccds_done = _read_existing_footprint(cat, allccds, region, version=version)
-        cat, cat_done = _read_existing_footprint(cat, region, version=version)
+        if sga2020:
+            cat_done = Table()
+        else:
+            cat, cat_done = _read_existing_footprint(cat, region, version=version)
         #log.info('HACK!!')
         #cat_done = []
 
@@ -1410,7 +1421,12 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
             allfcat = vstack((allfcat, cat_done))
             #allfccds = vstack((allfccds, ccds_done))
 
-        outcat = Table(fitsio.read(catfile)) # read the whole catalog
+        if sga2020:
+            outcat = read_sga2020()
+            outcat.rename_column('ROW', 'ROW_PARENT')
+        else:
+            outcat = Table(fitsio.read(catfile)) # read the whole catalog
+
         # match on position not ROW_PARENT, which can change
         cat_indx, fcat_indx, sep = match_radec(
             outcat['RA'].value, outcat['DEC'].value, allfcat['RA'].value,
@@ -1424,8 +1440,12 @@ def in_footprint(region='dr9-north', comm=None, radius=1., width_pixels=38,#152,
         outcat['FILTERS'] = allfcat['FILTERS']
         outcat = outcat[np.argsort(outcat['ROW_PARENT'])]
 
-        version = SGA_version(archive=True)
-        outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
+        if sga2020:
+            outcat.rename_column('ROW_PARENT', 'ROW')
+            outfile = os.path.join(sga_dir(), 'parent', f'SGA2020-{region}.fits')
+        else:
+            version = SGA_version(archive=True)
+            outfile = os.path.join(sga_dir(), 'parent', f'SGA2025-parent-archive-{region}-{version}.fits')
         log.info(f'Writing {len(outcat):,d} objects to {outfile}')
         outcat.write(outfile, overwrite=True)
 
@@ -3562,70 +3582,117 @@ def apply_adds(parent, adds, regionbits, nocuts):
     """
     if len(adds) == 0:
         return parent
+
     log.info(f'Adding {len(adds):,d} objects from adds.csv')
 
-    # next SGAID
+    # Filter out objects already in parent
+    adds_objnames = np.asarray(adds['OBJNAME']).astype(str)
+    parent_objnames = np.asarray(parent['OBJNAME']).astype(str)
+    already_present = np.isin(adds_objnames, parent_objnames)
+    if np.any(already_present):
+        for obj in adds_objnames[already_present]:
+            log.warning(f"adds: OBJNAME already in parent: {obj}")
+        adds = adds[~already_present]
+        adds_objnames = adds_objnames[~already_present]
+
+    if len(adds) == 0:
+        return parent
+
+    n_adds = len(adds)
+
+    # Next SGAID
     maxsgaid = np.max(parent['SGAID'])
     maxrow = np.max(nocuts['ROW_PARENT'])
     next_sgaid = int(max(maxsgaid, maxrow)) + 1
-    #print(next_sgaid)
 
-    def _empty_row():
-        row = {}
-        for c in parent.colnames:
-            dt = parent[c].dtype
-            if dt.kind in 'f':   row[c] = np.array([-99.0], dtype=dt)
-            elif dt.kind in 'iu':row[c] = np.array([0], dtype=dt)
-            elif dt.kind in 'SU':row[c] = np.array([''], dtype=dt)
-            else:                row[c] = np.array([-99], dtype=dt)
-        return Table(row)
-
-    new_rows = []
-    for add in adds:
-        obj = add['OBJNAME']
-
-        # reject if already present
-        if np.any(parent['OBJNAME'] == obj):
-            log.warning(f"adds: OBJNAME already in parent: {obj}")
-            continue
-
-        base = _empty_row()
-        base['OBJNAME'][0] = str(obj)
-        base['RA'][0] = float(add['RA'])
-        base['DEC'][0] = float(add['DEC'])
-        base['DIAM'][0] = float(add['DIAM'])
-        base['DIAM_REF'][0] = 'VI'
-        base['BA'][0] = float(add['BA'])
-        base['PA'][0] = float(add['PA']) % 180.0
-
-        # REGION: if masked, set both bits; else map the single key
-        reg_val = add['REGION']
-        if np.ma.is_masked(reg_val):
-            base['REGION'][0] = int(regionbits['dr11-south']) | int(regionbits['dr9-north'])
+    # Build empty table with n_adds rows
+    new_data = {}
+    for c in parent.colnames:
+        dt = parent[c].dtype
+        if dt.kind == 'f':
+            new_data[c] = np.full(n_adds, -99.0, dtype=dt)
+        elif dt.kind in 'iu':
+            new_data[c] = np.zeros(n_adds, dtype=dt)
+        elif dt.kind in 'SU':
+            new_data[c] = np.full(n_adds, '', dtype=dt)
         else:
-            base['REGION'][0] = int(regionbits[str(reg_val).strip()])
+            new_data[c] = np.full(n_adds, -99, dtype=dt)
 
-        # add from nocuts
-        noc_ix = np.where(nocuts['OBJNAME'] == obj)[0]
-        if len(noc_ix) == 1:
-            src = nocuts[noc_ix[0]]
-            base['PGC'] = src['PGC']
-            base['SGAID'] = src['ROW_PARENT']
-        else:
-            base['SGAID'][0] = next_sgaid
-            next_sgaid += 1
+    new_rows = Table(new_data)
 
-        new_rows.append(base)
-        #print(next_sgaid)
+    # Fill from adds
+    new_rows['OBJNAME'] = adds_objnames
+    new_rows['RA'] = np.asarray(adds['RA'], dtype=float)
+    new_rows['DEC'] = np.asarray(adds['DEC'], dtype=float)
+    new_rows['DIAM'] = np.asarray(adds['DIAM'], dtype=float)
+    new_rows['DIAM_REF'] = 'VI'
+    new_rows['BA'] = np.asarray(adds['BA'], dtype=float)
+    new_rows['PA'] = np.asarray(adds['PA'], dtype=float) % 180.0
 
-    if new_rows:
-        parent = vstack([parent] + new_rows)
+    # REGION: handle masked values
+    reg_vals = adds['REGION']
+    both_bits = int(regionbits['dr11-south']) | int(regionbits['dr9-north'])
 
-    try:
-        assert(len(parent) == len(np.unique(parent['SGAID'])))
-    except:
+    def _get_region_bits(r):
+        r_str = str(r).strip()
+        if r_str == '--' or r_str == '':
+            return both_bits
+        return int(regionbits[r_str])
+
+    if hasattr(reg_vals, 'mask'):
+        is_masked = reg_vals.mask
+        region_bits = np.where(is_masked, both_bits,
+                               [_get_region_bits(r) for r in reg_vals])
+    else:
+        region_bits = np.array([_get_region_bits(r) for r in reg_vals])
+    new_rows['REGION'] = region_bits
+
+    # Match to nocuts by OBJNAME or OBJNAME_SGA2020
+    nocuts_objnames = np.asarray(nocuts['OBJNAME']).astype(str)
+    nocuts_objnames_sga2020 = np.asarray(nocuts['OBJNAME_SGA2020']).astype(str)
+
+    # For each add, find match in nocuts
+    match_by_objname = np.isin(adds_objnames, nocuts_objnames)
+    match_by_sga2020 = np.isin(adds_objnames, nocuts_objnames_sga2020)
+    has_nocuts_match = match_by_objname | match_by_sga2020
+
+    # Build index mapping for matched objects
+    # Create lookup dicts for O(1) access
+    nocuts_objname_to_idx = {name: i for i, name in enumerate(nocuts_objnames)}
+    nocuts_sga2020_to_idx = {name: i for i, name in enumerate(nocuts_objnames_sga2020)}
+
+    nocuts_idx = np.full(n_adds, -1, dtype=int)
+    for i, obj in enumerate(adds_objnames):
+        if obj in nocuts_objname_to_idx:
+            nocuts_idx[i] = nocuts_objname_to_idx[obj]
+        elif obj in nocuts_sga2020_to_idx:
+            nocuts_idx[i] = nocuts_sga2020_to_idx[obj]
+
+    # Fill PGC and SGAID from nocuts where matched
+    matched = nocuts_idx >= 0
+    if np.any(matched):
+        new_rows['PGC'][matched] = nocuts['PGC'][nocuts_idx[matched]]
+        new_rows['SGAID'][matched] = nocuts['ROW_PARENT'][nocuts_idx[matched]]
+
+    # Assign new SGAIDs for unmatched
+    n_unmatched = np.sum(~matched)
+    if n_unmatched > 0:
+        new_rows['SGAID'][~matched] = np.arange(next_sgaid, next_sgaid + n_unmatched)
+
+    # Stack
+    parent = vstack([parent, new_rows])
+
+    # Verify unique SGAIDs
+    if len(parent) != len(np.unique(parent['SGAID'])):
+        sid, cc = np.unique(parent['SGAID'], return_counts=True)
+        check = parent[np.isin(parent['SGAID'], sid[cc>1])]
+        check = check[np.argsort(check['SGAID'])]
+        view = to_skyviewer_table(check[check['DIAM_REF'] == 'VI'])
+        view.write('viewer.fits', overwrite=True)
+
         msg = 'Non-unique SGAID values!'
         log.critical(msg)
+        pdb.set_trace()
         raise ValueError(msg)
 
     return parent
@@ -4224,10 +4291,14 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
-def _prepare_v100_ellipse(ell1, region, mindiam=0.5):
+def prepare_v110_ellipse(ell1, region, mindiam=0.5):
 
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
+
+    # no v1.1 ellipse-fitting in dr9-north
+    if region == 'dr9-north':
+        return ell1
 
     in_group = ell1['GROUP_MULT'] > 1
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
@@ -4275,62 +4346,38 @@ def _prepare_v100_ellipse(ell1, region, mindiam=0.5):
     log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
     log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
 
-    # Flag categories A, B, C, and D for restoration
-    refit = cat_a | cat_b | cat_c | cat_d
-
-    # Every object was inspected and either dropped or its geometry
-    # was updated in the overlays files, so set REFIT to false
-    # everywhere.
-    refit = np.zeros(len(ell1), bool)
-    ell1['REFIT'] = refit
-
-    log.info(f'{region}: {np.sum(refit):,d}/{len(ell1):,d} flagged for geometry restoration')
-
-    log.info(f"  LVD in refit: {np.sum(refit & is_lvd):,d}")
-    log.info(f"  LVD in Category D: {np.sum(cat_d & is_lvd):,d}")
+    # Flag categories A, B, and C (not D) for restoration
+    refit = cat_a | cat_b | cat_c
 
     #check = ell1[cat_d & ~is_lvd]
     #check = check[np.argsort(check['D26'])[::-1]]
-    #view = to_skyviewer_table(check[:50], diamcol='D26')
-    #view.write('viewer.fits', overwrite=True)
-
-    #if np.any(refit):
-    #    check = ell1[refit]['OBJNAME', 'RA', 'DEC', 'D26', 'BA', 'PA', 'DIAM_INIT',
-    #                          'GROUP_NAME', 'GROUP_MULT', 'GROUP_RA', 'GROUP_DEC']
-    #    check = check[np.argsort(check['D26'])[::-1]]
-    #    check['POS_SHIFT'] = pos_shift_arcsec[refit]
-    #    check['DIAM_RATIO'] = diam_ratio[refit]
-    #    check['CATEGORY'] = np.where(cat_a[refit], 'A', np.where(cat_b[refit], 'B', 'C'))
-    #    view = to_skyviewer_table(check, diamcol='D26')
-    #    view.write('viewer.fits', overwrite=True)
-    #
-    #    _ = [print(f'{obj},') for obj in check['OBJNAME'].value]
-
-    # --- Flag small group members for removal ---
-    #protect = []
-
-    remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
-    #remove &= ~np.isin(ell1['OBJNAME'], protect)
-    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
-
-    pdb.set_trace()
-
-    #remove2 = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=True)
-    #remove2 &= ~np.isin(ell1['OBJNAME'], protect)
-    #remove[remove2] = False
-    #
-    #check = ell1[remove]
-    #from collections import Counter
-    #allprefix = np.array(list(zip(*np.char.split(check['OBJNAME'].value, ' ').tolist()))[0])
-    #C = Counter(allprefix).most_common()
-    #
-    ##I = np.char.startswith(check['OBJNAME'], 'FGCE')
-    ##view = to_skyviewer_table(check[I], diamcol='D26')
     #view = to_skyviewer_table(check, diamcol='D26')
     #view.write('viewer.fits', overwrite=True)
 
-    #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
-    ell1 = ell1[~remove]
+    # refit all group members
+    ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    if False:
+        protect = []
+
+        #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
+        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        #check = ell1[remove]
+        #check = check[np.argsort(check['D26'])]
+        ##check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check[:20], diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
+
+        ell1 = ell1[~remove]
 
     return ell1
 
@@ -4448,6 +4495,72 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_
     return remove
 
 
+def harmonize_region_bits(out):
+    """Harmonize REGION bits within groups.
+
+    - Keep only bits common to all members
+    - Drop groups with no common bits (mult > 1 only)
+    - Singletons keep their original REGION
+
+    """
+    unique_groups, group_indices = np.unique(out['GROUP_NAME'], return_inverse=True)
+    n_groups = len(unique_groups)
+
+    # Compute bitwise AND of REGION for each group; start with all bits set
+    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
+    np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
+
+    # Get the allowed bits for each row
+    allowed = region_and_per_group[group_indices]
+
+    group_mult = out['GROUP_MULT']
+    is_singleton = group_mult == 1
+
+    # Groups to drop (no common bits AND mult > 1)
+    drop_mask = (allowed == 0) & ~is_singleton
+
+    # Groups to strip (some bits removed but group kept, mult > 1 only)
+    new_region = out['REGION'] & allowed
+    strip_mask = (new_region != out['REGION']) & (allowed != 0) & ~is_singleton
+
+    # Diagnostics for stripped groups
+    if np.any(strip_mask):
+        strip_groups = np.unique(out['GROUP_NAME'][strip_mask])
+        log.info(f"Stripping REGION bits for {len(strip_groups):,d} groups ({np.sum(strip_mask):,d} members):")
+
+        # Show details for first few
+        for gname in strip_groups[:5]:
+            gmask = out['GROUP_NAME'] == gname
+            old_regions = out['REGION'][gmask]
+            new_regions = new_region[gmask]
+            common = region_and_per_group[group_indices[gmask][0]]
+            log.info(f"  {gname}: {list(old_regions)} -> {list(new_regions)} (common={common})")
+
+        if len(strip_groups) > 5:
+            log.info(f"  ... and {len(strip_groups) - 5} more groups")
+
+        # Apply only to non-singletons where allowed != 0
+        out['REGION'][strip_mask] = new_region[strip_mask]
+
+    # Diagnostics for dropped groups
+    if np.any(drop_mask):
+        drop_names = np.unique(out['GROUP_NAME'][drop_mask])
+        log.info(f"Dropping {len(drop_names):,d} groups with no common REGION bit ({np.sum(drop_mask):,d} members):")
+
+        for gname in drop_names[:5]:
+            gmask = out['GROUP_NAME'] == gname
+            members = out['OBJNAME'][gmask]
+            regions = out['REGION'][gmask]
+            log.info(f"  {gname}: {list(members)} regions={list(regions)}")
+
+        if len(drop_names) > 5:
+            log.info(f"  ... and {len(drop_names) - 5} more groups")
+
+        out = out[~drop_mask]
+
+    return out
+
+
 def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
     dr9-north. Consolidate duplicates by OBJNAME, combining REGION
@@ -4545,6 +4658,9 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             # refit everything
             ell1['REFIT'] = np.ones(len(ell1), bool)
             #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
+
+        elif base_version == 'v1.1':
+            ell1 = prepare_v110_ellipse(ell1, region, mindiam=mindiam)
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -4665,7 +4781,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -4686,7 +4802,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
     from astropy.table import Table
     from desiutil.dust import SFDMap
     from SGA.SGA import SGA_version, SAMPLE, SGA_diameter
-    from SGA.coadds import REGIONBITS
     from SGA.groups import build_group_catalog, make_singleton_group, set_overlap_bit
     from SGA.ellipse import ELLIPSEMODE, FITMODE, ELLIPSEBIT
     from SGA.sky import find_in_mclouds, find_in_gclpne
@@ -4861,6 +4976,14 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
         base = ell_base
+    elif base_version == 'v1.1':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+        base = ell_base
     else:
         base = ell_base
 
@@ -4869,7 +4992,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
     # Apply overlays (drops, adds [with nocuts restore], updates, flags)
     ov = load_overlays(overlay_dir)
     nocuts_file = os.path.join(parentdir, f'SGA2025-parent-nocuts-{nocuts_version}.fits')
-    nocuts = Table(fitsio.read(nocuts_file, columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
+    nocuts = Table(fitsio.read(nocuts_file, columns=['OBJNAME', 'OBJNAME_SGA2020', 'PGC', 'ROW_PARENT']))
     log.info(f'Read {len(nocuts):,d} rows from {nocuts_file}')
 
     base = apply_drops(base, ov.drops, REGIONBITS)
@@ -4917,6 +5040,30 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
         raise ValueError('BA out of range')
     if not np.all((base['PA'] >= 0.) & (base['PA'] < 180.)):
         raise ValueError('PA out of range')
+
+    # repair REGION
+    for region in ['dr11-south', 'dr9-north']:
+        arch = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{nocuts_version}.fits'),
+                                 columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
+        I = np.isin(base['SGAID'], arch['ROW_PARENT']) & (base['REGION'] & REGIONBITS[region] == 0)
+        if np.sum(I) > 0:
+            log.info(f'Repairing {np.sum(I)} {region} REGION bits')
+            base['REGION'][I] |= REGIONBITS[region]
+            #view = to_skyviewer_table(base[I])
+            #view.write('viewer.fits', overwrite=True)
+
+    #customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
+    #custom = Table.read(customfile, format='csv', comment='#')
+    ##in_footprint_work(custom, np.arange(len(custom)),
+    #
+    #check = base[np.isin(base['OBJNAME'], custom['OBJNAME'])]
+    #check_north = check[(check['REGION'] == 2) & (check['DEC'] < 35.)]
+    #check_south = check[(check['REGION'] == 1) & (check['DEC'] > 28.)]
+    #
+    #view_north = to_skyviewer_table(check_north)
+    #view_south = to_skyviewer_table(check_south)
+    #view_north.write('viewer-north.fits', overwrite=True)
+    #view_south.write('viewer-south.fits', overwrite=True)
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
@@ -4981,34 +5128,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.0', overwrite=False):
 
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
-    unique_groups, group_indices = np.unique(out['GROUP_NAME'], return_inverse=True)
-    n_groups = len(unique_groups)
-
-    # Compute bitwise AND of REGION for each group; start with all bits set
-    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
-    np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
-
-    # Get the allowed bits for each row
-    allowed = region_and_per_group[group_indices]
-
-    # Groups to drop (no common bits AND mult > 1)
-    group_mult = out['GROUP_MULT']
-    drop_mask = (allowed == 0) & (group_mult > 1)
-
-    # Groups to strip (some bits removed but group kept)
-    new_region = out['REGION'] & allowed
-    strip_mask = (new_region != out['REGION']) & (allowed != 0) & (group_mult > 1)
-
-    # Apply changes
-    if np.any(strip_mask):
-        out['REGION'] = new_region
-        strip_groups = np.unique(out['GROUP_NAME'][strip_mask])
-        log.info(f"Stripped REGION bits (kept groups) for {len(strip_groups):,d} groups.")
-
-    if np.any(drop_mask):
-        drop_names = np.unique(out['GROUP_NAME'][drop_mask])
-        log.info(f"Dropping {len(drop_names):,d} groups with no common REGION bit ({np.sum(drop_mask):,d} members).")
-        out = out[~drop_mask]
+    out = harmonize_region_bits(out)
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)

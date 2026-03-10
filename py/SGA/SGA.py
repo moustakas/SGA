@@ -115,7 +115,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # first release candidate
         #version = 'v1.0'
         # OVERLAP fixes
-        version = 'v1.1'
+        #version = 'v1.1'
+        # more cleanup, etc.
+        version = 'v1.2'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -131,7 +133,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.70'  # parent_version = v0.60 --> v0.70
         #version = 'v0.80'  # parent_version = v0.70 --> v0.80
         #version = 'v1.0'  # parent_version = v0.80 --> v1.0
-        version = 'v1.1'  # parent_version = v1.0 --> v1.1
+        #version = 'v1.1'  # parent_version = v1.0 --> v1.1
+        version = 'v1.2'  # parent_version = v1.1 --> v1.2
     return version
 
 
@@ -239,7 +242,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
                   clobber=False, clobber_overwrite=None,
                   no_groups=False, verbose=False, datadir=None, htmldir=None,
-                  size=1, mp=1):
+                  size=1, mp=1, redo_failures=False):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -355,7 +358,12 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     iwait = np.where(todo == 'wait')[0]
 
     if len(ifail) > 0:
-        fail_indices = [indices[ifail]]
+        if redo_failures:
+            log.info(f'Resetting {len(ifail):,d} failures.')
+            itodo = ifail
+            fail_indices = [np.array([], int)]
+        else:
+            fail_indices = [indices[ifail]]
     else:
         fail_indices = [np.array([], int)]
 
@@ -493,11 +501,28 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if True:
+    if False:#True:
         print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
-        dogroups = ((fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
-                    (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0))
-        I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups]))
+        from SGA.ellipse import ELLIPSEMODE
+        from SGA.brick import brickname as get_brickname
+
+        adds = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/adds.csv', format='csv')
+        updates = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/updates.csv', format='csv')
+
+        dogroups = ((np.isin(fullsample['OBJNAME'], np.unique(adds['OBJNAME'])) |
+                     np.isin(fullsample['OBJNAME'], np.unique(updates['OBJNAME'])) |
+                     (fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
+                     (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0)) &
+                    (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0))
+
+        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
+        testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
+        log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
+        allbricks = get_brickname(fullsample['GROUP_RA'].value, fullsample['GROUP_DEC'].value)
+
+        I = (np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups])) |
+             np.isin(allbricks, testbricks))
+
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
 
@@ -517,7 +542,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
-        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
+        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
+        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
         #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
         testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
         log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
@@ -605,34 +631,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
         sample = sample[I]
         fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
-    ##############################
-    # v0.10 had 30 duplicate groups (29 in dr11-south; 1 in
-    # dr9-north); remove the duplicates here.
-    if version == 'v0.10':
-        dupgroups = [
-            '01298m3385','01747p1908','02097m0808','03152m3114','06833m1343','07544m1821','12066m0929','12991m0980',
-            '13264p1019','14230p3936','15224p0781','17788m3116','18407p1841','19454p2754','20114m2844','20405m0103',
-            '20722m1948','20748m1818','21013p1208','21208m2877','21882p1216','22721p0784','24739m1655','26426m0091',
-            '33922p1322','34799m1279','35482p2642','35555m4025','35846m1262','35893p1399']
-        drop = ['DUKST 351-033','2MASX J01095516+1904570','WISEA J012355.12-080514.3','WISEA J020605.35-310900.1',
-                'WISEA J043320.16-132621.2','WISEA J050147.86-181307.2','WISEA J080239.07-091758.5','WISEA J083939.57-094802.8',
-                'WISEA J085033.88+101123.9','WISEA J092912.50+392211.3','WISEA J100859.72+074842.9','WISEA J115133.31-311009.8',
-                'WISEA J121619.21+182509.4','WISEA J125809.70+273257.8','WISEA J132435.80-282653.3','UGC 08584 NED01',
-                'WISEA J134855.15-192913.8','WISEA J134955.46-181051.6','WISEA J140032.74+120521.4','WISEA J140821.57-284644.5',
-                'SDSS J143518.67+120938.6','WISEA J150852.22+075029.9','WISEA J162933.60-163306.0','WISEA J173704.33-005508.8',
-                'WISEA J223653.00+131314.7','WISEA J231159.69-124755.9','WISEA J233916.97+262513.0','WISEA J234212.09-401532.7',
-                'WISEA J235352.66-123739.4','WISEA J235543.52+140000.7']
-        if False:
-            I = np.isin(sample['OBJNAME'], drop)
-            fullsample = fullsample[np.isin(fullsample['OBJNAME'], drop)]
-            log.warning(f'version v0.10---keeping {np.sum(I)} objects in duplicate groups!')
-        else:
-            I = ~np.isin(sample['OBJNAME'], drop)
-            fullsample = fullsample[~np.isin(fullsample['OBJNAME'], drop)]
-            log.warning(f'version v0.10---dropping {np.sum(~I)} objects in duplicate groups!')
-        sample = sample[I]
-    ##############################
 
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
@@ -779,8 +777,11 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
 
     # For LMC/SMC sources, use deepest uncensored isophote directly (no extrapolation)
     if np.any(is_lmc_smc):
-        d26[is_lmc_smc], d26_err[is_lmc_smc], d26_ref[is_lmc_smc], d26_weight[is_lmc_smc] = \
-            _lmc_smc_diameter(ellipse, is_lmc_smc)
+        d26_lmc, d26_err_lmc, d26_ref_lmc, d26_weight_lmc = _lmc_smc_diameter(ellipse, is_lmc_smc)
+        d26[is_lmc_smc] = d26_lmc[is_lmc_smc]
+        d26_err[is_lmc_smc] = d26_err_lmc[is_lmc_smc]
+        d26_ref[is_lmc_smc] = d26_ref_lmc[is_lmc_smc]
+        d26_weight[is_lmc_smc] = d26_weight_lmc[is_lmc_smc]
 
     # For non-LMC/SMC sources, use calibration-based inference
     if np.any(~is_lmc_smc):
@@ -957,8 +958,11 @@ def _censor_flattened_isophotes(ellipse, mask, min_bands_fail=2):
                      np.isfinite(r_deep) & np.isfinite(r_shallow) &
                      np.isfinite(e_deep) & np.isfinite(e_shallow))
 
-            rad_ratio = np.where(valid, r_deep / r_shallow, 1.0)
-            err_ratio = np.where(valid, e_deep / e_shallow, 1.0)
+            # Protect division by only computing ratios for valid entries
+            rad_ratio = np.ones(len(ellipse), dtype=float)
+            err_ratio = np.ones(len(ellipse), dtype=float)
+            rad_ratio[valid] = r_deep[valid] / r_shallow[valid]
+            err_ratio[valid] = e_deep[valid] / e_shallow[valid]
 
             n_fail += (valid & (err_ratio > rad_ratio)).astype(int)
 
@@ -2993,8 +2997,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # Build protected core mask for ALL other reference sources
             iter_refmask_core = _build_reference_core_mask(
                 iobj, refindx, sample, samplesrcs, geo_final,
-                tractorgeo, use_tractor_geometry_obj, use_tractor_position_obj,
-                get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
+                use_tractor_geometry_obj, use_tractor_position_obj,
+                tractorgeo, get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                 current_bx=bx, current_by=by)
             #import matplotlib.pyplot as plt
@@ -3043,7 +3047,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             denom = iter_brightstarmask[inellipse2].size
             if denom > 0: # should always be true...
                 frac = np.sum(iter_brightstarmask[inellipse2]) / denom
-                if frac > 0.3:
+                if frac > 0.4:
                     log.warning(f'Nearly fully masked by bright-star core (F={100.*frac:.1f}%>30%); reverting to initial geometry.')
                     sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['FAILGEO']
                     geo_iter = geo_init.copy()
@@ -3316,10 +3320,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         # Build protected cores for final masks
         final_refmask_core = _build_reference_core_mask(
             iobj, np.delete(np.arange(nsample), iobj), sample,
-            samplesrcs, geo_final, tractorgeo, use_tractor_geometry_obj,
-            use_tractor_position_obj, get_geometry, opt_pixscale,
-            SMA_MASK_MIN_PIX, in_ellipse_mask, width, xgrid, ygrid_flip,
-            sz, current_bx=bx, current_by=by)
+            samplesrcs, geo_final, use_tractor_geometry_obj,
+            use_tractor_position_obj, tractorgeo, get_geometry,
+            opt_pixscale, SMA_MASK_MIN_PIX, in_ellipse_mask, width,
+            xgrid, ygrid_flip, sz, current_bx=bx, current_by=by)
 
         final_brightstarmask[inellipse] = False
         final_refmask[inellipse] = False
