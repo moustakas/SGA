@@ -583,8 +583,10 @@ def main():
             saddle_min = 4.
             fit_on_coadds = True
             bright_masking = True
+            galaxy_masking = True
             #fit_on_coadds = args.fit_on_coadds
             #bright_masking = args.bright_masking
+            #galaxy_masking = args.galaxy_masking
             no_segmentation = args.no_segmentation
 
             if not just_cutouts:
@@ -601,6 +603,7 @@ def main():
                     just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                     no_iterative=no_iterative, no_segmentation=no_segmentation,
                     fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
+                    galaxy_masking=galaxy_masking,
                     just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
                     use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                     threads_per_gpu=args.threads_per_gpu,
@@ -620,6 +623,7 @@ def main():
                         just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
                         no_iterative=no_iterative, no_segmentation=no_segmentation,
                         fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
+                        galaxy_masking=galaxy_masking,
                         just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
                         use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
                         threads_per_gpu=args.threads_per_gpu,

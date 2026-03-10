@@ -518,8 +518,9 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
                   nsigma=None, saddle_fraction=None, saddle_min=None, nsatur=2,
                   rgb_stretch=1.5, no_iterative=False, no_segmentation=False,
                   racolumn='GROUP_RA', deccolumn='GROUP_DEC', force_psf_detection=False,
-                  fit_on_coadds=False, bright_masking=False, just_cutouts=False, ivar_cutouts=False,
-                  use_gpu=False, ngpu=1, threads_per_gpu=8, subsky_radii=None, just_coadds=False,
+                  fit_on_coadds=False, bright_masking=False, galaxy_masking=False,
+                  just_cutouts=False, ivar_cutouts=False, use_gpu=False, ngpu=1,
+                  threads_per_gpu=8, subsky_radii=None, just_coadds=False,
                   missing_ok=False, force=False, cleanup=True, unwise=True, galex=False,
                   no_gaia=False, no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
@@ -626,6 +627,8 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         cmdargs += '--no-segmentation '
     if bright_masking:
         cmdargs += '--bright-masking '
+    if galaxy_masking:
+        cmdargs += '--galaxy-masking '
 
     # GPU stuff
     if use_gpu:

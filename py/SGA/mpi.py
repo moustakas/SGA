@@ -76,7 +76,10 @@ def mpi_args():
     parser.add_argument('--redo-failures', action='store_true', help='Select (and re-queue) just failures.')
     parser.add_argument('--skip-tractor', action='store_true', help='With --coadds or --ellipse, do not run Tractor.')
     parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
+
     parser.add_argument('--bright-masking', action='store_true', help='Mask bright sources not on the blob being fitted.')
+    parser.add_argument('--galaxy-masking', action='store_true', help='Custom segmentation for large galaxies.')
+
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
