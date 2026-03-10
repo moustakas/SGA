@@ -67,6 +67,7 @@ def mpi_args():
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
     parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
+    parser.add_argument('--large-bricks-first', action='store_false', dest='small_bricks_first', help='Process large mosaics first.')
 
     parser.add_argument('--diameter-file', default=None, type=str, help='Write a diameter file for use with generate_sga_jobs.sh')
     parser.add_argument('--galaxylist-file', default=None, type=str, help='Write a galaxy list file for use with generate_sga_jobs.sh')
@@ -137,7 +138,7 @@ def weighted_partition(weights, n):
 
 
 def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
-                    small_bricks_first=True):#False):
+                    small_bricks_first=True):
     """
     Partition tasks into `size` buckets with ~equal total weight, then
     sort each bucket so smaller bricks are processed first.

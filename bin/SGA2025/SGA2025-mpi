@@ -373,7 +373,8 @@ def main():
             htmlplots=args.htmlplots, htmlindex=args.htmlindex,
             no_groups=no_groups, clobber=args.clobber,
             verbose=args.verbose, datadir=datadir, htmldir=htmldir,
-            size=size, mp=args.mp, redo_failures=args.redo_failures)
+            size=size, mp=args.mp, redo_failures=args.redo_failures,
+            small_bricks_first=args.small_bricks_first)
 
         if args.htmlindex:
             from SGA.html import make_html
@@ -757,6 +758,7 @@ def main():
                                            #clobber=args.clobber,
                                            no_groups=no_groups,
                                            verbose=args.verbose,
+                                           small_bricks_first=args.small_bricks_first,
                                            datadir=datadir, htmldir=htmldir,
                                            size=size, mp=args.mp)
 
