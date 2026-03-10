@@ -5042,9 +5042,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
         raise ValueError('PA out of range')
 
     # repair REGION
-    print('Why does ZwCl 1700.5+3322 04 have REGION=2; it should be 3.')
-    pdb.set_trace()
-
     for region in ['dr11-south', 'dr9-north']:
         arch = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{nocuts_version}.fits'),
                                  columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
@@ -5052,9 +5049,21 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
         if np.sum(I) > 0:
             log.info(f'Repairing {np.sum(I)} {region} REGION bits')
             base['REGION'][I] |= REGIONBITS[region]
+            #view = to_skyviewer_table(base[I])
+            #view.write('viewer.fits', overwrite=True)
 
-            view = to_skyviewer_table(base[I])
-            view.write('viewer.fits', overwrite=True)
+    #customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
+    #custom = Table.read(customfile, format='csv', comment='#')
+    ##in_footprint_work(custom, np.arange(len(custom)),
+    #
+    #check = base[np.isin(base['OBJNAME'], custom['OBJNAME'])]
+    #check_north = check[(check['REGION'] == 2) & (check['DEC'] < 35.)]
+    #check_south = check[(check['REGION'] == 1) & (check['DEC'] > 28.)]
+    #
+    #view_north = to_skyviewer_table(check_north)
+    #view_south = to_skyviewer_table(check_south)
+    #view_north.write('viewer-north.fits', overwrite=True)
+    #view_south.write('viewer-south.fits', overwrite=True)
 
     pdb.set_trace()
     # re-add the Gaia masking bits
