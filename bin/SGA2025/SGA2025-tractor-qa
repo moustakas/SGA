@@ -906,7 +906,7 @@ def write_viewer_file(sample, viewerfile: str, diamcolumn: str):
     log.debug(f'Wrote {viewerfile}')
 
 
-def find_missing_sga2020(fullsample_2025, sga2020_mindiam=0.7, sga2020_maxdiam=1e3,
+def find_missing_sga2020(fullsample_2025, sga2020_mindiam=0.6, sga2020_maxdiam=0.7,
                          sga2020_groups_only=False, region='dr11-south'):
     """
     Find SGA2020 groups with possibly missing members and build mock catalog.
