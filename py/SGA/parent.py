@@ -3582,70 +3582,117 @@ def apply_adds(parent, adds, regionbits, nocuts):
     """
     if len(adds) == 0:
         return parent
+
     log.info(f'Adding {len(adds):,d} objects from adds.csv')
 
-    # next SGAID
+    # Filter out objects already in parent
+    adds_objnames = np.asarray(adds['OBJNAME']).astype(str)
+    parent_objnames = np.asarray(parent['OBJNAME']).astype(str)
+    already_present = np.isin(adds_objnames, parent_objnames)
+    if np.any(already_present):
+        for obj in adds_objnames[already_present]:
+            log.warning(f"adds: OBJNAME already in parent: {obj}")
+        adds = adds[~already_present]
+        adds_objnames = adds_objnames[~already_present]
+
+    if len(adds) == 0:
+        return parent
+
+    n_adds = len(adds)
+
+    # Next SGAID
     maxsgaid = np.max(parent['SGAID'])
     maxrow = np.max(nocuts['ROW_PARENT'])
     next_sgaid = int(max(maxsgaid, maxrow)) + 1
-    #print(next_sgaid)
 
-    def _empty_row():
-        row = {}
-        for c in parent.colnames:
-            dt = parent[c].dtype
-            if dt.kind in 'f':   row[c] = np.array([-99.0], dtype=dt)
-            elif dt.kind in 'iu':row[c] = np.array([0], dtype=dt)
-            elif dt.kind in 'SU':row[c] = np.array([''], dtype=dt)
-            else:                row[c] = np.array([-99], dtype=dt)
-        return Table(row)
-
-    new_rows = []
-    for add in adds:
-        obj = add['OBJNAME']
-
-        # reject if already present
-        if np.any(parent['OBJNAME'] == obj):
-            log.warning(f"adds: OBJNAME already in parent: {obj}")
-            continue
-
-        base = _empty_row()
-        base['OBJNAME'][0] = str(obj)
-        base['RA'][0] = float(add['RA'])
-        base['DEC'][0] = float(add['DEC'])
-        base['DIAM'][0] = float(add['DIAM'])
-        base['DIAM_REF'][0] = 'VI'
-        base['BA'][0] = float(add['BA'])
-        base['PA'][0] = float(add['PA']) % 180.0
-
-        # REGION: if masked, set both bits; else map the single key
-        reg_val = add['REGION']
-        if np.ma.is_masked(reg_val):
-            base['REGION'][0] = int(regionbits['dr11-south']) | int(regionbits['dr9-north'])
+    # Build empty table with n_adds rows
+    new_data = {}
+    for c in parent.colnames:
+        dt = parent[c].dtype
+        if dt.kind == 'f':
+            new_data[c] = np.full(n_adds, -99.0, dtype=dt)
+        elif dt.kind in 'iu':
+            new_data[c] = np.zeros(n_adds, dtype=dt)
+        elif dt.kind in 'SU':
+            new_data[c] = np.full(n_adds, '', dtype=dt)
         else:
-            base['REGION'][0] = int(regionbits[str(reg_val).strip()])
+            new_data[c] = np.full(n_adds, -99, dtype=dt)
 
-        # add from nocuts
-        noc_ix = np.where((nocuts['OBJNAME'] == obj) | (nocuts['OBJNAME_SGA2020'] == obj))[0]
-        if len(noc_ix) == 1:
-            src = nocuts[noc_ix[0]]
-            base['PGC'] = src['PGC']
-            base['SGAID'] = src['ROW_PARENT']
-        else:
-            base['SGAID'][0] = next_sgaid
-            next_sgaid += 1
+    new_rows = Table(new_data)
 
-        new_rows.append(base)
-        #print(next_sgaid)
+    # Fill from adds
+    new_rows['OBJNAME'] = adds_objnames
+    new_rows['RA'] = np.asarray(adds['RA'], dtype=float)
+    new_rows['DEC'] = np.asarray(adds['DEC'], dtype=float)
+    new_rows['DIAM'] = np.asarray(adds['DIAM'], dtype=float)
+    new_rows['DIAM_REF'] = 'VI'
+    new_rows['BA'] = np.asarray(adds['BA'], dtype=float)
+    new_rows['PA'] = np.asarray(adds['PA'], dtype=float) % 180.0
 
-    if new_rows:
-        parent = vstack([parent] + new_rows)
+    # REGION: handle masked values
+    reg_vals = adds['REGION']
+    both_bits = int(regionbits['dr11-south']) | int(regionbits['dr9-north'])
 
-    try:
-        assert(len(parent) == len(np.unique(parent['SGAID'])))
-    except:
+    def _get_region_bits(r):
+        r_str = str(r).strip()
+        if r_str == '--' or r_str == '':
+            return both_bits
+        return int(regionbits[r_str])
+
+    if hasattr(reg_vals, 'mask'):
+        is_masked = reg_vals.mask
+        region_bits = np.where(is_masked, both_bits,
+                               [_get_region_bits(r) for r in reg_vals])
+    else:
+        region_bits = np.array([_get_region_bits(r) for r in reg_vals])
+    new_rows['REGION'] = region_bits
+
+    # Match to nocuts by OBJNAME or OBJNAME_SGA2020
+    nocuts_objnames = np.asarray(nocuts['OBJNAME']).astype(str)
+    nocuts_objnames_sga2020 = np.asarray(nocuts['OBJNAME_SGA2020']).astype(str)
+
+    # For each add, find match in nocuts
+    match_by_objname = np.isin(adds_objnames, nocuts_objnames)
+    match_by_sga2020 = np.isin(adds_objnames, nocuts_objnames_sga2020)
+    has_nocuts_match = match_by_objname | match_by_sga2020
+
+    # Build index mapping for matched objects
+    # Create lookup dicts for O(1) access
+    nocuts_objname_to_idx = {name: i for i, name in enumerate(nocuts_objnames)}
+    nocuts_sga2020_to_idx = {name: i for i, name in enumerate(nocuts_objnames_sga2020)}
+
+    nocuts_idx = np.full(n_adds, -1, dtype=int)
+    for i, obj in enumerate(adds_objnames):
+        if obj in nocuts_objname_to_idx:
+            nocuts_idx[i] = nocuts_objname_to_idx[obj]
+        elif obj in nocuts_sga2020_to_idx:
+            nocuts_idx[i] = nocuts_sga2020_to_idx[obj]
+
+    # Fill PGC and SGAID from nocuts where matched
+    matched = nocuts_idx >= 0
+    if np.any(matched):
+        new_rows['PGC'][matched] = nocuts['PGC'][nocuts_idx[matched]]
+        new_rows['SGAID'][matched] = nocuts['ROW_PARENT'][nocuts_idx[matched]]
+
+    # Assign new SGAIDs for unmatched
+    n_unmatched = np.sum(~matched)
+    if n_unmatched > 0:
+        new_rows['SGAID'][~matched] = np.arange(next_sgaid, next_sgaid + n_unmatched)
+
+    # Stack
+    parent = vstack([parent, new_rows])
+
+    # Verify unique SGAIDs
+    if len(parent) != len(np.unique(parent['SGAID'])):
+        sid, cc = np.unique(parent['SGAID'], return_counts=True)
+        check = parent[np.isin(parent['SGAID'], sid[cc>1])]
+        check = check[np.argsort(check['SGAID'])]
+        view = to_skyviewer_table(check[check['DIAM_REF'] == 'VI'])
+        view.write('viewer.fits', overwrite=True)
+
         msg = 'Non-unique SGAID values!'
         log.critical(msg)
+        pdb.set_trace()
         raise ValueError(msg)
 
     return parent
@@ -4252,9 +4299,6 @@ def prepare_v110_ellipse(ell1, region, mindiam=0.5):
     # no v1.1 ellipse-fitting in dr9-north
     if region == 'dr9-north':
         return ell1
-
-    print('Check all LARGESHIFT, e.g., DESI J342.6409-51.6144!')
-    print('Read the drops and updates file and do not update galaxies in those affected groups.')
 
     in_group = ell1['GROUP_MULT'] > 1
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
@@ -4998,6 +5042,9 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
         raise ValueError('PA out of range')
 
     # repair REGION
+    print('Why does ZwCl 1700.5+3322 04 have REGION=2; it should be 3.')
+    pdb.set_trace()
+
     for region in ['dr11-south', 'dr9-north']:
         arch = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{nocuts_version}.fits'),
                                  columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
