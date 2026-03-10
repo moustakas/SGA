@@ -5009,6 +5009,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
             view = to_skyviewer_table(base[I])
             view.write('viewer.fits', overwrite=True)
 
+    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
