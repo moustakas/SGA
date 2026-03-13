@@ -16,16 +16,18 @@ from SGA.logger import log
 VEGA2AB = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
 
 
-def set_legacysurvey_dir(region='dr9-north', rank=None):
+def set_legacysurvey_dir(region='dr11-south', rank=None):
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
         msg = 'Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!'
         log.critical(msg)
         raise EnvironmentError(msg)
-    if False:
-        log.warning('Temporarily using dr11-early-v2 directory for dr11-south!!')
-        dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11-early-v2'}
-    else:
-        dirs = {'dr9-north': 'dr9', 'dr9-south': 'dr9', 'dr10-south': 'dr10', 'dr11-south': 'dr11'}
+    dirs = {
+        'dr9-north': 'dr9',
+        'dr9-south': 'dr9',
+        'dr10-south': 'dr10',
+        'dr11-north': 'dr11',
+        'dr11-south': 'dr11',
+    }
     legacy_survey_dir = os.path.join(os.getenv('LEGACY_SURVEY_BASEDIR'), dirs[region])
     if rank is not None:
         pre = f'Rank {rank}: '
