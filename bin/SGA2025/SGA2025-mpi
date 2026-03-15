@@ -93,11 +93,15 @@ def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
     if err == 0:
         log.warning(f'Problem processing {galaxydir}/{galaxy}; please check the log file.')
         donefile = f'{donefile}.isfail'
+        remfile = f'{donefile}.isdone'
     else:
         donefile = f'{donefile}.isdone'
+        remfile = f'{donefile}.isfail'
 
-    # equivalent to 'touch'
+    # equivalent to 'touch'; remfile and donefile should never coexist
     open(donefile, 'w').close()
+    if os.path.isfile(remfile):
+        os.remove(remfile)
 
     # restore the logger
     restore_logger(fh=fh, debug=debug)
