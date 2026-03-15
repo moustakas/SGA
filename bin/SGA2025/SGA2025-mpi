@@ -89,14 +89,14 @@ def skip_tractor_or_not(galaxydir):
 
 def done(galaxy, galaxydir, err, stagesuffix, fh=None, debug=False):
 
-    donefile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}')
+    basefile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}')
     if err == 0:
         log.warning(f'Problem processing {galaxydir}/{galaxy}; please check the log file.')
-        donefile = f'{donefile}.isfail'
-        remfile = f'{donefile}.isdone'
+        donefile = f'{basefile}.isfail'
+        remfile = f'{basefile}.isdone'
     else:
-        donefile = f'{donefile}.isdone'
-        remfile = f'{donefile}.isfail'
+        donefile = f'{basefile}.isdone'
+        remfile = f'{basefile}.isfail'
 
     # equivalent to 'touch'; remfile and donefile should never coexist
     open(donefile, 'w').close()
