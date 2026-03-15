@@ -768,6 +768,7 @@ def main():
                                            verbose=args.verbose,
                                            small_bricks_first=args.small_bricks_first,
                                            datadir=datadir, htmldir=htmldir,
+                                           redo_failures=args.redo_failures,
                                            size=size, mp=args.mp)
 
         if len(groups) > 0:
