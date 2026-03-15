@@ -525,7 +525,7 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
 
 
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                  release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
+                  release=11000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
                   nsigma=None, saddle_fraction=None, saddle_min=None, nsatur=2,
                   rgb_stretch=1.5, no_iterative=False, no_segmentation=False,
