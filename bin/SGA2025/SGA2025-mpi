@@ -81,6 +81,9 @@ def skip_tractor_or_not(galaxydir):
     # If the images are not fz-compressed, then set --skip-tractor
     from glob import glob
     imfiles = glob(os.path.join(galaxydir, '*-image-*.fits*'))
+    if len(imfiles) == 0:
+        return None # indicates a problem
+
     if np.any(np.char.endswith(imfiles, '.fz')):
         return False
     else:
@@ -688,7 +691,13 @@ def main():
 
             skip_ellipse = skip_ellipse_or_not(onegal)
             skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
-            if skip_tractor:
+            if skip_tractor is None:
+                msg = f'Incompatible state of coadds files in {galaxydir}'
+                log.critical(msg)
+                done(galaxy, galaxydir, 0, suffix, fh=fh, debug=args.debug)
+                continue
+
+            if skiptractor:
                 fixgeo = True
             else:
                 fixgeo = args.fixgeo
