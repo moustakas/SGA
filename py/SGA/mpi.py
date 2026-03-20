@@ -46,7 +46,7 @@ def mpi_args():
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
     parser.add_argument('--nmonte', default=100, type=int, help='Number of Monte Carlo draws (ellipsefit_multiband)')
     parser.add_argument('--seed', default=42, type=int, help='Random seed for Monte Carlo draws (ellipsefit_multiband)')
-    parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
+    parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-north', 'dr11-south'], type=str, help='Region to analyze.')
 
     parser.add_argument('--version', type=str, default=None, help='SGA version.')
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
@@ -67,6 +67,7 @@ def mpi_args():
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
     parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
+    parser.add_argument('--large-bricks-first', action='store_false', dest='small_bricks_first', help='Process large mosaics first.')
 
     parser.add_argument('--diameter-file', default=None, type=str, help='Write a diameter file for use with generate_sga_jobs.sh')
     parser.add_argument('--galaxylist-file', default=None, type=str, help='Write a galaxy list file for use with generate_sga_jobs.sh')
@@ -140,7 +141,7 @@ def weighted_partition(weights, n):
 
 
 def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
-                    small_bricks_first=True):#False):
+                    small_bricks_first=True):
     """
     Partition tasks into `size` buckets with ~equal total weight, then
     sort each bucket so smaller bricks are processed first.

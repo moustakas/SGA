@@ -55,7 +55,7 @@ export GAIA_CAT_PREFIX=healpix
 export GAIA_CAT_SCHEME=nested
 export GAIA_CAT_VER=3
 
-export UNWISE_COADDS_DIR=$COSMO/work/wise/outputs/merge/neo9/fulldepth:$COSMO/data/unwise/allwise/unwise-coadds/fulldepth
+export UNWISE_COADDS_DIR=$COSMO/data/unwise/neo11/unwise-coadds/fulldepth:$COSMO/data/unwise/allwise/unwise-coadds/fulldepth
 #export UNWISE_MODEL_SKY_DIR=$COSMO/work/wise/unwise_catalog/dr3/mod
 
 export TYCHO2_KD_DIR=$COSMO/staging/tycho2

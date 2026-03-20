@@ -15,21 +15,33 @@ PIXSCALE = 0.262
 GALEX_PIXSCALE = 1.5
 UNWISE_PIXSCALE = 2.75
 
-RUNS = {'dr9-north': 'north', 'dr9-south': 'south',
-        'dr10-south': 'south',
-        'dr11-north': 'north', 'dr11-south': 'south'}
+RUNS = {
+    'dr9-north': 'north',
+    'dr9-south': 'south',
+    'dr10-south': 'south',
+    'dr11-north': 'north',
+    'dr11-south': 'south'
+}
 
 # although dr9-north is missing i-band imaging, there are many
 # advantages to adopting a consistent data model
 GRZ = ['g', 'r', 'z']
 GRIZ = ['g', 'r', 'i', 'z']
-BANDS = {'dr9-north': GRIZ, 'dr9-south': GRIZ,
-         'dr10-south': GRIZ,
-         'dr11-north': GRIZ, 'dr11-south': GRIZ}
+BANDS = {
+    'dr9-north': GRIZ,
+    'dr9-south': GRIZ,
+    'dr10-south': GRIZ,
+    'dr11-north': GRIZ,
+    'dr11-south': GRIZ
+}
 
-RELEASE = {'dr9-north': 9011, 'dr9-south': 9010,
-           'dr10-south': 10000,
-           'dr11-north': 11001, 'dr11-south': 11000}
+RELEASE = {
+    'dr9-north': 9011,
+    'dr9-south': 9010,
+    'dr10-south': 10000,
+    'dr11-north': 11001,
+    'dr11-south': 11000
+}
 
 REGIONBITS = {
     'dr11-south': 2**0,
@@ -513,7 +525,7 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
 
 
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                  release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
+                  release=11000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
                   nsigma=None, saddle_fraction=None, saddle_min=None, nsatur=2,
                   rgb_stretch=1.5, no_iterative=False, no_segmentation=False,

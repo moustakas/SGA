@@ -21,6 +21,9 @@ Usage:
 
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --missing-sga2020
 
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --final-sample
+
+
 """
 import os
 import math
@@ -886,8 +889,8 @@ def write_txt_file(sample, txtfile, diamcolumn, region):
     """Write text file with object names for VI."""
     with open(txtfile, 'w') as f:
         for obj in sample:
-            #f.write(f'{obj["OBJNAME"]},\n')
-            f.write(f"{obj['OBJNAME']},{region},{obj['RA']},{obj['DEC']},{obj['DIAM']:.3f},{obj['PA']:.1f},{obj['BA']:.3f},{obj['MAG']:.3f},SGA2020 dropped\n")
+            f.write(f'{obj["OBJNAME"]},\n')
+            #f.write(f"{obj['OBJNAME']},{region},{obj['RA']},{obj['DEC']},{obj['DIAM']:.3f},{obj['PA']:.1f},{obj['BA']:.3f},{obj['MAG']:.3f},SGA2020 dropped\n")
             #if np.char.startswith(obj['OBJNAME'], '2MASS'):
             #    f.write(f'{obj["OBJNAME"]},\n')
     log.debug(f'Wrote {txtfile}')

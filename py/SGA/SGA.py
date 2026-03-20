@@ -242,7 +242,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
                   coadds=False, ellipse=False, htmlplots=False, htmlindex=False,
                   clobber=False, clobber_overwrite=None,
                   no_groups=False, verbose=False, datadir=None, htmldir=None,
-                  size=1, mp=1, redo_failures=False):
+                  size=1, mp=1, redo_failures=False, small_bricks_first=True):
     """Figure out which files are missing and still need to be processed.
 
     """
@@ -379,6 +379,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
     if len(itodo) > 0:
         todo_indices, loads = distribute_work(sample[DIAMCOL].value, itodo=itodo,
+                                              small_bricks_first=small_bricks_first,
                                               size=size, p=2.0, verbose=True)
     else:
         todo_indices = []
@@ -562,8 +563,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
-        is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
+        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
+        #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]
