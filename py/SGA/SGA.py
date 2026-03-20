@@ -2314,6 +2314,17 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
         if is_satellite:
             satellite_obj[iobj] = True
 
+            # Check if overlapping a FIXGEO source
+            overlaps_fixgeo = False
+            for jobj in overlapping_indices:
+                if sample['ELLIPSEMODE'][jobj] & ELLIPSEMODE['FIXGEO'] != 0:
+                    overlaps_fixgeo = True
+                    break
+
+            # Only force Tractor geometry if NOT overlapping FIXGEO
+            if not overlaps_fixgeo:
+                use_tractor_geometry_obj[iobj] = True
+
         if not use_radial_weight_for_overlaps:
             # Any overlap => force OFF radial weighting (regardless of global default)
             use_radial_weight_obj[iobj] = False
