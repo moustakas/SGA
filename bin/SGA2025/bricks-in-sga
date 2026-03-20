@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Flag DR11 bricks that contain (or overlap) any SGA mosaic.
 
@@ -9,7 +10,7 @@ footprint (same margin) are flagged IN_MCLOUDS=True.
 Output: CSV with columns brickname,ra,dec,has_sga,in_mclouds.
 
 """
-import math
+import os, math
 import numpy as np
 import fitsio
 from astropy.table import Table
@@ -18,10 +19,8 @@ from SGA.ellipse import ELLIPSEMODE
 from SGA.SGA import read_sample, get_radius_mosaic, SAMPLE
 from SGA.groups import contains_point, DEG2RAD, ARCMIN_PER_DEG
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+suffix = 'v1.2.1'
+basedir = os.path.join(sga_dir(), 'sample')
 
 def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
          resolved=False):
@@ -30,6 +29,7 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
         bricks_file = 'bricks-exist-ls-dr11-early-v2.fits.gz'
     else:
         bricks_file = 'survey-bricks-dr9-north.fits.gz'
+    bricks_file = os.path.join(basedir, bricks_file)
 
     # --- Load bricks ---
     print(f'Reading bricks from {bricks_file}')
@@ -112,14 +112,24 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
         dec_lo = dec0 - half
         dec_hi = dec0 + half
 
-        # RA bounding box (expand by 1/cos(dec) to stay conservative)
-        cosd = math.cos(math.radians(dec0))
-        if cosd < 1e-3:
+        # RA bounding box (expand by 1/cos(dec) to stay conservative).
+        # If the mosaic Dec range reaches within one bricksize of either pole,
+        # the polar brick covers all RA: skip the RA test entirely.
+        # Also clamp dra to 180 to avoid wrap-around ambiguity near the poles.
+        pole_limit = 89.75  # degrees (90 - bricksize)
+        if dec_lo <= -pole_limit or dec_hi >= pole_limit:
             ra_lo, ra_hi = 0.0, 360.0
         else:
-            dra   = half / cosd
-            ra_lo = (ra0 - dra) % 360.0
-            ra_hi = (ra0 + dra) % 360.0
+            cosd = math.cos(math.radians(dec0))
+            if cosd < 1e-3:
+                ra_lo, ra_hi = 0.0, 360.0
+            else:
+                dra = half / cosd
+                if dra >= 180.0:
+                    ra_lo, ra_hi = 0.0, 360.0
+                else:
+                    ra_lo = (ra0 - dra) % 360.0
+                    ra_hi = (ra0 + dra) % 360.0
 
         # Candidate bricks from pre-sorted Dec strips only
         s0 = max(0, dec_to_strip(dec_lo))
@@ -146,20 +156,20 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
         if is_mc[k]:
             # Elliptical intersection for LMC/SMC: flag brick if any of its
             # 4 corners lies inside the scaled ellipse.
-            # Semi-axes with mclouds_margin applied to the major axis only; ba scales minor.
+            # mclouds_margin applied to the semi-major axis; ba scales minor.
             ba_k = gba[k] if np.isfinite(gba[k]) and gba[k] > 0.0 else 1.0
             pa_rad_k = float(gpa[k]) * DEG2RAD if np.isfinite(gpa[k]) else 0.0
-            a_arc = 0.5 * gdiam[k] * ARCMIN_PER_DEG * (1.0 + mclouds_margin)  # arcmin, with margin
+            a_arc = 0.5 * gdiam[k] * (1.0 + mclouds_margin)  # arcmin, with margin
             b_arc = ba_k * a_arc
 
             cosd_mc = math.cos(math.radians(dec0))
 
             for bi in hit:
                 # 4 corners of this brick in local tangent plane (degrees)
-                corners_ra  = (bra1[bi],  bra1[bi],  bra2[bi],  bra2[bi])
+                corners_ra  = (bra1[bi], bra1[bi], bra2[bi], bra2[bi])
                 corners_dec = (bdec1[bi], bdec2[bi], bdec1[bi], bdec2[bi])
                 for cra, cdec in zip(corners_ra, corners_dec):
-                    dx = (cra  - ra0)  * cosd_mc
+                    dx = (cra - ra0) * cosd_mc
                     dy =  cdec - dec0
                     if contains_point(a_arc, b_arc, pa_rad_k, dx, dy):
                         in_mclouds[bi] = True
@@ -175,19 +185,22 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
 
     # --- Write CSV output ---
     if resolved:
-        outfile = f'{region}-bricks-with-sga-resolved-dwarfs.csv'
-        pngfile = f'{region}-bricks-with-sga-resolved-dwarfs.png'
+        outfile = f'{region}-bricks-with-sga-resolved-dwarfs-{suffix}.csv'
+        pngfile = f'{region}-bricks-with-sga-resolved-dwarfs-{suffix}.png'
         s = 20
     else:
-        outfile = f'{region}-bricks-with-sga.csv'
-        pngfile = f'{region}-bricks-with-sga.png'
+        outfile = f'{region}-bricks-with-sga-{suffix}.csv'
+        pngfile = f'{region}-bricks-with-sga-{suffix}.png'
         s = 1
 
+    outfile = os.path.join(basedir, outfile)
+    pngfile = os.path.join(basedir, pngfile)
+
     out = Table()
-    out['brickname'] = np.asarray(bricks['brickname'])
-    out['ra']        = np.asarray(bricks['ra'])
-    out['dec']       = np.asarray(bricks['dec'])
-    out['has_sga']   = has_sga
+    out['brickname']  = np.asarray(bricks['brickname'])
+    out['ra']         = np.asarray(bricks['ra'])
+    out['dec']        = np.asarray(bricks['dec'])
+    out['has_sga']    = has_sga
     out['in_mclouds'] = in_mclouds
 
     if resolved:
@@ -211,13 +224,12 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
 
 if __name__ == '__main__':
     import argparse
-
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--region', default='dr11-south')
     p.add_argument('--resolved', action='store_true')
     p.add_argument('--margin', type=float, default=1.0,
-                   help='Fractional margin on mosaic radius (default 0.20 = 20%%)')
-    p.add_argument('--mclouds-margin', type=float, default=0.2)
+                   help='Fractional margin on mosaic radius (default 1.0 = 100%%)')
+    p.add_argument('--mclouds-margin', type=float, default=0.20)
     a = p.parse_args()
     main(region=a.region, margin=a.margin, mclouds_margin=a.mclouds_margin,
          resolved=a.resolved)
