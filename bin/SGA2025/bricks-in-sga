@@ -1,0 +1,223 @@
+"""
+Flag DR11 bricks that contain (or overlap) any SGA mosaic.
+
+For each galaxy group, compute the mosaic radius with get_radius_mosaic(),
+expand by a margin (default 20%), and mark any brick whose footprint overlaps
+the square mosaic as HAS_SGA=True.  Bricks overlapping the LMC or SMC
+footprint (same margin) are flagged IN_MCLOUDS=True.
+
+Output: CSV with columns brickname,ra,dec,has_sga,in_mclouds.
+
+"""
+import math
+import numpy as np
+import fitsio
+from astropy.table import Table
+
+from SGA.ellipse import ELLIPSEMODE
+from SGA.SGA import read_sample, get_radius_mosaic, SAMPLE
+from SGA.groups import contains_point, DEG2RAD, ARCMIN_PER_DEG
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
+         resolved=False):
+
+    if region == 'dr11-south':
+        bricks_file = 'bricks-exist-ls-dr11-early-v2.fits.gz'
+    else:
+        bricks_file = 'survey-bricks-dr9-north.fits.gz'
+
+    # --- Load bricks ---
+    print(f'Reading bricks from {bricks_file}')
+    bricks = Table(fitsio.read(bricks_file))
+    print(f'  {len(bricks):,d} bricks')
+
+    # Brick corners: RA1, RA2, DEC1, DEC2 (degrees)
+    bra1  = np.asarray(bricks['ra1'],  dtype=float)
+    bra2  = np.asarray(bricks['ra2'],  dtype=float)
+    bdec1 = np.asarray(bricks['dec1'], dtype=float)
+    bdec2 = np.asarray(bricks['dec2'], dtype=float)
+
+    # --- Load groups ---
+    print(f'Reading SGA sample (region={region})')
+    sample, _ = read_sample(region=region)
+    if resolved:
+        sample = sample[sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0]
+
+    groups = sample
+    print(f'  {len(groups):,d} groups')
+
+    gra      = np.asarray(groups['GROUP_RA'],       dtype=float)
+    gdec     = np.asarray(groups['GROUP_DEC'],      dtype=float)
+    gdiam    = np.asarray(groups['GROUP_DIAMETER'], dtype=float)  # arcmin
+    gmult    = np.asarray(groups['GROUP_MULT'],     dtype=int)
+    gobjname = np.asarray(groups['OBJNAME'],        dtype=str)
+    gba      = np.asarray(groups['BA'],             dtype=float)
+    gpa      = np.asarray(groups['PA'],             dtype=float)
+
+    # Identify LMC/SMC rows
+    is_mc = (gobjname == 'LMC') | (gobjname == 'SMC')
+    print(f'  Magellanic Cloud entries: {int(is_mc.sum())} '
+          f'({list(gobjname[is_mc])})')
+
+    # --- Compute mosaic half-sizes (degrees) for each group ---
+    print('Computing mosaic radii ...')
+    DEG2ARCSEC = 3600.0
+
+    half_deg = np.empty(len(groups), dtype=float)
+    for k in range(len(groups)):
+        r_arcsec = get_radius_mosaic(gdiam[k], multiplicity=gmult[k])
+        half_deg[k] = r_arcsec * (1.0 + margin) / DEG2ARCSEC
+
+    # --- Pre-sort bricks into Dec strips for fast lookup ---
+    strip_width = 1.0  # degrees
+    dec_min_global = float(bdec1.min())
+    dec_max_global = float(bdec2.max())
+
+    def dec_to_strip(dec):
+        return int(math.floor((dec - dec_min_global) / strip_width))
+
+    n_strips = dec_to_strip(dec_max_global) + 2
+    strip_index = [[] for _ in range(n_strips)]
+    for bi in range(len(bricks)):
+        s0 = max(0, dec_to_strip(bdec1[bi]))
+        s1 = min(n_strips - 1, dec_to_strip(bdec2[bi]))
+        for s in range(s0, s1 + 1):
+            strip_index[s].append(bi)
+
+    strip_index = [np.array(lst, dtype=np.int64) for lst in strip_index]
+    print(f'  Dec strips: {n_strips} strips of {strip_width}° width')
+
+    has_sga    = np.zeros(len(bricks), dtype=bool)
+    in_mclouds = np.zeros(len(bricks), dtype=bool)
+
+    print('Flagging bricks ...')
+    n_groups = len(groups)
+    report_every = max(1, n_groups // 20)
+
+    for k in range(n_groups):
+        if k % report_every == 0:
+            print(f'  group {k:6d} / {n_groups:6d}  ({100*k/n_groups:.0f}%)',
+                  flush=True)
+
+        ra0  = gra[k]
+        dec0 = gdec[k]
+        half = half_deg[k]
+
+        # Dec bounding box
+        dec_lo = dec0 - half
+        dec_hi = dec0 + half
+
+        # RA bounding box (expand by 1/cos(dec) to stay conservative)
+        cosd = math.cos(math.radians(dec0))
+        if cosd < 1e-3:
+            ra_lo, ra_hi = 0.0, 360.0
+        else:
+            dra   = half / cosd
+            ra_lo = (ra0 - dra) % 360.0
+            ra_hi = (ra0 + dra) % 360.0
+
+        # Candidate bricks from pre-sorted Dec strips only
+        s0 = max(0, dec_to_strip(dec_lo))
+        s1 = min(n_strips - 1, dec_to_strip(dec_hi))
+        strips = strip_index[s0:s1+1]
+        if not strips or all(len(s) == 0 for s in strips):
+            continue
+        cand = np.unique(np.concatenate(strips))
+
+        dec_ok = (bdec2[cand] > dec_lo) & (bdec1[cand] < dec_hi)
+        cand = cand[dec_ok]
+        if len(cand) == 0:
+            continue
+
+        # RA overlap — handle wrap-around
+        if ra_lo <= ra_hi:
+            ra_ok = (bra2[cand] > ra_lo) & (bra1[cand] < ra_hi)
+        else:
+            ra_ok = (bra2[cand] > ra_lo) | (bra1[cand] < ra_hi)
+
+        hit = cand[ra_ok]
+        has_sga[hit] = True
+
+        if is_mc[k]:
+            # Elliptical intersection for LMC/SMC: flag brick if any of its
+            # 4 corners lies inside the scaled ellipse.
+            # Semi-axes with mclouds_margin applied to the major axis only; ba scales minor.
+            ba_k = gba[k] if np.isfinite(gba[k]) and gba[k] > 0.0 else 1.0
+            pa_rad_k = float(gpa[k]) * DEG2RAD if np.isfinite(gpa[k]) else 0.0
+            a_arc = 0.5 * gdiam[k] * ARCMIN_PER_DEG * (1.0 + mclouds_margin)  # arcmin, with margin
+            b_arc = ba_k * a_arc
+
+            cosd_mc = math.cos(math.radians(dec0))
+
+            for bi in hit:
+                # 4 corners of this brick in local tangent plane (degrees)
+                corners_ra  = (bra1[bi],  bra1[bi],  bra2[bi],  bra2[bi])
+                corners_dec = (bdec1[bi], bdec2[bi], bdec1[bi], bdec2[bi])
+                for cra, cdec in zip(corners_ra, corners_dec):
+                    dx = (cra  - ra0)  * cosd_mc
+                    dy =  cdec - dec0
+                    if contains_point(a_arc, b_arc, pa_rad_k, dx, dy):
+                        in_mclouds[bi] = True
+                        break
+
+    n_has_sga    = int(has_sga.sum())
+    n_in_mclouds = int(in_mclouds.sum())
+    print(f'Done.')
+    print(f'  has_sga:    {n_has_sga:,d} / {len(bricks):,d} bricks '
+          f'({100*n_has_sga/len(bricks):.1f}%)')
+    print(f'  in_mclouds: {n_in_mclouds:,d} / {len(bricks):,d} bricks '
+          f'({100*n_in_mclouds/len(bricks):.1f}%)')
+
+    # --- Write CSV output ---
+    if resolved:
+        outfile = f'{region}-bricks-with-sga-resolved-dwarfs.csv'
+        pngfile = f'{region}-bricks-with-sga-resolved-dwarfs.png'
+        s = 20
+    else:
+        outfile = f'{region}-bricks-with-sga.csv'
+        pngfile = f'{region}-bricks-with-sga.png'
+        s = 1
+
+    out = Table()
+    out['brickname'] = np.asarray(bricks['brickname'])
+    out['ra']        = np.asarray(bricks['ra'])
+    out['dec']       = np.asarray(bricks['dec'])
+    out['has_sga']   = has_sga
+    out['in_mclouds'] = in_mclouds
+
+    if resolved:
+        out = out[has_sga]
+    out.write(outfile, format='csv', overwrite=True)
+    print(f'Wrote {outfile}')
+
+    # --- Plot ---
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+    I = ~out['has_sga']
+    ax.scatter(out['ra'], out['dec'], alpha=0.5, s=s,
+               label=f'All bricks (N={len(out):,d})')
+    ax.scatter(out['ra'][I], out['dec'][I], alpha=0.1, s=1,
+               label=f'No SGA (N={np.sum(I):,d})')
+    ax.legend(loc='upper right')
+    ax.set_xlim(0, 360)
+    fig.savefig(pngfile)
+    print(f'Wrote {pngfile}')
+
+
+if __name__ == '__main__':
+    import argparse
+
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--region', default='dr11-south')
+    p.add_argument('--resolved', action='store_true')
+    p.add_argument('--margin', type=float, default=1.0,
+                   help='Fractional margin on mosaic radius (default 0.20 = 20%%)')
+    p.add_argument('--mclouds-margin', type=float, default=0.2)
+    a = p.parse_args()
+    main(region=a.region, margin=a.margin, mclouds_margin=a.mclouds_margin,
+         resolved=a.resolved)
