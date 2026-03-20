@@ -650,6 +650,7 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     try:
         log.info(f'runbrick {cmdargs}')
         err = runbrick(args=cmdargs.split())
+        #err = 0
     except:
         log.critical(f'Exception raised on {survey.output_dir}/{galaxy}')
         import traceback
