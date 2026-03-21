@@ -12,7 +12,7 @@ import numpy.ma as ma
 from astropy.table import Table, vstack, hstack, join
 from astrometry.util.starutil_numpy import arcsec_between
 
-from SGA.ellipse import MAXSHIFT_ARCSEC
+from SGA.ellipse import MAXSHIFT_ARCSEC, ELLIPSEMODE
 from SGA.logger import log
 
 
@@ -2334,9 +2334,6 @@ def _get_radial_weight_and_tractor_geometry(sample, samplesrcs,
             if is_satellite:
                 use_radial_weight_obj[iobj] = False
 
-        # Tractor geometry only for satellites
-        use_tractor_geometry_obj[iobj] = bool(is_satellite)
-
     # Quick cluster heuristic: count bright extended sources nearby
     if len(allgalsrcs) > 0:
         for iobj in range(nsample):
@@ -2822,7 +2819,6 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             ellipses_overlap=ellipses_overlap, allgalsrcs=allgalsrcs,
             opt_bands=opt_bands, tractorgeo=tractorgeo)
 
-
     # Pre-determine which objects will use Tractor or moment geometry.
     use_tractor_position_obj = np.full(nsample, use_tractor_position, dtype=bool)
     for iobj in range(nsample):
@@ -3264,6 +3260,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             if objsrc is not None:
                 if dshift_tractor_arcsec_arr[iobj] > maxshift_arcsec:
                     sample['ELLIPSEBIT'][iobj] |= ELLIPSEBIT['LARGESHIFT_TRACTOR']
+
 
 
         # Rebuild reference masks using *final* geometry for all SGA sources.

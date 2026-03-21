@@ -1542,6 +1542,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                fixgeo or tractorgeo:
                 if not update_geometry:
                     input_geo_initial[iobj, :] = [bx, by, sma_mom/pixscale, ba_mom, pa_mom]
+                    log.info(f'Galaxy {iobj+1}/{len(sample)} [{sample["OBJNAME"][iobj]}]: fixed geometry ' + \
+                             f'R(26)={obj["SMA_MOMENT"]:.2f} arcsec.')
                 continue
 
             # estimate R(26) from first-pass profiles
@@ -1560,7 +1562,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             sma_moment_arcsec = obj['SMA_MOMENT']
             sma_mask_arcsec = obj['SMA_MASK']
 
-            log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
+            log.info(f'Galaxy {iobj+1}/{len(sample)} [{sample["OBJNAME"][iobj]}]: Initial estimate ' + \
+                     f'R(26)={r26_arcsec:.2f} arcsec [previous ' + \
                      f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
             if sma_mask_arcsec <= 0.:
                 sma_mask_arcsec = r26_arcsec
