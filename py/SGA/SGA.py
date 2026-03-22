@@ -1336,7 +1336,11 @@ def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
     else:
         tractor = Table(fitsio.read(tractorfile, rows=np.where(keep)[0]))
 
-        # check the data model
+        # check the data model with a one-time fix for time-resolved unWISE columns
+        I = np.char.startswith(tractor.colnames, 'lc_')
+        if np.any(I):
+            tractor.remove_columns(np.array(tractor.colnames)[I])
+
         dm = empty_tractor()
         missing_in_tractor = set(dm.colnames) - set(tractor.colnames)
         extra_in_tractor = set(tractor.colnames) - set(dm.colnames)
