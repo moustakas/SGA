@@ -1909,7 +1909,7 @@ def _update_masks(brightstarmask, gaiamask, refmask, galmask,
     else:
         objmask = np.logical_or.reduce((brightstarmask, refmask, galmask, gaiamask))
         if verbose:
-            for label, msk in zip(['bright-star', 'reference', 'gaia', 'galaxy', 'total'],
+            for label, msk in zip(['bright-star', 'reference', 'galaxy', 'gaia', 'total'],
                                   [brightstarmask, refmask, galmask, gaiamask, objmask]):
                 print('  ', label, np.sum(msk)/sz[0]**2)
 
@@ -2738,7 +2738,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def update_galmask(allgalsrcs, bx, by, sma, ba, pa, opt_skysigmas=None,
-                       opt_models=None, mask_allgals=False, allgal_patches=None):
+                       opt_models=None, mask_allgals=False, subset_mask=None,
+                       allgal_patches=None):
         """Update the galaxy mask based on the current in-ellipse array.
 
         """
@@ -2758,13 +2759,27 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         sigma = opt_skysigmas[filt]
 
                     if allgal_patches:
-                        patches = [allgal_patches[filt][i] for i in np.where(~I)[0]]
+                        if subset_mask is not None:
+                            patches = [allgal_patches[filt][i] for i in subset_mask[~I]]
+                        else:
+                            patches = [allgal_patches[filt][i] for i in np.where(~I)[0]]
                     else:
                         patches = None
 
                     msk, model = make_sourcemask(
                         galsrcs, opt_wcs, filt, data[f'{filt}_psf'],
                         sigma=sigma, patches=patches)
+                    #_, testmodel = make_sourcemask(
+                    #    galsrcs, opt_wcs, filt, data[f'{filt}_psf'],
+                    #    sigma=sigma)
+                    #print(np.median(model-testmodel))
+                    #import matplotlib.pyplot as plt
+                    #plt.clf()
+                    #fig, ax = plt.subplots(1, 2)
+                    #ax[0].imshow(np.log10(model), origin='lower')
+                    #ax[1].imshow(np.log10(testmodel), origin='lower')
+                    #plt.savefig('ioannis/tmp/junk.png')
+
                     opt_galmask = np.logical_or(opt_galmask, msk)
                     if opt_models is not None:
                         opt_models[iband, :, :] += model
@@ -2833,6 +2848,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             {filt: data[f'{filt}_psf'] for filt in opt_bands}, mp=mp)
         dt, unit = get_dt(t0)
         log.info(f'Pre-rendering galaxy patches took: {dt:.3f} {unit}')
+        #allgal_patches = None # for testing
     else:
         psfsrcs = []
         allgalsrcs = []
@@ -3090,7 +3106,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             inellipse = in_ellipse_mask(bx, width-by, sma_mask, ba*sma_mask,
                                         pa, xgrid, ygrid_flip)
             dt, unit = get_dt(t2)
-            log.info(f'  Initialize the ellipse mask: {dt:.3f} {unit}')
+            log.debug(f'  Initialize the ellipse mask: {dt:.3f} {unit}')
 
             # Zero out bright-star and reference pixels within the
             # current ellipse mask of the current object...
@@ -3175,7 +3191,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 _, opt_galmask, _ = update_galmask(
                     allgalsrcs, bx, by, sma_mask, ba, pa,
                     opt_skysigmas=opt_skysigmas, opt_models=None,
-                    mask_allgals=True)
+                    subset_mask=None,
+                    mask_allgals=True, allgal_patches=allgal_patches)
             else:
                 flux_sga = sample['OPTFLUX'][iobj]
                 fracflux_sga = sample['FRACFLUX'][iobj]
@@ -3189,6 +3206,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     _, galmask_major, _ = update_galmask(
                         allgalsrcs[major_mask], bx, by,
                         sma_mask, ba, pa, opt_skysigmas=opt_skysigmas,
+                        allgal_patches=allgal_patches,
+                        subset_mask=np.where(major_mask)[0],
                         opt_models=None, mask_allgals=True)
                     opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
@@ -3197,6 +3216,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     _, galmask_minor, _ = update_galmask(
                         allgalsrcs[minor_mask], bx, by,
                         sma_mask, ba, pa, opt_skysigmas=opt_skysigmas,
+                        allgal_patches=allgal_patches,
+                        subset_mask=np.where(minor_mask)[0],
                         opt_models=None, mask_allgals=False)
                     opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
@@ -3474,6 +3495,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 allgalsrcs, bx, by, sma_mask, ba, pa,
                 opt_models=opt_models_obj,
                 opt_skysigmas=opt_skysigmas,
+                allgal_patches=allgal_patches,
+                subset_mask=None,
                 mask_allgals=True)
         else:
             flux_sga = sample['OPTFLUX'][iobj]
@@ -3488,6 +3511,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     allgalsrcs[major_mask], bx, by,
                     sma_mask, ba, pa, opt_models=opt_models_obj,
                     opt_skysigmas=opt_skysigmas,
+                    allgal_patches=allgal_patches,
+                    subset_mask=np.where(major_mask)[0],
                     mask_allgals=True)
                 opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
@@ -3509,6 +3534,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     allgalsrcs[minor_mask], bx, by,
                     sma_mask, ba, pa, opt_models=opt_models_obj,
                     opt_skysigmas=opt_skysigmas,
+                    allgal_patches=allgal_patches,
+                    subset_mask=np.where(minor_mask)[0],
                     mask_allgals=False)
                 opt_galmask = np.logical_or(opt_galmask, galmask_minor)
 
