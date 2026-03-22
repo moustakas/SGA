@@ -12,6 +12,7 @@ import numpy.ma as ma
 from astropy.table import Table, vstack, hstack, join
 from astrometry.util.starutil_numpy import arcsec_between
 
+from SGA.util import get_dt
 from SGA.ellipse import MAXSHIFT_ARCSEC, ELLIPSEMODE
 from SGA.logger import log
 
@@ -2876,6 +2877,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
+        t0 = time.time()
         log.info('Determining the geometry for galaxy ' +
                  f'{iobj+1}/{nsample}.')
 
@@ -2984,6 +2986,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         sma_floor_pix = obj['SMA_MASK'] / opt_pixscale
 
         for iiter in range(niter_actual):
+            t1 = time.time()
             #log.info(f'  Iteration {iiter+1}/{niter_actual}:')
             bx_init, by_init, sma_init, ba_init, pa_init = \
                 np.copy(bx), np.copy(by), np.copy(sma), np.copy(ba), np.copy(pa)
@@ -3188,7 +3191,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # update the geometry for the next iteration
             [bx, by, sma, ba, pa] = geo_iter
 
-            log.info(f'  Iteration {iiter+1}/{niter_actual}: (bx,by)=({bx_init:.1f},{by_init:.1f})-->({bx:.1f},{by:.1f}) ' + \
+            dt, unit = get_dt(t1)
+            log.info(f'  Iteration {iiter+1}/{niter_actual} [{dt:.3f} {unit}]: (bx,by)=({bx_init:.1f},{by_init:.1f})-->({bx:.1f},{by:.1f}) ' + \
                      f'b/a={ba_init:.2f}-->{ba:.2f} PA={pa_init:.1f}-->{pa:.1f} degree ' + \
                      f'sma={sma_init*opt_pixscale:.2f}-->{sma*opt_pixscale:.2f} arcsec ' + \
                      f'[sma_mask={sma_mask*opt_pixscale:.2f} arcsec]')
@@ -3227,6 +3231,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         sma_floor_pix = obj['SMA_MASK'] / opt_pixscale
         sma_mask_final = max(max(sma_final, SMA_MASK_MIN_PIX), sma_floor_pix)
         sample['SMA_MASK'][iobj] = sma_mask_final * opt_pixscale  # [arcsec]
+
+        dt, unit = get_dt(t0)
+        log.info(f'  Time: {dt:.3f} {unit}')
 
     if update_geometry:
         # enforce minimum separation between centers
@@ -3303,6 +3310,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                               ELLIPSEBIT['OVERLAP'] | ELLIPSEBIT['SATELLITE'] |
                               ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'])
 
+
+    t0 = time.time()
     log.info('Final geometry:')
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
 
@@ -3492,6 +3501,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         for msg1 in msg:
             log.info(f'    {msg1}')
 
+    dt, unit = get_dt(t0)
+    log.info(f'  Time for final geometry: {dt:.3f} {unit}')
 
     # Update the data dictionary.
     data['opt_images'] = opt_images_final # [nanomaggies]
@@ -3926,8 +3937,12 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         data['wisemask'] = wisemask
 
 
+    t0 = time()
     sample, samplesrcs, tractor = _read_sample(opt_refband, tractor=tractor)
+    dt, unit = get_dt(t0)
+    log.info(f'Reading the sample took {dt:.3f} {unit}')
 
+    t0 = time()
     if skip_ellipse:
         # Populate columns which would otherwise be added in
         # build_multiband_mask. NB: RA_TRACTOR,DEC_TRACTOR stay zero!
@@ -4024,6 +4039,9 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     for filt in data['all_bands']: # NB: all bands
         sample[f'MW_TRANSMISSION_{filt.upper()}'] = mwdust_transmission(
             sample['EBV'], band=filt, run=data['run'])
+
+    dt, unit = get_dt(t0)
+    log.info(f'Reading the imaging and nearby Gaia sources took {dt:.3f} {unit}')
 
     return data, tractor, sample, samplesrcs, err
 
