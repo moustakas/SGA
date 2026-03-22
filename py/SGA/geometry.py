@@ -102,6 +102,7 @@ class EllipseProperties:
         x_sel = xx.flat[blob_idx].astype(float)
         y_sel = yy.flat[blob_idx].astype(float)
         flux = smoothed.flat[blob_idx].astype(float)
+        #print(image.shape, x_sel.shape, flux.shape)
 
         F = flux.sum()
         if flux.size < 3 or F <= 0.:

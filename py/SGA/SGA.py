@@ -2998,8 +2998,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             sma_mask = max(max(sma, SMA_MASK_MIN_PIX), sma_floor_pix)
 
             # initialize (or update) the in-ellipse mask
+            t2 = time()
             inellipse = in_ellipse_mask(bx, width-by, sma_mask, ba*sma_mask,
                                         pa, xgrid, ygrid_flip)
+            dt, unit = get_dt(t2)
+            log.info(f'  Initialize the ellipse mask: {dt:.3f} {unit}')
 
             # Zero out bright-star and reference pixels within the
             # current ellipse mask of the current object...
@@ -3007,12 +3010,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             iter_refmask = np.copy(opt_refmask)
 
             # Build protected core mask for ALL other reference sources
+            t2 = time()
             iter_refmask_core = _build_reference_core_mask(
                 iobj, refindx, sample, samplesrcs, geo_final,
                 use_tractor_geometry_obj, use_tractor_position_obj,
                 tractorgeo, get_geometry, opt_pixscale, SMA_MASK_MIN_PIX,
                 in_ellipse_mask, width, xgrid, ygrid_flip, sz,
                 current_bx=bx, current_by=by)
+            dt, unit = get_dt(t2)
+            log.info(f'  Build reference core mask: {dt:.3f} {unit}')
+
             #import matplotlib.pyplot as plt
             #plt.clf()
             #plt.imshow(iter_refmask_core, origin='lower')
@@ -3075,6 +3082,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             # SGA source.
             opt_galmask = np.zeros(sz, bool)
 
+            t2 = time()
             if mask_allgals_arr[iobj]:
                 _, opt_galmask, _ = update_galmask(
                     allgalsrcs, bx, by, sma_mask, ba, pa,
@@ -3106,6 +3114,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
                 ## Optionally do not mask within the current SGA ellipse itself.
                 #opt_galmask[inellipse] = False
+            dt, unit = get_dt(t2)
+            log.info(f'  Build major/minor mask: {dt:.3f} {unit}')
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
@@ -3143,6 +3153,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 # their previously determined values. NB: set
                 # use_tractor_position=True as a trick to fix (bx,by);
                 # this isn't necessarily the Tractor position).
+                t2 = time()
                 props = find_galaxy_in_cutout(
                     wimg, bx, by, sma_mask, ba, pa, wmask=wmask,
                     moment_method=moment_method, input_ba_pa=(ba, pa),
@@ -3153,6 +3164,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     opt_pixscale, props=props, ref_tractor=objsrc,
                     moment_method=moment_method,
                     use_tractor_position=use_tractor_position_obj[iobj])
+                dt, unit = get_dt(t2)
+                log.info(f'  Find galaxy in cutout: {dt:.3f} {unit}')
+
                 geo_iter = geo_init
                 geo_iter[2] = sma_new
             else:
