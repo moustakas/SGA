@@ -5,7 +5,8 @@ SGA.SGA
 Code to build and analyze the SGA sample.
 
 """
-import os, time, pdb
+import os, pdb
+from time import time
 import fitsio
 import numpy as np
 import numpy.ma as ma
@@ -279,14 +280,14 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     dependson, dependsondir = None, None
     if htmlplots is False and htmlindex is False:
         if verbose:
-            t0 = time.time()
+            t0 = time()
             log.debug('Getting galaxy names and directories...')
         galaxy, galaxydir = get_galaxy_galaxydir(sample, region=region,
                                                  group=group,
                                                  datadir=datadir,
                                                  htmldir=htmldir)
         if verbose:
-            log.debug(f'...took {time.time() - t0:.3f} sec')
+            log.debug(f'...took {time() - t0:.3f} sec')
 
     if coadds:
         suffix = 'coadds'
@@ -341,7 +342,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
             missargs.append([checkfile, None, clobber])
 
     if verbose:
-        t0 = time.time()
+        t0 = time()
         log.debug('Finding missing files...')
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
@@ -351,7 +352,7 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
                          for _missargs in missargs])
 
     if verbose:
-        log.debug(f'...took {(time.time() - t0)/60.:.3f} min')
+        log.debug(f'...took {(time() - t0)/60.:.3f} min')
 
     itodo = np.where(todo == 'todo')[0]
     idone = np.where(todo == 'done')[0]
@@ -1483,7 +1484,7 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         opt_bands = None
         raslices_todo = None
 
-    t0 = time.time()
+    t0 = time()
 
     if rank == 0:
         all_bands = np.copy(bands)
@@ -1648,8 +1649,8 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
     # Now loop back through and gather up all the results (on rank 0).
     if rank == 0:
-        t0 = time.time()
-        t1 = time.time()
+        t0 = time()
+        t1 = time()
         #log.info(f'Rank {rank:03} gathering catalogs from {len(raslices_todo)} RA slices.')
 
         ellipse, tractor = [], []
@@ -2877,7 +2878,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
     # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
-        t0 = time.time()
+        t0 = time()
         log.info('Determining the geometry for galaxy ' +
                  f'{iobj+1}/{nsample}.')
 
@@ -2986,7 +2987,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         sma_floor_pix = obj['SMA_MASK'] / opt_pixscale
 
         for iiter in range(niter_actual):
-            t1 = time.time()
+            t1 = time()
             #log.info(f'  Iteration {iiter+1}/{niter_actual}:')
             bx_init, by_init, sma_init, ba_init, pa_init = \
                 np.copy(bx), np.copy(by), np.copy(sma), np.copy(ba), np.copy(pa)
@@ -3311,7 +3312,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                               ELLIPSEBIT['BLENDED'] | ELLIPSEBIT['MAJORGAL'])
 
 
-    t0 = time.time()
+    t0 = time()
     log.info('Final geometry:')
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
 
@@ -3940,7 +3941,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     t0 = time()
     sample, samplesrcs, tractor = _read_sample(opt_refband, tractor=tractor)
     dt, unit = get_dt(t0)
-    log.info(f'Reading the sample took {dt:.3f} {unit}')
+    log.info(f'Reading the sample took: {dt:.3f} {unit}')
 
     t0 = time()
     if skip_ellipse:
@@ -4041,7 +4042,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
             sample['EBV'], band=filt, run=data['run'])
 
     dt, unit = get_dt(t0)
-    log.info(f'Reading the imaging and nearby Gaia sources took {dt:.3f} {unit}')
+    log.info(f'Reading the imaging and nearby Gaia sources took: {dt:.3f} {unit}')
 
     return data, tractor, sample, samplesrcs, err
 
