@@ -2455,6 +2455,71 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
     return core_mask
 
 
+def _prerender_one(args):
+    filt, isrc, src, wcs, psf, shape = args
+    from tractor import Image, Tractor
+    from tractor.basics import LinearPhotoCal
+    from tractor.sky import ConstantSky
+    import numpy as np
+
+    model = np.zeros(shape)
+    invvar = np.ones(shape)
+    tim = Image(model, invvar=invvar, wcs=wcs, psf=psf,
+                photocal=LinearPhotoCal(1., band=filt.lower()),
+                sky=ConstantSky(0.), name=f'model-{filt}')
+    try:
+        patch = Tractor([tim], [src]).getModelPatch(tim, src)
+    except Exception:
+        patch = None
+    return filt, isrc, patch
+
+
+def prerender_patches(srcs, wcs, bands, psfs, mp=1):
+    """Pre-render Tractor model patches for a list of sources, per band.
+
+    Parameters
+    ----------
+    srcs : list
+        List of Tractor source objects (e.g., allgalsrcs).
+    wcs : WCS
+        WCS object for the mosaic.
+    bands : list of str
+        Optical bands to render.
+    psfs : dict
+        Dict of pixelized PSFs keyed by band name.
+    mp : int
+        Number of multiprocessing workers.
+
+    Returns
+    -------
+    dict
+        {filt: [Patch|None, ...]} row-matched to srcs.
+
+    """
+    import multiprocessing
+    from tractor.wcs import ConstantFitsWcs
+    from legacypipe.survey import LegacySurveyWcs
+
+    if type(wcs) is ConstantFitsWcs or type(wcs) is LegacySurveyWcs:
+        shape = wcs.wcs.shape
+    else:
+        shape = wcs.shape
+
+    mpargs = [(filt, isrc, srcs[isrc], wcs, psfs[filt], shape)
+              for filt in bands for isrc in range(len(srcs))]
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            out = P.map(_prerender_one, mpargs)
+    else:
+        out = [_prerender_one(arg) for arg in mpargs]
+
+    patches = {filt: [None] * len(srcs) for filt in bands}
+    for filt, isrc, patch in out:
+        patches[filt][isrc] = patch
+
+    return patches
+
+
 def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          FMAJOR_geo=0.01, FMAJOR_final=None, ref_factor=2.0,
                          moment_method='rms', maxshift_arcsec=MAXSHIFT_ARCSEC,
@@ -2462,7 +2527,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True, fixgeo=False,
                          tractorgeo=False, use_radial_weight_for_overlaps=True,
-                         cleanup=True, htmlgalaxydir=None):
+                         mp=1, cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
@@ -2745,6 +2810,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         Igal = ((tractor.type != 'PSF') * (tractor.type != 'DUP') *
                 (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
         allgalsrcs = tractor[Igal]
+
+        allgal_patches = prerender_patches(
+            list(allgalsrcs), opt_wcs, opt_bands,
+            {filt: data[f'{filt}_psf'] for filt in opt_bands}, mp=mp)
+        pdb.set_trace()
     else:
         psfsrcs = []
         allgalsrcs = []

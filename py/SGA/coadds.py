@@ -50,8 +50,14 @@ REGIONBITS = {
 }
 
 
-def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
+def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1., patches=None):
     """Build a model image from a Tractor catalog or a list of sources.
+
+    Parameters
+    ----------
+    patches : list of Patch|None, optional
+        Pre-rendered patches row-matched to `cat`. If provided, skips
+        Tractor rendering and sums patches directly into the output image.
 
     """
     from astrometry.util.fits import tabledata
@@ -67,6 +73,13 @@ def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
     else:
         shape = wcs.shape
     model = np.zeros(shape)
+
+    if patches is not None:
+        for patch in patches:
+            if patch is not None:
+                patch.addTo(model)
+        return model
+
     invvar = np.ones(shape)
 
     if pixelized_psf is None:
@@ -80,7 +93,6 @@ def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
                 photocal=photocal, sky=ConstantSky(0.),
                 name=f'model-{band}')
 
-    # Do we have a tractor catalog or a list of sources?
     if type(cat) is tabledata:
         srcs = read_fits_catalog(cat, bands=[band.lower()])
     else:

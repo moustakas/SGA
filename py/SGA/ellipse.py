@@ -1508,7 +1508,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 use_radial_weight=use_radial_weight, fixgeo=fixgeo,
                 tractorgeo=tractorgeo, mask_nearby=mask_nearby, niter_geometry=2,
                 FMAJOR_geo=FMAJOR_geo, mask_minor_galaxies=True,
-                htmlgalaxydir=htmlgalaxydir)
+                htmlgalaxydir=htmlgalaxydir, mp=mp)
             dt, unit = get_dt(t0)
             log.info(f'Building the initial multiband mask took {dt:.3f} {unit}')
 
@@ -1598,7 +1598,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             use_radial_weight=use_radial_weight,
                                             fixgeo=fixgeo, tractorgeo=tractorgeo,
                                             niter_geometry=niter_geometry,
-                                            htmlgalaxydir=htmlgalaxydir)
+                                            htmlgalaxydir=htmlgalaxydir, mp=mp)
         dt, unit = get_dt(t0)
         log.info(f'Building the final multiband mask took {dt:.3f} {unit}')
 
