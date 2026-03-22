@@ -2470,14 +2470,12 @@ def _prerender_one(args):
     tim = Image(model, invvar=invvar, wcs=wcs, psf=psf,
                 photocal=LinearPhotoCal(1., band=filt.lower()),
                 sky=ConstantSky(0.), name=f'model-{filt}')
-    try:
-        patch = Tractor([tim], [src]).getModelPatch(model, src)
-    except Exception:
-        patch = None
+    patch = Tractor([tim], [src]).getModelPatch(tim, src)
+
     return filt, isrc, patch
 
 
-def prerender_patches(srcs, wcs, bands, psfs, mp=1):
+def prerender_patches(cat, wcs, bands, psfs, mp=1):
     """Pre-render Tractor model patches for a list of sources, per band.
 
     Parameters
@@ -2500,7 +2498,9 @@ def prerender_patches(srcs, wcs, bands, psfs, mp=1):
 
     """
     import multiprocessing
+    from astrometry.util.fits import tabledata
     from tractor.wcs import ConstantFitsWcs
+    from legacypipe.catalog import read_fits_catalog
     from legacypipe.survey import LegacySurveyWcs
 
     if type(wcs) is ConstantFitsWcs or type(wcs) is LegacySurveyWcs:
@@ -2508,8 +2508,15 @@ def prerender_patches(srcs, wcs, bands, psfs, mp=1):
     else:
         shape = wcs.shape
 
-    mpargs = [(filt, isrc, srcs[isrc], wcs, psfs[filt], shape)
-              for filt in bands for isrc in range(len(srcs))]
+    mpargs = []
+    for filt in bands:
+        if type(cat) is tabledata:
+            srcs = read_fits_catalog(cat, bands=[filt.lower()])
+        else:
+            srcs = cat
+        for isrc in range(len(srcs)):
+            mpargs.append((filt, isrc, srcs[isrc], wcs, psfs[filt], shape))
+
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             out = P.map(_prerender_one, mpargs)
@@ -2822,12 +2829,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         t0 = time()
         allgal_patches = prerender_patches(
-            list(allgalsrcs), opt_wcs, opt_bands,
+            allgalsrcs, opt_wcs, opt_bands,
             {filt: data[f'{filt}_psf'] for filt in opt_bands}, mp=mp)
         dt, unit = get_dt(t0)
         log.info(f'Pre-rendering galaxy patches took: {dt:.3f} {unit}')
-
-        pdb.set_trace()
     else:
         psfsrcs = []
         allgalsrcs = []
