@@ -1454,7 +1454,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
     SGANAME may not be the same!
 
     """
-    import time
     from glob import glob
     import multiprocessing
     from astropy.io import fits
