@@ -2468,7 +2468,7 @@ def _prerender_one(args):
                 photocal=LinearPhotoCal(1., band=filt.lower()),
                 sky=ConstantSky(0.), name=f'model-{filt}')
     try:
-        patch = Tractor([tim], [src]).getModelPatch(tim, src)
+        patch = Tractor([tim], [src]).getModelPatch(model, src)
     except Exception:
         patch = None
     return filt, isrc, patch
@@ -2544,7 +2544,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
 
 
-    def make_sourcemask(srcs, wcs, band, psf, sigma=None, stars=False):
+    def make_sourcemask(srcs, wcs, band, psf, sigma=None, stars=False, patches=None):
         """Build a model image and threshold mask from a table of
         Tractor sources; also optionally subtract that model from an
         input image.
@@ -2559,7 +2559,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         else:
             nsigma = 1.5
 
-        model = srcs2image(srcs, wcs, band=band.lower(), pixelized_psf=psf)
+        model = srcs2image(srcs, wcs, band=band.lower(), pixelized_psf=psf, patches=patches)
         if sigma:
             mask = model > nsigma*sigma # True=significant flux
             mask = binary_dilation(mask*1, iterations=2) > 0
@@ -2728,7 +2728,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
     def update_galmask(allgalsrcs, bx, by, sma, ba, pa, opt_skysigmas=None,
-                       opt_models=None, mask_allgals=False):
+                       opt_models=None, mask_allgals=False, allgal_patches=None):
         """Update the galaxy mask based on the current in-ellipse array.
 
         """
@@ -2746,9 +2746,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 for iband, filt in enumerate(opt_bands):
                     if opt_skysigmas is not None:
                         sigma = opt_skysigmas[filt]
+
+                    if allgal_patches:
+                        patches = [allgal_patches[filt][i] for i in np.where(~I)[0]]
+                    else:
+                        patches = None
+
                     msk, model = make_sourcemask(
                         galsrcs, opt_wcs, filt, data[f'{filt}_psf'],
-                        sigma=sigma)
+                        sigma=sigma, patches=patches)
                     opt_galmask = np.logical_or(opt_galmask, msk)
                     if opt_models is not None:
                         opt_models[iband, :, :] += model
@@ -2811,9 +2817,13 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
         allgalsrcs = tractor[Igal]
 
+        t0 = time()
         allgal_patches = prerender_patches(
             list(allgalsrcs), opt_wcs, opt_bands,
             {filt: data[f'{filt}_psf'] for filt in opt_bands}, mp=mp)
+        dt, unit = get_dt(t0)
+        log.info(f'Pre-rendering galaxy patches took: {dt:.3f} {unit}')
+
         pdb.set_trace()
     else:
         psfsrcs = []
