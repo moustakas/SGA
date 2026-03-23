@@ -18,10 +18,11 @@ Usage:
 
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.1 --version=v1.1 --mp=32 --custom-selection --region=dr9-north
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.1 --version=v1.1 --mp=32 --custom-selection --region=dr11-south
-
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --missing-sga2020
 
-  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --final-sample
+
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --final-sample --region=dr11-south --tier=1
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --final-sample --region=dr11-south --tier=2
 
 
 """
@@ -1144,8 +1145,8 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         tiers = [int(tier)]
 
     # Set up output base directory
-    #qadir = os.path.join(sga_dir(), 'qa', f'qa-{version}')
-    qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/vi-{version}'
+    qadir = os.path.join(sga_dir(), 'qa', f'qa-{version}')
+    #qadir = f'/global/cfs/cdirs/cosmo/www/temp/SGA2025/vi-{version}'
 
     # Process each track/tier/gm combination
     for proc_track in tracks:

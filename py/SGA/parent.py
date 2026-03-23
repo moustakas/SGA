@@ -4382,6 +4382,110 @@ def prepare_v110_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
+def prepare_v120_ellipse(ell1, region, mindiam=0.5):
+
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    # no v1.2 ellipse-fitting in dr9-north
+    if region == 'dr9-north':
+        return ell1
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    # -- VI analysis --
+    refit_list = ['WISEA J035630.88-475302.0', 'WISEA J040702.20-170737.0',
+                  '2MASX J09303817-1011122', 'WISEA J101242.89-354816.4',
+                  'ESO 383-IG 043', 'WISEA J140548.10-394411.5',
+                  '2MASS J14530597-3956245', 'WISEA J160151.96+154732.3',
+                  'WISEA J164228.94+343030.0', 'MCG +06-35-011',
+                  '2MASX J14432844+3428494', 'WISEA J093902.46+333055.4',
+                  'KUG 0656+338', 'KUG 0717+338', 'WISEA J183137.50+312435.8',
+                  'WISEA J200648.91-533022.6', 'ESO 400- G 025',
+                  'ESO 052-IG 017 NED02', 'NGC 1598', 'NGC 1595',
+                  'IC 3639', 'ESO 183-IG 023 NED03', 'UGC 03194',
+                  ]
+
+    # --- LARGESHIFT analysis ---
+    has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
+    has_largeshift_tractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR']) != 0
+    largeshift_any = has_largeshift | has_largeshift_tractor
+
+    log.info(f"LARGESHIFT analysis:")
+    log.info(f"  Total with any LARGESHIFT bit: {np.sum(largeshift_any):,d}")
+    log.info(f"    - LARGESHIFT only: {np.sum(has_largeshift & ~has_largeshift_tractor):,d}")
+    log.info(f"    - LARGESHIFT_TRACTOR only: {np.sum(has_largeshift_tractor & ~has_largeshift):,d}")
+    log.info(f"    - Both bits: {np.sum(has_largeshift & has_largeshift_tractor):,d}")
+    log.info(f"  In singletons: {np.sum(largeshift_any & ~in_group):,d}")
+    log.info(f"  In groups: {np.sum(largeshift_any & in_group):,d}")
+    log.info(f"  LVD sources: {np.sum(largeshift_any & is_lvd):,d}")
+
+    # Characterize the shifts
+    pos_shift_arcsec = np.hypot(
+        (ell1['RA'] - ell1['RA_INIT']) * np.cos(np.deg2rad(ell1['DEC'])) * 3600,
+        (ell1['DEC'] - ell1['DEC_INIT']) * 3600
+    )
+    diam_ratio = ell1['D26'] / np.clip(ell1['DIAM_INIT'], 0.01, None)
+
+    ls = ell1[largeshift_any]
+    ls_pos = pos_shift_arcsec[largeshift_any]
+    ls_diam = diam_ratio[largeshift_any]
+
+    log.info(f"  Position shift (arcsec): median={np.median(ls_pos):.1f}, 90%={np.percentile(ls_pos, 90):.1f}, max={np.max(ls_pos):.1f}")
+    log.info(f"  Diameter ratio: median={np.median(ls_diam):.2f}, 10%={np.percentile(ls_diam, 10):.2f}, 90%={np.percentile(ls_diam, 90):.2f}")
+
+    # Categorize LARGESHIFT sources by characteristics
+    # Category A: Large position shift AND diameter grew (possible Tractor failure / contamination)
+    cat_a = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio > 1.5)
+    # Category B: Large position shift AND diameter shrunk (possible wrong source modeled)
+    cat_b = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio < 0.7)
+    # Category C: Small position shift but large diameter change (Tractor modeling issue)
+    cat_c = largeshift_any & (pos_shift_arcsec <= 10) & ((diam_ratio < 0.5) | (diam_ratio > 2.0))
+    # Category D: Moderate shifts (unclear - may be legitimate)
+    cat_d = largeshift_any & ~cat_a & ~cat_b & ~cat_c
+
+    log.info(f"  Category A (pos>10\", diam grew >50%): {np.sum(cat_a):,d} — likely contamination")
+    log.info(f"  Category B (pos>10\", diam shrunk >30%): {np.sum(cat_b):,d} — possibly wrong source")
+    log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
+    log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
+
+    # Flag categories A, B, and C (not D) for restoration
+    refit = cat_a | cat_b | cat_c
+
+    #check = ell1[cat_d & ~is_lvd]
+    #check = check[np.argsort(check['D26'])[::-1]]
+    #view = to_skyviewer_table(check, diamcol='D26')
+    #view.write('viewer.fits', overwrite=True)
+
+    # refit all group members
+    ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    if False:
+        protect = []
+
+        #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
+        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        #check = ell1[remove]
+        #check = check[np.argsort(check['D26'])]
+        ##check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check[:20], diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
+
+        ell1 = ell1[~remove]
+
+    return ell1
+
+
 def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_primary=False):
     """Flag small group members for removal.
 
@@ -4662,6 +4766,9 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
         elif base_version == 'v1.1':
             ell1 = prepare_v110_ellipse(ell1, region, mindiam=mindiam)
 
+        elif base_version == 'v1.2':
+            ell1 = prepare_v120_ellipse(ell1, region, mindiam=mindiam)
+
         ell.append(ell1)
     ell = vstack(ell)
 
@@ -4781,7 +4888,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -4977,6 +5084,14 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
                 ell_base[col][I] = parent_base[col][I]
         base = ell_base
     elif base_version == 'v1.1':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+        base = ell_base
+    elif base_version == 'v1.2':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
         if np.any(I):
