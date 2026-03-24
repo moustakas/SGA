@@ -4416,8 +4416,10 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
                   'APMBGC 235+059-099', 'NGC 0520 NED01', 'ESO 052-IG 017 NED02',
                   'ESO 304-IG 029 NED01', 'IC 2135', 'MCG -06-13-005', 'WISEA J101302.93+063629.5',
                   'WISEA J122857.85-341646.1', 'ESO 443-IG 005', 'NGC 5012A',
-                  'ESO 450- G 014', 'ESO 526- G 018', 
-]
+                  'ESO 450- G 014', 'ESO 526- G 018', 'SCG 0035-3357:[I2002] B',
+                  'ESO 350- G 040', 'NGC 0326 NED01', 'NGC 0815 NED02', 'NGC 1128 NED01',
+                  'UGC 09327', 'ESO 405- G 029', 'WISEA J155004.59-395505.5',
+                  '2MASX J15495273-3954340', 'NGC 3253', ]
 
     # --- LARGESHIFT analysis ---
     has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
