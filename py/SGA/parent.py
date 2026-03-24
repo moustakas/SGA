@@ -4413,7 +4413,7 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
                   'WISEA J120444.71+104642.2', 'UGC 07104', 'UGCA 274',
                   'VCC 0909', 'ESO 443- G 020', 'ESO 446- G 020', 'WISEA J143209.38+255120.3',
                   'FGCE 1218', 'NGC 6052 NED02', '2MASX J19334636-6443102',
-                  'APMBGC 235+059-099', 
+                  'APMBGC 235+059-099', 'NGC 0520 NED01', 'ESO 052-IG 017 NED02', 'ESO 304-IG 029 NED01', 
                   ]
 
     # --- LARGESHIFT analysis ---
