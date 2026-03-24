@@ -2803,10 +2803,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
         mask[:, sz[0]-edge:] = True
         mask[sz[0]-edge:, :] = True
 
-
     #print('Testing!!')
     #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['TRACTORGEO']
-    #sample['ELLIPSEMODE'] |= ELLIPSEMODE['FIXGEO']
+    #sample['ELLIPSEMODE'][1] |= ELLIPSEMODE['FIXGEO']
     #sample['ELLIPSEMODE'] |= ELLIPSEMODE['MOMENTPOS']
     #sample['ELLIPSEMODE'] &= ~ELLIPSEMODE['FIXGEO']
 
@@ -3170,6 +3169,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             #plt.clf()
             #plt.imshow(inellipse2, origin='lower')
             #plt.savefig('ioannis/tmp/junk.png')
+
             denom = iter_brightstarmask[inellipse2].size
             if denom > 0: # should always be true...
                 frac = np.sum(iter_brightstarmask[inellipse2]) / denom
@@ -3231,6 +3231,20 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
             # apply the mask_nearby mask
             opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
+
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.imshow(opt_galmask, origin='lower')
+            #plt.savefig('ioannis/tmp/junk.png')
+            #
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x', label=f'SGA {iobj}')
+            #plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10, label='All galaxies')
+            #plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=25, color='red', label='Major galaxies')
+            #plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=25, color='blue', label='Minor galaxies')
+            #plt.legend(loc='lower right')
+            #plt.savefig('ioannis/tmp/junk.png')
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
