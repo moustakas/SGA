@@ -2979,8 +2979,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
     SMA_MASK_MIN_ARCSEC = 10. # [arcsec]
     SMA_MASK_MIN_PIX = SMA_MASK_MIN_ARCSEC / opt_pixscale
 
-    # are we allowed to change the geometry in this call?
+    # Are we updating the geometry in this call? If not, fully remove
+    # the nearby mask.
     update_geometry = input_geo_initial is None
+    if not update_geometry:
+        opt_nearbymask[:] = False
 
     # iterate to get the geometry
     for iobj, (obj, objsrc) in enumerate(zip(sample, samplesrcs)):
@@ -3229,8 +3232,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             dt, unit = get_dt(t2)
             log.info(f'  Build major/minor mask: {dt:.3f} {unit}')
 
-            # apply the mask_nearby mask
-            opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
+            # apply the mask_nearby mask but veto the mask within the current ellipse
+            iter_nearbymask = np.copy(opt_nearbymask)
+            iter_nearbymask[inellipse2] = False
+            opt_galmask = np.logical_or(opt_galmask, iter_nearbymask)
 
             #import matplotlib.pyplot as plt
             #plt.clf()
@@ -3498,6 +3503,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             inellipse2 = in_ellipse_mask(bx, width-by, sma_veto, sma_veto*ba,
                                          pa, xgrid, ygrid_flip)
             final_brightstarmask[inellipse2] = False
+        else:
+            inellipse2 = inellipse
 
         # never veto the "core" brightstarmask except for FIXGEO
         # or TRACTORGEO
@@ -3563,8 +3570,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             ##plt.savefig('ioannis/tmp/junk.png')
             #opt_galmask[inellipse] = False
 
-        # apply the mask_nearby mask
-        opt_galmask = np.logical_or(opt_galmask, opt_nearbymask)
+        # apply the mask_nearby mask but veto the mask within the current ellipse
+        iter_nearbymask[inellipse2] = False
+        opt_galmask = np.logical_or(opt_galmask, iter_nearbymask)
 
         opt_maskbits_obj = _update_masks(
             final_brightstarmask, opt_gaiamask_obj_all[iobj],

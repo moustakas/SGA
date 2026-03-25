@@ -4394,7 +4394,7 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
     in_group = ell1['GROUP_MULT'] > 1
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
 
-    # -- VI analysis --
+    # list of objects to refit based on VI
     refit_list = ['WISEA J035630.88-475302.0', 'WISEA J040702.20-170737.0',
                   '2MASX J09303817-1011122', 'WISEA J101242.89-354816.4',
                   'ESO 383-IG 043', 'WISEA J140548.10-394411.5',
@@ -4420,7 +4420,11 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
                   'ESO 350- G 040', 'NGC 0326 NED01', 'NGC 0815 NED02', 'NGC 1128 NED01',
                   'UGC 09327', 'ESO 405- G 029', 'WISEA J155004.59-395505.5',
                   '2MASX J15495273-3954340', 'NGC 3253', 'ESO 295-IG 022 NED02',
-                  '2MASS J00554647-3724322', ]
+                  '2MASS J00554647-3724322', 'ESO 032-IG 017 NED01', 'WISEA J043737.02-730942.2',
+                  'MCG -02-13-036', '2MFGC 04115',]
+    refit_list = np.unique(refit_list)
+
+    cat_refit = np.isin(ell1['OBJNAME'], refit_list)
 
     # --- LARGESHIFT analysis ---
     has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
@@ -4466,8 +4470,9 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
     log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
 
     # Flag categories A, B, and C (not D) for restoration
-    refit = cat_a | cat_b | cat_c
+    refit = cat_refit | cat_a | cat_b | cat_c
 
+    pdb.set_trace()
     #check = ell1[cat_d & ~is_lvd]
     #check = check[np.argsort(check['D26'])[::-1]]
     #view = to_skyviewer_table(check, diamcol='D26')
@@ -4479,24 +4484,23 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
     log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
 
     # --- Flag small group members for removal ---
-    if False:
-        protect = []
+    remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+    remove &= ell1['D26_ERR'] != 0
 
-        #print('Retain NGC 1889, IC 4212, NGC 6835!!!!')
-        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
-        remove &= ell1['D26_ERR'] != 0
+    protect = []
+    if len(protect) > 0:
+        remove &= ~np.isin(ell1['OBJNAME'], protect)
+    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
-        if len(protect) > 0:
-            remove &= ~np.isin(ell1['OBJNAME'], protect)
-        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+    check = ell1[remove]
+    check = check[np.argsort(check['D26'])]
+    ##check = check[np.argsort(check['D26'])[::-1]]
+    #view = to_skyviewer_table(check[:20], diamcol='D26')
+    view.write('viewer.fits', overwrite=True)
 
-        #check = ell1[remove]
-        #check = check[np.argsort(check['D26'])]
-        ##check = check[np.argsort(check['D26'])[::-1]]
-        #view = to_skyviewer_table(check[:20], diamcol='D26')
-        #view.write('viewer.fits', overwrite=True)
+    pdb.set_trace()
 
-        ell1 = ell1[~remove]
+    ell1 = ell1[~remove]
 
     return ell1
 
