@@ -4421,7 +4421,8 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
                   'UGC 09327', 'ESO 405- G 029', 'WISEA J155004.59-395505.5',
                   '2MASX J15495273-3954340', 'NGC 3253', 'ESO 295-IG 022 NED02',
                   '2MASS J00554647-3724322', 'ESO 032-IG 017 NED01', 'WISEA J043737.02-730942.2',
-                  'MCG -02-13-036', '2MFGC 04115',]
+                  'MCG -02-13-036', '2MFGC 04115', 'NGC 0247B', 'NGC 0247D', 'ESO 540- G 025',
+                  'ESO 440-IG 058 NED01', ]
     refit_list = np.unique(refit_list)
 
     cat_refit = np.isin(ell1['OBJNAME'], refit_list)
