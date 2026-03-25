@@ -20,9 +20,10 @@ Usage:
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.1 --version=v1.1 --mp=32 --custom-selection --region=dr11-south
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --missing-sga2020
 
-
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --final-sample --region=dr11-south --tier=1
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --final-sample --region=dr11-south --tier=2
+
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --custom-selection --region=dr11-south --final-sample --flagged-only --tier=3
 
 
 """
@@ -605,7 +606,6 @@ def annotated_page(ax, obj, group_members_dict, galaxy, galaxydir,
     )
     #if group_mult > 1:
     #    print(obj['OBJNAME'], obj['GROUP_NAME'], obj['GROUP_RA'], obj['GROUP_DEC'], obj['RA'], obj['DEC'], groupra, groupdec, wcs.wcs.crval)
-    #    import pdb ; pdb.set_trace()
 
     if image is None:
         ax.text(0.5, 0.5, 'No image available', transform=ax.transAxes,
@@ -760,7 +760,8 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
                  diamcolumn, ncol=4, nrow=2, inches_per_panel=4.,
                  show_tractor_ellipse=True, show_initial_ellipse=True,
                  final_sample=False, no_groups=False, show_group=True,
-                 sga2020_overlay=None, missing_sga2020_mode=False, verbose=False):
+                 sga2020_overlay=None, missing_sga2020_mode=False,
+                 flagged_only=False, verbose=False):
     """
     Generate PDF with annotated galaxy images.
 
@@ -777,22 +778,52 @@ def generate_pdf(sample, fullsample, pdffile, region, datadir, cutoutdir,
     mpl.rcParams["pdf.use14corefonts"] = True
 
     # Get paths for all objects
-    showsample = fullsample if not no_groups else sample
+    if flagged_only:
+        # Show only flagged objects, but need primary's path for cutouts
+        showsample = sample
 
-    galaxy, galaxydir = get_galaxy_galaxydir(
-        showsample, region=region, group=not no_groups, datadir=datadir)
-    galaxy = np.atleast_1d(galaxy)
-    galaxydir = np.atleast_1d(galaxydir)
+        # Build lookup: GROUP_NAME -> primary's galaxy/galaxydir
+        primaries = fullsample[fullsample['GROUP_PRIMARY']]
+        primary_galaxy, primary_galaxydir = get_galaxy_galaxydir(
+            primaries, region=region, group=True, datadir=datadir)
+        primary_galaxy = np.atleast_1d(primary_galaxy)
+        primary_galaxydir = np.atleast_1d(primary_galaxydir)
+        primary_lookup = {name: (gal, gdir) for name, gal, gdir in
+                          zip(primaries['GROUP_NAME'], primary_galaxy, primary_galaxydir)}
+
+        galaxy = np.array([primary_lookup[name][0] for name in showsample['GROUP_NAME']])
+        galaxydir = np.array([primary_lookup[name][1] for name in showsample['GROUP_NAME']])
+    else:
+        showsample = fullsample if not no_groups else sample
+        galaxy, galaxydir = get_galaxy_galaxydir(
+            showsample, region=region, group=not no_groups, datadir=datadir)
+        galaxy = np.atleast_1d(galaxy)
+        galaxydir = np.atleast_1d(galaxydir)
 
     # Handle cutouts
     I = showsample['CUTOUT'].value if 'CUTOUT' in showsample.colnames else np.zeros(len(showsample), bool)
     if np.any(I):
         cutout_galaxy = np.copy(galaxy)
         cutout_galaxydir = np.copy(galaxydir)
-        cgalaxy, cgalaxydir = get_galaxy_galaxydir(
-            showsample[I], region=region, group=not no_groups, datadir=cutoutdir)
-        cutout_galaxy[I] = cgalaxy
-        cutout_galaxydir[I] = cgalaxydir
+        if flagged_only:
+            # Use primary's cutout path
+            cprimaries = primaries[np.isin(primaries['GROUP_NAME'], showsample['GROUP_NAME'][I])]
+            cgalaxy, cgalaxydir = get_galaxy_galaxydir(
+                cprimaries, region=region, group=True, datadir=cutoutdir)
+            cgalaxy = np.atleast_1d(cgalaxy)
+            cgalaxydir = np.atleast_1d(cgalaxydir)
+            cutout_lookup = {name: (gal, gdir) for name, gal, gdir in
+                             zip(cprimaries['GROUP_NAME'], cgalaxy, cgalaxydir)}
+            for idx in np.where(I)[0]:
+                name = showsample['GROUP_NAME'][idx]
+                if name in cutout_lookup:
+                    cutout_galaxy[idx] = cutout_lookup[name][0]
+                    cutout_galaxydir[idx] = cutout_lookup[name][1]
+        else:
+            cgalaxy, cgalaxydir = get_galaxy_galaxydir(
+                showsample[I], region=region, group=not no_groups, datadir=cutoutdir)
+            cutout_galaxy[I] = cgalaxy
+            cutout_galaxydir[I] = cgalaxydir
     else:
         cutout_galaxy = [None] * len(showsample)
         cutout_galaxydir = [None] * len(showsample)
@@ -1038,7 +1069,8 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                final_sample=False, no_groups=False, show_group=True,
                missing_sga2020=False, show_tractor_ellipse=True,
                show_initial_ellipse=True, use_gmbins=True,
-               custom_selection=False, ncol=4, nrow=2, nperpdf=4096,
+               custom_selection=False, flagged_only=False,
+               ncol=4, nrow=2, nperpdf=4096,
                mp=1, verbose=False, first=None, last=None, galaxylist=None):
     """
     Generate QA PDFs organized by track, tier, and group multiplicity.
@@ -1100,7 +1132,6 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         fullsample['CUTOUT'] = np.ones(len(fullsample), dtype=bool)
         sample['CUTOUT'] = np.ones(len(sample), dtype=bool)
         log.info(f'Missing SGA2020 mode: {len(sample):,d} groups, {len(fullsample):,d} objects')
-        import pdb ; pdb.set_trace()
 
     if custom_selection:
         #from collections import Counter
@@ -1114,12 +1145,22 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
         #sample = fullsample[fullsample['GROUP_PRIMARY']]
 
-        is_2mass = np.char.startswith(fullsample['OBJNAME'].astype(str), '2MASS')
-        has_overlap = (fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0
-        target_groups = np.unique(fullsample['GROUP_NAME'][is_2mass & has_overlap])
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], target_groups)]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-        log.info(f'Custom selection: {len(sample):,d} groups with 2MASS+OVERLAP members')
+        #is_2mass = np.char.startswith(fullsample['OBJNAME'].astype(str), '2MASS')
+        #has_overlap = (fullsample['SAMPLE'] & SAMPLE['OVERLAP']) != 0
+        #target_groups = np.unique(fullsample['GROUP_NAME'][is_2mass & has_overlap])
+        #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], target_groups)]
+        #sample = fullsample[fullsample['GROUP_PRIMARY']]
+        #log.info(f'Custom selection: {len(sample):,d} groups with 2MASS+OVERLAP members')
+
+        from SGA.parent import _flag_small_for_removal
+        I = _flag_small_for_removal(fullsample, mindiam=20./60., keep_one_survivor=False, protect_primary=False)
+        #I &= fullsample['GROUP_MULT'] > 1
+        if flagged_only:
+            sample = fullsample[I]
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
+        else:
+            fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], fullsample['GROUP_NAME'][I])]
+            sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     # Determine catalog type and diameter column
     has_ellipsebit = 'ELLIPSEBIT' in fullsample.colnames
@@ -1153,7 +1194,7 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         for proc_tier in tiers:
             # Filter sample
             filtered = filter_sample(
-                sample if no_groups else fullsample,
+                sample if (no_groups or flagged_only) else fullsample,
                 track=proc_track, tier=proc_tier,
                 mindiam=mindiam, maxdiam=maxdiam, diamcolumn=diamcolumn
             )
@@ -1251,7 +1292,8 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
                         final_sample=final_sample, no_groups=no_groups,
                         show_group=show_group, verbose=verbose,
                         sga2020_overlay=sga2020_overlay,
-                        missing_sga2020_mode=missing_sga2020_mode)
+                        missing_sga2020_mode=missing_sga2020_mode,
+                        flagged_only=flagged_only)
 
     log.info('QA generation complete.')
 
@@ -1334,6 +1376,8 @@ Examples:
     parser.add_argument('--galaxylist', type=str, default=None,
                         help='Comma-separated list of galaxy names')
 
+    parser.add_argument('--flagged-only', action='store_true',
+                        help='Show only flagged objects (not all group members), but still annotate other members')
     parser.add_argument('--verbose', action='store_true',
                         help='Verbose output')
 
@@ -1355,6 +1399,7 @@ Examples:
         show_initial_ellipse=args.show_initial_ellipse,
         missing_sga2020=args.missing_sga2020,
         custom_selection=args.custom_selection,
+        flagged_only=args.flagged_only,
         ncol=args.ncol,
         nrow=args.nrow,
         nperpdf=args.nperpdf,

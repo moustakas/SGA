@@ -4422,7 +4422,7 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
                   '2MASX J15495273-3954340', 'NGC 3253', 'ESO 295-IG 022 NED02',
                   '2MASS J00554647-3724322', 'ESO 032-IG 017 NED01', 'WISEA J043737.02-730942.2',
                   'MCG -02-13-036', '2MFGC 04115', 'NGC 0247B', 'NGC 0247D', 'ESO 540- G 025',
-                  'ESO 440-IG 058 NED01', 'LeG16', ]
+                  'ESO 440-IG 058 NED01', 'LeG16', 'ESO 511- G 031', 'WISEA J020310.13-505715.4', 'UGC 01725', ]
     refit_list = np.unique(refit_list)
 
     cat_refit = np.isin(ell1['OBJNAME'], refit_list)
@@ -4470,11 +4470,11 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
     log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
     log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
 
-    # Flag categories A, B, and C (not D) for restoration
-    refit = cat_refit | cat_a | cat_b | cat_c
+    # Categories needed for restoration
+    refit = cat_refit
+    #refit = cat_refit | cat_a | cat_b | cat_c
 
-    pdb.set_trace()
-    #check = ell1[cat_d & ~is_lvd]
+    #check = ell1[cat_b & ~is_lvd]
     #check = check[np.argsort(check['D26'])[::-1]]
     #view = to_skyviewer_table(check, diamcol='D26')
     #view.write('viewer.fits', overwrite=True)
@@ -4494,12 +4494,11 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
     log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
     check = ell1[remove]
-    check = check[np.argsort(check['D26'])]
-    ##check = check[np.argsort(check['D26'])[::-1]]
-    #view = to_skyviewer_table(check[:20], diamcol='D26')
-    view.write('viewer.fits', overwrite=True)
-
     pdb.set_trace()
+    check = check[np.argsort(check['D26'])]
+    check = check[np.argsort(check['D26'])][::-1]
+    view = to_skyviewer_table(check[:30], diamcol='D26')
+    view.write('viewer.fits', overwrite=True)
 
     ell1 = ell1[~remove]
 
