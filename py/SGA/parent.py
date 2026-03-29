@@ -4422,8 +4422,11 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
                   '2MASX J15495273-3954340', 'NGC 3253', 'ESO 295-IG 022 NED02',
                   '2MASS J00554647-3724322', 'ESO 032-IG 017 NED01', 'WISEA J043737.02-730942.2',
                   'MCG -02-13-036', '2MFGC 04115', 'NGC 0247B', 'NGC 0247D', 'ESO 540- G 025',
-                  'ESO 440-IG 058 NED01', 'LeG16', 'ESO 511- G 031', 'WISEA J020310.13-505715.4', 'UGC 01725', 'WISEA J052434.39-494922.3', 'ESO 254- G 046', 'WISEA J065627.43-332257.6', 'WISEA J065640.71-282121.5', 'WISEA J093435.76-000643.8', 'WISEA J132345.23+010231.5', 
-                  ]
+                  'ESO 440-IG 058 NED01', 'LeG16', 'ESO 511- G 031', 'WISEA J020310.13-505715.4',
+                  'UGC 01725', 'WISEA J052434.39-494922.3', 'ESO 254- G 046', 'WISEA J065627.43-332257.6',
+                  'WISEA J065640.71-282121.5', 'WISEA J093435.76-000643.8', 'WISEA J132345.23+010231.5',
+                  'ESO 349-IG 026 NED02', 'ESO 349-IG 026 NED01', 'ESO 349-IG 026 NED03',
+                  'WISEA J021628.23-474755.6', '2MASS J16582067-7422187', 'ESO 043-IG 010',]
     refit_list = np.unique(refit_list)
 
     cat_refit = np.isin(ell1['OBJNAME'], refit_list)
@@ -4486,22 +4489,23 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
     log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
 
     # --- Flag small group members for removal ---
-    remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
-    remove &= ell1['D26_ERR'] != 0
+    # all were visually inspected and added by-hand to the drops.csv file
+    if False:
+        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
 
-    protect = []
-    if len(protect) > 0:
-        remove &= ~np.isin(ell1['OBJNAME'], protect)
-    log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+        protect = []
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
 
-    check = ell1[remove]
-    pdb.set_trace()
-    check = check[np.argsort(check['D26'])]
-    check = check[np.argsort(check['D26'])][::-1]
-    view = to_skyviewer_table(check[:30], diamcol='D26')
-    view.write('viewer.fits', overwrite=True)
+        check = ell1[remove]
+        check = check[np.argsort(check['D26'])]
+        check = check[np.argsort(check['D26'])][::-1]
+        view = to_skyviewer_table(check[:30], diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
 
-    ell1 = ell1[~remove]
+        ell1 = ell1[~remove]
 
     return ell1
 
@@ -5199,6 +5203,8 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
     #view_south = to_skyviewer_table(check_south)
     #view_north.write('viewer-north.fits', overwrite=True)
     #view_south.write('viewer-south.fits', overwrite=True)
+
+    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
