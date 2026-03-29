@@ -5119,9 +5119,15 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
         if np.any(I):
+            out = parent_base['SGAID', 'OBJNAME', 'REGION'][I]
+            #out = parent_base['SGAID', 'OBJNAME', 'REGION', 'SAMPLE', 'RA', 'DEC', 'D26', 'PA', 'BA'][I]
+            #out.rename_columns(['RA', 'DEC', 'D26', 'PA', 'BA'], ['RA_ORIG', 'DEC_ORIG', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'])
+            #out = out[np.argsort(out['DIAM_ORIG'])]
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
+
         base = ell_base
     else:
         base = ell_base
@@ -5203,8 +5209,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
     #view_south = to_skyviewer_table(check_south)
     #view_north.write('viewer-north.fits', overwrite=True)
     #view_south.write('viewer-south.fits', overwrite=True)
-
-    pdb.set_trace()
 
     # re-add the Gaia masking bits
     add_gaia_masking(base)
