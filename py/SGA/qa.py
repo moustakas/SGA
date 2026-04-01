@@ -596,7 +596,7 @@ def qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=False, png=N
 
     Image.MAX_IMAGE_PIXELS = None
     imgsz = colorimg.size
-    
+
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(5*3, 5), sharey=True)
 
     # original maskbits

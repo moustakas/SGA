@@ -98,6 +98,7 @@ def mpi_args():
 
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')
+    parser.add_argument('--count-masked-pixels', action='store_true', help='Count masked pixels.')
     args = parser.parse_args()
 
     return args

@@ -1295,6 +1295,46 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
     return ellipse
 
 
+def _read_ellipse_optical_maskbits(gdir, datasets, opt_bands, grpsample):
+    """Read and join ellipse catalogs across datasets.
+
+    Returns None if no ellipse files found or on read error.
+
+    """
+    import fitsio
+    from glob import glob
+
+    ellipsefiles = glob(os.path.join(gdir, f'*-ellipse-{opt_bands}.fits'))
+    if len(ellipsefiles) == 0:
+        return None
+
+    if len(datasets) > 1:
+        raise ValueError('Only optical supported at the moment.')
+    dataset = datasets[0]
+
+    for iellipse, ellipsefile in enumerate(ellipsefiles):
+        # Extract SGA name from filename (fragile)
+        sganame_parts = os.path.basename(ellipsefile).split('-')[:-2]
+        sganame = sganame_parts[0] if len(sganame_parts) == 1 else '-'.join(sganame_parts)
+
+        ellipsefile_dataset = os.path.join(gdir, f'{sganame}-ellipse-{dataset}.fits')
+        try:
+            ellipse_dataset = fitsio.read(ellipsefile_dataset, ext='MASKBITS')
+        except Exception:
+            log.critical(f'Problem reading {ellipsefile_dataset}!')
+            return None
+
+        if iellipse == 0:
+            ellipse1 = np.zeros((len(ellipsefiles), *ellipse_dataset.shape), dtype=ellipse_dataset.dtype)
+
+        try:
+            ellipse1[iellipse, :, :] = ellipse_dataset
+        except:
+            pdb.set_trace()
+
+    return ellipse1
+
+
 def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
     """Read Tractor catalog and extract SGA source entries.
 
@@ -1778,6 +1818,195 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
         dt, unit = get_dt(t0)
         log.info(f'Rank {rank:03} all done in {dt:.3f} {unit}')
 
+
+
+def count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
+                            unpack_maskbits_function, SGAMASKBITS):
+    """Gather ellipse-fitting results for a single group."""
+    import fitsio
+    from glob import glob
+    from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
+    from SGA.geometry import in_ellipse_mask
+
+    OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS = SGAMASKBITS
+
+    # --- Locate group directory ---
+    grp, gdir = get_galaxy_galaxydir(
+        grpsample[0], region=region,
+        datadir=datadir)
+
+    # entire directory missing (not yet started)
+    if not os.path.isdir(gdir):
+        return Table()
+
+    # --- Read ellipse catalogs and maskbits images ---
+    ellipse = _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample)
+    if ellipse is None:
+        return Table()
+
+    opt_maskbits = _read_ellipse_optical_maskbits(gdir, datasets, opt_bands, grpsample)
+    opt_masks, brightstarmasks, refmasks, gaiamasks, galmasks = \
+        unpack_maskbits_function(opt_maskbits, bands=[*opt_bands], # [nobj,nband,width,width]
+                                 BITS=OPTMASKBITS, allmasks=True)
+
+    _, width, _ = opt_maskbits.shape
+    xgrid, ygrid = np.meshgrid(np.arange(width),
+                               np.arange(width),
+                               indexing='xy')
+    ygrid_flip = width - ygrid
+
+    nobj = len(ellipse)
+    GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
+
+    out = ellipse['OBJNAME', 'SGANAME', 'RA', 'DEC', 'GROUP_NAME']
+    out['FRAC'] = np.zeros(nobj, 'f4')
+
+    for iobj, obj in enumerate(ellipse):
+        galmask = galmasks[iobj, :, :]
+        if np.sum(galmask) > 0:
+            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            inellipse = in_ellipse_mask(bx, width-by, sma, ba*sma,
+                                        pa, xgrid, ygrid_flip)
+            frac = np.sum(galmask[inellipse]) / np.sum(inellipse)
+            #if frac == 1.:
+            #    import matplotlib.pyplot as plt
+            #    plt.clf()
+            #    plt.imshow(galmask, origin='lower')
+            #    plt.savefig('ioannis/tmp/junk.png')
+            #    pdb.set_trace()
+
+            out['FRAC'][iobj] = frac
+
+    out = out[out['FRAC'] > 0.] # trim
+
+    return out
+
+
+def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
+                        SGAMASKBITS, bands=['g', 'r', 'i', 'z'], comm=None,
+                        region='dr11-south', version=None, datadir=None,
+                        clobber=False):
+    """Count masked pixels (one-time script).
+
+    """
+    from glob import glob
+    from SGA.io import get_raslice
+    from SGA.util import match, get_dt
+
+
+    if comm:
+        rank, size = comm.rank, comm.size
+    else:
+        rank, size = 0, 1
+
+    # Initialize the variables we will broadcast if using MPI.
+    if comm:
+        outfile = None
+        datasets = None
+        opt_bands = None
+        raslices_todo = None
+
+    t0 = time()
+
+    if rank == 0:
+        all_bands = np.copy(bands)
+        opt_bands = ''.join(bands)
+        datasets = [opt_bands]
+
+        if version is None:
+            version = SGA_version()
+        outfile = os.path.join(sga_dir(), 'sample', f'masked-pixels-{version}-{region}.fits')
+
+    if comm:
+        outfile = comm.bcast(outfile, root=0)
+
+    if os.path.isfile(outfile) and not clobber:
+        if rank == 0:
+            log.warning(f'Use --clobber to overwrite existing catalog {outfile}')
+        return
+
+    # outer loop is on RA slice
+    if rank == 0:
+        allraslices = get_raslice(sample['GROUP_RA'].value)
+        raslices_todo = np.array(sorted(set(allraslices)))
+        raslices_todo = ['000']
+        #raslices_todo = raslices_todo[131:]
+
+        final_results = []
+
+    if comm:
+        datasets = comm.bcast(datasets, root=0)
+        opt_bands = comm.bcast(opt_bands, root=0)
+        raslices_todo = comm.bcast(raslices_todo, root=0)
+        #allraslices = comm.bcast(allraslices, root=0)
+
+    # outer loop on RA slices
+    for islice, raslice in enumerate(raslices_todo):
+        log.info(f'Rank {rank:03}: working on RA slice {raslice} ({islice+1:03}/{len(raslices_todo):03}) ')
+        if rank == 0:
+            I = np.where(raslice == allraslices)[0]
+
+        if comm is not None and size > 1:
+            # rank 0 sends work to the other ranks...
+            if rank == 0:
+                indx_byrank = np.array_split(I, size-1)
+                for onerank, indx in zip(np.arange(size-1)+1, indx_byrank):
+                    comm.send(indx, dest=onerank, tag=1)
+            else:
+                # ...and the other ranks receive the work.
+                indx = comm.recv(source=0, tag=1)
+        else:
+            indx = I
+
+        if comm is not None and size > 1:
+            # The other ranks do work and send their results...
+            if rank > 0:
+                if len(indx) == 0:
+                    results = Table()
+                else:
+                    out = []
+                    for count, grpindx in enumerate(indx):
+                        grpsample = fullsample[fullsample['GROUP_NAME'] == sample['GROUP_NAME'][grpindx]]
+                        out1 = count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
+                                                       unpack_maskbits_function, SGAMASKBITS)
+                        out.append(out1)
+                    out = list(zip(*out))
+                    results = vstack(out[0])
+                comm.send(results, dest=0, tag=2)
+            else:
+                # ...to rank 0.
+                allresults = []
+                for onerank in np.arange(size-1)+1:
+                    results = comm.recv(source=onerank, tag=2)
+                    allresults.append(results)
+                allresults = vstack(allresults)
+        else:
+            out = []
+            for count, grpindx in enumerate(indx):
+                grpsample = fullsample[fullsample['GROUP_NAME'] == sample['GROUP_NAME'][grpindx]]
+                out1 = count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
+                                               unpack_maskbits_function, SGAMASKBITS)
+                out.append(out1)
+            out = list(zip(*out))
+            pdb.set_trace()
+            allresults = vstack(out)
+
+        if rank == 0:
+            final_results.append(allresults)
+
+    if rank == 0:
+        dt, unit = get_dt(t0)
+        log.info(f'Rank {rank:03} all done in {dt:.3f} {unit}')
+
+    if comm:
+        comm.barrier()
+
+    # Now loop back through and gather up all the results (on rank 0).
+    if rank == 0:
+        out = vstack(final_results)
+        out.write(outfile, overwrite=True)
+        log.info(f'Wrote {len(out):,d} objects to {outfile}')
+        pdb.set_trace()
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
@@ -2630,7 +2859,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               use_radial_weight=use_radial_weight)
         #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, P.ba, P.pa, sma)
 
-        if debug:
+        if True:#debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -3230,7 +3459,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     # masking masks more than 40% of the object then
                     # drop it altogether
                     frac = np.sum(galmask_major[inellipse]) / np.sum(inellipse)
-                    if (obj['SAMPLE'] & SAMPLE['OVERLAP'] == 0) & (frac > 0.4):
+                    #if (obj['SAMPLE'] & SAMPLE['OVERLAP'] == 0) & (frac > 0.4):
+                    if (frac > 0.4):
                         log.warning(f'Isolated galaxy nearly fully masked by nearby bright ' + \
                                     'galaxies; dropping major-galaxy masking.')
                     else:
@@ -3558,7 +3788,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     subset_mask=np.where(major_mask)[0],
                     mask_allgals=True)
                 frac = np.sum(galmask_major[inellipse]) / np.sum(inellipse)
-                if (obj['SAMPLE'] & SAMPLE['OVERLAP'] == 0) & (frac > 0.4):
+                #if (obj['SAMPLE'] & SAMPLE['OVERLAP'] == 0) & (frac > 0.4):
+                if (frac > 0.4):
                     log.warning(f'Isolated galaxy nearly fully masked by nearby bright ' + \
                                 'galaxies; dropping major-galaxy masking.')
                 else:

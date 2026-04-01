@@ -358,6 +358,21 @@ def main():
                       test_bricks=args.test_bricks, clobber=args.clobber)
         return
 
+    if args.count_masked_pixels:
+        from SGA.SGA import (count_masked_pixels, OPTMASKBITS, UNWISEMASKBITS,
+                             GALEXMASKBITS, unpack_maskbits)
+        SGAMASKBITS = [OPTMASKBITS, ]
+        if args.unwise:
+            SGAMASKBITS += [UNWISEMASKBITS]
+        if args.galex:
+            SGAMASKBITS += [GALEXMASKBITS]
+
+        count_masked_pixels(sample, fullsample, unpack_maskbits, SGAMASKBITS,
+                            bands=bands, comm=comm, region=args.region,
+                            version=args.version, datadir=datadir,
+                            clobber=args.clobber)
+        return
+
     # need at least one keyword at this point
     if (args.coadds is False and args.ellipse is False and args.htmlplots is False and
         args.htmlindex is False and args.parse_tractor_logs is False):
