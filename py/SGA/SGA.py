@@ -2641,6 +2641,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                              ax=ax1, color='blue')
             fig.savefig('ioannis/tmp/junk.png')
             plt.close()
+            pdb.set_trace()
 
         if P.a <= 0.:
             log.warning('Reverting to input geometry; moment-derived ' + \
@@ -2781,6 +2782,11 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     #fig, ax = plt.subplots(1, 2)
                     #ax[0].imshow(np.log10(model), origin='lower')
                     #ax[1].imshow(np.log10(testmodel), origin='lower')
+                    #plt.savefig('ioannis/tmp/junk.png')
+
+                    #import matplotlib.pyplot as plt
+                    #plt.clf()
+                    #plt.imshow(model, origin='lower')
                     #plt.savefig('ioannis/tmp/junk.png')
                     opt_galmask = np.logical_or(opt_galmask, msk)
 
@@ -3219,7 +3225,16 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     #plt.clf()
                     #plt.imshow(galmask_major, origin='lower')
                     #plt.savefig('ioannis/tmp/junk.png')
-                    opt_galmask = np.logical_or(opt_galmask, galmask_major)
+
+                    # check: in an isolated source, if major-galaxy
+                    # masking masks more than 40% of the object then
+                    # drop it altogether
+                    frac = np.sum(galmask_major[inellipse]) / np.sum(inellipse)
+                    if (obj['SAMPLE'] & SAMPLE['OVERLAP'] == 0) & (frac > 0.4):
+                        log.warning(f'Isolated galaxy nearly fully masked by nearby bright ' + \
+                                    'galaxies; dropping major-galaxy masking.')
+                    else:
+                        opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
                 # Minor companions: use the original "outside-ellipse only" logic.
                 if np.any(minor_mask) and mask_minor_galaxies:
@@ -3246,14 +3261,14 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             #plt.imshow(opt_galmask, origin='lower')
             #plt.savefig('ioannis/tmp/junk.png')
 
-            import matplotlib.pyplot as plt
-            plt.clf()
-            plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x', label=f'SGA {iobj}')
-            plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10, label='All galaxies')
-            plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=25, color='red', label='Major galaxies')
-            plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=25, color='blue', label='Minor galaxies')
-            plt.legend(loc='lower right')
-            plt.savefig('ioannis/tmp/junk.png')
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x', label=f'SGA {iobj}')
+            #plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10, label='All galaxies')
+            #plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=25, color='red', label='Major galaxies')
+            #plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=25, color='blue', label='Minor galaxies')
+            #plt.legend(loc='lower right')
+            #plt.savefig('ioannis/tmp/junk.png')
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
@@ -3542,7 +3557,12 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     allgal_patches=allgal_patches,
                     subset_mask=np.where(major_mask)[0],
                     mask_allgals=True)
-                opt_galmask = np.logical_or(opt_galmask, galmask_major)
+                frac = np.sum(galmask_major[inellipse]) / np.sum(inellipse)
+                if (obj['SAMPLE'] & SAMPLE['OVERLAP'] == 0) & (frac > 0.4):
+                    log.warning(f'Isolated galaxy nearly fully masked by nearby bright ' + \
+                                'galaxies; dropping major-galaxy masking.')
+                else:
+                    opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
             #import matplotlib.pyplot as plt
             #plt.clf()
