@@ -119,9 +119,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # OVERLAP fixes
         #version = 'v1.1'
         # more cleanup, etc.; used in DR11
-        #version = 'v1.2'
+        version = 'v1.2'
         # more cleanup, etc.; used in DR11
-        version = 'v1.3'
+        #version = 'v1.3'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -138,8 +138,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v0.80'  # parent_version = v0.70 --> v0.80
         #version = 'v1.0'  # parent_version = v0.80 --> v1.0
         #version = 'v1.1'  # parent_version = v1.0 --> v1.1
-        #version = 'v1.2'  # parent_version = v1.1 --> v1.2
-        version = 'v1.3'  # parent_version = v1.2 --> v1.3
+        version = 'v1.2'  # parent_version = v1.1 --> v1.2
+        #version = 'v1.3'  # parent_version = v1.2 --> v1.3
     return version
 
 
@@ -2782,8 +2782,8 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                     #ax[0].imshow(np.log10(model), origin='lower')
                     #ax[1].imshow(np.log10(testmodel), origin='lower')
                     #plt.savefig('ioannis/tmp/junk.png')
-
                     opt_galmask = np.logical_or(opt_galmask, msk)
+
                     if opt_models is not None:
                         opt_models[iband, :, :] += model
             else:
@@ -3215,6 +3215,10 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                         allgal_patches=allgal_patches,
                         subset_mask=np.where(major_mask)[0],
                         opt_models=None, mask_allgals=True)
+                    #import matplotlib.pyplot as plt
+                    #plt.clf()
+                    #plt.imshow(galmask_major, origin='lower')
+                    #plt.savefig('ioannis/tmp/junk.png')
                     opt_galmask = np.logical_or(opt_galmask, galmask_major)
 
                 # Minor companions: use the original "outside-ellipse only" logic.
@@ -3241,15 +3245,15 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             #plt.clf()
             #plt.imshow(opt_galmask, origin='lower')
             #plt.savefig('ioannis/tmp/junk.png')
-            #
-            #import matplotlib.pyplot as plt
-            #plt.clf()
-            #plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x', label=f'SGA {iobj}')
-            #plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10, label='All galaxies')
-            #plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=25, color='red', label='Major galaxies')
-            #plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=25, color='blue', label='Minor galaxies')
-            #plt.legend(loc='lower right')
-            #plt.savefig('ioannis/tmp/junk.png')
+
+            import matplotlib.pyplot as plt
+            plt.clf()
+            plt.scatter(objsrc.bx, objsrc.by, s=50, marker='x', label=f'SGA {iobj}')
+            plt.scatter(allgalsrcs.bx, allgalsrcs.by, s=10, label='All galaxies')
+            plt.scatter(allgalsrcs.bx[major_mask], allgalsrcs.by[major_mask], s=25, color='red', label='Major galaxies')
+            plt.scatter(allgalsrcs.bx[minor_mask], allgalsrcs.by[minor_mask], s=25, color='blue', label='Minor galaxies')
+            plt.legend(loc='lower right')
+            plt.savefig('ioannis/tmp/junk.png')
 
             # Combine opt_brightstarmask, opt_gaiamask, opt_refmask,
             # and opt_galmask with the per-band optical masks.
