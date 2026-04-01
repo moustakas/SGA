@@ -2859,7 +2859,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               use_radial_weight=use_radial_weight)
         #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, P.ba, P.pa, sma)
 
-        if True:#debug:
+        if debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
