@@ -395,13 +395,15 @@ def _read_image_data(data, filt2imfile, read_jpg=False, skip_tractor=False, verb
             threshold = detect_threshold(image, nsigma=3., background=0.)
             segment_img = detect_sources(image, threshold, npixels=10)
             if segment_img is not None:
-                msk = segment_img.make_source_mask()
-                msk *= ~mask # exclude "bad" pixels
+                msk = segment_img.make_source_mask() # True=bad/source
+                msk |= mask # exclude "bad" pixels
             else:
                 msk = ~mask
             mn, med, skysigma = sigma_clipped_stats(image, sigma=2.5, mask=msk)
 
             #import matplotlib.pyplot as plt
+            #plt.clf() ; plt.imshow(invvar, origin='lower') ; plt.savefig('ioannis/tmp/junk2.png') ; plt.close()
+            #plt.clf() ; _=plt.hist(image[~msk], bins=100) ; plt.savefig('ioannis/tmp/junk2.png') ; plt.close()
             #plt.clf() ; plt.imshow(msk, origin='lower') ; plt.savefig('ioannis/tmp/junk2.png') ; plt.close()
             #plt.clf() ; plt.imshow(np.log10(image-model),origin='lower') ; plt.savefig('ioannis/tmp/junk2.png') ; plt.close()
 
