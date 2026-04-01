@@ -1438,6 +1438,11 @@ def _sources_in_ellipses(refs, ellipse, region):
     return isin
 
 
+def safe_vstack(tables):
+    nonempty = [t for t in tables if t is not None and len(t) > 0]
+    return vstack(nonempty) if nonempty else Table()
+
+
 def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
     """Gather ellipse-fitting results for a single group."""
     import fitsio
@@ -1929,9 +1934,8 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
     if rank == 0:
         allraslices = get_raslice(sample['GROUP_RA'].value)
         raslices_todo = np.array(sorted(set(allraslices)))
-        raslices_todo = ['000']
+        #raslices_todo = ['001', '002']
         #raslices_todo = raslices_todo[131:]
-
         final_results = []
 
     if comm:
@@ -1970,8 +1974,7 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
                         out1 = count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
                                                        unpack_maskbits_function, SGAMASKBITS)
                         out.append(out1)
-                    out = list(zip(*out))
-                    results = vstack(out[0])
+                    results = safe_vstack(out)
                 comm.send(results, dest=0, tag=2)
             else:
                 # ...to rank 0.
@@ -1979,7 +1982,7 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
                 for onerank in np.arange(size-1)+1:
                     results = comm.recv(source=onerank, tag=2)
                     allresults.append(results)
-                allresults = vstack(allresults)
+                allresults = safe_vstack(allresults)
         else:
             out = []
             for count, grpindx in enumerate(indx):
@@ -1987,9 +1990,7 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
                 out1 = count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
                                                unpack_maskbits_function, SGAMASKBITS)
                 out.append(out1)
-            out = list(zip(*out))
-            pdb.set_trace()
-            allresults = vstack(out)
+            allresults = safe_vstack(out)
 
         if rank == 0:
             final_results.append(allresults)
@@ -2003,7 +2004,7 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
 
     # Now loop back through and gather up all the results (on rank 0).
     if rank == 0:
-        out = vstack(final_results)
+        out = safe_vstack(final_results)
         out.write(outfile, overwrite=True)
         log.info(f'Wrote {len(out):,d} objects to {outfile}')
         pdb.set_trace()
