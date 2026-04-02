@@ -3828,6 +3828,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
             #opt_galmask[inellipse] = False
 
         # apply the mask_nearby mask but veto the mask within the current ellipse
+        iter_nearbymask = np.copy(opt_nearbymask)
         iter_nearbymask[inellipse2] = False
         opt_galmask = np.logical_or(opt_galmask, iter_nearbymask)
 
