@@ -1863,7 +1863,8 @@ def count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
     nobj = len(ellipse)
     GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
 
-    out = ellipse['OBJNAME', 'SGANAME', 'RA', 'DEC', 'GROUP_NAME']
+    out = ellipse['OBJNAME', 'SGAID', 'SGANAME', 'SGAGROUP', 'RA', 'DEC', 'DIAM', 'BA', 'PA',
+                  'GROUP_NAME', 'GROUP_RA', 'GROUP_DEC', 'GROUP_MULT', 'GROUP_DIAMETER']
     out['FRAC'] = np.zeros(nobj, 'f4')
 
     for iobj, obj in enumerate(ellipse):

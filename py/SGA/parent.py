@@ -4426,7 +4426,9 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
                   'UGC 01725', 'WISEA J052434.39-494922.3', 'ESO 254- G 046', 'WISEA J065627.43-332257.6',
                   'WISEA J065640.71-282121.5', 'WISEA J093435.76-000643.8', 'WISEA J132345.23+010231.5',
                   'ESO 349-IG 026 NED02', 'ESO 349-IG 026 NED01', 'ESO 349-IG 026 NED03',
-                  'WISEA J021628.23-474755.6', '2MASS J16582067-7422187', 'ESO 043-IG 010', 'ESO 234- G 032',
+                  'WISEA J021628.23-474755.6', '2MASS J16582067-7422187', 'ESO 043-IG 010',
+                  'ESO 234- G 032', 'ESO 349- G 009', 'WISEA J201307.83-564829.6',
+                  'UGC 05597', 'WKK 7657', 'ESO 101- G 004',
                   ]
     refit_list = np.unique(refit_list)
 
