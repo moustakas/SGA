@@ -542,7 +542,8 @@ def main():
             multiplicity = onegal['GROUP_MULT']
 
         radius_mosaic_arcsec = get_radius_mosaic(onegal[DIAMCOLUMN], # diam in arcmin
-                                                 multiplicity=multiplicity)
+                                                 multiplicity=multiplicity,
+                                                 q_primary=onegal['BA'])
 
         survey = get_survey(run, allbands=bands, output_dir=galaxydir)
 
@@ -762,7 +763,8 @@ def main():
                 os.makedirs(htmlgalaxydir, exist_ok=True)
 
             _, barlen, barlabel = get_radius_mosaic(
-                onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True)
+                onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True,
+                q_primary=onegal['BA'])
 
             err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
                              unpack_maskbits, SGAMASKBITS, APERTURES,
