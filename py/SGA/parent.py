@@ -5579,15 +5579,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
     out2 = build_group_catalog(grp[~special], mp=mp)
     out = vstack((out1, out2))
 
-    # Assign SGAGROUP name and check duplicates among primaries
-    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
-    out.add_column(groupname, name='SGAGROUP', index=1)
-    prim = out['GROUP_PRIMARY']
-    gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
-    if np.any(cc > 1):
-        log.critical('Duplicate group names among primaries detected.')
-        raise ValueError('Duplicate SGAGROUP among primaries')
-
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
     out = harmonize_region_bits(out)
@@ -5606,6 +5597,15 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
         p12 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.2.fits')))
         ov_12 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.2'))
         out, _, _ = restore_large_groups(out, p12, ov_12, ov, min_diam_arcmin=0.)
+
+    # Assign SGAGROUP name and check duplicates among primaries
+    groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
+    out.add_column(groupname, name='SGAGROUP', index=1)
+    prim = out['GROUP_PRIMARY']
+    gg, cc = np.unique(out['SGAGROUP'][prim], return_counts=True)
+    if np.any(cc > 1):
+        log.critical('Duplicate group names among primaries detected.')
+        raise ValueError('Duplicate SGAGROUP among primaries')
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)
