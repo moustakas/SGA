@@ -6,6 +6,7 @@ Code for defining the SGA parent sample.
 
 """
 import os, time, sys, re, pdb
+import math
 import numpy as np
 import fitsio
 from glob import glob
@@ -21,6 +22,10 @@ from SGA.sky import choose_primary, resolve_close
 from SGA.qa import qa_skypatch, multipage_skypatch, to_skyviewer_table
 
 from SGA.logger import log
+
+DEG2RAD = math.pi / 180.0
+ARCMIN_PER_DEG = 60.0
+ARCSEC_PER_DEG = 3600.0
 
 
 def parent_datamodel(nobj):
@@ -4626,6 +4631,337 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_
     return remove
 
 
+def _angular_sep_arcmin(ra1, dec1, ra2, dec2):
+    """Great-circle separation in arcmin."""
+    cosd = math.cos(0.5 * (dec1 + dec2) * DEG2RAD)
+    dra = (ra1 - ra2 + 180.0) % 360.0 - 180.0
+    return math.hypot(dra * cosd, dec1 - dec2) * ARCMIN_PER_DEG
+
+
+def restore_large_groups(p13, p12, ov_12, ov_13, min_diam_arcmin=0.,
+                         opt_in_groups=None, opt_in_objnames=None,
+                         trunc_margin_arcsec=10.0, debug=False):
+    """
+    Restore v1.2 group assignments in p13 for large groups whose mosaics
+    are still valid.
+
+    Parameters
+    ----------
+    p13 : Table
+        v1.3 parent catalog (modified in place)
+    p12 : Table
+        v1.2 parent catalog (read only)
+    ov_12, ov_13 : overlay objects
+        Loaded via load_overlays() for v1.2 and v1.3
+    min_diam_arcmin : float
+        GROUP_DIAMETER threshold for consideration (arcmin)
+    opt_in_groups : list of str or None
+        v1.2 GROUP_NAMEs to always restore regardless of criteria
+    opt_in_objnames : list of str or None
+        OBJNAMEs whose v1.2 group should always be restored
+    trunc_margin_arcsec : float
+        Tolerance added to mosaic radius for truncation check (arcsec)
+    debug : bool
+        Print per-member truncation details
+
+    Returns
+    -------
+    Table
+        Modified p13
+    int
+        Number of v1.2 groups restored
+
+    """
+    from SGA.SGA import get_radius_mosaic
+
+    opt_in_groups = set(opt_in_groups or [])
+    opt_in_objnames = set(opt_in_objnames or [])
+
+    # ---- overlay sets ----
+    dropped = set(ov_12.drops['OBJNAME']) if hasattr(ov_12, 'drops') else set()
+    added   = set(ov_13.adds['OBJNAME'])  if hasattr(ov_13, 'adds')  else set()
+
+    log.info(f"  Dropped objects (v1.2 drops.csv): {len(dropped):,d}")
+    log.info(f"  Added objects   (v1.3 adds.csv):  {len(added):,d}")
+
+    # ---- build fast lookups ----
+    p13_gname   = np.asarray(p13['GROUP_NAME']).astype(str)
+    p13_objname = np.asarray(p13['OBJNAME']).astype(str)
+    p13_sgaid   = np.asarray(p13['SGAID'])
+    p12_gname   = np.asarray(p12['GROUP_NAME']).astype(str)
+    p12_objname = np.asarray(p12['OBJNAME']).astype(str)
+
+    # SGAID-keyed index into p12 and p13
+    p12_sgaid_map = {int(s): i for i, s in enumerate(p12['SGAID'])}
+    p13_sgaid_map = {int(s): i for i, s in enumerate(p13['SGAID'])}
+
+    # GROUP_NAME -> list of row indices (p13)
+    p13_group_idx = {}
+    for i, g in enumerate(p13_gname):
+        p13_group_idx.setdefault(g, []).append(i)
+
+    # opt-in by objname: resolve to v1.2 group names
+    if opt_in_objnames:
+        p12_objname_map = {str(n): i for i, n in enumerate(p12_objname)}
+        for objname in opt_in_objnames:
+            i12 = p12_objname_map.get(objname)
+            if i12 is not None:
+                opt_in_groups.add(str(p12_gname[i12]))
+            else:
+                log.warning(f"  opt_in_objname '{objname}' not found in p12")
+
+    # ---- identify large v1.3 groups ----
+    p13_gdiam = np.asarray(p13['GROUP_DIAMETER'], dtype=float)
+    p13_gmult = np.asarray(p13['GROUP_MULT'])
+    p13_gprim = np.asarray(p13['GROUP_PRIMARY'], dtype=bool)
+
+    # Unique large v1.3 groups (by GROUP_NAME, one entry per group)
+    uniq_v13, first_idx = np.unique(p13_gname, return_index=True)
+    large_mask = p13_gdiam[first_idx] >= min_diam_arcmin
+    large_v13 = uniq_v13[large_mask]
+
+    log.info(f"  Large v1.3 groups (>={min_diam_arcmin:.1f}'): {len(large_v13):,d}")
+
+    # Sort by descending GROUP_DIAMETER so largest systems appear first
+    large_v13_diams = p13_gdiam[first_idx[large_mask]]
+    large_v13 = large_v13[np.argsort(large_v13_diams)[::-1]]
+
+    # (so we process them even if below threshold)
+    if opt_in_groups:
+        opt_in_v13 = set()
+        for i, g in enumerate(p12_gname):
+            if g in opt_in_groups:
+                sgaid = int(p12['SGAID'][i])
+                i13 = p13_sgaid_map.get(sgaid)
+                if i13 is not None:
+                    opt_in_v13.add(p13_gname[i13])
+        extra = np.array([g for g in opt_in_v13 if g not in set(large_v13)])
+        if len(extra):
+            log.info(f"  Additional opt-in v1.3 groups below threshold: {len(extra):,d}")
+            large_v13 = np.concatenate([large_v13, extra])
+
+    # ---- v1.2 group properties for truncation check ----
+    p12_gdiam = np.asarray(p12['GROUP_DIAMETER'], dtype=float)
+    p12_gmult = np.asarray(p12['GROUP_MULT'])
+    p12_gprim = np.asarray(p12['GROUP_PRIMARY'], dtype=bool)
+    p12_gra   = np.asarray(p12['GROUP_RA'],  dtype=float)
+    p12_gdec  = np.asarray(p12['GROUP_DEC'], dtype=float)
+    p12_ba    = np.asarray(p12['BA'],        dtype=float)
+
+    # Use primary rows directly (one pass, no per-group np.where)
+    prim_idx = np.where(p12_gprim)[0]
+    v12_group_props = {}
+    for pi in prim_idx:
+        g = str(p12_gname[pi])
+        if g not in v12_group_props:  # keep first primary if duplicates
+            diam = float(p12_gdiam[pi])
+            mult = int(p12_gmult[pi])
+            ba   = float(p12_ba[pi])
+            v12_group_props[g] = {
+                'diam':    diam,
+                'mult':    mult,
+                'ba':      ba,
+                'ra':      float(p12_gra[pi]),
+                'dec':     float(p12_gdec[pi]),
+                # Note: q_primary intentionally omitted — v1.2 mosaics were built without
+                # BA inflation, so we match that convention here.
+                'r_mosaic': get_radius_mosaic(diam, multiplicity=mult),
+            }
+
+    # SGAID -> v1.2 group props (for fast per-member truncation lookup)
+    p12_sgaid_props = {
+        int(p12['SGAID'][i]): v12_group_props[str(p12_gname[i])]
+        for i in range(len(p12))
+        if str(p12_gname[i]) in v12_group_props
+    }
+
+    # Precompute p13 geometry arrays for truncation check
+    p13_ra   = np.asarray(p13['RA'],   dtype=float)
+    p13_dec  = np.asarray(p13['DEC'],  dtype=float)
+    p13_diam = np.asarray(p13['DIAM'], dtype=float)
+    p13_ba   = np.asarray(p13['BA'],   dtype=float) if 'BA' in p13.colnames \
+        else np.ones(len(p13))
+    p13_pa   = np.asarray(p13['PA'],   dtype=float) if 'PA' in p13.colnames \
+        else np.zeros(len(p13))
+
+    # ---- process each large v1.3 group ----
+    GROUP_COLS = ['GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
+                  'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER']
+
+    n_restored = 0        # number of v1.2 groups written back
+    n_skipped_drop = 0
+    n_skipped_add  = 0
+    n_skipped_trunc = 0
+    n_skipped_optin = 0
+
+    for v13_gname in large_v13:
+        is_optin = False
+
+        # Members of this v1.3 group
+        idx13 = np.array(p13_group_idx[v13_gname])
+        sgaids = p13_sgaid[idx13]
+        objnames13 = p13_objname[idx13]
+
+        # Find corresponding v1.2 rows
+        idx12_list = [p12_sgaid_map[int(s)] for s in sgaids if int(s) in p12_sgaid_map]
+        if not idx12_list:
+            log.info(f"  {v13_gname}: SKIP — no v1.2 matches (all-new objects?)")
+            continue
+        idx12 = np.array(idx12_list)
+
+        # Contributing v1.2 groups
+        contrib_v12 = np.unique(p12_gname[idx12])
+
+        # Check opt-in
+        if opt_in_groups & set(contrib_v12):
+            is_optin = True
+
+        diam_v13 = float(p13_gdiam[idx13[0]])
+        mult_v13 = int(p13_gmult[idx13[0]])
+        n_contrib = len(contrib_v12)
+
+        # ---- criterion 1: drops ----
+        if not is_optin:
+            v12_objnames = set(p12_objname[idx12])
+            dropped_here = v12_objnames & dropped
+            if dropped_here:
+                log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                         f"{n_contrib} v1.2 groups): SKIP drops={sorted(dropped_here)}")
+                n_skipped_drop += 1
+                continue
+
+        # ---- criterion 2: adds ----
+        if not is_optin:
+            added_here = set(objnames13) & added
+            if added_here:
+                log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                         f"{n_contrib} v1.2 groups): SKIP adds={sorted(added_here)}")
+                n_skipped_add += 1
+                continue
+
+        # ---- criterion 3: truncation ----
+        trunc_failures = []
+        if not is_optin:
+            for k, i13 in enumerate(idx13):
+                sgaid = int(sgaids[k])
+                props = p12_sgaid_props.get(sgaid)
+                if props is None:
+                    continue
+
+                sep_arcmin = _angular_sep_arcmin(
+                    p13_ra[i13], p13_dec[i13], props['ra'], props['dec'])
+
+                # For a square mosaic, check each axis independently.
+                # x_max = |dx| + a*hypot(sin(PA), BA*cos(PA))
+                # y_max = |dy| + a*hypot(cos(PA), BA*sin(PA))
+                # extent = max(x_max, y_max) must fit within half-side R.
+                a_arc = 0.5 * p13_diam[i13]
+                ba = p13_ba[i13]
+                ba_eff = ba if (math.isfinite(ba) and ba > 0) else 1.0
+                pa_rad = p13_pa[i13] * DEG2RAD if math.isfinite(p13_pa[i13]) else 0.0
+                cosd = math.cos(props['dec'] * DEG2RAD)
+                dx = ((p13_ra[i13] - props['ra'] + 180.0) % 360.0 - 180.0) * cosd * ARCMIN_PER_DEG
+                dy = (p13_dec[i13] - props['dec']) * ARCMIN_PER_DEG
+                amp_x = math.hypot(math.sin(pa_rad), ba_eff * math.cos(pa_rad))
+                amp_y = math.hypot(math.cos(pa_rad), ba_eff * math.sin(pa_rad))
+                x_max_arcmin = abs(dx) + a_arc * amp_x
+                y_max_arcmin = abs(dy) + a_arc * amp_y
+                extent_arcsec = max(x_max_arcmin, y_max_arcmin) * 60.0
+                r_eff = props['r_mosaic'] + trunc_margin_arcsec
+
+                if debug:
+                    if p13_objname[i13] == 'NGC 3109':
+                        log.info(f"    DEBUG {p13_objname[i13]}: sep={sep_arcmin:.4f}', "
+                                 f"diam={p13_diam[i13]:.4f}', ba={ba_eff:.3f}, "
+                                 f"dx={dx:.4f}' dy={dy:.4f}', "
+                                 f"amp_x={amp_x:.4f} amp_y={amp_y:.4f}, "
+                                 f"extent={extent_arcsec:.4f}\", "
+                                 f"r_mosaic={props['r_mosaic']:.4f}\", margin={trunc_margin_arcsec}\"")
+
+                if extent_arcsec > r_eff:
+                    # Max DIAM fitting in square mosaic given PA/BA
+                    R = props['r_mosaic'] / 60.0  # half-side arcmin
+                    ba13 = p13_ba[i13]
+                    ba13_eff = ba13 if (math.isfinite(ba13) and ba13 > 0) else 1.0
+                    pa13_rad = p13_pa[i13] * DEG2RAD if math.isfinite(p13_pa[i13]) else 0.0
+                    amp_x = math.hypot(math.sin(pa13_rad), ba13_eff * math.cos(pa13_rad))
+                    amp_y = math.hypot(math.cos(pa13_rad), ba13_eff * math.sin(pa13_rad))
+                    cosd_m = math.cos(props['dec'] * DEG2RAD)
+                    dx_m = ((p13_ra[i13] - props['ra'] + 180.0) % 360.0 - 180.0) * cosd_m * ARCMIN_PER_DEG
+                    dy_m = (p13_dec[i13] - props['dec']) * ARCMIN_PER_DEG
+                    a_max = min((R - abs(dx_m)) / amp_x if amp_x > 0 else R,
+                               (R - abs(dy_m)) / amp_y if amp_y > 0 else R)
+                    dmax = 2.0 * a_max
+                    trunc_failures.append(
+                        f"{p13_objname[i13]}: "
+                        f"diam={p13_diam[i13]:.3f}', "
+                        f"mosaic_diam={props['r_mosaic']/30.0:.3f}', "
+                        f"maxdiam={dmax:.3f}'")
+            if trunc_failures:
+                log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                         f"{n_contrib} v1.2 groups): SKIP truncation: "
+                         f"{', '.join(trunc_failures[:3])}"
+                         f"{'...' if len(trunc_failures) > 3 else ''}")
+                n_skipped_trunc += 1
+                continue
+
+        if is_optin:
+            log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                     f"{n_contrib} v1.2 groups): RESTORE (opt-in) → "
+                     f"{', '.join(contrib_v12)}")
+            n_skipped_optin += 1
+        else:
+            if False:
+                log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                         f"{n_contrib} v1.2 groups): RESTORE → "
+                         f"{', '.join(contrib_v12)}")
+
+        # ---- restore v1.2 group columns ----
+        for k, i13 in enumerate(idx13):
+            sgaid = int(sgaids[k])
+            i12 = p12_sgaid_map.get(sgaid)
+            if i12 is None:
+                log.warning(f"  SGAID {sgaid} not in p12, cannot restore")
+                continue
+            v12g = str(p12_gname[i12])
+            props = v12_group_props[v12g]
+
+            p13['GROUP_NAME'][i13]     = v12g
+            p13['GROUP_MULT'][i13]     = props['mult']
+            p13['GROUP_RA'][i13]       = props['ra']
+            p13['GROUP_DEC'][i13]      = props['dec']
+            p13['GROUP_DIAMETER'][i13] = props['diam']
+
+        # Recompute GROUP_PRIMARY within each restored v1.2 group
+        for v12g in contrib_v12:
+            members = np.array(p13_group_idx.get(v12g, []))
+            # also include rows just written (group_idx not yet updated)
+            newly = [i13 for k, i13 in enumerate(idx13)
+                     if p12_sgaid_map.get(int(sgaids[k])) is not None
+                     and str(p12_gname[p12_sgaid_map[int(sgaids[k])]]) == v12g]
+            members = np.unique(np.concatenate([members, newly])) if len(members) else np.array(newly)
+            if len(members) == 0:
+                continue
+            diam_members = p13_diam[members]
+            prim = members[np.argmax(diam_members)]
+            p13['GROUP_PRIMARY'][members] = False
+            p13['GROUP_PRIMARY'][prim]    = True
+
+        n_restored += len(contrib_v12)
+
+    log.info("")
+    log.info(f"restore_large_groups summary (threshold={min_diam_arcmin:.1f}'):")
+    log.info(f"  Large v1.3 groups considered: {len(large_v13):,d}")
+    log.info(f"  Skipped — drops:              {n_skipped_drop:,d}")
+    log.info(f"  Skipped — adds:               {n_skipped_add:,d}")
+    log.info(f"  Skipped — truncation:         {n_skipped_trunc:,d}")
+    log.info(f"  Restored (opt-in):            {n_skipped_optin:,d} v1.3 groups")
+    log.info(f"  Restored (criteria met):      "
+             f"{n_restored - n_skipped_optin:,d} v1.3 groups → {n_restored:,d} v1.2 groups")
+
+    return p13, n_restored
+
+
 def harmonize_region_bits(out):
     """Harmonize REGION bits within groups.
 
@@ -5073,7 +5409,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, 'SGA2025-v0.70-refit.fits'), overwrite=True)
-        base = ell_base
+            base = ell_base
     elif base_version == 'v0.70':
         I = ell['REFIT'].astype(bool)
         if np.any(I):
@@ -5087,7 +5423,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, 'SGA2025-v0.80-refit.fits'), overwrite=True)
-        base = ell_base
+            base = ell_base
     elif base_version == 'v0.80':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
@@ -5101,7 +5437,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
-        base = ell_base
+            base = ell_base
     elif base_version == 'v1.0':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
@@ -5109,7 +5445,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
-        base = ell_base
+                base = ell_base
     elif base_version == 'v1.1':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
@@ -5117,7 +5453,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
-        base = ell_base
+                base = ell_base
     elif base_version == 'v1.2':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
@@ -5260,7 +5596,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
     grp = grp[srt]
 
     special = ((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0) | \
-              ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
+        ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
     out1 = make_singleton_group(grp[special])
     out2 = build_group_catalog(grp[~special], mp=mp)
     out = vstack((out1, out2))
@@ -5277,6 +5613,21 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
     # Harmonize REGION bits within groups (keep only bits common to
     # all members; drop groups with none).
     out = harmonize_region_bits(out)
+
+    # Special-case v1.3 groups: post-processing step for SGA2025
+    # parent catalog: for large groups whose v1.2 mosaics are still
+    # valid, restore the v1.2 group assignments in the v1.3 parent
+    # catalog rather than triggering an expensive refit.
+
+    # A v1.3 group is safe to restore if:
+    #  1. No drops:    none of the contributing v1.2 groups contained a dropped object
+    #  2. No adds:     none of the v1.3 group members are newly added objects
+    #  3. No truncation: every member's ellipse (DIAM/2 + offset from v1.2 group
+    #     center) fits within the v1.2 mosaic radius
+    if parent_version == 'v1.3':
+        p12 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.2.fits')))
+        ov_12 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.2'))
+        out, _, _ = restore_large_groups(out, p12, ov_12, ov, min_diam_arcmin=0.)
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)
