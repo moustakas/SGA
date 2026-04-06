@@ -16,14 +16,15 @@ import fitsio
 from astropy.table import Table
 
 from SGA.ellipse import ELLIPSEMODE
-from SGA.SGA import read_sample, get_radius_mosaic, SAMPLE
+from SGA.SGA import read_sample, get_radius_mosaic, SAMPLE, sga_dir
 from SGA.groups import contains_point, DEG2RAD, ARCMIN_PER_DEG
 
-suffix = 'v1.2.1'
+version = 'v1.3'
+suffix = version
 basedir = os.path.join(sga_dir(), 'sample')
 
 def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
-         resolved=False):
+         resolved=False, veto=False):
 
     if region == 'dr11-south':
         bricks_file = 'bricks-exist-ls-dr11-early-v2.fits.gz'
@@ -44,9 +45,13 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
 
     # --- Load groups ---
     print(f'Reading SGA sample (region={region})')
-    sample, _ = read_sample(region=region)
+    sample, _ = read_sample(region=region, version=version)
     if resolved:
         sample = sample[sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0]
+
+    if veto:
+        veto_galaxies = ['IC 1613', 'MESSIER 033', 'NGC 300']
+        sample = sample[np.isin(sample['OBJNAME'], veto_galaxies)]
 
     groups = sample
     print(f'  {len(groups):,d} groups')
@@ -184,7 +189,11 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
           f'({100*n_in_mclouds/len(bricks):.1f}%)')
 
     # --- Write CSV output ---
-    if resolved:
+    if veto:
+        outfile = f'{region}-bricks-with-sga-not-done-{suffix}.csv'
+        pngfile = f'{region}-bricks-with-sga-not-done-{suffix}.png'
+        s = 20
+    elif resolved:
         outfile = f'{region}-bricks-with-sga-resolved-dwarfs-{suffix}.csv'
         pngfile = f'{region}-bricks-with-sga-resolved-dwarfs-{suffix}.png'
         s = 20
@@ -204,6 +213,8 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
     out['in_mclouds'] = in_mclouds
 
     if resolved:
+        out = out[has_sga]
+    elif veto:
         out = out[has_sga]
     out.write(outfile, format='csv', overwrite=True)
     print(f'Wrote {outfile}')
@@ -227,9 +238,10 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--region', default='dr11-south')
     p.add_argument('--resolved', action='store_true')
+    p.add_argument('--veto', action='store_true')
     p.add_argument('--margin', type=float, default=1.0,
                    help='Fractional margin on mosaic radius (default 1.0 = 100%%)')
     p.add_argument('--mclouds-margin', type=float, default=0.20)
     a = p.parse_args()
     main(region=a.region, margin=a.margin, mclouds_margin=a.mclouds_margin,
-         resolved=a.resolved)
+         resolved=a.resolved, veto=a.veto)
