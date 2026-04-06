@@ -4537,7 +4537,9 @@ def prepare_v130_ellipse(ell1, region, mindiam=0.5):
                   'WISEA J094945.21-240624.2', 'WISEA J103110.15-434731.8', '2MFGC 08505',
                   'WISEA J110609.09-262559.1', '2MASS J14530597-3956245',
                   'WISEA J154301.82-275427.7', 'WISEA J191255.62-363231.3',
-                  'WISEA J200648.91-533022.6', 'ESO 400- G 025', 'ESO 087- G 027',]
+                  'WISEA J200648.91-533022.6', 'ESO 400- G 025', 'ESO 087- G 027',
+                  'WISEA J120444.71+104642.2', 'UGCA 274', 'VCC 0909', 'ESO 443- G 020',
+                  'ESO 446- G 020', 'APMBGC 235+059-099', ]
     if len(refit_list) > 0:
         refit_list = np.unique(refit_list)
         refit = np.isin(ell1['OBJNAME'], refit_list)
