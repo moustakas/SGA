@@ -5009,7 +5009,7 @@ def harmonize_region_bits(out):
     n_groups = len(unique_groups)
 
     # Compute bitwise AND of REGION for each group; start with all bits set
-    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
+    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr11-north'], dtype=np.int16)
     np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
 
     # Get the allowed bits for each row
@@ -5065,7 +5065,7 @@ def harmonize_region_bits(out):
 
 def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
-    dr9-north. Consolidate duplicates by OBJNAME, combining REGION
+    dr11-north. Consolidate duplicates by OBJNAME, combining REGION
     bits (but prefering DR11 if duplicated).
 
     """
@@ -5074,7 +5074,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
 
     ell = []
-    for region in ['dr11-south', 'dr9-north']:
+    for region in ['dr11-south', 'dr11-north']:
         basefile = os.path.join(outdir, f'SGA2025-beta-{base_version}-{region}.fits')
         ell1 = Table(fitsio.read(basefile))
         log.info(f'Read {len(ell1):,d} rows from {basefile}')
@@ -5328,7 +5328,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
         return
 
     # Read the base ellipse catalogs for dr11-south and
-    # dr9-north.
+    # dr11-north.
     ell, ell_base, parent_base = read_base_ellipse(outdir, base_version, mindiam=mindiam)
     assert(np.all(np.isfinite(ell['D26'])))
 
@@ -5575,7 +5575,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
         raise ValueError('PA out of range')
 
     # repair REGION
-    for region in ['dr11-south', 'dr9-north']:
+    for region in ['dr11-south', 'dr11-north']:
         arch = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{nocuts_version}.fits'),
                                  columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
         I = np.isin(base['SGAID'], arch['ROW_PARENT']) & (base['REGION'] & REGIONBITS[region] == 0)
@@ -5598,6 +5598,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
     #view_north.write('viewer-north.fits', overwrite=True)
     #view_south.write('viewer-south.fits', overwrite=True)
 
+    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
