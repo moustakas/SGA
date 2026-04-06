@@ -4523,10 +4523,6 @@ def prepare_v130_ellipse(ell1, region, mindiam=0.5):
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
-    # no v1.3 ellipse-fitting in dr11-north
-    if region == 'dr11-north':
-        return ell1
-
     in_group = ell1['GROUP_MULT'] > 1
     is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
 
@@ -4550,7 +4546,8 @@ def prepare_v130_ellipse(ell1, region, mindiam=0.5):
         #view.write('viewer.fits', overwrite=True)
 
         # refit all group members
-        ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+        if np.any(refit):
+            ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
 
     log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
 
