@@ -5595,7 +5595,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
     #view_north.write('viewer-north.fits', overwrite=True)
     #view_south.write('viewer-south.fits', overwrite=True)
 
-    pdb.set_trace()
     # re-add the Gaia masking bits
     add_gaia_masking(base)
 
