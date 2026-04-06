@@ -25,6 +25,8 @@ Usage:
 
   SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.2 --version=v1.2 --mp=32 --custom-selection --region=dr11-south --final-sample --flagged-only --tier=3
 
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.3 --version=v1.3 --mp=32 --final-sample --region=dr11-south --tier=1
+  SGA2025-tractor-qa --datadir=/pscratch/sd/i/ioannis/SGA2025-v1.3 --version=v1.3 --mp=32 --final-sample --region=dr11-south --tier=2
 
 """
 import os

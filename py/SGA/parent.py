@@ -4518,6 +4518,60 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
+def prepare_v130_ellipse(ell1, region, mindiam=0.5):
+
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    # no v1.3 ellipse-fitting in dr11-north
+    if region == 'dr11-north':
+        return ell1
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    ell1['REFIT'] = np.zeros(len(ell1), bool)
+
+    # list of objects to refit based on VI
+    refit_list = ['WISEA J104406.65-162654.8', 'VV 410', '2MASX J09303817-1011122',
+                  'WISEA J094945.21-240624.2', 'WISEA J103110.15-434731.8', '2MFGC 08505',
+                  'WISEA J110609.09-262559.1', '2MASS J14530597-3956245',
+                  'WISEA J154301.82-275427.7', 'WISEA J191255.62-363231.3',
+                  'WISEA J200648.91-533022.6', 'ESO 400- G 025', 'ESO 087- G 027',]
+    if len(refit_list) > 0:
+        refit_list = np.unique(refit_list)
+        refit = np.isin(ell1['OBJNAME'], refit_list)
+        #check = ell1[refit]
+        #check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check, diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
+
+        # refit all group members
+        ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    if False:
+        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        protect = []
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        check = ell1[remove]
+        check = check[np.argsort(check['D26'])]
+        check = check[np.argsort(check['D26'])][::-1]
+        view = to_skyviewer_table(check[:30], diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+
+        ell1 = ell1[~remove]
+
+    return ell1
+
+
 def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_primary=False):
     """Flag small group members for removal.
 
@@ -5110,6 +5164,9 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
         elif base_version == 'v1.2':
             ell1 = prepare_v120_ellipse(ell1, region, mindiam=mindiam)
 
+        elif base_version == 'v1.3':
+            ell1 = prepare_v130_ellipse(ell1, region, mindiam=mindiam)
+
         ell.append(ell1)
     ell = vstack(ell)
 
@@ -5229,7 +5286,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -5446,6 +5503,17 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
                 ell_base[col][I] = parent_base[col][I]
 
         base = ell_base
+    elif base_version == 'v1.3':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            out = parent_base['SGAID', 'OBJNAME', 'REGION'][I]
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+
+        base = ell_base
     else:
         base = ell_base
 
@@ -5597,6 +5665,12 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.2', overwrite=False):
         p12 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.2.fits')))
         ov_12 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.2'))
         out, _, _ = restore_large_groups(out, p12, ov_12, ov, min_diam_arcmin=0.)
+    elif parent_version == 'v1.4':
+        p13 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.3.fits')))
+        ov_13 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.3'))
+        out, _, _ = restore_large_groups(out, p13, ov_13, ov, min_diam_arcmin=0.)
+    else:
+        pass
 
     # Assign SGAGROUP name and check duplicates among primaries
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
