@@ -461,7 +461,6 @@ def main():
                                          sample['OBJNAME'][fail[rank]],
                                          sample[DIAMCOLUMN][fail[rank]]):
                 print(f'  {ii} {dd} [{obj} D={diam:.3f} arcmin]')
-        return
     else:
         log.info(f' Rank {rank}: {len(groups[rank]):,d} galaxies left to do.')
 
@@ -510,136 +509,118 @@ def main():
     if args.count or (args.analyze and args.coadds):
         return
 
-    # Loop on the remaining objects.
-    log.info(f'Starting {len(groups[rank])} {suffix.upper()} ' + \
-             f'on rank {rank} with {args.mp} cores on {time.asctime()}')
-
-    # The rest of the pipeline--
-    t0 = time.time()
     if rank == 0:
         tall = time.time()
 
-    for count, ii in enumerate(groups[rank]):
-        onegal = sample[ii]
-        galaxy, galaxydir, htmlgalaxydir = get_galaxy_galaxydir(
-            onegal, region=args.region, group=not no_groups,
-            html=True, datadir=datadir, htmldir=htmldir)
-        if not os.path.isdir(galaxydir):
-            os.makedirs(galaxydir, exist_ok=True)
+    if has_work:
+        # Loop on the remaining objects.
+        log.info(f'Starting {len(groups[rank])} {suffix.upper()} ' + \
+                 f'on rank {rank} with {args.mp} cores on {time.asctime()}')
 
-        log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
-                 f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]:.3f} arcmin M={onegal["GROUP_MULT"]}]')
+        # The rest of the pipeline--
+        t0 = time.time()
 
-        logfile = get_logfile(galaxy, galaxydir, suffix)
-        fh = setup_logging(logfile, debug=args.debug)
-        if not args.debug:
-            log.info(f'Logging output to {logfile}')
+        for count, ii in enumerate(groups[rank]):
+            onegal = sample[ii]
+            galaxy, galaxydir, htmlgalaxydir = get_galaxy_galaxydir(
+                onegal, region=args.region, group=not no_groups,
+                html=True, datadir=datadir, htmldir=htmldir)
+            if not os.path.isdir(galaxydir):
+                os.makedirs(galaxydir, exist_ok=True)
 
-        # Need the object "radius" to build the coadds.
-        if no_groups:
-            multiplicity = 1
-        else:
-            multiplicity = onegal['GROUP_MULT']
+            log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
+                     f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]:.3f} arcmin M={onegal["GROUP_MULT"]}]')
 
-        radius_mosaic_arcsec = get_radius_mosaic(onegal[DIAMCOLUMN], # diam in arcmin
-                                                 multiplicity=multiplicity,
-                                                 q_primary=onegal['BA'])
+            logfile = get_logfile(galaxy, galaxydir, suffix)
+            fh = setup_logging(logfile, debug=args.debug)
+            if not args.debug:
+                log.info(f'Logging output to {logfile}')
 
-        survey = get_survey(run, allbands=bands, output_dir=galaxydir)
-
-        if args.coadds:
-            from SGA.coadds import custom_coadds
-            # SGA fitting modes
-
-            # RESOLVED sources: no fitting, just coadds (and should
-            # always have GROUP_MULT==1)
-            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
-                just_cutouts = True
-                ivar_cutouts = False
-                layer = f'ls-{args.region}'
-                if args.region == 'dr11-south':
-                    log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
-                    layer = 'ls-dr11-early-v2'
-
-                if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC', 'Antlia II'])):
-                    #pixscale = 60. # [arcsec]
-                    pixscale = args.pixscale * 100               # [arcsec]
-                    galex_pixscale = args.galex_pixscale * 100
-                    unwise_pixscale = args.unwise_pixscale * 100
-                elif np.any(np.isin(onegal['OBJNAME'], ['Crater II', 'Bootes III'])):
-                    #pixscale = 10. # [arcsec]
-                    pixscale = args.pixscale * 50               # [arcsec]
-                    galex_pixscale = args.galex_pixscale * 50
-                    unwise_pixscale = args.unwise_pixscale * 50
-                else:
-                    pixscale = args.pixscale
-                    galex_pixscale = args.galex_pixscale
-                    unwise_pixscale = args.unwise_pixscale
+            # Need the object "radius" to build the coadds.
+            if no_groups:
+                multiplicity = 1
             else:
-                pixscale = args.pixscale
-                galex_pixscale = args.galex_pixscale
-                unwise_pixscale = args.unwise_pixscale
-                if args.skip_tractor:
+                multiplicity = onegal['GROUP_MULT']
+
+            radius_mosaic_arcsec = get_radius_mosaic(onegal[DIAMCOLUMN], # diam in arcmin
+                                                     multiplicity=multiplicity,
+                                                     q_primary=onegal['BA'])
+
+            survey = get_survey(run, allbands=bands, output_dir=galaxydir)
+
+            if args.coadds:
+                from SGA.coadds import custom_coadds
+                # SGA fitting modes
+
+                # RESOLVED sources: no fitting, just coadds (and should
+                # always have GROUP_MULT==1)
+                if onegal['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
                     just_cutouts = True
-                    ivar_cutouts = True
+                    ivar_cutouts = False
                     layer = f'ls-{args.region}'
                     if args.region == 'dr11-south':
                         log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
                         layer = 'ls-dr11-early-v2'
+
+                    if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC', 'Antlia II'])):
+                        #pixscale = 60. # [arcsec]
+                        pixscale = args.pixscale * 100               # [arcsec]
+                        galex_pixscale = args.galex_pixscale * 100
+                        unwise_pixscale = args.unwise_pixscale * 100
+                    elif np.any(np.isin(onegal['OBJNAME'], ['Crater II', 'Bootes III'])):
+                        #pixscale = 10. # [arcsec]
+                        pixscale = args.pixscale * 50               # [arcsec]
+                        galex_pixscale = args.galex_pixscale * 50
+                        unwise_pixscale = args.unwise_pixscale * 50
+                    else:
+                        pixscale = args.pixscale
+                        galex_pixscale = args.galex_pixscale
+                        unwise_pixscale = args.unwise_pixscale
                 else:
-                    just_cutouts = False
-                    ivar_cutouts = False
-                    layer = None
+                    pixscale = args.pixscale
+                    galex_pixscale = args.galex_pixscale
+                    unwise_pixscale = args.unwise_pixscale
+                    if args.skip_tractor:
+                        just_cutouts = True
+                        ivar_cutouts = True
+                        layer = f'ls-{args.region}'
+                        if args.region == 'dr11-south':
+                            log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
+                            layer = 'ls-dr11-early-v2'
+                    else:
+                        just_cutouts = False
+                        ivar_cutouts = False
+                        layer = None
 
-            # FORCEGAIA (not yet implemented); may be useful for e.g., Leo I
-            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEGAIA'] != 0:
-                pass
+                # FORCEGAIA (not yet implemented); may be useful for e.g., Leo I
+                if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEGAIA'] != 0:
+                    pass
 
-            # FORCEPSF
-            if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0:
-                force_psf_detection = True
-            else:
-                force_psf_detection = False
+                # FORCEPSF
+                if onegal['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0:
+                    force_psf_detection = True
+                else:
+                    force_psf_detection = False
 
-            no_iterative = True
-            nsigma = 6.0
-            saddle_fraction = 0.2
-            saddle_min = 4.
-            fit_on_coadds = True
-            bright_masking = True
-            galaxy_masking = True
-            #fit_on_coadds = args.fit_on_coadds
-            #bright_masking = args.bright_masking
-            #galaxy_masking = args.galaxy_masking
-            no_segmentation = args.no_segmentation
+                no_iterative = True
+                nsigma = 6.0
+                saddle_fraction = 0.2
+                saddle_min = 4.
+                fit_on_coadds = True
+                bright_masking = True
+                galaxy_masking = True
+                #fit_on_coadds = args.fit_on_coadds
+                #bright_masking = args.bright_masking
+                #galaxy_masking = args.galaxy_masking
+                no_segmentation = args.no_segmentation
 
-            if not just_cutouts:
-                #log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
-                #log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
-                pass
+                if not just_cutouts:
+                    #log.info(f'Forcing --fit-on-coadds, --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                    #log.info(f'Forcing --no-iterative and nsigma={nsigma:.0f} for all sources!')
+                    pass
 
-            #radius_mosaic_arcsec = 57.902
-            if args.debug:
-                err, _ = custom_coadds(
-                    onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                    release=release, pixscale=pixscale, bands=bands, mp=args.mp,
-                    unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
-                    nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
-                    just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
-                    no_iterative=no_iterative, no_segmentation=no_segmentation,
-                    fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
-                    galaxy_masking=galaxy_masking,
-                    just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
-                    use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
-                    threads_per_gpu=args.threads_per_gpu,
-                    force=args.force, cleanup=args.cleanup,
-                    unwise=args.unwise, galex=args.galex,
-                    verbose=args.verbose)
-            else:
-                from contextlib import redirect_stdout, redirect_stderr
-                from wurlitzer import pipes
-                with open(logfile, 'a', buffering=1) as L, pipes(stdout=L, stderr=L), \
-                     redirect_stdout(L), redirect_stderr(L):
+                #radius_mosaic_arcsec = 57.902
+                if args.debug:
                     err, _ = custom_coadds(
                         onegal, galaxy, survey, run, radius_mosaic_arcsec,
                         release=release, pixscale=pixscale, bands=bands, mp=args.mp,
@@ -655,130 +636,149 @@ def main():
                         force=args.force, cleanup=args.cleanup,
                         unwise=args.unwise, galex=args.galex,
                         verbose=args.verbose)
-            done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
+                else:
+                    from contextlib import redirect_stdout, redirect_stderr
+                    from wurlitzer import pipes
+                    with open(logfile, 'a', buffering=1) as L, pipes(stdout=L, stderr=L), \
+                         redirect_stdout(L), redirect_stderr(L):
+                        err, _ = custom_coadds(
+                            onegal, galaxy, survey, run, radius_mosaic_arcsec,
+                            release=release, pixscale=pixscale, bands=bands, mp=args.mp,
+                            unwise_pixscale=unwise_pixscale, galex_pixscale=galex_pixscale,
+                            nsigma=nsigma, saddle_fraction=saddle_fraction, saddle_min=saddle_min,
+                            just_coadds=args.just_coadds, force_psf_detection=force_psf_detection,
+                            no_iterative=no_iterative, no_segmentation=no_segmentation,
+                            fit_on_coadds=fit_on_coadds, bright_masking=bright_masking,
+                            galaxy_masking=galaxy_masking,
+                            just_cutouts=just_cutouts, ivar_cutouts=ivar_cutouts,
+                            use_gpu=args.use_gpu, ngpu=args.ngpu, layer=layer,
+                            threads_per_gpu=args.threads_per_gpu,
+                            force=args.force, cleanup=args.cleanup,
+                            unwise=args.unwise, galex=args.galex,
+                            verbose=args.verbose)
+                done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 
 
-        if args.ellipse or args.htmlplots:
-            from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
-                                 OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
-                                 read_multiband, unpack_maskbits)
-            SGAMASKBITS = [OPTMASKBITS, ]
-            if args.unwise:
-                SGAMASKBITS += [UNWISEMASKBITS]
-            if args.galex:
-                SGAMASKBITS += [GALEXMASKBITS]
+            if args.ellipse or args.htmlplots:
+                from SGA.SGA import (REFIDCOLUMN, SBTHRESH, APERTURES,
+                                     OPTMASKBITS, GALEXMASKBITS, UNWISEMASKBITS,
+                                     read_multiband, unpack_maskbits)
+                SGAMASKBITS = [OPTMASKBITS, ]
+                if args.unwise:
+                    SGAMASKBITS += [UNWISEMASKBITS]
+                if args.galex:
+                    SGAMASKBITS += [GALEXMASKBITS]
 
 
-        if args.ellipse:
-            from SGA.ellipse import ellipsefit_multiband
+            if args.ellipse:
+                from SGA.ellipse import ellipsefit_multiband
 
-            if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
-                log.warning('Coadds must be generated before running ellipse-fitting.')
-                restore_logger(fh=fh, debug=args.debug)
-                continue
-
-            log.info(f'Working on {galaxydir}')
-
-            # Always write out the individual galaxies for this mosaic
-            # if doing ellipse-fitting to make sure we get the latest
-            # catalog parameters.
-            if no_groups:
-                sample_thisgroup = Table(onegal)
-            else:
-                I = np.where(onegal['GROUP_NAME'] == fullsample['GROUP_NAME'])[0]
-                sample_thisgroup = fullsample[I]
-
-            #sample_thisgroup[0]['DIAM', 'BA', 'PA'] = [1.0, 1.0, 0.0]
-            samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
-            #import fitsio
-            #if len(sample_thisgroup) != len(fitsio.read(samplefile)):
-            #    print(galaxydir)
-            #continue
-
-            log.info(f'Writing {len(sample_thisgroup)} galaxy(ies) to {samplefile}')
-            tmpfile = samplefile+'.tmp'
-            sample_thisgroup.write(tmpfile, overwrite=True, format='fits')
-            os.rename(tmpfile, samplefile)
-
-            #print('Temporarily make htmlgalaxydir here')
-            #if not os.path.isdir(htmlgalaxydir):
-            #    os.makedirs(htmlgalaxydir, exist_ok=True)
-
-            if args.debug:
-                args.qaplot = False # True # always
-
-            skip_ellipse = skip_ellipse_or_not(onegal)
-            skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
-            if skip_tractor is None:
-                msg = f'Incompatible state of coadds files in {galaxydir}'
-                log.critical(msg)
-                done(galaxy, galaxydir, 0, suffix, fh=fh, debug=args.debug)
-                continue
-
-            if skip_tractor:
-                fixgeo = True
-            else:
-                fixgeo = args.fixgeo
-
-            # Find other objects not in this group (excluding RESOLVED
-            # sources) which may contaminate the actual group members.
-            minsep = (0.5 * u.deg) # 5. * u.arcmin
-            c_thisgroup = SkyCoord(onegal[RACOLUMN]*u.deg, onegal[DECCOLUMN]*u.deg)
-            Imask_nearby = (c_thisgroup.separation(c_fullsample) < minsep * # separation < 1 degree
-                            ~np.isin(fullsample[REFIDCOLUMN], sample_thisgroup[REFIDCOLUMN]) *
-                            ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) == 0))
-            if np.any(Imask_nearby):
-                mask_nearby = fullsample['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][Imask_nearby]
-            else:
-                mask_nearby = None
-
-            err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
-                                       unpack_maskbits, SGAMASKBITS, region=args.region,
-                                       run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
-                                       apertures=APERTURES, nmonte=args.nmonte, seed=args.seed,
-                                       mask_nearby=mask_nearby, use_tractor_position=args.use_tractor_position,
-                                       fixgeo=fixgeo, tractorgeo=args.tractorgeo,
-                                       use_radial_weight=args.use_radial_weight,
-                                       pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
-                                       galex_pixscale=args.galex_pixscale, unwise=args.unwise,
-                                       galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
-                                       clobber=args.clobber, skip_ellipse=skip_ellipse,
-                                       skip_tractor=skip_tractor,
-                                       htmlgalaxydir=htmlgalaxydir)
-            done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
-
-
-        if args.htmlplots:
-            from SGA.html import make_plots
-
-            skip_ellipse = skip_ellipse_or_not(onegal)
-            if not skip_ellipse:
-                if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-ellipse.isdone')):
-                    log.warning('Ellipse-fitting must be done before generating plots.')
+                if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-coadds.isdone')):
+                    log.warning('Coadds must be generated before running ellipse-fitting.')
                     restore_logger(fh=fh, debug=args.debug)
                     continue
-            skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
 
-            if not os.path.isdir(htmlgalaxydir):
-                os.makedirs(htmlgalaxydir, exist_ok=True)
+                log.info(f'Working on {galaxydir}')
 
-            _, barlen, barlabel = get_radius_mosaic(
-                onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True,
-                q_primary=onegal['BA'])
+                # Always write out the individual galaxies for this mosaic
+                # if doing ellipse-fitting to make sure we get the latest
+                # catalog parameters.
+                if no_groups:
+                    sample_thisgroup = Table(onegal)
+                else:
+                    I = np.where(onegal['GROUP_NAME'] == fullsample['GROUP_NAME'])[0]
+                    sample_thisgroup = fullsample[I]
 
-            err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
-                             unpack_maskbits, SGAMASKBITS, APERTURES,
-                             args.region, barlen=barlen, barlabel=barlabel,
-                             run=run, skip_ellipse=skip_ellipse,
-                             skip_tractor=skip_tractor,
-                             bands=bands, mp=args.mp, pixscale=args.pixscale,
-                             unwise=args.unwise, galex=args.galex,
-                             verbose=args.verbose, clobber=args.clobber)
-            done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
+                #sample_thisgroup[0]['DIAM', 'BA', 'PA'] = [1.0, 1.0, 0.0]
+                samplefile = os.path.join(galaxydir, f'{galaxy}-sample.fits')
+                #import fitsio
+                #if len(sample_thisgroup) != len(fitsio.read(samplefile)):
+                #    print(galaxydir)
+                #continue
 
-    if len(groups[rank]) > 0:
-        log.info(f'Rank {rank:03d} finished {len(groups[rank]):,d} object(s) ' + \
-                 f'in {(time.time()-t0)/60.:.3f} minutes')
+                log.info(f'Writing {len(sample_thisgroup)} galaxy(ies) to {samplefile}')
+                tmpfile = samplefile+'.tmp'
+                sample_thisgroup.write(tmpfile, overwrite=True, format='fits')
+                os.rename(tmpfile, samplefile)
+
+                #print('Temporarily make htmlgalaxydir here')
+                #if not os.path.isdir(htmlgalaxydir):
+                #    os.makedirs(htmlgalaxydir, exist_ok=True)
+
+                if args.debug:
+                    args.qaplot = False # True # always
+
+                skip_ellipse = skip_ellipse_or_not(onegal)
+                skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
+                if skip_tractor is None:
+                    msg = f'Incompatible state of coadds files in {galaxydir}'
+                    log.critical(msg)
+                    done(galaxy, galaxydir, 0, suffix, fh=fh, debug=args.debug)
+                    continue
+
+                if skip_tractor:
+                    fixgeo = True
+                else:
+                    fixgeo = args.fixgeo
+
+                # Find other objects not in this group (excluding RESOLVED
+                # sources) which may contaminate the actual group members.
+                minsep = (0.5 * u.deg) # 5. * u.arcmin
+                c_thisgroup = SkyCoord(onegal[RACOLUMN]*u.deg, onegal[DECCOLUMN]*u.deg)
+                Imask_nearby = (c_thisgroup.separation(c_fullsample) < minsep * # separation < 1 degree
+                                ~np.isin(fullsample[REFIDCOLUMN], sample_thisgroup[REFIDCOLUMN]) *
+                                ((fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) == 0))
+                if np.any(Imask_nearby):
+                    mask_nearby = fullsample['OBJNAME', 'RA', 'DEC', 'DIAM', 'BA', 'PA'][Imask_nearby]
+                else:
+                    mask_nearby = None
+
+                err = ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband,
+                                           unpack_maskbits, SGAMASKBITS, region=args.region,
+                                           run=run, bands=bands, mp=args.mp, sbthresh=SBTHRESH,
+                                           apertures=APERTURES, nmonte=args.nmonte, seed=args.seed,
+                                           mask_nearby=mask_nearby, use_tractor_position=args.use_tractor_position,
+                                           fixgeo=fixgeo, tractorgeo=args.tractorgeo,
+                                           use_radial_weight=args.use_radial_weight,
+                                           pixscale=args.pixscale, unwise_pixscale=args.unwise_pixscale,
+                                           galex_pixscale=args.galex_pixscale, unwise=args.unwise,
+                                           galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
+                                           clobber=args.clobber, skip_ellipse=skip_ellipse,
+                                           skip_tractor=skip_tractor,
+                                           htmlgalaxydir=htmlgalaxydir)
+                done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
+
+            if args.htmlplots:
+                from SGA.html import make_plots
+
+                skip_ellipse = skip_ellipse_or_not(onegal)
+                if not skip_ellipse:
+                    if not os.path.isfile(os.path.join(galaxydir, f'{galaxy}-ellipse.isdone')):
+                        log.warning('Ellipse-fitting must be done before generating plots.')
+                        restore_logger(fh=fh, debug=args.debug)
+                        continue
+                skip_tractor = skip_tractor_or_not(galaxydir) or args.skip_tractor
+
+                if not os.path.isdir(htmlgalaxydir):
+                    os.makedirs(htmlgalaxydir, exist_ok=True)
+
+                _, barlen, barlabel = get_radius_mosaic(
+                    onegal[DIAMCOLUMN], pixscale=args.pixscale, get_barlen=True,
+                    q_primary=onegal['BA'])
+
+                err = make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband,
+                                 unpack_maskbits, SGAMASKBITS, APERTURES,
+                                 args.region, barlen=barlen, barlabel=barlabel,
+                                 run=run, skip_ellipse=skip_ellipse,
+                                 skip_tractor=skip_tractor,
+                                 bands=bands, mp=args.mp, pixscale=args.pixscale,
+                                 unwise=args.unwise, galex=args.galex,
+                                 verbose=args.verbose, clobber=args.clobber)
+                done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
+
+        if len(groups[rank]) > 0:
+            log.info(f'Rank {rank:03d} finished {len(groups[rank]):,d} object(s) ' + \
+                     f'in {(time.time()-t0)/60.:.3f} minutes')
 
     if comm:
         comm.barrier()
