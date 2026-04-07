@@ -5647,10 +5647,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
     out2 = build_group_catalog(grp[~special], mp=mp)
     out = vstack((out1, out2))
 
-    # Harmonize REGION bits within groups (keep only bits common to
-    # all members; drop groups with none).
-    out = harmonize_region_bits(out)
-
     # Special-case v1.3 groups: post-processing step for SGA2025
     # parent catalog: for large groups whose v1.2 mosaics are still
     # valid, restore the v1.2 group assignments in the v1.3 parent
@@ -5671,6 +5667,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
         out, _, _ = restore_large_groups(out, p13, ov_13, ov, min_diam_arcmin=0.)
     else:
         pass
+
+    # Harmonize REGION bits within groups (keep only bits common to
+    # all members; drop groups with none).
+    out = harmonize_region_bits(out)
 
     # Assign SGAGROUP name and check duplicates among primaries
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
