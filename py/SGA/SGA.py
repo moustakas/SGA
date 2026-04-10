@@ -2864,7 +2864,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
               use_radial_weight=use_radial_weight)
         #print(use_radial_weight, use_tractor_position, input_ba_pa, bx, by, P.ba, P.pa, sma)
 
-        if debug:
+        if True:#debug:
             import matplotlib.pyplot as plt
             from SGA.qa import overplot_ellipse
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -4051,7 +4051,7 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
         #print('###########################')
         #print('Hack!')
         #sample['DIAM_INIT'] = 1.1
-        #sample['PA_INIT'] = 0.0
+        #sample['PA_INIT'][2] = 38.077286
         #sample['BA_INIT'] = 1.0
         sample.rename_column('DIAM_REF', 'DIAM_INIT_REF')
         sample.add_column(sample['DIAM_INIT']*60./2., name='SMA_INIT', # [radius, arcsec]
