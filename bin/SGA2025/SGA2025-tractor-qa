@@ -1332,7 +1332,7 @@ Examples:
     )
 
     parser.add_argument('--region', default='dr11-south',
-                        choices=['dr9-north', 'dr11-south'],
+                        choices=['dr9-north', 'dr11-north', 'dr11-south'],
                         help='Survey region')
     parser.add_argument('--version', type=str, default=None,
                         help='Catalog version (e.g., v0.70)')

@@ -5629,6 +5629,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
     apply_flags_inplace(grp, ov.flags, ELLIPSEMODE)
 
     # MCLOUDS/GCLPNE/NEARSTAR/INSTAR all imply NORADWEIGHT
+    # FIXME - this should probably come after ov.flags are applied
     I = (grp['SAMPLE'] & (SAMPLE['MCLOUDS'] | SAMPLE['GCLPNE'] | SAMPLE['NEARSTAR'] | SAMPLE['INSTAR'])) != 0
     grp['ELLIPSEMODE'][I] |= ELLIPSEMODE['NORADWEIGHT']
 
