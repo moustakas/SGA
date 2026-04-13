@@ -5582,6 +5582,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
             #view = to_skyviewer_table(base[I])
             #view.write('viewer.fits', overwrite=True)
 
+    # re-apply updates to pick up REGION changes
+    if 'REGION' in ov.updates['FIELD']:
+        apply_updates_inplace(base, ov.updates)
+
     #customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     #custom = Table.read(customfile, format='csv', comment='#')
     ##in_footprint_work(custom, np.arange(len(custom)),
