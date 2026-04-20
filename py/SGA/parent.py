@@ -4599,7 +4599,7 @@ def prepare_v140_ellipse(ell1, region, mindiam=0.5):
     log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
 
     # --- Flag small group members for removal ---
-    if True:
+    if False:
         remove = _flag_small_for_removal(ell1, mindiam=15/60., protect_primary=False)
         #remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
         remove &= ell1['D26_ERR'] != 0
@@ -4614,7 +4614,6 @@ def prepare_v140_ellipse(ell1, region, mindiam=0.5):
         #check = check[np.argsort(check['D26'])][::-1]
         view = to_skyviewer_table(check[:30], diamcol='D26')
         view.write('viewer.fits', overwrite=True)
-        pdb.set_trace()
 
         ell1 = ell1[~remove]
 
@@ -5654,7 +5653,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
     #view_south.write('viewer-south.fits', overwrite=True)
 
     # re-add the Gaia masking bits
-    pdb.set_trace()
     add_gaia_masking(base)
 
     # Initialize the output data model
@@ -5725,6 +5723,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
         p13 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.3.fits')))
         ov_13 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.3'))
         out, _, _ = restore_large_groups(out, p13, ov_13, ov, min_diam_arcmin=0.)
+    elif parent_version == 'v1.5':
+        p14 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.4.fits')))
+        ov_14 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.4'))
+        out, _, _ = restore_large_groups(out, p14, ov_14, ov, min_diam_arcmin=0.)
     else:
         pass
 

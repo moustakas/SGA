@@ -123,9 +123,9 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         # more cleanup, etc.; used in DR11
         #version = 'v1.3'
         # more cleanup, etc.; used in DR11
-        version = 'v1.4'
+        #version = 'v1.4'
         # more cleanup, etc.; used in DR11
-        #version = 'v1.5'
+        version = 'v1.5'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -144,8 +144,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v1.1'  # parent_version = v1.0 --> v1.1
         #version = 'v1.2'  # parent_version = v1.1 --> v1.2
         #version = 'v1.3'  # parent_version = v1.2 --> v1.3
-        version = 'v1.4'  # parent_version = v1.3 --> v1.4
-        #version = 'v1.5'  # parent_version = v1.4 --> v1.5
+        #version = 'v1.4'  # parent_version = v1.3 --> v1.4
+        version = 'v1.5'  # parent_version = v1.4 --> v1.5
     return version
 
 
