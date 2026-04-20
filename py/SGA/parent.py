@@ -4572,6 +4572,55 @@ def prepare_v130_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
+def prepare_v140_ellipse(ell1, region, mindiam=0.5):
+
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    ell1['REFIT'] = np.zeros(len(ell1), bool)
+
+    # list of objects to refit based on VI
+    refit_list = []
+    if len(refit_list) > 0:
+        refit_list = np.unique(refit_list)
+        refit = np.isin(ell1['OBJNAME'], refit_list)
+        #check = ell1[refit]
+        #check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check, diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
+
+        # refit all group members
+        if np.any(refit):
+            ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    if True:
+        remove = _flag_small_for_removal(ell1, mindiam=15/60., protect_primary=False)
+        #remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        protect = []
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        check = ell1[remove]
+        check = check[np.argsort(check['D26'])]
+        #check = check[np.argsort(check['D26'])][::-1]
+        view = to_skyviewer_table(check[:30], diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+        pdb.set_trace()
+
+        ell1 = ell1[~remove]
+
+    return ell1
+
+
 def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_primary=False):
     """Flag small group members for removal.
 
@@ -4602,7 +4651,7 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_
 
     d26 = np.asarray(ell1['D26'], dtype=np.float32)
     d26_err = np.asarray(ell1['D26_ERR'], dtype=np.float32)
-    d26_ul = d26 + d26_err
+    d26_ul = d26 + 5*d26_err
 
     mult = ell1['GROUP_MULT']
     is_singleton = mult == 1
@@ -5149,23 +5198,20 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
 
         elif base_version == 'v0.70':
             ell1 = prepare_v070_ellipse(ell1, outdir, region, mindiam=mindiam)
-
         elif base_version == 'v0.80':
             ell1 = prepare_v080_ellipse(ell1, region, mindiam=mindiam)
-
         elif base_version == 'v1.0':
             # refit everything
             ell1['REFIT'] = np.ones(len(ell1), bool)
             #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
-
         elif base_version == 'v1.1':
             ell1 = prepare_v110_ellipse(ell1, region, mindiam=mindiam)
-
         elif base_version == 'v1.2':
             ell1 = prepare_v120_ellipse(ell1, region, mindiam=mindiam)
-
         elif base_version == 'v1.3':
             ell1 = prepare_v130_ellipse(ell1, region, mindiam=mindiam)
+        elif base_version == 'v1.4':
+            ell1 = prepare_v140_ellipse(ell1, region, mindiam=mindiam)
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -5286,7 +5332,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -5501,7 +5547,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
-
         base = ell_base
     elif base_version == 'v1.3':
         I = ell['REFIT'].astype(bool)
@@ -5512,7 +5557,16 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
-
+        base = ell_base
+    elif base_version == 'v1.4':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            out = parent_base['SGAID', 'OBJNAME', 'REGION'][I]
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
         base = ell_base
     else:
         base = ell_base
@@ -5600,6 +5654,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.3', overwrite=False):
     #view_south.write('viewer-south.fits', overwrite=True)
 
     # re-add the Gaia masking bits
+    pdb.set_trace()
     add_gaia_masking(base)
 
     # Initialize the output data model
