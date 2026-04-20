@@ -6,6 +6,7 @@ Code for defining the SGA parent sample.
 
 """
 import os, time, sys, re, pdb
+import math
 import numpy as np
 import fitsio
 from glob import glob
@@ -21,6 +22,10 @@ from SGA.sky import choose_primary, resolve_close
 from SGA.qa import qa_skypatch, multipage_skypatch, to_skyviewer_table
 
 from SGA.logger import log
+
+DEG2RAD = math.pi / 180.0
+ARCMIN_PER_DEG = 60.0
+ARCSEC_PER_DEG = 3600.0
 
 
 def parent_datamodel(nobj):
@@ -4382,6 +4387,239 @@ def prepare_v110_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
+def prepare_v120_ellipse(ell1, region, mindiam=0.5):
+
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    # no v1.2 ellipse-fitting in dr9-north
+    if region == 'dr9-north':
+        return ell1
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    # list of objects to refit based on VI
+    refit_list = ['WISEA J035630.88-475302.0', 'WISEA J040702.20-170737.0',
+                  '2MASX J09303817-1011122', 'WISEA J101242.89-354816.4',
+                  'ESO 383-IG 043', 'WISEA J140548.10-394411.5',
+                  '2MASS J14530597-3956245', 'WISEA J160151.96+154732.3',
+                  'WISEA J164228.94+343030.0', 'MCG +06-35-011',
+                  '2MASX J14432844+3428494', 'WISEA J093902.46+333055.4',
+                  'KUG 0656+338', 'KUG 0717+338', 'WISEA J183137.50+312435.8',
+                  'WISEA J200648.91-533022.6', 'ESO 400- G 025',
+                  'ESO 052-IG 017 NED02', 'NGC 1598', 'NGC 1595',
+                  'IC 3639', 'ESO 183-IG 023 NED03', 'UGC 03194', 'UGC 00418',
+                  'NGC 0235B', 'MCG -02-05-043', 'PGC772961', 'PGC133032',
+                  'NGC 1614', 'WISEA J044537.19-332331.8', 'ESO 085- G 001',
+                  'WISEA J045131.92-344906.9', 'ESO 486- G 008', 'WISEA J062421.82-350035.5',
+                  'ESO 087- G 027', 'WISEA J094529.64-002154.8', 'ESO 502- G 018',
+                  'ESO 438- G 022', 'SDSS J114328.49+094947.1', 'ESO 217- G 004',
+                  'WISEA J120444.71+104642.2', 'UGC 07104', 'UGCA 274',
+                  'VCC 0909', 'ESO 443- G 020', 'ESO 446- G 020', 'WISEA J143209.38+255120.3',
+                  'FGCE 1218', 'NGC 6052 NED02', '2MASX J19334636-6443102',
+                  'APMBGC 235+059-099', 'NGC 0520 NED01', 'ESO 052-IG 017 NED02',
+                  'ESO 304-IG 029 NED01', 'IC 2135', 'MCG -06-13-005', 'WISEA J101302.93+063629.5',
+                  'WISEA J122857.85-341646.1', 'ESO 443-IG 005', 'NGC 5012A',
+                  'ESO 450- G 014', 'ESO 526- G 018', 'SCG 0035-3357:[I2002] B',
+                  'ESO 350- G 040', 'NGC 0326 NED01', 'NGC 0815 NED02', 'NGC 1128 NED01',
+                  'UGC 09327', 'ESO 405- G 029', 'WISEA J155004.59-395505.5',
+                  '2MASX J15495273-3954340', 'NGC 3253', 'ESO 295-IG 022 NED02',
+                  '2MASS J00554647-3724322', 'ESO 032-IG 017 NED01', 'WISEA J043737.02-730942.2',
+                  'MCG -02-13-036', '2MFGC 04115', 'NGC 0247B', 'NGC 0247D', 'ESO 540- G 025',
+                  'ESO 440-IG 058 NED01', 'LeG16', 'ESO 511- G 031', 'WISEA J020310.13-505715.4',
+                  'UGC 01725', 'WISEA J052434.39-494922.3', 'ESO 254- G 046', 'WISEA J065627.43-332257.6',
+                  'WISEA J065640.71-282121.5', 'WISEA J093435.76-000643.8', 'WISEA J132345.23+010231.5',
+                  'ESO 349-IG 026 NED02', 'ESO 349-IG 026 NED01', 'ESO 349-IG 026 NED03',
+                  'WISEA J021628.23-474755.6', '2MASS J16582067-7422187', 'ESO 043-IG 010',
+                  'ESO 234- G 032', 'ESO 349- G 009', 'WISEA J201307.83-564829.6',
+                  'UGC 05597', 'WKK 7657', 'ESO 101- G 004',
+                  ]
+    refit_list = np.unique(refit_list)
+
+    cat_refit = np.isin(ell1['OBJNAME'], refit_list)
+
+    # --- LARGESHIFT analysis ---
+    has_largeshift = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT']) != 0
+    has_largeshift_tractor = (ell1['ELLIPSEBIT'] & ELLIPSEBIT['LARGESHIFT_TRACTOR']) != 0
+    largeshift_any = has_largeshift | has_largeshift_tractor
+
+    log.info(f"LARGESHIFT analysis:")
+    log.info(f"  Total with any LARGESHIFT bit: {np.sum(largeshift_any):,d}")
+    log.info(f"    - LARGESHIFT only: {np.sum(has_largeshift & ~has_largeshift_tractor):,d}")
+    log.info(f"    - LARGESHIFT_TRACTOR only: {np.sum(has_largeshift_tractor & ~has_largeshift):,d}")
+    log.info(f"    - Both bits: {np.sum(has_largeshift & has_largeshift_tractor):,d}")
+    log.info(f"  In singletons: {np.sum(largeshift_any & ~in_group):,d}")
+    log.info(f"  In groups: {np.sum(largeshift_any & in_group):,d}")
+    log.info(f"  LVD sources: {np.sum(largeshift_any & is_lvd):,d}")
+
+    # Characterize the shifts
+    pos_shift_arcsec = np.hypot(
+        (ell1['RA'] - ell1['RA_INIT']) * np.cos(np.deg2rad(ell1['DEC'])) * 3600,
+        (ell1['DEC'] - ell1['DEC_INIT']) * 3600
+    )
+    diam_ratio = ell1['D26'] / np.clip(ell1['DIAM_INIT'], 0.01, None)
+
+    ls = ell1[largeshift_any]
+    ls_pos = pos_shift_arcsec[largeshift_any]
+    ls_diam = diam_ratio[largeshift_any]
+
+    log.info(f"  Position shift (arcsec): median={np.median(ls_pos):.1f}, 90%={np.percentile(ls_pos, 90):.1f}, max={np.max(ls_pos):.1f}")
+    log.info(f"  Diameter ratio: median={np.median(ls_diam):.2f}, 10%={np.percentile(ls_diam, 10):.2f}, 90%={np.percentile(ls_diam, 90):.2f}")
+
+    # Categorize LARGESHIFT sources by characteristics
+    # Category A: Large position shift AND diameter grew (possible Tractor failure / contamination)
+    cat_a = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio > 1.5)
+    # Category B: Large position shift AND diameter shrunk (possible wrong source modeled)
+    cat_b = largeshift_any & (pos_shift_arcsec > 10) & (diam_ratio < 0.7)
+    # Category C: Small position shift but large diameter change (Tractor modeling issue)
+    cat_c = largeshift_any & (pos_shift_arcsec <= 10) & ((diam_ratio < 0.5) | (diam_ratio > 2.0))
+    # Category D: Moderate shifts (unclear - may be legitimate)
+    cat_d = largeshift_any & ~cat_a & ~cat_b & ~cat_c
+
+    log.info(f"  Category A (pos>10\", diam grew >50%): {np.sum(cat_a):,d} — likely contamination")
+    log.info(f"  Category B (pos>10\", diam shrunk >30%): {np.sum(cat_b):,d} — possibly wrong source")
+    log.info(f"  Category C (pos<=10\", extreme diam change): {np.sum(cat_c):,d} — modeling issue")
+    log.info(f"  Category D (moderate shifts): {np.sum(cat_d):,d} — may be legitimate")
+
+    # Categories needed for restoration
+    refit = cat_refit
+    #refit = cat_refit | cat_a | cat_b | cat_c
+
+    #check = ell1[cat_b & ~is_lvd]
+    #check = check[np.argsort(check['D26'])[::-1]]
+    #view = to_skyviewer_table(check, diamcol='D26')
+    #view.write('viewer.fits', overwrite=True)
+
+    # refit all group members
+    ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    # all were visually inspected and added by-hand to the drops.csv file
+    if False:
+        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        protect = []
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        check = ell1[remove]
+        check = check[np.argsort(check['D26'])]
+        check = check[np.argsort(check['D26'])][::-1]
+        view = to_skyviewer_table(check[:30], diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+
+        ell1 = ell1[~remove]
+
+    return ell1
+
+
+def prepare_v130_ellipse(ell1, region, mindiam=0.5):
+
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    ell1['REFIT'] = np.zeros(len(ell1), bool)
+
+    # list of objects to refit based on VI
+    refit_list = ['WISEA J104406.65-162654.8', 'VV 410', '2MASX J09303817-1011122',
+                  'WISEA J094945.21-240624.2', 'WISEA J103110.15-434731.8', '2MFGC 08505',
+                  'WISEA J110609.09-262559.1', '2MASS J14530597-3956245',
+                  'WISEA J154301.82-275427.7', 'WISEA J191255.62-363231.3',
+                  'WISEA J200648.91-533022.6', 'ESO 400- G 025', 'ESO 087- G 027',
+                  'WISEA J120444.71+104642.2', 'UGCA 274', 'VCC 0909', 'ESO 443- G 020',
+                  'ESO 446- G 020', 'APMBGC 235+059-099', 'IC 3639', 'WISEA J100358.77+221550.4',
+                  'WISEA J133202.34-114027.2', 'WISEA J145324.91-242330.2', 'AM 2354-304 NED01']
+    if len(refit_list) > 0:
+        refit_list = np.unique(refit_list)
+        refit = np.isin(ell1['OBJNAME'], refit_list)
+        #check = ell1[refit]
+        #check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check, diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
+
+        # refit all group members
+        if np.any(refit):
+            ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    if False:
+        remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        protect = []
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        check = ell1[remove]
+        check = check[np.argsort(check['D26'])]
+        check = check[np.argsort(check['D26'])][::-1]
+        view = to_skyviewer_table(check[:30], diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+
+        ell1 = ell1[~remove]
+
+    return ell1
+
+
+def prepare_v140_ellipse(ell1, region, mindiam=0.5):
+
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    ell1['REFIT'] = np.zeros(len(ell1), bool)
+
+    # list of objects to refit based on VI
+    refit_list = []
+    if len(refit_list) > 0:
+        refit_list = np.unique(refit_list)
+        refit = np.isin(ell1['OBJNAME'], refit_list)
+        #check = ell1[refit]
+        #check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check, diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
+
+        # refit all group members
+        if np.any(refit):
+            ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    if False:
+        remove = _flag_small_for_removal(ell1, mindiam=15/60., protect_primary=False)
+        #remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        protect = []
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        check = ell1[remove]
+        check = check[np.argsort(check['D26'])]
+        #check = check[np.argsort(check['D26'])][::-1]
+        view = to_skyviewer_table(check[:30], diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+
+        ell1 = ell1[~remove]
+
+    return ell1
+
+
 def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_primary=False):
     """Flag small group members for removal.
 
@@ -4412,7 +4650,7 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_
 
     d26 = np.asarray(ell1['D26'], dtype=np.float32)
     d26_err = np.asarray(ell1['D26_ERR'], dtype=np.float32)
-    d26_ul = d26 + d26_err
+    d26_ul = d26 + 5*d26_err
 
     mult = ell1['GROUP_MULT']
     is_singleton = mult == 1
@@ -4495,6 +4733,315 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_
     return remove
 
 
+def _angular_sep_arcmin(ra1, dec1, ra2, dec2):
+    """Great-circle separation in arcmin."""
+    cosd = math.cos(0.5 * (dec1 + dec2) * DEG2RAD)
+    dra = (ra1 - ra2 + 180.0) % 360.0 - 180.0
+    return math.hypot(dra * cosd, dec1 - dec2) * ARCMIN_PER_DEG
+
+
+def restore_large_groups(p13, p12, ov_12, ov_13,
+                         min_diam_arcmin=0.0,
+                         opt_in_groups=None,
+                         opt_in_objnames=None,
+                         trunc_margin_arcsec=1.0,
+                         verbose=False,
+                         debug=False):
+    """
+    Restore v1.2 group assignments in p13 for groups whose v1.2 mosaics
+    are still valid. Modifies p13 in place.
+
+    A v1.3 group is restored only if all three criteria pass:
+      1. No drops: none of the contributing v1.2 groups contained a dropped object
+      2. No adds:  none of the v1.3 group members are newly added objects
+      3. No truncation: every member's ellipse fits within the v1.2 mosaic boundary
+
+    Opt-in overrides (opt_in_groups, opt_in_objnames) bypass all criteria.
+
+    Parameters
+    ----------
+    p13 : Table
+        v1.3 parent catalog, modified in place
+    p12 : Table
+        v1.2 parent catalog, read only
+    ov_12, ov_13 : overlay objects
+        Loaded via load_overlays() for v1.2 and v1.3
+    min_diam_arcmin : float
+        GROUP_DIAMETER threshold for consideration (arcmin, default 0 = all groups)
+    opt_in_groups : list of str or None
+        v1.2 GROUP_NAMEs to always restore regardless of criteria
+    opt_in_objnames : list of str or None
+        OBJNAMEs whose v1.2 group should always be restored
+    trunc_margin_arcsec : float
+        Tolerance added to mosaic radius for truncation check (arcsec)
+    verbose : bool
+        Print per-group RESTORE/SKIP lines
+    debug : bool
+        Print per-member truncation details
+
+    Returns
+    -------
+    p13 : Table
+        Modified in place
+    p12_sgaid_props : dict
+        SGAID -> v1.2 group props dict (for downstream truncation check)
+    n_restored : int
+        Number of v1.2 groups restored
+    """
+    import math
+    import numpy as np
+    from SGA.SGA import get_radius_mosaic
+
+    DEG2RAD = math.pi / 180.0
+    ARCMIN_PER_DEG = 60.0
+
+    opt_in_groups   = set(opt_in_groups or [])
+    opt_in_objnames = set(opt_in_objnames or [])
+
+    # ---- overlay sets ----
+    dropped = set(ov_12.drops['OBJNAME']) if hasattr(ov_12, 'drops') else set()
+    added   = set(ov_13.adds['OBJNAME'])  if hasattr(ov_13, 'adds')  else set()
+    log.info(f"  Dropped objects (v1.2 drops.csv): {len(dropped):,d}")
+    log.info(f"  Added objects   (v1.3 adds.csv):  {len(added):,d}")
+
+    # ---- fast lookups ----
+    p13_gname   = np.asarray(p13['GROUP_NAME']).astype(str)
+    p13_objname = np.asarray(p13['OBJNAME']).astype(str)
+    p13_sgaid   = np.asarray(p13['SGAID'])
+    p12_gname   = np.asarray(p12['GROUP_NAME']).astype(str)
+    p12_objname = np.asarray(p12['OBJNAME']).astype(str)
+
+    p12_sgaid_map = {int(s): i for i, s in enumerate(p12['SGAID'])}
+    p13_sgaid_map = {int(s): i for i, s in enumerate(p13['SGAID'])}
+
+    p13_group_idx = {}
+    for i, g in enumerate(p13_gname):
+        p13_group_idx.setdefault(g, []).append(i)
+
+    if opt_in_objnames:
+        p12_objname_map = {str(n): i for i, n in enumerate(p12_objname)}
+        for objname in opt_in_objnames:
+            i12 = p12_objname_map.get(objname)
+            if i12 is not None:
+                opt_in_groups.add(str(p12_gname[i12]))
+            else:
+                log.warning(f"  opt_in_objname '{objname}' not found in p12")
+
+    # ---- arrays ----
+    p13_gdiam = np.asarray(p13['GROUP_DIAMETER'], dtype=float)
+    p13_gmult = np.asarray(p13['GROUP_MULT'])
+    p13_ra    = np.asarray(p13['RA'],   dtype=float)
+    p13_dec   = np.asarray(p13['DEC'],  dtype=float)
+    p13_diam  = np.asarray(p13['DIAM'], dtype=float)
+    p13_ba    = np.asarray(p13['BA'],   dtype=float) if 'BA' in p13.colnames \
+        else np.ones(len(p13))
+    p13_pa    = np.asarray(p13['PA'],   dtype=float) if 'PA' in p13.colnames \
+        else np.zeros(len(p13))
+
+    # ---- large v1.3 groups, sorted by descending diameter ----
+    uniq_v13, first_idx = np.unique(p13_gname, return_index=True)
+    large_mask = p13_gdiam[first_idx] >= min_diam_arcmin
+    large_v13_diams = p13_gdiam[first_idx[large_mask]]
+    large_v13 = uniq_v13[large_mask][np.argsort(large_v13_diams)[::-1]]
+    log.info(f"  Groups to consider (>={min_diam_arcmin:.1f}'): {len(large_v13):,d}")
+
+    if opt_in_groups:
+        opt_in_v13 = set()
+        for i, g in enumerate(p12_gname):
+            if g in opt_in_groups:
+                i13 = p13_sgaid_map.get(int(p12['SGAID'][i]))
+                if i13 is not None:
+                    opt_in_v13.add(p13_gname[i13])
+        extra = np.array([g for g in opt_in_v13 if g not in set(large_v13)])
+        if len(extra):
+            log.info(f"  Additional opt-in v1.3 groups below threshold: {len(extra):,d}")
+            large_v13 = np.concatenate([large_v13, extra])
+
+    # ---- v1.2 group properties ----
+    p12_gdiam = np.asarray(p12['GROUP_DIAMETER'], dtype=float)
+    p12_gmult = np.asarray(p12['GROUP_MULT'])
+    p12_gprim = np.asarray(p12['GROUP_PRIMARY'], dtype=bool)
+    p12_gra   = np.asarray(p12['GROUP_RA'],  dtype=float)
+    p12_gdec  = np.asarray(p12['GROUP_DEC'], dtype=float)
+    p12_ba    = np.asarray(p12['BA'],        dtype=float)
+
+    v12_group_props = {}
+    for pi in np.where(p12_gprim)[0]:
+        g = str(p12_gname[pi])
+        if g not in v12_group_props:
+            diam = float(p12_gdiam[pi])
+            mult = int(p12_gmult[pi])
+            # Note: q_primary intentionally omitted — v1.2 mosaics were built
+            # without BA inflation, so we match that convention here.
+            v12_group_props[g] = {
+                'diam':     diam,
+                'mult':     mult,
+                'ba':       float(p12_ba[pi]),
+                'ra':       float(p12_gra[pi]),
+                'dec':      float(p12_gdec[pi]),
+                'r_mosaic': get_radius_mosaic(diam, multiplicity=mult),
+            }
+
+    p12_sgaid_props = {
+        int(p12['SGAID'][i]): v12_group_props[str(p12_gname[i])]
+        for i in range(len(p12))
+        if str(p12_gname[i]) in v12_group_props
+    }
+
+    # ---- process each group ----
+    n_restored      = 0
+    n_skipped_drop  = 0
+    n_skipped_add   = 0
+    n_skipped_trunc = 0
+    n_skipped_optin = 0
+
+    for v13_gname in large_v13:
+        is_optin = False
+
+        idx13      = np.array(p13_group_idx[v13_gname])
+        sgaids     = p13_sgaid[idx13]
+        objnames13 = p13_objname[idx13]
+
+        idx12_list = [p12_sgaid_map[int(s)] for s in sgaids
+                      if int(s) in p12_sgaid_map]
+        if not idx12_list:
+            continue
+        idx12       = np.array(idx12_list)
+        contrib_v12 = np.unique(p12_gname[idx12])
+
+        if opt_in_groups & set(contrib_v12):
+            is_optin = True
+
+        diam_v13  = float(p13_gdiam[idx13[0]])
+        mult_v13  = int(p13_gmult[idx13[0]])
+        n_contrib = len(contrib_v12)
+
+        # criterion 1: drops
+        if not is_optin:
+            dropped_here = set(p12_objname[idx12]) & dropped
+            if dropped_here:
+                if verbose:
+                    log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                             f"{n_contrib} v1.2 groups): SKIP drops="
+                             f"{sorted(dropped_here)}")
+                n_skipped_drop += 1
+                continue
+
+        # criterion 2: adds
+        if not is_optin:
+            added_here = set(objnames13) & added
+            if added_here:
+                if verbose:
+                    log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                             f"{n_contrib} v1.2 groups): SKIP adds="
+                             f"{sorted(added_here)}")
+                n_skipped_add += 1
+                continue
+
+        # criterion 3: truncation (square-mosaic projection)
+        trunc_failures = []
+        if not is_optin:
+            for k, i13 in enumerate(idx13):
+                sgaid = int(sgaids[k])
+                props = p12_sgaid_props.get(sgaid)
+                if props is None:
+                    continue
+
+                a_arc  = 0.5 * p13_diam[i13]
+                ba     = p13_ba[i13]
+                ba_eff = ba if (math.isfinite(ba) and ba > 0) else 1.0
+                pa_rad = p13_pa[i13] * DEG2RAD \
+                    if math.isfinite(p13_pa[i13]) else 0.0
+                cosd   = math.cos(props['dec'] * DEG2RAD)
+                dx     = ((p13_ra[i13] - props['ra'] + 180.0) % 360.0 - 180.0) \
+                    * cosd * ARCMIN_PER_DEG
+                dy     = (p13_dec[i13] - props['dec']) * ARCMIN_PER_DEG
+                amp_x  = math.hypot(math.sin(pa_rad), ba_eff * math.cos(pa_rad))
+                amp_y  = math.hypot(math.cos(pa_rad), ba_eff * math.sin(pa_rad))
+                x_max  = abs(dx) + a_arc * amp_x
+                y_max  = abs(dy) + a_arc * amp_y
+                extent = max(x_max, y_max) * 60.0
+                r_eff  = props['r_mosaic'] + trunc_margin_arcsec
+
+                if debug:
+                    sep = math.hypot(dx, dy)
+                    log.info(f"    DEBUG {p13_objname[i13]}: sep={sep:.4f}', "
+                             f"diam={p13_diam[i13]:.4f}', ba={ba_eff:.3f}, "
+                             f"dx={dx:.4f}' dy={dy:.4f}', "
+                             f"amp_x={amp_x:.4f} amp_y={amp_y:.4f}, "
+                             f"extent={extent:.4f}\", "
+                             f"r_mosaic={props['r_mosaic']:.4f}\", "
+                             f"margin={trunc_margin_arcsec}\"")
+
+                if extent > r_eff:
+                    R    = props['r_mosaic'] / 60.0
+                    amax = min((R - abs(dx)) / amp_x if amp_x > 0 else R,
+                               (R - abs(dy)) / amp_y if amp_y > 0 else R)
+                    trunc_failures.append(
+                        f"{p13_objname[i13]}: "
+                        f"diam={p13_diam[i13]:.3f}', "
+                        f"mosaic_diam={props['r_mosaic']/30.0:.3f}', "
+                        f"maxdiam={2.0*amax:.3f}'")
+
+            if trunc_failures:
+                if verbose:
+                    log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                             f"{n_contrib} v1.2 groups): SKIP truncation: "
+                             f"{', '.join(trunc_failures[:3])}"
+                             f"{'...' if len(trunc_failures) > 3 else ''}")
+                n_skipped_trunc += 1
+                continue
+
+        if verbose:
+            tag = ' (opt-in)' if is_optin else ''
+            log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                     f"{n_contrib} v1.2 groups): RESTORE{tag} → "
+                     f"{', '.join(contrib_v12)}")
+        if is_optin:
+            n_skipped_optin += 1
+
+        # restore v1.2 group columns
+        for k, i13 in enumerate(idx13):
+            sgaid = int(sgaids[k])
+            i12   = p12_sgaid_map.get(sgaid)
+            if i12 is None:
+                log.warning(f"  SGAID {sgaid} not in p12, cannot restore")
+                continue
+            v12g  = str(p12_gname[i12])
+            props = v12_group_props[v12g]
+            p13['GROUP_NAME'][i13]     = v12g
+            p13['GROUP_MULT'][i13]     = props['mult']
+            p13['GROUP_RA'][i13]       = props['ra']
+            p13['GROUP_DEC'][i13]      = props['dec']
+            p13['GROUP_DIAMETER'][i13] = props['diam']
+
+        n_restored += len(contrib_v12)
+
+    # Final pass: recompute GROUP_PRIMARY and GROUP_MULT globally
+    final_gname = np.asarray(p13['GROUP_NAME']).astype(str)
+    uniq_final, inv_final = np.unique(final_gname, return_inverse=True)
+    final_mult = np.bincount(inv_final)
+    p13['GROUP_MULT'][:] = final_mult[inv_final]
+
+    # Vectorized GROUP_PRIMARY: for each group, find the row with max DIAM.
+    # Use a negation trick: sort by group then by -DIAM, take first per group.
+    p13['GROUP_PRIMARY'][:] = False
+    order = np.lexsort((-p13_diam, inv_final))  # sort by group, then desc DIAM
+    _, first = np.unique(inv_final[order], return_index=True)
+    p13['GROUP_PRIMARY'][order[first]] = True
+
+    log.info(f"Restore summary (threshold={min_diam_arcmin:.1f}'):")
+    log.info(f"  Groups considered:        {len(large_v13):,d}")
+    log.info(f"  Skipped — drops:          {n_skipped_drop:,d}")
+    log.info(f"  Skipped — adds:           {n_skipped_add:,d}")
+    log.info(f"  Skipped — truncation:     {n_skipped_trunc:,d}")
+    log.info(f"  Restored (opt-in):        {n_skipped_optin:,d} v1.3 groups")
+    log.info(f"  Restored (criteria met):  "
+             f"{n_restored - n_skipped_optin:,d} v1.3 → {n_restored:,d} v1.2 groups")
+
+    return p13, p12_sgaid_props, n_restored
+
+
 def harmonize_region_bits(out):
     """Harmonize REGION bits within groups.
 
@@ -4507,7 +5054,7 @@ def harmonize_region_bits(out):
     n_groups = len(unique_groups)
 
     # Compute bitwise AND of REGION for each group; start with all bits set
-    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr9-north'], dtype=np.int16)
+    region_and_per_group = np.full(n_groups, REGIONBITS['dr11-south'] | REGIONBITS['dr11-north'], dtype=np.int16)
     np.bitwise_and.at(region_and_per_group, group_indices, out['REGION'])
 
     # Get the allowed bits for each row
@@ -4563,7 +5110,7 @@ def harmonize_region_bits(out):
 
 def read_base_ellipse(outdir, base_version, mindiam=0.5):
     """Read the base ellipse catalogs for dr11-south and
-    dr9-north. Consolidate duplicates by OBJNAME, combining REGION
+    dr11-north. Consolidate duplicates by OBJNAME, combining REGION
     bits (but prefering DR11 if duplicated).
 
     """
@@ -4572,7 +5119,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
 
     ell = []
-    for region in ['dr11-south', 'dr9-north']:
+    for region in ['dr11-south', 'dr11-north']:
         basefile = os.path.join(outdir, f'SGA2025-beta-{base_version}-{region}.fits')
         ell1 = Table(fitsio.read(basefile))
         log.info(f'Read {len(ell1):,d} rows from {basefile}')
@@ -4650,17 +5197,20 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
 
         elif base_version == 'v0.70':
             ell1 = prepare_v070_ellipse(ell1, outdir, region, mindiam=mindiam)
-
         elif base_version == 'v0.80':
             ell1 = prepare_v080_ellipse(ell1, region, mindiam=mindiam)
-
         elif base_version == 'v1.0':
             # refit everything
             ell1['REFIT'] = np.ones(len(ell1), bool)
             #ell1 = prepare_v100_ellipse(ell1, region, mindiam=mindiam)
-
         elif base_version == 'v1.1':
             ell1 = prepare_v110_ellipse(ell1, region, mindiam=mindiam)
+        elif base_version == 'v1.2':
+            ell1 = prepare_v120_ellipse(ell1, region, mindiam=mindiam)
+        elif base_version == 'v1.3':
+            ell1 = prepare_v130_ellipse(ell1, region, mindiam=mindiam)
+        elif base_version == 'v1.4':
+            ell1 = prepare_v140_ellipse(ell1, region, mindiam=mindiam)
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -4781,7 +5331,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -4820,7 +5370,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
         return
 
     # Read the base ellipse catalogs for dr11-south and
-    # dr9-north.
+    # dr11-north.
     ell, ell_base, parent_base = read_base_ellipse(outdir, base_version, mindiam=mindiam)
     assert(np.all(np.isfinite(ell['D26'])))
 
@@ -4939,7 +5489,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, 'SGA2025-v0.70-refit.fits'), overwrite=True)
-        base = ell_base
+            base = ell_base
     elif base_version == 'v0.70':
         I = ell['REFIT'].astype(bool)
         if np.any(I):
@@ -4953,7 +5503,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, 'SGA2025-v0.80-refit.fits'), overwrite=True)
-        base = ell_base
+            base = ell_base
     elif base_version == 'v0.80':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
@@ -4967,7 +5517,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
             out = ell['SGAID', 'OBJNAME', 'RA_ORIG', 'DEC_ORIG', 'REGION', 'SAMPLE', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'][I]
             out = out[np.argsort(out['DIAM_ORIG'])]
             out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
-        base = ell_base
+            base = ell_base
     elif base_version == 'v1.0':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
@@ -4975,11 +5525,44 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
-        base = ell_base
+                base = ell_base
     elif base_version == 'v1.1':
         I = ell['REFIT'].astype(bool)
         log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
         if np.any(I):
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+                base = ell_base
+    elif base_version == 'v1.2':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            out = parent_base['SGAID', 'OBJNAME', 'REGION'][I]
+            #out = parent_base['SGAID', 'OBJNAME', 'REGION', 'SAMPLE', 'RA', 'DEC', 'D26', 'PA', 'BA'][I]
+            #out.rename_columns(['RA', 'DEC', 'D26', 'PA', 'BA'], ['RA_ORIG', 'DEC_ORIG', 'DIAM_ORIG', 'PA_ORIG', 'BA_ORIG'])
+            #out = out[np.argsort(out['DIAM_ORIG'])]
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+        base = ell_base
+    elif base_version == 'v1.3':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            out = parent_base['SGAID', 'OBJNAME', 'REGION'][I]
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+        base = ell_base
+    elif base_version == 'v1.4':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            out = parent_base['SGAID', 'OBJNAME', 'REGION'][I]
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
             ell_base['DIAM_ERR'][I] = 0.
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
@@ -5042,7 +5625,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
         raise ValueError('PA out of range')
 
     # repair REGION
-    for region in ['dr11-south', 'dr9-north']:
+    for region in ['dr11-south', 'dr11-north']:
         arch = Table(fitsio.read(os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{nocuts_version}.fits'),
                                  columns=['OBJNAME', 'PGC', 'ROW_PARENT']))
         I = np.isin(base['SGAID'], arch['ROW_PARENT']) & (base['REGION'] & REGIONBITS[region] == 0)
@@ -5051,6 +5634,10 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
             base['REGION'][I] |= REGIONBITS[region]
             #view = to_skyviewer_table(base[I])
             #view.write('viewer.fits', overwrite=True)
+
+    # re-apply updates to pick up REGION changes
+    if 'REGION' in ov.updates['FIELD']:
+        apply_updates_inplace(base, ov.updates)
 
     #customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     #custom = Table.read(customfile, format='csv', comment='#')
@@ -5099,6 +5686,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
     apply_flags_inplace(grp, ov.flags, ELLIPSEMODE)
 
     # MCLOUDS/GCLPNE/NEARSTAR/INSTAR all imply NORADWEIGHT
+    # FIXME - this should probably come after ov.flags are applied
     I = (grp['SAMPLE'] & (SAMPLE['MCLOUDS'] | SAMPLE['GCLPNE'] | SAMPLE['NEARSTAR'] | SAMPLE['INSTAR'])) != 0
     grp['ELLIPSEMODE'][I] |= ELLIPSEMODE['NORADWEIGHT']
 
@@ -5112,10 +5700,39 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
     grp = grp[srt]
 
     special = ((grp['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0) | \
-              ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
+        ((grp['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF']) != 0)
     out1 = make_singleton_group(grp[special])
     out2 = build_group_catalog(grp[~special], mp=mp)
     out = vstack((out1, out2))
+
+    # Special-case v1.3 groups: post-processing step for SGA2025
+    # parent catalog: for large groups whose v1.2 mosaics are still
+    # valid, restore the v1.2 group assignments in the v1.3 parent
+    # catalog rather than triggering an expensive refit.
+
+    # A v1.3 group is safe to restore if:
+    #  1. No drops:    none of the contributing v1.2 groups contained a dropped object
+    #  2. No adds:     none of the v1.3 group members are newly added objects
+    #  3. No truncation: every member's ellipse (DIAM/2 + offset from v1.2 group
+    #     center) fits within the v1.2 mosaic radius
+    if parent_version == 'v1.3':
+        p12 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.2.fits')))
+        ov_12 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.2'))
+        out, _, _ = restore_large_groups(out, p12, ov_12, ov, min_diam_arcmin=0.)
+    elif parent_version == 'v1.4':
+        p13 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.3.fits')))
+        ov_13 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.3'))
+        out, _, _ = restore_large_groups(out, p13, ov_13, ov, min_diam_arcmin=0.)
+    elif parent_version == 'v1.5':
+        p14 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.4.fits')))
+        ov_14 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.4'))
+        out, _, _ = restore_large_groups(out, p14, ov_14, ov, min_diam_arcmin=0.)
+    else:
+        pass
+
+    # Harmonize REGION bits within groups (keep only bits common to
+    # all members; drop groups with none).
+    out = harmonize_region_bits(out)
 
     # Assign SGAGROUP name and check duplicates among primaries
     groupname = np.char.add('SGA2025_', out['GROUP_NAME'])
@@ -5125,10 +5742,6 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.1', overwrite=False):
     if np.any(cc > 1):
         log.critical('Duplicate group names among primaries detected.')
         raise ValueError('Duplicate SGAGROUP among primaries')
-
-    # Harmonize REGION bits within groups (keep only bits common to
-    # all members; drop groups with none).
-    out = harmonize_region_bits(out)
 
     # OVERLAP bit
     set_overlap_bit(out, SAMPLE)
