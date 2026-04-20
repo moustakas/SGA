@@ -606,11 +606,11 @@ def main():
                 nsigma = 6.0
                 saddle_fraction = 0.2
                 saddle_min = 4.
-                fit_on_coadds = True
+                #fit_on_coadds = True
+                fit_on_coadds = args.fit_on_coadds
                 bright_masking = True
-                galaxy_masking = True
-                #fit_on_coadds = args.fit_on_coadds
                 #bright_masking = args.bright_masking
+                galaxy_masking = True
                 #galaxy_masking = args.galaxy_masking
                 no_segmentation = args.no_segmentation
 
@@ -744,7 +744,7 @@ def main():
                                            galex_pixscale=args.galex_pixscale, unwise=args.unwise,
                                            galex=args.galex, qaplot=args.qaplot, verbose=args.verbose,
                                            clobber=args.clobber, skip_ellipse=skip_ellipse,
-                                           skip_tractor=skip_tractor,
+                                           skip_tractor=skip_tractor, ignore_galaxy_sources=args.ignore_galaxy_sources,
                                            htmlgalaxydir=htmlgalaxydir)
                 done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
 

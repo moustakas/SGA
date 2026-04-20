@@ -63,6 +63,7 @@ def mpi_args():
                         help='Use the light-weighted (not Tractor) position during ellipse-fitting.')
     parser.add_argument('--fixgeo', action='store_true', help='Use fixed ellipse geometry (irrespective of if the ELLIPSEMODE bit is set.')
     parser.add_argument('--tractorgeo', action='store_true', help='Use the Tractor geometry (irrespective of if the ELLIPSEMODE bit is set.')
+    parser.add_argument('--ignore-galaxy-sources', action='store_true', help='Used for ellipse-fitting for very large mosaics, e.g., M33.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')

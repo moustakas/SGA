@@ -124,6 +124,8 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v1.3'
         # more cleanup, etc.; used in DR11
         version = 'v1.4'
+        # more cleanup, etc.; used in DR11
+        #version = 'v1.5'
     else:
         # parent-refcat, parent-ellipse, and final SGA2025
         #version = 'v0.10' # parent_version = v0.10
@@ -143,6 +145,7 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
         #version = 'v1.2'  # parent_version = v1.1 --> v1.2
         #version = 'v1.3'  # parent_version = v1.2 --> v1.3
         version = 'v1.4'  # parent_version = v1.3 --> v1.4
+        #version = 'v1.5'  # parent_version = v1.4 --> v1.5
     return version
 
 
@@ -2774,7 +2777,7 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                          input_geo_initial=None, qaplot=False, mask_nearby=None,
                          use_tractor_position=True, use_radial_weight=True, fixgeo=False,
                          tractorgeo=False, use_radial_weight_for_overlaps=True,
-                         mp=1, cleanup=True, htmlgalaxydir=None):
+                         ignore_galaxy_sources=False, mp=1, cleanup=True, htmlgalaxydir=None):
     """Wrapper to mask out all sources except the galaxy we want to
     ellipse-fit.
 
@@ -3083,13 +3086,19 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
                 (tractor.ref_cat != REFCAT) * (tractor.ref_cat != 'LG'))
         allgalsrcs = tractor[Igal]
 
-        t0 = time()
-        allgal_patches = prerender_patches(
-            allgalsrcs, opt_wcs, opt_bands,
-            {filt: data[f'{filt}_psf'] for filt in opt_bands}, mp=mp)
-        dt, unit = get_dt(t0)
-        log.info(f'Pre-rendering galaxy patches took: {dt:.3f} {unit}')
-        #allgal_patches = None # for testing
+        if ignore_galaxy_sources:
+            log.warning(f'Ignoring {len(allgalsrcs):,d} galaxy sources.')
+            allgalsrcs = []
+
+        if len(allgalsrcs) > 0:
+            t0 = time()
+            allgal_patches = prerender_patches(
+                allgalsrcs, opt_wcs, opt_bands,
+                {filt: data[f'{filt}_psf'] for filt in opt_bands}, mp=mp)
+            dt, unit = get_dt(t0)
+            log.info(f'Pre-rendering galaxy patches took: {dt:.3f} {unit}')
+        else:
+            allgal_patches = None
     else:
         psfsrcs = []
         allgalsrcs = []

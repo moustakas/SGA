@@ -1426,7 +1426,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          tractorgeo=False, use_radial_weight=True, sbthresh=REF_SBTHRESH,
                          apertures=REF_APERTURES, update_geometry=False, nmonte=50, seed=42,
                          verbose=False, skip_tractor=False, skip_ellipse=False, nowrite=False,
-                         clobber=False, qaplot=False, htmlgalaxydir=None):
+                         ignore_galaxy_sources=False, clobber=False, qaplot=False,
+                         htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
 
@@ -1508,6 +1509,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 use_radial_weight=use_radial_weight, fixgeo=fixgeo,
                 tractorgeo=tractorgeo, mask_nearby=mask_nearby, niter_geometry=2,
                 FMAJOR_geo=FMAJOR_geo, mask_minor_galaxies=True,
+                ignore_galaxy_sources=ignore_galaxy_sources,
                 htmlgalaxydir=htmlgalaxydir, mp=mp)
             dt, unit = get_dt(t0)
             log.info(f'Building the initial multiband mask took {dt:.3f} {unit}')
@@ -1598,6 +1600,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             use_radial_weight=use_radial_weight,
                                             fixgeo=fixgeo, tractorgeo=tractorgeo,
                                             niter_geometry=niter_geometry,
+                                            ignore_galaxy_sources=ignore_galaxy_sources,
                                             htmlgalaxydir=htmlgalaxydir, mp=mp)
         dt, unit = get_dt(t0)
         log.info(f'Building the final multiband mask took {dt:.3f} {unit}')
