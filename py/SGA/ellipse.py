@@ -1349,7 +1349,12 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 
     results_obj = []
     sbprofiles_obj = []
+
     for iobj, obj in enumerate(sample):
+        print('HACK!!!!!!!!!!!!')
+        if iobj == 0:
+            continue
+
         refid = obj[REFIDCOLUMN]
 
         t0 = time()
@@ -1394,6 +1399,7 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
                     min_pixels_per_annulus=5) # ~constant S/N per annulus
 
             #print(sma_array_pix)
+            pdb.set_trace()
             results_dataset1, sbprofiles_dataset1 = multifit(
                 obj, images, sigimages, masks, sma_array_pix, dataset,
                 bands, opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
