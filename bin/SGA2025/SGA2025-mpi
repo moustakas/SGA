@@ -561,6 +561,9 @@ def main():
                     if args.region == 'dr11-south':
                         log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
                         layer = 'ls-dr11-early-v2'
+                    elif args.region == 'dr11-north':
+                        log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-north")
+                        layer = 'ls-dr11-early-north'
 
                     if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC', 'Antlia II'])):
                         #pixscale = 60. # [arcsec]

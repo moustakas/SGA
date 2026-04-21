@@ -5347,6 +5347,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
       new rows get monotonically increasing SGAID.
 
     """
+    from pathlib import Path
     import astropy.units as u
     from astropy.coordinates import SkyCoord
     from astropy.table import Table
@@ -5636,8 +5637,13 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
             #view.write('viewer.fits', overwrite=True)
 
     # re-apply updates to pick up REGION changes
-    if 'REGION' in ov.updates['FIELD']:
-        apply_updates_inplace(base, ov.updates)
+    for ovdir in sorted(glob(str(resources.files('SGA').joinpath(f'data/SGA2025/overlays/*')))):
+        _ov = load_overlays(Path(ovdir))
+        if not 'REGION' in _ov.updates['FIELD']:
+            continue
+        I = _ov.updates['FIELD'] == 'REGION'
+        log.info(f'Applying {ovdir} region updates')
+        apply_updates_inplace(base, _ov.updates[I])
 
     #customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     #custom = Table.read(customfile, format='csv', comment='#')
