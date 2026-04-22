@@ -70,8 +70,8 @@ def restore_logger(fh=None, debug=False):
             log.addHandler(ch)
 
 def skip_ellipse_or_not(row):
-    # RESOLVED - nothing to do
-    if row['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
+    # RESOLVED or M33 - nothing to do
+    if (row['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0) or (row['OBJNAME'] == 'MESSIER 033'):
         #log.info(f'No ellipse-fitting needed for RESOLVED source {galaxydir}/{galaxy}')
         return True
     else:
