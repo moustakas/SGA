@@ -5775,9 +5775,9 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
         p14_prim_arr  = np.asarray(p14['GROUP_PRIMARY'], dtype=bool)
 
         opt_in_mask   = (p14_prim_arr &
-                         (np.asarray(p14['GROUP_DIAMETER'], dtype=float) > 7.))
+                         (np.asarray(p14['GROUP_DIAMETER'], dtype=float) > 10.))
         opt_in_groups = list(p14_names[opt_in_mask])
-        log.info(f"restore_large_groups: {len(opt_in_groups)} opt-in groups (GROUP_DIAMETER>7')")
+        log.info(f"restore_large_groups: {len(opt_in_groups)} opt-in groups (GROUP_DIAMETER>10')")
 
         # Sanity check: primary of each opt-in group must be present in out
         problems = []
