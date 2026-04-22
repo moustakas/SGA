@@ -609,8 +609,8 @@ def main():
                 nsigma = 6.0
                 saddle_fraction = 0.2
                 saddle_min = 4.
-                #fit_on_coadds = True
-                fit_on_coadds = args.fit_on_coadds
+                fit_on_coadds = True
+                #fit_on_coadds = args.fit_on_coadds
                 bright_masking = True
                 #bright_masking = args.bright_masking
                 galaxy_masking = True
