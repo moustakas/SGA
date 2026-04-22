@@ -4744,7 +4744,7 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
                          min_diam_arcmin=0.0,
                          opt_in_groups=None,
                          opt_in_objnames=None,
-                         trunc_margin_arcsec=1.0,
+                         trunc_margin_arcsec=10.0,
                          verbose=False,
                          debug=False):
     """
@@ -4890,6 +4890,7 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
 
     # ---- process each group ----
     n_restored      = 0
+    n_skipped_memb  = 0
     n_skipped_drop  = 0
     n_skipped_add   = 0
     n_skipped_trunc = 0
@@ -4915,6 +4916,25 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
         diam_v13  = float(p13_gdiam[idx13[0]])
         mult_v13  = int(p13_gmult[idx13[0]])
         n_contrib = len(contrib_v12)
+
+        # criterion 0: membership change — if the number of new-catalog members
+        # matching any contributing v1.2 group differs from that group's v1.2
+        # GROUP_MULT, the group was re-linked and must not be restored.
+        if not is_optin:
+            membership_changed = False
+            for v12g in contrib_v12:
+                v12_mult = v12_group_props[v12g]['mult']
+                n_match  = int(np.sum(p12_gname[idx12] == v12g))
+                if n_match != v12_mult:
+                    if verbose:
+                        log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                                 f"{n_contrib} v1.2 groups): SKIP membership "
+                                 f"{v12g} has {n_match}/{v12_mult} members")
+                    membership_changed = True
+                    break
+            if membership_changed:
+                n_skipped_memb += 1
+                continue
 
         # criterion 1: drops
         if not is_optin:
@@ -5017,21 +5037,23 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
 
         n_restored += len(contrib_v12)
 
-    # Final pass: recompute GROUP_PRIMARY and GROUP_MULT globally
+    # Final pass: recompute GROUP_PRIMARY and GROUP_MULT globally on the
+    # restored GROUP_NAME column. Multiple v1.3 groups may have been restored
+    # to the same v1.2 GROUP_NAME (e.g. two singletons that were a pair in
+    # v1.2), so any per-group recomputation inside the loop would be stale.
     final_gname = np.asarray(p13['GROUP_NAME']).astype(str)
     uniq_final, inv_final = np.unique(final_gname, return_inverse=True)
     final_mult = np.bincount(inv_final)
     p13['GROUP_MULT'][:] = final_mult[inv_final]
-
-    # Vectorized GROUP_PRIMARY: for each group, find the row with max DIAM.
-    # Use a negation trick: sort by group then by -DIAM, take first per group.
     p13['GROUP_PRIMARY'][:] = False
-    order = np.lexsort((-p13_diam, inv_final))  # sort by group, then desc DIAM
-    _, first = np.unique(inv_final[order], return_index=True)
-    p13['GROUP_PRIMARY'][order[first]] = True
+    for gi in range(len(uniq_final)):
+        idx = np.where(inv_final == gi)[0]
+        prim = idx[np.argmax(p13_diam[idx])]
+        p13['GROUP_PRIMARY'][prim] = True
 
     log.info(f"Restore summary (threshold={min_diam_arcmin:.1f}'):")
     log.info(f"  Groups considered:        {len(large_v13):,d}")
+    log.info(f"  Skipped — membership:     {n_skipped_memb:,d}")
     log.info(f"  Skipped — drops:          {n_skipped_drop:,d}")
     log.info(f"  Skipped — adds:           {n_skipped_add:,d}")
     log.info(f"  Skipped — truncation:     {n_skipped_trunc:,d}")

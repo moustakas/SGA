@@ -1399,13 +1399,16 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
                     min_pixels_per_annulus=5) # ~constant S/N per annulus
 
             #print(sma_array_pix)
-            pdb.set_trace()
-            results_dataset1, sbprofiles_dataset1 = multifit(
-                obj, images, sigimages, masks, sma_array_pix, dataset,
-                bands, opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
-                pixscale=pixscale, mp=mp, nmonte=nmonte, allbands=allbands,
-                sbthresh=sbthresh, sma_apertures_arcsec=sma_apertures_arcsec,
-                seed=seed, debug=debug)
+            if obj['OBJNAME'] == 'MESSIER 033':
+                log.warning(f'Special-casing MESSIER 033')
+                pdb.set_trace()
+            else:
+                results_dataset1, sbprofiles_dataset1 = multifit(
+                    obj, images, sigimages, masks, sma_array_pix, dataset,
+                    bands, opt_wcs=opt_wcs, wcs=wcs, opt_pixscale=opt_pixscale,
+                    pixscale=pixscale, mp=mp, nmonte=nmonte, allbands=allbands,
+                    sbthresh=sbthresh, sma_apertures_arcsec=sma_apertures_arcsec,
+                    seed=seed, debug=debug)
 
             results_dataset.append(results_dataset1)
             sbprofiles_dataset.append(sbprofiles_dataset1)
