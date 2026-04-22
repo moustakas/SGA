@@ -5763,9 +5763,39 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
         ov_13 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.3'))
         out, _, _ = restore_large_groups(out, p13, ov_13, ov, min_diam_arcmin=0.)
     elif parent_version == 'v1.5':
-        p14 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.4.fits')))
-        ov_14 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.4'))
-        out, _, _ = restore_large_groups(out, p14, ov_14, ov, min_diam_arcmin=0.)
+        p14 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-beta-parent-v1.4.fits')))
+
+        # Restore all large groups from v1.4 regardless of whether the group name
+        # already exists in out — the opt-in mechanism bypasses all criteria and
+        # forces the v1.4 group properties (center, diameter, membership) onto the
+        # matching objects in out, protecting expensive mosaics from refit.
+        p14_names    = np.asarray(p14['GROUP_NAME']).astype(str)
+        out_sgaids   = set(int(s) for s in out['SGAID'])
+        p14_sgaid_arr = np.asarray(p14['SGAID'])
+        p14_prim_arr  = np.asarray(p14['GROUP_PRIMARY'], dtype=bool)
+
+        opt_in_mask   = (p14_prim_arr &
+                         (np.asarray(p14['GROUP_DIAMETER'], dtype=float) > 7.))
+        opt_in_groups = list(p14_names[opt_in_mask])
+        log.info(f"restore_large_groups: {len(opt_in_groups)} opt-in groups (GROUP_DIAMETER>7')")
+
+        # Sanity check: primary of each opt-in group must be present in out
+        problems = []
+        for gname in opt_in_groups:
+            gmask       = p14_names == gname
+            prim_sgaids = p14_sgaid_arr[gmask & p14_prim_arr]
+            if len(prim_sgaids) == 0 or int(prim_sgaids[0]) not in out_sgaids:
+                problems.append(f"{gname}: primary missing from out")
+        if problems:
+            for p in problems:
+                log.warning(f"  {p}")
+            pdb.set_trace()
+            raise ValueError(f"{len(problems)} opt-in group(s) failed sanity checks")
+        log.info(f"  Sanity checks passed for all {len(opt_in_groups)} opt-in groups")
+
+        out, _, _ = restore_large_groups(out, p14, None, None,
+                                         opt_in_groups=opt_in_groups,
+                                         min_diam_arcmin=1e10)
     else:
         pass
 
