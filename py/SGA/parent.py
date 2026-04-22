@@ -4744,7 +4744,7 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
                          min_diam_arcmin=0.0,
                          opt_in_groups=None,
                          opt_in_objnames=None,
-                         trunc_margin_arcsec=10.0,
+                         trunc_margin_arcsec=1.0,
                          verbose=False,
                          debug=False):
     """
@@ -4888,6 +4888,13 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
         if str(p12_gname[i]) in v12_group_props
     }
 
+    # Precompute base-group primary SGAID for the primary-absent check
+    v12_primary_sgaid = {}  # GROUP_NAME -> SGAID of primary
+    for pi in np.where(p12_gprim)[0]:
+        g = str(p12_gname[pi])
+        if g not in v12_primary_sgaid:
+            v12_primary_sgaid[g] = int(p12['SGAID'][pi])
+
     # ---- process each group ----
     n_restored      = 0
     n_skipped_memb  = 0
@@ -4917,22 +4924,26 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
         mult_v13  = int(p13_gmult[idx13[0]])
         n_contrib = len(contrib_v12)
 
-        # criterion 0: membership change — if the number of new-catalog members
-        # matching any contributing v1.2 group differs from that group's v1.2
-        # GROUP_MULT, the group was re-linked and must not be restored.
+        # criterion 0: primary absent — if the primary of any contributing base
+        # group is no longer present in the new group, the mosaic center/size may
+        # be wrong. Skip restoration in that case.
+        # Note: membership changes where the old primary is still present (e.g.
+        # a large galaxy losing a small companion) are safe to restore.
         if not is_optin:
-            membership_changed = False
+            primary_absent = False
+            new_sgaids = set(int(s) for s in sgaids)
             for v12g in contrib_v12:
-                v12_mult = v12_group_props[v12g]['mult']
-                n_match  = int(np.sum(p12_gname[idx12] == v12g))
-                if n_match != v12_mult:
+                prim_sgaid = v12_primary_sgaid.get(v12g)
+                if prim_sgaid is None:
+                    continue
+                if prim_sgaid not in new_sgaids:
                     if verbose:
                         log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
-                                 f"{n_contrib} v1.2 groups): SKIP membership "
-                                 f"{v12g} has {n_match}/{v12_mult} members")
-                    membership_changed = True
+                                 f"{n_contrib} v1.2 groups): SKIP primary of "
+                                 f"{v12g} absent from new group")
+                    primary_absent = True
                     break
-            if membership_changed:
+            if primary_absent:
                 n_skipped_memb += 1
                 continue
 
@@ -5053,7 +5064,7 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
 
     log.info(f"Restore summary (threshold={min_diam_arcmin:.1f}'):")
     log.info(f"  Groups considered:        {len(large_v13):,d}")
-    log.info(f"  Skipped — membership:     {n_skipped_memb:,d}")
+    log.info(f"  Skipped — primary absent: {n_skipped_memb:,d}")
     log.info(f"  Skipped — drops:          {n_skipped_drop:,d}")
     log.info(f"  Skipped — adds:           {n_skipped_add:,d}")
     log.info(f"  Skipped — truncation:     {n_skipped_trunc:,d}")
