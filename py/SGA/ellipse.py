@@ -1351,10 +1351,6 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
     sbprofiles_obj = []
 
     for iobj, obj in enumerate(sample):
-        print('HACK!!!!!!!!!!!!')
-        if iobj == 0:
-            continue
-
         refid = obj[REFIDCOLUMN]
 
         t0 = time()
