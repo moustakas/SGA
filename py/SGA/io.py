@@ -392,8 +392,8 @@ def _read_image_data(data, filt2imfile, read_jpg=False, skip_tractor=False, verb
         # detection and segmentation here because the Tractor model
         # can sometimes be quite poor, e.g., UGC 05688.
         if filt in opt_bands:
-            threshold = detect_threshold(image, nsigma=3., background=0.)
-            segment_img = detect_sources(image, threshold, npixels=10)
+            threshold = detect_threshold(image, n_sigma=3., background=0.)
+            segment_img = detect_sources(image, threshold, n_pixels=10)
             if segment_img is not None:
                 msk = segment_img.make_source_mask() # True=bad/source
                 msk |= mask # exclude "bad" pixels

@@ -1349,6 +1349,7 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 
     results_obj = []
     sbprofiles_obj = []
+
     for iobj, obj in enumerate(sample):
         refid = obj[REFIDCOLUMN]
 
@@ -1529,14 +1530,24 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         if err == 1 and not bool(data):
             return err
 
-        # First fit just the optical and then update the mask.
-        t0 = time()
-        results, sbprofiles = wrap_multifit(
-            data, sample, ['opt'], unpack_maskbits_function,
-            sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
-            nmonte=0, seed=seed, debug=False)
-        dt, unit = get_dt(t0)
-        log.info(f'Initial ellipse-fitting took {dt:.3f} {unit}')
+        # First fit just the optical and then update the mask unless
+        # skip_initial_fit is set.
+        skip_initial_fit = (fixgeo or tractorgeo or
+                            ignore_galaxy_sources or
+                            all(obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0
+                                for obj in sample)
+                            )
+
+        if skip_initial_fit:
+            log.info(f'Skipping initial ellipse-fitting.')
+        else:
+            t0 = time()
+            results, sbprofiles = wrap_multifit(
+                data, sample, ['opt'], unpack_maskbits_function,
+                sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
+                nmonte=0, seed=seed, debug=False)
+            dt, unit = get_dt(t0)
+            log.info(f'Initial ellipse-fitting took {dt:.3f} {unit}')
 
         if update_geometry:
             input_geo_initial = None
@@ -1552,7 +1563,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             # if FIXGEO or TRACTORGEO use the input geometry
             if (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0) or \
-               fixgeo or tractorgeo:
+               fixgeo or tractorgeo or skip_initial_fit:
                 if not update_geometry:
                     input_geo_initial[iobj, :] = [bx, by, sma_mom/pixscale, ba_mom, pa_mom]
                     log.info(f'Galaxy {iobj+1}/{len(sample)} [{sample["OBJNAME"][iobj]}]: fixed geometry ' + \

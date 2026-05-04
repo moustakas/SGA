@@ -70,8 +70,8 @@ def restore_logger(fh=None, debug=False):
             log.addHandler(ch)
 
 def skip_ellipse_or_not(row):
-    # RESOLVED - nothing to do
-    if row['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0:
+    # RESOLVED or M33 - nothing to do
+    if (row['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0) or (row['OBJNAME'] == 'MESSIER 033'):
         #log.info(f'No ellipse-fitting needed for RESOLVED source {galaxydir}/{galaxy}')
         return True
     else:
@@ -561,6 +561,9 @@ def main():
                     if args.region == 'dr11-south':
                         log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
                         layer = 'ls-dr11-early-v2'
+                    elif args.region == 'dr11-north':
+                        log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-north")
+                        layer = 'ls-dr11-early-north'
 
                     if np.any(np.isin(onegal['OBJNAME'], ['LMC', 'SMC', 'Antlia II'])):
                         #pixscale = 60. # [arcsec]
@@ -606,8 +609,8 @@ def main():
                 nsigma = 6.0
                 saddle_fraction = 0.2
                 saddle_min = 4.
-                #fit_on_coadds = True
-                fit_on_coadds = args.fit_on_coadds
+                fit_on_coadds = True
+                #fit_on_coadds = args.fit_on_coadds
                 bright_masking = True
                 #bright_masking = args.bright_masking
                 galaxy_masking = True

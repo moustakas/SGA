@@ -4888,8 +4888,16 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
         if str(p12_gname[i]) in v12_group_props
     }
 
+    # Precompute base-group primary SGAID for the primary-absent check
+    v12_primary_sgaid = {}  # GROUP_NAME -> SGAID of primary
+    for pi in np.where(p12_gprim)[0]:
+        g = str(p12_gname[pi])
+        if g not in v12_primary_sgaid:
+            v12_primary_sgaid[g] = int(p12['SGAID'][pi])
+
     # ---- process each group ----
     n_restored      = 0
+    n_skipped_memb  = 0
     n_skipped_drop  = 0
     n_skipped_add   = 0
     n_skipped_trunc = 0
@@ -4915,6 +4923,29 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
         diam_v13  = float(p13_gdiam[idx13[0]])
         mult_v13  = int(p13_gmult[idx13[0]])
         n_contrib = len(contrib_v12)
+
+        # criterion 0: primary absent — if the primary of any contributing base
+        # group is no longer present in the new group, the mosaic center/size may
+        # be wrong. Skip restoration in that case.
+        # Note: membership changes where the old primary is still present (e.g.
+        # a large galaxy losing a small companion) are safe to restore.
+        if not is_optin:
+            primary_absent = False
+            new_sgaids = set(int(s) for s in sgaids)
+            for v12g in contrib_v12:
+                prim_sgaid = v12_primary_sgaid.get(v12g)
+                if prim_sgaid is None:
+                    continue
+                if prim_sgaid not in new_sgaids:
+                    if verbose:
+                        log.info(f"  {v13_gname} (d={diam_v13:.1f}', m={mult_v13}, "
+                                 f"{n_contrib} v1.2 groups): SKIP primary of "
+                                 f"{v12g} absent from new group")
+                    primary_absent = True
+                    break
+            if primary_absent:
+                n_skipped_memb += 1
+                continue
 
         # criterion 1: drops
         if not is_optin:
@@ -5017,21 +5048,23 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
 
         n_restored += len(contrib_v12)
 
-    # Final pass: recompute GROUP_PRIMARY and GROUP_MULT globally
+    # Final pass: recompute GROUP_PRIMARY and GROUP_MULT globally on the
+    # restored GROUP_NAME column. Multiple v1.3 groups may have been restored
+    # to the same v1.2 GROUP_NAME (e.g. two singletons that were a pair in
+    # v1.2), so any per-group recomputation inside the loop would be stale.
     final_gname = np.asarray(p13['GROUP_NAME']).astype(str)
     uniq_final, inv_final = np.unique(final_gname, return_inverse=True)
     final_mult = np.bincount(inv_final)
     p13['GROUP_MULT'][:] = final_mult[inv_final]
-
-    # Vectorized GROUP_PRIMARY: for each group, find the row with max DIAM.
-    # Use a negation trick: sort by group then by -DIAM, take first per group.
     p13['GROUP_PRIMARY'][:] = False
-    order = np.lexsort((-p13_diam, inv_final))  # sort by group, then desc DIAM
-    _, first = np.unique(inv_final[order], return_index=True)
-    p13['GROUP_PRIMARY'][order[first]] = True
+    for gi in range(len(uniq_final)):
+        idx = np.where(inv_final == gi)[0]
+        prim = idx[np.argmax(p13_diam[idx])]
+        p13['GROUP_PRIMARY'][prim] = True
 
     log.info(f"Restore summary (threshold={min_diam_arcmin:.1f}'):")
     log.info(f"  Groups considered:        {len(large_v13):,d}")
+    log.info(f"  Skipped — primary absent: {n_skipped_memb:,d}")
     log.info(f"  Skipped — drops:          {n_skipped_drop:,d}")
     log.info(f"  Skipped — adds:           {n_skipped_add:,d}")
     log.info(f"  Skipped — truncation:     {n_skipped_trunc:,d}")
@@ -5347,6 +5380,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
       new rows get monotonically increasing SGAID.
 
     """
+    from pathlib import Path
     import astropy.units as u
     from astropy.coordinates import SkyCoord
     from astropy.table import Table
@@ -5636,8 +5670,13 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
             #view.write('viewer.fits', overwrite=True)
 
     # re-apply updates to pick up REGION changes
-    if 'REGION' in ov.updates['FIELD']:
-        apply_updates_inplace(base, ov.updates)
+    for ovdir in sorted(glob(str(resources.files('SGA').joinpath(f'data/SGA2025/overlays/*')))):
+        _ov = load_overlays(Path(ovdir))
+        if not 'REGION' in _ov.updates['FIELD']:
+            continue
+        I = _ov.updates['FIELD'] == 'REGION'
+        log.info(f'Applying {ovdir} region updates')
+        apply_updates_inplace(base, _ov.updates[I])
 
     #customfile = resources.files('SGA').joinpath(f'data/SGA2025/SGA2025-parent-custom.csv')
     #custom = Table.read(customfile, format='csv', comment='#')
@@ -5724,9 +5763,39 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
         ov_13 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.3'))
         out, _, _ = restore_large_groups(out, p13, ov_13, ov, min_diam_arcmin=0.)
     elif parent_version == 'v1.5':
-        p14 = Table(fitsio.read(os.path.join(outdir, f'SGA2025-beta-parent-v1.4.fits')))
-        ov_14 = load_overlays(resources.files('SGA').joinpath('data/SGA2025/overlays/v1.4'))
-        out, _, _ = restore_large_groups(out, p14, ov_14, ov, min_diam_arcmin=0.)
+        p14 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-beta-parent-v1.4.fits')))
+
+        # Restore all large groups from v1.4 regardless of whether the group name
+        # already exists in out — the opt-in mechanism bypasses all criteria and
+        # forces the v1.4 group properties (center, diameter, membership) onto the
+        # matching objects in out, protecting expensive mosaics from refit.
+        p14_names    = np.asarray(p14['GROUP_NAME']).astype(str)
+        out_sgaids   = set(int(s) for s in out['SGAID'])
+        p14_sgaid_arr = np.asarray(p14['SGAID'])
+        p14_prim_arr  = np.asarray(p14['GROUP_PRIMARY'], dtype=bool)
+
+        opt_in_mask   = (p14_prim_arr &
+                         (np.asarray(p14['GROUP_DIAMETER'], dtype=float) > 10.))
+        opt_in_groups = list(p14_names[opt_in_mask])
+        log.info(f"restore_large_groups: {len(opt_in_groups)} opt-in groups (GROUP_DIAMETER>10')")
+
+        # Sanity check: primary of each opt-in group must be present in out
+        problems = []
+        for gname in opt_in_groups:
+            gmask       = p14_names == gname
+            prim_sgaids = p14_sgaid_arr[gmask & p14_prim_arr]
+            if len(prim_sgaids) == 0 or int(prim_sgaids[0]) not in out_sgaids:
+                problems.append(f"{gname}: primary missing from out")
+        if problems:
+            for p in problems:
+                log.warning(f"  {p}")
+            pdb.set_trace()
+            raise ValueError(f"{len(problems)} opt-in group(s) failed sanity checks")
+        log.info(f"  Sanity checks passed for all {len(opt_in_groups)} opt-in groups")
+
+        out, _, _ = restore_large_groups(out, p14, None, None,
+                                         opt_in_groups=opt_in_groups,
+                                         min_diam_arcmin=1e10)
     else:
         pass
 

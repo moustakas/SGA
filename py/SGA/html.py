@@ -19,6 +19,13 @@ from SGA.ellipse import FITMODE, ELLIPSEMODE, REF_APERTURES
 
 from SGA.logger import log
 
+import warnings
+from astropy.utils.exceptions import AstropyDeprecationWarning
+
+# At the top of ellipse_cog function, add:
+warnings.filterwarnings('ignore', category=AstropyDeprecationWarning,
+                       message=".*Passing 'theta' positionally.*")
+
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                       barlabel=None, clobber=False):
@@ -1168,7 +1175,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        .section { margin: 30px 0; }",
         "        .group-images img { display: block; max-width: 100%; margin: 10px 0; }",
         "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; justify-content: space-between; }",
-        "        .galaxy-row a { display: block; flex: 0 0 32%; }",
+        "        .galaxy-row a { display: block; flex: 0 0 32%; min-height: 200px; }",
         "        .galaxy-row img { width: 100%; height: auto; display: block; }",
         "        .galaxy-row div { flex: 1; max-width: 32%; }",
         "        img { border: 1px solid #ddd; }",
