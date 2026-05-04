@@ -19,7 +19,7 @@ from SGA.ellipse import ELLIPSEMODE
 from SGA.SGA import read_sample, get_radius_mosaic, SAMPLE, sga_dir
 from SGA.groups import contains_point, DEG2RAD, ARCMIN_PER_DEG
 
-version = 'v1.3'
+version = 'v1.5'
 suffix = version
 basedir = os.path.join(sga_dir(), 'sample')
 
