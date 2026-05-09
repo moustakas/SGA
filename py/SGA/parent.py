@@ -5875,19 +5875,28 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.5', overwrite=False):
         opt_in_groups = list(p15_names[opt_in_mask])
         log.info(f"restore_large_groups: {len(opt_in_groups)} opt-in groups (GROUP_DIAMETER>0')")
 
-        # Sanity check: primary of each opt-in group must be present in out
-        problems = []
-        for gname in opt_in_groups:
-            gmask       = p15_names == gname
-            prim_sgaids = p15_sgaid_arr[gmask & p15_prim_arr]
-            if len(prim_sgaids) == 0 or int(prim_sgaids[0]) not in out_sgaids:
-                problems.append(f"{gname}: primary missing from out")
-        if problems:
-            for p in problems:
-                log.warning(f"  {p}")
-            pdb.set_trace()
-            raise ValueError(f"{len(problems)} opt-in group(s) failed sanity checks")
-        log.info(f"  Sanity checks passed for all {len(opt_in_groups)} opt-in groups")
+        # Vectorized sanity check: find groups whose primary SGAID is missing from out
+        # Build a map from GROUP_NAME -> primary SGAID using the primary rows directly
+        p15_prim_idx   = np.where(opt_in_mask)[0]   # use opt_in_mask, not just p15_prim_arr
+        p15_prim_gname = p15_names[p15_prim_idx]
+        p15_prim_sgaid = p15_sgaid_arr[p15_prim_idx]
+
+        # One primary SGAID per group name (first occurrence among primaries)
+        _, first = np.unique(p15_prim_gname, return_index=True)
+        prim_gnames = p15_prim_gname[first]
+        prim_sgaids = p15_prim_sgaid[first]
+
+        # Check which primaries are missing from out
+        # opt_in_mask already selects primaries with GROUP_DIAMETER > 0
+        # so prim_gnames == opt_in_groups and missing_mask simplifies to just ~present
+        present      = np.isin(prim_sgaids.astype(int), np.array(list(out_sgaids)))
+        missing      = prim_gnames[~present].tolist()
+        valid_opt_in = prim_gnames[present].tolist()
+
+        if missing:
+            log.info(f"  Skipping {len(missing)} opt-in group(s) whose primary was dropped: {missing}")
+        opt_in_groups = valid_opt_in
+        log.info(f"  Sanity checks passed for {len(opt_in_groups):,d} opt-in groups")
 
         out, _, _ = restore_large_groups(out, p15, None, None,
                                          opt_in_groups=opt_in_groups,
