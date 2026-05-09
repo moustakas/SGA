@@ -4620,6 +4620,54 @@ def prepare_v140_ellipse(ell1, region, mindiam=0.5):
     return ell1
 
 
+def prepare_v150_ellipse(ell1, region, mindiam=0.5):
+
+    from SGA.SGA import SAMPLE
+    from SGA.ellipse import ELLIPSEBIT
+
+    in_group = ell1['GROUP_MULT'] > 1
+    is_lvd = (ell1['SAMPLE'] & SAMPLE['LVD']) != 0
+
+    ell1['REFIT'] = np.zeros(len(ell1), bool)
+
+    # list of objects to refit based on VI
+    refit_list = []
+    if len(refit_list) > 0:
+        refit_list = np.unique(refit_list)
+        refit = np.isin(ell1['OBJNAME'], refit_list)
+        #check = ell1[refit]
+        #check = check[np.argsort(check['D26'])[::-1]]
+        #view = to_skyviewer_table(check, diamcol='D26')
+        #view.write('viewer.fits', overwrite=True)
+
+        # refit all group members
+        if np.any(refit):
+            ell1['REFIT'] = np.isin(ell1['GROUP_NAME'], ell1['GROUP_NAME'][refit])
+
+    log.info(f'{region}: {np.sum(ell1["REFIT"]):,d}/{len(ell1):,d} flagged for geometry restoration')
+
+    # --- Flag small group members for removal ---
+    if False:
+        remove = _flag_small_for_removal(ell1, mindiam=15/60., protect_primary=False)
+        #remove = _flag_small_for_removal(ell1, mindiam=mindiam, protect_primary=False)
+        remove &= ell1['D26_ERR'] != 0
+
+        protect = []
+        if len(protect) > 0:
+            remove &= ~np.isin(ell1['OBJNAME'], protect)
+        log.info(f'{region}: Removing {np.sum(remove):,d}/{len(ell1):,d} small group members')
+
+        check = ell1[remove]
+        check = check[np.argsort(check['D26'])]
+        #check = check[np.argsort(check['D26'])][::-1]
+        view = to_skyviewer_table(check[:30], diamcol='D26')
+        view.write('viewer.fits', overwrite=True)
+
+        ell1 = ell1[~remove]
+
+    return ell1
+
+
 def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_primary=False):
     """Flag small group members for removal.
 
@@ -5244,6 +5292,8 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
             ell1 = prepare_v130_ellipse(ell1, region, mindiam=mindiam)
         elif base_version == 'v1.4':
             ell1 = prepare_v140_ellipse(ell1, region, mindiam=mindiam)
+        elif base_version == 'v1.5':
+            ell1 = prepare_v150_ellipse(ell1, region, mindiam=mindiam)
 
         ell.append(ell1)
     ell = vstack(ell)
@@ -5364,7 +5414,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, base_version='v1.5', overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -5601,6 +5651,16 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
             for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
                 ell_base[col][I] = parent_base[col][I]
         base = ell_base
+    elif base_version == 'v1.5':
+        I = ell['REFIT'].astype(bool)
+        log.info(f'Restoring initial geometry for {np.sum(I):,d}/{len(ell):,d} objects for refit')
+        if np.any(I):
+            out = parent_base['SGAID', 'OBJNAME', 'REGION'][I]
+            out.write(os.path.join(outdir, f'SGA2025-{base_version}-refit.fits'), overwrite=True)
+            ell_base['DIAM_ERR'][I] = 0.
+            for col in ['RA', 'DEC', 'DIAM', 'DIAM_REF', 'PA', 'BA']:
+                ell_base[col][I] = parent_base[col][I]
+        base = ell_base
     else:
         base = ell_base
 
@@ -5774,6 +5834,7 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
         p14_sgaid_arr = np.asarray(p14['SGAID'])
         p14_prim_arr  = np.asarray(p14['GROUP_PRIMARY'], dtype=bool)
 
+        # NB -- mindiam is 10 arcmin
         opt_in_mask   = (p14_prim_arr &
                          (np.asarray(p14['GROUP_DIAMETER'], dtype=float) > 10.))
         opt_in_groups = list(p14_names[opt_in_mask])
@@ -5794,6 +5855,41 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.4', overwrite=False):
         log.info(f"  Sanity checks passed for all {len(opt_in_groups)} opt-in groups")
 
         out, _, _ = restore_large_groups(out, p14, None, None,
+                                         opt_in_groups=opt_in_groups,
+                                         min_diam_arcmin=1e10)
+    elif parent_version == 'v1.6':
+        p15 = Table(fitsio.read(os.path.join(outdir, 'SGA2025-beta-parent-v1.5.fits')))
+
+        # Restore all large groups from v1.5 regardless of whether the group name
+        # already exists in out — the opt-in mechanism bypasses all criteria and
+        # forces the v1.5 group properties (center, diameter, membership) onto the
+        # matching objects in out, protecting expensive mosaics from refit.
+        p15_names    = np.asarray(p15['GROUP_NAME']).astype(str)
+        out_sgaids   = set(int(s) for s in out['SGAID'])
+        p15_sgaid_arr = np.asarray(p15['SGAID'])
+        p15_prim_arr  = np.asarray(p15['GROUP_PRIMARY'], dtype=bool)
+
+        # NB -- mindiam is 0 arcmin
+        opt_in_mask   = (p15_prim_arr &
+                         (np.asarray(p15['GROUP_DIAMETER'], dtype=float) > 0.))
+        opt_in_groups = list(p15_names[opt_in_mask])
+        log.info(f"restore_large_groups: {len(opt_in_groups)} opt-in groups (GROUP_DIAMETER>0')")
+
+        # Sanity check: primary of each opt-in group must be present in out
+        problems = []
+        for gname in opt_in_groups:
+            gmask       = p15_names == gname
+            prim_sgaids = p15_sgaid_arr[gmask & p15_prim_arr]
+            if len(prim_sgaids) == 0 or int(prim_sgaids[0]) not in out_sgaids:
+                problems.append(f"{gname}: primary missing from out")
+        if problems:
+            for p in problems:
+                log.warning(f"  {p}")
+            pdb.set_trace()
+            raise ValueError(f"{len(problems)} opt-in group(s) failed sanity checks")
+        log.info(f"  Sanity checks passed for all {len(opt_in_groups)} opt-in groups")
+
+        out, _, _ = restore_large_groups(out, p15, None, None,
                                          opt_in_groups=opt_in_groups,
                                          min_diam_arcmin=1e10)
     else:
