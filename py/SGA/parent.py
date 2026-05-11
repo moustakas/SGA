@@ -5414,7 +5414,7 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
     return ell, ell_base, parent_base
 
 
-def build_parent(mp=1, mindiam=0.5, base_version='v1.5', overwrite=False):
+def build_parent(mp=1, mindiam=0.5, overwrite=False):
 
     """Build a new parent catalog starting from `base_version` ellipse
     catalog, apply versioned overlays (adds/updates/drops/flags),
@@ -5452,6 +5452,22 @@ def build_parent(mp=1, mindiam=0.5, base_version='v1.5', overwrite=False):
     if os.path.isfile(outfile) and not overwrite:
         log.info(f'Parent catalog {outfile} exists; use --overwrite')
         return
+
+    # We want v1.6 to be ~identical to v1.5, so use the same base_version as v1.5
+    if parent_version == 'v1.6':
+        base_version = 'v1.4'
+    elif parent_version == 'v1.5':
+        base_version = 'v1.4'
+    elif parent_version == 'v1.4':
+        base_version = 'v1.3'
+    elif parent_version == 'v1.3':
+        base_version = 'v1.2'
+    elif parent_version == 'v1.2':
+        base_version = 'v1.1'
+    elif parent_version == 'v1.1':
+        base_version = 'v1.0'
+    else:
+        raise ValueError()
 
     # Read the base ellipse catalogs for dr11-south and
     # dr11-north.
