@@ -52,29 +52,22 @@ trap "rm -rf $ASTROM_DIR" EXIT
 
 git clone --depth=1 https://github.com/dstndstn/astrometry.net "$ASTROM_DIR"
 
-$RUN env \
-    SYSTEM_GSL=yes \
-    FITSIO_USE_SYSTEM_FITSIO=1 \
-    "NETPBM_INC=-I${SGA_PREFIX}/include/netpbm" \
-    "NETPBM_LIB=-L${SGA_PREFIX}/lib -lnetpbm" \
-    make -C "$ASTROM_DIR" -j1
+ASTROM_ENV=(
+    SYSTEM_GSL=yes
+    FITSIO_USE_SYSTEM_FITSIO=1
+    "PKG_CONFIG_PATH=${SGA_PREFIX}/lib/pkgconfig"
+    "NETPBM_INC=-I${SGA_PREFIX}/include/netpbm"
+    "NETPBM_LIB=-L${SGA_PREFIX}/lib -lnetpbm"
+)
 
-$RUN env \
-    SYSTEM_GSL=yes \
-    FITSIO_USE_SYSTEM_FITSIO=1 \
-    "NETPBM_INC=-I${SGA_PREFIX}/include/netpbm" \
-    "NETPBM_LIB=-L${SGA_PREFIX}/lib -lnetpbm" \
-    make -C "$ASTROM_DIR" -j1 py
+$RUN env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1
 
-$RUN env \
-    SYSTEM_GSL=yes \
-    FITSIO_USE_SYSTEM_FITSIO=1 \
-    "NETPBM_INC=-I${SGA_PREFIX}/include/netpbm" \
-    "NETPBM_LIB=-L${SGA_PREFIX}/lib -lnetpbm" \
-    make -C "$ASTROM_DIR" -j1 install \
-        INSTALL_DIR="$SGA_PREFIX" \
-        PY_BASE_INSTALL_DIR="$SGA_PREFIX/lib/python${PYVER}/site-packages/astrometry" \
-        PY_BASE_LINK_DIR="$SGA_PREFIX/lib/python${PYVER}/site-packages/astrometry"
+$RUN env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 py
+
+$RUN env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 install \
+    INSTALL_DIR="$SGA_PREFIX" \
+    PY_BASE_INSTALL_DIR="$SGA_PREFIX/lib/python${PYVER}/site-packages/astrometry" \
+    PY_BASE_LINK_DIR="$SGA_PREFIX/lib/python${PYVER}/site-packages/astrometry"
 
 # ---------------------------------------------------------------------------
 # Step 3: pip installs — run inside the activated env so the C compiler and
