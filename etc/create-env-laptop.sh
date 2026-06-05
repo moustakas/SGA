@@ -61,9 +61,12 @@ $RUN env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1
 $RUN env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 py
 
 $RUN env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 install \
-    INSTALL_DIR="$CONDA_PREFIX" \
-    PY_BASE_INSTALL_DIR="$CONDA_PREFIX/lib/python${PYVER}/site-packages/astrometry" \
-    PY_BASE_LINK_DIR="$CONDA_PREFIX/lib/python${PYVER}/site-packages/astrometry"
+    INSTALL_DIR="$CONDA_PREFIX"
+
+# astrometry.net installs its Python package to $INSTALL_DIR/lib/python/.
+# Add a .pth file so the conda env's Python finds it without PYTHONPATH.
+echo "${CONDA_PREFIX}/lib/python" \
+    > "${CONDA_PREFIX}/lib/python${PYVER}/site-packages/astrometry-path.pth"
 
 # ---------------------------------------------------------------------------
 # Step 3: pip installs — must run after the env exists so the C compiler and
