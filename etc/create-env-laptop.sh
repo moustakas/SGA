@@ -84,7 +84,19 @@ $RUN pip install --no-build-isolation git+https://github.com/dstndstn/tractor
 
 echo ""
 echo "==> Installing legacypipe..."
-$RUN pip install --no-build-isolation git+https://github.com/legacysurvey/legacypipe
+# legacypipe's version from git describe (e.g. "DR11.1.0.3.g...") is not
+# PEP 440 compliant and modern setuptools rejects it. Clone, patch, install.
+# Use Python for the patch (cross-platform; avoids sed -i syntax differences
+# between macOS and Linux).
+LP_DIR=$(mktemp -d)
+git clone --depth=1 https://github.com/legacysurvey/legacypipe "$LP_DIR"
+python3 -c "
+p = open('$LP_DIR/setup.py').read()
+p = p.replace(\"version = get_git_version(os.path.dirname(__file__)).replace('-','.')\", \"version = '0.0.0'\")
+open('$LP_DIR/setup.py', 'w').write(p)
+"
+$RUN pip install --no-build-isolation "$LP_DIR"
+rm -rf "$LP_DIR"
 
 echo ""
 echo "==> Installing SGA..."
