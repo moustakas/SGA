@@ -64,4 +64,4 @@ chmod +x $SGA_PREFIX/etc/activate.sh
 
 echo ""
 echo "Done. Environment is at: $SGA_PREFIX"
-echo "Students can now run: bash etc/install-kernel.sh"
+echo "Run 'bash etc/install-kernel.sh' to register the Jupyter kernel."

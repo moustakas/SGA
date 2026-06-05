@@ -14,8 +14,7 @@ SGA_PREFIX=/global/common/software/desi/users/ioannis/SGA
 echo "Installing SGA 2025 Jupyter kernel to ${KERNEL_DIR}"
 mkdir -p ${KERNEL_DIR}
 
-# kernel.json points to the shared activate.sh inside the conda env prefix,
-# so all users share one canonical script that ioannis maintains.
+# kernel.json points to the shared activate.sh inside the conda env prefix.
 cat > ${KERNEL_DIR}/kernel.json << EOF
 {
  "language": "python",
