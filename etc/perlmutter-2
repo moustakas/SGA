@@ -1,0 +1,36 @@
+#%Module1.0
+#
+proc ModulesHelp { } {
+    global product version
+    puts stderr "This module adds $product/$version to your environment."
+}
+#
+# Define variables
+#
+set product tractor
+set version perlmutter-2
+conflict $product
+#
+# module-whatis
+#
+module-whatis "Sets up $product/$version in your environment."
+#
+# Set environment
+#
+set PRODUCT_ROOT /global/common/software/desi/users/dstn/perlmutter/py313
+set PRODUCT_DIR "$PRODUCT_ROOT"
+
+set CONDA_DIR /global/cfs/cdirs/desi/users/dstn/miniconda3
+
+prepend-path PATH $PRODUCT_DIR/bin
+prepend-path LD_LIBRARY_PATH /lib64:$PRODUCT_DIR/lib:$CONDA_DIR/lib
+prepend-path PKG_CONFIG_PATH $PRODUCT_DIR/lib/pkgconfig:$CONDA_DIR/lib/pkgconfig
+prepend-path PYTHONPATH $PRODUCT_DIR/lib/python
+prepend-path PYTHONPATH $PRODUCT_DIR/astrometry.net
+prepend-path PATH $PRODUCT_DIR/astrometry.net/solver
+prepend-path PATH $PRODUCT_DIR/astrometry.net/util
+
+
+
+unsetenv PYTHONSTARTUP
+

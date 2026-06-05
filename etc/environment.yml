@@ -1,0 +1,32 @@
+# Micromamba/conda environment for the Siena Galaxy Atlas (SGA) 2025.
+#
+# Create with:
+#   micromamba create --prefix /global/common/software/desi/users/ioannis/SGA \
+#                     --file etc/environment.yml
+#
+# tractor and astrometry.net are intentionally excluded — they are provided at
+# runtime by Dustin's tractor/perlmutter-2 module (see activate.sh).
+# legacypipe is also excluded here; install it separately after activating the
+# env and loading the tractor module (see README.md).
+
+name: SGA
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.13
+  # SGA core dependencies (mirrors pyproject.toml)
+  - numpy
+  - astropy
+  - fitsio
+  - matplotlib
+  - scipy
+  - photutils
+  - pydl
+  # Jupyter kernel support
+  - ipykernel
+  - ipython
+  # Utilities
+  - pip
+  - pip:
+    - git+https://github.com/moustakas/SGA
