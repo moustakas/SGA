@@ -1,12 +1,9 @@
 # Micromamba/conda environment for the Siena Galaxy Atlas (SGA) 2025 — NERSC.
 #
-# astrometry.net is intentionally excluded: it is provided at runtime by
-# Dustin's tractor/perlmutter-2 module (see activate.sh).
-#
-# tractor, legacypipe, pydl, and SGA are pip-installed separately
-# (see create-env.sh) because mamba runs pip installs before the environment
-# is fully activated, which breaks builds that need a working compiler +
-# numpy headers. pydl is pip-only (not on conda-forge).
+# astrometry.net, tractor, legacypipe, pydl, and SGA are pip-installed
+# separately by create-env.sh because mamba runs pip installs before the
+# environment is fully activated, which breaks builds that need a working
+# compiler + numpy headers. pydl is pip-only (not on conda-forge).
 
 name: SGA
 channels:
@@ -14,8 +11,17 @@ channels:
   - nodefaults
 dependencies:
   - python=3.13
-  - c-compiler          # needed to build tractor's Cython extensions
-  - swig                # needed to build tractor's C wrapper code
+  - c-compiler          # needed to build astrometry.net and tractor
+  - swig                # needed to build astrometry.net and tractor
+  - pkgconf             # pkg-config, used during astrometry.net build
+  # C libraries required by astrometry.net source build
+  - cairo
+  - cfitsio
+  - gsl
+  - libjpeg-turbo
+  - libpng
+  - netpbm
+  - wcslib
   # SGA core dependencies (mirrors pyproject.toml)
   - numpy
   - astropy

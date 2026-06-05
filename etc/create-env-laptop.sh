@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-ENV_NAME=SGA
+ENV_NAME=SGA2
 
 if ! command -v micromamba &>/dev/null; then
     echo "Error: micromamba not found."
@@ -69,8 +69,8 @@ $RUN env \
     "NETPBM_LIB=-L${CONDA_PREFIX}/lib -lnetpbm" \
     make -C "$ASTROM_DIR" -j1 install \
         INSTALL_DIR="$CONDA_PREFIX" \
-        PY_BASE_INSTALL_DIR="$CONDA_PREFIX/lib/python${PYVER}/site-packages" \
-        PY_BASE_LINK_DIR="$CONDA_PREFIX/lib/python${PYVER}/site-packages"
+        PY_BASE_INSTALL_DIR="$CONDA_PREFIX/lib/python${PYVER}/site-packages/astrometry" \
+        PY_BASE_LINK_DIR="$CONDA_PREFIX/lib/python${PYVER}/site-packages/astrometry"
 
 # ---------------------------------------------------------------------------
 # Step 3: pip installs — must run after the env exists so the C compiler and
