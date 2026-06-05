@@ -19,12 +19,12 @@ from SGA.ellipse import ELLIPSEMODE
 from SGA.SGA import read_sample, get_radius_mosaic, SAMPLE, sga_dir
 from SGA.groups import contains_point, DEG2RAD, ARCMIN_PER_DEG
 
-version = 'v1.5'
+version = 'v1.6'
 suffix = version
 basedir = os.path.join(sga_dir(), 'sample')
 
 def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
-         resolved=False, veto=False):
+         resolved=False, fixgeo=False, veto=False):
 
     if region == 'dr11-south':
         bricks_file = 'bricks-exist-ls-dr11-early-v2.fits.gz'
@@ -48,6 +48,9 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
     sample, _ = read_sample(region=region, version=version)
     if resolved:
         sample = sample[sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0]
+    if fixgeo:
+        sample = sample[sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0]
+
 
     if veto:
         veto_galaxies = ['IC 1613', 'MESSIER 033', 'NGC 300']
@@ -64,8 +67,29 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
     gba      = np.asarray(groups['BA'],             dtype=float)
     gpa      = np.asarray(groups['PA'],             dtype=float)
 
-    # Identify LMC/SMC rows
+    # Identify LMC/SMC rows — load from full sample if not present in
+    # the filtered sample (e.g. when --fixgeo or --resolved is used).
     is_mc = (gobjname == 'LMC') | (gobjname == 'SMC')
+    if is_mc.sum() == 0:
+        full_sample, _ = read_sample(region=region, version=version)
+        mc_mask = np.isin(np.asarray(full_sample['OBJNAME'], dtype=str), ['LMC', 'SMC'])
+        mc_rows = full_sample[mc_mask]
+        # Append MC rows to the group arrays used in the flagging loop
+        gra      = np.concatenate([gra,   np.asarray(mc_rows['GROUP_RA'],       dtype=float)])
+        gdec     = np.concatenate([gdec,  np.asarray(mc_rows['GROUP_DEC'],      dtype=float)])
+        gdiam    = np.concatenate([gdiam, np.asarray(mc_rows['GROUP_DIAMETER'], dtype=float)])
+        gmult    = np.concatenate([gmult, np.asarray(mc_rows['GROUP_MULT'],     dtype=int)])
+        gobjname = np.concatenate([gobjname, np.asarray(mc_rows['OBJNAME'],     dtype=str)])
+        gba      = np.concatenate([gba,   np.asarray(mc_rows['BA'],             dtype=float)])
+        gpa      = np.concatenate([gpa,   np.asarray(mc_rows['PA'],             dtype=float)])
+        is_mc    = (gobjname == 'LMC') | (gobjname == 'SMC')
+        # These extra rows should not contribute to has_sga
+        n_mc_extra = int(mc_mask.sum())
+        has_sga_mask = np.concatenate([np.ones(len(groups), dtype=bool),
+                                       np.zeros(n_mc_extra, dtype=bool)])
+    else:
+        has_sga_mask = ~is_mc  # MCs never contribute to has_sga
+    n_groups = len(gra)  # update after possible append
     print(f'  Magellanic Cloud entries: {int(is_mc.sum())} '
           f'({list(gobjname[is_mc])})')
 
@@ -73,8 +97,8 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
     print('Computing mosaic radii ...')
     DEG2ARCSEC = 3600.0
 
-    half_deg = np.empty(len(groups), dtype=float)
-    for k in range(len(groups)):
+    half_deg = np.empty(n_groups, dtype=float)
+    for k in range(n_groups):
         r_arcsec = get_radius_mosaic(gdiam[k], multiplicity=gmult[k])
         half_deg[k] = r_arcsec * (1.0 + margin) / DEG2ARCSEC
 
@@ -101,7 +125,6 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
     in_mclouds = np.zeros(len(bricks), dtype=bool)
 
     print('Flagging bricks ...')
-    n_groups = len(groups)
     report_every = max(1, n_groups // 20)
 
     for k in range(n_groups):
@@ -112,6 +135,13 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
         ra0  = gra[k]
         dec0 = gdec[k]
         half = half_deg[k]
+
+        # For MC rows, use the ellipse semi-major axis for the bounding box
+        # so all candidate bricks reach the contains_point test. MC rows never
+        # set has_sga (guarded by has_sga_mask), so this only affects in_mclouds.
+        if is_mc[k]:
+            a_arc_bb = 0.5 * gdiam[k] * (1.0 + mclouds_margin)  # arcmin
+            half = max(half, a_arc_bb / ARCMIN_PER_DEG)
 
         # Dec bounding box
         dec_lo = dec0 - half
@@ -156,7 +186,8 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
             ra_ok = (bra2[cand] > ra_lo) | (bra1[cand] < ra_hi)
 
         hit = cand[ra_ok]
-        has_sga[hit] = True
+        if has_sga_mask[k]:
+            has_sga[hit] = True
 
         if is_mc[k]:
             # Elliptical intersection for LMC/SMC: flag brick if any of its
@@ -197,6 +228,10 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
         outfile = f'{region}-bricks-with-sga-resolved-dwarfs-{suffix}.csv'
         pngfile = f'{region}-bricks-with-sga-resolved-dwarfs-{suffix}.png'
         s = 20
+    elif fixgeo:
+        outfile = f'{region}-bricks-with-sga-fixgeo-{suffix}.csv'
+        pngfile = f'{region}-bricks-with-sga-fixgeo-{suffix}.png'
+        s = 20
     else:
         outfile = f'{region}-bricks-with-sga-{suffix}.csv'
         pngfile = f'{region}-bricks-with-sga-{suffix}.png'
@@ -214,6 +249,8 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
 
     if resolved:
         out = out[has_sga]
+    elif fixgeo:
+        out = out[has_sga & ~in_mclouds]
     elif veto:
         out = out[has_sga]
     out.write(outfile, format='csv', overwrite=True)
@@ -225,10 +262,13 @@ def main(region='dr11-south', margin=1.0, mclouds_margin=0.20,
     I = ~out['has_sga']
     ax.scatter(out['ra'], out['dec'], alpha=0.5, s=s,
                label=f'All bricks (N={len(out):,d})')
-    ax.scatter(out['ra'][I], out['dec'][I], alpha=0.1, s=1,
-               label=f'No SGA (N={np.sum(I):,d})')
+    if np.any(I):
+        ax.scatter(out['ra'][I], out['dec'][I], alpha=0.1, s=1,
+                   label=f'No SGA (N={np.sum(I):,d})')
     ax.legend(loc='upper right')
     ax.set_xlim(0, 360)
+    #ax.set_xlim(50, 100)
+    #ax.set_ylim(-80, -60)
     fig.savefig(pngfile)
     print(f'Wrote {pngfile}')
 
@@ -238,10 +278,11 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--region', default='dr11-south')
     p.add_argument('--resolved', action='store_true')
+    p.add_argument('--fixgeo', action='store_true')
     p.add_argument('--veto', action='store_true')
     p.add_argument('--margin', type=float, default=1.0,
                    help='Fractional margin on mosaic radius (default 1.0 = 100%%)')
     p.add_argument('--mclouds-margin', type=float, default=0.20)
     a = p.parse_args()
     main(region=a.region, margin=a.margin, mclouds_margin=a.mclouds_margin,
-         resolved=a.resolved, veto=a.veto)
+         resolved=a.resolved, fixgeo=a.fixgeo, veto=a.veto)
