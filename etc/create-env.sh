@@ -35,14 +35,19 @@ $MAMBA create --prefix $SGA_PREFIX --file etc/environment.yml --yes
 # numpy headers are on the right paths. tractor has Cython extensions;
 # legacypipe and SGA are pure Python but depend on tractor at runtime.
 # astrometry.net is NOT pip-installed here; it comes from Dustin's module.
+#
+# --no-build-isolation: tractor's setup.py imports numpy at configure time to
+# find include dirs for Cython compilation. Without this flag, pip builds in an
+# isolated subprocess that doesn't inherit the env's packages, causing
+# "ModuleNotFoundError: No module named 'numpy'".
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> Installing tractor (Cython build)..."
-$MAMBA run -p $SGA_PREFIX pip install git+https://github.com/dstndstn/tractor
+$MAMBA run -p $SGA_PREFIX pip install --no-build-isolation git+https://github.com/dstndstn/tractor
 
 echo ""
 echo "==> Installing legacypipe..."
-$MAMBA run -p $SGA_PREFIX pip install git+https://github.com/legacysurvey/legacypipe
+$MAMBA run -p $SGA_PREFIX pip install --no-build-isolation git+https://github.com/legacysurvey/legacypipe
 
 echo ""
 echo "==> Installing SGA..."

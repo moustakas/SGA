@@ -14,6 +14,7 @@ channels:
 dependencies:
   - python=3.13
   - c-compiler          # needed to build tractor's Cython extensions
+  - swig                # needed to build tractor's C wrapper code
   # SGA core dependencies (mirrors pyproject.toml)
   - numpy
   - astropy
