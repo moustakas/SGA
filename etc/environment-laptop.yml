@@ -1,0 +1,36 @@
+# Micromamba/conda environment for the Siena Galaxy Atlas (SGA) 2025 — laptop.
+#
+# Differs from environment.yml (NERSC) only in that astrometry.net is
+# installed from conda-forge rather than loaded from Dustin's module.
+#
+# Create with:
+#   micromamba create -n SGA --file etc/environment-laptop.yml
+#
+# After creation, activate and verify:
+#   micromamba activate SGA
+#   python -c "import astrometry; import tractor; import legacypipe; import SGA"
+
+name: SGA
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.13
+  - c-compiler          # needed to build tractor's Cython extensions
+  - astrometry          # conda-forge build of astrometry.net (C libs + Python bindings)
+  # SGA core dependencies (mirrors pyproject.toml)
+  - numpy
+  - astropy
+  - fitsio
+  - matplotlib
+  - scipy
+  - photutils
+  - pydl
+  # Jupyter kernel support
+  - ipykernel
+  - ipython
+  - pip
+  - pip:
+    - git+https://github.com/dstndstn/tractor
+    - git+https://github.com/legacysurvey/legacypipe
+    - git+https://github.com/moustakas/SGA
