@@ -42,6 +42,10 @@ $MAMBA create --prefix $SGA_PREFIX --file etc/environment.yml --yes
 # "ModuleNotFoundError: No module named 'numpy'".
 # ---------------------------------------------------------------------------
 echo ""
+echo "==> Installing pydl..."
+$MAMBA run -p $SGA_PREFIX pip install pydl
+
+echo ""
 echo "==> Installing tractor (Cython build)..."
 $MAMBA run -p $SGA_PREFIX pip install --no-build-isolation git+https://github.com/dstndstn/tractor
 

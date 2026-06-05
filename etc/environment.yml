@@ -3,9 +3,10 @@
 # astrometry.net is intentionally excluded: it is provided at runtime by
 # Dustin's tractor/perlmutter-2 module (see activate.sh).
 #
-# tractor, legacypipe, and SGA are pip-installed separately (see create-env.sh)
-# because mamba runs pip installs before the environment is fully activated,
-# which breaks builds that need a working compiler + numpy headers.
+# tractor, legacypipe, pydl, and SGA are pip-installed separately
+# (see create-env.sh) because mamba runs pip installs before the environment
+# is fully activated, which breaks builds that need a working compiler +
+# numpy headers. pydl is pip-only (not on conda-forge).
 
 name: SGA
 channels:
@@ -22,7 +23,6 @@ dependencies:
   - matplotlib
   - scipy
   - photutils
-  - pydl
   # Jupyter kernel support
   - ipykernel
   - ipython

@@ -47,6 +47,11 @@ update_tractor() {
     $RUN pip install --no-build-isolation --upgrade git+https://github.com/dstndstn/tractor
 }
 
+update_pydl() {
+    echo "==> Updating pydl..."
+    $RUN pip install --upgrade pydl
+}
+
 editable_install() {
     local pkg=$1
     local path=$2
@@ -56,6 +61,7 @@ editable_install() {
 
 # Parse arguments
 if [[ $# -eq 0 ]]; then
+    update_pydl
     update_sga
     update_legacypipe
     update_tractor
@@ -70,9 +76,10 @@ fi
 
 for pkg in "$@"; do
     case $pkg in
+        pydl)       update_pydl ;;
         sga)        update_sga ;;
         legacypipe) update_legacypipe ;;
         tractor)    update_tractor ;;
-        *) echo "Unknown package: $pkg (expected sga, legacypipe, or tractor)"; exit 1 ;;
+        *) echo "Unknown package: $pkg (expected pydl, sga, legacypipe, or tractor)"; exit 1 ;;
     esac
 done
