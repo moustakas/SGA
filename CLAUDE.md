@@ -20,15 +20,44 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `logger.py` - Unified logging (distinct from DESI loggers)
 - `bin/SGA2025/` - Executable scripts for SGA-2025 release
 - `bin/SGA2020/` - Legacy SGA-2020 scripts
+- `etc/` - Conda environment specs and NERSC/laptop setup scripts (see `etc/README.md`)
 - `doc/` - Documentation and analysis notebooks
 - `science/` - Science analysis notebooks
-- `docker/` - Docker configuration for multi-platform builds
+- `docker/` - Docker configuration for multi-platform builds (production/Shifter use)
+- `pyproject.toml` - Package metadata and entry points (PEP 517/518)
 
 ## Installation
 
+The SGA package is defined in `pyproject.toml` (PEP 517/518). Install for regular use:
+
 ```bash
-python setup.py install
+pip install .
 ```
+
+For development (editable install from a local checkout):
+
+```bash
+pip install --no-deps -e .
+```
+
+### Full environment (NERSC or laptop)
+
+The `etc/` directory contains conda environment specs and setup scripts that
+build the full dependency stack — astrometry.net (from source), tractor,
+legacypipe, pydl, and SGA — into a shared conda environment. See
+`etc/README.md` for complete instructions.
+
+```bash
+# NERSC
+module load conda
+bash etc/create-env.sh
+
+# Laptop (requires micromamba)
+bash etc/create-env-laptop.sh
+```
+
+The shared NERSC environment lives at:
+`/global/common/software/desi/users/ioannis/SGA`
 
 ## Key Commands
 
@@ -116,6 +145,6 @@ No automated test suite. QA is performed through:
 
 ## External Dependencies
 
-- Legacy Survey: `legacypipe` for Tractor source detection
-- Astronomy: `astropy`, `fitsio`, `photutils`, `astroquery`
+- Source detection pipeline: `astrometry.net` (built from source), `tractor`, `legacypipe`
+- Astronomy: `astropy`, `fitsio`, `photutils`, `astroquery`, `pydl`
 - Computing: `numpy`, `scipy`, `matplotlib`, `mpi4py`

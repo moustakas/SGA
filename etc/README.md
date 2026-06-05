@@ -1,11 +1,11 @@
-# SGA 2025 — Jupyter Kernel and Environment Setup
+# SGA 2025 — Environment Setup and Jupyter Kernel
 
 ## Architecture
 
 ```
 SGA conda env  (/global/common/software/desi/users/ioannis/SGA)
-  └─ python 3.13, astrometry.net, tractor, legacypipe, pydl,
-     numpy, astropy, fitsio, matplotlib, scipy, photutils,
+  └─ python 3.13, astrometry.net (built from source), tractor, legacypipe,
+     pydl, numpy, astropy, fitsio, matplotlib, scipy, photutils,
      ipykernel, SGA
 
 activate.sh  (launches the conda env's Python as a Jupyter kernel)
@@ -14,28 +14,40 @@ kernel.json  (registered per-user via install-kernel.sh)
 
 ---
 
-## One-time NERSC setup
+## NERSC
 
-Run once to create the shared environment (requires write access to
-`/global/common/software/desi/users/ioannis/`):
+### One-time environment setup
+
+Requires write access to `/global/common/software/desi/users/ioannis/`.
+Run from the root of the SGA repository:
 
 ```bash
 module load conda
 bash etc/create-env.sh
 ```
 
-This builds astrometry.net from source, then pip-installs tractor,
-legacypipe, pydl, and SGA in order.
+`create-env.sh` runs in order:
+1. `mamba create` — conda packages (python 3.13, compiler, swig, C libraries, numpy, astropy, …)
+2. Build astrometry.net from source (`make`, `make py`, `make install`)
+3. `pip install` — pydl, tractor, legacypipe, SGA
+4. Deploy `activate.sh` to `SGA_PREFIX/etc/`
 
-To update packages later, use `update-env.sh`:
+**Known build notes:**
+- `PKG_CONFIG_PATH` must be set explicitly so the linker finds conda-provided cfitsio and GSL
+- astrometry.net installs its Python package to `lib/python/`; a `.pth` file is added to site-packages so Python finds it without PYTHONPATH manipulation
+- `pydl` is pip-only (not on conda-forge)
+- legacypipe's version string from `git describe` is not PEP 440 compliant; the script clones the repo and patches `setup.py` before installing
+
+### Updating packages
 
 ```bash
 module load conda
 bash etc/update-env.sh              # update all packages
 bash etc/update-env.sh sga          # update one package
+bash etc/update-env.sh tractor      # (needs --no-build-isolation internally)
 ```
 
-For a local checkout (e.g. while working on a branch before merging):
+### Local checkout (e.g. working on a branch)
 
 ```bash
 module load conda
@@ -43,30 +55,33 @@ bash etc/update-env.sh --editable sga /path/to/SGA
 bash etc/update-env.sh --editable legacypipe /path/to/legacypipe
 ```
 
-`--no-deps` is applied automatically for editable installs so pip does not
-reinstall conda-managed dependencies from PyPI.
+`--no-deps` is applied automatically so pip does not reinstall conda-managed
+dependencies from PyPI.
 
----
+### Interactive use
 
-## One-time kernel setup (per user)
+```bash
+module load conda
+mamba activate /global/common/software/desi/users/ioannis/SGA
+python   # or ipython, or run any SGA2025 script directly
+```
 
-Run once from a NERSC login node or the JupyterHub terminal.  If you have a
-local clone of the repo:
+### One-time kernel setup (per user)
+
+From a NERSC login node or the JupyterHub terminal, with a local clone:
 
 ```bash
 bash /path/to/SGA/etc/install-kernel.sh
 ```
 
-Otherwise, download and run the script directly from GitHub:
+Or download and run directly from GitHub:
 
 ```bash
 wget -q https://raw.githubusercontent.com/moustakas/SGA/main/etc/install-kernel.sh
 bash install-kernel.sh && rm install-kernel.sh
 ```
 
----
-
-## Using the kernel
+### Using the kernel
 
 Open (or restart) JupyterHub at https://jupyter.nersc.gov and select
 **SGA 2025** from the kernel menu.
@@ -75,16 +90,29 @@ Open (or restart) JupyterHub at https://jupyter.nersc.gov and select
 
 ## Laptop
 
-`astrometry.net` is built from source along with tractor.
-`create-env-laptop.sh` handles everything:
+`create-env-laptop.sh` handles everything — building astrometry.net from
+source, then pip-installing tractor, legacypipe, pydl, and SGA in order,
+and finally registering the Jupyter kernel:
 
 ```bash
 bash etc/create-env-laptop.sh
 ```
 
-This creates a `micromamba` env named `SGA`, builds astrometry.net from
-source, pip-installs tractor, legacypipe, pydl, and SGA in order, and
-registers the Jupyter kernel.
+The conda env name is set by `ENV_NAME` at the top of the script (default:
+`SGA`). The same build notes apply as for NERSC, with one difference: on
+macOS the version patch for legacypipe uses Python string replacement instead
+of `sed -i` to avoid BSD/GNU sed compatibility issues.
+
+C library dependencies required for the astrometry.net source build (all
+from conda-forge): `cairo`, `cfitsio`, `gsl`, `libjpeg-turbo`, `libpng`,
+`netpbm`, `wcslib`, `pkgconf`.
+
+Register the Jupyter kernel separately if needed:
+
+```bash
+micromamba activate SGA
+python -m ipykernel install --user --name SGA --display-name "SGA 2025"
+```
 
 ---
 
