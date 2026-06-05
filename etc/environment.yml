@@ -1,16 +1,11 @@
 # Micromamba/conda environment for the Siena Galaxy Atlas (SGA) 2025 — NERSC.
 #
-# Create with:
-#   micromamba create --prefix /global/common/software/desi/users/ioannis/SGA \
-#                     --file etc/environment.yml
-#
 # astrometry.net is intentionally excluded: it is provided at runtime by
-# Dustin's tractor/perlmutter-2 module (see activate.sh), which adds the
-# pre-built C extensions and shared libraries to PYTHONPATH/LD_LIBRARY_PATH.
+# Dustin's tractor/perlmutter-2 module (see activate.sh).
 #
-# tractor and legacypipe are pip-installed from GitHub. tractor has Cython
-# extensions that only need numpy headers + a C compiler at build time (no
-# astrometry.net required until runtime), so the build order is safe.
+# tractor, legacypipe, and SGA are pip-installed separately (see create-env.sh)
+# because mamba runs pip installs before the environment is fully activated,
+# which breaks builds that need a working compiler + numpy headers.
 
 name: SGA
 channels:
@@ -31,7 +26,3 @@ dependencies:
   - ipykernel
   - ipython
   - pip
-  - pip:
-    - git+https://github.com/dstndstn/tractor
-    - git+https://github.com/legacysurvey/legacypipe
-    - git+https://github.com/moustakas/SGA

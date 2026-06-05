@@ -23,40 +23,42 @@ activate.sh  (layers the module on top of the conda env at kernel launch)
 kernel.json  (registered per-user via install-kernel.sh)
 ```
 
-`astrometry.net` is the one package **not** installed into the conda env —
-it is provided at kernel-launch time by Dustin's module, which prepends
-its paths to `PYTHONPATH` and `LD_LIBRARY_PATH`.  `activate.sh` calls the
-conda env's Python binary explicitly so the module cannot override it.
+`astrometry.net` is the one package **not** in the conda env — it is
+provided at kernel-launch time by Dustin's module, which prepends its paths
+to `PYTHONPATH` and `LD_LIBRARY_PATH`.  `activate.sh` calls the conda env's
+Python binary explicitly so the module cannot override the interpreter.
+
+`tractor` and `legacypipe` are pip-installed separately from GitHub rather
+than in the `environment.yml` pip section, because `mamba create` runs pip
+before the environment is fully activated, which breaks tractor's Cython
+build (compiler and numpy headers are not yet on the right paths).
 
 ### For ioannis: Creating the shared environment
 
-Do this once (or when rebuilding after a system update).
-
 ```bash
-# 1. Create the env (tractor and legacypipe are pip-installed automatically)
-micromamba create --prefix /global/common/software/desi/users/ioannis/SGA \
-                  --file etc/environment.yml
-
-# 2. Copy activate.sh to its stable runtime location inside the env prefix
-mkdir -p /global/common/software/desi/users/ioannis/SGA/etc
-cp etc/activate.sh /global/common/software/desi/users/ioannis/SGA/etc/activate.sh
-chmod +x /global/common/software/desi/users/ioannis/SGA/etc/activate.sh
+module load conda
+bash etc/create-env.sh
 ```
 
-That's it — `tractor`, `legacypipe`, and `SGA` are all handled by the pip
-section of `environment.yml`.
+`create-env.sh` does everything in order:
+1. `mamba create` — conda packages (python, compiler, numpy, astropy, …)
+2. `mamba run -p $SGA_PREFIX pip install` — tractor, legacypipe, SGA
+3. Copies `activate.sh` to `$SGA_PREFIX/etc/activate.sh`
 
-### Updating SGA
+### Updating packages
 
 ```bash
-micromamba activate /global/common/software/desi/users/ioannis/SGA
-pip install --upgrade git+https://github.com/moustakas/SGA
+module load conda
+mamba run -p /global/common/software/desi/users/ioannis/SGA \
+    pip install --upgrade git+https://github.com/moustakas/SGA
 ```
 
-For development, use a local editable install instead:
+Replace the URL with `tractor` or `legacypipe` repos as needed.  For
+development, use a local editable install:
 
 ```bash
-pip install -e /path/to/local/SGA/clone
+mamba run -p /global/common/software/desi/users/ioannis/SGA \
+    pip install -e /path/to/local/SGA/clone
 ```
 
 ### For students: Installing the Jupyter kernel
@@ -75,30 +77,33 @@ Then open (or restart) JupyterHub at https://jupyter.nersc.gov and select
 ## Laptop
 
 `astrometry.net` is available on conda-forge, so no module system is needed.
-Use `environment-laptop.yml`, which is identical to the NERSC spec except it
-adds `astrometry` from conda-forge.
+Use `environment-laptop.yml`, which is identical to the NERSC spec but adds
+`astrometry` from conda-forge.
 
 ```bash
-# Create the env
+# Create the conda env
 micromamba create -n SGA --file etc/environment-laptop.yml
 
-# Activate and verify
+# Activate it, then pip-install the packages that need a live env to build
 micromamba activate SGA
+pip install git+https://github.com/dstndstn/tractor
+pip install git+https://github.com/legacysurvey/legacypipe
+pip install git+https://github.com/moustakas/SGA   # or: pip install -e /path/to/clone
+
+# Verify
 python -c "import astrometry; import tractor; import legacypipe; import SGA"
 ```
 
-> **Note:** The conda-forge `astrometry` package provides the Python bindings
-> and core C libraries.  It may not include the full astrometry.net plate-solver
-> (index files, `solve-field` binary).  For student notebook use — reading
-> catalogs, ellipse photometry, QA plots — this is sufficient.  If you need the
-> full solver, build astrometry.net from source following the upstream docs.
-
-For a Jupyter kernel on the laptop, register the env with:
+Register the env as a Jupyter kernel:
 
 ```bash
-micromamba activate SGA
 python -m ipykernel install --user --name SGA --display-name "SGA 2025"
 ```
+
+> **Note on astrometry.net:** The conda-forge `astrometry` package provides
+> the Python bindings and core C libraries sufficient for student notebook use
+> (reading catalogs, ellipse photometry, QA plots).  The full plate-solver
+> (`solve-field`, index files) is not included; build from source if needed.
 
 ---
 
@@ -106,9 +111,10 @@ python -m ipykernel install --user --name SGA --display-name "SGA 2025"
 
 | File | Purpose |
 |---|---|
-| `environment.yml` | Micromamba env spec for NERSC (no astrometry.net; comes from module) |
-| `environment-laptop.yml` | Micromamba env spec for laptop (astrometry.net from conda-forge) |
-| `activate.sh` | Kernel launch script for NERSC; deployed to `SGA_PREFIX/etc/` by ioannis |
-| `kernel.json` | Example kernel spec (generated dynamically by `install-kernel.sh`) |
+| `environment.yml` | Conda env spec for NERSC (conda packages only; no pip section) |
+| `environment-laptop.yml` | Conda env spec for laptop (adds conda-forge astrometry) |
+| `create-env.sh` | Full NERSC env creation script (run by ioannis) |
+| `activate.sh` | Kernel launch script; deployed to `SGA_PREFIX/etc/` by `create-env.sh` |
+| `kernel.json` | Example kernel spec (generated by `install-kernel.sh`) |
 | `install-kernel.sh` | Student one-liner to register the NERSC kernel |
 | `perlmutter-2` | Reference copy of Dustin's TCL module file (do not edit) |

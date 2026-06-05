@@ -3,12 +3,10 @@
 # Differs from environment.yml (NERSC) only in that astrometry.net is
 # installed from conda-forge rather than loaded from Dustin's module.
 #
-# Create with:
-#   micromamba create -n SGA --file etc/environment-laptop.yml
-#
-# After creation, activate and verify:
-#   micromamba activate SGA
-#   python -c "import astrometry; import tractor; import legacypipe; import SGA"
+# After creation, pip-install the remaining packages manually:
+#   pip install git+https://github.com/dstndstn/tractor
+#   pip install git+https://github.com/legacysurvey/legacypipe
+#   pip install git+https://github.com/moustakas/SGA  # or: pip install -e /path/to/clone
 
 name: SGA
 channels:
@@ -30,7 +28,3 @@ dependencies:
   - ipykernel
   - ipython
   - pip
-  - pip:
-    - git+https://github.com/dstndstn/tractor
-    - git+https://github.com/legacysurvey/legacypipe
-    - git+https://github.com/moustakas/SGA
