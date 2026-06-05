@@ -1956,13 +1956,18 @@ def read_nedlvs(rank=0, rows=None):
     return nedlvs
 
 
-def read_sga2020(rank=0, rows=None):
+def read_sga2020(rank=0, rows=None, columns=None, region=None):
     """Read the SGA-2020 catalog.
 
     """
-    sga2020file = os.path.join(sga_dir(), 'parent', 'external', 'SGA-2020.fits')
-    sga2020 = Table(fitsio.read(sga2020file, ext='ELLIPSE', rows=rows))
-    sga2020['ROW'] = np.arange(len(sga2020))
+    # Region files generated with SGA2025-build-parent --in-footprint --sga2020
+    if region:
+        sga2020file = os.path.join(sga_dir(), 'parent', f'SGA2020-{region}.fits')
+        sga2020 = Table(fitsio.read(sga2020file, rows=rows, columns=columns))
+    else:
+        sga2020file = os.path.join(sga_dir(), 'parent', 'external', 'SGA-2020.fits')
+        sga2020 = Table(fitsio.read(sga2020file, ext='ELLIPSE', rows=rows, columns=columns))
+        sga2020['ROW'] = np.arange(len(sga2020))
     log.info(f'Read {len(sga2020):,d} objects from {sga2020file}')
     #log.info(f'Rank {rank:03d}: Read {len(sga2020):,d} objects from {sga2020file}')
 

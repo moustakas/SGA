@@ -101,7 +101,8 @@ class EllipseProperties:
         yy, xx = np.indices(smoothed.shape)
         x_sel = xx.flat[blob_idx].astype(float)
         y_sel = yy.flat[blob_idx].astype(float)
-        flux  = smoothed.flat[blob_idx].astype(float)
+        flux = smoothed.flat[blob_idx].astype(float)
+        #print(image.shape, x_sel.shape, flux.shape)
 
         F = flux.sum()
         if flux.size < 3 or F <= 0.:
@@ -144,16 +145,22 @@ class EllipseProperties:
             # Guard against pathological b/a
             q = float(np.clip(ba_in, 1e-2, 1.0))
 
+            # PA is astronomical (degrees E of N, North-up).
+            # In numpy pixel coords (x=col, y=row), North-up means the major axis
+            # points along +y, so we rotate by (90 - pa_in) to convert.
             theta = np.deg2rad(pa_in)
-            # Same convention as in_ellipse_mask / elliptical_radius:
-            # major axis along (sinθ, cosθ)
-            xp =  dx * np.sin(theta) + dy * np.cos(theta)   # along major axis
-            yp = -dx * np.cos(theta) + dy * np.sin(theta)   # along minor axis
+
+            # Astronomical PA is E of N, but in standard FITS images RA increases
+            # rightward, so East is left: flip the x-axis sign.
+            theta = np.deg2rad(pa_in)
+            xp =  dx * np.sin(theta) - dy * np.cos(theta)
+            yp = -dx * np.cos(theta) - dy * np.sin(theta)
 
             Mmaj = np.dot(wflux, xp * xp) / F_w
             Mmin = np.dot(wflux, yp * yp) / F_w
 
             A = (Mmaj + q*q * Mmin) / (1.0 + q**4)  # a^2
+            #A = (Mmaj + q*q * Mmin) / (1.0 + q**4)  # a^2
             if not np.isfinite(A) or A <= 0.0:
                 log.warning("Failed fixed-shape scale solution; falling back to zero geometry.")
                 self.a = self.a_rms = self.a_percentile = 0.0
@@ -163,14 +170,23 @@ class EllipseProperties:
 
             a_fixed = np.sqrt(A)
 
-            # RMS-based “a” is this fixed scale
-            self.a_rms = a_fixed
-
             # Percentile radius: radial distance in pixels, independent of shape
             order_r = np.argsort(r)
             cumflux = np.cumsum(flux[order_r])
             cumfrac = cumflux / cumflux[-1]
             self.a_percentile = float(np.interp(percentile, cumfrac, r[order_r]))
+
+            # Sanity check: if moment-based scale is implausibly small vs
+            # percentile radius, the input geometry is probably mismatched
+            # to the actual flux distribution — fall back to percentile.
+            if self.a_percentile > 0 and a_fixed < 0.1 * self.a_percentile:
+                log.warning(f"Fixed-shape a_rms ({a_fixed:.2f}) << a_percentile "
+                            f"({self.a_percentile:.2f}); likely geometry mismatch "
+                            f"(ba={ba_in:.3f}, pa={pa_in:.1f}). Using a_percentile.")
+                a_fixed = self.a_percentile
+
+            # RMS-based “a” is this fixed scale
+            self.a_rms = a_fixed
 
             # Choose final a
             if method == 'rms':
@@ -386,10 +402,10 @@ def get_tractor_ellipse(r50, e1, e2):
     """
     e = np.hypot(e1, e2)
     ba = (1. - e) / (1. + e)
-    #e = (ba + 1.) / (ba - 1.)
+    #e = (1 - ba) / (1 + ba)
 
     phi = -np.rad2deg(np.arctan2(e2, e1) / 2.)
-    #angle = np.deg2rad(-2 * phi)
+    #angle = 2 * np.deg2rad(pa - 180.)
     #e1 = e * np.cos(angle)
     #e2 = e * np.sin(angle)
 

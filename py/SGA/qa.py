@@ -40,7 +40,7 @@ cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIA
         'MAG_LIT', 'Z', 'PGC', 'ROW_PARENT']
 
 
-def to_skyviewer_table(cat):
+def to_skyviewer_table(cat, diamcol='DIAM'):
     """
     Convert SGA catalog to sky viewer format with spatially-cycled colors.
 
@@ -55,8 +55,13 @@ def to_skyviewer_table(cat):
     ]
 
     # Bin on arcmin scale (~36 arcsec ~ 0.01 deg)
-    ra_bin = np.floor(cat['GROUP_RA'] * 100).astype(int) % len(colors)
-    dec_bin = np.floor(cat['GROUP_DEC'] * 100).astype(int) % len(colors)
+    if 'GROUP_RA' in cat.colnames:
+        ra_bin = np.floor(cat['GROUP_RA'] * 100).astype(int) % len(colors)
+        dec_bin = np.floor(cat['GROUP_DEC'] * 100).astype(int) % len(colors)
+    else:
+        ra_bin = np.floor(cat['RA'] * 100).astype(int) % len(colors)
+        dec_bin = np.floor(cat['DEC'] * 100).astype(int) % len(colors)
+
     color_idx = (ra_bin + dec_bin) % len(colors)
     color_array = np.array([colors[i] for i in color_idx])
 
@@ -65,7 +70,7 @@ def to_skyviewer_table(cat):
     out['name'] = cat['OBJNAME']
     out['ra'] = cat['RA']
     out['dec'] = cat['DEC']
-    out['radius'] = (cat['DIAM'] * 60.0 / 2.0).astype(np.float32)
+    out['radius'] = (cat[diamcol] * 60.0 / 2.0).astype(np.float32)
     out['abRatio'] = cat['BA']
     out['posAngle'] = cat['PA']
     out['color'] = color_array
@@ -591,7 +596,7 @@ def qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=False, png=N
 
     Image.MAX_IMAGE_PIXELS = None
     imgsz = colorimg.size
-    
+
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(5*3, 5), sharey=True)
 
     # original maskbits

@@ -46,7 +46,7 @@ def mpi_args():
     parser.add_argument('--nsigma', default=None, type=int, help='detection sigma')
     parser.add_argument('--nmonte', default=100, type=int, help='Number of Monte Carlo draws (ellipsefit_multiband)')
     parser.add_argument('--seed', default=42, type=int, help='Random seed for Monte Carlo draws (ellipsefit_multiband)')
-    parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-south'], type=str, help='Region analyze')
+    parser.add_argument('--region', default='dr11-south', choices=['dr9-north', 'dr11-north', 'dr11-south'], type=str, help='Region to analyze.')
 
     parser.add_argument('--version', type=str, default=None, help='SGA version.')
     parser.add_argument('--datadir', default=None, type=str, help='Override $SGA_DATA_DIR environment variable')
@@ -55,20 +55,33 @@ def mpi_args():
     parser.add_argument('--analyze', action='store_true', help='Analyze the submissions to the queue (in tandem with --coadds).')
     parser.add_argument('--no-groups', action='store_true', help='Ignore angular group parameters; fit individual galaxies (with --coadds).')
     parser.add_argument('--test-bricks', action='store_true', help='Read the sample of test bricks.')
+    parser.add_argument('--no-iterative', action='store_true', help='Turn off iterative source detection.')
+    parser.add_argument('--use-segmentation', action='store_false', dest='no_segmentation', help='Turn on Tractor segmentation during fitblobs.')
     parser.add_argument('--noradweight', dest='use_radial_weight', action='store_false',
                         help='No radial weighting when determining moment geometry.')
     parser.add_argument('--momentpos', dest='use_tractor_position', action='store_false',
                         help='Use the light-weighted (not Tractor) position during ellipse-fitting.')
+    parser.add_argument('--fixgeo', action='store_true', help='Use fixed ellipse geometry (irrespective of if the ELLIPSEMODE bit is set.')
+    parser.add_argument('--tractorgeo', action='store_true', help='Use the Tractor geometry (irrespective of if the ELLIPSEMODE bit is set.')
+    parser.add_argument('--ignore-galaxy-sources', action='store_true', help='Used for ellipse-fitting for very large mosaics, e.g., M33.')
 
     parser.add_argument('--no-unwise', action='store_false', dest='unwise', help='Do not build unWISE coadds or do forced unWISE photometry.')
     parser.add_argument('--no-galex', action='store_false', dest='galex', help='Do not build GALEX coadds or do forced GALEX photometry.')
     parser.add_argument('--no-cleanup', action='store_false', dest='cleanup', help='Do not clean up legacypipe files after coadds.')
+    parser.add_argument('--large-bricks-first', action='store_false', dest='small_bricks_first', help='Process large mosaics first.')
 
     parser.add_argument('--diameter-file', default=None, type=str, help='Write a diameter file for use with generate_sga_jobs.sh')
     parser.add_argument('--galaxylist-file', default=None, type=str, help='Write a galaxy list file for use with generate_sga_jobs.sh')
+    parser.add_argument('--parse-tractor-logs', action='store_true', help='Parse existing Tractor logs.')
 
     #parser.add_argument('--ubercal-sky', action='store_true', help='Build the largest large-galaxy coadds with custom (ubercal) sky-subtraction.')
+    parser.add_argument('--redo-failures', action='store_true', help='Select (and re-queue) just failures.')
+    parser.add_argument('--skip-tractor', action='store_true', help='With --coadds or --ellipse, do not run Tractor.')
     parser.add_argument('--fit-on-coadds', action='store_true', help='Fit on coadds.')
+
+    parser.add_argument('--bright-masking', action='store_true', help='Mask bright sources not on the blob being fitted.')
+    parser.add_argument('--galaxy-masking', action='store_true', help='Custom segmentation for large galaxies.')
+
     parser.add_argument('--force', action='store_true', help='Use with --coadds; ignore previous pickle files.')
     parser.add_argument('--count', action='store_true', help='Count how many objects are left to analyze and then return.')
     parser.add_argument('--debug', action='store_true', help='Log to STDOUT and build debugging plots.')
@@ -86,6 +99,7 @@ def mpi_args():
 
     parser.add_argument('--build-refcat', action='store_true', help='Build the legacypipe reference catalog.')
     parser.add_argument('--build-catalog', action='store_true', help='Build the final catalog.')
+    parser.add_argument('--count-masked-pixels', action='store_true', help='Count masked pixels.')
     args = parser.parse_args()
 
     return args
@@ -129,7 +143,7 @@ def weighted_partition(weights, n):
 
 
 def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
-                    small_bricks_first=True):#False):
+                    small_bricks_first=True):
     """
     Partition tasks into `size` buckets with ~equal total weight, then
     sort each bucket so smaller bricks are processed first.
@@ -226,3 +240,151 @@ def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
               f"max load={loads.max():.6g}, rel_imbalance={imbalance:.2%}")
 
     return todo_indices, loads
+
+
+def parse_tractor_log(logfile):
+    """
+    Extract key metrics from a Tractor log file.
+
+    If some fields are missing from the main log (e.g., due to checkpoint recovery),
+    falls back to reading the first rotated log (-coadds_log.0).
+
+    Parameters
+    ----------
+    logfile : str or Path
+        Path to log file (or base path without log file)
+
+    Returns
+    -------
+    dict
+        Parsed metrics: group_name, width, nccd, nblob, nsources, runtime, nattempts, ncheckpoint
+
+    """
+    import re
+    import sys
+    from pathlib import Path
+    import glob
+
+
+    def count_attempts(logfile):
+        """
+        Count number of fitting attempts by finding rotated log files.
+
+        Pattern: base-coadds.log with rotations as base-coadds_log.0, base-coadds_log.1, etc.
+        The .0 file is the first/original attempt.
+
+        Returns
+        -------
+        int
+            Number of attempts (1 if only base log exists, 2+ if rotated logs exist)
+
+        """
+        logfile = Path(logfile)
+        logstr = str(logfile)
+
+        # Handle rotation pattern: -coadds.log → -coadds_log.*
+        if logstr.endswith('-coadds.log'):
+            base_pattern = logstr.replace('-coadds.log', '-coadds.log.*')
+        elif logstr.endswith('-coadds_log'):
+            base_pattern = logstr + '.*'
+        else:
+            base_pattern = logstr + '.*'
+
+        # Find all rotated versions
+        rotated = glob.glob(base_pattern)
+
+        # Total attempts = main log + rotated logs
+        return 1 + len(rotated)
+
+
+    logfile = Path(logfile)
+
+    result = {
+        'group_name': None,
+        'width': None,
+        'nccd': None,
+        'nblob': None,
+        'nsources': None,
+        'runtime': None,
+        'nattempts': None,
+        'ncheckpoint': None
+    }
+
+    # Handle case where logfile doesn't exist
+    if not logfile.exists():
+        match = re.search(r'/(\d+[pm]\d+)/', str(logfile))
+        if match:
+            result['group_name'] = match.group(1)
+        result['width'] = 0
+        result['nccd'] = 0
+        result['nblob'] = 0
+        result['nsources'] = 0
+        result['runtime'] = 0.0
+        result['nattempts'] = 0
+        result['ncheckpoint'] = 0
+        return result
+
+    # Count attempts
+    result['nattempts'] = count_attempts(logfile)
+
+    # Parse main log
+    with open(logfile) as f:
+        for line in f:
+            if 'outdir=' in line and result['group_name'] is None:
+                m = re.search(r'--outdir=.+?/(\d+[pm]\d+)', line)
+                if m:
+                    result['group_name'] = m.group(1)
+
+            if '--width=' in line and result['width'] is None:
+                m = re.search(r'--width=(\d+)', line)
+                if m:
+                    result['width'] = int(m.group(1))
+
+            if 'Keeping' in line and 'CCDs' in line:
+                m = re.search(r'Keeping (\d+) CCDs', line)
+                if m:
+                    result['nccd'] = int(m.group(1))
+
+            if 'Keeping' in line and 'checkpointed results' in line:
+                m = re.search(r'Keeping (\d+) of \d+ checkpointed results', line)
+                if m:
+                    result['ncheckpoint'] = int(m.group(1))
+
+            if 'Sources detected:' in line:
+                m = re.search(r'Sources detected: (\d+) in (\d+) blobs', line)
+                if m:
+                    result['nsources'] = int(m.group(1))
+                    result['nblob'] = int(m.group(2))
+
+            if line.startswith('Total runtime:'):
+                m = re.search(r'Total runtime: ([\d.]+)', line)
+                if m:
+                    runtime_sec = float(m.group(1))
+                    result['runtime'] = runtime_sec / 60.0
+
+    # If checkpoint recovery, some fields may be missing - check rotated logs
+    if result['ncheckpoint'] is not None and result['ncheckpoint'] > 0:
+        # Try all rotated logs in order: _log.0, _log.1, _log.2, etc.
+        for i in range(10):  # Check up to 10 rotations
+            fallback_log = Path(str(logfile).replace('-coadds.log', f'-coadds_log.{i}'))
+            if not fallback_log.exists():
+                break
+
+            with open(fallback_log) as f:
+                for line in f:
+                    if result['nccd'] is None and 'Keeping' in line and 'CCDs' in line:
+                        m = re.search(r'Keeping (\d+) CCDs', line)
+                        if m:
+                            result['nccd'] = int(m.group(1))
+
+                    if result['nsources'] is None and 'Sources detected:' in line:
+                        m = re.search(r'Sources detected: (\d+) in (\d+) blobs', line)
+                        if m:
+                            result['nsources'] = int(m.group(1))
+                            result['nblob'] = int(m.group(2))
+
+            # Stop if we found everything
+            if result['nccd'] is not None and result['nsources'] is not None:
+                break
+
+    return result

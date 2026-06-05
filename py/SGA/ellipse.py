@@ -12,6 +12,7 @@ from time import time
 import numpy as np
 import astropy.modeling
 
+from SGA.util import get_dt
 from SGA.logger import log
 
 
@@ -54,6 +55,7 @@ ELLIPSEBIT = dict(
     LESSMASKING = 2**12,       # Gaia stars were subtracted but not threshold-masked
     MOREMASKING = 2**13,       # extended sources were threshold-masked even within the SGA ellipse
     FAILGEO = 2**14,           # failed to derive the ellipse geometry (reverted to initial geometry)
+    SKIPTRACTOR = 2**15,       # skip Tractor fitting entirely
 )
 
 REF_SBTHRESH = [22., 23., 24., 25., 26.]     # surface brightness thresholds
@@ -751,7 +753,6 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
     from photutils.isophote import EllipseGeometry, IsophoteList
     from photutils.aperture import EllipticalAperture
     from photutils.morphology import gini
-    from SGA.util import get_dt
     from SGA.sky import map_bxby
 
 
@@ -1348,9 +1349,11 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
 
     results_obj = []
     sbprofiles_obj = []
+
     for iobj, obj in enumerate(sample):
         refid = obj[REFIDCOLUMN]
 
+        t0 = time()
         log.info(f'Ellipse-fitting galaxy {iobj+1}/{nsample}.')
 
         results_dataset = []
@@ -1405,6 +1408,10 @@ def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
         results_obj.append(results_dataset)
         sbprofiles_obj.append(sbprofiles_dataset)
 
+        dt, unit = get_dt(t0)
+        log.info(f'Time for galaxy {iobj+1}/{nsample}: {dt:.3f} {unit}')
+
+
     # unpack the SB profiles and results tables
     results = list(zip(*results_obj))       # [ndatasets][nobj]
     sbprofiles = list(zip(*sbprofiles_obj)) # [ndatasets][nobj]
@@ -1416,10 +1423,11 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          unpack_maskbits_function, SGAMASKBITS, region='dr11-south',
                          run='south', mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262,
                          galex_pixscale=1.5, unwise_pixscale=2.75, mask_nearby=None,
-                         galex=True, unwise=True, use_tractor_position=True,
-                         use_radial_weight=True, sbthresh=REF_SBTHRESH, apertures=REF_APERTURES,
-                         update_geometry=False, nmonte=50, seed=42, verbose=False,
-                         skip_ellipse=False, nowrite=False, clobber=False, qaplot=False,
+                         galex=True, unwise=True, use_tractor_position=True, fixgeo=False,
+                         tractorgeo=False, use_radial_weight=True, sbthresh=REF_SBTHRESH,
+                         apertures=REF_APERTURES, update_geometry=False, nmonte=50, seed=42,
+                         verbose=False, skip_tractor=False, skip_ellipse=False, nowrite=False,
+                         ignore_galaxy_sources=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
     """Top-level wrapper script to do ellipse-fitting on all galaxies
     in a given group or coadd.
@@ -1453,7 +1461,7 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise, galex=galex,
-        verbose=verbose, skip_ellipse=skip_ellipse)
+        verbose=verbose, skip_ellipse=skip_ellipse, skip_tractor=skip_tractor)
     if err == 0:
         log.warning(f'Problem reading (or missing) data for {galaxydir}/{galaxy}')
         return err
@@ -1495,12 +1503,17 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             # mask aggressively to determine the geometry; use FMAJOR_geo
             # plus mask_minor_galaxies=True (outside the ellipse)
+            t0 = time()
             data, sample = build_multiband_mask(
                 data, tractor, sample, samplesrcs, qaplot=False, cleanup=False,
                 use_tractor_position=use_tractor_position,
-                use_radial_weight=use_radial_weight,
-                mask_nearby=mask_nearby, niter_geometry=2, FMAJOR_geo=FMAJOR_geo,
-                mask_minor_galaxies=True, htmlgalaxydir=htmlgalaxydir)
+                use_radial_weight=use_radial_weight, fixgeo=fixgeo,
+                tractorgeo=tractorgeo, mask_nearby=mask_nearby, niter_geometry=2,
+                FMAJOR_geo=FMAJOR_geo, mask_minor_galaxies=True,
+                ignore_galaxy_sources=ignore_galaxy_sources,
+                htmlgalaxydir=htmlgalaxydir, mp=mp)
+            dt, unit = get_dt(t0)
+            log.info(f'Building the initial multiband mask took {dt:.3f} {unit}')
 
         except:
             err = 0
@@ -1517,11 +1530,24 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
         if err == 1 and not bool(data):
             return err
 
-        # First fit just the optical and then update the mask.
-        results, sbprofiles = wrap_multifit(
-            data, sample, ['opt'], unpack_maskbits_function,
-            sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
-            nmonte=0, seed=seed, debug=False)
+        # First fit just the optical and then update the mask unless
+        # skip_initial_fit is set.
+        skip_initial_fit = (fixgeo or tractorgeo or
+                            ignore_galaxy_sources or
+                            all(obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0
+                                for obj in sample)
+                            )
+
+        if skip_initial_fit:
+            log.info(f'Skipping initial ellipse-fitting.')
+        else:
+            t0 = time()
+            results, sbprofiles = wrap_multifit(
+                data, sample, ['opt'], unpack_maskbits_function,
+                sbthresh, apertures, [SGAMASKBITS[0]], mp=mp,
+                nmonte=0, seed=seed, debug=False)
+            dt, unit = get_dt(t0)
+            log.info(f'Initial ellipse-fitting took {dt:.3f} {unit}')
 
         if update_geometry:
             input_geo_initial = None
@@ -1536,13 +1562,16 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                 obj['BX'], obj['BY'], obj['SMA_MOMENT'], obj['BA_MOMENT'], obj['PA_MOMENT']]
 
             # if FIXGEO or TRACTORGEO use the input geometry
-            if obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0:
+            if (obj['ELLIPSEMODE'] & (ELLIPSEMODE['FIXGEO'] | ELLIPSEMODE['TRACTORGEO']) != 0) or \
+               fixgeo or tractorgeo or skip_initial_fit:
                 if not update_geometry:
                     input_geo_initial[iobj, :] = [bx, by, sma_mom/pixscale, ba_mom, pa_mom]
+                    log.info(f'Galaxy {iobj+1}/{len(sample)} [{sample["OBJNAME"][iobj]}]: fixed geometry ' + \
+                             f'R(26)={obj["SMA_MOMENT"]:.2f} arcsec.')
                 continue
 
             # estimate R(26) from first-pass profiles
-            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE'])
+            tab = Table(obj['SMA_MOMENT', 'ELLIPSEMODE', 'ELLIPSEBIT', 'SAMPLE'])
             for thresh in sbthresh:
                 for filt in bands:
                     col = f'R{thresh:.0f}_{filt.upper()}'
@@ -1557,7 +1586,8 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
             sma_moment_arcsec = obj['SMA_MOMENT']
             sma_mask_arcsec = obj['SMA_MASK']
 
-            log.info(f'Initial estimate R(26)={r26_arcsec:.2f} arcsec [previous ' + \
+            log.info(f'Galaxy {iobj+1}/{len(sample)} [{sample["OBJNAME"][iobj]}]: Initial estimate ' + \
+                     f'R(26)={r26_arcsec:.2f} arcsec [previous ' + \
                      f'sma_mask={sma_mask_arcsec:.2f} arcsec].')
             if sma_mask_arcsec <= 0.:
                 sma_mask_arcsec = r26_arcsec
@@ -1566,10 +1596,12 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
 
             sample['SMA_MASK'][iobj] = sma_mask_arcsec
             if not update_geometry:
-                # pass explicit/fixed geometry to build_multiband_mask
+                # NB: build_multiband_mask expects sma_moment_arcsec
+                # *not* sma_mask_arcsec.
                 input_geo_initial[iobj, :] = [bx, by, sma_moment_arcsec/pixscale, ba_mom, pa_mom]
 
         # pull back on the masking for the final iteration
+        t0 = time()
         data, sample = build_multiband_mask(data, tractor, sample, samplesrcs,
                                             input_geo_initial=input_geo_initial,
                                             mask_nearby=mask_nearby, qaplot=qaplot,
@@ -1577,18 +1609,27 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                                             mask_minor_galaxies=False,
                                             use_tractor_position=use_tractor_position,
                                             use_radial_weight=use_radial_weight,
+                                            fixgeo=fixgeo, tractorgeo=tractorgeo,
                                             niter_geometry=niter_geometry,
-                                            htmlgalaxydir=htmlgalaxydir)
+                                            ignore_galaxy_sources=ignore_galaxy_sources,
+                                            htmlgalaxydir=htmlgalaxydir, mp=mp)
+        dt, unit = get_dt(t0)
+        log.info(f'Building the final multiband mask took {dt:.3f} {unit}')
 
         # ellipse-fit over objects and then datasets
+        t0 = time()
         results, sbprofiles = wrap_multifit(
             data, sample, datasets, unpack_maskbits_function,
             sbthresh, apertures, SGAMASKBITS, mp=mp,
             nmonte=nmonte, seed=seed, debug=False)#qaplot)
+        dt, unit = get_dt(t0)
+        log.info(f'Final ellipse-fitting took {dt:.3f} {unit}')
 
         # nice summary
         for iobj, (res, obj) in enumerate(zip(results[0], sample)):
+            res['SAMPLE'] = obj['SAMPLE']
             res['ELLIPSEMODE'] = obj['ELLIPSEMODE']
+            res['ELLIPSEBIT'] = obj['ELLIPSEBIT']
             res['SMA_MOMENT'] = obj['SMA_MOMENT']
             log.info(f'Final isophotal radii for galaxy {iobj+1}/{len(sample)}:')
             _ = SGA_diameter(res, region, verbose=True)

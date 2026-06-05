@@ -15,21 +15,33 @@ PIXSCALE = 0.262
 GALEX_PIXSCALE = 1.5
 UNWISE_PIXSCALE = 2.75
 
-RUNS = {'dr9-north': 'north', 'dr9-south': 'south',
-        'dr10-south': 'south',
-        'dr11-north': 'north', 'dr11-south': 'south'}
+RUNS = {
+    'dr9-north': 'north',
+    'dr9-south': 'south',
+    'dr10-south': 'south',
+    'dr11-north': 'north',
+    'dr11-south': 'south'
+}
 
 # although dr9-north is missing i-band imaging, there are many
 # advantages to adopting a consistent data model
 GRZ = ['g', 'r', 'z']
 GRIZ = ['g', 'r', 'i', 'z']
-BANDS = {'dr9-north': GRIZ, 'dr9-south': GRIZ,
-         'dr10-south': GRIZ,
-         'dr11-north': GRIZ, 'dr11-south': GRIZ}
+BANDS = {
+    'dr9-north': GRIZ,
+    'dr9-south': GRIZ,
+    'dr10-south': GRIZ,
+    'dr11-north': GRIZ,
+    'dr11-south': GRIZ
+}
 
-RELEASE = {'dr9-north': 9011, 'dr9-south': 9010,
-           'dr10-south': 10000,
-           'dr11-north': 11001, 'dr11-south': 11000}
+RELEASE = {
+    'dr9-north': 9011,
+    'dr9-south': 9010,
+    'dr10-south': 10000,
+    'dr11-north': 11001,
+    'dr11-south': 11000
+}
 
 REGIONBITS = {
     'dr11-south': 2**0,
@@ -38,8 +50,14 @@ REGIONBITS = {
 }
 
 
-def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
+def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1., patches=None):
     """Build a model image from a Tractor catalog or a list of sources.
+
+    Parameters
+    ----------
+    patches : list of Patch|None, optional
+        Pre-rendered patches row-matched to `cat`. If provided, skips
+        Tractor rendering and sums patches directly into the output image.
 
     """
     from astrometry.util.fits import tabledata
@@ -55,11 +73,18 @@ def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
     else:
         shape = wcs.shape
     model = np.zeros(shape)
+
+    if patches is not None:
+        for patch in patches:
+            if patch is not None:
+                patch.addTo(model)
+        return model
+
     invvar = np.ones(shape)
 
     if pixelized_psf is None:
         vv = psf_sigma**2.
-        psf = GaussianMixturePSFGaussianMixturePSF(1., 0., 0., vv, vv, 0.)
+        psf = GaussianMixturePSF(1., 0., 0., vv, vv, 0.)
     else:
         psf = pixelized_psf
 
@@ -68,7 +93,6 @@ def srcs2image(cat, wcs, band='r', pixelized_psf=None, psf_sigma=1.):
                 photocal=photocal, sky=ConstantSky(0.),
                 name=f'model-{band}')
 
-    # Do we have a tractor catalog or a list of sources?
     if type(cat) is tabledata:
         srcs = read_fits_catalog(cat, bands=[band.lower()])
     else:
@@ -341,9 +365,10 @@ def get_ccds(survey, ra, dec, width_pixels, pixscale=PIXSCALE, bands=BANDS):
     return ccds
 
 
-def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
-                   unwise_pixscale=UNWISE_PIXSCALE, galex_pixscale=GALEX_PIXSCALE,
-                   bands=GRIZ, galex=False, unwise=False):
+def custom_cutouts(obj, galaxy, output_dir, width, layer, survey, ccds=None,
+                   pixscale=0.262, unwise_pixscale=UNWISE_PIXSCALE,
+                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, galex=False,
+                   unwise=False, ivar_cutouts=False, cleanup=True):
     """
     SGA2025_08089m6975-ccds.fits
     SGA2025_08089m6975-image.jpg
@@ -359,12 +384,27 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
     """
     import fitsio
     import shutil
+    from time import time
+    from astrometry.util.util import Tan
+    from tractor.tractortime import TAITime
+    from legacypipe.bits import REF_MAP_BITS, maskbits_type
+    from legacypipe.reference import get_reference_sources, get_reference_map
+    from legacypipe.survey import LegacySurveyWcs
+    from SGA.util import get_dt
     from SGA.io import make_header, VEGA2AB
     from SGA.cutouts import cutout_one
 
+    tall = time()
+
+    # CCDs file
+    if ccds:
+        ccdsfile = os.path.join(output_dir, f'{galaxy}-ccds.fits')
+        ccds.writeto(ccdsfile, extname='CCDS', clobber=True)
+        log.info(f'Wrote {ccdsfile}')
+
     dry_run = False
     fits_cutouts = True
-    ivar_cutouts = False
+    ivar_cutouts = ivar_cutouts
     unwise_cutouts = unwise # False
     galex_cutouts = galex # False
 
@@ -393,6 +433,8 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
         allbands += [['FUV', 'NUV', ], ]
         allpixscale += [[GALEX_PIXSCALE]*2, ]
 
+
+    need_maskbits = True
     for fitssuffix, jpgsuffix, outjpgsuffix, allband, allpixscale in zip(
             fitssuffixes, jpgsuffixes, outjpgsuffixes, allbands, allpixscale):
         infile = os.path.join(output_dir, f'{galaxy}{jpgsuffix}.jpeg')
@@ -403,16 +445,21 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
         fitsfile = os.path.join(output_dir, f'{galaxy}{fitssuffix}.fits')
         try:
             imgs, hdr = fitsio.read(fitsfile, header=True)
+            for key in ['VERSION', 'BANDS', 'COMMENT']:
+                hdr.delete(key)
+            for iband in range(len(bands)):
+                hdr.delete(f'BAND{iband}')
+
+            if ivar_cutouts:
+                ivars, ivarhdr = fitsio.read(fitsfile, ext=1, header=True)
+                for key in ['VERSION', 'BANDS', 'COMMENT']:
+                    ivarhdr.delete(key)
+                for iband in range(len(bands)):
+                    ivarhdr.delete(f'BAND{iband}')
         except:
             msg = f'There was a problem reading {fitsfile} ({obj["OBJNAME"]})'
             log.critical(msg)
             return 0
-
-        hdr.delete('VERSION')
-        hdr.delete('BANDS')
-        hdr.delete('COMMENT')
-        for iband in range(len(bands)):
-            hdr.delete(f'BAND{iband}')
 
         for iband, band in enumerate(allband):
             outfile = os.path.join(output_dir, f'{galaxy}-image-{band}.fits')
@@ -421,6 +468,8 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
             # https://www.legacysurvey.org/dr9/description/#photometry
             if band in VEGA2AB.keys():
                 imgs[iband, :, :] *= 10.**(-0.4 * VEGA2AB[band])
+                if ivar_cutouts:
+                    ivars[iband, :, :] /= (10.**(-0.4 * VEGA2AB[band]))**2.
 
             primhdr = fitsio.FITSHDR()
             primhdr['EXTEND'] = 'T'
@@ -432,32 +481,72 @@ def custom_cutouts(obj, galaxy, output_dir, width, layer, pixscale=0.262,
                 'MAGZERO': (22.5, 'Magnitude zeropoint'),
                 'BUNIT': ('nanomaggy', 'AB mag = 22.5 - 2.5*log10(nanomaggy)'),
             }
-            outhdr = make_header(hdr, keys=hdr.keys(), extra=extra, extname=f'IMAGE_{band}')
+            outhdr = make_header(hdr, keys=hdr.keys(), extra=extra)
             fitsio.write(outfile, None, header=primhdr, clobber=True)
-            fitsio.write(outfile, imgs[iband, :, :], header=outhdr)
+            fitsio.write(outfile, imgs[iband, :, :], header=outhdr, extname=f'IMAGE_{band.upper()}')
             log.info(f'Wrote {outfile}')
 
+            if ivar_cutouts:
+                outfile = os.path.join(output_dir, f'{galaxy}-invvar-{band}.fits')
+                outhdr = make_header(ivarhdr, keys=ivarhdr.keys(), extra=extra)
+                fitsio.write(outfile, None, header=primhdr, clobber=True)
+                fitsio.write(outfile, ivars[iband, :, :], header=outhdr, extname=f'INVVAR_{band.upper()}')
+                log.info(f'Wrote {outfile}')
+
+            # maskbits image
+            if need_maskbits and band in bands:
+                wcs = LegacySurveyWcs(Tan(hdr), TAITime(None, mjd=np.mean(ccds.mjd_obs)))
+
+                refstars, _ = get_reference_sources(
+                    survey, wcs.wcs, bands=bands, tycho_stars=True,
+                    gaia_stars=True, large_galaxies=False, star_clusters=False)
+                refmap = get_reference_map(wcs.wcs, refstars)
+
+                # from runbrick.stage_image_coadds
+                MASKBITS = survey.get_maskbits()
+                maskbits = np.zeros(refmap.shape, dtype=maskbits_type)
+                for key in ['BRIGHT', 'MEDIUM', 'GALAXY', 'CLUSTER', 'RESOLVED', 'MCLOUDS']:
+                    maskbits |= MASKBITS[key] * ((refmap & REF_MAP_BITS[key]) > 0)
+
+                maskbitsfile = os.path.join(output_dir, f'{galaxy}-maskbits.fits')
+
+                outhdr = make_header(hdr, keys=hdr.keys(),
+                                     extra={'PIXSCALE': (allpixscale[iband], 'pixel scale (arcsec/pixel)')})
+                for key in ['SURVEY']:
+                    outhdr.delete(key)
+                fitsio.write(maskbitsfile, None, header=primhdr, clobber=True)
+                fitsio.write(maskbitsfile, maskbits, header=outhdr, extname='MASKBITS')
+                log.info(f'Wrote {maskbitsfile}')
+
+                need_maskbits = False
+
     # cleanup...
-    cleanfiles = [f'{basefile}.fits', f'{basefile}.jpeg']
-    if unwise:
-        cleanfiles += [f'{basefile}-unwise.fits', f'{basefile}-W1W2.jpeg']
-    if galex:
-        cleanfiles += [f'{basefile}-galex.fits', f'{basefile}-galex.jpeg']
-    for cleanfile in cleanfiles:
-        os.remove(cleanfile)
+    if cleanup:
+        cleanfiles = [f'{basefile}.fits', f'{basefile}.jpeg']
+        if unwise:
+            cleanfiles += [f'{basefile}-unwise.fits', f'{basefile}-W1W2.jpeg']
+        if galex:
+            cleanfiles += [f'{basefile}-galex.fits', f'{basefile}-galex.jpeg']
+        for cleanfile in cleanfiles:
+            os.remove(cleanfile)
+
+    dt, unit = get_dt(tall)
+    log.info(f'Total time for custom cutouts: {dt:.3f} {unit}')
 
     return 1
 
 
 def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
-                  release=1000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
+                  release=11000, pixscale=PIXSCALE, unwise_pixscale=UNWISE_PIXSCALE,
                   galex_pixscale=GALEX_PIXSCALE, bands=GRIZ, mp=1, layer='ls-dr11',
-                  nsigma=None, nsatur=2, rgb_stretch=1.5, racolumn='GROUP_RA',
-                  deccolumn='GROUP_DEC', force_psf_detection=False, fit_on_coadds=False,
-                  just_cutouts=False, use_gpu=False, ngpu=1, threads_per_gpu=8,
-                  subsky_radii=None, just_coadds=False, missing_ok=False, force=False,
-                  cleanup=True, unwise=True, galex=False, no_gaia=False, no_tycho=False,
-                  verbose=False):
+                  nsigma=None, saddle_fraction=None, saddle_min=None, nsatur=2,
+                  rgb_stretch=1.5, no_iterative=False, no_segmentation=False,
+                  racolumn='GROUP_RA', deccolumn='GROUP_DEC', force_psf_detection=False,
+                  fit_on_coadds=False, bright_masking=False, galaxy_masking=False,
+                  just_cutouts=False, ivar_cutouts=False, use_gpu=False, ngpu=1,
+                  threads_per_gpu=8, subsky_radii=None, just_coadds=False,
+                  missing_ok=False, force=False, cleanup=True, unwise=True, galex=False,
+                  no_gaia=False, no_tycho=False, verbose=False):
     """Build a custom set of large-galaxy coadds.
 
     """
@@ -485,9 +574,10 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
     # just cutouts -- no pipeline
     if just_cutouts:
         err = custom_cutouts(onegal, galaxy, survey.output_dir, width, layer,
-                             pixscale=pixscale, bands=bands, galex=galex,
-                             unwise=unwise, unwise_pixscale=unwise_pixscale,
-                             galex_pixscale=galex_pixscale)
+                             survey, ccds=ccds, pixscale=pixscale, bands=bands,
+                             galex=galex, unwise=unwise, unwise_pixscale=unwise_pixscale,
+                             galex_pixscale=galex_pixscale, ivar_cutouts=ivar_cutouts,
+                             cleanup=cleanup)
         return err, stagesuffix
 
 
@@ -503,9 +593,12 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
 
     if rgb_stretch:
         cmdargs += f'--rgb-stretch={rgb_stretch:.2f} '
-
     if nsigma:
         cmdargs += f'--nsigma={nsigma:.0f} '
+    if saddle_fraction:
+        cmdargs += f'--saddle-fraction={saddle_fraction:.2f} '
+    if saddle_min:
+        cmdargs += f'--saddle-min={saddle_min:.1f} '
 
     #cmdargs += '--write-stage=tims --write-stage=srcs '
     cmdargs += '--write-stage=srcs '
@@ -552,14 +645,24 @@ def custom_coadds(onegal, galaxy, survey, run, radius_mosaic_arcsec,
         cmdargs += '--no-galaxy-forcepsf '
     if fit_on_coadds:
         cmdargs += '--fit-on-coadds --no-ivar-reweighting '
+    if no_iterative:
+        cmdargs += '--no-iterative '
+    if no_segmentation:
+        cmdargs += '--no-segmentation '
+    if bright_masking:
+        cmdargs += '--bright-masking '
+    if galaxy_masking:
+        cmdargs += '--galaxy-masking '
 
     # GPU stuff
     if use_gpu:
-        cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu={ngpu} --gpumode=2 '
+        #cmdargs += f'--use-gpu --threads-per-gpu={threads_per_gpu} --ngpu={ngpu} --gpumode=2 '#--verbose '
+        cmdargs += f'--threads-per-gpu={threads_per_gpu} --ngpu={ngpu} '#--verbose '
 
     try:
         log.info(f'runbrick {cmdargs}')
         err = runbrick(args=cmdargs.split())
+        #err = 0
     except:
         log.critical(f'Exception raised on {survey.output_dir}/{galaxy}')
         import traceback

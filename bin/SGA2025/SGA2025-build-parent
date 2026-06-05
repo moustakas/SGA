@@ -19,27 +19,27 @@ salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacys
 srun --ntasks=64 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
   SGA2025-build-parent --in-footprint --region=dr11-south
 
-
-cp ~/SGA2025/sample/SGA2025-beta-parent-refcat-v0.50.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
+cp ~/SGA2025/sample/SGA2025-beta-parent-refcat-v1.6.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
+cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-north.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
+cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-south.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
 chgrp cosmo /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
 chmod g-w /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
 
 pushd /global/cfs/cdirs/cosmo/webapp/viewer-dev/data/sga2025
 
-cp ~/SGA2025/sample/SGA2025-beta-parent-v0.50.kd.fits .
+cp ~/SGA2025/sample/SGA2025-beta-parent-v1.6.kd.fits .
 rm SGA2025-parent-latest.kd.fits
-ln -s SGA2025-beta-parent-v0.50.kd.fits SGA2025-parent-latest.kd.fits
+ln -s SGA2025-beta-parent-v1.6.kd.fits SGA2025-parent-latest.kd.fits
 
-cp ~/SGA2025/sample/SGA2025-ellipse-v0.50-dr9-north.kd.fits .
+cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-north.kd.fits .
 rm SGA2025-ellipse-north-latest.kd.fits
-ln -s SGA2025-ellipse-v0.50-dr9-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
+ln -s SGA2025-ellipse-v1.6-dr11-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
 
-cp ~/SGA2025/sample/SGA2025-ellipse-v0.50-dr11-south.kd.fits .
+cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-south.kd.fits .
 rm SGA2025-ellipse-south-latest.kd.fits
-ln -s SGA2025-ellipse-v0.50-dr11-south.kd.fits SGA2025-ellipse-south-latest.kd.fits
+ln -s SGA2025-ellipse-v1.6-dr11-south.kd.fits SGA2025-ellipse-south-latest.kd.fits
 
-chgrp cosmo *.fits
-chmod g-w *.fits
+chgrp cosmo *.fits ; chmod g-w *.fits
 
 
 """
@@ -54,7 +54,7 @@ def main():
     parser.add_argument('--ntest', type=int, default=None, help='Number of ' + \
                         'test objects to read (only with --in-footprint.')
     parser.add_argument('--region', default='dr9-north', type=str,
-                        choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south'],
+                        choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-north', 'dr11-south'],
                         help='Region to pass to --in-footprint.')
 
     parser.add_argument('--nocuts', action='store_true',
@@ -71,6 +71,7 @@ def main():
     parser.add_argument('--in-footprint', action='store_true',
                         help='Match the various external catalogs ' + \
                         'to the CCDs files.')
+    parser.add_argument('--sga2020', action='store_true', help='Match to the SGA2020')
 
     parser.add_argument('--qa-footprint', action='store_true',
                         help='Build QA of the in-footprint samples.')
@@ -101,7 +102,7 @@ def main():
         from mpi4py.util import pkl5
 
         comm = pkl5.Intracomm(MPI.COMM_WORLD)
-        in_footprint(region=args.region, comm=comm, ntest=args.ntest)
+        in_footprint(region=args.region, comm=comm, ntest=args.ntest, sga2020=args.sga2020)
 
     if args.parent:
         from SGA.parent import build_parent

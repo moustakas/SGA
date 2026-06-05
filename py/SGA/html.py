@@ -19,6 +19,13 @@ from SGA.ellipse import FITMODE, ELLIPSEMODE, REF_APERTURES
 
 from SGA.logger import log
 
+import warnings
+from astropy.utils.exceptions import AstropyDeprecationWarning
+
+# At the top of ellipse_cog function, add:
+warnings.filterwarnings('ignore', category=AstropyDeprecationWarning,
+                       message=".*Passing 'theta' positionally.*")
+
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                       barlabel=None, clobber=False):
@@ -33,7 +40,7 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
         os.makedirs(htmlgalaxydir, exist_ok=True)
 
     #qafile = os.path.join('ioannis/tmp2/junk.png')
-    qafile = os.path.join(htmlgalaxydir, f'qa-{data["galaxy"]}-montage.png')
+    qafile = os.path.join(htmlgalaxydir, f'{data["galaxy"]}-montage.png')
     if os.path.isfile(qafile) and not clobber:
         log.info(f'File {qafile} exists and clobber=False')
         return
@@ -59,8 +66,9 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                 [data['opt_pixscale'], data['unwise_pixscale'], data['galex_pixscale']],
                 [data['opt_refband'], data['unwise_refband'], data['galex_refband']])):
 
-
-            xx.imshow(wimg)
+            # can be None for --skip-tractor
+            if wimg is not None:
+                xx.imshow(wimg)
 
             # add the scale bar
             if ii == 0 and iax == 0:
@@ -112,7 +120,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     if not os.path.isdir(htmlgalaxydir):
         os.makedirs(htmlgalaxydir, exist_ok=True)
 
-    qafile = os.path.join(htmlgalaxydir, f'qa-{data["galaxy"]}-ellipsemask.png')
+    qafile = os.path.join(htmlgalaxydir, f'{data["galaxy"]}-ellipsemask.png')
     if os.path.isfile(qafile) and not clobber:
         log.info(f'File {qafile} exists and clobber=False')
         return
@@ -153,7 +161,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     #cmap.set_bad((1, 1, 1, 1)) # solid white
 
     cmap1 = get_cmap('tab20') # or tab20b or tab20c
-    colors1 = [cmap1(i) for i in range(20)]
+    colors1 = [cmap1(i) for i in range(50)]
 
     cmap2 = get_cmap('Dark2')
     colors2 = [cmap2(i) for i in range(5)]
@@ -371,7 +379,7 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
     for iobj, obj in enumerate(ellipse):
 
         sganame = obj['SGANAME'].replace(' ', '_')
-        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-sed.png')
+        qafile = os.path.join(htmlgalaxydir, f'{sganame}-sed.png')
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
@@ -525,7 +533,7 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
     for iobj, obj in enumerate(ellipse):
 
         sganame = obj['SGANAME'].replace(' ', '_')
-        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-cog.png')
+        qafile = os.path.join(htmlgalaxydir, f'{sganame}-cog.png')
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
@@ -686,7 +694,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     for iobj, obj in enumerate(ellipse):
 
         sganame = obj['SGANAME'].replace(' ', '_')
-        qafile = os.path.join(htmlgalaxydir, f'qa-{sganame}-sbprofiles.png')
+        qafile = os.path.join(htmlgalaxydir, f'{sganame}-sbprofiles.png')
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
@@ -908,8 +916,8 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                unpack_maskbits_function, SGAMASKBITS, APERTURES, region='dr11-south',
                run='south', mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262,
                galex_pixscale=1.5, unwise_pixscale=2.75, skip_ellipse=False,
-               galex=True, unwise=True, barlen=None, barlabel=None, verbose=False,
-               clobber=False):
+               skip_tractor=False, galex=True, unwise=True, barlen=None, barlabel=None,
+               verbose=False, clobber=False):
     """Make QA plots.
 
     """
@@ -931,7 +939,8 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         galaxy, galaxydir, REFIDCOLUMN, bands=bands, run=run,
         pixscale=pixscale, galex_pixscale=galex_pixscale,
         unwise_pixscale=unwise_pixscale, unwise=unwise,
-        galex=galex, skip_ellipse=skip_ellipse, read_jpg=True)
+        galex=galex, skip_ellipse=skip_ellipse, skip_tractor=skip_tractor,
+        read_jpg=True)
 
     multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
                       barlabel=barlabel, clobber=clobber)
@@ -1065,10 +1074,10 @@ def get_raslice(ra):
 def get_galaxy_names(group_dir):
     """Extract unique galaxy names from filenames in the directory."""
     galaxy_names = []
-    for onefile in glob(os.path.join(group_dir, "qa-SGA2025_J*")):
+    for onefile in glob(os.path.join(group_dir, "SGA2025_J*")):
         stem = os.path.basename(onefile)
-        if stem.startswith("qa-SGA2025_"):
-            remainder = stem.replace("qa-SGA2025_", "", 1)
+        if stem.startswith("SGA2025_"):
+            remainder = stem.replace("SGA2025_", "", 1)
             parts = remainder.rsplit("-", 1)
             if len(parts) >= 2:
                 galaxy_name = parts[0]
@@ -1113,11 +1122,33 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     group_dec = group_data['GROUP_DEC'][0]
     group_diam = group_data['GROUP_DIAMETER'][0]
     group_mult = group_data['GROUP_MULT'][0]
+
+    if 'DIAM_INIT' in fullgroup_data.colnames:
+        diamcol = 'DIAM_INIT'
+    else:
+        diamcol = 'DIAM'
+    if 'DIAM_INIT_REF' in fullgroup_data.colnames:
+        diamrefcol = 'DIAM_INIT_REF'
+    else:
+        diamrefcol = 'DIAM_REF'
+    if 'MAG_INIT' in fullgroup_data.colnames:
+        magcol = 'MAG_INIT'
+    else:
+        magcol = 'MAG'
+    if 'BA_INIT' in fullgroup_data.colnames:
+        bacol = 'BA_INIT'
+    else:
+        bacol = 'BA'
+    if 'PA_INIT' in fullgroup_data.colnames:
+        pacol = 'PA_INIT'
+    else:
+        pacol = 'PA'
+
     raslice = group_name[:3]
     sky_url = get_sky_viewer_url(group_ra, group_dec, group_diam, region)
     group_files = [
-        "qa-SGA2025_{}-montage.png".format(group_name),
-        "qa-SGA2025_{}-ellipsemask.png".format(group_name),
+        "SGA2025_{}-montage.png".format(group_name),
+        "SGA2025_{}-ellipsemask.png".format(group_name),
     ]
     per_galaxy_types = ["sbprofiles", "cog", "sed"]
     per_galaxy_titles = ["Surface Brightness", "Curve of Growth", "Spectral Energy Distribution"]
@@ -1144,7 +1175,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        .section { margin: 30px 0; }",
         "        .group-images img { display: block; max-width: 100%; margin: 10px 0; }",
         "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; justify-content: space-between; }",
-        "        .galaxy-row a { display: block; flex: 0 0 32%; }",
+        "        .galaxy-row a { display: block; flex: 0 0 32%; min-height: 200px; }",
         "        .galaxy-row img { width: 100%; height: auto; display: block; }",
         "        .galaxy-row div { flex: 1; max-width: 32%; }",
         "        img { border: 1px solid #ddd; }",
@@ -1189,10 +1220,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             html_lines.append("            <td>{}</td>".format(row['SGAID']))
             html_lines.append("            <td>{:.6f}</td>".format(row['RA']))
             html_lines.append("            <td>{:.6f}</td>".format(row['DEC']))
-            html_lines.append("            <td>{:.2f}</td>".format(row['DIAM']))
-            html_lines.append("            <td>{:.2f}</td>".format(row['MAG']))
-            html_lines.append("            <td>{:.3f}</td>".format(row['BA']))
-            html_lines.append("            <td>{:.1f}</td>".format(row['PA']))
+            html_lines.append("            <td>{:.2f}</td>".format(row[diamcol]))
+            html_lines.append("            <td>{:.2f}</td>".format(row[magcol]))
+            html_lines.append("            <td>{:.3f}</td>".format(row[bacol]))
+            html_lines.append("            <td>{:.1f}</td>".format(row[pacol]))
             html_lines.append("            <td>{}</td>".format('Yes' if row['GROUP_PRIMARY'] else 'No'))
             html_lines.append("        </tr>")
         html_lines.append("    </table>")
@@ -1213,7 +1244,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             html_lines.append("            <td>{}</td>".format(ellipse_flags))
             html_lines.append("            <td>{}</td>".format(fit_flags))
             html_lines.append("            <td>{:.3f}</td>".format(row['EBV']))
-            html_lines.append("            <td>{}</td>".format(row['DIAM_REF']))
+            html_lines.append("            <td>{}</td>".format(row[diamrefcol]))
             html_lines.append("        </tr>")
         html_lines.append("    </table>")
     html_lines.extend([
@@ -1250,7 +1281,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     for galaxy_name in galaxy_names:
         html_lines.append("        <div class='galaxy-row'>")
         for img_type in per_galaxy_types:
-            filename = "qa-SGA2025_{}-{}.png".format(galaxy_name, img_type)
+            filename = "SGA2025_{}-{}.png".format(galaxy_name, img_type)
             filepath = group_dir / filename
             if not filepath.exists():
                 raise FileNotFoundError("Missing required file: {}".format(filepath))
@@ -1358,7 +1389,7 @@ def generate_index(htmldir, region, sample):
             info = group_info[group_name]
             group_dir = find_group_directory(htmldir, region, group_name)
             html_path = "{}/{}/{}/{}.html".format(region, raslice, group_name, group_name)
-            montage_file = "qa-SGA2025_{}-montage.png".format(group_name)
+            montage_file = "SGA2025_{}-montage.png".format(group_name)
             montage_path = group_dir / montage_file
             sky_url = get_sky_viewer_url(info['ra'], info['dec'], info['diam'], region)
             html_lines.append("        <tr>")
@@ -1454,7 +1485,8 @@ def generate_index(htmldir, region, sample):
         f.write('\n'.join(html_lines))
     log.info("Generated index: {}".format(index_file))
 
-def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False, maketrends=False):
+
+def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False):
     """
     Generate HTML QA pages for SGA galaxy groups.
 
@@ -1472,8 +1504,7 @@ def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobb
         Number of processes for multiprocessing (default: 1)
     clobber : bool
         Overwrite existing HTML files (default: False)
-    maketrends : bool
-        Generate trend plots (not yet implemented)
+
     """
     if htmldir is None:
         htmldir_env = os.environ.get("SGA_HTML_DIR")
