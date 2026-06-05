@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SGA"
+version = "2025.0.0"
+description = "Siena Galaxy Atlas"
+readme = "README.rst"
+license = {file = "LICENSE"}
+authors = [
+    {name = "John Moustakas", email = "jmoustakas@siena.edu"},
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "astropy",
+    "fitsio",
+    "matplotlib",
+    "scipy",
+    "photutils",
+    "pydl",
+]
+
+[project.optional-dependencies]
+mpi = ["mpi4py"]
+
+[project.urls]
+Homepage = "https://github.com/moustakas/SGA"
+
+# ---------------------------------------------------------------------------
+# Package discovery
+# ---------------------------------------------------------------------------
+[tool.setuptools.packages.find]
+where = ["py"]
+
+# ---------------------------------------------------------------------------
+# Scripts
+# Only SGA2025 Python scripts are installed; legacy SGA2020 scripts and shell
+# env/shifter helpers are excluded. The long-term path is to convert these to
+# [project.scripts] entry points (module:function), but that requires
+# refactoring the standalone scripts first.
+# ---------------------------------------------------------------------------
+[tool.setuptools]
+script-files = [
+    # Core SGA-2025 pipeline scripts
+    "bin/SGA2025/SGA2025-build-parent",
+    "bin/SGA2025/SGA2025-build-catalogs",
+    "bin/SGA2025/SGA2025-mpi",
+    "bin/SGA2025/SGA2025-cutouts",
+    "bin/SGA2025/SGA2025-tractor-qa",
+    "bin/SGA2025/SGA2025-calibrate-r26",
+    "bin/SGA2025/SGA2025-parse-vi",
+    "bin/SGA2025/SGA2025-query-ned",
+    # Utility scripts
+    "bin/SGA2025/analyze-lvd",
+    "bin/SGA2025/bricks-in-sga",
+    "bin/SGA2025/build-gaia-mask",
+    "bin/SGA2025/finding-charts",
+    "bin/SGA2025/majoraxis-sims",
+    "bin/SGA2025/missing-sga2020",
+    "bin/SGA2025/parse-dr910",
+    "bin/SGA2025/parse-smudges",
+    "bin/SGA2025/parse-tractor-logs",
+]
