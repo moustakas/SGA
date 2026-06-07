@@ -21,6 +21,11 @@ else
     exit 1
 fi
 
+if ! command -v conda &>/dev/null; then
+    echo "Error: conda not found; required for --clone. Load conda first: module load conda"
+    exit 1
+fi
+
 RUN="$MAMBA run -p $SGAML_PREFIX"
 
 echo "Using: $MAMBA"
@@ -30,12 +35,13 @@ echo ""
 
 # ---------------------------------------------------------------------------
 # Step 1: clone the existing SGA environment.
-# mamba --clone copies all packages with binary prefix relocation, so
+# conda create --clone copies all packages with binary prefix relocation, so
 # compiled packages (astrometry.net, tractor, legacypipe, SGA) are preserved
-# without a source rebuild.
+# without a source rebuild. micromamba does not support --clone, so we use
+# conda directly here regardless of which mamba variant is active.
 # ---------------------------------------------------------------------------
 echo "==> Cloning SGA environment..."
-$MAMBA create --clone "$SGA_PREFIX" --prefix "$SGAML_PREFIX" --yes
+conda create --clone "$SGA_PREFIX" --prefix "$SGAML_PREFIX" --yes
 
 # ---------------------------------------------------------------------------
 # Step 2: install PyTorch (CUDA) and ML dependencies.
