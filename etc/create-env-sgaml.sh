@@ -53,7 +53,10 @@ echo "    python : $PYVER"
 mkdir -p "$SGAML_PREFIX/lib/python${PYVER}/site-packages"
 export PYTHONPATH=$SGAML_PREFIX/lib/python${PYVER}/site-packages${PYTHONPATH:+:$PYTHONPATH}
 
+# --ignore-installed prevents pip from attempting to uninstall packages in the
+# read-only pytorch module location when a dependency requires a different version.
 PIP="python -m pip"
+PIP_INSTALL="$PIP install --prefix $SGAML_PREFIX --ignore-installed"
 
 # ---------------------------------------------------------------------------
 # Step 2: create a minimal conda env with C build dependencies.
@@ -115,7 +118,7 @@ echo "${SGAML_PREFIX}/lib/python" \
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> Installing Python dependencies..."
-$PIP install --prefix "$SGAML_PREFIX" \
+$PIP_INSTALL \
     astropy \
     fitsio \
     photutils \
@@ -137,7 +140,7 @@ $PIP install --prefix "$SGAML_PREFIX" \
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> Installing tractor (Cython build)..."
-$PIP install --prefix "$SGAML_PREFIX" --no-build-isolation \
+$PIP_INSTALL --no-build-isolation \
     git+https://github.com/dstndstn/tractor
 
 # ---------------------------------------------------------------------------
@@ -150,7 +153,7 @@ echo "==> Installing legacypipe..."
 LP_DIR=$(mktemp -d)
 git clone --depth=1 https://github.com/legacysurvey/legacypipe "$LP_DIR"
 sed -i "s/version = get_git_version.*/version = '0.0.0'/" "$LP_DIR/setup.py"
-$PIP install --prefix "$SGAML_PREFIX" --no-build-isolation "$LP_DIR"
+$PIP_INSTALL --no-build-isolation "$LP_DIR"
 rm -rf "$LP_DIR"
 
 # ---------------------------------------------------------------------------
@@ -160,18 +163,18 @@ rm -rf "$LP_DIR"
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> Installing SGA..."
-$PIP install --prefix "$SGAML_PREFIX" git+https://github.com/moustakas/SGA
+$PIP_INSTALL git+https://github.com/moustakas/SGA
 
 echo ""
 echo "==> Installing ssl-legacysurvey..."
 SSL_DIR=$(mktemp -d)
 git clone --depth=1 https://github.com/georgestein/ssl-legacysurvey "$SSL_DIR"
-$PIP install --prefix "$SGAML_PREFIX" "$SSL_DIR"
+$PIP_INSTALL "$SSL_DIR"
 rm -rf "$SSL_DIR"
 
 echo ""
 echo "==> Installing Zoobot..."
-$PIP install --prefix "$SGAML_PREFIX" "zoobot[pytorch]"
+$PIP_INSTALL "zoobot[pytorch]"
 
 # ---------------------------------------------------------------------------
 # Step 8: deploy activate.sh to stable location inside the prefix.
