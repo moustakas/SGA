@@ -1,7 +1,10 @@
 #!/bin/bash
-# Build the SGAML (SGA + machine learning) shared environment at NERSC.
-# Clones the existing SGA environment (avoiding astrometry.net/tractor/legacypipe
-# source rebuilds), then layers in PyTorch, ssl-legacysurvey, and Zoobot.
+# Build the SGAML (SGA + machine learning) environment at NERSC.
+# Uses the NERSC pytorch/2.11.0 module (Python 3.12) as the Python/PyTorch
+# base and pip-installs all additional packages into $SGAML_PREFIX.
+# A minimal conda env at $SGAML_PREFIX/clib provides the C libraries
+# (GSL, cfitsio, netpbm, etc.) needed to build astrometry.net from source;
+# it is build-time only and is not part of the runtime environment.
 #
 # Usage:
 #   module load conda
@@ -9,8 +12,9 @@
 
 set -euo pipefail
 
-SGA_PREFIX=/global/common/software/desi/users/ioannis/SGA
 SGAML_PREFIX=/global/common/software/desi/users/ioannis/SGAML
+CLIB=$SGAML_PREFIX/clib
+PT_MODULE=pytorch/2.11.0
 
 if command -v micromamba &>/dev/null; then
     MAMBA=micromamba
@@ -21,93 +25,171 @@ else
     exit 1
 fi
 
-if ! command -v conda &>/dev/null; then
-    echo "Error: conda not found; required for --clone. Load conda first: module load conda"
+if ! type module &>/dev/null 2>&1; then
+    echo "Error: 'module' command not found. Run this script on a NERSC login node."
     exit 1
 fi
 
-RUN="$MAMBA run -p $SGAML_PREFIX"
-
 echo "Using: $MAMBA"
-echo "Source: $SGA_PREFIX"
 echo "Target: $SGAML_PREFIX"
+echo "PyTorch module: $PT_MODULE"
 echo ""
 
 # ---------------------------------------------------------------------------
-# Step 1: clone the existing SGA environment.
-# conda create --clone copies all packages with binary prefix relocation, so
-# compiled packages (astrometry.net, tractor, legacypipe, SGA) are preserved
-# without a source rebuild. micromamba does not support --clone, so we use
-# conda directly here regardless of which mamba variant is active.
+# Step 1: load the NERSC pytorch module.
+# This makes python/pip point to Python 3.12 with torch, torchvision,
+# lightning, torchmetrics, numpy, scipy, matplotlib, pandas, scikit-learn,
+# scikit-image, h5py, pillow, pyarrow, tqdm, wandb, huggingface_hub, and
+# many others already available.
 # ---------------------------------------------------------------------------
-echo "==> Cloning SGA environment..."
-conda create --clone "$SGA_PREFIX" --prefix "$SGAML_PREFIX" --yes
+echo "==> Loading $PT_MODULE..."
+module load $PT_MODULE
+
+PYVER=$(python -c "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')")
+echo "    python : $PYVER"
+
+# Packages installed with --prefix land here. Export PYTHONPATH so that
+# later build steps can find packages installed earlier in this script.
+mkdir -p "$SGAML_PREFIX/lib/python${PYVER}/site-packages"
+export PYTHONPATH=$SGAML_PREFIX/lib/python${PYVER}/site-packages${PYTHONPATH:+:$PYTHONPATH}
+
+PIP="python -m pip"
 
 # ---------------------------------------------------------------------------
-# Step 2: install PyTorch (CUDA) and ML dependencies.
-# pytorch-cuda=12.4 targets Perlmutter A100s; verify against the system
-# driver with: nvidia-smi | head -1
-# Conda env supports NCCL (multi-GPU) but not MPI; NCCL is sufficient for
-# data-parallel training and large-scale inference with both ssl-legacysurvey
-# and Zoobot.
-# timm, pandas, pillow, pyarrow, tqdm are Zoobot core deps not in the SGA
-# base; faiss-gpu, scikit-image, numba, umap-learn, optuna are for
-# ssl-legacysurvey similarity search.
+# Step 2: create a minimal conda env with C build dependencies.
+# Provides the compiler, swig, and C libraries that astrometry.net's
+# Makefile requires. Not activated at runtime.
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> Installing PyTorch and ML dependencies..."
-$MAMBA install -p "$SGAML_PREFIX" --yes \
-    -c pytorch -c nvidia -c conda-forge \
-    pytorch torchvision torchaudio "pytorch-cuda=12.4" \
-    faiss-gpu \
-    scikit-image \
-    scikit-learn \
-    h5py \
+echo "==> Creating C build dependencies env at $CLIB..."
+$MAMBA create --prefix "$CLIB" --yes -c conda-forge \
+    c-compiler \
+    swig \
+    pkgconf \
+    cairo \
+    cfitsio \
+    gsl \
+    libjpeg-turbo \
+    libpng \
+    netpbm \
+    wcslib
+
+# ---------------------------------------------------------------------------
+# Step 3: build astrometry.net from source.
+# Compiler and C libraries come from $CLIB; Python comes from the pytorch
+# module. Parallel build is disabled upstream (known issue).
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> Building astrometry.net from source..."
+
+ASTROM_DIR=$(mktemp -d)
+trap "rm -rf $ASTROM_DIR" EXIT
+
+git clone --depth=1 https://github.com/dstndstn/astrometry.net "$ASTROM_DIR"
+
+export PATH=$CLIB/bin:$PATH
+export LD_LIBRARY_PATH=$CLIB/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+
+ASTROM_ENV=(
+    SYSTEM_GSL=yes
+    FITSIO_USE_SYSTEM_FITSIO=1
+    "PKG_CONFIG_PATH=${CLIB}/lib/pkgconfig"
+    "NETPBM_INC=-I${CLIB}/include/netpbm"
+    "NETPBM_LIB=-L${CLIB}/lib -lnetpbm"
+)
+
+env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1
+env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 py
+env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 install \
+    INSTALL_DIR="$SGAML_PREFIX"
+
+# astrometry.net installs its Python package to $INSTALL_DIR/lib/python/
+# regardless of PY_BASE_INSTALL_DIR on Linux. Add a .pth file so the
+# kernel's Python finds it via PYTHONPATH/site-packages.
+echo "${SGAML_PREFIX}/lib/python" \
+    > "$SGAML_PREFIX/lib/python${PYVER}/site-packages/astrometry-path.pth"
+
+# ---------------------------------------------------------------------------
+# Step 4: pip install Python packages not provided by the pytorch module.
+# cython is required for tractor's Cython build in Step 5.
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> Installing Python dependencies..."
+$PIP install --prefix "$SGAML_PREFIX" \
+    astropy \
+    fitsio \
+    photutils \
+    pydl \
+    cython \
     numba \
     umap-learn \
     optuna \
-    lightning \
     timm \
-    pandas \
-    pillow \
-    pyarrow \
-    tqdm
+    faiss-cpu \
+    webdataset \
+    litmodels \
+    galaxy-datasets
 
 # ---------------------------------------------------------------------------
-# Step 3: install ssl-legacysurvey from source.
+# Step 5: install tractor (Cython build).
+# --no-build-isolation: tractor's setup.py imports numpy at configure time;
+# numpy is available from the pytorch module's site-packages.
 # ---------------------------------------------------------------------------
+echo ""
+echo "==> Installing tractor (Cython build)..."
+$PIP install --prefix "$SGAML_PREFIX" --no-build-isolation \
+    git+https://github.com/dstndstn/tractor
+
+# ---------------------------------------------------------------------------
+# Step 6: install legacypipe.
+# Its version string (e.g. "DR11.1.0.3.g...") is not PEP 440 compliant;
+# clone, patch, and install.
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> Installing legacypipe..."
+LP_DIR=$(mktemp -d)
+git clone --depth=1 https://github.com/legacysurvey/legacypipe "$LP_DIR"
+sed -i "s/version = get_git_version.*/version = '0.0.0'/" "$LP_DIR/setup.py"
+$PIP install --prefix "$SGAML_PREFIX" --no-build-isolation "$LP_DIR"
+rm -rf "$LP_DIR"
+
+# ---------------------------------------------------------------------------
+# Step 7: install SGA, ssl-legacysurvey, and Zoobot.
+# zoobot[pytorch] pulls in any remaining deps; torch/torchvision/lightning/
+# torchmetrics are already satisfied by the pytorch module.
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> Installing SGA..."
+$PIP install --prefix "$SGAML_PREFIX" git+https://github.com/moustakas/SGA
+
 echo ""
 echo "==> Installing ssl-legacysurvey..."
 SSL_DIR=$(mktemp -d)
-trap "rm -rf $SSL_DIR" EXIT
 git clone --depth=1 https://github.com/georgestein/ssl-legacysurvey "$SSL_DIR"
-$RUN pip install "$SSL_DIR"
+$PIP install --prefix "$SGAML_PREFIX" "$SSL_DIR"
+rm -rf "$SSL_DIR"
 
-# ---------------------------------------------------------------------------
-# Step 4: install Zoobot and its remaining pip dependencies.
-# The [pytorch] extra pulls in torchmetrics, litmodels, timm, wandb,
-# webdataset, huggingface_hub, and galaxy-datasets. torch/torchvision/
-# lightning are already conda-installed above; pip checks the version
-# constraints and skips reinstalling them.
-# ---------------------------------------------------------------------------
 echo ""
 echo "==> Installing Zoobot..."
-$RUN pip install "zoobot[pytorch]"
+$PIP install --prefix "$SGAML_PREFIX" "zoobot[pytorch]"
 
 # ---------------------------------------------------------------------------
-# Step 5: deploy activate.sh to stable location inside the env prefix.
+# Step 8: deploy activate.sh to stable location inside the prefix.
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> Deploying activate.sh..."
 mkdir -p "$SGAML_PREFIX/etc"
-cat > "$SGAML_PREFIX/etc/activate.sh" << 'ACTIVATE'
+cat > "$SGAML_PREFIX/etc/activate.sh" << ACTIVATE
 #!/bin/bash
 # Jupyter kernel activation script for the SGAML environment.
-connection_file=$1
-SGAML_PREFIX=/global/common/software/desi/users/ioannis/SGAML
-unset PYTHONPATH
+# Loads the NERSC pytorch module for Python/PyTorch, then adds
+# pip-installed packages from the SGAML prefix on top.
+connection_file=\$1
 module purge
-exec ${SGAML_PREFIX}/bin/python -m ipykernel -f $connection_file
+module load ${PT_MODULE}
+export PYTHONPATH=${SGAML_PREFIX}/lib/python${PYVER}/site-packages
+export PATH=${SGAML_PREFIX}/bin:\$PATH
+exec python -m ipykernel -f \$connection_file
 ACTIVATE
 chmod +x "$SGAML_PREFIX/etc/activate.sh"
 
