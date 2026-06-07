@@ -94,207 +94,9 @@ from astropy.table import Table, vstack
 from astrometry.libkd.spherematch import match_radec
 
 from SGA.geometry import choose_geometry
-
-#from SGA.io import sga_dir, custom_brickname, get_raslice, radec_to_name
-#from SGA.ellipse import choose_geometry, parse_geometry
+from SGA.ssl import build_ssl_legacysurvey_refcat, build_ssl_legacysurvey
 
 from SGA.logger import log
-
-
-def build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=None):
-    """Build the reference catalog for use with ssl-legacysurvey
-
-    v1 - original dr9-north and dr9-south version; mindiam = 10.
-    v2 - like v1 but with mindiam = 30. (but did not perform well)
-    v3 - like v1 but with dr9-north and dr11-south
-
-    """
-    def find_isolated(cat, fullcat, radius=90.):
-        """Identify isolated sources.
-
-        radius in arcsec
-
-        """
-        allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
-                                 fullcat['RA'].value, fullcat['DEC'].value,
-                                 radius/3600., indexlist=True, notself=False)
-        refindx = []
-        for ii, mm in enumerate(allmatches):
-            if len(mm) == 1:
-                refindx.append(ii)
-        refindx = np.array(refindx)
-        return refindx
-
-
-    # define the reference sample
-    diam, _, _, ref = choose_geometry(cat, mindiam=0.)
-
-    if ssl_version == 'v1':
-        I = np.where((diam/60. > 1.5) * (diam/60. < 5.) * ~cat['RESOLVED'] *
-                     (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
-        # no other source (of any size) within 90 arcsec
-        refindx = find_isolated(cat[I], fullcat, radius=90.)
-        refcat = cat[I[refindx]]
-    elif ssl_version == 'v2':
-        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] *
-                     (cat['STARFDIST'] > 1.5) * (cat['FILTERS'] == 'grz'))[0]
-        diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-        J = (diam_full > 30.) * (fullcat['FILTERS'] == 'grz')
-        # no other source smaller than 30 arcsec within 90 arcsec
-        refindx = find_isolated(cat[I], fullcat[J], radius=90.)
-        refcat = cat[I[refindx]]
-    elif ssl_version == 'v3':
-        I = np.where((diam/60. > 1.7) * (diam/60. < 5.) * ~cat['RESOLVED'] *
-                     (cat['STARFDIST'] > 1.5) * 
-                     np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz'))[0]
-        diam_full, _, _, _ = choose_geometry(fullcat, mindiam=0.)
-        J = (diam_full > 30.) * np.logical_or(fullcat['FILTERS'] == 'grz', fullcat['FILTERS'] == 'girz')
-        # no other source smaller than 30 arcsec within 90 arcsec
-        refindx = find_isolated(cat[I], fullcat[J], radius=90.)
-        refcat = cat[I[refindx]]
-    elif ssl_version == 'v4':
-        pass
-    else:
-        raise ValueError('Write me')
-
-    #sslcols = ['OBJNAME', 'RA', 'DEC', 'FILTERS', 'ROW_PARENT', 'REGION']
-    #refcat = refcat[sslcols]
-
-    if ssl_version == 'v1':
-        mindiam = 10.
-        log.info('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
-                 f'smaller than {mindiam:.0f} arcsec.')
-        I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
-        cat = cat[I]
-    elif ssl_version == 'v2':
-        mindiam = 30.
-        log.info('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
-                 f'smaller than {mindiam:.0f} arcsec.')
-        I = (diam < mindiam) * (cat['FILTERS'] == 'grz') * ~cat['RESOLVED']
-        cat = cat[I]
-    elif ssl_version == 'v3':
-        mindiam = 10.
-        log.info('Trimming the ssl_legacysurvey sample to unresolved objects ' + \
-                 f'smaller than {mindiam:.0f} arcsec.')
-        I = (diam < mindiam) * np.logical_or(cat['FILTERS'] == 'grz', cat['FILTERS'] == 'girz') * ~cat['RESOLVED']
-        cat = cat[I]
-    else:
-        raise ValueError('Write me')
-
-    return refcat, cat
-
-
-def build_ssl_legacysurvey(cat, fullcat, width=152, ncatmax=15000, ssl_version=None,
-                           bands=['g', 'r', 'z'], outdir='.', verbose=False,
-                           overwrite=False):
-    """Build the hdf5 file needed by ssl-legacysurvey.
-
-    nband = 3 (grz)
-    ncatmax - maximum number of files per output catalog
-
-    """
-    import h5py
-
-    def get_fitsfiles(cat, region):
-        cutoutdir = os.path.join(outdir, region, 'rescale')
-        I = []
-        fitsfiles = []
-        for ii, one in enumerate(cat):
-            objname = radec_to_name(one['RA'], one['DEC'])[0].replace(' ', '_')
-            fitsfile = os.path.join(cutoutdir, get_raslice(one['RA']), f'{objname}.fits')
-            if os.path.isfile(fitsfile):
-                I.append(ii)
-                fitsfiles.append(fitsfile)
-            else:
-                log.info(f'Missing {fitsfile}')
-
-        return np.array(fitsfiles), np.array(I)
-
-    nband = len(bands)
-
-    if ssl_version is None:
-        log.warning('ssl_version must be specified')
-        return
-
-    # need to define a reference sample and make sure the files exist
-    refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=ssl_version)
-
-    refcatfiles, refcatindx = [], []
-    catfiles, catindx = [], []
-    for region in sorted(set(refcat['REGION'])):
-        R = np.where(refcat['REGION'] == region)[0]
-        C = np.where(cat['REGION'] == region)[0]
-        refcatfiles1, refcatindx1 = get_fitsfiles(refcat[R], region)
-        catfiles1, catindx1 = get_fitsfiles(cat[C], region)
-        refcatfiles.append(refcatfiles1)
-        catfiles.append(catfiles1)
-        refcatindx.append(R[refcatindx1])
-        catindx.append(C[catindx1])
-
-    refcatfiles = np.hstack(refcatfiles)
-    catfiles = np.hstack(catfiles)
-    refcatindx = np.hstack(refcatindx)
-    catindx = np.hstack(catindx)
-
-    cat = cat[catindx]
-    refcat = refcat[refcatindx]
-    ncat = len(cat)
-    nrefcat = len(refcat)
-
-    catdir = os.path.join(sga_dir(), 'ssl')#, ssl_version)
-
-    refoutfile = os.path.join(catdir, f'ssl-parent-refcat-{ssl_version}.fits')
-    if os.path.isfile(refoutfile):
-        log.warning(f'Existing reference catalog {refoutfile} must be removed by-hand.')
-        return
-    outfile = os.path.join(catdir, f'ssl-parent-cat-{ssl_version}.fits')
-    if os.path.isfile(outfile):
-        log.warning(f'Existing catalog {outfile} must be removed by-hand.')
-        return
-
-    refcat.write(refoutfile, overwrite=True)
-    log.info(f'Wrote {len(refcat):,d} objects to {refoutfile}')
-
-    cat.write(outfile, overwrite=True)
-    log.info(f'Wrote {len(cat):,d} objects to {outfile}')
-
-    # Ensure each output file has no more than ncatmax objects, to we
-    # don't run into memory problems at NERSC.
-    nchunk = int(np.ceil(ncat / ncatmax))
-    chunkindx = np.array_split(np.arange(ncat), nchunk)
-    log.info(f'Dividing into {nchunk:,d} chunks.')
-
-    for ichunk in range(nchunk):
-        h5dir = os.path.join(outdir, ssl_version, 'input')
-        if not os.path.isdir(h5dir):
-            os.makedirs(h5dir, exist_ok=True)
-
-        h5file = os.path.join(h5dir, f'ssl-parent-chunk{ichunk:03}-{ssl_version}.hdf5')
-        if os.path.isfile(h5file) and not overwrite:
-            log.info(f'Skipping existing HDF5 file {h5file}')
-            continue
-
-        refs = np.hstack((np.ones(nrefcat, bool), np.zeros(len(chunkindx[ichunk]), bool)))
-        rows = np.hstack((refcat['ROW_PARENT'].value, cat['ROW_PARENT'][chunkindx[ichunk]].value))
-        ras = np.hstack((refcat['RA'].value, cat['RA'][chunkindx[ichunk]].value))
-        decs = np.hstack((refcat['DEC'].value, cat['DEC'][chunkindx[ichunk]].value))
-        fitsfiles = np.hstack((refcatfiles, catfiles[chunkindx[ichunk]]))
-
-        F = h5py.File(h5file, 'w')
-        F.create_dataset('ref', data=refs)
-        F.create_dataset('row', data=rows)
-        F.create_dataset('ra', data=ras)
-        F.create_dataset('dec', data=decs)
-
-        images = F.create_dataset('images', (refs.size, nband, width, width))
-        for iobj, fitsfile in enumerate(fitsfiles):
-            raise ValueError('need to deal with missing bandpasses...and handle i-band')
-            img = fitsio.read(fitsfile)
-            images[iobj, :] = img
-
-        F.close()
-        log.info(f'Wrote {h5file} with {nrefcat:,d} reference objects and ' + \
-                 f'{len(chunkindx[ichunk]):,d} objects to classify.')
 
 
 def _write_objlist(cat, region, prefix='tmplist'):
@@ -895,27 +697,20 @@ def main():
     use_catalog_objname = False
     if rank == 0:
         if args.build_ssl:
+            from SGA.SGA import read_sample
             if args.ssl_version is None:
                 raise ValueError('ssl_version must be specified')
-            if args.ssl_version == 'v1' or args.ssl_version == 'v2':
-                cat_north, fullcat_north = read_catalog(read_fullcat=True, region='dr9-north')
-                cat_south, fullcat_south = read_catalog(read_fullcat=True, region='dr9-south')
-                cat_north['REGION'] = 'dr9-north'
-                cat_south['REGION'] = 'dr9-south'
-                fullcat_north['REGION'] = 'dr9-north'
-                fullcat_south['REGION'] = 'dr9-south'
-            elif args.ssl_version == 'v3' or args.ssl_version == 'v4':
-                cat_north, fullcat_north = read_catalog(read_fullcat=True, region='dr9-north')
-                cat_south, fullcat_south = read_catalog(read_fullcat=True, region='dr11-south')
-                cat_north['REGION'] = 'dr9-north'
-                cat_south['REGION'] = 'dr11-south'
-                fullcat_north['REGION'] = 'dr9-north'
-                fullcat_south['REGION'] = 'dr11-south'
+            if args.ssl_version in ('v1', 'v2'):
+                sample_n, fullsample_n = read_sample(final_sample=False, region='dr9-north')
+                sample_s, fullsample_s = read_sample(final_sample=False, region='dr9-south')
+            elif args.ssl_version in ('v3', 'v4'):
+                sample_n, fullsample_n = read_sample(final_sample=False, region='dr9-north')
+                sample_s, fullsample_s = read_sample(final_sample=False, region='dr11-south')
             else:
-                raise ValueError(f'Unsupported ssl_version {args.ssl_version}')
-            cat = vstack((cat_north, cat_south))
-            fullcat = vstack((fullcat_north, fullcat_south))
-            del cat_north, cat_south, fullcat_north, fullcat_south
+                raise ValueError(f'Unsupported ssl_version {args.ssl_version!r}')
+            cat    = vstack([sample_n,    sample_s])
+            fullcat = vstack([fullsample_n, fullsample_s])
+            del sample_n, sample_s, fullsample_n, fullsample_s
         else:
             if args.sga2020:
                 from SGA.external import read_sga2020
@@ -953,9 +748,10 @@ def main():
         return
 
     if args.build_ssl and rank == 0:
-        build_ssl_legacysurvey(cat, fullcat, width=args.width, ssl_version=args.ssl_version,
-                               cutoutdir=args.cutoutdir, overwrite=args.overwrite,
-                               verbose=args.verbose)
+        refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=args.ssl_version)
+        build_ssl_legacysurvey(cat, refcat, width=args.width, ssl_version=args.ssl_version,
+                               cutoutdir=args.cutoutdir, outdir=args.cutoutdir,
+                               overwrite=args.overwrite, verbose=args.verbose)
         return
 
     # no FITS cutouts needed for the Zooniverse project

@@ -1,183 +1,384 @@
-'''
-This script generates a UMAP for the given chunk and applies kmeans clustering in order to sort the candidate cutouts and classify the large galaxies. By default, the script saves the UMAP coordinates and a text file with data for the reject galaxies. Also has been modified so that it can also generate file needed to run similarity search. 
-'''
+"""
+SGA.ssl
+=======
 
+Build ssl-legacysurvey input catalogs from SGA-2025 mosaics, and run
+inference with the pre-trained MoCo v2 model.
+
+Typical workflow after generating rescaled cutouts
+(SGA2025-cutouts --rescale --region=<region>):
+
+    from astropy.table import vstack
+    from SGA.SGA import read_sample
+    from SGA.ssl import build_ssl_legacysurvey_refcat, build_ssl_legacysurvey
+
+    ss_n, fs_n = read_sample(final_sample=False, region='dr9-north')
+    ss_s, fs_s = read_sample(final_sample=False, region='dr11-south')
+    sample    = vstack([ss_n, ss_s])
+    fullsample = vstack([fs_n, fs_s])
+
+    refcat, cat = build_ssl_legacysurvey_refcat(sample, fullsample, ssl_version='v3')
+    build_ssl_legacysurvey(cat, refcat, ssl_version='v3',
+                           cutoutdir='/path/to/rescaled/cutouts',
+                           outdir='/path/to/hdf5/output')
+
+Then run inference on each HDF5 chunk:
+
+    from SGA.ssl import ssl_match
+    ssl_match('ssl-parent-chunk000-v3.hdf5',
+              checkpoint_path='/path/to/resnet50.ckpt',
+              output_dir='/path/to/results')
+"""
 import os
-import h5py
 import numpy as np
-import torch
-from ssl_legacysurvey.utils import load_data # Loading galaxy catalogue and image data from hdf5 file(s)
-from ssl_legacysurvey.utils import plotting_tools as plt_tools # Plotting images or catalogue info
-from ssl_legacysurvey.data_loaders import datamodules # Pytorch dataloaders and datamodules
-from ssl_legacysurvey.data_loaders import decals_augmentations # Augmentations for training
-from ssl_legacysurvey.data_analysis import dimensionality_reduction # PCA/UMAP functionality
-import matplotlib.pyplot as plt
-import numpy as np
-import torch
-import torchvision
-import pytorch_lightning as pl
-import h5py
-import argparse
-from pathlib import Path
-import os
-import sys
-import glob 
-import math
-from pytorch_lightning import loggers as pl_loggers
-from pytorch_lightning.plugins import DDPPlugin
-from ssl_legacysurvey.moco.moco2_module import Moco_v2 
-from ssl_legacysurvey.data_loaders import datamodules
-from ssl_legacysurvey.utils import format_logger
-from scripts import predict
-from ssl_legacysurvey.finetune import extract_model_outputs
-from scripts import similarity_search_nxn
-from sklearn.cluster import KMeans
-import psutil
-import os
-import time
+import fitsio
+from astropy.table import Table, vstack
+
+from astrometry.libkd.spherematch import match_radec
+
+from SGA.SGA import sga_dir, SAMPLE, ELLIPSEMODE
+from SGA.io import radec_to_name, get_raslice
+from SGA.logger import log
 
 
-def ssl_match(path, similarity=False, threshold=0.5):
-    '''
-    path: path to the chunk we are running on
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
 
-    similarity: If we are going to run the similarity search script based on this data, we save the extra file we need (note takes ~twice as long to run)
+def _get_diam_arcsec(cat):
+    """Return diameters in arcsec, handling parent (DIAM) and final (DIAM_INIT) catalogs."""
+    if 'DIAM' in cat.colnames:
+        return cat['DIAM'].value * 60.
+    if 'DIAM_INIT' in cat.colnames:
+        return cat['DIAM_INIT'].value * 60.
+    raise KeyError('Neither DIAM nor DIAM_INIT found in catalog.')
 
-    threshold: the maximum amount of known galaxies that can be improperly classified before determining that the clustering algorithm did not behave as intended
-    on the dataset, in case we don't always trust the clustering. 
-    '''
 
-    # Load h5py file into dictionary
-    data_path = path
+def _find_fitsfile(ra, dec, cutoutdir, cutout_regions):
+    """Return the path to the rescaled FITS cutout for one object, or None."""
+    objname = radec_to_name(ra, dec)[0].replace(' ', '_')
+    for region in cutout_regions:
+        fitsfile = os.path.join(cutoutdir, region, 'rescale',
+                                get_raslice(ra), f'{objname}.fits')
+        if os.path.isfile(fitsfile):
+            return fitsfile
+    return None
+
+
+def _select_band_planes(img, available_bands_str, target_bands):
+    """Select planes from a (nband, h, w) image array for the requested bands.
+
+    Returns None if any target band is absent from available_bands_str.
+    """
+    available = list(available_bands_str)
+    try:
+        indices = [available.index(b) for b in target_bands]
+    except ValueError:
+        return None
+    return img[indices]
+
+
+# ---------------------------------------------------------------------------
+# Public API: build ssl-legacysurvey input files
+# ---------------------------------------------------------------------------
+
+def build_ssl_legacysurvey_refcat(sample, fullsample, ssl_version=None):
+    """Build the ssl-legacysurvey reference and candidate catalogs.
+
+    Parameters
+    ----------
+    sample : astropy.table.Table
+        GROUP_PRIMARY objects from read_sample().
+    fullsample : astropy.table.Table
+        All group members from read_sample(); used for isolation checks.
+    ssl_version : {'v1', 'v2', 'v3'}
+        v1 — refcat 1.5–5 arcmin, grz only, fully isolated within 90 arcsec.
+        v2 — refcat 1.7–5 arcmin, grz only, no neighbour >30" within 90 arcsec.
+        v3 — refcat 1.7–5 arcmin, grz/griz, same neighbour isolation as v2.
+
+    Returns
+    -------
+    refcat : astropy.table.Table
+        Isolated, unresolved reference galaxies (known large galaxies).
+    cat : astropy.table.Table
+        Smaller unresolved candidate galaxies to classify.
+    """
+    def find_isolated(cat, fullcat, radius=90.):
+        allmatches = match_radec(
+            cat['RA'].value, cat['DEC'].value,
+            fullcat['RA'].value, fullcat['DEC'].value,
+            radius / 3600., indexlist=True, notself=False)
+        return np.array([ii for ii, mm in enumerate(allmatches) if len(mm) == 1])
+
+    diam      = _get_diam_arcsec(sample)
+    diam_full = _get_diam_arcsec(fullsample)
+    is_resolved = (sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0
+    not_nearstar = (sample['SAMPLE'] & SAMPLE['NEARSTAR']) == 0
+
+    if ssl_version == 'v1':
+        has_bands = sample['BANDS'] == 'grz'
+        I = np.where((diam / 60. > 1.5) * (diam / 60. < 5.) *
+                     ~is_resolved * not_nearstar * has_bands)[0]
+        refcat = sample[I[find_isolated(sample[I], fullsample)]]
+        cat    = sample[(diam < 10.) * has_bands * ~is_resolved]
+
+    elif ssl_version == 'v2':
+        has_bands = sample['BANDS'] == 'grz'
+        I = np.where((diam / 60. > 1.7) * (diam / 60. < 5.) *
+                     ~is_resolved * not_nearstar * has_bands)[0]
+        J = (diam_full > 30.) * (fullsample['BANDS'] == 'grz')
+        refcat = sample[I[find_isolated(sample[I], fullsample[J])]]
+        cat    = sample[(diam < 30.) * has_bands * ~is_resolved]
+
+    elif ssl_version == 'v3':
+        has_grz      = np.isin(sample['BANDS'],    ['grz', 'griz', 'girz'])
+        has_grz_full = np.isin(fullsample['BANDS'], ['grz', 'griz', 'girz'])
+        I = np.where((diam / 60. > 1.7) * (diam / 60. < 5.) *
+                     ~is_resolved * not_nearstar * has_grz)[0]
+        J = (diam_full > 30.) * has_grz_full
+        refcat = sample[I[find_isolated(sample[I], fullsample[J])]]
+        cat    = sample[(diam < 10.) * has_grz * ~is_resolved]
+
+    else:
+        raise ValueError(f'Unsupported ssl_version={ssl_version!r}')
+
+    log.info(f'ssl_version={ssl_version}: {len(refcat):,d} reference objects, '
+             f'{len(cat):,d} candidates to classify.')
+    return refcat, cat
+
+
+def build_ssl_legacysurvey(cat, refcat, width=152, ncatmax=15000,
+                           ssl_version=None, bands=('g', 'r', 'z'),
+                           cutoutdir='.', outdir='.', cutout_regions=None,
+                           verbose=False, overwrite=False):
+    """Pack rescaled FITS cutouts into HDF5 files for ssl-legacysurvey.
+
+    Each output HDF5 file contains a reference set followed by a chunk of
+    candidates.  The 'row' dataset stores SGAID values as the unique object
+    key (replaces the old ROW_PARENT column).
+
+    Parameters
+    ----------
+    cat : astropy.table.Table
+        Candidate objects from build_ssl_legacysurvey_refcat().
+    refcat : astropy.table.Table
+        Reference objects from build_ssl_legacysurvey_refcat().
+    width : int
+        Cutout pixel width; must match the rescaled cutouts.
+    ncatmax : int
+        Maximum number of candidates per HDF5 chunk.
+    ssl_version : str
+        Version label for output filenames, e.g. 'v3'.
+    bands : sequence of str
+        Band planes to store in each chunk, e.g. ('g', 'r', 'z').
+    cutoutdir : str
+        Root of the rescaled cutout tree ({cutoutdir}/{region}/rescale/...).
+    outdir : str
+        Root output directory; HDF5 chunks go to {outdir}/{ssl_version}/input/.
+    cutout_regions : list of str, optional
+        Region subdirectories to search for cutouts, tried in order.
+        Defaults to ['dr9-north', 'dr11-south'].
+    overwrite : bool
+        Overwrite existing output files.
+    """
+    import h5py
+
+    if ssl_version is None:
+        raise ValueError('ssl_version is required.')
+    if cutout_regions is None:
+        cutout_regions = ['dr9-north', 'dr11-south']
+
+    bands = list(bands)
+    nband = len(bands)
+
+    def collect_files(tbl):
+        files, keep = [], []
+        for ii, row in enumerate(tbl):
+            f = _find_fitsfile(row['RA'], row['DEC'], cutoutdir, cutout_regions)
+            if f is not None:
+                files.append(f)
+                keep.append(ii)
+            else:
+                log.debug(f"Missing cutout for SGAID={row['SGAID']}")
+        return np.array(files), np.array(keep, dtype=int)
+
+    refcatfiles, refkeep = collect_files(refcat)
+    catfiles,    catkeep = collect_files(cat)
+    refcat = refcat[refkeep]
+    cat    = cat[catkeep]
+    nrefcat, ncat = len(refcat), len(cat)
+    log.info(f'{nrefcat:,d} reference and {ncat:,d} candidate objects with cutouts found.')
+
+    catdir = os.path.join(sga_dir(), 'ssl')
+    os.makedirs(catdir, exist_ok=True)
+
+    refoutfile = os.path.join(catdir, f'ssl-parent-refcat-{ssl_version}.fits')
+    outfile    = os.path.join(catdir, f'ssl-parent-cat-{ssl_version}.fits')
+    for fitsout, tbl, label in ((refoutfile, refcat, 'reference'),
+                                 (outfile,    cat,    'candidate')):
+        if os.path.isfile(fitsout) and not overwrite:
+            log.warning(f'Existing {label} catalog {fitsout}; '
+                        f'remove it manually or use overwrite=True.')
+            return
+        tbl.write(fitsout, overwrite=overwrite)
+        log.info(f'Wrote {len(tbl):,d} {label} objects to {fitsout}')
+
+    nchunk = max(1, int(np.ceil(ncat / ncatmax)))
+    chunks = np.array_split(np.arange(ncat), nchunk)
+    log.info(f'Writing {nchunk:,d} HDF5 chunk(s) to {outdir}/{ssl_version}/input/')
+
+    for ichunk, chunk in enumerate(chunks):
+        h5dir  = os.path.join(outdir, ssl_version, 'input')
+        os.makedirs(h5dir, exist_ok=True)
+        h5file = os.path.join(h5dir, f'ssl-parent-chunk{ichunk:03d}-{ssl_version}.hdf5')
+
+        if os.path.isfile(h5file) and not overwrite:
+            log.info(f'Skipping existing {h5file}')
+            continue
+
+        refs   = np.concatenate([np.ones(nrefcat, bool), np.zeros(len(chunk), bool)])
+        sgaids = np.concatenate([refcat['SGAID'].value,   cat['SGAID'][chunk].value])
+        ras    = np.concatenate([refcat['RA'].value,       cat['RA'][chunk].value])
+        decs   = np.concatenate([refcat['DEC'].value,      cat['DEC'][chunk].value])
+        all_files = np.concatenate([refcatfiles,           catfiles[chunk]])
+        all_bands = np.concatenate([refcat['BANDS'].value, cat['BANDS'][chunk].value])
+        ntot = len(refs)
+
+        n_missing = 0
+        with h5py.File(h5file, 'w') as F:
+            F.create_dataset('ref', data=refs)
+            F.create_dataset('row', data=sgaids)
+            F.create_dataset('ra',  data=ras)
+            F.create_dataset('dec', data=decs)
+            images_ds = F.create_dataset('images', (ntot, nband, width, width),
+                                         dtype=np.float32)
+            for iobj, (fitsfile, bands_str) in enumerate(zip(all_files, all_bands)):
+                img    = fitsio.read(fitsfile)
+                planes = _select_band_planes(img, bands_str, bands)
+                if planes is None:
+                    log.warning(f'Band mismatch for {fitsfile} (has {bands_str!r}); zeroing.')
+                    n_missing += 1
+                    continue
+                images_ds[iobj] = planes.astype(np.float32)
+
+        log.info(f'Wrote {h5file}: {nrefcat:,d} reference + {len(chunk):,d} candidates'
+                 + (f' ({n_missing} band mismatches zeroed)' if n_missing else ''))
+
+
+# ---------------------------------------------------------------------------
+# Public API: run ssl-legacysurvey inference
+# ---------------------------------------------------------------------------
+
+def ssl_match(path, checkpoint_path='resnet50.ckpt', output_dir=None,
+              similarity=False, threshold=0.5):
+    """Run ssl-legacysurvey inference on one HDF5 chunk.
+
+    Loads images from the HDF5 file, passes them through the pre-trained
+    MoCo v2 backbone, computes a 2-d UMAP embedding, and uses k-means
+    clustering to separate galaxy candidates from non-galaxies.  The
+    reference objects (ref=True in the HDF5) anchor which cluster is
+    the "galaxy" cluster.
+
+    Parameters
+    ----------
+    path : str
+        Path to an HDF5 file produced by build_ssl_legacysurvey().
+    checkpoint_path : str
+        Path to the pre-trained MoCo v2 ResNet-50 checkpoint.
+    output_dir : str, optional
+        Directory for the output .txt and umap .npy files.
+        Defaults to the directory containing `path`.
+    similarity : bool
+        If True, also save 128-d UMAP representations for a similarity search.
+    threshold : float
+        Maximum fraction of misclassified reference objects before flagging
+        a clustering failure (default 0.5).
+    """
+    import h5py
+    import torch
+    from ssl_legacysurvey.utils import load_data
+    from ssl_legacysurvey.data_loaders import datamodules
+    from ssl_legacysurvey.data_analysis import dimensionality_reduction
+    from ssl_legacysurvey.moco.moco2_module import Moco_v2
+    from sklearn.cluster import KMeans
+
+    if output_dir is None:
+        output_dir = os.path.dirname(os.path.abspath(path))
+
     with h5py.File(path) as F:
-        nref = np.sum(F['ref'])
+        nref = int(np.sum(F['ref']))
 
-    output_name = os.path.basename(path).replace('.hdf5', '.txt')
+    base       = os.path.splitext(os.path.basename(path))[0]
+    output_txt  = os.path.join(output_dir, f'{base}.txt')
+    output_umap = os.path.join(output_dir, f'umap_{base}.npy')
 
-    if os.path.exists(output_name): #if we generated the final UMAP already, don't redo it
-        print(f"Output file for {path} already exists.")
+    if os.path.exists(output_txt):
+        log.info(f'Output already exists: {output_txt}')
         return
 
+    DDL  = load_data.DecalsDataLoader(image_dir=path, npix_in=152)
+    gals = DDL.get_data(-1, fields=DDL.fields_available, npix_out=152)
 
-    #### load in the individual cutout data
-    DDL = load_data.DecalsDataLoader(image_dir=data_path, npix_in=152)
-    gals = DDL.get_data(-1, fields=DDL.fields_available,npix_out=152) # -1 to load all galaxies
+    params = {
+        'data_path':       path,
+        'base':            base,
+        'gpu':             torch.cuda.is_available(),
+        'gpus':            1,
+        'num_nodes':       1,
+        'ngals_tot':       gals['images'].shape[0],
+        'checkpoint_path': checkpoint_path,
+        'ssl_training':    False,
+        'jitter_lim':      0,
+        'augmentations':   'jcrg',
+    }
 
-
-    
-    ###### Load in the necessary parameters and the pretrained model
-    
-    class Args: 
-        data_path = path
-        base = os.path.splitext(os.path.basename(data_path))[0]
-        gpu = True # Use GPU?
-        gpus = 1 # Number of gpus to use
-        num_nodes = 1
-        ngals_tot = gals['images'].shape[0]
-        # Read in the checkpoint file from when the SSl model was originally trained
-        checkpoint_path = 'resnet50.ckpt'
-        rep_dir = os.path.join(base, 'representations/compiled')
-        file_head = 'original'
-       
-    params = vars(Args)
-    p = {}
-    for k, v in params.items():
-        p[k] = v
-    params = p
-
-    
-    model = Moco_v2.load_from_checkpoint(
-            checkpoint_path=params['checkpoint_path']
-            )
-      
+    model    = Moco_v2.load_from_checkpoint(checkpoint_path=checkpoint_path)
     backbone = model.encoder_q
-    
-    # Remove the MLP projection head from the model, so output is now the representaion for each galaxy
     backbone.fc = torch.nn.Identity()
-    
-    params['ssl_training'] = False
-    params['jitter_lim'] = 0 #determines the maximum value for the offset in the jitter augmentation
-    params['augmentations'] = 'jcrg' #adjust to whatever parameters you want, typically 'jcrg' or 'rrjc'
-    
-    # Load all images as one batch
-    
-    transform = datamodules.DecalsTransforms(
-        params['augmentations'],
-        params
-    )
-    
-    decals_dataloader = datamodules.DecalsDataset(
-        data_path,
-        None,
-        transform,
-        params,
-    )
-    # ngals can be subset of the dataset or the whole dataset, typically we use full set when clustering
-    ngals =  gals['images'].shape[0]
-    im, label = decals_dataloader.__getitem__(0)
-    images = torch.empty((ngals, im.shape[0], im.shape[1], im.shape[2]), dtype=im.dtype)
+
+    transform = datamodules.DecalsTransforms(params['augmentations'], params)
+    dataset   = datamodules.DecalsDataset(path, None, transform, params)
+
+    ngals = gals['images'].shape[0]
+    im0, _ = dataset[0]
+    images = torch.empty((ngals, *im0.shape), dtype=im0.dtype)
     for i in range(ngals):
-        images[i], _ = decals_dataloader.__getitem__(i)
+        images[i], _ = dataset[i]
 
-    ######### Run the image cutouts through the pretrained model
     representations = backbone(images)
-    
-    if params['gpu']: #fix data type to numpy arrays
-        images, representations = images.detach(), representations.detach()
-    images, representations = images.numpy(), representations.numpy()
-    
+    if params['gpu']:
+        representations = representations.detach()
+    representations = representations.numpy()
+
     if similarity:
-        ###### smash down to 128 dimensions instead of 2048, since this is what we will need for similarity script
-        reps_128, reps_128_trans = dimensionality_reduction.umap_transform(representations, n_components=128, metric='cosine')
-        np.save(f"/pscratch/sd/s/sgmoore1/ssl-legacysurvey/{params['rep_dir']}/{params['file_head']}_{0 :09d}_{params['ngals_tot']:09d}.npy", reps_128)
+        reps_128, _ = dimensionality_reduction.umap_transform(
+            representations, n_components=128, metric='cosine')
+        np.save(os.path.join(output_dir, f'reps128_{base}.npy'), reps_128)
+        umap_input = reps_128
+    else:
+        umap_input = representations
 
-        #### then smash to 2 dimensions since this is what we need for clustering
-        umap_embedding_cos, umap_trans_cos = dimensionality_reduction.umap_transform(reps_128, n_components=2, metric='cosine')
+    umap_coords, _ = dimensionality_reduction.umap_transform(
+        umap_input, n_components=2, metric='cosine')
+    np.save(output_umap, umap_coords)
 
-    else: 
-        ### if we don't need to run similarity script, just run the dimensionality reduction all at once
-        umap_embedding_cos, umap_trans_cos = dimensionality_reduction.umap_transform(representations, n_components=2, metric='cosine')
-
-
-    #### save the final umap embedding so we can reference it later
-    umap_coords = np.array(umap_embedding_cos)
-    np.save(f"umap_{params['base']}.npy", umap_coords)
-
-    ####### Separate the data into 2 clusters
-    kmeans = KMeans(n_clusters=2, random_state=0).fit(umap_embedding_cos) #if you are applying the umap first
-    cluster_labels = kmeans.labels_
-    cluster_centers = kmeans.cluster_centers_
-
-    ###### Determine which cluster label corresponds to the cluster with known galaxies in it by finding the average of the cluster label of known galaxies and seeing if that value is closer to 0 or 1. Assumes that all of the known galaxies are at the beginning of the dataset.
-    average = np.mean(cluster_labels[:int(nref)])
-    print(average)
-    if average < threshold:
+    labels        = KMeans(n_clusters=2, random_state=0).fit(umap_coords).labels_
+    avg_ref_label = np.mean(labels[:nref])
+    if avg_ref_label < threshold:
         gal_cluster = 0
-    elif average > (1-threshold):
+    elif avg_ref_label > (1 - threshold):
         gal_cluster = 1
     else:
-        print('Error: More known galaxies than the threshold are not properly classified by this clustering algorithm.')
-        gal_cluster = 2
-    
-    if gal_cluster < 2:
-    ##### Only compute if we have determined that the known galaxies are well behaved within the clustering
-        candidate_coords = []
-        rows = [] #temporary storing of the rows within this file
-        gals['row'] = gals['row'].astype(int)
+        log.warning(f'{path}: clustering unstable — >{threshold:.0%} of reference '
+                    f'objects misclassified.  Skipping output.')
+        return
 
-        ###### store all of the galaxies that are 'rejected' i.e. in the cluster that doesn't contain most reference galaxies
-        i = 0
-        while i < len(cluster_labels):
-            if int(cluster_labels[i]) != int(gal_cluster):
-                if i < int(nref):
-                    candidate_coords.append([int(gals['row'][i]), float(gals['ra'][i]), float(gals['dec'][i]), int(1)])
-                else: 
-                    candidate_coords.append([int(gals['row'][i]), float(gals['ra'][i]), float(gals['dec'][i]), int(0)])
-                rows.append(i)
-            i += 1
-        
-        # Convert list to a numpy array and save
-        candidate_coords = np.array(candidate_coords)
-        np.savetxt(output_name, candidate_coords, delimiter=',', header='ROW, RA,DEC, REF',fmt='%d,%f,%f,%d')
-        print(output_name, 'created.')
-        
+    gals['row'] = gals['row'].astype(int)
+    candidates = np.array([
+        [int(gals['row'][i]), float(gals['ra'][i]), float(gals['dec'][i]), int(i < nref)]
+        for i in range(len(labels))
+        if int(labels[i]) != gal_cluster
+    ])
+    np.savetxt(output_txt, candidates, delimiter=',',
+               header='ROW,RA,DEC,REF', fmt='%d,%f,%f,%d')
+    log.info(f'Wrote {len(candidates):,d} candidates to {output_txt}')
