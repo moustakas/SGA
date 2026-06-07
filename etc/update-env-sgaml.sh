@@ -19,6 +19,15 @@ if ! type module &>/dev/null 2>&1; then
     exit 1
 fi
 
+if command -v micromamba &>/dev/null; then
+    MAMBA=micromamba
+elif command -v mamba &>/dev/null; then
+    MAMBA=mamba
+else
+    echo "Error: neither mamba nor micromamba found. Load conda first: module load conda"
+    exit 1
+fi
+
 module load $PT_MODULE
 
 PYVER=$(python -c "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')")
@@ -38,7 +47,18 @@ update_legacypipe() {
 
 update_tractor() {
     echo "==> Updating tractor..."
+    # tractor requires swig at build time; spin up a temporary conda env,
+    # use it for the build, then delete it.
+    SWIG_ENV=$(mktemp -d)
+    trap "rm -rf $SWIG_ENV" RETURN
+    $MAMBA create --prefix "$SWIG_ENV" --yes -c conda-forge c-compiler swig
+    local old_path=$PATH
+    local old_ldpath=${LD_LIBRARY_PATH:-}
+    export PATH=$SWIG_ENV/bin:$PATH
+    export LD_LIBRARY_PATH=$SWIG_ENV/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
     $PIP_INSTALL --no-build-isolation git+https://github.com/dstndstn/tractor
+    export PATH=$old_path
+    export LD_LIBRARY_PATH=$old_ldpath
 }
 
 update_pydl() {
