@@ -133,8 +133,17 @@ attempts to uninstall packages from the read-only pytorch module location.
 
 ### One-time kernel setup (per user)
 
+From a NERSC login node or the JupyterHub terminal, with a local clone:
+
 ```bash
 bash /path/to/SGA/etc/install-kernel-sgaml.sh
+```
+
+Or download and run directly from GitHub:
+
+```bash
+wget -q https://raw.githubusercontent.com/moustakas/SGA/main/etc/install-kernel-sgaml.sh
+bash install-kernel-sgaml.sh && rm install-kernel-sgaml.sh
 ```
 
 ### Using the kernel
