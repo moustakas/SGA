@@ -196,6 +196,15 @@ exec python -m ipykernel -f \$connection_file
 ACTIVATE
 chmod +x "$SGAML_PREFIX/etc/activate.sh"
 
+# ---------------------------------------------------------------------------
+# Step 9: clean up caches and the C build env to reclaim disk space.
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> Cleaning up caches and C build env..."
+rm -rf "$CLIB"
+python -m pip cache purge
+$MAMBA clean --all --yes
+
 echo ""
 echo "Done. Environment is at: $SGAML_PREFIX"
 echo "Run 'bash etc/install-kernel-sgaml.sh' to register the Jupyter kernel."

@@ -112,6 +112,14 @@ mkdir -p $SGA_PREFIX/etc
 cp etc/activate-sga.sh $SGA_PREFIX/etc/activate.sh
 chmod +x $SGA_PREFIX/etc/activate.sh
 
+# ---------------------------------------------------------------------------
+# Step 5: clean up caches to reclaim disk space.
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> Cleaning up caches..."
+$MAMBA clean --all --yes
+$RUN pip cache purge
+
 echo ""
 echo "Done. Environment is at: $SGA_PREFIX"
 echo "Run 'bash etc/install-kernel-sga.sh' to register the Jupyter kernel."
