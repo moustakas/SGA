@@ -3,15 +3,15 @@
 #
 # Usage:
 #   module load conda
-#   bash etc/update-env.sh                        # update all packages
-#   bash etc/update-env.sh sga                    # update SGA only
-#   bash etc/update-env.sh legacypipe             # update legacypipe only
-#   bash etc/update-env.sh tractor                # update tractor only
-#   bash etc/update-env.sh sga legacypipe         # update multiple
+#   bash etc/update-env-sga.sh                        # update all packages
+#   bash etc/update-env-sga.sh sga                    # update SGA only
+#   bash etc/update-env-sga.sh legacypipe             # update legacypipe only
+#   bash etc/update-env-sga.sh tractor                # update tractor only
+#   bash etc/update-env-sga.sh sga legacypipe         # update multiple
 #
 # For a local editable install (e.g. while working on a branch):
-#   bash etc/update-env.sh --editable sga /path/to/SGA
-#   bash etc/update-env.sh --editable legacypipe /path/to/legacypipe
+#   bash etc/update-env-sga.sh --editable sga /path/to/SGA
+#   bash etc/update-env-sga.sh --editable legacypipe /path/to/legacypipe
 #
 # --no-deps is used for editable installs because all dependencies are
 # already conda-managed; without it, pip may reinstall them from PyPI
