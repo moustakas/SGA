@@ -1,0 +1,56 @@
+# Micromamba/conda environment for SGAML (SGA + machine learning) — laptop.
+# Targets macOS on Apple Silicon (MPS backend for PyTorch; no CUDA).
+# Python 3.12 matches the NERSC pytorch/2.11.0 module for cross-platform
+# consistency when testing code intended to run on Perlmutter.
+#
+# astrometry.net is built from source by create-env-laptop-sgaml.sh.
+# tractor, legacypipe, pydl, SGA, ssl-legacysurvey, webdataset, litmodels,
+# galaxy-datasets, and zoobot are pip-installed by the script.
+
+name: SGAML
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - c-compiler          # gcc/clang for astrometry.net and tractor
+  - swig                # required by astrometry.net and tractor
+  - pkgconf             # pkg-config, used during astrometry.net build
+  # C libraries required by astrometry.net source build
+  - cairo
+  - cfitsio
+  - gsl
+  - libjpeg-turbo
+  - libpng
+  - netpbm
+  - wcslib
+  # SGA core dependencies
+  - numpy
+  - astropy
+  - fitsio
+  - matplotlib
+  - scipy
+  - photutils
+  # ML dependencies (pytorch from conda-forge supports MPS on Apple Silicon)
+  - pytorch
+  - torchvision
+  - torchaudio
+  - lightning
+  - torchmetrics
+  - scikit-image
+  - scikit-learn
+  - h5py
+  - numba
+  - umap-learn
+  - optuna
+  - timm
+  - faiss-cpu
+  - pandas
+  - pyarrow
+  - tqdm
+  - wandb
+  - huggingface_hub
+  # Jupyter kernel support
+  - ipykernel
+  - ipython
+  - pip
