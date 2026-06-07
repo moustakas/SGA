@@ -3,8 +3,8 @@
 # Uses the NERSC pytorch/2.11.0 module (Python 3.12) as the Python/PyTorch
 # base and pip-installs all additional packages into $SGAML_PREFIX.
 # A minimal conda env at $SGAML_PREFIX/clib provides the C libraries
-# (GSL, cfitsio, netpbm, etc.) needed to build astrometry.net from source;
-# it is build-time only and is not part of the runtime environment.
+# (GSL, cfitsio, netpbm, etc.) needed to build astrometry.net from source
+# and at runtime by the compiled astrometry extensions.
 #
 # Usage:
 #   module load conda
@@ -61,7 +61,9 @@ PIP_INSTALL="$PIP install --prefix $SGAML_PREFIX --ignore-installed"
 # ---------------------------------------------------------------------------
 # Step 2: create a minimal conda env with C build dependencies.
 # Provides the compiler, swig, and C libraries that astrometry.net's
-# Makefile requires. Not activated at runtime.
+# Makefile requires. The C libraries (GSL, cfitsio, netpbm) are also needed
+# at runtime by the compiled astrometry extensions, so $CLIB is kept and
+# $CLIB/lib is added to LD_LIBRARY_PATH in activate.sh.
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> Creating C build dependencies env at $CLIB..."
@@ -105,12 +107,6 @@ env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1
 env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 py
 env "${ASTROM_ENV[@]}" make -C "$ASTROM_DIR" -j1 install \
     INSTALL_DIR="$SGAML_PREFIX"
-
-# astrometry.net installs its Python package to $INSTALL_DIR/lib/python/
-# regardless of PY_BASE_INSTALL_DIR on Linux. Add a .pth file so the
-# kernel's Python finds it via PYTHONPATH/site-packages.
-echo "${SGAML_PREFIX}/lib/python" \
-    > "$SGAML_PREFIX/lib/python${PYVER}/site-packages/astrometry-path.pth"
 
 # ---------------------------------------------------------------------------
 # Step 4: pip install Python packages not provided by the pytorch module.
@@ -190,18 +186,20 @@ cat > "$SGAML_PREFIX/etc/activate.sh" << ACTIVATE
 connection_file=\$1
 module purge
 module load ${PT_MODULE}
-export PYTHONPATH=${SGAML_PREFIX}/lib/python${PYVER}/site-packages
+export PYTHONPATH=${SGAML_PREFIX}/lib/python:${SGAML_PREFIX}/lib/python${PYVER}/site-packages
 export PATH=${SGAML_PREFIX}/bin:\$PATH
+export LD_LIBRARY_PATH=${CLIB}/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
 exec python -m ipykernel -f \$connection_file
 ACTIVATE
 chmod +x "$SGAML_PREFIX/etc/activate.sh"
 
 # ---------------------------------------------------------------------------
-# Step 9: clean up caches and the C build env to reclaim disk space.
+# Step 9: clean up pip/conda caches to reclaim disk space.
+# $CLIB is kept because its shared libraries (GSL, cfitsio, netpbm) are
+# needed at runtime by the compiled astrometry extensions.
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> Cleaning up caches and C build env..."
-rm -rf "$CLIB"
+echo "==> Cleaning up caches..."
 python -m pip cache purge
 $MAMBA clean --all --yes
 
