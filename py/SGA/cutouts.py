@@ -937,4 +937,3 @@ def annotated_montage(cat, cutoutdir='.', annotatedir='.', photodir='.',
                 info['PAGE'] = ipage
                 _ = print(info.pprint(max_lines=-1))
             print()
-
