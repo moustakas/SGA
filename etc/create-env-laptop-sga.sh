@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-ENV_NAME=SGA2
+ENV_NAME=SGA
 
 if ! command -v micromamba &>/dev/null; then
     echo "Error: micromamba not found."
@@ -24,7 +24,7 @@ RUN="micromamba run -n $ENV_NAME"
 # Step 1: conda packages (compiler, swig, C libraries, numpy, astropy, etc.)
 # ---------------------------------------------------------------------------
 echo "==> Creating conda environment '$ENV_NAME'..."
-micromamba create -n $ENV_NAME --file etc/environment-laptop.yml --yes
+micromamba create -n $ENV_NAME --file etc/environment-laptop-sga.yml --yes
 
 # Get the conda env prefix and Python version for use in build steps below
 CONDA_PREFIX=$($RUN python -c "import sys; print(sys.prefix)")

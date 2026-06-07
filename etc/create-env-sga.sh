@@ -29,7 +29,7 @@ echo ""
 # Step 1: conda packages (compiler, swig, C libraries, numpy, astropy, etc.)
 # ---------------------------------------------------------------------------
 echo "==> Creating conda environment..."
-$MAMBA create --prefix $SGA_PREFIX --file etc/environment.yml --yes
+$MAMBA create --prefix $SGA_PREFIX --file etc/environment-sga.yml --yes
 
 PYVER=$($RUN python -c "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')")
 echo "    python : $PYVER"
@@ -109,9 +109,9 @@ $RUN pip install git+https://github.com/moustakas/SGA
 echo ""
 echo "==> Deploying activate.sh..."
 mkdir -p $SGA_PREFIX/etc
-cp etc/activate.sh $SGA_PREFIX/etc/activate.sh
+cp etc/activate-sga.sh $SGA_PREFIX/etc/activate.sh
 chmod +x $SGA_PREFIX/etc/activate.sh
 
 echo ""
 echo "Done. Environment is at: $SGA_PREFIX"
-echo "Run 'bash etc/install-kernel.sh' to register the Jupyter kernel."
+echo "Run 'bash etc/install-kernel-sga.sh' to register the Jupyter kernel."
