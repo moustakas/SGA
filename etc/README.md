@@ -3,6 +3,15 @@
 Two environments are provided: **SGA** (core astronomy stack) and **SGAML**
 (SGA + machine learning: PyTorch, ssl-legacysurvey, Zoobot).
 
+## Contents
+
+- [Architecture](#architecture)
+- [NERSC — SGA](#nersc--sga)
+- [NERSC — SGAML](#nersc--sgaml)
+- [Laptop — SGA](#laptop--sga)
+- [Laptop — SGAML](#laptop--sgaml)
+- [Files](#files)
+
 ## Architecture
 
 ```
