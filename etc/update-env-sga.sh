@@ -34,7 +34,7 @@ RUN="$MAMBA run -p $SGA_PREFIX"
 
 update_sga() {
     echo "==> Updating SGA..."
-    $RUN pip install --upgrade git+https://github.com/moustakas/SGA
+    $RUN pip install --upgrade --no-deps git+https://github.com/moustakas/SGA
 }
 
 update_legacypipe() {

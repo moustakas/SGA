@@ -38,7 +38,7 @@ PIP_INSTALL="python -m pip install --prefix $SGAML_PREFIX --ignore-installed --u
 
 update_sga() {
     echo "==> Updating SGA..."
-    $PIP_INSTALL git+https://github.com/moustakas/SGA
+    $PIP_INSTALL --no-deps git+https://github.com/moustakas/SGA
 }
 
 local_install() {
