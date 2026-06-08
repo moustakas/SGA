@@ -5,6 +5,7 @@
 #   module load conda
 #   bash etc/update-env-sga.sh                        # update all packages
 #   bash etc/update-env-sga.sh sga                    # update SGA only
+#   bash etc/update-env-sga.sh isoster                # update isoster only
 #   bash etc/update-env-sga.sh legacypipe             # update legacypipe only
 #   bash etc/update-env-sga.sh tractor                # update tractor only
 #   bash etc/update-env-sga.sh sga legacypipe         # update multiple
@@ -52,6 +53,11 @@ update_pydl() {
     $RUN pip install --upgrade pydl
 }
 
+update_isoster() {
+    echo "==> Updating isoster..."
+    $RUN pip install --upgrade git+https://github.com/MassiveSeaOtters/isoster
+}
+
 editable_install() {
     local pkg=$1
     local path=$2
@@ -63,6 +69,7 @@ editable_install() {
 if [[ $# -eq 0 ]]; then
     update_pydl
     update_sga
+    update_isoster
     update_legacypipe
     update_tractor
     exit 0
@@ -78,8 +85,9 @@ for pkg in "$@"; do
     case $pkg in
         pydl)       update_pydl ;;
         sga)        update_sga ;;
+        isoster)    update_isoster ;;
         legacypipe) update_legacypipe ;;
         tractor)    update_tractor ;;
-        *) echo "Unknown package: $pkg (expected pydl, sga, legacypipe, or tractor)"; exit 1 ;;
+        *) echo "Unknown package: $pkg (expected pydl, sga, isoster, legacypipe, or tractor)"; exit 1 ;;
     esac
 done

@@ -103,6 +103,10 @@ echo ""
 echo "==> Installing SGA..."
 $RUN pip install git+https://github.com/moustakas/SGA
 
+echo ""
+echo "==> Installing isoster..."
+$RUN pip install git+https://github.com/MassiveSeaOtters/isoster
+
 # ---------------------------------------------------------------------------
 # Step 4: deploy activate.sh to stable location inside the env prefix
 # ---------------------------------------------------------------------------
