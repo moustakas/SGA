@@ -39,7 +39,7 @@ To build the ssl-legacysurvey catalog:
     source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
 
     SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr9-north --rescale --mp=128
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr9-north --rescale --mp=128
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr11-south --rescale --mp=128
 
     SGA2025-shifter
     source $HOME/code/git/SGA/bin/SGA2025/SGA2025-env
@@ -48,10 +48,6 @@ To build the ssl-legacysurvey catalog:
     SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v3
     SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v2
     SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v1
-
-  Investigate...
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --ssl --ssl-version=v3 --rescale --annotate --region=dr11-south --mp=32
-    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --ssl --ssl-version=v3 --rescale --annotated-montage --region=dr11-south --mp=32
 
 ###
 LVD sample:
@@ -82,16 +78,13 @@ SGA-2020 sample:
 
 SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2020-cutouts --sga2020 --region=dr9 --bands='g,r,z' --rescale --mp=128
 
-
 """
-import pdb # for debugging
 import os
 from glob import glob
 import numpy as np
 import fitsio
 
 from astropy.table import Table, vstack
-from astrometry.libkd.spherematch import match_radec
 
 from SGA.geometry import choose_geometry
 from SGA.ssl import build_ssl_legacysurvey_refcat, build_ssl_legacysurvey
@@ -99,242 +92,11 @@ from SGA.ssl import build_ssl_legacysurvey_refcat, build_ssl_legacysurvey
 from SGA.logger import log
 
 
-def _write_objlist(cat, region, prefix='tmplist'):
-    outfile = f'{prefix}-{region}.txt'
-    out = cat['OBJNAME', ]
-    out['COMMENT'] = 'drop,faint shred or compact'
-    out.write(outfile, format='ascii.csv', overwrite=True)
-    log.info(f'Wrote {outfile}')
-
-
-def _read_test_sample1(cat, region, photo_version):
-    """All objects with diameter<XX arcsec and no other source within
-    XX arcsec.
-
-    """
-    from SGA.sky import find_close
-
-    if photo_version is None:
-        msg = 'photo_version is a required input for _read_sample1()'
-        log.critical(msg)
-        raise ValueError(msg)
-
-    fullcat = cat.copy()
-
-    primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
-    diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-
-    # I have cutouts for everything < 20.
-    #cat = primaries[diam < 20.]#[:128]
-
-    if region == 'dr11-south':
-        if photo_version == 'v1.0':
-            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 10.) # N=4,434
-        elif photo_version == 'v1.1':
-            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 10.) * (diam < 12.) # N=434,092
-        elif photo_version == 'v1.2':
-            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 12.) * (diam < 15.) # N=446,883
-        elif photo_version == 'v1.3':
-            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 15.) * (diam < 20.) # N=542,082
-    elif region == 'dr9-north':
-        if photo_version == 'v1.0':
-            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam > 0.) * (diam < 11.) # N=94,229
-        elif photo_version == 'v1.1':
-            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 11.) * (diam < 15.) # N=212,676
-        elif photo_version == 'v1.2':
-            I = (primaries['ROW_LVD'] == -99) * (primaries['STARFDIST'] > 1.) * (diam >= 15.) * (diam < 20.) # N=154,287
-
-    cat = primaries[I]
-    #cat = cat[cat['OBJNAME'] == 'WISEA J000353.33-203717.1']
-
-    #I = ~np.logical_or.reduce((cat['FILTERS'] == 'girz', cat['FILTERS'] == 'grz'))
-    #cat = cat[I][:128]
-    #cat = cat[:128]
-    #_write_objlist(cat, region)
-
-    return cat, fullcat
-
-
-def _read_test_sample2(cat, region, photo_version):
-    """Check the photo fitting results.
-
-    """
-    photofiles = sorted(glob(os.path.join(sga_dir(), 'parent','photo', f'parent-photo-{region}-v?.?.fits')))
-    photo = []
-    for photofile in photofiles:
-        photo1 = Table(fitsio.read(photofile))
-        print(f'Read {len(photo1):,d} objects from {photofile}')
-        photo.append(photo1)
-    photo = vstack(photo)
-
-    #I = photo['NODATA']
-    #I = photo['MGE_FAIL']
-    #I = photo['CENTERMASKED']
-    #cat = cat[np.isin(cat['OBJNAME'], photo['OBJNAME'][I])]
-
-    #M = np.logical_or.reduce((photo['FRACMASK_INIT_G'] < 0.2, photo['FRACMASK_INIT_R'] < 0.2,
-    #                          photo['FRACMASK_INIT_I'] < 0.2, photo['FRACMASK_INIT_Z'] < 0.2))
-    #I = ((photo['DIAM_PHOT'] > photo['DIAM_INIT']) * (photo['DIAM_PHOT'] > 30.) * (photo['SEP'] < 5.) * M)
-    I = (photo['DIAM_PHOT'] > 45.)
-    photo = photo[I]
-    #photo = photo[:128]
-    cat = cat[np.isin(cat['OBJNAME'], photo['OBJNAME'])]
-    _write_objlist(cat, region)
-
-    return cat
-
-
-def _read_test_sample3(cat, region, isolated=False):
-    """All sources larger than XX arcmin with at least one other
-    object within its diameter (or not, if isolated=True).
-
-    """
-    from SGA.geometry import choose_geometry
-    from SGA.sky import in_ellipse_mask_sky
-
-    fullcat = cat.copy()
-    fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
-
-    if isolated:
-        #I = (fullcat_diam <= 20.) * (fullcat['ROW_LVD'] == -99) * ~fullcat['RESOLVED']
-        #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
-        I = (fullcat_diam > 50.) * (fullcat_diam <= 60.) * ~fullcat['RESOLVED']
-    else:
-        #I = (fullcat_diam/60. > 4.) * (fullcat_diam/60. < 50.) * ~fullcat['RESOLVED']
-        #I = (fullcat_diam/60. > 2.) * (fullcat_diam/60. < 4.) * ~fullcat['RESOLVED']
-        #I = (fullcat_diam/60. > 1.) * (fullcat_diam/60. < 2.) * ~fullcat['RESOLVED']
-        I = (fullcat_diam > 30.) * (fullcat_diam <= 60.) * ~fullcat['RESOLVED']
-        #I = (fullcat_diam/60. > 1.) * ~fullcat['RESOLVED']
-        #print('HACK!!')
-        #I = np.isin(cat['OBJNAME'], ['NGC 5349'])#['NGC 0019'])#, 'ESO 241- G 020'])
-
-    print(np.sum(I))
-    cat = cat[I]
-    diam = fullcat_diam[I]
-    ba = fullcat_ba[I]
-    pa = fullcat_pa[I]
-
-    allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
-                             fullcat['RA'].value, fullcat['DEC'].value,
-                             np.max(diam)/3600., indexlist=True,
-                             notself=False, count=True)
-    outcat, outfullcat = [], []
-
-    if isolated:
-        prefix = 'isolated'
-    else:
-        prefix = 'tmplist'
-
-    for iobj in range(len(cat)):
-        if isolated:
-            # refine the search to this object's diameter
-            _, m2, _ = match_radec(cat['RA'][iobj], cat['DEC'][iobj],
-                                   fullcat['RA'][allmatches[iobj]],
-                                   fullcat['DEC'][allmatches[iobj]],
-                                   0.75*diam[iobj]/3600.)
-            # isolated!
-            if len(m2) == 1:
-                outcat.append(cat[[iobj]])
-                outfullcat.append(fullcat[allmatches[iobj]][m2])
-        else:
-            if len(allmatches[iobj]) == 1:
-                m2 = [0]
-                prefix_this = ''
-                diam_this = [-99.]
-            else:
-                # find neighbors within this object's elliptical aperture
-                ras, decs = fullcat['RA'][allmatches[iobj]], fullcat['DEC'][allmatches[iobj]]
-                racen, deccen = cat['RA'][iobj], cat['DEC'][iobj]
-
-                semia = diam[iobj] / 2. / 3600. # [degrees]
-                semib = ba[iobj] * semia
-
-                m2 = np.where(in_ellipse_mask_sky(
-                    racen, deccen, semia, semib, pa[iobj], ras, decs))[0]
-
-                # hack!
-                prefix_this = np.array(list(zip(*np.char.split(fullcat['OBJNAME'][allmatches[iobj]][m2].value, ' ').tolist()))[0])
-                diam_this = fullcat_diam[allmatches[iobj]][m2]
-                objtypes = fullcat['OBJTYPE'][allmatches[iobj]][m2].value
-
-            # at least one other object
-            #if len(m2) > 1 and np.any(diam_this == 0.):
-            if len(m2) > 1 and np.any(objtypes == 'g'):
-            #if len(m2) > 1 and 'WISEA' in prefix_this and np.any(diam_this == 0.):
-                outcat.append(cat[[iobj]])
-                outfullcat.append(fullcat[allmatches[iobj]][m2])
-
-    cat = vstack(outcat)
-    print(len(cat))
-    #allprefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-    #cat = cat[:100]
-
-    _cat = vstack(outfullcat)
-    _, uindx = np.unique(_cat['OBJNAME'], return_index=True)
-    _cat = _cat[uindx]
-
-    print('HACK - removing central galaxy from tmplist!')
-    _cat = _cat[~np.isin(_cat['OBJNAME'], cat['OBJNAME'])]
-
-    _cat = _cat[np.argsort(_cat['RA'])]
-    _write_objlist(_cat, region, prefix=prefix)
-
-    return cat, fullcat
-
-
-def _read_ssl_results(region, ssl_version):
-    """Check Sara's the ssl results.
-
-    """
-    catdir = os.path.join(sga_dir(), 'ssl')#, ssl_version)
-    cat = Table(fitsio.read(os.path.join(catdir, f'ssl-parent-cat-{ssl_version}.fits')))
-    refcat = Table(fitsio.read(os.path.join(catdir, f'ssl-parent-refcat-{ssl_version}.fits')))
-
-    cat = cat[cat['REGION'] == region]
-    refcat = refcat[refcat['REGION'] == region]
-
-    sslfiles = glob(os.path.join(cutoutdir, ssl_version, 'output', '*.txt'))
-    allssl = vstack([Table.read(sslfile, format='ascii.commented_header') for sslfile in sslfiles])
-    _, I = np.unique(allssl['ROW'], return_index=True)
-    allssl = allssl[I]
-
-    ssl_cat = allssl[np.isin(allssl['ROW'], cat['ROW_PARENT'])]
-    ssl_refcat = allssl[np.isin(allssl['ROW'], refcat['ROW_PARENT'])]
-
-    if False:#True:
-        # first investigate refcat
-        cat = refcat[np.isin(refcat['ROW_PARENT'], ssl_refcat['ROW'])]
-    else:
-        # investigate cat
-        cat = cat[np.isin(cat['ROW_PARENT'], ssl_cat['ROW'])]
-        #print(cat.pprint(max_lines=-1))
-        pdb.set_trace()
-
-    ## test code to identify objects with no other sources within 30 arcsec
-    #fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
-    #matches = match_radec(cat['RA'].value, cat['DEC'].value, fullcat['RA'].value,
-    #                      fullcat['DEC'].value, 30./3600., indexlist=True, notself=True)
-    #indx_isolated = []
-    #for iobj, onematch in enumerate(matches):
-    #    if onematch is None:
-    #        continue
-    #    if len(onematch) == 1:
-    #        indx_isolated.append(iobj)
-    #indx_isolated = np.array(indx_isolated)
-    #cat = cat[indx_isolated]
-
-    #cat = cat[0:490] # 1000:1110]
-
-    return cat
-
-
 def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
-                 ssl_version=None, photo_version=None, ntest=None,
-                 annotate=False, ssl=False, wisesize=False, lvd=False,
+                 photo_version=None, ntest=None,
+                 annotate=False, wisesize=False, lvd=False,
                  zooniverse=False):
-    """Simple wrapper to read a specified catalog.
-
-    """
+    """Simple wrapper to read a specified catalog."""
     from SGA.io import read_fits_catalog
     from SGA.SGA import SGA_version
 
@@ -355,7 +117,6 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
     F = fitsio.FITS(catfile)
     N = F[1].get_nrows()
 
-    # read a test sample
     if ntest is not None:
         rng = np.random.default_rng(seed=1)
         rows = rng.choice(N, size=ntest, replace=False)
@@ -365,12 +126,7 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
 
     cat = read_fits_catalog(catfile, columns=columns, rows=rows)
 
-    if ssl and ssl_version is None:
-        log.info('ssl_version must be specified')
-        return
-
-    # when annotating, must make a copy *before* any cuts!
-    if read_fullcat or annotate or ssl or lvd:
+    if read_fullcat or annotate or lvd:
         if ntest is not None:
             fullcat = read_fits_catalog(catfile, columns=columns, rows=None)
         else:
@@ -378,172 +134,24 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
     else:
         fullcat = None
 
-    # read various samples / projects
-    #cat, fullcat = _read_test_sample1(cat, region, photo_version)
-    #cat = _read_test_sample2(cat, region, photo_version)
-    #cat = _read_test_sample3(cat, region, isolated=False)
-
-    #pdb.set_trace()
-
-    if False:#True:
-        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023340.70+345454.6'])]
-        cat = cat[np.isin(cat['OBJNAME'], ['Pictor I', 'Phoenix'])]
-        fullcat = cat.copy()
-        fullcat_diam, fullcat_ba, fullcat_pa, _ = choose_geometry(fullcat, mindiam=0.)
-        fullcat = fullcat[fullcat_diam > 30.]
-
-        # good tests for do_photo()
-        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3', '6dF J1125579-114702', 'SDSS J125753.66+100506.8'])]
-
-    # Explore a given photo sample
-    if False:#True:
-        photfile = os.path.join(sga_dir(), 'parent', 'photo', f'parent-photo-{region}-{photo_version}.fits')
-        phot = Table(fitsio.read(photfile))
-        log.info(f'Read {len(phot):,d} objects from {photfile}')
-
-        #I = phot['MGE_FAIL']
-        I = (phot['DIAM_PHOT'] > 30.) * (phot['SEP'] < 5.)
-        #pdb.set_trace()
-
-        # this works well!
-        #I = np.logical_or.reduce((phot['NODATA'], phot['CENTERMASKED'], phot['MGE_FAIL']))
-
-        # test
-        #I = phot['SEP'] > 20.
-
-        print(np.sum(I))
-        phot = phot[I]
-        cat = cat[np.isin(cat['OBJNAME'], phot['OBJNAME'])]
-
-
-    #if False:#True:
-        ##########################
-        ## All objects with at least one other sources within XX arcsec.
-        #from SGA.util import resolve_close
-        #
-        #fullcat = cat.copy()
-        #rad_arcsec = 5.#10.#1.5
-        #
-        #cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
-        #pdb.set_trace()
-        #fullcat = resolve_close(cat, fullcat, maxsep=rad_arcsec, allow_vetos=False, trim=True, verbose=False)#True)
-        #
-        #cat = find_close(cat, fullcat, rad_arcsec=rad_arcsec)
-
-        ##########################
-        ## All objects with diameter==0 and no other source within
-        ## 30 arcsec.
-        #from SGA.util import find_close
-        #fullcat = cat.copy()
-        #
-        #primaries, groups = find_close(cat, cat, rad_arcsec=30., isolated=True)
-        #diam, _, _, _ = choose_geometry(primaries, mindiam=0.)
-        #cat = primaries[diam == 0.]#[:128]
-        #write_junk(cat, region)
-
-        #########################
-        ## All objects larger than XX arcmin that have an SDSS source near them.
-        #fullcat = cat.copy()
-        #I = (diam > 5.*60.)
-        #cat = cat[I]
-        #
-        #allmatches = match_radec(cat['RA'].value, cat['DEC'].value,
-        #                         fullcat['RA'].value, fullcat['DEC'].value,
-        #                         1./60., indexlist=True, notself=False)
-        #refindx = []
-        #for ii, mm in enumerate(allmatches):
-        #    if len(mm) > 1:
-        #        if np.any('SDSS' in ' '.join(fullcat['OBJNAME'][mm].value)):
-        #            refindx.append(ii)
-        #refindx = np.array(refindx)
-        #cat = fullcat[I][refindx]
-
-
-    if False:#True:
-        I = (cat['DIAM_LIT'] < 0.) * (np.char.find(cat['OBJNAME'].value, 'LSBG') != -1)
-        cat = cat[I]
-
-    if False:#True:
-        # one-by-one checks
-
-        cat = cat[np.isin(cat['OBJNAME'], ['WISEA J000146.05+101419.7', 'WISEA J000214.39-252944.6'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['MCG +00-11-011'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J023242.56+005813.7'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['UGCA 020'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['CGMW 5-02508'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['CGMW 5-00897'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J101736.54-075650.7'])]
-
-        #print('SUPER HACK!')
-        #cat = cat[np.isin(cat['OBJNAME'], ['ESO 569- G 005'])]
-        #cat['RA'] += 5./3600.
-        #cat['DEC'] -= 3./3600.
-
-        #cat = cat[np.isin(cat['OBJNAME'], ['WISEA J110416.71-003141.3'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['KUG 1045+278'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['ESO 409- G 008'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['ESO 054- G 004'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['ESO 002- G 013', 'WISEA J110416.71-003141.3'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['UGC 00579', 'IC 1860'])]
-        #cat = cat[cat['OBJNAME'] == 'UGC 03214']
-        #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], 27.2007, 10.5151, 120./3600.)
-        #cat = cat[m1]
-        #print(cat['OBJNAME', 'ROW_PARENT'])
-        #pdb.set_trace()
-        #diam, ba, pa, ref = choose_geometry(cat)
-        #parse_geometry(cat, 'SMUDGes')
-
-        #from SGA.groups import build_group_catalog
-        #diam, _, _, _ = choose_geometry(cat, mindiam=10.)
-        #cat['DIAM'] = diam
-        #cat = cat[diam < 15.]
-        #cat['SGANAME'] = radec_to_name(cat['RA'], cat['DEC'], unixsafe=False)
-        #cat = build_group_catalog(cat)
-
-    if False:
-        # SMUDGes
-        prefix = np.array(list(zip(*np.char.split(cat['OBJNAME'].value, ' ').tolist()))[0])
-        cat = cat[(prefix == 'SMDG') * (cat['DIAM_LIT'] > 0.)]#[:8]
-        diam, ba, pa, ref = choose_geometry(cat)
-        #pdb.set_trace()
-
     if lvd:
-        # analyze the LVD sample
-        #diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-        #cat = cat[(cat['ROW_LVD'] != -99) * (diam == 0.)] # (diam > 20.*60.)]
         cat = cat[cat['ROW_LVD'] != -99]
 
         if photo_version is not None:
             # six galaxies with diam>40 arcmin in dr11-south (invvar cutouts not possible!)
-            # ---------------------
-            # OBJNAME      DIAM_LIT
-            #          LMC   645.65
-            #  Sagittarius   446.68
-            #          SMC   380.19
-            #    Antlia II    151.2
-            #    Crater II     62.4
-            #   Bootes III     56.0
             cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC', 'Antlia II', 'Crater II', 'Bootes III'])]
         else:
             cat = cat[~np.isin(cat['OBJNAME'], ['LMC', 'Sagittarius', 'SMC'])]
-        #cat = cat[np.isin(cat['OBJNAME'], ['KK 221'])]
-        #cat = cat[cat['RESOLVED']]
         diam, _, _, _ = choose_geometry(cat, mindiam=0.)
-        #cat = cat[diam < 60.]
         cat = cat[cat['FORCEPSF']]
-        #cat = cat[~np.logical_or.reduce((cat['RESOLVED'], cat['FORCEPSF'], cat['FORCEGAIA']))]
-        #pdb.set_trace()
 
         fulldiam, _, _, _ = choose_geometry(fullcat, mindiam=0.)
         fullcat = fullcat[fulldiam > 30./60.]
-
 
     if wisesize:
         from SGA.external import read_wisesize_sample
         cat, fullcat = read_wisesize_sample(cat, fullcat=fullcat, catfile=catfile,
                                             region=region, cutoutdir=cutoutdir)
-
 
     if zooniverse:
         from SGA.external import read_zooniverse_sample
@@ -551,39 +159,11 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
                                               region=region, cutoutdir=cutoutdir,
                                               project='project1')
 
-    if ssl:
-        _read_ssl_results(region, ssl_version)
-
-    # more testing below here
-    #if False:
-        ## SGA-2020 missing objects
-        #miss = Table(fitsio.read(os.path.join(sga_dir(), 'sandbox', 'sga2020-missing.fits')))
-        #m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 5./3600., nearest=True)
-        ##m1, m2, _ = match_radec(cat['RA'], cat['DEC'], miss['RA'], miss['DEC'], 60./3600.)
-        ##m1 = np.unique(m1)
-        #cat = cat[m1]
-        #cat = cat[np.argsort(cat['RA'])]
-        ##cat = cat[cat['OBJNAME'] == 'WISEA J163631.04+461928.3']
-        ##diam, ba, pa, ref = choose_geometry(cat)
-
-
     log.info(f'Trimmed to {len(cat):,d} objects.')
 
-
-    sort_by_ra = False
-    sort_by_diameter = True
-    #if lvd and photo_version is not None:
-    #    pdb.set_trace()
-    if sort_by_ra:
-        log.info('Sorting by RA')
-        cat = cat[np.argsort(cat['RA'])]
-    elif sort_by_diameter:
-        log.info('Sorting by diameter')
-        diam, _, _, ref = choose_geometry(cat, mindiam=0.)
-        cat = cat[np.argsort(diam)[::-1]]
-    else:
-        log.info('Sorting by OBJNAME')
-        cat = cat[np.argsort(cat['OBJNAME'])]
+    log.info('Sorting by diameter')
+    diam, _, _, _ = choose_geometry(cat, mindiam=0.)
+    cat = cat[np.argsort(diam)[::-1]]
 
     if len(cat) == 0:
         raise ValueError('No objects in catalog!')
@@ -592,12 +172,9 @@ def read_catalog(region='dr9-north', cutoutdir='.', read_fullcat=False,
 
 
 def main():
-    """Main wrapper.
-
-    """
+    """Main wrapper."""
     import argparse
     from SGA.cutouts import get_pixscale_and_width, cutouts_plan
-
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--region', default='dr9-north', choices=['dr9-north', 'dr9-south', 'dr10-south', 'dr11-south', 'dr9'],
@@ -669,7 +246,6 @@ def main():
         photodir = None
 
         if args.photo or args.gather_photo:
-            # photometry
             if args.photo_version is None:
                 msg = f'photo_version is a required input'
                 log.critical(msg)
@@ -677,11 +253,9 @@ def main():
             cutoutdir = os.path.join(args.cutoutdir, args.region, 'native')
             photodir = os.path.join(args.cutoutdir, args.region, 'native')
         elif args.annotate:
-            # annotated cutouts
             cutoutdir = os.path.join(args.cutoutdir, args.region, 'native')
             annotatedir = os.path.join(args.cutoutdir, args.region, 'annotate')
         else:
-            # native or rescaled cutouts
             layer = f'ls-{args.region}'
             if args.region == 'dr11-south':
                 log.warning(f"WARNING: Overriding layer={layer}-->ls-dr11-early-v2")
@@ -691,7 +265,6 @@ def main():
             else:
                 cutoutdir = os.path.join(args.cutoutdir, args.region, 'native')
             annotatedir = os.path.join(args.cutoutdir, args.region, 'annotate')
-
 
     cat, fullcat = None, None
     use_catalog_objname = False
@@ -722,7 +295,6 @@ def main():
                 for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
                     cat[col] = fullcat[col]
                 del fullcat
-                #cat = cat[:8]
                 fullcat = cat
                 use_catalog_objname = True
                 layer = 'ls-dr9'
@@ -730,8 +302,7 @@ def main():
                 cat, fullcat = read_catalog(region=args.region, annotate=args.annotate,
                                             cutoutdir=args.cutoutdir, ntest=args.ntest,
                                             wisesize=args.wisesize, lvd=args.lvd,
-                                            zooniverse=args.zooniverse, ssl=args.ssl,
-                                            ssl_version=args.ssl_version,
+                                            zooniverse=args.zooniverse,
                                             photo_version=args.photo_version)
 
     if comm is not None:
@@ -754,7 +325,6 @@ def main():
                                overwrite=args.overwrite, verbose=args.verbose)
         return
 
-    # no FITS cutouts needed for the Zooniverse project
     fits_cutouts = args.fits_cutouts
     ivar_cutouts = args.ivar_cutouts
     unwise_cutouts = False
@@ -767,9 +337,7 @@ def main():
     elif args.wisesize:
         ivar_cutouts = True
         unwise_cutouts = True
-        galex_cutouts = False # True
-    else:
-        pass
+        galex_cutouts = False
 
     if args.plan and rank == 0:
         if args.photo or args.gather_photo:
