@@ -29,6 +29,7 @@ dependencies:
   - matplotlib
   - scipy
   - photutils
+  - healpy
   # Jupyter kernel support
   - ipykernel
   - ipython

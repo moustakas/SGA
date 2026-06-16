@@ -6,6 +6,7 @@
 #   bash etc/update-env-sga.sh                        # update all packages
 #   bash etc/update-env-sga.sh sga                    # update SGA only
 #   bash etc/update-env-sga.sh isoster                # update isoster only
+#   bash etc/update-env-sga.sh imagine                # update imagine only
 #   bash etc/update-env-sga.sh legacypipe             # update legacypipe only
 #   bash etc/update-env-sga.sh tractor                # update tractor only
 #   bash etc/update-env-sga.sh sga legacypipe         # update multiple
@@ -58,6 +59,12 @@ update_isoster() {
     $RUN pip install --upgrade git+https://github.com/MassiveSeaOtters/isoster
 }
 
+update_imagine() {
+    echo "==> Updating imagine..."
+    # imagine is not pip-installable; pull the latest commits in the cloned repo.
+    git -C "$SGA_PREFIX/src/imagine" pull
+}
+
 editable_install() {
     local pkg=$1
     local path=$2
@@ -70,6 +77,7 @@ if [[ $# -eq 0 ]]; then
     update_pydl
     update_sga
     update_isoster
+    update_imagine
     update_legacypipe
     update_tractor
     exit 0
@@ -86,8 +94,9 @@ for pkg in "$@"; do
         pydl)       update_pydl ;;
         sga)        update_sga ;;
         isoster)    update_isoster ;;
+        imagine)    update_imagine ;;
         legacypipe) update_legacypipe ;;
         tractor)    update_tractor ;;
-        *) echo "Unknown package: $pkg (expected pydl, sga, isoster, legacypipe, or tractor)"; exit 1 ;;
+        *) echo "Unknown package: $pkg (expected pydl, sga, isoster, imagine, legacypipe, or tractor)"; exit 1 ;;
     esac
 done
