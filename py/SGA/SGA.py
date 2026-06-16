@@ -5,7 +5,7 @@ SGA.SGA
 Code to build and analyze the SGA sample.
 
 """
-import os, pdb
+import os
 from time import time
 import fitsio
 import numpy as np
@@ -411,8 +411,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     maxmult - maximum number of group members (ignored if --no-groups is set)
 
     """
-    import fitsio
-
     if first and last:
         if first > last:
             msg = f'Index first cannot be greater than index last, {first} > {last}'
@@ -448,7 +446,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if no_groups:
             cols = ['D26']
         else:
-            #cols = ['D26', 'GROUP_PRIMARY']
             cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
             if maxmult or minmult:
                 cols += ['GROUP_MULT']
@@ -492,10 +489,8 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     nrows = len(rows)
 
     fullsample = Table(fitsio.read(samplefile, upper=True))
-    #fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
     sample = fullsample[rows]
 
-    #sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
     log.info(f'Read {len(sample):,d}/{len(fullsample):,d} GROUP_PRIMARY objects from {samplefile}')
     if len(sample) == 0:
         return sample, fullsample
@@ -504,7 +499,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         # select objects in this region
         from SGA.coadds import REGIONBITS
         I = sample['REGION'] & REGIONBITS[region] != 0
-        #J = fullsample['REGION'] & REGIONBITS[region] != 0
         log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
                  f'region={region}')
 
@@ -516,50 +510,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
-        print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
-        from SGA.ellipse import ELLIPSEMODE
-        from SGA.brick import brickname as get_brickname
-
-        adds = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/adds.csv', format='csv')
-        updates = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/updates.csv', format='csv')
-
-        dogroups = ((np.isin(fullsample['OBJNAME'], np.unique(adds['OBJNAME'])) |
-                     np.isin(fullsample['OBJNAME'], np.unique(updates['OBJNAME'])) |
-                     (fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
-                     (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0)) &
-                    (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0))
-
-        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
-        testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
-        log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
-        allbricks = get_brickname(fullsample['GROUP_RA'].value, fullsample['GROUP_DEC'].value)
-
-        I = (np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups])) |
-             np.isin(allbricks, testbricks))
-
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-
-    #if True:
-    #    nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
-    #    I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #
-    #    #log.info('Refitting!')
-    #    #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
-    #    #refit = Table(fitsio.read(refitfile))
-    #    #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
-    #    #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
-    #    #sample = fullsample[fullsample['GROUP_PRIMARY']]
-
     # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
         testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
-        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
-        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
         testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
         log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
         allbricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
@@ -574,26 +528,13 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
     # select the LVD sample
     if lvd:
         from SGA.ellipse import ELLIPSEMODE
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
         is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
-        #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         if len(sample) == 0:
             return sample, fullsample
-
-    if False:#True:
-        print('HACK!!')
-        from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
-        I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
-        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-        J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
-        fullsample = fullsample[J]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     if wisesize:
         from SGA.util import match
@@ -627,36 +568,13 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         fullsample = ofullsample[np.isin(ofullsample['GROUP_NAME'], sample['GROUP_NAME'])]
         log.info(f'Selecting {len(fullsample):,d}/{nfullobj:,d} ({len(sample):,d}/{nobj:,d}) wisesize groups (objects)')
 
-
-    if False:
-        from SGA.ellipse import ELLIPSEMODE
-        ## remove
-        #I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
-        #log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
-        # keep
-        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0
-        log.warning(f'Temporarily restricting to {np.sum(I):,d} LVD-RESOLVED sources!')
-        sample = sample[I]
-
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
-    if False:#True:
-        from SGA.ellipse import ELLIPSEMODE
-        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
-        log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
-        sample = sample[I]
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
         log.debug('Selecting specific galaxies.')
         I = np.isin(sample['GROUP_NAME'], galaxylist)
         if np.count_nonzero(I) == 0:
-            #log.warning('No matching galaxies using column GROUP_NAME!')
-            #I = np.isin(sample['SGANAME'], galaxylist)
             I = np.isin(sample['SGAID'], galaxylist)
             if np.count_nonzero(I) == 0:
-                #log.warning('No matching galaxies using column SGANAME!')
                 I = np.isin(sample['OBJNAME'], galaxylist)
                 if np.count_nonzero(I) == 0:
                     log.warning('No matching galaxies found in sample; try a different region?')
@@ -684,19 +602,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             fullsample = sample
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
-    #if version == 'v0.40':
-    #    print('HACK!!!')
-    #    redo = Table.read('/global/u2/i/ioannis/redo-galdir.txt', format='csv')['C'].value
-    #    base = np.array([os.path.basename(path) for path in redo])
-    #    sample = sample[np.isin(sample['GROUP_NAME'], base)]
-    #    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
-
-    #if version == 'v0.50' and False:
-    #    print('HACK!!!')
-    #    redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
-    #    fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
 
     return sample, fullsample
 
@@ -1338,8 +1243,9 @@ def _read_ellipse_optical_maskbits(gdir, datasets, opt_bands, grpsample):
 
         try:
             ellipse1[iellipse, :, :] = ellipse_dataset
-        except:
-            pdb.set_trace()
+        except Exception:
+            log.critical(f'Shape mismatch assigning maskbits for {ellipsefile_dataset}!')
+            return None
 
     return ellipse1
 
@@ -1572,10 +1478,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 outprefix = 'SGA2025-wisesize'
             else:
                 outprefix = 'SGA2025'
-                if False:#True:
-                    print('TESTING!!!')
-                    version = 'test'
-                    outprefix = 'SGA2025-test'
             outfile = f'{outprefix}-beta-{version}-{region}.fits'
             kdoutfile = f'{outprefix}-beta-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
@@ -1884,12 +1786,6 @@ def count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
                                         pa, xgrid, ygrid_flip)
             frac = np.sum(galmask[inellipse]) / np.sum(inellipse)
             #if frac == 1.:
-            #    import matplotlib.pyplot as plt
-            #    plt.clf()
-            #    plt.imshow(galmask, origin='lower')
-            #    plt.savefig('ioannis/tmp/junk.png')
-            #    pdb.set_trace()
-
             out['FRAC'][iobj] = frac
 
     out = out[out['FRAC'] > 0.] # trim
@@ -2017,7 +1913,6 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
         out = safe_vstack(final_results)
         out.write(outfile, overwrite=True)
         log.info(f'Wrote {len(out):,d} objects to {outfile}')
-        pdb.set_trace()
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
