@@ -8,6 +8,7 @@
 #   bash etc/update-env-sgaml.sh ssl-legacysurvey         # update ssl-legacysurvey only
 #   bash etc/update-env-sgaml.sh zoobot                   # update Zoobot only
 #   bash etc/update-env-sgaml.sh sga ssl-legacysurvey     # update multiple
+#   bash etc/update-env-sgaml.sh --local sga /path/to/SGA # install from local checkout
 
 set -euo pipefail
 
@@ -37,7 +38,14 @@ PIP_INSTALL="python -m pip install --prefix $SGAML_PREFIX --ignore-installed --u
 
 update_sga() {
     echo "==> Updating SGA..."
-    $PIP_INSTALL git+https://github.com/moustakas/SGA
+    $PIP_INSTALL --no-deps git+https://github.com/moustakas/SGA
+}
+
+local_install() {
+    local pkg=$1
+    local path=$2
+    echo "==> Installing $pkg from local checkout $path ..."
+    python -m pip install --prefix "$SGAML_PREFIX" --ignore-installed --no-deps --force-reinstall "$path"
 }
 
 update_legacypipe() {
@@ -80,6 +88,12 @@ update_zoobot() {
 }
 
 # Parse arguments
+if [[ $1 == "--local" ]]; then
+    [[ $# -lt 3 ]] && { echo "Usage: $0 --local <pkg> /path/to/checkout"; exit 1; }
+    local_install "$2" "$3"
+    exit 0
+fi
+
 if [[ $# -eq 0 ]]; then
     update_pydl
     update_sga

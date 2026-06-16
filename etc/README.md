@@ -3,13 +3,22 @@
 Two environments are provided: **SGA** (core astronomy stack) and **SGAML**
 (SGA + machine learning: PyTorch, ssl-legacysurvey, Zoobot).
 
+## Contents
+
+- [Architecture](#architecture)
+- [NERSC — SGA](#nersc--sga)
+- [NERSC — SGAML](#nersc--sgaml)
+- [Laptop — SGA](#laptop--sga)
+- [Laptop — SGAML](#laptop--sgaml)
+- [Files](#files)
+
 ## Architecture
 
 ```
 SGA  (/global/common/software/desi/users/ioannis/SGA)
   conda env — python 3.13, astrometry.net (built from source), tractor,
   legacypipe, pydl, numpy, astropy, fitsio, matplotlib, scipy, photutils,
-  ipykernel, SGA
+  ipykernel, SGA, isoster, imagine
 
 SGAML  (/global/common/software/desi/users/ioannis/SGAML)
   pytorch/2.11.0 module (python 3.12) — torch, torchvision, lightning,
@@ -36,7 +45,7 @@ bash etc/create-env-sga.sh
 `create-env-sga.sh` runs in order:
 1. `mamba create` — conda packages (python 3.13, compiler, swig, C libraries, numpy, astropy, …)
 2. Build astrometry.net from source (`make`, `make py`, `make install`)
-3. `pip install` — pydl, tractor, legacypipe, SGA
+3. `pip install` — pydl, tractor, legacypipe, SGA, isoster, imagine
 4. Deploy `activate-sga.sh` to `SGA_PREFIX/etc/activate.sh`
 
 **Known build notes:**
@@ -44,6 +53,7 @@ bash etc/create-env-sga.sh
 - astrometry.net installs its Python package to `lib/python/`; a `.pth` file is added to site-packages so Python finds it without PYTHONPATH manipulation
 - `pydl` is pip-only (not on conda-forge)
 - legacypipe's version string from `git describe` is not PEP 440 compliant; the script clones the repo and patches `setup.py` before installing
+- imagine has no `setup.py`/`pyproject.toml`; it is cloned to `$SGA_PREFIX/src/imagine` and a `.pth` file makes it importable
 
 ### Updating packages
 
@@ -51,6 +61,7 @@ bash etc/create-env-sga.sh
 module load conda
 bash etc/update-env-sga.sh              # update all packages
 bash etc/update-env-sga.sh sga          # update one package
+bash etc/update-env-sga.sh imagine      # (git pull on the cloned repo)
 bash etc/update-env-sga.sh tractor      # (needs --no-build-isolation internally)
 ```
 

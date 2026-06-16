@@ -102,6 +102,20 @@ echo ""
 echo "==> Installing SGA..."
 $RUN pip install git+https://github.com/moustakas/SGA
 
+echo ""
+echo "==> Installing isoster..."
+$RUN pip install git+https://github.com/MassiveSeaOtters/isoster
+
+echo ""
+echo "==> Installing imagine..."
+# imagine has no setup.py/pyproject.toml; clone to a stable path and add a
+# .pth file so Python finds it without PYTHONPATH manipulation.
+mkdir -p "$CONDA_PREFIX/src"
+git clone --depth=1 https://github.com/legacysurvey/imagine "$CONDA_PREFIX/src/imagine"
+$RUN pip install Django pillow requests
+echo "$CONDA_PREFIX/src/imagine" \
+    > "${CONDA_PREFIX}/lib/python${PYVER}/site-packages/imagine-path.pth"
+
 # ---------------------------------------------------------------------------
 # Step 4: register Jupyter kernel
 # ---------------------------------------------------------------------------

@@ -189,6 +189,12 @@ module load ${PT_MODULE}
 export PYTHONPATH=${SGAML_PREFIX}/lib/python:${SGAML_PREFIX}/lib/python${PYVER}/site-packages
 export PATH=${SGAML_PREFIX}/bin:\$PATH
 export LD_LIBRARY_PATH=${CLIB}/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
+export SGA_DIR=\${SGA_DIR:-/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025}
+export SGA_DATA_DIR=\${SGA_DATA_DIR:-/dvs_ro/cfs/cdirs/cosmo/data/sga/2025/data}
+export SGA_HTML_DIR=\${SGA_HTML_DIR:-/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/html}
+# Personal dev overrides (PATH/PYTHONPATH prepends for working branches).
+# Create ~/.sga_dev_env to enable; delete it to revert to the installed env.
+[ -f "\$HOME/.sga_dev_env" ] && source "\$HOME/.sga_dev_env"
 exec python -m ipykernel -f \$connection_file
 ACTIVATE
 chmod +x "$SGAML_PREFIX/etc/activate.sh"
