@@ -53,7 +53,7 @@ def get_pixscale_and_width(diam, mindiam=None, rescale=False, maxdiam_arcmin=25.
     return pixscale, width
 
 
-def cutouts_plan(cat, width=152, layer='ls-dr9', cutoutdir='.', annotatedir='.',
+def cutouts_plan(cat, width=152, layer='ls-dr11', cutoutdir='.', annotatedir='.',
                  photodir='.', size=1, mp=1, group=False, photo=False,
                  gather_photo=False, annotate=False, fits_cutouts=True,
                  unwise_cutouts=False, galex_cutouts=False, overwrite=False,
