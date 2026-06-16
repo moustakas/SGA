@@ -334,84 +334,20 @@ def _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult):
     return np.where(I)[0]
 
 
-def read_sample(first=None, last=None, galaxylist=None, verbose=False,
-                no_groups=False, lvd=False, final_sample=False,
-                version=None, tractor=False, test_bricks=False, region='dr11-south',
-                mindiam=0., maxdiam=1e3, minmult=None, maxmult=None, beta=True):
-    """Read the SGA2025 parent or final ellipse catalog.
-
-    Parameters
-    ----------
-    first, last : int, optional
-        Select a contiguous slice [first, last) of the primary-object list.
-    galaxylist : str, optional
-        Comma-separated identifiers to select. Matched against GROUP_NAME
-        first, then SGAID, then OBJNAME.
-    verbose : bool
-        If True, log additional diagnostic messages.
-    no_groups : bool
-        If True, treat each galaxy independently rather than by group.
-    lvd : bool
-        If True, restrict to the Local Volume Database resolved dwarf subsample.
-    final_sample : bool
-        If True, read the final ellipse catalog (ELLIPSE or TRACTOR extension)
-        instead of the parent catalog (PARENT extension).
-    version : str, optional
-        Catalog version string. Defaults to the current release version via
-        SGA_version().
-    tractor : bool
-        If True and final_sample=True, return the TRACTOR extension instead
-        of ELLIPSE.
-    test_bricks : bool
-        If True, restrict to objects in the DR11 test brick list (pipeline use).
-    region : str
-        Survey region ('dr11-south' or 'dr11-north').
-    mindiam, maxdiam : float
-        Minimum and maximum GROUP_DIAMETER in arcmin.
-    minmult, maxmult : int, optional
-        Minimum/maximum number of group members. Ignored when no_groups=True.
-    beta : bool
-        If True (default), read the beta release file.
-
-    Returns
-    -------
-    sample : astropy.table.Table
-        GROUP_PRIMARY objects satisfying all selection criteria.
-    fullsample : astropy.table.Table
-        All group members whose group has at least one object in sample.
-    """
-    if first and last:
-        if first > last:
-            msg = f'Index first cannot be greater than index last, {first} > {last}'
-            log.critical(msg)
-            raise ValueError(msg)
-
-    if final_sample:
-        if tractor:
-            ext = 'TRACTOR'
-        else:
-            ext = 'ELLIPSE'
-        if version is None:
-            version = SGA_version()
-        if beta:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
-        else:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
-    else:
-        ext = 'PARENT'
-        if version is None:
-            version = SGA_version(parent=True)
-        if beta:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-parent-{version}.fits')
-        else:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-parent-{version}.fits')
-
+def _read_catalog(samplefile, ext, diam_col, first, last, galaxylist, verbose,
+                  no_groups, lvd, region, mindiam, maxdiam, minmult, maxmult,
+                  test_bricks=False):
+    """Read and filter one SGA FITS extension; shared by read_sample and read_sga_sample."""
     if not os.path.isfile(samplefile):
         msg = f'Sample file {samplefile} not found.'
         log.critical(msg)
         raise IOError(msg)
 
-    diam_col = 'D26' if final_sample else 'DIAM'
+    if first is not None and last is not None and first > last:
+        msg = f'Index first cannot be greater than index last, {first} > {last}'
+        log.critical(msg)
+        raise ValueError(msg)
+
     if no_groups:
         cols = [diam_col]
     else:
@@ -429,12 +365,9 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
         return sample, fullsample
 
     if region is not None:
-        # select objects in this region
         from SGA.coadds import REGIONBITS
         I = sample['REGION'] & REGIONBITS[region] != 0
-        log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
-                 f'region={region}')
-
+        log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in region={region}')
         sample = sample[I]
         if no_groups:
             fullsample = sample
@@ -443,7 +376,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
         if len(sample) == 0:
             return sample, fullsample
 
-    # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
         testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
@@ -458,10 +390,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
         if len(sample) == 0:
             return sample, fullsample
 
-    # select the LVD sample
     if lvd:
         from SGA.ellipse import ELLIPSEMODE
-        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
+        is_LVD = ((fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) &
+                  (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0))
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]
@@ -482,7 +414,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
                     sample, fullsample = Table(), Table()
         sample = sample[I]
 
-    # select a subset of objects
     if first is not None or last is not None:
         nsample = len(sample)
         if first is None:
@@ -490,8 +421,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
         if last is None:
             last = nsample
         if last > nsample:
-            log.warning('Index last is greater than the number of ' + \
-                        f'objects in sample, {last} >= {nsample}')
+            log.warning(f'Index last is greater than the number of objects in sample, {last} >= {nsample}')
             last = nsample
         I = np.arange(first, last)
         if nsample == 1:
@@ -505,6 +435,60 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
             fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     return sample, fullsample
+
+
+def read_sample(first=None, last=None, galaxylist=None, verbose=False,
+                no_groups=False, lvd=False,
+                version=None, test_bricks=False, region='dr11-south',
+                mindiam=0., maxdiam=1e3, minmult=None, maxmult=None, beta=True):
+    """Read the SGA2025 parent catalog.
+
+    For the final ellipse or Tractor catalog use read_sga_sample().
+
+    Parameters
+    ----------
+    first, last : int, optional
+        Select a contiguous slice [first, last) of the primary-object list.
+    galaxylist : str, optional
+        Comma-separated identifiers to select. Matched against GROUP_NAME
+        first, then SGAID, then OBJNAME.
+    verbose : bool
+        If True, log additional diagnostic messages.
+    no_groups : bool
+        If True, treat each galaxy independently rather than by group.
+    lvd : bool
+        If True, restrict to the Local Volume Database resolved dwarf subsample.
+    version : str, optional
+        Catalog version string. Defaults to the current release version via
+        SGA_version().
+    test_bricks : bool
+        If True, restrict to objects in the DR11 test brick list (pipeline use).
+    region : str
+        Survey region ('dr11-south' or 'dr11-north').
+    mindiam, maxdiam : float
+        Minimum and maximum GROUP_DIAMETER in arcmin.
+    minmult, maxmult : int, optional
+        Minimum/maximum number of group members. Ignored when no_groups=True.
+    beta : bool
+        If True (default), read the beta release file.
+
+    Returns
+    -------
+    sample : astropy.table.Table
+        GROUP_PRIMARY objects satisfying all selection criteria.
+    fullsample : astropy.table.Table
+        All group members whose group has at least one object in sample.
+    """
+    if version is None:
+        version = SGA_version(parent=True)
+    if beta:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-parent-{version}.fits')
+    else:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-parent-{version}.fits')
+
+    return _read_catalog(samplefile, 'PARENT', 'DIAM', first, last, galaxylist,
+                         verbose, no_groups, lvd, region, mindiam, maxdiam,
+                         minmult, maxmult, test_bricks=test_bricks)
 
 
 def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
@@ -524,17 +508,17 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
         If True, return the TRACTOR extension instead of ELLIPSE.
     mindiam, maxdiam : float
         Minimum and maximum GROUP_DIAMETER in arcmin.
-    galaxylist : str
+    galaxylist : str, optional
         Comma-separated GROUP_NAME, SGAID, or OBJNAME values to select.
-    first, last : int
+    first, last : int, optional
         Slice the primary-object list to indices [first, last).
     no_groups : bool
         If True, treat each galaxy independently rather than by group.
-    minmult, maxmult : int
+    minmult, maxmult : int, optional
         Minimum/maximum number of group members to include.
     lvd : bool
         If True, restrict to the Local Volume Database dwarf subsample.
-    version : str
+    version : str, optional
         Catalog version string; defaults to the current release version.
     beta : bool
         If True (default), read the beta release file.
@@ -548,23 +532,17 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
     fullsample : astropy.table.Table
         All group members whose group has at least one object in sample.
     """
-    return read_sample(
-        final_sample=True,
-        tractor=tractor,
-        region=region,
-        mindiam=mindiam,
-        maxdiam=maxdiam,
-        galaxylist=galaxylist,
-        first=first,
-        last=last,
-        no_groups=no_groups,
-        minmult=minmult,
-        maxmult=maxmult,
-        lvd=lvd,
-        version=version,
-        beta=beta,
-        verbose=verbose,
-    )
+    ext = 'TRACTOR' if tractor else 'ELLIPSE'
+    if version is None:
+        version = SGA_version()
+    if beta:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
+    else:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+
+    return _read_catalog(samplefile, ext, 'D26', first, last, galaxylist,
+                         verbose, no_groups, lvd, region, mindiam, maxdiam,
+                         minmult, maxmult)
 
 
 def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,

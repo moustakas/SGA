@@ -187,8 +187,8 @@ def main():
     from SGA.io import set_legacysurvey_dir
     from SGA.SGA import (RACOLUMN, DECCOLUMN, DIAMCOLUMN, SAMPLE, REFCAT,
                          sga_dir, sga_data_dir, sga_html_dir, SGA_version,
-                         read_sample, missing_files, get_galaxy_galaxydir,
-                         get_radius_mosaic)
+                         read_sample, read_sga_sample, missing_files,
+                         get_galaxy_galaxydir, get_radius_mosaic)
 
     try:
         from mpi4py import MPI
@@ -261,13 +261,20 @@ def main():
         else:
             region = args.region
 
-        sample, fullsample = read_sample(
-            first=args.first, last=args.last, mindiam=args.mindiam,
-            maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
-            version=args.version, galaxylist=args.galaxylist,
-            no_groups=no_groups, lvd=args.lvd, final_sample=args.final_sample,
-            wisesize=args.wisesize, region=region, test_bricks=args.test_bricks,
-            verbose=args.verbose)
+        if args.final_sample:
+            sample, fullsample = read_sga_sample(
+                first=args.first, last=args.last, mindiam=args.mindiam,
+                maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
+                version=args.version, galaxylist=args.galaxylist,
+                no_groups=no_groups, lvd=args.lvd, region=region,
+                verbose=args.verbose)
+        else:
+            sample, fullsample = read_sample(
+                first=args.first, last=args.last, mindiam=args.mindiam,
+                maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
+                version=args.version, galaxylist=args.galaxylist,
+                no_groups=no_groups, lvd=args.lvd, region=region,
+                test_bricks=args.test_bricks, verbose=args.verbose)
 
         #galaxy, galaxydir = get_galaxy_galaxydir(sample, region=args.region, datadir=datadir)
         #_=[print(gdir+'/*ellipse*') for gdir in galaxydir]

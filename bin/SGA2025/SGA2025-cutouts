@@ -138,8 +138,8 @@ def main():
             from SGA.SGA import read_sample
             if args.ssl_version is None:
                 raise ValueError('--ssl-version is required with --build-ssl')
-            sample_n, fullsample_n = read_sample(final_sample=False, region='dr11-north')
-            sample_s, fullsample_s = read_sample(final_sample=False, region='dr11-south')
+            sample_n, fullsample_n = read_sample(region='dr11-north')
+            sample_s, fullsample_s = read_sample(region='dr11-south')
             cat     = vstack([sample_n,     sample_s])
             fullcat = vstack([fullsample_n, fullsample_s])
             del sample_n, sample_s, fullsample_n, fullsample_s
@@ -159,8 +159,7 @@ def main():
         else:
             from SGA.SGA import read_sample
             last = args.ntest if args.ntest else None
-            cat, fullcat = read_sample(region=args.region, last=last,
-                                       final_sample=False)
+            cat, fullcat = read_sample(region=args.region, last=last)
 
     if comm is not None:
         cat = comm.bcast(cat, root=0)

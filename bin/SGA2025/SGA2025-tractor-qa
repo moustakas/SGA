@@ -52,8 +52,8 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 from SGA.SGA import (sga_dir, sga_data_dir, get_galaxy_galaxydir,
-                     read_sample, DIAMCOLUMN, REFIDCOLUMN, SAMPLE,
-                     REFCAT, SGA_version)
+                     read_sample, read_sga_sample, DIAMCOLUMN, REFIDCOLUMN,
+                     SAMPLE, REFCAT, SGA_version)
 from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
 from SGA.io import get_raslice
 from SGA.geometry import get_tractor_ellipse
@@ -1120,10 +1120,16 @@ def qa_tractor(region='dr11-south', version=None, datadir=None,
         version = SGA_version()
 
     # Read catalog
-    sample, fullsample = read_sample(
-        region=region, first=first, last=last, galaxylist=galaxylist,
-        version=version, no_groups=no_groups, final_sample=final_sample,
-        mindiam=0., maxdiam=1e6)  # We'll filter later
+    if final_sample:
+        sample, fullsample = read_sga_sample(
+            region=region, first=first, last=last, galaxylist=galaxylist,
+            version=version, no_groups=no_groups,
+            mindiam=0., maxdiam=1e6)  # We'll filter later
+    else:
+        sample, fullsample = read_sample(
+            region=region, first=first, last=last, galaxylist=galaxylist,
+            version=version, no_groups=no_groups,
+            mindiam=0., maxdiam=1e6)  # We'll filter later
 
     sga2020_overlay = None
     missing_sga2020_mode = False
