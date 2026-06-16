@@ -343,15 +343,51 @@ def _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult):
     return np.where(I)[0]
 
 
-def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                no_groups=False, lvd=False, wisesize=False, final_sample=False,
+def read_sample(first=None, last=None, galaxylist=None, verbose=False,
+                no_groups=False, lvd=False, final_sample=False,
                 version=None, tractor=False, test_bricks=False, region='dr11-south',
                 mindiam=0., maxdiam=1e3, minmult=None, maxmult=None, beta=True):
-    """Read/generate the parent SGA catalog.
+    """Read the SGA2025 parent or final ellipse catalog.
 
-    mindiam,maxdiam in arcmin
-    maxmult - maximum number of group members (ignored if --no-groups is set)
+    Parameters
+    ----------
+    first, last : int, optional
+        Select a contiguous slice [first, last) of the primary-object list.
+    galaxylist : str, optional
+        Comma-separated identifiers to select. Matched against GROUP_NAME
+        first, then SGAID, then OBJNAME.
+    verbose : bool
+        If True, log additional diagnostic messages.
+    no_groups : bool
+        If True, treat each galaxy independently rather than by group.
+    lvd : bool
+        If True, restrict to the Local Volume Database resolved dwarf subsample.
+    final_sample : bool
+        If True, read the final ellipse catalog (ELLIPSE or TRACTOR extension)
+        instead of the parent catalog (PARENT extension).
+    version : str, optional
+        Catalog version string. Defaults to the current release version via
+        SGA_version().
+    tractor : bool
+        If True and final_sample=True, return the TRACTOR extension instead
+        of ELLIPSE.
+    test_bricks : bool
+        If True, restrict to objects in the DR11 test brick list (pipeline use).
+    region : str
+        Survey region ('dr11-south' or 'dr11-north').
+    mindiam, maxdiam : float
+        Minimum and maximum GROUP_DIAMETER in arcmin.
+    minmult, maxmult : int, optional
+        Minimum/maximum number of group members. Ignored when no_groups=True.
+    beta : bool
+        If True (default), read the beta release file.
 
+    Returns
+    -------
+    sample : astropy.table.Table
+        GROUP_PRIMARY objects satisfying all selection criteria.
+    fullsample : astropy.table.Table
+        All group members whose group has at least one object in sample.
     """
     if first and last:
         if first > last:
@@ -393,9 +429,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             cols += ['GROUP_MULT']
     info = fitsio.read(samplefile, ext=ext, columns=cols)
     rows = _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult)
-
-    nallrows = len(info)
-    nrows = len(rows)
 
     fullsample = Table(fitsio.read(samplefile, upper=True))
     sample = fullsample[rows]
@@ -444,38 +477,6 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         sample = fullsample[fullsample['GROUP_PRIMARY']]
         if len(sample) == 0:
             return sample, fullsample
-
-    if wisesize:
-        from SGA.util import match
-
-        ofullsample = fullsample.copy()
-
-        nobj = len(sample)
-        nfullobj = len(fullsample)
-        I = ((fullsample['SAMPLE'] == 0) * (fullsample['DIAM'] > 0.75) * (fullsample['DIAM'] < 5) *
-             (fullsample['GROUP_DIAMETER'] < 5) * (fullsample['GROUP_RA'] > 87.) * (fullsample['GROUP_RA'] < 300.) *
-             (fullsample['GROUP_DEC'] > -10.) * (fullsample['GROUP_DEC'] < 85.))
-        fullsample = fullsample[I]
-
-        version_archive = SGA_version(archive=True)
-        parentdir = os.path.join(sga_dir(), 'parent')
-        parentfile = os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
-        parent_rows = fitsio.read(parentfile, columns='ROW_PARENT')
-        rows = np.where(np.isin(parent_rows, fullsample['SGAID'].value))[0]
-        parent = Table(fitsio.read(parentfile, rows=rows))
-        indx_fullsample, indx_parent = match(fullsample['SGAID'], parent['ROW_PARENT'])
-        fullsample = fullsample[indx_fullsample]
-        parent = parent[indx_parent]
-
-        I = (parent['Z'] > 0.002) * (parent['Z'] < 0.025)
-        fullsample = fullsample[I]
-
-        # build primary member sample and then we need to restore all
-        # group members otherwise we run into problems in
-        # build_catalog.
-        sample = sample[np.isin(sample['GROUP_NAME'], fullsample['GROUP_NAME'])]
-        fullsample = ofullsample[np.isin(ofullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-        log.info(f'Selecting {len(fullsample):,d}/{nfullobj:,d} ({len(sample):,d}/{nobj:,d}) wisesize groups (objects)')
 
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
