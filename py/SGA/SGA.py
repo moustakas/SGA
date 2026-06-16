@@ -85,10 +85,7 @@ def sga_dir():
         msg = 'Required ${SGA_DIR} environment variable not set.'
         log.critical(msg)
         raise EnvironmentError(msg)
-    ldir = os.path.abspath(os.getenv('SGA_DIR'))
-    if not os.path.isdir(ldir):
-        os.makedirs(ldir, exist_ok=True)
-    return ldir
+    return os.path.abspath(os.getenv('SGA_DIR'))
 
 
 def sga_data_dir():
@@ -96,10 +93,7 @@ def sga_data_dir():
         msg = 'Required ${SGA_DATA_DIR} environment variable not set.'
         log.critical(msg)
         raise EnvironmentError(msg)
-    ldir = os.path.abspath(os.getenv('SGA_DATA_DIR'))
-    if not os.path.isdir(ldir):
-        os.makedirs(ldir, exist_ok=True)
-    return ldir
+    return os.path.abspath(os.getenv('SGA_DATA_DIR'))
 
 
 def sga_html_dir():
@@ -107,10 +101,7 @@ def sga_html_dir():
         msg = 'Required ${SGA_HTML_DIR} environment variable not set.'
         log.critical(msg)
         raise EnvironmentError(msg)
-    ldir = os.path.abspath(os.getenv('SGA_HTML_DIR'))
-    if not os.path.isdir(ldir):
-        os.makedirs(ldir, exist_ok=True)
-    return ldir
+    return os.path.abspath(os.getenv('SGA_HTML_DIR'))
 
 
 def sga2025_name(ra, dec, group_name=False, unixsafe=False):
