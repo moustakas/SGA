@@ -124,9 +124,9 @@ def main():
         layer = None
     else:
         layer = f'ls-{args.region}'
-        if args.region == 'dr11-south':
-            log.warning(f'Overriding layer={layer}-->ls-dr11-early-v2')
-            layer = 'ls-dr11-early-v2'
+        #if args.region == 'dr11-south':
+        #    log.warning(f'Overriding layer={layer}-->ls-dr11-early-v2')
+        #    layer = 'ls-dr11-early-v2'
         cutoutdir = os.path.join(args.cutoutdir, args.region,
                                  'rescale' if args.rescale else 'native')
         annotatedir = os.path.join(args.cutoutdir, args.region, 'annotate')
