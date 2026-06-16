@@ -329,6 +329,20 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     return suffix, todo_indices, done_indices, fail_indices, wait_indices
 
 
+def _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult):
+    """Return row indices satisfying diameter and group-membership cuts."""
+    if no_groups:
+        return np.where((info[diam_col] >= mindiam) * (info[diam_col] < maxdiam))[0]
+    I = ((info['GROUP_DIAMETER'] >= mindiam) *
+         (info['GROUP_DIAMETER'] < maxdiam) *
+         info['GROUP_PRIMARY'])
+    if minmult:
+        I *= info['GROUP_MULT'] >= minmult
+    if maxmult:
+        I *= info['GROUP_MULT'] <= maxmult
+    return np.where(I)[0]
+
+
 def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
                 no_groups=False, lvd=False, wisesize=False, final_sample=False,
                 version=None, tractor=False, test_bricks=False, region='dr11-south',
@@ -370,48 +384,15 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         log.critical(msg)
         raise IOError(msg)
 
-    if final_sample:
-        if no_groups:
-            cols = ['D26']
-        else:
-            cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
-            if maxmult or minmult:
-                cols += ['GROUP_MULT']
-        info = fitsio.read(samplefile, ext=ext, columns=cols)
-        if no_groups:
-            rows = np.where(
-                (info['DIAM'] >= mindiam) *
-                (info['DIAM'] < maxdiam))[0]
-        else:
-            I = ((info['GROUP_DIAMETER'] >= mindiam) *
-                 (info['GROUP_DIAMETER'] < maxdiam) *
-                 info['GROUP_PRIMARY'])
-            if minmult:
-                I *= info['GROUP_MULT'] >= minmult
-            if maxmult:
-                I *= info['GROUP_MULT'] <= maxmult
-            rows = np.where(I)[0]
+    diam_col = 'D26' if final_sample else 'DIAM'
+    if no_groups:
+        cols = [diam_col]
     else:
-        if no_groups:
-            cols = ['DIAM']
-        else:
-            cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
-            if maxmult or minmult:
-                cols += ['GROUP_MULT']
-        info = fitsio.read(samplefile, ext=ext, columns=cols)
-        if no_groups:
-            rows = np.where(
-                (info['DIAM'] >= mindiam) *
-                (info['DIAM'] < maxdiam))[0]
-        else:
-            I = ((info['GROUP_DIAMETER'] >= mindiam) *
-                 (info['GROUP_DIAMETER'] < maxdiam) *
-                 info['GROUP_PRIMARY'])
-            if minmult:
-                I *= info['GROUP_MULT'] >= minmult
-            if maxmult:
-                I *= info['GROUP_MULT'] <= maxmult
-            rows = np.where(I)[0]
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
+        if maxmult or minmult:
+            cols += ['GROUP_MULT']
+    info = fitsio.read(samplefile, ext=ext, columns=cols)
+    rows = _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult)
 
     nallrows = len(info)
     nrows = len(rows)
@@ -532,6 +513,66 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
             fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
     return sample, fullsample
+
+
+def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
+                    galaxylist=None, first=None, last=None, no_groups=False,
+                    minmult=None, maxmult=None, lvd=False, version=None, beta=True,
+                    verbose=False):
+    """Read the final SGA2025 catalog for a given survey region.
+
+    Returns the ELLIPSE extension by default, or the row-matched TRACTOR
+    extension when tractor=True.
+
+    Parameters
+    ----------
+    region : str
+        Survey region ('dr11-south' or 'dr11-north').
+    tractor : bool
+        If True, return the TRACTOR extension instead of ELLIPSE.
+    mindiam, maxdiam : float
+        Minimum and maximum GROUP_DIAMETER in arcmin.
+    galaxylist : str
+        Comma-separated GROUP_NAME, SGAID, or OBJNAME values to select.
+    first, last : int
+        Slice the primary-object list to indices [first, last).
+    no_groups : bool
+        If True, treat each galaxy independently rather than by group.
+    minmult, maxmult : int
+        Minimum/maximum number of group members to include.
+    lvd : bool
+        If True, restrict to the Local Volume Database dwarf subsample.
+    version : str
+        Catalog version string; defaults to the current release version.
+    beta : bool
+        If True (default), read the beta release file.
+    verbose : bool
+        If True, log additional diagnostic messages.
+
+    Returns
+    -------
+    sample : astropy.table.Table
+        GROUP_PRIMARY objects satisfying the selection criteria.
+    fullsample : astropy.table.Table
+        All group members whose group has at least one object in sample.
+    """
+    return read_sample(
+        final_sample=True,
+        tractor=tractor,
+        region=region,
+        mindiam=mindiam,
+        maxdiam=maxdiam,
+        galaxylist=galaxylist,
+        first=first,
+        last=last,
+        no_groups=no_groups,
+        minmult=minmult,
+        maxmult=maxmult,
+        lvd=lvd,
+        version=version,
+        beta=beta,
+        verbose=verbose,
+    )
 
 
 def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
