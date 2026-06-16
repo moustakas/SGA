@@ -69,87 +69,15 @@ APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
 
 def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
-    # nocuts, vicuts, and archive *have* to share a version (too
-    # confusing otherwise!)
-    version_work = 'v0.10'
+    """Return the catalog version string for a given catalog type.
 
-    if nocuts:
-        version = version_work
-    elif vicuts:
-        version = version_work
-    elif archive:
-        version = version_work
-    elif parent:
-        ## first major run
-        #version = 'v0.10'
-
-        ## no duplicate groups; cleanup of REGION bits; some dropped
-        ## sources via VI.
-        #version = 'v0.11'
-
-        ## re-initialize diameters with v0.11 ellipse results; drop
-        ## sources with no Tractor; VI update of galaxy properties
-        #version = 'v0.12'
-
-        # remove D(26)<0.5 sources (and groups where /all/ members
-        # have D(26)<0.5) based on v0.11 fitting results; keep
-        # diameters at their initial values
-        #version = 'v0.20'
-
-        # tons of VI results
-        #version = 'v0.21'
-
-        # more VI; D<0.5 arcmin systems in the test region removed; SGA2020 galaxies added
-        #version = 'v0.22'
-
-        # major refactor of build_parent
-        #version = 'v0.30'
-        # significant trimming of small galaxies; numerous new ELLIPSEBIT
-        #version = 'v0.40'
-        # tons of additional sample cleanup
-        #version = 'v0.50'
-        # more cleanup
-        #version = 'v0.60'
-        # more cleanup
-        #version = 'v0.70'
-        # more cleanup
-        #version = 'v0.80'
-        # first release candidate
-        #version = 'v1.0'
-        # OVERLAP fixes
-        #version = 'v1.1'
-        # more cleanup, etc.
-        #version = 'v1.2'
-        # more cleanup, etc.
-        #version = 'v1.3'
-        # more cleanup, etc.
-        #version = 'v1.4'
-        # more cleanup, etc.; used in DR11
-        #version = 'v1.5'
-        # two small changes; used in DR11
-        version = 'v1.6'
-    else:
-        # parent-refcat, parent-ellipse, and final SGA2025
-        #version = 'v0.10' # parent_version = v0.10
-        #version = 'v0.11' # parent_version = v0.10 --> v0.11
-        #version = 'v0.12' # parent_version = v0.11 --> v0.12
-        #version = 'v0.20' # parent_version = v0.12 --> v0.20
-        #version = 'v0.21' # parent_version = v0.20 --> v0.21
-        #version = 'v0.22'  # parent_version = v0.21 --> v0.22
-        #version = 'v0.30'  # parent_version = v0.22 --> v0.30
-        #version = 'v0.40'  # parent_version = v0.30 --> v0.40
-        #version = 'v0.50'  # parent_version = v0.40 --> v0.50
-        #version = 'v0.60'  # parent_version = v0.50 --> v0.60
-        #version = 'v0.70'  # parent_version = v0.60 --> v0.70
-        #version = 'v0.80'  # parent_version = v0.70 --> v0.80
-        #version = 'v1.0'  # parent_version = v0.80 --> v1.0
-        #version = 'v1.1'  # parent_version = v1.0 --> v1.1
-        #version = 'v1.2'  # parent_version = v1.1 --> v1.2
-        #version = 'v1.3'  # parent_version = v1.2 --> v1.3
-        #version = 'v1.4'  # parent_version = v1.3 --> v1.4
-        #version = 'v1.5'  # parent_version = v1.4 --> v1.5
-        version = 'v1.6'  # parent_version = v1.5 --> v1.6
-    return version
+    The nocuts, vicuts, and archive intermediate catalogs share a single
+    frozen working version. The parent and final ellipse catalogs share
+    the release version.
+    """
+    if nocuts or vicuts or archive:
+        return 'v0.10'
+    return 'v1.6'
 
 
 def sga_dir():
