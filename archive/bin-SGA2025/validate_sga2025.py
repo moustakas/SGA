@@ -2,8 +2,11 @@
 """
 validate_sga2025.py — Validate SGA2025 production output directories.
 
-Usage:
+Usage (single-process):
     python validate_sga2025.py /path/to/dr11-south [--logfile validation.log]
+
+Usage (MPI, recommended for large releases):
+    srun -n 64 python validate_sga2025.py /path/to/dr11-south [--logfile validation.log]
 
 Checks each group directory for:
   - Presence of *-coadds.isdone and *-ellipse.isdone
@@ -12,15 +15,40 @@ Checks each group directory for:
   - No unexpected/extraneous files
   - UV (NUV, FUV) and IR (W1-W4) bands always present
   - At least one optical band (g, r, i, z)
+  - fitsverify -e -q passes on every *.fits* file (errors only, not warnings)
+
+salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive
+source /dvs_ro/common/software/desi/desi_environment.sh main
+time srun --ntasks=64 python validate_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-north --logfile validation-dr11-north.log
+time srun --ntasks=64 python validate_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-south --logfile validation-dr11-south.log
+
 """
 
 import os
 import re
 import sys
+import subprocess
 import argparse
 import logging
 from pathlib import Path
-from collections import defaultdict
+
+# ---------------------------------------------------------------------------
+# MPI setup (graceful fallback to single-process if unavailable)
+# ---------------------------------------------------------------------------
+
+try:
+    from mpi4py import MPI
+    _comm = MPI.COMM_WORLD
+    _rank = _comm.Get_rank()
+    _size = _comm.Get_size()
+    _use_mpi = _size > 1
+except ImportError:
+    _comm, _rank, _size, _use_mpi = None, 0, 1, False
+
+# Uncomment for startup diagnostics (confirms all ranks started and MPI is active):
+# import socket as _socket
+# print(f'[rank {_rank:03d}/{_size}] started on {_socket.gethostname()} '
+#       f'(mpi={_use_mpi})', flush=True)
 
 # ---------------------------------------------------------------------------
 # Expected file patterns
@@ -29,7 +57,6 @@ from collections import defaultdict
 OPTICAL_BANDS = ['g', 'r', 'i', 'z']
 UV_BANDS      = ['NUV', 'FUV']
 IR_BANDS      = ['W1', 'W2', 'W3', 'W4']
-ALL_BANDS     = OPTICAL_BANDS + UV_BANDS + IR_BANDS
 
 # JPGs common to both modes
 COMMON_JPGS = [
@@ -102,33 +129,23 @@ def expected_files(group, optical_bands_present, mode='full'):
     g = f'SGA2025_{group}'
     expected = set()
 
-    # Common fixed files
     for tmpl in COMMON_FIXED:
         expected.add(tmpl.format(g=g))
-
-    # Common JPGs
     for tmpl in COMMON_JPGS:
         expected.add(tmpl.format(g=g))
 
     if mode == 'full':
-        # Full-mode fixed files
         for tmpl in FULL_FIXED + FULL_FIXED_NONBAND:
             expected.add(tmpl.format(g=g))
-
-        # Full-mode JPGs
         for tmpl in FULL_JPGS:
             expected.add(tmpl.format(g=g))
-
-        # Per-band files for all bands
         bands = optical_bands_present + UV_BANDS + IR_BANDS
         for b in bands:
             for tmpl in FULL_BAND_TEMPLATES:
                 expected.add(tmpl.format(g=g, b=b))
-
-    else:  # coadds-only
+    else:
         for tmpl in COADDS_FIXED_NONBAND:
             expected.add(tmpl.format(g=g))
-
         bands = optical_bands_present + UV_BANDS + IR_BANDS
         for b in bands:
             for tmpl in COADDS_BAND_TEMPLATES:
@@ -137,11 +154,47 @@ def expected_files(group, optical_bands_present, mode='full'):
     return expected
 
 
-# Pattern to recognize ellipse files: SGA2025_Jxxx.xxx[+-]xxx.xxx-ellipse-{type}.fits
+# Pattern to recognize ellipse files
 ELLIPSE_RE = re.compile(
     r'^SGA2025_J[\d.]+[+-][\d.]+-ellipse-(griz|galex|unwise)\.fits$'
 )
 
+
+# ---------------------------------------------------------------------------
+# fitsverify
+# ---------------------------------------------------------------------------
+
+def run_fitsverify(filepath):
+    """
+    Run ``fitsverify -e -q`` on a single FITS file.
+
+    Parameters
+    ----------
+    filepath : Path or str
+
+    Returns
+    -------
+    list of str
+        Problem strings (empty if file passed).
+    """
+    result = subprocess.run(
+        ['fitsverify', '-e', '-q', str(filepath)],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        return []
+
+    # Collect non-empty output lines; fitsverify writes to stdout
+    lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    if lines:
+        return [f'fitsverify [{filepath.name}]: {l}' for l in lines]
+    # No output but non-zero exit — report generically
+    return [f'fitsverify [{filepath.name}]: failed (rc={result.returncode})']
+
+
+# ---------------------------------------------------------------------------
+# Per-group validation
+# ---------------------------------------------------------------------------
 
 def validate_group(dirpath):
     """
@@ -149,11 +202,11 @@ def validate_group(dirpath):
 
     Returns
     -------
-    list of str
-        List of problem descriptions, empty if all OK.
+    problems : list of str
+    mode : str  ('full' or 'coadds')
     """
     dirpath = Path(dirpath)
-    group = dirpath.name  # e.g. '33398m2373'
+    group = dirpath.name
     g = f'SGA2025_{group}'
 
     problems = []
@@ -163,12 +216,12 @@ def validate_group(dirpath):
     tractor = f'{g}-tractor.fits'
     mode = 'full' if tractor in actual_files else 'coadds'
 
-    # Check isdone files first
+    # isdone files
     for isdone in [f'{g}-coadds.isdone', f'{g}-ellipse.isdone']:
         if isdone not in actual_files:
             problems.append(f'MISSING isdone: {isdone}')
 
-    # Determine which optical bands are present by looking at image files
+    # Optical bands present
     if mode == 'full':
         optical_present = [b for b in OPTICAL_BANDS
                            if f'{g}-image-{b}.fits.fz' in actual_files]
@@ -179,75 +232,94 @@ def validate_group(dirpath):
     if len(optical_present) == 0:
         problems.append('MISSING: no optical band images found (expected at least one of g,r,i,z)')
 
-    # Check required UV and IR bands
+    # Required UV and IR bands
     for b in UV_BANDS + IR_BANDS:
-        if mode == 'full':
-            img = f'{g}-image-{b}.fits.fz'
-        else:
-            img = f'{g}-image-{b}.fits'
+        img = f'{g}-image-{b}.fits.fz' if mode == 'full' else f'{g}-image-{b}.fits'
         if img not in actual_files:
             problems.append(f'MISSING band image: {img}')
 
-    # Build full expected set and compare
+    # Expected vs actual file sets
     exp = expected_files(group, optical_present, mode=mode)
-
-    # Separate out ellipse files from actual (they follow a different pattern)
     ellipse_files = {f for f in actual_files if ELLIPSE_RE.match(f)}
     non_ellipse_actual = actual_files - ellipse_files
 
-    missing = exp - non_ellipse_actual
-    extra   = non_ellipse_actual - exp
-
-    for f in sorted(missing):
+    for f in sorted(exp - non_ellipse_actual):
         problems.append(f'MISSING: {f}')
-
-    for f in sorted(extra):
+    for f in sorted(non_ellipse_actual - exp):
         problems.append(f'UNEXPECTED: {f}')
-
-    # Validate ellipse files: must match the pattern, nothing else
     for f in ellipse_files:
         if not ELLIPSE_RE.match(f):
             problems.append(f'UNEXPECTED ellipse file: {f}')
 
+    # fitsverify on lightweight FITS files only (compressed .fits.fz files
+    # are verified elsewhere and are expensive to check here)
+    for fname in sorted(actual_files):
+        if fname.endswith('-sample.fits') or \
+           (fname.endswith('.fits') and '-ellipse' in fname):
+            problems.extend(run_fitsverify(dirpath / fname))
+
     return problems, mode
 
 
+# ---------------------------------------------------------------------------
+# Tree validation (MPI-aware)
+# ---------------------------------------------------------------------------
+
 def validate_tree(topdir, log):
-    """Walk the tree and validate every group directory."""
+    """Walk the tree, distribute work across MPI ranks, gather on rank 0."""
 
     topdir = Path(topdir)
-    n_total = 0
-    n_ok = 0
-    n_problems = 0
-    n_full = 0
-    n_coadds = 0
-    problem_groups = []
 
-    # Group dirs are two levels down: topdir/NNN/group
-    group_dirs = sorted(topdir.glob('*/*'))
-    group_dirs = [d for d in group_dirs if d.is_dir()]
+    # Rank 0 collects all group directories, then broadcasts
+    if _rank == 0:
+        all_dirs = sorted(d for d in topdir.glob('*/*') if d.is_dir())
+        log.info(f'Found {len(all_dirs)} group directories under {topdir}')
+        if _use_mpi:
+            log.info(f'Distributing across {_size} MPI ranks')
+        log.info('')
+    else:
+        all_dirs = None
 
-    log.info(f'Found {len(group_dirs)} group directories under {topdir}')
-    log.info('')
+    if _use_mpi:
+        # print(f'[rank {_rank:03d}/{_size}] waiting for bcast ...', flush=True)
+        all_dirs = _comm.bcast(all_dirs, root=0)
+        # print(f'[rank {_rank:03d}/{_size}] bcast done, {len(all_dirs)} total dirs', flush=True)
 
-    for i, d in enumerate(group_dirs, 1):
-        if i % 10000 == 0:
-            log.info(f'  ... {i}/{len(group_dirs)} checked, {n_problems} problems so far')
+    # Each rank processes its own slice
+    my_dirs = all_dirs[_rank::_size]
+    # print(f'[rank {_rank:03d}/{_size}] processing {len(my_dirs)} dirs', flush=True)
+    my_results = []  # list of (group_name, problems, mode)
 
+    for i, d in enumerate(my_dirs):
+        # if (i + 1) % 100 == 0:
+        #     print(f'[rank {_rank:03d}/{_size}] {i+1}/{len(my_dirs)} checked', flush=True)
+        if _rank == 0 and (i + 1) % 1000 == 0:
+            log.info(f'  rank 0: {i+1}/{len(my_dirs)} checked ...')
         problems, mode = validate_group(d)
-        n_total += 1
-        if mode == 'full':
-            n_full += 1
-        else:
-            n_coadds += 1
+        my_results.append((d.name, problems, mode))
 
-        if problems:
-            n_problems += 1
-            problem_groups.append((d.name, problems))
-            for p in problems:
-                log.warning(f'{d.name}: {p}')
-        else:
-            n_ok += 1
+    # Gather on rank 0
+    # print(f'[rank {_rank:03d}/{_size}] done processing, waiting for gather ...', flush=True)
+    if _use_mpi:
+        all_results_nested = _comm.gather(my_results, root=0)
+    else:
+        all_results_nested = [my_results]
+
+    if _rank != 0:
+        return []
+
+    # Flatten
+    results = [item for chunk in all_results_nested for item in chunk]
+
+    # Tally and report
+    n_total = len(results)
+    n_full    = sum(1 for _, _, m in results if m == 'full')
+    n_coadds  = sum(1 for _, _, m in results if m == 'coadds')
+    problem_groups = [(name, probs) for name, probs, _ in results if probs]
+
+    for name, probs in problem_groups:
+        for p in probs:
+            log.warning(f'{name}: {p}')
 
     log.info('')
     log.info('=' * 70)
@@ -256,12 +328,16 @@ def validate_tree(topdir, log):
     log.info(f'  Total groups:       {n_total:6d}')
     log.info(f'  Full mode:          {n_full:6d}')
     log.info(f'  Coadds-only mode:   {n_coadds:6d}')
-    log.info(f'  OK:                 {n_ok:6d}')
-    log.info(f'  With problems:      {n_problems:6d}')
+    log.info(f'  OK:                 {n_total - len(problem_groups):6d}')
+    log.info(f'  With problems:      {len(problem_groups):6d}')
     log.info('=' * 70)
 
     return problem_groups
 
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description='Validate SGA2025 production output.')
@@ -270,34 +346,38 @@ def main():
                         help='Output log file (default: validation.log)')
     args = parser.parse_args()
 
-    # Set up logging to both stdout and file
+    # Logging: all ranks write to stdout; only rank 0 writes the log file
     log = logging.getLogger('validate')
     log.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(message)s')
 
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(fmt)
-    log.addHandler(ch)
+    if _rank == 0:
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setFormatter(fmt)
+        log.addHandler(ch)
 
-    fh = logging.FileHandler(args.logfile, mode='w')
-    fh.setFormatter(fmt)
-    log.addHandler(fh)
+        fh = logging.FileHandler(args.logfile, mode='w')
+        fh.setFormatter(fmt)
+        log.addHandler(fh)
 
-    log.info(f'Validating: {args.topdir}')
-    log.info(f'Log file:   {args.logfile}')
-    log.info('')
+        log.info(f'Validating: {args.topdir}')
+        log.info(f'Log file:   {args.logfile}')
+        if _use_mpi:
+            log.info(f'MPI ranks:  {_size}')
+        log.info('')
 
     problem_groups = validate_tree(args.topdir, log)
 
-    if problem_groups:
-        log.info('')
-        log.info(f'Groups with problems ({len(problem_groups)}):')
-        for gname, probs in problem_groups:
-            log.info(f'  {gname}: {len(probs)} issue(s)')
-    else:
-        log.info('All groups OK.')
+    if _rank == 0:
+        if problem_groups:
+            log.info('')
+            log.info(f'Groups with problems ({len(problem_groups)}):')
+            for gname, probs in problem_groups:
+                log.info(f'  {gname}: {len(probs)} issue(s)')
+        else:
+            log.info('All groups OK.')
 
-    sys.exit(1 if problem_groups else 0)
+        sys.exit(1 if problem_groups else 0)
 
 
 if __name__ == '__main__':
