@@ -10,7 +10,7 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
 
 - `py/SGA/` - Main Python package with core modules:
   - `parent.py` - Build parent sample from external catalogs (NED, HyperLeda, LVD, etc.)
-  - `SGA.py` - Core definitions: sample bits, mask bits, version control
+  - `SGA.py` - Core definitions: sample bits, mask bits, version control, `read_sga_sample`
   - `ellipse.py` - Ellipse photometry fitting
   - `external.py` - External catalog parsing (HyperLeda, NED, SDSS, Gaia)
   - `qa.py` - QA plot generation
@@ -18,11 +18,17 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `groups.py` - Galaxy group finding via spherical clustering
   - `io.py` - FITS I/O, coordinate conversions
   - `logger.py` - Unified logging (distinct from DESI loggers)
-- `bin/SGA2025/` - Executable scripts for SGA-2025 release
-- `bin/SGA2020/` - Legacy SGA-2020 scripts
+- `bin/` - Active executable scripts; currently only `SGA2025-mpi` (pre-release QA). Future SGA releases add scripts here directly.
+- `archive/bin-SGA2025/` - Archived SGA-2025 processing scripts (processing complete)
+- `archive/bin-SGA2020/` - Archived SGA-2020 scripts (paper and data release complete)
+- `py/SGA/data/SGA2025/` - Reference CSVs used during SGA-2025 processing (overlays, VI lists, etc.)
+- `py/SGA/data/SGA2020/` - Small SGA-2020 reference files
+- `doc/SGA2025/` - SGA-2025 analysis and calibration notebooks
+- `doc/SGA2020/` - SGA-2020 QA notebooks (archived)
+- `doc/tutorials/` - User-facing tutorial notebooks
+- `science/SGA2025/` - Science analysis notebooks for the SGA-2025 paper
+- `science/SGA2020/` - SGA-2020 science figures and scripts
 - `etc/` - Conda environment specs and NERSC/laptop setup scripts (see `etc/README.md`)
-- `doc/` - Documentation and analysis notebooks
-- `science/` - Science analysis notebooks
 - `docker/` - Docker configuration for multi-platform builds (production/Shifter use)
 - `pyproject.toml` - Package metadata and entry points (PEP 517/518)
 
@@ -61,37 +67,15 @@ The shared NERSC environment lives at:
 
 ## Key Commands
 
-### Building Parent Sample
-```bash
-SGA2025-build-parent --build-parent-nocuts
-SGA2025-build-parent --build-parent-vicuts
-SGA2025-build-parent --build-parent-archive
-SGA2025-build-parent --in-footprint --region=dr9-north
-SGA2025-build-parent --in-footprint --region=dr11-south
-SGA2025-build-parent --build-parent
-SGA2025-build-parent --qa-parent
-```
-
-### Running MPI Processing
+### Running MPI QA (pre-release)
 ```bash
 # Interactive session at NERSC
 salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
-SGA2025-shifter
-source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
+source /global/homes/i/ioannis/code/SGA/archive/bin-SGA2025/SGA2025-shifter
+source /global/homes/i/ioannis/code/SGA/archive/bin-SGA2025/SGA2025-env
 
-# Build reference catalog
-SGA2025-mpi --build-refcat
-
-# Process specific galaxies
-SGA2025-mpi --datadir=/path/to/output --mp=32 --debug --coadds --galaxylist="GALAXY_NAME"
-
-# QA generation
-SGA2025-tractor-qa --datadir=/path/to/data
-```
-
-### Generating Cutouts
-```bash
-SGA2025-cutouts --region=dr9-north --ntest=16 --mp=4
+# QA for specific galaxies
+SGA2025-mpi --datadir=/path/to/output --mp=32 --debug --galaxylist="GALAXY_NAME"
 ```
 
 ## Docker
