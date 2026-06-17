@@ -1,0 +1,246 @@
+#!/usr/bin/env python
+"""
+Find bricks that overlap the ellipse footprint of FIXGEO galaxies, minus
+the brick containing the galaxy center itself (which was processed correctly).
+
+Output: CSV and FITS with columns brickname, ra, dec.
+"""
+import os, math
+import numpy as np
+import fitsio
+from astropy.table import Table, unique
+
+from SGA.ellipse import ELLIPSEMODE
+from SGA.SGA import read_sample, sga_dir
+from SGA.groups import contains_point, DEG2RAD, ARCMIN_PER_DEG
+from SGA.brick import brickname as get_brickname
+
+version  = 'v1.6'
+basedir  = os.path.join(sga_dir(), 'sample')
+
+
+def main(region='dr11-south', margin=0.20):
+
+    if region == 'dr11-south':
+        bricks_file = 'bricks-exist-ls-dr11-early-v2.fits.gz'
+    else:
+        bricks_file = 'survey-bricks-dr9-north.fits.gz'
+    bricks_file = os.path.join(basedir, bricks_file)
+
+    # --- Load bricks ---
+    print(f'Reading bricks from {bricks_file}')
+    bricks = Table(fitsio.read(bricks_file))
+    print(f'  {len(bricks):,d} bricks')
+
+    brickname = np.asarray(bricks['brickname'], dtype=str)
+    bra1  = np.asarray(bricks['ra1'],  dtype=float)
+    bra2  = np.asarray(bricks['ra2'],  dtype=float)
+    bdec1 = np.asarray(bricks['dec1'], dtype=float)
+    bdec2 = np.asarray(bricks['dec2'], dtype=float)
+    bra_c = np.asarray(bricks['ra'],   dtype=float)
+    bdec_c= np.asarray(bricks['dec'],  dtype=float)
+
+    # Build a brickname->index map for fast center-brick lookup
+    brick_index = {name: i for i, name in enumerate(brickname)}
+
+    # --- Load FIXGEO galaxies from fullsample ---
+    print(f'Reading full sample (region={region})')
+    _, fullsample = read_sample(region=region, version=version)
+
+    fixgeo_mask = fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
+    fixgeo = fullsample[fixgeo_mask]
+
+    # Exclude Magellanic Clouds
+    objname = np.asarray(fixgeo['OBJNAME'], dtype=str)
+    mc_mask = np.isin(objname, ['LMC', 'SMC'])
+    fixgeo  = fixgeo[~mc_mask]
+    print(f'  {len(fixgeo):,d} FIXGEO galaxies (excl. LMC/SMC)')
+
+    gra  = np.asarray(fixgeo['RA'],   dtype=float)
+    gdec = np.asarray(fixgeo['DEC'],  dtype=float)
+    gdiam= np.asarray(fixgeo['DIAM'], dtype=float)  # arcmin
+    gba  = np.asarray(fixgeo['BA'],   dtype=float)
+    gpa  = np.asarray(fixgeo['PA'],   dtype=float)
+
+    # --- Pre-sort bricks into Dec strips for fast lookup ---
+    strip_width    = 1.0  # degrees
+    dec_min_global = float(bdec1.min())
+    dec_max_global = float(bdec2.max())
+
+    def dec_to_strip(dec):
+        return int(math.floor((dec - dec_min_global) / strip_width))
+
+    n_strips    = dec_to_strip(dec_max_global) + 2
+    strip_index = [[] for _ in range(n_strips)]
+    for bi in range(len(bricks)):
+        s0 = max(0, dec_to_strip(bdec1[bi]))
+        s1 = min(n_strips - 1, dec_to_strip(bdec2[bi]))
+        for s in range(s0, s1 + 1):
+            strip_index[s].append(bi)
+    strip_index = [np.array(lst, dtype=np.int64) for lst in strip_index]
+    print(f'  Dec strips: {n_strips} strips of {strip_width}° width')
+
+    # --- Flag bricks ---
+    rerun   = np.zeros(len(bricks), dtype=np.int32)  # count of galaxies flagging each brick
+    centers = np.zeros(len(bricks), dtype=bool)            # True if brick is a galaxy center
+
+    n_gal = len(fixgeo)
+    report_every = max(1, n_gal // 20)
+
+    for k in range(n_gal):
+        if k % report_every == 0:
+            print(f'  galaxy {k:5d} / {n_gal:5d}  ({100*k/n_gal:.0f}%)',
+                  flush=True)
+
+        ra0  = gra[k]
+        dec0 = gdec[k]
+
+        # Ellipse semi-axes with margin applied to major axis; BA scales minor
+        ba_k  = gba[k] if np.isfinite(gba[k]) and gba[k] > 0.0 else 1.0
+        pa_rad= float(gpa[k]) * DEG2RAD if np.isfinite(gpa[k]) else 0.0
+        a_arc = 0.5 * gdiam[k] * (1.0 + margin)  # arcmin
+        b_arc = ba_k * a_arc
+        half  = a_arc / ARCMIN_PER_DEG            # degrees, for bounding box
+
+        # Dec bounding box
+        dec_lo = dec0 - half
+        dec_hi = dec0 + half
+
+        # RA bounding box
+        pole_limit = 89.75
+        if dec_lo <= -pole_limit or dec_hi >= pole_limit:
+            ra_lo, ra_hi = 0.0, 360.0
+        else:
+            cosd = math.cos(math.radians(dec0))
+            if cosd < 1e-3:
+                ra_lo, ra_hi = 0.0, 360.0
+            else:
+                dra = half / cosd
+                if dra >= 180.0:
+                    ra_lo, ra_hi = 0.0, 360.0
+                else:
+                    ra_lo = (ra0 - dra) % 360.0
+                    ra_hi = (ra0 + dra) % 360.0
+
+        # Candidate bricks from Dec strips
+        s0 = max(0, dec_to_strip(dec_lo))
+        s1 = min(n_strips - 1, dec_to_strip(dec_hi))
+        strips = strip_index[s0:s1+1]
+        if not strips or all(len(s) == 0 for s in strips):
+            continue
+        cand = np.unique(np.concatenate(strips))
+
+        dec_ok = (bdec2[cand] > dec_lo) & (bdec1[cand] < dec_hi)
+        cand = cand[dec_ok]
+        if len(cand) == 0:
+            continue
+
+        if ra_lo <= ra_hi:
+            ra_ok = (bra2[cand] > ra_lo) & (bra1[cand] < ra_hi)
+        else:
+            ra_ok = (bra2[cand] > ra_lo) | (bra1[cand] < ra_hi)
+        cand = cand[ra_ok]
+        if len(cand) == 0:
+            continue
+
+        # Overlap test: flag brick if any brick corner is inside the ellipse
+        # OR any ellipse cardinal point is inside the brick.
+        # The second test catches small ellipses that straddle a brick edge
+        # without reaching any corner.
+        cosd_k = math.cos(math.radians(dec0))
+
+        # Four cardinal points of the ellipse in tangent-plane degrees,
+        # then converted back to RA/Dec for the brick-contains test.
+        # Major axis is oriented at pa_rad (astronomical: N through E).
+        sin_pa, cos_pa = math.sin(pa_rad), math.cos(pa_rad)
+        a_deg = a_arc / ARCMIN_PER_DEG
+        b_deg = b_arc / ARCMIN_PER_DEG
+        # Tangent-plane offsets (dx=east, dy=north) for the 4 cardinal points
+        cardinals_dx = [ a_deg * sin_pa,  -a_deg * sin_pa,
+                         b_deg * cos_pa,  -b_deg * cos_pa]
+        cardinals_dy = [ a_deg * cos_pa,  -a_deg * cos_pa,
+                        -b_deg * sin_pa,   b_deg * sin_pa]
+        # Convert to RA/Dec (inverse of the tangent-plane projection)
+        cardinals_ra  = [ra0  + dx / cosd_k if cosd_k > 1e-6 else ra0
+                         for dx in cardinals_dx]
+        cardinals_dec = [dec0 + dy for dy in cardinals_dy]
+
+        for bi in cand:
+            flagged = False
+
+            # Test 1: any brick corner inside the ellipse?
+            for cra, cdec in ((bra1[bi], bdec1[bi]), (bra1[bi], bdec2[bi]),
+                               (bra2[bi], bdec1[bi]), (bra2[bi], bdec2[bi])):
+                dx = (cra - ra0) * cosd_k
+                dy =  cdec - dec0
+                if contains_point(a_arc, b_arc, pa_rad, dx, dy):
+                    flagged = True
+                    break
+
+            # Test 2: any ellipse cardinal point inside the brick?
+            if not flagged:
+                for cra, cdec in zip(cardinals_ra, cardinals_dec):
+                    cra_w = cra % 360.0
+                    if bra1[bi] <= bra2[bi]:  # normal brick
+                        ra_in = bra1[bi] <= cra_w <= bra2[bi]
+                    else:                      # brick straddles RA=0
+                        ra_in = cra_w >= bra1[bi] or cra_w <= bra2[bi]
+                    if ra_in and bdec1[bi] <= cdec <= bdec2[bi]:
+                        flagged = True
+                        break
+
+            if flagged:
+                rerun[bi] += 1
+
+        # Mark this galaxy's center brick — excluded later unless another
+        # galaxy's ellipse also overlaps it
+        center_brick = get_brickname(ra0, dec0)
+        ci = brick_index.get(str(center_brick))
+        if ci is not None:
+            centers[ci] = True
+
+    # Exclude center bricks only if flagged by exactly one galaxy (their own).
+    # If another galaxy's ellipse also covers it, keep it for reprocessing.
+    exclude = centers & (rerun == 1)
+    rerun_mask = (rerun > 0) & ~exclude
+
+    n_rerun = int(rerun_mask.sum())
+    print(f'Done.  {n_rerun:,d} bricks to rerun')
+
+    # --- Write output ---
+    out = Table()
+    out['brickname'] = brickname[rerun_mask]
+    out['ra']        = bra_c[rerun_mask]
+    out['dec']       = bdec_c[rerun_mask]
+
+    csvfile  = os.path.join(basedir, f'{region}-fixgeo-bricks-{version}.csv')
+    fitsfile = os.path.join(basedir, f'{region}-fixgeo-bricks-{version}.fits')
+    out.write(csvfile,  format='csv', overwrite=True)
+    out.write(fitsfile, overwrite=True)
+    print(f'Wrote {csvfile}')
+    print(f'Wrote {fitsfile}')
+
+    # --- Plot ---
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.scatter(bra_c, bdec_c, alpha=0.3, s=1, color='gray',
+               label=f'All bricks (N={len(bricks):,d})')
+    ax.scatter(out['ra'], out['dec'], alpha=0.8, s=5, color='red',
+               label=f'FIXGEO rerun bricks (N={n_rerun:,d})')
+    ax.set_xlabel('RA')
+    ax.set_ylabel('Dec')
+    ax.legend(loc='upper right')
+    ax.set_xlim(0, 360)
+    pngfile = os.path.join(basedir, f'{region}-fixgeo-bricks-{version}.png')
+    fig.savefig(pngfile, dpi=150)
+    print(f'Wrote {pngfile}')
+
+
+if __name__ == '__main__':
+    import argparse
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--region', default='dr11-south')
+    p.add_argument('--margin', type=float, default=0.20,
+                   help='Fractional margin on ellipse semi-major axis (default 0.20 = 20%%)')
+    a = p.parse_args()
+    main(region=a.region, margin=a.margin)
