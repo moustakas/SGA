@@ -5,7 +5,7 @@ SGA.SGA
 Code to build and analyze the SGA sample.
 
 """
-import os, pdb
+import os
 from time import time
 import fitsio
 import numpy as np
@@ -69,87 +69,15 @@ APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
 
 def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
-    # nocuts, vicuts, and archive *have* to share a version (too
-    # confusing otherwise!)
-    version_work = 'v0.10'
+    """Return the catalog version string for a given catalog type.
 
-    if nocuts:
-        version = version_work
-    elif vicuts:
-        version = version_work
-    elif archive:
-        version = version_work
-    elif parent:
-        ## first major run
-        #version = 'v0.10'
-
-        ## no duplicate groups; cleanup of REGION bits; some dropped
-        ## sources via VI.
-        #version = 'v0.11'
-
-        ## re-initialize diameters with v0.11 ellipse results; drop
-        ## sources with no Tractor; VI update of galaxy properties
-        #version = 'v0.12'
-
-        # remove D(26)<0.5 sources (and groups where /all/ members
-        # have D(26)<0.5) based on v0.11 fitting results; keep
-        # diameters at their initial values
-        #version = 'v0.20'
-
-        # tons of VI results
-        #version = 'v0.21'
-
-        # more VI; D<0.5 arcmin systems in the test region removed; SGA2020 galaxies added
-        #version = 'v0.22'
-
-        # major refactor of build_parent
-        #version = 'v0.30'
-        # significant trimming of small galaxies; numerous new ELLIPSEBIT
-        #version = 'v0.40'
-        # tons of additional sample cleanup
-        #version = 'v0.50'
-        # more cleanup
-        #version = 'v0.60'
-        # more cleanup
-        #version = 'v0.70'
-        # more cleanup
-        #version = 'v0.80'
-        # first release candidate
-        #version = 'v1.0'
-        # OVERLAP fixes
-        #version = 'v1.1'
-        # more cleanup, etc.
-        #version = 'v1.2'
-        # more cleanup, etc.
-        #version = 'v1.3'
-        # more cleanup, etc.
-        #version = 'v1.4'
-        # more cleanup, etc.; used in DR11
-        #version = 'v1.5'
-        # two small changes; used in DR11
-        version = 'v1.6'
-    else:
-        # parent-refcat, parent-ellipse, and final SGA2025
-        #version = 'v0.10' # parent_version = v0.10
-        #version = 'v0.11' # parent_version = v0.10 --> v0.11
-        #version = 'v0.12' # parent_version = v0.11 --> v0.12
-        #version = 'v0.20' # parent_version = v0.12 --> v0.20
-        #version = 'v0.21' # parent_version = v0.20 --> v0.21
-        #version = 'v0.22'  # parent_version = v0.21 --> v0.22
-        #version = 'v0.30'  # parent_version = v0.22 --> v0.30
-        #version = 'v0.40'  # parent_version = v0.30 --> v0.40
-        #version = 'v0.50'  # parent_version = v0.40 --> v0.50
-        #version = 'v0.60'  # parent_version = v0.50 --> v0.60
-        #version = 'v0.70'  # parent_version = v0.60 --> v0.70
-        #version = 'v0.80'  # parent_version = v0.70 --> v0.80
-        #version = 'v1.0'  # parent_version = v0.80 --> v1.0
-        #version = 'v1.1'  # parent_version = v1.0 --> v1.1
-        #version = 'v1.2'  # parent_version = v1.1 --> v1.2
-        #version = 'v1.3'  # parent_version = v1.2 --> v1.3
-        #version = 'v1.4'  # parent_version = v1.3 --> v1.4
-        #version = 'v1.5'  # parent_version = v1.4 --> v1.5
-        version = 'v1.6'  # parent_version = v1.5 --> v1.6
-    return version
+    The nocuts, vicuts, and archive intermediate catalogs share a single
+    frozen working version. The parent and final ellipse catalogs share
+    the release version.
+    """
+    if nocuts or vicuts or archive:
+        return 'v0.10'
+    return 'v1.6'
 
 
 def sga_dir():
@@ -157,10 +85,7 @@ def sga_dir():
         msg = 'Required ${SGA_DIR} environment variable not set.'
         log.critical(msg)
         raise EnvironmentError(msg)
-    ldir = os.path.abspath(os.getenv('SGA_DIR'))
-    if not os.path.isdir(ldir):
-        os.makedirs(ldir, exist_ok=True)
-    return ldir
+    return os.path.abspath(os.getenv('SGA_DIR'))
 
 
 def sga_data_dir():
@@ -168,10 +93,7 @@ def sga_data_dir():
         msg = 'Required ${SGA_DATA_DIR} environment variable not set.'
         log.critical(msg)
         raise EnvironmentError(msg)
-    ldir = os.path.abspath(os.getenv('SGA_DATA_DIR'))
-    if not os.path.isdir(ldir):
-        os.makedirs(ldir, exist_ok=True)
-    return ldir
+    return os.path.abspath(os.getenv('SGA_DATA_DIR'))
 
 
 def sga_html_dir():
@@ -179,10 +101,7 @@ def sga_html_dir():
         msg = 'Required ${SGA_HTML_DIR} environment variable not set.'
         log.critical(msg)
         raise EnvironmentError(msg)
-    ldir = os.path.abspath(os.getenv('SGA_HTML_DIR'))
-    if not os.path.isdir(ldir):
-        os.makedirs(ldir, exist_ok=True)
-    return ldir
+    return os.path.abspath(os.getenv('SGA_HTML_DIR'))
 
 
 def sga2025_name(ra, dec, group_name=False, unixsafe=False):
@@ -401,113 +320,54 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
     return suffix, todo_indices, done_indices, fail_indices, wait_indices
 
 
-def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=None,
-                no_groups=False, lvd=False, wisesize=False, final_sample=False,
-                version=None, tractor=False, test_bricks=False, region='dr11-south',
-                mindiam=0., maxdiam=1e3, minmult=None, maxmult=None, beta=True):
-    """Read/generate the parent SGA catalog.
+def _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult):
+    """Return row indices satisfying diameter and group-membership cuts."""
+    if no_groups:
+        return np.where((info[diam_col] >= mindiam) * (info[diam_col] < maxdiam))[0]
+    I = ((info['GROUP_DIAMETER'] >= mindiam) *
+         (info['GROUP_DIAMETER'] < maxdiam) *
+         info['GROUP_PRIMARY'])
+    if minmult:
+        I *= info['GROUP_MULT'] >= minmult
+    if maxmult:
+        I *= info['GROUP_MULT'] <= maxmult
+    return np.where(I)[0]
 
-    mindiam,maxdiam in arcmin
-    maxmult - maximum number of group members (ignored if --no-groups is set)
 
-    """
-    import fitsio
-
-    if first and last:
-        if first > last:
-            msg = f'Index first cannot be greater than index last, {first} > {last}'
-            log.critical(msg)
-            raise ValueError(msg)
-
-    if final_sample:
-        if tractor:
-            ext = 'TRACTOR'
-        else:
-            ext = 'ELLIPSE'
-        if version is None:
-            version = SGA_version()
-        if beta:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
-        else:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
-    else:
-        ext = 'PARENT'
-        if version is None:
-            version = SGA_version(parent=True)
-        if beta:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-parent-{version}.fits')
-        else:
-            samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-parent-{version}.fits')
-
+def _read_catalog(samplefile, ext, diam_col, first, last, galaxylist, verbose,
+                  no_groups, lvd, region, mindiam, maxdiam, minmult, maxmult,
+                  test_bricks=False):
+    """Read and filter one SGA FITS extension; shared by read_sample and read_sga_sample."""
     if not os.path.isfile(samplefile):
         msg = f'Sample file {samplefile} not found.'
         log.critical(msg)
         raise IOError(msg)
 
-    if final_sample:
-        if no_groups:
-            cols = ['D26']
-        else:
-            #cols = ['D26', 'GROUP_PRIMARY']
-            cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
-            if maxmult or minmult:
-                cols += ['GROUP_MULT']
-        info = fitsio.read(samplefile, ext=ext, columns=cols)
-        if no_groups:
-            rows = np.where(
-                (info['DIAM'] >= mindiam) *
-                (info['DIAM'] < maxdiam))[0]
-        else:
-            I = ((info['GROUP_DIAMETER'] >= mindiam) *
-                 (info['GROUP_DIAMETER'] < maxdiam) *
-                 info['GROUP_PRIMARY'])
-            if minmult:
-                I *= info['GROUP_MULT'] >= minmult
-            if maxmult:
-                I *= info['GROUP_MULT'] <= maxmult
-            rows = np.where(I)[0]
-    else:
-        if no_groups:
-            cols = ['DIAM']
-        else:
-            cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
-            if maxmult or minmult:
-                cols += ['GROUP_MULT']
-        info = fitsio.read(samplefile, ext=ext, columns=cols)
-        if no_groups:
-            rows = np.where(
-                (info['DIAM'] >= mindiam) *
-                (info['DIAM'] < maxdiam))[0]
-        else:
-            I = ((info['GROUP_DIAMETER'] >= mindiam) *
-                 (info['GROUP_DIAMETER'] < maxdiam) *
-                 info['GROUP_PRIMARY'])
-            if minmult:
-                I *= info['GROUP_MULT'] >= minmult
-            if maxmult:
-                I *= info['GROUP_MULT'] <= maxmult
-            rows = np.where(I)[0]
+    if first is not None and last is not None and first > last:
+        msg = f'Index first cannot be greater than index last, {first} > {last}'
+        log.critical(msg)
+        raise ValueError(msg)
 
-    nallrows = len(info)
-    nrows = len(rows)
+    if no_groups:
+        cols = [diam_col]
+    else:
+        cols = ['GROUP_DIAMETER', 'GROUP_PRIMARY']
+        if maxmult or minmult:
+            cols += ['GROUP_MULT']
+    info = fitsio.read(samplefile, ext=ext, columns=cols)
+    rows = _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult)
 
     fullsample = Table(fitsio.read(samplefile, upper=True))
-    #fullsample.add_column(np.arange(nallrows), name='INDEX', index=0)
     sample = fullsample[rows]
 
-    #sample = Table(info[ext].read(rows=rows, upper=True, columns=columns))
     log.info(f'Read {len(sample):,d}/{len(fullsample):,d} GROUP_PRIMARY objects from {samplefile}')
     if len(sample) == 0:
         return sample, fullsample
 
     if region is not None:
-        # select objects in this region
         from SGA.coadds import REGIONBITS
         I = sample['REGION'] & REGIONBITS[region] != 0
-        #J = fullsample['REGION'] & REGIONBITS[region] != 0
-        log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in ' + \
-                 f'region={region}')
-
+        log.info(f'Selecting {np.sum(I):,d}/{len(sample):,d} objects in region={region}')
         sample = sample[I]
         if no_groups:
             fullsample = sample
@@ -516,50 +376,9 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
-        print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST SAMPLE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1')
-        from SGA.ellipse import ELLIPSEMODE
-        from SGA.brick import brickname as get_brickname
-
-        adds = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/adds.csv', format='csv')
-        updates = Table.read('/global/u2/i/ioannis/code/SGA/py/SGA/data/SGA2025/overlays/v1.1/updates.csv', format='csv')
-
-        dogroups = ((np.isin(fullsample['OBJNAME'], np.unique(adds['OBJNAME'])) |
-                     np.isin(fullsample['OBJNAME'], np.unique(updates['OBJNAME'])) |
-                     (fullsample['GROUP_MULT'] > 1) | (fullsample['BA'] < 0.2) |
-                     (fullsample['SAMPLE'] & SAMPLE['MCLOUDS'] != 0)) &
-                    (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0))
-
-        testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
-        testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
-        log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
-        allbricks = get_brickname(fullsample['GROUP_RA'].value, fullsample['GROUP_DEC'].value)
-
-        I = (np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][dogroups])) |
-             np.isin(allbricks, testbricks))
-
-        fullsample = fullsample[I]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-
-    #if True:
-    #    nostar = fullsample['SAMPLE'] & (SAMPLE['NEARSTAR'] | SAMPLE['INSTAR']) == 0
-    #    I = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][nostar]))
-    #    fullsample = fullsample[I]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-    #
-    #    #log.info('Refitting!')
-    #    #refitfile = os.path.join(sga_dir(), 'sample', 'SGA2025-v0.70-refit.fits')
-    #    #refit = Table(fitsio.read(refitfile))
-    #    #refit_groups = fullsample['GROUP_NAME'][np.isin(fullsample['OBJNAME'], refit['OBJNAME'])]
-    #    #fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], refit_groups)]
-    #    #sample = fullsample[fullsample['GROUP_PRIMARY']]
-
-    # select objects in the set of test bricks
     if test_bricks:
         from SGA.brick import brickname as get_brickname
         testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11n-testbricks.csv')
-        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11a-testbricks.csv')
-        #testbricksfile = os.path.join(sga_dir(), 'sample', 'dr11-testbricks.csv')
         testbricks = Table.read(testbricksfile, format='csv')['brickname'].value
         log.info(f'Read {len(testbricks)} test bricks from {testbricksfile}')
         allbricks = get_brickname(sample['GROUP_RA'].value, sample['GROUP_DEC'].value)
@@ -571,14 +390,10 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    # select the LVD sample
     if lvd:
         from SGA.ellipse import ELLIPSEMODE
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FORCEPSF'] != 0)
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] == 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
-        #is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0)
-        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) & (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0)
-        #is_LVD = fullsample['SAMPLE'] & SAMPLE['LVD'] != 0
+        is_LVD = ((fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) &
+                  (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0))
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]
@@ -586,84 +401,19 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if len(sample) == 0:
             return sample, fullsample
 
-    if False:#True:
-        print('HACK!!')
-        from SGA.ellipse import ELLIPSEMODE, ELLIPSEBIT
-        I = fullsample['ELLIPSEBIT'] & ELLIPSEBIT['NOTRACTOR'] != 0
-        #I = (fullsample['ELLIPSEBIT'] & ELLIPSEBIT['FAILGEO'] != 0) & (fullsample['SAMPLE'] & SAMPLE['LVD'] == 0)
-        J = np.isin(fullsample['GROUP_NAME'], np.unique(fullsample['GROUP_NAME'][I]))
-        fullsample = fullsample[J]
-        sample = fullsample[fullsample['GROUP_PRIMARY']]
-
-    if wisesize:
-        from SGA.util import match
-
-        ofullsample = fullsample.copy()
-
-        nobj = len(sample)
-        nfullobj = len(fullsample)
-        I = ((fullsample['SAMPLE'] == 0) * (fullsample['DIAM'] > 0.75) * (fullsample['DIAM'] < 5) *
-             (fullsample['GROUP_DIAMETER'] < 5) * (fullsample['GROUP_RA'] > 87.) * (fullsample['GROUP_RA'] < 300.) *
-             (fullsample['GROUP_DEC'] > -10.) * (fullsample['GROUP_DEC'] < 85.))
-        fullsample = fullsample[I]
-
-        version_archive = SGA_version(archive=True)
-        parentdir = os.path.join(sga_dir(), 'parent')
-        parentfile = os.path.join(parentdir, f'SGA2025-parent-archive-{region}-{version_archive}.fits')
-        parent_rows = fitsio.read(parentfile, columns='ROW_PARENT')
-        rows = np.where(np.isin(parent_rows, fullsample['SGAID'].value))[0]
-        parent = Table(fitsio.read(parentfile, rows=rows))
-        indx_fullsample, indx_parent = match(fullsample['SGAID'], parent['ROW_PARENT'])
-        fullsample = fullsample[indx_fullsample]
-        parent = parent[indx_parent]
-
-        I = (parent['Z'] > 0.002) * (parent['Z'] < 0.025)
-        fullsample = fullsample[I]
-
-        # build primary member sample and then we need to restore all
-        # group members otherwise we run into problems in
-        # build_catalog.
-        sample = sample[np.isin(sample['GROUP_NAME'], fullsample['GROUP_NAME'])]
-        fullsample = ofullsample[np.isin(ofullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-        log.info(f'Selecting {len(fullsample):,d}/{nfullobj:,d} ({len(sample):,d}/{nobj:,d}) wisesize groups (objects)')
-
-
-    if False:
-        from SGA.ellipse import ELLIPSEMODE
-        ## remove
-        #I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] == 0
-        #log.warning(f'Temporarily removing {np.sum(~I):,d} LVD-RESOLVED sources!')
-        # keep
-        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0
-        log.warning(f'Temporarily restricting to {np.sum(I):,d} LVD-RESOLVED sources!')
-        sample = sample[I]
-
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
-    if False:#True:
-        from SGA.ellipse import ELLIPSEMODE
-        I = sample['ELLIPSEMODE'] & ELLIPSEMODE['FIXGEO'] != 0
-        log.warning(f'Temporarily restricting to {np.sum(I):,d} sources with FIXGEO!')
-        sample = sample[I]
-        fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
-
     if galaxylist is not None:
         galaxylist = np.array(galaxylist.split(','))
         log.debug('Selecting specific galaxies.')
         I = np.isin(sample['GROUP_NAME'], galaxylist)
         if np.count_nonzero(I) == 0:
-            #log.warning('No matching galaxies using column GROUP_NAME!')
-            #I = np.isin(sample['SGANAME'], galaxylist)
             I = np.isin(sample['SGAID'], galaxylist)
             if np.count_nonzero(I) == 0:
-                #log.warning('No matching galaxies using column SGANAME!')
                 I = np.isin(sample['OBJNAME'], galaxylist)
                 if np.count_nonzero(I) == 0:
                     log.warning('No matching galaxies found in sample; try a different region?')
                     sample, fullsample = Table(), Table()
         sample = sample[I]
 
-    # select a subset of objects
     if first is not None or last is not None:
         nsample = len(sample)
         if first is None:
@@ -671,8 +421,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         if last is None:
             last = nsample
         if last > nsample:
-            log.warning('Index last is greater than the number of ' + \
-                        f'objects in sample, {last} >= {nsample}')
+            log.warning(f'Index last is greater than the number of objects in sample, {last} >= {nsample}')
             last = nsample
         I = np.arange(first, last)
         if nsample == 1:
@@ -685,20 +434,115 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False, columns=N
         else:
             fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], sample['GROUP_NAME'])]
 
-    #if version == 'v0.40':
-    #    print('HACK!!!')
-    #    redo = Table.read('/global/u2/i/ioannis/redo-galdir.txt', format='csv')['C'].value
-    #    base = np.array([os.path.basename(path) for path in redo])
-    #    sample = sample[np.isin(sample['GROUP_NAME'], base)]
-    #    fullsample = fullsample[np.isin(fullsample['GROUP_NAME'], base)]
-
-    #if version == 'v0.50' and False:
-    #    print('HACK!!!')
-    #    redo = Table.read('/global/u2/i/ioannis/redo-objname.txt', format='csv')['C'].value
-    #    fullsample = fullsample[np.isin(fullsample['OBJNAME'], redo)]
-    #    sample = fullsample[fullsample['GROUP_PRIMARY']]
-
     return sample, fullsample
+
+
+def read_sample(first=None, last=None, galaxylist=None, verbose=False,
+                no_groups=False, lvd=False,
+                version=None, test_bricks=False, region='dr11-south',
+                mindiam=0., maxdiam=1e3, minmult=None, maxmult=None, beta=True):
+    """Read the SGA2025 parent catalog.
+
+    For the final ellipse or Tractor catalog use read_sga_sample().
+
+    Parameters
+    ----------
+    first, last : int, optional
+        Select a contiguous slice [first, last) of the primary-object list.
+    galaxylist : str, optional
+        Comma-separated identifiers to select. Matched against GROUP_NAME
+        first, then SGAID, then OBJNAME.
+    verbose : bool
+        If True, log additional diagnostic messages.
+    no_groups : bool
+        If True, treat each galaxy independently rather than by group.
+    lvd : bool
+        If True, restrict to the Local Volume Database resolved dwarf subsample.
+    version : str, optional
+        Catalog version string. Defaults to the current release version via
+        SGA_version().
+    test_bricks : bool
+        If True, restrict to objects in the DR11 test brick list (pipeline use).
+    region : str
+        Survey region ('dr11-south' or 'dr11-north').
+    mindiam, maxdiam : float
+        Minimum and maximum GROUP_DIAMETER in arcmin.
+    minmult, maxmult : int, optional
+        Minimum/maximum number of group members. Ignored when no_groups=True.
+    beta : bool
+        If True (default), read the beta release file.
+
+    Returns
+    -------
+    sample : astropy.table.Table
+        GROUP_PRIMARY objects satisfying all selection criteria.
+    fullsample : astropy.table.Table
+        All group members whose group has at least one object in sample.
+    """
+    if version is None:
+        version = SGA_version(parent=True)
+    if beta:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-parent-{version}.fits')
+    else:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-parent-{version}.fits')
+
+    return _read_catalog(samplefile, 'PARENT', 'DIAM', first, last, galaxylist,
+                         verbose, no_groups, lvd, region, mindiam, maxdiam,
+                         minmult, maxmult, test_bricks=test_bricks)
+
+
+def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
+                    galaxylist=None, first=None, last=None, no_groups=False,
+                    minmult=None, maxmult=None, lvd=False, version=None, beta=True,
+                    verbose=False):
+    """Read the final SGA2025 catalog for a given survey region.
+
+    Returns the ELLIPSE extension by default, or the row-matched TRACTOR
+    extension when tractor=True.
+
+    Parameters
+    ----------
+    region : str
+        Survey region ('dr11-south' or 'dr11-north').
+    tractor : bool
+        If True, return the TRACTOR extension instead of ELLIPSE.
+    mindiam, maxdiam : float
+        Minimum and maximum GROUP_DIAMETER in arcmin.
+    galaxylist : str, optional
+        Comma-separated GROUP_NAME, SGAID, or OBJNAME values to select.
+    first, last : int, optional
+        Slice the primary-object list to indices [first, last).
+    no_groups : bool
+        If True, treat each galaxy independently rather than by group.
+    minmult, maxmult : int, optional
+        Minimum/maximum number of group members to include.
+    lvd : bool
+        If True, restrict to the Local Volume Database dwarf subsample.
+    version : str, optional
+        Catalog version string; defaults to the current release version.
+    beta : bool
+        If True (default), read the beta release file.
+    verbose : bool
+        If True, log additional diagnostic messages.
+
+    Returns
+    -------
+    sample : astropy.table.Table
+        GROUP_PRIMARY objects satisfying the selection criteria.
+    fullsample : astropy.table.Table
+        All group members whose group has at least one object in sample.
+    """
+    ext = 'TRACTOR' if tractor else 'ELLIPSE'
+    if version is None:
+        version = SGA_version()
+    if beta:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
+    else:
+        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+
+    return _read_catalog(samplefile, ext, 'D26', first, last, galaxylist,
+                         verbose, no_groups, lvd, region, mindiam, maxdiam,
+                         minmult, maxmult)
 
 
 def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
@@ -1338,8 +1182,9 @@ def _read_ellipse_optical_maskbits(gdir, datasets, opt_bands, grpsample):
 
         try:
             ellipse1[iellipse, :, :] = ellipse_dataset
-        except:
-            pdb.set_trace()
+        except Exception:
+            log.critical(f'Shape mismatch assigning maskbits for {ellipsefile_dataset}!')
+            return None
 
     return ellipse1
 
@@ -1572,10 +1417,6 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                 outprefix = 'SGA2025-wisesize'
             else:
                 outprefix = 'SGA2025'
-                if False:#True:
-                    print('TESTING!!!')
-                    version = 'test'
-                    outprefix = 'SGA2025-test'
             outfile = f'{outprefix}-beta-{version}-{region}.fits'
             kdoutfile = f'{outprefix}-beta-{version}-{region}.fits'
             outfile_ellipse = f'{outprefix}-ellipse-{version}-{region}.fits'
@@ -1884,12 +1725,6 @@ def count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
                                         pa, xgrid, ygrid_flip)
             frac = np.sum(galmask[inellipse]) / np.sum(inellipse)
             #if frac == 1.:
-            #    import matplotlib.pyplot as plt
-            #    plt.clf()
-            #    plt.imshow(galmask, origin='lower')
-            #    plt.savefig('ioannis/tmp/junk.png')
-            #    pdb.set_trace()
-
             out['FRAC'][iobj] = frac
 
     out = out[out['FRAC'] > 0.] # trim
@@ -2017,7 +1852,6 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
         out = safe_vstack(final_results)
         out.write(outfile, overwrite=True)
         log.info(f'Wrote {len(out):,d} objects to {outfile}')
-        pdb.set_trace()
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):

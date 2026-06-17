@@ -1,0 +1,223 @@
+#!/usr/bin/env python
+
+"""MPI wrapper to get a large number of image cutouts.
+
+Working interactively in a login node, one would do something like:
+
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+  SGA2025-shifter
+  source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
+
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1
+  SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/parent --region=dr11-south --mp=1 --annotate
+
+Alternatively, in production, one would do:
+
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:dstndstn/cutouts:dvsro4
+
+  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr11-south --mp=4 > \
+    $PSCRATCH/SGA2025-cutouts/cutouts/SGA2025-cutouts-parent-dr11-south-native-JOBID.log 2>&1 &
+
+  time srun --ntasks=32 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/cutouts/parent --region=dr11-south --mp=4 --rescale > \
+    $PSCRATCH/SGA2025-cutouts/cutouts/SGA2025-cutouts-parent-dr11-south-rescale-JOBID.log 2>&1 &
+
+###
+To build the ssl-legacysurvey catalog:
+
+  First generate the rescaled cutouts for both regions:
+    salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+    shifter --image dstndstn/cutouts:dvsro4 bash
+    source $CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh
+
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr11-north --rescale --mp=128
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --region=dr11-south --rescale --mp=128
+
+  Then pack the rescaled cutouts into HDF5 files:
+    SGA2025-shifter
+    source $HOME/code/git/SGA/bin/SGA2025/SGA2025-env
+
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v4
+    SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2025-cutouts/ssl --build-ssl --ssl-version=v3
+
+###
+SGA-2020 sample (legacy):
+
+SGA2025-cutouts --cutoutdir=$PSCRATCH/SGA2020-cutouts --sga2020 --bands='g,r,z' --rescale --mp=128
+
+"""
+import os
+import numpy as np
+
+from astropy.table import Table, vstack
+
+from SGA.geometry import choose_geometry
+from SGA.ssl import build_ssl_legacysurvey_refcat, build_ssl_legacysurvey
+from SGA.logger import log
+
+
+def main():
+    """Main wrapper."""
+    import argparse
+    from SGA.cutouts import get_pixscale_and_width, cutouts_plan
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--region', default='dr11-south', choices=['dr11-north', 'dr11-south'],
+                        type=str, help='Survey region.')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--ntest', type=int, default=None, help='Number of test objects to read (first N).')
+    parser.add_argument('--width', type=int, default=152, help='Default cutout width [pixels].')
+    parser.add_argument('--pixscale', type=float, default=0.262, help='Default pixel scale [arcsec/pixel].')
+    parser.add_argument('--cutoutdir', default='./', type=str, help='Base output data directory.')
+    parser.add_argument('--httpdir', default=None, type=str, help='Base https output data directory.')
+
+    parser.add_argument('--ssl', action='store_true', help='Analyze the ssl-legacysurvey samples.')
+    parser.add_argument('--build-ssl', action='store_true', help='Build the hdf5 files needed by ssl-legacysurvey.')
+    parser.add_argument('--ssl-version', default=None, type=str, help='ssl-legacysurvey version label (e.g. v3).')
+
+    parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
+
+    parser.add_argument('--annotate', action='store_true', help='Annotate the native-resolution cutouts.')
+    parser.add_argument('--annotated-montage', action='store_true', help='Generate multipage montages of annotated images.')
+
+    parser.add_argument('--sga2020', action='store_true', help='Read the SGA-2020 catalog (legacy).')
+    parser.add_argument('--bands', default='g,r,i,z', type=str, help='Default bandpasses.')
+
+    parser.add_argument('--no-fits-cutouts', action='store_false', dest='fits_cutouts', help='Do not generate FITS cutouts.')
+    parser.add_argument('--ivar-cutouts', action='store_true', help='Generate ivar cutouts.')
+    parser.add_argument('--invvar', dest='ivar_cutouts', action='store_true', help='Generate ivar cutouts.')
+    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
+    parser.add_argument('--rescale', action='store_true', help='Scale the pixel size.')
+    parser.add_argument('--debug', action='store_true', help='Print out a variety of debugging messages.')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
+
+    args = parser.parse_args()
+
+    bands = args.bands.split(',')
+
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+    except ImportError:
+        comm = None
+
+    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('spawn')
+
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
+    # define paths depending on the input keywords
+    if args.build_ssl:
+        cutoutdir = None
+        annotatedir = None
+        layer = None
+    elif args.annotate:
+        cutoutdir = os.path.join(args.cutoutdir, args.region, 'native')
+        annotatedir = os.path.join(args.cutoutdir, args.region, 'annotate')
+        layer = None
+    else:
+        layer = f'ls-{args.region}'
+        #if args.region == 'dr11-south':
+        #    log.warning(f'Overriding layer={layer}-->ls-dr11-early-v2')
+        #    layer = 'ls-dr11-early-v2'
+        cutoutdir = os.path.join(args.cutoutdir, args.region,
+                                 'rescale' if args.rescale else 'native')
+        annotatedir = os.path.join(args.cutoutdir, args.region, 'annotate')
+
+    cat, fullcat = None, None
+    use_catalog_objname = False
+    if rank == 0:
+        if args.build_ssl:
+            from SGA.SGA import read_sample
+            if args.ssl_version is None:
+                raise ValueError('--ssl-version is required with --build-ssl')
+            sample_n, fullsample_n = read_sample(region='dr11-north')
+            sample_s, fullsample_s = read_sample(region='dr11-south')
+            cat     = vstack([sample_n,     sample_s])
+            fullcat = vstack([fullsample_n, fullsample_s])
+            del sample_n, sample_s, fullsample_n, fullsample_s
+        elif args.sga2020:
+            from SGA.external import read_sga2020
+            fullcat = read_sga2020()
+            fullcat.rename_columns(['D26', 'PA', 'BA'], ['DIAM', 'PA', 'BA'])
+            fullcat['DIAM_REF'] = 'SGA2020'
+            cat = Table()
+            cat['OBJNAME'] = np.array([f'SGA2020-{sgaid:06d}' for sgaid in fullcat['SGA_ID'].value])
+            for col in ['RA', 'DEC', 'DIAM', 'PA', 'BA', 'DIAM_REF']:
+                cat[col] = fullcat[col]
+            del fullcat
+            fullcat = cat
+            use_catalog_objname = True
+            layer = 'ls-dr9'
+        else:
+            from SGA.SGA import read_sample
+            last = args.ntest if args.ntest else None
+            cat, fullcat = read_sample(region=args.region, last=last)
+
+    if comm is not None:
+        cat = comm.bcast(cat, root=0)
+        fullcat = comm.bcast(fullcat, root=0)
+
+    if args.annotated_montage and rank == 0:
+        from SGA.cutouts import annotated_montage
+        annotated_montage(cat, region=args.region, cutoutdir=args.cutoutdir,
+                          annotatedir=annotatedir, photodir=None,
+                          ssl=args.ssl, ssl_version=args.ssl_version,
+                          rescale=args.rescale, photo=False, photo_version=None,
+                          wisesize=False, lvd=False, zooniverse=False,
+                          overwrite=args.overwrite)
+        return
+
+    if args.build_ssl and rank == 0:
+        refcat, cat = build_ssl_legacysurvey_refcat(cat, fullcat, ssl_version=args.ssl_version)
+        build_ssl_legacysurvey(cat, refcat, width=args.width, ssl_version=args.ssl_version,
+                               cutoutdir=args.cutoutdir, outdir=args.cutoutdir,
+                               overwrite=args.overwrite, verbose=args.verbose)
+        return
+
+    if args.plan and rank == 0:
+        if args.annotate:
+            width = None
+        else:
+            mindiam = args.width * args.pixscale  # [arcsec]
+            diam, ba, pa, ref = choose_geometry(cat, mindiam=mindiam)
+            pixscale, width = get_pixscale_and_width(
+                diam, mindiam, rescale=args.rescale,
+                default_width=args.width,
+                default_pixscale=args.pixscale)
+        cutouts_plan(cat, width=width, layer=layer, size=size, cutoutdir=cutoutdir,
+                     annotatedir=annotatedir, photodir=None, mp=args.mp,
+                     annotate=args.annotate, photo=False, fits_cutouts=args.fits_cutouts,
+                     unwise_cutouts=False, galex_cutouts=False,
+                     overwrite=args.overwrite, verbose=args.verbose,
+                     use_catalog_objname=use_catalog_objname)
+        return
+
+    if args.annotate:
+        from SGA.cutouts import do_annotate
+        do_annotate(cat, fullcat, default_pixscale=args.pixscale,
+                    default_width=args.width, mp=args.mp,
+                    comm=comm, base_cutoutdir=args.cutoutdir, cutoutdir=cutoutdir,
+                    annotatedir=annotatedir, region=args.region, httpdir=args.httpdir,
+                    overwrite=args.overwrite, fits_cutouts=args.fits_cutouts,
+                    draw_largest_ellipse=False, annotate_central_only=False,
+                    debug=args.debug, dry_run=args.dry_run, verbose=args.verbose)
+    else:
+        from SGA.cutouts import do_cutouts
+        do_cutouts(cat, layer=layer, mp=args.mp, comm=comm, cutoutdir=cutoutdir,
+                   base_cutoutdir=args.cutoutdir, default_pixscale=args.pixscale,
+                   default_width=args.width, rescale=args.rescale,
+                   default_bands=bands, overwrite=args.overwrite, dry_run=args.dry_run,
+                   fits_cutouts=args.fits_cutouts, ivar_cutouts=args.ivar_cutouts,
+                   unwise_cutouts=False, galex_cutouts=False,
+                   verbose=args.verbose, use_catalog_objname=use_catalog_objname)
+
+if __name__ == '__main__':
+    main()

@@ -12,8 +12,8 @@ Typical workflow after generating rescaled cutouts
     from SGA.SGA import read_sample
     from SGA.ssl import build_ssl_legacysurvey_refcat, build_ssl_legacysurvey
 
-    ss_n, fs_n = read_sample(final_sample=False, region='dr9-north')
-    ss_s, fs_s = read_sample(final_sample=False, region='dr11-south')
+    ss_n, fs_n = read_sample(region='dr9-north')
+    ss_s, fs_s = read_sample(region='dr11-south')
     sample    = vstack([ss_n, ss_s])
     fullsample = vstack([fs_n, fs_s])
 

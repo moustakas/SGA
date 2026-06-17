@@ -36,30 +36,11 @@ where = ["py"]
 
 # ---------------------------------------------------------------------------
 # Scripts
-# Only SGA2025 Python scripts are installed; legacy SGA2020 scripts and shell
-# env/shifter helpers are excluded. The long-term path is to convert these to
-# [project.scripts] entry points (module:function), but that requires
-# refactoring the standalone scripts first.
+# All SGA-2025 processing scripts are archived under archive/bin-SGA2025/.
+# Only the active QA script remains in bin/ until the public data release.
+# Future SGA releases will add scripts directly to bin/.
 # ---------------------------------------------------------------------------
 [tool.setuptools]
 script-files = [
-    # Core SGA-2025 pipeline scripts
-    "bin/SGA2025/SGA2025-build-parent",
-    "bin/SGA2025/SGA2025-build-catalogs",
-    "bin/SGA2025/SGA2025-mpi",
-    "bin/SGA2025/SGA2025-cutouts",
-    "bin/SGA2025/SGA2025-tractor-qa",
-    "bin/SGA2025/SGA2025-calibrate-r26",
-    "bin/SGA2025/SGA2025-parse-vi",
-    "bin/SGA2025/SGA2025-query-ned",
-    # Utility scripts
-    "bin/SGA2025/analyze-lvd",
-    "bin/SGA2025/bricks-in-sga",
-    "bin/SGA2025/build-gaia-mask",
-    "bin/SGA2025/finding-charts",
-    "bin/SGA2025/majoraxis-sims",
-    "bin/SGA2025/missing-sga2020",
-    "bin/SGA2025/parse-dr910",
-    "bin/SGA2025/parse-smudges",
-    "bin/SGA2025/parse-tractor-logs",
+    "bin/SGA2025-mpi",
 ]
