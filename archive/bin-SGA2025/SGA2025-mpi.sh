@@ -18,12 +18,13 @@ COSMO="/dvs_ro/cfs/cdirs/cosmo"
 SCRATCH=$PSCRATCH
 
 #SGA_DEV="/global/u2/i/ioannis/code/SGA"
-SGA_DEV="$DESI/SGA/2025/v0.40-scripts/SGA"
-LEGACYPIPE_DEV="/global/common/software/desi/users/ioannis/legacypipe"
-#LEGACYPIPE_DEV="$DESI/SGA/2025/v0.40-scripts/legacypipe"
+#LEGACYPIPE_DEV="/global/u2/i/ioannis/code/legacypipe"
+#LEGACYPIPE_DEV="/global/common/software/desi/users/ioannis/legacypipe"
+SGA_DEV="$DESI/SGA/2025/v1.6/SGA"
+LEGACYPIPE_DEV="$DESI/SGA/2025/v1.6/legacypipe"
 PATH_PREPEND="$SGA_DEV/bin/SGA2025"
 
-LARGEGALAXIES_CAT="$COSMO/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v0.40.kd.fits"
+LARGEGALAXIES_CAT="$COSMO/work/legacysurvey/sga/2025/SGA2025-beta-parent-refcat-v1.6.kd.fits"
 SKY_TEMPLATE_DIR="$COSMO/work/legacysurvey/dr11/calib/sky_pattern"
 
 SGA_DIR="$DESI/SGA/2025"
@@ -37,7 +38,8 @@ GAIA_CAT_PREFIX="healpix"
 GAIA_CAT_SCHEME="nested"
 GAIA_CAT_VER="3"
 
-UNWISE_COADDS_DIR="$COSMO/work/wise/outputs/merge/neo11/fulldepth:$COSMO/data/unwise/allwise/unwise-coadds/fulldepth"
+#UNWISE_COADDS_DIR="$COSMO/work/wise/outputs/merge/neo11/fulldepth:$COSMO/data/unwise/allwise/unwise-coadds/fulldepth"
+UNWISE_COADDS_DIR="$COSMO/data/unwise/neo11/unwise-coadds/fulldepth:$COSMO/data/unwise/allwise/unwise-coadds/fulldepth"
 
 TYCHO2_KD_DIR="$COSMO/staging/tycho2"
 PS1CAT_DIR="$COSMO/work/ps1/cats/chunks-qz-star-v3"
@@ -65,6 +67,7 @@ case "$STAGE" in
   coadds)    args+=( --coadds ) ;;
   ellipse)   args+=( --ellipse ) ;;
   htmlplots) args+=( --htmldir="$HTMLDIR" --htmlplots ) ;;
+  count_masked_pixels ) args+=( --count-masked-pixels ) ;;
   build_catalog) args+=( --build-catalog ) ;;
   *) echo "Unknown stage: $STAGE" >&2; exit 2 ;;
 esac
@@ -98,6 +101,7 @@ if (( NGPU > 0 )); then
   else
     ntasks=$(( N * NGPU ))
     if (( shared )); then
+      #cpus_per_task=$(( 128 / 8 ))
       cpus_per_task=$(( 128 / 4 ))
     else
       cpus_per_task=$(( 128 / NGPU ))
@@ -171,12 +175,13 @@ TMPCACHE=$(mktemp -d -p "${TMPDIR:-/tmp}" "SGA_${SLURM_JOB_ID}_${SLURM_PROCID}.X
 export XDG_CACHE_HOME="$TMPCACHE/cache"
 export XDG_CONFIG_HOME="$TMPCACHE/config"
 mkdir -p "$XDG_CACHE_HOME/astropy" "$XDG_CONFIG_HOME/astropy"
-[ -d "$HOME/.astropy/cache"  ] && cp -r "$HOME/.astropy/cache"  "$XDG_CACHE_HOME/astropy"  || true
-[ -d "$HOME/.astropy/config" ] && cp -r "$HOME/.astropy/config" "$XDG_CONFIG_HOME/astropy" || true
+
+[ -d "$HOME/.astropy/cache"  ] && cp -r "$HOME/.astropy/cache/."  "$XDG_CACHE_HOME/astropy/"  || true
+[ -d "$HOME/.astropy/config" ] && cp -r "$HOME/.astropy/config/." "$XDG_CONFIG_HOME/astropy/" || true
 
 export MPLCONFIGDIR="$TMPCACHE/matplotlib"
 mkdir -p "$MPLCONFIGDIR"
-[ -d "$HOME/.cache/matplotlib" ] && cp -r "$HOME/.cache/matplotlib" "$MPLCONFIGDIR" || true
+[ -d "$HOME/.cache/matplotlib" ] && cp -r "$HOME/.cache/matplotlib/." "$MPLCONFIGDIR/" || true
 
 # CUDA / CuPy caches per-rank
 export CUDA_CACHE_MAXSIZE="${CUDA_CACHE_MAXSIZE:-2147483648}"
