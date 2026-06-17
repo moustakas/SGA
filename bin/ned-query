@@ -1,0 +1,423 @@
+#!/usr/bin/env python
+"""
+ned-crossids: Query the NED API for cross-IDs and basic data for SGA-2025 galaxies.
+
+Two modes:
+
+  --bypos (default): ConeSearchByPosition finds the nearest NED object within
+    --radius arcsec (default 5), then OverviewOfObject retrieves all basic
+    data including cross-IDs.  Output: ned-bypos-{region}.csv
+
+  --byname: OverviewOfObject queried directly by SGA OBJNAME. Useful for
+    galaxies that fail the positional match due to coordinate offsets.
+    Output: ned-byname-{region}.csv
+
+Both outputs include one row per galaxy with all selected OverviewOfObject
+fields. Safe to restart: SGAIDs already present in the output file are skipped.
+
+Hiccup protection: NED VOTable responses declare their row count in a
+RECORDS_RETURNED parameter. If NED declares N > 0 rows but delivers 0, the
+response is flagged ERROR='hiccup' and the query is retried once automatically.
+If the overview step succeeds in finding a NED name but returns no data, it is
+flagged ERROR='overview_failed' rather than being silently empty.
+
+Throughput with default settings (--maxconcurrent 10, --delay 0.1):
+  ~8 NED requests/s -> ~4 gal/s (bypos, 2 calls each) or ~8 gal/s (byname).
+  Run dr11-north and dr11-south in parallel on separate nodes.
+
+Examples
+--------
+# Test on the first 20 objects:
+ned-crossids --region dr11-south --outdir /tmp/ned-test --ntest 20
+ned-crossids --region dr11-south --outdir /tmp/ned-test --ntest 20 --byname
+
+# Full runs:
+ned-crossids --region dr11-south --outdir /path/to/output
+ned-crossids --region dr11-south --outdir /path/to/output --byname
+ned-crossids --region dr11-north --outdir /path/to/output
+
+"""
+import os
+import re
+import csv
+import time
+import asyncio
+import argparse
+import numpy as np
+from io import BytesIO
+
+import aiohttp
+from astropy.io.votable import parse_single_table
+
+from SGA.SGA import read_sga_sample
+from SGA.logger import log
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+NED_BASE   = 'https://ned.ipac.caltech.edu/NED::API'
+USER_AGENT = 'SGA-NED-crossid/1.0 (jmoustakas@siena.edu)'
+
+# OverviewOfObject VOTable FIELD ID -> output CSV column name.
+# Excluded at user request: v_Sun, unc_v_Sun, v_Sun_3K, unc_v_Sun_3K,
+# d_Sun_3K, unc_d_Sun_3K, a_lambda_V, a_lambda_K, gal_lon, gal_lat.
+OVERVIEW_COL_MAP = {
+    'enotes':           'NED_NOTES',
+    'equ_j2000_lon_s':  'NED_RA_S',
+    'equ_j2000_lat_s':  'NED_DEC_S',
+    'equ_j2000_lon':    'NED_RA',
+    'equ_j2000_lat':    'NED_DEC',
+    'unc_sma':          'NED_POS_UNC_SMA',
+    'unc_smi':          'NED_POS_UNC_SMI',
+    'equ_j2000_unc_pa': 'NED_POS_UNC_PA',
+    'pos_reference':    'NED_POS_REF',
+    'z':                'NED_Z',
+    'unc_z':            'NED_Z_UNC',
+    'z_refcode':        'NED_Z_REF',
+    'mean_distance':    'NED_DIST',
+    'SEM_distance':     'NED_DIST_UNC',
+    'emregion':         'NED_EMREGION',
+    'pretype':          'NED_TYPE',
+    'o_class_morph':    'NED_MORPH',
+    'morph_refcode':    'NED_MORPH_REF',
+    'o_class_activity': 'NED_ACTIVITY',
+    'activity_refcode': 'NED_ACTIVITY_REF',
+    'o_class_other':    'NED_OTHER',
+    'o_diam_passband':  'NED_DIAM_BAND',
+    'o_diam_maj_dia':   'NED_DIAM',
+    'diameter_refcode': 'NED_DIAM_REF',
+    'diameter_kpc':     'NED_DIAM_KPC',
+    'o_footnote':       'NED_FOOTNOTE',
+}
+
+OVERVIEW_FIELDS = ['CROSSIDS', 'N_CROSSIDS'] + list(OVERVIEW_COL_MAP.values())
+BYPOS_FIELDS    = ['SGAID', 'NED_NAME', 'SEPARATION_ARCSEC', 'NMATCHES'] + OVERVIEW_FIELDS + ['ERROR']
+BYNAME_FIELDS   = ['SGAID', 'OBJNAME'] + OVERVIEW_FIELDS + ['ERROR']
+
+_REC_RE = re.compile(rb'name="RECORDS_RETURNED"[^>]+value="(\d+)"')
+
+
+# ---------------------------------------------------------------------------
+# VOTable parsing helpers
+# ---------------------------------------------------------------------------
+def _records_returned(content):
+    """Extract the declared RECORDS_RETURNED count from raw VOTable bytes.
+
+    NED always includes this PARAM in its responses. If it is missing (e.g.
+    on an error page), returns None.
+    """
+    m = _REC_RE.search(content)
+    return int(m.group(1)) if m else None
+
+
+def _parse_votable(content):
+    """Parse VOTable bytes; return astropy Table or None on any error."""
+    if not content:
+        return None
+    try:
+        return parse_single_table(BytesIO(content)).to_table()
+    except Exception:
+        return None
+
+
+def _col(table, *candidates):
+    """Return the first candidate column name that exists in table."""
+    for name in candidates:
+        if name in table.colnames:
+            return name
+    return None
+
+
+def _scalar(row, col):
+    """Extract a scalar value from a table row; return '' for masked entries."""
+    if col is None:
+        return ''
+    v = row[col]
+    if hasattr(v, 'mask') and np.ndim(v.mask) == 0 and v.mask:
+        return ''
+    return v
+
+
+def parse_cone_search(content, sga_id):
+    """Parse ConeSearchByPosition response.
+
+    Returns a dict with SGAID, NED_NAME, SEPARATION_ARCSEC, NMATCHES, ERROR.
+    ERROR='hiccup' means NED declared rows but delivered none.
+    """
+    base = {'SGAID': sga_id, 'NED_NAME': '', 'SEPARATION_ARCSEC': '',
+            'NMATCHES': 0, 'ERROR': ''}
+
+    table = _parse_votable(content)
+    if table is None:
+        base['ERROR'] = 'parse_error'
+        return base
+    if len(table) == 0:
+        ndecl = _records_returned(content)
+        base['ERROR'] = 'hiccup' if (ndecl is not None and ndecl > 0) else 'no_match'
+        return base
+
+    row      = table[0]   # NED returns rows sorted by separation ascending
+    name_col = _col(table, 'prefname', 'Object Name', 'objname')
+    sep_col  = _col(table, 'sep', 'Separation', 'separation')
+
+    if name_col is None:
+        base['ERROR'] = f'col_mismatch: {table.colnames}'
+        return base
+
+    sep_raw    = _scalar(row, sep_col)
+    sep_arcsec = f'{float(sep_raw) * 60.0:.3f}' if sep_raw != '' else ''
+
+    base.update({
+        'NED_NAME':          str(_scalar(row, name_col)).strip(),
+        'SEPARATION_ARCSEC': sep_arcsec,
+        'NMATCHES':          len(table),
+    })
+    return base
+
+
+def parse_overview(content):
+    """Parse OverviewOfObject response.
+
+    Returns (data_dict, error_str).  error_str is '' on success, 'hiccup' if
+    NED declared rows but delivered none, 'no_match' for a genuine empty
+    result, or 'parse_error' on a malformed response.
+    """
+    table = _parse_votable(content)
+    if table is None:
+        return {}, 'parse_error'
+    if len(table) == 0:
+        ndecl = _records_returned(content)
+        err   = 'hiccup' if (ndecl is not None and ndecl > 0) else 'no_match'
+        return {}, err
+
+    row    = table[0]
+    result = {}
+
+    # CrossID_list is a semicolon-delimited string; store pipe-delimited + count.
+    id_col   = _col(table, 'CrossID_list')
+    raw      = _scalar(row, id_col) if id_col else ''
+    crossids = [s.strip() for s in str(raw).split(';') if s.strip()] if raw else []
+    result['CROSSIDS']   = '|'.join(crossids)
+    result['N_CROSSIDS'] = len(crossids)
+
+    for vtid, csvname in OVERVIEW_COL_MAP.items():
+        col = _col(table, vtid)
+        result[csvname] = _scalar(row, col) if col else ''
+
+    return result, ''
+
+
+# ---------------------------------------------------------------------------
+# Async fetch and per-galaxy processing
+# ---------------------------------------------------------------------------
+async def _fetch(session, url, params, semaphore, delay, retries=3):
+    """Rate-limited GET with retries. Returns response bytes or b'' on failure."""
+    async with semaphore:
+        content = b''
+        for attempt in range(retries):
+            try:
+                async with session.get(url, params=params,
+                                       timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    if resp.status == 200:
+                        content = await resp.read()
+                        break
+                    if resp.status == 429:          # Too Many Requests
+                        await asyncio.sleep(60.0)   # back off hard, then retry
+                    else:
+                        break                       # non-retryable HTTP error
+            except Exception as exc:
+                if attempt == retries - 1:
+                    log.warning(f'Fetch failed ({url} {params}): {exc}')
+                else:
+                    await asyncio.sleep(2.0 ** attempt)
+        await asyncio.sleep(delay)
+    return content
+
+
+async def _process_bypos(session, sga_id, ra, dec, semaphore, delay, radius_arcmin):
+    """ConeSearch then OverviewOfObject for one galaxy, with hiccup retries."""
+    params1 = {
+        'LON':     f'{ra:.6f}d',
+        'LAT':     f'{dec:.6f}d',
+        'RADIUS':  f'{radius_arcmin:.6f}',
+        'CSYS':    'Equatorial',
+        'EQUINOX': 'J2000.0',
+    }
+
+    # Retry cone search once on hiccup.
+    result = {}
+    for _ in range(2):
+        content1 = await _fetch(session, f'{NED_BASE}/ConeSearchByPosition',
+                                params1, semaphore, delay)
+        result = parse_cone_search(content1, sga_id)
+        if result['ERROR'] != 'hiccup':
+            break
+
+    # Retry overview once on hiccup; flag explicitly if it still fails.
+    if result['NED_NAME']:
+        overview, ov_err = {}, 'hiccup'
+        for _ in range(2):
+            content2 = await _fetch(session, f'{NED_BASE}/OverviewOfObject',
+                                    {'TARGET': result['NED_NAME']}, semaphore, delay)
+            overview, ov_err = parse_overview(content2)
+            if ov_err != 'hiccup':
+                break
+        if overview:
+            result.update(overview)
+        elif not result['ERROR']:
+            result['ERROR'] = ov_err if ov_err else 'overview_failed'
+
+    return {k: result.get(k, '') for k in BYPOS_FIELDS}
+
+
+async def _process_byname(session, sga_id, objname, semaphore, delay):
+    """OverviewOfObject queried directly by SGA OBJNAME, with hiccup retry."""
+    result = {'SGAID': sga_id, 'OBJNAME': objname, 'ERROR': ''}
+
+    overview, ov_err = {}, 'hiccup'
+    for _ in range(2):
+        content = await _fetch(session, f'{NED_BASE}/OverviewOfObject',
+                               {'TARGET': objname}, semaphore, delay)
+        overview, ov_err = parse_overview(content)
+        if ov_err != 'hiccup':
+            break
+
+    if overview:
+        result.update(overview)
+    else:
+        result['ERROR'] = ov_err if ov_err else 'no_match'
+
+    return {k: result.get(k, '') for k in BYNAME_FIELDS}
+
+
+async def _run_chunk(ids, data, outfile, fields, maxconcurrent, delay, byname, radius_arcmin):
+    """Process one chunk of galaxies and append results to outfile."""
+    semaphore = asyncio.Semaphore(maxconcurrent)
+    async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
+        if byname:
+            tasks = [_process_byname(session, int(sid), name, semaphore, delay)
+                     for sid, name in zip(ids, data)]
+        else:
+            tasks = [_process_bypos(session, int(sid), float(ra), float(dec),
+                                    semaphore, delay, radius_arcmin)
+                     for sid, (ra, dec) in zip(ids, data)]
+        results = await asyncio.gather(*tasks)
+
+    write_header = not os.path.exists(outfile) or os.path.getsize(outfile) == 0
+    with open(outfile, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        if write_header:
+            writer.writeheader()
+        writer.writerows(results)
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint / restart
+# ---------------------------------------------------------------------------
+def _load_done(outfile):
+    """Return the set of SGAIDs already present in outfile."""
+    done = set()
+    if not os.path.exists(outfile):
+        return done
+    with open(outfile, newline='') as f:
+        for row in csv.DictReader(f):
+            try:
+                done.add(int(row['SGAID']))
+            except (KeyError, ValueError):
+                pass
+    return done
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--region', default='dr11-south',
+                        choices=['dr11-south', 'dr11-north'],
+                        help='SGA region (default: dr11-south)')
+    parser.add_argument('--outdir', required=True,
+                        help='Directory for output CSV')
+    parser.add_argument('--byname', action='store_true',
+                        help='Query by SGA OBJNAME via OverviewOfObject (no cone search)')
+    parser.add_argument('--radius', type=float, default=5.0,
+                        help='Cone search radius in arcsec, bypos mode only (default: 5)')
+    parser.add_argument('--ntest', type=int, default=0,
+                        help='Limit to first N objects for testing (0 = full run)')
+    parser.add_argument('--chunksize', type=int, default=1000,
+                        help='Objects per checkpoint chunk (default: 1000)')
+    parser.add_argument('--maxconcurrent', type=int, default=10,
+                        help='Max simultaneous NED connections (default: 10)')
+    parser.add_argument('--delay', type=float, default=0.1,
+                        help='Polite sleep (s) after each request (default: 0.1)')
+    args = parser.parse_args()
+
+    os.makedirs(args.outdir, exist_ok=True)
+    mode          = 'byname' if args.byname else 'bypos'
+    outfile       = os.path.join(args.outdir, f'ned-{mode}-{args.region}.csv')
+    fields        = BYNAME_FIELDS if args.byname else BYPOS_FIELDS
+    radius_arcmin = args.radius / 60.0
+
+    log.info(f'Reading SGA sample: region={args.region}')
+    _, cat  = read_sga_sample(region=args.region)
+    sgaid   = cat['SGAID'].value
+    ra      = cat['RA'].value
+    dec     = cat['DEC'].value
+    objname = cat['OBJNAME'].value
+
+    if args.ntest > 0:
+        log.info(f'Test mode: {args.ntest} objects')
+        sgaid   = sgaid[:args.ntest]
+        ra      = ra[:args.ntest]
+        dec     = dec[:args.ntest]
+        objname = objname[:args.ntest]
+
+    done = _load_done(outfile)
+    if done:
+        log.info(f'Resuming: {len(done)} SGAIDs already done, skipping')
+    mask    = np.array([int(s) not in done for s in sgaid])
+    sgaid   = sgaid[mask]
+    ra      = ra[mask]
+    dec     = dec[mask]
+    objname = objname[mask]
+
+    ntotal  = len(sgaid)
+    nchunks = int(np.ceil(ntotal / args.chunksize))
+    if args.byname:
+        log.info(f'Mode: byname | {ntotal} galaxies | {nchunks} chunks -> {outfile}')
+    else:
+        log.info(f'Mode: bypos (radius={args.radius}" ) | {ntotal} galaxies | '
+                 f'{nchunks} chunks -> {outfile}')
+    log.info(f'maxconcurrent={args.maxconcurrent}, delay={args.delay}s')
+
+    t0    = time.time()
+    ndone = 0
+    for ichunk in range(nchunks):
+        sl   = slice(ichunk * args.chunksize, (ichunk + 1) * args.chunksize)
+        data = objname[sl] if args.byname else list(zip(ra[sl], dec[sl]))
+        results = asyncio.run(
+            _run_chunk(sgaid[sl], data, outfile, fields,
+                       args.maxconcurrent, args.delay, args.byname, radius_arcmin)
+        )
+        ndone   += len(results)
+        elapsed  = time.time() - t0
+        rate     = ndone / elapsed
+        eta_hr   = (ntotal - ndone) / rate / 3600 if rate > 0 else 0
+        nmatch   = sum(1 for r in results if r.get('CROSSIDS'))
+        nerror   = sum(1 for r in results if r.get('ERROR'))
+        log.info(
+            f'Chunk {ichunk+1}/{nchunks}: {len(results)} galaxies, '
+            f'{nmatch} matched, {nerror} errors | '
+            f'{rate:.2f} gal/s, ETA {eta_hr:.1f} hr'
+        )
+
+    log.info(f'Finished. Total elapsed: {(time.time() - t0) / 3600:.2f} hr')
+
+
+if __name__ == '__main__':
+    main()
