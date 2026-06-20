@@ -9,11 +9,8 @@ Usage (NERSC, interactive GPU node):
   salloc -N 1 -C gpu -A m3592 -t 01:00:00 --qos interactive --gpus 1
   source $IMPY_DIR/bin/SGAML-env-nersc
 
-  SGA2025-ssl-embeddings --region=dr11-south \\
-      --indir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl/cutouts
-
-  SGA2025-ssl-embeddings --region=dr11-north \\
-      --indir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl/cutouts
+  SGA2025-ssl-embeddings --region=dr11-north --indir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl
+  SGA2025-ssl-embeddings --region=dr11-south --indir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl
 
 """
 import os
