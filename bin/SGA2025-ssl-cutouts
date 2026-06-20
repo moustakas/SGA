@@ -9,10 +9,11 @@ Usage (laptop):
 
 Usage (NERSC, interactive):
   salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
-  source /global/homes/i/ioannis/code/SGA/archive/bin-SGA2025/SGA2025-env
+  source $IMPY_DIR/bin/SGAML-env-nersc
 
-  SGA2025-ssl-cutouts --region=dr11-south --outdir=$PSCRATCH/SGA2025-ssl --mp=128
-  SGA2025-ssl-cutouts --region=dr11-north --outdir=$PSCRATCH/SGA2025-ssl --mp=128
+  SGA2025-ssl-cutouts --region=dr11-south --outdir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl/cutouts --mp=32
+  SGA2025-ssl-cutouts --region=dr11-north --outdir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl/cutouts --mp=32
+
 """
 import os
 import argparse

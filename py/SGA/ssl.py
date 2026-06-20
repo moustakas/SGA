@@ -78,8 +78,8 @@ def _rescale_one_band(img, width=152):
     fy = fy.ravel().astype(np.float32)
     ix = (fx + 0.5).astype(np.int32)
     iy = (fy + 0.5).astype(np.int32)
-    dx = fx - ix
-    dy = fy - iy
+    dx = (fx - ix).astype(np.float32)
+    dy = (fy - iy).astype(np.float32)
 
     out = np.zeros(width * width, np.float32)
     lanczos3_interpolate(ix, iy, dx, dy, [out], [np.ascontiguousarray(img, np.float32)])
