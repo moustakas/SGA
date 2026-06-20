@@ -86,6 +86,41 @@ def _rescale_one_band(img, width=152):
     return out.reshape((width, width))
 
 
+def _load_moco_backbone_and_projector(checkpoint_path, device):
+    """Load ResNet50 backbone and MLP projection head from a MoCo v2 checkpoint.
+
+    Returns (backbone, projector) as eval-mode modules on device.  The backbone
+    outputs 2048-d avgpool features; the projector maps those to 128-d.
+    Bypasses pytorch_lightning entirely to avoid version compatibility issues.
+    """
+    import torch
+    import torchvision.models as tvm
+
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    state_dict = ckpt.get('state_dict', ckpt)
+
+    backbone_state = {k[len('encoder_q.'):]: v
+                      for k, v in state_dict.items()
+                      if k.startswith('encoder_q.')}
+    backbone = tvm.resnet50(weights=None)
+    backbone.fc = torch.nn.Identity()
+    backbone.load_state_dict(backbone_state, strict=False)
+    backbone = backbone.to(device).eval()
+
+    proj_state = {k[len('encoder_q.fc.'):]: v
+                  for k, v in state_dict.items()
+                  if k.startswith('encoder_q.fc.')}
+    projector = torch.nn.Sequential(
+        torch.nn.Linear(2048, 2048),
+        torch.nn.ReLU(),
+        torch.nn.Linear(2048, 128),
+    )
+    projector.load_state_dict(proj_state)
+    projector = projector.to(device).eval()
+
+    return backbone, projector
+
+
 def _get_diam_arcsec(cat):
     """Return diameters in arcsec, handling parent (DIAM) and final (DIAM_INIT) catalogs."""
     if 'DIAM' in cat.colnames:
@@ -430,6 +465,109 @@ def build_ssl_legacysurvey(cat, refcat, width=152, ncatmax=15000,
 # ---------------------------------------------------------------------------
 # Public API: run ssl-legacysurvey inference
 # ---------------------------------------------------------------------------
+
+def extract_embeddings(hdf5_files, checkpoint_path, outfile,
+                       batch_size=256, device=None, overwrite=False):
+    """Extract ResNet50 embeddings and MoCo projection outputs for all SSL cutout chunks.
+
+    Streams through the HDF5 chunk files produced by build_ssl_hdf5(), runs
+    batched GPU/CPU inference, and writes a single output HDF5 containing:
+
+        embeddings  (N, 2048) float32  — backbone avgpool features
+        projections (N, 128)  float32  — MLP projection head output
+        sgaid       (N,)      int64
+        ra          (N,)      float64
+        dec         (N,)      float64
+
+    L2-normalize projections before cosine similarity search or Faiss indexing.
+
+    Parameters
+    ----------
+    hdf5_files : list of str
+        Paths to ssl-cutouts-{region}-chunk*.hdf5 files from build_ssl_hdf5().
+    checkpoint_path : str
+        Path to the pretrained MoCo v2 ResNet50 checkpoint.
+    outfile : str
+        Output HDF5 path.
+    batch_size : int
+        GPU batch size.
+    device : str or None
+        'cuda', 'cpu', or None (auto-detect).
+    overwrite : bool
+        Overwrite existing output file.
+    """
+    import torch
+    import h5py
+
+    if os.path.isfile(outfile) and not overwrite:
+        log.info(f'Skipping existing {outfile}')
+        return
+
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = torch.device(device)
+    log.info(f'Using device: {device}')
+
+    backbone, projector = _load_moco_backbone_and_projector(checkpoint_path, device)
+    log.info(f'Loaded backbone + projector from {checkpoint_path}')
+
+    tmpfile = outfile + '.tmp'
+    with h5py.File(tmpfile, 'w') as F:
+        F.attrs['checkpoint'] = checkpoint_path
+        emb_ds   = F.create_dataset('embeddings',  shape=(0, 2048), maxshape=(None, 2048),
+                                    dtype=np.float32, chunks=(1000, 2048))
+        proj_ds  = F.create_dataset('projections', shape=(0, 128),  maxshape=(None, 128),
+                                    dtype=np.float32, chunks=(1000, 128))
+        sgaid_ds = F.create_dataset('sgaid', shape=(0,), maxshape=(None,), dtype=np.int64)
+        ra_ds    = F.create_dataset('ra',    shape=(0,), maxshape=(None,), dtype=np.float64)
+        dec_ds   = F.create_dataset('dec',   shape=(0,), maxshape=(None,), dtype=np.float64)
+
+        n_total = 0
+        for ifile, hdf5_file in enumerate(hdf5_files):
+            log.info(f'Processing {os.path.basename(hdf5_file)} ({ifile+1}/{len(hdf5_files)})')
+
+            with h5py.File(hdf5_file, 'r') as H:
+                images = H['images'][:]
+                sgaids = H['sgaid'][:]
+                ras    = H['ra'][:]
+                decs   = H['dec'][:]
+
+            n = len(images)
+            chunk_embs  = np.zeros((n, 2048), np.float32)
+            chunk_projs = np.zeros((n, 128),  np.float32)
+
+            report_every = max(batch_size, n // 10)
+            last_reported = -1
+            with torch.no_grad():
+                for start in range(0, n, batch_size):
+                    end = min(start + batch_size, n)
+                    batch = torch.from_numpy(images[start:end]).to(device)
+                    emb = backbone(batch)
+                    chunk_embs[start:end]  = emb.cpu().numpy()
+                    chunk_projs[start:end] = projector(emb).cpu().numpy()
+                    milestone = end // report_every
+                    if milestone != last_reported:
+                        log.info(f'  {end:,d} / {n:,d}')
+                        last_reported = milestone
+
+            emb_ds.resize(n_total + n, axis=0)
+            proj_ds.resize(n_total + n, axis=0)
+            sgaid_ds.resize(n_total + n, axis=0)
+            ra_ds.resize(n_total + n, axis=0)
+            dec_ds.resize(n_total + n, axis=0)
+
+            emb_ds[n_total:n_total+n]   = chunk_embs
+            proj_ds[n_total:n_total+n]  = chunk_projs
+            sgaid_ds[n_total:n_total+n] = sgaids
+            ra_ds[n_total:n_total+n]    = ras
+            dec_ds[n_total:n_total+n]   = decs
+
+            n_total += n
+            log.info(f'  cumulative: {n_total:,d} objects')
+
+    os.rename(tmpfile, outfile)
+    log.info(f'Wrote {outfile}: {n_total:,d} objects')
+
 
 def ssl_match(path, checkpoint_path='resnet50.ckpt', output_dir=None,
               similarity=False, threshold=0.5):

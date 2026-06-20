@@ -1,0 +1,66 @@
+#!/usr/bin/env python
+"""Extract ResNet50 embeddings from SGA-2025 SSL cutout HDF5 files.
+
+One-time script. Runs MoCo v2 inference on the HDF5 cutout dataset
+produced by SGA2025-ssl-cutouts and writes a single HDF5 file containing
+2048-d backbone embeddings and 128-d projection head outputs.
+
+Usage (NERSC, interactive GPU node):
+  salloc -N 1 -C gpu -A m3592 -t 01:00:00 --qos interactive --gpus 1
+  source $IMPY_DIR/bin/SGAML-env-nersc
+
+  SGA2025-ssl-embeddings --region=dr11-south \\
+      --indir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl/cutouts
+
+  SGA2025-ssl-embeddings --region=dr11-north \\
+      --indir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl/cutouts
+"""
+import os
+import glob
+import argparse
+
+from SGA.ssl import extract_embeddings
+from SGA.logger import log
+
+_DEFAULT_CHECKPOINT = os.path.join(
+    os.environ.get('CFS', '/global/cfs/cdirs'),
+    'desicollab/users/ioannis/ssl-legacysurvey/resnet50.ckpt')
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Extract ResNet50 embeddings from SGA-2025 SSL cutout HDF5 files.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--region', required=True,
+                        choices=['dr11-south', 'dr11-north'],
+                        help='Survey region.')
+    parser.add_argument('--indir', required=True,
+                        help='Directory containing ssl-cutouts-{region}-chunk*.hdf5 files.')
+    parser.add_argument('--outfile', default=None,
+                        help='Output HDF5 path (default: {indir}/ssl-embeddings-{region}.hdf5).')
+    parser.add_argument('--checkpoint', default=_DEFAULT_CHECKPOINT,
+                        help='Path to pretrained MoCo v2 ResNet50 checkpoint.')
+    parser.add_argument('--batch-size', type=int, default=256,
+                        help='Inference batch size.')
+    parser.add_argument('--device', default=None,
+                        help='Compute device: cuda, cpu, or None to auto-detect.')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Overwrite existing output file.')
+    args = parser.parse_args()
+
+    pattern = os.path.join(args.indir, f'ssl-cutouts-{args.region}-chunk*.hdf5')
+    hdf5_files = sorted(glob.glob(pattern))
+    if not hdf5_files:
+        raise FileNotFoundError(f'No HDF5 files found matching {pattern}')
+    log.info(f'Found {len(hdf5_files)} chunk file(s) for region={args.region}')
+
+    outfile = args.outfile or os.path.join(
+        args.indir, f'ssl-embeddings-{args.region}.hdf5')
+
+    extract_embeddings(hdf5_files, args.checkpoint, outfile,
+                       batch_size=args.batch_size, device=args.device,
+                       overwrite=args.overwrite)
+
+
+if __name__ == '__main__':
+    main()
