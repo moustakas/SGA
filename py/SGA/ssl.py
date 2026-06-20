@@ -292,9 +292,11 @@ def load_ssl_embeddings(region, ssl_dir, catalog=None):
     astropy.table.Table
         One row per embedded galaxy with all catalog columns plus
         'embeddings' (shape 2048,) and 'projections' (shape 128,).
+
     """
     import h5py
     from astropy.table import Column
+    from SGA.SGA import read_sga_sample
 
     emb_file = os.path.join(ssl_dir, f'ssl-embeddings-{region}.hdf5')
     if not os.path.isfile(emb_file):
