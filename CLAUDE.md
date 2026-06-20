@@ -94,6 +94,9 @@ shifter --image docker:legacysurvey/sga:0.8.1 bash
 
 - `LEGACY_SURVEY_BASEDIR` - Base directory for Legacy Survey data
 - `LEGACY_SURVEY_DIR` - Legacy Survey data directory
+- `SGA_DIR` - SGA working directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025`)
+- `SGA_DATA_DIR` - SGA data directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/data/sga/2025/data`)
+- `SGA_HTML_DIR` - SGA HTML output directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/html`)
 
 ## Architecture Patterns
 
@@ -132,3 +135,79 @@ No automated test suite. QA is performed through:
 - Source detection pipeline: `astrometry.net` (built from source), `tractor`, `legacypipe`
 - Astronomy: `astropy`, `fitsio`, `photutils`, `astroquery`, `pydl`
 - Computing: `numpy`, `scipy`, `matplotlib`, `mpi4py`
+
+## ML Integration (ssl-legacysurvey, Zoobot)
+
+### Development Workflow
+- **Laptop:** develop and test analysis notebooks/scripts using small datasets
+- **NERSC:** run GPU-intensive training and large-scale inference jobs in the SGAML environment
+
+### ssl-legacysurvey
+
+**Repo (laptop):** `/Users/ioannis/code/ssl-legacysurvey`  
+**GitHub upstream:** `https://github.com/georgestein/ssl-legacysurvey`  
+**Package name:** `ssl_legacysurvey`  
+**Purpose:** Self-supervised learning (SSL) framework for 76 million DESI Legacy Survey DR9 galaxy images. Used to train MoCo v2 contrastive embeddings, extract per-galaxy representations, and run downstream classification/regression/similarity search. The goal is to extend SGA to leverage these deep-learning tools (e.g., embedding SGA galaxies, anomaly detection, morphology classification).
+
+**Laptop install:** `pip install -e /Users/ioannis/code/ssl-legacysurvey` (after conda env setup via `environment.yml`)  
+**NERSC:** pip-installed into the SGAML environment (see below); update with `bash etc/update-env-sgaml.sh ssl-legacysurvey`
+
+### Key Submodules
+
+| Submodule | Key Class / Function | Role |
+|---|---|---|
+| `ssl_legacysurvey.data_loaders` | `DecalsDataset` | Load galaxy images from HDF5; 152×152 px grz; supports augmentations and EBV correction |
+| `ssl_legacysurvey.data_loaders` | `DecalsDataModule` | PyTorch-Lightning DataModule wrapping `DecalsDataset` |
+| `ssl_legacysurvey.data_loaders` | `DecalsAugmentations` | Composable augmentation pipeline (crop, rotate, blur, noise, galactic reddening) |
+| `ssl_legacysurvey.moco` | `Moco_v2` | PyTorch-Lightning MoCo v2 SSL training; configurable ResNet backbone |
+| `ssl_legacysurvey.finetune` | `SSLFineTuner` | Fine-tune backbone or train MLP classification/regression head on top of SSL representations |
+| `ssl_legacysurvey.finetune` | `OutputExtractor` | Pass data through network to extract latent representations (before MLP head) |
+| `ssl_legacysurvey.utils` | `DecalsDataLoader` | Load images, catalog fields, and pre-computed representations from distributed HDF5 files |
+| `ssl_legacysurvey.utils` | `flux_to_mag()` | Convert Legacy Survey flux (nanomaggies) → AB magnitudes |
+| `ssl_legacysurvey.utils` | `sdss_rgb()` | Convert g,r,z image arrays → RGB (matches Legacy Survey viewer color stretch) |
+| `ssl_legacysurvey.data_analysis` | `pca_transform()`, `umap_transform()` | Dimensionality reduction on representation vectors |
+
+### Data Format
+- **HDF5 files**: 152×152 pixel grz image stacks + ~20 catalog fields per galaxy
+- **Scale**: up to 20 TB total; chunked multi-file layout indexed by `DecalsDataLoader`
+- A small sample dataset lives at `ssl-legacysurvey/data/tiny_dataset.h5` for development/testing
+
+### Entry-Point Scripts (`ssl-legacysurvey/scripts/`)
+- `train_ssl.py` — MoCo v2 SSL pre-training (DDP)
+- `finetune.py` — Classification/regression head training
+- `predict.py` — Batch inference; writes representations to disk
+- `similarity_search_nxn.py` — N×N Faiss similarity search on representations
+- `dimensionality_reduction.py` — PCA/UMAP on representation vectors
+- `scripts/slurm/` — SLURM wrappers for NERSC batch jobs
+
+### Zoobot
+
+Also installed in SGAML: `zoobot[pytorch]` — galaxy morphology classifier pre-trained on GZ DECaLS volunteer labels. Will complement ssl-legacysurvey representations for morphology-based analyses. Update with `bash etc/update-env-sgaml.sh zoobot`.
+
+### SGAML Environment (NERSC)
+
+The SGAML environment layers pip-installed packages on top of the NERSC `pytorch/2.11.0` module (Python 3.12, GPU-enabled PyTorch, Lightning, torchvision, etc.).
+
+**Prefix:** `/global/common/software/desi/users/ioannis/SGAML`  
+**C libraries (runtime):** `$SGAML_PREFIX/clib/lib` (GSL, cfitsio, netpbm — needed by astrometry.net)  
+**Jupyter kernel activation:** `$SGAML_PREFIX/etc/activate.sh`  
+**Personal dev overrides:** `~/.sga_dev_env` (prepends to PATH/PYTHONPATH; create to use a local dev branch, delete to revert)
+
+**Activate manually on a NERSC login/compute node:**
+```bash
+module load pytorch/2.11.0
+export PYTHONPATH=/global/common/software/desi/users/ioannis/SGAML/lib/python3.12/site-packages:$PYTHONPATH
+export PATH=/global/common/software/desi/users/ioannis/SGAML/bin:$PATH
+export LD_LIBRARY_PATH=/global/common/software/desi/users/ioannis/SGAML/clib/lib:$LD_LIBRARY_PATH
+```
+
+**Create / update environment:**
+```bash
+module load conda
+bash etc/create-env-sgaml.sh                        # full build (first time)
+bash etc/update-env-sgaml.sh                        # update all packages
+bash etc/update-env-sgaml.sh ssl-legacysurvey       # update one package
+bash etc/update-env-sgaml.sh --local sga /path/SGA  # install from local checkout
+```
+
+**SGAML-specific packages** (beyond the pytorch module): `astropy`, `fitsio`, `photutils`, `pydl`, `numba`, `umap-learn`, `optuna`, `timm`, `faiss-cpu`, `webdataset`, `litmodels`, `galaxy-datasets`, `tractor`, `legacypipe`, `astrometry.net` (from source), `ssl-legacysurvey`, `zoobot`.
