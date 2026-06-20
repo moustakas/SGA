@@ -275,6 +275,53 @@ def build_ssl_hdf5(sample, region, datadir, outdir,
         log.info(f'Wrote {outfile}: {len(idx):,d} objects')
 
 
+def load_ssl_embeddings(region, ssl_dir, catalog=None):
+    """Load SSL embeddings and join to the SGA-2025 catalog on SGAID.
+
+    Parameters
+    ----------
+    region : str
+        Survey region, e.g. 'dr11-south'.
+    ssl_dir : str
+        Directory containing ssl-embeddings-{region}.hdf5.
+    catalog : astropy.table.Table, optional
+        Pre-loaded SGA catalog from read_sga_sample(). Read from disk if None.
+
+    Returns
+    -------
+    astropy.table.Table
+        One row per embedded galaxy with all catalog columns plus
+        'embeddings' (shape 2048,) and 'projections' (shape 128,).
+    """
+    import h5py
+    from astropy.table import Column
+
+    emb_file = os.path.join(ssl_dir, f'ssl-embeddings-{region}.hdf5')
+    if not os.path.isfile(emb_file):
+        raise FileNotFoundError(emb_file)
+
+    with h5py.File(emb_file, 'r') as F:
+        sgaids      = F['sgaid'][:]
+        embeddings  = F['embeddings'][:]
+        projections = F['projections'][:]
+
+    if catalog is None:
+        catalog, _ = read_sga_sample(region=region)
+
+    cat_lookup = {int(s): i for i, s in enumerate(np.asarray(catalog['SGAID']))}
+    found    = np.array([int(s) in cat_lookup for s in sgaids])
+    if not np.all(found):
+        log.warning(f'{(~found).sum()} embedding SGAIDs not found in catalog; dropping.')
+    cat_rows = np.array([cat_lookup[int(s)] for s in sgaids[found]])
+
+    matched = catalog[cat_rows].copy()
+    matched.add_column(Column(embeddings[found],  name='embeddings'))
+    matched.add_column(Column(projections[found], name='projections'))
+
+    log.info(f'load_ssl_embeddings: {len(matched):,d} objects from {emb_file}')
+    return matched
+
+
 # ---------------------------------------------------------------------------
 # Public API: build ssl-legacysurvey input files (legacy viewer-based workflow)
 # ---------------------------------------------------------------------------

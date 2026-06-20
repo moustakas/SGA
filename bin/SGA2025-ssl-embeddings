@@ -14,6 +14,7 @@ Usage (NERSC, interactive GPU node):
 
   SGA2025-ssl-embeddings --region=dr11-north \\
       --indir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl/cutouts
+
 """
 import os
 import glob
