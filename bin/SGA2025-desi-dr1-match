@@ -1,0 +1,336 @@
+#!/usr/bin/env python
+"""Match the SGA-2025 sample against DESI DR1 spectra.
+
+For each non-RESOLVED SGA galaxy, find all DESI DR1 spectra (zall-pix-iron)
+within its D26/2 elliptical aperture.  The algorithm uses a KD-tree for a
+circular pre-selection binned by galaxy diameter (log-spaced bins), followed
+by a precise per-galaxy elliptical aperture filter.
+
+Outputs:
+  SGA2025-DESI-DR1-matches-{region}.fits   one row per (SGA galaxy, DESI spectrum)
+  SGA2025-DESI-DR1-summary-{region}.fits   one row per SGA galaxy (row-matched to fullsample)
+
+Example:
+  SGA2025-desi-dr1-match --region dr11-south --mp 32 --outdir /path/to/output
+  SGA2025-desi-dr1-match --region dr11-north --mp 32 --outdir /path/to/output
+"""
+import os, sys, time
+import numpy as np
+import fitsio
+from astropy.table import Table
+
+from SGA.logger import log
+from SGA.sky import in_ellipse_mask_sky
+from SGA.ellipse import ELLIPSEMODE
+
+ZCATFILE = os.path.join(
+    os.getenv('DESI_ROOT', ''),
+    'iron', 'zcatalog', 'v1', 'zall-pix-iron.fits')
+
+
+def _parse_args():
+    import argparse
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--region', default='dr11-south',
+                   choices=['dr11-south', 'dr11-north'],
+                   help='Survey region (default: dr11-south)')
+    p.add_argument('--outdir', default='.',
+                   help='Output directory (default: current directory)')
+    p.add_argument('--mp', type=int, default=1,
+                   help='Number of worker processes (default: 1)')
+    p.add_argument('--overwrite', action='store_true',
+                   help='Overwrite existing output files')
+    p.add_argument('--verbose', action='store_true',
+                   help='Verbose (debug) logging')
+    return p.parse_args()
+
+
+def _xyz(ra_deg, dec_deg):
+    """RA/Dec (degrees) → unit-sphere Cartesian coords, shape (..., 3)."""
+    ra  = np.radians(np.asarray(ra_deg,  dtype=np.float64))
+    dec = np.radians(np.asarray(dec_deg, dtype=np.float64))
+    cos_dec = np.cos(dec)
+    return np.stack([cos_dec * np.cos(ra),
+                     cos_dec * np.sin(ra),
+                     np.sin(dec)], axis=-1)
+
+
+def _chord(radius_deg):
+    """Angular radius (degrees) → chord distance on the unit sphere."""
+    return 2.0 * np.sin(np.radians(radius_deg) / 2.0)
+
+
+def _match_one(args):
+    """Elliptical aperture filter for one galaxy.
+
+    Returns (sgaid, matched_cand_indices) where indices index into the
+    per-galaxy candidate arrays (cand_idx maps these back to the global
+    unique-DESI table).
+    """
+    sgaid, ra, dec, semia, semib, pa, cand_ra, cand_dec, cand_idx = args
+    if len(cand_idx) == 0:
+        return sgaid, np.array([], dtype=np.int64)
+    mask = in_ellipse_mask_sky(ra, dec, semia, semib, pa, cand_ra, cand_dec)
+    return sgaid, cand_idx[mask]
+
+
+def main():
+    args = _parse_args()
+
+    import logging
+    if args.verbose:
+        for h in log.handlers:
+            h.setLevel(logging.DEBUG)
+
+    os.makedirs(args.outdir, exist_ok=True)
+    outmatch   = os.path.join(args.outdir,
+                              f'SGA2025-DESI-DR1-matches-{args.region}.fits')
+    outsummary = os.path.join(args.outdir,
+                              f'SGA2025-DESI-DR1-summary-{args.region}.fits')
+
+    if not args.overwrite:
+        for f in [outmatch, outsummary]:
+            if os.path.isfile(f):
+                log.error(f'Output exists (use --overwrite): {f}')
+                return 1
+
+    # -------------------------------------------------------------------------
+    # Load SGA sample
+    # -------------------------------------------------------------------------
+    from SGA.SGA import read_sga_sample
+
+    t0 = time.time()
+    log.info(f'Reading SGA sample for region {args.region}...')
+    _, fullsample = read_sga_sample(region=args.region, verbose=args.verbose)
+    log.info(f'  {len(fullsample):,d} total SGA galaxies ({time.time()-t0:.1f}s)')
+
+    resolved = (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) != 0
+    n_resolved = int(resolved.sum())
+    sga = fullsample[~resolved]
+    log.info(f'  {len(sga):,d} galaxies to match, {n_resolved:,d} RESOLVED excluded')
+
+    sgaid_arr = np.asarray(sga['SGAID'])
+    ra_arr    = np.asarray(sga['RA'],  dtype=np.float64)
+    dec_arr   = np.asarray(sga['DEC'], dtype=np.float64)
+    d26_arr   = np.asarray(sga['D26'], dtype=np.float64)   # arcmin, major-axis diameter
+    ba_arr    = np.asarray(sga['BA'],  dtype=np.float64)
+    pa_arr    = np.asarray(sga['PA'],  dtype=np.float64)
+
+    semia_arr = d26_arr / 2.0 / 60.0          # semi-major axis, degrees
+    semib_arr = semia_arr * ba_arr             # semi-minor axis, degrees
+
+    # -------------------------------------------------------------------------
+    # Load DESI positions (deduplicated on TARGETID for the matching step)
+    # -------------------------------------------------------------------------
+    log.info(f'Reading DESI positions from {ZCATFILE}...')
+    t0 = time.time()
+    pos_cols = ['TARGETID', 'TARGET_RA', 'TARGET_DEC']
+    zpos = fitsio.read(ZCATFILE, ext='ZCATALOG', columns=pos_cols)
+    log.info(f'  {len(zpos):,d} DESI rows read ({time.time()-t0:.1f}s)')
+
+    _, uidx = np.unique(zpos['TARGETID'], return_index=True)
+    uniq_targetid = zpos['TARGETID'][uidx]
+    uniq_ra       = zpos['TARGET_RA'][uidx].astype(np.float64)
+    uniq_dec      = zpos['TARGET_DEC'][uidx].astype(np.float64)
+    del zpos
+    log.info(f'  {len(uniq_targetid):,d} unique TARGETIDs')
+
+    # -------------------------------------------------------------------------
+    # Build KD-tree over unique DESI positions
+    # -------------------------------------------------------------------------
+    from scipy.spatial import cKDTree
+
+    log.info('Building KD-tree...')
+    t0 = time.time()
+    tree = cKDTree(_xyz(uniq_ra, uniq_dec))
+    log.info(f'  KD-tree built ({time.time()-t0:.1f}s)')
+
+    # -------------------------------------------------------------------------
+    # Log-spaced diameter bins; last bin is open-ended
+    # -------------------------------------------------------------------------
+    n_bins = 10
+    d26_min, d26_max = d26_arr.min(), d26_arr.max()
+    edges = np.logspace(np.log10(d26_min), np.log10(d26_max), n_bins + 1)
+    edges[-1] = np.inf
+
+    log.info(f'Diameter bin edges (arcmin): '
+             + ', '.join(f'{e:.3f}' for e in edges[:-1]) + ', inf')
+
+    # -------------------------------------------------------------------------
+    # Per-bin circular pre-selection; collect all worker args
+    # -------------------------------------------------------------------------
+    all_worker_args = []
+
+    for b in range(n_bins):
+        lo, hi = edges[b], edges[b + 1]
+        in_bin = (d26_arr >= lo) & (d26_arr < hi)
+        if not in_bin.any():
+            continue
+
+        bin_indices = np.where(in_bin)[0]
+        search_radius_deg = d26_arr[in_bin].max() / 2.0 / 60.0
+        log.info(f'Bin [{lo:.3f}, {hi:.3f}) arcmin: {in_bin.sum():,d} galaxies, '
+                 f'pre-select radius {search_radius_deg * 60:.3f} arcmin')
+
+        gal_xyz  = _xyz(ra_arr[in_bin], dec_arr[in_bin])
+        chord_r  = _chord(search_radius_deg)
+        cand_lists = tree.query_ball_point(gal_xyz, chord_r)
+
+        for k, i in enumerate(bin_indices):
+            cand_idx = np.asarray(cand_lists[k], dtype=np.int64)
+            all_worker_args.append((
+                sgaid_arr[i],
+                ra_arr[i], dec_arr[i],
+                semia_arr[i], semib_arr[i], pa_arr[i],
+                uniq_ra[cand_idx], uniq_dec[cand_idx],
+                cand_idx,
+            ))
+
+    log.info(f'Total galaxies to filter: {len(all_worker_args):,d}')
+
+    # -------------------------------------------------------------------------
+    # Parallel elliptical aperture filter
+    # -------------------------------------------------------------------------
+    import multiprocessing as mp
+
+    n_todo = len(all_worker_args)
+    log_every = max(1, n_todo // 20)   # log at ~5% intervals
+
+    def _run_filter(worker_args):
+        """Iterate results, logging progress and accumulating matches."""
+        sgaid_to_idx = {}
+        n_hits = 0
+        t_start = time.time()
+        for i, (sgaid, idx) in enumerate(worker_args, 1):
+            if len(idx):
+                sgaid_to_idx[sgaid] = idx
+                n_hits += len(idx)
+            if i % log_every == 0 or i == n_todo:
+                elapsed = time.time() - t_start
+                rate = i / elapsed if elapsed > 0 else 0
+                eta  = (n_todo - i) / rate if rate > 0 else 0
+                log.info(f'  {i:,d}/{n_todo:,d} galaxies ({100*i/n_todo:.0f}%) '
+                         f'— {len(sgaid_to_idx):,d} matched, {n_hits:,d} hits '
+                         f'— {elapsed:.0f}s elapsed, ~{eta:.0f}s remaining')
+        return sgaid_to_idx
+
+    t0 = time.time()
+    if args.mp > 1:
+        log.info(f'Running elliptical filter with {args.mp} workers...')
+        with mp.Pool(args.mp) as pool:
+            sgaid_to_uniq_idx = _run_filter(
+                pool.imap_unordered(_match_one, all_worker_args))
+    else:
+        log.info('Running elliptical filter (single process)...')
+        sgaid_to_uniq_idx = _run_filter(_match_one(a) for a in all_worker_args)
+    log.info(f'  Elliptical filter done ({time.time()-t0:.1f}s)')
+
+    n_matched_gals    = len(sgaid_to_uniq_idx)
+    n_matched_spectra = sum(len(v) for v in sgaid_to_uniq_idx.values())
+    log.info(f'  {n_matched_gals:,d} galaxies matched, '
+             f'{n_matched_spectra:,d} unique-TARGETID hits')
+
+    # -------------------------------------------------------------------------
+    # Re-read all DESI columns for matched TARGETIDs (all SURVEY+PROGRAM rows)
+    # -------------------------------------------------------------------------
+    if sgaid_to_uniq_idx:
+        all_uniq_idx = np.unique(
+            np.concatenate([v for v in sgaid_to_uniq_idx.values()]))
+        matched_targetids = set(uniq_targetid[all_uniq_idx].tolist())
+    else:
+        matched_targetids = set()
+
+    log.info(f'Re-reading {len(matched_targetids):,d} unique TARGETIDs '
+             f'(all rows) from DESI catalog...')
+    t0 = time.time()
+
+    # Scan TARGETID column first to find all row indices, then read those rows
+    all_targetids = fitsio.read(ZCATFILE, ext='ZCATALOG', columns=['TARGETID'])
+    row_mask = np.isin(all_targetids['TARGETID'], list(matched_targetids))
+    matched_rows = np.where(row_mask)[0]
+    del all_targetids, row_mask
+    log.info(f'  {len(matched_rows):,d} DESI rows match; reading full columns...')
+
+    zmatched = Table(fitsio.read(ZCATFILE, ext='ZCATALOG', rows=matched_rows))
+    log.info(f'  Full re-read done ({time.time()-t0:.1f}s)')
+
+    # -------------------------------------------------------------------------
+    # Build match table: one row per (SGA galaxy, DESI spectrum)
+    # -------------------------------------------------------------------------
+    log.info('Building match table...')
+
+    # Map TARGETID -> list of row indices in zmatched
+    tid_to_rows = {}
+    for i, tid in enumerate(zmatched['TARGETID']):
+        tid_to_rows.setdefault(int(tid), []).append(i)
+
+    match_zrows  = []   # indices into zmatched
+    match_sgaids = []   # corresponding SGAID for each row
+
+    for sgaid, uniq_indices in sgaid_to_uniq_idx.items():
+        for tid in uniq_targetid[uniq_indices]:
+            for row_i in tid_to_rows.get(int(tid), []):
+                match_zrows.append(row_i)
+                match_sgaids.append(sgaid)
+
+    match_zrows  = np.array(match_zrows,  dtype=np.int64)
+    match_sgaids = np.array(match_sgaids, dtype=np.int64)
+
+    match_table = zmatched[match_zrows]
+    match_table.add_column(match_sgaids, name='SGAID', index=0)
+    log.info(f'  Match table: {len(match_table):,d} rows')
+
+    # -------------------------------------------------------------------------
+    # Build summary table: row-matched to fullsample (including RESOLVED)
+    # -------------------------------------------------------------------------
+    log.info('Building summary table...')
+
+    # Per-galaxy counts from match_table (vectorised)
+    mt_sgaids = match_table['SGAID'].data
+    mt_zwarn  = match_table['ZWARN'].data
+
+    uniq_s, inv_s = np.unique(mt_sgaids, return_inverse=True)
+    n_desi      = np.bincount(inv_s)
+    n_desi_good = np.bincount(inv_s, weights=(mt_zwarn == 0).astype(np.int64)).astype(np.int64)
+
+    sgaid_ndesi = dict(zip(uniq_s.tolist(), n_desi.tolist()))
+    sgaid_ngood = dict(zip(uniq_s.tolist(), n_desi_good.tolist()))
+
+    # Build summary aligned to fullsample
+    n_full = len(fullsample)
+    summary = Table()
+    summary['SGAID']        = np.array(fullsample['SGAID'])
+    summary['OBJNAME']      = np.array(fullsample['OBJNAME'])
+    summary['RA']           = np.array(fullsample['RA'],  dtype=np.float64)
+    summary['DEC']          = np.array(fullsample['DEC'], dtype=np.float64)
+    summary['N_DESI']       = np.zeros(n_full, dtype=np.int32)
+    summary['N_DESI_GOOD']  = np.zeros(n_full, dtype=np.int32)
+
+    full_sgaid_to_row = {int(s): i for i, s in enumerate(fullsample['SGAID'])}
+    for sgaid, n in sgaid_ndesi.items():
+        row = full_sgaid_to_row.get(int(sgaid))
+        if row is not None:
+            summary['N_DESI'][row]      = n
+            summary['N_DESI_GOOD'][row] = sgaid_ngood.get(sgaid, 0)
+
+    n_with_spectra = int((summary['N_DESI'] > 0).sum())
+    log.info(f'  Summary table: {n_full:,d} rows, '
+             f'{n_with_spectra:,d} galaxies with >=1 DESI spectrum')
+
+    # -------------------------------------------------------------------------
+    # Write outputs
+    # -------------------------------------------------------------------------
+    log.info(f'Writing {outmatch}')
+    match_table.write(outmatch, overwrite=args.overwrite)
+
+    log.info(f'Writing {outsummary}')
+    summary.write(outsummary, overwrite=args.overwrite)
+
+    log.info('Done.')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
