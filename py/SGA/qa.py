@@ -110,7 +110,7 @@ def notebook_style():
     plt.rcParams.update({
         'figure.figsize':  [8., 6.],
         'axes.labelsize':  14,
-        'axes.titlesize':  18,
+        'axes.titlesize':  11,
         'xtick.labelsize': 12,
         'ytick.labelsize': 12,
         'xtick.direction': 'in',
