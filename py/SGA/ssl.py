@@ -36,7 +36,8 @@ from astropy.table import Table, vstack
 
 from astrometry.libkd.spherematch import match_radec
 
-from SGA.SGA import sga_dir, SAMPLE, ELLIPSEMODE
+from SGA.SGA import sga_dir, SAMPLE, get_galaxy_galaxydir
+from SGA.ellipse import ELLIPSEMODE
 from SGA.io import radec_to_name, get_raslice
 from SGA.logger import log
 
@@ -44,6 +45,46 @@ from SGA.logger import log
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+def _read_coadd_bands(galaxydir, group_prefix, bands_str):
+    """Return {band: 2D image} for each .fits.fz coadd found in galaxydir."""
+    images = {}
+    for band in bands_str:
+        fitsfile = os.path.join(galaxydir, f'{group_prefix}-image-{band}.fits.fz')
+        if os.path.isfile(fitsfile):
+            images[band] = fitsio.read(fitsfile)
+        else:
+            log.debug(f'Missing {band}-band coadd: {fitsfile}')
+    return images
+
+
+def _rescale_one_band(img, width=152):
+    """Lanczos-3 resample a square 2D image to (width, width)."""
+    from astrometry.util.util import lanczos3_interpolate
+
+    sh, sw = img.shape
+    pscale = width / sw
+
+    center_x = sw // 2
+    center_y = sh // 2
+
+    cox = np.arange(width, dtype=np.float64) / pscale
+    cox += center_x - cox[width // 2]
+    coy = np.arange(width, dtype=np.float64) / pscale
+    coy += center_y - coy[width // 2]
+
+    fx, fy = np.meshgrid(cox, coy)
+    fx = fx.ravel().astype(np.float32)
+    fy = fy.ravel().astype(np.float32)
+    ix = (fx + 0.5).astype(np.int32)
+    iy = (fy + 0.5).astype(np.int32)
+    dx = fx - ix
+    dy = fy - iy
+
+    out = np.zeros(width * width, np.float32)
+    lanczos3_interpolate(ix, iy, dx, dy, [out], [np.ascontiguousarray(img, np.float32)])
+    return out.reshape((width, width))
+
 
 def _get_diam_arcsec(cat):
     """Return diameters in arcsec, handling parent (DIAM) and final (DIAM_INIT) catalogs."""
@@ -79,7 +120,120 @@ def _select_band_planes(img, available_bands_str, target_bands):
 
 
 # ---------------------------------------------------------------------------
-# Public API: build ssl-legacysurvey input files
+# Public API: coadd-based cutout rescaling and sample selection
+# ---------------------------------------------------------------------------
+
+def rescale_galaxy_cutout(row, galaxydir, width=152):
+    """Read and Lanczos-3 resample one SGA group mosaic to (3, width, width).
+
+    Output band order is always (g, r, z).  Missing bands are zero-padded.
+    If r is absent but i is present, i is used as a proxy for r.
+
+    Raises FileNotFoundError if no .fits.fz coadds are found.
+    """
+    group_prefix = row['SGAGROUP']
+    raw = _read_coadd_bands(galaxydir, group_prefix, row['BANDS'])
+
+    if not raw:
+        raise FileNotFoundError(
+            f'No .fits.fz coadds found for {group_prefix} in {galaxydir}')
+
+    if 'r' not in raw and 'i' in raw:
+        raw['r'] = raw['i']
+
+    planes = np.zeros((3, width, width), np.float32)
+    for iband, b in enumerate(('g', 'r', 'z')):
+        if b in raw:
+            planes[iband] = _rescale_one_band(raw[b], width)
+
+    return planes
+
+
+def select_ssl_sample(sample):
+    """Return the non-resolved subset of sample for SSL embedding.
+
+    Keeps objects where ELLIPSEMODE & RESOLVED == 0.  No size cut is
+    applied; galaxy groups are retained as potentially interesting outliers.
+    """
+    I = (sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) == 0
+    log.info(f'select_ssl_sample: {I.sum():,d} / {len(sample):,d} objects retained')
+    return sample[I]
+
+
+def _rescale_worker(args):
+    sgagroup, bands_str, galaxydir, width = args
+    return rescale_galaxy_cutout({'SGAGROUP': sgagroup, 'BANDS': bands_str},
+                                 galaxydir, width)
+
+
+def build_ssl_hdf5(sample, region, datadir, outdir,
+                   chunksize=50000, width=152, overwrite=False, mp=1):
+    """Pack SGA group mosaics into chunked HDF5 files for SSL inference.
+
+    Parameters
+    ----------
+    sample : astropy.table.Table
+        Non-resolved GROUP_PRIMARY objects from select_ssl_sample().
+    region : str
+        Survey region, e.g. 'dr11-south'.
+    datadir : str
+        Root of the SGA data tree ($SGA_DATA_DIR).
+    outdir : str
+        Output directory; files written as ssl-cutouts-{region}-chunk{N:04d}.hdf5.
+    chunksize : int
+        Galaxies per HDF5 file.
+    width : int
+        Output image size in pixels (default 152).
+    overwrite : bool
+        Overwrite existing output files.
+    mp : int
+        Worker processes for image rescaling.
+    """
+    import h5py
+    import multiprocessing
+
+    os.makedirs(outdir, exist_ok=True)
+
+    _, galaxydirs = get_galaxy_galaxydir(sample, region=region)
+
+    nobj   = len(sample)
+    chunks = np.array_split(np.arange(nobj), max(1, int(np.ceil(nobj / chunksize))))
+    log.info(f'build_ssl_hdf5: {nobj:,d} objects → {len(chunks)} chunk(s) in {outdir}')
+
+    for ichunk, idx in enumerate(chunks):
+        outfile = os.path.join(outdir, f'ssl-cutouts-{region}-chunk{ichunk:04d}.hdf5')
+        if os.path.isfile(outfile) and not overwrite:
+            log.info(f'Skipping existing {outfile}')
+            continue
+
+        chunk_sample = sample[idx]
+        chunk_dirs   = galaxydirs[idx]
+
+        args = [
+            (str(row['SGAGROUP']), str(row['BANDS']), str(gdir), width)
+            for row, gdir in zip(chunk_sample, chunk_dirs)
+        ]
+
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                images = P.map(_rescale_worker, args)
+        else:
+            images = [_rescale_worker(a) for a in args]
+
+        tmpfile = outfile + '.tmp'
+        with h5py.File(tmpfile, 'w') as F:
+            F.attrs['region'] = region
+            F.create_dataset('images', data=np.stack(images).astype(np.float32),
+                             chunks=(1, 3, width, width))
+            F.create_dataset('sgaid', data=chunk_sample['SGAID'].value)
+            F.create_dataset('ra',    data=chunk_sample['RA'].value)
+            F.create_dataset('dec',   data=chunk_sample['DEC'].value)
+        os.rename(tmpfile, outfile)
+        log.info(f'Wrote {outfile}: {len(idx):,d} objects')
+
+
+# ---------------------------------------------------------------------------
+# Public API: build ssl-legacysurvey input files (legacy viewer-based workflow)
 # ---------------------------------------------------------------------------
 
 def build_ssl_legacysurvey_refcat(sample, fullsample, ssl_version=None):
