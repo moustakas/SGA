@@ -214,11 +214,19 @@ def build_ssl_hdf5(sample, region, datadir, outdir,
             for row, gdir in zip(chunk_sample, chunk_dirs)
         ]
 
+        report_every = max(1000, len(args) // 10)
+        images = []
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
-                images = P.map(_rescale_worker, args)
+                for ii, img in enumerate(P.imap(_rescale_worker, args)):
+                    images.append(img)
+                    if (ii + 1) % report_every == 0 or ii + 1 == len(args):
+                        log.info(f'  chunk {ichunk:04d}: {ii+1:,d} / {len(idx):,d}')
         else:
-            images = [_rescale_worker(a) for a in args]
+            for ii, a in enumerate(args):
+                images.append(_rescale_worker(a))
+                if (ii + 1) % report_every == 0 or ii + 1 == len(args):
+                    log.info(f'  chunk {ichunk:04d}: {ii+1:,d} / {len(idx):,d}')
 
         tmpfile = outfile + '.tmp'
         with h5py.File(tmpfile, 'w') as F:
