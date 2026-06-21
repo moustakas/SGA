@@ -93,6 +93,16 @@ mamba activate /global/common/software/desi/users/ioannis/SGA
 python   # or ipython, or run any SGA script directly
 ```
 
+### Building documentation
+
+Install the doc extras into the environment and run Sphinx:
+
+```bash
+module load conda
+mamba run -p /global/common/software/desi/users/ioannis/SGA pip install "SGA[doc]"
+mamba run -p /global/common/software/desi/users/ioannis/SGA sphinx-build doc doc/_build/html
+```
+
 ### One-time kernel setup (per user)
 
 From a NERSC login node or the JupyterHub terminal, with a local clone:
@@ -217,6 +227,14 @@ Register the Jupyter kernel separately if needed:
 ```bash
 micromamba activate SGA
 python -m ipykernel install --user --name SGA --display-name "SGA"
+```
+
+To build the HTML documentation locally, install the doc extras:
+
+```bash
+micromamba activate SGA
+pip install -e ".[doc]"
+sphinx-build doc doc/_build/html
 ```
 
 ---

@@ -1,0 +1,720 @@
+SGA-2025
+========
+
+The SGA-2025 delivers multiwavelength imaging mosaics and ellipse
+photometry for nearly 0.5M large, resolved galaxies across
+approximately 30,000 deg² of the extragalactic sky.
+
+This page describes the organization of the public data release, the
+naming conventions used throughout, and the data model of the primary
+science-ready merged catalogs.
+
+The full data release is accessible at:
+
+   https://portal.nersc.gov/project/cosmo/data/sga/2025/
+
+.. _naming:
+
+Naming Conventions
+------------------
+
+Two layers of identifiers are used throughout the SGA-2025: **groups**
+(mosaics containing one or more spatially associated galaxies) and
+**objects** (individual galaxies within each group).
+
+Groups: ``GROUP_NAME`` and ``SGAGROUP``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each SGA-2025 mosaic is processed as a *group* — a set of one or more
+galaxies whose ellipses overlap or whose angular sizes place them within the
+same mosaic footprint. The group is centered on the diameter-weighted centroid
+of its members.
+
+Two catalog columns identify a group:
+
+- ``GROUP_NAME`` (str10, e.g. ``00000m0649``) — the bare group name,
+  used as the on-disk **directory name**.
+- ``SGAGROUP`` (str18, e.g. ``SGA2025_00000m0649``) — the prefixed form,
+  used as the **file-name prefix** for all per-group output files inside that
+  directory.
+
+The encoding is ``RRRRR[p|m]DDDD`` where ``RRRRR`` = RA × 100 (five digits,
+zero-padded), the separator is ``p`` (positive Dec) or ``m`` (negative Dec),
+and ``DDDD`` = ``abs(Dec)`` × 100 (four digits, zero-padded), both at a precision of
+0.01° (36 arcsec). For example, a group centered at RA = 0.00°, Dec = −6.49°
+has ``GROUP_NAME = 00000m0649``.
+
+In groups with more than one member (``GROUP_MULT`` > 1), ``GROUP_PRIMARY``
+identifies the largest (or most prominent) galaxy in the group. ``GROUP_RA``
+and ``GROUP_DEC`` give the diameter-weighted centroid; ``GROUP_DIAMETER`` gives
+the diameter of the smallest circle enclosing all member ellipses.
+
+Objects: ``SGAID`` and ``SGANAME``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Individual galaxies within a group are identified by:
+
+- ``SGAID`` (int64) — a unique integer identifier assigned to each source.
+- ``SGANAME`` (str25, e.g. ``SGA2025 J000.000−006.490``) — an IAU-style
+  coordinate name at 0.001° (3.6 arcsec) precision, formed from the fitted
+  galaxy coordinates ``RA`` and ``DEC``.
+- ``OBJNAME`` (str30) — the common name from the input parent catalog
+  (HyperLeda, NED, LVD, etc.).
+
+.. _survey-regions:
+
+Survey Regions
+--------------
+
+SGA-2025 covers two non-overlapping imaging regions drawn from *Legacy
+Surveys* Data Release 11 (DR11), which together span approximately 30,000 deg²
+of the extragalactic sky.
+
+**dr11-south** uses imaging from DECaLS (the Dark Energy Camera Legacy Survey),
+obtained with the Dark Energy Camera (DECam) at the 4-m Victor M. Blanco
+Telescope at Cerro Tololo Inter-American Observatory (CTIO). DECam provides
+four optical bands — *g*, *r*, *i*, and *z* — making the southern region the
+only one with *i*-band coverage.
+
+**dr11-north** combines two surveys covering the sky north of roughly Dec ≈
++32°:
+
+- **BASS** (Beijing-Arizona Sky Survey) — obtained with the 90Prime wide-field
+  imager at the University of Arizona's 2.3-m Bok telescope on Kitt Peak,
+  providing *g* and *r* bands.
+- **MzLS** (Mayall z-band Legacy Survey) — obtained with the Mosaic-3 camera
+  at the NOAO 4-m Mayall telescope on Kitt Peak, providing the *z* band.
+
+The northern region therefore has three optical bands (*g*, *r*, *z*) with no
+*i*-band coverage. The ``BANDS`` column in the merged catalog records which
+bands are actually available for each galaxy.
+
+In addition to the optical imaging, **all SGA-2025 sources** include:
+
+- **Mid-infrared**: unWISE W1 (3.4 μm), W2 (4.6 μm), W3 (12 μm), and W4
+  (22 μm) mosaics, derived from the full-depth coadded WISE satellite imaging.
+- **Ultraviolet**: GALEX FUV (~1530 Å) and NUV (~2310 Å) mosaics where GALEX
+  sky coverage exists. The GALEX footprint is incomplete; FUV and NUV mosaic
+  files are always present in the per-group directory but may contain no data
+  for sources outside the GALEX footprint.
+
+.. _merged-catalogs:
+
+Merged Catalogs
+---------------
+
+The per-region merged catalogs combine all per-group ellipse photometry into
+a single FITS file. These are the starting point for most science use cases.
+
+Catalog Files
+~~~~~~~~~~~~~
+
+Two files are provided, one per imaging region:
+
+.. code-block:: none
+
+   SGA2025-beta-v1.6-dr11-south.fits    (~363,000 galaxies)
+   SGA2025-beta-v1.6-dr11-north.fits    (~86,000 galaxies)
+
+.. note::
+
+   The ``-beta-`` tag indicates a pre-release version. Final public
+   release files will be named ``SGA2025-v1.6-{region}.fits``.
+
+Each file has two binary table extensions:
+
+- ``ELLIPSE`` — ellipse photometry and geometry for every galaxy. This is the
+  primary catalog for most science use cases.
+- ``TRACTOR`` — Tractor source-fitting parameters, row-matched to ``ELLIPSE``.
+
+Reading the Catalogs
+~~~~~~~~~~~~~~~~~~~~
+
+Use :func:`SGA.SGA.read_sga_sample` to read either catalog:
+
+.. code-block:: python
+
+   from SGA.SGA import read_sga_sample
+
+   # ELLIPSE catalog for the southern region (default)
+   sample, fullsample = read_sga_sample(region='dr11-south')
+
+   # TRACTOR catalog
+   sample, fullsample = read_sga_sample(region='dr11-south', tractor=True)
+
+   # Northern region
+   sample, fullsample = read_sga_sample(region='dr11-north')
+
+``read_sga_sample`` returns two :class:`astropy.table.Table` objects:
+
+- ``sample`` — one row per group *primary* galaxy (``GROUP_PRIMARY = True``),
+  satisfying any diameter or multiplicity cuts you apply.
+- ``fullsample`` — all group members whose group has at least one entry
+  in ``sample``.
+
+Key keyword arguments:
+
+.. code-block:: python
+
+   # Diameter cuts (arcmin)
+   sample, fullsample = read_sga_sample(mindiam=1.0, maxdiam=10.0)
+
+   # Specific galaxies (matched against GROUP_NAME, then SGAID, then OBJNAME)
+   sample, fullsample = read_sga_sample(galaxylist='NGC3031,NGC4258')
+
+   # Local Volume Database dwarfs only
+   sample, fullsample = read_sga_sample(lvd=True)
+
+   # Groups with exactly N members
+   sample, fullsample = read_sga_sample(minmult=2, maxmult=5)
+
+.. _data-model:
+
+Data Model: ELLIPSE Extension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``ELLIPSE`` extension contains one row per galaxy. Columns are organized
+into the groups below.
+
+**Identifying and group columns**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``SGAID``
+     - int64
+     - Unique SGA identifier
+   * - ``SGANAME``
+     - str25
+     - IAU-style name (``SGA2025 JXXX.XXX±YY.YYY``)
+   * - ``SGAGROUP``
+     - str18
+     - Prefixed group name (e.g. ``SGA2025_00000m0649``)
+   * - ``OBJNAME``
+     - str30
+     - Common galaxy name from the parent catalog
+   * - ``PGC``
+     - int64
+     - PGC identifier (0 if unavailable)
+   * - ``REGION``
+     - int16
+     - Imaging region bitmask (see :ref:`bitmasks`)
+   * - ``GROUP_NAME``
+     - str10
+     - Bare group name (= on-disk directory name)
+   * - ``GROUP_RA``, ``GROUP_DEC``
+     - float64
+     - Group centroid coordinates (deg)
+   * - ``GROUP_DIAMETER``
+     - float32
+     - Diameter of smallest enclosing circle (arcmin)
+   * - ``GROUP_MULT``
+     - int16
+     - Number of group members
+   * - ``GROUP_PRIMARY``
+     - bool
+     - ``True`` for the primary (largest) group member
+
+**Status and quality bitmasks**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``SAMPLE``
+     - int32
+     - Sample classification bitmask (see :ref:`bitmasks`)
+   * - ``ELLIPSEMODE``
+     - int32
+     - Input fitting-mode flags requested for this object
+   * - ``FITMODE``
+     - int32
+     - Actual fitting mode applied
+   * - ``ELLIPSEBIT``
+     - int32
+     - Output quality and status flags (see :ref:`bitmasks`)
+
+**Initial geometry** (from the parent catalog, before fitting)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``RA_INIT``, ``DEC_INIT``
+     - float64
+     - Initial coordinates (deg)
+   * - ``SMA_INIT``
+     - float32
+     - Initial semi-major axis (arcsec)
+   * - ``DIAM_INIT``
+     - float32
+     - Initial diameter (arcmin)
+   * - ``BA_INIT``
+     - float32
+     - Initial axis ratio b/a
+   * - ``PA_INIT``
+     - float32
+     - Initial position angle (deg, N through E)
+   * - ``MAG_INIT``
+     - float32
+     - Initial magnitude
+   * - ``DIAM_INIT_REF``
+     - str14
+     - Source catalog for the initial diameter
+   * - ``BX_INIT``, ``BY_INIT``
+     - float32
+     - Initial pixel centroid (pixel)
+   * - ``EBV``
+     - float32
+     - Milky Way E(B−V) from Schlegel et al. (1998) (mag)
+
+**Fitted geometry**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``RA``, ``DEC``
+     - float64
+     - Final fitted galaxy coordinates (deg)
+   * - ``BX``, ``BY``
+     - float32
+     - Final pixel centroid (pixel)
+   * - ``SMA_MASK``
+     - float32
+     - Semi-major axis of the masking ellipse (arcsec)
+   * - ``SMA_MOMENT``
+     - float32
+     - Semi-major axis from flux-weighted moments (arcsec)
+   * - ``BA_MOMENT``
+     - float32
+     - Axis ratio b/a from moments
+   * - ``PA_MOMENT``
+     - float32
+     - Position angle from moments (deg, N through E)
+   * - ``RA_TRACTOR``, ``DEC_TRACTOR``
+     - float64
+     - Tractor-fitted position (deg)
+   * - ``D26``
+     - float32
+     - Isophotal diameter at μ = 26 mag arcsec⁻² (arcmin)
+   * - ``D26_ERR``
+     - float32
+     - 1σ uncertainty on D26 (arcmin)
+   * - ``D26_REF``
+     - str3
+     - Band contributing highest weight to D26 (e.g. ``r26``, ``mom``)
+   * - ``BA``
+     - float32
+     - Final axis ratio b/a
+   * - ``PA``
+     - float32
+     - Final position angle (deg, N through E)
+
+**Imaging properties**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``BANDS``
+     - str4
+     - Optical bands available (e.g. ``griz``, ``grz``)
+   * - ``OPTFLUX``
+     - float32
+     - Optical reference flux (nanomaggies)
+   * - ``PSFSIZE_{G,R,I,Z}``
+     - float32
+     - Effective PSF FWHM in each optical band (arcsec)
+   * - ``PSFDEPTH_{G,R,I,Z}``
+     - float32
+     - 5σ point-source depth in each optical band (mag)
+
+**Photometric columns** — all 10 bands: G, R, I, Z, W1, W2, W3, W4, FUV, NUV
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column pattern
+     - Description
+   * - ``MW_TRANSMISSION_{band}``
+     - Milky Way transmission fraction (0–1)
+   * - ``GINI_{band}``
+     - Gini coefficient of the light distribution
+   * - ``COG_MTOT_{band}`` / ``COG_MTOT_ERR_{band}``
+     - Curve-of-growth total magnitude ± uncertainty (mag)
+   * - ``COG_DMAG_{band}`` / ``COG_DMAG_ERR_{band}``
+     - COG aperture correction ± uncertainty (mag)
+   * - ``COG_LNALPHA1_{band}`` / ``COG_LNALPHA1_ERR_{band}``
+     - COG Sérsic inner shape parameter ± uncertainty
+   * - ``COG_LNALPHA2_{band}`` / ``COG_LNALPHA2_ERR_{band}``
+     - COG Sérsic outer shape parameter ± uncertainty
+   * - ``COG_CHI2_{band}``
+     - COG fit χ² (float32)
+   * - ``COG_NDOF_{band}``
+     - COG fit degrees of freedom (int32)
+   * - ``SMA50_{band}`` / ``SMA50_ERR_{band}``
+     - Half-light semi-major axis ± uncertainty (arcsec)
+   * - ``SMA_AP{00–04}``
+     - Aperture semi-major axes (arcsec); AP00–AP04 correspond to
+       [0.5, 1.0, 1.25, 1.5, 2.0] × ``SMA_MOMENT``
+   * - ``FLUX_AP{00–04}_{band}``
+     - Aperture flux (nanomaggies)
+   * - ``FLUX_ERR_AP{00–04}_{band}``
+     - Aperture flux uncertainty (nanomaggies)
+   * - ``FMASKED_AP{00–04}_{band}``
+     - Masked pixel fraction within aperture (0–1)
+
+**Isophotal radii** — optical bands G, R, I, Z only
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column pattern
+     - Description
+   * - ``R{22,23,24,25,26}_{band}``
+     - Isophotal semi-major axis at μ = 22–26 mag arcsec⁻² (arcsec)
+   * - ``R{22,23,24,25,26}_ERR_{band}``
+     - 1σ uncertainty on the isophotal radius (arcsec)
+
+Data Model: TRACTOR Extension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``TRACTOR`` extension is row-matched to ``ELLIPSE`` and contains
+Tractor source-fitting parameters for each SGA galaxy and all sources
+detected within its ellipse. See the `Legacy Surveys documentation
+<https://www.legacysurvey.org/>`_ for the full Tractor data model.
+
+.. _bitmasks:
+
+Bitmasks
+--------
+
+``SAMPLE``
+~~~~~~~~~~
+
+Set in the parent catalog and propagated to the merged catalogs. A source may
+have multiple bits set simultaneously.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 8 74
+
+   * - Bit name
+     - Value
+     - Description
+   * - ``LVD``
+     - 1
+     - Source from the Local Volume Database (dwarf galaxies)
+   * - ``MCLOUDS``
+     - 2
+     - Located within the Magellanic Cloud footprint
+   * - ``GCLPNE``
+     - 4
+     - Located within a globular cluster or planetary nebula mask
+   * - ``NEARSTAR``
+     - 8
+     - Near a bright star (star–galaxy separation < 1.2 × stellar FWHM)
+   * - ``INSTAR``
+     - 16
+     - Inside a bright star (star–galaxy separation < 0.5 × stellar FWHM)
+   * - ``OVERLAP``
+     - 32
+     - Initial ellipse overlaps another SGA ellipse
+
+``ELLIPSEMODE`` — input fitting flags
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Requested before processing; describes the intended fitting strategy.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 8 72
+
+   * - Bit name
+     - Value
+     - Description
+   * - ``FIXGEO``
+     - 1
+     - Fix the ellipse geometry to initial values (no free fitting)
+   * - ``RESOLVED``
+     - 2
+     - Spatially resolved; Tractor fitting not performed
+   * - ``FORCEPSF``
+     - 4
+     - Force a PSF model in Tractor
+   * - ``FORCEGAIA``
+     - 8
+     - Force Gaia astrometry for the source position
+   * - ``LESSMASKING``
+     - 16
+     - Apply less aggressive neighbor masking
+   * - ``MOREMASKING``
+     - 32
+     - Apply more aggressive neighbor masking
+   * - ``MOMENTPOS``
+     - 64
+     - Use moment-based position instead of Tractor position
+   * - ``TRACTORGEO``
+     - 128
+     - Adopt Tractor geometry instead of ellipse-fit geometry
+   * - ``NORADWEIGHT``
+     - 256
+     - Disable radial weighting in isophote fitting
+
+``ELLIPSEBIT`` — output quality flags
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Set after processing; records the actual fitting outcome and data quality.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 8 70
+
+   * - Bit name
+     - Value
+     - Description
+   * - ``NOTRACTOR``
+     - 1
+     - No Tractor source matched to this galaxy
+   * - ``TRACTORPSF``
+     - 2
+     - Tractor fit this source as a point source (PSF model)
+   * - ``FIXGEO``
+     - 4
+     - Ellipse geometry was fixed, not freely fitted
+   * - ``BLENDED``
+     - 8
+     - Source is blended with a neighbor in the Tractor catalog
+   * - ``LARGESHIFT``
+     - 16
+     - Large positional shift between initial and fitted ellipse center
+   * - ``LARGESHIFT_TRACTOR``
+     - 32
+     - Large positional shift between initial and Tractor center
+   * - ``MAJORGAL``
+     - 64
+     - Major galaxy requiring special processing treatment
+   * - ``OVERLAP``
+     - 128
+     - Fitted ellipse overlaps another SGA ellipse
+   * - ``SATELLITE``
+     - 256
+     - Satellite galaxy located within the ellipse of a larger system
+   * - ``MOMENTPOS``
+     - 512
+     - Moment-based position was adopted
+   * - ``TRACTORGEO``
+     - 1024
+     - Tractor geometry was adopted
+   * - ``NORADWEIGHT``
+     - 2048
+     - Radial weighting was not applied to isophote fitting
+   * - ``LESSMASKING``
+     - 4096
+     - Less aggressive neighbor masking was applied
+   * - ``MOREMASKING``
+     - 8192
+     - More aggressive neighbor masking was applied
+   * - ``FAILGEO``
+     - 16384
+     - Isophote fitting failed; D26 may be unreliable
+   * - ``SKIPTRACTOR``
+     - 32768
+     - Tractor fitting was skipped entirely for this mosaic
+
+``OPTMASKBITS``, ``GALEXMASKBITS``, ``UNWISEMASKBITS``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Per-band imaging mask bits stored in the per-group ``-maskbits.fits[.fz]``
+files and the per-galaxy ``-ellipse-{dataset}.fits`` files. All three share
+the same low-order bits:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 8 72
+
+   * - Bit name
+     - Value
+     - Description
+   * - ``brightstar``
+     - 1
+     - Bright star, medium star, or star cluster (legacypipe MASKBITS)
+   * - ``gaiastar``
+     - 2
+     - Gaia point source (type = PSF)
+   * - ``galaxy``
+     - 4
+     - Extended (non-reference) source
+   * - ``reference``
+     - 8
+     - SGA reference source
+
+Per-band bits:
+
+- ``OPTMASKBITS``: ``g`` = 16, ``r`` = 32, ``i`` = 64, ``z`` = 128
+- ``GALEXMASKBITS``: ``FUV`` = 16, ``NUV`` = 32
+- ``UNWISEMASKBITS``: ``W1`` = 16, ``W2`` = 32, ``W3`` = 64, ``W4`` = 128
+
+.. _per-group-files:
+
+Per-Group Data Files
+--------------------
+
+Directory Layout
+~~~~~~~~~~~~~~~~
+
+The public data release is organized as:
+
+.. code-block:: none
+
+   data/
+     {region}/                  # dr11-south or dr11-north
+       {raslice}/               # 3-digit integer part of GROUP_RA (000–359)
+         {group_name}/          # e.g. 00000m0649
+           SGA2025_{group_name}-*
+
+The ``raslice`` is the zero-padded integer part of ``GROUP_RA``
+(e.g. RA = 33.98° → ``033``). The ``group_name`` is the bare
+``GROUP_NAME`` column value.
+
+From Python, :func:`SGA.SGA.get_galaxy_galaxydir` returns the full path
+for any row in the catalog:
+
+.. code-block:: python
+
+   from SGA.SGA import get_galaxy_galaxydir
+
+   galaxy, galaxydir = get_galaxy_galaxydir(sample, region='dr11-south')
+
+File Inventory
+~~~~~~~~~~~~~~
+
+All files in a group directory are prefixed by ``g = SGA2025_{group_name}``.
+
+Two processing modes exist. **Full mode** applies to groups where Tractor
+source fitting was performed (the file ``{g}-tractor.fits`` is present).
+**Coadds-only mode** applies to groups where only image mosaics were
+produced (no Tractor fitting).
+
+*Files present in both modes:*
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - File
+     - Description
+   * - ``{g}-sample.fits``
+     - Parent-catalog rows for this group
+   * - ``{g}-ccds.fits``
+     - Metadata for all CCDs overlapping this mosaic
+   * - ``{g}-coadds.isdone``
+     - Sentinel file written when coadd step completes
+   * - ``{g}-ellipse.isdone``
+     - Sentinel file written when ellipse step completes
+   * - ``{g}-coadds.log``
+     - Coadd processing log
+   * - ``{g}-ellipse.log``
+     - Ellipse processing log
+   * - ``{g}-image.jpg``
+     - Optical grz color composite
+   * - ``{g}-image-W1W2.jpg``
+     - unWISE W1/W2 color composite
+   * - ``{g}-image-FUVNUV.jpg``
+     - GALEX FUV/NUV color composite
+
+*Full mode only:*
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - File
+     - Description
+   * - ``{g}-tractor.fits``
+     - Tractor source catalog for this mosaic
+   * - ``{g}-maskbits.fits.fz``
+     - Imaging mask-bit array (compressed)
+   * - ``{g}-image-{band}.fits.fz``
+     - Image mosaic per band (compressed); bands = g, r, i, z, FUV, NUV, W1–W4
+   * - ``{g}-invvar-{band}.fits.fz``
+     - Inverse-variance map per band (compressed)
+   * - ``{g}-model-{band}.fits.fz``
+     - Tractor model image per band (compressed)
+   * - ``{g}-psf-{band}.fits.fz``
+     - PSF image per band (compressed)
+   * - ``{g}-model.jpg``
+     - Optical grz Tractor model composite
+   * - ``{g}-model-W1W2.jpg``
+     - unWISE W1/W2 Tractor model composite
+   * - ``{g}-model-FUVNUV.jpg``
+     - GALEX FUV/NUV Tractor model composite
+   * - ``{g}-resid.jpg``
+     - Optical grz residual (image − model)
+   * - ``{g}-resid-W1W2.jpg``
+     - unWISE W1/W2 residual
+   * - ``{g}-resid-FUVNUV.jpg``
+     - GALEX FUV/NUV residual
+
+*Coadds-only mode only:*
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - File
+     - Description
+   * - ``{g}-maskbits.fits``
+     - Imaging mask-bit array (uncompressed)
+   * - ``{g}-image-{band}.fits``
+     - Image mosaic per band (uncompressed); at least one of g, r, i, z
+       plus FUV, NUV, W1–W4
+
+Per-Galaxy Ellipse Files
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In addition to the per-group files, each galaxy within a group has up to
+three per-galaxy ellipse files named after the galaxy's IAU coordinate
+name (without spaces):
+
+.. code-block:: none
+
+   SGA2025_J{RA}[+|-]{DEC}-ellipse-griz.fits
+   SGA2025_J{RA}[+|-]{DEC}-ellipse-galex.fits
+   SGA2025_J{RA}[+|-]{DEC}-ellipse-unwise.fits
+
+Each file contains four FITS extensions:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 82
+
+   * - Extension
+     - Description
+   * - ``MODELS``
+     - Image cube of the ellipse model and data for each band
+   * - ``MASKBITS``
+     - Per-band imaging mask array (same footprint as ``MODELS``)
+   * - ``ELLIPSE``
+     - Ellipse photometry table (one row per ellipse semi-major axis step)
+   * - ``SBPROFILES``
+     - Azimuthally averaged surface-brightness and color profiles

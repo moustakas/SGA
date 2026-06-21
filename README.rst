@@ -1,6 +1,10 @@
 Siena Galaxy Atlas
 ==================
 
+.. image:: https://readthedocs.org/projects/sga/badge/?version=latest
+   :target: https://sga.readthedocs.io/en/latest/
+   :alt: Documentation Status
+
 The Siena Galaxy Atlas (SGA) is a multiwavelength, diameter-limited
 atlas of nearby galaxies built using the `DESI Legacy Imaging
 Surveys`_ (the *Legacy Surveys*). For each galaxy, the SGA delivers
@@ -23,32 +27,6 @@ Surveys* DR11. It adds *i*-band optical mosaics, GALEX near- and
 far-ultraviolet (NUV/FUV) imaging, and a richer suite of
 surface-brightness profiles and photometric measurements, making it
 the most complete census of large, resolved galaxies to date.
-
-NERSC Environment
------------------
-
-The SGA and SGAML Jupyter kernels set three environment variables with
-NERSC defaults:
-
-.. code-block:: bash
-
-   SGA_DIR=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025
-   SGA_DATA_DIR=/dvs_ro/cfs/cdirs/cosmo/data/sga/2025/data
-   SGA_HTML_DIR=/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/html
-
-To override any of these — or to point a kernel at a working branch —
-create ``~/.sga_dev_env``; it is sourced by both kernels at startup,
-after the defaults are set:
-
-.. code-block:: bash
-
-   # ~/.sga_dev_env — sourced by both SGA and SGAML kernels at startup
-   export PATH=/global/homes/i/ioannis/code/SGA/bin/SGA2025:$PATH
-   export PYTHONPATH=/global/homes/i/ioannis/code/SGA/py:$PYTHONPATH
-   export SGA_DATA_DIR=/pscratch/sd/i/ioannis/SGA2025-v1.6
-
-Any variable set here takes precedence over the kernel defaults. Delete
-or empty the file to revert to the installed environment.
 
 We gratefully acknowledge funding support for this work from the
 National Science Foundation under grants AST-1616414 and AST-1909374,

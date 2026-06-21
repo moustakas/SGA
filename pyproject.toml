@@ -24,6 +24,11 @@ dependencies = [
 
 [project.optional-dependencies]
 mpi = ["mpi4py"]
+doc = [
+    "sphinx>=7",
+    "furo>=2024.1.29",
+    "sphinx-design>=0.6",
+]
 
 [project.urls]
 Homepage = "https://github.com/moustakas/SGA"
