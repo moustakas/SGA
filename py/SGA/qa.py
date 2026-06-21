@@ -105,6 +105,107 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
     return sns, colors
 
 
+def notebook_style():
+    """Apply clean matplotlib style settings for use in Jupyter notebooks."""
+    plt.rcParams.update({
+        'figure.figsize':  [8., 6.],
+        'axes.labelsize':  14,
+        'axes.titlesize':  11,
+        'xtick.labelsize': 12,
+        'ytick.labelsize': 12,
+        'xtick.direction': 'in',
+        'ytick.direction': 'in',
+        'xtick.top':       True,
+        'ytick.right':     True,
+        'font.family':     'serif',
+        'figure.dpi':      150,
+    })
+
+
+def sdss_rgb(imgs, bands, scales=None, m=0.03, Q=20, mnmx=None, clip=True):
+    """Convert a list of band images to an RGB array using an arcsinh stretch.
+
+    Default scaling matches the Legacy Survey viewer:
+        g → Blue  (plane 2, scale 6.0)
+        r → Green (plane 1, scale 3.4)
+        i → Red   (plane 0, scale 3.0)
+        z → Red   (plane 0, scale 2.2)
+
+    For ['g', 'r', 'i', 'z'] a band-mixing scheme is used so that all four
+    bands contribute to all three colour channels.  For any other combination
+    (e.g. ['g', 'r', 'z']) each band maps to a single plane.
+
+    Parameters
+    ----------
+    imgs : list of 2-D array
+        Per-band image arrays in the same order as `bands`.
+    bands : list of str
+        Band names from {'g', 'r', 'i', 'z'}.
+    scales : dict, optional
+        Override per-band (plane, scale) tuples.
+    m : float
+        Additive offset applied before arcsinh stretch (default 0.03).
+    Q : float or None
+        Arcsinh softening parameter (default 20).  Set to None to skip.
+    mnmx : (float, float), optional
+        Manual (min, max) linear clip instead of arcsinh normalisation.
+    clip : bool
+        Clip output to [0, 1] (default True).
+
+    Returns
+    -------
+    rgb : (H, W, 3) float32 array
+
+    """
+    _scales = dict(g=(2, 6.0), r=(1, 3.4), i=(0, 3.0), z=(0, 2.2))
+    if scales is not None:
+        _scales.update(scales)
+
+    I = 0
+    for img, band in zip(imgs, bands):
+        _, scale = _scales[band]
+        I = I + np.maximum(0, img * scale + m)
+    I /= len(bands)
+    if Q is not None:
+        fI = np.arcsinh(Q * I) / np.sqrt(Q)
+        I += (I == 0.) * 1e-6
+        I = fI / I
+
+    H, W = I.shape
+    rgb = np.zeros((H, W, 3), np.float32)
+
+    if list(bands) == ['g', 'r', 'i', 'z']:
+        rgbvec = dict(
+            g=(0.,   0.,  0.75),
+            r=(0.,   0.5, 0.25),
+            i=(0.25, 0.5, 0.),
+            z=(0.75, 0.,  0.))
+        for img, band in zip(imgs, bands):
+            _, scale = _scales[band]
+            rf, gf, bf = rgbvec[band]
+            if mnmx is None:
+                v = (img * scale + m) * I
+            else:
+                v = ((img * scale + m) - mnmx[0]) / (mnmx[1] - mnmx[0])
+            if clip:
+                v = np.clip(v, 0, 1)
+            rgb[:, :, 0] += rf * v
+            rgb[:, :, 1] += gf * v
+            rgb[:, :, 2] += bf * v
+    else:
+        for img, band in zip(imgs, bands):
+            plane, scale = _scales[band]
+            if mnmx is None:
+                imgplane = (img * scale + m) * I
+            else:
+                imgplane = ((img * scale + m) - mnmx[0]) / (mnmx[1] - mnmx[0])
+            if clip:
+                imgplane = np.clip(imgplane, 0, 1)
+            rgb[:, :, plane] = imgplane
+
+    return rgb
+
+
 def sbprofile_colors():
     """Return per-band surface brightness profile colors.
 

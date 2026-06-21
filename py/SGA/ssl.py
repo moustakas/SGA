@@ -36,7 +36,8 @@ from astropy.table import Table, vstack
 
 from astrometry.libkd.spherematch import match_radec
 
-from SGA.SGA import sga_dir, SAMPLE, ELLIPSEMODE
+from SGA.SGA import sga_dir, SAMPLE, get_galaxy_galaxydir
+from SGA.ellipse import ELLIPSEMODE
 from SGA.io import radec_to_name, get_raslice
 from SGA.logger import log
 
@@ -44,6 +45,81 @@ from SGA.logger import log
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+def _read_coadd_bands(galaxydir, group_prefix, bands_str):
+    """Return {band: 2D image} for each .fits.fz coadd found in galaxydir."""
+    images = {}
+    for band in bands_str:
+        fitsfile = os.path.join(galaxydir, f'{group_prefix}-image-{band}.fits.fz')
+        if os.path.isfile(fitsfile):
+            images[band] = fitsio.read(fitsfile)
+        else:
+            log.debug(f'Missing {band}-band coadd: {fitsfile}')
+    return images
+
+
+def _rescale_one_band(img, width=152):
+    """Lanczos-3 resample a square 2D image to (width, width)."""
+    from astrometry.util.util import lanczos3_interpolate
+
+    sh, sw = img.shape
+    pscale = width / sw
+
+    center_x = sw // 2
+    center_y = sh // 2
+
+    cox = np.arange(width, dtype=np.float64) / pscale
+    cox += center_x - cox[width // 2]
+    coy = np.arange(width, dtype=np.float64) / pscale
+    coy += center_y - coy[width // 2]
+
+    fx, fy = np.meshgrid(cox, coy)
+    fx = fx.ravel().astype(np.float32)
+    fy = fy.ravel().astype(np.float32)
+    ix = (fx + 0.5).astype(np.int32)
+    iy = (fy + 0.5).astype(np.int32)
+    dx = (fx - ix).astype(np.float32)
+    dy = (fy - iy).astype(np.float32)
+
+    out = np.zeros(width * width, np.float32)
+    lanczos3_interpolate(ix, iy, dx, dy, [out], [np.ascontiguousarray(img, np.float32)])
+    return out.reshape((width, width))
+
+
+def _load_moco_backbone_and_projector(checkpoint_path, device):
+    """Load ResNet50 backbone and MLP projection head from a MoCo v2 checkpoint.
+
+    Returns (backbone, projector) as eval-mode modules on device.  The backbone
+    outputs 2048-d avgpool features; the projector maps those to 128-d.
+    Bypasses pytorch_lightning entirely to avoid version compatibility issues.
+    """
+    import torch
+    import torchvision.models as tvm
+
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    state_dict = ckpt.get('state_dict', ckpt)
+
+    backbone_state = {k[len('encoder_q.'):]: v
+                      for k, v in state_dict.items()
+                      if k.startswith('encoder_q.')}
+    backbone = tvm.resnet50(weights=None)
+    backbone.fc = torch.nn.Identity()
+    backbone.load_state_dict(backbone_state, strict=False)
+    backbone = backbone.to(device).eval()
+
+    proj_state = {k[len('encoder_q.fc.'):]: v
+                  for k, v in state_dict.items()
+                  if k.startswith('encoder_q.fc.')}
+    projector = torch.nn.Sequential(
+        torch.nn.Linear(2048, 2048),
+        torch.nn.ReLU(),
+        torch.nn.Linear(2048, 128),
+    )
+    projector.load_state_dict(proj_state)
+    projector = projector.to(device).eval()
+
+    return backbone, projector
+
 
 def _get_diam_arcsec(cat):
     """Return diameters in arcsec, handling parent (DIAM) and final (DIAM_INIT) catalogs."""
@@ -79,7 +155,177 @@ def _select_band_planes(img, available_bands_str, target_bands):
 
 
 # ---------------------------------------------------------------------------
-# Public API: build ssl-legacysurvey input files
+# Public API: coadd-based cutout rescaling and sample selection
+# ---------------------------------------------------------------------------
+
+def rescale_galaxy_cutout(row, galaxydir, width=152):
+    """Read and Lanczos-3 resample one SGA group mosaic to (3, width, width).
+
+    Output band order is always (g, r, z).  Missing bands are zero-padded.
+    If r is absent but i is present, i is used as a proxy for r.
+
+    Raises FileNotFoundError if no .fits.fz coadds are found.
+    """
+    group_prefix = row['SGAGROUP']
+    raw = _read_coadd_bands(galaxydir, group_prefix, row['BANDS'])
+
+    if not raw:
+        raise FileNotFoundError(
+            f'No .fits.fz coadds found for {group_prefix} in {galaxydir}')
+
+    if 'r' not in raw and 'i' in raw:
+        raw['r'] = raw['i']
+
+    planes = np.zeros((3, width, width), np.float32)
+    for iband, b in enumerate(('g', 'r', 'z')):
+        if b in raw:
+            planes[iband] = _rescale_one_band(raw[b], width)
+
+    return planes
+
+
+def select_ssl_sample(sample):
+    """Return the non-resolved subset of sample for SSL embedding.
+
+    Keeps objects where ELLIPSEMODE & RESOLVED == 0.  No size cut is
+    applied; galaxy groups are retained as potentially interesting outliers.
+    """
+    I = (sample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED']) == 0
+    log.info(f'select_ssl_sample: {I.sum():,d} / {len(sample):,d} objects retained')
+    return sample[I]
+
+
+def _rescale_worker(args):
+    sgagroup, bands_str, galaxydir, width = args
+    return rescale_galaxy_cutout({'SGAGROUP': sgagroup, 'BANDS': bands_str},
+                                 galaxydir, width)
+
+
+def build_ssl_hdf5(sample, region, datadir, outdir,
+                   chunksize=50000, width=152, overwrite=False, mp=1):
+    """Pack SGA group mosaics into chunked HDF5 files for SSL inference.
+
+    Parameters
+    ----------
+    sample : astropy.table.Table
+        Non-resolved GROUP_PRIMARY objects from select_ssl_sample().
+    region : str
+        Survey region, e.g. 'dr11-south'.
+    datadir : str
+        Root of the SGA data tree ($SGA_DATA_DIR).
+    outdir : str
+        Output directory; files written as ssl-cutouts-{region}-chunk{N:04d}.hdf5.
+    chunksize : int
+        Galaxies per HDF5 file.
+    width : int
+        Output image size in pixels (default 152).
+    overwrite : bool
+        Overwrite existing output files.
+    mp : int
+        Worker processes for image rescaling.
+    """
+    import h5py
+    import multiprocessing
+
+    os.makedirs(outdir, exist_ok=True)
+
+    _, galaxydirs = get_galaxy_galaxydir(sample, region=region)
+
+    nobj   = len(sample)
+    chunks = np.array_split(np.arange(nobj), max(1, int(np.ceil(nobj / chunksize))))
+    log.info(f'build_ssl_hdf5: {nobj:,d} objects → {len(chunks)} chunk(s) in {outdir}')
+
+    for ichunk, idx in enumerate(chunks):
+        outfile = os.path.join(outdir, f'ssl-cutouts-{region}-chunk{ichunk:04d}.hdf5')
+        if os.path.isfile(outfile) and not overwrite:
+            log.info(f'Skipping existing {outfile}')
+            continue
+
+        chunk_sample = sample[idx]
+        chunk_dirs   = galaxydirs[idx]
+
+        args = [
+            (str(row['SGAGROUP']), str(row['BANDS']), str(gdir), width)
+            for row, gdir in zip(chunk_sample, chunk_dirs)
+        ]
+
+        report_every = max(1000, len(args) // 10)
+        images = []
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                for ii, img in enumerate(P.imap(_rescale_worker, args)):
+                    images.append(img)
+                    if (ii + 1) % report_every == 0 or ii + 1 == len(args):
+                        log.info(f'  chunk {ichunk:04d}: {ii+1:,d} / {len(idx):,d}')
+        else:
+            for ii, a in enumerate(args):
+                images.append(_rescale_worker(a))
+                if (ii + 1) % report_every == 0 or ii + 1 == len(args):
+                    log.info(f'  chunk {ichunk:04d}: {ii+1:,d} / {len(idx):,d}')
+
+        tmpfile = outfile + '.tmp'
+        with h5py.File(tmpfile, 'w') as F:
+            F.attrs['region'] = region
+            F.create_dataset('images', data=np.stack(images).astype(np.float32),
+                             chunks=(1, 3, width, width))
+            F.create_dataset('sgaid', data=chunk_sample['SGAID'].value)
+            F.create_dataset('ra',    data=chunk_sample['RA'].value)
+            F.create_dataset('dec',   data=chunk_sample['DEC'].value)
+        os.rename(tmpfile, outfile)
+        log.info(f'Wrote {outfile}: {len(idx):,d} objects')
+
+
+def load_ssl_embeddings(region, ssl_dir, catalog=None):
+    """Load SSL embeddings and join to the SGA-2025 catalog on SGAID.
+
+    Parameters
+    ----------
+    region : str
+        Survey region, e.g. 'dr11-south'.
+    ssl_dir : str
+        Directory containing ssl-embeddings-{region}.hdf5.
+    catalog : astropy.table.Table, optional
+        Pre-loaded SGA catalog from read_sga_sample(). Read from disk if None.
+
+    Returns
+    -------
+    astropy.table.Table
+        One row per embedded galaxy with all catalog columns plus
+        'embeddings' (shape 2048,) and 'projections' (shape 128,).
+
+    """
+    import h5py
+    from astropy.table import Column
+    from SGA.SGA import read_sga_sample
+
+    emb_file = os.path.join(ssl_dir, f'ssl-embeddings-{region}.hdf5')
+    if not os.path.isfile(emb_file):
+        raise FileNotFoundError(emb_file)
+
+    with h5py.File(emb_file, 'r') as F:
+        sgaids      = F['sgaid'][:]
+        embeddings  = F['embeddings'][:]
+        projections = F['projections'][:]
+
+    if catalog is None:
+        catalog, _ = read_sga_sample(region=region)
+
+    cat_lookup = {int(s): i for i, s in enumerate(np.asarray(catalog['SGAID']))}
+    found    = np.array([int(s) in cat_lookup for s in sgaids])
+    if not np.all(found):
+        log.warning(f'{(~found).sum()} embedding SGAIDs not found in catalog; dropping.')
+    cat_rows = np.array([cat_lookup[int(s)] for s in sgaids[found]])
+
+    matched = catalog[cat_rows].copy()
+    matched.add_column(Column(embeddings[found],  name='embeddings'))
+    matched.add_column(Column(projections[found], name='projections'))
+
+    log.info(f'load_ssl_embeddings: {len(matched):,d} objects from {emb_file}')
+    return matched
+
+
+# ---------------------------------------------------------------------------
+# Public API: build ssl-legacysurvey input files (legacy viewer-based workflow)
 # ---------------------------------------------------------------------------
 
 def build_ssl_legacysurvey_refcat(sample, fullsample, ssl_version=None):
@@ -268,6 +514,109 @@ def build_ssl_legacysurvey(cat, refcat, width=152, ncatmax=15000,
 # ---------------------------------------------------------------------------
 # Public API: run ssl-legacysurvey inference
 # ---------------------------------------------------------------------------
+
+def extract_embeddings(hdf5_files, checkpoint_path, outfile,
+                       batch_size=256, device=None, overwrite=False):
+    """Extract ResNet50 embeddings and MoCo projection outputs for all SSL cutout chunks.
+
+    Streams through the HDF5 chunk files produced by build_ssl_hdf5(), runs
+    batched GPU/CPU inference, and writes a single output HDF5 containing:
+
+        embeddings  (N, 2048) float32  — backbone avgpool features
+        projections (N, 128)  float32  — MLP projection head output
+        sgaid       (N,)      int64
+        ra          (N,)      float64
+        dec         (N,)      float64
+
+    L2-normalize projections before cosine similarity search or Faiss indexing.
+
+    Parameters
+    ----------
+    hdf5_files : list of str
+        Paths to ssl-cutouts-{region}-chunk*.hdf5 files from build_ssl_hdf5().
+    checkpoint_path : str
+        Path to the pretrained MoCo v2 ResNet50 checkpoint.
+    outfile : str
+        Output HDF5 path.
+    batch_size : int
+        GPU batch size.
+    device : str or None
+        'cuda', 'cpu', or None (auto-detect).
+    overwrite : bool
+        Overwrite existing output file.
+    """
+    import torch
+    import h5py
+
+    if os.path.isfile(outfile) and not overwrite:
+        log.info(f'Skipping existing {outfile}')
+        return
+
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = torch.device(device)
+    log.info(f'Using device: {device}')
+
+    backbone, projector = _load_moco_backbone_and_projector(checkpoint_path, device)
+    log.info(f'Loaded backbone + projector from {checkpoint_path}')
+
+    tmpfile = outfile + '.tmp'
+    with h5py.File(tmpfile, 'w') as F:
+        F.attrs['checkpoint'] = checkpoint_path
+        emb_ds   = F.create_dataset('embeddings',  shape=(0, 2048), maxshape=(None, 2048),
+                                    dtype=np.float32, chunks=(1000, 2048))
+        proj_ds  = F.create_dataset('projections', shape=(0, 128),  maxshape=(None, 128),
+                                    dtype=np.float32, chunks=(1000, 128))
+        sgaid_ds = F.create_dataset('sgaid', shape=(0,), maxshape=(None,), dtype=np.int64)
+        ra_ds    = F.create_dataset('ra',    shape=(0,), maxshape=(None,), dtype=np.float64)
+        dec_ds   = F.create_dataset('dec',   shape=(0,), maxshape=(None,), dtype=np.float64)
+
+        n_total = 0
+        for ifile, hdf5_file in enumerate(hdf5_files):
+            log.info(f'Processing {os.path.basename(hdf5_file)} ({ifile+1}/{len(hdf5_files)})')
+
+            with h5py.File(hdf5_file, 'r') as H:
+                images = H['images'][:]
+                sgaids = H['sgaid'][:]
+                ras    = H['ra'][:]
+                decs   = H['dec'][:]
+
+            n = len(images)
+            chunk_embs  = np.zeros((n, 2048), np.float32)
+            chunk_projs = np.zeros((n, 128),  np.float32)
+
+            report_every = max(batch_size, n // 10)
+            last_reported = -1
+            with torch.no_grad():
+                for start in range(0, n, batch_size):
+                    end = min(start + batch_size, n)
+                    batch = torch.from_numpy(images[start:end]).to(device)
+                    emb = backbone(batch)
+                    chunk_embs[start:end]  = emb.cpu().numpy()
+                    chunk_projs[start:end] = projector(emb).cpu().numpy()
+                    milestone = end // report_every
+                    if milestone != last_reported:
+                        log.info(f'  {end:,d} / {n:,d}')
+                        last_reported = milestone
+
+            emb_ds.resize(n_total + n, axis=0)
+            proj_ds.resize(n_total + n, axis=0)
+            sgaid_ds.resize(n_total + n, axis=0)
+            ra_ds.resize(n_total + n, axis=0)
+            dec_ds.resize(n_total + n, axis=0)
+
+            emb_ds[n_total:n_total+n]   = chunk_embs
+            proj_ds[n_total:n_total+n]  = chunk_projs
+            sgaid_ds[n_total:n_total+n] = sgaids
+            ra_ds[n_total:n_total+n]    = ras
+            dec_ds[n_total:n_total+n]   = decs
+
+            n_total += n
+            log.info(f'  cumulative: {n_total:,d} objects')
+
+    os.rename(tmpfile, outfile)
+    log.info(f'Wrote {outfile}: {n_total:,d} objects')
+
 
 def ssl_match(path, checkpoint_path='resnet50.ckpt', output_dir=None,
               similarity=False, threshold=0.5):

@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+"""Build HDF5 cutout dataset from SGA-2025 coadds for SSL inference.
+
+One-time script. Rescales all non-resolved SGA-2025 group mosaics to
+152x152 pixels and packs them into chunked HDF5 files.
+
+Usage (laptop):
+  SGA2025-ssl-cutouts --region=dr11-south --outdir=/path/to/output --mp=8
+
+Usage (NERSC, interactive):
+  salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+  source $IMPY_DIR/bin/SGAML-env-nersc
+
+  SGA2025-ssl-cutouts --region=dr11-north --outdir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl --mp=32
+  SGA2025-ssl-cutouts --region=dr11-south --outdir=/global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/ssl --mp=32
+
+"""
+import os
+import argparse
+
+from SGA.SGA import read_sga_sample, sga_data_dir
+from SGA.ssl import select_ssl_sample, build_ssl_hdf5
+from SGA.logger import log
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Build HDF5 SSL cutout dataset from SGA-2025 coadds.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--region', required=True,
+                        choices=['dr11-south', 'dr11-north'],
+                        help='Survey region.')
+    parser.add_argument('--datadir', default=None,
+                        help='SGA data directory (defaults to $SGA_DATA_DIR).')
+    parser.add_argument('--outdir', required=True,
+                        help='Output directory for HDF5 files.')
+    parser.add_argument('--chunksize', type=int, default=50000,
+                        help='Galaxies per HDF5 chunk file.')
+    parser.add_argument('--mp', type=int, default=1,
+                        help='Worker processes for image rescaling.')
+    parser.add_argument('--ntest', type=int, default=None,
+                        help='Process only the first N objects (for testing).')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Overwrite existing HDF5 files.')
+    args = parser.parse_args()
+
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('spawn')
+
+    datadir = args.datadir or sga_data_dir()
+
+    sample, _ = read_sga_sample(region=args.region)
+    sample = select_ssl_sample(sample)
+
+    if args.ntest is not None:
+        log.info(f'--ntest: trimming to first {args.ntest} objects.')
+        sample = sample[:args.ntest]
+
+    build_ssl_hdf5(sample, args.region, datadir, args.outdir,
+                   chunksize=args.chunksize, overwrite=args.overwrite, mp=args.mp)
+
+
+if __name__ == '__main__':
+    main()
