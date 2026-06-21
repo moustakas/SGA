@@ -30,6 +30,12 @@ galaxies to date.
 
 .. toctree::
    :maxdepth: 1
+   :caption: Data Releases
+
+   sga2025
+
+.. toctree::
+   :maxdepth: 1
    :caption: Tutorials
 
 .. toctree::
