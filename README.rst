@@ -1,6 +1,10 @@
 Siena Galaxy Atlas
 ==================
 
+.. image:: https://readthedocs.org/projects/sga/badge/?version=latest
+   :target: https://sga.readthedocs.io/en/latest/
+   :alt: Documentation Status
+
 The Siena Galaxy Atlas (SGA) is a multiwavelength, diameter-limited
 atlas of nearby galaxies built using the `DESI Legacy Imaging
 Surveys`_ (the *Legacy Surveys*). For each galaxy, the SGA delivers
