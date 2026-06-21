@@ -11,16 +11,31 @@ extragalactic sky, the SGA also serves as a foundational reference catalog for
 wide-field cosmological surveys such as the `Dark Energy Spectroscopic
 Instrument (DESI) <https://desi.lbl.gov>`_.
 
-The `SGA-2020 <https://sga.legacysurvey.org>`_ was released in January 2021
-and contains 383,620 galaxies selected primarily from the HyperLeda
-extragalactic database, built on deep *grz* optical imaging from *Legacy
-Surveys* DR9 and all-sky mid-infrared imaging from unWISE (W1–W4).
+----
 
-SGA-2025 expands the atlas to nearly 500,000 galaxies across approximately
-30,000 deg² of the extragalactic sky using *Legacy Surveys* DR11. It adds
-*i*-band optical mosaics, GALEX NUV/FUV imaging, and a richer suite of
-photometric measurements, making it the most complete census of large, resolved
-galaxies to date.
+.. grid:: 1 1 2 2
+   :gutter: 3
+
+   .. grid-item-card:: SGA-2025
+      :link: sga2025
+      :link-type: doc
+      :class-card: sd-border-2
+
+      **Current release** — ~500,000 galaxies across 30,000 deg²
+
+      *griz* optical (DR11) · unWISE W1–W4 · GALEX FUV/NUV
+
+      Data model, catalog access, and per-group file inventory.
+
+   .. grid-item-card:: SGA-2020
+      :link: https://sga.legacysurvey.org
+      :link-type: url
+
+      383,620 galaxies · *grz* optical (DR9) · unWISE W1–W4
+
+      Released January 2021.
+
+----
 
 .. toctree::
    :maxdepth: 1
