@@ -23,9 +23,15 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
 - `archive/bin-SGA2020/` - Archived SGA-2020 scripts (paper and data release complete)
 - `py/SGA/data/SGA2025/` - Reference CSVs used during SGA-2025 processing (overlays, VI lists, etc.)
 - `py/SGA/data/SGA2020/` - Small SGA-2020 reference files
-- `doc/SGA2025/` - SGA-2025 analysis and calibration notebooks
-- `doc/SGA2020/` - SGA-2020 QA notebooks (archived)
-- `doc/tutorials/` - User-facing tutorial notebooks
+- `doc/` - Sphinx documentation source (RTD, theme: furo). Key files:
+  - `conf.py`, `index.rst`, `install.rst` - Sphinx config and landing pages
+  - `sga2025.rst` - SGA-2025 data release page (naming, data model, file inventory)
+  - `_static/custom.css` - custom CSS (section spacing, table alignment)
+  - `requirements.txt` - doc build dependencies (sphinx, furo, sphinx-design)
+  - `SGA2025/` - SGA-2025 analysis and calibration notebooks (distinct from `sga2025.rst`)
+  - `SGA2020/` - SGA-2020 QA notebooks (archived)
+  - `tutorials/` - User-facing tutorial notebooks
+- `science/SGA2026/` - SGA-2026/27 planning documents and future science analysis (see `completeness-plan.md`)
 - `science/SGA2025/` - Science analysis notebooks for the SGA-2025 paper
 - `science/SGA2020/` - SGA-2020 science figures and scripts
 - `etc/` - Conda environment specs and NERSC/laptop setup scripts (see `etc/README.md`)
@@ -64,6 +70,23 @@ bash etc/create-env-laptop.sh
 
 The shared NERSC environment lives at:
 `/global/common/software/desi/users/ioannis/SGA`
+
+## Documentation
+
+Sphinx docs are built from `doc/` (not `docs/`) and hosted on Read the Docs
+under the project slug **SGA** → `https://sga.readthedocs.io`.
+
+Build locally:
+```bash
+pip install -e ".[doc]"          # installs sphinx, furo, sphinx-design
+sphinx-build doc doc/_build/html
+```
+
+The `[doc]` optional extras are defined in `pyproject.toml`. RTD build
+configuration is in `.readthedocs.yaml` (points at `doc/conf.py`, Python 3.12).
+
+Note: `doc/SGA2025/` (notebooks) and `doc/sga2025.rst` (RTD page) are
+different things — don't confuse them.
 
 ## Key Commands
 
@@ -135,6 +158,33 @@ No automated test suite. QA is performed through:
 - Source detection pipeline: `astrometry.net` (built from source), `tractor`, `legacypipe`
 - Astronomy: `astropy`, `fitsio`, `photutils`, `astroquery`, `pydl`
 - Computing: `numpy`, `scipy`, `matplotlib`, `mpi4py`
+
+## SGA-2026/27 Completeness Extension
+
+The next SGA release targets improved completeness at smaller angular diameters (roughly 15–45 arcsec), without repeating the visual inspection (VI) bottleneck that dominated SGA-2025. The full plan is in `science/SGA2026/completeness-plan.md`.
+
+### Two candidate populations
+
+- **Shredded galaxies** (blue/irregular dwarfs): identified via `FRACFLUX > 0.2` in 2+ grz bands in the DR11 Tractor catalogs. Tractor splits these into multiple sub-threshold sources; photometric reconstruction recovers the parent galaxy.
+- **Compact spheroidals** (early-type dwarfs, cluster members): single clean Tractor sources (`FRACFLUX ≤ 0.2`, `TYPE = DEV/SER`) below the SGA-2025 diameter threshold. No reconstruction needed; selection is the challenge.
+
+### Pipeline stages
+
+1. **DR11 Tractor pre-filter**: bright star masks (Gaia-based), Galactic cirrus rejection (SFD E(B-V) + bitmasks), extended-source selection.
+2. **Shredded galaxy reconstruction**: Manwadkar et al. pipeline (image segmentation → color-based association → curve-of-growth photometry). At low redshift, (g-r)_rest ≈ (g-r)_obs (dust-corrected), so no K-correction is needed. To be re-implemented in `py/SGA/shredding.py`.
+3. **SSL embedding similarity**: run ssl-legacysurvey inference on reconstructed cutouts; Faiss kNN against a combined anchor set of SGA-2025 galaxies + Manwadkar's DESI DR9 dwarf catalog embeddings.
+4. **ZooBot morphology filter**: independent second signal (galaxy vs. artifact probability). Not yet validated on this application — test on a known sample first.
+5. **Targeted VI**: only on the uncertain middle tier; confirmed results feed back into the SSL anchor set.
+
+### Key collaborators and external code
+
+- **Viraj Manwadkar** (Stanford/SLAC): shredding pipeline, DESI DR1 dwarf galaxy catalog, pre-computed DR9 SSL embeddings. Code: `https://github.com/virajvman/desi_dwarfs`. Paper: Manwadkar et al. (in prep.) "When Galaxies Fall Apart".
+- **Risa Wechsler** (Stanford/SLAC): co-PI on Manwadkar et al.
+
+### Planned new modules
+
+- `py/SGA/shredding.py` — shredded galaxy reconstruction (based on Manwadkar pipeline)
+- `bin/SGA2026-mpi` — MPI driver for SGA-2026 processing
 
 ## ML Integration (ssl-legacysurvey, Zoobot)
 
