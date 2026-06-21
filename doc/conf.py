@@ -16,6 +16,15 @@ extensions = [
 html_theme = "furo"
 html_title = "Siena Galaxy Atlas"
 
+html_theme_options = {
+    "source_repository": "https://github.com/moustakas/SGA/",
+    "source_branch": "main",
+    "source_directory": "doc/",
+}
+
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
+
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable", None),

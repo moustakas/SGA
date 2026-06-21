@@ -11,10 +11,6 @@ The full data release is accessible at:
 
    https://portal.nersc.gov/project/cosmo/data/sga/2025/
 
-.. contents:: Contents
-   :local:
-   :depth: 2
-
 .. _naming:
 
 Naming Conventions
@@ -42,7 +38,7 @@ Two catalog columns identify a group:
 
 The encoding is ``RRRRR[p|m]DDDD`` where ``RRRRR`` = RA × 100 (five digits,
 zero-padded), the separator is ``p`` (positive Dec) or ``m`` (negative Dec),
-and ``DDDD`` = |Dec| × 100 (four digits, zero-padded), both at a precision of
+and ``DDDD`` = ``abs(Dec)`` × 100 (four digits, zero-padded), both at a precision of
 0.01° (36 arcsec). For example, a group centered at RA = 0.00°, Dec = −6.49°
 has ``GROUP_NAME = 00000m0649``.
 
@@ -63,6 +59,43 @@ Individual galaxies within a group are identified by:
 - ``OBJNAME`` (str30) — the common name from the input parent catalog
   (HyperLeda, NED, LVD, etc.).
 
+.. _survey-regions:
+
+Survey Regions
+--------------
+
+SGA-2025 covers two non-overlapping imaging regions drawn from *Legacy
+Surveys* Data Release 11 (DR11), which together span approximately 30,000 deg²
+of the extragalactic sky.
+
+**dr11-south** uses imaging from DECaLS (the Dark Energy Camera Legacy Survey),
+obtained with the Dark Energy Camera (DECam) at the 4-m Victor M. Blanco
+Telescope at Cerro Tololo Inter-American Observatory (CTIO). DECam provides
+four optical bands — *g*, *r*, *i*, and *z* — making the southern region the
+only one with *i*-band coverage.
+
+**dr11-north** combines two surveys covering the sky north of roughly Dec ≈
++32°:
+
+- **BASS** (Beijing-Arizona Sky Survey) — obtained with the 90Prime wide-field
+  imager at the University of Arizona's 2.3-m Bok telescope on Kitt Peak,
+  providing *g* and *r* bands.
+- **MzLS** (Mayall z-band Legacy Survey) — obtained with the Mosaic-3 camera
+  at the NOAO 4-m Mayall telescope on Kitt Peak, providing the *z* band.
+
+The northern region therefore has three optical bands (*g*, *r*, *z*) with no
+*i*-band coverage. The ``BANDS`` column in the merged catalog records which
+bands are actually available for each galaxy.
+
+In addition to the optical imaging, **all SGA-2025 sources** include:
+
+- **Mid-infrared**: unWISE W1 (3.4 μm), W2 (4.6 μm), W3 (12 μm), and W4
+  (22 μm) mosaics, derived from the full-depth coadded WISE satellite imaging.
+- **Ultraviolet**: GALEX FUV (~1530 Å) and NUV (~2310 Å) mosaics where GALEX
+  sky coverage exists. The GALEX footprint is incomplete; FUV and NUV mosaic
+  files are always present in the per-group directory but may contain no data
+  for sources outside the GALEX footprint.
+
 .. _merged-catalogs:
 
 Merged Catalogs
@@ -79,7 +112,7 @@ Two files are provided, one per imaging region:
 .. code-block:: none
 
    SGA2025-beta-v1.6-dr11-south.fits    (~363,000 galaxies)
-   SGA2025-beta-v1.6-dr11-north.fits    (~130,000 galaxies)
+   SGA2025-beta-v1.6-dr11-north.fits    (~86,000 galaxies)
 
 .. note::
 
@@ -365,8 +398,8 @@ Data Model: TRACTOR Extension
 
 The ``TRACTOR`` extension is row-matched to ``ELLIPSE`` and contains
 Tractor source-fitting parameters for each SGA galaxy and all sources
-detected within its ellipse. See the `legacypipe documentation
-<https://legacypipe.readthedocs.io>`_ for the full Tractor data model.
+detected within its ellipse. See the `Legacy Surveys documentation
+<https://www.legacysurvey.org/>`_ for the full Tractor data model.
 
 .. _bitmasks:
 
