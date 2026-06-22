@@ -1,0 +1,300 @@
+#!/usr/bin/env python
+"""
+SGA2025-ned-merge: merge ned-byname-{region}.csv and ned-bypos-{region}.csv
+into a single per-region FITS catalog.
+
+For each SGAID the resolution logic is:
+  1. Compute BYNAME_SEP_ARCSEC: angular separation between the SGA position
+     and the NED coordinates returned by the byname overview query.
+  2. Use byname when:  byname ERROR is empty  AND  BYNAME_SEP_ARCSEC <= threshold
+  3. Otherwise fall back to bypos overview data and set the appropriate flag bit(s).
+
+NED_FLAG bits
+-------------
+  0x01  FLAG_LARGE_SEP    byname positional offset > threshold  ->  used bypos
+  0x02  FLAG_BYNAME_FAIL  byname error / no-match               ->  used bypos
+  0x04  FLAG_BYPOS_FAIL   bypos also error / no-match           ->  result may be incomplete
+
+The bypos columns NED_NAME, SEPARATION_ARCSEC, and NMATCHES are always written
+regardless of which source was chosen, for reference.
+
+Outputs (written to --outdir)
+------------------------------
+  ned-merged-dr11-south.fits
+  ned-merged-dr11-north.fits
+
+Examples
+--------
+  SGA2025-ned-merge --outdir /path/to/nedquery
+  SGA2025-ned-merge --outdir /path/to/nedquery --region dr11-south
+  SGA2025-ned-merge --outdir /path/to/nedquery --sep-threshold 5
+"""
+import os
+import csv
+import argparse
+import numpy as np
+from astropy.table import Table
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+from SGA.SGA import read_sga_sample
+from SGA.logger import log
+
+# ---------------------------------------------------------------------------
+# Flag bits
+# ---------------------------------------------------------------------------
+FLAG_LARGE_SEP   = 0x01   # byname offset > threshold -> used bypos
+FLAG_BYNAME_FAIL = 0x02   # byname error/no-match -> used bypos
+FLAG_BYPOS_FAIL  = 0x04   # bypos also error/no-match -> result incomplete
+
+# ---------------------------------------------------------------------------
+# Column type classification
+# ---------------------------------------------------------------------------
+# float64: coordinates and redshifts
+F64_COLS = frozenset(['NED_RA', 'NED_DEC', 'NED_Z', 'NED_Z_UNC'])
+
+# float32: all other numeric floats
+F32_COLS = frozenset([
+    'NED_POS_UNC_SMA', 'NED_POS_UNC_SMI', 'NED_POS_UNC_PA',
+    'NED_DIST', 'NED_DIST_UNC', 'NED_DIAM', 'NED_DIAM_KPC',
+    'SEPARATION_ARCSEC', 'BYNAME_SEP_ARCSEC',
+])
+
+# int32: integer fields (SGAID uses int64, handled separately)
+I32_COLS = frozenset(['N_CROSSIDS', 'NMATCHES', 'NED_FLAG'])
+
+# OVERVIEW_FIELDS: columns present in both byname and bypos CSVs
+OVERVIEW_FIELDS = [
+    'CROSSIDS', 'N_CROSSIDS',
+    'NED_NOTES', 'NED_RA_S', 'NED_DEC_S', 'NED_RA', 'NED_DEC',
+    'NED_POS_UNC_SMA', 'NED_POS_UNC_SMI', 'NED_POS_UNC_PA', 'NED_POS_REF',
+    'NED_Z', 'NED_Z_UNC', 'NED_Z_REF',
+    'NED_DIST', 'NED_DIST_UNC',
+    'NED_EMREGION', 'NED_TYPE', 'NED_MORPH', 'NED_MORPH_REF',
+    'NED_ACTIVITY', 'NED_ACTIVITY_REF', 'NED_OTHER',
+    'NED_DIAM_BAND', 'NED_DIAM', 'NED_DIAM_REF', 'NED_DIAM_KPC',
+    'NED_FOOTNOTE',
+]
+
+OUT_COLS = (
+    ['SGAID', 'OBJNAME',
+     'NED_NAME', 'SEPARATION_ARCSEC', 'NMATCHES',
+     'BYNAME_SEP_ARCSEC', 'NED_SOURCE', 'NED_FLAG',
+     'NED_ERROR_BYNAME', 'NED_ERROR_BYPOS']
+    + OVERVIEW_FIELDS
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def load_csv(path):
+    """Load a NED query CSV; return dict[int SGAID -> row dict], or {} if missing."""
+    rows = {}
+    if not os.path.exists(path):
+        log.warning(f'File not found: {path}')
+        return rows
+    with open(path, newline='') as f:
+        for row in csv.DictReader(f):
+            try:
+                rows[int(row['SGAID'])] = row
+            except (KeyError, ValueError):
+                pass
+    return rows
+
+
+def _fval(s, dtype):
+    """Parse a CSV string to float dtype; return NaN on empty or non-numeric input."""
+    try:
+        return dtype(s)
+    except (ValueError, TypeError):
+        return dtype('nan')
+
+
+def _ival(s, missing=-1):
+    """Parse a CSV string to int; return missing sentinel on failure."""
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return missing
+
+
+# ---------------------------------------------------------------------------
+# Per-region merge
+# ---------------------------------------------------------------------------
+def merge_region(region, outdir, sep_threshold):
+    byname_path = os.path.join(outdir, f'ned-byname-{region}.csv')
+    bypos_path  = os.path.join(outdir, f'ned-bypos-{region}.csv')
+    outpath     = os.path.join(outdir, f'ned-merged-{region}.fits')
+
+    log.info(f'Loading {region}')
+    byname = load_csv(byname_path)
+    bypos  = load_csv(bypos_path)
+    log.info(f'  byname: {len(byname):,d} rows   bypos: {len(bypos):,d} rows')
+
+    _, cat  = read_sga_sample(region=region)
+    sga_id  = cat['SGAID'].value
+    sga_ra  = cat['RA'].value
+    sga_dec = cat['DEC'].value
+    sga_obj = cat['OBJNAME'].value
+    n = len(sga_id)
+    log.info(f'  SGA sample: {n:,d} objects')
+
+    # Pre-compute byname positional separations vectorially.
+    # Only attempt for rows where byname returned no error.
+    ned_ra  = np.full(n, np.nan)
+    ned_dec = np.full(n, np.nan)
+    for i in range(n):
+        brow = byname.get(int(sga_id[i]), {})
+        if brow.get('ERROR', 'x') == '':
+            try:
+                ned_ra[i]  = float(brow['NED_RA'])
+                ned_dec[i] = float(brow['NED_DEC'])
+            except (KeyError, ValueError, TypeError):
+                pass
+
+    byname_seps = np.full(n, np.nan)
+    valid = ~(np.isnan(ned_ra) | np.isnan(ned_dec))
+    if np.any(valid):
+        c1 = SkyCoord(ra=sga_ra[valid] * u.deg, dec=sga_dec[valid] * u.deg)
+        c2 = SkyCoord(ra=ned_ra[valid] * u.deg, dec=ned_dec[valid] * u.deg)
+        byname_seps[valid] = c1.separation(c2).arcsec
+    log.info(f'  Separations computed for {int(np.sum(valid)):,d} byname positions')
+
+    # Build output columns
+    cols = {c: [] for c in OUT_COLS}
+
+    for i in range(n):
+        sid  = int(sga_id[i])
+        brow = byname.get(sid, {})
+        prow = bypos.get(sid, {})
+
+        byname_err = brow.get('ERROR', 'missing')
+        bypos_err  = prow.get('ERROR', 'missing')
+        byname_sep = byname_seps[i]
+
+        flag = 0
+        if byname_err != '':
+            flag |= FLAG_BYNAME_FAIL
+        elif np.isnan(byname_sep) or byname_sep > sep_threshold:
+            flag |= FLAG_LARGE_SEP
+        if flag and bypos_err != '':
+            flag |= FLAG_BYPOS_FAIL
+
+        # Source selection:
+        #   flag == 0                          -> byname (clean)
+        #   LARGE_SEP, bypos ok               -> bypos  (NED position off, bypos rescued it)
+        #   LARGE_SEP, bypos also failed      -> byname (NED pos off but name match still valid)
+        #   BYNAME_FAIL, bypos ok             -> bypos
+        #   BYNAME_FAIL, bypos also failed    -> none
+        if flag == 0:
+            src, source_str = brow, 'byname'
+        elif not (flag & FLAG_BYPOS_FAIL):
+            src, source_str = prow, 'bypos'
+        elif not (flag & FLAG_BYNAME_FAIL):
+            src, source_str = brow, 'byname'   # position off but name match still valid
+        else:
+            src, source_str = {}, 'none'
+
+        # Identification and resolution columns
+        cols['SGAID'].append(sid)
+        cols['OBJNAME'].append(str(sga_obj[i]))
+        ned_name = str(prow.get('NED_NAME', ''))
+        if not ned_name:
+            crossids_raw = src.get('CROSSIDS', '')
+            if crossids_raw:
+                ned_name = crossids_raw.split('|')[0].strip()
+        cols['NED_NAME'].append(ned_name)
+        cols['SEPARATION_ARCSEC'].append(_fval(prow.get('SEPARATION_ARCSEC', ''), np.float32))
+        cols['NMATCHES'].append(_ival(prow.get('NMATCHES', '')))
+        cols['BYNAME_SEP_ARCSEC'].append(np.float32(byname_sep))
+        cols['NED_SOURCE'].append(source_str)
+        cols['NED_FLAG'].append(np.int32(flag))
+        cols['NED_ERROR_BYNAME'].append(byname_err)
+        cols['NED_ERROR_BYPOS'].append(bypos_err)
+
+        # OVERVIEW_FIELDS from the winning source
+        for col in OVERVIEW_FIELDS:
+            raw = src.get(col, '')
+            if col in F64_COLS:
+                cols[col].append(_fval(raw, np.float64))
+            elif col in F32_COLS:
+                cols[col].append(_fval(raw, np.float32))
+            elif col in I32_COLS:
+                cols[col].append(_ival(raw))
+            else:
+                cols[col].append(str(raw))
+
+    # Assemble and write the FITS table
+    t = Table()
+    for col in OUT_COLS:
+        vals = cols[col]
+        if col in F64_COLS:
+            t[col] = np.array(vals, dtype=np.float64)
+        elif col in F32_COLS:
+            t[col] = np.array(vals, dtype=np.float32)
+        elif col == 'SGAID':
+            t[col] = np.array(vals, dtype=np.int64)
+        elif col in I32_COLS:
+            t[col] = np.array(vals, dtype=np.int32)
+        else:
+            t[col] = vals   # astropy infers fixed-length string for FITS
+
+    t.write(outpath, overwrite=True)
+    log.info(f'  Wrote {outpath}')
+
+    # Summary statistics -> stdout
+    flags   = t['NED_FLAG']
+    sources = np.asarray(t['NED_SOURCE'])
+    n_byname = int(np.sum(sources == 'byname'))
+    n_bypos  = int(np.sum(sources == 'bypos'))
+    n_none   = int(np.sum(sources == 'none'))
+    n_large  = int(np.sum((flags & FLAG_LARGE_SEP)   != 0))
+    n_bfail  = int(np.sum((flags & FLAG_BYNAME_FAIL)  != 0))
+    n_pfail  = int(np.sum((flags & FLAG_BYPOS_FAIL)   != 0))
+    n_any    = int(np.sum(flags != 0))
+
+    sga_id_set  = set(int(x) for x in sga_id)
+    n_no_byname = len(sga_id_set - set(byname.keys()))
+    n_no_bypos  = len(sga_id_set - set(bypos.keys()))
+
+    pct = lambda k: 100.0 * k / n if n else 0.0
+
+    print(f'\n--- {region} summary ({n:,d} galaxies, sep threshold {sep_threshold:.1f}") ---')
+    print(f'  NED_SOURCE = byname  : {n_byname:>8,d}  ({pct(n_byname):5.1f}%)')
+    print(f'  NED_SOURCE = bypos   : {n_bypos:>8,d}  ({pct(n_bypos):5.1f}%)')
+    print(f'  NED_SOURCE = none    : {n_none:>8,d}  ({pct(n_none):5.1f}%)')
+    print()
+    print( '  NED_FLAG bits:')
+    print(f'    LARGE_SEP   (0x01) : {n_large:>8,d}  ({pct(n_large):5.1f}%)')
+    print(f'    BYNAME_FAIL (0x02) : {n_bfail:>8,d}  ({pct(n_bfail):5.1f}%)')
+    print(f'    BYPOS_FAIL  (0x04) : {n_pfail:>8,d}  ({pct(n_pfail):5.1f}%)')
+    print(f'    any flag set       : {n_any:>8,d}  ({pct(n_any):5.1f}%)')
+    print()
+    print(f'  Missing from byname CSV : {n_no_byname:>8,d}')
+    print(f'  Missing from bypos  CSV : {n_no_bypos:>8,d}')
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--outdir', required=True,
+                        help='Directory containing input CSVs and for output FITS')
+    parser.add_argument('--region', choices=['dr11-south', 'dr11-north'],
+                        help='Process one region only (default: both)')
+    parser.add_argument('--sep-threshold', type=float, default=3.0,
+                        help='Byname positional offset threshold in arcsec (default: 3.0)')
+    args = parser.parse_args()
+
+    regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
+    for region in regions:
+        merge_region(region, args.outdir, args.sep_threshold)
+
+
+if __name__ == '__main__':
+    main()
