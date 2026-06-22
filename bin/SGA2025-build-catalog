@@ -1,0 +1,422 @@
+#!/usr/bin/env python
+"""
+SGA2025-build-catalog: merge the SGA beta catalog, NED cross-match results,
+and DESI DR1 redshifts into a unified per-region FITS catalog.
+
+Redshift resolution
+-------------------
+For each galaxy a single "best" DESI spectrum is selected from the DR1 match
+table using the following priority:
+
+  1. Filter to ZCAT_PRIMARY=True to deduplicate repeat observations of the
+     same TARGETID (DESI's highest-S/N coadd selection).
+  2. Prefer SPECTYPE='GALAXY' AND ZWARN=0.
+  3. Fall back to ZWARN=0 with any SPECTYPE if no clean GALAXY spectrum exists.
+  4. Among surviving candidates, pick the row with the highest DELTACHI2.
+
+     Note: target-bit logic (e.g. BGS_TARGET != 0) could be used to break ties
+     before DELTACHI2, but is omitted because secondary-program observations are
+     equally valid redshift sources.
+
+  5. If no ZWARN=0 spectrum survives, the galaxy gets no DESI redshift
+     (Z_DESI=NaN, sentinel values in other DESI columns).
+
+The adopted redshift (Z_ADOPTED) uses DESI when available, otherwise NED
+(Z_NED). A Z_FLAG bit is set when both are present but differ by more than
+--vdiff-threshold km/s.
+
+Dtype validation
+----------------
+Every column in the beta catalog is checked against SGA_datamodel; any dtype
+mismatch is corrected before writing. The known case is REGION (int64 -> int16).
+
+Output
+------
+  {outdir}/SGA2025-{region}.fits   (EXTNAME='SGA2025')
+
+Examples
+--------
+  SGA2025-build-catalog --neddir /path/nedquery \\
+                         --redshiftdir /path/redshifts \\
+                         --outdir /path/output
+
+  SGA2025-build-catalog --region dr11-south --vdiff-threshold 500 \\
+                         --neddir /path/nedquery \\
+                         --redshiftdir /path/redshifts \\
+                         --outdir /path/output
+"""
+import os
+import re
+import argparse
+from collections import defaultdict
+
+import numpy as np
+import fitsio
+from astropy.table import Table, Column
+import astropy.units as u
+
+from SGA.SGA import read_sga_sample, SGA_datamodel
+from SGA.io import table_to_fitsio
+from SGA.logger import log
+
+
+C_KMS = 299792.458  # km/s
+
+# Z_FLAG bits
+Z_FLAG_DISCREPANCY = 0x01   # |Delta cz (DESI, NED)| > vdiff_threshold
+
+# ---------------------------------------------------------------------------
+# NED columns to carry into the output catalog.
+# Tuples: (source column in ned-merged file, output column name, astropy unit)
+# NED_Z / NED_Z_UNC are renamed Z_NED / ZERR_NED for naming symmetry with
+# Z_DESI / ZERR_DESI.
+# ---------------------------------------------------------------------------
+NED_CARRY = [
+    ('NED_NAME',          'NED_NAME',        None),
+    ('CROSSIDS',          'CROSSIDS',        None),
+    ('N_CROSSIDS',        'N_CROSSIDS',      None),
+    ('NED_Z',             'Z_NED',           None),
+    ('NED_Z_UNC',         'ZERR_NED',        None),
+    ('NED_Z_REF',         'NED_Z_REF',       None),
+    ('NED_DIST',          'NED_DIST',        u.Mpc),
+    ('NED_DIST_UNC',      'NED_DIST_UNC',    u.Mpc),
+    ('NED_TYPE',          'NED_TYPE',        None),
+    ('NED_MORPH',         'NED_MORPH',       None),
+    ('NED_FLAG',          'NED_FLAG',        None),
+    ('NED_SOURCE',        'NED_SOURCE',      None),
+    ('BYNAME_SEP_ARCSEC', 'NED_BYNAME_SEP', u.arcsec),
+]
+
+# DESI output columns: (name, numpy dtype, astropy unit)
+DESI_COLS = [
+    ('N_DESI',         np.int32,   None),
+    ('TARGETID_DESI',  np.int64,   None),
+    ('SURVEY_DESI',    'U7',       None),
+    ('Z_DESI',         np.float64, None),
+    ('ZERR_DESI',      np.float64, None),
+    ('ZWARN_DESI',     np.int64,   None),
+    ('DELTACHI2_DESI', np.float64, None),
+    ('SPECTYPE_DESI',  'U6',       None),
+]
+
+# Adopted redshift columns: (name, numpy dtype, astropy unit)
+ADOPTED_COLS = [
+    ('Z_ADOPTED',    np.float64, None),
+    ('ZERR_ADOPTED', np.float64, None),
+    ('Z_SOURCE',     'U4',       None),
+    ('Z_FLAG',       np.int16,   None),
+]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _detect_bands(beta):
+    """Infer (optical) bands and all_bands from beta catalog column names.
+
+    'bands'     <- optical bands, from R26_{band} column names.
+    'all_bands' <- all photometric bands, from COG_MTOT_{band} column names.
+    Both lists are returned in the order they appear in the catalog.
+    """
+    bands     = [re.sub(r'^R26_', '', c)
+                 for c in beta.colnames if re.match(r'^R26_[A-Z]+$', c)]
+    all_bands = [re.sub(r'^COG_MTOT_', '', c)
+                 for c in beta.colnames if re.match(r'^COG_MTOT_[A-Z0-9]+$', c)]
+    return bands, all_bands
+
+
+def _build_dm_ref(bands, all_bands):
+    """Return a 1-row SGA_datamodel reference table (zero-filled, no data copy).
+
+    Used solely to obtain the reference dtype and unit for each column.
+    """
+    dummy = Table({'SGAID': np.zeros(1, np.int64)})
+    return SGA_datamodel(dummy, bands, all_bands, copy=False)
+
+
+def _fix_dtypes(beta, dm):
+    """Cast beta columns whose dtype does not match the SGA_datamodel reference.
+
+    Returns a list of (column, old_dtype_str, new_dtype_str) for each fix.
+    """
+    fixes = []
+    for col in dm.colnames:
+        if col not in beta.colnames:
+            continue
+        ref = dm[col].dtype
+        cur = beta[col].dtype
+        if ref != cur:
+            beta[col] = beta[col].astype(ref)
+            fixes.append((col, str(cur), str(ref)))
+    return fixes
+
+
+def _strval(v):
+    """Return a stripped Python str regardless of whether v is bytes or str."""
+    if isinstance(v, (bytes, np.bytes_)):
+        return v.decode().strip()
+    return str(v).strip()
+
+
+def _str_arr_dtype(col):
+    """Return a numpy Unicode dtype wide enough for the string column col."""
+    dt = col.dtype
+    if dt.kind == 'U':
+        return dt
+    if dt.kind == 'S':
+        return f'U{dt.itemsize}'
+    return 'U100'
+
+
+def _select_desi(rows):
+    """Select the best DESI spectrum for one SGA galaxy.
+
+    rows : numpy structured array — all match rows for this SGAID.
+    Returns the selected row (numpy.void) or None if no good spectrum exists.
+
+    Note: target-bit logic (e.g. BGS_TARGET != 0) could be used to break
+    ties before DELTACHI2, but is omitted because secondary-program
+    observations are equally valid redshift sources.
+    """
+    # Step 1: keep only the primary coadd for each unique TARGETID
+    primary = rows[rows['ZCAT_PRIMARY'].astype(bool)]
+    if len(primary) == 0:
+        return None
+
+    spectypes = np.array([_strval(s) for s in primary['SPECTYPE']])
+    good      = primary['ZWARN'] == 0
+
+    # Step 2: prefer GALAXY + ZWARN==0; fall back to any ZWARN==0
+    pool = primary[(spectypes == 'GALAXY') & good]
+    if len(pool) == 0:
+        pool = primary[good]
+    if len(pool) == 0:
+        return None
+
+    # Step 3: highest DELTACHI2
+    return pool[np.argmax(pool['DELTACHI2'])]
+
+
+# ---------------------------------------------------------------------------
+# Per-region merge
+# ---------------------------------------------------------------------------
+def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold):
+    log.info(f'=== {region} ===')
+
+    # --- SGA beta catalog -------------------------------------------------
+    log.info('  Loading SGA beta catalog')
+    _, beta    = read_sga_sample(region=region)
+    bands, all_bands = _detect_bands(beta)
+    log.info(f'  Detected bands={bands}  all_bands={all_bands}')
+    dm    = _build_dm_ref(bands, all_bands)
+    fixes = _fix_dtypes(beta, dm)
+    if fixes:
+        for col, old, new in fixes:
+            log.info(f'  dtype fix: {col}  {old} -> {new}')
+    n = len(beta)
+    log.info(f'  {n:,d} galaxies')
+
+    # --- NED merged catalog -----------------------------------------------
+    ned_path     = os.path.join(neddir, f'ned-merged-{region}.fits')
+    log.info(f'  Loading {ned_path}')
+    ned_tbl      = Table(fitsio.read(ned_path))
+    ned_by_sgaid = {int(r['SGAID']): r for r in ned_tbl}
+
+    # --- DESI summary (N_DESI per galaxy) ---------------------------------
+    sum_path     = os.path.join(redshiftdir, f'SGA2025-DESI-DR1-summary-{region}.fits')
+    log.info(f'  Loading {sum_path}')
+    summary      = fitsio.read(sum_path, columns=['SGAID', 'N_DESI'])
+    ndesi_lookup = {int(r['SGAID']): int(r['N_DESI']) for r in summary}
+
+    # --- DESI matches (all spectra within SGA ellipses) -------------------
+    match_path = os.path.join(redshiftdir, f'SGA2025-DESI-DR1-matches-{region}.fits')
+    log.info(f'  Loading {match_path}')
+    matches = fitsio.read(match_path)
+    log.info(f'  {len(matches):,d} DESI match rows')
+
+    grp = defaultdict(list)
+    for i in range(len(matches)):
+        grp[int(matches['SGAID'][i])].append(i)
+    log.info(f'  {len(grp):,d} unique SGAIDs with DESI matches')
+
+    # --- Pre-allocate output arrays ---------------------------------------
+    desi_arrs = {
+        'N_DESI':         np.zeros(n, np.int32),
+        'TARGETID_DESI':  np.full(n, -1,        np.int64),
+        'SURVEY_DESI':    np.full(n, '',         dtype='U7'),
+        'Z_DESI':         np.full(n, np.nan,     np.float64),
+        'ZERR_DESI':      np.full(n, np.nan,     np.float64),
+        'ZWARN_DESI':     np.full(n, -1,         np.int64),
+        'DELTACHI2_DESI': np.full(n, np.nan,     np.float64),
+        'SPECTYPE_DESI':  np.full(n, '',         dtype='U6'),
+    }
+
+    ned_arrs = {}
+    for src, dst, _ in NED_CARRY:
+        if src not in ned_tbl.colnames:
+            continue
+        col = ned_tbl[src]
+        if col.dtype.kind == 'f':
+            ned_arrs[dst] = np.full(n, np.nan, col.dtype)
+        elif col.dtype.kind in ('i', 'u'):
+            ned_arrs[dst] = np.full(n, -1, col.dtype)
+        else:
+            ned_arrs[dst] = np.full(n, '', dtype=_str_arr_dtype(col))
+
+    adopted_arrs = {
+        'Z_ADOPTED':    np.full(n, np.nan, np.float64),
+        'ZERR_ADOPTED': np.full(n, np.nan, np.float64),
+        'Z_SOURCE':     np.full(n, '',     dtype='U4'),
+        'Z_FLAG':       np.zeros(n,        np.int16),
+    }
+
+    # Convenient handles for the two redshifts used in adoption logic
+    z_ned_arr    = ned_arrs.get('Z_NED')
+    zerr_ned_arr = ned_arrs.get('ZERR_NED')
+
+    # --- Main resolution loop --------------------------------------------
+    log.info('  Resolving redshifts')
+    for i in range(n):
+        sid = int(beta['SGAID'][i])
+
+        # DESI selection
+        desi_arrs['N_DESI'][i] = ndesi_lookup.get(sid, 0)
+        if sid in grp:
+            best = _select_desi(matches[grp[sid]])
+            if best is not None:
+                desi_arrs['TARGETID_DESI'][i]  = int(best['TARGETID'])
+                desi_arrs['SURVEY_DESI'][i]    = _strval(best['SURVEY'])
+                desi_arrs['Z_DESI'][i]         = float(best['Z'])
+                desi_arrs['ZERR_DESI'][i]      = float(best['ZERR'])
+                desi_arrs['ZWARN_DESI'][i]     = int(best['ZWARN'])
+                desi_arrs['DELTACHI2_DESI'][i] = float(best['DELTACHI2'])
+                desi_arrs['SPECTYPE_DESI'][i]  = _strval(best['SPECTYPE'])
+
+        # NED columns
+        nrow = ned_by_sgaid.get(sid)
+        if nrow is not None:
+            for src, dst, _ in NED_CARRY:
+                if dst not in ned_arrs:
+                    continue
+                val = nrow[src]
+                arr = ned_arrs[dst]
+                if arr.dtype.kind == 'f':
+                    try:
+                        arr[i] = float(val)
+                    except (ValueError, TypeError):
+                        pass   # sentinel NaN already in place
+                elif arr.dtype.kind in ('i', 'u'):
+                    try:
+                        arr[i] = int(val)
+                    except (ValueError, TypeError):
+                        pass   # sentinel -1 already in place
+                else:
+                    arr[i] = _strval(val)
+
+        # Adopted redshift (DESI preferred over NED)
+        z_desi   = desi_arrs['Z_DESI'][i]
+        z_ned    = z_ned_arr[i]    if z_ned_arr    is not None else np.nan
+        zerr_ned = zerr_ned_arr[i] if zerr_ned_arr is not None else np.nan
+
+        if not np.isnan(z_desi):
+            adopted_arrs['Z_ADOPTED'][i]    = z_desi
+            adopted_arrs['ZERR_ADOPTED'][i] = desi_arrs['ZERR_DESI'][i]
+            adopted_arrs['Z_SOURCE'][i]     = 'DESI'
+        elif not np.isnan(z_ned):
+            adopted_arrs['Z_ADOPTED'][i]    = z_ned
+            adopted_arrs['ZERR_ADOPTED'][i] = zerr_ned
+            adopted_arrs['Z_SOURCE'][i]     = 'NED'
+
+        # Z_FLAG: flag large DESI/NED discrepancy
+        if not np.isnan(z_desi) and not np.isnan(z_ned):
+            vdiff = C_KMS * abs(z_desi - z_ned) / (1.0 + z_ned)
+            if vdiff > vdiff_threshold:
+                adopted_arrs['Z_FLAG'][i] |= Z_FLAG_DISCREPANCY
+
+    # --- Assemble output Table -------------------------------------------
+    out = beta.copy()
+
+    # Propagate units from SGA_datamodel reference
+    for col in dm.colnames:
+        if col in out.colnames and dm[col].unit is not None:
+            out[col].unit = dm[col].unit
+
+    for name, dtype, unit in DESI_COLS:
+        out.add_column(Column(desi_arrs[name], name=name, unit=unit))
+
+    for src, dst, unit in NED_CARRY:
+        if dst in ned_arrs:
+            out.add_column(Column(ned_arrs[dst], name=dst, unit=unit))
+
+    for name, dtype, unit in ADOPTED_COLS:
+        out.add_column(Column(adopted_arrs[name], name=name, unit=unit))
+
+    # --- Write output ----------------------------------------------------
+    os.makedirs(outdir, exist_ok=True)
+    outpath = os.path.join(outdir, f'SGA2025-{region}.fits')
+    vals, names, units = table_to_fitsio(out)
+    with fitsio.FITS(outpath, 'rw', clobber=True) as F:
+        F.write(vals, names=names, units=units, extname='SGA2025')
+    log.info(f'  Wrote {outpath}')
+
+    # --- Summary statistics (stdout) -------------------------------------
+    pct = lambda k: 100.0 * k / n if n else 0.0
+    src_arr   = adopted_arrs['Z_SOURCE']
+    flag_arr  = adopted_arrs['Z_FLAG']
+    ndesi_arr = desi_arrs['N_DESI']
+
+    n_src_desi = int(np.sum(src_arr == 'DESI'))
+    n_src_ned  = int(np.sum(src_arr == 'NED'))
+    n_src_none = int(np.sum(src_arr == ''))
+    n_disc     = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY) != 0))
+
+    print(f'\n--- {region} summary ({n:,d} galaxies, vdiff threshold {vdiff_threshold:.0f} km/s) ---')
+    if fixes:
+        print('  Dtype fixes: ' + ', '.join(f'{c}: {o} -> {nw}' for c, o, nw in fixes))
+    print()
+    print(f'  Z_SOURCE = DESI  : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
+    print(f'  Z_SOURCE = NED   : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
+    print(f'  Z_SOURCE = none  : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
+    print()
+    print(f'  Z_FLAG DESI/NED discrepancy (> {vdiff_threshold:.0f} km/s):')
+    print(f'    {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
+    print()
+    print( '  N_DESI distribution:')
+    for label, mask in [
+            ('= 0',     ndesi_arr == 0),
+            ('= 1',     ndesi_arr == 1),
+            ('2–9',    (ndesi_arr >= 2)   & (ndesi_arr <= 9)),
+            ('10–99',  (ndesi_arr >= 10)  & (ndesi_arr <= 99)),
+            ('>= 100',  ndesi_arr >= 100)]:
+        k = int(np.sum(mask))
+        print(f'    {label:>6} : {k:>8,d}  ({pct(k):5.1f}%)')
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--neddir', required=True,
+                        help='Directory containing ned-merged-{region}.fits')
+    parser.add_argument('--redshiftdir', required=True,
+                        help='Directory containing DESI DR1 summary and matches files')
+    parser.add_argument('--outdir', required=True,
+                        help='Output directory for SGA2025-{region}.fits')
+    parser.add_argument('--region', choices=['dr11-south', 'dr11-north'],
+                        help='Process one region only (default: both)')
+    parser.add_argument('--vdiff-threshold', type=float, default=1000.0,
+                        help='DESI/NED velocity discrepancy threshold in km/s (default: 1000)')
+    args = parser.parse_args()
+
+    regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
+    for region in regions:
+        merge_region(region, args.neddir, args.redshiftdir,
+                     args.outdir, args.vdiff_threshold)
+
+
+if __name__ == '__main__':
+    main()
