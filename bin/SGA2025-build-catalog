@@ -19,23 +19,26 @@ For each galaxy a single "best" DESI spectrum is selected:
      ties before DELTACHI2, but is omitted because secondary-program
      observations are equally valid redshift sources.
 
-  If no ZWARN=0 spectrum survives, ZIVAR_DESI=0 (no adopted DESI redshift).
+  If no ZWARN=0 spectrum survives, Z_IVAR_DESI=0 (no adopted DESI redshift).
 
-The adopted redshift (Z) uses DESI when ZIVAR_DESI > 0, otherwise
-NED (Z_NED) when ZIVAR_NED > 0. A Z_FLAG bit is set when both are present
+The adopted redshift (Z) uses DESI when Z_IVAR_DESI > 0, otherwise
+NED (Z_NED) when Z_IVAR_NED > 0. A Z_FLAG bit is set when both are present
 but differ by more than --vdiff-threshold km/s.
 
 Sentinels
 ---------
-  Redshifts / IVARs : 0.   (ZIVAR=0 => no measurement; Z=0 is otherwise safe
+  Redshifts / IVARs : 0.   (Z_IVAR=0 => no measurement; Z=0 is otherwise safe
                              for the SGA because no member galaxy has z=0.000)
   Other floats      : -1.  (strictly negative, unphysical for dist/separation)
   Integer IDs       : -1
   Strings           : ''   (blank)
 
   NED_Z_UNC=0 in NED means "error not reported" (common in older catalogs).
-  These entries are assigned a nominal ZIVAR_NED = (1 / NED_Z_NOMINAL_ERR)^2
+  These entries are assigned a nominal Z_IVAR_NED = (1 / NED_Z_NOMINAL_ERR)^2
   rather than being treated as missing.
+
+  DIST_NED_IVAR=0 means either no NED distance or no formal distance
+  uncertainty was reported (unlike redshifts, no nominal default is assumed).
 
 Dtype validation
 ----------------
@@ -75,51 +78,234 @@ from SGA.io import table_to_fitsio
 from SGA.logger import log
 
 
-NED_Z_NOMINAL_ERR = 100./C_LIGHT # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
-FLOAT_SENTINEL    = -1.          # sentinel for non-redshift floats
-Z_FLAG_DISCREPANCY = 0x01        # |Delta cz (DESI, NED)| > vdiff_threshold
+NED_Z_NOMINAL_ERR  = 100. / C_LIGHT  # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
+FLOAT_SENTINEL     = -1.              # sentinel for floats without an IVAR companion
+Z_FLAG_DISCREPANCY = 0x01             # |Delta cz (DESI, NED)| > vdiff_threshold
+
+# NED_CARRY output columns that use 0. as their missing sentinel because they
+# have an IVAR companion column (IVAR=0 signals no measurement).
+NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
+
+# ---------------------------------------------------------------------------
+# Columns to drop from the output (from the beta catalog or NED_CARRY).
+# CROSSIDS is kept in NED_CARRY for GALAXY/ALTNAMES derivation but not output.
+# Add any column name here to exclude it from the final FITS file.
+# ---------------------------------------------------------------------------
+DROP_COLS = frozenset([
+    'CROSSIDS',   # internal; user-facing splits are GALAXY and ALTNAMES
+    'D26_REF',
+    'BX_INIT',
+    'BY_INIT',
+    'RA_INIT',
+    'DEC_INIT',
+    'SMA_INIT',
+    'DIAM_INIT',
+    'DIAM_INIT_REF',
+    'BA_INIT',
+    'PA_INIT',
+    'MAG_INIT',
+    'OPTFLUX',
+    'SMA_MASK',
+    'BX',
+    'BY',
+    'FITMODE',
+])
+
+# ---------------------------------------------------------------------------
+# Output column order.
+# Columns absent from this list are appended at the end in their original order.
+# Edit this list to reorganize the output table — no external file needed.
+# ---------------------------------------------------------------------------
+COL_ORDER = [
+    # --- Identification and sky position ---
+    'SGAID', 'SGANAME', 'GALAXY', 'ALTNAMES',
+    'OBJNAME',
+    'PGC', 'RA', 'DEC',
+    'RA_TRACTOR', 'DEC_TRACTOR',
+    'MORPH',
+    'SGAGROUP', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE', 'BANDS',
+    # --- Size and geometry (primary SGA product) ---
+    'D26', 'D26_ERR', 'BA', 'PA',
+    'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
+    # --- Adopted redshift and distance ---
+    'Z', 'Z_IVAR', 'Z_REF', 'Z_FLAG',
+    'DIST', 'DIST_IVAR', 'DIST_REF',
+    # --- DESI spectroscopy ---
+    'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
+    'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI',
+    # --- NED redshift and distance ---
+    'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_NED_IVAR', 'NED_FLAG',
+    # --- NED cross-match ---
+    #'NED_TYPE', 'NED_MORPH',
+    #'NED_FLAG',
+    #'NED_SOURCE', 'NED_BYNAME_SEP',
+    # --- Group finding ---
+    'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
+    'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
+    # --- Imaging quality and corrections ---
+    'EBV',
+    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_I', 'MW_TRANSMISSION_Z',
+    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4',
+    'MW_TRANSMISSION_FUV', 'MW_TRANSMISSION_NUV',
+    'PSFSIZE_G', 'PSFSIZE_R', 'PSFSIZE_I', 'PSFSIZE_Z',
+    'PSFDEPTH_G', 'PSFDEPTH_R', 'PSFDEPTH_I', 'PSFDEPTH_Z',
+    # --- Morphology (diagnostic) ---
+    'GINI_G', 'GINI_R', 'GINI_I', 'GINI_Z',
+    'GINI_W1', 'GINI_W2', 'GINI_W3', 'GINI_W4',
+    'GINI_FUV', 'GINI_NUV',
+    # --- Total magnitudes (curve of growth) ---
+    'COG_MTOT_G', 'COG_MTOT_R', 'COG_MTOT_I', 'COG_MTOT_Z',
+    'COG_MTOT_W1', 'COG_MTOT_W2', 'COG_MTOT_W3', 'COG_MTOT_W4',
+    'COG_MTOT_FUV', 'COG_MTOT_NUV',
+    'COG_MTOT_ERR_G', 'COG_MTOT_ERR_R', 'COG_MTOT_ERR_I', 'COG_MTOT_ERR_Z',
+    'COG_MTOT_ERR_W1', 'COG_MTOT_ERR_W2', 'COG_MTOT_ERR_W3', 'COG_MTOT_ERR_W4',
+    'COG_MTOT_ERR_FUV', 'COG_MTOT_ERR_NUV',
+    # --- Half-light radius (from CoG) ---
+    'SMA50_G', 'SMA50_R', 'SMA50_I', 'SMA50_Z',
+    'SMA50_W1', 'SMA50_W2', 'SMA50_W3', 'SMA50_W4',
+    'SMA50_FUV', 'SMA50_NUV',
+    'SMA50_ERR_G', 'SMA50_ERR_R', 'SMA50_ERR_I', 'SMA50_ERR_Z',
+    'SMA50_ERR_W1', 'SMA50_ERR_W2', 'SMA50_ERR_W3', 'SMA50_ERR_W4',
+    'SMA50_ERR_FUV', 'SMA50_ERR_NUV',
+    # --- Optical isophotal radii ---
+    'R22_G', 'R22_R', 'R22_I', 'R22_Z',
+    'R22_ERR_G', 'R22_ERR_R', 'R22_ERR_I', 'R22_ERR_Z',
+    'R23_G', 'R23_R', 'R23_I', 'R23_Z',
+    'R23_ERR_G', 'R23_ERR_R', 'R23_ERR_I', 'R23_ERR_Z',
+    'R24_G', 'R24_R', 'R24_I', 'R24_Z',
+    'R24_ERR_G', 'R24_ERR_R', 'R24_ERR_I', 'R24_ERR_Z',
+    'R25_G', 'R25_R', 'R25_I', 'R25_Z',
+    'R25_ERR_G', 'R25_ERR_R', 'R25_ERR_I', 'R25_ERR_Z',
+    'R26_G', 'R26_R', 'R26_I', 'R26_Z',
+    'R26_ERR_G', 'R26_ERR_R', 'R26_ERR_I', 'R26_ERR_Z',
+    # --- Aperture photometry ---
+    'SMA_AP00', 'SMA_AP01', 'SMA_AP02', 'SMA_AP03', 'SMA_AP04',
+    'FLUX_AP00_G', 'FLUX_AP00_R', 'FLUX_AP00_I', 'FLUX_AP00_Z',
+    'FLUX_AP00_W1', 'FLUX_AP00_W2', 'FLUX_AP00_W3', 'FLUX_AP00_W4',
+    'FLUX_AP00_FUV', 'FLUX_AP00_NUV',
+    'FLUX_ERR_AP00_G', 'FLUX_ERR_AP00_R', 'FLUX_ERR_AP00_I', 'FLUX_ERR_AP00_Z',
+    'FLUX_ERR_AP00_W1', 'FLUX_ERR_AP00_W2', 'FLUX_ERR_AP00_W3', 'FLUX_ERR_AP00_W4',
+    'FLUX_ERR_AP00_FUV', 'FLUX_ERR_AP00_NUV',
+    'FMASKED_AP00_G', 'FMASKED_AP00_R', 'FMASKED_AP00_I', 'FMASKED_AP00_Z',
+    'FMASKED_AP00_W1', 'FMASKED_AP00_W2', 'FMASKED_AP00_W3', 'FMASKED_AP00_W4',
+    'FMASKED_AP00_FUV', 'FMASKED_AP00_NUV',
+    'FLUX_AP01_G', 'FLUX_AP01_R', 'FLUX_AP01_I', 'FLUX_AP01_Z',
+    'FLUX_AP01_W1', 'FLUX_AP01_W2', 'FLUX_AP01_W3', 'FLUX_AP01_W4',
+    'FLUX_AP01_FUV', 'FLUX_AP01_NUV',
+    'FLUX_ERR_AP01_G', 'FLUX_ERR_AP01_R', 'FLUX_ERR_AP01_I', 'FLUX_ERR_AP01_Z',
+    'FLUX_ERR_AP01_W1', 'FLUX_ERR_AP01_W2', 'FLUX_ERR_AP01_W3', 'FLUX_ERR_AP01_W4',
+    'FLUX_ERR_AP01_FUV', 'FLUX_ERR_AP01_NUV',
+    'FMASKED_AP01_G', 'FMASKED_AP01_R', 'FMASKED_AP01_I', 'FMASKED_AP01_Z',
+    'FMASKED_AP01_W1', 'FMASKED_AP01_W2', 'FMASKED_AP01_W3', 'FMASKED_AP01_W4',
+    'FMASKED_AP01_FUV', 'FMASKED_AP01_NUV',
+    'FLUX_AP02_G', 'FLUX_AP02_R', 'FLUX_AP02_I', 'FLUX_AP02_Z',
+    'FLUX_AP02_W1', 'FLUX_AP02_W2', 'FLUX_AP02_W3', 'FLUX_AP02_W4',
+    'FLUX_AP02_FUV', 'FLUX_AP02_NUV',
+    'FLUX_ERR_AP02_G', 'FLUX_ERR_AP02_R', 'FLUX_ERR_AP02_I', 'FLUX_ERR_AP02_Z',
+    'FLUX_ERR_AP02_W1', 'FLUX_ERR_AP02_W2', 'FLUX_ERR_AP02_W3', 'FLUX_ERR_AP02_W4',
+    'FLUX_ERR_AP02_FUV', 'FLUX_ERR_AP02_NUV',
+    'FMASKED_AP02_G', 'FMASKED_AP02_R', 'FMASKED_AP02_I', 'FMASKED_AP02_Z',
+    'FMASKED_AP02_W1', 'FMASKED_AP02_W2', 'FMASKED_AP02_W3', 'FMASKED_AP02_W4',
+    'FMASKED_AP02_FUV', 'FMASKED_AP02_NUV',
+    'FLUX_AP03_G', 'FLUX_AP03_R', 'FLUX_AP03_I', 'FLUX_AP03_Z',
+    'FLUX_AP03_W1', 'FLUX_AP03_W2', 'FLUX_AP03_W3', 'FLUX_AP03_W4',
+    'FLUX_AP03_FUV', 'FLUX_AP03_NUV',
+    'FLUX_ERR_AP03_G', 'FLUX_ERR_AP03_R', 'FLUX_ERR_AP03_I', 'FLUX_ERR_AP03_Z',
+    'FLUX_ERR_AP03_W1', 'FLUX_ERR_AP03_W2', 'FLUX_ERR_AP03_W3', 'FLUX_ERR_AP03_W4',
+    'FLUX_ERR_AP03_FUV', 'FLUX_ERR_AP03_NUV',
+    'FMASKED_AP03_G', 'FMASKED_AP03_R', 'FMASKED_AP03_I', 'FMASKED_AP03_Z',
+    'FMASKED_AP03_W1', 'FMASKED_AP03_W2', 'FMASKED_AP03_W3', 'FMASKED_AP03_W4',
+    'FMASKED_AP03_FUV', 'FMASKED_AP03_NUV',
+    'FLUX_AP04_G', 'FLUX_AP04_R', 'FLUX_AP04_I', 'FLUX_AP04_Z',
+    'FLUX_AP04_W1', 'FLUX_AP04_W2', 'FLUX_AP04_W3', 'FLUX_AP04_W4',
+    'FLUX_AP04_FUV', 'FLUX_AP04_NUV',
+    'FLUX_ERR_AP04_G', 'FLUX_ERR_AP04_R', 'FLUX_ERR_AP04_I', 'FLUX_ERR_AP04_Z',
+    'FLUX_ERR_AP04_W1', 'FLUX_ERR_AP04_W2', 'FLUX_ERR_AP04_W3', 'FLUX_ERR_AP04_W4',
+    'FLUX_ERR_AP04_FUV', 'FLUX_ERR_AP04_NUV',
+    'FMASKED_AP04_G', 'FMASKED_AP04_R', 'FMASKED_AP04_I', 'FMASKED_AP04_Z',
+    'FMASKED_AP04_W1', 'FMASKED_AP04_W2', 'FMASKED_AP04_W3', 'FMASKED_AP04_W4',
+    'FMASKED_AP04_FUV', 'FMASKED_AP04_NUV',
+    # --- CoG model parameters (diagnostic) ---
+    'COG_DMAG_G', 'COG_DMAG_R', 'COG_DMAG_I', 'COG_DMAG_Z',
+    'COG_DMAG_W1', 'COG_DMAG_W2', 'COG_DMAG_W3', 'COG_DMAG_W4',
+    'COG_DMAG_FUV', 'COG_DMAG_NUV',
+    'COG_DMAG_ERR_G', 'COG_DMAG_ERR_R', 'COG_DMAG_ERR_I', 'COG_DMAG_ERR_Z',
+    'COG_DMAG_ERR_W1', 'COG_DMAG_ERR_W2', 'COG_DMAG_ERR_W3', 'COG_DMAG_ERR_W4',
+    'COG_DMAG_ERR_FUV', 'COG_DMAG_ERR_NUV',
+    'COG_LNALPHA1_G', 'COG_LNALPHA1_R', 'COG_LNALPHA1_I', 'COG_LNALPHA1_Z',
+    'COG_LNALPHA1_W1', 'COG_LNALPHA1_W2', 'COG_LNALPHA1_W3', 'COG_LNALPHA1_W4',
+    'COG_LNALPHA1_FUV', 'COG_LNALPHA1_NUV',
+    'COG_LNALPHA1_ERR_G', 'COG_LNALPHA1_ERR_R', 'COG_LNALPHA1_ERR_I', 'COG_LNALPHA1_ERR_Z',
+    'COG_LNALPHA1_ERR_W1', 'COG_LNALPHA1_ERR_W2', 'COG_LNALPHA1_ERR_W3', 'COG_LNALPHA1_ERR_W4',
+    'COG_LNALPHA1_ERR_FUV', 'COG_LNALPHA1_ERR_NUV',
+    'COG_LNALPHA2_G', 'COG_LNALPHA2_R', 'COG_LNALPHA2_I', 'COG_LNALPHA2_Z',
+    'COG_LNALPHA2_W1', 'COG_LNALPHA2_W2', 'COG_LNALPHA2_W3', 'COG_LNALPHA2_W4',
+    'COG_LNALPHA2_FUV', 'COG_LNALPHA2_NUV',
+    'COG_LNALPHA2_ERR_G', 'COG_LNALPHA2_ERR_R', 'COG_LNALPHA2_ERR_I', 'COG_LNALPHA2_ERR_Z',
+    'COG_LNALPHA2_ERR_W1', 'COG_LNALPHA2_ERR_W2', 'COG_LNALPHA2_ERR_W3', 'COG_LNALPHA2_ERR_W4',
+    'COG_LNALPHA2_ERR_FUV', 'COG_LNALPHA2_ERR_NUV',
+    'COG_CHI2_G', 'COG_CHI2_R', 'COG_CHI2_I', 'COG_CHI2_Z',
+    'COG_CHI2_W1', 'COG_CHI2_W2', 'COG_CHI2_W3', 'COG_CHI2_W4',
+    'COG_CHI2_FUV', 'COG_CHI2_NUV',
+    'COG_NDOF_G', 'COG_NDOF_R', 'COG_NDOF_I', 'COG_NDOF_Z',
+    'COG_NDOF_W1', 'COG_NDOF_W2', 'COG_NDOF_W3', 'COG_NDOF_W4',
+    'COG_NDOF_FUV', 'COG_NDOF_NUV',
+    # --- Processing / initialization metadata ---
+    'BX', 'BY', 'BX_INIT', 'BY_INIT',
+    'RA_INIT', 'DEC_INIT',
+    'SMA_INIT', 'DIAM_INIT', 'DIAM_INIT_REF',
+    'BA_INIT', 'PA_INIT', 'MAG_INIT',
+    'OPTFLUX',
+    'SMA_MASK',
+    'FITMODE',
+]
 
 # ---------------------------------------------------------------------------
 # NED columns to carry into the output catalog.
 # Tuples: (source col in ned-merged file, output col name, astropy unit).
-# NED_Z -> Z_NED for naming symmetry with Z_DESI / Z.
-# NED_Z_UNC is consumed to compute ZIVAR_NED (not exported directly).
+# NED_Z_UNC  -> Z_IVAR_NED    is computed in the main loop, not listed here.
+# NED_DIST_UNC -> DIST_NED_IVAR is computed in the main loop, not listed here.
 # ---------------------------------------------------------------------------
 NED_CARRY = [
-    ('NED_NAME',          'NED_NAME',       None),
+    #('NED_NAME',          'NED_NAME',       None),
     ('CROSSIDS',          'CROSSIDS',       None),
-    #('N_CROSSIDS',        'N_CROSSIDS',     None),
     ('NED_Z',             'Z_NED',          None),
-    # ZIVAR_NED inserted here during table assembly (computed from NED_Z_UNC)
+    # Z_IVAR_NED inserted after Z_NED in assembly (computed from NED_Z_UNC)
     ('NED_Z_REF',         'Z_REF_NED',      None),
     ('NED_DIST',          'DIST_NED',       u.Mpc),
-    ('NED_DIST_UNC',      'DIST_ERR_NED',   u.Mpc),
-    ('NED_TYPE',          'NED_TYPE',       None),
-    ('NED_MORPH',         'NED_MORPH',      None),
+    # DIST_NED_IVAR inserted after DIST_NED in assembly (computed from NED_DIST_UNC)
+    #('NED_TYPE',          'NED_TYPE',       None),
+    ('NED_MORPH',         'MORPH',      None),
     ('NED_FLAG',          'NED_FLAG',       None),
-    ('NED_SOURCE',        'NED_SOURCE',     None),
-    ('BYNAME_SEP_ARCSEC', 'NED_BYNAME_SEP', u.arcsec),
+    #('NED_SOURCE',        'NED_SOURCE',     None),
+    #('BYNAME_SEP_ARCSEC', 'NED_BYNAME_SEP', u.arcsec),
 ]
 
-# DESI columns: (name, numpy dtype, astropy unit)
+# DESI columns added to the output: (name, numpy dtype, astropy unit)
 DESI_COLS = [
     ('TARGETID_DESI',  np.int64,   None),
     ('SURVEY_DESI',    'U7',       None),
     ('PROGRAM_DESI',   'U6',       None),
     ('Z_DESI',         np.float64, None),
-    ('ZIVAR_DESI',     np.float64, None),
+    ('Z_IVAR_DESI',     np.float64, None),
     ('ZWARN_DESI',     np.int64,   None),
     ('DELTACHI2_DESI', np.float64, None),
     ('SPECTYPE_DESI',  'U6',       None),
-    #('N_DESI',         np.int32,   None),
 ]
 
 # Adopted redshift columns: (name, numpy dtype, astropy unit)
 ADOPTED_COLS = [
-    ('Z',           np.float64, None),
-    ('ZIVAR',       np.float64, None),
-    ('Z_REF', 'U4', None),
-    ('Z_FLAG',      np.int16, None),
+    ('Z',      np.float64, None),
+    ('Z_IVAR',  np.float64, None),
+    ('Z_REF',  'U4',       None),
+    ('Z_FLAG', np.int16,   None),
+]
+
+# Adopted distance columns (placeholder; initially copied from NED)
+DIST_COLS = [
+    ('DIST',      np.float32, u.Mpc),
+    ('DIST_IVAR', np.float32, u.Mpc**-2),
+    ('DIST_REF',  'U4',       None),
 ]
 
 
@@ -127,12 +313,7 @@ ADOPTED_COLS = [
 # Helpers
 # ---------------------------------------------------------------------------
 def _detect_bands(beta):
-    """Infer (optical) bands and all_bands from beta catalog column names.
-
-    bands     <- from R26_{band} columns (optical isophotal radii bands).
-    all_bands <- from COG_MTOT_{band} columns (all photometric bands).
-    Both are returned in catalog column order.
-    """
+    """Infer (optical) bands and all_bands from beta catalog column names."""
     bands     = [re.sub(r'^R26_', '', c)
                  for c in beta.colnames if re.match(r'^R26_[A-Z]+$', c)]
     all_bands = [re.sub(r'^COG_MTOT_', '', c)
@@ -147,14 +328,18 @@ def _build_dm_ref(bands, all_bands):
 
 
 def _fix_dtypes(beta, dm):
-    """Cast beta columns whose dtype does not match the SGA_datamodel reference."""
+    """Cast beta columns whose dtype does not match the SGA_datamodel reference.
+
+    Byte-order differences (e.g. >f4 vs float32) are not considered mismatches;
+    only kind (f/i/u/S/U) and itemsize are compared.
+    """
     fixes = []
     for col in dm.colnames:
         if col not in beta.colnames:
             continue
         ref = dm[col].dtype
         cur = beta[col].dtype
-        if ref != cur:
+        if cur.kind != ref.kind or cur.itemsize != ref.itemsize:
             beta[col] = beta[col].astype(ref)
             fixes.append((col, str(cur), str(ref)))
     return fixes
@@ -223,6 +408,16 @@ def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
     return pool[np.argmax(pool['DELTACHI2'])]
 
 
+def _reorder_cols(tbl):
+    """Reorder tbl columns per COL_ORDER; append unlisted columns at the end."""
+    unknown = [c for c in COL_ORDER if c not in tbl.colnames]
+    if unknown:
+        log.warning(f'COL_ORDER references unknown columns: {unknown}')
+    listed    = [c for c in COL_ORDER if c in tbl.colnames]
+    remaining = [c for c in tbl.colnames if c not in set(listed)]
+    return tbl[listed + remaining]
+
+
 # ---------------------------------------------------------------------------
 # Per-region merge
 # ---------------------------------------------------------------------------
@@ -250,17 +445,19 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     ned_by_sgaid = {int(r['SGAID']): r for r in ned_tbl}
 
     # --- DESI summary (N_DESI per galaxy) ---------------------------------
-    sum_path     = os.path.join(redshiftdir,
-                                f'SGA2025-DESI-DR1-summary-{region}.fits')
+    sum_path   = os.path.join(redshiftdir,
+                              f'SGA2025-DESI-DR1-summary-{region}.fits')
     log.info(f'  Loading {sum_path}')
-    summary      = fitsio.read(sum_path, columns=['SGAID', 'N_DESI'])
+    summary    = fitsio.read(sum_path, columns=['SGAID', 'N_DESI'])
     ndesi_lookup = {int(r['SGAID']): int(r['N_DESI']) for r in summary}
+    ndesi_arr  = np.array([ndesi_lookup.get(int(sid), 0)
+                           for sid in beta['SGAID']], dtype=np.int32)
 
     # --- DESI matches (all spectra within SGA ellipses) -------------------
     match_path = os.path.join(redshiftdir,
                               f'SGA2025-DESI-DR1-matches-{region}.fits')
     log.info(f'  Loading {match_path}')
-    matches = fitsio.read(match_path)
+    matches    = fitsio.read(match_path)
     log.info(f'  {len(matches):,d} DESI match rows')
 
     grp = defaultdict(list)
@@ -271,64 +468,72 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # --- Pre-allocate output arrays ---------------------------------------
     # DESI: redshifts/IVARs sentinel 0., IDs sentinel -1, strings ''
     desi_arrs = {
-        'N_DESI':         np.zeros(n,          np.int32),
-        'TARGETID_DESI':  np.full(n, -1,       np.int64),
-        'SURVEY_DESI':    np.full(n, '',        dtype='U7'),
-        'Z_DESI':         np.zeros(n,           np.float64),
-        'ZIVAR_DESI':     np.zeros(n,           np.float64),
-        'ZWARN_DESI':     np.full(n, -1,        np.int64),
+        'TARGETID_DESI':  np.full(n, -1,           np.int64),
+        'SURVEY_DESI':    np.full(n, '',            dtype='U7'),
+        'PROGRAM_DESI':   np.full(n, '',            dtype='U6'),
+        'Z_DESI':         np.zeros(n,               np.float64),
+        'Z_IVAR_DESI':     np.zeros(n,               np.float64),
+        'ZWARN_DESI':     np.full(n, -1,            np.int64),
         'DELTACHI2_DESI': np.full(n, FLOAT_SENTINEL, np.float64),
-        'SPECTYPE_DESI':  np.full(n, '',        dtype='U6'),
+        'SPECTYPE_DESI':  np.full(n, '',            dtype='U6'),
     }
 
-    # NED: redshifts/IVARs sentinel 0., other floats FLOAT_SENTINEL, ints 0
+    # NED: columns with IVAR companions use 0. sentinel; others use FLOAT_SENTINEL
     ned_arrs = {}
     for src, dst, _ in NED_CARRY:
         if src not in ned_tbl.colnames:
             continue
         col = ned_tbl[src]
         if col.dtype.kind == 'f':
-            sentinel = 0. if dst == 'Z_NED' else FLOAT_SENTINEL
+            sentinel = 0. if dst in NED_ZERO_SENTINEL else FLOAT_SENTINEL
             ned_arrs[dst] = np.full(n, sentinel, col.dtype)
         elif col.dtype.kind in ('i', 'u'):
             ned_arrs[dst] = np.zeros(n, col.dtype)
         else:
             ned_arrs[dst] = np.full(n, '', dtype=_str_arr_dtype(col))
-    ned_arrs['ZIVAR_NED'] = np.zeros(n, np.float64)   # computed from NED_Z_UNC
+    ned_arrs['Z_IVAR_NED']    = np.zeros(n, np.float64)  # from NED_Z_UNC
+    ned_arrs['DIST_NED_IVAR'] = np.zeros(n, np.float32)  # from NED_DIST_UNC
 
     # Adopted redshift
     adopted_arrs = {
-        'Z':     np.zeros(n,  np.float64),
-        'ZIVAR': np.zeros(n,  np.float64),
-        'Z_REF': np.full(n, '', dtype='U4'),
-        'Z_FLAG': np.zeros(n,  np.int16),
+        'Z':      np.zeros(n, np.float64),
+        'Z_IVAR':  np.zeros(n, np.float64),
+        'Z_REF':  np.full(n, '', dtype='U4'),
+        'Z_FLAG': np.zeros(n, np.int16),
     }
 
-    # Convenient handles used inside the loop
-    z_ned_arr = ned_arrs.get('Z_NED')
-    zivar_ned_arr = ned_arrs.get('ZIVAR_NED')
+    # Adopted distance (placeholder; initially from NED).
+    # 0. sentinel — DIST_IVAR=0 signals no measurement.
+    dist_arrs = {
+        'DIST':      np.zeros(n, np.float32),
+        'DIST_IVAR': np.zeros(n, np.float32),
+        'DIST_REF':  np.full(n, '', dtype='U4'),
+    }
+
+    # Convenient handles
+    z_ned_arr     = ned_arrs.get('Z_NED')
+    zivar_ned_arr = ned_arrs.get('Z_IVAR_NED')
 
     # --- Main resolution loop --------------------------------------------
     log.info(f'  Resolving redshifts (desi_max_sep={desi_max_sep:.1f}")')
     for i in range(n):
-        sid = int(beta['SGAID'][i])
-        sga_ra = float(beta['RA'][i])
+        sid     = int(beta['SGAID'][i])
+        sga_ra  = float(beta['RA'][i])
         sga_dec = float(beta['DEC'][i])
 
         # DESI selection
-        desi_arrs['N_DESI'][i] = ndesi_lookup.get(sid, 0)
         if sid in grp:
             best = _select_desi(matches[grp[sid]], sga_ra, sga_dec, desi_max_sep)
             if best is not None:
                 zerr = float(best['ZERR'])
-                desi_arrs['TARGETID_DESI'][i] = int(best['TARGETID'])
-                desi_arrs['SURVEY_DESI'][i] = _strval(best['SURVEY'])
-                desi_arrs['PROGRAM_DESI'][i] = _strval(best['PROGRAM'])
-                desi_arrs['Z_DESI'][i] = float(best['Z'])
-                desi_arrs['ZIVAR_DESI'][i] = 1. / zerr**2 if zerr > 0. else 0.
-                desi_arrs['ZWARN_DESI'][i] = int(best['ZWARN'])
+                desi_arrs['TARGETID_DESI'][i]  = int(best['TARGETID'])
+                desi_arrs['SURVEY_DESI'][i]    = _strval(best['SURVEY'])
+                desi_arrs['PROGRAM_DESI'][i]   = _strval(best['PROGRAM'])
+                desi_arrs['Z_DESI'][i]         = float(best['Z'])
+                desi_arrs['Z_IVAR_DESI'][i]     = 1. / zerr**2 if zerr > 0. else 0.
+                desi_arrs['ZWARN_DESI'][i]     = int(best['ZWARN'])
                 desi_arrs['DELTACHI2_DESI'][i] = float(best['DELTACHI2'])
-                desi_arrs['SPECTYPE_DESI'][i] = _strval(best['SPECTYPE'])
+                desi_arrs['SPECTYPE_DESI'][i]  = _strval(best['SPECTYPE'])
 
         # NED columns
         nrow = ned_by_sgaid.get(sid)
@@ -342,7 +547,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                     try:
                         fv = float(val)
                         arr[i] = fv if np.isfinite(fv) else (
-                            0. if dst == 'Z_NED' else FLOAT_SENTINEL)
+                            0. if dst in NED_ZERO_SENTINEL else FLOAT_SENTINEL)
                     except (ValueError, TypeError):
                         pass  # sentinel already in place
                 elif arr.dtype.kind in ('i', 'u'):
@@ -353,37 +558,66 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                 else:
                     arr[i] = _strval(val)
 
-            # ZIVAR_NED: derived from NED_Z_UNC
+            # Z_IVAR_NED: from NED_Z_UNC
             if 'NED_Z_UNC' in ned_tbl.colnames:
                 try:
                     z_unc = float(nrow['NED_Z_UNC'])
                 except (ValueError, TypeError):
                     z_unc = 0.
-                z_ned_val = ned_arrs['Z_NED'][i] if z_ned_arr is not None else 0.
-                if z_ned_val != 0.:   # NED has a redshift for this galaxy
+                z_ned_val = z_ned_arr[i] if z_ned_arr is not None else 0.
+                if z_ned_val != 0.:
                     err = z_unc if z_unc > 0. else NED_Z_NOMINAL_ERR
-                    ned_arrs['ZIVAR_NED'][i] = 1. / err**2
+                    ned_arrs['Z_IVAR_NED'][i] = 1. / err**2
+
+            # DIST_NED_IVAR: from NED_DIST_UNC; 0. if no error reported
+            if 'NED_DIST_UNC' in ned_tbl.colnames:
+                try:
+                    dist_unc = float(nrow['NED_DIST_UNC'])
+                except (ValueError, TypeError):
+                    dist_unc = 0.
+                dist_ned = ned_arrs['DIST_NED'][i]
+                if dist_ned > 0. and dist_unc > 0.:
+                    ned_arrs['DIST_NED_IVAR'][i] = np.float32(1. / dist_unc**2)
 
         # Adopted redshift (DESI preferred)
-        zivar_desi = desi_arrs['ZIVAR_DESI'][i]
+        zivar_desi = desi_arrs['Z_IVAR_DESI'][i]
         z_desi     = desi_arrs['Z_DESI'][i]
         zivar_ned  = zivar_ned_arr[i] if zivar_ned_arr is not None else 0.
         z_ned      = z_ned_arr[i]     if z_ned_arr     is not None else 0.
 
         if zivar_desi > 0.:
-            adopted_arrs['Z'][i] = z_desi
-            adopted_arrs['ZIVAR'][i] = zivar_desi
+            adopted_arrs['Z'][i]     = z_desi
+            adopted_arrs['Z_IVAR'][i] = zivar_desi
             adopted_arrs['Z_REF'][i] = 'DESI'
         elif zivar_ned > 0.:
-            adopted_arrs['Z'][i] = z_ned
-            adopted_arrs['ZIVAR'][i] = zivar_ned
+            adopted_arrs['Z'][i]     = z_ned
+            adopted_arrs['Z_IVAR'][i] = zivar_ned
             adopted_arrs['Z_REF'][i] = 'NED'
 
-        # Z_FLAG: flag large DESI/NED velocity discrepancy
+        # Z_FLAG: large DESI/NED velocity discrepancy
         if zivar_desi > 0. and zivar_ned > 0.:
             vdiff = C_LIGHT * abs(z_desi - z_ned) / (1. + z_ned)
             if vdiff > vdiff_threshold:
                 adopted_arrs['Z_FLAG'][i] |= Z_FLAG_DISCREPANCY
+
+        # Adopted distance (placeholder: NED for now)
+        dist_ned      = ned_arrs['DIST_NED'][i]
+        dist_ned_ivar = ned_arrs['DIST_NED_IVAR'][i]
+        if dist_ned > 0.:
+            dist_arrs['DIST'][i]      = dist_ned
+            dist_arrs['DIST_IVAR'][i] = dist_ned_ivar   # may be 0. if no error
+            dist_arrs['DIST_REF'][i]  = 'NED'
+
+    # --- GALAXY and ALTNAMES from CROSSIDS --------------------------------
+    crossids_col = ned_arrs.get('CROSSIDS')
+    galaxy_arr   = np.full(n, '', dtype='U35')
+    altnames_arr = np.full(n, '', dtype='U140')
+    if crossids_col is not None:
+        for i, crossids in enumerate(crossids_col):
+            parts = [p.strip() for p in crossids.split('|') if p.strip()]
+            if parts:
+                galaxy_arr[i]   = parts[0]
+                altnames_arr[i] = '|'.join(parts[1:3])
 
     # --- Assemble output Table -------------------------------------------
     out = beta.copy()
@@ -393,19 +627,40 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         if col in out.colnames and dm[col].unit is not None:
             out[col].unit = dm[col].unit
 
+    # New identification columns derived from NED CROSSIDS
+    out.add_column(Column(galaxy_arr,   name='GALAXY'))
+    out.add_column(Column(altnames_arr, name='ALTNAMES'))
+
+    # DESI columns
     for name, dtype, unit in DESI_COLS:
         out.add_column(Column(desi_arrs[name], name=name, unit=unit))
 
-    # NED columns: insert ZIVAR_NED immediately after Z_NED
+    # NED columns: Z_IVAR_NED after Z_NED; DIST_NED_IVAR after DIST_NED
     for src, dst, unit in NED_CARRY:
         if dst not in ned_arrs:
             continue
         out.add_column(Column(ned_arrs[dst], name=dst, unit=unit))
         if dst == 'Z_NED':
-            out.add_column(Column(ned_arrs['ZIVAR_NED'], name='ZIVAR_NED', unit=None))
+            out.add_column(Column(ned_arrs['Z_IVAR_NED'],    name='Z_IVAR_NED'))
+        elif dst == 'DIST_NED':
+            out.add_column(Column(ned_arrs['DIST_NED_IVAR'], name='DIST_NED_IVAR',
+                                  unit=u.Mpc**-2))
 
+    # Adopted redshift
     for name, dtype, unit in ADOPTED_COLS:
         out.add_column(Column(adopted_arrs[name], name=name, unit=unit))
+
+    # Adopted distance
+    for name, dtype, unit in DIST_COLS:
+        out.add_column(Column(dist_arrs[name], name=name, unit=unit))
+
+    # Drop columns not wanted in the output
+    for col in DROP_COLS:
+        if col in out.colnames:
+            out.remove_column(col)
+
+    # Apply column ordering
+    out = _reorder_cols(out)
 
     # --- Write output ----------------------------------------------------
     os.makedirs(outdir, exist_ok=True)
@@ -416,18 +671,18 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     log.info(f'  Wrote {outpath}')
 
     # --- Summary statistics (stdout) -------------------------------------
-    pct       = lambda k: 100. * k / n if n else 0.
-    src_arr   = adopted_arrs['Z_REF']
-    flag_arr  = adopted_arrs['Z_FLAG']
-    ndesi_arr = desi_arrs['N_DESI']
+    pct        = lambda k: 100. * k / n if n else 0.
+    src_arr    = adopted_arrs['Z_REF']
+    flag_arr   = adopted_arrs['Z_FLAG']
 
     n_src_desi = int(np.sum(src_arr == 'DESI'))
     n_src_ned  = int(np.sum(src_arr == 'NED'))
     n_src_none = int(np.sum(src_arr == ''))
     n_disc     = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY) != 0))
+    n_desi_prox = int(np.sum((ndesi_arr > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
 
-    n_desi_prox = int(np.sum((ndesi_arr > 0) &
-                             (desi_arrs['ZIVAR_DESI'] == 0.)))
+    n_dist_ned  = int(np.sum(ned_arrs['DIST_NED'] > 0.))
+    n_dist_ivar = int(np.sum(ned_arrs['DIST_NED_IVAR'] > 0.))
 
     print(f'\n--- {region} summary ({n:,d} galaxies) ---')
     print(f'  desi_max_sep={desi_max_sep:.1f}"  vdiff_threshold={vdiff_threshold:.0f} km/s')
@@ -435,13 +690,15 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         print('  Dtype fixes: ' +
               ', '.join(f'{c}: {o} -> {nw}' for c, o, nw in fixes))
     print()
-    print(f'  Z_REF = DESI  : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
-    print(f'  Z_REF = NED   : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
-    print(f'  Z_REF = none  : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
+    print(f'  Z_REF = DESI : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
+    print(f'  Z_REF = NED  : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
+    print(f'  Z_REF = none : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
     print()
-    print(f'  Z_FLAG DESI/NED discrepancy: {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
-    print(f'  N_DESI>0 but no good central spectrum: '
-          f'{n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
+    print(f'  Z_FLAG DESI/NED discrepancy  : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
+    print(f'  N_DESI>0, no good central z  : {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
+    print()
+    print(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
+    print(f'  DIST_NED with IVAR           : {n_dist_ivar:>8,d}  ({pct(n_dist_ivar):5.1f}%)')
     print()
     print('  N_DESI distribution:')
     for label, mask in [
