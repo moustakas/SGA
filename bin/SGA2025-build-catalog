@@ -70,7 +70,7 @@ Examples
 
 SGA2025-build-catalog --neddir=/Users/ioannis/research/projects/SGA/2025/sample/nedquery \
   --redshiftdir=/Users/ioannis/research/projects/SGA/2025/sample/redshifts \
-  --outdir=/Users/ioannis/research/projects/SGA/2025/sample \
+  --outdir=/Users/ioannis/research/projects/SGA/2025/public \
   --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv
 
 INFO:SGA2025-build-catalog:444:merge_region: === dr11-south ===
@@ -90,7 +90,7 @@ INFO:SGA2025-build-catalog:488:merge_region:   Loading /Users/ioannis/research/p
 INFO:SGA2025-build-catalog:490:merge_region:   127,481 DESI match rows
 INFO:SGA2025-build-catalog:495:merge_region:   80,470 unique SGAIDs with DESI matches
 INFO:SGA2025-build-catalog:555:merge_region:   Resolving redshifts (desi_max_sep=3.0")
-INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/projects/SGA/2025/sample/SGA2025-dr11-south.fits
+INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/projects/SGA/2025/public/SGA2025-dr11-south.fits
 
 --- dr11-south summary (395,435 galaxies) ---
   desi_max_sep=3.0"  vdiff_threshold=1000 km/s
@@ -139,7 +139,7 @@ INFO:SGA2025-build-catalog:488:merge_region:   Loading /Users/ioannis/research/p
 INFO:SGA2025-build-catalog:490:merge_region:   51,500 DESI match rows
 INFO:SGA2025-build-catalog:495:merge_region:   35,418 unique SGAIDs with DESI matches
 INFO:SGA2025-build-catalog:555:merge_region:   Resolving redshifts (desi_max_sep=3.0")
-INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/projects/SGA/2025/sample/SGA2025-dr11-north.fits
+INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/projects/SGA/2025/public/SGA2025-dr11-north.fits
 
 --- dr11-north summary (90,504 galaxies) ---
   desi_max_sep=3.0"  vdiff_threshold=1000 km/s
