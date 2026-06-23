@@ -10,6 +10,12 @@ from time import time
 
 from SGA.logger import log
 
+try:  # this fails when building the documentation
+    from scipy import constants
+    C_LIGHT = constants.c / 1000.0  # [km/s]
+except:
+    C_LIGHT = 299792.458  # [km/s]
+
 
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
