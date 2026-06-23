@@ -550,7 +550,8 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
 
     # --- SGA beta catalog -------------------------------------------------
     log.info('  Loading SGA beta catalog')
-    _, beta          = read_sga_sample(region=region)
+    _, beta = read_sga_sample(region=region)
+    _, tractor = read_sga_sample(region=region, tractor=True)
     bands, all_bands = _detect_bands(beta)
     log.info(f'  Detected bands={bands}  all_bands={all_bands}')
     dm    = _build_dm_ref(bands, all_bands)
@@ -858,8 +859,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     os.makedirs(outdir, exist_ok=True)
     outpath = os.path.join(outdir, f'SGA2025-{region}.fits')
     vals, names, units = table_to_fitsio(out)
+    tractor_vals, tractor_names, tractor_units = table_to_fitsio(tractor)
     with fitsio.FITS(outpath, 'rw', clobber=True) as F:
         F.write(vals, names=names, units=units, extname='SGA2025')
+        F.write(tractor_vals, names=tractor_names, units=tractor_units, extname='TRACTOR')
     log.info(f'  Wrote {outpath}')
 
     # --- Summary statistics (stdout) -------------------------------------

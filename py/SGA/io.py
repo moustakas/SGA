@@ -427,11 +427,56 @@ def _read_image_data(data, filt2imfile, read_jpg=False, skip_tractor=False, verb
     return data
 
 
+# ---------------------------------------------------------------------------
+# Tractor-convention unit lookup used by table_to_fitsio.
+# Exact column name → unit string (column names compared case-insensitively).
+# ---------------------------------------------------------------------------
+_TRACTOR_EXACT_UNITS = {
+    'ra': 'deg', 'dec': 'deg', 'ra_ivar': 'deg^(-2)', 'dec_ivar': 'deg^(-2)',
+    'ebv': 'mag',
+    'shape_r': 'arcsec', 'shape_r_ivar': 'arcsec^(-2)',
+    'pmra': 'mas/yr', 'pmdec': 'mas/yr',
+    'pmra_ivar': '(mas/yr)^(-2)', 'pmdec_ivar': '(mas/yr)^(-2)',
+    'parallax': 'mas', 'parallax_ivar': 'mas^(-2)',
+    'gaia_phot_g_mean_mag': 'mag',
+    'gaia_phot_bp_mean_mag': 'mag',
+    'gaia_phot_rp_mean_mag': 'mag',
+    'exptime': 'sec',
+    'flux': 'nanomaggies', 'flux_ivar': 'nanomaggies^(-2)',
+    'apflux': 'nanomaggies', 'apflux_ivar': 'nanomaggies^(-2)',
+    'psfdepth': 'nanomaggies^(-2)', 'galdepth': 'nanomaggies^(-2)',
+    'sky': 'nanomaggies/arcsec^2',
+    'psfsize': 'arcsec',
+    'fwhm': 'pixels',
+    'ccdrarms': 'arcsec', 'ccddecrms': 'arcsec',
+    'skyrms': 'counts/sec',
+    'dra': 'arcsec', 'ddec': 'arcsec',
+    'dra_ivar': 'arcsec^(-2)', 'ddec_ivar': 'arcsec^(-2)',
+}
+
+# Prefixes whose band-suffixed forms (e.g. flux_g, psfdepth_r) inherit a unit.
+# Resolved by stripping the last '_<band>' token and looking up the prefix here.
+_TRACTOR_BAND_PREFIX_UNITS = {
+    'flux': 'nanomaggies',        'flux_ivar': 'nanomaggies^(-2)',
+    'apflux': 'nanomaggies',      'apflux_ivar': 'nanomaggies^(-2)',
+    'apflux_resid': 'nanomaggies', 'apflux_blobresid': 'nanomaggies',
+    'psfdepth': 'nanomaggies^(-2)', 'galdepth': 'nanomaggies^(-2)',
+    'psfsize': 'arcsec',
+    'fiberflux': 'nanomaggies',   'fibertotflux': 'nanomaggies',
+    'lc_flux': 'nanomaggies',     'lc_flux_ivar': 'nanomaggies^(-2)',
+}
+
+
 def table_to_fitsio(tbl):
     """
     Convert an Astropy Table/QTable into (data, names, units) for fitsio.write().
     Units are written verbatim to TUNITn (non-standard allowed).
 
+    Unit resolution order for each column:
+      1. Explicit astropy unit on the column (normalised: nmgy/nanomaggy → nanomaggies).
+      2. Exact match in _TRACTOR_EXACT_UNITS (case-insensitive).
+      3. Band-suffix match: strip the trailing '_<token>' and look up the prefix
+         in _TRACTOR_BAND_PREFIX_UNITS (handles flux_g, psfdepth_r, lc_flux_W1, …).
     """
     names = list(tbl.colnames)
     data  = [tbl[name].value if hasattr(tbl[name], 'value') else np.asarray(tbl[name])
@@ -439,13 +484,28 @@ def table_to_fitsio(tbl):
     units = []
     for name in names:
         u = getattr(tbl[name], 'unit', None)
-        if u is None:
-            units.append('')
-        else:
+        if u is not None:
             u = str(u)
-            if 'nmgy' in u:
-                u = u.replace('nmgy', 'nanomaggy')
+            # Normalise all astropy spellings to the Tractor convention.
+            # Order matters: 'nanomaggy' must come before the 'nmgy' sub-string check.
+            u = u.replace('nanomaggies', '__NM__')  # protect already-correct spelling
+            u = u.replace('nanomaggy', '__NM__')
+            u = u.replace('nmgy', '__NM__')
+            u = u.replace('__NM__', 'nanomaggies')
             units.append(u)
+            continue
+
+        # Tractor fallback: exact match
+        key = name.lower()
+        unit_str = _TRACTOR_EXACT_UNITS.get(key, '')
+
+        # Tractor fallback: band-suffix (flux_g → prefix 'flux', band 'g')
+        if not unit_str:
+            parts = key.rsplit('_', 1)
+            if len(parts) == 2:
+                unit_str = _TRACTOR_BAND_PREFIX_UNITS.get(parts[0], '')
+
+        units.append(unit_str)
     return data, names, units
 
 
