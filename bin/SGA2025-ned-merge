@@ -38,7 +38,7 @@ from astropy.table import Table
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
-from SGA.SGA import read_sga_sample
+from SGA.SGA import read_sga_sample, SAMPLE as SAMPLE_BITS
 from SGA.logger import log
 
 # ---------------------------------------------------------------------------
@@ -141,6 +141,15 @@ def merge_region(region, outdir, sep_threshold):
     n = len(sga_id)
     log.info(f'  SGA sample: {n:,d} objects')
 
+    # LVD dwarfs: always trust a successful byname match regardless of
+    # positional offset.  Their NED coordinates can legitimately differ
+    # from the SGA centroid; bypos at the SGA position finds compact
+    # background sources instead of the extended dwarf.
+    lvd_sgaids = set(
+        int(s) for s in sga_id[(cat['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0]
+    )
+    log.info(f'  LVD objects: {len(lvd_sgaids):,d}')
+
     # Pre-compute byname positional separations vectorially.
     # Only attempt for rows where byname returned no error.
     ned_ra  = np.full(n, np.nan)
@@ -183,12 +192,16 @@ def merge_region(region, outdir, sep_threshold):
             flag |= FLAG_BYPOS_FAIL
 
         # Source selection:
+        #   LVD + byname ok                   -> byname (large dwarfs have genuine NED offsets;
+        #                                          bypos finds compact background sources)
         #   flag == 0                          -> byname (clean)
         #   LARGE_SEP, bypos ok               -> bypos  (NED position off, bypos rescued it)
         #   LARGE_SEP, bypos also failed      -> byname (NED pos off but name match still valid)
         #   BYNAME_FAIL, bypos ok             -> bypos
         #   BYNAME_FAIL, bypos also failed    -> none
-        if flag == 0:
+        if sid in lvd_sgaids and byname_err == '':
+            src, source_str = brow, 'byname'
+        elif flag == 0:
             src, source_str = brow, 'byname'
         elif not (flag & FLAG_BYPOS_FAIL):
             src, source_str = prow, 'bypos'
@@ -262,6 +275,7 @@ def merge_region(region, outdir, sep_threshold):
     pct = lambda k: 100.0 * k / n if n else 0.0
 
     print(f'\n--- {region} summary ({n:,d} galaxies, sep threshold {sep_threshold:.1f}") ---')
+    print(f'  LVD objects (byname always trusted) : {len(lvd_sgaids):>8,d}')
     print(f'  NED_SOURCE = byname  : {n_byname:>8,d}  ({pct(n_byname):5.1f}%)')
     print(f'  NED_SOURCE = bypos   : {n_bypos:>8,d}  ({pct(n_bypos):5.1f}%)')
     print(f'  NED_SOURCE = none    : {n_none:>8,d}  ({pct(n_none):5.1f}%)')

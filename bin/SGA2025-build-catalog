@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """
 SGA2025-build-catalog: merge the SGA beta catalog, NED cross-match results,
-and DESI DR1 redshifts into a unified per-region FITS catalog.
+DESI DR1 redshifts, and LVD distances/velocities into a unified per-region
+FITS catalog.
 
 Redshift resolution
 -------------------
@@ -21,9 +22,12 @@ For each galaxy a single "best" DESI spectrum is selected:
 
   If no ZWARN=0 spectrum survives, Z_IVAR_DESI=0 (no adopted DESI redshift).
 
-The adopted redshift (Z) uses DESI when Z_IVAR_DESI > 0, otherwise
-NED (Z_NED) when Z_IVAR_NED > 0. A Z_FLAG bit is set when both are present
-but differ by more than --vdiff-threshold km/s.
+The adopted redshift (Z) priority is LVD > DESI > NED:
+  - LVD  when Z_LVD  != 0.  (vlos_systemic / C_LIGHT; Z_IVAR_LVD may be 0.)
+  - DESI when Z_IVAR_DESI > 0
+  - NED  when Z_IVAR_NED  > 0
+A Z_FLAG bit is set when any two measured redshifts differ by more than
+--vdiff-threshold km/s.
 
 Sentinels
 ---------
@@ -59,7 +63,8 @@ Examples
                          --desi-max-sep 5 \\
                          --neddir /path/nedquery \\
                          --redshiftdir /path/redshifts \\
-                         --outdir /path/output
+                         --outdir /path/output \\
+                         --lvd-catalog /path/lvd_comb_all_v1.1.0.ecsv
 
 """
 import os
@@ -73,7 +78,7 @@ from astropy.table import Table, Column
 import astropy.units as u
 
 from SGA.util import C_LIGHT
-from SGA.SGA import read_sga_sample, SGA_datamodel
+from SGA.SGA import read_sga_sample, SGA_datamodel, SAMPLE as SAMPLE_BITS
 from SGA.io import table_to_fitsio
 from SGA.logger import log
 
@@ -127,14 +132,18 @@ COL_ORDER = [
     # --- Size and geometry (primary SGA product) ---
     'D26', 'D26_ERR', 'BA', 'PA',
     'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
-    # --- Adopted redshift and distance ---
+    # --- Adopted redshifts and distances ---
     'Z', 'Z_IVAR', 'Z_REF', 'Z_FLAG',
     'DIST', 'DIST_IVAR', 'DIST_REF',
     # --- DESI spectroscopy ---
     'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
     'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI',
     # --- NED redshift and distance ---
-    'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_NED_IVAR', 'NED_FLAG',
+    'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED',
+    'NED_FLAG',
+    # --- LVD redshifts and distances ---
+    'Z_LVD', 'Z_IVAR_LVD',
+    'DIST_LVD', 'DIST_IVAR_LVD',
     # --- NED cross-match ---
     #'NED_TYPE', 'NED_MORPH',
     #'NED_FLAG',
@@ -264,7 +273,7 @@ COL_ORDER = [
 # NED columns to carry into the output catalog.
 # Tuples: (source col in ned-merged file, output col name, astropy unit).
 # NED_Z_UNC  -> Z_IVAR_NED    is computed in the main loop, not listed here.
-# NED_DIST_UNC -> DIST_NED_IVAR is computed in the main loop, not listed here.
+# NED_DIST_UNC -> DIST_IVAR_NED is computed in the main loop, not listed here.
 # ---------------------------------------------------------------------------
 NED_CARRY = [
     #('NED_NAME',          'NED_NAME',       None),
@@ -273,7 +282,7 @@ NED_CARRY = [
     # Z_IVAR_NED inserted after Z_NED in assembly (computed from NED_Z_UNC)
     ('NED_Z_REF',         'Z_REF_NED',      None),
     ('NED_DIST',          'DIST_NED',       u.Mpc),
-    # DIST_NED_IVAR inserted after DIST_NED in assembly (computed from NED_DIST_UNC)
+    # DIST_IVAR_NED inserted after DIST_NED in assembly (computed from NED_DIST_UNC)
     #('NED_TYPE',          'NED_TYPE',       None),
     ('NED_MORPH',         'MORPH',      None),
     ('NED_FLAG',          'NED_FLAG',       None),
@@ -301,11 +310,19 @@ ADOPTED_COLS = [
     ('Z_FLAG', np.int16,   None),
 ]
 
-# Adopted distance columns (placeholder; initially copied from NED)
+# Adopted distance columns; LVD takes precedence over NED when available.
 DIST_COLS = [
-    ('DIST',      np.float32, u.Mpc),
-    ('DIST_IVAR', np.float32, u.Mpc**-2),
-    ('DIST_REF',  'U4',       None),
+    ('DIST',          np.float32, u.Mpc),
+    ('DIST_IVAR',     np.float32, u.Mpc**-2),
+    ('DIST_REF',      'U4',       None),
+    ('DIST_LVD',      np.float32, u.Mpc),
+    ('DIST_IVAR_LVD', np.float32, u.Mpc**-2),
+]
+
+# LVD redshift columns derived from vlos_systemic / vlos_sigma (km/s).
+LVD_Z_COLS = [
+    ('Z_LVD',      np.float64, None),
+    ('Z_IVAR_LVD', np.float64, None),
 ]
 
 
@@ -422,7 +439,7 @@ def _reorder_cols(tbl):
 # Per-region merge
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
-                 desi_max_sep):
+                 desi_max_sep, lvd_catalog=None):
     log.info(f'=== {region} ===')
 
     # --- SGA beta catalog -------------------------------------------------
@@ -443,6 +460,17 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     log.info(f'  Loading {ned_path}')
     ned_tbl      = Table(fitsio.read(ned_path))
     ned_by_sgaid = {int(r['SGAID']): r for r in ned_tbl}
+
+    # --- LVD catalog (distance takes precedence over NED for LVD objects) ---
+    # Match by OBJNAME; distance and errors converted from kpc to Mpc.
+    lvd_by_name = {}
+    if lvd_catalog:
+        log.info(f'  Loading LVD catalog {lvd_catalog}')
+        lvd = Table.read(lvd_catalog)
+        lvd_by_name = {str(r['name']): r for r in lvd}
+        is_lvd      = (beta['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0
+        log.info(f'  LVD catalog: {len(lvd):,d} entries; '
+                 f'{int(np.sum(is_lvd)):,d} LVD objects in SGA sample')
 
     # --- DESI summary (N_DESI per galaxy) ---------------------------------
     sum_path   = os.path.join(redshiftdir,
@@ -492,7 +520,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         else:
             ned_arrs[dst] = np.full(n, '', dtype=_str_arr_dtype(col))
     ned_arrs['Z_IVAR_NED']    = np.zeros(n, np.float64)  # from NED_Z_UNC
-    ned_arrs['DIST_NED_IVAR'] = np.zeros(n, np.float32)  # from NED_DIST_UNC
+    ned_arrs['DIST_IVAR_NED'] = np.zeros(n, np.float32)  # from NED_DIST_UNC
 
     # Adopted redshift
     adopted_arrs = {
@@ -502,12 +530,20 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         'Z_FLAG': np.zeros(n, np.int16),
     }
 
-    # Adopted distance (placeholder; initially from NED).
+    # Adopted distance (LVD preferred over NED when available).
     # 0. sentinel — DIST_IVAR=0 signals no measurement.
     dist_arrs = {
-        'DIST':      np.zeros(n, np.float32),
-        'DIST_IVAR': np.zeros(n, np.float32),
-        'DIST_REF':  np.full(n, '', dtype='U4'),
+        'DIST':          np.zeros(n, np.float32),
+        'DIST_IVAR':     np.zeros(n, np.float32),
+        'DIST_REF':      np.full(n, '', dtype='U4'),
+        'DIST_LVD':      np.zeros(n, np.float32),
+        'DIST_IVAR_LVD': np.zeros(n, np.float32),
+    }
+
+    # LVD redshifts (from vlos_systemic / vlos_sigma in km/s).
+    lvd_z_arrs = {
+        'Z_LVD':      np.zeros(n, np.float64),
+        'Z_IVAR_LVD': np.zeros(n, np.float64),
     }
 
     # Convenient handles
@@ -569,7 +605,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                     err = z_unc if z_unc > 0. else NED_Z_NOMINAL_ERR
                     ned_arrs['Z_IVAR_NED'][i] = 1. / err**2
 
-            # DIST_NED_IVAR: from NED_DIST_UNC; 0. if no error reported
+            # DIST_IVAR_NED: from NED_DIST_UNC; 0. if no error reported
             if 'NED_DIST_UNC' in ned_tbl.colnames:
                 try:
                     dist_unc = float(nrow['NED_DIST_UNC'])
@@ -577,35 +613,81 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                     dist_unc = 0.
                 dist_ned = ned_arrs['DIST_NED'][i]
                 if dist_ned > 0. and dist_unc > 0.:
-                    ned_arrs['DIST_NED_IVAR'][i] = np.float32(1. / dist_unc**2)
+                    ned_arrs['DIST_IVAR_NED'][i] = np.float32(1. / dist_unc**2)
 
-        # Adopted redshift (DESI preferred)
+        # LVD redshifts and distances (matched by OBJNAME)
+        objname = _strval(beta['OBJNAME'][i])
+        if objname in lvd_by_name:
+            lrow = lvd_by_name[objname]
+            def _lvd_val(v):
+                if np.ma.is_masked(v):
+                    return float('nan')
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return float('nan')
+            # Z_LVD from vlos_systemic (km/s -> dimensionless z)
+            vlos = _lvd_val(lrow['vlos_systemic'])
+            vsig = _lvd_val(lrow['vlos_sigma'])
+            if np.isfinite(vlos):
+                lvd_z_arrs['Z_LVD'][i] = vlos / C_LIGHT
+                if np.isfinite(vsig) and vsig > 0.:
+                    lvd_z_arrs['Z_IVAR_LVD'][i] = (C_LIGHT / vsig)**2
+            # DIST_LVD from distance (kpc -> Mpc)
+            d_mpc = _lvd_val(lrow['distance']) / 1000.
+            em    = _lvd_val(lrow['distance_em']) / 1000.
+            ep    = _lvd_val(lrow['distance_ep']) / 1000.
+            if np.isfinite(d_mpc) and d_mpc > 0.:
+                dist_arrs['DIST_LVD'][i] = np.float32(d_mpc)
+                mean_err = 0.5 * (em + ep)
+                if np.isfinite(mean_err) and mean_err > 0.:
+                    dist_arrs['DIST_IVAR_LVD'][i] = np.float32(1. / mean_err**2)
+
+        # Adopted redshift: LVD > DESI > NED
+        # LVD velocities are curated; prefer them unconditionally when present
+        # (Z_LVD != 0. is the "has measurement" sentinel; Z_IVAR_LVD may be 0.).
         zivar_desi = desi_arrs['Z_IVAR_DESI'][i]
         z_desi     = desi_arrs['Z_DESI'][i]
+        zivar_lvd  = lvd_z_arrs['Z_IVAR_LVD'][i]
+        z_lvd      = lvd_z_arrs['Z_LVD'][i]
         zivar_ned  = zivar_ned_arr[i] if zivar_ned_arr is not None else 0.
         z_ned      = z_ned_arr[i]     if z_ned_arr     is not None else 0.
 
-        if zivar_desi > 0.:
-            adopted_arrs['Z'][i]     = z_desi
+        if z_lvd != 0.:
+            adopted_arrs['Z'][i]      = z_lvd
+            adopted_arrs['Z_IVAR'][i] = zivar_lvd   # may be 0. if vlos_sigma missing
+            adopted_arrs['Z_REF'][i]  = 'LVD'
+        elif zivar_desi > 0.:
+            adopted_arrs['Z'][i]      = z_desi
             adopted_arrs['Z_IVAR'][i] = zivar_desi
-            adopted_arrs['Z_REF'][i] = 'DESI'
+            adopted_arrs['Z_REF'][i]  = 'DESI'
         elif zivar_ned > 0.:
-            adopted_arrs['Z'][i]     = z_ned
+            adopted_arrs['Z'][i]      = z_ned
             adopted_arrs['Z_IVAR'][i] = zivar_ned
-            adopted_arrs['Z_REF'][i] = 'NED'
+            adopted_arrs['Z_REF'][i]  = 'NED'
 
-        # Z_FLAG: large DESI/NED velocity discrepancy
-        if zivar_desi > 0. and zivar_ned > 0.:
-            vdiff = C_LIGHT * abs(z_desi - z_ned) / (1. + z_ned)
-            if vdiff > vdiff_threshold:
-                adopted_arrs['Z_FLAG'][i] |= Z_FLAG_DISCREPANCY
+        # Z_FLAG: large velocity discrepancy between any two measured redshifts
+        z_valid = []
+        if z_lvd  != 0.:   z_valid.append(z_lvd)
+        if zivar_desi > 0.: z_valid.append(z_desi)
+        if zivar_ned  > 0.: z_valid.append(z_ned)
+        for j in range(len(z_valid) - 1):
+            for zb in z_valid[j + 1:]:
+                if C_LIGHT * abs(z_valid[j] - zb) / (1. + min(z_valid[j], zb)) > vdiff_threshold:
+                    adopted_arrs['Z_FLAG'][i] |= Z_FLAG_DISCREPANCY
 
-        # Adopted distance (placeholder: NED for now)
+        # Adopted distance: LVD preferred, then NED
         dist_ned      = ned_arrs['DIST_NED'][i]
-        dist_ned_ivar = ned_arrs['DIST_NED_IVAR'][i]
-        if dist_ned > 0.:
+        dist_ivar_ned = ned_arrs['DIST_IVAR_NED'][i]
+        dist_lvd      = dist_arrs['DIST_LVD'][i]
+        dist_ivar_lvd = dist_arrs['DIST_IVAR_LVD'][i]
+        if dist_lvd > 0.:
+            dist_arrs['DIST'][i]      = dist_lvd
+            dist_arrs['DIST_IVAR'][i] = dist_ivar_lvd
+            dist_arrs['DIST_REF'][i]  = 'LVD'
+        elif dist_ned > 0.:
             dist_arrs['DIST'][i]      = dist_ned
-            dist_arrs['DIST_IVAR'][i] = dist_ned_ivar   # may be 0. if no error
+            dist_arrs['DIST_IVAR'][i] = dist_ivar_ned   # may be 0. if no error
             dist_arrs['DIST_REF'][i]  = 'NED'
 
     # --- GALAXY and ALTNAMES from CROSSIDS --------------------------------
@@ -635,7 +717,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     for name, dtype, unit in DESI_COLS:
         out.add_column(Column(desi_arrs[name], name=name, unit=unit))
 
-    # NED columns: Z_IVAR_NED after Z_NED; DIST_NED_IVAR after DIST_NED
+    # NED columns: Z_IVAR_NED after Z_NED; DIST_IVAR_NED after DIST_NED
     for src, dst, unit in NED_CARRY:
         if dst not in ned_arrs:
             continue
@@ -643,7 +725,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         if dst == 'Z_NED':
             out.add_column(Column(ned_arrs['Z_IVAR_NED'],    name='Z_IVAR_NED'))
         elif dst == 'DIST_NED':
-            out.add_column(Column(ned_arrs['DIST_NED_IVAR'], name='DIST_NED_IVAR',
+            out.add_column(Column(ned_arrs['DIST_IVAR_NED'], name='DIST_IVAR_NED',
                                   unit=u.Mpc**-2))
 
     # Adopted redshift
@@ -653,6 +735,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # Adopted distance
     for name, dtype, unit in DIST_COLS:
         out.add_column(Column(dist_arrs[name], name=name, unit=unit))
+
+    # LVD redshifts
+    for name, dtype, unit in LVD_Z_COLS:
+        out.add_column(Column(lvd_z_arrs[name], name=name, unit=unit))
 
     # Drop columns not wanted in the output
     for col in DROP_COLS:
@@ -675,14 +761,22 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     src_arr    = adopted_arrs['Z_REF']
     flag_arr   = adopted_arrs['Z_FLAG']
 
-    n_src_desi = int(np.sum(src_arr == 'DESI'))
-    n_src_ned  = int(np.sum(src_arr == 'NED'))
-    n_src_none = int(np.sum(src_arr == ''))
-    n_disc     = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY) != 0))
+    n_src_desi  = int(np.sum(src_arr == 'DESI'))
+    n_src_lvd   = int(np.sum(src_arr == 'LVD'))
+    n_src_ned   = int(np.sum(src_arr == 'NED'))
+    n_src_none  = int(np.sum(src_arr == ''))
+    n_disc      = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY) != 0))
     n_desi_prox = int(np.sum((ndesi_arr > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
+    n_z_lvd      = int(np.sum(lvd_z_arrs['Z_LVD'] != 0.))
+    n_z_lvd_ivar = int(np.sum(lvd_z_arrs['Z_IVAR_LVD'] > 0.))
 
     n_dist_ned  = int(np.sum(ned_arrs['DIST_NED'] > 0.))
-    n_dist_ivar = int(np.sum(ned_arrs['DIST_NED_IVAR'] > 0.))
+    n_dist_ivar = int(np.sum(ned_arrs['DIST_IVAR_NED'] > 0.))
+    n_dist_lvd  = int(np.sum(dist_arrs['DIST_LVD'] > 0.))
+    n_dist_ivar_lvd = int(np.sum(dist_arrs['DIST_IVAR_LVD'] > 0.))
+    n_dist_adopted  = int(np.sum(dist_arrs['DIST'] > 0.))
+    n_dist_ref_lvd  = int(np.sum(np.array(dist_arrs['DIST_REF']) == 'LVD'))
+    n_dist_ref_ned  = int(np.sum(np.array(dist_arrs['DIST_REF']) == 'NED'))
 
     print(f'\n--- {region} summary ({n:,d} galaxies) ---')
     print(f'  desi_max_sep={desi_max_sep:.1f}"  vdiff_threshold={vdiff_threshold:.0f} km/s')
@@ -691,14 +785,23 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
               ', '.join(f'{c}: {o} -> {nw}' for c, o, nw in fixes))
     print()
     print(f'  Z_REF = DESI : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
+    print(f'  Z_REF = LVD  : {n_src_lvd:>8,d}  ({pct(n_src_lvd):5.1f}%)')
     print(f'  Z_REF = NED  : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
     print(f'  Z_REF = none : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
     print()
-    print(f'  Z_FLAG DESI/NED discrepancy  : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
+    print(f'  Z_LVD present (vlos_systemic): {n_z_lvd:>8,d}  ({pct(n_z_lvd):5.1f}%)')
+    print(f'  Z_LVD with IVAR (vlos_sigma) : {n_z_lvd_ivar:>8,d}  ({pct(n_z_lvd_ivar):5.1f}%)')
+    print()
+    print(f'  Z_FLAG discrepancy           : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
     print(f'  N_DESI>0, no good central z  : {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
     print()
     print(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
     print(f'  DIST_NED with IVAR           : {n_dist_ivar:>8,d}  ({pct(n_dist_ivar):5.1f}%)')
+    print(f'  DIST_LVD present             : {n_dist_lvd:>8,d}  ({pct(n_dist_lvd):5.1f}%)')
+    print(f'  DIST_LVD with IVAR           : {n_dist_ivar_lvd:>8,d}  ({pct(n_dist_ivar_lvd):5.1f}%)')
+    print(f'  Adopted DIST present         : {n_dist_adopted:>8,d}  ({pct(n_dist_adopted):5.1f}%)')
+    print(f'    DIST_REF = LVD             : {n_dist_ref_lvd:>8,d}')
+    print(f'    DIST_REF = NED             : {n_dist_ref_ned:>8,d}')
     print()
     print('  N_DESI distribution:')
     for label, mask in [
@@ -733,12 +836,16 @@ def main():
     parser.add_argument('--desi-max-sep', type=float, default=3.,
                         help='Max separation between SGA center and DESI '
                              'TARGET_RA/DEC in arcsec (default: 3)')
+    parser.add_argument('--lvd-catalog',
+                        help='Path to LVD ECSV catalog (e.g. lvd_comb_all_v1.1.0.ecsv); '
+                             'distances in kpc converted to Mpc')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
     for region in regions:
         merge_region(region, args.neddir, args.redshiftdir, args.outdir,
-                     args.vdiff_threshold, args.desi_max_sep)
+                     args.vdiff_threshold, args.desi_max_sep,
+                     lvd_catalog=args.lvd_catalog)
 
 
 if __name__ == '__main__':
