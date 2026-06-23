@@ -1,0 +1,91 @@
+#!/usr/bin/env python
+"""
+SGA2025-ned-lvd-patch: one-time script to strip LVD rows from completed
+ned-byname-{region}.csv files so that SGA2025-ned-query --byname can
+re-query them with NED-friendly names.
+
+Usage
+-----
+SGA2025-ned-lvd-patch --outdir /path/to/nedquery [--region dr11-south]
+
+What it does
+------------
+1. Reads the SGA sample for the given region to identify LVD SGAIDs
+   (SAMPLE & SAMPLE['LVD'] != 0).
+2. Reads the existing ned-byname-{region}.csv, removes all rows whose
+   SGAID belongs to an LVD object, and rewrites the file.
+3. Reports which OBJNAME values were removed.
+
+After running this script, re-run:
+  SGA2025-ned-query --region {region} --outdir {outdir} --byname
+
+The fixed script will now query the LVD objects using NED-friendly names
+(via nedfriendly_lvd) and append the corrected rows.
+"""
+import os
+import csv
+import argparse
+
+import numpy as np
+
+from SGA.SGA import read_sga_sample, SAMPLE as SAMPLE_BITS
+from SGA.logger import log
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--region', default='dr11-south',
+                        choices=['dr11-south', 'dr11-north'],
+                        help='SGA region (default: dr11-south)')
+    parser.add_argument('--outdir', required=True,
+                        help='Directory containing ned-byname-{region}.csv')
+    args = parser.parse_args()
+
+    csvfile = os.path.join(args.outdir, f'ned-byname-{args.region}.csv')
+    if not os.path.exists(csvfile):
+        log.error(f'File not found: {csvfile}')
+        return
+
+    log.info(f'Reading SGA sample: region={args.region}')
+    _, cat = read_sga_sample(region=args.region)
+    is_lvd = (cat['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0
+    lvd_sgaids = set(int(s) for s in cat['SGAID'].value[is_lvd])
+    log.info(f'LVD objects in sample: {len(lvd_sgaids)}')
+
+    rows_keep, removed_names = [], []
+    with open(csvfile, newline='') as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames
+        for row in reader:
+            try:
+                sid = int(row['SGAID'])
+            except (KeyError, ValueError):
+                rows_keep.append(row)
+                continue
+            if sid in lvd_sgaids:
+                removed_names.append(row.get('OBJNAME', str(sid)))
+            else:
+                rows_keep.append(row)
+
+    if not removed_names:
+        log.info('No LVD objects found in existing CSV — nothing to do.')
+        return
+
+    log.info(f'Removing {len(removed_names)} LVD rows:')
+    for name in sorted(removed_names):
+        log.info(f'  {name}')
+
+    with open(csvfile, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows_keep)
+
+    log.info(f'Rewrote {csvfile} ({len(rows_keep)} rows kept).')
+    log.info(f'Now run: SGA2025-ned-query --region {args.region} --outdir {args.outdir} --byname')
+
+
+if __name__ == '__main__':
+    main()

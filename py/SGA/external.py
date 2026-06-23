@@ -689,7 +689,7 @@ def nedfriendly_lvd(old):
         'IKN': 'IKN', # 'PGC1 0028630 NED014',
         'JKB129': 'JKB 129',
         'JKB142': 'JKB 142', # 'SDSS J014548.23+162240.6',
-        'JKB83': 'JKB 3', # 'SDSS J095549.64+691957.4',
+        'JKB83': 'JKB 083', # 'SDSS J095549.64+691957.4',
         'KDG 171': 'KDG 171',
         'KDG 2': 'KDG 2', # 'ESO 540- G 030',
         'KDG 215': 'KDG 215', # 'LSBC D575-05',

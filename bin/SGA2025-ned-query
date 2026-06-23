@@ -49,7 +49,8 @@ from io import BytesIO
 import aiohttp
 from astropy.io.votable import parse_single_table
 
-from SGA.SGA import read_sga_sample
+from SGA.SGA import read_sga_sample, SAMPLE as SAMPLE_BITS
+from SGA.external import nedfriendly_lvd
 from SGA.logger import log
 
 # ---------------------------------------------------------------------------
@@ -270,14 +271,14 @@ async def _process_bypos(session, sga_id, ra, dec, semaphore, delay, radius_arcm
     return {k: result.get(k, '') for k in BYPOS_FIELDS}
 
 
-async def _process_byname(session, sga_id, objname, semaphore, delay):
-    """OverviewOfObject queried directly by SGA OBJNAME, with hiccup retry."""
+async def _process_byname(session, sga_id, objname, ned_target, semaphore, delay):
+    """OverviewOfObject queried by ned_target; OBJNAME stores the original SGA name."""
     result = {'SGAID': sga_id, 'OBJNAME': objname, 'ERROR': ''}
 
     overview, ov_err = {}, 'hiccup'
     for _ in range(2):
         content = await _fetch(session, f'{NED_BASE}/OverviewOfObject',
-                               {'TARGET': objname}, semaphore, delay)
+                               {'TARGET': ned_target}, semaphore, delay)
         overview, ov_err = parse_overview(content)
         if ov_err != 'hiccup':
             break
@@ -290,13 +291,15 @@ async def _process_byname(session, sga_id, objname, semaphore, delay):
     return {k: result.get(k, '') for k in BYNAME_FIELDS}
 
 
-async def _run_chunk(ids, data, outfile, fields, maxconcurrent, delay, byname, radius_arcmin):
+async def _run_chunk(ids, data, outfile, fields, maxconcurrent, delay, byname, radius_arcmin,
+                     ned_targets=None):
     """Process one chunk of galaxies and append results to outfile."""
     semaphore = asyncio.Semaphore(maxconcurrent)
     async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
         if byname:
-            tasks = [_process_byname(session, int(sid), name, semaphore, delay)
-                     for sid, name in zip(ids, data)]
+            targets = ned_targets if ned_targets is not None else data
+            tasks = [_process_byname(session, int(sid), name, str(tgt), semaphore, delay)
+                     for sid, name, tgt in zip(ids, data, targets)]
         else:
             tasks = [_process_bypos(session, int(sid), float(ra), float(dec),
                                     semaphore, delay, radius_arcmin)
@@ -369,6 +372,7 @@ def main():
     ra      = cat['RA'].value
     dec     = cat['DEC'].value
     objname = cat['OBJNAME'].value
+    is_lvd  = (cat['SAMPLE'].value & SAMPLE_BITS['LVD']) != 0
 
     if args.ntest > 0:
         log.info(f'Test mode: {args.ntest} objects')
@@ -376,6 +380,14 @@ def main():
         ra      = ra[:args.ntest]
         dec     = dec[:args.ntest]
         objname = objname[:args.ntest]
+        is_lvd  = is_lvd[:args.ntest]
+
+    ned_targets = None
+    if args.byname:
+        ned_targets = nedfriendly_lvd(objname)
+        n_translated = int(np.sum(ned_targets != objname))
+        if n_translated:
+            log.info(f'byname: translated {n_translated} LVD names to NED-friendly query targets')
 
     done = _load_done(outfile)
     if done:
@@ -385,6 +397,8 @@ def main():
     ra      = ra[mask]
     dec     = dec[mask]
     objname = objname[mask]
+    if ned_targets is not None:
+        ned_targets = ned_targets[mask]
 
     ntotal  = len(sgaid)
     nchunks = int(np.ceil(ntotal / args.chunksize))
@@ -402,7 +416,8 @@ def main():
         data = objname[sl] if args.byname else list(zip(ra[sl], dec[sl]))
         results = asyncio.run(
             _run_chunk(sgaid[sl], data, outfile, fields,
-                       args.maxconcurrent, args.delay, args.byname, radius_arcmin)
+                       args.maxconcurrent, args.delay, args.byname, radius_arcmin,
+                       ned_targets=ned_targets[sl] if ned_targets is not None else None)
         )
         ndone   += len(results)
         elapsed  = time.time() - t0

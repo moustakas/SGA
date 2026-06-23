@@ -532,7 +532,6 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
     fullsample : astropy.table.Table
         All group members whose group has at least one object in sample.
     """
-    ext = 'TRACTOR' if tractor else 'ELLIPSE'
     if version is None:
         version = SGA_version()
     if beta:
@@ -540,9 +539,20 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
     else:
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
 
-    return _read_catalog(samplefile, ext, 'D26', first, last, galaxylist,
-                         verbose, no_groups, lvd, region, mindiam, maxdiam,
-                         minmult, maxmult)
+    # Row selection always runs on ELLIPSE (which has the group/region/sample columns).
+    sample, fullsample = _read_catalog(samplefile, 'ELLIPSE', 'D26', first, last,
+                                       galaxylist, verbose, no_groups, lvd, region,
+                                       mindiam, maxdiam, minmult, maxmult)
+
+    if not tractor:
+        return sample, fullsample
+
+    # Return the row-matched TRACTOR rows for the selected objects.
+    tractor_tbl = Table(fitsio.read(samplefile, ext='TRACTOR', upper=True))
+    sgaid_to_row = {int(s): i for i, s in enumerate(tractor_tbl['REF_ID'])}
+    tractor_sample     = tractor_tbl[[sgaid_to_row[int(s)] for s in sample['SGAID']]]
+    tractor_fullsample = tractor_tbl[[sgaid_to_row[int(s)] for s in fullsample['SGAID']]]
+    return tractor_sample, tractor_fullsample
 
 
 def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
@@ -893,7 +903,7 @@ def SGA_datamodel(ellipse, bands, all_bands, copy=True):
         ('SGAGROUP', 'U18', None),
         ('REGION', np.int16, None),
         ('OBJNAME', 'U30', None),
-        ('PGC', np.int64, None),
+        ('PGC', np.int32, None),
         ('SAMPLE', np.int32, None),
         ('ELLIPSEMODE', np.int32, None),
         ('FITMODE', np.int32, None),
