@@ -893,7 +893,7 @@ def SGA_datamodel(ellipse, bands, all_bands, copy=True):
         ('SGAGROUP', 'U18', None),
         ('REGION', np.int16, None),
         ('OBJNAME', 'U30', None),
-        ('PGC', np.int64, None),
+        ('PGC', np.int32, None),
         ('SAMPLE', np.int32, None),
         ('ELLIPSEMODE', np.int32, None),
         ('FITMODE', np.int32, None),
