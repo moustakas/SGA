@@ -1157,6 +1157,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "<!DOCTYPE html>",
         "<html>",
         "<head>",
+        "    <meta charset='utf-8'>",
         "    <title>SGA2025: {}</title>".format(objname),
         "    <style>",
         "        body { font-family: Arial, sans-serif; margin: 0; padding: 60px 20px 20px 20px; }",
@@ -1190,7 +1191,6 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "    </div>",
         "    <div class='breadcrumb'>",
         "        <a href='../../../index-{}.html'>Home</a> &gt; ".format(region),
-        "        <a href='../../../index-{}.html#raslice-{}'>{}</a> &gt; ".format(region, raslice, region),
         "        <a href='../../../index-{}.html#raslice-{}'>RA {}</a> &gt; {}".format(region, raslice, raslice, objname),
         "    </div>",
         "    <h1>{}</h1>".format(objname),
@@ -1283,9 +1283,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         for img_type in per_galaxy_types:
             filename = "SGA2025_{}-{}.png".format(galaxy_name, img_type)
             filepath = group_dir / filename
-            if not filepath.exists():
-                raise FileNotFoundError("Missing required file: {}".format(filepath))
-            html_lines.append("            <a href='{}'><img src='{}' alt='{}'></a>".format(filename, filename, filename))
+            if filepath.exists():
+                html_lines.append("            <a href='{}'><img src='{}' alt='{}'></a>".format(filename, filename, filename))
+            else:
+                log.warning("Missing QA file: {}".format(filepath))
+                html_lines.append("            <div style='border:1px solid #ddd; color:#888; font-size:12px; padding:10px; text-align:center; flex:0 0 32%;'>Missing:<br>{}</div>".format(filename))
         html_lines.append("        </div>")
     html_lines.append("    </div>")
     html_lines.extend([
@@ -1333,6 +1335,7 @@ def generate_index(htmldir, region, sample):
         "<!DOCTYPE html>",
         "<html>",
         "<head>",
+        "    <meta charset='utf-8'>",
         "    <title>SGA2025 Index - {}</title>".format(region),
         "    <style>",
         "        body { font-family: Arial, sans-serif; margin: 20px; }",
@@ -1399,7 +1402,7 @@ def generate_index(htmldir, region, sample):
                 info['ra'], info['dec'], info['diam'], info['mult'], sky_url))
             if montage_path.exists():
                 thumbnail_path = "{}/{}/{}/{}".format(region, raslice, group_name, montage_file)
-                html_lines.append("            <td class='thumbnail'><a href='{}'><div style='width: 100px; height: 75px; overflow: hidden;'><img src='{}' alt='Montage' style='display: block; max-width: none; width: 300px;'></div></a></td>".format(html_path, thumbnail_path))
+                html_lines.append("            <td class='thumbnail'><a href='{}'><img src='{}' alt='Montage' style='width:120px; height:90px; object-fit:cover; object-position:center; display:block;'></a></td>".format(html_path, thumbnail_path))
             else:
                 html_lines.append("            <td class='thumbnail'>No preview</td>")
             html_lines.append("        </tr>")
