@@ -479,6 +479,10 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
             ax.yaxis.set_major_locator(ticker.MultipleLocator(5))
         ax.set_ylim(ymin, ymax)
 
+        ax.axvspan(wavemin, 0.4,    alpha=0.06, color='#aaaaff', zorder=0)
+        ax.axvspan(0.4,    1.0,     alpha=0.06, color='#aaffaa', zorder=0)
+        ax.axvspan(1.0,    wavemax, alpha=0.06, color='#ffccaa', zorder=0)
+
         _addphot(phot['mag_tot'], color=color_mtot, marker=marker_mtot, alpha=1.0,
                  label=r'$m_{\mathrm{tot}}$')
         if tractor is not None:
@@ -620,8 +624,8 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         ax.set_xlim(xminmax)
         ax.margins(x=0)
 
-        ax.set_xlabel('(Semi-major axis (arcsec)')
-        ax.set_ylabel('Cumulative Flux (AB mag)')
+        ax.set_xlabel('Semi-major axis (arcsec)')
+        ax.set_ylabel('Cumulative Brightness (AB mag)')
 
         if sma_sbthresh > 0.:
             ax.axvline(x=sma_sbthresh, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
@@ -709,6 +713,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                                    #'width_ratios': [1., 2., 2.],
                                    #'wspace': 0
                                })
+        for idata in range(1, ndataset):
+            ax[idata, 1].sharex(ax[0, 1])
 
         # one row per dataset
         for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
@@ -836,7 +842,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                     #print(filt, yminmax[0], yminmax[1])
 
                 xx.margins(x=0)
-                xx.set_xlim(ax[0, 1].get_xlim())
 
                 if idata == ndataset-1:
                     xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
@@ -895,7 +900,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
 
                 ax[idata, 1].set_yticks([])
                 ax[idata, 1].margins(x=0)
-                ax[idata, 1].set_xlim(ax[0, 1].get_xlim())
 
                 if idata == ndataset-1:
                     ax[idata, 1].set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
@@ -957,7 +961,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     ellipsefiles = glob(os.path.join(galaxydir, f'*-ellipse-{allbands}.fits'))
     if len(ellipsefiles) == 0:
         log.warning(f'All ellipse files missing for {galaxydir}/{galaxy}')
-        return Table(), Table()
+        return 1
 
     if len(ellipsefiles) != len(sample):
         msg = f'Mismatching number of ellipse files and objects in sample in {galaxydir}'
