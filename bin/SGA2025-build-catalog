@@ -236,7 +236,6 @@ COL_ORDER = [
     'SGAID', 'SGANAME', 'GALAXY', 'ALTNAMES',
     'OBJNAME',
     'PGC', 'RA', 'DEC',
-    'RA_TRACTOR', 'DEC_TRACTOR',
     'MORPH',
     'SGAGROUP', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE', 'BANDS',
     # --- Size and geometry (primary SGA product) ---
@@ -247,7 +246,7 @@ COL_ORDER = [
     'DIST', 'DIST_IVAR', 'DIST_REF',
     # --- DESI spectroscopy ---
     'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
-    'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI',
+    'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI', 'NSPEC_DESI',
     # --- NED redshift and distance ---
     'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED',
     'NED_FLAG',
@@ -258,6 +257,17 @@ COL_ORDER = [
     #'NED_TYPE', 'NED_MORPH',
     #'NED_FLAG',
     #'NED_SOURCE', 'NED_BYNAME_SEP',
+    # --- Processing / initialization metadata ---
+    #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
+    'RA_TRACTOR', 'DEC_TRACTOR',
+    'RA_INIT', 'DEC_INIT',
+    'DIAM_INIT',
+    'BA_INIT', 'PA_INIT',
+    'INIT_REF',
+    #'MAG_INIT',
+    #'OPTFLUX',
+    #'SMA_MASK',
+    #'FITMODE',
     # --- Group finding ---
     'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
     'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
@@ -369,15 +379,6 @@ COL_ORDER = [
     'COG_NDOF_G', 'COG_NDOF_R', 'COG_NDOF_I', 'COG_NDOF_Z',
     'COG_NDOF_W1', 'COG_NDOF_W2', 'COG_NDOF_W3', 'COG_NDOF_W4',
     'COG_NDOF_FUV', 'COG_NDOF_NUV',
-    # --- Processing / initialization metadata ---
-    #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
-    'RA_INIT', 'DEC_INIT',
-    'DIAM_INIT', 'DIAM_INIT_REF',
-    'BA_INIT', 'PA_INIT',
-    #'MAG_INIT',
-    #'OPTFLUX',
-    #'SMA_MASK',
-    #'FITMODE',
 ]
 
 # ---------------------------------------------------------------------------
@@ -411,6 +412,7 @@ DESI_COLS = [
     ('ZWARN_DESI',     np.int64,   None),
     ('DELTACHI2_DESI', np.float64, None),
     ('SPECTYPE_DESI',  'U6',       None),
+    ('NSPEC_DESI',     np.int32,   None),
 ]
 
 # Adopted redshift columns: (name, numpy dtype, astropy unit)
@@ -441,9 +443,9 @@ INIT_COLS = [
     ('RA_INIT',       np.float64, u.degree),
     ('DEC_INIT',      np.float64, u.degree),
     ('DIAM_INIT',     np.float32, u.arcmin),
-    ('DIAM_INIT_REF', 'U14',      None),
     ('BA_INIT',       np.float32, None),
     ('PA_INIT',       np.float32, u.degree),
+    ('INIT_REF', 'U14',      None),
 ]
 
 
@@ -532,8 +534,20 @@ def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
     if len(primary) == 0:
         return None
 
+    # Step 1b: drop physically implausible spectra regardless of ZWARN
     spectypes = np.array([_strval(s) for s in primary['SPECTYPE']])
-    good      = primary['ZWARN'] == 0
+    zvals     = primary['Z'].astype(float)
+    valid     = (
+        (spectypes != 'STAR') &
+        ~((spectypes == 'GALAXY') & (zvals > 1.5)) &
+        ~((spectypes == 'QSO')    & (zvals > 1.0))
+    )
+    primary   = primary[valid]
+    spectypes = spectypes[valid]
+    if len(primary) == 0:
+        return None
+
+    good = primary['ZWARN'] == 0
 
     # Step 2: prefer GALAXY + ZWARN==0; fall back to any ZWARN==0
     pool = primary[(spectypes == 'GALAXY') & good]
@@ -592,16 +606,16 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             'RA_INIT':       np.full(n, -1., np.float64),
             'DEC_INIT':      np.full(n, -1., np.float64),
             'DIAM_INIT':     np.full(n, -1., np.float32),
-            'DIAM_INIT_REF': np.full(n, '', dtype='U14'),
             'BA_INIT':       np.full(n, -1., np.float32),
             'PA_INIT':       np.full(n, -1., np.float32),
+            'INIT_REF': np.full(n, '', dtype='U14'),
         }
         init_arrs['RA_INIT'][has_match]       = mm['RA']
         init_arrs['DEC_INIT'][has_match]      = mm['DEC']
         init_arrs['DIAM_INIT'][has_match]     = (diam_arcsec / 60.).astype(np.float32)
-        init_arrs['DIAM_INIT_REF'][has_match] = ref_init
         init_arrs['BA_INIT'][has_match]       = ba_init.astype(np.float32)
         init_arrs['PA_INIT'][has_match]       = pa_init.astype(np.float32)
+        init_arrs['INIT_REF'][has_match] = ref_init
 
         # Fallback: custom catalog (VI-inspected sources added to the parent)
         customfile = resources.files('SGA').joinpath(
@@ -642,9 +656,9 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             init_arrs['RA_INIT'][i]       = ra
             init_arrs['DEC_INIT'][i]      = dec
             init_arrs['DIAM_INIT'][i]     = np.float32(diam)
-            init_arrs['DIAM_INIT_REF'][i] = 'VI'
             init_arrs['BA_INIT'][i]       = np.float32(ba)
             init_arrs['PA_INIT'][i]       = np.float32(pa)
+            init_arrs['INIT_REF'][i] = 'VI'
             if src == 'custom':
                 n_from_custom += 1
             else:
@@ -705,6 +719,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         'ZWARN_DESI':     np.full(n, -1,            np.int64),
         'DELTACHI2_DESI': np.full(n, FLOAT_SENTINEL, np.float64),
         'SPECTYPE_DESI':  np.full(n, '',            dtype='U6'),
+        'NSPEC_DESI':     ndesi_arr,
     }
 
     # NED: columns with IVAR companions use 0. sentinel; others use FLOAT_SENTINEL
@@ -975,7 +990,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     n_src_ned   = int(np.sum(src_arr == 'NED'))
     n_src_none  = int(np.sum(src_arr == ''))
     n_disc      = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY) != 0))
-    n_desi_prox = int(np.sum((ndesi_arr > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
+    n_desi_prox = int(np.sum((desi_arrs['NSPEC_DESI'] > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
     n_z_lvd      = int(np.sum(lvd_z_arrs['Z_LVD'] != 0.))
     n_z_lvd_ivar = int(np.sum(lvd_z_arrs['Z_IVAR_LVD'] > 0.))
 
@@ -1012,13 +1027,14 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     print(f'    DIST_REF = LVD             : {n_dist_ref_lvd:>8,d}')
     print(f'    DIST_REF = NED             : {n_dist_ref_ned:>8,d}')
     print()
-    print('  N_DESI distribution:')
+    print('  NSPEC_DESI distribution:')
+    nspec = desi_arrs['NSPEC_DESI']
     for label, mask in [
-            ('= 0',    ndesi_arr == 0),
-            ('= 1',    ndesi_arr == 1),
-            ('2-9',   (ndesi_arr >= 2)   & (ndesi_arr <= 9)),
-            ('10-99', (ndesi_arr >= 10)  & (ndesi_arr <= 99)),
-            ('>= 100', ndesi_arr >= 100)]:
+            ('= 0',    nspec == 0),
+            ('= 1',    nspec == 1),
+            ('2-9',   (nspec >= 2)   & (nspec <= 9)),
+            ('10-99', (nspec >= 10)  & (nspec <= 99)),
+            ('>= 100', nspec >= 100)]:
         k = int(np.sum(mask))
         print(f'    {label:>6} : {k:>8,d}  ({pct(k):5.1f}%)')
 
@@ -1050,7 +1066,7 @@ def main():
                              'distances in kpc converted to Mpc')
     parser.add_argument('--parent-nocuts',
                         help='Path to SGA2025-parent-nocuts-v0.10.fits; restores '
-                             'RA_INIT/DEC_INIT/DIAM_INIT/DIAM_INIT_REF/BA_INIT/PA_INIT '
+                             'RA_INIT/DEC_INIT/DIAM_INIT/INIT_REF/BA_INIT/PA_INIT '
                              'from the original parent catalog geometry')
     args = parser.parse_args()
 
