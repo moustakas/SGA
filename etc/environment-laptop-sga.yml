@@ -30,6 +30,7 @@ dependencies:
   - scipy
   - photutils
   - healpy
+  - seaborn
   # Jupyter kernel support
   - ipykernel
   - ipython
