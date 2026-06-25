@@ -71,7 +71,8 @@ Examples
 SGA2025-build-catalog --neddir=/Users/ioannis/research/projects/SGA/2025/sample/nedquery \
   --redshiftdir=/Users/ioannis/research/projects/SGA/2025/sample/redshifts \
   --outdir=/Users/ioannis/research/projects/SGA/2025/public \
-  --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv
+  --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv \
+  --parent-nocuts=/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-nocuts-v0.10.fits
 
 INFO:SGA2025-build-catalog:444:merge_region: === dr11-south ===
 INFO:SGA2025-build-catalog:447:merge_region:   Loading SGA beta catalog
@@ -177,6 +178,8 @@ import os
 import re
 import argparse
 from collections import defaultdict
+from importlib import resources
+from pathlib import Path
 
 import numpy as np
 import fitsio
@@ -185,6 +188,7 @@ import astropy.units as u
 
 from SGA.util import C_LIGHT
 from SGA.SGA import read_sga_sample, SGA_datamodel, SAMPLE as SAMPLE_BITS
+from SGA.geometry import choose_geometry
 from SGA.io import table_to_fitsio
 from SGA.logger import log
 
@@ -366,10 +370,11 @@ COL_ORDER = [
     'COG_NDOF_W1', 'COG_NDOF_W2', 'COG_NDOF_W3', 'COG_NDOF_W4',
     'COG_NDOF_FUV', 'COG_NDOF_NUV',
     # --- Processing / initialization metadata ---
-    #'BX', 'BY', 'BX_INIT', 'BY_INIT',
-    #'RA_INIT', 'DEC_INIT',
-    #'SMA_INIT', 'DIAM_INIT', 'DIAM_INIT_REF',
-    #'BA_INIT', 'PA_INIT', 'MAG_INIT',
+    #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
+    'RA_INIT', 'DEC_INIT',
+    'DIAM_INIT', 'DIAM_INIT_REF',
+    'BA_INIT', 'PA_INIT',
+    #'MAG_INIT',
     #'OPTFLUX',
     #'SMA_MASK',
     #'FITMODE',
@@ -429,6 +434,16 @@ DIST_COLS = [
 LVD_Z_COLS = [
     ('Z_LVD',      np.float64, None),
     ('Z_IVAR_LVD', np.float64, None),
+]
+
+# Initial geometry columns restored from the parent/nocuts catalog (v0.10).
+INIT_COLS = [
+    ('RA_INIT',       np.float64, u.degree),
+    ('DEC_INIT',      np.float64, u.degree),
+    ('DIAM_INIT',     np.float32, u.arcmin),
+    ('DIAM_INIT_REF', 'U14',      None),
+    ('BA_INIT',       np.float32, None),
+    ('PA_INIT',       np.float32, u.degree),
 ]
 
 
@@ -545,7 +560,7 @@ def _reorder_cols(tbl):
 # Per-region merge
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
-                 desi_max_sep, lvd_catalog=None):
+                 desi_max_sep, lvd_catalog=None, parent_nocuts=None):
     log.info(f'=== {region} ===')
 
     # --- SGA beta catalog -------------------------------------------------
@@ -561,6 +576,85 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             log.info(f'  dtype fix: {col}  {old} -> {new}')
     n = len(beta)
     log.info(f'  {n:,d} galaxies')
+
+    # --- Parent/nocuts catalog (initial geometry) --------------------------------
+    init_arrs = None
+    if parent_nocuts:
+        log.info(f'  Loading parent/nocuts catalog {parent_nocuts}')
+        vv = Table(fitsio.read(parent_nocuts))
+        parent_idx = {int(r['ROW_PARENT']): i for i, r in enumerate(vv)}
+        par_rows = np.array([parent_idx.get(int(sid), -1) for sid in beta['SGAID']])
+        has_match = par_rows >= 0
+        log.info(f'  {int(np.sum(has_match)):,d}/{n:,d} beta galaxies matched to parent/nocuts catalog')
+        mm = vv[par_rows[has_match]]
+        diam_arcsec, ba_init, pa_init, ref_init = choose_geometry(mm, mindiam=0.)
+        init_arrs = {
+            'RA_INIT':       np.full(n, -1., np.float64),
+            'DEC_INIT':      np.full(n, -1., np.float64),
+            'DIAM_INIT':     np.full(n, -1., np.float32),
+            'DIAM_INIT_REF': np.full(n, '', dtype='U14'),
+            'BA_INIT':       np.full(n, -1., np.float32),
+            'PA_INIT':       np.full(n, -1., np.float32),
+        }
+        init_arrs['RA_INIT'][has_match]       = mm['RA']
+        init_arrs['DEC_INIT'][has_match]      = mm['DEC']
+        init_arrs['DIAM_INIT'][has_match]     = (diam_arcsec / 60.).astype(np.float32)
+        init_arrs['DIAM_INIT_REF'][has_match] = ref_init
+        init_arrs['BA_INIT'][has_match]       = ba_init.astype(np.float32)
+        init_arrs['PA_INIT'][has_match]       = pa_init.astype(np.float32)
+
+        # Fallback: custom catalog (VI-inspected sources added to the parent)
+        customfile = resources.files('SGA').joinpath(
+            'data/SGA2025/SGA2025-parent-custom.csv')
+        cust = Table.read(str(customfile), format='csv', comment='#')
+        custom_lookup = {
+            str(r['OBJNAME']).strip(): (
+                float(r['RA']), float(r['DEC']),
+                float(r['DIAM_LIT']), float(r['BA_LIT']), float(r['PA_LIT']))
+            for r in cust
+        }
+
+        # Fallback: versioned adds.csv files; alphabetical sort = version order,
+        # so first-seen entry is from the earliest version.
+        overlays_dir = Path(str(
+            resources.files('SGA').joinpath('data/SGA2025/overlays')))
+        adds_lookup = {}
+        for fpath in sorted(overlays_dir.glob('*/adds.csv')):
+            for r in Table.read(str(fpath), format='csv'):
+                name = str(r['OBJNAME']).strip()
+                if name not in adds_lookup:
+                    adds_lookup[name] = (
+                        float(r['RA']), float(r['DEC']),
+                        float(r['DIAM']), float(r['BA']), float(r['PA']))
+
+        n_from_custom = 0
+        n_from_adds   = 0
+        for i in np.where(init_arrs['RA_INIT'] < 0.)[0]:
+            name = str(beta['OBJNAME'][i]).strip()
+            if name in custom_lookup:
+                ra, dec, diam, ba, pa = custom_lookup[name]
+                src = 'custom'
+            elif name in adds_lookup:
+                ra, dec, diam, ba, pa = adds_lookup[name]
+                src = 'adds'
+            else:
+                continue
+            init_arrs['RA_INIT'][i]       = ra
+            init_arrs['DEC_INIT'][i]      = dec
+            init_arrs['DIAM_INIT'][i]     = np.float32(diam)
+            init_arrs['DIAM_INIT_REF'][i] = 'VI'
+            init_arrs['BA_INIT'][i]       = np.float32(ba)
+            init_arrs['PA_INIT'][i]       = np.float32(pa)
+            if src == 'custom':
+                n_from_custom += 1
+            else:
+                n_from_adds += 1
+
+        log.info(f'  {n_from_custom:,d} objects filled from custom catalog; '
+                 f'{n_from_adds:,d} from adds.csv')
+        n_still_missing = int(np.sum(init_arrs['RA_INIT'] < 0.))
+        if n_still_missing > 0:
+            log.warning(f'  {n_still_missing:,d} objects still missing INIT geometry')
 
     # --- NED merged catalog -----------------------------------------------
     ned_path     = os.path.join(neddir, f'ned-merged-{region}.fits')
@@ -852,6 +946,12 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         if col in out.colnames:
             out.remove_column(col)
 
+    # Initial geometry restored from parent/nocuts catalog (added
+    # after drop to avoid collision with drifted beta INIT columns)
+    if init_arrs is not None:
+        for name, dtype, unit in INIT_COLS:
+            out.add_column(Column(init_arrs[name], name=name, unit=unit))
+
     # Apply column ordering
     out = _reorder_cols(out)
 
@@ -948,13 +1048,18 @@ def main():
     parser.add_argument('--lvd-catalog',
                         help='Path to LVD ECSV catalog (e.g. lvd_comb_all_v1.1.0.ecsv); '
                              'distances in kpc converted to Mpc')
+    parser.add_argument('--parent-nocuts',
+                        help='Path to SGA2025-parent-nocuts-v0.10.fits; restores '
+                             'RA_INIT/DEC_INIT/DIAM_INIT/DIAM_INIT_REF/BA_INIT/PA_INIT '
+                             'from the original parent catalog geometry')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
     for region in regions:
         merge_region(region, args.neddir, args.redshiftdir, args.outdir,
                      args.vdiff_threshold, args.desi_max_sep,
-                     lvd_catalog=args.lvd_catalog)
+                     lvd_catalog=args.lvd_catalog,
+                     parent_nocuts=args.parent_nocuts)
 
 
 if __name__ == '__main__':

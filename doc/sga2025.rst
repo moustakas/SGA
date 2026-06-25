@@ -2,7 +2,7 @@ SGA-2025
 ========
 
 The SGA-2025 delivers multiwavelength imaging mosaics and ellipse
-photometry for nearly 0.5M large, resolved galaxies across
+photometry for nearly half a million large, resolved galaxies across
 approximately 30,000 deg² of the extragalactic sky.
 
 This page describes the organization of the public data release, the
