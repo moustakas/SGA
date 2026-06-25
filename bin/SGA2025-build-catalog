@@ -194,6 +194,7 @@ import astropy.units as u
 from SGA.util import C_LIGHT
 from SGA.SGA import read_sga_sample, SGA_datamodel, SAMPLE as SAMPLE_BITS
 from SGA.geometry import choose_geometry
+from SGA.ellipse import MAXSHIFT_ARCSEC
 from SGA.io import table_to_fitsio
 from SGA.logger import log
 
@@ -971,6 +972,22 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     if init_arrs is not None:
         for name, dtype, unit in INIT_COLS:
             out.add_column(Column(init_arrs[name], name=name, unit=unit))
+
+        # Recompute LARGESHIFT using the restored RA_INIT/DEC_INIT as the
+        # reference position, replacing the value set during iterative processing.
+        _LARGESHIFT  = np.int32(16)
+        ra_init      = init_arrs['RA_INIT']
+        dec_init     = init_arrs['DEC_INIT']
+        have_init    = ra_init > -1.
+        sep          = _angular_sep_arcsec(ra_init, dec_init,
+                                           np.array(beta['RA']),
+                                           np.array(beta['DEC']))
+        ebit         = np.array(out['ELLIPSEBIT'], dtype=np.int32)
+        ebit        &= ~_LARGESHIFT
+        ebit[have_init & (sep > MAXSHIFT_ARCSEC)] |= _LARGESHIFT
+        out['ELLIPSEBIT'] = ebit
+        log.info(f'  LARGESHIFT recomputed (threshold={MAXSHIFT_ARCSEC}"): '
+                 f'{int(np.sum((ebit & _LARGESHIFT) != 0)):,d} objects flagged')
 
     # Apply column ordering
     out = _reorder_cols(out)

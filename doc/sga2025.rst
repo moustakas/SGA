@@ -655,7 +655,7 @@ have multiple bits set simultaneously.
      - Description
    * - ``LVD``
      - 1
-     - Source from the Local Volume Database (dwarf galaxies)
+     - Source from the Local Volume Database of nearby galaxies
    * - ``MCLOUDS``
      - 2
      - Located within the Magellanic Cloud footprint
@@ -664,13 +664,13 @@ have multiple bits set simultaneously.
      - Located within a globular cluster or planetary nebula mask
    * - ``NEARSTAR``
      - 8
-     - Near a bright star (star–galaxy separation < 1.2 × stellar FWHM)
+     - Near a bright star (star–galaxy separation < 1.2 × Gaia/Tycho mask)
    * - ``INSTAR``
      - 16
-     - Inside a bright star (star–galaxy separation < 0.5 × stellar FWHM)
+     - Inside a bright star (star–galaxy separation < 0.5 × Gaia/Tycho mask)
    * - ``OVERLAP``
      - 32
-     - Initial ellipse overlaps another SGA ellipse
+     - Initial ellipse overlaps another (initial) SGA ellipse
 
 ``ELLIPSEMODE`` — input fitting flags
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -689,19 +689,19 @@ Requested before processing; describes the intended fitting strategy.
      - Fix the ellipse geometry to initial values (no free fitting)
    * - ``RESOLVED``
      - 2
-     - Spatially resolved; Tractor fitting not performed
+     - Milky Way satellite (effectively resolved into stars); Tractor fitting not performed
    * - ``FORCEPSF``
      - 4
-     - Force a PSF model in Tractor
+     - Force all Tractor sources to be PSF
    * - ``FORCEGAIA``
      - 8
-     - Force Gaia astrometry for the source position
+     - Force Tractor to only fit Gaia sources (not used)
    * - ``LESSMASKING``
      - 16
-     - Apply less aggressive neighbor masking
+     - Apply less aggressive masking during ellipse-fitting
    * - ``MOREMASKING``
      - 32
-     - Apply more aggressive neighbor masking
+     - Apply more aggressive masking during ellipse-fitting
    * - ``MOMENTPOS``
      - 64
      - Use moment-based position instead of Tractor position
@@ -710,10 +710,10 @@ Requested before processing; describes the intended fitting strategy.
      - Adopt Tractor geometry instead of ellipse-fit geometry
    * - ``NORADWEIGHT``
      - 256
-     - Disable radial weighting in isophote fitting
+     - Disable radial weighting in when determining light-weighted geometry
 
-``ELLIPSEBIT`` — output quality flags
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``ELLIPSEBIT`` — output fitting and quality flags
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Set after processing; records the actual fitting outcome and data quality.
 
@@ -726,7 +726,7 @@ Set after processing; records the actual fitting outcome and data quality.
      - Description
    * - ``NOTRACTOR``
      - 1
-     - No Tractor source matched to this galaxy
+     - No Tractor model (dropped or never fitted)
    * - ``TRACTORPSF``
      - 2
      - Tractor fit this source as a point source (PSF model)
@@ -735,7 +735,7 @@ Set after processing; records the actual fitting outcome and data quality.
      - Ellipse geometry was fixed, not freely fitted
    * - ``BLENDED``
      - 8
-     - Source is blended with a neighbor in the Tractor catalog
+     - Source center is within the ellipse of another SGA source
    * - ``LARGESHIFT``
      - 16
      - Large positional shift between initial and fitted ellipse center
