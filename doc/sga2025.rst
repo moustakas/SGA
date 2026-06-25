@@ -349,6 +349,9 @@ and ``ZWARN_DESI`` are −1 when no spectrum was selected; ``Z_DESI`` and
    * - ``SPECTYPE_DESI``
      - str6
      - DESI spectral classification (e.g. ``GALAXY``, ``QSO``, ``STAR``)
+   * - ``NSPEC_DESI``
+     - int32
+     - Number of DESI spectra (any ZWARN) within the SGA ellipse (0 if none)
 
 **NED redshift and distance**
 
@@ -503,6 +506,42 @@ These columns are populated only for objects in the Local Volume Database
    * - ``R{22,23,24,25,26}_ERR_{band}``
      - 1σ uncertainty on the isophotal radius (arcsec)
 
+**Initial geometry**
+
+These columns record the geometry adopted from the input parent catalog at the
+start of processing, before any ellipse fitting. They are useful for
+quantifying how much the pipeline has revised the initial size and shape
+estimates, and for identifying objects whose fitted geometry has diverged
+substantially from the input. ``DIAM_INIT_REF`` encodes the source of the
+initial diameter: one of ``SGA2020``, ``HYPERLEDA``, ``LIT``, ``LVD``,
+``SMUDGes``, ``RC3``, or ``VI`` (visually inspected and added during
+processing).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 9 65
+
+   * - Column
+     - Type
+     - Description
+   * - ``RA_INIT``, ``DEC_INIT``
+     - float64
+     - Parent-catalog coordinates used to initialize processing (deg;
+       −1 if not available)
+   * - ``DIAM_INIT``
+     - float32
+     - Initial diameter from the parent catalog (arcmin; −1 if not available)
+   * - ``DIAM_INIT_REF``
+     - str14
+     - Source catalog for ``DIAM_INIT`` (blank if not available)
+   * - ``BA_INIT``
+     - float32
+     - Initial axis ratio b/a from the parent catalog (−1 if not available)
+   * - ``PA_INIT``
+     - float32
+     - Initial position angle from the parent catalog (deg, N through E;
+       −1 if not available)
+
 Data Model: TRACTOR Extension
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -543,13 +582,21 @@ A single best DESI spectrum is selected per galaxy using the following
 steps, applied to all spectra within 3 arcsec of the SGA position:
 
 1. Retain only ``ZCAT_PRIMARY = True`` rows (highest-S/N coadd per TARGETID).
-2. Prefer ``SPECTYPE = GALAXY`` and ``ZWARN = 0``.
-3. Fall back to any ``ZWARN = 0`` spectrum regardless of ``SPECTYPE``.
-4. Among survivors, select the spectrum with the highest ``DELTACHI2``.
+2. Drop physically implausible spectra regardless of ``ZWARN``:
 
-If no ``ZWARN = 0`` spectrum survives, no DESI redshift is adopted for that
+   - ``SPECTYPE = STAR`` — always a mis-classification for galaxies.
+   - ``SPECTYPE = GALAXY`` and ``Z > 1.5`` — pipeline redshift error.
+   - ``SPECTYPE = QSO`` and ``Z > 1.0`` — outside the redshift range of this sample.
+
+3. Prefer ``SPECTYPE = GALAXY`` and ``ZWARN = 0``.
+4. Fall back to any ``ZWARN = 0`` spectrum regardless of ``SPECTYPE``.
+5. Among survivors, select the spectrum with the highest ``DELTACHI2``.
+
+If no spectrum survives all filters, no DESI redshift is adopted for that
 galaxy (``Z_IVAR_DESI = 0``). The 3-arcsec proximity cut excludes background
 or foreground objects whose fiber happens to fall inside a large SGA ellipse.
+``NSPEC_DESI`` records the total number of DESI spectra (any ``ZWARN``) found
+within the SGA ellipse, regardless of the selection outcome.
 
 **Z_FLAG (redshift discrepancy)**
 
