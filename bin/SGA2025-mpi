@@ -41,9 +41,12 @@ from SGA.logger import (log, LOGFMT, hook_legacypipe_and_root,
                         setup_logging)
 
 
-def get_logfile(galaxy, galaxydir, stagesuffix):
+def get_logfile(galaxy, galaxydir, stagesuffix, htmlgalaxydir):
     from SGA.io import backup_filename
-    logfile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}.log')
+    if stagesuffix.upper() == 'HTML':
+        logfile = os.path.join(htmlgalaxydir, f'{galaxy}-{stagesuffix}.log')
+    else:
+        logfile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}.log')
     backup_filename(logfile)
     return logfile
 
@@ -393,7 +396,6 @@ def main():
         if args.parse_tractor_logs:
             from glob import glob
             from SGA.mpi import parse_tractor_log
-            pdb.set_trace()
             return
 
         suffix, groups, _, fail, wait = missing_files(
@@ -538,7 +540,7 @@ def main():
             log.info(f'Rank {rank:03d} ({count+1} / {len(groups[rank])}): ' + \
                      f'{galaxydir} [{onegal["OBJNAME"]} D={onegal[DIAMCOLUMN]:.3f} arcmin M={onegal["GROUP_MULT"]}]')
 
-            logfile = get_logfile(galaxy, galaxydir, suffix)
+            logfile = get_logfile(galaxy, galaxydir, suffix, htmlgalaxydir)
             fh = setup_logging(logfile, debug=args.debug)
             if not args.debug:
                 log.info(f'Logging output to {logfile}')
@@ -784,7 +786,7 @@ def main():
                                  bands=bands, mp=args.mp, pixscale=args.pixscale,
                                  unwise=args.unwise, galex=args.galex,
                                  verbose=args.verbose, clobber=args.clobber)
-                done(galaxy, galaxydir, err, suffix, fh=fh, debug=args.debug)
+                done(galaxy, htmlgalaxydir, err, suffix, fh=fh, debug=args.debug)
 
         if len(groups[rank]) > 0:
             log.info(f'Rank {rank:03d} finished {len(groups[rank]):,d} object(s) ' + \
