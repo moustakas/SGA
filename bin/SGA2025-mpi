@@ -234,6 +234,10 @@ def main():
     release = RELEASE[args.region]
     bands = BANDS[args.region]
 
+    # HTML stuff now implies --final-sample
+    if args.htmlindex or args.htmlplots:
+        args.final_sample = True
+
     # Read and broadcast the sample.
     bricks = None
     if rank == 0:
@@ -255,12 +259,11 @@ def main():
             log.critical(msg)
             raise ValueError(msg)
         else:
-            if kdrefcatfile != os.getenv("LARGEGALAXIES_CAT"):
-                if kdrefcatfile.replace('/global/', '/dvs_ro/') != os.getenv("LARGEGALAXIES_CAT"):
-                    msg = f'Mismatch between $LARGEGALAXIES_CAT and {kdrefcatfile}!'
-                    log.warning(msg)
-                    #log.critical(msg)
-                    #raise ValueError(msg)
+            pass
+            #if kdrefcatfile != os.getenv("LARGEGALAXIES_CAT"):
+            #    if kdrefcatfile.replace('/global/', '/dvs_ro/') != os.getenv("LARGEGALAXIES_CAT"):
+            #        msg = f'Mismatch between $LARGEGALAXIES_CAT and {kdrefcatfile}!'
+            #        log.warning(msg)
 
 
         if args.build_refcat:

@@ -493,7 +493,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
 
 def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
                     galaxylist=None, first=None, last=None, no_groups=False,
-                    minmult=None, maxmult=None, lvd=False, version=None, beta=True,
+                    minmult=None, maxmult=None, lvd=False, version=None, beta=False,
                     verbose=False):
     """Read the final SGA2025 catalog for a given survey region.
 
@@ -531,16 +531,17 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
         GROUP_PRIMARY objects satisfying the selection criteria.
     fullsample : astropy.table.Table
         All group members whose group has at least one object in sample.
+
     """
-    if version is None:
-        version = SGA_version()
     if beta:
+        if version is None:
+            version = SGA_version()
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
     else:
-        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+        samplefile = os.path.join(sga_dir(), 'public', f'SGA2025-{region}.fits')
 
     # Row selection always runs on ELLIPSE (which has the group/region/sample columns).
-    sample, fullsample = _read_catalog(samplefile, 'ELLIPSE', 'D26', first, last,
+    sample, fullsample = _read_catalog(samplefile, 'SGA2025', 'D26', first, last,
                                        galaxylist, verbose, no_groups, lvd, region,
                                        mindiam, maxdiam, minmult, maxmult)
 
