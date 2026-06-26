@@ -44,8 +44,12 @@ from SGA.logger import (log, LOGFMT, hook_legacypipe_and_root,
 def get_logfile(galaxy, galaxydir, stagesuffix, htmlgalaxydir):
     from SGA.io import backup_filename
     if stagesuffix.upper() == 'HTML':
+        if not os.path.isdir(htmlgalaxydir):
+            os.makedirs(htmlgalaxydir, exist_ok=True)
         logfile = os.path.join(htmlgalaxydir, f'{galaxy}-{stagesuffix}.log')
     else:
+        if not os.path.isdir(galaxydir):
+            os.makedirs(galaxydir, exist_ok=True)
         logfile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}.log')
     backup_filename(logfile)
     return logfile

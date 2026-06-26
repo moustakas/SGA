@@ -2020,8 +2020,6 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     from SGA.qa import overplot_ellipse, get_norm, matched_norm
 
 
-    if not os.path.isdir(htmlgalaxydir):
-        os.makedirs(htmlgalaxydir, exist_ok=True)
     qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
 
     alpha = 0.6
