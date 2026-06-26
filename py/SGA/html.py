@@ -1166,10 +1166,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         diamcol = 'DIAM_INIT'
     else:
         diamcol = 'DIAM'
-    if 'DIAM_INIT_REF' in fullgroup_data.colnames:
-        diamrefcol = 'DIAM_INIT_REF'
-    else:
-        diamrefcol = 'DIAM_REF'
+    #if 'DIAM_INIT_REF' in fullgroup_data.colnames:
+    #    diamrefcol = 'DIAM_INIT_REF'
+    #else:
+    #    diamrefcol = 'DIAM_REF'
     if 'MAG_INIT' in fullgroup_data.colnames:
         magcol = 'MAG_INIT'
     else:
@@ -1270,20 +1270,19 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         html_lines.append("    <table>")
         html_lines.append("        <tr>")
         html_lines.append("            <th>Object Name</th><th>PGC</th><th>SAMPLE</th><th>ELLIPSEMODE</th>")
-        html_lines.append("            <th>FITMODE</th><th>E(B-V)</th><th>Diam Ref</th>")
+        html_lines.append("            <th>E(B-V)</th>")
+        #html_lines.append("            <th>Diam Ref</th>")
         html_lines.append("        </tr>")
         for row in fullgroup_data:
             sample_flags = ', '.join(decode_bitmask(row['SAMPLE'], SAMPLE))
             ellipse_flags = ', '.join(decode_bitmask(row['ELLIPSEMODE'], ELLIPSEMODE))
-            fit_flags = ', '.join(decode_bitmask(row['FITMODE'], FITMODE))
             html_lines.append("        <tr>")
             html_lines.append("            <td>{}</td>".format(row['OBJNAME']))
             html_lines.append("            <td>{}</td>".format(row['PGC'] if row['PGC'] > 0 else '-'))
             html_lines.append("            <td>{}</td>".format(sample_flags))
             html_lines.append("            <td>{}</td>".format(ellipse_flags))
-            html_lines.append("            <td>{}</td>".format(fit_flags))
             html_lines.append("            <td>{:.3f}</td>".format(row['EBV']))
-            html_lines.append("            <td>{}</td>".format(row[diamrefcol]))
+            #html_lines.append("            <td>{}</td>".format(row[diamrefcol]))
             html_lines.append("        </tr>")
         html_lines.append("    </table>")
     html_lines.extend([
