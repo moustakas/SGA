@@ -171,18 +171,34 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
     GEOFINALCOLS = ['BX', 'BY', 'SMA_MASK', 'BA_MOMENT', 'PA_MOMENT']
 
-    # Precompute display names for each object from the final catalog when available.
+    # Precompute display names and geometry for each object from the final catalog when available.
     sgaid_map = {}
     if fullsample is not None:
         sgaid_map = {int(s): i for i, s in enumerate(fullsample['SGAID'])}
+
+    def _radec_to_opt(ra, dec):
+        """RA, DEC → opt pixel coords (0-indexed)."""
+        _, bx, by = opt_wcs.wcs.radec2pixelxy(ra, dec)
+        return float(bx) - 1., float(by) - 1.
+
     galaxy_names = []
+    init_geom = []   # (bx_opt, by_opt, sma_arcsec, ba, pa)
+    final_geom = []  # (bx_opt, by_opt, sma_arcsec, ba, pa)
     for _obj in ellipse:
         _idx = sgaid_map.get(int(_obj['SGAID']), -1) if sgaid_map else -1
         if _idx >= 0:
             _pub = fullsample[_idx]
             galaxy_names.append(str(_pub['GALAXY']).strip() or str(_obj['OBJNAME']).strip())
+            bxi, byi = _radec_to_opt(float(_pub['RA_INIT']), float(_pub['DEC_INIT']))
+            sma_i = float(_pub['DIAM_INIT']) * 60. / 2.  # arcmin diameter → arcsec radius
+            init_geom.append((bxi, byi, sma_i, float(_pub['BA_INIT']), float(_pub['PA_INIT'])))
+            bxf, byf = _radec_to_opt(float(_pub['RA']), float(_pub['DEC']))
+            sma_f = float(_pub['D26']) * 60. / 2.         # arcmin diameter → arcsec radius
+            final_geom.append((bxf, byf, sma_f, float(_pub['BA']), float(_pub['PA'])))
         else:
             galaxy_names.append(str(_obj['OBJNAME']).strip())
+            init_geom.append(tuple(_obj[col] for col in GEOINITCOLS))
+            final_geom.append(tuple(_obj[col] for col in GEOFINALCOLS))
     #GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
 
     # coadded optical, IR, and UV images and initial geometry
@@ -212,8 +228,8 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
         # initial ellipse geometry
         #pixfactor = data['opt_pixscale'] / pixscale
         for iobj, obj in enumerate(ellipse):
-            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
-            bx, by = map_bxby(bx, by, from_wcs=opt_wcs, to_wcs=wcs)
+            bx_opt, by_opt, sma, ba, pa = init_geom[iobj]
+            bx, by = map_bxby(bx_opt, by_opt, from_wcs=opt_wcs, to_wcs=wcs)
             overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=pixscale, ax=xx,
                              color=colors1[iobj], linestyle='-', linewidth=2,
                              draw_majorminor_axes=True, jpeg=False,
@@ -286,14 +302,14 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
 
         for col in range(3):
             # initial geometry
-            [bx, by, sma, ba, pa] = list(obj[GEOINITCOLS].values())
+            bx, by, sma, ba, pa = init_geom[iobj]
             overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
                              ax=ax[1+iobj, col], color=colors2[0], linestyle='-',
                              linewidth=2, draw_majorminor_axes=True,
                              jpeg=False, label='Initial')
 
             # final geometry
-            [bx, by, sma, ba, pa] = list(obj[GEOFINALCOLS].values())
+            bx, by, sma, ba, pa = final_geom[iobj]
             overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=opt_pixscale,
                              ax=ax[1+iobj, col], color=colors2[1], linestyle='--',
                              linewidth=2, draw_majorminor_axes=True,
