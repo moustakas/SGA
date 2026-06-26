@@ -14,7 +14,7 @@ from astropy.table import Table, vstack, join
 from pathlib import Path
 from glob import glob
 import multiprocessing
-from SGA.SGA import SAMPLE, RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
+from SGA.SGA import SAMPLE, RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN, APERTURES
 from SGA.ellipse import FITMODE, ELLIPSEMODE, ELLIPSEBIT, REF_APERTURES
 
 from SGA.logger import log
@@ -1358,14 +1358,24 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             return f'{mag:.3f} ± {2.5*fe/f/np.log(10.):.3f}'
         return f'{mag:.3f}'
 
-    def _th(*headers):
-        return '        <tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>'
+    def _th(*cells):
+        """Build a <tr> of <th> cells. A cell may be a plain string or a
+        (text, colspan, rowspan) tuple; omit trailing 1s."""
+        parts = []
+        for c in cells:
+            if isinstance(c, tuple):
+                text = c[0]
+                attrs = (f" colspan='{c[1]}'" if len(c) > 1 and c[1] != 1 else '') + \
+                        (f" rowspan='{c[2]}'" if len(c) > 2 and c[2] != 1 else '')
+                parts.append(f'<th{attrs}>{text}</th>')
+            else:
+                parts.append(f'<th>{c}</th>')
+        return '        <tr>' + ''.join(parts) + '</tr>'
 
     def _td(*cells):
         return '        <tr>' + ''.join(f'<td>{c}</td>' for c in cells) + '</tr>'
 
     phot_bands = ['G', 'R', 'I', 'Z', 'W1', 'W2', 'FUV', 'NUV']
-    ap_labels  = ['0.5×', '1.0×', '1.25×', '1.5×', '2.0×']  # AP00–04
 
     # -----------------------------------------------------------------------
     # HTML construction
@@ -1452,15 +1462,16 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         html_lines.append("    <h3>Table 2 — Size &amp; Geometry</h3>")
         html_lines.append("    <table>")
         if _has('D26'):
-            html_lines.append(_th('',
-                                  'D(26)', '', '', 'PA',
-                                  'D<sub>init</sub> (arcmin)', 'b/a<sub>init</sub>', 'PA<sub>init</sub> (°)', 'Init ref'))
-            html_lines.append(_th('Galaxy',
-                                  '(arcmin)', 'Ref', 'b/a', '(degree)',
-                                  'D<sub>init</sub> (arcmin)', 'b/a<sub>init</sub>', 'PA<sub>init</sub> (°)', 'Init ref'))
+            html_lines.append(_th(
+                ('Galaxy', 1, 2),
+                ('Fitted', 4), ('Initial', 4),
+            ))
+            html_lines.append(_th(
+                'D(26) (arcmin)', 'Ref', 'b/a', 'PA (°)',
+                'D (arcmin)', 'Ref', 'b/a', 'PA (°)',
+            ))
         else:
-            html_lines.append(_th('Galaxy',
-                                  'D<sub>init</sub> (arcmin)', 'b/a<sub>init</sub>', 'PA<sub>init</sub> (°)', 'Init ref'))
+            html_lines.append(_th('Galaxy', 'D (arcmin)', 'b/a', 'PA (°)', 'Ref'))
         for row in fullgroup_data:
             d_init    = _sf(_get(row, 'DIAM_INIT') or _get(row, 'DIAM'))
             ba_init   = _sf(_get(row, 'BA_INIT') or _get(row, 'BA'))
@@ -1487,14 +1498,24 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             has_lvd  = _has('Z_LVD')
             html_lines.append("    <h3>Table 3 — Redshift &amp; Distance</h3>")
             html_lines.append("    <table>")
-            headers = ['Galaxy', 'z (adopted)', 'z ref', 'Dist (Mpc)', 'Dist ref']
+            # row 1: group headers
+            hdr1 = [('Galaxy', 1, 2), ('Adopted', 4)]
             if has_desi:
-                headers += ['z<sub>DESI</sub>', 'ZWARN', 'Spectype', 'N<sub>spec</sub>']
+                hdr1.append(('DESI', 4))
             if has_ned:
-                headers += ['z<sub>NED</sub>', 'Dist<sub>NED</sub> (Mpc)']
+                hdr1.append(('NED', 2))
             if has_lvd:
-                headers += ['z<sub>LVD</sub>', 'Dist<sub>LVD</sub> (Mpc)']
-            html_lines.append(_th(*headers))
+                hdr1.append(('LVD', 2))
+            html_lines.append(_th(*hdr1))
+            # row 2: column names
+            hdr2 = ['z', 'z ref', 'Dist (Mpc)', 'Dist ref']
+            if has_desi:
+                hdr2 += ['z', 'ZWARN', 'Spectype', 'N']
+            if has_ned:
+                hdr2 += ['z', 'Dist (Mpc)']
+            if has_lvd:
+                hdr2 += ['z', 'Dist (Mpc)']
+            html_lines.append(_th(*hdr2))
             for row in fullgroup_data:
                 z_flag = int(_get(row, 'Z_FLAG', 0) or 0)
                 z_flag_s = " <span class='warn'>⚠</span>" if z_flag & 0x01 else ''
@@ -1532,8 +1553,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             n_meas = 1 + n_ap  # CoG row + aperture rows
             html_lines.append("    <h3>Table 4 — Photometry (AB mag ± err)</h3>")
             html_lines.append("    <table>")
-            html_lines.append(_th('Galaxy', 'Measurement',
-                                  *[b.lower() for b in phot_bands]))
+            html_lines.append(_th(
+                ('Galaxy', 1, 2), ('Measurement', 1, 2),
+                ('Optical', 4), ('IR', 2), ('UV', 2),
+            ))
+            html_lines.append(_th(*[b.lower() for b in phot_bands]))
             for row in fullgroup_data:
                 sma_moment = _sf(_get(row, 'SMA_MOMENT'), zero_missing=True)
                 for imeas in range(n_meas):
@@ -1543,12 +1567,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                         name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{row['GALAXY']}</td>"
                     else:
                         ap = imeas - 1
+                        mult = f'{APERTURES[ap]:g}×'
                         if _has(f'SMA_AP{ap:02d}') and sma_moment:
                             sma_ap = _sf(_get(row, f'SMA_AP{ap:02d}'), zero_missing=False)
-                            sma_s  = f'{sma_ap:.1f}"' if sma_ap else ''
-                            meas_label = f'AP{ap:02d} ({ap_labels[ap]}{" = " + sma_s if sma_s else ""})'
+                            sma_s  = f' = {sma_ap:.1f}"' if sma_ap else ''
+                            meas_label = f'AP{ap:02d} ({mult}{sma_s})'
                         else:
-                            meas_label = f'AP{ap:02d} ({ap_labels[ap]})'
+                            meas_label = f'AP{ap:02d} ({mult})'
                         band_vals = [_fmt_mag_ap(row, ap, b) for b in phot_bands]
                         name_cell = ''
                     html_lines.append(f'        <tr>{name_cell}<td>{meas_label}</td>' +
