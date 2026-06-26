@@ -721,12 +721,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             ba = float(pub['BA'])
             pa = float(pub['PA'])
             title = f'{galaxy_name} ({obj["SGANAME"]})'
-            if d26 > 0.:
-                d26_ref_str = f'[{d26_ref}]' if d26_ref else ''
-                geom_str = (f'$D(26)$ = {d26:.2f}±{d26_err:.2f} arcmin {d26_ref_str}'
-                            f'\nPA={pa:.0f}°  b/a={ba:.2f}')
-            else:
-                geom_str = f'PA={pa:.0f}°  b/a={ba:.2f}'
+            d26_ref_str = f'[{d26_ref}]' if d26_ref else ''
+            geom_str = f'$D(26)$ = {d26:.3f}±{d26_err:.3f} arcmin PA={pa:.0f}°  b/a={ba:.2f}'
         else:
             title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
 
@@ -852,7 +848,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                             #xx.plot(sma[J], mu[J]+muerr[J], color=col, alpha=0.8)
                             #xx.scatter(sma[J], mu[J], label=filt, color=col)
                             xx.fill_between(sma[J], mu[J]-muerr[J], mu[J]+muerr[J],
-                                            label=filt, color=col, alpha=0.7)
+                                            label=f'$\\mu({filt})$', color=col, alpha=0.7)
 
                         # robust limits
                         mulo = (mu - muerr)[(muerr < 1.) * (mu / muerr > 8.)]
@@ -896,21 +892,20 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 xx_twin.invert_yaxis()
 
                 if idata == 1:
-                    xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
+                    xx_twin.set_ylabel(r'Surface Brightness $\mu$ (mag arcsec$^{-2}$)')
 
                 # Geometry annotation in the lower-left of the first SB panel.
                 if idata == 0 and geom_str:
-                    xx.text(0.04, 0.04, geom_str, transform=xx.transAxes,
-                            ha='left', va='bottom', fontsize=7,
-                            bbox=dict(boxstyle='round', facecolor='white', alpha=0.75))
+                    xx.text(0.02, 0.03, geom_str, transform=xx.transAxes,
+                            ha='left', va='bottom', fontsize=10)
 
                 # Upward arrows just inside the bottom edge marking size scales.
                 # mfc='none' matches the unfilled outline style of the aperture ellipses.
                 trans = blended_transform_factory(xx.transData, xx.transAxes)
                 if sma_sbthresh > 0.:
-                    xx.plot(sma_sbthresh**0.25, 0.03, '^', mec=colors2[1], mfc='none', ms=9, mew=1.5,
+                    xx.plot(sma_sbthresh**0.25, 0.94, 'v', mec=colors2[1], mfc='none', ms=9, mew=1.5,
                             transform=trans, clip_on=False, zorder=5)
-                xx.plot(sma_moment**0.25, 0.03, '^', mec=colors2[0], mfc='none', ms=9, mew=1.5,
+                xx.plot(sma_moment**0.25, 0.94, 'v', mec=colors2[0], mfc='none', ms=9, mew=1.5,
                         transform=trans, clip_on=False, zorder=5)
 
                 band_hndls, _ = xx.get_legend_handles_labels()
@@ -920,10 +915,10 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                         if sma_sbthresh > 0.:
                             size_hndls.append(mlines.Line2D(
                                 [], [], mec=colors2[1], mfc='none', mew=1.5,
-                                marker='^', linestyle='None', ms=9, label=label_sbthresh))
+                                marker='v', linestyle='None', ms=9, label=label_sbthresh))
                         size_hndls.append(mlines.Line2D(
                             [], [], mec=colors2[0], mfc='none', mew=1.5,
-                            marker='^', linestyle='None', ms=9, label=label_moment))
+                            marker='v', linestyle='None', ms=9, label=label_moment))
                         leg1 = xx.legend(handles=band_hndls, loc='upper right', fontsize=8)
                         xx.legend(handles=size_hndls, loc='lower left', fontsize=8)
                         xx.add_artist(leg1)
