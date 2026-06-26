@@ -540,11 +540,13 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
         if version is None:
             version = SGA_version()
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
+        ext = 'ELLIPSE'
     else:
         samplefile = os.path.join(sga_dir(), 'public', f'SGA2025-{region}.fits')
+        ext = 'SGA2025'
 
     # Row selection always runs on ELLIPSE (which has the group/region/sample columns).
-    sample, fullsample = _read_catalog(samplefile, 'SGA2025', 'D26', first, last,
+    sample, fullsample = _read_catalog(samplefile, ext, 'D26', first, last,
                                        galaxylist, verbose, no_groups, lvd, region,
                                        mindiam, maxdiam, minmult, maxmult)
 

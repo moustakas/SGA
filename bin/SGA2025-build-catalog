@@ -214,7 +214,7 @@ NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
 # ---------------------------------------------------------------------------
 DROP_COLS = frozenset([
     'CROSSIDS',   # internal; user-facing splits are GALAXY and ALTNAMES
-    'D26_REF',
+    #'D26_REF',
     'BX_INIT',
     'BY_INIT',
     'RA_INIT',
@@ -245,7 +245,7 @@ COL_ORDER = [
     'MORPH',
     'SGAGROUP', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE', 'BANDS',
     # --- Size and geometry (primary SGA product) ---
-    'D26', 'D26_ERR', 'BA', 'PA',
+    'D26', 'D26_ERR', 'D26_REF', 'BA', 'PA',
     'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
     # --- Adopted redshifts and distances ---
     'Z', 'Z_IVAR', 'Z_REF', 'Z_FLAG',
@@ -586,8 +586,8 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
 
     # --- SGA beta catalog -------------------------------------------------
     log.info('  Loading SGA beta catalog')
-    _, beta = read_sga_sample(region=region)
-    _, tractor = read_sga_sample(region=region, tractor=True)
+    _, beta = read_sga_sample(region=region, beta=True)
+    _, tractor = read_sga_sample(region=region, beta=True, tractor=True)
     bands, all_bands = _detect_bands(beta)
     log.info(f'  Detected bands={bands}  all_bands={all_bands}')
     dm    = _build_dm_ref(bands, all_bands)

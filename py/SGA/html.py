@@ -711,20 +711,22 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             if idx >= 0:
                 pub = fullsample[idx]
 
-        # Build figure suptitle from final catalog values when available.
+        # Build figure title and geometry annotation from final catalog values when available.
+        geom_str = ''
         if pub is not None:
             galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
             d26 = float(pub['D26'])
             d26_err = float(pub['D26_ERR'])
+            d26_ref = str(pub['D26_REF']).strip()
             ba = float(pub['BA'])
             pa = float(pub['PA'])
-            name_line = f'{galaxy_name} ({obj["SGANAME"]})'
+            title = f'{galaxy_name} ({obj["SGANAME"]})'
             if d26 > 0.:
-                geom_line = (rf'$D_{{26}}$ = {d26:.2f} ± {d26_err:.2f} arcmin'
-                             rf'   PA = {pa:.0f}°   b/a = {ba:.2f}')
+                d26_ref_str = f'[{d26_ref}]' if d26_ref else ''
+                geom_str = (f'$D(26)$ = {d26:.2f}±{d26_err:.2f} arcmin {d26_ref_str}'
+                            f'\nPA={pa:.0f}°  b/a={ba:.2f}')
             else:
-                geom_line = rf'PA = {pa:.0f}°   b/a = {ba:.2f}'
-            title = f'{name_line}\n{geom_line}'
+                geom_str = f'PA={pa:.0f}°  b/a={ba:.2f}'
         else:
             title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
 
@@ -768,12 +770,17 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             ellipse_eps = 1 - obj['BA_MOMENT']
 
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
-            label_moment = r'$R(\mathrm{mom})='+f'{sma_moment:.1f}'+r'$ arcsec'
+            label_moment = f'$R(\\mathrm{{mom}})={sma_moment:.1f}$"'
             if idata == 0:
-                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(
-                    Table(obj), region, radius_arcsec=True)
-                sma_sbthresh = sma_sbthresh[0]
-                label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
+                if pub is not None and d26 > 0.:
+                    sma_sbthresh = d26 / 2. * 60.  # arcmin → arcsec
+                    ref_str = d26_ref if d26_ref else 'D26'
+                else:
+                    sma_sbthresh, _, _d26_ref_arr, _ = SGA_diameter(
+                        Table(obj), region, radius_arcsec=True)
+                    sma_sbthresh = sma_sbthresh[0]
+                    ref_str = _d26_ref_arr[0]
+                label_sbthresh = f'$R({ref_str})={sma_sbthresh:.1f}$"'
 
             if have_data:
                 bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
@@ -866,7 +873,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 if idata == ndataset-1:
                     xx.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
                 else:
-                    xx.set_xticks([])
+                    xx.tick_params(axis='x', labelbottom=False)
 
                 #xx.relim()
                 #xx.autoscale_view()
@@ -891,25 +898,32 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 if idata == 1:
                     xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
 
-                # Small upward arrows at the bottom of each panel marking size scales.
+                # Geometry annotation in the lower-left of the first SB panel.
+                if idata == 0 and geom_str:
+                    xx.text(0.04, 0.04, geom_str, transform=xx.transAxes,
+                            ha='left', va='bottom', fontsize=7,
+                            bbox=dict(boxstyle='round', facecolor='white', alpha=0.75))
+
+                # Upward arrows just inside the bottom edge marking size scales.
+                # mfc='none' matches the unfilled outline style of the aperture ellipses.
                 trans = blended_transform_factory(xx.transData, xx.transAxes)
                 if sma_sbthresh > 0.:
-                    xx.plot(sma_sbthresh**0.25, 0., '^', color=colors2[1], ms=8,
+                    xx.plot(sma_sbthresh**0.25, 0.03, '^', mec=colors2[1], mfc='none', ms=9, mew=1.5,
                             transform=trans, clip_on=False, zorder=5)
-                xx.plot(sma_moment**0.25, 0., '^', color=colors2[0], ms=8,
+                xx.plot(sma_moment**0.25, 0.03, '^', mec=colors2[0], mfc='none', ms=9, mew=1.5,
                         transform=trans, clip_on=False, zorder=5)
 
                 band_hndls, _ = xx.get_legend_handles_labels()
                 if band_hndls:
-                    if idata == 0:
+                    if idata == ndataset - 1:
                         size_hndls = []
                         if sma_sbthresh > 0.:
                             size_hndls.append(mlines.Line2D(
-                                [], [], color=colors2[1], marker='^',
-                                linestyle='None', ms=8, label=label_sbthresh))
+                                [], [], mec=colors2[1], mfc='none', mew=1.5,
+                                marker='^', linestyle='None', ms=9, label=label_sbthresh))
                         size_hndls.append(mlines.Line2D(
-                            [], [], color=colors2[0], marker='^',
-                            linestyle='None', ms=8, label=label_moment))
+                            [], [], mec=colors2[0], mfc='none', mew=1.5,
+                            marker='^', linestyle='None', ms=9, label=label_moment))
                         leg1 = xx.legend(handles=band_hndls, loc='upper right', fontsize=8)
                         xx.legend(handles=size_hndls, loc='lower left', fontsize=8)
                         xx.add_artist(leg1)
@@ -930,7 +944,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 if idata == ndataset-1:
                     ax[idata, 1].set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
                 else:
-                    ax[idata, 1].set_xticks([])
+                    ax[idata, 1].tick_params(axis='x', labelbottom=False)
 
 
         fig.suptitle(title)
