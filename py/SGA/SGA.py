@@ -250,12 +250,6 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         log.critical(msg)
         raise ValueError(msg)
 
-    # Make clobber=False for htmlindex because we're not making the
-    # files here, we're just looking for them. The argument
-    # args.clobber gets used downstream.
-    if htmlindex:
-        clobber = False
-
     if clobber_overwrite is not None:
         clobber = clobber_overwrite
 
