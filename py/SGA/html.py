@@ -596,7 +596,7 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
                      (sbprofiles_obj[f'FLUX_ERR_{filt.upper()}'].value > 0.))
 
                 if np.any(I):
-                    sma = sbprofiles_obj['SMA'][I].value**0.25
+                    sma_lin = sbprofiles_obj['SMA'][I].value
                     flux = sbprofiles_obj[f'FLUX_{filt.upper()}'][I].value
                     fluxerr = sbprofiles_obj[f'FLUX_ERR_{filt.upper()}'][I].value
                     mag = 22.5 - 2.5 * np.log10(flux)
@@ -604,26 +604,33 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
 
                     mtot = ellipse[f'COG_MTOT_{filt.upper()}'][iobj]
                     mtoterr = ellipse[f'COG_MTOT_ERR_{filt.upper()}'][iobj]
-                    if mtot > 0:
+                    good_cog = (mtot > 0) and (mtoterr <= 2.)
+                    if good_cog:
                         label = f'{filt}={mtot:.3f}'+r'$\pm$'+f'{mtoterr:.3f} mag'
                     else:
-                        label = filt
+                        label = '_nolegend_'
 
+                    # only plot points with well-constrained error bars
+                    K = magerr < 1.
                     col = sbcolors[filt]
-                    ax.errorbar(sma, mag, yerr=magerr, fmt=markers[idata], markersize=5, markeredgewidth=1,
-                                markeredgecolor='k', markerfacecolor=col, elinewidth=3,
-                                ecolor=col, capsize=4, label=label, alpha=0.7)
+                    if np.any(K):
+                        ax.errorbar(sma_lin[K]**0.25, mag[K], yerr=magerr[K],
+                                    fmt=markers[idata], markersize=5, markeredgewidth=1,
+                                    markeredgecolor='k', markerfacecolor=col, elinewidth=3,
+                                    ecolor=col, capsize=4, label=label, alpha=0.7)
 
-                    # best-fitting model
+                    # best-fitting model: start from minimum observed sma to avoid
+                    # extrapolation artefacts in r^1/4 space
                     dmag = ellipse[f'COG_DMAG_{filt.upper()}'][iobj]
                     lnalpha1 = ellipse[f'COG_LNALPHA1_{filt.upper()}'][iobj]
                     lnalpha2 = ellipse[f'COG_LNALPHA2_{filt.upper()}'][iobj]
-                    if mtot > 0:
-                        smagrid_lin = np.linspace(0., sma_max, 50)
+                    if good_cog:
+                        sma_min_filt = float(np.min(sma_lin))
+                        smagrid_lin = np.linspace(sma_min_filt, sma_max, 50)
                         mfit = cog_model(smagrid_lin, mtot, dmag, lnalpha1, lnalpha2, r0=sma_moment)
                         ax.plot(smagrid_lin**0.25, mfit, color=col, alpha=0.8)
 
-                    # robust limits
+                    # robust limits (use all points, not just K, for y-range)
                     maglo = (mag - magerr)[(magerr < 1.) * (mag / magerr > 8.)]
                     maghi = (mag + magerr)[(magerr < 1.) * (mag / magerr > 8.)]
                     #print(filt, np.min(maglo), np.max(maghi))
