@@ -225,8 +225,8 @@ DROP_COLS = frozenset([
     'BA_INIT',
     'PA_INIT',
     'MAG_INIT',
-    'OPTFLUX',
-    'SMA_MASK',
+    #'OPTFLUX',
+    #'SMA_MASK',
     'BX',
     'BY',
     'FITMODE',
@@ -263,17 +263,6 @@ COL_ORDER = [
     #'NED_TYPE', 'NED_MORPH',
     #'NED_FLAG',
     #'NED_SOURCE', 'NED_BYNAME_SEP',
-    # --- Processing / initialization metadata ---
-    #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
-    'RA_TRACTOR', 'DEC_TRACTOR',
-    'RA_INIT', 'DEC_INIT',
-    'DIAM_INIT',
-    'BA_INIT', 'PA_INIT',
-    'INIT_REF',
-    #'MAG_INIT',
-    #'OPTFLUX',
-    #'SMA_MASK',
-    #'FITMODE',
     # --- Group finding ---
     'GROUP_NAME', 'GROUP_MULT', 'GROUP_PRIMARY',
     'GROUP_RA', 'GROUP_DEC', 'GROUP_DIAMETER',
@@ -284,6 +273,17 @@ COL_ORDER = [
     'MW_TRANSMISSION_FUV', 'MW_TRANSMISSION_NUV',
     'PSFSIZE_G', 'PSFSIZE_R', 'PSFSIZE_I', 'PSFSIZE_Z',
     'PSFDEPTH_G', 'PSFDEPTH_R', 'PSFDEPTH_I', 'PSFDEPTH_Z',
+    # --- Processing / initialization metadata ---
+    #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
+    'RA_TRACTOR', 'DEC_TRACTOR',
+    'RA_INIT', 'DEC_INIT',
+    'DIAM_INIT',
+    'BA_INIT', 'PA_INIT',
+    'MAG_INIT',
+    'OPTFLUX',
+    'SMA_MASK',
+    'INIT_REF',
+    #'FITMODE',
     # --- Morphology (diagnostic) ---
     'GINI_G', 'GINI_R', 'GINI_I', 'GINI_Z',
     'GINI_W1', 'GINI_W2', 'GINI_W3', 'GINI_W4',
@@ -451,6 +451,7 @@ INIT_COLS = [
     ('DIAM_INIT',     np.float32, u.arcmin),
     ('BA_INIT',       np.float32, None),
     ('PA_INIT',       np.float32, u.degree),
+    ('MAG_INIT',      np.float32, u.mag),
     ('INIT_REF', 'U14',      None),
 ]
 
@@ -607,13 +608,15 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         has_match = par_rows >= 0
         log.info(f'  {int(np.sum(has_match)):,d}/{n:,d} beta galaxies matched to parent/nocuts catalog')
         mm = vv[par_rows[has_match]]
-        diam_arcsec, ba_init, pa_init, ref_init = choose_geometry(mm, mindiam=0.)
+        diam_arcsec, ba_init, pa_init, ref_init, mag_init, _ = \
+            choose_geometry(mm, mindiam=0., get_mag=True)
         init_arrs = {
             'RA_INIT':       np.full(n, -1., np.float64),
             'DEC_INIT':      np.full(n, -1., np.float64),
             'DIAM_INIT':     np.full(n, -1., np.float32),
             'BA_INIT':       np.full(n, -1., np.float32),
             'PA_INIT':       np.full(n, -1., np.float32),
+            'MAG_INIT':      np.full(n, -1., np.float32),
             'INIT_REF': np.full(n, '', dtype='U14'),
         }
         init_arrs['RA_INIT'][has_match]       = mm['RA']
@@ -621,6 +624,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         init_arrs['DIAM_INIT'][has_match]     = (diam_arcsec / 60.).astype(np.float32)
         init_arrs['BA_INIT'][has_match]       = ba_init.astype(np.float32)
         init_arrs['PA_INIT'][has_match]       = pa_init.astype(np.float32)
+        init_arrs['MAG_INIT'][has_match]      = mag_init.astype(np.float32)
         init_arrs['INIT_REF'][has_match] = ref_init
 
         # Fallback: custom catalog (VI-inspected sources added to the parent)

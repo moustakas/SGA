@@ -242,6 +242,9 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         galaxy, _, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir,
             region=region, group=group, html=True)
+        # generate_group_html names files {GROUP_NAME}.html, not {SGAGROUP}.html
+        if group:
+            galaxy = np.atleast_1d(sample['GROUP_NAME'].value)
     else:
         msg = 'Need at least one keyword argument.'
         log.critical(msg)
