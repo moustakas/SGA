@@ -689,7 +689,11 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     sbcolors = sbprofile_colors()
     cmap2a = plt.get_cmap('Dark2')
     cmap2b = plt.get_cmap('Paired')
-    colors2 = [cmap2a(1), cmap2b(3)]
+    #colors2 = [cmap2a(1), cmap2b(3)]
+    #colors2 = ['#039be5', '#d81b60']
+    colors2 = ['#e91e8c', '#039be5']
+    #colors2 = ['#7e57c2', '#e91e8c']
+    #colors2 = ['#00acc1', '#d81b60']
 
     # Build SGAID → index map for fast final-catalog lookups.
     sgaid_map = {}
@@ -815,7 +819,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 xx.set_yticks([])
 
                 smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
-                for sma in smas: # sma in pixels
+                for sma in smas[::2]: # sma in pixels
                     if sma == 0.:
                         continue
                     ap = EllipticalAperture((refg.x0, refg.y0), sma,
