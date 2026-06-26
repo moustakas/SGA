@@ -28,7 +28,7 @@ warnings.filterwarnings('ignore', category=AstropyDeprecationWarning,
 
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
-                      barlabel=None, clobber=False):
+                      barlabel=None, clobber=False, fullsample=None):
     """Diagnostic QA for the output of build_multiband_mask.
 
     """
@@ -101,7 +101,7 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
 
 
 def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
-                           SGAMASKBITS, barlen=None, barlabel=None, clobber=False):
+                           SGAMASKBITS, barlen=None, barlabel=None, clobber=False, fullsample=None):
     """Diagnostic QA for the output of build_multiband_mask.
 
     """
@@ -170,6 +170,19 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
 
     GEOINITCOLS = ['BX_INIT', 'BY_INIT', 'SMA_INIT', 'BA_INIT', 'PA_INIT']
     GEOFINALCOLS = ['BX', 'BY', 'SMA_MASK', 'BA_MOMENT', 'PA_MOMENT']
+
+    # Precompute display names for each object from the final catalog when available.
+    sgaid_map = {}
+    if fullsample is not None:
+        sgaid_map = {int(s): i for i, s in enumerate(fullsample['SGAID'])}
+    galaxy_names = []
+    for _obj in ellipse:
+        _idx = sgaid_map.get(int(_obj['SGAID']), -1) if sgaid_map else -1
+        if _idx >= 0:
+            _pub = fullsample[_idx]
+            galaxy_names.append(str(_pub['GALAXY']).strip() or str(_obj['OBJNAME']).strip())
+        else:
+            galaxy_names.append(str(_obj['OBJNAME']).strip())
     #GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
 
     # coadded optical, IR, and UV images and initial geometry
@@ -204,7 +217,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
             overplot_ellipse(2*sma, ba, pa, bx, by, pixscale=pixscale, ax=xx,
                              color=colors1[iobj], linestyle='-', linewidth=2,
                              draw_majorminor_axes=True, jpeg=False,
-                             label=obj[REFIDCOLUMN])
+                             label=galaxy_names[iobj])
 
         xx.text(0.03, 0.97, label, transform=xx.transAxes,
                 ha='left', va='top', color='white',
@@ -289,7 +302,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
             ax[1+iobj, col].set_ylim(0, width-1)
             ax[1+iobj, col].margins(0)
 
-        ax[1+iobj, 0].text(0.03, 0.97, f'{obj["OBJNAME"]} ({obj[REFIDCOLUMN]})',
+        ax[1+iobj, 0].text(0.03, 0.97, f'{galaxy_names[iobj]} ({obj["SGANAME"]})',
                            transform=ax[1+iobj, 0].transAxes,
                            ha='left', va='top', color='white',
                            linespacing=1.5, fontsize=8,
@@ -320,7 +333,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
 
 
 def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
-                apertures=REF_APERTURES, clobber=False):
+                apertures=REF_APERTURES, clobber=False, fullsample=None):
     """
     spectral energy distribution
 
@@ -334,6 +347,11 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 
 
     colors1 = sns.color_palette('Set1', n_colors=14, desat=0.75)
+
+    # Build SGAID → index map for fast final-catalog lookups.
+    sgaid_map = {}
+    if fullsample is not None:
+        sgaid_map = {int(s): i for i, s in enumerate(fullsample['SGAID'])}
 
     marker_mtot = 's'
     marker_tractor = 'o'
@@ -382,6 +400,16 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
             log.info(f'File {qafile} exists and clobber=False')
             continue
 
+        pub = None
+        if sgaid_map:
+            idx = sgaid_map.get(int(obj['SGAID']), -1)
+            if idx >= 0:
+                pub = fullsample[idx]
+        if pub is not None:
+            galaxy_name = str(pub['GALAXY']).strip() or str(obj['OBJNAME']).strip()
+            title = f'{galaxy_name} ({obj["SGANAME"]})'
+        else:
+            title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
 
         for ifilt, filt in enumerate(bands):
             mtot = ellipse[f'COG_MTOT_{filt.upper()}'][iobj]
@@ -508,8 +536,7 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
         ax.set_xticks([0.1, 0.2, 0.4, 1.0, 3.0, 5.0, 10, 20])
         ax.xaxis.set_major_formatter(plt.FuncFormatter(_frmt))
 
-        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
-                     f'{obj["OBJNAME"]} ({obj["SGANAME"]})') # ({obj[REFIDCOLUMN]})
+        fig.suptitle(title)
         fig.tight_layout()
         fig.savefig(qafile, bbox_inches='tight')
         plt.close()
@@ -1052,7 +1079,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
         read_jpg=True)
 
     multiband_montage(data, sample, htmlgalaxydir, barlen=barlen,
-                      barlabel=barlabel, clobber=clobber)
+                      barlabel=barlabel, clobber=clobber, fullsample=fullsample)
 
     # all done!
     if skip_ellipse:
@@ -1146,11 +1173,11 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     # ellipse mask
     multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
                            SGAMASKBITS, barlen=barlen, barlabel=barlabel,
-                           clobber=clobber)
+                           clobber=clobber, fullsample=fullsample)
 
     # photometry - curve of growth and SED
     ellipse_sed(data, ellipse, htmlgalaxydir, run=run, tractor=samplesrcs,
-                apertures=APERTURES, clobber=clobber)
+                apertures=APERTURES, clobber=clobber, fullsample=fullsample)
 
     ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 datasets=['opt', 'unwise', 'galex'], clobber=clobber, fullsample=fullsample)
