@@ -207,6 +207,16 @@ Z_FLAG_DISCREPANCY = 0x01             # |Delta cz (DESI, NED)| > vdiff_threshold
 # have an IVAR companion column (IVAR=0 signals no measurement).
 NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
 
+# Hand-curated corrections to GALAXY names returned by NED.
+# Keys are the exact NED name; values are the preferred replacement.
+GALAXY_OVERRIDES = {
+    'UGCa 292': 'UGCA 292',
+}
+
+# Characters allowed in a UNIX-friendly galaxy name (letters, digits, space,
+# and the handful of punctuation that appear in standard catalog names).
+_SAFE_GALAXY_RE = re.compile(r'^[a-zA-Z0-9 +\-._:]+$')
+
 # ---------------------------------------------------------------------------
 # Columns to drop from the output (from the beta catalog or NED_CARRY).
 # CROSSIDS is kept in NED_CARRY for GALAXY/ALTNAMES derivation but not output.
@@ -923,9 +933,45 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     if crossids_col is not None:
         for i, crossids in enumerate(crossids_col):
             parts = [p.strip() for p in crossids.split('|') if p.strip()]
-            if parts:
-                galaxy_arr[i]   = parts[0]
-                altnames_arr[i] = '|'.join(parts[1:3])
+            if not parts:
+                continue
+            primary = parts[0]
+            if 'HOST' in primary.upper() and len(parts) > 1:
+                promoted_idx = next(
+                    (j for j in range(1, len(parts)) if 'HOST' not in parts[j].upper()),
+                    None
+                )
+                if promoted_idx is not None:
+                    promoted  = parts[promoted_idx]
+                    remaining = parts[1:promoted_idx] + parts[promoted_idx + 1:]
+                    if primary.upper() not in {r.upper() for r in remaining}:
+                        remaining.append(primary)
+                    parts = [promoted] + remaining
+            galaxy = parts[0]
+            rest   = [p for p in parts[1:] if p.upper() != galaxy.upper()]
+            # Prefer an ALTNAME without special characters when GALAXY has them
+            if not _SAFE_GALAXY_RE.match(galaxy):
+                alt_idx = next((j for j, p in enumerate(rest) if _SAFE_GALAXY_RE.match(p)), None)
+                if alt_idx is not None:
+                    promoted = rest[alt_idx]
+                    rest     = [galaxy] + rest[:alt_idx] + rest[alt_idx + 1:]
+                    galaxy   = promoted
+            galaxy_arr[i]   = galaxy
+            altnames_arr[i] = '|'.join(rest[:2])
+
+    # Fill GALAXY from OBJNAME when NED returned no match
+    objnames = np.array([str(v).strip() for v in beta['OBJNAME']])
+    empty = galaxy_arr == ''
+    if np.any(empty):
+        log.warning(f'  GALAXY empty for {int(np.sum(empty)):,d} objects; copying from OBJNAME')
+        galaxy_arr[empty] = objnames[empty]
+
+    # Apply hand-curated name corrections
+    for j, g in enumerate(galaxy_arr):
+        if g in GALAXY_OVERRIDES:
+            galaxy_arr[j] = GALAXY_OVERRIDES[g]
+
+    assert not np.any(galaxy_arr == ''), 'GALAXY is empty after all fixes'
 
     # --- Assemble output Table -------------------------------------------
     out = beta.copy()
