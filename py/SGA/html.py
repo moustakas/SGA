@@ -1412,7 +1412,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        .breadcrumb a:hover { text-decoration: underline; }",
         "        h1 { color: #333; margin-bottom: 5px; }",
         "        h2 { color: #555; margin-top: 5px; font-weight: normal; font-size: 18px; }",
-        "        h3 { color: #555; margin-top: 20px; margin-bottom: 10px; }",
+        "        h3 { color: #555; margin-top: 20px; margin-bottom: 10px; font-weight: bold; font-size: 16px; ; }",
         "        table { border-collapse: collapse; margin: 20px 0; font-size: 13px; }",
         "        th { background-color: #f0f0f0; padding: 6px 10px; border: 1px solid #ddd; text-align: center; white-space: nowrap; }",
         "        td { padding: 6px 10px; border: 1px solid #ddd; vertical-align: top; text-align: center; }",
@@ -1445,27 +1445,27 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <a href='../../../index-{}.html#raslice-{}'>RA {}</a> &gt; {}".format(region, raslice, raslice, galaxy),
         "    </div>",
         "    <h1>{} ({})</h1>".format(galaxy, sganame),
-        "    <h2>Group: {} | RA Slice: {}</h2>".format(group_name, raslice),
+        "    <h3>Group: {} | RA Slice: {}</h3>".format(group_name, raslice),
     ]
 
     # --- Group summary -------------------------------------------------------
-    html_lines.append("    <h3>Group Properties</h3>")
+    html_lines.append("    <h2>Group Properties</h2>")
     html_lines.append("    <table>")
-    html_lines.append("        <tr><th>Group Name</th><th>RA</th><th>Dec</th><th>Diameter</th><th>Multiplicity</th><th>Region</th><th>E(B-V)</th><th>Bands</th></tr>")
-    html_lines.append("        <tr><th></th><th>(deg)</th><th>(deg)</th><th>(arcmin)</th><th></th><th></th><th>(mag)</th><th></th></tr>")
-    _ebv_s   = f"{float(fullgroup_data[0]['EBV']):.3f}" if len(fullgroup_data) > 0 and _has('EBV') else ''
+    html_lines.append("        <tr><th></th><th>Group RA</th><th>Group Dec</th><th>Group Diameter</th><th>Group</th><th></th><th></th></tr>")
+    html_lines.append("        <tr><th>Group Name</th><th>(deg)</th><th>(deg)</th><th>(arcmin)</th><th>Multiplicity</th><th>Region</th><th>Bands</th></tr>")
     _bands_s = str(_get(fullgroup_data[0], 'BANDS', '') or '').strip() if len(fullgroup_data) > 0 else ''
-    html_lines.append("        <tr><td>{}</td><td>{:.6f}</td><td>{:.6f}</td><td>{:.2f}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-        group_name, group_ra, group_dec, group_diam, group_mult, region, _ebv_s, _bands_s))
+    html_lines.append("        <tr><td>{}</td><td>{:.6f}</td><td>{:.6f}</td><td>{:.2f}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+        group_name, group_ra, group_dec, group_diam, group_mult, region, _bands_s))
     html_lines.append("    </table>")
 
     # ---- Section A: Identifiers, Redshift & Distance, Multiwavelength Montage
     if len(fullgroup_data) > 0:
 
         # --- Identifiers -----------------------------------------------------
-        html_lines.append("    <h3>Identifiers</h3>")
+        html_lines.append("    <h2>Identifiers</h2>")
         html_lines.append("    <table>")
-        html_lines.append(_th('Galaxy', 'SGA ID', 'PGC', 'Morph', 'RA', 'Dec', 'Primary', 'Alternate Names', 'Object Name'))
+        html_lines.append(_th('', '', '', '', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
+        html_lines.append(_th('Galaxy', 'SGA ID', 'PGC', 'Morphology', '(deg)', '(deg)', '(mag)', 'Primary', 'Alternate Names', '(internal)'))
         for row in fullgroup_data:
             galaxy   = str(_get(row, 'GALAXY', '') or '').strip() or str(row['OBJNAME']).strip()
             altnames = str(_get(row, 'ALTNAMES', '') or '').strip()
@@ -1475,6 +1475,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             html_lines.append(_td(
                 galaxy, row['SGAID'], pgc, morph,
                 f"{float(row['RA']):.6f}", f"{float(row['DEC']):.6f}",
+                f"{float(row['EBV']):.3f}",
                 primary, altnames, row['OBJNAME'],
             ))
         html_lines.append("    </table>")
@@ -1484,9 +1485,9 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             has_desi = _has('Z_DESI')
             has_ned  = _has('Z_NED')
             has_lvd  = _has('Z_LVD')
-            html_lines.append("    <h3>Redshift &amp; Distance</h3>")
+            html_lines.append("    <h2>Redshift &amp; Distance</h2>")
             html_lines.append("    <table>")
-            hdr1 = [('Galaxy', 1, 2), ('Adopted', 4)]
+            hdr1 = [('Galaxy', 1, 3), ('Adopted', 4)]
             if has_desi:
                 hdr1.append(('DESI', 4))
             if has_ned:
@@ -1494,14 +1495,19 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             if has_lvd:
                 hdr1.append(('LVD', 2))
             html_lines.append(_th(*hdr1))
-            hdr2 = ['z', 'z ref', 'Dist (Mpc)', 'Dist ref']
+            hdr2 = ['', '', 'Distance', '']
+            hdr3 = ['Redshift', 'Ref', '(Mpc)', 'Ref']
             if has_desi:
-                hdr2 += ['z', 'ZWARN', 'Spectype', 'N']
+                hdr2 += ['', '', '', '']
+                hdr3 += ['Redshift', 'ZWARN', 'SPECTYPE', 'N Spectra']
             if has_ned:
-                hdr2 += ['z', 'Dist (Mpc)']
+                hdr2 += ['', 'Distance']
+                hdr3 += ['Redshift', '(Mpc)']
             if has_lvd:
-                hdr2 += ['z', 'Dist (Mpc)']
+                hdr2 += ['', 'Distance']
+                hdr3 += ['Redshift', '(Mpc)']
             html_lines.append(_th(*hdr2))
+            html_lines.append(_th(*hdr3))
             for row in fullgroup_data:
                 z_flag = int(_get(row, 'Z_FLAG', 0) or 0)
                 z_flag_s = " <span class='warn'>⚠</span>" if z_flag & 0x01 else ''
@@ -1540,7 +1546,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             html_lines.append("    </table>")
 
     # Multiwavelength Montage image (full-width)
-    html_lines.append("    <h3>Multiwavelength Montage</h3>")
+    html_lines.append("    <h2>Multiwavelength Montage</h2>")
     filepath = group_dir / group_files[0]
     if filepath.exists():
         html_lines.append("    <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto; display: block; margin: 10px 0;'></a>".format(group_files[0], group_files[0], group_files[0]))
@@ -1549,19 +1555,25 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
 
     # ---- Section B: Size & Geometry, Ellipse Mask image, Processing Metadata -
     html_lines.append("")
+    html_lines.append("    <h2>Ellipse Masking &amp; Geometry</h2>")
     if len(fullgroup_data) > 0:
 
         # --- Size & Geometry (full-width, above ellipse mask image) ----------
-        html_lines.append("    <h3>Size &amp; Geometry</h3>")
+        #html_lines.append("    <h2>Size &amp; Geometry</h2>")
         html_lines.append("    <table>")
         if _has('D26'):
             html_lines.append(_th(
-                ('Galaxy', 1, 2),
+                ('Galaxy', 1, 3),
                 ('Fitted', 5), ('Initial', 4), ('Flags', 3),
             ))
             html_lines.append(_th(
-                'D(26) (arcmin)', 'SMA_mom (")', 'Ref', 'b/a', 'PA (°)',
-                'D (arcmin)', 'b/a', 'PA (°)', 'Ref',
+                'D(26)', '', '', 'PA', 'Moment SMA',
+                'D', '', 'PA', '',
+                '', '', '',
+            ))
+            html_lines.append(_th(
+                '(arcmin)', 'Ref', 'b/a', '(deg)', '(arcsec)',
+                '(arcmin)', 'b/a', '(deg)', 'Ref',
                 'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE',
             ))
         else:
@@ -1585,7 +1597,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 ba_s  = f'{float(row["BA"]):.3f}' if _sf(_get(row, "BA")) else ''
                 pa_s  = f'{float(row["PA"]):.1f}'  if _sf(_get(row, "PA"), zero_missing=False) is not None else ''
                 html_lines.append(_td(row['GALAXY'],
-                                      d26_s, sma_mom_s, d26_ref, ba_s, pa_s,
+                                      d26_s, d26_ref, ba_s, pa_s, sma_mom_s,
                                       d_init_s, ba_init_s, pa_init_s, init_ref,
                                       sample_flags, ebit_flags, emode_flags))
             else:
@@ -1594,7 +1606,6 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         html_lines.append("    </table>")
 
     # ellipse mask image (full-width)
-    html_lines.append("    <h3>Ellipse Masking &amp; Geometry</h3>")
     filepath = group_dir / group_files[1]
     if filepath.exists():
         html_lines.append("    <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto; display: block; margin: 10px 0;'></a>".format(group_files[1], group_files[1], group_files[1]))
@@ -1606,7 +1617,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         if _has('COG_MTOT_G'):
             n_ap = sum(1 for ap in range(5) if _has(f'FLUX_AP{ap:02d}_G'))
             n_meas = 1 + n_ap  # CoG row + aperture rows
-            html_lines.append("    <h3>Photometry (AB mag ± err)</h3>")
+            html_lines.append("    <h2>Photometry (AB mag)</h2>")
             html_lines.append("    <table>")
             html_lines.append(_th(
                 ('Galaxy', 1, 2), ('Measurement', 1, 2),
@@ -1619,7 +1630,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 for imeas in range(n_meas):
                     row_cls = 'gal-even' if row_idx % 2 == 0 else 'gal-odd'
                     if imeas == 0:
-                        meas_label = 'CoG total'
+                        meas_label = 'COG (total)'
                         band_vals  = [_fmt_mag_cog(row, b) for b in phot_bands]
                         name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{row['GALAXY']}</td>"
                     else:
@@ -1648,11 +1659,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <div class='galaxy-row'>",
     ])
     for title in per_galaxy_titles:
-        html_lines.append("            <div><h3>{}</h3></div>".format(title))
+        html_lines.append("            <div><h2>{}</h2></div>".format(title))
     html_lines.append("        </div>")
     for galaxy_name in galaxy_names:
         display_name = jname_to_galaxy.get(galaxy_name, galaxy_name)
-        html_lines.append("        <h3 style='margin-bottom: 4px;'>{}</h3>".format(display_name))
+        html_lines.append("        <h2 style='margin-bottom: 4px;'>{}</h2>".format(display_name))
         html_lines.append("        <div class='galaxy-row'>")
         for img_type in per_galaxy_types:
             filename = "SGA2025_{}-{}.png".format(galaxy_name, img_type)
