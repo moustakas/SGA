@@ -1271,8 +1271,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         if d26_col is not None:
             sort_vals = np.array([float(r[d26_col]) for r in fullgroup_data])
             fullgroup_data = fullgroup_data[np.argsort(sort_vals)[::-1]]
-    if 'GALAXY' in group_data:
-        galaxy = group_data['GALAXY'][0]
+    if 'GALAXY' in fullgroup_data.columns:
+        galaxy = fullgroup_data['GALAXY'][0]
     else:
         galaxy = group_data['OBJNAME'][0]
     sganame = group_data['SGANAME'][0]
@@ -1451,28 +1451,15 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     # --- Group summary -------------------------------------------------------
     html_lines.append("    <h3>Group Properties</h3>")
     html_lines.append("    <table>")
-    html_lines.append("        <tr><th>Group Name</th><th>RA</th><th>Dec</th><th>Diameter</th><th>Multiplicity</th><th>Region</th></tr>")
-    html_lines.append("        <tr><th></th><th>(deg)</th><th>(deg)</th><th>(arcmin)</th><th></th><th></th></tr>")
-    html_lines.append("        <tr><td>{}</td><td>{:.6f}</td><td>{:.6f}</td><td>{:.2f}</td><td>{}</td><td>{}</td></tr>".format(
-        group_name, group_ra, group_dec, group_diam, group_mult, region))
+    html_lines.append("        <tr><th>Group Name</th><th>RA</th><th>Dec</th><th>Diameter</th><th>Multiplicity</th><th>Region</th><th>E(B-V)</th><th>Bands</th></tr>")
+    html_lines.append("        <tr><th></th><th>(deg)</th><th>(deg)</th><th>(arcmin)</th><th></th><th></th><th>(mag)</th><th></th></tr>")
+    _ebv_s   = f"{float(fullgroup_data[0]['EBV']):.3f}" if len(fullgroup_data) > 0 and _has('EBV') else ''
+    _bands_s = str(_get(fullgroup_data[0], 'BANDS', '') or '').strip() if len(fullgroup_data) > 0 else ''
+    html_lines.append("        <tr><td>{}</td><td>{:.6f}</td><td>{:.6f}</td><td>{:.2f}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+        group_name, group_ra, group_dec, group_diam, group_mult, region, _ebv_s, _bands_s))
     html_lines.append("    </table>")
 
-    # ---- Section A: Multiwavelength Montage (left) + Tables 1 & 3 (right) --
-    html_lines.extend([
-        "",
-        "    <div class='img-table-row'>",
-        "        <div class='img-col'>",
-        "            <h3>Multiwavelength Montage</h3>",
-    ])
-    filepath = group_dir / group_files[0]
-    if filepath.exists():
-        html_lines.append("            <a href='{}'><img src='{}' alt='{}'></a>".format(group_files[0], group_files[0], group_files[0]))
-    else:
-        html_lines.append("            <p style='color: #888;'>Missing: {}</p>".format(group_files[0]))
-    html_lines.extend([
-        "        </div>",
-        "        <div class='tables-col'>",
-    ])
+    # ---- Section A: Identifiers, Redshift & Distance, Multiwavelength Montage
     if len(fullgroup_data) > 0:
 
         # --- Identifiers -----------------------------------------------------
@@ -1552,10 +1539,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 html_lines.append(_td(*cells))
             html_lines.append("    </table>")
 
-    html_lines.extend([
-        "        </div>",   # close tables-col
-        "    </div>",        # close img-table-row (Section A)
-    ])
+    # Multiwavelength Montage image (full-width)
+    html_lines.append("    <h3>Multiwavelength Montage</h3>")
+    filepath = group_dir / group_files[0]
+    if filepath.exists():
+        html_lines.append("    <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto; display: block; margin: 10px 0;'></a>".format(group_files[0], group_files[0], group_files[0]))
+    else:
+        html_lines.append("    <p style='color: #888;'>Missing: {}</p>".format(group_files[0]))
 
     # ---- Section B: Size & Geometry, Ellipse Mask image, Processing Metadata -
     html_lines.append("")
@@ -1567,33 +1557,40 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         if _has('D26'):
             html_lines.append(_th(
                 ('Galaxy', 1, 2),
-                ('Fitted', 5), ('Initial', 4),
+                ('Fitted', 5), ('Initial', 4), ('Flags', 3),
             ))
             html_lines.append(_th(
                 'D(26) (arcmin)', 'SMA_mom (")', 'Ref', 'b/a', 'PA (°)',
                 'D (arcmin)', 'b/a', 'PA (°)', 'Ref',
+                'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE',
             ))
         else:
-            html_lines.append(_th('Galaxy', 'D (arcmin)', 'b/a', 'PA (°)', 'Ref'))
+            html_lines.append(_th('Galaxy', 'D (arcmin)', 'b/a', 'PA (°)', 'Ref',
+                                  'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE'))
         for row in fullgroup_data:
-            d_init    = _sf(_get(row, 'DIAM_INIT') or _get(row, 'DIAM'))
-            ba_init   = _sf(_get(row, 'BA_INIT') or _get(row, 'BA'))
-            pa_init   = _sf(_get(row, 'PA_INIT') or _get(row, 'PA'))
-            init_ref  = str(_get(row, 'INIT_REF', '') or _get(row, 'DIAM_INIT_REF', '') or '').strip()
-            d_init_s  = f'{d_init:.3f}' if d_init else ''
-            ba_init_s = f'{ba_init:.3f}' if ba_init else ''
-            pa_init_s = f'{pa_init:.1f}' if pa_init is not None else ''
+            d_init       = _sf(_get(row, 'DIAM_INIT') or _get(row, 'DIAM'))
+            ba_init      = _sf(_get(row, 'BA_INIT') or _get(row, 'BA'))
+            pa_init      = _sf(_get(row, 'PA_INIT') or _get(row, 'PA'))
+            init_ref     = str(_get(row, 'INIT_REF', '') or _get(row, 'DIAM_INIT_REF', '') or '').strip()
+            d_init_s     = f'{d_init:.3f}' if d_init else ''
+            ba_init_s    = f'{ba_init:.3f}' if ba_init else ''
+            pa_init_s    = f'{pa_init:.1f}' if pa_init is not None else ''
+            sample_flags = ', '.join(decode_bitmask(row['SAMPLE'], SAMPLE)) or ''
+            ebit_flags   = ', '.join(decode_bitmask(_get(row, 'ELLIPSEBIT', 0) or 0, ELLIPSEBIT)) or ''
+            emode_flags  = ', '.join(decode_bitmask(row['ELLIPSEMODE'], ELLIPSEMODE)) or ''
             if _has('D26'):
                 d26_s, d26_ref = _fmt_diam(row)
-                sma_mom = _sf(_get(row, 'SMA_MOMENT'), zero_missing=True)
+                sma_mom   = _sf(_get(row, 'SMA_MOMENT'), zero_missing=True)
                 sma_mom_s = f'{sma_mom:.1f}' if sma_mom else ''
                 ba_s  = f'{float(row["BA"]):.3f}' if _sf(_get(row, "BA")) else ''
                 pa_s  = f'{float(row["PA"]):.1f}'  if _sf(_get(row, "PA"), zero_missing=False) is not None else ''
                 html_lines.append(_td(row['GALAXY'],
                                       d26_s, sma_mom_s, d26_ref, ba_s, pa_s,
-                                      d_init_s, ba_init_s, pa_init_s, init_ref))
+                                      d_init_s, ba_init_s, pa_init_s, init_ref,
+                                      sample_flags, ebit_flags, emode_flags))
             else:
-                html_lines.append(_td(row['OBJNAME'], d_init_s, ba_init_s, pa_init_s, init_ref))
+                html_lines.append(_td(row['OBJNAME'], d_init_s, ba_init_s, pa_init_s, init_ref,
+                                      sample_flags, ebit_flags, emode_flags))
         html_lines.append("    </table>")
 
     # ellipse mask image (full-width)
@@ -1603,25 +1600,6 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         html_lines.append("    <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto; display: block; margin: 10px 0;'></a>".format(group_files[1], group_files[1], group_files[1]))
     else:
         html_lines.append("    <p style='color: #888;'>Missing: {}</p>".format(group_files[1]))
-
-    if len(fullgroup_data) > 0:
-
-        # --- Processing Metadata (full-width, below ellipse mask image) ------
-        html_lines.append("    <h3>Processing Metadata</h3>")
-        html_lines.append("    <table>")
-        html_lines.append(_th('Galaxy', 'E(B-V)', 'Bands',
-                               'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE'))
-        for row in fullgroup_data:
-            sample_flags  = ', '.join(decode_bitmask(row['SAMPLE'], SAMPLE)) or ''
-            ebit_flags    = ', '.join(decode_bitmask(_get(row, 'ELLIPSEBIT', 0) or 0, ELLIPSEBIT)) or ''
-            emode_flags   = ', '.join(decode_bitmask(row['ELLIPSEMODE'], ELLIPSEMODE)) or ''
-            bands_s       = str(_get(row, 'BANDS', '') or '').strip()
-            html_lines.append(_td(
-                row['GALAXY'],
-                f"{float(row['EBV']):.3f}",
-                bands_s, sample_flags, ebit_flags, emode_flags,
-            ))
-        html_lines.append("    </table>")
 
     # ---- Section C: Photometry — full width ---------------------------------
     if len(fullgroup_data) > 0:
@@ -1635,16 +1613,17 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 ('Optical', 4), ('IR', 2), ('UV', 2),
             ))
             html_lines.append(_th(*[b.lower() for b in phot_bands]))
-            for igal, row in enumerate(fullgroup_data):
-                row_cls = 'gal-even' if igal % 2 == 0 else 'gal-odd'
+            row_idx = 0
+            for row in fullgroup_data:
                 sma_moment = _sf(_get(row, 'SMA_MOMENT'), zero_missing=True)
                 for imeas in range(n_meas):
+                    row_cls = 'gal-even' if row_idx % 2 == 0 else 'gal-odd'
                     if imeas == 0:
                         meas_label = 'CoG total'
                         band_vals  = [_fmt_mag_cog(row, b) for b in phot_bands]
                         name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{row['GALAXY']}</td>"
                     else:
-                        ap = imeas - 1
+                        ap = n_ap - imeas  # AP04 first (largest → closest to CoG), AP00 last
                         mult = f'{APERTURES[ap]:g}×'
                         if _has(f'SMA_AP{ap:02d}') and sma_moment:
                             sma_ap = _sf(_get(row, f'SMA_AP{ap:02d}'), zero_missing=False)
@@ -1656,7 +1635,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                         name_cell = ''
                     html_lines.append(f"        <tr class='{row_cls}'>{name_cell}<td>{meas_label}</td>" +
                                       ''.join(f'<td>{v}</td>' for v in band_vals) + '</tr>')
+                    row_idx += 1
             html_lines.append("    </table>")
+    jname_to_galaxy = {}
+    if len(fullgroup_data) > 0 and 'SGANAME' in fullgroup_data.colnames:
+        for row in fullgroup_data:
+            jname = str(row['SGANAME']).strip().replace('SGA2025 ', '')
+            jname_to_galaxy[jname] = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
     html_lines.extend([
         "",
         "    <div class='section'>",
@@ -1666,6 +1651,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         html_lines.append("            <div><h3>{}</h3></div>".format(title))
     html_lines.append("        </div>")
     for galaxy_name in galaxy_names:
+        display_name = jname_to_galaxy.get(galaxy_name, galaxy_name)
+        html_lines.append("        <h3 style='margin-bottom: 4px;'>{}</h3>".format(display_name))
         html_lines.append("        <div class='galaxy-row'>")
         for img_type in per_galaxy_types:
             filename = "SGA2025_{}-{}.png".format(galaxy_name, img_type)
