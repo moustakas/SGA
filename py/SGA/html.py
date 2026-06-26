@@ -663,7 +663,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     from SGA.SGA import SGA_diameter
     from SGA.qa import overplot_ellipse, get_norm, sbprofile_colors
 
-
     def kill_left_y(ax):
         ax.yaxis.set_major_locator(ticker.NullLocator())
         ax.yaxis.set_minor_locator(ticker.NullLocator())

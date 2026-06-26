@@ -236,7 +236,7 @@ def main():
 
     # HTML stuff now implies --final-sample
     if args.htmlindex or args.htmlplots:
-        args.final_sample = True
+        args.public_release = True
 
     # Read and broadcast the sample.
     bricks = None
@@ -271,7 +271,7 @@ def main():
         else:
             region = args.region
 
-        if args.final_sample:
+        if args.public_release:
             sample, fullsample = read_sga_sample(
                 first=args.first, last=args.last, mindiam=args.mindiam,
                 maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
