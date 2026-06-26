@@ -792,7 +792,8 @@ def main():
                                  skip_tractor=skip_tractor,
                                  bands=bands, mp=args.mp, pixscale=args.pixscale,
                                  unwise=args.unwise, galex=args.galex,
-                                 verbose=args.verbose, clobber=args.clobber)
+                                 verbose=args.verbose, clobber=args.clobber,
+                                 fullsample=fullsample)
                 done(galaxy, htmlgalaxydir, err, suffix, fh=fh, debug=args.debug)
 
         if len(groups[rank]) > 0:

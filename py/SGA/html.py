@@ -650,12 +650,14 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
 def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                        unpack_maskbits_function, MASKBITS, REFIDCOLUMN,
                        datasets=['opt', 'unwise', 'galex'],
-                       linear=False, clobber=False):
+                       linear=False, clobber=False, fullsample=None):
     """Surface-brightness profiles.
 
     """
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
+    import matplotlib.lines as mlines
+    from matplotlib.transforms import blended_transform_factory
     from photutils.isophote import EllipseGeometry
     from photutils.aperture import EllipticalAperture
 
@@ -687,8 +689,12 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     sbcolors = sbprofile_colors()
     cmap2a = plt.get_cmap('Dark2')
     cmap2b = plt.get_cmap('Paired')
-    colors2 = [cmap2a(1), cmap2b(3), cmap2a(2)]
-    #colors2 = [cmap2(i) for i in range(5)]
+    colors2 = [cmap2a(1), cmap2b(3)]
+
+    # Build SGAID → index map for fast final-catalog lookups.
+    sgaid_map = {}
+    if fullsample is not None:
+        sgaid_map = {int(s): i for i, s in enumerate(fullsample['SGAID'])}
 
     for iobj, obj in enumerate(ellipse):
 
@@ -697,6 +703,30 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
         if os.path.isfile(qafile) and not clobber:
             log.info(f'File {qafile} exists and clobber=False')
             continue
+
+        # Look up final catalog row for this galaxy.
+        pub = None
+        if sgaid_map:
+            idx = sgaid_map.get(int(obj['SGAID']), -1)
+            if idx >= 0:
+                pub = fullsample[idx]
+
+        # Build figure suptitle from final catalog values when available.
+        if pub is not None:
+            galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
+            d26 = float(pub['D26'])
+            d26_err = float(pub['D26_ERR'])
+            ba = float(pub['BA'])
+            pa = float(pub['PA'])
+            name_line = f'{galaxy_name} ({obj["SGANAME"]})'
+            if d26 > 0.:
+                geom_line = (rf'$D_{{26}}$ = {d26:.2f} ± {d26_err:.2f} arcmin'
+                             rf'   PA = {pa:.0f}°   b/a = {ba:.2f}')
+            else:
+                geom_line = rf'PA = {pa:.0f}°   b/a = {ba:.2f}'
+            title = f'{name_line}\n{geom_line}'
+        else:
+            title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
 
 
         fig, ax = plt.subplots(nrow, ncol,
@@ -712,6 +742,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             ax[idata, 1].sharex(ax[0, 1])
 
         # one row per dataset
+        sma_sbthresh = 0.
+        label_sbthresh = ''
         for idata, (dataset, label) in enumerate(zip(datasets, [opt_bands, 'unWISE', 'GALEX'])):
 
             images = data[f'{dataset}_images'][iobj, :, :, :]
@@ -735,16 +767,13 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             ellipse_pa = np.radians(obj['PA_MOMENT'] - 90.)
             ellipse_eps = 1 - obj['BA_MOMENT']
 
-            sma_mask = obj['SMA_MASK'] # [arcsec]
             sma_moment = obj['SMA_MOMENT'] # [arcsec]
-            label_mask = r'$R(mask)='+f'{sma_mask:.1f}'+r'$ arcsec'
-            label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
+            label_moment = r'$R(\mathrm{mom})='+f'{sma_moment:.1f}'+r'$ arcsec'
             if idata == 0:
                 sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(
                     Table(obj), region, radius_arcsec=True)
                 sma_sbthresh = sma_sbthresh[0]
                 label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
-                #r'$R_{'+filt.lower()+r'}('+f'{thresh:.0f}'+')='+f'{val:.1f}'+r'$ arcsec'
 
             if have_data:
                 bx, by = map_bxby(opt_bx, opt_by, from_wcs=opt_wcs, to_wcs=wcs)
@@ -752,9 +781,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                                        pa=ellipse_pa, sma=sma_moment/pixscale) # sma in pixels
                 refap = EllipticalAperture((refg.x0, refg.y0), refg.sma,
                                            refg.sma*(1. - refg.eps), refg.pa)
-                refap_sma_mask = EllipticalAperture((refg.x0, refg.y0), sma_mask/pixscale,
-                                                    sma_mask/pixscale*(1. - refg.eps), refg.pa)
-
                 refap_sma_sbthresh = EllipticalAperture((refg.x0, refg.y0), sma_sbthresh/pixscale,
                                                sma_sbthresh/pixscale*(1. - refg.eps), refg.pa)
 
@@ -793,7 +819,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                                             sma*(1. - refg.eps), refg.pa)
                     ap.plot(color='k', lw=1, ax=xx)
                 refap.plot(color=colors2[0], lw=2, ls='--', ax=xx)
-                refap_sma_mask.plot(color=colors2[2], lw=2, ls='-', ax=xx)
                 refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='-', ax=xx)
 
                 # col 1 - mag SB profiles
@@ -866,24 +891,30 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 if idata == 1:
                     xx_twin.set_ylabel(r'Surface Brightness (mag arcsec$^{-2}$)')
 
+                # Small upward arrows at the bottom of each panel marking size scales.
+                trans = blended_transform_factory(xx.transData, xx.transAxes)
                 if sma_sbthresh > 0.:
-                    xx.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
-                xx.axvline(x=sma_mask**0.25, color=colors2[2], lw=2, ls='-', label=label_mask)
-                xx.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
+                    xx.plot(sma_sbthresh**0.25, 0., '^', color=colors2[1], ms=8,
+                            transform=trans, clip_on=False, zorder=5)
+                xx.plot(sma_moment**0.25, 0., '^', color=colors2[0], ms=8,
+                        transform=trans, clip_on=False, zorder=5)
 
-                hndls, _ = xx.get_legend_handles_labels()
-                if hndls:
-                    if sma_sbthresh > 0.:
-                        split = -3
-                    else:
-                        split = -2
+                band_hndls, _ = xx.get_legend_handles_labels()
+                if band_hndls:
                     if idata == 0:
-                        # split into two legends
-                        leg1 = xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
-                        xx.legend(handles=hndls[split:], loc='lower left', fontsize=8)
+                        size_hndls = []
+                        if sma_sbthresh > 0.:
+                            size_hndls.append(mlines.Line2D(
+                                [], [], color=colors2[1], marker='^',
+                                linestyle='None', ms=8, label=label_sbthresh))
+                        size_hndls.append(mlines.Line2D(
+                            [], [], color=colors2[0], marker='^',
+                            linestyle='None', ms=8, label=label_moment))
+                        leg1 = xx.legend(handles=band_hndls, loc='upper right', fontsize=8)
+                        xx.legend(handles=size_hndls, loc='lower left', fontsize=8)
                         xx.add_artist(leg1)
                     else:
-                        xx.legend(handles=hndls[:split], loc='upper right', fontsize=8)
+                        xx.legend(handles=band_hndls, loc='upper right', fontsize=8)
             else:
                 ax[idata, 0].text(0.03, 0.97, f'{label} - No Data',
                                   transform=ax[idata, 0].transAxes,
@@ -902,9 +933,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                     ax[idata, 1].set_xticks([])
 
 
-        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
-                     f'{obj["OBJNAME"]} ({obj["SGANAME"]})') # ({obj[REFIDCOLUMN]})
-        #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+        fig.suptitle(title)
         fig.tight_layout()
         fig.savefig(qafile, bbox_inches='tight')
         plt.close()
@@ -916,7 +945,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                run='south', mp=1, bands=['g', 'r', 'i', 'z'], pixscale=0.262,
                galex_pixscale=1.5, unwise_pixscale=2.75, skip_ellipse=False,
                skip_tractor=False, galex=True, unwise=True, barlen=None, barlabel=None,
-               verbose=False, clobber=False):
+               verbose=False, clobber=False, fullsample=None):
     """Make QA plots.
 
     """
@@ -965,26 +994,23 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
 
     ellipse = []
     for ellipsefile in ellipsefiles:
-        # fragile!!
-        sganame = os.path.basename(ellipsefile).split('-')[:-2]
-        if len(sganame) == 1:
-            sganame = sganame[0]
-        else:
-            sganame = '-'.join(sganame)
+        # Read SGANAME from the file itself rather than parsing the filename.
+        ellipse_opt = Table(fitsio.read(ellipsefile, ext='ELLIPSE'))
+        sganame = ellipse_opt['SGANAME'][0].replace(' ', '_')
 
         # loop on datasets and join
         for idata, dataset in enumerate(datasets):
             if dataset == 'opt':
-                suffix = allbands
+                ellipse_dataset = ellipse_opt
             else:
                 suffix = dataset
-            ellipsefile_dataset = os.path.join(galaxydir, f'{sganame}-ellipse-{suffix}.fits')
-            try:
-                ellipse_dataset = Table(fitsio.read(ellipsefile_dataset, ext='ELLIPSE'))
-            except:
-                msg = f'Problem reading {ellipsefile_dataset}!'
-                log.critical(msg)
-                break
+                ellipsefile_dataset = os.path.join(galaxydir, f'{sganame}-ellipse-{suffix}.fits')
+                try:
+                    ellipse_dataset = Table(fitsio.read(ellipsefile_dataset, ext='ELLIPSE'))
+                except:
+                    msg = f'Problem reading {ellipsefile_dataset}!'
+                    log.critical(msg)
+                    break
 
             if idata == 0:
                 ellipse1 = ellipse_dataset
@@ -1052,7 +1078,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                        unpack_maskbits_function, SGAMASKBITS,
                        REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
-                       linear=False, clobber=clobber)
+                       linear=False, clobber=clobber, fullsample=fullsample)
 
     dt, unit = get_dt(tall)
     log.info(f'Total time to generate plots: {dt:.3f} {unit}')
