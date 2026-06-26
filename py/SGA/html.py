@@ -819,12 +819,15 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 xx.set_yticks([])
 
                 smas = sbprofiles_obj['SMA'] / pixscale # [pixels]
-                for sma in smas[::2]: # sma in pixels
-                    if sma == 0.:
-                        continue
-                    ap = EllipticalAperture((refg.x0, refg.y0), sma,
-                                            sma*(1. - refg.eps), refg.pa)
-                    ap.plot(color='k', lw=1, ax=xx)
+                sma_pos = smas[smas > 0]
+                min_sep = max(2., float(sma_pos[-1]) / 15.) if len(sma_pos) > 0 else 2.
+                prev = 0.
+                for s in sma_pos:
+                    if s - prev >= min_sep:
+                        ap = EllipticalAperture((refg.x0, refg.y0), s,
+                                                s*(1. - refg.eps), refg.pa)
+                        ap.plot(color='k', lw=1, ax=xx)
+                        prev = s
                 refap.plot(color=colors2[0], lw=2, ls='--', ax=xx)
                 refap_sma_sbthresh.plot(color=colors2[1], lw=2, ls='-', ax=xx)
 
