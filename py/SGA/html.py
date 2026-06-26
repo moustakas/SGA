@@ -15,7 +15,7 @@ from pathlib import Path
 from glob import glob
 import multiprocessing
 from SGA.SGA import SAMPLE, RACOLUMN, DECCOLUMN, DIAMCOLUMN, REFIDCOLUMN
-from SGA.ellipse import FITMODE, ELLIPSEMODE, REF_APERTURES
+from SGA.ellipse import FITMODE, ELLIPSEMODE, ELLIPSEBIT, REF_APERTURES
 
 from SGA.logger import log
 
@@ -1272,27 +1272,6 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     group_diam = group_data['GROUP_DIAMETER'][0]
     group_mult = group_data['GROUP_MULT'][0]
 
-    if 'DIAM_INIT' in fullgroup_data.colnames:
-        diamcol = 'DIAM_INIT'
-    else:
-        diamcol = 'DIAM'
-    #if 'DIAM_INIT_REF' in fullgroup_data.colnames:
-    #    diamrefcol = 'DIAM_INIT_REF'
-    #else:
-    #    diamrefcol = 'DIAM_REF'
-    if 'MAG_INIT' in fullgroup_data.colnames:
-        magcol = 'MAG_INIT'
-    else:
-        magcol = 'MAG'
-    if 'BA_INIT' in fullgroup_data.colnames:
-        bacol = 'BA_INIT'
-    else:
-        bacol = 'BA'
-    if 'PA_INIT' in fullgroup_data.colnames:
-        pacol = 'PA_INIT'
-    else:
-        pacol = 'PA'
-
     raslice = group_name[:3]
     sky_url = get_sky_viewer_url(group_ra, group_dec, group_diam, region)
     group_files = [
@@ -1302,6 +1281,95 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     per_galaxy_types = ["sbprofiles", "cog", "sed"]
     per_galaxy_titles = ["Surface Brightness", "Curve of Growth", "Spectral Energy Distribution"]
     galaxy_names = get_galaxy_names(str(group_dir))
+
+    # -----------------------------------------------------------------------
+    # formatting helpers
+    # -----------------------------------------------------------------------
+    _cols = set(fullgroup_data.colnames)
+
+    def _has(col):
+        return col in _cols
+
+    def _get(row, col, default=None):
+        return row[col] if col in _cols else default
+
+    def _sf(val, zero_missing=True):
+        """Return float or None; treats 0 as missing when zero_missing=True."""
+        try:
+            v = float(val)
+            if np.isnan(v):
+                return None
+            if zero_missing and v == 0.:
+                return None
+            return v
+        except (TypeError, ValueError):
+            return None
+
+    def _fmt_z(row, vcol, icol=''):
+        v = _sf(_get(row, vcol))
+        if v is None:
+            return '—'
+        iv = _sf(_get(row, icol), zero_missing=False) if icol else None
+        if iv is not None and iv > 0:
+            return f'{v:.5f} ± {1./np.sqrt(iv):.5f}'
+        return f'{v:.5f}'
+
+    def _fmt_dist(row, vcol, icol=''):
+        v = _sf(_get(row, vcol), zero_missing=True)
+        if v is None or v <= 0:
+            return '—'
+        iv = _sf(_get(row, icol), zero_missing=False) if icol else None
+        if iv is not None and iv > 0:
+            return f'{v:.2f} ± {1./np.sqrt(iv):.2f}'
+        return f'{v:.2f}'   # distance known; ivar=0 is expected in some cases
+
+    def _fmt_diam(row):
+        if _has('D26'):
+            d = _sf(_get(row, 'D26'), zero_missing=True)
+            if d is not None and d > 0:
+                de = _sf(_get(row, 'D26_ERR'), zero_missing=False)
+                ref = str(_get(row, 'D26_REF', '') or '').strip()
+                if de is not None and de > 0:
+                    return f'{d:.3f} ± {de:.3f}', ref
+                return f'{d:.3f}', ref
+        # fallback to initial diameter
+        d = _sf(_get(row, 'DIAM_INIT') or _get(row, 'DIAM'), zero_missing=True)
+        ref = str(_get(row, 'INIT_REF', '') or _get(row, 'DIAM_INIT_REF', '') or '').strip()
+        if d is not None:
+            return f'{d:.3f}', ref
+        return '—', ''
+
+    def _fmt_mag_cog(row, band):
+        m = _sf(_get(row, f'COG_MTOT_{band}'), zero_missing=True)
+        if m is None or m <= 0:
+            return '—'
+        me = _sf(_get(row, f'COG_MTOT_ERR_{band}'), zero_missing=False)
+        if me is not None and me > 0:
+            return f'{m:.3f} ± {me:.3f}'
+        return f'{m:.3f}'
+
+    def _fmt_mag_ap(row, ap, band):
+        f = _sf(_get(row, f'FLUX_AP{ap:02d}_{band}'), zero_missing=True)
+        if f is None or f <= 0:
+            return '—'
+        mag = 22.5 - 2.5 * np.log10(f)
+        fe = _sf(_get(row, f'FLUX_ERR_AP{ap:02d}_{band}'), zero_missing=False)
+        if fe is not None and fe > 0:
+            return f'{mag:.3f} ± {2.5*fe/f/np.log(10.):.3f}'
+        return f'{mag:.3f}'
+
+    def _th(*headers):
+        return '        <tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>'
+
+    def _td(*cells):
+        return '        <tr>' + ''.join(f'<td>{c}</td>' for c in cells) + '</tr>'
+
+    phot_bands = ['G', 'R', 'I', 'Z', 'W1', 'W2', 'FUV', 'NUV']
+    ap_labels  = ['0.5×', '1.0×', '1.25×', '1.5×', '2.0×']  # AP00–04
+
+    # -----------------------------------------------------------------------
+    # HTML construction
+    # -----------------------------------------------------------------------
     html_lines = [
         "<!DOCTYPE html>",
         "<html>",
@@ -1319,9 +1387,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        h1 { color: #333; margin-bottom: 5px; }",
         "        h2 { color: #555; margin-top: 5px; font-weight: normal; font-size: 18px; }",
         "        h3 { color: #555; margin-top: 20px; margin-bottom: 10px; }",
-        "        table { border-collapse: collapse; margin: 20px 0; }",
-        "        th { background-color: #f0f0f0; padding: 8px; border: 1px solid #ddd; text-align: left; }",
-        "        td { padding: 8px; border: 1px solid #ddd; }",
+        "        table { border-collapse: collapse; margin: 20px 0; font-size: 13px; }",
+        "        th { background-color: #f0f0f0; padding: 6px 10px; border: 1px solid #ddd; text-align: left; white-space: nowrap; }",
+        "        td { padding: 6px 10px; border: 1px solid #ddd; vertical-align: top; }",
+        "        td.gal-group { background-color: #f8f8f8; font-weight: bold; white-space: nowrap; }",
         "        .section { margin: 30px 0; }",
         "        .group-images img { display: block; max-width: 100%; margin: 10px 0; }",
         "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; justify-content: space-between; }",
@@ -1329,6 +1398,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        .galaxy-row img { width: 100%; height: auto; display: block; }",
         "        .galaxy-row div { flex: 1; max-width: 32%; }",
         "        img { border: 1px solid #ddd; }",
+        "        .warn { color: #c0392b; font-weight: bold; }",
+        "        .muted { color: #888; font-size: 11px; }",
         "    </style>",
         "</head>",
         "<body>",
@@ -1345,56 +1416,160 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "    <h1>{}</h1>".format(objname),
         "    <h2>Group: {} | RA Slice: {}</h2>".format(group_name, raslice),
     ]
+
+    # --- Group summary -------------------------------------------------------
     html_lines.append("    <h3>Group Properties</h3>")
     html_lines.append("    <table>")
     html_lines.append("        <tr><th>Property</th><th>Value</th></tr>")
     html_lines.append("        <tr><td>Group Name</td><td>{}</td></tr>".format(group_name))
-    html_lines.append("        <tr><td>Object Name</td><td>{}</td></tr>".format(objname))
     html_lines.append("        <tr><td>RA (deg)</td><td>{:.6f}</td></tr>".format(group_ra))
     html_lines.append("        <tr><td>Dec (deg)</td><td>{:.6f}</td></tr>".format(group_dec))
     html_lines.append("        <tr><td>Diameter (arcmin)</td><td>{:.2f}</td></tr>".format(group_diam))
     html_lines.append("        <tr><td>Multiplicity</td><td>{}</td></tr>".format(group_mult))
     html_lines.append("        <tr><td>Region</td><td>{}</td></tr>".format(region))
     html_lines.append("    </table>")
+
     if len(fullgroup_data) > 0:
-        html_lines.append("    <h3>Galaxy Properties</h3>")
+
+        # --- Table 1: Identifiers --------------------------------------------
+        html_lines.append("    <h3>Table 1 — Identifiers</h3>")
         html_lines.append("    <table>")
-        html_lines.append("        <tr>")
-        html_lines.append("            <th>Object Name</th><th>SGA ID</th><th>RA</th><th>Dec</th>")
-        html_lines.append("            <th>Diam (arcmin)</th><th>Mag</th><th>b/a</th><th>PA</th><th>Primary</th>")
-        html_lines.append("        </tr>")
+        html_lines.append(_th('Galaxy', 'Alt Names', 'SGA ID', 'PGC', 'Morph', 'RA', 'Dec', 'Primary', 'Object Name'))
         for row in fullgroup_data:
-            html_lines.append("        <tr>")
-            html_lines.append("            <td>{}</td>".format(row['OBJNAME']))
-            html_lines.append("            <td>{}</td>".format(row['SGAID']))
-            html_lines.append("            <td>{:.6f}</td>".format(row['RA']))
-            html_lines.append("            <td>{:.6f}</td>".format(row['DEC']))
-            html_lines.append("            <td>{:.2f}</td>".format(row[diamcol]))
-            html_lines.append("            <td>{:.2f}</td>".format(row[magcol]))
-            html_lines.append("            <td>{:.3f}</td>".format(row[bacol]))
-            html_lines.append("            <td>{:.1f}</td>".format(row[pacol]))
-            html_lines.append("            <td>{}</td>".format('Yes' if row['GROUP_PRIMARY'] else 'No'))
-            html_lines.append("        </tr>")
+            galaxy   = str(_get(row, 'GALAXY', '') or '').strip() or str(row['OBJNAME']).strip()
+            altnames = str(_get(row, 'ALTNAMES', '') or '').strip() or '—'
+            pgc      = int(row['PGC']) if _sf(row['PGC'], zero_missing=True) else '—'
+            morph    = str(_get(row, 'MORPH', '') or '').strip() or '—'
+            primary  = 'Yes' if row['GROUP_PRIMARY'] else 'No'
+            html_lines.append(_td(
+                galaxy, altnames, row['SGAID'], pgc, morph,
+                f"{float(row['RA']):.6f}", f"{float(row['DEC']):.6f}",
+                primary, row['OBJNAME'],
+            ))
         html_lines.append("    </table>")
-        html_lines.append("    <h3>Additional Metadata</h3>")
+
+        # --- Table 2: Size & Geometry ----------------------------------------
+        html_lines.append("    <h3>Table 2 — Size &amp; Geometry</h3>")
         html_lines.append("    <table>")
-        html_lines.append("        <tr>")
-        html_lines.append("            <th>Object Name</th><th>PGC</th><th>SAMPLE</th><th>ELLIPSEMODE</th>")
-        html_lines.append("            <th>E(B-V)</th>")
-        #html_lines.append("            <th>Diam Ref</th>")
-        html_lines.append("        </tr>")
+        if _has('D26'):
+            html_lines.append(_th('Object Name',
+                                  'D26 ± err (arcmin)', 'D26 ref', 'b/a', 'PA (°)',
+                                  'D<sub>init</sub> (arcmin)', 'b/a<sub>init</sub>', 'PA<sub>init</sub> (°)', 'Init ref'))
+        else:
+            html_lines.append(_th('Object Name',
+                                  'D<sub>init</sub> (arcmin)', 'b/a<sub>init</sub>', 'PA<sub>init</sub> (°)', 'Init ref'))
         for row in fullgroup_data:
-            sample_flags = ', '.join(decode_bitmask(row['SAMPLE'], SAMPLE))
-            ellipse_flags = ', '.join(decode_bitmask(row['ELLIPSEMODE'], ELLIPSEMODE))
-            html_lines.append("        <tr>")
-            html_lines.append("            <td>{}</td>".format(row['OBJNAME']))
-            html_lines.append("            <td>{}</td>".format(row['PGC'] if row['PGC'] > 0 else '-'))
-            html_lines.append("            <td>{}</td>".format(sample_flags))
-            html_lines.append("            <td>{}</td>".format(ellipse_flags))
-            html_lines.append("            <td>{:.3f}</td>".format(row['EBV']))
-            #html_lines.append("            <td>{}</td>".format(row[diamrefcol]))
-            html_lines.append("        </tr>")
+            d_init    = _sf(_get(row, 'DIAM_INIT') or _get(row, 'DIAM'))
+            ba_init   = _sf(_get(row, 'BA_INIT') or _get(row, 'BA'))
+            pa_init   = _sf(_get(row, 'PA_INIT') or _get(row, 'PA'))
+            init_ref  = str(_get(row, 'INIT_REF', '') or _get(row, 'DIAM_INIT_REF', '') or '').strip() or '—'
+            d_init_s  = f'{d_init:.3f}' if d_init else '—'
+            ba_init_s = f'{ba_init:.3f}' if ba_init else '—'
+            pa_init_s = f'{pa_init:.1f}' if pa_init is not None else '—'
+            if _has('D26'):
+                d26_s, d26_ref = _fmt_diam(row)
+                ba_s  = f'{float(row["BA"]):.3f}' if _sf(_get(row, "BA")) else '—'
+                pa_s  = f'{float(row["PA"]):.1f}'  if _sf(_get(row, "PA"), zero_missing=False) is not None else '—'
+                html_lines.append(_td(row['OBJNAME'],
+                                      d26_s, d26_ref or '—', ba_s, pa_s,
+                                      d_init_s, ba_init_s, pa_init_s, init_ref))
+            else:
+                html_lines.append(_td(row['OBJNAME'], d_init_s, ba_init_s, pa_init_s, init_ref))
         html_lines.append("    </table>")
+
+        # --- Table 3: Redshift & Distance (only when Z present) --------------
+        if _has('Z'):
+            has_desi = _has('Z_DESI')
+            has_ned  = _has('Z_NED')
+            has_lvd  = _has('Z_LVD')
+            html_lines.append("    <h3>Table 3 — Redshift &amp; Distance</h3>")
+            html_lines.append("    <table>")
+            headers = ['Object Name', 'z (adopted)', 'z ref', 'Dist (Mpc)', 'Dist ref']
+            if has_desi:
+                headers += ['z<sub>DESI</sub>', 'ZWARN', 'Spectype', 'N<sub>spec</sub>']
+            if has_ned:
+                headers += ['z<sub>NED</sub>', 'Dist<sub>NED</sub> (Mpc)']
+            if has_lvd:
+                headers += ['z<sub>LVD</sub>', 'Dist<sub>LVD</sub> (Mpc)']
+            html_lines.append(_th(*headers))
+            for row in fullgroup_data:
+                z_flag = int(_get(row, 'Z_FLAG', 0) or 0)
+                z_flag_s = " <span class='warn'>⚠</span>" if z_flag & 0x01 else ''
+                z_ref = str(_get(row, 'Z_REF', '') or '').strip() or '—'
+                cells = [
+                    row['OBJNAME'],
+                    _fmt_z(row, 'Z', 'Z_IVAR') + z_flag_s,
+                    z_ref,
+                    _fmt_dist(row, 'DIST', 'DIST_IVAR'),
+                    str(_get(row, 'DIST_REF', '') or '').strip() or '—',
+                ]
+                if has_desi:
+                    z_desi_s = _fmt_z(row, 'Z_DESI', 'Z_IVAR_DESI')
+                    zwarn    = int(_get(row, 'ZWARN_DESI', 0) or 0)
+                    spectype = str(_get(row, 'SPECTYPE_DESI', '') or '').strip() or '—'
+                    nspec    = int(_get(row, 'NSPEC_DESI', 0) or 0)
+                    zwarn_s  = f"<span class='warn'>{zwarn}</span>" if zwarn else str(zwarn)
+                    cells += [z_desi_s, zwarn_s, spectype, nspec if nspec else '—']
+                if has_ned:
+                    cells += [
+                        _fmt_z(row, 'Z_NED', 'Z_IVAR_NED'),
+                        _fmt_dist(row, 'DIST_NED', 'DIST_IVAR_NED'),
+                    ]
+                if has_lvd:
+                    cells += [
+                        _fmt_z(row, 'Z_LVD', 'Z_IVAR_LVD'),
+                        _fmt_dist(row, 'DIST_LVD', 'DIST_IVAR_LVD'),
+                    ]
+                html_lines.append(_td(*cells))
+            html_lines.append("    </table>")
+
+        # --- Table 4: Photometry (CoG total + apertures) ---------------------
+        if _has('COG_MTOT_G'):
+            n_ap = sum(1 for ap in range(5) if _has(f'FLUX_AP{ap:02d}_G'))
+            n_meas = 1 + n_ap  # CoG row + aperture rows
+            html_lines.append("    <h3>Table 4 — Photometry (AB mag ± err)</h3>")
+            html_lines.append("    <table>")
+            html_lines.append(_th('Object Name', 'Measurement',
+                                  *[b.lower() for b in phot_bands]))
+            for row in fullgroup_data:
+                sma_moment = _sf(_get(row, 'SMA_MOMENT'), zero_missing=True)
+                for imeas in range(n_meas):
+                    if imeas == 0:
+                        meas_label = 'CoG total'
+                        band_vals  = [_fmt_mag_cog(row, b) for b in phot_bands]
+                        name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{row['OBJNAME']}</td>"
+                    else:
+                        ap = imeas - 1
+                        if _has(f'SMA_AP{ap:02d}') and sma_moment:
+                            sma_ap = _sf(_get(row, f'SMA_AP{ap:02d}'), zero_missing=False)
+                            sma_s  = f'{sma_ap:.1f}"' if sma_ap else ''
+                            meas_label = f'AP{ap:02d} ({ap_labels[ap]}{" = " + sma_s if sma_s else ""})'
+                        else:
+                            meas_label = f'AP{ap:02d} ({ap_labels[ap]})'
+                        band_vals = [_fmt_mag_ap(row, ap, b) for b in phot_bands]
+                        name_cell = ''
+                    html_lines.append(f'        <tr>{name_cell}<td>{meas_label}</td>' +
+                                      ''.join(f'<td>{v}</td>' for v in band_vals) + '</tr>')
+            html_lines.append("    </table>")
+
+        # --- Table 5: Processing Metadata ------------------------------------
+        html_lines.append("    <h3>Table 5 — Processing Metadata</h3>")
+        html_lines.append("    <table>")
+        html_lines.append(_th('Object Name', 'E(B-V)', 'Bands',
+                               'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE'))
+        for row in fullgroup_data:
+            sample_flags  = ', '.join(decode_bitmask(row['SAMPLE'], SAMPLE)) or '—'
+            ebit_flags    = ', '.join(decode_bitmask(_get(row, 'ELLIPSEBIT', 0) or 0, ELLIPSEBIT)) or '—'
+            emode_flags   = ', '.join(decode_bitmask(row['ELLIPSEMODE'], ELLIPSEMODE)) or '—'
+            bands_s       = str(_get(row, 'BANDS', '') or '').strip() or '—'
+            html_lines.append(_td(
+                row['OBJNAME'],
+                f"{float(row['EBV']):.3f}",
+                bands_s, sample_flags, ebit_flags, emode_flags,
+            ))
+        html_lines.append("    </table>")
+
+    # --- Images --------------------------------------------------------------
     html_lines.extend([
         "",
         "    <div class='section'>",
@@ -1405,14 +1580,12 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     if filepath.exists():
         html_lines.append("            <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto;'></a>".format(group_files[0], group_files[0], group_files[0]))
     else:
-        html_lines.append("            <img src='' alt='{}' style='display:none;'>".format(group_files[0]))
         html_lines.append("            <p style='color: #888;'>Missing: {}</p>".format(group_files[0]))
-    html_lines.append("            <h3>Ellipse Masking & Geometry</h3>")
+    html_lines.append("            <h3>Ellipse Masking &amp; Geometry</h3>")
     filepath = group_dir / group_files[1]
     if filepath.exists():
         html_lines.append("            <a href='{}'><img src='{}' alt='{}' style='max-width: 100%; height: auto;'></a>".format(group_files[1], group_files[1], group_files[1]))
     else:
-        html_lines.append("            <img src='' alt='{}' style='display:none;'>".format(group_files[1]))
         html_lines.append("            <p style='color: #888;'>Missing: {}</p>".format(group_files[1]))
     html_lines.extend([
         "        </div>",
