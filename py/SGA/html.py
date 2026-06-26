@@ -518,7 +518,7 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 
 
 def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
-                datasets=['opt', 'unwise', 'galex'], clobber=False):
+                datasets=['opt', 'unwise', 'galex'], clobber=False, fullsample=None):
     """
     curve of growth
 
@@ -530,6 +530,12 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
     from SGA.ellipse import cog_model
     from SGA.qa import sbprofile_colors
 
+    colors2 = ['#e91e8c', '#039be5']
+
+    # Build SGAID → index map for fast final-catalog lookups.
+    sgaid_map = {}
+    if fullsample is not None:
+        sgaid_map = {int(s): i for i, s in enumerate(fullsample['SGAID'])}
 
     for iobj, obj in enumerate(ellipse):
 
@@ -540,36 +546,57 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
             continue
 
         sbcolors = sbprofile_colors()
-        cmap2a = plt.get_cmap('Dark2')
-        cmap2b = plt.get_cmap('Paired')
-        colors2 = [cmap2a(1), cmap2b(3)]
 
         markers = ['s', 'o', 'v']
+
+        # Look up final catalog row for this galaxy.
+        pub = None
+        if sgaid_map:
+            idx = sgaid_map.get(int(obj['SGAID']), -1)
+            if idx >= 0:
+                pub = fullsample[idx]
+
+        # Build title and sma_sbthresh from final catalog values when available.
+        sma_moment = obj['SMA_MOMENT']  # [arcsec]
+        label_moment = f'$R(\\mathrm{{mom}})={sma_moment:.1f}$"'
+        if pub is not None:
+            galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
+            title = f'{galaxy_name} ({obj["SGANAME"]})'
+            d26 = float(pub['D26'])
+            d26_ref = str(pub['D26_REF']).strip()
+        else:
+            title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
+            d26 = 0.
+            d26_ref = ''
+
+        if pub is not None and d26 > 0.:
+            sma_sbthresh = d26 / 2. * 60.  # arcmin → arcsec
+            ref_str = d26_ref if d26_ref else 'D26'
+        else:
+            sma_sbthresh, _, _ref_arr, _ = SGA_diameter(
+                Table(obj), region, radius_arcsec=True)
+            sma_sbthresh = sma_sbthresh[0]
+            ref_str = _ref_arr[0]
+        label_sbthresh = f'$R({ref_str})={sma_sbthresh:.1f}$"'
+
+        sma_max = float(np.max(sbprofiles[0][iobj]['SMA'].value))
+        xminmax = [0., sma_max**0.25]
 
         fig, ax = plt.subplots(figsize=(8, 6))
 
         # one row per dataset
         yminmax = [40, 0]
-        xminmax = [0., max(sbprofiles[0][iobj]['SMA'])] # optical
         for idata, dataset in enumerate(datasets):
 
             sbprofiles_obj = sbprofiles[idata][iobj]
             bands = data[f'{dataset}_bands']
-
-            sma_moment = obj['SMA_MOMENT'] # [arcsec]
-            label_moment = r'$R(mom)='+f'{sma_moment:.1f}'+r'$ arcsec'
-            if dataset == 'opt':
-                sma_sbthresh, _, label_sbthresh, _ = SGA_diameter(
-                    Table(obj), region, radius_arcsec=True)
-                sma_sbthresh = sma_sbthresh[0]
-                label_sbthresh = r'$'+label_sbthresh[0]+'='+f'{sma_sbthresh:.1f}'+r'$ arcsec'
 
             for filt in bands:
                 I = ((sbprofiles_obj[f'FLUX_{filt.upper()}'].value > 0.) *
                      (sbprofiles_obj[f'FLUX_ERR_{filt.upper()}'].value > 0.))
 
                 if np.any(I):
-                    sma = sbprofiles_obj['SMA'][I].value
+                    sma = sbprofiles_obj['SMA'][I].value**0.25
                     flux = sbprofiles_obj[f'FLUX_{filt.upper()}'][I].value
                     fluxerr = sbprofiles_obj[f'FLUX_ERR_{filt.upper()}'][I].value
                     mag = 22.5 - 2.5 * np.log10(flux)
@@ -592,9 +619,9 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
                     lnalpha1 = ellipse[f'COG_LNALPHA1_{filt.upper()}'][iobj]
                     lnalpha2 = ellipse[f'COG_LNALPHA2_{filt.upper()}'][iobj]
                     if mtot > 0:
-                        smagrid = np.linspace(0., xminmax[1], 50)
-                        mfit = cog_model(smagrid, mtot, dmag, lnalpha1, lnalpha2, r0=sma_moment)
-                        ax.plot(smagrid, mfit, color=col, alpha=0.8)
+                        smagrid_lin = np.linspace(0., sma_max, 50)
+                        mfit = cog_model(smagrid_lin, mtot, dmag, lnalpha1, lnalpha2, r0=sma_moment)
+                        ax.plot(smagrid_lin**0.25, mfit, color=col, alpha=0.8)
 
                     # robust limits
                     maglo = (mag - magerr)[(magerr < 1.) * (mag / magerr > 8.)]
@@ -621,12 +648,12 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         ax.set_xlim(xminmax)
         ax.margins(x=0)
 
-        ax.set_xlabel('Semi-major axis (arcsec)')
+        ax.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
         ax.set_ylabel('Cumulative Brightness (AB mag)')
 
         if sma_sbthresh > 0.:
-            ax.axvline(x=sma_sbthresh, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
-        ax.axvline(x=sma_moment, color=colors2[0], lw=2, ls='--', label=label_moment)
+            ax.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
+        ax.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
 
         hndls, _ = ax.get_legend_handles_labels()
         if hndls:
@@ -637,9 +664,7 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
             ax.legend(handles=hndls_vline, loc='upper left', fontsize=8)
             ax.add_artist(leg1)
 
-        fig.suptitle(f'{data["galaxy"].replace("_", " ").replace(" GROUP", " Group")}: ' + \
-                     f'{obj["OBJNAME"]} ({obj["SGANAME"]})') # ({obj[REFIDCOLUMN]})
-        #fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+        fig.suptitle(title)
         fig.tight_layout()
         fig.savefig(qafile, bbox_inches='tight')
         plt.close()
@@ -1088,7 +1113,7 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                 apertures=APERTURES, clobber=clobber)
 
     ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
-                datasets=['opt', 'unwise', 'galex'], clobber=clobber)
+                datasets=['opt', 'unwise', 'galex'], clobber=clobber, fullsample=fullsample)
 
     # surface-brightness profiles
     ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
