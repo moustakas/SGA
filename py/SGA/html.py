@@ -107,7 +107,6 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
     """
     import numpy.ma as ma
     import matplotlib.pyplot as plt
-    from matplotlib.cm import get_cmap
     import matplotlib.gridspec as gridspec
     from matplotlib.patches import Patch
 
@@ -157,13 +156,13 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
 
     cmap = plt.cm.cividis
     cmap.set_bad('white')
-    #cmap = plt.cm.get_cmap('cividis').copy()
+    #cmap = plt.get_cmap('cividis').copy()
     #cmap.set_bad((1, 1, 1, 1)) # solid white
 
-    cmap1 = get_cmap('tab20') # or tab20b or tab20c
+    cmap1 = plt.get_cmap('tab20') # or tab20b or tab20c
     colors1 = [cmap1(i) for i in range(50)]
 
-    cmap2 = get_cmap('Dark2')
+    cmap2 = plt.get_cmap('Dark2')
     colors2 = [cmap2(i) for i in range(5)]
 
     width = data['width']
@@ -329,7 +328,6 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
     from copy import deepcopy
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
-    from matplotlib.cm import get_cmap
     import seaborn as sns
 
     from SGA.util import filter_effwaves
@@ -527,7 +525,6 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
     """
     import matplotlib
     import matplotlib.pyplot as plt
-    from matplotlib.cm import get_cmap
 
     from SGA.SGA import SGA_diameter
     from SGA.ellipse import cog_model
@@ -543,8 +540,8 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
             continue
 
         sbcolors = sbprofile_colors()
-        cmap2a = get_cmap('Dark2')
-        cmap2b = get_cmap('Paired')
+        cmap2a = plt.get_cmap('Dark2')
+        cmap2b = plt.get_cmap('Paired')
         colors2 = [cmap2a(1), cmap2b(3)]
 
         markers = ['s', 'o', 'v']
@@ -659,7 +656,6 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     """
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
-    from matplotlib.cm import get_cmap
     from photutils.isophote import EllipseGeometry
     from photutils.aperture import EllipticalAperture
 
@@ -690,8 +686,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     cmap.set_bad('white')
 
     sbcolors = sbprofile_colors()
-    cmap2a = get_cmap('Dark2')
-    cmap2b = get_cmap('Paired')
+    cmap2a = plt.get_cmap('Dark2')
+    cmap2b = plt.get_cmap('Paired')
     colors2 = [cmap2a(1), cmap2b(3), cmap2a(2)]
     #colors2 = [cmap2(i) for i in range(5)]
 
@@ -1522,6 +1518,7 @@ def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobb
         htmldir = Path(htmldir)
     unique_groups = np.unique(sample['GROUP_NAME'])
     valid_groups = []
+
     for group_name in unique_groups:
         if find_group_directory(htmldir, region, group_name) is not None:
             valid_groups.append(group_name)
