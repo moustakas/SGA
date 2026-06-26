@@ -518,13 +518,16 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 
 
 def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
-                datasets=['opt', 'unwise', 'galex'], clobber=False, fullsample=None):
+                datasets=['opt', 'unwise', 'galex'], clobber=False,
+                fullsample=None):
     """
     curve of growth
 
     """
     import matplotlib
     import matplotlib.pyplot as plt
+    from matplotlib.transforms import blended_transform_factory
+    import matplotlib.lines as mlines
 
     from SGA.SGA import SGA_diameter
     from SGA.ellipse import cog_model
@@ -580,7 +583,8 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         label_sbthresh = f'$R({ref_str})={sma_sbthresh:.1f}$"'
 
         sma_max = float(np.max(sbprofiles[0][iobj]['SMA'].value))
-        xminmax = [0., sma_max**0.25]
+        xminmax = [0., sma_max]
+        #xminmax = [0., sma_max**0.25]
 
         fig, ax = plt.subplots(figsize=(8, 6))
 
@@ -614,7 +618,8 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
                     K = magerr < 1.
                     col = sbcolors[filt]
                     if np.any(K):
-                        ax.errorbar(sma_lin[K]**0.25, mag[K], yerr=magerr[K],
+                        #ax.errorbar(sma_lin[K]**0.25, mag[K], yerr=magerr[K],
+                        ax.errorbar(sma_lin[K], mag[K], yerr=magerr[K],
                                     fmt=markers[idata], markersize=5, markeredgewidth=1,
                                     markeredgecolor='k', markerfacecolor=col, elinewidth=3,
                                     ecolor=col, capsize=4, label=label, alpha=0.7)
@@ -626,9 +631,11 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
                     lnalpha2 = ellipse[f'COG_LNALPHA2_{filt.upper()}'][iobj]
                     if good_cog:
                         sma_min_filt = float(np.min(sma_lin))
-                        smagrid_lin = np.linspace(sma_min_filt, sma_max, 50)
+                        smagrid_lin = np.logspace(np.log10(sma_min_filt), np.log10(sma_max), 100)
+                        #smagrid_lin = np.linspace(sma_min_filt, sma_max, 500)
                         mfit = cog_model(smagrid_lin, mtot, dmag, lnalpha1, lnalpha2, r0=sma_moment)
-                        ax.plot(smagrid_lin**0.25, mfit, color=col, alpha=0.8)
+                        ax.plot(smagrid_lin, mfit, color=col, alpha=0.8)
+                        #ax.plot(smagrid_lin**0.25, mfit, color=col, alpha=0.8)
 
                     # robust limits (use all points, not just K, for y-range)
                     maglo = (mag - magerr)[(magerr < 1.) * (mag / magerr > 8.)]
@@ -655,21 +662,46 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         ax.set_xlim(xminmax)
         ax.margins(x=0)
 
-        ax.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
+        ax.set_xlabel('Semi-major axis (arcsec)')
+        #ax.set_xlabel(r'(Semi-major axis / arcsec)$^{1/4}$')
         ax.set_ylabel('Cumulative Brightness (AB mag)')
 
-        if sma_sbthresh > 0.:
-            ax.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
-        ax.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
+        #if sma_sbthresh > 0.:
+        #    ax.axvline(x=sma_sbthresh**0.25, color=colors2[1], lw=2, ls='-', label=label_sbthresh)
+        #ax.axvline(x=sma_moment**0.25, color=colors2[0], lw=2, ls='--', label=label_moment)
 
-        hndls, _ = ax.get_legend_handles_labels()
-        if hndls:
-            # split into two legends
-            hndls_data = [hndl for hndl in hndls if not type(hndl) is matplotlib.lines.Line2D]
-            hndls_vline = [hndl for hndl in hndls if type(hndl) is matplotlib.lines.Line2D]
-            leg1 = ax.legend(handles=hndls_data, loc='lower right', fontsize=8)
-            ax.legend(handles=hndls_vline, loc='upper left', fontsize=8)
-            ax.add_artist(leg1)
+        #hndls, _ = ax.get_legend_handles_labels()
+        #if hndls:
+        #    # split into two legends
+        #    hndls_data = [hndl for hndl in hndls if not type(hndl) is matplotlib.lines.Line2D]
+        #    hndls_vline = [hndl for hndl in hndls if type(hndl) is matplotlib.lines.Line2D]
+        #    leg1 = ax.legend(handles=hndls_data, loc='lower right', fontsize=8)
+        #    ax.legend(handles=hndls_vline, loc='upper left', fontsize=11)
+        #    ax.add_artist(leg1)
+
+        # Arrows just inside the axis marking size scales.
+        # mfc='none' matches the unfilled outline style of the
+        # aperture ellipses.
+        trans = blended_transform_factory(ax.transData, ax.transAxes)
+        if sma_sbthresh > 0.:
+            #ax.plot(sma_sbthresh**0.25, 0.94, 'v', mec=colors2[1], mfc='none', ms=9, mew=1.5,
+            ax.plot(sma_sbthresh, 0.94, 'v', mec=colors2[1], mfc='none', ms=9, mew=1.5,
+                    transform=trans, clip_on=False, zorder=5)
+        #ax.plot(sma_moment**0.25, 0.94, 'v', mec=colors2[0], mfc='none', ms=9, mew=1.5,
+        ax.plot(sma_moment, 0.94, 'v', mec=colors2[0], mfc='none', ms=9, mew=1.5,
+                transform=trans, clip_on=False, zorder=5)
+
+        band_hndls, _ = ax.get_legend_handles_labels()
+        if band_hndls:
+            size_hndls = []
+            if sma_sbthresh > 0.:
+                size_hndls.append(mlines.Line2D(
+                    [], [], mec=colors2[1], mfc='none', mew=1.5,
+                    marker='v', linestyle='None', ms=9, label=label_sbthresh))
+            size_hndls.append(mlines.Line2D(
+                [], [], mec=colors2[0], mfc='none', mew=1.5,
+                marker='v', linestyle='None', ms=9, label=label_moment))
+            ax.legend(handles=size_hndls, loc='lower right', fontsize=11)
 
         fig.suptitle(title)
         fig.tight_layout()
@@ -938,8 +970,9 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                     xx.text(0.02, 0.03, geom_str, transform=xx.transAxes,
                             ha='left', va='bottom', fontsize=10)
 
-                # Upward arrows just inside the bottom edge marking size scales.
-                # mfc='none' matches the unfilled outline style of the aperture ellipses.
+                # Arrows just inside the axis marking size scales.
+                # mfc='none' matches the unfilled outline style of the
+                # aperture ellipses.
                 trans = blended_transform_factory(xx.transData, xx.transAxes)
                 if sma_sbthresh > 0.:
                     xx.plot(sma_sbthresh**0.25, 0.94, 'v', mec=colors2[1], mfc='none', ms=9, mew=1.5,
@@ -959,7 +992,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                             [], [], mec=colors2[0], mfc='none', mew=1.5,
                             marker='v', linestyle='None', ms=9, label=label_moment))
                         leg1 = xx.legend(handles=band_hndls, loc='upper right', fontsize=8)
-                        xx.legend(handles=size_hndls, loc='lower left', fontsize=8)
+                        xx.legend(handles=size_hndls, loc='lower left', fontsize=11)
                         xx.add_artist(leg1)
                     else:
                         xx.legend(handles=band_hndls, loc='upper right', fontsize=8)
