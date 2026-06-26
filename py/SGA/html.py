@@ -1391,6 +1391,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     def _td(*cells):
         return '        <tr>' + ''.join(f'<td>{c}</td>' for c in cells) + '</tr>'
 
+    def _ned_link(name):
+        encoded = name.replace('+', '%2B').replace(' ', '+')
+        return f"<a href='https://ned.ipac.caltech.edu/byname?objname={encoded}' target='_blank'>{name}</a>"
+
+    def _pgc_link(pgc):
+        return f"<a href='http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=PGC%20{pgc}' target='_blank'>{pgc}</a>"
+
     phot_bands = ['G', 'R', 'I', 'Z', 'W1', 'W2', 'FUV', 'NUV']
 
     # -----------------------------------------------------------------------
@@ -1412,7 +1419,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        .breadcrumb a:hover { text-decoration: underline; }",
         "        h1 { color: #333; margin-bottom: 5px; }",
         "        h2 { color: #555; margin-top: 5px; font-weight: normal; font-size: 18px; }",
-        "        h3 { color: #555; margin-top: 20px; margin-bottom: 10px; font-weight: bold; font-size: 16px; ; }",
+        "        h3 { color: #333; margin-top: 20px; margin-bottom: 10px; font-weight: bold; font-size: 17px; }",
         "        table { border-collapse: collapse; margin: 20px 0; font-size: 13px; }",
         "        th { background-color: #f0f0f0; padding: 6px 10px; border: 1px solid #ddd; text-align: center; white-space: nowrap; }",
         "        td { padding: 6px 10px; border: 1px solid #ddd; vertical-align: top; text-align: center; }",
@@ -1424,7 +1431,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        .img-col { flex: 0 0 56%; max-width: 56%; }",
         "        .img-col img { max-width: 100%; height: auto; display: block; }",
         "        .tables-col { flex: 1; min-width: 0; overflow-x: auto; }",
-        "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; justify-content: space-between; }",
+        "        .galaxy-row { display: flex; gap: 10px; margin: 10px 0; justify-content: space-between; align-items: center; }",
         "        .galaxy-row a { display: block; flex: 0 0 32%; min-height: 200px; }",
         "        .galaxy-row img { width: 100%; height: auto; display: block; }",
         "        .galaxy-row div { flex: 1; max-width: 32%; }",
@@ -1473,7 +1480,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             morph    = str(_get(row, 'MORPH', '') or '').strip()
             primary  = 'Yes' if row['GROUP_PRIMARY'] else 'No'
             html_lines.append(_td(
-                galaxy, row['SGAID'], pgc, morph,
+                _ned_link(galaxy), row['SGAID'], _pgc_link(pgc) if pgc else '', morph,
                 f"{float(row['RA']):.6f}", f"{float(row['DEC']):.6f}",
                 f"{float(row['EBV']):.3f}",
                 primary, altnames, row['OBJNAME'],
@@ -1513,7 +1520,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 z_flag_s = " <span class='warn'>⚠</span>" if z_flag & 0x01 else ''
                 z_ref = str(_get(row, 'Z_REF', '') or '').strip()
                 cells = [
-                    row['GALAXY'],
+                    _ned_link(str(row['GALAXY']).strip()),
                     _fmt_z(row, 'Z', 'Z_IVAR') + z_flag_s,
                     z_ref,
                     _fmt_dist(row, 'DIST', 'DIST_IVAR'),
@@ -1596,12 +1603,14 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 sma_mom_s = f'{sma_mom:.1f}' if sma_mom else ''
                 ba_s  = f'{float(row["BA"]):.3f}' if _sf(_get(row, "BA")) else ''
                 pa_s  = f'{float(row["PA"]):.1f}'  if _sf(_get(row, "PA"), zero_missing=False) is not None else ''
-                html_lines.append(_td(row['GALAXY'],
+                _gname = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
+                html_lines.append(_td(_ned_link(_gname),
                                       d26_s, d26_ref, ba_s, pa_s, sma_mom_s,
                                       d_init_s, ba_init_s, pa_init_s, init_ref,
                                       sample_flags, ebit_flags, emode_flags))
             else:
-                html_lines.append(_td(row['OBJNAME'], d_init_s, ba_init_s, pa_init_s, init_ref,
+                html_lines.append(_td(_ned_link(str(row['OBJNAME']).strip()),
+                                      d_init_s, ba_init_s, pa_init_s, init_ref,
                                       sample_flags, ebit_flags, emode_flags))
         html_lines.append("    </table>")
 
@@ -1632,7 +1641,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                     if imeas == 0:
                         meas_label = 'COG (total)'
                         band_vals  = [_fmt_mag_cog(row, b) for b in phot_bands]
-                        name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{row['GALAXY']}</td>"
+                        name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{_ned_link(str(row['GALAXY']).strip())}</td>"
                     else:
                         ap = n_ap - imeas  # AP04 first (largest → closest to CoG), AP00 last
                         mult = f'{APERTURES[ap]:g}×'
