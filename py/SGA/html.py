@@ -1288,7 +1288,7 @@ def find_group_directory(htmldir, region, group_name):
         return group_dir
     return None
 
-def generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber=False):
+def generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber=False, fulltractor=None):
     """Generate HTML QA page for a single galaxy group."""
     group_name = group_data['GROUP_NAME'][0]
     group_dir = find_group_directory(htmldir, region, group_name)
@@ -1310,6 +1310,15 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     else:
         galaxy = group_data['OBJNAME'][0]
     sganame = group_data['SGANAME'][0]
+
+    # Look up matching tractor rows by SGAID
+    tractor_group = None
+    tractor_sgaid_idx = {}
+    if fulltractor is not None and 'SGAID' in fulltractor.colnames:
+        _tmask = np.isin(fulltractor['SGAID'], fullgroup_data['SGAID'])
+        if np.any(_tmask):
+            tractor_group = fulltractor[_tmask]
+            tractor_sgaid_idx = {int(r['SGAID']): i for i, r in enumerate(tractor_group)}
     group_ra = group_data['GROUP_RA'][0]
     group_dec = group_data['GROUP_DEC'][0]
     group_diam = group_data['GROUP_DIAMETER'][0]
@@ -1493,16 +1502,21 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "    <h3>Group: {} | RA Slice: {}</h3>".format(group_name, raslice),
     ]
 
-    html_lines.extend([
-        "    <div class='toc'>",
-        "        <div class='toc-title'>Contents</div>",
+    _toc = [
         "        <a href='#sec-group'>Group Properties</a>",
         "        <a href='#sec-identifiers'>Identifiers</a>",
         "        <a href='#sec-redshift'>Redshift &amp; Distance</a>",
         "        <a href='#sec-montage'>Multiwavelength Montage</a>",
         "        <a href='#sec-ellipse'>Ellipse Masking</a>",
         "        <a href='#sec-photometry'>Photometry (Data)</a>",
-        "        <a href='#sec-figures'>Photometry (Figures)</a>",
+    ]
+    if tractor_group is not None:
+        _toc.append("        <a href='#sec-tractor'>Tractor</a>")
+    _toc.append("        <a href='#sec-figures'>Photometry (Figures)</a>")
+    html_lines.extend([
+        "    <div class='toc'>",
+        "        <div class='toc-title'>Contents</div>",
+        *_toc,
         "    </div>",
     ])
 
@@ -1527,7 +1541,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         for row in fullgroup_data:
             galaxy   = str(_get(row, 'GALAXY', '') or '').strip() or str(row['OBJNAME']).strip()
             altnames = str(_get(row, 'ALTNAMES', '') or '').strip()
-            pgc      = int(row['PGC']) if _sf(row['PGC'], zero_missing=True) else ''
+            _pgc_v   = _sf(row['PGC'], zero_missing=True)
+            pgc      = int(_pgc_v) if _pgc_v is not None and int(_pgc_v) != -99 else ''
             morph    = str(_get(row, 'MORPH', '') or '').strip()
             primary  = 'Yes' if row['GROUP_PRIMARY'] else 'No'
             html_lines.append(_td(
@@ -1713,6 +1728,79 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                                       ''.join(f'<td>{v}</td>' for v in band_vals) + '</tr>')
                     row_idx += 1
             html_lines.append("    </table>")
+
+    # ---- Section D: Tractor --------------------------------------------------
+    if tractor_group is not None:
+        try:
+            from legacypipe.bits import MASKBITS as LP_MASKBITS, FITBITS as LP_FITBITS
+            have_lp_bits = True
+        except ImportError:
+            log.warning('legacypipe not available; MASKBITS/FITBITS shown as integers')
+            have_lp_bits = False
+            LP_MASKBITS = {}
+            LP_FITBITS  = {}
+
+        _tcols = set(tractor_group.colnames)
+
+        def _fmt_tractor_mag(trow, band):
+            fc, ic = f'FLUX_{band}', f'FLUX_IVAR_{band}'
+            if fc not in _tcols:
+                return ''
+            f = float(trow[fc])
+            if f <= 0:
+                return ''
+            mag = 22.5 - 2.5 * np.log10(f)
+            if ic in _tcols:
+                iv = float(trow[ic])
+                if iv > 0:
+                    return f'{mag:.3f} ± {2.5 / np.log(10.) / (np.sqrt(iv) * f):.3f}'
+            return f'{mag:.3f}'
+
+        def _decode_bits(val, bits_dict):
+            v = int(val)
+            if v == 0:
+                return '—'
+            names = [k for k, bit in bits_dict.items() if v & bit]
+            return ', '.join(names) if names else str(v)
+
+        html_lines.append("    <h2 id='sec-tractor'>Tractor</h2>")
+        html_lines.append("    <table>")
+        html_lines.append(_th(
+            ('Galaxy', 1, 2), ('RA', 1, 2), ('Dec', 1, 2), ('TYPE', 1, 2),
+            ('Sérsic n', 1, 2), ('R<sub>eff</sub> (arcsec)', 1, 2),
+            ('Optical (AB mag)', 3),
+            ('MASKBITS', 1, 2), ('FITBITS', 1, 2),
+        ))
+        html_lines.append(_th('g', 'r', 'z'))
+        for row in fullgroup_data:
+            _gname = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
+            _sgaid = int(row['SGAID'])
+            _sgaid_s = f'  [{_sgaid}]' if _has('SGAID') else ''
+            _tidx = tractor_sgaid_idx.get(_sgaid, -1)
+            if _tidx < 0:
+                html_lines.append(_td(_ned_link(_gname) + _sgaid_s, *([''] * 9)))
+                continue
+            tr = tractor_group[_tidx]
+            ra_s    = f"{float(tr['RA']):.6f}"   if 'RA'      in _tcols else ''
+            dec_s   = f"{float(tr['DEC']):.6f}"  if 'DEC'     in _tcols else ''
+            typ     = str(tr['TYPE']).strip()     if 'TYPE'    in _tcols else ''
+            sersic  = (f"{float(tr['SERSIC']):.2f}"
+                       if 'SERSIC' in _tcols and typ == 'SER' else '')
+            shape_r = f"{float(tr['SHAPE_R']):.3f}" if 'SHAPE_R' in _tcols else ''
+            mb_s = (_decode_bits(tr['MASKBITS'], LP_MASKBITS)
+                    if 'MASKBITS' in _tcols else '')
+            fb_s = (_decode_bits(tr['FITBITS'],  LP_FITBITS)
+                    if 'FITBITS'  in _tcols else '')
+            html_lines.append(_td(
+                _ned_link(_gname) + _sgaid_s,
+                ra_s, dec_s, typ, sersic, shape_r,
+                _fmt_tractor_mag(tr, 'G'),
+                _fmt_tractor_mag(tr, 'R'),
+                _fmt_tractor_mag(tr, 'Z'),
+                mb_s, fb_s,
+            ))
+        html_lines.append("    </table>")
+
     jname_to_galaxy = {}
     jname_to_sgaid = {}
     if len(fullgroup_data) > 0 and 'SGANAME' in fullgroup_data.colnames:
@@ -1758,11 +1846,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
 
 def generate_group_html_wrapper(args):
     """Wrapper for multiprocessing."""
-    idx, group_name, sample, fullsample, htmldir, region, all_groups, clobber = args
+    idx, group_name, sample, fullsample, fulltractor, htmldir, region, all_groups, clobber = args
     group_data = sample[sample['GROUP_NAME'] == group_name]
     prev_group = all_groups[idx - 1] if idx > 0 else None
     next_group = all_groups[idx + 1] if idx < len(all_groups) - 1 else None
-    return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
+    return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber, fulltractor=fulltractor)
 
 def _build_index_html(region, count, sample_bits):
     """Return the complete index HTML string for one region.
@@ -2253,7 +2341,7 @@ def generate_index(htmldir, region, sample, fullsample=None):
     log.info('Wrote {}'.format(index_file))
 
 
-def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False):
+def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-south', mp=1, clobber=False):
     """
     Generate HTML QA pages for SGA galaxy groups.
 
@@ -2263,6 +2351,9 @@ def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobb
         Table containing GROUP_PRIMARY galaxies only
     fullsample : astropy.table.Table
         Table containing all galaxies (including non-primary group members)
+    fulltractor : astropy.table.Table, optional
+        Tractor catalog (from read_sga_sample(tractor=True)); adds a Tractor table
+        to each group page when provided
     htmldir : str
         Base HTML directory (default: $SGA_HTML_DIR)
     region : str
@@ -2293,9 +2384,9 @@ def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobb
             group_data = sample[sample['GROUP_NAME'] == group_name]
             prev_group = valid_groups[idx - 1] if idx > 0 else None
             next_group = valid_groups[idx + 1] if idx < len(valid_groups) - 1 else None
-            generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
+            generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber, fulltractor=fulltractor)
     else:
-        pool_args = [(idx, gn, sample, fullsample, htmldir, region, valid_groups, clobber)
+        pool_args = [(idx, gn, sample, fullsample, fulltractor, htmldir, region, valid_groups, clobber)
                      for idx, gn in enumerate(valid_groups)]
         with multiprocessing.Pool(processes=mp) as pool:
             pool.map(generate_group_html_wrapper, pool_args)
