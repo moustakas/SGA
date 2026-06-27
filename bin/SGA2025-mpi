@@ -271,6 +271,7 @@ def main():
         else:
             region = args.region
 
+        fulltractor = None
         if args.public_release:
             sample, fullsample = read_sga_sample(
                 first=args.first, last=args.last, mindiam=args.mindiam,
@@ -278,6 +279,13 @@ def main():
                 version=args.version, galaxylist=args.galaxylist,
                 no_groups=no_groups, lvd=args.lvd, region=region,
                 verbose=args.verbose)
+            if args.htmlindex:
+                _, fulltractor = read_sga_sample(tractor=True,
+                    first=args.first, last=args.last, mindiam=args.mindiam,
+                    maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
+                    version=args.version, galaxylist=args.galaxylist,
+                    no_groups=no_groups, lvd=args.lvd, region=region,
+                    verbose=args.verbose)
         else:
             sample, fullsample = read_sample(
                 first=args.first, last=args.last, mindiam=args.mindiam,
@@ -418,8 +426,9 @@ def main():
             from SGA.html import make_html
             ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
             if ntodo > 0:
-                make_html(sample[groups[0]], fullsample, mp=args.mp, clobber=args.clobber,
-                          region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
+                make_html(sample[groups[0]], fullsample, fulltractor=fulltractor,
+                          mp=args.mp, clobber=args.clobber, region=args.region,
+                          htmldir=htmldir)
             else:
                 log.warning('All done!')
             return
