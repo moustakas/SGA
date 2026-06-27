@@ -41,6 +41,12 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
 
     #qafile = os.path.join('ioannis/tmp2/junk.png')
     qafile = os.path.join(htmlgalaxydir, f'{data["galaxy"]}-montage.png')
+
+    thumb_file = os.path.join(htmlgalaxydir, f'{data["galaxy"]}-thumb.jpg')
+    if (not os.path.isfile(thumb_file) or clobber) and data.get('opt_jpg_image') is not None:
+        plt.imsave(thumb_file, data['opt_jpg_image'])
+        log.info(f'Wrote {thumb_file}')
+
     if os.path.isfile(qafile) and not clobber:
         log.info(f'File {qafile} exists and clobber=False')
         return
@@ -1720,185 +1726,348 @@ def generate_group_html_wrapper(args):
     next_group = all_groups[idx + 1] if idx < len(all_groups) - 1 else None
     return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
 
+def _build_index_html(region, count):
+    """Return the complete index HTML string for one region."""
+    # Double-brace all literal JS braces so .format() doesn't mis-interpret them.
+    return """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SGA-2025 Index &mdash; {region}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
+    h1   {{ margin-bottom: 4px; }}
+    .subtitle {{ color: #666; font-size: 14px; margin-bottom: 18px; }}
+    .filter-panel {{ display: flex; gap: 40px; background: #f8f8f8;
+                     padding: 18px 20px; border: 1px solid #ddd;
+                     border-radius: 4px; margin-bottom: 14px; }}
+    .filter-col   {{ flex: 1; }}
+    .filter-col h4 {{ margin: 0 0 12px; font-size: 14px; color: #444; }}
+    .filter-row   {{ display: flex; align-items: center; margin-bottom: 7px;
+                     font-size: 13px; }}
+    .filter-row label {{ width: 140px; flex-shrink: 0; }}
+    input[type=text]   {{ padding: 4px 6px; font-size: 13px;
+                          border: 1px solid #ccc; border-radius: 3px; width: 220px; }}
+    input[type=number] {{ padding: 4px 6px; font-size: 13px;
+                          border: 1px solid #ccc; border-radius: 3px; width: 90px; }}
+    .sep {{ padding: 0 5px; color: #999; }}
+    .actions {{ margin: 10px 0 14px; }}
+    .btn       {{ padding: 7px 18px; background: #0066cc; color: #fff;
+                  border: none; border-radius: 3px; cursor: pointer; font-size: 13px; }}
+    .btn:hover {{ background: #0052a3; }}
+    .btn-clear       {{ background: #777; margin-left: 8px; }}
+    .btn-clear:hover {{ background: #555; }}
+    .summary {{ color: #555; font-size: 13px; margin-bottom: 8px; }}
+    table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
+    th {{ background: #f0f0f0; padding: 8px 10px; border: 1px solid #ddd;
+          text-align: left; cursor: pointer; white-space: nowrap; }}
+    th:hover        {{ background: #e4e4e4; }}
+    th.asc::after   {{ content: " ▲"; font-size: 10px; }}
+    th.desc::after  {{ content: " ▼"; font-size: 10px; }}
+    td {{ padding: 7px 10px; border: 1px solid #ddd; vertical-align: middle; }}
+    td.thumb {{ padding: 3px; width: 86px; text-align: center; }}
+    td.thumb img {{ width: 80px; height: 80px; object-fit: cover; display: block; margin: auto; }}
+    a       {{ color: #0066cc; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .pager {{ margin: 12px 0; text-align: center; font-size: 13px; }}
+    .pager a       {{ margin: 0 4px; cursor: pointer; color: #0066cc; }}
+    .pager .cur    {{ margin: 0 8px; color: #333; }}
+    .no-results    {{ color: #888; padding: 20px; text-align: center; font-style: italic; }}
+  </style>
+</head>
+<body>
+  <h1>SGA-2025 Group Index &mdash; {region}</h1>
+  <p class="subtitle">Total: {count:,} groups</p>
+
+  <div class="filter-panel">
+    <div class="filter-col">
+      <h4>Simple Filter</h4>
+      <div class="filter-row">
+        <label>Name</label>
+        <input type="text" id="f-name" placeholder="galaxy or group name">
+      </div>
+      <div class="filter-row">
+        <label>RA (deg)</label>
+        <input type="number" id="f-ra-min" placeholder="min" step="0.01" min="0" max="360">
+        <span class="sep">to</span>
+        <input type="number" id="f-ra-max" placeholder="max" step="0.01" min="0" max="360">
+      </div>
+      <div class="filter-row">
+        <label>Dec (deg)</label>
+        <input type="number" id="f-dec-min" placeholder="min" step="0.01" min="-90" max="90">
+        <span class="sep">to</span>
+        <input type="number" id="f-dec-max" placeholder="max" step="0.01" min="-90" max="90">
+      </div>
+      <div class="filter-row">
+        <label>Diameter (arcmin)</label>
+        <input type="number" id="f-diam-min" placeholder="min" step="0.1" min="0">
+        <span class="sep">to</span>
+        <input type="number" id="f-diam-max" placeholder="max" step="0.1" min="0">
+      </div>
+    </div>
+    <div class="filter-col">
+      <h4>Cone Search</h4>
+      <div class="filter-row">
+        <label>RA (deg)</label>
+        <input type="number" id="f-cone-ra" placeholder="degrees" step="0.0001" min="0" max="360">
+      </div>
+      <div class="filter-row">
+        <label>Dec (deg)</label>
+        <input type="number" id="f-cone-dec" placeholder="degrees" step="0.0001" min="-90" max="90">
+      </div>
+      <div class="filter-row">
+        <label>Radius (arcmin)</label>
+        <input type="number" id="f-cone-rad" placeholder="arcmin" step="0.1" min="0">
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" onclick="applyFilters()">Filter</button>
+    <button class="btn btn-clear" onclick="clearFilters()">Clear</button>
+  </div>
+
+  <div class="summary" id="summary">Loading data&hellip;</div>
+
+  <table>
+    <thead><tr>
+      <th>Preview</th>
+      <th id="th-objname" onclick="sortBy('objname')">Object Name</th>
+      <th id="th-name"    onclick="sortBy('name')">Group Name</th>
+      <th id="th-ra"      onclick="sortBy('ra')">RA (deg)</th>
+      <th id="th-dec"     onclick="sortBy('dec')">Dec (deg)</th>
+      <th id="th-diam"    onclick="sortBy('diam')">Diam (arcmin)</th>
+      <th id="th-mult"    onclick="sortBy('mult')">N</th>
+      <th>Sky</th>
+    </tr></thead>
+    <tbody id="results-body">
+      <tr><td colspan="8" class="no-results">Loading&hellip;</td></tr>
+    </tbody>
+  </table>
+  <div class="pager" id="pager"></div>
+
+<script>
+var DATA        = null;
+var currentResults = [];
+var currentPage    = 0;
+var PAGE_SIZE      = 50;
+var sortCol = 'ra';
+var sortAsc = true;
+var REGION  = '{region}';
+
+function val(id)    {{ return document.getElementById(id).value.trim(); }}
+function numVal(id) {{ var v = parseFloat(val(id)); return isNaN(v) ? null : v; }}
+
+function angDistArcmin(ra1, dec1, ra2, dec2) {{
+    var R   = Math.PI / 180;
+    var d1  = dec1 * R, d2 = dec2 * R;
+    var dra = (ra1 - ra2) * R / 2, dde = (dec1 - dec2) * R / 2;
+    var a   = Math.sin(dde)*Math.sin(dde) +
+              Math.cos(d1)*Math.cos(d2)*Math.sin(dra)*Math.sin(dra);
+    return 2 * Math.asin(Math.sqrt(a)) / R * 60;
+}}
+
+function applyFilters() {{
+    if (!DATA) return;
+    var nameQ  = val('f-name').toUpperCase();
+    var raMin  = numVal('f-ra-min'),  raMax  = numVal('f-ra-max');
+    var decMin = numVal('f-dec-min'), decMax = numVal('f-dec-max');
+    var dMin   = numVal('f-diam-min'),dMax   = numVal('f-diam-max');
+    var cRa    = numVal('f-cone-ra'), cDec   = numVal('f-cone-dec'),
+        cRad   = numVal('f-cone-rad');
+    var useCone = cRa !== null && cDec !== null && cRad !== null;
+    var results = [];
+    var n = DATA.names.length;
+    for (var i = 0; i < n; i++) {{
+        if (nameQ) {{
+            if (DATA.names[i].toUpperCase().indexOf(nameQ)    === -1 &&
+                DATA.objnames[i].toUpperCase().indexOf(nameQ) === -1) continue;
+        }}
+        var ra = DATA.ra[i], dec = DATA.dec[i], diam = DATA.diam[i];
+        if (raMin  !== null && ra   < raMin)  continue;
+        if (raMax  !== null && ra   > raMax)  continue;
+        if (decMin !== null && dec  < decMin) continue;
+        if (decMax !== null && dec  > decMax) continue;
+        if (dMin   !== null && diam < dMin)   continue;
+        if (dMax   !== null && diam > dMax)   continue;
+        if (useCone && angDistArcmin(ra, dec, cRa, cDec) > cRad) continue;
+        results.push(i);
+    }}
+    currentResults = results;
+    currentPage    = 0;
+    sortResults();
+    renderPage();
+}}
+
+function sortResults() {{
+    var d = DATA, col = sortCol, asc = sortAsc;
+    var key;
+    if      (col === 'objname') key = function(i) {{ return d.objnames[i]; }};
+    else if (col === 'name')    key = function(i) {{ return d.names[i]; }};
+    else if (col === 'ra')      key = function(i) {{ return d.ra[i]; }};
+    else if (col === 'dec')     key = function(i) {{ return d.dec[i]; }};
+    else if (col === 'diam')    key = function(i) {{ return d.diam[i]; }};
+    else if (col === 'mult')    key = function(i) {{ return d.mult[i]; }};
+    else return;
+    currentResults.sort(function(a, b) {{
+        var av = key(a), bv = key(b);
+        if (av < bv) return asc ? -1 : 1;
+        if (av > bv) return asc ?  1 : -1;
+        return 0;
+    }});
+}}
+
+function sortBy(col) {{
+    sortAsc = (sortCol === col) ? !sortAsc : true;
+    sortCol = col;
+    var cols = ['objname','name','ra','dec','diam','mult'];
+    cols.forEach(function(c) {{
+        var th = document.getElementById('th-' + c);
+        if (th) th.className = (c === col) ? (sortAsc ? 'asc' : 'desc') : '';
+    }});
+    sortResults();
+    renderPage();
+}}
+
+function escHtml(s) {{
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}}
+
+function getSkyUrl(ra, dec, diam) {{
+    var layer = (REGION === 'dr11-south') ? 'ls-dr11-south' : 'ls-dr11-north';
+    var zoom  = Math.max(11, Math.min(16, Math.round(14 - Math.log10(Math.max(0.3, diam)))));
+    return 'https://www.legacysurvey.org/viewer-dev/?ra=' + ra.toFixed(4) +
+           '&dec=' + dec.toFixed(4) + '&layer=' + layer +
+           '&zoom=' + zoom + '&sga2025-parent';
+}}
+
+function buildRow(i) {{
+    var name     = DATA.names[i];
+    var raslice  = name.substring(0, 3);
+    var grpPath  = REGION + '/' + raslice + '/' + name + '/';
+    var htmlPath = grpPath + name + '.html';
+    var skyUrl   = getSkyUrl(DATA.ra[i], DATA.dec[i], DATA.diam[i]);
+    var thumbCell = DATA.has_thumb[i]
+        ? '<td class="thumb"><a href="' + htmlPath + '"><img src="' +
+          grpPath + 'SGA2025_' + name + '-thumb.jpg" alt=""></a></td>'
+        : '<td class="thumb">&mdash;</td>';
+    return '<tr>'
+        + thumbCell
+        + '<td><a href="' + htmlPath + '">' + escHtml(DATA.objnames[i]) + '</a></td>'
+        + '<td>' + escHtml(name) + '</td>'
+        + '<td>' + DATA.ra[i].toFixed(4)   + '</td>'
+        + '<td>' + DATA.dec[i].toFixed(4)  + '</td>'
+        + '<td>' + DATA.diam[i].toFixed(2) + '</td>'
+        + '<td>' + DATA.mult[i]            + '</td>'
+        + '<td><a href="' + skyUrl + '" target="_blank">Sky</a></td>'
+        + '</tr>';
+}}
+
+function renderPage() {{
+    var total = currentResults.length;
+    var start = currentPage * PAGE_SIZE;
+    var end   = Math.min(start + PAGE_SIZE, total);
+    var rows  = '';
+    if (total === 0) {{
+        rows = '<tr><td colspan="8" class="no-results">No results.</td></tr>';
+    }} else {{
+        for (var k = start; k < end; k++) rows += buildRow(currentResults[k]);
+    }}
+    document.getElementById('results-body').innerHTML = rows;
+    var rangeStr = total === 0 ? '0' : (start + 1) + '–' + end;
+    document.getElementById('summary').textContent =
+        'Showing ' + rangeStr + ' of ' + total.toLocaleString() + ' groups';
+    renderPager(total);
+}}
+
+function renderPager(total) {{
+    var nPages = Math.ceil(total / PAGE_SIZE), p = currentPage;
+    var html = '';
+    if (nPages > 1) {{
+        if (p > 0)        html += '<a onclick="goPage(0)">&laquo; First</a> ';
+        if (p > 0)        html += '<a onclick="goPage(' + (p-1) + ')">Prev</a>';
+        html += '<span class="cur">Page ' + (p+1) + ' of ' + nPages + '</span>';
+        if (p < nPages-1) html += '<a onclick="goPage(' + (p+1) + ')">Next</a>';
+        if (p < nPages-1) html += ' <a onclick="goPage(' + (nPages-1) + ')">Last &raquo;</a>';
+    }}
+    document.getElementById('pager').innerHTML = html;
+}}
+
+function goPage(n) {{
+    currentPage = n;
+    renderPage();
+    window.scrollTo(0, 0);
+}}
+
+function clearFilters() {{
+    ['f-name','f-ra-min','f-ra-max','f-dec-min','f-dec-max',
+     'f-diam-min','f-diam-max','f-cone-ra','f-cone-dec','f-cone-rad'
+    ].forEach(function(id) {{ document.getElementById(id).value = ''; }});
+    applyFilters();
+}}
+
+document.addEventListener('keydown', function(e) {{
+    if (e.key === 'Enter') applyFilters();
+}});
+
+fetch('groups-{region}.json')
+    .then(function(r) {{ return r.json(); }})
+    .then(function(d) {{
+        DATA = d;
+        // Default: show first page sorted by RA
+        document.getElementById('th-ra').className = 'asc';
+        applyFilters();
+    }})
+    .catch(function(e) {{
+        document.getElementById('summary').textContent = 'Error loading data: ' + e;
+    }});
+</script>
+</body>
+</html>
+""".format(region=region, count=count)
+
+
 def generate_index(htmldir, region, sample):
-    """Generate searchable index.html with links to all group pages."""
+    """Generate a JS-driven index-{region}.html and companion groups-{region}.json."""
+    import json
+
     unique_groups = np.unique(sample['GROUP_NAME'])
-    groups_by_raslice = {}
-    group_info = {}
+
+    names, objnames, ras, decs, diams, mults, has_thumbs = [], [], [], [], [], [], []
     for group_name in unique_groups:
-        raslice = group_name[:3]
         group_dir = find_group_directory(htmldir, region, group_name)
         if group_dir is None:
             continue
-        if raslice not in groups_by_raslice:
-            groups_by_raslice[raslice] = []
-        groups_by_raslice[raslice].append(group_name)
-        group_data = sample[sample['GROUP_NAME'] == group_name][0]
-        group_info[group_name] = {
-            'objname': group_data['OBJNAME'],
-            'ra': group_data['GROUP_RA'],
-            'dec': group_data['GROUP_DEC'],
-            'diam': group_data['GROUP_DIAMETER'],
-            'mult': group_data['GROUP_MULT'],
-        }
-    for raslice in groups_by_raslice:
-        groups_by_raslice[raslice].sort()
-    html_lines = [
-        "<!DOCTYPE html>",
-        "<html>",
-        "<head>",
-        "    <meta charset='utf-8'>",
-        "    <title>SGA2025 Index - {}</title>".format(region),
-        "    <style>",
-        "        body { font-family: Arial, sans-serif; margin: 20px; }",
-        "        h1 { color: #333; }",
-        "        .search-container { margin: 20px 0; }",
-        "        #searchInput { width: 100%; max-width: 600px; padding: 10px; font-size: 16px; border: 2px solid #ddd; }",
-        "        .summary { color: #666; margin: 10px 0; }",
-        "        .nav { background-color: #f0f0f0; padding: 15px; margin-bottom: 20px; }",
-        "        .nav a { margin-right: 10px; }",
-        "        .raslice-section { margin-bottom: 40px; }",
-        "        h2 { color: #555; margin-top: 30px; cursor: pointer; }",
-        "        h2:hover { color: #0066cc; }",
-        "        table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }",
-        "        th { background-color: #f0f0f0; padding: 10px; border: 1px solid #ddd; text-align: left; cursor: pointer; }",
-        "        th:hover { background-color: #e0e0e0; }",
-        "        td { padding: 10px; border: 1px solid #ddd; }",
-        "        td.name { width: 30%; }",
-        "        td.thumbnail { padding: 0; width: 20%; }",
-        "        td.objname { width: 25%; font-weight: bold; }",
-        "        td.coords { width: 25%; font-size: 14px; }",
-        "        img { border: 1px solid #ccc; }",
-        "        a { text-decoration: none; color: #0066cc; }",
-        "        a:hover { text-decoration: underline; }",
-        "        .hidden { display: none; }",
-        "    </style>",
-        "</head>",
-        "<body>",
-        "    <h1>SGA2025 Group Index - {}</h1>".format(region),
-        "    <div class='search-container'>",
-        "        <input type='text' id='searchInput' placeholder='Search by object name or group name...' onkeyup='filterTable()'>",
-        "    </div>",
-        "    <div class='summary' id='summary'>Showing {} groups</div>".format(len(unique_groups)),
-        "    <div class='nav'>",
-        "        <strong>Jump to an RA slice:</strong><br><br>",
-    ]
-    for raslice in sorted(groups_by_raslice.keys()):
-        html_lines.append("        <a href='#raslice-{}' onclick='openSlice(\"{}\"); return true;'>{}</a>".format(raslice, raslice, raslice))
-    html_lines.append("    </div>")
-    for raslice in sorted(groups_by_raslice.keys()):
-        html_lines.append("    <div class='raslice-section'>")
-        html_lines.append("    <h2 id='raslice-{}' onclick='toggleSection(this)'>RA Slice {} ({} groups)</h2>".format(
-            raslice, raslice, len(groups_by_raslice[raslice])))
-        html_lines.append("    <table class='data-table' style='display: none;'>")
-        html_lines.append("        <thead>")
-        html_lines.append("            <tr>")
-        html_lines.append("                <th onclick='sortTable(this, 0)'>Object Name</th>")
-        html_lines.append("                <th onclick='sortTable(this, 1)'>Group Name</th>")
-        html_lines.append("                <th onclick='sortTable(this, 2)'>RA / Dec</th>")
-        html_lines.append("                <th>Preview</th>")
-        html_lines.append("            </tr>")
-        html_lines.append("        </thead>")
-        html_lines.append("        <tbody>")
-        for group_name in groups_by_raslice[raslice]:
-            info = group_info[group_name]
-            group_dir = find_group_directory(htmldir, region, group_name)
-            html_path = "{}/{}/{}/{}.html".format(region, raslice, group_name, group_name)
-            montage_file = "SGA2025_{}-montage.png".format(group_name)
-            montage_path = group_dir / montage_file
-            sky_url = get_sky_viewer_url(info['ra'], info['dec'], info['diam'], region)
-            html_lines.append("        <tr>")
-            html_lines.append("            <td class='objname'><a href='{}'>{}</a></td>".format(html_path, info['objname']))
-            html_lines.append("            <td class='name'>{}</td>".format(group_name))
-            html_lines.append("            <td class='coords'>{:.4f}, {:.4f}<br>Diam: {:.2f}' (mult={}) <a href='{}' target='_blank'>[Sky]</a></td>".format(
-                info['ra'], info['dec'], info['diam'], info['mult'], sky_url))
-            if montage_path.exists():
-                thumbnail_path = "{}/{}/{}/{}".format(region, raslice, group_name, montage_file)
-                html_lines.append("            <td class='thumbnail'><a href='{}'><img src='{}' alt='Montage' style='width:120px; height:90px; object-fit:cover; object-position:center; display:block;'></a></td>".format(html_path, thumbnail_path))
-            else:
-                html_lines.append("            <td class='thumbnail'>No preview</td>")
-            html_lines.append("        </tr>")
-        html_lines.append("        </tbody>")
-        html_lines.append("    </table>")
-        html_lines.append("    </div>")
-    html_lines.extend([
-        "",
-        "<script>",
-        "function filterTable() {",
-        "    var input = document.getElementById('searchInput');",
-        "    var filter = input.value.toUpperCase();",
-        "    var sections = document.getElementsByClassName('raslice-section');",
-        "    var totalVisible = 0;",
-        "    for (var i = 0; i < sections.length; i++) {",
-        "        var table = sections[i].getElementsByClassName('data-table')[0];",
-        "        var tbody = table.getElementsByTagName('tbody')[0];",
-        "        var rows = tbody.getElementsByTagName('tr');",
-        "        var visibleInTable = 0;",
-        "        for (var j = 0; j < rows.length; j++) {",
-        "            var objname = rows[j].getElementsByTagName('td')[0].textContent;",
-        "            var groupname = rows[j].getElementsByTagName('td')[1].textContent;",
-        "            if (objname.toUpperCase().indexOf(filter) > -1 || groupname.toUpperCase().indexOf(filter) > -1) {",
-        "                rows[j].style.display = '';",
-        "                visibleInTable++;",
-        "                totalVisible++;",
-        "            } else {",
-        "                rows[j].style.display = 'none';",
-        "            }",
-        "        }",
-        "        if (filter === '' || visibleInTable === 0) {",
-        "            sections[i].style.display = filter === '' ? '' : 'none';",
-        "            table.style.display = 'none';",
-        "        } else {",
-        "            sections[i].style.display = '';",
-        "            table.style.display = '';",
-        "        }",
-        "    }",
-        "    document.getElementById('summary').textContent = 'Showing ' + totalVisible + ' groups';",
-        "}",
-        "function toggleSection(header) {",
-        "    var table = header.nextElementSibling;",
-        "    if (table.style.display === 'none') {",
-        "        table.style.display = '';",
-        "    } else {",
-        "        table.style.display = 'none';",
-        "    }",
-        "}",
-        "function openSlice(raslice) {",
-        "    var header = document.getElementById('raslice-' + raslice);",
-        "    var table = header.nextElementSibling;",
-        "    table.style.display = '';",
-        "}",
-        "function sortTable(th, col) {",
-        "    var table = th.closest('table');",
-        "    var tbody = table.getElementsByTagName('tbody')[0];",
-        "    var rows = Array.from(tbody.getElementsByTagName('tr'));",
-        "    var ascending = th.dataset.sort !== 'asc';",
-        "    rows.sort(function(a, b) {",
-        "        var aVal = a.getElementsByTagName('td')[col].textContent.trim();",
-        "        var bVal = b.getElementsByTagName('td')[col].textContent.trim();",
-        "        if (col === 2) {",
-        "            aVal = parseFloat(aVal.split(',')[0]);",
-        "            bVal = parseFloat(bVal.split(',')[0]);",
-        "        }",
-        "        if (aVal < bVal) return ascending ? -1 : 1;",
-        "        if (aVal > bVal) return ascending ? 1 : -1;",
-        "        return 0;",
-        "    });",
-        "    rows.forEach(function(row) { tbody.appendChild(row); });",
-        "    var headers = table.getElementsByTagName('th');",
-        "    for (var i = 0; i < headers.length; i++) {",
-        "        headers[i].dataset.sort = '';",
-        "    }",
-        "    th.dataset.sort = ascending ? 'asc' : 'desc';",
-        "}",
-        "</script>",
-        "</body>",
-        "</html>",
-    ])
-    index_file = htmldir / "index-{}.html".format(region)
+        row = sample[sample['GROUP_NAME'] == group_name][0]
+        names.append(str(group_name))
+        objnames.append(str(row['OBJNAME']))
+        ras.append(round(float(row['GROUP_RA']), 6))
+        decs.append(round(float(row['GROUP_DEC']), 6))
+        diams.append(round(float(row['GROUP_DIAMETER']), 4))
+        mults.append(int(row['GROUP_MULT']))
+        thumb = group_dir / 'SGA2025_{}-thumb.jpg'.format(group_name)
+        has_thumbs.append(bool(thumb.exists()))
+
+    payload = {
+        'region':    region,
+        'names':     names,
+        'objnames':  objnames,
+        'ra':        ras,
+        'dec':       decs,
+        'diam':      diams,
+        'mult':      mults,
+        'has_thumb': has_thumbs,
+    }
+    json_file = htmldir / 'groups-{}.json'.format(region)
+    with open(json_file, 'w') as f:
+        json.dump(payload, f, separators=(',', ':'))
+    log.info('Wrote {} ({} groups)'.format(json_file, len(names)))
+
+    index_file = htmldir / 'index-{}.html'.format(region)
     with open(index_file, 'w') as f:
-        f.write('\n'.join(html_lines))
-    log.info("Generated index: {}".format(index_file))
+        f.write(_build_index_html(region, len(names)))
+    log.info('Wrote {}'.format(index_file))
 
 
 def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobber=False):
