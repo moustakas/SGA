@@ -1739,7 +1739,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             ('Optical (AB mag)', 3),
             ('MASKBITS', 1, 2), ('FITBITS', 1, 2),
         ))
-        html_lines.append(_th('(deg)', '(deg'), '(arcsec)', 'g', 'r', 'z'))
+        html_lines.append(_th('(deg)', '(deg', '(arcsec)', 'g', 'r', 'z'))
         for row, tr in zip(fullgroup_data, tractor_group):
             _gname = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
             _sgaid_s = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
@@ -1856,22 +1856,25 @@ def generate_group_html_wrapper(args):
     next_group = all_groups[idx + 1] if idx < len(all_groups) - 1 else None
     return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber, fulltractor=fulltractor)
 
-def _build_index_html(region, count, sample_bits):
-    """Return the complete index HTML string for one region.
-
-    sample_bits : dict of {name: int_value} from SGA.SGA.SAMPLE
-    """
+def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_bits):
+    """Return the complete index HTML string for one region."""
     # Pre-compute fragments that contain { } so they don't need double-bracing inside the
     # main format string.
-    hbtns = ''.join(
-        '<button class="hbtn" onclick="toggleSample({v})" data-bit="{v}">{k}</button>'.format(k=k, v=v)
-        for k, v in sample_bits.items()
-    )
-    sample_bits_js = (
-        '{' +
-        ', '.join("'{}': {}".format(k, v) for k, v in sample_bits.items()) +
-        '}'
-    )
+    def _btn_row(bits, css_cls, toggle_fn):
+        return ''.join(
+            '<button class="hbtn {css}" onclick="{fn}({v})" data-bit="{v}">{k}</button>'.format(
+                css=css_cls, fn=toggle_fn, k=k, v=v)
+            for k, v in bits.items()
+        )
+    def _bits_js(bits):
+        return '{' + ', '.join("'{}': {}".format(k, v) for k, v in bits.items()) + '}'
+
+    hbtns       = _btn_row(sample_bits,       'hbtn-sample', 'toggleSample')
+    emode_hbtns = _btn_row(ellipsemode_bits,  'hbtn-emode',  'toggleEmode')
+    ebit_hbtns  = _btn_row(ellipsebit_bits,   'hbtn-ebit',   'toggleEbit')
+    sample_bits_js      = _bits_js(sample_bits)
+    ellipsemode_bits_js = _bits_js(ellipsemode_bits)
+    ellipsebit_bits_js  = _bits_js(ellipsebit_bits)
 
     # Double-brace all literal JS braces so .format() doesn't mis-interpret them.
     return """\
@@ -1904,7 +1907,9 @@ def _build_index_html(region, count, sample_bits):
     .btn-clear       {{ background: #777; margin-left: 8px; }}
     .btn-clear:hover {{ background: #555; }}
     .hotbtns  {{ margin: 0 0 12px; }}
-    .hotlabel {{ font-size: 13px; font-weight: bold; margin-right: 8px; color: #444; }}
+    .hrow     {{ display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 5px; }}
+    .hotlabel {{ font-size: 13px; font-weight: bold; margin-right: 8px; color: #444;
+                 min-width: 110px; flex-shrink: 0; }}
     .hbtn {{ padding: 5px 11px; font-size: 12px; background: #e8e8e8;
              border: 1px solid #bbb; border-radius: 3px; cursor: pointer;
              margin-right: 4px; }}
@@ -1988,10 +1993,22 @@ def _build_index_html(region, count, sample_bits):
   </div>
 
   <div class="hotbtns">
-    <span class="hotlabel">Subsets:</span>
-    {hbtns}
-    <button class="hbtn" id="hbtn-none" onclick="toggleNone()" style="margin-left:6px;">None</button>
-    <button class="hbtn" onclick="clearSample()" style="margin-left:4px;">All</button>
+    <div class="hrow">
+      <span class="hotlabel">SAMPLE</span>
+      {hbtns}
+      <button class="hbtn" id="hbtn-none" onclick="toggleNone()" style="margin-left:6px;">None</button>
+      <button class="hbtn" onclick="clearSample()" style="margin-left:4px;">All</button>
+    </div>
+    <div class="hrow">
+      <span class="hotlabel">ELLIPSEMODE</span>
+      {emode_hbtns}
+      <button class="hbtn" onclick="clearEmode()" style="margin-left:4px;">All</button>
+    </div>
+    <div class="hrow">
+      <span class="hotlabel">ELLIPSEBIT</span>
+      {ebit_hbtns}
+      <button class="hbtn" onclick="clearEbit()" style="margin-left:4px;">All</button>
+    </div>
   </div>
 
   <div class="summary" id="summary">Loading data&hellip;</div>
@@ -2026,8 +2043,12 @@ var sortCol        = 'ra';
 var sortAsc        = true;
 var activeSampleBits = 0;
 var showNone         = false;
-var REGION         = '{region}';
-var SAMPLE_BITS    = {sample_bits_js};
+var activeEmodeBits  = 0;
+var activeEbitBits   = 0;
+var REGION              = '{region}';
+var SAMPLE_BITS         = {sample_bits_js};
+var ELLIPSEMODE_BITS    = {ellipsemode_bits_js};
+var ELLIPSEBIT_BITS     = {ellipsebit_bits_js};
 
 function val(id)    {{ return document.getElementById(id).value.trim(); }}
 function numVal(id) {{ var v = parseFloat(val(id)); return isNaN(v) ? null : v; }}
@@ -2067,6 +2088,8 @@ function applyFilters() {{
         }}
         if (showNone) {{ if (DATA.sample[i] !== 0) continue; }}
         else if (activeSampleBits !== 0 && (DATA.sample[i] & activeSampleBits) === 0) continue;
+        if (activeEmodeBits !== 0 && (DATA.emode[i] & activeEmodeBits) === 0) continue;
+        if (activeEbitBits  !== 0 && (DATA.ebit[i]  & activeEbitBits)  === 0) continue;
         var ra = DATA.ra[i], dec = DATA.dec[i];
         if (!inRange(DATA.d26[i],  d26Min,  d26Max))  continue;
         if (!inRange(DATA.diam[i], dMin,    dMax))     continue;
@@ -2141,12 +2164,30 @@ function clearSample() {{
 }}
 
 function renderSampleBtns() {{
-    document.querySelectorAll('.hbtn[data-bit]').forEach(function(btn) {{
+    document.querySelectorAll('.hbtn-sample[data-bit]').forEach(function(btn) {{
         var bit = parseInt(btn.getAttribute('data-bit'), 10);
-        btn.className = 'hbtn' + ((activeSampleBits & bit) ? ' active' : '');
+        btn.className = 'hbtn hbtn-sample' + ((activeSampleBits & bit) ? ' active' : '');
     }});
     var nb = document.getElementById('hbtn-none');
     if (nb) nb.className = 'hbtn' + (showNone ? ' active' : '');
+}}
+
+function toggleEmode(bit) {{ activeEmodeBits ^= bit; renderEmodeBtns(); applyFilters(); }}
+function clearEmode()     {{ activeEmodeBits = 0;    renderEmodeBtns(); applyFilters(); }}
+function renderEmodeBtns() {{
+    document.querySelectorAll('.hbtn-emode[data-bit]').forEach(function(btn) {{
+        var bit = parseInt(btn.getAttribute('data-bit'), 10);
+        btn.className = 'hbtn hbtn-emode' + ((activeEmodeBits & bit) ? ' active' : '');
+    }});
+}}
+
+function toggleEbit(bit) {{ activeEbitBits ^= bit; renderEbitBtns(); applyFilters(); }}
+function clearEbit()     {{ activeEbitBits = 0;    renderEbitBtns(); applyFilters(); }}
+function renderEbitBtns() {{
+    document.querySelectorAll('.hbtn-ebit[data-bit]').forEach(function(btn) {{
+        var bit = parseInt(btn.getAttribute('data-bit'), 10);
+        btn.className = 'hbtn hbtn-ebit' + ((activeEbitBits & bit) ? ' active' : '');
+    }});
 }}
 
 function escHtml(s) {{
@@ -2252,7 +2293,11 @@ fetch('groups-{region}.json')
 </script>
 </body>
 </html>
-""".format(region=region, count=count, hbtns=hbtns, sample_bits_js=sample_bits_js)
+""".format(region=region, count=count,
+           hbtns=hbtns, emode_hbtns=emode_hbtns, ebit_hbtns=ebit_hbtns,
+           sample_bits_js=sample_bits_js,
+           ellipsemode_bits_js=ellipsemode_bits_js,
+           ellipsebit_bits_js=ellipsebit_bits_js)
 
 
 def generate_index(htmldir, region, sample, fullsample=None):
@@ -2266,9 +2311,12 @@ def generate_index(htmldir, region, sample, fullsample=None):
     has_dist   = 'DIST'   in sample.colnames
     has_sample = 'SAMPLE' in sample.colnames
     has_prim   = 'GROUP_PRIMARY' in sample.colnames
-    # fullsample carries one row per galaxy; use it for SAMPLE OR if available
-    fs_has_sample = (fullsample is not None and 'SAMPLE' in fullsample.colnames
-                     and 'GROUP_NAME' in fullsample.colnames)
+    # fullsample carries one row per galaxy; use it for bitmask ORs if available
+    _fs_cols = set(fullsample.colnames) if fullsample is not None else set()
+    _fs_has  = lambda col: col in _fs_cols and 'GROUP_NAME' in _fs_cols
+    fs_has_sample = _fs_has('SAMPLE')
+    fs_has_emode  = _fs_has('ELLIPSEMODE')
+    fs_has_ebit   = _fs_has('ELLIPSEBIT')
 
     def _nullable(val, decimals, zero_missing=True):
         """Return rounded float or None for missing/NaN/zero values."""
@@ -2283,7 +2331,8 @@ def generate_index(htmldir, region, sample, fullsample=None):
     names, sgaids, objnames = [], [], []
     d26s, zs, dists         = [], [], []
     ras, decs, diams, mults = [], [], [], []
-    samples, has_thumbs     = [], []
+    samples, emodes, ebits  = [], [], []
+    has_thumbs              = []
 
     for group_name in unique_groups:
         group_dir = find_group_directory(htmldir, region, group_name)
@@ -2306,16 +2355,24 @@ def generate_index(htmldir, region, sample, fullsample=None):
         d26s.append( _nullable(prim['D26'],  2) if has_d26   else None)
         zs.append(   _nullable(prim['Z'],    5) if has_z     else None)
         dists.append(_nullable(prim['DIST'], 1) if has_dist  else None)
-        # OR SAMPLE bits across all group members (use fullsample when available,
-        # since sample may contain only one row per group)
+        # OR bitmask columns across all group members using fullsample
+        need_fs = fs_has_sample or fs_has_emode or fs_has_ebit
+        fs_grp  = fullsample[fullsample['GROUP_NAME'] == group_name] if need_fs else None
+
+        def _or(col, fs_flag, arr):
+            if fs_flag and fs_grp is not None and len(fs_grp) > 0:
+                arr.append(int(np.bitwise_or.reduce(fs_grp[col].astype(np.int32))))
+            else:
+                arr.append(0)
+
         if fs_has_sample:
-            fs_grp = fullsample[fullsample['GROUP_NAME'] == group_name]
-            samples.append(int(np.bitwise_or.reduce(fs_grp['SAMPLE'].astype(np.int32)))
-                           if len(fs_grp) > 0 else 0)
+            _or('SAMPLE', True, samples)
         elif has_sample:
             samples.append(int(np.bitwise_or.reduce(grp['SAMPLE'].astype(np.int32))))
         else:
             samples.append(0)
+        _or('ELLIPSEMODE', fs_has_emode, emodes)
+        _or('ELLIPSEBIT',  fs_has_ebit,  ebits)
         thumb = group_dir / 'SGA2025_{}-thumb.jpg'.format(group_name)
         has_thumbs.append(bool(thumb.exists()))
 
@@ -2332,6 +2389,8 @@ def generate_index(htmldir, region, sample, fullsample=None):
         'diam':      diams,
         'mult':      mults,
         'sample':    samples,
+        'emode':     emodes,
+        'ebit':      ebits,
         'has_thumb': has_thumbs,
     }
     json_file = htmldir / 'groups-{}.json'.format(region)
@@ -2341,7 +2400,7 @@ def generate_index(htmldir, region, sample, fullsample=None):
 
     index_file = htmldir / 'index-{}.html'.format(region)
     with open(index_file, 'w') as f:
-        f.write(_build_index_html(region, len(names), SAMPLE_BITS))
+        f.write(_build_index_html(region, len(names), SAMPLE_BITS, ELLIPSEMODE, ELLIPSEBIT))
     log.info('Wrote {}'.format(index_file))
 
 
