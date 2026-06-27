@@ -2130,7 +2130,7 @@ fetch('groups-{region}.json')
 """.format(region=region, count=count, hbtns=hbtns, sample_bits_js=sample_bits_js)
 
 
-def generate_index(htmldir, region, sample):
+def generate_index(htmldir, region, sample, fullsample=None):
     """Generate a JS-driven index-{region}.html and companion groups-{region}.json."""
     import json
     from SGA.SGA import SAMPLE as SAMPLE_BITS
@@ -2141,6 +2141,9 @@ def generate_index(htmldir, region, sample):
     has_dist   = 'DIST'   in sample.colnames
     has_sample = 'SAMPLE' in sample.colnames
     has_prim   = 'GROUP_PRIMARY' in sample.colnames
+    # fullsample carries one row per galaxy; use it for SAMPLE OR if available
+    fs_has_sample = (fullsample is not None and 'SAMPLE' in fullsample.colnames
+                     and 'GROUP_NAME' in fullsample.colnames)
 
     def _nullable(val, decimals, zero_missing=True):
         """Return rounded float or None for missing/NaN/zero values."""
@@ -2178,8 +2181,13 @@ def generate_index(htmldir, region, sample):
         d26s.append( _nullable(prim['D26'],  2) if has_d26   else None)
         zs.append(   _nullable(prim['Z'],    5) if has_z     else None)
         dists.append(_nullable(prim['DIST'], 1) if has_dist  else None)
-        # OR all member SAMPLE bits so the group appears for any matching member
-        if has_sample:
+        # OR SAMPLE bits across all group members (use fullsample when available,
+        # since sample may contain only one row per group)
+        if fs_has_sample:
+            fs_grp = fullsample[fullsample['GROUP_NAME'] == group_name]
+            samples.append(int(np.bitwise_or.reduce(fs_grp['SAMPLE'].astype(np.int32)))
+                           if len(fs_grp) > 0 else 0)
+        elif has_sample:
             samples.append(int(np.bitwise_or.reduce(grp['SAMPLE'].astype(np.int32))))
         else:
             samples.append(0)
@@ -2258,6 +2266,6 @@ def make_html(sample, fullsample, htmldir=None, region='dr11-south', mp=1, clobb
                      for idx, gn in enumerate(valid_groups)]
         with multiprocessing.Pool(processes=mp) as pool:
             pool.map(generate_group_html_wrapper, pool_args)
-    generate_index(htmldir, region, sample)
+    generate_index(htmldir, region, sample, fullsample)
     log.info("HTML generation complete!")
     return
