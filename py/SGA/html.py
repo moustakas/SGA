@@ -451,9 +451,11 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
                 pub = fullsample[idx]
         if pub is not None:
             galaxy_name = str(pub['GALAXY']).strip() or str(obj['OBJNAME']).strip()
-            title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
+            title = f'SGAID {int(pub["SGAID"])}'
+            #title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
         else:
-            title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
+            #title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
+            title = f"{obj['OBJNAME']} [{obj['SGAID']}]"
 
         for ifilt, filt in enumerate(bands):
             mtot = ellipse[f'COG_MTOT_{filt.upper()}'][iobj]
@@ -635,11 +637,13 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         label_moment = f'$R(\\mathrm{{mom}})={sma_moment:.1f}$"'
         if pub is not None:
             galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
-            title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
+            title = f'SGAID {int(pub["SGAID"])}'
+            #title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
             d26 = float(pub['D26'])
             d26_ref = str(pub['D26_REF']).strip()
         else:
-            title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
+            title = f"{obj['OBJNAME']} [{obj['SGAID']}]"
+            #title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
             d26 = 0.
             d26_ref = ''
 
@@ -859,11 +863,13 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             d26_ref = str(pub['D26_REF']).strip()
             ba = float(pub['BA'])
             pa = float(pub['PA'])
-            title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
+            title = f'SGAID {int(pub["SGAID"])}'
+            #title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
             d26_ref_str = f'[{d26_ref}]' if d26_ref else ''
             geom_str = f'$D(26)$ = {d26:.3f}±{d26_err:.3f} arcmin PA={pa:.0f}°  b/a={ba:.2f}'
         else:
-            title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
+            title = f"{obj['OBJNAME']} [{obj['SGAID']}]"
+            #title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
 
 
         fig, ax = plt.subplots(nrow, ncol,
@@ -1495,8 +1501,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <a href='#sec-redshift'>Redshift &amp; Distance</a>",
         "        <a href='#sec-montage'>Multiwavelength Montage</a>",
         "        <a href='#sec-ellipse'>Ellipse Masking</a>",
-        "        <a href='#sec-photometry'>Photometry</a>",
-        "        <a href='#sec-figures'>Figures</a>",
+        "        <a href='#sec-photometry'>Photometry (Data)</a>",
+        "        <a href='#sec-figures'>Photometry (Figures)</a>",
         "    </div>",
     ])
 
