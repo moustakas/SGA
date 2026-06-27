@@ -980,7 +980,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # --- GALAXY and ALTNAMES from CROSSIDS --------------------------------
     crossids_col = ned_arrs.get('CROSSIDS')
     galaxy_arr   = np.full(n, '', dtype='U35')
-    altnames_arr = np.full(n, '', dtype='U140')
+    altnames_arr = np.full(n, '', dtype='U200')
     if crossids_col is not None:
         for i, crossids in enumerate(crossids_col):
             parts = [p.strip() for p in crossids.split('|') if p.strip()]
@@ -1011,9 +1011,17 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                     promoted = rest[alt_idx]
                     rest     = [galaxy] + rest[:alt_idx] + rest[alt_idx + 1:]
                     galaxy   = promoted
-            galaxy          = _normalize_galaxy_prefix(galaxy)
-            galaxy_arr[i]   = galaxy
-            altnames_arr[i] = '|'.join(rest[:2])
+            galaxy        = _normalize_galaxy_prefix(galaxy)
+            galaxy_arr[i] = galaxy
+            # Normalize prefixes on ALTNAME candidates, then deduplicate case-insensitively
+            seen = {galaxy.upper()}
+            deduped_rest = []
+            for p in rest:
+                p_norm = _normalize_galaxy_prefix(p)
+                if p_norm.upper() not in seen:
+                    seen.add(p_norm.upper())
+                    deduped_rest.append(p_norm)
+            altnames_arr[i] = '|'.join(deduped_rest[:3])
 
     # Fill GALAXY from OBJNAME when NED returned no match
     objnames = np.array([str(v).strip() for v in beta['OBJNAME']])

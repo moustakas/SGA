@@ -176,8 +176,9 @@ this order (all steps applied per object):
    rules above cannot handle (e.g. `'MESSIER 109': 'Messier 109'`).
 7. **Assert** — `GALAXY` is never empty after all fixes.
 
-`ALTNAMES` = first two remaining CROSSIDS (after the promoted GALAXY is removed),
-pipe-separated; empty string when none remain.
+`ALTNAMES` = first three remaining CROSSIDS (after the promoted GALAXY is removed),
+pipe-separated, with prefix normalization and case-insensitive deduplication applied;
+empty string when none remain.
 
 ## Testing
 
