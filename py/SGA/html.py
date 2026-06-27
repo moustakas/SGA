@@ -427,7 +427,7 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
                         marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
                         markerfacecolor=color, elinewidth=3, ecolor=color, capsize=4,
                         lolims=True, linestyle='none', alpha=alpha)#, lolims=True)
-        good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == False))[0]
+        good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == False) * (thisphot['abmagerr'] <= 1.))[0]
         if len(good) > 0:
             ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
                         marker=marker, markersize=11, markeredgewidth=3, markeredgecolor='k',
@@ -1492,7 +1492,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "    </div>",
         "    <div class='breadcrumb'>",
         "        <a href='../../../index-{}.html'>Home</a> &gt; ".format(region),
-        "        <a href='../../../index-{}.html#raslice-{}'>RA {}</a> &gt; {}".format(region, raslice, raslice, galaxy),
+        "        <a href='../../../index-{}.html'>RA {}</a> &gt; {}".format(region, raslice, galaxy),
         "    </div>",
         "    <h1>{}</h1>".format(galaxy),
         "    <h3>Group: {} | RA Slice: {}</h3>".format(group_name, raslice),
@@ -1532,7 +1532,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         # --- Identifiers -----------------------------------------------------
         html_lines.append("    <h2 id='sec-identifiers'>Identifiers</h2>")
         html_lines.append("    <table>")
-        html_lines.append(_th('', '', '' '', 'Basic', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
+        html_lines.append(_th('', '', '', '', 'Basic', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
         html_lines.append(_th('Galaxy', 'SGA ID', 'SGA Name', 'PGC', 'Morphology', '(deg)', '(deg)', '(mag)', 'Primary', 'Alternate Names', '(internal)'))
         for row in fullgroup_data:
             galaxy   = str(_get(row, 'GALAXY', '') or '').strip() or str(row['OBJNAME']).strip()
