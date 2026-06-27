@@ -1735,8 +1735,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             ra_s    = f"{float(tr['RA']):.6f}"   if 'RA'      in _tcols else ''
             dec_s   = f"{float(tr['DEC']):.6f}"  if 'DEC'     in _tcols else ''
             typ     = str(tr['TYPE']).strip()     if 'TYPE'    in _tcols else ''
-            sersic  = (f"{float(tr['SERSIC']):.2f}"
-                       if 'SERSIC' in _tcols and typ == 'SER' else '')
+            if 'SERSIC' in _tcols:
+                _sv = float(tr['SERSIC'])
+                sersic = f'{_sv:.2f}' if _sv > 0 else ''
+            else:
+                sersic = ''
             shape_r = f"{float(tr['SHAPE_R']):.3f}" if 'SHAPE_R' in _tcols else ''
             mb_s = (_decode_bits(tr['MASKBITS'], LP_MASKBITS)
                     if 'MASKBITS' in _tcols else '')
