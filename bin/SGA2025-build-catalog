@@ -209,13 +209,28 @@ NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
 
 # Hand-curated corrections to GALAXY names returned by NED.
 # Keys are the exact NED name; values are the preferred replacement.
+# Note: prefix-case fixes (e.g. UGCa -> UGCA) are handled by _normalize_galaxy_prefix;
+# add overrides here only for cases that regex normalization cannot cover.
 GALAXY_OVERRIDES = {
-    'UGCa 292': 'UGCA 292',
+    'MESSIER 109': 'Messier 109',
 }
 
 # Characters allowed in a UNIX-friendly galaxy name (letters, digits, space,
 # and the handful of punctuation that appear in standard catalog names).
 _SAFE_GALAXY_RE = re.compile(r'^[a-zA-Z0-9 +\-._:]+$')
+
+# Known catalog-name prefixes that should always be fully uppercased.
+# Longer alternatives (e.g. UGCA) must precede shorter ones (UGC) so the
+# alternation matches the longest prefix first.
+_PREFIX_NORM_RE = re.compile(
+    r'^(2MASX|UGCA|UGC|NGC|IC|PGC|ESO|MCG|ARP|MRK|DDO|KDG|'
+    r'VCC|FCC|CGCG|HIPASS|SDSS|SBS|KUG|UZC|MGC|HCG)(?=[\s\d\-])',
+    re.IGNORECASE
+)
+
+def _normalize_galaxy_prefix(name):
+    """Uppercase known catalog-name prefixes (e.g. 'Mrk 231' -> 'MRK 231')."""
+    return _PREFIX_NORM_RE.sub(lambda m: m.group(0).upper(), name, count=1)
 
 # ---------------------------------------------------------------------------
 # Columns to drop from the output (from the beta catalog or NED_CARRY).
@@ -956,6 +971,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                     promoted = rest[alt_idx]
                     rest     = [galaxy] + rest[:alt_idx] + rest[alt_idx + 1:]
                     galaxy   = promoted
+            galaxy          = _normalize_galaxy_prefix(galaxy)
             galaxy_arr[i]   = galaxy
             altnames_arr[i] = '|'.join(rest[:2])
 
