@@ -2002,11 +2002,13 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
     <div class="hrow">
       <span class="hotlabel">ELLIPSEMODE</span>
       {emode_hbtns}
+      <button class="hbtn" id="hbtn-emode-none" onclick="toggleNoneEmode()" style="margin-left:6px;">None</button>
       <button class="hbtn" onclick="clearEmode()" style="margin-left:4px;">All</button>
     </div>
     <div class="hrow">
       <span class="hotlabel">ELLIPSEBIT</span>
       {ebit_hbtns}
+      <button class="hbtn" id="hbtn-ebit-none" onclick="toggleNoneEbit()" style="margin-left:6px;">None</button>
       <button class="hbtn" onclick="clearEbit()" style="margin-left:4px;">All</button>
     </div>
   </div>
@@ -2044,7 +2046,9 @@ var sortAsc        = true;
 var activeSampleBits = 0;
 var showNone         = false;
 var activeEmodeBits  = 0;
+var showNoneEmode    = false;
 var activeEbitBits   = 0;
+var showNoneEbit     = false;
 var REGION              = '{region}';
 var SAMPLE_BITS         = {sample_bits_js};
 var ELLIPSEMODE_BITS    = {ellipsemode_bits_js};
@@ -2088,8 +2092,10 @@ function applyFilters() {{
         }}
         if (showNone) {{ if (DATA.sample[i] !== 0) continue; }}
         else if (activeSampleBits !== 0 && (DATA.sample[i] & activeSampleBits) === 0) continue;
-        if (activeEmodeBits !== 0 && (DATA.emode[i] & activeEmodeBits) === 0) continue;
-        if (activeEbitBits  !== 0 && (DATA.ebit[i]  & activeEbitBits)  === 0) continue;
+        if (showNoneEmode) {{ if (DATA.emode[i] !== 0) continue; }}
+        else if (activeEmodeBits !== 0 && (DATA.emode[i] & activeEmodeBits) === 0) continue;
+        if (showNoneEbit) {{ if (DATA.ebit[i] !== 0) continue; }}
+        else if (activeEbitBits  !== 0 && (DATA.ebit[i]  & activeEbitBits)  === 0) continue;
         var ra = DATA.ra[i], dec = DATA.dec[i];
         if (!inRange(DATA.d26[i],  d26Min,  d26Max))  continue;
         if (!inRange(DATA.diam[i], dMin,    dMax))     continue;
@@ -2172,22 +2178,44 @@ function renderSampleBtns() {{
     if (nb) nb.className = 'hbtn' + (showNone ? ' active' : '');
 }}
 
-function toggleEmode(bit) {{ activeEmodeBits ^= bit; renderEmodeBtns(); applyFilters(); }}
-function clearEmode()     {{ activeEmodeBits = 0;    renderEmodeBtns(); applyFilters(); }}
+function toggleEmode(bit) {{
+    showNoneEmode = false; activeEmodeBits ^= bit; renderEmodeBtns(); applyFilters();
+}}
+function toggleNoneEmode() {{
+    showNoneEmode = !showNoneEmode;
+    if (showNoneEmode) activeEmodeBits = 0;
+    renderEmodeBtns(); applyFilters();
+}}
+function clearEmode() {{
+    activeEmodeBits = 0; showNoneEmode = false; renderEmodeBtns(); applyFilters();
+}}
 function renderEmodeBtns() {{
     document.querySelectorAll('.hbtn-emode[data-bit]').forEach(function(btn) {{
         var bit = parseInt(btn.getAttribute('data-bit'), 10);
         btn.className = 'hbtn hbtn-emode' + ((activeEmodeBits & bit) ? ' active' : '');
     }});
+    var nb = document.getElementById('hbtn-emode-none');
+    if (nb) nb.className = 'hbtn' + (showNoneEmode ? ' active' : '');
 }}
 
-function toggleEbit(bit) {{ activeEbitBits ^= bit; renderEbitBtns(); applyFilters(); }}
-function clearEbit()     {{ activeEbitBits = 0;    renderEbitBtns(); applyFilters(); }}
+function toggleEbit(bit) {{
+    showNoneEbit = false; activeEbitBits ^= bit; renderEbitBtns(); applyFilters();
+}}
+function toggleNoneEbit() {{
+    showNoneEbit = !showNoneEbit;
+    if (showNoneEbit) activeEbitBits = 0;
+    renderEbitBtns(); applyFilters();
+}}
+function clearEbit() {{
+    activeEbitBits = 0; showNoneEbit = false; renderEbitBtns(); applyFilters();
+}}
 function renderEbitBtns() {{
     document.querySelectorAll('.hbtn-ebit[data-bit]').forEach(function(btn) {{
         var bit = parseInt(btn.getAttribute('data-bit'), 10);
         btn.className = 'hbtn hbtn-ebit' + ((activeEbitBits & bit) ? ' active' : '');
     }});
+    var nb = document.getElementById('hbtn-ebit-none');
+    if (nb) nb.className = 'hbtn' + (showNoneEbit ? ' active' : '');
 }}
 
 function escHtml(s) {{
@@ -2398,9 +2426,17 @@ def generate_index(htmldir, region, sample, fullsample=None):
         json.dump(payload, f, separators=(',', ':'))
     log.info('Wrote {} ({} groups)'.format(json_file, len(names)))
 
+    _sample_bits  = {k: v for k, v in SAMPLE_BITS.items()
+                      if k not in ('OVERLAP',)}
+    _emode_bits   = {k: v for k, v in ELLIPSEMODE.items()
+                      if k not in ('FORCEGAIA', 'LESSMASKING', 'MOREMASKING',
+                                   'TRACTORGEO', 'NORADWEIGHT')}
+    _ebit_bits    = {k: v for k, v in ELLIPSEBIT.items()
+                      if k not in ('LESSMASKING', 'MOREMASKING')}
+
     index_file = htmldir / 'index-{}.html'.format(region)
     with open(index_file, 'w') as f:
-        f.write(_build_index_html(region, len(names), SAMPLE_BITS, ELLIPSEMODE, ELLIPSEBIT))
+        f.write(_build_index_html(region, len(names), _sample_bits, _emode_bits, _ebit_bits))
     log.info('Wrote {}'.format(index_file))
 
 
