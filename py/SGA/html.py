@@ -1504,10 +1504,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <a href='#sec-redshift'>Redshift &amp; Distance</a>",
         "        <a href='#sec-montage'>Multiwavelength Montage</a>",
         "        <a href='#sec-ellipse'>Ellipse Masking</a>",
-        "        <a href='#sec-photometry'>Photometry (Data)</a>",
     ]
     if tractor_group is not None:
         _toc.append("        <a href='#sec-tractor'>Tractor</a>")
+    _toc.append("        <a href='#sec-photometry'>Photometry (Data)</a>")
     _toc.append("        <a href='#sec-figures'>Photometry (Figures)</a>")
     html_lines.extend([
         "    <div class='toc'>",
@@ -1686,46 +1686,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     else:
         html_lines.append("    <p style='color: #888;'>Missing: {}</p>".format(group_files[1]))
 
-    # ---- Section C: Photometry — full width ---------------------------------
-    if len(fullgroup_data) > 0:
-        if _has('COG_MTOT_G'):
-            n_ap = sum(1 for ap in range(5) if _has(f'FLUX_AP{ap:02d}_G'))
-            n_meas = 1 + n_ap  # CoG row + aperture rows
-            html_lines.append("    <h2 id='sec-photometry'>Photometry (AB mag)</h2>")
-            html_lines.append("    <table>")
-            html_lines.append(_th(
-                ('Galaxy', 1, 2), ('Measurement', 1, 2),
-                ('Optical', 4), ('IR', 2), ('UV', 2),
-            ))
-            html_lines.append(_th(*[b.lower() for b in phot_bands]))
-            row_idx = 0
-            for row in fullgroup_data:
-                sma_moment = _sf(_get(row, 'SMA_MOMENT'), zero_missing=True)
-                for imeas in range(n_meas):
-                    row_cls = 'gal-even' if row_idx % 2 == 0 else 'gal-odd'
-                    if imeas == 0:
-                        meas_label = 'COG (total)'
-                        band_vals  = [_fmt_mag_cog(row, b) for b in phot_bands]
-                        _gname_p = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
-                        _sgaid_p = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
-                        name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{_ned_link(_gname_p) + _sgaid_p}</td>"
-                    else:
-                        ap = n_ap - imeas  # AP04 first (largest → closest to CoG), AP00 last
-                        mult = f'{APERTURES[ap]:g}×'
-                        if _has(f'SMA_AP{ap:02d}') and sma_moment:
-                            sma_ap = _sf(_get(row, f'SMA_AP{ap:02d}'), zero_missing=False)
-                            sma_s  = f' = {sma_ap:.1f}"' if sma_ap else ''
-                            meas_label = f'AP{ap:02d} ({mult}{sma_s})'
-                        else:
-                            meas_label = f'AP{ap:02d} ({mult})'
-                        band_vals = [_fmt_mag_ap(row, ap, b) for b in phot_bands]
-                        name_cell = ''
-                    html_lines.append(f"        <tr class='{row_cls}'>{name_cell}<td>{meas_label}</td>" +
-                                      ''.join(f'<td>{v}</td>' for v in band_vals) + '</tr>')
-                    row_idx += 1
-            html_lines.append("    </table>")
-
-    # ---- Section D: Tractor --------------------------------------------------
+    # ---- Section C: Tractor --------------------------------------------------
     if tractor_group is not None:
         try:
             from legacypipe.bits import MASKBITS as LP_MASKBITS, FITBITS as LP_FITBITS
@@ -1790,6 +1751,45 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 mb_s, fb_s,
             ))
         html_lines.append("    </table>")
+
+    # ---- Section D: Photometry — full width ---------------------------------
+    if len(fullgroup_data) > 0:
+        if _has('COG_MTOT_G'):
+            n_ap = sum(1 for ap in range(5) if _has(f'FLUX_AP{ap:02d}_G'))
+            n_meas = 1 + n_ap  # CoG row + aperture rows
+            html_lines.append("    <h2 id='sec-photometry'>Photometry (AB mag)</h2>")
+            html_lines.append("    <table>")
+            html_lines.append(_th(
+                ('Galaxy', 1, 2), ('Measurement', 1, 2),
+                ('Optical', 4), ('IR', 2), ('UV', 2),
+            ))
+            html_lines.append(_th(*[b.lower() for b in phot_bands]))
+            row_idx = 0
+            for row in fullgroup_data:
+                sma_moment = _sf(_get(row, 'SMA_MOMENT'), zero_missing=True)
+                for imeas in range(n_meas):
+                    row_cls = 'gal-even' if row_idx % 2 == 0 else 'gal-odd'
+                    if imeas == 0:
+                        meas_label = 'COG (total)'
+                        band_vals  = [_fmt_mag_cog(row, b) for b in phot_bands]
+                        _gname_p = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
+                        _sgaid_p = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
+                        name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{_ned_link(_gname_p) + _sgaid_p}</td>"
+                    else:
+                        ap = n_ap - imeas  # AP04 first (largest → closest to CoG), AP00 last
+                        mult = f'{APERTURES[ap]:g}×'
+                        if _has(f'SMA_AP{ap:02d}') and sma_moment:
+                            sma_ap = _sf(_get(row, f'SMA_AP{ap:02d}'), zero_missing=False)
+                            sma_s  = f' = {sma_ap:.1f}"' if sma_ap else ''
+                            meas_label = f'AP{ap:02d} ({mult}{sma_s})'
+                        else:
+                            meas_label = f'AP{ap:02d} ({mult})'
+                        band_vals = [_fmt_mag_ap(row, ap, b) for b in phot_bands]
+                        name_cell = ''
+                    html_lines.append(f"        <tr class='{row_cls}'>{name_cell}<td>{meas_label}</td>" +
+                                      ''.join(f'<td>{v}</td>' for v in band_vals) + '</tr>')
+                    row_idx += 1
+            html_lines.append("    </table>")
 
     jname_to_galaxy = {}
     jname_to_sgaid = {}
