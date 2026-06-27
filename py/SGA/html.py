@@ -1435,7 +1435,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return f"<a href='https://ned.ipac.caltech.edu/byname?objname={encoded}' target='_blank'>{name}</a>"
 
     def _pgc_link(pgc):
-        return f"<a href='http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=PGC%20{pgc}' target='_blank'>{pgc}</a>"
+        return f"<a href='http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=%23{pgc}' target='_blank'>{pgc}</a>"
 
     phot_bands = ['G', 'R', 'I', 'Z', 'W1', 'W2', 'FUV', 'NUV']
 
@@ -1519,8 +1519,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     # --- Group summary -------------------------------------------------------
     html_lines.append("    <h2 id='sec-group'>Group Properties</h2>")
     html_lines.append("    <table>")
-    html_lines.append("        <tr><th></th><th>Group RA</th><th>Group Dec</th><th>Group Diameter</th><th>Group</th><th></th><th></th></tr>")
-    html_lines.append("        <tr><th>Group Name</th><th>(deg)</th><th>(deg)</th><th>(arcmin)</th><th>Multiplicity</th><th>Region</th><th>Bands</th></tr>")
+    html_lines.append(_th(
+        ('Group Name', 1, 2), ('Group RA', 1), ('Group Dec', 1), ('Group Diameter', 1),
+        ('Group Multiplicity', 1, 2), ('Region', 1, 2), ('Bands', 1, 2),
+    ))
+    html_lines.append(_th('(deg)', '(deg)', '(arcmin)'))
     _bands_s = str(_get(fullgroup_data[0], 'BANDS', '') or '').strip() if len(fullgroup_data) > 0 else ''
     html_lines.append("        <tr><td>{}</td><td>{:.6f}</td><td>{:.6f}</td><td>{:.2f}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
         group_name, group_ra, group_dec, group_diam, group_mult, region, _bands_s))
@@ -1532,14 +1535,20 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         # --- Identifiers -----------------------------------------------------
         html_lines.append("    <h2 id='sec-identifiers'>Identifiers</h2>")
         html_lines.append("    <table>")
-        html_lines.append(_th('', '', '', '', 'Basic', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
-        html_lines.append(_th('Galaxy', 'SGA ID', 'SGA Name', 'PGC', 'Morphology', '(deg)', '(deg)', '(mag)', 'Primary', 'Alternate Names', '(internal)'))
+        html_lines.append(_th(
+            ('Galaxy', 1, 2), ('SGA ID', 1, 2), ('SGA Name', 1, 2), ('PGC', 1, 2),
+            ('Morphology', 1, 2),
+            'RA', 'Dec', 'E(B-V)',
+            ('Primary', 1, 2), ('Alternate Names', 1, 2),
+            'Object Name',
+        ))
+        html_lines.append(_th('(deg)', '(deg)', '(mag)', '(internal)'))
         for row in fullgroup_data:
             galaxy   = str(_get(row, 'GALAXY', '') or '').strip() or str(row['OBJNAME']).strip()
             altnames = str(_get(row, 'ALTNAMES', '') or '').strip()
             sganame  = str(_get(row, 'SGANAME', '') or '').strip()
             _pgc_v   = _sf(row['PGC'], zero_missing=True)
-            pgc      = int(_pgc_v) if _pgc_v is not None and int(_pgc_v) != -99 else ''
+            pgc      = int(_pgc_v) if _pgc_v is not None and int(_pgc_v) != -99 and int(_pgc_v) != -1 else ''
             morph    = str(_get(row, 'MORPH', '') or '').strip()
             primary  = 'Yes' if row['GROUP_PRIMARY'] else 'No'
             html_lines.append(_td(
@@ -1655,7 +1664,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             d_init       = _sf(_get(row, 'DIAM_INIT') or _get(row, 'DIAM'))
             ba_init      = _sf(_get(row, 'BA_INIT') or _get(row, 'BA'))
             pa_init      = _sf(_get(row, 'PA_INIT') or _get(row, 'PA'))
-            init_ref     = str(_get(row, 'INIT_REF', '') or _get(row, 'DIAM_INIT_REF', '') or '').strip()
+            init_ref     = str(_get(row, 'INIT_REF', '') or _get(row, 'DIAM_INIT_REF', '') or '').replace('NONE', 'None').strip()
             d_init_s     = f'{d_init:.3f}' if d_init else ''
             ba_init_s    = f'{ba_init:.3f}' if ba_init else ''
             pa_init_s    = f'{pa_init:.1f}' if pa_init is not None else ''
@@ -1717,19 +1726,20 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         def _decode_bits(val, bits_dict):
             v = int(val)
             if v == 0:
-                return '—'
+                return ''
             names = [k for k, bit in bits_dict.items() if v & bit]
             return ', '.join(names) if names else str(v)
 
         html_lines.append("    <h2 id='sec-tractor'>Tractor</h2>")
         html_lines.append("    <table>")
         html_lines.append(_th(
-            ('Galaxy', 1, 2), ('RA', 1, 2), ('Dec', 1, 2), ('TYPE', 1, 2),
-            ('Sérsic n', 1, 2), ('R<sub>eff</sub> (arcsec)', 1, 2),
+            ('Galaxy', 1, 2), 'RA', 'Dec', ('Type', 1, 2),
+            ('Sérsic n', 1, 2),
+            'r<sub>50</sub>',
             ('Optical (AB mag)', 3),
             ('MASKBITS', 1, 2), ('FITBITS', 1, 2),
         ))
-        html_lines.append(_th('g', 'r', 'z'))
+        html_lines.append(_th('(deg)', '(deg'), '(arcsec)', 'g', 'r', 'z'))
         for row, tr in zip(fullgroup_data, tractor_group):
             _gname = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
             _sgaid_s = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
