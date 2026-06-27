@@ -1726,8 +1726,23 @@ def generate_group_html_wrapper(args):
     next_group = all_groups[idx + 1] if idx < len(all_groups) - 1 else None
     return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber)
 
-def _build_index_html(region, count):
-    """Return the complete index HTML string for one region."""
+def _build_index_html(region, count, sample_bits):
+    """Return the complete index HTML string for one region.
+
+    sample_bits : dict of {name: int_value} from SGA.SGA.SAMPLE
+    """
+    # Pre-compute fragments that contain { } so they don't need double-bracing inside the
+    # main format string.
+    hbtns = ''.join(
+        '<button class="hbtn" onclick="toggleSample({v})" data-bit="{v}">{k}</button>'.format(k=k, v=v)
+        for k, v in sample_bits.items()
+    )
+    sample_bits_js = (
+        '{' +
+        ', '.join("'{}': {}".format(k, v) for k, v in sample_bits.items()) +
+        '}'
+    )
+
     # Double-brace all literal JS braces so .format() doesn't mis-interpret them.
     return """\
 <!DOCTYPE html>
@@ -1752,12 +1767,19 @@ def _build_index_html(region, count):
     input[type=number] {{ padding: 4px 6px; font-size: 13px;
                           border: 1px solid #ccc; border-radius: 3px; width: 90px; }}
     .sep {{ padding: 0 5px; color: #999; }}
-    .actions {{ margin: 10px 0 14px; }}
+    .actions {{ margin: 10px 0 10px; }}
     .btn       {{ padding: 7px 18px; background: #0066cc; color: #fff;
                   border: none; border-radius: 3px; cursor: pointer; font-size: 13px; }}
     .btn:hover {{ background: #0052a3; }}
     .btn-clear       {{ background: #777; margin-left: 8px; }}
     .btn-clear:hover {{ background: #555; }}
+    .hotbtns  {{ margin: 0 0 12px; }}
+    .hotlabel {{ font-size: 13px; font-weight: bold; margin-right: 8px; color: #444; }}
+    .hbtn {{ padding: 5px 11px; font-size: 12px; background: #e8e8e8;
+             border: 1px solid #bbb; border-radius: 3px; cursor: pointer;
+             margin-right: 4px; }}
+    .hbtn:hover {{ background: #d0d0d0; }}
+    .hbtn.active {{ background: #0066cc; color: #fff; border-color: #0044aa; }}
     .summary {{ color: #555; font-size: 13px; margin-bottom: 8px; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
     th {{ background: #f0f0f0; padding: 8px 10px; border: 1px solid #ddd;
@@ -1789,22 +1811,28 @@ def _build_index_html(region, count):
         <input type="text" id="f-name" placeholder="galaxy or group name">
       </div>
       <div class="filter-row">
-        <label>RA (deg)</label>
-        <input type="number" id="f-ra-min" placeholder="min" step="0.01" min="0" max="360">
-        <span class="sep">to</span>
-        <input type="number" id="f-ra-max" placeholder="max" step="0.01" min="0" max="360">
-      </div>
-      <div class="filter-row">
-        <label>Dec (deg)</label>
-        <input type="number" id="f-dec-min" placeholder="min" step="0.01" min="-90" max="90">
-        <span class="sep">to</span>
-        <input type="number" id="f-dec-max" placeholder="max" step="0.01" min="-90" max="90">
-      </div>
-      <div class="filter-row">
         <label>Diameter (arcmin)</label>
+        <input type="number" id="f-d26-min" placeholder="min" step="0.1" min="0">
+        <span class="sep">to</span>
+        <input type="number" id="f-d26-max" placeholder="max" step="0.1" min="0">
+      </div>
+      <div class="filter-row">
+        <label>Group Diameter (arcmin)</label>
         <input type="number" id="f-diam-min" placeholder="min" step="0.1" min="0">
         <span class="sep">to</span>
         <input type="number" id="f-diam-max" placeholder="max" step="0.1" min="0">
+      </div>
+      <div class="filter-row">
+        <label>Redshift</label>
+        <input type="number" id="f-z-min" placeholder="min" step="0.001" min="0">
+        <span class="sep">to</span>
+        <input type="number" id="f-z-max" placeholder="max" step="0.001" min="0">
+      </div>
+      <div class="filter-row">
+        <label>Distance (Mpc)</label>
+        <input type="number" id="f-dist-min" placeholder="min" step="1" min="0">
+        <span class="sep">to</span>
+        <input type="number" id="f-dist-max" placeholder="max" step="1" min="0">
       </div>
     </div>
     <div class="filter-col">
@@ -1829,6 +1857,12 @@ def _build_index_html(region, count):
     <button class="btn btn-clear" onclick="clearFilters()">Clear</button>
   </div>
 
+  <div class="hotbtns">
+    <span class="hotlabel">Subsets:</span>
+    {hbtns}
+    <button class="hbtn" onclick="clearSample()" style="margin-left:6px;">All</button>
+  </div>
+
   <div class="summary" id="summary">Loading data&hellip;</div>
 
   <table>
@@ -1836,27 +1870,32 @@ def _build_index_html(region, count):
       <th>Preview</th>
       <th id="th-objname" onclick="sortBy('objname')">Galaxy (Primary)</th>
       <th id="th-sgaid"   onclick="sortBy('sgaid')">SGA ID</th>
+      <th id="th-d26"     onclick="sortBy('d26')">D26 (arcmin)</th>
+      <th id="th-z"       onclick="sortBy('z')">Z</th>
+      <th id="th-dist"    onclick="sortBy('dist')">Dist (Mpc)</th>
       <th id="th-name"    onclick="sortBy('name')">Group Name</th>
       <th id="th-ra"      onclick="sortBy('ra')">Group RA (deg)</th>
       <th id="th-dec"     onclick="sortBy('dec')">Group Dec (deg)</th>
-      <th id="th-diam"    onclick="sortBy('diam')">Group Diameter (arcmin)</th>
-      <th id="th-mult"    onclick="sortBy('mult')">Multiplicity</th>
+      <th id="th-diam"    onclick="sortBy('diam')">Group Diam (arcmin)</th>
+      <th id="th-mult"    onclick="sortBy('mult')">N</th>
       <th>Viewer</th>
     </tr></thead>
     <tbody id="results-body">
-      <tr><td colspan="9" class="no-results">Loading&hellip;</td></tr>
+      <tr><td colspan="12" class="no-results">Loading&hellip;</td></tr>
     </tbody>
   </table>
   <div class="pager" id="pager"></div>
 
 <script>
-var DATA        = null;
+var DATA           = null;
 var currentResults = [];
 var currentPage    = 0;
 var PAGE_SIZE      = 50;
-var sortCol = 'ra';
-var sortAsc = true;
-var REGION  = '{region}';
+var sortCol        = 'ra';
+var sortAsc        = true;
+var activeSampleBits = 0;
+var REGION         = '{region}';
+var SAMPLE_BITS    = {sample_bits_js};
 
 function val(id)    {{ return document.getElementById(id).value.trim(); }}
 function numVal(id) {{ var v = parseFloat(val(id)); return isNaN(v) ? null : v; }}
@@ -1870,14 +1909,22 @@ function angDistArcmin(ra1, dec1, ra2, dec2) {{
     return 2 * Math.asin(Math.sqrt(a)) / R * 60;
 }}
 
+// Range filter for nullable fields: exclude row if value is null when a bound is set.
+function inRange(v, lo, hi) {{
+    if (lo !== null && (v === null || v < lo)) return false;
+    if (hi !== null && (v === null || v > hi)) return false;
+    return true;
+}}
+
 function applyFilters() {{
     if (!DATA) return;
-    var nameQ  = val('f-name').toUpperCase();
-    var raMin  = numVal('f-ra-min'),  raMax  = numVal('f-ra-max');
-    var decMin = numVal('f-dec-min'), decMax = numVal('f-dec-max');
-    var dMin   = numVal('f-diam-min'),dMax   = numVal('f-diam-max');
-    var cRa    = numVal('f-cone-ra'), cDec   = numVal('f-cone-dec'),
-        cRad   = numVal('f-cone-rad');
+    var nameQ   = val('f-name').toUpperCase();
+    var d26Min  = numVal('f-d26-min'),  d26Max  = numVal('f-d26-max');
+    var dMin    = numVal('f-diam-min'), dMax    = numVal('f-diam-max');
+    var zMin    = numVal('f-z-min'),    zMax    = numVal('f-z-max');
+    var distMin = numVal('f-dist-min'), distMax = numVal('f-dist-max');
+    var cRa     = numVal('f-cone-ra'),  cDec    = numVal('f-cone-dec'),
+        cRad    = numVal('f-cone-rad');
     var useCone = cRa !== null && cDec !== null && cRad !== null;
     var results = [];
     var n = DATA.names.length;
@@ -1886,13 +1933,12 @@ function applyFilters() {{
             if (DATA.names[i].toUpperCase().indexOf(nameQ)    === -1 &&
                 DATA.objnames[i].toUpperCase().indexOf(nameQ) === -1) continue;
         }}
-        var ra = DATA.ra[i], dec = DATA.dec[i], diam = DATA.diam[i];
-        if (raMin  !== null && ra   < raMin)  continue;
-        if (raMax  !== null && ra   > raMax)  continue;
-        if (decMin !== null && dec  < decMin) continue;
-        if (decMax !== null && dec  > decMax) continue;
-        if (dMin   !== null && diam < dMin)   continue;
-        if (dMax   !== null && diam > dMax)   continue;
+        if (activeSampleBits !== 0 && (DATA.sample[i] & activeSampleBits) === 0) continue;
+        var ra = DATA.ra[i], dec = DATA.dec[i];
+        if (!inRange(DATA.d26[i],  d26Min,  d26Max))  continue;
+        if (!inRange(DATA.diam[i], dMin,    dMax))     continue;
+        if (!inRange(DATA.z[i],    zMin,    zMax))     continue;
+        if (!inRange(DATA.dist[i], distMin, distMax))  continue;
         if (useCone && angDistArcmin(ra, dec, cRa, cDec) > cRad) continue;
         results.push(i);
     }}
@@ -1907,6 +1953,9 @@ function sortResults() {{
     var key;
     if      (col === 'objname') key = function(i) {{ return d.objnames[i]; }};
     else if (col === 'sgaid')   key = function(i) {{ return d.sgaids[i]; }};
+    else if (col === 'd26')     key = function(i) {{ return d.d26[i]; }};
+    else if (col === 'z')       key = function(i) {{ return d.z[i]; }};
+    else if (col === 'dist')    key = function(i) {{ return d.dist[i]; }};
     else if (col === 'name')    key = function(i) {{ return d.names[i]; }};
     else if (col === 'ra')      key = function(i) {{ return d.ra[i]; }};
     else if (col === 'dec')     key = function(i) {{ return d.dec[i]; }};
@@ -1915,6 +1964,10 @@ function sortResults() {{
     else return;
     currentResults.sort(function(a, b) {{
         var av = key(a), bv = key(b);
+        // Nulls always sort last regardless of direction
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
         if (av < bv) return asc ? -1 : 1;
         if (av > bv) return asc ?  1 : -1;
         return 0;
@@ -1924,7 +1977,7 @@ function sortResults() {{
 function sortBy(col) {{
     sortAsc = (sortCol === col) ? !sortAsc : true;
     sortCol = col;
-    var cols = ['objname','sgaid','name','ra','dec','diam','mult'];
+    var cols = ['objname','sgaid','d26','z','dist','name','ra','dec','diam','mult'];
     cols.forEach(function(c) {{
         var th = document.getElementById('th-' + c);
         if (th) th.className = (c === col) ? (sortAsc ? 'asc' : 'desc') : '';
@@ -1933,8 +1986,31 @@ function sortBy(col) {{
     renderPage();
 }}
 
+function toggleSample(bit) {{
+    activeSampleBits ^= bit;
+    renderSampleBtns();
+    applyFilters();
+}}
+
+function clearSample() {{
+    activeSampleBits = 0;
+    renderSampleBtns();
+    applyFilters();
+}}
+
+function renderSampleBtns() {{
+    document.querySelectorAll('.hbtn[data-bit]').forEach(function(btn) {{
+        var bit = parseInt(btn.getAttribute('data-bit'), 10);
+        btn.className = 'hbtn' + ((activeSampleBits & bit) ? ' active' : '');
+    }});
+}}
+
 function escHtml(s) {{
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}}
+
+function fmt(v, dec) {{
+    return v !== null ? v.toFixed(dec) : '&mdash;';
 }}
 
 function getSkyUrl(ra, dec, diam) {{
@@ -1958,12 +2034,15 @@ function buildRow(i) {{
     return '<tr>'
         + thumbCell
         + '<td class="left"><a href="' + htmlPath + '">' + escHtml(DATA.objnames[i]) + '</a></td>'
-        + '<td>' + DATA.sgaids[i] + '</td>'
-        + '<td>' + escHtml(name) + '</td>'
-        + '<td>' + DATA.ra[i].toFixed(5)   + '</td>'
-        + '<td>' + DATA.dec[i].toFixed(5)  + '</td>'
-        + '<td>' + DATA.diam[i].toFixed(2) + '</td>'
-        + '<td>' + DATA.mult[i]            + '</td>'
+        + '<td>' + DATA.sgaids[i]           + '</td>'
+        + '<td>' + fmt(DATA.d26[i],  2)     + '</td>'
+        + '<td>' + fmt(DATA.z[i],    4)     + '</td>'
+        + '<td>' + fmt(DATA.dist[i], 1)     + '</td>'
+        + '<td>' + escHtml(name)            + '</td>'
+        + '<td>' + DATA.ra[i].toFixed(4)    + '</td>'
+        + '<td>' + DATA.dec[i].toFixed(4)   + '</td>'
+        + '<td>' + DATA.diam[i].toFixed(2)  + '</td>'
+        + '<td>' + DATA.mult[i]             + '</td>'
         + '<td><a href="' + skyUrl + '" target="_blank">Sky</a></td>'
         + '</tr>';
 }}
@@ -1974,7 +2053,7 @@ function renderPage() {{
     var end   = Math.min(start + PAGE_SIZE, total);
     var rows  = '';
     if (total === 0) {{
-        rows = '<tr><td colspan="9" class="no-results">No results.</td></tr>';
+        rows = '<tr><td colspan="12" class="no-results">No results.</td></tr>';
     }} else {{
         for (var k = start; k < end; k++) rows += buildRow(currentResults[k]);
     }}
@@ -2005,10 +2084,11 @@ function goPage(n) {{
 }}
 
 function clearFilters() {{
-    ['f-name','f-ra-min','f-ra-max','f-dec-min','f-dec-max',
-     'f-diam-min','f-diam-max','f-cone-ra','f-cone-dec','f-cone-rad'
+    ['f-name','f-d26-min','f-d26-max','f-diam-min','f-diam-max',
+     'f-z-min','f-z-max','f-dist-min','f-dist-max',
+     'f-cone-ra','f-cone-dec','f-cone-rad'
     ].forEach(function(id) {{ document.getElementById(id).value = ''; }});
-    applyFilters();
+    clearSample();
 }}
 
 document.addEventListener('keydown', function(e) {{
@@ -2019,7 +2099,6 @@ fetch('groups-{region}.json')
     .then(function(r) {{ return r.json(); }})
     .then(function(d) {{
         DATA = d;
-        // Default: show first page sorted by RA
         document.getElementById('th-ra').className = 'asc';
         applyFilters();
     }})
@@ -2029,28 +2108,62 @@ fetch('groups-{region}.json')
 </script>
 </body>
 </html>
-""".format(region=region, count=count)
+""".format(region=region, count=count, hbtns=hbtns, sample_bits_js=sample_bits_js)
 
 
 def generate_index(htmldir, region, sample):
     """Generate a JS-driven index-{region}.html and companion groups-{region}.json."""
     import json
+    from SGA.SGA import SAMPLE as SAMPLE_BITS
 
     unique_groups = np.unique(sample['GROUP_NAME'])
+    has_d26    = 'D26'    in sample.colnames
+    has_z      = 'Z'      in sample.colnames
+    has_dist   = 'DIST'   in sample.colnames
+    has_sample = 'SAMPLE' in sample.colnames
+    has_prim   = 'GROUP_PRIMARY' in sample.colnames
 
-    names, sgaids, objnames, ras, decs, diams, mults, has_thumbs = [], [], [], [], [], [], [], []
+    def _nullable(val, decimals, zero_missing=True):
+        """Return rounded float or None for missing/NaN/zero values."""
+        try:
+            v = float(val)
+            if np.isnan(v) or (zero_missing and v == 0.0):
+                return None
+            return round(v, decimals)
+        except (TypeError, ValueError):
+            return None
+
+    names, sgaids, objnames = [], [], []
+    d26s, zs, dists         = [], [], []
+    ras, decs, diams, mults = [], [], [], []
+    samples, has_thumbs     = [], []
+
     for group_name in unique_groups:
         group_dir = find_group_directory(htmldir, region, group_name)
         if group_dir is None:
             continue
-        row = sample[sample['GROUP_NAME'] == group_name][0]
+        grp = sample[sample['GROUP_NAME'] == group_name]
+        # Primary galaxy: prefer GROUP_PRIMARY flag, else first row
+        if has_prim and np.any(grp['GROUP_PRIMARY'] != 0):
+            prim = grp[grp['GROUP_PRIMARY'] != 0][0]
+        else:
+            prim = grp[0]
+
         names.append(str(group_name))
-        sgaids.append(str(row['SGAID']))
-        objnames.append(str(row['GALAXY']))
-        ras.append(round(float(row['GROUP_RA']), 6))
-        decs.append(round(float(row['GROUP_DEC']), 6))
-        diams.append(round(float(row['GROUP_DIAMETER']), 4))
-        mults.append(int(row['GROUP_MULT']))
+        sgaids.append(str(prim['SGAID']))
+        objnames.append(str(prim['GALAXY']))
+        ras.append(round(float(prim['GROUP_RA']), 6))
+        decs.append(round(float(prim['GROUP_DEC']), 6))
+        diams.append(round(float(prim['GROUP_DIAMETER']), 4))
+        mults.append(int(prim['GROUP_MULT']))
+        d26s.append( _nullable(prim['D26'],  2) if has_d26   else None)
+        zs.append(   _nullable(prim['Z'],    5) if has_z     else None)
+        dists.append(_nullable(prim['DIST'], 1) if has_dist  else None)
+        # OR all member SAMPLE bits so the group appears for any matching member
+        if has_sample:
+            samples.append(int(np.bitwise_or.reduce(grp['SAMPLE'].astype(np.int32))))
+        else:
+            samples.append(0)
         thumb = group_dir / 'SGA2025_{}-thumb.jpg'.format(group_name)
         has_thumbs.append(bool(thumb.exists()))
 
@@ -2059,10 +2172,14 @@ def generate_index(htmldir, region, sample):
         'names':     names,
         'sgaids':    sgaids,
         'objnames':  objnames,
+        'd26':       d26s,
+        'z':         zs,
+        'dist':      dists,
         'ra':        ras,
         'dec':       decs,
         'diam':      diams,
         'mult':      mults,
+        'sample':    samples,
         'has_thumb': has_thumbs,
     }
     json_file = htmldir / 'groups-{}.json'.format(region)
@@ -2072,7 +2189,7 @@ def generate_index(htmldir, region, sample):
 
     index_file = htmldir / 'index-{}.html'.format(region)
     with open(index_file, 'w') as f:
-        f.write(_build_index_html(region, len(names)))
+        f.write(_build_index_html(region, len(names), SAMPLE_BITS))
     log.info('Wrote {}'.format(index_file))
 
 
