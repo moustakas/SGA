@@ -1494,7 +1494,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <a href='../../../index-{}.html'>Home</a> &gt; ".format(region),
         "        <a href='../../../index-{}.html#raslice-{}'>RA {}</a> &gt; {}".format(region, raslice, raslice, galaxy),
         "    </div>",
-        "    <h1>{} ({})</h1>".format(galaxy, sganame),
+        "    <h1>{}</h1>".format(galaxy),
         "    <h3>Group: {} | RA Slice: {}</h3>".format(group_name, raslice),
     ]
 
@@ -1532,17 +1532,18 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         # --- Identifiers -----------------------------------------------------
         html_lines.append("    <h2 id='sec-identifiers'>Identifiers</h2>")
         html_lines.append("    <table>")
-        html_lines.append(_th('', '', '', 'Basic', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
-        html_lines.append(_th('Galaxy', 'SGA ID', 'PGC', 'Morphology', '(deg)', '(deg)', '(mag)', 'Primary', 'Alternate Names', '(internal)'))
+        html_lines.append(_th('', '', '' '', 'Basic', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
+        html_lines.append(_th('Galaxy', 'SGA ID', 'SGA Name', 'PGC', 'Morphology', '(deg)', '(deg)', '(mag)', 'Primary', 'Alternate Names', '(internal)'))
         for row in fullgroup_data:
             galaxy   = str(_get(row, 'GALAXY', '') or '').strip() or str(row['OBJNAME']).strip()
             altnames = str(_get(row, 'ALTNAMES', '') or '').strip()
+            sganame  = str(_get(row, 'SGANAME', '') or '').strip()
             _pgc_v   = _sf(row['PGC'], zero_missing=True)
             pgc      = int(_pgc_v) if _pgc_v is not None and int(_pgc_v) != -99 else ''
             morph    = str(_get(row, 'MORPH', '') or '').strip()
             primary  = 'Yes' if row['GROUP_PRIMARY'] else 'No'
             html_lines.append(_td(
-                _ned_link(galaxy), row['SGAID'], _pgc_link(pgc) if pgc else '', morph,
+                _ned_link(galaxy), row['SGAID'], sganame, _pgc_link(pgc) if pgc else '', morph,
                 f"{float(row['RA']):.6f}", f"{float(row['DEC']):.6f}",
                 f"{float(row['EBV']):.4f}",
                 primary, altnames, row['OBJNAME'],
@@ -1988,7 +1989,7 @@ def _build_index_html(region, count, sample_bits):
   <table>
     <thead><tr>
       <th>Preview</th>
-      <th id="th-objname" onclick="sortBy('objname')">Galaxy (Primary)</th>
+      <th id="th-objname" onclick="sortBy('objname')">Primary Galaxy</th>
       <th id="th-sgaid"   onclick="sortBy('sgaid')">SGA ID</th>
       <th id="th-d26"     onclick="sortBy('d26')">D(26) (arcmin)</th>
       <th id="th-z"       onclick="sortBy('z')">Redshift</th>
