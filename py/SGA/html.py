@@ -1765,7 +1765,8 @@ def _build_index_html(region, count):
     th:hover        {{ background: #e4e4e4; }}
     th.asc::after   {{ content: " ▲"; font-size: 10px; }}
     th.desc::after  {{ content: " ▼"; font-size: 10px; }}
-    td {{ padding: 7px 10px; border: 1px solid #ddd; vertical-align: middle; }}
+    td {{ padding: 7px 10px; border: 1px solid #ddd; vertical-align: middle; text-align: center; }}
+    td.left  {{ text-align: left; }}
     td.thumb {{ padding: 3px; width: 86px; text-align: center; }}
     td.thumb img {{ width: 80px; height: 80px; object-fit: cover; display: block; margin: auto; }}
     a       {{ color: #0066cc; text-decoration: none; }}
@@ -1833,7 +1834,8 @@ def _build_index_html(region, count):
   <table>
     <thead><tr>
       <th>Preview</th>
-      <th id="th-objname" onclick="sortBy('objname')">Galaxy</th>
+      <th id="th-objname" onclick="sortBy('objname')">Galaxy (Primary)</th>
+      <th id="th-sgaid"   onclick="sortBy('sgaid')">SGA ID</th>
       <th id="th-name"    onclick="sortBy('name')">Group Name</th>
       <th id="th-ra"      onclick="sortBy('ra')">Group RA (deg)</th>
       <th id="th-dec"     onclick="sortBy('dec')">Group Dec (deg)</th>
@@ -1842,7 +1844,7 @@ def _build_index_html(region, count):
       <th>Viewer</th>
     </tr></thead>
     <tbody id="results-body">
-      <tr><td colspan="8" class="no-results">Loading&hellip;</td></tr>
+      <tr><td colspan="9" class="no-results">Loading&hellip;</td></tr>
     </tbody>
   </table>
   <div class="pager" id="pager"></div>
@@ -1904,6 +1906,7 @@ function sortResults() {{
     var d = DATA, col = sortCol, asc = sortAsc;
     var key;
     if      (col === 'objname') key = function(i) {{ return d.objnames[i]; }};
+    else if (col === 'sgaid')   key = function(i) {{ return d.sgaids[i]; }};
     else if (col === 'name')    key = function(i) {{ return d.names[i]; }};
     else if (col === 'ra')      key = function(i) {{ return d.ra[i]; }};
     else if (col === 'dec')     key = function(i) {{ return d.dec[i]; }};
@@ -1921,7 +1924,7 @@ function sortResults() {{
 function sortBy(col) {{
     sortAsc = (sortCol === col) ? !sortAsc : true;
     sortCol = col;
-    var cols = ['objname','name','ra','dec','diam','mult'];
+    var cols = ['objname','sgaid','name','ra','dec','diam','mult'];
     cols.forEach(function(c) {{
         var th = document.getElementById('th-' + c);
         if (th) th.className = (c === col) ? (sortAsc ? 'asc' : 'desc') : '';
@@ -1954,10 +1957,11 @@ function buildRow(i) {{
         : '<td class="thumb">&mdash;</td>';
     return '<tr>'
         + thumbCell
-        + '<td><a href="' + htmlPath + '">' + escHtml(DATA.objnames[i]) + '</a></td>'
+        + '<td class="left"><a href="' + htmlPath + '">' + escHtml(DATA.objnames[i]) + '</a></td>'
+        + '<td>' + DATA.sgaids[i] + '</td>'
         + '<td>' + escHtml(name) + '</td>'
-        + '<td>' + DATA.ra[i].toFixed(4)   + '</td>'
-        + '<td>' + DATA.dec[i].toFixed(4)  + '</td>'
+        + '<td>' + DATA.ra[i].toFixed(5)   + '</td>'
+        + '<td>' + DATA.dec[i].toFixed(5)  + '</td>'
         + '<td>' + DATA.diam[i].toFixed(2) + '</td>'
         + '<td>' + DATA.mult[i]            + '</td>'
         + '<td><a href="' + skyUrl + '" target="_blank">Sky</a></td>'
@@ -1970,7 +1974,7 @@ function renderPage() {{
     var end   = Math.min(start + PAGE_SIZE, total);
     var rows  = '';
     if (total === 0) {{
-        rows = '<tr><td colspan="8" class="no-results">No results.</td></tr>';
+        rows = '<tr><td colspan="9" class="no-results">No results.</td></tr>';
     }} else {{
         for (var k = start; k < end; k++) rows += buildRow(currentResults[k]);
     }}
@@ -2034,13 +2038,14 @@ def generate_index(htmldir, region, sample):
 
     unique_groups = np.unique(sample['GROUP_NAME'])
 
-    names, objnames, ras, decs, diams, mults, has_thumbs = [], [], [], [], [], [], []
+    names, sgaids, objnames, ras, decs, diams, mults, has_thumbs = [], [], [], [], [], [], [], []
     for group_name in unique_groups:
         group_dir = find_group_directory(htmldir, region, group_name)
         if group_dir is None:
             continue
         row = sample[sample['GROUP_NAME'] == group_name][0]
         names.append(str(group_name))
+        sgaids.append(str(row['SGAID']))
         objnames.append(str(row['GALAXY']))
         ras.append(round(float(row['GROUP_RA']), 6))
         decs.append(round(float(row['GROUP_DEC']), 6))
@@ -2052,6 +2057,7 @@ def generate_index(htmldir, region, sample):
     payload = {
         'region':    region,
         'names':     names,
+        'sgaids':    sgaids,
         'objnames':  objnames,
         'ra':        ras,
         'dec':       decs,
