@@ -1761,7 +1761,7 @@ def _build_index_html(region, count):
     .summary {{ color: #555; font-size: 13px; margin-bottom: 8px; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
     th {{ background: #f0f0f0; padding: 8px 10px; border: 1px solid #ddd;
-          text-align: left; cursor: pointer; white-space: nowrap; }}
+          text-align: center; cursor: pointer; white-space: nowrap; }}
     th:hover        {{ background: #e4e4e4; }}
     th.asc::after   {{ content: " ▲"; font-size: 10px; }}
     th.desc::after  {{ content: " ▼"; font-size: 10px; }}
@@ -1833,13 +1833,13 @@ def _build_index_html(region, count):
   <table>
     <thead><tr>
       <th>Preview</th>
-      <th id="th-objname" onclick="sortBy('objname')">Object Name</th>
+      <th id="th-objname" onclick="sortBy('objname')">Galaxy</th>
       <th id="th-name"    onclick="sortBy('name')">Group Name</th>
-      <th id="th-ra"      onclick="sortBy('ra')">RA (deg)</th>
-      <th id="th-dec"     onclick="sortBy('dec')">Dec (deg)</th>
-      <th id="th-diam"    onclick="sortBy('diam')">Diam (arcmin)</th>
-      <th id="th-mult"    onclick="sortBy('mult')">N</th>
-      <th>Sky</th>
+      <th id="th-ra"      onclick="sortBy('ra')">Group RA (deg)</th>
+      <th id="th-dec"     onclick="sortBy('dec')">Group Dec (deg)</th>
+      <th id="th-diam"    onclick="sortBy('diam')">Group Diameter (arcmin)</th>
+      <th id="th-mult"    onclick="sortBy('mult')">Multiplicity</th>
+      <th>Viewer</th>
     </tr></thead>
     <tbody id="results-body">
       <tr><td colspan="8" class="no-results">Loading&hellip;</td></tr>
@@ -2041,7 +2041,7 @@ def generate_index(htmldir, region, sample):
             continue
         row = sample[sample['GROUP_NAME'] == group_name][0]
         names.append(str(group_name))
-        objnames.append(str(row['OBJNAME']))
+        objnames.append(str(row['GALAXY']))
         ras.append(round(float(row['GROUP_RA']), 6))
         decs.append(round(float(row['GROUP_DEC']), 6))
         diams.append(round(float(row['GROUP_DIAMETER']), 4))
