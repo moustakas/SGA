@@ -100,7 +100,18 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
         xx.set_xticks([])
         xx.set_yticks([])
 
-    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    _suptitle = data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group')
+    if fullsample is not None and all(c in fullsample.colnames for c in ('GALAXY', 'SGAID', 'GROUP_NAME')):
+        _grp = data['galaxy'].replace('SGA2025_', '', 1)
+        _mask = np.array([str(g).strip() == _grp for g in fullsample['GROUP_NAME']])
+        if np.any(_mask):
+            _rows = fullsample[_mask]
+            _pidx = np.where(_rows['GROUP_PRIMARY'].astype(bool))[0] if 'GROUP_PRIMARY' in _rows.colnames else []
+            _prim = _rows[_pidx[0]] if len(_pidx) else _rows[0]
+            _gname = str(_prim['GALAXY']).strip() or str(_prim['OBJNAME']).strip()
+            if _gname:
+                _suptitle = f'{_gname}  [SGAID {int(_prim["SGAID"])}]'
+    fig.suptitle(_suptitle)
     fig.savefig(qafile)
     plt.close()
     log.info(f'Wrote {qafile}')
@@ -194,8 +205,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
         _idx = sgaid_map.get(int(_obj['SGAID']), -1) if sgaid_map else -1
         if _idx >= 0:
             _pub = fullsample[_idx]
-            galaxy_names.append(str(_pub['SGANAME']).strip())
-            #galaxy_names.append(str(_pub['GALAXY']).strip() or str(_obj['OBJNAME']).strip())
+            galaxy_names.append(str(int(_obj['SGAID'])))
             bxi, byi = _radec_to_opt(float(_pub['RA_INIT']), float(_pub['DEC_INIT']))
             sma_i = float(_pub['DIAM_INIT']) * 60. / 2.  # arcmin diameter → arcsec radius
             init_geom.append((bxi, byi, sma_i, float(_pub['BA_INIT']), float(_pub['PA_INIT'])))
@@ -203,7 +213,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
             sma_f = float(_pub['D26']) * 60. / 2.         # arcmin diameter → arcsec radius
             final_geom.append((bxf, byf, sma_f, float(_pub['BA']), float(_pub['PA'])))
         else:
-            galaxy_names.append(str(_obj['OBJNAME']).strip())
+            galaxy_names.append(str(int(_obj['SGAID'])) if int(_obj['SGAID']) != 0 else str(_obj['OBJNAME']).strip())
             init_geom.append(tuple(_obj[col] for col in GEOINITCOLS))
             final_geom.append(tuple(_obj[col] for col in GEOFINALCOLS))
     #GEOFINALCOLS = ['BX', 'BY', 'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT']
@@ -325,8 +335,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
             ax[1+iobj, col].set_ylim(0, width-1)
             ax[1+iobj, col].margins(0)
 
-        #ax[1+iobj, 0].text(0.03, 0.97, f'{galaxy_names[iobj]} ({obj["SGANAME"]})',
-        ax[1+iobj, 0].text(0.03, 0.97, f'{obj["SGANAME"]}',
+        ax[1+iobj, 0].text(0.03, 0.97, f'{int(obj["SGAID"])}',
                            transform=ax[1+iobj, 0].transAxes,
                            ha='left', va='top', color='white',
                            linespacing=1.5, fontsize=8,
@@ -350,7 +359,18 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
         xx.set_xticks([])
         xx.set_yticks([])
 
-    fig.suptitle(data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group'))
+    _suptitle = data['galaxy'].replace('_', ' ').replace(' GROUP', ' Group')
+    if fullsample is not None and all(c in fullsample.colnames for c in ('GALAXY', 'SGAID', 'GROUP_NAME')):
+        _grp = data['galaxy'].replace('SGA2025_', '', 1)
+        _mask = np.array([str(g).strip() == _grp for g in fullsample['GROUP_NAME']])
+        if np.any(_mask):
+            _rows = fullsample[_mask]
+            _pidx = np.where(_rows['GROUP_PRIMARY'].astype(bool))[0] if 'GROUP_PRIMARY' in _rows.colnames else []
+            _prim = _rows[_pidx[0]] if len(_pidx) else _rows[0]
+            _gname = str(_prim['GALAXY']).strip() or str(_prim['OBJNAME']).strip()
+            if _gname:
+                _suptitle = f'{_gname}  [SGAID {int(_prim["SGAID"])}]'
+    fig.suptitle(_suptitle)
     fig.savefig(qafile)
     plt.close()
     log.info(f'Wrote {qafile}')
@@ -431,8 +451,7 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
                 pub = fullsample[idx]
         if pub is not None:
             galaxy_name = str(pub['GALAXY']).strip() or str(obj['OBJNAME']).strip()
-            #title = f'{galaxy_name} ({obj["SGANAME"]})'
-            title = f'{obj["SGANAME"]}'
+            title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
         else:
             title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
 
@@ -616,8 +635,7 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         label_moment = f'$R(\\mathrm{{mom}})={sma_moment:.1f}$"'
         if pub is not None:
             galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
-            title = f'{obj["SGANAME"]}'
-            #title = f'{galaxy_name} ({obj["SGANAME"]})'
+            title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
             d26 = float(pub['D26'])
             d26_ref = str(pub['D26_REF']).strip()
         else:
@@ -841,8 +859,7 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             d26_ref = str(pub['D26_REF']).strip()
             ba = float(pub['BA'])
             pa = float(pub['PA'])
-            title = f'{obj["SGANAME"]}'
-            #title = f'{galaxy_name} ({obj["SGANAME"]})'
+            title = f'{galaxy_name}  [SGAID {int(pub["SGAID"])}]'
             d26_ref_str = f'[{d26_ref}]' if d26_ref else ''
             geom_str = f'$D(26)$ = {d26:.3f}±{d26_err:.3f} arcmin PA={pa:.0f}°  b/a={ba:.2f}'
         else:
@@ -1547,8 +1564,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 z_flag = int(_get(row, 'Z_FLAG', 0) or 0)
                 z_flag_s = " <span class='warn'>⚠</span>" if z_flag & 0x01 else ''
                 z_ref = str(_get(row, 'Z_REF', '') or '').strip()
+                _gname_z = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
+                _sgaid_z = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
                 cells = [
-                    _ned_link(str(row['GALAXY']).strip()),
+                    _ned_link(_gname_z) + _sgaid_z,
                     _fmt_z(row, 'Z', 'Z_IVAR') + z_flag_s,
                     z_ref,
                     _fmt_dist(row, 'DIST', 'DIST_IVAR'),
@@ -1632,7 +1651,8 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                 ba_s  = f'{float(row["BA"]):.3f}' if _sf(_get(row, "BA")) else ''
                 pa_s  = f'{float(row["PA"]):.1f}'  if _sf(_get(row, "PA"), zero_missing=False) is not None else ''
                 _gname = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
-                html_lines.append(_td(_ned_link(_gname),
+                _sgaid_g = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
+                html_lines.append(_td(_ned_link(_gname) + _sgaid_g,
                                       d26_s, d26_ref, ba_s, pa_s, sma_mom_s,
                                       d_init_s, ba_init_s, pa_init_s, init_ref,
                                       sample_flags, ebit_flags, emode_flags))
@@ -1669,7 +1689,9 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                     if imeas == 0:
                         meas_label = 'COG (total)'
                         band_vals  = [_fmt_mag_cog(row, b) for b in phot_bands]
-                        name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{_ned_link(str(row['GALAXY']).strip())}</td>"
+                        _gname_p = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
+                        _sgaid_p = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
+                        name_cell  = f"<td class='gal-group' rowspan='{n_meas}'>{_ned_link(_gname_p) + _sgaid_p}</td>"
                     else:
                         ap = n_ap - imeas  # AP04 first (largest → closest to CoG), AP00 last
                         mult = f'{APERTURES[ap]:g}×'
@@ -1686,10 +1708,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
                     row_idx += 1
             html_lines.append("    </table>")
     jname_to_galaxy = {}
+    jname_to_sgaid = {}
     if len(fullgroup_data) > 0 and 'SGANAME' in fullgroup_data.colnames:
         for row in fullgroup_data:
             jname = str(row['SGANAME']).strip().replace('SGA2025 ', '')
             jname_to_galaxy[jname] = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
+            if _has('SGAID'):
+                jname_to_sgaid[jname] = int(row['SGAID'])
     html_lines.extend([
         "",
         "    <div class='section'>",
@@ -1700,8 +1725,10 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     html_lines.append("        </div>")
     for igal, galaxy_name in enumerate(galaxy_names):
         display_name = jname_to_galaxy.get(galaxy_name, galaxy_name)
+        _sgaid_h = jname_to_sgaid.get(galaxy_name)
+        _sgaid_suffix = f'  (SGAID {_sgaid_h})' if _sgaid_h else ''
         sec_id = "id='sec-figures' " if igal == 0 else ''
-        html_lines.append(f"        <h2 {sec_id}style='margin-bottom: 4px;'>{display_name}</h2>")
+        html_lines.append(f"        <h2 {sec_id}style='margin-bottom: 4px;'>{display_name}{_sgaid_suffix}</h2>")
         html_lines.append("        <div class='galaxy-row'>")
         for img_type in per_galaxy_types:
             filename = "SGA2025_{}-{}.png".format(galaxy_name, img_type)
