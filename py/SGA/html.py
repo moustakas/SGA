@@ -194,7 +194,8 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
         _idx = sgaid_map.get(int(_obj['SGAID']), -1) if sgaid_map else -1
         if _idx >= 0:
             _pub = fullsample[_idx]
-            galaxy_names.append(str(_pub['GALAXY']).strip() or str(_obj['OBJNAME']).strip())
+            galaxy_names.append(str(_pub['SGANAME']).strip())
+            #galaxy_names.append(str(_pub['GALAXY']).strip() or str(_obj['OBJNAME']).strip())
             bxi, byi = _radec_to_opt(float(_pub['RA_INIT']), float(_pub['DEC_INIT']))
             sma_i = float(_pub['DIAM_INIT']) * 60. / 2.  # arcmin diameter → arcsec radius
             init_geom.append((bxi, byi, sma_i, float(_pub['BA_INIT']), float(_pub['PA_INIT'])))
@@ -247,7 +248,7 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
                 bbox=dict(boxstyle='round', facecolor='k', alpha=0.5))
 
         if iax == 0:
-            xx.legend(loc='lower left', fontsize=8, ncol=2,
+            xx.legend(loc='lower left', fontsize=8, ncol=1,
                       fancybox=True, framealpha=0.5)
         del wimgs, wivars, wimg
 
@@ -324,7 +325,8 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
             ax[1+iobj, col].set_ylim(0, width-1)
             ax[1+iobj, col].margins(0)
 
-        ax[1+iobj, 0].text(0.03, 0.97, f'{galaxy_names[iobj]} ({obj["SGANAME"]})',
+        #ax[1+iobj, 0].text(0.03, 0.97, f'{galaxy_names[iobj]} ({obj["SGANAME"]})',
+        ax[1+iobj, 0].text(0.03, 0.97, f'{obj["SGANAME"]}',
                            transform=ax[1+iobj, 0].transAxes,
                            ha='left', va='top', color='white',
                            linespacing=1.5, fontsize=8,
@@ -429,7 +431,8 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
                 pub = fullsample[idx]
         if pub is not None:
             galaxy_name = str(pub['GALAXY']).strip() or str(obj['OBJNAME']).strip()
-            title = f'{galaxy_name} ({obj["SGANAME"]})'
+            #title = f'{galaxy_name} ({obj["SGANAME"]})'
+            title = f'{obj["SGANAME"]}'
         else:
             title = f"{obj['OBJNAME']} ({obj['SGANAME']})"
 
@@ -613,7 +616,8 @@ def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
         label_moment = f'$R(\\mathrm{{mom}})={sma_moment:.1f}$"'
         if pub is not None:
             galaxy_name = str(pub['GALAXY']).strip() or str(pub['OBJNAME']).strip()
-            title = f'{galaxy_name} ({obj["SGANAME"]})'
+            title = f'{obj["SGANAME"]}'
+            #title = f'{galaxy_name} ({obj["SGANAME"]})'
             d26 = float(pub['D26'])
             d26_ref = str(pub['D26_REF']).strip()
         else:
@@ -837,7 +841,8 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
             d26_ref = str(pub['D26_REF']).strip()
             ba = float(pub['BA'])
             pa = float(pub['PA'])
-            title = f'{galaxy_name} ({obj["SGANAME"]})'
+            title = f'{obj["SGANAME"]}'
+            #title = f'{galaxy_name} ({obj["SGANAME"]})'
             d26_ref_str = f'[{d26_ref}]' if d26_ref else ''
             geom_str = f'$D(26)$ = {d26:.3f}±{d26_err:.3f} arcmin PA={pa:.0f}°  b/a={ba:.2f}'
         else:
@@ -1761,7 +1766,7 @@ def _build_index_html(region, count, sample_bits):
     .filter-col h4 {{ margin: 0 0 12px; font-size: 14px; color: #444; }}
     .filter-row   {{ display: flex; align-items: center; margin-bottom: 7px;
                      font-size: 13px; }}
-    .filter-row label {{ width: 140px; flex-shrink: 0; }}
+    .filter-row label {{ width: 175px; flex-shrink: 0; }}
     input[type=text]   {{ padding: 4px 6px; font-size: 13px;
                           border: 1px solid #ccc; border-radius: 3px; width: 220px; }}
     input[type=number] {{ padding: 4px 6px; font-size: 13px;
@@ -1811,7 +1816,7 @@ def _build_index_html(region, count, sample_bits):
         <input type="text" id="f-name" placeholder="galaxy or group name">
       </div>
       <div class="filter-row">
-        <label>Diameter (arcmin)</label>
+        <label>D(26) (arcmin)</label>
         <input type="number" id="f-d26-min" placeholder="min" step="0.1" min="0">
         <span class="sep">to</span>
         <input type="number" id="f-d26-max" placeholder="max" step="0.1" min="0">
@@ -1860,7 +1865,8 @@ def _build_index_html(region, count, sample_bits):
   <div class="hotbtns">
     <span class="hotlabel">Subsets:</span>
     {hbtns}
-    <button class="hbtn" onclick="clearSample()" style="margin-left:6px;">All</button>
+    <button class="hbtn" id="hbtn-none" onclick="toggleNone()" style="margin-left:6px;">None</button>
+    <button class="hbtn" onclick="clearSample()" style="margin-left:4px;">All</button>
   </div>
 
   <div class="summary" id="summary">Loading data&hellip;</div>
@@ -1870,13 +1876,13 @@ def _build_index_html(region, count, sample_bits):
       <th>Preview</th>
       <th id="th-objname" onclick="sortBy('objname')">Galaxy (Primary)</th>
       <th id="th-sgaid"   onclick="sortBy('sgaid')">SGA ID</th>
-      <th id="th-d26"     onclick="sortBy('d26')">D26 (arcmin)</th>
-      <th id="th-z"       onclick="sortBy('z')">Z</th>
-      <th id="th-dist"    onclick="sortBy('dist')">Dist (Mpc)</th>
+      <th id="th-d26"     onclick="sortBy('d26')">D(26) (arcmin)</th>
+      <th id="th-z"       onclick="sortBy('z')">Redshift</th>
+      <th id="th-dist"    onclick="sortBy('dist')">Distance (Mpc)</th>
       <th id="th-name"    onclick="sortBy('name')">Group Name</th>
       <th id="th-ra"      onclick="sortBy('ra')">Group RA (deg)</th>
       <th id="th-dec"     onclick="sortBy('dec')">Group Dec (deg)</th>
-      <th id="th-diam"    onclick="sortBy('diam')">Group Diam (arcmin)</th>
+      <th id="th-diam"    onclick="sortBy('diam')">Group Diameter (arcmin)</th>
       <th id="th-mult"    onclick="sortBy('mult')">N</th>
       <th>Viewer</th>
     </tr></thead>
@@ -1894,6 +1900,7 @@ var PAGE_SIZE      = 50;
 var sortCol        = 'ra';
 var sortAsc        = true;
 var activeSampleBits = 0;
+var showNone         = false;
 var REGION         = '{region}';
 var SAMPLE_BITS    = {sample_bits_js};
 
@@ -1933,7 +1940,8 @@ function applyFilters() {{
             if (DATA.names[i].toUpperCase().indexOf(nameQ)    === -1 &&
                 DATA.objnames[i].toUpperCase().indexOf(nameQ) === -1) continue;
         }}
-        if (activeSampleBits !== 0 && (DATA.sample[i] & activeSampleBits) === 0) continue;
+        if (showNone) {{ if (DATA.sample[i] !== 0) continue; }}
+        else if (activeSampleBits !== 0 && (DATA.sample[i] & activeSampleBits) === 0) continue;
         var ra = DATA.ra[i], dec = DATA.dec[i];
         if (!inRange(DATA.d26[i],  d26Min,  d26Max))  continue;
         if (!inRange(DATA.diam[i], dMin,    dMax))     continue;
@@ -1987,13 +1995,22 @@ function sortBy(col) {{
 }}
 
 function toggleSample(bit) {{
+    showNone = false;
     activeSampleBits ^= bit;
+    renderSampleBtns();
+    applyFilters();
+}}
+
+function toggleNone() {{
+    showNone = !showNone;
+    if (showNone) activeSampleBits = 0;
     renderSampleBtns();
     applyFilters();
 }}
 
 function clearSample() {{
     activeSampleBits = 0;
+    showNone = false;
     renderSampleBtns();
     applyFilters();
 }}
@@ -2003,6 +2020,8 @@ function renderSampleBtns() {{
         var bit = parseInt(btn.getAttribute('data-bit'), 10);
         btn.className = 'hbtn' + ((activeSampleBits & bit) ? ' active' : '');
     }});
+    var nb = document.getElementById('hbtn-none');
+    if (nb) nb.className = 'hbtn' + (showNone ? ' active' : '');
 }}
 
 function escHtml(s) {{
