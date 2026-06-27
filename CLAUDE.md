@@ -18,7 +18,11 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `groups.py` - Galaxy group finding via spherical clustering
   - `io.py` - FITS I/O, coordinate conversions
   - `logger.py` - Unified logging (distinct from DESI loggers)
-- `bin/` - Active executable scripts; currently only `SGA2025-mpi` (pre-release QA). Future SGA releases add scripts here directly.
+- `bin/` - Active executable scripts. Key scripts:
+  - `SGA2025-mpi` - Pre-release QA driver (MPI)
+  - `SGA2025-ned-query` - Query NED by name and position; writes per-region CSV files
+  - `SGA2025-ned-merge` - Merge byname/bypos NED CSVs into `ned-merged-{region}.fits`
+  - `SGA2025-build-catalog` - Merge beta catalog + NED + DESI DR1 + LVD into final per-region FITS; derives `GALAXY` and `ALTNAMES` columns (see below)
 - `archive/bin-SGA2025/` - Archived SGA-2025 processing scripts (processing complete)
 - `archive/bin-SGA2020/` - Archived SGA-2020 scripts (paper and data release complete)
 - `py/SGA/data/SGA2025/` - Reference CSVs used during SGA-2025 processing (overlays, VI lists, etc.)
@@ -145,6 +149,35 @@ Use the unified logger at `SGA.logger.log` to prevent conflicts with DESI and le
 
 ### Sample Versioning
 Catalog versions (v0.10, v0.50, v0.60, etc.) are tracked via `SGA_version()` function in `py/SGA/SGA.py`.
+
+### GALAXY and ALTNAMES derivation (`bin/SGA2025-build-catalog`)
+
+`GALAXY` and `ALTNAMES` are derived from NED's pipe-separated `CROSSIDS` field in
+this order (all steps applied per object):
+
+1. **HOST fix** — if `CROSSIDS[0]` contains `"HOST"` (e.g. `"SN 2003H HOST"`),
+   scan forward for the first non-HOST entry, promote it to position 0, and
+   append the original HOST name at the end (deduplicated, case-insensitive).
+2. **Dedup** — remove any entry from `CROSSIDS[1:]` that duplicates `CROSSIDS[0]`
+   (case-insensitive) before building ALTNAMES.
+3. **Special-character fix** — if `CROSSIDS[0]` fails `_SAFE_GALAXY_RE`
+   (`^[a-zA-Z0-9 +\-._:]+$`), scan ALTNAMES candidates for a clean alternative
+   and promote it (original moves into ALTNAMES). Common trigger: NED names
+   starting with `[`.
+4. **Prefix normalization** — uppercase known catalog-name prefixes via
+   `_normalize_galaxy_prefix` / `_PREFIX_NORM_RE` (e.g. `Mrk` → `MRK`,
+   `Arp` → `ARP`, `UGCa` → `UGCA`). Covered prefixes: 2MASX, UGCA, UGC, NGC,
+   IC, PGC, ESO, MCG, ARP, MRK, DDO, KDG, VCC, FCC, CGCG, HIPASS, SDSS, SBS,
+   KUG, UZC, MGC, HCG. `Messier` is intentionally excluded (kept mixed-case).
+5. **OBJNAME fallback** — if NED never matched, copy `OBJNAME` → `GALAXY`
+   (logged as a warning).
+6. **Hand-curated overrides** — `GALAXY_OVERRIDES` dict at module level in
+   `bin/SGA2025-build-catalog`; add entries there for one-off fixes that the
+   rules above cannot handle (e.g. `'MESSIER 109': 'Messier 109'`).
+7. **Assert** — `GALAXY` is never empty after all fixes.
+
+`ALTNAMES` = first two remaining CROSSIDS (after the promoted GALAXY is removed),
+pipe-separated; empty string when none remain.
 
 ## Testing
 
