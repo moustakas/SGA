@@ -243,17 +243,20 @@ _PREFERRED_PREFIXES = [
     re.compile(r'^NGC\b',     re.IGNORECASE),
     re.compile(r'^IC\b',      re.IGNORECASE),
     re.compile(r'^UGCA?\b',   re.IGNORECASE),  # matches both UGCA and UGC
-    re.compile(r'^PGC\b',     re.IGNORECASE),
     re.compile(r'^ESO\b',     re.IGNORECASE),
+    re.compile(r'^ESO-LV\b',  re.IGNORECASE),
     re.compile(r'^MCG\b',     re.IGNORECASE),
     re.compile(r'^ARP\b',     re.IGNORECASE),
     re.compile(r'^MRK\b',     re.IGNORECASE),
     re.compile(r'^DDO\b',     re.IGNORECASE),
     re.compile(r'^KDG\b',     re.IGNORECASE),
     re.compile(r'^VCC\b',     re.IGNORECASE),
+    re.compile(r'^CGCG\b',    re.IGNORECASE),
+    re.compile(r'^PGC\b',     re.IGNORECASE),
+    re.compile(r'^PGC1\b',    re.IGNORECASE),
+    re.compile(r'^AGC\b',     re.IGNORECASE),
     re.compile(r'^FCC\b',     re.IGNORECASE),
     re.compile(r'^HCG\b',     re.IGNORECASE),
-    re.compile(r'^CGCG\b',    re.IGNORECASE),
     re.compile(r'^HIPASS\b',  re.IGNORECASE),
 ]
 
@@ -667,7 +670,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.info(f'  {int(np.sum(has_match)):,d}/{n:,d} beta galaxies matched to parent/nocuts catalog')
         mm = vv[par_rows[has_match]]
         diam_arcsec, ba_init, pa_init, ref_init, mag_init, _ = \
-            choose_geometry(mm, mindiam=0., get_mag=True)
+            choose_geometry(mm, mindiam=30., get_mag=True)
         init_arrs = {
             'RA_INIT':       np.full(n, -1., np.float64),
             'DEC_INIT':      np.full(n, -1., np.float64),
