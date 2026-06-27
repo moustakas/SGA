@@ -1299,26 +1299,22 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     if output_file.exists() and not clobber:
         log.info("Skipping (exists): {}".format(output_file))
         return True
-    fullgroup_data = fullsample[np.isin(fullsample['GROUP_NAME'], group_data['GROUP_NAME'])]
+    _group_mask = np.isin(fullsample['GROUP_NAME'], group_data['GROUP_NAME'])
+    fullgroup_data = fullsample[_group_mask]
+    tractor_group = fulltractor[_group_mask] if fulltractor is not None else None
+
     if len(fullgroup_data) > 1:
         d26_col = 'D26' if 'D26' in fullgroup_data.colnames else ('DIAM_INIT' if 'DIAM_INIT' in fullgroup_data.colnames else None)
         if d26_col is not None:
-            sort_vals = np.array([float(r[d26_col]) for r in fullgroup_data])
-            fullgroup_data = fullgroup_data[np.argsort(sort_vals)[::-1]]
+            _sidx = np.argsort([float(r[d26_col]) for r in fullgroup_data])[::-1]
+            fullgroup_data = fullgroup_data[_sidx]
+            if tractor_group is not None:
+                tractor_group = tractor_group[_sidx]
     if 'GALAXY' in fullgroup_data.columns:
         galaxy = fullgroup_data['GALAXY'][0]
     else:
         galaxy = group_data['OBJNAME'][0]
     sganame = group_data['SGANAME'][0]
-
-    # Look up matching tractor rows by SGAID
-    tractor_group = None
-    tractor_sgaid_idx = {}
-    if fulltractor is not None and 'SGAID' in fulltractor.colnames:
-        _tmask = np.isin(fulltractor['SGAID'], fullgroup_data['SGAID'])
-        if np.any(_tmask):
-            tractor_group = fulltractor[_tmask]
-            tractor_sgaid_idx = {int(r['SGAID']): i for i, r in enumerate(tractor_group)}
     group_ra = group_data['GROUP_RA'][0]
     group_dec = group_data['GROUP_DEC'][0]
     group_diam = group_data['GROUP_DIAMETER'][0]
@@ -1772,15 +1768,9 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             ('MASKBITS', 1, 2), ('FITBITS', 1, 2),
         ))
         html_lines.append(_th('g', 'r', 'z'))
-        for row in fullgroup_data:
+        for row, tr in zip(fullgroup_data, tractor_group):
             _gname = str(_get(row, 'GALAXY', '') or row['OBJNAME']).strip()
-            _sgaid = int(row['SGAID'])
-            _sgaid_s = f'  [{_sgaid}]' if _has('SGAID') else ''
-            _tidx = tractor_sgaid_idx.get(_sgaid, -1)
-            if _tidx < 0:
-                html_lines.append(_td(_ned_link(_gname) + _sgaid_s, *([''] * 9)))
-                continue
-            tr = tractor_group[_tidx]
+            _sgaid_s = f'  [{int(row["SGAID"])}]' if _has('SGAID') else ''
             ra_s    = f"{float(tr['RA']):.6f}"   if 'RA'      in _tcols else ''
             dec_s   = f"{float(tr['DEC']):.6f}"  if 'DEC'     in _tcols else ''
             typ     = str(tr['TYPE']).strip()     if 'TYPE'    in _tcols else ''
