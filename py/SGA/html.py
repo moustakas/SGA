@@ -1494,7 +1494,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         # --- Identifiers -----------------------------------------------------
         html_lines.append("    <h2 id='sec-identifiers'>Identifiers</h2>")
         html_lines.append("    <table>")
-        html_lines.append(_th('', '', '', '', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
+        html_lines.append(_th('', '', '', 'Basic', 'RA', 'Dec', 'E(B-V)', '', '', 'Object Name'))
         html_lines.append(_th('Galaxy', 'SGA ID', 'PGC', 'Morphology', '(deg)', '(deg)', '(mag)', 'Primary', 'Alternate Names', '(internal)'))
         for row in fullgroup_data:
             galaxy   = str(_get(row, 'GALAXY', '') or '').strip() or str(row['OBJNAME']).strip()

@@ -232,6 +232,39 @@ def _normalize_galaxy_prefix(name):
     """Uppercase known catalog-name prefixes (e.g. 'Mrk 231' -> 'MRK 231')."""
     return _PREFIX_NORM_RE.sub(lambda m: m.group(0).upper(), name, count=1)
 
+# Priority-ordered catalog prefixes for "famous name" promotion. When CROSSIDS
+# contains multiple names, the highest-priority match is promoted to GALAXY
+# regardless of NED's own choice. Prefixes absent from this list (2MASX, SDSS,
+# WISE, ICRF, etc.) are never actively promoted but remain as GALAXY when
+# nothing better is available. Note: ^IC\b does not match ICRF (no word
+# boundary between C and R).
+_PREFERRED_PREFIXES = [
+    re.compile(r'^Messier\b', re.IGNORECASE),
+    re.compile(r'^NGC\b',     re.IGNORECASE),
+    re.compile(r'^IC\b',      re.IGNORECASE),
+    re.compile(r'^UGCA?\b',   re.IGNORECASE),  # matches both UGCA and UGC
+    re.compile(r'^PGC\b',     re.IGNORECASE),
+    re.compile(r'^ESO\b',     re.IGNORECASE),
+    re.compile(r'^MCG\b',     re.IGNORECASE),
+    re.compile(r'^ARP\b',     re.IGNORECASE),
+    re.compile(r'^MRK\b',     re.IGNORECASE),
+    re.compile(r'^DDO\b',     re.IGNORECASE),
+    re.compile(r'^KDG\b',     re.IGNORECASE),
+    re.compile(r'^VCC\b',     re.IGNORECASE),
+    re.compile(r'^FCC\b',     re.IGNORECASE),
+    re.compile(r'^HCG\b',     re.IGNORECASE),
+    re.compile(r'^CGCG\b',    re.IGNORECASE),
+    re.compile(r'^HIPASS\b',  re.IGNORECASE),
+]
+
+def _find_preferred_idx(parts):
+    """Return index of highest-priority catalog name in parts, or -1 if none."""
+    for pat in _PREFERRED_PREFIXES:
+        for j, p in enumerate(parts):
+            if pat.match(p):
+                return j
+    return -1
+
 # ---------------------------------------------------------------------------
 # Columns to drop from the output (from the beta catalog or NED_CARRY).
 # CROSSIDS is kept in NED_CARRY for GALAXY/ALTNAMES derivation but not output.
@@ -962,6 +995,10 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
                     if primary.upper() not in {r.upper() for r in remaining}:
                         remaining.append(primary)
                     parts = [promoted] + remaining
+            # Promote highest-priority "famous" catalog name if not already first
+            pref_idx = _find_preferred_idx(parts)
+            if pref_idx > 0:
+                parts = [parts[pref_idx]] + parts[:pref_idx] + parts[pref_idx + 1:]
             galaxy = parts[0]
             rest   = [p for p in parts[1:] if p.upper() != galaxy.upper()]
             # Prefer an ALTNAME without special characters when GALAXY has them
