@@ -68,15 +68,19 @@ SBTHRESH = [22., 23., 24., 25., 26.] # surface brightness thresholds
 APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
 
-def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
+def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False,
+                catalog=False):
     """Return the catalog version string for a given catalog type.
 
     The nocuts, vicuts, and archive intermediate catalogs share a single
     frozen working version. The parent and final ellipse catalogs share
-    the release version.
+    the release version. The final merged catalog (SGA2025-build-catalog
+    output) has its own independent version.
     """
     if nocuts or vicuts or archive:
         return 'v0.10'
+    if catalog:
+        return 'v1.0'
     return 'v1.6'
 
 
@@ -537,7 +541,9 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
         ext = 'ELLIPSE'
     else:
-        samplefile = os.path.join(sga_dir(), 'public', f'SGA2025-{region}.fits')
+        if version is None:
+            version = SGA_version(catalog=True)
+        samplefile = os.path.join(sga_dir(), 'public', f'SGA2025-{region}-{version}.fits')
         ext = 'SGA2025'
 
     # Row selection always runs on ELLIPSE (which has the group/region/sample columns).

@@ -56,7 +56,7 @@ mismatch is corrected before writing (known case: REGION int64 -> int16).
 
 Output
 ------
-  {outdir}/SGA2025-{region}.fits   (EXTNAME='SGA2025')
+  {outdir}/SGA2025-{region}-{version}.fits   (EXTNAME='SGA2025')
 
 Examples
 --------
@@ -192,7 +192,7 @@ from astropy.table import Table, Column
 import astropy.units as u
 
 from SGA.util import C_LIGHT
-from SGA.SGA import read_sga_sample, SGA_datamodel, SAMPLE as SAMPLE_BITS
+from SGA.SGA import read_sga_sample, SGA_datamodel, SGA_version, SAMPLE as SAMPLE_BITS
 from SGA.geometry import choose_geometry
 from SGA.ellipse import MAXSHIFT_ARCSEC
 from SGA.io import table_to_fitsio
@@ -1100,7 +1100,8 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
 
     # --- Write output ----------------------------------------------------
     os.makedirs(outdir, exist_ok=True)
-    outpath = os.path.join(outdir, f'SGA2025-{region}.fits')
+    version = SGA_version(catalog=True)
+    outpath = os.path.join(outdir, f'SGA2025-{region}-{version}.fits')
     vals, names, units = table_to_fitsio(out)
     tractor_vals, tractor_names, tractor_units = table_to_fitsio(tractor)
     with fitsio.FITS(outpath, 'rw', clobber=True) as F:
@@ -1180,7 +1181,7 @@ def main():
     parser.add_argument('--redshiftdir', required=True,
                         help='Directory containing DESI DR1 summary and matches files')
     parser.add_argument('--outdir', required=True,
-                        help='Output directory for SGA2025-{region}.fits')
+                        help='Output directory for SGA2025-{region}-{version}.fits')
     parser.add_argument('--region', choices=['dr11-south', 'dr11-north'],
                         help='Process one region only (default: both)')
     parser.add_argument('--vdiff-threshold', type=float, default=1000.,
