@@ -326,13 +326,23 @@ def main():
                    help='Split each (stage, region) into N jobs via --first/--last')
     p.add_argument('--ntot', type=int, default=None,
                    help='Total catalog objects per region (required when --njobs > 1)')
-    # Sample selection forwarded verbatim to the MPI script
+    # Sample selection — all forwarded verbatim to the MPI script
     p.add_argument('--first', type=int, default=None,
-                   help='Index of first object to process (forwarded to MPI script)')
+                   help='Index of first object to process')
     p.add_argument('--last', type=int, default=None,
-                   help='Index of last object to process (forwarded to MPI script)')
+                   help='Index of last object to process')
     p.add_argument('--galaxylist', default=None,
-                   help='Comma-separated galaxy names to process (forwarded to MPI script)')
+                   help='Comma-separated galaxy names to process')
+    p.add_argument('--mindiam', type=float, default=None,
+                   help='Minimum galaxy diameter [arcmin]')
+    p.add_argument('--maxdiam', type=float, default=None,
+                   help='Maximum galaxy diameter [arcmin]')
+    p.add_argument('--minmult', type=int, default=None,
+                   help='Minimum group multiplicity')
+    p.add_argument('--maxmult', type=int, default=None,
+                   help='Maximum group multiplicity')
+    p.add_argument('--lvd', action='store_true',
+                   help='Restrict sample to LVD galaxies')
     p.add_argument('--outdir', default='.',
                    help='Directory for generated .slurm files and logs')
     p.add_argument('--plan', action='store_true',
@@ -353,6 +363,16 @@ def main():
     passthrough = []
     if args.galaxylist is not None:
         passthrough.append(f'--galaxylist {args.galaxylist}')
+    if args.mindiam is not None:
+        passthrough.append(f'--mindiam {args.mindiam}')
+    if args.maxdiam is not None:
+        passthrough.append(f'--maxdiam {args.maxdiam}')
+    if args.minmult is not None:
+        passthrough.append(f'--minmult {args.minmult}')
+    if args.maxmult is not None:
+        passthrough.append(f'--maxmult {args.maxmult}')
+    if args.lvd:
+        passthrough.append('--lvd')
     extra_args = passthrough + extra_args
 
     env_script = _find_env_script()
