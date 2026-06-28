@@ -2020,7 +2020,7 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
       <h4>Simple Filter</h4>
       <div class="filter-row">
         <label>Name</label>
-        <input type="text" id="f-name" placeholder="galaxy or group name">
+        <input type="text" id="f-name" placeholder="galaxy, alt name, or group name">
       </div>
       <div class="filter-row">
         <label>D(26) (arcmin)</label>
@@ -2033,6 +2033,12 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
         <input type="number" id="f-diam-min" placeholder="min" step="0.1" min="0">
         <span class="sep">to</span>
         <input type="number" id="f-diam-max" placeholder="max" step="0.1" min="0">
+      </div>
+      <div class="filter-row">
+        <label>Multiplicity</label>
+        <input type="number" id="f-mult-min" placeholder="min" step="1" min="1">
+        <span class="sep">to</span>
+        <input type="number" id="f-mult-max" placeholder="max" step="1" min="1">
       </div>
       <div class="filter-row">
         <label>Redshift</label>
@@ -2150,6 +2156,7 @@ function applyFilters() {{
     var nameQ   = val('f-name').toUpperCase();
     var d26Min  = numVal('f-d26-min'),  d26Max  = numVal('f-d26-max');
     var dMin    = numVal('f-diam-min'), dMax    = numVal('f-diam-max');
+    var multMin = numVal('f-mult-min'), multMax = numVal('f-mult-max');
     var zMin    = numVal('f-z-min'),    zMax    = numVal('f-z-max');
     var distMin = numVal('f-dist-min'), distMax = numVal('f-dist-max');
     var cRa     = numVal('f-cone-ra'),  cDec    = numVal('f-cone-dec'),
@@ -2159,8 +2166,9 @@ function applyFilters() {{
     var n = DATA.names.length;
     for (var i = 0; i < n; i++) {{
         if (nameQ) {{
-            if (DATA.names[i].toUpperCase().indexOf(nameQ)    === -1 &&
-                DATA.objnames[i].toUpperCase().indexOf(nameQ) === -1) continue;
+            if (DATA.names[i].toUpperCase().indexOf(nameQ)     === -1 &&
+                DATA.objnames[i].toUpperCase().indexOf(nameQ)  === -1 &&
+                DATA.altnames[i].toUpperCase().indexOf(nameQ)  === -1) continue;
         }}
         if (showNone) {{ if (DATA.sample[i] !== 0) continue; }}
         else if (activeSampleBits !== 0 && (DATA.sample[i] & activeSampleBits) === 0) continue;
@@ -2171,6 +2179,7 @@ function applyFilters() {{
         var ra = DATA.ra[i], dec = DATA.dec[i];
         if (!inRange(DATA.d26[i],  d26Min,  d26Max))  continue;
         if (!inRange(DATA.diam[i], dMin,    dMax))     continue;
+        if (!inRange(DATA.mult[i], multMin, multMax))  continue;
         if (!inRange(DATA.z[i],    zMin,    zMax))     continue;
         if (!inRange(DATA.dist[i], distMin, distMax))  continue;
         if (useCone && angDistArcmin(ra, dec, cRa, cDec) > cRad) continue;
@@ -2370,6 +2379,7 @@ function goPage(n) {{
 
 function clearFilters() {{
     ['f-name','f-d26-min','f-d26-max','f-diam-min','f-diam-max',
+     'f-mult-min','f-mult-max',
      'f-z-min','f-z-max','f-dist-min','f-dist-max',
      'f-cone-ra','f-cone-dec','f-cone-rad'
     ].forEach(function(id) {{ document.getElementById(id).value = ''; }});
@@ -2428,8 +2438,10 @@ def generate_index(htmldir, region, sample, fullsample=None):
         except (TypeError, ValueError):
             return None
 
-    names, sgaids, objnames = [], [], []
-    d26s, zs, dists         = [], [], []
+    has_altnames = 'ALTNAMES' in sample.colnames
+
+    names, sgaids, objnames, altnames = [], [], [], []
+    d26s, zs, dists                   = [], [], []
     ras, decs, diams, mults = [], [], [], []
     samples, emodes, ebits  = [], [], []
     has_thumbs              = []
@@ -2448,6 +2460,7 @@ def generate_index(htmldir, region, sample, fullsample=None):
         names.append(str(group_name))
         sgaids.append(str(prim['SGAID']))
         objnames.append(str(prim['GALAXY']))
+        altnames.append(str(prim['ALTNAMES']).strip() if has_altnames else '')
         ras.append(round(float(prim['GROUP_RA']), 6))
         decs.append(round(float(prim['GROUP_DEC']), 6))
         diams.append(round(float(prim['GROUP_DIAMETER']), 4))
@@ -2481,6 +2494,7 @@ def generate_index(htmldir, region, sample, fullsample=None):
         'names':     names,
         'sgaids':    sgaids,
         'objnames':  objnames,
+        'altnames':  altnames,
         'd26':       d26s,
         'z':         zs,
         'dist':      dists,
