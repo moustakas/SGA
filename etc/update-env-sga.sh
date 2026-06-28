@@ -54,27 +54,27 @@ update_mpi4py() {
 
 update_sga() {
     echo "==> Updating SGA..."
-    $RUN pip install --upgrade --no-deps git+https://github.com/moustakas/SGA
+    $RUN pip install --upgrade --no-deps --no-cache-dir git+https://github.com/moustakas/SGA
 }
 
 update_legacypipe() {
     echo "==> Updating legacypipe..."
-    $RUN pip install --no-build-isolation --upgrade git+https://github.com/legacysurvey/legacypipe
+    $RUN pip install --no-build-isolation --upgrade --no-cache-dir git+https://github.com/legacysurvey/legacypipe
 }
 
 update_tractor() {
     echo "==> Updating tractor..."
-    $RUN pip install --no-build-isolation --upgrade git+https://github.com/dstndstn/tractor
+    $RUN pip install --no-build-isolation --upgrade --no-cache-dir git+https://github.com/dstndstn/tractor
 }
 
 update_pydl() {
     echo "==> Updating pydl..."
-    $RUN pip install --upgrade pydl
+    $RUN pip install --upgrade --no-cache-dir pydl
 }
 
 update_isoster() {
     echo "==> Updating isoster..."
-    $RUN pip install --upgrade git+https://github.com/MassiveSeaOtters/isoster
+    $RUN pip install --upgrade --no-cache-dir git+https://github.com/MassiveSeaOtters/isoster
 }
 
 update_imagine() {

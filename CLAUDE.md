@@ -19,7 +19,8 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `io.py` - FITS I/O, coordinate conversions
   - `logger.py` - Unified logging (distinct from DESI loggers)
 - `bin/` - Active executable scripts. Key scripts:
-  - `SGA2025-mpi` - Pre-release QA driver (MPI)
+  - `SGA2025-mpi` - MPI processing driver (coadds, ellipse, htmlplots, htmlindex)
+  - `generate-sga-slurm` - Generate NERSC SLURM batch scripts for any SGA processing stage (see `etc/README.sga-slurm`)
   - `SGA2025-ned-query` - Query NED by name and position; writes per-region CSV files
   - `SGA2025-ned-merge` - Merge byname/bypos NED CSVs into `ned-merged-{region}.fits`
   - `SGA2025-build-catalog` - Merge beta catalog + NED + DESI DR1 + LVD into final per-region FITS; derives `GALAXY` and `ALTNAMES` columns (see below)
@@ -38,7 +39,9 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
 - `science/SGA2026/` - SGA-2026/27 planning documents and future science analysis (see `completeness-plan.md`)
 - `science/SGA2025/` - Science analysis notebooks for the SGA-2025 paper
 - `science/SGA2020/` - SGA-2020 science figures and scripts
-- `etc/` - Conda environment specs and NERSC/laptop setup scripts (see `etc/README.md`)
+- `etc/` - Conda environment specs, NERSC/laptop setup scripts, and SLURM tooling (see `etc/README.md`)
+  - `sga-env.sh` - SLURM job environment template; copy to working directory and edit before running `generate-sga-slurm`
+  - `README.sga-slurm` - Step-by-step SLURM workflow (copy env → plan → generate → submit)
 - `docker/` - Docker configuration for multi-platform builds (production/Shifter use)
 - `pyproject.toml` - Package metadata and entry points (PEP 517/518)
 
@@ -66,10 +69,10 @@ legacypipe, pydl, and SGA — into a shared conda environment. See
 ```bash
 # NERSC
 module load conda
-bash etc/create-env.sh
+bash etc/create-env-sga.sh
 
 # Laptop (requires micromamba)
-bash etc/create-env-laptop.sh
+bash etc/create-env-laptop-sga.sh
 ```
 
 The shared NERSC environment lives at:
@@ -94,15 +97,25 @@ different things — don't confuse them.
 
 ## Key Commands
 
-### Running MPI QA (pre-release)
+### Generating and submitting SLURM jobs
 ```bash
-# Interactive session at NERSC
-salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
-source /global/homes/i/ioannis/code/SGA/archive/bin-SGA2025/SGA2025-shifter
-source /global/homes/i/ioannis/code/SGA/archive/bin-SGA2025/SGA2025-env
+# Set up a working directory (see etc/README.sga-slurm for full workflow)
+mkdir -p ~/runs/sga2025-htmlplots && cd ~/runs/sga2025-htmlplots
+cp /path/to/SGA/etc/sga-env.sh . && $EDITOR sga-env.sh   # set release-specific paths
 
-# QA for specific galaxies
-SGA2025-mpi --datadir=/path/to/output --mp=32 --debug --galaxylist="GALAXY_NAME"
+# Preview jobs before generating
+generate-sga-slurm --stage htmlplots --nodes 32 --mp 4 --plan
+generate-sga-slurm --stage coadds --nodes 16 --plan          # GPU by default
+
+# Generate .slurm files and submit
+generate-sga-slurm --stage htmlplots --nodes 32 --mp 4
+sbatch sga2025-htmlplots-dr11-south.slurm
+
+# Debug run for a specific index range or galaxy list
+generate-sga-slurm --stage htmlplots --nodes 1 --mp 4 \
+    --qos debug --time 00:15:00 --first 1024 --last 2048
+generate-sga-slurm --stage htmlplots --nodes 1 --mp 4 \
+    --qos debug --time 00:15:00 --galaxylist "NGC1068,NGC4258"
 ```
 
 ## Docker
@@ -136,7 +149,7 @@ shifter --image docker:legacysurvey/sga:0.8.1 bash
 ### Processing
 - MPI support via `mpi4py` for distributed processing
 - `multiprocessing.Pool` for CPU parallelization
-- Region-specific configurations (dr9-north, dr9-south, dr10-south, dr11-south)
+- Region-specific configurations (`dr11-north`, `dr11-south`)
 
 ### Bit Masking System
 Defined in `py/SGA/SGA.py`:
