@@ -1918,7 +1918,22 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
 
     hbtns       = _btn_row(sample_bits,       'hbtn-sample', 'toggleSample', _sample_descs)
     emode_hbtns = _btn_row(ellipsemode_bits,  'hbtn-emode',  'toggleEmode',  _emode_descs)
-    ebit_hbtns  = _btn_row(ellipsebit_bits,   'hbtn-ebit',   'toggleEbit',   _ebit_descs)
+    _ebit_items     = list(ellipsebit_bits.items())
+    _ebit_mid       = (len(_ebit_items) + 1) // 2
+    ebit_hbtns_row1 = _btn_row(dict(_ebit_items[:_ebit_mid]), 'hbtn-ebit', 'toggleEbit', _ebit_descs)
+    ebit_hbtns_row2 = _btn_row(dict(_ebit_items[_ebit_mid:]), 'hbtn-ebit', 'toggleEbit', _ebit_descs)
+    ebit_section = (
+        '    <div class="hrow">\n'
+        '      <span class="hotlabel">ELLIPSEBIT</span>\n      '
+        + ebit_hbtns_row1 + '\n'
+        '    </div>\n'
+        '    <div class="hrow">\n'
+        '      <span class="hotlabel" style="visibility:hidden">ELLIPSEBIT</span>\n      '
+        + ebit_hbtns_row2 + '\n'
+        '      <button class="hbtn" id="hbtn-ebit-none" onclick="toggleNoneEbit()" style="margin-left:6px;">None</button>\n'
+        '      <button class="hbtn" onclick="clearEbit()" style="margin-left:4px;">All</button>\n'
+        '    </div>'
+    )
     sample_bits_js      = _bits_js(sample_bits)
     ellipsemode_bits_js = _bits_js(ellipsemode_bits)
     ellipsebit_bits_js  = _bits_js(ellipsebit_bits)
@@ -2067,12 +2082,7 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
       <button class="hbtn" id="hbtn-emode-none" onclick="toggleNoneEmode()" style="margin-left:6px;">None</button>
       <button class="hbtn" onclick="clearEmode()" style="margin-left:4px;">All</button>
     </div>
-    <div class="hrow">
-      <span class="hotlabel">ELLIPSEBIT</span>
-      {ebit_hbtns}
-      <button class="hbtn" id="hbtn-ebit-none" onclick="toggleNoneEbit()" style="margin-left:6px;">None</button>
-      <button class="hbtn" onclick="clearEbit()" style="margin-left:4px;">All</button>
-    </div>
+{ebit_section}
   </div>
 
   <div class="summary" id="summary">Loading data&hellip;</div>
@@ -2384,7 +2394,7 @@ fetch('groups-{region}.json')
 </body>
 </html>
 """.format(region=region, count=count,
-           hbtns=hbtns, emode_hbtns=emode_hbtns, ebit_hbtns=ebit_hbtns,
+           hbtns=hbtns, emode_hbtns=emode_hbtns, ebit_section=ebit_section,
            sample_bits_js=sample_bits_js,
            ellipsemode_bits_js=ellipsemode_bits_js,
            ellipsebit_bits_js=ellipsebit_bits_js)
