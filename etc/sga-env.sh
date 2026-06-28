@@ -24,6 +24,7 @@ export GALEX_DIR=$COSMO/data/galex/images
 
 # ---- SGA 2025 release paths — edit for each new release ----
 export SGA_DIR=$DESI/SGA/2025
+export SGA_PUBLIC_DIR=$COSMO/www/sga/2025
 export SGA_DATA_DIR=${PSCRATCH}/SGA2025-data
 export SGA_HTML_DIR=${PSCRATCH}/SGA2025-html
 # Set to the current versioned parent refcat (kd-tree format):
