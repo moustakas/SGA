@@ -76,6 +76,7 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False,
     frozen working version. The parent and final ellipse catalogs share
     the release version. The final merged catalog (SGA2025-build-catalog
     output) has its own independent version.
+
     """
     if nocuts or vicuts or archive:
         return 'v0.10'
@@ -90,6 +91,14 @@ def sga_dir():
         log.critical(msg)
         raise EnvironmentError(msg)
     return os.path.abspath(os.getenv('SGA_DIR'))
+
+
+def sga_public_dir():
+    if 'SGA_PUBLIC_DIR' not in os.environ:
+        msg = 'Required ${SGA_PUBLIC_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
+    return os.path.abspath(os.getenv('SGA_PUBLIC_DIR'))
 
 
 def sga_data_dir():
@@ -543,7 +552,7 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
     else:
         if version is None:
             version = SGA_version(catalog=True)
-        samplefile = os.path.join(sga_dir(), 'public', f'SGA2025-{region}-{version}.fits')
+        samplefile = os.path.join(sga_public_dir(), f'SGA2025-{region}-{version}.fits')
         ext = 'SGA2025'
 
     # Row selection always runs on ELLIPSE (which has the group/region/sample columns).
