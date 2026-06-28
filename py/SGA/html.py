@@ -1322,6 +1322,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
 
     raslice = group_name[:3]
     sky_url = get_sky_viewer_url(group_ra, group_dec, group_diam, region)
+    data_url = "https://portal.nersc.gov/project/cosmo/data/sga/2025/data/{}/{}/{}".format(region, raslice, group_name)
     group_files = [
         "SGA2025_{}-montage.png".format(group_name),
         "SGA2025_{}-ellipsemask.png".format(group_name),
@@ -1514,6 +1515,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <div class='toc-title'>Contents</div>",
         *_toc,
         "    </div>",
+    ])
+
+    html_lines.extend([
+        "    <p>",
+        "        <a href='{}' target='_blank'>Sky Viewer</a> &nbsp;|&nbsp;".format(sky_url),
+        "        <a href='{}' target='_blank'>Group Files</a>".format(data_url),
+        "    </p>",
     ])
 
     # --- Group summary -------------------------------------------------------
