@@ -18,7 +18,11 @@ The Siena Galaxy Atlas (SGA) is an astronomical survey project that delivers mul
   - `groups.py` - Galaxy group finding via spherical clustering
   - `io.py` - FITS I/O, coordinate conversions
   - `logger.py` - Unified logging (distinct from DESI loggers)
-- `bin/` - Active executable scripts; currently only `SGA2025-mpi` (pre-release QA). Future SGA releases add scripts here directly.
+- `bin/` - Active executable scripts. Key scripts:
+  - `SGA2025-mpi` - Pre-release QA driver (MPI)
+  - `SGA2025-ned-query` - Query NED by name and position; writes per-region CSV files
+  - `SGA2025-ned-merge` - Merge byname/bypos NED CSVs into `ned-merged-{region}.fits`
+  - `SGA2025-build-catalog` - Merge beta catalog + NED + DESI DR1 + LVD into final per-region FITS; derives `GALAXY` and `ALTNAMES` columns (see below)
 - `archive/bin-SGA2025/` - Archived SGA-2025 processing scripts (processing complete)
 - `archive/bin-SGA2020/` - Archived SGA-2020 scripts (paper and data release complete)
 - `py/SGA/data/SGA2025/` - Reference CSVs used during SGA-2025 processing (overlays, VI lists, etc.)
@@ -120,6 +124,7 @@ shifter --image docker:legacysurvey/sga:0.8.1 bash
 - `SGA_DIR` - SGA working directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025`)
 - `SGA_DATA_DIR` - SGA data directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/data/sga/2025/data`)
 - `SGA_HTML_DIR` - SGA HTML output directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/html`)
+- `SGA_PUBLIC_DIR` - Location of the final public catalogs (`/dvs_ro/cfs/cdirs/cosmo/www/sga/2025`); accessed via `SGA.sga_public_dir()`
 
 ## Architecture Patterns
 
@@ -145,6 +150,43 @@ Use the unified logger at `SGA.logger.log` to prevent conflicts with DESI and le
 
 ### Sample Versioning
 Catalog versions (v0.10, v0.50, v0.60, etc.) are tracked via `SGA_version()` function in `py/SGA/SGA.py`.
+
+### GALAXY and ALTNAMES derivation (`bin/SGA2025-build-catalog`)
+
+`GALAXY` and `ALTNAMES` are derived from NED's pipe-separated `CROSSIDS` field in
+this order (all steps applied per object):
+
+1. **HOST fix** — if `CROSSIDS[0]` contains `"HOST"` (e.g. `"SN 2003H HOST"`),
+   scan forward for the first non-HOST entry, promote it to position 0, and
+   append the original HOST name at the end (deduplicated, case-insensitive).
+2. **Famous-name promotion** — `_find_preferred_idx` / `_PREFERRED_PREFIXES`:
+   the highest-priority well-known catalog name anywhere in `CROSSIDS` is
+   promoted to position 0, regardless of NED's ordering. Priority order:
+   Messier > NGC > IC > UGCA/UGC > ESO > ESO-LV > MCG > ARP > MRK > DDO >
+   KDG > VCC > CGCG > PGC > PGC1 > AGC > FCC > HCG > HIPASS. Names absent
+   from this list (2MASX, SDSS, WISE, ICRF, etc.) remain as GALAXY only when
+   nothing higher-priority exists.
+3. **Dedup** — remove any entry from `CROSSIDS[1:]` that duplicates `CROSSIDS[0]`
+   (case-insensitive) before building ALTNAMES.
+4. **Special-character fix** — if `CROSSIDS[0]` fails `_SAFE_GALAXY_RE`
+   (`^[a-zA-Z0-9 +\-._:]+$`), scan ALTNAMES candidates for a clean alternative
+   and promote it (original moves into ALTNAMES). Common trigger: NED names
+   starting with `[`.
+5. **Prefix normalization** — uppercase known catalog-name prefixes via
+   `_normalize_galaxy_prefix` / `_PREFIX_NORM_RE` (e.g. `Mrk` → `MRK`,
+   `Arp` → `ARP`, `UGCa` → `UGCA`). Covered prefixes: 2MASX, UGCA, UGC, NGC,
+   IC, PGC, ESO, MCG, ARP, MRK, DDO, KDG, VCC, FCC, CGCG, HIPASS, SDSS, SBS,
+   KUG, UZC, MGC, HCG. `Messier` is intentionally excluded (kept mixed-case).
+6. **OBJNAME fallback** — if NED never matched, copy `OBJNAME` → `GALAXY`
+   (logged as a warning).
+7. **Hand-curated overrides** — `GALAXY_OVERRIDES` dict at module level in
+   `bin/SGA2025-build-catalog`; add entries there for one-off fixes that the
+   rules above cannot handle (e.g. `'MESSIER 109': 'Messier 109'`).
+8. **Assert** — `GALAXY` is never empty after all fixes.
+
+`ALTNAMES` (str200) = first three remaining CROSSIDS (after the promoted GALAXY is removed),
+pipe-separated, with prefix normalization and case-insensitive deduplication applied;
+empty string when none remain.
 
 ## Testing
 

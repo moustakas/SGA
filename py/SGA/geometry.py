@@ -842,8 +842,9 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
 
     # clean up missing (or crazy) values of BA and PA
     pa[pa < 0.] = 0.
-    ba[ba < 0.] = 1.
     ba[ba < 0.1] = 0.1 # note!
+    ba[ba > 1.] = 1.
+    pa = pa % 180
 
     if get_mag:
         mag = np.zeros(nobj) - 99.
@@ -855,7 +856,7 @@ def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
                 mag[I] = cat[f'MAG_{magref}'][I]
                 band[I] = cat[f'BAND_{magref}'][I]
 
-        I = (mag == -99.)
+        I = (mag < 0.) | (mag > 25.)
         if np.any(I):
             mag[I] = 18.
             #band[I] = ''

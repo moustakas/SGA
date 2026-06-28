@@ -44,8 +44,12 @@ from SGA.logger import (log, LOGFMT, hook_legacypipe_and_root,
 def get_logfile(galaxy, galaxydir, stagesuffix, htmlgalaxydir):
     from SGA.io import backup_filename
     if stagesuffix.upper() == 'HTML':
+        if not os.path.isdir(htmlgalaxydir):
+            os.makedirs(htmlgalaxydir, exist_ok=True)
         logfile = os.path.join(htmlgalaxydir, f'{galaxy}-{stagesuffix}.log')
     else:
+        if not os.path.isdir(galaxydir):
+            os.makedirs(galaxydir, exist_ok=True)
         logfile = os.path.join(galaxydir, f'{galaxy}-{stagesuffix}.log')
     backup_filename(logfile)
     return logfile
@@ -230,6 +234,10 @@ def main():
     release = RELEASE[args.region]
     bands = BANDS[args.region]
 
+    # HTML stuff now implies --final-sample
+    if args.htmlindex or args.htmlplots:
+        args.public_release = True
+
     # Read and broadcast the sample.
     bricks = None
     if rank == 0:
@@ -251,12 +259,11 @@ def main():
             log.critical(msg)
             raise ValueError(msg)
         else:
-            if kdrefcatfile != os.getenv("LARGEGALAXIES_CAT"):
-                if kdrefcatfile.replace('/global/', '/dvs_ro/') != os.getenv("LARGEGALAXIES_CAT"):
-                    msg = f'Mismatch between $LARGEGALAXIES_CAT and {kdrefcatfile}!'
-                    log.warning(msg)
-                    #log.critical(msg)
-                    #raise ValueError(msg)
+            pass
+            #if kdrefcatfile != os.getenv("LARGEGALAXIES_CAT"):
+            #    if kdrefcatfile.replace('/global/', '/dvs_ro/') != os.getenv("LARGEGALAXIES_CAT"):
+            #        msg = f'Mismatch between $LARGEGALAXIES_CAT and {kdrefcatfile}!'
+            #        log.warning(msg)
 
 
         if args.build_refcat:
@@ -264,13 +271,21 @@ def main():
         else:
             region = args.region
 
-        if args.final_sample:
+        fulltractor = None
+        if args.public_release:
             sample, fullsample = read_sga_sample(
                 first=args.first, last=args.last, mindiam=args.mindiam,
                 maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
                 version=args.version, galaxylist=args.galaxylist,
                 no_groups=no_groups, lvd=args.lvd, region=region,
                 verbose=args.verbose)
+            if args.htmlindex:
+                _, fulltractor = read_sga_sample(tractor=True,
+                    first=args.first, last=args.last, mindiam=args.mindiam,
+                    maxdiam=args.maxdiam, minmult=args.minmult, maxmult=args.maxmult,
+                    version=args.version, galaxylist=args.galaxylist,
+                    no_groups=no_groups, lvd=args.lvd, region=region,
+                    verbose=args.verbose)
         else:
             sample, fullsample = read_sample(
                 first=args.first, last=args.last, mindiam=args.mindiam,
@@ -411,8 +426,9 @@ def main():
             from SGA.html import make_html
             ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
             if ntodo > 0:
-                make_html(sample[groups[0]], fullsample, mp=args.mp, clobber=args.clobber,
-                          region=args.region, htmldir=htmldir)#, htmlhome=args.htmlhome)
+                make_html(sample[groups[0]], fullsample, fulltractor=fulltractor,
+                          mp=args.mp, clobber=args.clobber, region=args.region,
+                          htmldir=htmldir)
             else:
                 log.warning('All done!')
             return
@@ -785,7 +801,8 @@ def main():
                                  skip_tractor=skip_tractor,
                                  bands=bands, mp=args.mp, pixscale=args.pixscale,
                                  unwise=args.unwise, galex=args.galex,
-                                 verbose=args.verbose, clobber=args.clobber)
+                                 verbose=args.verbose, clobber=args.clobber,
+                                 fullsample=fullsample)
                 done(galaxy, htmlgalaxydir, err, suffix, fh=fh, debug=args.debug)
 
         if len(groups[rank]) > 0:

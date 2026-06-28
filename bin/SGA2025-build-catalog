@@ -12,6 +12,10 @@ For each galaxy a single "best" DESI spectrum is selected:
      center (TARGET_RA/DEC) are considered, excluding background/foreground
      objects whose fiber happens to fall inside the SGA ellipse.
   1. Deduplicate with ZCAT_PRIMARY=True (DESI's highest-S/N coadd per TARGETID).
+  1b. Drop physically implausible spectra regardless of ZWARN:
+        SPECTYPE='STAR'            — always wrong for galaxies
+        SPECTYPE='GALAXY', Z > 1.5 — redshift too high; always a pipeline error
+        SPECTYPE='QSO',    Z > 1.0 — redshift too high for this sample
   2. Prefer SPECTYPE='GALAXY' AND ZWARN=0.
   3. Fall back to ZWARN=0 with any SPECTYPE.
   4. Among survivors, pick the highest DELTACHI2.
@@ -20,7 +24,7 @@ For each galaxy a single "best" DESI spectrum is selected:
      ties before DELTACHI2, but is omitted because secondary-program
      observations are equally valid redshift sources.
 
-  If no ZWARN=0 spectrum survives, Z_IVAR_DESI=0 (no adopted DESI redshift).
+  If no spectrum survives all filters, Z_IVAR_DESI=0 (no adopted DESI redshift).
 
 The adopted redshift (Z) priority is LVD > DESI > NED:
   - LVD  when Z_LVD  != 0.  (vlos_systemic / C_LIGHT; Z_IVAR_LVD may be 0.)
@@ -52,7 +56,7 @@ mismatch is corrected before writing (known case: REGION int64 -> int16).
 
 Output
 ------
-  {outdir}/SGA2025-{region}.fits   (EXTNAME='SGA2025')
+  {outdir}/SGA2025-{region}-{version}.fits   (EXTNAME='SGA2025')
 
 Examples
 --------
@@ -65,13 +69,15 @@ Examples
                          --neddir /path/nedquery \\
                          --redshiftdir /path/redshifts \\
                          --outdir /path/output \\
-                         --lvd-catalog /path/lvd_comb_all_v1.1.0.ecsv
+                         --lvd-catalog /path/lvd_comb_all_v1.1.0.ecsv \\
+                         --parent-nocuts /path/SGA2025-parent-nocuts-v0.10.fits
 
 
 SGA2025-build-catalog --neddir=/Users/ioannis/research/projects/SGA/2025/sample/nedquery \
   --redshiftdir=/Users/ioannis/research/projects/SGA/2025/sample/redshifts \
   --outdir=/Users/ioannis/research/projects/SGA/2025/public \
-  --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv
+  --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv \
+  --parent-nocuts=/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-nocuts-v0.10.fits
 
 INFO:SGA2025-build-catalog:444:merge_region: === dr11-south ===
 INFO:SGA2025-build-catalog:447:merge_region:   Loading SGA beta catalog
@@ -105,7 +111,7 @@ INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/pro
   Z_LVD with IVAR (vlos_sigma) :      316  (  0.1%)
 
   Z_FLAG discrepancy           :    7,879  (  2.0%)
-  N_DESI>0, no good central z  :   15,632  (  4.0%)
+  NSPEC_DESI>0, no good central z:   15,632  (  4.0%)
 
   DIST_NED present             :   37,533  (  9.5%)
   DIST_NED with IVAR           :    8,615  (  2.2%)
@@ -115,7 +121,7 @@ INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/pro
     DIST_REF = LVD             :      480
     DIST_REF = NED             :   37,293
 
-  N_DESI distribution:
+  NSPEC_DESI distribution:
        = 0 :  314,965  ( 79.7%)
        = 1 :   56,002  ( 14.2%)
        2-9 :   24,125  (  6.1%)
@@ -154,7 +160,7 @@ INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/pro
   Z_LVD with IVAR (vlos_sigma) :      118  (  0.1%)
 
   Z_FLAG discrepancy           :    3,840  (  4.2%)
-  N_DESI>0, no good central z  :    6,391  (  7.1%)
+  NSPEC_DESI>0, no good central z:    6,391  (  7.1%)
 
   DIST_NED present             :   13,422  ( 14.8%)
   DIST_NED with IVAR           :    1,741  (  1.9%)
@@ -164,7 +170,7 @@ INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/pro
     DIST_REF = LVD             :      191
     DIST_REF = NED             :   13,289
 
-  N_DESI distribution:
+  NSPEC_DESI distribution:
        = 0 :   55,086  ( 60.9%)
        = 1 :   26,710  ( 29.5%)
        2-9 :    8,582  (  9.5%)
@@ -177,6 +183,8 @@ import os
 import re
 import argparse
 from collections import defaultdict
+from importlib import resources
+from pathlib import Path
 
 import numpy as np
 import fitsio
@@ -184,7 +192,9 @@ from astropy.table import Table, Column
 import astropy.units as u
 
 from SGA.util import C_LIGHT
-from SGA.SGA import read_sga_sample, SGA_datamodel, SAMPLE as SAMPLE_BITS
+from SGA.SGA import read_sga_sample, SGA_datamodel, SGA_version, SAMPLE as SAMPLE_BITS
+from SGA.geometry import choose_geometry
+from SGA.ellipse import MAXSHIFT_ARCSEC
 from SGA.io import table_to_fitsio
 from SGA.logger import log
 
@@ -197,6 +207,67 @@ Z_FLAG_DISCREPANCY = 0x01             # |Delta cz (DESI, NED)| > vdiff_threshold
 # have an IVAR companion column (IVAR=0 signals no measurement).
 NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
 
+# Hand-curated corrections to GALAXY names returned by NED.
+# Keys are the exact NED name; values are the preferred replacement.
+# Note: prefix-case fixes (e.g. UGCa -> UGCA) are handled by _normalize_galaxy_prefix;
+# add overrides here only for cases that regex normalization cannot cover.
+GALAXY_OVERRIDES = {
+    'MESSIER 109': 'Messier 109',
+}
+
+# Characters allowed in a UNIX-friendly galaxy name (letters, digits, space,
+# and the handful of punctuation that appear in standard catalog names).
+_SAFE_GALAXY_RE = re.compile(r'^[a-zA-Z0-9 +\-._:]+$')
+
+# Known catalog-name prefixes that should always be fully uppercased.
+# Longer alternatives (e.g. UGCA) must precede shorter ones (UGC) so the
+# alternation matches the longest prefix first.
+_PREFIX_NORM_RE = re.compile(
+    r'^(2MASX|UGCA|UGC|NGC|IC|PGC|ESO|MCG|ARP|MRK|DDO|KDG|'
+    r'VCC|FCC|CGCG|HIPASS|SDSS|SBS|KUG|UZC|MGC|HCG)(?=[\s\d\-])',
+    re.IGNORECASE
+)
+
+def _normalize_galaxy_prefix(name):
+    """Uppercase known catalog-name prefixes (e.g. 'Mrk 231' -> 'MRK 231')."""
+    return _PREFIX_NORM_RE.sub(lambda m: m.group(0).upper(), name, count=1)
+
+# Priority-ordered catalog prefixes for "famous name" promotion. When CROSSIDS
+# contains multiple names, the highest-priority match is promoted to GALAXY
+# regardless of NED's own choice. Prefixes absent from this list (2MASX, SDSS,
+# WISE, ICRF, etc.) are never actively promoted but remain as GALAXY when
+# nothing better is available. Note: ^IC\b does not match ICRF (no word
+# boundary between C and R).
+_PREFERRED_PREFIXES = [
+    re.compile(r'^Messier\b', re.IGNORECASE),
+    re.compile(r'^NGC\b',     re.IGNORECASE),
+    re.compile(r'^IC\b',      re.IGNORECASE),
+    re.compile(r'^UGCA?\b',   re.IGNORECASE),  # matches both UGCA and UGC
+    re.compile(r'^ESO\b',     re.IGNORECASE),
+    re.compile(r'^ESO-LV\b',  re.IGNORECASE),
+    re.compile(r'^MCG\b',     re.IGNORECASE),
+    re.compile(r'^ARP\b',     re.IGNORECASE),
+    re.compile(r'^MRK\b',     re.IGNORECASE),
+    re.compile(r'^DDO\b',     re.IGNORECASE),
+    re.compile(r'^KDG\b',     re.IGNORECASE),
+    re.compile(r'^VCC\b',     re.IGNORECASE),
+    re.compile(r'^CGCG\b',    re.IGNORECASE),
+    re.compile(r'^PGC\b',     re.IGNORECASE),
+    re.compile(r'^PGC1\b',    re.IGNORECASE),
+    re.compile(r'^AGC\b',     re.IGNORECASE),
+    re.compile(r'^FCC\b',     re.IGNORECASE),
+    re.compile(r'^HCG\b',     re.IGNORECASE),
+    re.compile(r'^HIPASS\b',  re.IGNORECASE),
+]
+
+def _find_preferred_idx(parts):
+    """Return index of highest-priority catalog name in parts, or -1 if none."""
+    for pat in _PREFERRED_PREFIXES:
+        for j, p in enumerate(parts):
+            if pat.match(p):
+                return j
+    return -1
+
 # ---------------------------------------------------------------------------
 # Columns to drop from the output (from the beta catalog or NED_CARRY).
 # CROSSIDS is kept in NED_CARRY for GALAXY/ALTNAMES derivation but not output.
@@ -204,7 +275,7 @@ NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
 # ---------------------------------------------------------------------------
 DROP_COLS = frozenset([
     'CROSSIDS',   # internal; user-facing splits are GALAXY and ALTNAMES
-    'D26_REF',
+    #'D26_REF',
     'BX_INIT',
     'BY_INIT',
     'RA_INIT',
@@ -215,8 +286,8 @@ DROP_COLS = frozenset([
     'BA_INIT',
     'PA_INIT',
     'MAG_INIT',
-    'OPTFLUX',
-    'SMA_MASK',
+    #'OPTFLUX',
+    #'SMA_MASK',
     'BX',
     'BY',
     'FITMODE',
@@ -232,18 +303,17 @@ COL_ORDER = [
     'SGAID', 'SGANAME', 'GALAXY', 'ALTNAMES',
     'OBJNAME',
     'PGC', 'RA', 'DEC',
-    'RA_TRACTOR', 'DEC_TRACTOR',
     'MORPH',
     'SGAGROUP', 'REGION', 'SAMPLE', 'ELLIPSEBIT', 'ELLIPSEMODE', 'BANDS',
     # --- Size and geometry (primary SGA product) ---
-    'D26', 'D26_ERR', 'BA', 'PA',
+    'D26', 'D26_ERR', 'D26_REF', 'BA', 'PA',
     'SMA_MOMENT', 'BA_MOMENT', 'PA_MOMENT',
     # --- Adopted redshifts and distances ---
     'Z', 'Z_IVAR', 'Z_REF', 'Z_FLAG',
     'DIST', 'DIST_IVAR', 'DIST_REF',
     # --- DESI spectroscopy ---
     'TARGETID_DESI', 'SURVEY_DESI', 'PROGRAM_DESI',
-    'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI',
+    'Z_DESI', 'Z_IVAR_DESI', 'ZWARN_DESI', 'DELTACHI2_DESI', 'SPECTYPE_DESI', 'NSPEC_DESI',
     # --- NED redshift and distance ---
     'Z_NED', 'Z_IVAR_NED', 'Z_REF_NED', 'DIST_NED', 'DIST_IVAR_NED',
     'NED_FLAG',
@@ -264,6 +334,17 @@ COL_ORDER = [
     'MW_TRANSMISSION_FUV', 'MW_TRANSMISSION_NUV',
     'PSFSIZE_G', 'PSFSIZE_R', 'PSFSIZE_I', 'PSFSIZE_Z',
     'PSFDEPTH_G', 'PSFDEPTH_R', 'PSFDEPTH_I', 'PSFDEPTH_Z',
+    # --- Processing / initialization metadata ---
+    #'BX', 'BY', 'BX_INIT', 'BY_INIT', 'SMA_INIT',
+    'RA_TRACTOR', 'DEC_TRACTOR',
+    'RA_INIT', 'DEC_INIT',
+    'DIAM_INIT',
+    'BA_INIT', 'PA_INIT',
+    'MAG_INIT',
+    'OPTFLUX',
+    'SMA_MASK',
+    'INIT_REF',
+    #'FITMODE',
     # --- Morphology (diagnostic) ---
     'GINI_G', 'GINI_R', 'GINI_I', 'GINI_Z',
     'GINI_W1', 'GINI_W2', 'GINI_W3', 'GINI_W4',
@@ -365,14 +446,6 @@ COL_ORDER = [
     'COG_NDOF_G', 'COG_NDOF_R', 'COG_NDOF_I', 'COG_NDOF_Z',
     'COG_NDOF_W1', 'COG_NDOF_W2', 'COG_NDOF_W3', 'COG_NDOF_W4',
     'COG_NDOF_FUV', 'COG_NDOF_NUV',
-    # --- Processing / initialization metadata ---
-    #'BX', 'BY', 'BX_INIT', 'BY_INIT',
-    #'RA_INIT', 'DEC_INIT',
-    #'SMA_INIT', 'DIAM_INIT', 'DIAM_INIT_REF',
-    #'BA_INIT', 'PA_INIT', 'MAG_INIT',
-    #'OPTFLUX',
-    #'SMA_MASK',
-    #'FITMODE',
 ]
 
 # ---------------------------------------------------------------------------
@@ -406,6 +479,7 @@ DESI_COLS = [
     ('ZWARN_DESI',     np.int64,   None),
     ('DELTACHI2_DESI', np.float64, None),
     ('SPECTYPE_DESI',  'U6',       None),
+    ('NSPEC_DESI',     np.int32,   None),
 ]
 
 # Adopted redshift columns: (name, numpy dtype, astropy unit)
@@ -429,6 +503,17 @@ DIST_COLS = [
 LVD_Z_COLS = [
     ('Z_LVD',      np.float64, None),
     ('Z_IVAR_LVD', np.float64, None),
+]
+
+# Initial geometry columns restored from the parent/nocuts catalog (v0.10).
+INIT_COLS = [
+    ('RA_INIT',       np.float64, u.degree),
+    ('DEC_INIT',      np.float64, u.degree),
+    ('DIAM_INIT',     np.float32, u.arcmin),
+    ('BA_INIT',       np.float32, None),
+    ('PA_INIT',       np.float32, u.degree),
+    ('MAG_INIT',      np.float32, u.mag),
+    ('INIT_REF', 'U14',      None),
 ]
 
 
@@ -517,8 +602,20 @@ def _select_desi(rows, sga_ra, sga_dec, max_sep_arcsec):
     if len(primary) == 0:
         return None
 
+    # Step 1b: drop physically implausible spectra regardless of ZWARN
     spectypes = np.array([_strval(s) for s in primary['SPECTYPE']])
-    good      = primary['ZWARN'] == 0
+    zvals     = primary['Z'].astype(float)
+    valid     = (
+        (spectypes != 'STAR') &
+        ~((spectypes == 'GALAXY') & (zvals > 1.5)) &
+        ~((spectypes == 'QSO')    & (zvals > 1.0))
+    )
+    primary   = primary[valid]
+    spectypes = spectypes[valid]
+    if len(primary) == 0:
+        return None
+
+    good = primary['ZWARN'] == 0
 
     # Step 2: prefer GALAXY + ZWARN==0; fall back to any ZWARN==0
     pool = primary[(spectypes == 'GALAXY') & good]
@@ -545,13 +642,13 @@ def _reorder_cols(tbl):
 # Per-region merge
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
-                 desi_max_sep, lvd_catalog=None):
+                 desi_max_sep, lvd_catalog=None, parent_nocuts=None):
     log.info(f'=== {region} ===')
 
     # --- SGA beta catalog -------------------------------------------------
     log.info('  Loading SGA beta catalog')
-    _, beta = read_sga_sample(region=region)
-    _, tractor = read_sga_sample(region=region, tractor=True)
+    _, beta = read_sga_sample(region=region, beta=True)
+    _, tractor = read_sga_sample(region=region, beta=True, tractor=True)
     bands, all_bands = _detect_bands(beta)
     log.info(f'  Detected bands={bands}  all_bands={all_bands}')
     dm    = _build_dm_ref(bands, all_bands)
@@ -561,6 +658,88 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             log.info(f'  dtype fix: {col}  {old} -> {new}')
     n = len(beta)
     log.info(f'  {n:,d} galaxies')
+
+    # --- Parent/nocuts catalog (initial geometry) --------------------------------
+    init_arrs = None
+    if parent_nocuts:
+        log.info(f'  Loading parent/nocuts catalog {parent_nocuts}')
+        vv = Table(fitsio.read(parent_nocuts))
+        parent_idx = {int(r['ROW_PARENT']): i for i, r in enumerate(vv)}
+        par_rows = np.array([parent_idx.get(int(sid), -1) for sid in beta['SGAID']])
+        has_match = par_rows >= 0
+        log.info(f'  {int(np.sum(has_match)):,d}/{n:,d} beta galaxies matched to parent/nocuts catalog')
+        mm = vv[par_rows[has_match]]
+        diam_arcsec, ba_init, pa_init, ref_init, mag_init, _ = \
+            choose_geometry(mm, mindiam=30., get_mag=True)
+        init_arrs = {
+            'RA_INIT':       np.full(n, -1., np.float64),
+            'DEC_INIT':      np.full(n, -1., np.float64),
+            'DIAM_INIT':     np.full(n, -1., np.float32),
+            'BA_INIT':       np.full(n, -1., np.float32),
+            'PA_INIT':       np.full(n, -1., np.float32),
+            'MAG_INIT':      np.full(n, -1., np.float32),
+            'INIT_REF': np.full(n, '', dtype='U14'),
+        }
+        init_arrs['RA_INIT'][has_match]       = mm['RA']
+        init_arrs['DEC_INIT'][has_match]      = mm['DEC']
+        init_arrs['DIAM_INIT'][has_match]     = (diam_arcsec / 60.).astype(np.float32)
+        init_arrs['BA_INIT'][has_match]       = ba_init.astype(np.float32)
+        init_arrs['PA_INIT'][has_match]       = pa_init.astype(np.float32)
+        init_arrs['MAG_INIT'][has_match]      = mag_init.astype(np.float32)
+        init_arrs['INIT_REF'][has_match] = ref_init
+
+        # Fallback: custom catalog (VI-inspected sources added to the parent)
+        customfile = resources.files('SGA').joinpath(
+            'data/SGA2025/SGA2025-parent-custom.csv')
+        cust = Table.read(str(customfile), format='csv', comment='#')
+        custom_lookup = {
+            str(r['OBJNAME']).strip(): (
+                float(r['RA']), float(r['DEC']),
+                float(r['DIAM_LIT']), float(r['BA_LIT']), float(r['PA_LIT']))
+            for r in cust
+        }
+
+        # Fallback: versioned adds.csv files; alphabetical sort = version order,
+        # so first-seen entry is from the earliest version.
+        overlays_dir = Path(str(
+            resources.files('SGA').joinpath('data/SGA2025/overlays')))
+        adds_lookup = {}
+        for fpath in sorted(overlays_dir.glob('*/adds.csv')):
+            for r in Table.read(str(fpath), format='csv'):
+                name = str(r['OBJNAME']).strip()
+                if name not in adds_lookup:
+                    adds_lookup[name] = (
+                        float(r['RA']), float(r['DEC']),
+                        float(r['DIAM']), float(r['BA']), float(r['PA']))
+
+        n_from_custom = 0
+        n_from_adds   = 0
+        for i in np.where(init_arrs['RA_INIT'] < 0.)[0]:
+            name = str(beta['OBJNAME'][i]).strip()
+            if name in custom_lookup:
+                ra, dec, diam, ba, pa = custom_lookup[name]
+                src = 'custom'
+            elif name in adds_lookup:
+                ra, dec, diam, ba, pa = adds_lookup[name]
+                src = 'adds'
+            else:
+                continue
+            init_arrs['RA_INIT'][i]       = ra
+            init_arrs['DEC_INIT'][i]      = dec
+            init_arrs['DIAM_INIT'][i]     = np.float32(diam)
+            init_arrs['BA_INIT'][i]       = np.float32(ba)
+            init_arrs['PA_INIT'][i]       = np.float32(pa)
+            init_arrs['INIT_REF'][i] = 'VI'
+            if src == 'custom':
+                n_from_custom += 1
+            else:
+                n_from_adds += 1
+
+        log.info(f'  {n_from_custom:,d} objects filled from custom catalog; '
+                 f'{n_from_adds:,d} from adds.csv')
+        n_still_missing = int(np.sum(init_arrs['RA_INIT'] < 0.))
+        if n_still_missing > 0:
+            log.warning(f'  {n_still_missing:,d} objects still missing INIT geometry')
 
     # --- NED merged catalog -----------------------------------------------
     ned_path     = os.path.join(neddir, f'ned-merged-{region}.fits')
@@ -611,6 +790,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         'ZWARN_DESI':     np.full(n, -1,            np.int64),
         'DELTACHI2_DESI': np.full(n, FLOAT_SENTINEL, np.float64),
         'SPECTYPE_DESI':  np.full(n, '',            dtype='U6'),
+        'NSPEC_DESI':     ndesi_arr,
     }
 
     # NED: columns with IVAR companions use 0. sentinel; others use FLOAT_SENTINEL
@@ -800,13 +980,62 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     # --- GALAXY and ALTNAMES from CROSSIDS --------------------------------
     crossids_col = ned_arrs.get('CROSSIDS')
     galaxy_arr   = np.full(n, '', dtype='U35')
-    altnames_arr = np.full(n, '', dtype='U140')
+    altnames_arr = np.full(n, '', dtype='U200')
     if crossids_col is not None:
         for i, crossids in enumerate(crossids_col):
             parts = [p.strip() for p in crossids.split('|') if p.strip()]
-            if parts:
-                galaxy_arr[i]   = parts[0]
-                altnames_arr[i] = '|'.join(parts[1:3])
+            if not parts:
+                continue
+            primary = parts[0]
+            if 'HOST' in primary.upper() and len(parts) > 1:
+                promoted_idx = next(
+                    (j for j in range(1, len(parts)) if 'HOST' not in parts[j].upper()),
+                    None
+                )
+                if promoted_idx is not None:
+                    promoted  = parts[promoted_idx]
+                    remaining = parts[1:promoted_idx] + parts[promoted_idx + 1:]
+                    if primary.upper() not in {r.upper() for r in remaining}:
+                        remaining.append(primary)
+                    parts = [promoted] + remaining
+            # Promote highest-priority "famous" catalog name if not already first
+            pref_idx = _find_preferred_idx(parts)
+            if pref_idx > 0:
+                parts = [parts[pref_idx]] + parts[:pref_idx] + parts[pref_idx + 1:]
+            galaxy = parts[0]
+            rest   = [p for p in parts[1:] if p.upper() != galaxy.upper()]
+            # Prefer an ALTNAME without special characters when GALAXY has them
+            if not _SAFE_GALAXY_RE.match(galaxy):
+                alt_idx = next((j for j, p in enumerate(rest) if _SAFE_GALAXY_RE.match(p)), None)
+                if alt_idx is not None:
+                    promoted = rest[alt_idx]
+                    rest     = [galaxy] + rest[:alt_idx] + rest[alt_idx + 1:]
+                    galaxy   = promoted
+            galaxy        = _normalize_galaxy_prefix(galaxy)
+            galaxy_arr[i] = galaxy
+            # Normalize prefixes on ALTNAME candidates, then deduplicate case-insensitively
+            seen = {galaxy.upper()}
+            deduped_rest = []
+            for p in rest:
+                p_norm = _normalize_galaxy_prefix(p)
+                if p_norm.upper() not in seen:
+                    seen.add(p_norm.upper())
+                    deduped_rest.append(p_norm)
+            altnames_arr[i] = '|'.join(deduped_rest[:3])
+
+    # Fill GALAXY from OBJNAME when NED returned no match
+    objnames = np.array([str(v).strip() for v in beta['OBJNAME']])
+    empty = galaxy_arr == ''
+    if np.any(empty):
+        log.warning(f'  GALAXY empty for {int(np.sum(empty)):,d} objects; copying from OBJNAME')
+        galaxy_arr[empty] = objnames[empty]
+
+    # Apply hand-curated name corrections
+    for j, g in enumerate(galaxy_arr):
+        if g in GALAXY_OVERRIDES:
+            galaxy_arr[j] = GALAXY_OVERRIDES[g]
+
+    assert not np.any(galaxy_arr == ''), 'GALAXY is empty after all fixes'
 
     # --- Assemble output Table -------------------------------------------
     out = beta.copy()
@@ -852,12 +1081,35 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         if col in out.colnames:
             out.remove_column(col)
 
+    # Initial geometry restored from parent/nocuts catalog (added
+    # after drop to avoid collision with drifted beta INIT columns)
+    if init_arrs is not None:
+        for name, dtype, unit in INIT_COLS:
+            out.add_column(Column(init_arrs[name], name=name, unit=unit))
+
+        # Recompute LARGESHIFT using the restored RA_INIT/DEC_INIT as the
+        # reference position, replacing the value set during iterative processing.
+        _LARGESHIFT  = np.int32(16)
+        ra_init      = init_arrs['RA_INIT']
+        dec_init     = init_arrs['DEC_INIT']
+        have_init    = ra_init > -1.
+        sep          = _angular_sep_arcsec(ra_init, dec_init,
+                                           np.array(beta['RA']),
+                                           np.array(beta['DEC']))
+        ebit         = np.array(out['ELLIPSEBIT'], dtype=np.int32)
+        ebit        &= ~_LARGESHIFT
+        ebit[have_init & (sep > MAXSHIFT_ARCSEC)] |= _LARGESHIFT
+        out['ELLIPSEBIT'] = ebit
+        log.info(f'  LARGESHIFT recomputed (threshold={MAXSHIFT_ARCSEC}"): '
+                 f'{int(np.sum((ebit & _LARGESHIFT) != 0)):,d} objects flagged')
+
     # Apply column ordering
     out = _reorder_cols(out)
 
     # --- Write output ----------------------------------------------------
     os.makedirs(outdir, exist_ok=True)
-    outpath = os.path.join(outdir, f'SGA2025-{region}.fits')
+    version = SGA_version(catalog=True)
+    outpath = os.path.join(outdir, f'SGA2025-{region}-{version}.fits')
     vals, names, units = table_to_fitsio(out)
     tractor_vals, tractor_names, tractor_units = table_to_fitsio(tractor)
     with fitsio.FITS(outpath, 'rw', clobber=True) as F:
@@ -875,7 +1127,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     n_src_ned   = int(np.sum(src_arr == 'NED'))
     n_src_none  = int(np.sum(src_arr == ''))
     n_disc      = int(np.sum((flag_arr & Z_FLAG_DISCREPANCY) != 0))
-    n_desi_prox = int(np.sum((ndesi_arr > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
+    n_desi_prox = int(np.sum((desi_arrs['NSPEC_DESI'] > 0) & (desi_arrs['Z_IVAR_DESI'] == 0.)))
     n_z_lvd      = int(np.sum(lvd_z_arrs['Z_LVD'] != 0.))
     n_z_lvd_ivar = int(np.sum(lvd_z_arrs['Z_IVAR_LVD'] > 0.))
 
@@ -902,7 +1154,7 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     print(f'  Z_LVD with IVAR (vlos_sigma) : {n_z_lvd_ivar:>8,d}  ({pct(n_z_lvd_ivar):5.1f}%)')
     print()
     print(f'  Z_FLAG discrepancy           : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
-    print(f'  N_DESI>0, no good central z  : {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
+    print(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
     print()
     print(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
     print(f'  DIST_NED with IVAR           : {n_dist_ivar:>8,d}  ({pct(n_dist_ivar):5.1f}%)')
@@ -912,13 +1164,14 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     print(f'    DIST_REF = LVD             : {n_dist_ref_lvd:>8,d}')
     print(f'    DIST_REF = NED             : {n_dist_ref_ned:>8,d}')
     print()
-    print('  N_DESI distribution:')
+    print('  NSPEC_DESI distribution:')
+    nspec = desi_arrs['NSPEC_DESI']
     for label, mask in [
-            ('= 0',    ndesi_arr == 0),
-            ('= 1',    ndesi_arr == 1),
-            ('2-9',   (ndesi_arr >= 2)   & (ndesi_arr <= 9)),
-            ('10-99', (ndesi_arr >= 10)  & (ndesi_arr <= 99)),
-            ('>= 100', ndesi_arr >= 100)]:
+            ('= 0',    nspec == 0),
+            ('= 1',    nspec == 1),
+            ('2-9',   (nspec >= 2)   & (nspec <= 9)),
+            ('10-99', (nspec >= 10)  & (nspec <= 99)),
+            ('>= 100', nspec >= 100)]:
         k = int(np.sum(mask))
         print(f'    {label:>6} : {k:>8,d}  ({pct(k):5.1f}%)')
 
@@ -936,7 +1189,7 @@ def main():
     parser.add_argument('--redshiftdir', required=True,
                         help='Directory containing DESI DR1 summary and matches files')
     parser.add_argument('--outdir', required=True,
-                        help='Output directory for SGA2025-{region}.fits')
+                        help='Output directory for SGA2025-{region}-{version}.fits')
     parser.add_argument('--region', choices=['dr11-south', 'dr11-north'],
                         help='Process one region only (default: both)')
     parser.add_argument('--vdiff-threshold', type=float, default=1000.,
@@ -948,13 +1201,18 @@ def main():
     parser.add_argument('--lvd-catalog',
                         help='Path to LVD ECSV catalog (e.g. lvd_comb_all_v1.1.0.ecsv); '
                              'distances in kpc converted to Mpc')
+    parser.add_argument('--parent-nocuts',
+                        help='Path to SGA2025-parent-nocuts-v0.10.fits; restores '
+                             'RA_INIT/DEC_INIT/DIAM_INIT/INIT_REF/BA_INIT/PA_INIT '
+                             'from the original parent catalog geometry')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
     for region in regions:
         merge_region(region, args.neddir, args.redshiftdir, args.outdir,
                      args.vdiff_threshold, args.desi_max_sep,
-                     lvd_catalog=args.lvd_catalog)
+                     lvd_catalog=args.lvd_catalog,
+                     parent_nocuts=args.parent_nocuts)
 
 
 if __name__ == '__main__':

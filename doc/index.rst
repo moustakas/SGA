@@ -21,11 +21,15 @@ Instrument (DESI) <https://desi.lbl.gov>`_.
       :link-type: doc
       :class-card: sd-border-2
 
-      **Current release** — ~486,000 galaxies over 30,000 deg²
+      **Current release (v1.0)** — ~486,000 galaxies over 30,000 deg²
 
       *griz* optical (DR11) · unWISE W1–W4 · GALEX FUV/NUV
 
       Data model, catalog access, and per-group file inventory.
+
+      Web gallery *(draft)*:
+      `dr11-north <https://portal.nersc.gov/project/cosmo/sga/2025/html/index-dr11-north.html>`__ ·
+      `dr11-south <https://portal.nersc.gov/project/cosmo/sga/2025/html/index-dr11-south.html>`__
 
    .. grid-item-card:: SGA-2020
       :link: https://sga.legacysurvey.org

@@ -68,15 +68,20 @@ SBTHRESH = [22., 23., 24., 25., 26.] # surface brightness thresholds
 APERTURES = [0.5, 1., 1.25, 1.5, 2.] # multiples of SMA_MOMENT
 
 
-def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False):
+def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False,
+                catalog=False):
     """Return the catalog version string for a given catalog type.
 
     The nocuts, vicuts, and archive intermediate catalogs share a single
     frozen working version. The parent and final ellipse catalogs share
-    the release version.
+    the release version. The final merged catalog (SGA2025-build-catalog
+    output) has its own independent version.
+
     """
     if nocuts or vicuts or archive:
         return 'v0.10'
+    if catalog:
+        return 'v1.0'
     return 'v1.6'
 
 
@@ -86,6 +91,14 @@ def sga_dir():
         log.critical(msg)
         raise EnvironmentError(msg)
     return os.path.abspath(os.getenv('SGA_DIR'))
+
+
+def sga_public_dir():
+    if 'SGA_PUBLIC_DIR' not in os.environ:
+        msg = 'Required ${SGA_PUBLIC_DIR} environment variable not set.'
+        log.critical(msg)
+        raise EnvironmentError(msg)
+    return os.path.abspath(os.getenv('SGA_PUBLIC_DIR'))
 
 
 def sga_data_dir():
@@ -242,16 +255,13 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
         galaxy, _, galaxydir = get_galaxy_galaxydir(
             sample, datadir=datadir, htmldir=htmldir,
             region=region, group=group, html=True)
+        # generate_group_html names files {GROUP_NAME}.html, not {SGAGROUP}.html
+        if group:
+            galaxy = np.atleast_1d(sample['GROUP_NAME'].value)
     else:
         msg = 'Need at least one keyword argument.'
         log.critical(msg)
         raise ValueError(msg)
-
-    # Make clobber=False for htmlindex because we're not making the
-    # files here, we're just looking for them. The argument
-    # args.clobber gets used downstream.
-    if htmlindex:
-        clobber = False
 
     if clobber_overwrite is not None:
         clobber = clobber_overwrite
@@ -392,8 +402,9 @@ def _read_catalog(samplefile, ext, diam_col, first, last, galaxylist, verbose,
 
     if lvd:
         from SGA.ellipse import ELLIPSEMODE
-        is_LVD = ((fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) &
-                  (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0))
+        is_LVD = (fullsample['SAMPLE'] & SAMPLE['LVD'] != 0)
+        #is_LVD = ((fullsample['SAMPLE'] & SAMPLE['LVD'] != 0) &
+        #          (fullsample['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0))
         LVD_group_names = np.unique(fullsample['GROUP_NAME'][is_LVD])
         I = np.isin(fullsample['GROUP_NAME'], LVD_group_names)
         fullsample = fullsample[I]
@@ -493,7 +504,7 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
 
 def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
                     galaxylist=None, first=None, last=None, no_groups=False,
-                    minmult=None, maxmult=None, lvd=False, version=None, beta=True,
+                    minmult=None, maxmult=None, lvd=False, version=None, beta=False,
                     verbose=False):
     """Read the final SGA2025 catalog for a given survey region.
 
@@ -531,16 +542,21 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
         GROUP_PRIMARY objects satisfying the selection criteria.
     fullsample : astropy.table.Table
         All group members whose group has at least one object in sample.
+
     """
-    if version is None:
-        version = SGA_version()
     if beta:
+        if version is None:
+            version = SGA_version()
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
+        ext = 'ELLIPSE'
     else:
-        samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-{version}-{region}.fits')
+        if version is None:
+            version = SGA_version(catalog=True)
+        samplefile = os.path.join(sga_public_dir(), f'SGA2025-{region}-{version}.fits')
+        ext = 'SGA2025'
 
     # Row selection always runs on ELLIPSE (which has the group/region/sample columns).
-    sample, fullsample = _read_catalog(samplefile, 'ELLIPSE', 'D26', first, last,
+    sample, fullsample = _read_catalog(samplefile, ext, 'D26', first, last,
                                        galaxylist, verbose, no_groups, lvd, region,
                                        mindiam, maxdiam, minmult, maxmult)
 
@@ -2020,8 +2036,6 @@ def qa_multiband_mask(data, sample, htmlgalaxydir):
     from SGA.qa import overplot_ellipse, get_norm, matched_norm
 
 
-    if not os.path.isdir(htmlgalaxydir):
-        os.makedirs(htmlgalaxydir, exist_ok=True)
     qafile = os.path.join(htmlgalaxydir, f'qa-ellipsemask-{data["galaxy"]}.png')
 
     alpha = 0.6
