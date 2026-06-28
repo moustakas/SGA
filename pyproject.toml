@@ -42,10 +42,11 @@ where = ["py"]
 # ---------------------------------------------------------------------------
 # Scripts
 # All SGA-2025 processing scripts are archived under archive/bin-SGA2025/.
-# Only the active QA script remains in bin/ until the public data release.
-# Future SGA releases will add scripts directly to bin/.
+# Active scripts in bin/ are installed for the current release; future SGA
+# releases add scripts here directly.
 # ---------------------------------------------------------------------------
 [tool.setuptools]
 script-files = [
     "bin/SGA2025-mpi",
+    "bin/generate-sga-slurm",
 ]

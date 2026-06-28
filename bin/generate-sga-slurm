@@ -1,0 +1,336 @@
+#!/usr/bin/env python
+"""
+generate-sga-slurm -- Generate SLURM batch scripts for SGA processing at NERSC.
+
+See etc/README.sga-slurm for the full workflow.
+"""
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+# ── constants ──────────────────────────────────────────────────────────────────
+
+VALID_STAGES      = ('coadds', 'ellipse', 'htmlplots', 'htmlindex')
+GPU_STAGES        = {'coadds'}          # GPU by default; overridden by --no-gpu
+MAIL_USER         = 'john.moustakas@gmail.com'
+CPUS_PER_CPU_NODE = 128                 # Perlmutter CPU node (physical cores)
+CPUS_PER_GPU_NODE = 64                  # Perlmutter GPU node (physical cores)
+NGPU_PER_NODE     = 4                   # A100s per Perlmutter GPU node
+
+DEFAULT_WALLTIME = {
+    'coadds-gpu': '04:00:00',
+    'coadds-cpu': '08:00:00',
+    'ellipse':    '04:00:00',
+    'htmlplots':  '02:00:00',
+    'htmlindex':  '02:00:00',
+}
+
+QOS_MAX = {
+    'debug':   '00:30:00',
+    'regular': '12:00:00',
+    'premium': '24:00:00',
+}
+
+VERSION_CONFIG = {
+    '2025': {'mpi_script': 'SGA2025-mpi', 'regions': ['dr11-north', 'dr11-south']},
+    '2026': {'mpi_script': 'SGA2026-mpi', 'regions': ['dr11-north', 'dr11-south']},
+}
+
+# ── time helpers ───────────────────────────────────────────────────────────────
+
+def _hms_to_sec(s):
+    h, m, sec = s.split(':')
+    return int(h) * 3600 + int(m) * 60 + int(sec)
+
+
+def _sec_to_hms(n):
+    h, r = divmod(n, 3600)
+    m, s = divmod(r, 60)
+    return f'{h:02d}:{m:02d}:{s:02d}'
+
+
+def _cap_walltime(t, qos):
+    cap = _hms_to_sec(QOS_MAX[qos])
+    req = _hms_to_sec(t)
+    if req > cap:
+        capped = _sec_to_hms(cap)
+        print(f'Warning: walltime {t} exceeds {qos} QOS cap; using {capped}',
+              file=sys.stderr)
+        return capped
+    return t
+
+# ── resource helpers ───────────────────────────────────────────────────────────
+
+def _is_gpu(stage, no_gpu):
+    return stage in GPU_STAGES and not no_gpu
+
+
+def _cpu_res(nodes, mp):
+    ntpn = CPUS_PER_CPU_NODE // mp
+    cpt  = mp * 2 if mp > 1 else (CPUS_PER_CPU_NODE * 2) // ntpn
+    return {
+        'ntasks':          nodes * ntpn,
+        'ntasks_per_node': ntpn,
+        'cpus_per_task':   cpt,
+        'cpu_bind':        'none' if mp > 1 else 'cores',
+        'constraint':      'cpu',
+    }
+
+
+def _gpu_res(nodes, ngpu):
+    return {
+        'ntasks':          nodes * ngpu,
+        'ntasks_per_node': ngpu,
+        'cpus_per_task':   CPUS_PER_GPU_NODE // ngpu,
+        'constraint':      'gpu',
+    }
+
+
+def _resolve_walltime(stage, gpu, qos, override):
+    if override:
+        return _cap_walltime(override, qos)
+    key = f'{stage}-{"gpu" if gpu else "cpu"}' if stage == 'coadds' else stage
+    return DEFAULT_WALLTIME[key]
+
+# ── env script discovery ───────────────────────────────────────────────────────
+
+def _find_env_script():
+    """CWD first (user's edited copy), then etc/ in the repo as a fallback."""
+    cwd = Path.cwd() / 'sga-env.sh'
+    if cwd.exists():
+        return cwd.resolve()
+    repo = Path(__file__).resolve().parent.parent / 'etc' / 'sga-env.sh'
+    if repo.exists():
+        print(f'Warning: sga-env.sh not found in CWD; falling back to {repo}',
+              file=sys.stderr)
+        print('  Before submitting: cp etc/sga-env.sh . && $EDITOR sga-env.sh',
+              file=sys.stderr)
+        return repo
+    raise FileNotFoundError(
+        'sga-env.sh not found in CWD or SGA/etc/. '
+        'Run: cp /path/to/SGA/etc/sga-env.sh .')
+
+# ── job list ───────────────────────────────────────────────────────────────────
+
+def _split_ranges(ntot, njobs):
+    """Divide ntot objects into njobs (first, last) inclusive index pairs."""
+    chunk = ntot // njobs
+    ranges = []
+    for i in range(njobs):
+        first = i * chunk
+        last  = (i + 1) * chunk - 1 if i < njobs - 1 else ntot - 1
+        ranges.append((first, last))
+    return ranges
+
+
+def _make_jobs(args, cfg):
+    stages  = args.stage
+    regions = args.region or cfg['regions']
+    width   = max(2, len(str(args.njobs)))
+    jobs    = []
+
+    for stage in stages:
+        gpu   = _is_gpu(stage, args.no_gpu)
+        nodes = args.nodes or (16 if gpu else 32)
+        res   = _gpu_res(nodes, args.ngpu) if gpu else _cpu_res(nodes, args.mp)
+        time  = _resolve_walltime(stage, gpu, args.qos, args.time)
+
+        if args.njobs > 1:
+            ranges = _split_ranges(args.ntot, args.njobs)
+        else:
+            ranges = [(None, None)]
+
+        for region in regions:
+            for job_idx, (first, last) in enumerate(ranges, 1):
+                suffix = f'-job{job_idx:0{width}d}' if args.njobs > 1 else ''
+                name   = f'sga{args.version}-{stage}-{region}{suffix}'
+                jobs.append({
+                    'stage':    stage,
+                    'region':   region,
+                    'gpu':      gpu,
+                    'nodes':    nodes,
+                    'ntasks':   res['ntasks'],
+                    'time':     time,
+                    'first':    first,
+                    'last':     last,
+                    'mp':       args.mp,
+                    'ngpu':     args.ngpu,
+                    'job_name': name,
+                    'fname':    Path(args.outdir) / f'{name}.slurm',
+                })
+    return jobs
+
+# ── script generation ──────────────────────────────────────────────────────────
+
+def _build_script(*, version, mpi_script, stage, region, nodes, mp, ngpu, gpu,
+                   qos, account, time_str, env_script, outdir, job_name,
+                   first=None, last=None, extra_args=()):
+    res = _gpu_res(nodes, ngpu) if gpu else _cpu_res(nodes, mp)
+    log = str(Path(outdir).resolve() / f'{job_name}-%j.log')
+
+    header = [
+        '#!/bin/bash',
+        f'#SBATCH --job-name={job_name}',
+        f'#SBATCH --account={account}',
+        f'#SBATCH --qos={qos}',
+        f'#SBATCH --constraint={res["constraint"]}',
+        f'#SBATCH --nodes={nodes}',
+        f'#SBATCH --ntasks={res["ntasks"]}',
+        f'#SBATCH --ntasks-per-node={res["ntasks_per_node"]}',
+        f'#SBATCH --cpus-per-task={res["cpus_per_task"]}',
+        f'#SBATCH --time={time_str}',
+        f'#SBATCH --output={log}',
+        '#SBATCH --mail-type=END,FAIL',
+        f'#SBATCH --mail-user={MAIL_USER}',
+    ]
+    if gpu:
+        header.append('#SBATCH --gpus-per-task=1')
+
+    # srun flags
+    srun_flags = ['srun', '--no-kill', '--kill-on-bad-exit=0']
+    if not gpu:
+        srun_flags.append(f'--cpu-bind={res["cpu_bind"]}')
+
+    # MPI script arguments
+    mpi_args = [mpi_script, f'--{stage}', f'--region {region}']
+    if gpu:
+        mpi_args += ['--use-gpu', f'--ngpu {ngpu}']
+    else:
+        mpi_args.append(f'--mp {mp}')
+    if first is not None:
+        mpi_args += [f'--first {first}', f'--last {last}']
+    mpi_args.extend(extra_args)
+
+    # Wrap into a single srun call with line continuations; indent MPI args
+    all_tokens = srun_flags + mpi_args
+    cmd = [tok + ' \\' for tok in all_tokens[:-1]] + [all_tokens[-1]]
+    cmd = [cmd[0]] + ['    ' + line for line in cmd[1:]]
+
+    lines = header + ['', f'source {env_script}', ''] + cmd
+    return '\n'.join(lines) + '\n'
+
+# ── plan table ─────────────────────────────────────────────────────────────────
+
+def _print_plan(jobs):
+    has_ranges = any(j['first'] is not None for j in jobs)
+
+    s_w = max(len('Stage'),    max(len(j['stage'])         for j in jobs))
+    r_w = max(len('Region'),   max(len(j['region'])        for j in jobs))
+    n_w = max(len('Nodes'),    max(len(str(j['nodes']))    for j in jobs))
+    t_w = max(len('Ranks'),    max(len(str(j['ntasks']))   for j in jobs))
+    w_w = len('Walltime')
+
+    def _row(stage, region, nodes, ntasks, hw, time, first=None, last=None):
+        r = (f'{stage:<{s_w}}  {region:<{r_w}}  {nodes:>{n_w}}  '
+             f'{ntasks:>{t_w}}  {hw:>3}  {time:>{w_w}}')
+        if has_ranges:
+            r += f'  {first:>8}  {last:>8}'
+        return r
+
+    head = _row('Stage', 'Region', 'Nodes', 'Ranks', 'HW', 'Walltime',
+                'First', 'Last')
+    sep  = '-' * len(head)
+    print(f'\n{sep}')
+    print(head)
+    print(sep)
+    for j in jobs:
+        hw = 'GPU' if j['gpu'] else 'CPU'
+        print(_row(j['stage'], j['region'], j['nodes'], j['ntasks'],
+                   hw, j['time'], j['first'], j['last']))
+    print(sep)
+    print(f'{len(jobs)} job{"s" if len(jobs) != 1 else ""} total\n')
+
+# ── main ───────────────────────────────────────────────────────────────────────
+
+def main():
+    # Split off any extra args after '--'
+    argv       = sys.argv[1:]
+    extra_args = []
+    if '--' in argv:
+        idx, argv, extra_args = argv.index('--'), argv[:argv.index('--')], argv[argv.index('--') + 1:]
+
+    p = argparse.ArgumentParser(
+        description='Generate SLURM batch scripts for SGA processing at NERSC.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog='See etc/README.sga-slurm for the full workflow.')
+    p.add_argument('--stage', metavar='STAGE', action='append', required=True,
+                   choices=VALID_STAGES,
+                   help='Processing stage; repeat for multiple: '
+                        'coadds (GPU), ellipse, htmlplots, htmlindex')
+    p.add_argument('--region', metavar='REGION', action='append',
+                   choices=['dr11-north', 'dr11-south'],
+                   help='Region (repeat for multiple; default: both)')
+    p.add_argument('--version', default='2025', choices=sorted(VERSION_CONFIG),
+                   help='SGA release version')
+    p.add_argument('--nodes', type=int, default=None,
+                   help='Perlmutter nodes per job (default: 16 GPU / 32 CPU)')
+    p.add_argument('--mp', type=int, default=4,
+                   help='Multiprocessing cores per MPI rank (CPU jobs)')
+    p.add_argument('--ngpu', type=int, default=NGPU_PER_NODE,
+                   help='GPUs per node for coadds (GPU jobs)')
+    p.add_argument('--no-gpu', action='store_true',
+                   help='Run coadds on CPU nodes instead of GPU')
+    p.add_argument('--qos', default='regular', choices=sorted(QOS_MAX),
+                   help='SLURM QOS')
+    p.add_argument('--account', default='m3592',
+                   help='NERSC allocation account')
+    p.add_argument('--time', default=None,
+                   help='Wall time HH:MM:SS (default: auto per stage)')
+    p.add_argument('--njobs', type=int, default=1,
+                   help='Split each (stage, region) into N jobs via --first/--last')
+    p.add_argument('--ntot', type=int, default=None,
+                   help='Total catalog objects per region (required when --njobs > 1)')
+    p.add_argument('--outdir', default='.',
+                   help='Directory for generated .slurm files and logs')
+    p.add_argument('--plan', action='store_true',
+                   help='Print job summary without writing any files')
+    p.add_argument('--submit', action='store_true',
+                   help='Submit each generated script with sbatch')
+
+    args = p.parse_args(argv)
+    cfg  = VERSION_CONFIG[args.version]
+
+    if args.njobs > 1 and args.ntot is None:
+        p.error('--ntot is required when --njobs > 1')
+
+    env_script = _find_env_script()
+    jobs       = _make_jobs(args, cfg)
+
+    if args.plan:
+        _print_plan(jobs)
+        return
+
+    outdir = Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    for j in jobs:
+        script = _build_script(
+            version=args.version, mpi_script=cfg['mpi_script'],
+            stage=j['stage'], region=j['region'],
+            nodes=j['nodes'], mp=j['mp'], ngpu=j['ngpu'], gpu=j['gpu'],
+            qos=args.qos, account=args.account, time_str=j['time'],
+            env_script=env_script, outdir=args.outdir,
+            job_name=j['job_name'],
+            first=j['first'], last=j['last'],
+            extra_args=extra_args,
+        )
+        j['fname'].write_text(script)
+        j['fname'].chmod(0o644)
+        print(f'Wrote {j["fname"]}')
+
+        if args.submit:
+            result = subprocess.run(['sbatch', str(j['fname'])],
+                                    capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f'  Submitted: {result.stdout.strip()}')
+            else:
+                print(f'  sbatch error for {j["fname"]}:\n{result.stderr}',
+                      file=sys.stderr)
+
+    print(f'\n{len(jobs)} script{"s" if len(jobs) != 1 else ""} written to {outdir}/')
+
+
+if __name__ == '__main__':
+    main()

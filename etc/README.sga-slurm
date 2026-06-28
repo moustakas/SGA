@@ -1,0 +1,144 @@
+Running SGA processing at NERSC
+================================
+
+Use this workflow to run any SGA processing stage (coadds, ellipse, htmlplots,
+htmlindex) across the full catalog using generate-sga-slurm to produce SLURM
+batch scripts for Perlmutter.
+
+Files used
+----------
+  etc/sga-env.sh          module loads, environment variables, and output paths
+  bin/generate-sga-slurm  plan and generate .slurm files
+
+
+Step 1 — set up the environment
+--------------------------------
+Create a working directory, copy the environment script there, and edit it:
+
+  mkdir -p ~/runs/sga2025-htmlplots
+  cd ~/runs/sga2025-htmlplots
+  cp /path/to/SGA/etc/sga-env.sh .
+  $EDITOR sga-env.sh
+
+At minimum, set the release-specific paths near the bottom of sga-env.sh:
+
+  SGA_DIR         — SGA working directory for this release
+  SGA_DATA_DIR    — per-object data output (typically $PSCRATCH/SGA{YEAR}-data)
+  SGA_HTML_DIR    — HTML output directory (typically $PSCRATCH/SGA{YEAR}-html)
+  LARGEGALAXIES_CAT — uncomment and set to the current versioned parent refcat
+
+generate-sga-slurm picks up SGA_DATA_DIR and SGA_HTML_DIR from sga-env.sh
+automatically.  Generated .slurm scripts source sga-env.sh from the same
+directory (CWD is checked first, then etc/ in the SGA repo as a fallback).
+
+
+Step 2 — preview the jobs
+--------------------------
+Use --plan to see what would be generated without writing any files.  Adjust
+--nodes, --mp (CPU jobs), --ngpu (GPU jobs), and --njobs until the estimated
+wall times are acceptable:
+
+  # CPU stage example (htmlplots across both regions)
+  generate-sga-slurm \
+      --stage htmlplots \
+      --nodes 32 --mp 4 \
+      --plan
+
+  # GPU stage example (coadds; GPU is the default for this stage)
+  generate-sga-slurm \
+      --stage coadds \
+      --nodes 16 \
+      --plan
+
+  # Force coadds onto CPU nodes instead
+  generate-sga-slurm \
+      --stage coadds --no-gpu \
+      --nodes 64 --mp 4 \
+      --plan
+
+  # Split a stage into multiple jobs (useful when one job won't finish in time)
+  generate-sga-slurm \
+      --stage ellipse --region dr11-south \
+      --njobs 4 --ntot 340000 \
+      --nodes 32 --mp 4 \
+      --plan
+
+The --plan output includes one row per job with: stage, region, nodes, total
+MPI ranks, estimated wall time, and (when --njobs > 1) the --first/--last
+object range.
+
+
+Step 3 — generate SLURM scripts
+---------------------------------
+Drop --plan to write one .slurm file per job:
+
+  generate-sga-slurm \
+      --stage htmlplots \
+      --nodes 32 --mp 4
+
+Output files follow the naming convention:
+
+  sga{version}-{stage}-{region}.slurm              # one job per region
+  sga{version}-{stage}-{region}-job{N:02d}.slurm   # when --njobs > 1
+
+Log files (written by SLURM) land in the same directory:
+
+  sga{version}-{stage}-{region}-{jobid}.log
+
+
+Step 4 — submit
+----------------
+Submit by hand:
+
+  sbatch sga2025-htmlplots-dr11-south.slurm
+  sbatch sga2025-htmlplots-dr11-north.slurm
+
+Or let generate-sga-slurm submit immediately after writing:
+
+  generate-sga-slurm --stage htmlplots --nodes 32 --mp 4 --submit
+
+
+Node / worker arithmetic
+------------------------
+Perlmutter CPU nodes (128 physical cores, hyperthreading enabled):
+
+  MPI ranks per node  = 128 / mp
+  Total MPI ranks     = 128 * nodes / mp
+  cpus-per-task       = mp * 2        (hyperthreads)
+  cpu-bind            = none (mp > 1) or cores (mp = 1)
+
+  Example: 32 nodes, --mp 4 → 32 * 32 = 1024 ranks, cpus-per-task = 8
+
+Perlmutter GPU nodes (4 × A100 per node, 64 physical cores):
+
+  MPI ranks per node  = ngpu  (one rank per GPU; default ngpu = 4)
+  Total MPI ranks     = nodes * ngpu
+  cpus-per-task       = 64 / ngpu
+  gpus-per-task       = 1
+
+  Example: 16 nodes, --ngpu 4 → 64 ranks, cpus-per-task = 16
+
+
+Typical usage examples
+-----------------------
+SGA-2025 final QA pass (htmlplots + htmlindex, both regions):
+
+  generate-sga-slurm \
+      --stage htmlplots --stage htmlindex \
+      --nodes 32 --mp 4 \
+      --qos regular
+
+SGA-2025 coadds (GPU, both regions):
+
+  generate-sga-slurm \
+      --stage coadds \
+      --nodes 32 --ngpu 4 \
+      --qos regular
+
+SGA-2025 ellipse fitting, split across 4 jobs per region for safety:
+
+  generate-sga-slurm \
+      --stage ellipse \
+      --njobs 4 --ntot 340000 \
+      --nodes 32 --mp 4 \
+      --qos regular
