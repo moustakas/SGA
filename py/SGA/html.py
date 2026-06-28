@@ -1495,8 +1495,6 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "        <a href='../../../index-{}.html'>Home</a> &gt; ".format(region),
         "        <a href='../../../index-{}.html'>RA {}</a> &gt; {}".format(region, raslice, galaxy),
         "    </div>",
-        "    <h1>{}</h1>".format(galaxy),
-        "    <h3>Group: {} | RA Slice: {}</h3>".format(group_name, raslice),
     ]
 
     _toc = [
@@ -1517,12 +1515,26 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         "    </div>",
     ])
 
-    html_lines.extend([
-        "    <p>",
-        "        <a href='{}' target='_blank'>Sky Viewer</a> &nbsp;|&nbsp;".format(sky_url),
-        "        <a href='{}' target='_blank'>Group Files</a>".format(data_url),
-        "    </p>",
-    ])
+    thumb_src  = 'SGA2025_{}-thumb.jpg'.format(group_name)
+    has_thumb  = (group_dir / thumb_src).exists()
+    _links     = "        <p><a href='{}' target='_blank'>Sky Viewer</a> &nbsp;|&nbsp; <a href='{}' target='_blank'>Group Files</a></p>".format(sky_url, data_url)
+    if has_thumb:
+        html_lines.extend([
+            "    <div style='display:flex; align-items:flex-start; gap:20px; margin-bottom:8px;'>",
+            "        <img src='{}' style='width:160px; height:160px; object-fit:cover; border:1px solid #ddd; flex-shrink:0;'>".format(thumb_src),
+            "        <div style='min-width:0;'>",
+            "            <h1 style='margin-top:0;'>{}</h1>".format(galaxy),
+            "            <h3>Group: {} | RA Slice: {}</h3>".format(group_name, raslice),
+            _links,
+            "        </div>",
+            "    </div>",
+        ])
+    else:
+        html_lines.extend([
+            "    <h1>{}</h1>".format(galaxy),
+            "    <h3>Group: {} | RA Slice: {}</h3>".format(group_name, raslice),
+            _links,
+        ])
 
     # --- Group summary -------------------------------------------------------
     html_lines.append("    <h2 id='sec-group'>Group Properties</h2>")
