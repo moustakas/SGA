@@ -54,7 +54,7 @@ update_mpi4py() {
 
 update_sga() {
     echo "==> Updating SGA..."
-    $RUN pip install --upgrade --no-deps --no-cache-dir git+https://github.com/moustakas/SGA
+    $RUN pip install --force-reinstall --no-deps --no-cache-dir git+https://github.com/moustakas/SGA
 }
 
 update_legacypipe() {
