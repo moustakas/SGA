@@ -124,6 +124,7 @@ shifter --image docker:legacysurvey/sga:0.8.1 bash
 - `SGA_DIR` - SGA working directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025`)
 - `SGA_DATA_DIR` - SGA data directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/data/sga/2025/data`)
 - `SGA_HTML_DIR` - SGA HTML output directory at NERSC (`/dvs_ro/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/html`)
+- `SGA_PUBLIC_DIR` - Location of the final public catalogs (`/dvs_ro/cfs/cdirs/cosmo/www/sga/2025`); accessed via `SGA.sga_public_dir()`
 
 ## Architecture Patterns
 
@@ -158,25 +159,32 @@ this order (all steps applied per object):
 1. **HOST fix** — if `CROSSIDS[0]` contains `"HOST"` (e.g. `"SN 2003H HOST"`),
    scan forward for the first non-HOST entry, promote it to position 0, and
    append the original HOST name at the end (deduplicated, case-insensitive).
-2. **Dedup** — remove any entry from `CROSSIDS[1:]` that duplicates `CROSSIDS[0]`
+2. **Famous-name promotion** — `_find_preferred_idx` / `_PREFERRED_PREFIXES`:
+   the highest-priority well-known catalog name anywhere in `CROSSIDS` is
+   promoted to position 0, regardless of NED's ordering. Priority order:
+   Messier > NGC > IC > UGCA/UGC > ESO > ESO-LV > MCG > ARP > MRK > DDO >
+   KDG > VCC > CGCG > PGC > PGC1 > AGC > FCC > HCG > HIPASS. Names absent
+   from this list (2MASX, SDSS, WISE, ICRF, etc.) remain as GALAXY only when
+   nothing higher-priority exists.
+3. **Dedup** — remove any entry from `CROSSIDS[1:]` that duplicates `CROSSIDS[0]`
    (case-insensitive) before building ALTNAMES.
-3. **Special-character fix** — if `CROSSIDS[0]` fails `_SAFE_GALAXY_RE`
+4. **Special-character fix** — if `CROSSIDS[0]` fails `_SAFE_GALAXY_RE`
    (`^[a-zA-Z0-9 +\-._:]+$`), scan ALTNAMES candidates for a clean alternative
    and promote it (original moves into ALTNAMES). Common trigger: NED names
    starting with `[`.
-4. **Prefix normalization** — uppercase known catalog-name prefixes via
+5. **Prefix normalization** — uppercase known catalog-name prefixes via
    `_normalize_galaxy_prefix` / `_PREFIX_NORM_RE` (e.g. `Mrk` → `MRK`,
    `Arp` → `ARP`, `UGCa` → `UGCA`). Covered prefixes: 2MASX, UGCA, UGC, NGC,
    IC, PGC, ESO, MCG, ARP, MRK, DDO, KDG, VCC, FCC, CGCG, HIPASS, SDSS, SBS,
    KUG, UZC, MGC, HCG. `Messier` is intentionally excluded (kept mixed-case).
-5. **OBJNAME fallback** — if NED never matched, copy `OBJNAME` → `GALAXY`
+6. **OBJNAME fallback** — if NED never matched, copy `OBJNAME` → `GALAXY`
    (logged as a warning).
-6. **Hand-curated overrides** — `GALAXY_OVERRIDES` dict at module level in
+7. **Hand-curated overrides** — `GALAXY_OVERRIDES` dict at module level in
    `bin/SGA2025-build-catalog`; add entries there for one-off fixes that the
    rules above cannot handle (e.g. `'MESSIER 109': 'Messier 109'`).
-7. **Assert** — `GALAXY` is never empty after all fixes.
+8. **Assert** — `GALAXY` is never empty after all fixes.
 
-`ALTNAMES` = first three remaining CROSSIDS (after the promoted GALAXY is removed),
+`ALTNAMES` (str200) = first three remaining CROSSIDS (after the promoted GALAXY is removed),
 pipe-separated, with prefix normalization and case-insensitive deduplication applied;
 empty string when none remain.
 

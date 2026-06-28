@@ -5,13 +5,36 @@ The SGA-2025 delivers multiwavelength imaging mosaics and ellipse
 photometry for nearly half a million large, resolved galaxies across
 approximately 30,000 deg² of the extragalactic sky.
 
-This page describes the organization of the public data release, the
-naming conventions used throughout, and the data model of the primary
+This page describes the organization of the public data release (v1.0),
+the naming conventions used throughout, and the data model of the primary
 science-ready merged catalogs.
 
-The full data release is accessible at:
+.. _data-access:
 
-   https://portal.nersc.gov/project/cosmo/data/sga/2025/
+Data Access
+-----------
+
+.. note::
+
+   The SGA-2025 data release and web visualizations are currently in
+   draft form and still a work in progress.
+
+**Merged catalogs** — one FITS file per imaging region *(right-click → Save link as to download)*
+(see :ref:`merged-catalogs` for the data model and :ref:`imaging-regions` for region descriptions):
+
+- `SGA2025-dr11-north-v1.0.fits <https://portal.nersc.gov/project/cosmo/sga/2025/SGA2025-dr11-north-v1.0.fits>`__ — 90,504 galaxies, 340 MB
+- `SGA2025-dr11-south-v1.0.fits <https://portal.nersc.gov/project/cosmo/sga/2025/SGA2025-dr11-south-v1.0.fits>`__ — 395,435 galaxies, 1.4 GB
+
+**Web visualizations** *(work in progress)*:
+
+- `dr11-north gallery <https://portal.nersc.gov/project/cosmo/sga/2025/html/index-dr11-north.html>`__
+- `dr11-south gallery <https://portal.nersc.gov/project/cosmo/sga/2025/html/index-dr11-south.html>`__
+
+**Per-group data files** — for bulk download via ``wget`` or Globus
+(see :ref:`per-group-files` for the full file inventory):
+
+- `dr11-north <https://portal.nersc.gov/project/cosmo/data/sga/2025/data/dr11-north/>`__
+- `dr11-south <https://portal.nersc.gov/project/cosmo/data/sga/2025/data/dr11-south/>`__
 
 .. _naming:
 
@@ -19,16 +42,17 @@ Naming Conventions
 ------------------
 
 Two layers of identifiers are used throughout the SGA-2025: **groups**
-(mosaics containing one or more spatially associated galaxies) and
-**objects** (individual galaxies within each group).
+(mosaics containing one or more spatially/angularly associated
+galaxies) and **objects** (individual galaxies within each
+group). Most objects in the sample are in singleton groups.
 
 Groups: ``GROUP_NAME`` and ``SGAGROUP``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Each SGA-2025 mosaic is processed as a *group* — a set of one or more
-galaxies whose ellipses overlap or whose angular sizes place them within the
-same mosaic footprint. The group is centered on the diameter-weighted centroid
-of its members.
+galaxies whose angular sizes and separations place them within the
+same mosaic footprint. The mosaic is centered on the diameter-weighted
+centroid of its members.
 
 Two catalog columns identify a group:
 
@@ -44,10 +68,11 @@ and ``DDDD`` = ``abs(Dec)`` × 100 (four digits, zero-padded), both at a precisi
 0.01° (36 arcsec). For example, a group centered at RA = 0.00°, Dec = −6.49°
 has ``GROUP_NAME = 00000m0649``.
 
-In groups with more than one member (``GROUP_MULT`` > 1), ``GROUP_PRIMARY``
-identifies the largest (or most prominent) galaxy in the group. ``GROUP_RA``
-and ``GROUP_DEC`` give the diameter-weighted centroid; ``GROUP_DIAMETER`` gives
-the diameter of the smallest circle enclosing all member ellipses.
+In groups with more than one member (``GROUP_MULT`` > 1),
+``GROUP_PRIMARY`` identifies the largest galaxy in the group based on
+its *initial* diameter. ``GROUP_RA`` and ``GROUP_DEC`` give the
+diameter-weighted centroid; ``GROUP_DIAMETER`` (in arcmin) gives the
+diameter of the smallest circle enclosing all member ellipses.
 
 Objects: ``SGAID`` and ``SGANAME``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,62 +86,113 @@ Individual galaxies within a group are identified by:
 - ``OBJNAME`` (str30) — the common name from the input parent catalog
   (HyperLeda, NED, LVD, etc.).
 
-.. _survey-regions:
+Galaxy Names: ``GALAXY`` and ``ALTNAMES``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Survey Regions
---------------
+``GALAXY`` (str35) is the primary human-readable name assigned to each
+source. ``ALTNAMES`` (str200) holds up to three additional names,
+pipe-separated. Both are derived from NED's pipe-separated ``CROSSIDS``
+cross-identification list through the following steps, applied in order:
 
-SGA-2025 covers two non-overlapping imaging regions drawn from *Legacy
-Surveys* Data Release 11 (DR11), which together span approximately 30,000 deg²
-of the extragalactic sky.
+1. **HOST fix** — If the NED-primary name contains ``HOST`` (e.g.
+   ``SN 2003H HOST``), the first non-HOST entry in ``CROSSIDS`` is
+   promoted to position 0 and the original HOST name is appended at the
+   end (deduplicated case-insensitively).
 
-**dr11-south** uses imaging from DECaLS (the Dark Energy Camera Legacy Survey),
-obtained with the Dark Energy Camera (DECam) at the 4-m Victor M. Blanco
-Telescope at Cerro Tololo Inter-American Observatory (CTIO). DECam provides
-four optical bands — *g*, *r*, *i*, and *z* — making the southern region the
-only one with *i*-band coverage.
+2. **Famous-name promotion** — The highest-priority well-known catalog
+   name anywhere in ``CROSSIDS`` is promoted to ``GALAXY``, regardless
+   of NED's own ordering. Priority order (highest first): Messier, NGC,
+   IC, UGCA/UGC, ESO, ESO-LV, MCG, ARP, MRK, DDO, KDG, VCC, CGCG, PGC,
+   PGC1, AGC, FCC, HCG, HIPASS. Names absent from this list (2MASX,
+   SDSS, WISE, ICRF, etc.) remain as ``GALAXY`` only when no
+   higher-priority name is available.
+
+3. **Special-character fix** — If the promoted ``GALAXY`` name contains
+   characters outside the safe set (letters, digits, space, ``+``, ``-``,
+   ``.``, ``_``, ``:``) — a common pattern for NED names beginning with
+   ``[`` — the first ``ALTNAMES`` candidate that passes the safe-character
+   test is promoted to ``GALAXY`` instead and the original name is moved
+   into ``ALTNAMES``.
+
+4. **Prefix normalization** — Known catalog-name prefixes are fully
+   uppercased (e.g. ``Mrk`` → ``MRK``, ``Arp`` → ``ARP``, ``UGCa`` →
+   ``UGCA``). ``Messier`` is intentionally left in mixed case.
+
+5. **OBJNAME fallback** — If NED returned no match for the object,
+   ``GALAXY`` is set to ``OBJNAME`` from the parent catalog.
+
+6. **Hand-curated overrides** — A small dictionary of one-off corrections
+   (e.g. ``MESSIER 109`` → ``Messier 109``) is applied after all rules
+   above.
+
+``ALTNAMES`` is built from the remaining ``CROSSIDS`` entries (after the
+promoted ``GALAXY`` name is removed and case-insensitive duplicates are
+dropped), with prefix normalization applied; the field is blank when no
+alternatives remain.
+
+.. _imaging-regions:
+
+Imaging Regions
+---------------
+
+SGA-2025 covers two (mostly) non-overlapping imaging regions drawn
+from the `DESI Legacy Imaging Surveys
+<https://www.legacysurvey.org/>`_ `Data Release 11 (DR11)
+<https://www.legacysurvey.org/dr11>`_ , which together span
+approximately 30,000 deg² of the sky (or 90% of the extragalactic sky
+at Galactic latitude `|b|>10`).
+
+**dr11-south** uses *g*-, *r*-, *i*-, and *z*-band imaging from the
+Dark Energy Camera (DECam) at the 4-m Victor M. Blanco Telescope at
+Cerro Tololo Inter-American Observatory (CTIO).
 
 **dr11-north** combines two surveys covering the sky north of roughly Dec ≈
 +32°:
 
-- **BASS** (Beijing-Arizona Sky Survey) — obtained with the 90Prime wide-field
-  imager at the University of Arizona's 2.3-m Bok telescope on Kitt Peak,
-  providing *g* and *r* bands.
-- **MzLS** (Mayall z-band Legacy Survey) — obtained with the Mosaic-3 camera
-  at the NOAO 4-m Mayall telescope on Kitt Peak, providing the *z* band.
+- **BASS** (Beijing-Arizona Sky Survey) — provides *g*- and *r*-band
+  imaging from the 90-Prime wide-field imager at the University of
+  Arizona's 2.3-m Bok telescope on Kitt Peak National Observatory.
+- **MzLS** (Mayall z-band Legacy Survey) — provides *z*-band imaging
+  obtained with the Mosaic-3 camera at the NOAO 4-m Mayall telescope
+  on Kitt Peak National Observatory.
 
-The northern region therefore has three optical bands (*g*, *r*, *z*) with no
-*i*-band coverage. The ``BANDS`` column in the merged catalog records which
-bands are actually available for each galaxy.
+The northern region therefore has three optical bands (*g*, *r*, *z*)
+with no *i*-band coverage. The ``BANDS`` column in the merged catalog
+records which optical bands are actually available for each galaxy.
 
-In addition to the optical imaging, **all SGA-2025 sources** include:
+In addition to the optical imaging, the SGA-2025 also includes:
 
-- **Mid-infrared**: unWISE W1 (3.4 μm), W2 (4.6 μm), W3 (12 μm), and W4
+- **Infrared**: unWISE W1 (3.4 μm) and W2 (4.6 μm) and WISE W3 (12 μm) and W4
   (22 μm) mosaics, derived from the full-depth coadded WISE satellite imaging.
-- **Ultraviolet**: GALEX FUV (~1530 Å) and NUV (~2310 Å) mosaics where GALEX
-  sky coverage exists. The GALEX footprint is incomplete; FUV and NUV mosaic
-  files are always present in the per-group directory but may contain no data
-  for sources outside the GALEX footprint.
+- **Ultraviolet**: GALEX FUV (~1530 Å) and NUV (~2310 Å) imaging (where GALEX
+  sky coverage exists).
 
 .. _merged-catalogs:
 
 Merged Catalogs
 ---------------
 
-The per-region merged catalogs combine all per-group ellipse photometry,
-NED cross-match results, DESI DR1 spectroscopy, and LVD distances into
-a single FITS file per imaging region. These are the starting point for
-most science use cases.
+The per-region merged catalogs combine all per-group ellipse
+photometry, `NASA/IPAC Extragalactic Database (NED)
+<https://ned.ipac.caltech.edu>`_ cross-matched results, spectroscopic
+redshifts from the `Dark Energy Spectroscopic Instrument Data Release
+1 (DESI/DR1) <https://data.desi.lbl.gov/doc/releases/dr1>`_, and
+direct distances from the `Local Volume Database (LVD)
+<http://local-volume-database.readthedocs.io/en/latest>`_ into a
+single FITS file per imaging region.
+
+These catalogs are the starting point for most science use cases.
 
 Catalog Files
 ~~~~~~~~~~~~~
 
-Two files are provided, one per imaging region:
+Two versioned FITS files are provided, one per imaging region (see
+:ref:`data-access` for direct download links):
 
 .. code-block:: none
 
-   SGA2025-dr11-south.fits    (395,435 galaxies)
-   SGA2025-dr11-north.fits     (90,504 galaxies)
+   SGA2025-dr11-north-v1.0.fits    ( 90,504 galaxies, 340 MB)
+   SGA2025-dr11-south-v1.0.fits    (395,435 galaxies, 1.4 GB)
 
 Each file has two binary table extensions:
 
@@ -127,43 +203,51 @@ Each file has two binary table extensions:
 Reading the Catalogs
 ~~~~~~~~~~~~~~~~~~~~
 
-Use :func:`SGA.SGA.read_sga_sample` to read either catalog:
+The catalogs are standard FITS binary tables. The recommended way to read
+them is via `fitsio <https://github.com/esheldon/fitsio>`__ wrapped in an
+`astropy Table <https://docs.astropy.org/en/stable/table/>`__:
 
 .. code-block:: python
 
-   from SGA.SGA import read_sga_sample
+   import fitsio
+   from astropy.table import Table
 
-   # Primary SGA2025 catalog for the southern region (default)
-   sample, fullsample = read_sga_sample(region='dr11-south')
+   cat     = Table(fitsio.read('SGA2025-dr11-south-v1.0.fits', ext='SGA2025'))
+   tractor = Table(fitsio.read('SGA2025-dr11-south-v1.0.fits', ext='TRACTOR'))
 
-   # TRACTOR catalog
-   sample, fullsample = read_sga_sample(region='dr11-south', tractor=True)
+fitsio also supports reading a subset of columns:
 
-   # Northern region
-   sample, fullsample = read_sga_sample(region='dr11-north')
+.. code-block:: python
 
-``read_sga_sample`` returns two :class:`astropy.table.Table` objects:
+   cat = Table(fitsio.read('SGA2025-dr11-south-v1.0.fits', ext='SGA2025',
+                           columns=['GALAXY', 'RA', 'DEC', 'D26', 'Z']))
 
-- ``sample`` — one row per group *primary* galaxy (``GROUP_PRIMARY = True``),
-  satisfying any diameter or multiplicity cuts you apply.
-- ``fullsample`` — all group members whose group has at least one entry
-  in ``sample``.
+Most analyses begin from the group primary galaxies (one per group):
 
-Key keyword arguments:
+.. code-block:: python
+
+   import numpy as np
+
+   primaries = cat[cat['GROUP_PRIMARY']]
+
+Common row selections:
 
 .. code-block:: python
 
    # Diameter cuts (arcmin)
-   sample, fullsample = read_sga_sample(mindiam=1.0, maxdiam=10.0)
+   cut = (cat['D26'] > 1.0) & (cat['D26'] < 10.0)
 
-   # Specific galaxies (matched against GROUP_NAME, then SGAID, then OBJNAME)
-   sample, fullsample = read_sga_sample(galaxylist='NGC3031,NGC4258')
+   # Specific galaxies by name
+   cut = np.isin(cat['GALAXY'], ['Messier 065', 'NGC 3621'])
 
-   # Local Volume Database dwarfs only
-   sample, fullsample = read_sga_sample(lvd=True)
+   # Local Volume Database objects (SAMPLE bit 1)
+   cut = (cat['SAMPLE'] & 1) != 0
 
-   # Groups with exactly N members
-   sample, fullsample = read_sga_sample(minmult=2, maxmult=5)
+   # Groups with 2–5 members
+   cut = (cat['GROUP_MULT'] >= 2) & (cat['GROUP_MULT'] <= 5)
+
+   # Galaxies with a measured redshift
+   cut = cat['Z_IVAR'] > 0
 
 .. _data-model:
 
@@ -192,13 +276,13 @@ into the groups below.
      - str35
      - Primary NED name (first entry from NED cross-ID list)
    * - ``ALTNAMES``
-     - str140
-     - Up to two additional NED cross-IDs, pipe-separated
+     - str200
+     - Up to three additional NED cross-IDs, pipe-separated
    * - ``OBJNAME``
      - str30
      - Common galaxy name from the parent catalog
    * - ``PGC``
-     - int64
+     - int32
      - PGC identifier (0 if unavailable)
    * - ``RA``, ``DEC``
      - float64
@@ -207,7 +291,7 @@ into the groups below.
      - float64
      - Tractor-fitted position (deg)
    * - ``MORPH``
-     - str
+     - str30
      - NED morphological type string
 
 **Status and quality bitmasks**
@@ -253,6 +337,9 @@ into the groups below.
    * - ``D26_ERR``
      - float32
      - 1σ uncertainty on D26 (arcmin)
+   * - ``D26_REF``
+     - str3
+     - Band from which D26 was derived (one of ``g``, ``r``, ``i``, ``z``; ``mom`` if the moment-based SMA was the only available estimate; ``fix`` when the ``FIXGEO`` ``ELLIPSEMODE`` bit is set and the geometry was held fixed)
    * - ``BA``
      - float32
      - Final axis ratio b/a
@@ -512,7 +599,7 @@ These columns record the geometry adopted from the input parent catalog at the
 start of processing, before any ellipse fitting. They are useful for
 quantifying how much the pipeline has revised the initial size and shape
 estimates, and for identifying objects whose fitted geometry has diverged
-substantially from the input. ``DIAM_INIT_REF`` encodes the source of the
+substantially from the input. ``INIT_REF`` encodes the source of the
 initial diameter: one of ``SGA2020``, ``HYPERLEDA``, ``LIT``, ``LVD``,
 ``SMUDGes``, ``RC3``, or ``VI`` (visually inspected and added during
 processing).
@@ -531,9 +618,6 @@ processing).
    * - ``DIAM_INIT``
      - float32
      - Initial diameter from the parent catalog (arcmin; −1 if not available)
-   * - ``DIAM_INIT_REF``
-     - str14
-     - Source catalog for ``DIAM_INIT`` (blank if not available)
    * - ``BA_INIT``
      - float32
      - Initial axis ratio b/a from the parent catalog (−1 if not available)
@@ -541,6 +625,20 @@ processing).
      - float32
      - Initial position angle from the parent catalog (deg, N through E;
        −1 if not available)
+   * - ``MAG_INIT``
+     - float32
+     - Initial magnitude from the parent catalog (mag; −1 if not available)
+   * - ``OPTFLUX``
+     - float32
+     - Optical reference flux used to set source-masking priority within a
+       group (nanomaggies; 0 if not set)
+   * - ``SMA_MASK``
+     - float32
+     - Semi-major axis used for neighbor masking during ellipse fitting
+       (arcsec; 0 if not set); overrides the moment-based SMA when positive
+   * - ``INIT_REF``
+     - str14
+     - Source catalog for ``DIAM_INIT`` (blank if not available)
 
 Data Model: TRACTOR Extension
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -875,14 +973,20 @@ The ``raslice`` is the zero-padded integer part of ``GROUP_RA``
 (e.g. RA = 33.98° → ``033``). The ``group_name`` is the bare
 ``GROUP_NAME`` column value.
 
-From Python, :func:`SGA.SGA.get_galaxy_galaxydir` returns the full path
-for any row in the catalog:
+To construct the path to a group directory in Python:
 
 .. code-block:: python
 
-   from SGA.SGA import get_galaxy_galaxydir
+   import os
 
-   galaxy, galaxydir = get_galaxy_galaxydir(sample, region='dr11-south')
+   datadir = '/path/to/data'   # local copy of the data release
+   region  = 'dr11-south'      # or 'dr11-north'
+
+   for row in cat:
+       raslice   = f'{int(row["GROUP_RA"]):03d}'
+       group_name = row['GROUP_NAME'].strip()
+       galaxydir  = os.path.join(datadir, region, raslice, group_name)
+       prefix     = f'SGA2025_{group_name}'
 
 File Inventory
 ~~~~~~~~~~~~~~
@@ -997,3 +1101,13 @@ Each file contains four FITS extensions:
      - Ellipse photometry table (one row per ellipse semi-major axis step)
    * - ``SBPROFILES``
      - Azimuthally averaged surface-brightness and color profiles
+
+.. _release-history:
+
+Release History
+---------------
+
+v1.0 (2025)
+~~~~~~~~~~~
+
+First public release.
