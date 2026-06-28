@@ -127,7 +127,7 @@ def _split_ranges(ntot, njobs):
 
 def _make_jobs(args, cfg):
     stages  = args.stage
-    regions = args.region or cfg['regions']
+    regions = args.region or ['dr11-south']
     width   = max(2, len(str(args.njobs)))
     jobs    = []
 
@@ -261,7 +261,7 @@ def main():
                         'coadds (GPU), ellipse, htmlplots, htmlindex')
     p.add_argument('--region', metavar='REGION', action='append',
                    choices=['dr11-north', 'dr11-south'],
-                   help='Region (repeat for multiple; default: both)')
+                   help='Region (repeat for multiple; default: dr11-south)')
     p.add_argument('--version', default='2025', choices=sorted(VERSION_CONFIG),
                    help='SGA release version')
     p.add_argument('--nodes', type=int, default=None,
@@ -324,7 +324,10 @@ def main():
             result = subprocess.run(['sbatch', str(j['fname'])],
                                     capture_output=True, text=True)
             if result.returncode == 0:
-                print(f'  Submitted: {result.stdout.strip()}')
+                jobid    = result.stdout.strip().split()[-1]
+                new_fname = j['fname'].parent / f'{j["fname"].stem}-{jobid}.slurm'
+                j['fname'].rename(new_fname)
+                print(f'  Submitted job {jobid} → {new_fname.name}')
             else:
                 print(f'  sbatch error for {j["fname"]}:\n{result.stderr}',
                       file=sys.stderr)
