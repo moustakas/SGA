@@ -168,7 +168,7 @@ def _make_jobs(args, cfg):
 
 def _build_script(*, version, mpi_script, stage, region, nodes, mp, ngpu, gpu,
                    qos, account, time_str, env_script, outdir, job_name,
-                   first=None, last=None, extra_args=()):
+                   first=None, last=None, threads_per_gpu=None, extra_args=()):
     res = _gpu_res(nodes, ngpu) if gpu else _cpu_res(nodes, mp)
     log = str(Path(outdir).resolve() / f'{job_name}-%j.log')
 
@@ -196,13 +196,15 @@ def _build_script(*, version, mpi_script, stage, region, nodes, mp, ngpu, gpu,
         srun_flags.append(f'--cpu-bind={res["cpu_bind"]}')
 
     # MPI script arguments
-    mpi_args = [mpi_script, f'--{stage}', f'--region {region}']
+    mpi_args = [mpi_script, f'--{stage}', f'--region={region}']
     if gpu:
-        mpi_args += ['--use-gpu', f'--ngpu {ngpu}']
+        mpi_args.append(f'--ngpu={ngpu}')
+        if threads_per_gpu is not None:
+            mpi_args.append(f'--threads-per-gpu={threads_per_gpu}')
     else:
-        mpi_args.append(f'--mp {mp}')
+        mpi_args.append(f'--mp={mp}')
     if first is not None:
-        mpi_args += [f'--first {first}', f'--last {last}']
+        mpi_args += [f'--first={first}', f'--last={last}']
     mpi_args.extend(extra_args)
 
     # Wrap into a single srun call with line continuations; indent MPI args
@@ -314,6 +316,8 @@ def main():
                    help='Multiprocessing cores per MPI rank (CPU jobs)')
     p.add_argument('--ngpu', type=int, default=NGPU_PER_NODE,
                    help='GPUs per node for coadds (GPU jobs)')
+    p.add_argument('--threads-per-gpu', type=int, default=None,
+                   help='Threads per GPU forwarded to custom_coadds (GPU jobs only)')
     p.add_argument('--no-gpu', action='store_true',
                    help='Run coadds on CPU nodes instead of GPU')
     p.add_argument('--qos', default='regular', choices=sorted(QOS_MAX),
@@ -394,6 +398,7 @@ def main():
             env_script=env_script, outdir=args.outdir,
             job_name=j['job_name'],
             first=j['first'], last=j['last'],
+            threads_per_gpu=args.threads_per_gpu,
             extra_args=extra_args,
         )
         j['fname'].write_text(script)

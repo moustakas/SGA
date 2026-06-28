@@ -93,7 +93,6 @@ def mpi_args():
     parser.add_argument('--public-release', action='store_true', help='RRead the public (final) sample and generate public (final) QA.')
     parser.add_argument('--wisesize', action='store_true', help='Read the wisesize parent sample.')
 
-    parser.add_argument('--use-gpu', action='store_true', help='Launch the GPU version of legacypipe (only with --coadds).')
     parser.add_argument('--ngpu', default=1, type=int, help='Number of GPUs to use.')
     parser.add_argument('--threads-per-gpu', default=8, type=int, help='Max threads per GPU - CPU will fill remaining threads.')
 
