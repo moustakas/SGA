@@ -4,6 +4,7 @@
 # Usage:
 #   module load conda
 #   bash etc/update-env-sga.sh                        # update all packages
+#   bash etc/update-env-sga.sh mpi4py                 # rebuild mpi4py (e.g. after MPICH update)
 #   bash etc/update-env-sga.sh sga                    # update SGA only
 #   bash etc/update-env-sga.sh isoster                # update isoster only
 #   bash etc/update-env-sga.sh imagine                # update imagine only
@@ -33,6 +34,14 @@ else
 fi
 
 RUN="$MAMBA run -p $SGA_PREFIX"
+
+update_mpi4py() {
+    # mpi4py must be built against Cray MPICH — never conda/pip install.
+    # Re-run the source build whenever the system MPICH version changes.
+    echo "==> Rebuilding mpi4py against Cray MPICH..."
+    $RUN env MPICC="cc -shared" pip install \
+        --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
+}
 
 update_sga() {
     echo "==> Updating SGA..."
@@ -74,6 +83,7 @@ editable_install() {
 
 # Parse arguments
 if [[ $# -eq 0 ]]; then
+    update_mpi4py
     update_pydl
     update_sga
     update_isoster
@@ -91,12 +101,13 @@ fi
 
 for pkg in "$@"; do
     case $pkg in
+        mpi4py)     update_mpi4py ;;
         pydl)       update_pydl ;;
         sga)        update_sga ;;
         isoster)    update_isoster ;;
         imagine)    update_imagine ;;
         legacypipe) update_legacypipe ;;
         tractor)    update_tractor ;;
-        *) echo "Unknown package: $pkg (expected pydl, sga, isoster, imagine, legacypipe, or tractor)"; exit 1 ;;
+        *) echo "Unknown package: $pkg (expected mpi4py, pydl, sga, isoster, imagine, legacypipe, or tractor)"; exit 1 ;;
     esac
 done

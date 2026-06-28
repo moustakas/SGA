@@ -4,6 +4,10 @@
 # separately by create-env.sh because mamba runs pip installs before the
 # environment is fully activated, which breaks builds that need a working
 # compiler + numpy headers. pydl is pip-only (not on conda-forge).
+#
+# mpi4py is NOT listed here. Do NOT conda/pip install mpi4py at NERSC —
+# it must be built from source against Cray MPICH by create-env.sh using:
+#   MPICC="cc -shared" pip install --no-binary=mpi4py mpi4py
 
 name: SGA
 channels:
