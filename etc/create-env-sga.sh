@@ -90,7 +90,13 @@ echo "${SGA_PREFIX}/lib/python" \
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> Building mpi4py against Cray MPICH..."
-$RUN env MPICC="cc -shared" pip install \
+# Capture the Cray 'cc' wrapper path before $RUN prepends the conda env's
+# bin/ to PATH (which would shadow it with the conda-packaged gcc wrapper).
+CRAY_CC=$(which cc 2>/dev/null) || {
+    echo "Error: 'cc' not found. Is PrgEnv-gnu loaded? Try: module load PrgEnv-gnu"
+    exit 1
+}
+$RUN env MPICC="${CRAY_CC} -shared" pip install \
     --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
 
 echo ""

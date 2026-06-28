@@ -38,8 +38,17 @@ RUN="$MAMBA run -p $SGA_PREFIX"
 update_mpi4py() {
     # mpi4py must be built against Cray MPICH — never conda/pip install.
     # Re-run the source build whenever the system MPICH version changes.
-    echo "==> Rebuilding mpi4py against Cray MPICH..."
-    $RUN env MPICC="cc -shared" pip install \
+    #
+    # Capture the Cray 'cc' wrapper path NOW, before $MAMBA run prepends the
+    # conda env's bin/ to PATH (which would shadow it with the conda-packaged
+    # gcc wrapper and break the MPI header search).
+    local cray_cc
+    cray_cc=$(which cc 2>/dev/null) || {
+        echo "Error: 'cc' not found. Is PrgEnv-gnu loaded? Try: module load PrgEnv-gnu"
+        return 1
+    }
+    echo "==> Rebuilding mpi4py against Cray MPICH (MPICC=${cray_cc} -shared)..."
+    $RUN env MPICC="${cray_cc} -shared" pip install \
         --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
 }
 
