@@ -1868,18 +1868,57 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
     """Return the complete index HTML string for one region."""
     # Pre-compute fragments that contain { } so they don't need double-bracing inside the
     # main format string.
-    def _btn_row(bits, css_cls, toggle_fn):
+    def _btn_row(bits, css_cls, toggle_fn, descs=None):
         return ''.join(
-            '<button class="hbtn {css}" onclick="{fn}({v})" data-bit="{v}">{k}</button>'.format(
-                css=css_cls, fn=toggle_fn, k=k, v=v)
+            '<button class="hbtn {css}" onclick="{fn}({v})" data-bit="{v}" data-tooltip="{tip}">{k}</button>'.format(
+                css=css_cls, fn=toggle_fn, k=k, v=v,
+                tip=(descs or {}).get(k, ''))
             for k, v in bits.items()
         )
     def _bits_js(bits):
         return '{' + ', '.join("'{}': {}".format(k, v) for k, v in bits.items()) + '}'
 
-    hbtns       = _btn_row(sample_bits,       'hbtn-sample', 'toggleSample')
-    emode_hbtns = _btn_row(ellipsemode_bits,  'hbtn-emode',  'toggleEmode')
-    ebit_hbtns  = _btn_row(ellipsebit_bits,   'hbtn-ebit',   'toggleEbit')
+    _sample_descs = {
+        'LVD':      'Local Volume Database dwarf',
+        'MCLOUDS':  'In the Magellanic Clouds',
+        'GCLPNE':   'In a globular cluster or planetary nebula mask',
+        'NEARSTAR': 'Near a bright star',
+        'INSTAR':   'Inside a bright star',
+        'OVERLAP':  'Initial ellipse overlaps another SGA ellipse',
+    }
+    _emode_descs = {
+        'FIXGEO':      'Fix ellipse geometry to initial values',
+        'RESOLVED':    'Milky Way satellite; no Tractor fitting (implies FIXGEO)',
+        'FORCEPSF':    'Force PSF detection within the SGA mask',
+        'FORCEGAIA':   'Force Gaia source detection',
+        'LESSMASKING': 'Subtract but do not threshold-mask Gaia stars',
+        'MOREMASKING': 'Threshold-mask extended sources within the SGA ellipse',
+        'MOMENTPOS':   'Use light-weighted (not Tractor) center',
+        'TRACTORGEO':  'Use Tractor (not light-weighted) geometry',
+        'NORADWEIGHT': 'Moment geometry without radial weighting',
+    }
+    _ebit_descs = {
+        'NOTRACTOR':        'No corresponding Tractor source',
+        'TRACTORPSF':       'Tractor fit this source as a PSF',
+        'FIXGEO':           'Fixed ellipse geometry',
+        'BLENDED':          'Center within the ellipse of another SGA source',
+        'LARGESHIFT':       'Large positional shift from initial ellipse',
+        'LARGESHIFT_TRACTOR': 'Large shift between Tractor and final ellipse',
+        'MAJORGAL':         'Nearby bright galaxy subtracted',
+        'OVERLAP':          'Fitted ellipse overlaps another SGA ellipse',
+        'SATELLITE':        'Satellite of a larger galaxy',
+        'MOMENTPOS':        'Light-weighted center adopted',
+        'TRACTORGEO':       'Tractor geometry adopted',
+        'NORADWEIGHT':      'Moment geometry without radial weighting',
+        'LESSMASKING':      'Gaia stars subtracted but not threshold-masked',
+        'MOREMASKING':      'Extended sources threshold-masked within the SGA ellipse',
+        'FAILGEO':          'Ellipse geometry fit failed; reverted to initial',
+        'SKIPTRACTOR':      'Tractor fitting skipped for this group',
+    }
+
+    hbtns       = _btn_row(sample_bits,       'hbtn-sample', 'toggleSample', _sample_descs)
+    emode_hbtns = _btn_row(ellipsemode_bits,  'hbtn-emode',  'toggleEmode',  _emode_descs)
+    ebit_hbtns  = _btn_row(ellipsebit_bits,   'hbtn-ebit',   'toggleEbit',   _ebit_descs)
     sample_bits_js      = _bits_js(sample_bits)
     ellipsemode_bits_js = _bits_js(ellipsemode_bits)
     ellipsebit_bits_js  = _bits_js(ellipsebit_bits)
@@ -1918,11 +1957,26 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
     .hrow     {{ display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 5px; }}
     .hotlabel {{ font-size: 13px; font-weight: bold; margin-right: 8px; color: #444;
                  min-width: 110px; flex-shrink: 0; }}
-    .hbtn {{ padding: 5px 11px; font-size: 12px; background: #e8e8e8;
+    .hbtn {{ position: relative; padding: 5px 11px; font-size: 12px; background: #e8e8e8;
              border: 1px solid #bbb; border-radius: 3px; cursor: pointer;
              margin-right: 4px; }}
     .hbtn:hover {{ background: #d0d0d0; }}
     .hbtn.active {{ background: #0066cc; color: #fff; border-color: #0044aa; }}
+    .hbtn[data-tooltip]:hover::after {{
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 5px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 1000;
+    }}
     .summary {{ color: #555; font-size: 13px; margin-bottom: 8px; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
     th {{ background: #f0f0f0; padding: 8px 10px; border: 1px solid #ddd;
@@ -1943,8 +1997,8 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
   </style>
 </head>
 <body>
-  <h1>SGA-2025 Group Index &mdash; {region}</h1>
-  <p class="subtitle">Total: {count:,} groups</p>
+  <h1>SGA-2025 Gallery &mdash; {region}</h1>
+  <p class="subtitle">Total: {count:,} groups &nbsp;&mdash;&nbsp; <a href="https://sga.readthedocs.io/en/latest/sga2025.html" target="_blank">SGA-2025 Documentation</a></p>
 
   <div class="filter-panel">
     <div class="filter-col">
