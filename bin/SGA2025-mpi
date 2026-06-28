@@ -247,6 +247,7 @@ def main():
             os.makedirs(htmldir, exist_ok=True)
 
         log.info(f'$SGA_DIR={basedir}')
+        log.info(f'$SGA_PUBLIC_DIR={os.getenv("SGA_PUBLIC_DIR"}')
         log.info(f'$SGA_DATA_DIR={datadir}')
         log.info(f'$SGA_HTML_DIR={htmldir}')
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')

@@ -435,10 +435,11 @@ def _read_catalog(samplefile, ext, diam_col, first, last, galaxylist, verbose,
             log.warning(f'Index last is greater than the number of objects in sample, {last} >= {nsample}')
             last = nsample
         I = np.arange(first, last)
-        if nsample == 1:
+        nselect = last - first
+        if nselect == 1:
             log.info(f'Selecting index {first} (N=1)')
         else:
-            log.info(f'Selecting indices {first} through {last} (N={nsample:,d})')
+            log.info(f'Selecting indices {first} through {last} (N={nselect:,d})')
         sample = sample[I]
         if no_groups:
             fullsample = sample

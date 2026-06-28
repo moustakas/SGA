@@ -210,7 +210,49 @@ def _build_script(*, version, mpi_script, stage, region, nodes, mp, ngpu, gpu,
     cmd = [tok + ' \\' for tok in all_tokens[:-1]] + [all_tokens[-1]]
     cmd = [cmd[0]] + ['    ' + line for line in cmd[1:]]
 
-    lines = header + ['', f'source {env_script}', ''] + cmd
+    cmd_oneline = ' '.join(all_tokens)
+    if gpu:
+        hw_line = f'Nodes: {nodes}  Ranks: {res["ntasks"]}  GPUs/rank: 1  HW: GPU  Wall: {time_str}'
+    else:
+        hw_line = (f'Nodes: {nodes}  Ranks: {res["ntasks"]}  '
+                   f'CPUs/rank: {res["cpus_per_task"]}  HW: CPU  Wall: {time_str}')
+    SEP  = '=' * 72
+    SEP2 = '-' * 72
+
+    preamble = [
+        f'echo "{SEP}"',
+        f'echo "Job:        {job_name}  [$SLURM_JOB_ID]"',
+        f'echo "Started:    $(date \'+%Y-%m-%d %H:%M:%S\')"',
+        f'echo "{hw_line}"',
+        'echo "NodeList:   $SLURM_JOB_NODELIST"',
+        f'echo "{SEP2}"',
+        'echo "Stack:      $(which python)"',
+        'echo "SGA_DIR:    ${SGA_DIR:-<not set>}"',
+        'echo "SGA_PUBLIC: ${SGA_PUBLIC_DIR:-<not set>}"',
+        'echo "SGA_DATA:   ${SGA_DATA_DIR:-<not set>}"',
+        'echo "SGA_HTML:   ${SGA_HTML_DIR:-<not set>}"',
+        'echo "REFCAT:     ${LARGEGALAXIES_CAT:-<not set>}"',
+        f'echo "{SEP2}"',
+        f'echo "Command:    {cmd_oneline}"',
+        f'echo "{SEP}"',
+        'echo ""',
+        '_t0=$SECONDS',
+        '',
+    ]
+    postamble = [
+        '',
+        '_rc=$?',
+        '_elapsed=$(( SECONDS - _t0 ))',
+        'echo ""',
+        f'echo "{SEP}"',
+        'printf "Finished:   %s  Elapsed: %d:%02d:%02d  Exit: %d\\n" \\',
+        '    "$(date \'+%Y-%m-%d %H:%M:%S\')" \\',
+        '    $((_elapsed/3600)) $(((_elapsed%3600)/60)) $((_elapsed%60)) $_rc',
+        f'echo "{SEP}"',
+        'exit $_rc',
+    ]
+
+    lines = header + ['', f'source {env_script}', ''] + preamble + cmd + postamble
     return '\n'.join(lines) + '\n'
 
 # ── plan table ─────────────────────────────────────────────────────────────────
