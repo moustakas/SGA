@@ -14,7 +14,7 @@ from pathlib import Path
 
 VALID_STAGES      = ('coadds', 'ellipse', 'htmlplots', 'htmlindex')
 GPU_STAGES        = {'coadds'}          # GPU by default; overridden by --no-gpu
-MAIL_USER         = 'john.moustakas@gmail.com'
+MAIL_USER         = 'jmoustakas@siena.edu'
 CPUS_PER_CPU_NODE = 128                 # Perlmutter CPU node (physical cores)
 CPUS_PER_GPU_NODE = 64                  # Perlmutter GPU node (physical cores)
 NGPU_PER_NODE     = 4                   # A100s per Perlmutter GPU node
@@ -29,8 +29,8 @@ DEFAULT_WALLTIME = {
 
 QOS_MAX = {
     'debug':   '00:30:00',
-    'regular': '12:00:00',
-    'premium': '24:00:00',
+    'regular': '04:00:00',
+    'premium': '04:00:00',
 }
 
 VERSION_CONFIG = {
@@ -139,6 +139,8 @@ def _make_jobs(args, cfg):
 
         if args.njobs > 1:
             ranges = _split_ranges(args.ntot, args.njobs)
+        elif args.first is not None or args.last is not None:
+            ranges = [(args.first, args.last)]
         else:
             ranges = [(None, None)]
 
@@ -182,7 +184,7 @@ def _build_script(*, version, mpi_script, stage, region, nodes, mp, ngpu, gpu,
         f'#SBATCH --cpus-per-task={res["cpus_per_task"]}',
         f'#SBATCH --time={time_str}',
         f'#SBATCH --output={log}',
-        '#SBATCH --mail-type=END,FAIL',
+        '#SBATCH --mail-type=ALL',
         f'#SBATCH --mail-user={MAIL_USER}',
     ]
     if gpu:
@@ -282,6 +284,13 @@ def main():
                    help='Split each (stage, region) into N jobs via --first/--last')
     p.add_argument('--ntot', type=int, default=None,
                    help='Total catalog objects per region (required when --njobs > 1)')
+    # Sample selection forwarded verbatim to the MPI script
+    p.add_argument('--first', type=int, default=None,
+                   help='Index of first object to process (forwarded to MPI script)')
+    p.add_argument('--last', type=int, default=None,
+                   help='Index of last object to process (forwarded to MPI script)')
+    p.add_argument('--galaxylist', default=None,
+                   help='Comma-separated galaxy names to process (forwarded to MPI script)')
     p.add_argument('--outdir', default='.',
                    help='Directory for generated .slurm files and logs')
     p.add_argument('--plan', action='store_true',
@@ -294,6 +303,15 @@ def main():
 
     if args.njobs > 1 and args.ntot is None:
         p.error('--ntot is required when --njobs > 1')
+    if args.njobs > 1 and (args.first is not None or args.last is not None):
+        p.error('--first/--last cannot be combined with --njobs > 1')
+
+    # Build passthrough args forwarded to the MPI script from named flags.
+    # Anything after '--' on the command line is already in extra_args.
+    passthrough = []
+    if args.galaxylist is not None:
+        passthrough.append(f'--galaxylist {args.galaxylist}')
+    extra_args = passthrough + extra_args
 
     env_script = _find_env_script()
     jobs       = _make_jobs(args, cfg)
