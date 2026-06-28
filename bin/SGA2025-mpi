@@ -197,6 +197,13 @@ def main():
                          read_sample, read_sga_sample, missing_files,
                          get_galaxy_galaxydir, get_radius_mosaic)
 
+    # Must be set before MPI_Init (i.e., before importing mpi4py.MPI).
+    # On Linux the default is 'fork', which is unsafe after MPI_Init and after
+    # any CUDA context is established. 'spawn' starts a fresh interpreter for
+    # each pool worker, avoiding both hazards.
+    import multiprocessing
+    multiprocessing.set_start_method('spawn', force=True)
+
     try:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD
@@ -207,10 +214,6 @@ def main():
 
     args = mpi_args()
     set_legacysurvey_dir(args.region, rank=rank)
-
-    #if args.mp > 1 and 'NERSC_HOST' in os.environ:
-    #    import multiprocessing
-    #    multiprocessing.set_start_method('spawn')
 
     #if args.lvd:
     #    no_groups = True
@@ -247,6 +250,7 @@ def main():
             os.makedirs(htmldir, exist_ok=True)
 
         log.info(f'$SGA_DIR={basedir}')
+        log.info(f'$SGA_PUBLIC_DIR={os.getenv("SGA_PUBLIC_DIR"}')
         log.info(f'$SGA_DATA_DIR={datadir}')
         log.info(f'$SGA_HTML_DIR={htmldir}')
         log.info(f'$LARGEGALAXIES_CAT={os.getenv("LARGEGALAXIES_CAT")}')

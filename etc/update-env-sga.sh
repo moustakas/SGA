@@ -4,6 +4,7 @@
 # Usage:
 #   module load conda
 #   bash etc/update-env-sga.sh                        # update all packages
+#   bash etc/update-env-sga.sh mpi4py                 # rebuild mpi4py (e.g. after MPICH update)
 #   bash etc/update-env-sga.sh sga                    # update SGA only
 #   bash etc/update-env-sga.sh isoster                # update isoster only
 #   bash etc/update-env-sga.sh imagine                # update imagine only
@@ -34,29 +35,46 @@ fi
 
 RUN="$MAMBA run -p $SGA_PREFIX"
 
+update_mpi4py() {
+    # mpi4py must be built against Cray MPICH — never conda/pip install.
+    # Re-run the source build whenever the system MPICH version changes.
+    #
+    # Capture the Cray 'cc' wrapper path NOW, before $MAMBA run prepends the
+    # conda env's bin/ to PATH (which would shadow it with the conda-packaged
+    # gcc wrapper and break the MPI header search).
+    local cray_cc
+    cray_cc=$(which cc 2>/dev/null) || {
+        echo "Error: 'cc' not found. Is PrgEnv-gnu loaded? Try: module load PrgEnv-gnu"
+        return 1
+    }
+    echo "==> Rebuilding mpi4py against Cray MPICH (MPICC=${cray_cc} -shared)..."
+    $RUN env MPICC="${cray_cc} -shared" pip install \
+        --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
+}
+
 update_sga() {
     echo "==> Updating SGA..."
-    $RUN pip install --upgrade --no-deps git+https://github.com/moustakas/SGA
+    $RUN pip install --force-reinstall --no-deps --no-cache-dir git+https://github.com/moustakas/SGA
 }
 
 update_legacypipe() {
     echo "==> Updating legacypipe..."
-    $RUN pip install --no-build-isolation --upgrade git+https://github.com/legacysurvey/legacypipe
+    $RUN pip install --no-build-isolation --force-reinstall --no-deps --no-cache-dir git+https://github.com/legacysurvey/legacypipe
 }
 
 update_tractor() {
     echo "==> Updating tractor..."
-    $RUN pip install --no-build-isolation --upgrade git+https://github.com/dstndstn/tractor
+    $RUN pip install --no-build-isolation --force-reinstall --no-deps --no-cache-dir git+https://github.com/dstndstn/tractor
 }
 
 update_pydl() {
     echo "==> Updating pydl..."
-    $RUN pip install --upgrade pydl
+    $RUN pip install --force-reinstall --no-cache-dir pydl
 }
 
 update_isoster() {
     echo "==> Updating isoster..."
-    $RUN pip install --upgrade git+https://github.com/MassiveSeaOtters/isoster
+    $RUN pip install --force-reinstall --no-deps --no-cache-dir git+https://github.com/MassiveSeaOtters/isoster
 }
 
 update_imagine() {
@@ -74,6 +92,7 @@ editable_install() {
 
 # Parse arguments
 if [[ $# -eq 0 ]]; then
+    update_mpi4py
     update_pydl
     update_sga
     update_isoster
@@ -91,12 +110,13 @@ fi
 
 for pkg in "$@"; do
     case $pkg in
+        mpi4py)     update_mpi4py ;;
         pydl)       update_pydl ;;
         sga)        update_sga ;;
         isoster)    update_isoster ;;
         imagine)    update_imagine ;;
         legacypipe) update_legacypipe ;;
         tractor)    update_tractor ;;
-        *) echo "Unknown package: $pkg (expected pydl, sga, isoster, imagine, legacypipe, or tractor)"; exit 1 ;;
+        *) echo "Unknown package: $pkg (expected mpi4py, pydl, sga, isoster, imagine, legacypipe, or tractor)"; exit 1 ;;
     esac
 done

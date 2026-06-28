@@ -81,6 +81,24 @@ echo "${SGA_PREFIX}/lib/python" \
 # isolated subprocess that doesn't inherit the env's packages, causing
 # "ModuleNotFoundError: No module named 'numpy'".
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Step 3: mpi4py — must be built against Cray MPICH, NOT conda/pip installed.
+# The Cray compiler wrapper 'cc' links against the system Cray MPICH
+# (Slingshot 11 / Slurm-aware). MPICC="cc -shared" is required so that the
+# resulting extension is a shared library. --no-binary ensures pip builds from
+# source rather than pulling a pre-linked wheel.
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> Building mpi4py against Cray MPICH..."
+# Capture the Cray 'cc' wrapper path before $RUN prepends the conda env's
+# bin/ to PATH (which would shadow it with the conda-packaged gcc wrapper).
+CRAY_CC=$(which cc 2>/dev/null) || {
+    echo "Error: 'cc' not found. Is PrgEnv-gnu loaded? Try: module load PrgEnv-gnu"
+    exit 1
+}
+$RUN env MPICC="${CRAY_CC} -shared" pip install \
+    --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
+
 echo ""
 echo "==> Installing pydl..."
 $RUN pip install pydl

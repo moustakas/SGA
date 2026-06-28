@@ -32,6 +32,10 @@ dependencies:
   - healpy
   - seaborn
   # Jupyter kernel support
+  # MPI (conda-forge bundles OpenMPI on macOS; safe to conda-install here,
+  # unlike NERSC where Cray MPICH requires a source build)
+  - mpi4py
+  # Jupyter kernel support
   - ipykernel
   - ipython
   - pip
