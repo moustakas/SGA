@@ -2,25 +2,43 @@
 """
 validate_sga2025.py — Validate SGA2025 production output directories.
 
+Three validation stages are supported via ``--stage``:
+
+coadds (default)
+    Checks each data group directory for coadd + ellipse outputs.
+    - Presence of *-coadds.isdone and *-ellipse.isdone
+    - Correct file set for "full" mode (has *-tractor.fits) vs "coadds only"
+    - No unexpected/extraneous files
+    - UV (NUV, FUV) and IR (W1-W4) bands always present
+    - At least one optical band (g, r, i, z)
+    - fitsverify -e -q on every *.fits* file (errors only, not warnings)
+
+htmlplots
+    Checks each HTML group directory after ``SGA2025-mpi --htmlplots``.
+    - Presence of *-html.isdone and *-html.log (and flags *-html.isfail)
+    - Presence of *-montage.png and *-thumb.jpg
+    - If *-ellipsemask.png exists (full mode): also checks per-galaxy
+      *-sbprofiles.png, *-cog.png, and *-sed.png for every SGANAME found
+    - PNG integrity check on all .png files (signature + IEND chunk)
+
+htmlindex
+    Checks each HTML group directory after ``SGA2025-mpi --htmlindex``.
+    - Presence of {group_name}.html
+
 Usage (single-process):
     python validate_sga2025.py /path/to/dr11-south [--logfile validation.log]
+    python validate_sga2025.py /path/to/html/dr11-south --stage htmlplots
+    python validate_sga2025.py /path/to/html/dr11-south --stage htmlindex
 
 Usage (MPI, recommended for large releases):
     srun -n 64 python validate_sga2025.py /path/to/dr11-south [--logfile validation.log]
+    srun -n 64 python validate_sga2025.py /path/to/html/dr11-south --stage htmlplots
 
-Checks each group directory for:
-  - Presence of *-coadds.isdone and *-ellipse.isdone
-  - Correct set of files for "full" mode (has *-tractor.fits) vs
-    "coadds only" mode (no *-tractor.fits)
-  - No unexpected/extraneous files
-  - UV (NUV, FUV) and IR (W1-W4) bands always present
-  - At least one optical band (g, r, i, z)
-  - fitsverify -e -q passes on every *.fits* file (errors only, not warnings)
-
-salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive
-source /dvs_ro/common/software/desi/desi_environment.sh main
-time srun --ntasks=64 python validate_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-north --logfile validation-dr11-north.log
-time srun --ntasks=64 python validate_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-south --logfile validation-dr11-south.log
+NERSC interactive example:
+    salloc -N 1 -C cpu -A desi -t 04:00:00 --qos interactive
+    source /dvs_ro/common/software/desi/desi_environment.sh main
+    time srun --ntasks=64 python validate_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-north --logfile validation-coadds-dr11-north.log
+    time srun --ntasks=64 python validate_sga2025.py $SGA_HTML_DIR/dr11-south --stage htmlplots --logfile validation-htmlplots-dr11-south.log
 
 """
 
@@ -159,6 +177,146 @@ ELLIPSE_RE = re.compile(
     r'^SGA2025_J[\d.]+[+-][\d.]+-ellipse-(griz|galex|unwise)\.fits$'
 )
 
+# Pattern to extract per-galaxy J-coord from HTML plot filenames
+_JNAME_RE = re.compile(r'^SGA2025_(J[\d.]+[+-][\d.]+)-.+\.png$')
+
+
+# ---------------------------------------------------------------------------
+# PNG integrity check
+# ---------------------------------------------------------------------------
+
+PNG_SIG  = b'\x89PNG\r\n\x1a\n'
+PNG_IEND = b'\x00\x00\x00\x00IEND\xae\x42\x60\x82'
+
+
+def check_png_integrity(filepath):
+    """Return an error string if the PNG is corrupt/truncated, else None.
+
+    Checks the PNG signature (first 8 bytes) and the IEND chunk (last 12
+    bytes).  A file whose write was interrupted will be missing the IEND
+    chunk.  No pixel data is read, so this is fast even for large files.
+    """
+    try:
+        size = filepath.stat().st_size
+        if size < 20:
+            return f'PNG too small ({size} B): {filepath.name}'
+        with open(filepath, 'rb') as fh:
+            sig = fh.read(8)
+            if sig != PNG_SIG:
+                return f'PNG bad signature: {filepath.name}'
+            fh.seek(-12, 2)
+            tail = fh.read(12)
+        if tail != PNG_IEND:
+            return f'PNG truncated/corrupt (missing IEND): {filepath.name}'
+    except OSError as exc:
+        return f'PNG unreadable [{filepath.name}]: {exc}'
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Per-galaxy name discovery for HTML group directories
+# ---------------------------------------------------------------------------
+
+def _find_jnames(dirpath):
+    """Return the set of per-galaxy J-coord strings found as plot filenames.
+
+    Scans for ``SGA2025_J...-*.png`` files and extracts the J-coordinate
+    portion (e.g. ``J123.4567+12.345``).  The three per-galaxy plot types
+    (sbprofiles, cog, sed) all share the same prefix, so this discovers
+    which galaxies should have plots without needing the sample catalog.
+    """
+    jnames = set()
+    for f in dirpath.iterdir():
+        if not f.is_file():
+            continue
+        m = _JNAME_RE.match(f.name)
+        if m:
+            jnames.add(m.group(1))
+    return jnames
+
+
+# ---------------------------------------------------------------------------
+# HTML per-group validation
+# ---------------------------------------------------------------------------
+
+def validate_html_group(dirpath, stage):
+    """
+    Validate a single HTML group directory for ``--stage htmlplots`` or
+    ``--stage htmlindex``.
+
+    Returns
+    -------
+    problems : list of str
+    mode : str  ('full', 'skip_ellipse', or 'htmlindex')
+    """
+    dirpath = Path(dirpath)
+    group   = dirpath.name
+    g       = f'SGA2025_{group}'
+    problems = []
+    actual_files = set(f.name for f in dirpath.iterdir() if f.is_file())
+
+    if stage == 'htmlplots':
+        # A .isfail marker means the run failed for this group
+        if f'{g}-html.isfail' in actual_files:
+            problems.append(f'FAILED: {g}-html.isfail present')
+
+        # Completion marker and log
+        for marker in [f'{g}-html.isdone', f'{g}-html.log']:
+            if marker not in actual_files:
+                problems.append(f'MISSING: {marker}')
+
+        # Group-level images always expected when htmlplots ran
+        montage = f'{g}-montage.png'
+        thumb   = f'{g}-thumb.jpg'
+        ellmask = f'{g}-ellipsemask.png'
+
+        if montage not in actual_files:
+            problems.append(f'MISSING: {montage}')
+        else:
+            err = check_png_integrity(dirpath / montage)
+            if err:
+                problems.append(err)
+
+        if thumb not in actual_files:
+            problems.append(f'MISSING: {thumb}')
+
+        # Determine mode from whether ellipsemask was produced
+        full_mode = ellmask in actual_files
+        if full_mode:
+            err = check_png_integrity(dirpath / ellmask)
+            if err:
+                problems.append(err)
+
+            # Discover per-galaxy J-coords and check all three plot types
+            jnames = _find_jnames(dirpath)
+            if not jnames:
+                problems.append(
+                    'MISSING: no per-galaxy plot files found '
+                    '(expected *-sbprofiles.png, *-cog.png, *-sed.png)')
+            else:
+                for jname in sorted(jnames):
+                    for ptype in ['sbprofiles', 'cog', 'sed']:
+                        fname = f'SGA2025_{jname}-{ptype}.png'
+                        if fname not in actual_files:
+                            problems.append(f'MISSING: {fname}')
+                        else:
+                            err = check_png_integrity(dirpath / fname)
+                            if err:
+                                problems.append(err)
+
+        mode = 'full' if full_mode else 'skip_ellipse'
+
+    elif stage == 'htmlindex':
+        html_file = f'{group}.html'
+        if html_file not in actual_files:
+            problems.append(f'MISSING: {html_file}')
+        mode = 'htmlindex'
+
+    else:
+        mode = stage
+
+    return problems, mode
+
 
 # ---------------------------------------------------------------------------
 # fitsverify
@@ -265,8 +423,18 @@ def validate_group(dirpath):
 # Tree validation (MPI-aware)
 # ---------------------------------------------------------------------------
 
-def validate_tree(topdir, log):
-    """Walk the tree, distribute work across MPI ranks, gather on rank 0."""
+def validate_tree(topdir, log, stage='coadds'):
+    """Walk the tree, distribute work across MPI ranks, gather on rank 0.
+
+    Parameters
+    ----------
+    topdir : str or Path
+        Region-level directory whose ``{raslice}/{group}/`` subdirectories
+        will be validated (data dir for ``coadds``; HTML region dir for
+        ``htmlplots`` / ``htmlindex``).
+    log : logging.Logger
+    stage : {'coadds', 'htmlplots', 'htmlindex'}
+    """
 
     topdir = Path(topdir)
 
@@ -295,7 +463,10 @@ def validate_tree(topdir, log):
         #     print(f'[rank {_rank:03d}/{_size}] {i+1}/{len(my_dirs)} checked', flush=True)
         if _rank == 0 and (i + 1) % 1000 == 0:
             log.info(f'  rank 0: {i+1}/{len(my_dirs)} checked ...')
-        problems, mode = validate_group(d)
+        if stage == 'coadds':
+            problems, mode = validate_group(d)
+        else:
+            problems, mode = validate_html_group(d, stage)
         my_results.append((d.name, problems, mode))
 
     # Gather on rank 0
@@ -313,8 +484,6 @@ def validate_tree(topdir, log):
 
     # Tally and report
     n_total = len(results)
-    n_full    = sum(1 for _, _, m in results if m == 'full')
-    n_coadds  = sum(1 for _, _, m in results if m == 'coadds')
     problem_groups = [(name, probs) for name, probs, _ in results if probs]
 
     for name, probs in problem_groups:
@@ -326,8 +495,16 @@ def validate_tree(topdir, log):
     log.info('VALIDATION SUMMARY')
     log.info('=' * 70)
     log.info(f'  Total groups:       {n_total:6d}')
-    log.info(f'  Full mode:          {n_full:6d}')
-    log.info(f'  Coadds-only mode:   {n_coadds:6d}')
+    if stage == 'coadds':
+        n_full   = sum(1 for _, _, m in results if m == 'full')
+        n_coadds = sum(1 for _, _, m in results if m == 'coadds')
+        log.info(f'  Full mode:          {n_full:6d}')
+        log.info(f'  Coadds-only mode:   {n_coadds:6d}')
+    elif stage == 'htmlplots':
+        n_full = sum(1 for _, _, m in results if m == 'full')
+        n_skip = sum(1 for _, _, m in results if m == 'skip_ellipse')
+        log.info(f'  Full mode:          {n_full:6d}')
+        log.info(f'  Skip-ellipse mode:  {n_skip:6d}')
     log.info(f'  OK:                 {n_total - len(problem_groups):6d}')
     log.info(f'  With problems:      {len(problem_groups):6d}')
     log.info('=' * 70)
@@ -340,8 +517,31 @@ def validate_tree(topdir, log):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description='Validate SGA2025 production output.')
-    parser.add_argument('topdir', help='Top-level directory (e.g. /path/to/dr11-south)')
+    parser = argparse.ArgumentParser(
+        description='Validate SGA2025 production output.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Coadds + ellipse (default)
+  python validate_sga2025.py /path/to/dr11-south --logfile validation-coadds.log
+
+  # HTML plots (SGA2025-mpi --htmlplots)
+  python validate_sga2025.py /path/to/html/dr11-south --stage htmlplots --logfile validation-htmlplots.log
+
+  # HTML index pages (SGA2025-mpi --htmlindex)
+  python validate_sga2025.py /path/to/html/dr11-south --stage htmlindex --logfile validation-htmlindex.log
+
+  # MPI (any stage)
+  srun -n 64 python validate_sga2025.py /path/to/html/dr11-south --stage htmlplots
+""")
+    parser.add_argument('topdir',
+                        help='Region-level directory to validate.  For --stage coadds '
+                             'this is the data directory (e.g. /path/to/dr11-south); '
+                             'for HTML stages it is the HTML region directory '
+                             '(e.g. /path/to/html/dr11-south).')
+    parser.add_argument('--stage', default='coadds',
+                        choices=['coadds', 'htmlplots', 'htmlindex'],
+                        help='Validation stage (default: coadds)')
     parser.add_argument('--logfile', default='validation.log',
                         help='Output log file (default: validation.log)')
     args = parser.parse_args()
@@ -360,13 +560,14 @@ def main():
         fh.setFormatter(fmt)
         log.addHandler(fh)
 
+        log.info(f'Stage:      {args.stage}')
         log.info(f'Validating: {args.topdir}')
         log.info(f'Log file:   {args.logfile}')
         if _use_mpi:
             log.info(f'MPI ranks:  {_size}')
         log.info('')
 
-    problem_groups = validate_tree(args.topdir, log)
+    problem_groups = validate_tree(args.topdir, log, stage=args.stage)
 
     if _rank == 0:
         if problem_groups:
