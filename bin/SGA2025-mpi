@@ -429,12 +429,16 @@ def main():
         if args.htmlindex:
             from SGA.html import make_html
             ntodo = len(np.hstack(groups)) if len(groups) > 0 else 0
-            if ntodo > 0:
-                make_html(sample[groups[0]], fullsample, fulltractor=fulltractor,
-                          mp=args.mp, clobber=args.clobber, region=args.region,
-                          htmldir=htmldir)
-            else:
-                log.warning('All done!')
+            log.info(f'HTML index: {ntodo} group HTML file(s) to generate.')
+            # Always pass the full sample so generate_index (called at the end
+            # of make_html) builds a complete groups-{region}.json and
+            # index-{region}.html.  Passing sample[groups[0]] caused the index
+            # to be incomplete on partial runs and never generated when ntodo==0.
+            # make_html skips per-group .html files that already exist when
+            # clobber=False, so this is safe to run unconditionally.
+            make_html(sample, fullsample, fulltractor=fulltractor,
+                      mp=args.mp, clobber=args.clobber, region=args.region,
+                      htmldir=htmldir)
             return
 
         if args.diameter_file or args.galaxylist_file:
