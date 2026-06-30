@@ -2,14 +2,25 @@
 """
 checksums_sga2025.py — Generate sha256 checksums for SGA2025 group directories.
 
+Two stages are supported via ``--stage``:
+
+data (default)
+    Checksums all files in each data group directory, including .isdone and
+    .log files.  Output: sga_2025_data_{region}_{raslice}_{group}.sha256sum
+
+html
+    Checksums the data-product files in each HTML group directory, following
+    the same convention as the data stage (.isdone and .log included, but
+    .isfail and rotated logs such as .log.0 are excluded as invalid).
+    Output: sga_2025_html_{region}_{raslice}_{group}.sha256sum
+
 Usage (single-process):
     python checksums_sga2025.py /path/to/dr11-south
+    python checksums_sga2025.py /path/to/html/dr11-south --stage html
 
 Usage (MPI):
     srun -n 64 python checksums_sga2025.py /path/to/dr11-south
-
-For each group directory, writes:
-    sga_2025_data_{region}_{raslice}_{group_name}.sha256sum
+    srun -n 64 python checksums_sga2025.py /path/to/html/dr11-south --stage html
 
 Skips directories where the checksum file already exists.
 
@@ -20,10 +31,13 @@ Directory structure assumed:
 
 salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive
 source /dvs_ro/common/software/desi/desi_environment.sh main
-time srun --ntasks=64 python checksums_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-north --logfile checksums-dr11-north.log
-time srun --ntasks=64 python checksums_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-south --logfile checksums-dr11-south.log
+time srun --ntasks=64 python checksums_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-north --logfile checksums-data-dr11-north.log
+time srun --ntasks=64 python checksums_sga2025.py /pscratch/sd/i/ioannis/SGA2025-v1.6/dr11-south --logfile checksums-data-dr11-south.log
+time srun --ntasks=64 python checksums_sga2025.py $SGA_HTML_DIR/dr11-north --stage html --logfile checksums-html-dr11-north.log
+time srun --ntasks=64 python checksums_sga2025.py $SGA_HTML_DIR/dr11-south --stage html --logfile checksums-html-dr11-south.log
 """
 
+import re
 import sys
 import hashlib
 import argparse
@@ -49,6 +63,24 @@ except ImportError:
 # Checksum helpers
 # ---------------------------------------------------------------------------
 
+_LOG_ROT_RE = re.compile(r'\.log\.\d+$')  # matches .log.0, .log.1, …
+
+
+def _include_in_html_checksums(fname, cname):
+    """Return True if fname should be checksummed in HTML stage.
+
+    Mirrors the data-stage convention: .isdone and .log are valid product
+    files; .isfail and rotated logs (.log.N) are not.
+    """
+    if fname == cname:
+        return False
+    if fname.endswith('.isfail'):
+        return False
+    if _LOG_ROT_RE.search(fname):
+        return False
+    return True
+
+
 def sha256_file(filepath):
     """Return hex SHA-256 digest of a file."""
     h = hashlib.sha256()
@@ -58,19 +90,25 @@ def sha256_file(filepath):
     return h.hexdigest()
 
 
-def process_group(dirpath, region, raslice, group_name):
+def process_group(dirpath, region, raslice, group_name, stage='data'):
     """
-    Write a sha256sum file for all files in dirpath.
+    Write a sha256sum file for all eligible files in dirpath.
 
     Returns 'skipped' if the checksum file already exists, 'done' otherwise.
     """
-    cname = f'sga_2025_data_{region}_{raslice}_{group_name}.sha256sum'
-    cpath = dirpath / cname
+    if stage == 'data':
+        cname = f'sga_2025_data_{region}_{raslice}_{group_name}.sha256sum'
+        files = sorted(f for f in dirpath.iterdir()
+                       if f.is_file() and f.name != cname)
+    else:
+        cname = f'sga_2025_html_{region}_{raslice}_{group_name}.sha256sum'
+        files = sorted(f for f in dirpath.iterdir()
+                       if f.is_file() and _include_in_html_checksums(f.name, cname))
 
+    cpath = dirpath / cname
     if cpath.exists():
         return 'skipped'
 
-    files = sorted(f for f in dirpath.iterdir() if f.is_file() and f.name != cname)
     lines = [f'{sha256_file(f)}  {f.name}' for f in files]
     cpath.write_text('\n'.join(lines) + '\n')
     return 'done'
@@ -82,7 +120,10 @@ def process_group(dirpath, region, raslice, group_name):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate SGA2025 sha256 checksums.')
-    parser.add_argument('topdir', help='Region directory (e.g. /path/to/dr11-south)')
+    parser.add_argument('topdir', help='Region directory (e.g. /path/to/dr11-south '
+                        'for --stage data; /path/to/html/dr11-south for --stage html)')
+    parser.add_argument('--stage', default='data', choices=['data', 'html'],
+                        help='Checksum stage (default: data)')
     parser.add_argument('--logfile', default='checksums.log',
                         help='Output log file (default: checksums.log)')
     args = parser.parse_args()
@@ -103,6 +144,7 @@ def main():
     # Fast glob — validation has already passed so no need to filter with is_dir()
     if _rank == 0:
         all_dirs = sorted(glob(str(topdir / '???/*')))
+        log.info(f'Stage:     {args.stage}')
         log.info(f'Region:    {region}')
         log.info(f'Topdir:    {topdir}')
         log.info(f'Groups:    {len(all_dirs)}')
@@ -128,7 +170,7 @@ def main():
         group_name = dirpath.name         # e.g. '00000m0649'
 
         try:
-            status = process_group(dirpath, region, raslice, group_name)
+            status = process_group(dirpath, region, raslice, group_name, stage=args.stage)
             if status == 'skipped':
                 n_skipped += 1
             else:

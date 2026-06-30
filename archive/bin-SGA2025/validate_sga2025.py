@@ -180,6 +180,9 @@ ELLIPSE_RE = re.compile(
 # Pattern to extract per-galaxy J-coord from HTML plot filenames
 _JNAME_RE = re.compile(r'^SGA2025_(J[\d.]+[+-][\d.]+)-.+\.png$')
 
+# Pattern to recognise HTML checksum files (allowed even if generated later)
+_SHA256_RE = re.compile(r'^sga_2025_html_.*\.sha256sum$')
+
 
 # ---------------------------------------------------------------------------
 # PNG integrity check
@@ -238,6 +241,34 @@ def _find_jnames(dirpath):
 # ---------------------------------------------------------------------------
 # HTML per-group validation
 # ---------------------------------------------------------------------------
+
+def _html_valid_files(group, actual_files):
+    """Return the complete set of known-valid filenames for an HTML group dir.
+
+    Covers outputs from all three HTML stages (htmlplots, htmlindex,
+    checksums) so that the UNEXPECTED scan does not flag files written by a
+    stage that ran before (or after) the one being validated.
+    """
+    g = f'SGA2025_{group}'
+    valid = {
+        # htmlplots
+        f'{g}-html.isdone',
+        f'{g}-html.log',
+        f'{g}-montage.png',
+        f'{g}-thumb.jpg',
+        f'{g}-ellipsemask.png',   # present only for non-RESOLVED groups
+        # htmlindex
+        f'{group}.html',
+    }
+    # Per-galaxy plots: discover J-coords from whatever .png files already exist
+    for fname in actual_files:
+        m = _JNAME_RE.match(fname)
+        if m:
+            jname = m.group(1)
+            for ptype in ('sbprofiles', 'cog', 'sed'):
+                valid.add(f'SGA2025_{jname}-{ptype}.png')
+    return valid
+
 
 def validate_html_group(dirpath, stage):
     """
@@ -314,6 +345,20 @@ def validate_html_group(dirpath, stage):
 
     else:
         mode = stage
+
+    # UNEXPECTED check — runs for every stage.
+    # Build the full valid set from actual file names so per-galaxy entries
+    # discovered by _find_jnames are included even when not all three plot
+    # types are present (those gaps are already caught by the MISSING checks).
+    valid = _html_valid_files(group, actual_files)
+    for fname in sorted(actual_files):
+        if fname in valid:
+            continue
+        if _SHA256_RE.match(fname):
+            continue  # checksum file written by a separate stage
+        if stage == 'htmlplots' and fname == f'{g}-html.isfail':
+            continue  # already reported as FAILED above; avoid double entry
+        problems.append(f'UNEXPECTED: {fname}')
 
     return problems, mode
 
