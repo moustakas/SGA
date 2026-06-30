@@ -192,6 +192,26 @@ PNG_SIG  = b'\x89PNG\r\n\x1a\n'
 PNG_IEND = b'\x00\x00\x00\x00IEND\xae\x42\x60\x82'
 
 
+def check_html_tail(filepath):
+    """Return an error string if the HTML file is truncated, else None.
+
+    A write interrupted mid-file will not end with ``</html>``.  Reading
+    only the last 20 bytes makes this check negligibly cheap.
+    """
+    try:
+        size = filepath.stat().st_size
+        if size == 0:
+            return f'HTML empty: {filepath.name}'
+        with open(filepath, 'rb') as fh:
+            fh.seek(max(0, size - 20), 0)
+            tail = fh.read().decode('utf-8', errors='replace').rstrip()
+        if not tail.endswith('</html>'):
+            return f'HTML truncated (does not end with </html>): {filepath.name}'
+    except OSError as exc:
+        return f'HTML unreadable [{filepath.name}]: {exc}'
+    return None
+
+
 def check_png_integrity(filepath):
     """Return an error string if the PNG is corrupt/truncated, else None.
 
@@ -341,6 +361,10 @@ def validate_html_group(dirpath, stage):
         html_file = f'{group}.html'
         if html_file not in actual_files:
             problems.append(f'MISSING: {html_file}')
+        else:
+            err = check_html_tail(dirpath / html_file)
+            if err:
+                problems.append(err)
         mode = 'htmlindex'
 
     else:
