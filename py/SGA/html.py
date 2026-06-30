@@ -2422,6 +2422,19 @@ fetch('groups-{region}.json')
            ellipsebit_bits_js=ellipsebit_bits_js)
 
 
+def _build_group_index(tbl):
+    """Return a dict mapping GROUP_NAME string → integer row-index array.
+
+    Builds in O(N) so per-group lookups inside loops are O(1) instead of the
+    O(N) boolean-mask scan that astropy performs for ``tbl[tbl['col'] == val]``.
+    """
+    from collections import defaultdict
+    raw = defaultdict(list)
+    for i, gn in enumerate(tbl['GROUP_NAME']):
+        raw[str(gn)].append(i)
+    return {k: np.array(v, dtype=int) for k, v in raw.items()}
+
+
 def generate_index(htmldir, region, sample, fullsample=None):
     """Generate a JS-driven index-{region}.html and companion groups-{region}.json."""
     import json
@@ -2439,6 +2452,13 @@ def generate_index(htmldir, region, sample, fullsample=None):
     fs_has_sample = _fs_has('SAMPLE')
     fs_has_emode  = _fs_has('ELLIPSEMODE')
     fs_has_ebit   = _fs_has('ELLIPSEBIT')
+    need_fs = fs_has_sample or fs_has_emode or fs_has_ebit
+
+    # Pre-index both tables by GROUP_NAME so the loop below runs in O(N + G)
+    # instead of O(N × G).  For dr11-south (~350k rows, ~150k groups) the
+    # unindexed version required ~52 billion string comparisons per table.
+    _sample_idx = _build_group_index(sample)
+    _fs_idx     = _build_group_index(fullsample) if need_fs else {}
 
     def _nullable(val, decimals, zero_missing=True):
         """Return rounded float or None for missing/NaN/zero values."""
@@ -2462,7 +2482,10 @@ def generate_index(htmldir, region, sample, fullsample=None):
         group_dir = find_group_directory(htmldir, region, group_name)
         if group_dir is None:
             continue
-        grp = sample[sample['GROUP_NAME'] == group_name]
+        _rows = _sample_idx.get(str(group_name))
+        if _rows is None:
+            continue
+        grp = sample[_rows]
         # Primary galaxy: prefer GROUP_PRIMARY flag, else first row
         if has_prim and np.any(grp['GROUP_PRIMARY'] != 0):
             prim = grp[grp['GROUP_PRIMARY'] != 0][0]
@@ -2481,8 +2504,8 @@ def generate_index(htmldir, region, sample, fullsample=None):
         zs.append(   _nullable(prim['Z'],    5) if has_z     else None)
         dists.append(_nullable(prim['DIST'], 1) if has_dist  else None)
         # OR bitmask columns across all group members using fullsample
-        need_fs = fs_has_sample or fs_has_emode or fs_has_ebit
-        fs_grp  = fullsample[fullsample['GROUP_NAME'] == group_name] if need_fs else None
+        _fs_rows = _fs_idx.get(str(group_name)) if need_fs else None
+        fs_grp   = fullsample[_fs_rows] if _fs_rows is not None else None
 
         def _or(col, fs_flag, arr):
             if fs_flag and fs_grp is not None and len(fs_grp) > 0:
@@ -2577,8 +2600,9 @@ def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-s
     valid_groups = np.array(valid_groups)
     log.info("Generating HTML for {} groups in region {}".format(len(valid_groups), region))
     if mp == 1:
+        _sample_idx = _build_group_index(sample)
         for idx, group_name in enumerate(valid_groups):
-            group_data = sample[sample['GROUP_NAME'] == group_name]
+            group_data = sample[_sample_idx[str(group_name)]]
             prev_group = valid_groups[idx - 1] if idx > 0 else None
             next_group = valid_groups[idx + 1] if idx < len(valid_groups) - 1 else None
             generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber, fulltractor=fulltractor)
