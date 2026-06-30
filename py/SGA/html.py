@@ -1297,7 +1297,7 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return False
     output_file = group_dir / "{}.html".format(group_name)
     if output_file.exists() and not clobber:
-        log.info("Skipping (exists): {}".format(output_file))
+        log.debug("Skipping (exists): {}".format(output_file))
         return True
     _group_mask = np.isin(fullsample['GROUP_NAME'], group_data['GROUP_NAME'])
     fullgroup_data = fullsample[_group_mask]
