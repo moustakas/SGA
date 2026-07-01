@@ -212,12 +212,68 @@ NED_ZERO_SENTINEL = frozenset({'Z_NED', 'DIST_NED'})
 # Note: prefix-case fixes (e.g. UGCa -> UGCA) are handled by _normalize_galaxy_prefix;
 # add overrides here only for cases that regex normalization cannot cover.
 GALAXY_OVERRIDES = {
+    # Messier capitalization fix (NED uppercases the prefix)
     'MESSIER 109': 'Messier 109',
+    # Famous Local Group galaxies whose informal names are beaten by catalog prefixes
+    'ESO 056- G 115':     'Large Magellanic Cloud',
+    'NGC 0292':           'Small Magellanic Cloud',
+    'ESO 356- G 004':     'Fornax Dwarf Spheroidal',
+    'ESO 351- G 030':     'Sculptor Dwarf Spheroidal',
+    'UGC 10822':          'Draco Dwarf',
+    'UGC 09749':          'Ursa Minor Dwarf',
+    'Ursa Major Dwarf':   'Ursa Major I Dwarf',
+    # Capitalization / disambiguation fixes (NED informal name has wrong case)
+    'Carina dSph':         'Carina Dwarf',
+    'Tucana dwarf':        'Tucana Dwarf',
+    'Eridanus II dwarf':   'Eridanus II Dwarf',
+    'Pegasus dwarf':       'Pegasus Dwarf Irregular',  # disambiguation from And VI
+    # Famous ultra-faint dwarfs (SDSS/PGC1 NED name beats the informal name)
+    'SDSS J1049+5103':      'Willman 1',
+    'PGC1 4713559 NED001':  'Segue 1',
+    'CVn II dSph':          'Canes Venatici II',
+    # Famous Local Group dIrrs (catalog name beats well-known informal name)
+    'UGCA 444':             'WLM',
+    'MCG -02-53-003':       'Aquarius Dwarf',
+    'ESO 594- G 004':       'Sagittarius Dwarf Irregular',
+    'UGC 05364':            'Leo A',
+    'UGC 08091':            'GR 8',
+    'ESO 245- G 007':       'Phoenix Dwarf',
+    'AM 1001-270':          'Antlia Dwarf',
+    'UGCA 205':             'Sextans A',
+    'UGC 05373':            'Sextans B',
+    # Leo group dwarfs
+    'UGC 05470':            'Leo I',
+    'UGC 06253':            'Leo II',
+    'PGC1 4713564 NED001':  'Leo T',
+    'PGC1 5065058 NED001':  'Leo P',
+    # Andromeda / M31 satellites (PGC1 NED objects)
+    'PGC1 0002557 NED013':  'Cetus Dwarf Spheroidal',
+    'PGC1 0002557 NED015':  'Andromeda II',
+    'PGC1 0002557 NED019':  'Andromeda XVI',
+    'PGC1 0002557 NED027':  'Andromeda XIV',
+    'PGC1 0002557 NED033':  'Andromeda XIII',
+    'PGC1 0002557 NED035':  'Andromeda XI',
+    'PGC1 0002557 NED036':  'Andromeda XII',
+    'PGC1 0002557 NED037':  'Andromeda XXII',
+    'PGC 5060429':          'Andromeda XXVIII',
+    'PGC 5060430':          'Andromeda XXIX',
+    # Other LG dwarfs with PGC1 NED designations
+    'PGC1 5064336 NED014':  'Bootes I',
+    'PGC1 5064336 NED015':  'Canes Venatici Dwarf',
+    'PGC1 5064336 NED010':  'Sextans Dwarf',
+    'PGC 5742923':          'Crater II Dwarf',
+    'KiDS UFD-1':           'Sextans II',
+    'DELVE J1057+2852':     'Leo Minor I',
+    'DELVE J1500+0554':     'Virgo II',
+    'PGC 166146':           'KK 166',
+    'PGC1 5072710 NED001':  'Pisces A',
+    'PGC1 5072711 NED001':  'Pisces B',
+    'SMDG J2247005-582429': 'Tucana B',
 }
 
-# Characters allowed in a UNIX-friendly galaxy name (letters, digits, space,
-# and the handful of punctuation that appear in standard catalog names).
-_SAFE_GALAXY_RE = re.compile(r'^[a-zA-Z0-9 +\-._:]+$')
+# Characters allowed in a galaxy name. Square brackets are included because
+# several NED-searchable catalog prefixes use them (e.g. [CGB2022], [KK98]).
+_SAFE_GALAXY_RE = re.compile(r'^[a-zA-Z0-9 +\-._:\[\]]+$')
 
 # Known catalog-name prefixes that should always be fully uppercased.
 # Longer alternatives (e.g. UGCA) must precede shorter ones (UGC) so the
@@ -258,6 +314,10 @@ _PREFERRED_PREFIXES = [
     re.compile(r'^FCC\b',     re.IGNORECASE),
     re.compile(r'^HCG\b',     re.IGNORECASE),
     re.compile(r'^HIPASS\b',  re.IGNORECASE),
+    # Lower-priority survey prefixes: promoted over SDSS/WISEA/GALEX etc.,
+    # but only when no higher-priority catalog name is present.
+    re.compile(r'^\[CGB2022\]', re.IGNORECASE),
+    re.compile(r'^ELVES dw\b',  re.IGNORECASE),
 ]
 
 def _find_preferred_idx(parts):
@@ -717,16 +777,16 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         for i in np.where(init_arrs['RA_INIT'] < 0.)[0]:
             name = str(beta['OBJNAME'][i]).strip()
             if name in custom_lookup:
-                ra, dec, diam, ba, pa = custom_lookup[name]
+                ra, dec, diam_arcsec, ba, pa = custom_lookup[name]
                 src = 'custom'
             elif name in adds_lookup:
-                ra, dec, diam, ba, pa = adds_lookup[name]
+                ra, dec, diam_arcsec, ba, pa = adds_lookup[name]
                 src = 'adds'
             else:
                 continue
             init_arrs['RA_INIT'][i]       = ra
             init_arrs['DEC_INIT'][i]      = dec
-            init_arrs['DIAM_INIT'][i]     = np.float32(diam)
+            init_arrs['DIAM_INIT'][i]     = np.float32(diam_arcsec / 60.)
             init_arrs['BA_INIT'][i]       = np.float32(ba)
             init_arrs['PA_INIT'][i]       = np.float32(pa)
             init_arrs['INIT_REF'][i] = 'VI'
@@ -740,6 +800,27 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         n_still_missing = int(np.sum(init_arrs['RA_INIT'] < 0.))
         if n_still_missing > 0:
             log.warning(f'  {n_still_missing:,d} objects still missing INIT geometry')
+
+        # Hand-fix: a handful of objects have DIAM_INIT recorded in arcsec
+        # instead of arcmin — divide by 60 to correct.
+        _diam_arcsec_objnames = {
+            'WISEA J110950.68+331807.2',
+            'IRAS 14220+3138',
+            '2MASXi J0032468-345652',
+            'IRAS 12337+5044',
+            '2MFGC 04926',
+            'KK 166',
+        }
+        objname_arr = np.array([str(v).strip() for v in beta['OBJNAME']])
+        for i, name in enumerate(objname_arr):
+            if name in _diam_arcsec_objnames and init_arrs['DIAM_INIT'][i] > 0.:
+                init_arrs['DIAM_INIT'][i] = np.float32(init_arrs['DIAM_INIT'][i] / 60.)
+
+        # Floor: set any valid but unrealistically small DIAM_INIT to 0.5 arcmin.
+        tiny = (init_arrs['DIAM_INIT'] > 0.) & (init_arrs['DIAM_INIT'] < 0.1)
+        if np.any(tiny):
+            log.warning(f'  Setting {int(np.sum(tiny)):,d} DIAM_INIT < 0.1 arcmin to 0.5 arcmin')
+            init_arrs['DIAM_INIT'][tiny] = np.float32(0.5)
 
     # --- NED merged catalog -----------------------------------------------
     ned_path     = os.path.join(neddir, f'ned-merged-{region}.fits')
@@ -1030,10 +1111,18 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.warning(f'  GALAXY empty for {int(np.sum(empty)):,d} objects; copying from OBJNAME')
         galaxy_arr[empty] = objnames[empty]
 
-    # Apply hand-curated name corrections
+    # Apply hand-curated name corrections; keep old GALAXY in ALTNAMES so it
+    # remains discoverable, and remove the new GALAXY from ALTNAMES to avoid
+    # duplicating it there.
     for j, g in enumerate(galaxy_arr):
         if g in GALAXY_OVERRIDES:
-            galaxy_arr[j] = GALAXY_OVERRIDES[g]
+            new_g = GALAXY_OVERRIDES[g]
+            galaxy_arr[j] = new_g
+            existing = [p for p in altnames_arr[j].split('|') if p]
+            existing = [p for p in existing if p.upper() != new_g.upper()]
+            if g.upper() != new_g.upper() and g.upper() not in {p.upper() for p in existing}:
+                existing = [g] + existing
+            altnames_arr[j] = '|'.join(existing[:3])
 
     assert not np.any(galaxy_arr == ''), 'GALAXY is empty after all fixes'
 
