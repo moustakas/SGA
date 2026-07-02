@@ -6,12 +6,19 @@ into a single per-region FITS catalog.
 For each SGAID the resolution logic is:
   1. Compute BYNAME_SEP_ARCSEC: angular separation between the SGA position
      and the NED coordinates returned by the byname overview query.
-  2. Use byname when:  byname ERROR is empty  AND  BYNAME_SEP_ARCSEC <= threshold
+  2. Use byname when any of the following hold:
+       a. LVD object with successful byname match (NED coords can legitimately
+          differ from SGA centroid for extended dwarfs; bypos finds background sources)
+       b. byname succeeded AND OBJNAME appears in byname's CROSSIDS (confirmed
+          name match; large positional offsets are expected for big galaxies where
+          NED's nucleus position differs from our optical-disk centroid)
+       c. byname ERROR is empty AND BYNAME_SEP_ARCSEC <= threshold (clean match)
   3. Otherwise fall back to bypos overview data and set the appropriate flag bit(s).
 
 NED_FLAG bits
 -------------
-  0x01  FLAG_LARGE_SEP    byname positional offset > threshold  ->  used bypos
+  0x01  FLAG_LARGE_SEP    byname positional offset > threshold; used bypos unless
+                          name-confirmed (LVD or OBJNAME in byname CROSSIDS)
   0x02  FLAG_BYNAME_FAIL  byname error / no-match               ->  used bypos
   0x04  FLAG_BYPOS_FAIL   bypos also error / no-match           ->  result may be incomplete
 
@@ -29,6 +36,8 @@ Examples
   SGA2025-ned-merge --outdir /path/to/nedquery --region dr11-south
   SGA2025-ned-merge --outdir /path/to/nedquery --sep-threshold 5
 
+  SGA2025-ned-merge --outdir=/Users/ioannis/research/projects/SGA/2025/sample/nedquery
+
 """
 import os
 import csv
@@ -44,7 +53,7 @@ from SGA.logger import log
 # ---------------------------------------------------------------------------
 # Flag bits
 # ---------------------------------------------------------------------------
-FLAG_LARGE_SEP   = 0x01   # byname offset > threshold -> used bypos
+FLAG_LARGE_SEP   = 0x01   # byname offset > threshold (may still use byname if name-confirmed)
 FLAG_BYNAME_FAIL = 0x02   # byname error/no-match -> used bypos
 FLAG_BYPOS_FAIL  = 0x04   # bypos also error/no-match -> result incomplete
 
@@ -191,15 +200,31 @@ def merge_region(region, outdir, sep_threshold):
         if flag and bypos_err != '':
             flag |= FLAG_BYPOS_FAIL
 
+        # Check whether byname's CROSSIDS confirm the object name. When True,
+        # byname is preferred even with a large positional offset because the
+        # offset reflects the difference between NED's nucleus position and our
+        # optical-disk centroid — common for large galaxies (e.g. NGC 4945).
+        byname_name_confirmed = False
+        if byname_err == '':
+            byname_crossids = brow.get('CROSSIDS', '')
+            obj_upper = str(sga_obj[i]).strip().upper()
+            byname_name_confirmed = any(
+                c.strip().upper() == obj_upper
+                for c in byname_crossids.split('|')
+                if c.strip()
+            )
+
         # Source selection:
         #   LVD + byname ok                   -> byname (large dwarfs have genuine NED offsets;
         #                                          bypos finds compact background sources)
+        #   name confirmed in byname CROSSIDS  -> byname (NED matched the right galaxy;
+        #                                          large sep expected for extended sources)
         #   flag == 0                          -> byname (clean)
         #   LARGE_SEP, bypos ok               -> bypos  (NED position off, bypos rescued it)
         #   LARGE_SEP, bypos also failed      -> byname (NED pos off but name match still valid)
         #   BYNAME_FAIL, bypos ok             -> bypos
         #   BYNAME_FAIL, bypos also failed    -> none
-        if sid in lvd_sgaids and byname_err == '':
+        if byname_err == '' and (sid in lvd_sgaids or byname_name_confirmed):
             src, source_str = brow, 'byname'
         elif flag == 0:
             src, source_str = brow, 'byname'
@@ -302,8 +327,8 @@ def main():
                         help='Directory containing input CSVs and for output FITS')
     parser.add_argument('--region', choices=['dr11-south', 'dr11-north'],
                         help='Process one region only (default: both)')
-    parser.add_argument('--sep-threshold', type=float, default=3.0,
-                        help='Byname positional offset threshold in arcsec (default: 3.0)')
+    parser.add_argument('--sep-threshold', type=float, default=3.5,
+                        help='Byname positional offset threshold in arcsec (default: 3.5)')
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']

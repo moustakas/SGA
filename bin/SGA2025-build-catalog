@@ -79,108 +79,10 @@ SGA2025-build-catalog --neddir=/Users/ioannis/research/projects/SGA/2025/sample/
   --lvd-catalog=/Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv \
   --parent-nocuts=/Users/ioannis/research/projects/SGA/2025/parent/SGA2025-parent-nocuts-v0.10.fits
 
-INFO:SGA2025-build-catalog:444:merge_region: === dr11-south ===
-INFO:SGA2025-build-catalog:447:merge_region:   Loading SGA beta catalog
-INFO:SGA.py:363:_read_catalog: Read 363,633/395,435 GROUP_PRIMARY objects from /Users/ioannis/research/projects/SGA/2025/sample/SGA2025-beta-v1.6-dr11-south.fits
-INFO:SGA.py:370:_read_catalog: Selecting 363,633/363,633 objects in region=dr11-south
-INFO:SGA2025-build-catalog:450:merge_region:   Detected bands=['G', 'R', 'I', 'Z']  all_bands=['G', 'R', 'I', 'Z', 'W1', 'W2', 'W3', 'W4', 'FUV', 'NUV']
-INFO:SGA2025-build-catalog:455:merge_region:   dtype fix: REGION  >i8 -> int16
-INFO:SGA2025-build-catalog:455:merge_region:   dtype fix: D26  >f8 -> float32
-INFO:SGA2025-build-catalog:455:merge_region:   dtype fix: D26_ERR  >f8 -> float32
-INFO:SGA2025-build-catalog:457:merge_region:   395,435 galaxies
-INFO:SGA2025-build-catalog:461:merge_region:   Loading /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-merged-dr11-south.fits
-INFO:SGA2025-build-catalog:469:merge_region:   Loading LVD catalog /Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv
-INFO:SGA2025-build-catalog:473:merge_region:   LVD catalog: 1,724 entries; 462 LVD objects in SGA sample
-INFO:SGA2025-build-catalog:479:merge_region:   Loading /Users/ioannis/research/projects/SGA/2025/sample/redshifts/SGA2025-DESI-DR1-summary-dr11-south.fits
-INFO:SGA2025-build-catalog:488:merge_region:   Loading /Users/ioannis/research/projects/SGA/2025/sample/redshifts/SGA2025-DESI-DR1-matches-dr11-south.fits
-INFO:SGA2025-build-catalog:490:merge_region:   127,481 DESI match rows
-INFO:SGA2025-build-catalog:495:merge_region:   80,470 unique SGAIDs with DESI matches
-INFO:SGA2025-build-catalog:555:merge_region:   Resolving redshifts (desi_max_sep=3.0")
-INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/projects/SGA/2025/public/SGA2025-dr11-south.fits
-
---- dr11-south summary (395,435 galaxies) ---
-  desi_max_sep=3.0"  vdiff_threshold=1000 km/s
-  Dtype fixes: REGION: >i8 -> int16, D26: >f8 -> float32, D26_ERR: >f8 -> float32
-
-  Z_REF = DESI :   64,828  ( 16.4%)
-  Z_REF = LVD  :      316  (  0.1%)
-  Z_REF = NED  :  264,250  ( 66.8%)
-  Z_REF = none :   66,041  ( 16.7%)
-
-  Z_LVD present (vlos_systemic):      332  (  0.1%)
-  Z_LVD with IVAR (vlos_sigma) :      316  (  0.1%)
-
-  Z_FLAG discrepancy           :    7,879  (  2.0%)
-  NSPEC_DESI>0, no good central z:   15,632  (  4.0%)
-
-  DIST_NED present             :   37,533  (  9.5%)
-  DIST_NED with IVAR           :    8,615  (  2.2%)
-  DIST_LVD present             :      480  (  0.1%)
-  DIST_LVD with IVAR           :       67  (  0.0%)
-  Adopted DIST present         :   37,773  (  9.6%)
-    DIST_REF = LVD             :      480
-    DIST_REF = NED             :   37,293
-
-  NSPEC_DESI distribution:
-       = 0 :  314,965  ( 79.7%)
-       = 1 :   56,002  ( 14.2%)
-       2-9 :   24,125  (  6.1%)
-     10-99 :      335  (  0.1%)
-    >= 100 :        8  (  0.0%)
-
-INFO:SGA2025-build-catalog:444:merge_region: === dr11-north ===
-INFO:SGA2025-build-catalog:447:merge_region:   Loading SGA beta catalog
-INFO:SGA.py:363:_read_catalog: Read 82,093/90,504 GROUP_PRIMARY objects from /Users/ioannis/research/projects/SGA/2025/sample/SGA2025-beta-v1.6-dr11-north.fits
-INFO:SGA.py:370:_read_catalog: Selecting 82,093/82,093 objects in region=dr11-north
-INFO:SGA2025-build-catalog:450:merge_region:   Detected bands=['G', 'R', 'I', 'Z']  all_bands=['G', 'R', 'I', 'Z', 'W1', 'W2', 'W3', 'W4', 'FUV', 'NUV']
-INFO:SGA2025-build-catalog:455:merge_region:   dtype fix: REGION  >i8 -> int16
-INFO:SGA2025-build-catalog:455:merge_region:   dtype fix: D26  >f8 -> float32
-INFO:SGA2025-build-catalog:455:merge_region:   dtype fix: D26_ERR  >f8 -> float32
-INFO:SGA2025-build-catalog:457:merge_region:   90,504 galaxies
-INFO:SGA2025-build-catalog:461:merge_region:   Loading /Users/ioannis/research/projects/SGA/2025/sample/nedquery/ned-merged-dr11-north.fits
-INFO:SGA2025-build-catalog:469:merge_region:   Loading LVD catalog /Users/ioannis/research/projects/SGA/2025/sample/nedquery/lvd_comb_all_v1.1.0.ecsv
-INFO:SGA2025-build-catalog:473:merge_region:   LVD catalog: 1,724 entries; 187 LVD objects in SGA sample
-INFO:SGA2025-build-catalog:479:merge_region:   Loading /Users/ioannis/research/projects/SGA/2025/sample/redshifts/SGA2025-DESI-DR1-summary-dr11-north.fits
-INFO:SGA2025-build-catalog:488:merge_region:   Loading /Users/ioannis/research/projects/SGA/2025/sample/redshifts/SGA2025-DESI-DR1-matches-dr11-north.fits
-INFO:SGA2025-build-catalog:490:merge_region:   51,500 DESI match rows
-INFO:SGA2025-build-catalog:495:merge_region:   35,418 unique SGAIDs with DESI matches
-INFO:SGA2025-build-catalog:555:merge_region:   Resolving redshifts (desi_max_sep=3.0")
-INFO:SGA2025-build-catalog:758:merge_region:   Wrote /Users/ioannis/research/projects/SGA/2025/public/SGA2025-dr11-north.fits
-
---- dr11-north summary (90,504 galaxies) ---
-  desi_max_sep=3.0"  vdiff_threshold=1000 km/s
-  Dtype fixes: REGION: >i8 -> int16, D26: >f8 -> float32, D26_ERR: >f8 -> float32
-
-  Z_REF = DESI :   29,013  ( 32.1%)
-  Z_REF = LVD  :      118  (  0.1%)
-  Z_REF = NED  :   54,907  ( 60.7%)
-  Z_REF = none :    6,466  (  7.1%)
-
-  Z_LVD present (vlos_systemic):      135  (  0.1%)
-  Z_LVD with IVAR (vlos_sigma) :      118  (  0.1%)
-
-  Z_FLAG discrepancy           :    3,840  (  4.2%)
-  NSPEC_DESI>0, no good central z:    6,391  (  7.1%)
-
-  DIST_NED present             :   13,422  ( 14.8%)
-  DIST_NED with IVAR           :    1,741  (  1.9%)
-  DIST_LVD present             :      191  (  0.2%)
-  DIST_LVD with IVAR           :       10  (  0.0%)
-  Adopted DIST present         :   13,480  ( 14.9%)
-    DIST_REF = LVD             :      191
-    DIST_REF = NED             :   13,289
-
-  NSPEC_DESI distribution:
-       = 0 :   55,086  ( 60.9%)
-       = 1 :   26,710  ( 29.5%)
-       2-9 :    8,582  (  9.5%)
-     10-99 :      121  (  0.1%)
-    >= 100 :        5  (  0.0%)
-
-
 """
 import os
 import re
+import logging
 import argparse
 from collections import defaultdict
 from importlib import resources
@@ -188,15 +90,16 @@ from pathlib import Path
 
 import numpy as np
 import fitsio
-from astropy.table import Table, Column
+from astropy.table import Table, Column, vstack
 import astropy.units as u
 
 from SGA.util import C_LIGHT
 from SGA.SGA import read_sga_sample, SGA_datamodel, SGA_version, SAMPLE as SAMPLE_BITS
 from SGA.geometry import choose_geometry
-from SGA.ellipse import MAXSHIFT_ARCSEC
+from SGA.ellipse import MAXSHIFT_ARCSEC, ELLIPSEMODE
+from SGA.coadds import REGIONBITS
 from SGA.io import table_to_fitsio
-from SGA.logger import log
+from SGA.logger import log, LOGFMT
 
 
 NED_Z_NOMINAL_ERR  = 100. / C_LIGHT  # assumed ZERR when NED_Z_UNC == 0 (=100 km/s)
@@ -248,6 +151,7 @@ GALAXY_OVERRIDES = {
     'PGC1 5065058 NED001':  'Leo P',
     # Andromeda / M31 satellites (PGC1 NED objects)
     'PGC1 0002557 NED013':  'Cetus Dwarf Spheroidal',
+    'PGC1 0002557 NED025':  'Pisces I',
     'PGC1 0002557 NED015':  'Andromeda II',
     'PGC1 0002557 NED019':  'Andromeda XVI',
     'PGC1 0002557 NED027':  'Andromeda XIV',
@@ -265,10 +169,15 @@ GALAXY_OVERRIDES = {
     'KiDS UFD-1':           'Sextans II',
     'DELVE J1057+2852':     'Leo Minor I',
     'DELVE J1500+0554':     'Virgo II',
+    'PGC1 5064336 NED016':  'Hercules Dwarf',
+    'PGC 5098252':          'Antlia B',
+    'PGC 4689187':          'Centaurus N',
     'PGC 166146':           'KK 166',
     'PGC1 5072710 NED001':  'Pisces A',
     'PGC1 5072711 NED001':  'Pisces B',
     'SMDG J2247005-582429': 'Tucana B',
+    # M81 group dwarfs (zero-padding/prefix mismatches not caught by automatic promotion)
+    'PGC1 0028630 NED018':  '[FM2000] 1',
 }
 
 # Characters allowed in a galaxy name. Square brackets are included because
@@ -287,6 +196,14 @@ _PREFIX_NORM_RE = re.compile(
 def _normalize_galaxy_prefix(name):
     """Uppercase known catalog-name prefixes (e.g. 'Mrk 231' -> 'MRK 231')."""
     return _PREFIX_NORM_RE.sub(lambda m: m.group(0).upper(), name, count=1)
+
+# Matches leading zeros in numeric sequences not preceded by another digit,
+# e.g. "KKR 03" -> "KKR 3", "F08D1" -> "F8D1".
+_ZERO_PAD_RE = re.compile(r'(?<!\d)0+(?=\d)')
+
+def _strip_zero_pad(s):
+    """Lowercase, strip spaces, strip leading zeros from digit sequences."""
+    return _ZERO_PAD_RE.sub('', s.lower().replace(' ', ''))
 
 # Priority-ordered catalog prefixes for "famous name" promotion. When CROSSIDS
 # contains multiple names, the highest-priority match is promoted to GALAXY
@@ -307,6 +224,8 @@ _PREFERRED_PREFIXES = [
     re.compile(r'^DDO\b',     re.IGNORECASE),
     re.compile(r'^KDG\b',     re.IGNORECASE),
     re.compile(r'^VCC\b',     re.IGNORECASE),
+    re.compile(r'^BK\b',      re.IGNORECASE),
+    re.compile(r'^JKB\b',     re.IGNORECASE),
     re.compile(r'^CGCG\b',    re.IGNORECASE),
     re.compile(r'^PGC\b',     re.IGNORECASE),
     re.compile(r'^PGC1\b',    re.IGNORECASE),
@@ -580,6 +499,18 @@ INIT_COLS = [
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+class _ListHandler(logging.Handler):
+    """Logging handler that appends formatted records to a plain list, so the
+    full run (including messages logged by imported SGA modules, which share
+    the same singleton logger) can be replayed to a single ASCII file."""
+    def __init__(self, lines):
+        super().__init__()
+        self.lines = lines
+
+    def emit(self, record):
+        self.lines.append(self.format(record))
+
+
 def _detect_bands(beta):
     """Infer (optical) bands and all_bands from beta catalog column names."""
     bands     = [re.sub(r'^R26_', '', c)
@@ -702,7 +633,12 @@ def _reorder_cols(tbl):
 # Per-region merge
 # ---------------------------------------------------------------------------
 def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
-                 desi_max_sep, lvd_catalog=None, parent_nocuts=None):
+                 desi_max_sep, lvd_catalog=None, parent_nocuts=None, lines=None):
+    def emit(msg=''):
+        print(msg)
+        if lines is not None:
+            lines.append(msg)
+
     log.info(f'=== {region} ===')
 
     # --- SGA beta catalog -------------------------------------------------
@@ -718,6 +654,14 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             log.info(f'  dtype fix: {col}  {old} -> {new}')
     n = len(beta)
     log.info(f'  {n:,d} galaxies')
+
+    # --- One-time fix: dr11-north RESOLVED objects mistakenly tagged BANDS=griz ---
+    # (dr11-south RESOLVED objects with BANDS=griz are legitimate and untouched.)
+    if region == 'dr11-north':
+        I = (beta['ELLIPSEMODE'] & ELLIPSEMODE['RESOLVED'] != 0) & (beta['BANDS'] == 'griz')
+        if np.any(I):
+            log.info(f'  One-time fix: {int(np.sum(I)):,d} RESOLVED objects with BANDS=griz -> grz')
+            beta['BANDS'][I] = 'grz'
 
     # --- Parent/nocuts catalog (initial geometry) --------------------------------
     init_arrs = None
@@ -1111,6 +1055,41 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
         log.warning(f'  GALAXY empty for {int(np.sum(empty)):,d} objects; copying from OBJNAME')
         galaxy_arr[empty] = objnames[empty]
 
+    # OBJNAME-based promotion: after catalog-prefix promotion, if an ALTNAMES entry
+    # contains OBJNAME as a case-insensitive substring, promote it to GALAXY.
+    # Also checks a weaker condition: if the last whitespace-token of an ALTNAMES
+    # entry (length ≥ 4) appears inside OBJNAME — this handles cases like
+    # OBJNAME="CenA-MM-Dw1" matching ALTNAMES="Centaurus A:[CSC2014] MM-Dw1".
+    for i in range(n):
+        objname = objnames[i]
+        if not objname or galaxy_arr[i] == '' or galaxy_arr[i].lower() == objname.lower():
+            continue
+        alt_parts = [p for p in altnames_arr[i].split('|') if p]
+        if not alt_parts:
+            continue
+        obj_lower = objname.lower()
+        match_idx = None
+        for j, alt in enumerate(alt_parts):
+            alt_lower = alt.lower()
+            if obj_lower in alt_lower:
+                match_idx = j
+                break
+            toks = alt_lower.split()
+            if toks and len(toks[-1]) >= 4 and toks[-1] in obj_lower:
+                match_idx = j
+                break
+            if _strip_zero_pad(obj_lower) == _strip_zero_pad(alt_lower):
+                match_idx = j
+                break
+        if match_idx is not None:
+            promoted  = alt_parts[match_idx]
+            old_gal   = galaxy_arr[i]
+            remaining = [p for k, p in enumerate(alt_parts) if k != match_idx]
+            if old_gal.upper() not in {p.upper() for p in remaining}:
+                remaining = [old_gal] + remaining
+            galaxy_arr[i]   = promoted
+            altnames_arr[i] = '|'.join(remaining[:3])
+
     # Apply hand-curated name corrections; keep old GALAXY in ALTNAMES so it
     # remains discoverable, and remove the new GALAXY from ALTNAMES to avoid
     # duplicating it there.
@@ -1228,32 +1207,32 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
     n_dist_ref_lvd  = int(np.sum(np.array(dist_arrs['DIST_REF']) == 'LVD'))
     n_dist_ref_ned  = int(np.sum(np.array(dist_arrs['DIST_REF']) == 'NED'))
 
-    print(f'\n--- {region} summary ({n:,d} galaxies) ---')
-    print(f'  desi_max_sep={desi_max_sep:.1f}"  vdiff_threshold={vdiff_threshold:.0f} km/s')
+    emit(f'\n--- {region} summary ({n:,d} galaxies) ---')
+    emit(f'  desi_max_sep={desi_max_sep:.1f}"  vdiff_threshold={vdiff_threshold:.0f} km/s')
     if fixes:
-        print('  Dtype fixes: ' +
+        emit('  Dtype fixes: ' +
               ', '.join(f'{c}: {o} -> {nw}' for c, o, nw in fixes))
-    print()
-    print(f'  Z_REF = DESI : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
-    print(f'  Z_REF = LVD  : {n_src_lvd:>8,d}  ({pct(n_src_lvd):5.1f}%)')
-    print(f'  Z_REF = NED  : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
-    print(f'  Z_REF = none : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
-    print()
-    print(f'  Z_LVD present (vlos_systemic): {n_z_lvd:>8,d}  ({pct(n_z_lvd):5.1f}%)')
-    print(f'  Z_LVD with IVAR (vlos_sigma) : {n_z_lvd_ivar:>8,d}  ({pct(n_z_lvd_ivar):5.1f}%)')
-    print()
-    print(f'  Z_FLAG discrepancy           : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
-    print(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
-    print()
-    print(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
-    print(f'  DIST_NED with IVAR           : {n_dist_ivar:>8,d}  ({pct(n_dist_ivar):5.1f}%)')
-    print(f'  DIST_LVD present             : {n_dist_lvd:>8,d}  ({pct(n_dist_lvd):5.1f}%)')
-    print(f'  DIST_LVD with IVAR           : {n_dist_ivar_lvd:>8,d}  ({pct(n_dist_ivar_lvd):5.1f}%)')
-    print(f'  Adopted DIST present         : {n_dist_adopted:>8,d}  ({pct(n_dist_adopted):5.1f}%)')
-    print(f'    DIST_REF = LVD             : {n_dist_ref_lvd:>8,d}')
-    print(f'    DIST_REF = NED             : {n_dist_ref_ned:>8,d}')
-    print()
-    print('  NSPEC_DESI distribution:')
+    emit()
+    emit(f'  Z_REF = DESI : {n_src_desi:>8,d}  ({pct(n_src_desi):5.1f}%)')
+    emit(f'  Z_REF = LVD  : {n_src_lvd:>8,d}  ({pct(n_src_lvd):5.1f}%)')
+    emit(f'  Z_REF = NED  : {n_src_ned:>8,d}  ({pct(n_src_ned):5.1f}%)')
+    emit(f'  Z_REF = none : {n_src_none:>8,d}  ({pct(n_src_none):5.1f}%)')
+    emit()
+    emit(f'  Z_LVD present (vlos_systemic): {n_z_lvd:>8,d}  ({pct(n_z_lvd):5.1f}%)')
+    emit(f'  Z_LVD with IVAR (vlos_sigma) : {n_z_lvd_ivar:>8,d}  ({pct(n_z_lvd_ivar):5.1f}%)')
+    emit()
+    emit(f'  Z_FLAG discrepancy           : {n_disc:>8,d}  ({pct(n_disc):5.1f}%)')
+    emit(f'  NSPEC_DESI>0, no good central z: {n_desi_prox:>8,d}  ({pct(n_desi_prox):5.1f}%)')
+    emit()
+    emit(f'  DIST_NED present             : {n_dist_ned:>8,d}  ({pct(n_dist_ned):5.1f}%)')
+    emit(f'  DIST_NED with IVAR           : {n_dist_ivar:>8,d}  ({pct(n_dist_ivar):5.1f}%)')
+    emit(f'  DIST_LVD present             : {n_dist_lvd:>8,d}  ({pct(n_dist_lvd):5.1f}%)')
+    emit(f'  DIST_LVD with IVAR           : {n_dist_ivar_lvd:>8,d}  ({pct(n_dist_ivar_lvd):5.1f}%)')
+    emit(f'  Adopted DIST present         : {n_dist_adopted:>8,d}  ({pct(n_dist_adopted):5.1f}%)')
+    emit(f'    DIST_REF = LVD             : {n_dist_ref_lvd:>8,d}')
+    emit(f'    DIST_REF = NED             : {n_dist_ref_ned:>8,d}')
+    emit()
+    emit('  NSPEC_DESI distribution:')
     nspec = desi_arrs['NSPEC_DESI']
     for label, mask in [
             ('= 0',    nspec == 0),
@@ -1262,7 +1241,127 @@ def merge_region(region, neddir, redshiftdir, outdir, vdiff_threshold,
             ('10-99', (nspec >= 10)  & (nspec <= 99)),
             ('>= 100', nspec >= 100)]:
         k = int(np.sum(mask))
-        print(f'    {label:>6} : {k:>8,d}  ({pct(k):5.1f}%)')
+        emit(f'    {label:>6} : {k:>8,d}  ({pct(k):5.1f}%)')
+
+
+# ---------------------------------------------------------------------------
+# Region merge: combine dr11-south and dr11-north into a single catalog
+# ---------------------------------------------------------------------------
+GOOD_BANDS = ['G', 'R', 'I', 'Z']
+
+def merge_regions(outdir, lines=None):
+    """Merge the per-region SGA2025-{region}-{version}.fits catalogs into a
+    single SGA2025-{version}.fits catalog.
+
+    Objects with data in both regions (REGION has both dr11-south and
+    dr11-north bits set) are deduplicated by keeping the row with more
+    "good" bands (FMASKED_AP00_{band} < 0.5 for band in GOOD_BANDS). Ties
+    are broken by preferring whichever side has a good r-band when only
+    one does, then by defaulting to dr11-south -- dr11-north's z-band is
+    substantially worse, so ties should favor south in nearly all cases.
+
+    Objects whose REGION indicates both regions but which appear as a lone
+    row (no counterpart in the other region -- some pixels overlap the
+    other region's footprint but not enough to yield a processed object
+    there) have REGION corrected down to the single region they actually
+    came from.
+
+    lines : list, optional
+        If given, every emitted message is also appended here (shared with
+        the calling driver so the whole run's log can be written to a
+        single ASCII file); otherwise messages just go to stdout.
+    """
+    version = SGA_version(catalog=True)
+    def emit(msg=''):
+        print(msg)
+        if lines is not None:
+            lines.append(msg)
+
+    emit('=== merging dr11-south + dr11-north ===')
+
+    regions  = ['dr11-south', 'dr11-north']
+    cats     = {}
+    tractors = {}
+    for region in regions:
+        path = os.path.join(outdir, f'SGA2025-{region}-{version}.fits')
+        emit(f'  Loading {path}')
+        cats[region]     = Table(fitsio.read(path, ext='SGA2025'))
+        tractors[region] = Table(fitsio.read(path, ext='TRACTOR'))
+
+    src = np.concatenate([
+        np.full(len(cats[region]), REGIONBITS[region], dtype=np.int16)
+        for region in regions
+    ])
+    cat     = vstack([cats[r]     for r in regions], join_type='exact')
+    tractor = vstack([tractors[r] for r in regions], join_type='exact')
+    assert len(cat) == len(tractor)
+    assert np.array_equal(np.asarray(cat['SGAID']), np.asarray(tractor['REF_ID']))
+
+    n_south, n_north = len(cats['dr11-south']), len(cats['dr11-north'])
+    emit(f'  {n_south:,d} dr11-south + {n_north:,d} dr11-north = {len(cat):,d} rows before dedup')
+
+    # --- REGION self-heal: lone rows carrying both bits but only actually
+    #     present in one region get REGION corrected to their true region.
+    both_bits  = REGIONBITS['dr11-south'] | REGIONBITS['dr11-north']
+    sgaid      = np.asarray(cat['SGAID'])
+    _, inverse, counts = np.unique(sgaid, return_inverse=True, return_counts=True)
+    group_size = counts[inverse]
+    region_col = np.asarray(cat['REGION']).copy()
+    orphan     = (group_size == 1) & (region_col == both_bits) & (region_col != src)
+    if np.any(orphan):
+        emit(f'  Correcting REGION for {int(np.sum(orphan)):,d} lone objects '
+             f'incorrectly flagged as present in both regions:')
+        for i in np.where(orphan)[0]:
+            emit(f'    SGAID={sgaid[i]}  OBJNAME={str(cat["OBJNAME"][i]).strip()}  '
+                 f'REGION {region_col[i]} -> {src[i]}')
+        region_col[orphan] = src[orphan]
+        cat['REGION'] = region_col.astype(cat['REGION'].dtype)
+
+    # --- Deduplicate objects with data in both regions ---------------------
+    both = (region_col & REGIONBITS['dr11-south'] != 0) & (region_col & REGIONBITS['dr11-north'] != 0)
+    ngood = np.zeros(len(cat), dtype=np.int8)
+    for b in GOOD_BANDS:
+        ngood += (np.asarray(cat[f'FMASKED_AP00_{b}']) < 0.5).astype(np.int8)
+    rgood = np.asarray(cat['FMASKED_AP00_R']) < 0.5
+
+    keep = np.ones(len(cat), dtype=bool)
+    n_dup = n_south_win = n_north_win = n_tie_rband = n_tie_south = 0
+    for sid in np.unique(sgaid[both]):
+        idx = np.where(sgaid == sid)[0]
+        if len(idx) < 2:
+            continue  # already resolved by the REGION self-heal above
+        n_dup += 1
+        i_s = idx[src[idx] == REGIONBITS['dr11-south']][0]
+        i_n = idx[src[idx] == REGIONBITS['dr11-north']][0]
+        if ngood[i_s] > ngood[i_n]:
+            winner = i_s; n_south_win += 1
+        elif ngood[i_n] > ngood[i_s]:
+            winner = i_n; n_north_win += 1
+        elif rgood[i_s] and not rgood[i_n]:
+            winner = i_s; n_tie_rband += 1
+        elif rgood[i_n] and not rgood[i_s]:
+            winner = i_n; n_tie_rband += 1
+        else:
+            winner = i_s; n_tie_south += 1
+        keep[i_n if winner == i_s else i_s] = False
+
+    emit(f'  {n_dup:,d} objects with data in both regions')
+    emit(f'    resolved by more good bands: south={n_south_win:,d}  north={n_north_win:,d}')
+    emit(f'    tied on good bands, resolved by r-band: {n_tie_rband:,d}')
+    emit(f'    tied on good bands and r-band, defaulted to south: {n_tie_south:,d}')
+
+    merged         = _reorder_cols(cat[keep])
+    merged_tractor = tractor[keep]
+    emit(f'  {len(merged):,d} galaxies in merged catalog')
+
+    # --- Write output --------------------------------------------------
+    outpath = os.path.join(outdir, f'SGA2025-{version}.fits')
+    vals, names, units = table_to_fitsio(merged)
+    tractor_vals, tractor_names, tractor_units = table_to_fitsio(merged_tractor)
+    with fitsio.FITS(outpath, 'rw', clobber=True) as F:
+        F.write(vals, names=names, units=units, extname='SGA2025')
+        F.write(tractor_vals, names=tractor_names, units=tractor_units, extname='TRACTOR')
+    emit(f'  Wrote {outpath}')
 
 
 # ---------------------------------------------------------------------------
@@ -1297,11 +1396,34 @@ def main():
     args = parser.parse_args()
 
     regions = [args.region] if args.region else ['dr11-south', 'dr11-north']
+
+    # When processing both regions, capture the full run -- per-region
+    # progress/warnings (including messages logged by imported SGA modules,
+    # which share this same singleton logger) and the merge summary -- to a
+    # single ASCII file alongside the merged catalog.
+    lines, handler = None, None
+    if args.region is None:
+        lines   = []
+        handler = _ListHandler(lines)
+        handler.setFormatter(LOGFMT)
+        log.addHandler(handler)
+
     for region in regions:
         merge_region(region, args.neddir, args.redshiftdir, args.outdir,
                      args.vdiff_threshold, args.desi_max_sep,
                      lvd_catalog=args.lvd_catalog,
-                     parent_nocuts=args.parent_nocuts)
+                     parent_nocuts=args.parent_nocuts, lines=lines)
+
+    if args.region is None:
+        merge_regions(args.outdir, lines=lines)
+
+        log.removeHandler(handler)
+        version = SGA_version(catalog=True)
+        os.makedirs(args.outdir, exist_ok=True)
+        logpath = os.path.join(args.outdir, f'SGA2025-merge-{version}.txt')
+        with open(logpath, 'w') as fh:
+            fh.write('\n'.join(lines) + '\n')
+        print(f'Wrote {logpath}')
 
 
 if __name__ == '__main__':
