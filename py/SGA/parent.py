@@ -2096,6 +2096,26 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
 
     def readit(catalog, version, bycoord=False):
+        """Read a cached NED byname/bycoord cross-match FITS file for
+        one external catalog.
+
+        Parameters
+        ----------
+        catalog : :class:`str`
+            External catalog name (e.g. ``'hyperleda'``, ``'nedlvs'``),
+            used in the filename.
+        version : :class:`str`
+            Version string, used in the filename.
+        bycoord : :class:`bool`
+            If True, read the position-matched (``bycoord``) file
+            instead of the name-matched (``byname``) file.
+
+        Returns
+        -------
+        :class:`~astropy.table.Table`
+            The cross-match catalog.
+
+        """
         if bycoord:
             suffix = 'bycoord'
         else:
@@ -2107,6 +2127,32 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
 
     def populate_parent(input_cat, input_basic, verbose=False):
+        """Build a :func:`parent_datamodel` table populated from a
+        source catalog and its derived basic geometry, for one
+        :func:`build_parent_nocuts` merge stage.
+
+        Copies every column that exists in either ``input_cat`` or
+        ``input_basic`` (in that order, so ``input_basic`` wins for any
+        column present in both) into a fresh, correctly-sized empty
+        parent table; columns present in neither source are left at
+        their :func:`parent_datamodel` defaults.
+
+        Parameters
+        ----------
+        input_cat : :class:`~astropy.table.Table`
+            Source external catalog for this merge stage.
+        input_basic : :class:`~astropy.table.Table`
+            Corresponding :func:`SGA.geometry.get_basic_geometry` output
+            for ``input_cat``.
+        verbose : :class:`bool`
+            If True, log every column as it's populated.
+
+        Returns
+        -------
+        :class:`~astropy.table.Table`
+            New parent-datamodel table, length ``len(input_cat)``.
+
+        """
         parent = parent_datamodel(len(input_cat))
         for col in parent.columns:
             if col in input_cat.columns:
@@ -3071,10 +3117,49 @@ def build_parent_nocuts(verbose=True, overwrite=False):
 
 
 def build_parent_vicuts(verbose=False, overwrite=False):
-    """Build the parent catalog with VI cuts.
+    """Build the "VI cuts" parent catalog by applying visual-inspection
+    (VI) driven cleanup to the "nocuts" parent catalog.
 
-    Always make sure we still have all LVD sources (see the VETO array
-    in remove_by_prefix)!
+    Reads ``SGA2025-parent-nocuts-{version}.fits`` and applies, in
+    order: (1) :func:`update_properties` to refresh individual-galaxy
+    properties/coordinates; (2) :func:`remove_by_prefix` to drop
+    systems with uncommon name prefixes after VI; (3)
+    :func:`resolve_crossid_errors` to fix NED/HyperLeda
+    cross-identification errors; (4) :func:`SGA.sky.resolve_close` to
+    resolve close (1 arcsec) pairs, allowing vetoes; (5)
+    :func:`remove_by_prefix` twice more to drop ``GTrpl``/``GPair``
+    merger systems that lack a measured diameter; (6) two more
+    (result-discarding) :func:`remove_by_prefix` calls that explicitly
+    drop ``GTrpl``/``GPair`` mergers *with* diameters, but only those
+    named in the VI-actions file. Before writing, and after most steps,
+    verifies via :func:`check_lvd` that no LVD dwarf has been
+    inadvertently dropped, raising :class:`ValueError` if so. Also
+    checks the VI-actions CSV for duplicate ``objname`` entries up
+    front and returns early (without writing or raising) if any are
+    found.
+
+    Parameters
+    ----------
+    verbose : :class:`bool`
+        Passed through to :func:`update_properties` and
+        :func:`remove_by_prefix`.
+    overwrite : :class:`bool`
+        If False and the output file already exists, log and return
+        without rebuilding.
+
+    Returns
+    -------
+    None
+        Writes ``{sga_dir()}/parent/SGA2025-parent-vicuts-{version}.fits``
+        (extension name ``PARENT-VICUTS``); returns early (also None)
+        if the output already exists and ``overwrite`` is False, or if
+        the VI-actions file has duplicate object names.
+
+    Raises
+    ------
+    ValueError
+        If an LVD dwarf goes missing at any checkpoint (see
+        :func:`check_lvd`).
 
     """
     version_vicuts = SGA_version(vicuts=True)
@@ -3151,7 +3236,38 @@ def build_parent_vicuts(verbose=False, overwrite=False):
 
 
 def add_gaia_masking(cat):
+    """Compute each object's distance to the nearest bright Gaia star,
+    normalized by that star's masking radius, and store the result on
+    ``cat`` in place.
 
+    Ensures ``STARFDIST``, ``STARDIST``, ``STARMAG`` columns exist
+    (default 99, meaning "no nearby bright star found yet"). Reads the
+    packaged Gaia DR3 bright-star mask catalog, restricted to
+    ``radius > 0``, and processes it in 1-magnitude bins of
+    ``mask_mag`` (faintest to brightest coverage in one pass per bin):
+    for each bin, finds every object's nearest star in that bin within
+    twice the bin's largest masking radius
+    (:func:`~astrometry.libkd.spherematch.match_radec`), and updates
+    ``STARDIST``/``STARFDIST``/``STARMAG`` wherever the new match's
+    ``STARFDIST`` (separation divided by that star's masking radius,
+    capped for consideration at < 2) is smaller than the value already
+    recorded from a previous bin -- so the final values reflect the
+    *closest* (in masking-radius units) bright star across all
+    magnitude bins, not just the last bin processed. Zero-separation
+    matches (object exactly coincident with a Gaia star) are recorded
+    with ``STARDIST = STARFDIST = 0`` directly, bypassing the ratio
+    calculation.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Catalog to annotate, modified in place; needs ``RA``, ``DEC``.
+
+    Returns
+    -------
+    None
+
+    """
     log.info(f'Adding Gaia bright-star masking bits.')
     if not 'STARFDIST' in cat.colnames:
         cat['STARFDIST'] = np.zeros(len(cat), 'f4') + 99.
@@ -3206,7 +3322,60 @@ def add_gaia_masking(cat):
 
 
 def build_parent_archive(verbose=False, overwrite=False):
-    """Build the parent catalog.
+    """Build the "archive" parent catalog by applying SSL-based
+    classification vetoes, additional close-pair resolution, and
+    diameter/photometry-based cuts to the "VI cuts" parent catalog.
+
+    Reads ``SGA2025-parent-vicuts-{version}.fits``, then: (1) reads the
+    ssl-legacysurvey (SSL) classification results (excluding reference
+    sources, which are separately visually inspected) and removes every
+    object SSL flagged, *except* those present in a hand-curated veto
+    file, the VI-properties file, or a ``'hyperleda-coords'``-tagged
+    subset of the VI-actions file -- raising :class:`ValueError` if any
+    of those exception lists reference an object not actually present
+    in the SSL results (a consistency guard, since those lists are
+    meant to override SSL, not add new entries); (2) resolves
+    additional close pairs (5 arcsec) using a PGC-number-sorted
+    reference catalog (so a lower-PGC "canonical" name wins ties over
+    RA-based ordering) via :func:`SGA.sky.resolve_close`; (3) flags LMC/
+    SMC and globular-cluster/planetary-nebula membership
+    (:func:`SGA.sky.find_in_mclouds`/:func:`SGA.sky.find_in_gclpne`);
+    (4) reads per-region "photometry" files (objects with
+    ``DIAM_INIT < 20`` arcsec that failed automated photometry checks)
+    and drops every matching object from ``cat``, *except* those in the
+    custom/properties/actions override lists or within a low-redshift
+    (``z < 0.1``) radius of the Coma or Virgo cluster centers (which are
+    also written out to per-cluster ``viewer-{name}.fits`` diagnostic
+    files); (5) adds boolean ``IN_{ACTION}`` columns (``FIXGEO``,
+    ``RESOLVED``, ``FORCEPSF``, ``LESSMASKING``, ``MOREMASKING``) from
+    hand-curated CSV action files, forcing ``IN_FIXGEO`` True wherever
+    ``IN_RESOLVED`` is True; (6) adds Gaia bright-star masking columns
+    via :func:`add_gaia_masking`. Checks via :func:`check_lvd` after
+    every major removal step that no LVD dwarf was inadvertently
+    dropped.
+
+    Parameters
+    ----------
+    verbose : :class:`bool`
+        Accepted but not referenced in this function's body -- dead
+        parameter.
+    overwrite : :class:`bool`
+        If False and the output file already exists, log and return
+        without rebuilding.
+
+    Returns
+    -------
+    None
+        Writes ``{sga_dir()}/parent/SGA2025-parent-archive-{version}.fits``
+        (extension name ``PARENT-ARCHIVE``); returns early (also None)
+        if the output already exists and ``overwrite`` is False.
+
+    Raises
+    ------
+    ValueError
+        If an LVD dwarf goes missing at any checkpoint; if the veto,
+        properties, or actions override lists reference SSL objects
+        inconsistently (see above).
 
     """
     from glob import glob
@@ -3453,6 +3622,51 @@ def build_parent_archive(verbose=False, overwrite=False):
 def update_geometry_from_reffiles(parent, diam, ba, pa, diam_ref, reffiles,
                                   REGIONBITS, veto_objnames=None,
                                   region_order=['dr9-north', 'dr11-south']):
+    """Overwrite diameter/axis-ratio/PA arrays with values measured in
+    a prior SGA release, for objects present in that release's ellipse
+    catalogs.
+
+    For each region in ``region_order`` (processed in list order, so
+    later regions overwrite earlier ones for any object present in more
+    than one region's reference file -- with the default order, this
+    means dr11-south wins over dr9-north on overlap), reads that
+    region's reference ``ELLIPSE`` catalog (``reffiles[region]``,
+    restricted to ``GROUP_MULT == 1`` if ``reffiles['ref_version'] ==
+    'v0.11'``, since not all multi-object-group diameters in that
+    release were reliable), matches to ``parent`` by ``OBJNAME``,
+    restricts to objects whose current ``REGION`` bitmask includes this
+    region's bit (and, if ``veto_objnames`` is given, excludes those
+    names entirely), and overwrites ``diam``/``ba``/``pa``/``diam_ref``
+    at the matched positions with the reference catalog's ``D26``/
+    ``BA``/``PA``/``D26_REF`` values (``diam_ref`` becomes
+    ``f'{ref_version}/{D26_REF}'``).
+
+    Parameters
+    ----------
+    parent : :class:`~astropy.table.Table`
+        Parent catalog being built; needs ``OBJNAME``, ``REGION``.
+    diam, ba, pa, diam_ref : :class:`numpy.ndarray`
+        Current geometry arrays, aligned to ``parent``, updated in
+        place at matched positions (and returned for convenience).
+    reffiles : :class:`dict`
+        ``{'ref_version': str, region: path, ...}`` for each region in
+        ``region_order``, as defined in :func:`build_parent_legacy`'s
+        ``reffiles`` table.
+    REGIONBITS : :class:`dict`
+        Region name -> bit value (see ``SGA.coadds.REGIONBITS``).
+    veto_objnames : :class:`set` of :class:`str`, optional
+        Object names to exclude from updating even if otherwise
+        matched (e.g. objects whose geometry was deliberately fixed by
+        hand and shouldn't be overwritten by the reference file).
+    region_order : :class:`list` of :class:`str`
+        Regions to process, in overwrite-precedence order (last wins).
+
+    Returns
+    -------
+    diam, ba, pa, diam_ref : :class:`numpy.ndarray`
+        The same arrays passed in, updated in place and returned.
+
+    """
     # optionally update initial diameters
     ref_version = reffiles['ref_version']
     log.info(f'Updating initial diameters using reference version {ref_version}')
@@ -3498,7 +3712,119 @@ def update_geometry_from_reffiles(parent, diam, ba, pa, diam_ref, reffiles,
 
 
 def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False):
-    """Build the parent catalog.
+    """Build the final SGA-2025 parent catalog: merge the per-region
+    archive catalogs, add hand-curated sources, apply final VI
+    corrections, assign sample/mode bit flags, and run group-finding to
+    produce the release-ready parent sample.
+
+    Extensive multi-stage pipeline: (1) reads and vertically stacks the
+    dr11-south/dr9-north "archive" catalogs (:func:`build_parent_archive`'s
+    output), tagging each with its ``REGION`` bit, then merges
+    cross-region duplicate ``OBJNAME``s into single rows with both
+    region bits set; (2) reads a hand-curated "custom" CSV of
+    additional by-hand sources, builds empty placeholder rows for them
+    (nested :func:`_empty_parent`), restores properties for any that
+    were dropped during the archive stage by re-reading the "nocuts"
+    catalog, assigns fresh ``ROW_PARENT`` values for genuinely new
+    objects, and stacks them onto the merged catalog; (3) applies a
+    "parent-drop" CSV, removing objects globally or clearing specific
+    region bits per-object, dropping any object left with
+    ``REGION == 0``; (4) derives final diameter/BA/PA/mag via
+    :func:`SGA.geometry.choose_geometry` (20 arcsec floor), restoring
+    the un-floored diameter for LVD dwarfs that fell below the floor;
+    (5) for specific catalog versions, overwrites geometry using a
+    prior release's ellipse-fit measurements -- ``'v0.12'`` via
+    :func:`update_geometry_from_reffiles` (vetoing FIXGEO/RESOLVED
+    objects, whose geometry was inadvertently overwritten in v0.11);
+    ``'v0.20'``/``'v0.21'``/``'v0.22'`` via a call described in Notes
+    (currently broken); (6) applies final one-off coordinate/geometry
+    overrides from the VI-properties and "custom" CSVs; (7) assigns
+    ``SAMPLE`` bits (``LVD``, ``NEARSTAR``, ``INSTAR`` from
+    ``STARFDIST``, ``MCLOUDS``, ``GCLPNE``) and ``ELLIPSEMODE`` bits
+    (from per-action CSV files: fixgeo, resolved, forcepsf,
+    lessmasking, moremasking, momentpos, tractorgeo, radweight, with
+    RESOLVED implying FIXGEO) plus the derived legacypipe ``FITMODE``;
+    (8) assembles the final flat table, assigns ``SGAID`` (either a
+    fresh ``0..N-1`` range if ``reset_sgaid``, or carried over from
+    ``ROW_PARENT``), sorts by diameter descending, and adds Milky Way
+    ``EBV`` via ``desiutil.dust.SFDMap``; (9) runs group-finding --
+    described in Notes, this step is currently broken; (10) after
+    grouping, "harmonizes" each group's ``REGION`` bits down to those
+    common to every member (dropping groups with no common bit,
+    stripping mismatched bits otherwise) so downstream per-region
+    processing doesn't misinterpret a partially-covered group as
+    missing data, sets the ``OVERLAP`` sample bit
+    (:func:`SGA.groups.set_overlap_bit`), and does a final LVD-dwarf
+    completeness check; (11) writes the FITS catalog and builds a
+    kd-tree-indexed copy via the ``startree`` command-line tool.
+
+    Notes
+    -----
+    **This function cannot currently complete for any catalog version.**
+    Step (9) calls ``make_singleton_group(grp[I], group_id_start=0)``,
+    but :func:`SGA.groups.make_singleton_group` takes only a single
+    ``cat`` argument -- there is no ``group_id_start`` parameter -- so
+    this raises ``TypeError`` immediately. The very next line,
+    ``build_group_catalog(grp[~I], group_id_start=max(out1['GROUP_ID'])+1,
+    mp=mp)``, is doubly broken even setting that aside:
+    :func:`SGA.groups.build_group_catalog` likewise has no
+    ``group_id_start`` parameter, and neither
+    :func:`SGA.groups.make_singleton_group` nor
+    :func:`SGA.groups.build_group_catalog` produce a ``GROUP_ID`` column
+    at all (only ``GROUP_NAME``, ``GROUP_MULT``, ``GROUP_PRIMARY``,
+    ``GROUP_RA``, ``GROUP_DEC``, ``GROUP_DIAMETER``), so
+    ``out1['GROUP_ID']`` would raise ``KeyError`` even if the
+    ``TypeError``s were somehow bypassed. This function's name
+    ("legacy") and the fact that :func:`build_parent` -- the actively
+    used top-level driver -- calls the *current* ``SGA.groups`` API
+    correctly (plain ``make_singleton_group(grp[special])`` and
+    ``build_group_catalog(grp[~special], mp=mp)``, no ``group_id_start``,
+    no ``GROUP_ID`` references) strongly suggests
+    ``build_parent_legacy`` is superseded, pre-refactor code that was
+    left in the module without being updated or removed.
+
+    Separately, step (5)'s ``'v0.20'``/``'v0.21'``/``'v0.22'`` branch
+    calls ``remove_small_groups_and_galaxies(parent, ref_tab, region,
+    REGIONBITS, SAMPLE, ELLIPSEBIT, mindiam=0.5,
+    veto_objnames=veto_objnames)`` -- a function that does not exist
+    anywhere in this repository (confirmed by a full-repository search;
+    this call site is the only occurrence of the name). Building any of
+    those three catalog versions via this function raises ``NameError``
+    at this line.
+
+    Parameters
+    ----------
+    mp : :class:`int`
+        Number of parallel processes, passed to
+        :func:`SGA.groups.build_group_catalog`.
+    reset_sgaid : :class:`bool`
+        If True, assign fresh sequential ``SGAID`` values; if False
+        (default), carry over ``ROW_PARENT`` as ``SGAID``.
+    verbose : :class:`bool`
+        Accepted but not referenced in this function's body -- dead
+        parameter.
+    overwrite : :class:`bool`
+        If False and the output file already exists, log and return
+        without rebuilding.
+
+    Returns
+    -------
+    None
+        Writes ``{sga_dir()}/sample/SGA2025-parent-{version}.fits`` and
+        its kd-tree-indexed counterpart; returns early (also None) if
+        the output already exists and ``overwrite`` is False. See Notes
+        for why this currently cannot be reached for any version.
+
+    Raises
+    ------
+    ValueError
+        At numerous internal consistency checks (duplicate names in
+        hand-curated CSVs, objects referenced in a CSV but missing from
+        the working catalog, duplicate ``ROW_PARENT``/``SGAGROUP``
+        values, an LVD dwarf going missing).
+    TypeError, NameError
+        Currently, unconditionally, during group-finding / for certain
+        versions -- see Notes.
 
     """
     from astropy.table import Column
@@ -3568,8 +3894,26 @@ def build_parent_legacy(mp=1, reset_sgaid=False, verbose=False, overwrite=False)
 
     # add additional sources by-hand
     def _empty_parent(cat, N=1):
-        """Return a new Table with same columns/dtypes as `cat`,
-        length N, initialized with your null values.
+        """Build an empty (all-null-valued) table with the same
+        columns/dtypes as ``cat``.
+
+        Null values are type-appropriate: ``False`` for booleans, empty
+        string for fixed-length string columns, ``99`` for
+        ``STARMAG``/``STARDIST``/``STARFDIST`` (meaning "no nearby
+        star"), and ``-99`` for every other numeric column.
+
+        Parameters
+        ----------
+        cat : :class:`~astropy.table.Table`
+            Table whose column structure (names/dtypes) to replicate.
+        N : :class:`int`
+            Number of (null-valued) rows to create.
+
+        Returns
+        -------
+        :class:`~astropy.table.Table`
+            New table, length ``N``, same columns/dtypes as ``cat``.
+
         """
         empty = Table(masked=False)
 
@@ -4075,14 +4419,60 @@ Overlays = namedtuple('Overlays', 'adds updates drops flags')
 
 
 def _require_columns(tab, required, name):
-    """Raise if any required column is missing."""
+    """Validate that a table has every required column, raising if not.
+
+    Parameters
+    ----------
+    tab : :class:`~astropy.table.Table`
+        Table to check.
+    required : iterable of :class:`str`
+        Column names that must be present.
+    name : :class:`str`
+        Human-readable label for ``tab``, used in the error message.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    ValueError
+        If any column in ``required`` is missing from ``tab``.
+
+    """
     missing = [c for c in required if c not in tab.colnames]
     if missing:
         raise ValueError(f"{name}: missing required columns: {missing}")
 
 
 def _read_csv_if_exists(path, required=None, name='table'):
-    """Read CSV if present; return empty Table with required columns otherwise."""
+    """Read a CSV overlay file if it exists, or build an empty
+    placeholder table with the required columns if it doesn't.
+
+    Used by :func:`load_overlays` so a missing overlay CSV (e.g. no
+    manual drops for a given version) doesn't require special-casing
+    downstream -- callers always get a (possibly empty) table with the
+    expected columns.
+
+    Parameters
+    ----------
+    path : :class:`str` or :class:`~pathlib.Path`
+        CSV file path.
+    required : iterable of :class:`str`, optional
+        Required column names. When the file doesn't exist, these
+        become the empty table's columns, with a heuristic dtype: `str`
+        (``'<U64'``) for ``'OBJNAME'``/``'FIELD'``/``'COLUMN'``/
+        ``'REASON'``, else `float`. When the file does exist, these are
+        checked via :func:`_require_columns`.
+    name : :class:`str`
+        Human-readable label for error messages.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        The CSV contents, or an empty table with the required columns.
+
+    """
     if not os.path.isfile(path):
         tab = Table()
         if required:
@@ -4100,9 +4490,34 @@ def _read_csv_if_exists(path, required=None, name='table'):
 
 
 def load_overlays(overlay_dir):
-    """
-    Load overlays from overlay_dir and return a container with
-    .adds, .updates, .drops, .flags (each an Astropy Table, possibly empty).
+    """Load a version's manual-curation overlay CSVs (adds, updates,
+    drops, flags) from a directory into an :class:`Overlays` container.
+
+    Reads ``adds.csv``, ``updates.csv``, ``drops.csv``, ``flags.csv``
+    from ``overlay_dir`` (each optional; see :func:`_read_csv_if_exists`),
+    validates that ``adds.csv``/``drops.csv`` have no duplicate
+    ``OBJNAME`` entries (raising, and for ``drops.csv`` also writing a
+    deduplicated ``udrops.csv`` diagnostic first), and ensures
+    ``updates.csv`` has a ``REASON`` column (added empty if absent).
+
+    Parameters
+    ----------
+    overlay_dir : :class:`~pathlib.Path`
+        Directory containing this version's overlay CSVs, e.g.
+        ``SGA/data/SGA2025/overlays/{version}``.
+
+    Returns
+    -------
+    :class:`Overlays`
+        Container with ``.adds``, ``.updates``, ``.drops``, ``.flags``
+        tables (each possibly empty).
+
+    Raises
+    ------
+    ValueError
+        If ``adds.csv`` or ``drops.csv`` contains duplicate ``OBJNAME``
+        entries.
+
     """
     adds = _read_csv_if_exists(overlay_dir / 'adds.csv', required=('OBJNAME', 'REGION', 'RA', 'DEC', 'DIAM', 'BA', 'PA'), name='adds.csv')
     updates = _read_csv_if_exists(overlay_dir / 'updates.csv', required=('OBJNAME', 'FIELD', 'NEW_VALUE'), name='updates.csv')
@@ -4131,8 +4546,37 @@ def load_overlays(overlay_dir):
 
 
 def apply_updates_inplace(parent, updates):
-    """For each (OBJNAME, FIELD, NEW_VALUE) row, set parent[FIELD] accordingly."""
+    """Apply manual per-object, per-field value overrides from an
+    ``updates.csv`` overlay to ``parent``, in place.
 
+    For each ``(OBJNAME, FIELD, NEW_VALUE)`` row, finds the matching
+    row(s) in ``parent`` by ``OBJNAME`` and sets ``parent[FIELD]``
+    there, casting ``NEW_VALUE`` to the destination column's dtype
+    (float/int/string as appropriate). After all updates, re-wraps
+    ``PA`` into ``[0, 180)`` if the column exists (regardless of
+    whether ``PA`` was actually among the touched fields).
+
+    Parameters
+    ----------
+    parent : :class:`~astropy.table.Table`
+        Catalog to update, modified in place.
+    updates : :class:`~astropy.table.Table`
+        Overlay rows with ``OBJNAME``, ``FIELD``, ``NEW_VALUE`` columns.
+        No-op if empty.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``parent``, for convenience (also modified in place).
+
+    Raises
+    ------
+    ValueError
+        If an update's ``OBJNAME`` is not found in ``parent`` (a
+        commented-out ``continue`` shows a silent-skip alternative was
+        considered but is not active).
+
+    """
     if len(updates) == 0:
         return parent
     log.info(f'Updating parameter values for {len(updates):,d} object(s) using updates.csv')
@@ -4163,7 +4607,34 @@ def apply_updates_inplace(parent, updates):
 
 
 def apply_drops(parent, drops, REGIONBITS):
+    """Remove or region-restrict objects listed in a ``drops.csv``
+    overlay.
 
+    For each ``(OBJNAME, REGION)`` row, clears the corresponding
+    ``REGIONBITS[REGION]`` bit from that object's ``REGION`` column (or
+    zeros ``REGION`` entirely if ``REGION`` is blank/None, or if it's an
+    unrecognized placeholder like ``'--'`` -- both cases silently drop
+    the object from all regions rather than raising); rows whose
+    resulting ``REGION`` is 0 are removed from the output entirely.
+
+    Parameters
+    ----------
+    parent : :class:`~astropy.table.Table`
+        Catalog to filter (not modified in place -- a new filtered
+        table is returned).
+    drops : :class:`~astropy.table.Table`
+        Overlay rows with ``OBJNAME``, ``REGION`` columns.
+    REGIONBITS : :class:`dict`
+        Mapping of region name to bit value (see
+        ``SGA.coadds.REGIONBITS``).
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``parent`` with dropped objects/regions removed and ``REGION``
+        updated for partially-dropped (multi-region) objects.
+
+    """
     names = np.asarray(parent['OBJNAME']).astype(str)
     reg = np.asarray(parent['REGION']).astype(np.int32).copy()
 
@@ -4190,10 +4661,53 @@ def apply_drops(parent, drops, REGIONBITS):
 
 
 def apply_adds(parent, adds, regionbits, nocuts):
-    """
-    Append rows from adds. If OBJNAME exists in `nocuts`, start from that row
-    (restored properties); otherwise fill minimal defaults. Then overwrite with
-    add-file fields (OBJNAME, RA, DEC, REGION, DIAM, BA, PA, [MAG]).
+    """Append hand-added objects from an ``adds.csv`` overlay to
+    ``parent``, restoring identity (``PGC``/``SGAID``) from ``nocuts``
+    where a match exists.
+
+    Skips any ``adds`` row whose ``OBJNAME`` is already in ``parent``
+    (logged as a warning). For the rest, builds new rows defaulted per
+    ``parent``'s column dtypes (``-99.0`` for float, ``0`` for int,
+    ``''`` for string columns -- so any column not explicitly filled
+    below is left at these generic placeholders, silently, even for
+    columns like photometry/``EBV`` that a "real" parent row would
+    have), fills ``OBJNAME``/``RA``/``DEC``/``DIAM``/``BA``/``PA``
+    (``DIAM_REF`` set to ``'VI'``) from ``adds``, and resolves
+    ``REGION`` to bits (blank/masked -> both ``dr11-south`` and
+    ``dr9-north`` bits set). Matches each add to ``nocuts`` by
+    ``OBJNAME`` or ``OBJNAME_SGA2020`` to recover its original ``PGC``
+    and ``SGAID`` (as ``nocuts['ROW_PARENT']``); unmatched adds get a
+    freshly-assigned ``SGAID`` starting above
+    ``max(parent['SGAID'], nocuts['ROW_PARENT']) + 1``. After stacking,
+    verifies ``SGAID`` uniqueness -- on failure, writes a
+    ``viewer.fits`` diagnostic and drops into ``pdb.set_trace()`` before
+    raising.
+
+    Parameters
+    ----------
+    parent : :class:`~astropy.table.Table`
+        Catalog to append to.
+    adds : :class:`~astropy.table.Table`
+        Overlay rows with ``OBJNAME``, ``RA``, ``DEC``, ``REGION``,
+        ``DIAM``, ``BA``, ``PA`` columns.
+    regionbits : :class:`dict`
+        Mapping of region name to bit value.
+    nocuts : :class:`~astropy.table.Table`
+        The "no cuts" parent catalog, used to recover identity for adds
+        that already existed pre-cuts; needs ``OBJNAME``,
+        ``OBJNAME_SGA2020``, ``PGC``, ``ROW_PARENT``.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``parent`` with new rows appended (unchanged if ``adds`` is
+        empty or entirely already-present).
+
+    Raises
+    ------
+    ValueError
+        If the resulting ``SGAID`` column has duplicates (via an
+        interactive ``pdb.set_trace()`` breakpoint first).
 
     """
     if len(adds) == 0:
@@ -4250,6 +4764,22 @@ def apply_adds(parent, adds, regionbits, nocuts):
     both_bits = int(regionbits['dr11-south']) | int(regionbits['dr9-north'])
 
     def _get_region_bits(r):
+        """Resolve one ``adds.csv`` ``REGION`` field value to a bitmask,
+        for :func:`apply_adds`.
+
+        Parameters
+        ----------
+        r : scalar
+            Raw ``REGION`` field value; ``'--'`` or an empty string
+            means "both regions".
+
+        Returns
+        -------
+        :class:`int`
+            Region bitmask (``regionbits[r]``, or both regions' bits if
+            blank/``'--'``).
+
+        """
         r_str = str(r).strip()
         if r_str == '--' or r_str == '':
             return both_bits
@@ -4315,24 +4845,41 @@ def apply_adds(parent, adds, regionbits, nocuts):
 
 
 def apply_flags_inplace(parent, flags, ELLIPSEMODE):
-    """
-    Apply consolidated flags to `parent` in place.
+    """Apply consolidated ``ELLIPSEMODE`` bit set/clear operations from a
+    ``flags.csv`` overlay to ``parent``, in place.
+
+    Only ``target == 'OBJNAME'`` rows are handled; anything else is
+    silently ignored. For each row, resolves ``bits`` (comma-separated
+    lower-case bit names, already consolidated upstream and enforcing
+    ``RESOLVED`` implies ``FIXGEO``) against ``ELLIPSEMODE`` (matched
+    case-insensitively) into a bitmask, then sets or clears that mask on
+    ``parent[column]`` for every row matching ``value`` (an ``OBJNAME``);
+    unknown names are silently skipped.
 
     Parameters
     ----------
-    parent : astropy.table.Table
-        Must contain columns: 'OBJNAME', 'ELLIPSEMODE'
-    flags : astropy.table.Table
-        Consolidated flags table with columns:
-        ['target','value','column','op','bits'], where:
-          - target == 'OBJNAME'
-          - value  == object name (string)
-          - column in {'ELLIPSEMODE'}
-          - op in {'set','clear'}
-          - bits is comma-separated actions already consolidated
-            (and already enforcing RESOLVED ⇒ FIXGEO).
-    ELLIPSEMODE : dict
-        Bit dictionaries with UPPER-CASE keys (e.g., {'FIXGEO': 1<<0, ...}).
+    parent : :class:`~astropy.table.Table`
+        Must contain ``'OBJNAME'`` and the target ``column`` (currently
+        only ``'ELLIPSEMODE'`` is supported); modified in place.
+    flags : :class:`~astropy.table.Table`
+        Consolidated flags table with columns ``'target'``, ``'value'``
+        (object name), ``'column'`` (``'ELLIPSEMODE'``), ``'op'``
+        (``'set'`` or ``'clear'``), ``'bits'`` (comma-separated bit
+        names).
+    ELLIPSEMODE : :class:`dict`
+        Bit dictionary with upper-case keys (e.g. ``{'FIXGEO': 1<<0, ...}``).
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    ValueError
+        If ``column`` is not ``'ELLIPSEMODE'``, or ``op`` is neither
+        ``'set'`` nor ``'clear'``.
+    KeyError
+        If a bit name in ``bits`` is not in ``ELLIPSEMODE``.
 
     """
     from collections import defaultdict
@@ -4346,6 +4893,29 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
     # Lowercase maps for CSV bit names
     ellipse_map = {k.lower(): v for k, v in ELLIPSEMODE.items()}
     def bits_to_mask(column, bits_str):
+        """Resolve a comma-separated string of bit names into a combined
+        bitmask, for :func:`apply_flags_inplace`.
+
+        Parameters
+        ----------
+        column : :class:`str`
+            Target column name; only ``'ELLIPSEMODE'`` is supported.
+        bits_str : :class:`str`
+            Comma-separated bit names (case-insensitive).
+
+        Returns
+        -------
+        :class:`int`
+            Combined (OR'd) bitmask.
+
+        Raises
+        ------
+        ValueError
+            If ``column`` is not ``'ELLIPSEMODE'``.
+        KeyError
+            If a bit name is not found in the mapping.
+
+        """
         bits = [b.strip().lower() for b in str(bits_str).split(',') if b.strip()]
         if column == 'ELLIPSEMODE':
             mapping = ellipse_map
@@ -4385,7 +4955,45 @@ def apply_flags_inplace(parent, flags, ELLIPSEMODE):
 
 
 def diagnose_drift(ell60, outdir, ref_version='v0.10'):
-    """Compare v0.60 positions to original initial positions."""
+    """Quantify how far each object's position/diameter/shape has
+    drifted between an original reference geometry and a later ellipse
+    catalog, for QA of successive processing versions.
+
+    Loads the ``ref_version`` reference catalog (``SGA2025-parent-v0.10.fits``
+    if ``ref_version == 'v0.10'``, else ``SGA2025-beta-parent-{ref_version}.fits``),
+    replays the ``v0.30``-``v0.60`` overlay updates onto it (via
+    :func:`load_overlays`/:func:`apply_updates_inplace`) so it reflects
+    the same manual corrections ``ell60`` does, renames its geometry
+    columns to ``*_INIT`` form, matches to ``ell60`` by ``OBJNAME``, and
+    computes: angular position drift (arcsec, via
+    :class:`~astropy.coordinates.SkyCoord` separation), diameter ratio
+    (``ell60['D26'] / ell22['DIAM_INIT']``), and absolute B/A and
+    (wrapped) PA differences. Logs summary percentiles for position
+    drift and diameter ratio.
+
+    Parameters
+    ----------
+    ell60 : :class:`~astropy.table.Table`
+        Current-version ellipse catalog (named for v0.60 historically,
+        but reusable for any later version); needs ``OBJNAME``,
+        ``SGAID``, ``RA``, ``DEC``, ``GROUP_MULT``, ``ELLIPSEBIT``,
+        ``SAMPLE``, ``D26``.
+    outdir : :class:`str`
+        Directory containing the parent catalog FITS files.
+    ref_version : :class:`str`
+        Reference version to diff against; ``'v0.10'`` reads the
+        original parent catalog directly, any other value reads the
+        corresponding beta parent catalog.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        One row per matched object with identity columns plus
+        ``RA_ORIG``/``DEC_ORIG``/``DIAM_ORIG``/``DIAM_ORIG_REF``/
+        ``PA_ORIG``/``BA_ORIG`` (reference values), ``pos_drift_arcsec``,
+        ``diam_ratio``, ``ba_diff``, ``pa_diff``, and ``IS_LVD``.
+
+    """
     import astropy.units as u
     from astropy.coordinates import SkyCoord
 
@@ -4483,7 +5091,44 @@ def diagnose_drift(ell60, outdir, ref_version='v0.10'):
 
 
 def flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi=3.0):
-    """Flag objects that likely have corrupted geometry."""
+    """Flag objects in a :func:`diagnose_drift` output table as likely
+    needing geometry refitting, and print/log extensive exploratory
+    diagnostics along the way.
+
+    Computes several successively-refined candidate ``needs_refit``
+    masks (combining large position drift, extreme diameter ratio,
+    ``LARGESHIFT``/``NOTRACTOR``/``SKIPTRACTOR`` bits, and group-context
+    heuristics), logging counts and breakdowns for each at every stage
+    -- most of these intermediate masks (``needs_refit``,
+    ``group_suspicious``, ``needs_refit_refined``) are informational
+    only and are superseded by the final combination. Only the *last*
+    computed mask, ``needs_refit_final`` (the refined mask minus
+    objects with ``LARGESHIFT`` that otherwise look stable), is written
+    back to ``diag['NEEDS_REFIT']``.
+
+    Parameters
+    ----------
+    diag : :class:`~astropy.table.Table`
+        Output of :func:`diagnose_drift`.
+    pos_thresh_arcsec : :class:`float`
+        Position-drift threshold, arcsec, for the (superseded)
+        first-pass ``large_pos_drift`` mask -- the final mask instead
+        uses a hardcoded 5.0" threshold, coincidentally the same as
+        this parameter's default, so changing this argument has no
+        effect on the returned ``NEEDS_REFIT`` column.
+    diam_ratio_lo, diam_ratio_hi : :class:`float`
+        Diameter-ratio bounds for the (superseded) first-pass
+        ``extreme_diam`` mask -- the final mask instead uses hardcoded
+        0.3/3.0 bounds, again coincidentally matching these defaults,
+        so non-default values passed here have no effect on the
+        returned column.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``diag`` with a new ``NEEDS_REFIT`` boolean column.
+
+    """
     from SGA.ellipse import ELLIPSEBIT
 
     # 1. Large position drift
@@ -4636,7 +5281,31 @@ def flag_for_refit(diag, pos_thresh_arcsec=5.0, diam_ratio_lo=0.3, diam_ratio_hi
 
 
 def additional_sanity_checks(ell60, ell22):
-    """More checks to catch problematic objects."""
+    """Log counts of several ad hoc data-quality red flags comparing a
+    current ellipse catalog to an earlier reference version; purely
+    diagnostic (no columns added, no filtering performed).
+
+    Flags (each just logged, not returned or acted on): zero r-band
+    flux but ``D26 > 0.5`` (likely Tractor dropped the source);
+    ``D26_ERR > 0`` but suspiciously small ``D26 < 0.2``; unphysical
+    ``BA`` (<= 0 or > 1); and, for objects matched by ``OBJNAME``
+    between ``ell60`` and ``ell22``, a >50% change in ``D26`` for
+    objects where ``ell22`` had a valid measurement (``D26_ERR > 0``).
+
+    Parameters
+    ----------
+    ell60 : :class:`~astropy.table.Table`
+        Current-version ellipse catalog; needs ``FLUX_R``, ``D26``,
+        ``D26_ERR``, ``BA``, ``OBJNAME``.
+    ell22 : :class:`~astropy.table.Table`
+        Earlier-version ellipse catalog to compare against; needs
+        ``OBJNAME``, ``D26``, ``D26_ERR``.
+
+    Returns
+    -------
+    None
+
+    """
 
     # 1. Objects where flux is zero but D26 is large (Tractor dropped it)
     zero_flux = (ell60['FLUX_R'] == 0) & (ell60['D26'] > 0.5)
@@ -4661,27 +5330,49 @@ def additional_sanity_checks(ell60, ell22):
 
 
 def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
-    """Prepare v0.70 ellipse catalog for v0.80 parent building.
+    """Prepare a v0.70 ellipse catalog for v0.80 parent building: flag
+    objects whose moment-based diameter shrank suspiciously relative to
+    the original parent geometry, and remove small group members.
 
-    Reads original v0.10 parent, applies overlay updates, flags objects
-    for restoration or removal.
+    Reads the original v0.10 parent catalog and replays the
+    ``v0.30``-``v0.70`` overlay updates onto it (so it reflects the same
+    manual corrections as ``ell1``), then matches to ``ell1`` by
+    ``OBJNAME``. Flags ``REFIT = True`` for objects whose ``D26_REF``
+    indicates a moment-based diameter (``'mom'`` or ending in ``'/mom'``)
+    *and* whose diameter shrank to <50% of the original parent diameter
+    (an LVD-specific version of the same shrink check is computed as
+    ``shrunk_lvd`` but logged only, not included in ``REFIT``). Also
+    removes small group members via
+    :func:`_flag_small_for_removal` (``mindiam``). Adds ``RA_ORIG``/
+    ``DEC_ORIG``/``DIAM_ORIG``/``DIAM_ORIG_REF``/``PA_ORIG``/``BA_ORIG``
+    tracking columns from the original parent geometry (asserts every
+    ``REFIT``-flagged row has a nonzero ``RA_ORIG``, i.e. a resolved
+    match).
 
     Parameters
     ----------
-    ell1 : Table
-        v0.70 ellipse catalog for one region
-    outdir : str
-        Directory containing parent catalogs
-    region : str
-        'dr11-south' or 'dr9-north'
-    mindiam : float
-        Minimum diameter threshold in arcmin
+    ell1 : :class:`~astropy.table.Table`
+        v0.70 ellipse catalog for one region.
+    outdir : :class:`str`
+        Directory containing parent catalog FITS files.
+    region : :class:`str`
+        Survey region (``'dr11-south'`` or ``'dr9-north'``), used only
+        in log messages.
+    mindiam : :class:`float`
+        Minimum diameter threshold (arcmin) passed to
+        :func:`_flag_small_for_removal`.
 
     Returns
     -------
-    ell1 : Table
-        Modified catalog with RESTORE column and _ORIG columns added,
-        small group members removed
+    :class:`~astropy.table.Table`
+        ``ell1`` with ``REFIT`` and ``*_ORIG`` columns added, and small
+        group members removed.
+
+    Raises
+    ------
+    ValueError
+        If any ``REFIT``-flagged row has no matched original geometry
+        (``RA_ORIG == 0``).
 
     """
     from SGA.SGA import SAMPLE
@@ -4764,27 +5455,51 @@ def prepare_v070_ellipse(ell1, outdir, region, mindiam=0.5):
 
 
 def prepare_v080_ellipse(ell1, region, mindiam=0.5):
-    """Prepare v0.80 ellipse catalog for v0.90 parent building.
+    """Prepare a v0.80 ellipse catalog for v0.90 parent building:
+    characterize ``LARGESHIFT``/``LARGESHIFT_TRACTOR`` objects into
+    diagnostic categories (logged only), remove small group members,
+    and leave ``REFIT`` entirely False.
 
-    Focuses on LARGESHIFT sources, which may indicate:
-    - Tractor modeling failures (should revert)
-    - Bona fide positional shifts (should keep)
-    - Catalog errors / spurious sources (should investigate)
+    Computes extensive diagnostics on objects with either largeshift
+    bit set: position shift (arcsec, from ``RA``/``DEC`` vs.
+    ``RA_INIT``/``DEC_INIT``) and diameter ratio (``D26 / DIAM_INIT``),
+    then buckets them into four categories -- A: large position shift
+    (>10") and diameter grew (>50%, "likely contamination"); B: large
+    position shift and diameter shrank (>30%, "possibly wrong source");
+    C: small position shift but extreme diameter change ("modeling
+    issue"); D: everything else ("may be legitimate"). All of this is
+    logged in detail, but the computed ``refit = cat_a | cat_b | cat_c
+    | cat_d`` is then unconditionally discarded and replaced with an
+    all-False array (see Notes) -- this function's real effect on
+    ``ell1`` is only the small-group-member removal via
+    :func:`_flag_small_for_removal` (excluding a hardcoded list of
+    ``protect``ed object names known to be legitimately small/blended).
+
+    Notes
+    -----
+    ``ell1['REFIT']`` is unconditionally set to all-False
+    (``np.zeros(len(ell1), bool)``), overwriting the categorized
+    ``refit`` computed just above it, per an explicit comment: every
+    object was already inspected and either dropped or geometry-updated
+    via the overlay CSV files, so no in-code restoration is needed here.
+    The category A/B/C/D breakdown is diagnostic logging only.
 
     Parameters
     ----------
-    ell1 : Table
-        v0.80 ellipse catalog for one region
-    region : str
-        'dr11-south' or 'dr9-north'
-    mindiam : float
-        Minimum diameter threshold in arcmin
+    ell1 : :class:`~astropy.table.Table`
+        v0.80 ellipse catalog for one region.
+    region : :class:`str`
+        Survey region, used in log messages.
+    mindiam : :class:`float`
+        Minimum diameter threshold (arcmin) passed to
+        :func:`_flag_small_for_removal`.
 
     Returns
     -------
-    ell1 : Table
-        Modified catalog with RESTORE column added,
-        small group members removed
+    :class:`~astropy.table.Table`
+        ``ell1`` with ``REFIT`` (all False) added and small,
+        non-protected group members removed.
+
     """
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
@@ -4908,7 +5623,42 @@ def prepare_v080_ellipse(ell1, region, mindiam=0.5):
 
 
 def prepare_v110_ellipse(ell1, region, mindiam=0.5):
+    """Prepare a v1.10 ellipse catalog for v1.20 parent building:
+    restore whole groups containing a LARGESHIFT category A/B/C member.
 
+    No-op (returns ``ell1`` unchanged) for ``region == 'dr9-north'``, since
+    no v1.1 ellipse-fitting was performed there. Otherwise runs the same
+    LARGESHIFT position/diameter categorization as
+    :func:`prepare_v080_ellipse` (categories A/B/C/D, logged in detail),
+    then sets ``ell1['REFIT']`` True for every member of any group
+    containing at least one category A, B, or C object (category D --
+    "may be legitimate" -- is excluded). The small-group-member removal
+    block (using ``mindiam``) is present but wrapped in ``if False:`` and
+    never executes -- see Notes.
+
+    Notes
+    -----
+    ``mindiam`` is effectively a dead parameter: its only use is inside
+    a disabled ``if False:`` block. Small/duplicate members were instead
+    curated by hand into ``drops.csv`` overlays from this version
+    onward.
+
+    Parameters
+    ----------
+    ell1 : :class:`~astropy.table.Table`
+        v1.10 ellipse catalog for one region.
+    region : :class:`str`
+        Survey region; ``'dr9-north'`` short-circuits to a no-op.
+    mindiam : :class:`float`
+        Unused (see Notes).
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``ell1`` unchanged (``dr9-north``), or with ``REFIT`` set for
+        group members needing restoration.
+
+    """
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
@@ -4999,7 +5749,37 @@ def prepare_v110_ellipse(ell1, region, mindiam=0.5):
 
 
 def prepare_v120_ellipse(ell1, region, mindiam=0.5):
+    """Prepare a v1.20 ellipse catalog for v1.30 parent building:
+    restore whole groups containing a hand-picked (VI-selected) object.
 
+    No-op for ``region == 'dr9-north'`` (no v1.2 ellipse-fitting there).
+    Otherwise runs the same LARGESHIFT category A/B/C/D diagnostic
+    logging as :func:`prepare_v080_ellipse`/:func:`prepare_v110_ellipse`,
+    but -- unlike v1.10 -- does *not* use those categories to drive
+    restoration (a commented-out line shows combining them was
+    considered: ``#refit = cat_refit | cat_a | cat_b | cat_c``). Instead,
+    ``REFIT`` is set for every member of any group containing an object
+    in a hardcoded list of ~115 VI-selected object names
+    (``refit_list``). The small-group-member removal block is present
+    but wrapped in ``if False:`` and never executes (same as v1.10; see
+    its Notes on ``mindiam``).
+
+    Parameters
+    ----------
+    ell1 : :class:`~astropy.table.Table`
+        v1.20 ellipse catalog for one region.
+    region : :class:`str`
+        Survey region; ``'dr9-north'`` short-circuits to a no-op.
+    mindiam : :class:`float`
+        Unused -- see :func:`prepare_v110_ellipse`'s Notes.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``ell1`` unchanged (``dr9-north``), or with ``REFIT`` set for
+        group members matching the hand-picked refit list.
+
+    """
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
@@ -5130,7 +5910,36 @@ def prepare_v120_ellipse(ell1, region, mindiam=0.5):
 
 
 def prepare_v130_ellipse(ell1, region, mindiam=0.5):
+    """Prepare a v1.30 ellipse catalog for v1.40 parent building:
+    restore whole groups containing a hand-picked (VI-selected) object,
+    via a shorter, updated list than v1.20's.
 
+    Unlike v1.10/v1.20, does not recompute the LARGESHIFT category
+    diagnostics at all -- goes straight to a 23-name hardcoded
+    ``refit_list``, setting ``REFIT`` for every member of any group
+    containing one of those objects. ``in_group`` and ``is_lvd`` locals
+    are computed but never used (dead). The small-group-member removal
+    block is present but wrapped in ``if False:`` and never executes
+    (same pattern as v1.10/v1.20; see :func:`prepare_v110_ellipse`'s
+    Notes on ``mindiam``).
+
+    Parameters
+    ----------
+    ell1 : :class:`~astropy.table.Table`
+        v1.30 ellipse catalog for one region.
+    region : :class:`str`
+        Survey region, used in log messages.
+    mindiam : :class:`float`
+        Unused -- see :func:`prepare_v110_ellipse`'s Notes.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``ell1`` with ``REFIT`` set for group members matching the
+        hand-picked refit list (empty change if the list matches
+        nothing).
+
+    """
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
@@ -5184,7 +5993,35 @@ def prepare_v130_ellipse(ell1, region, mindiam=0.5):
 
 
 def prepare_v140_ellipse(ell1, region, mindiam=0.5):
+    """Prepare a v1.40 ellipse catalog for v1.50 parent building; as of
+    this version, the VI-selected refit list is empty, so this is
+    effectively a no-op beyond initializing ``REFIT`` to all False.
 
+    Same structure as :func:`prepare_v130_ellipse` (hardcoded
+    ``refit_list``, dead ``in_group``/``is_lvd`` locals, disabled
+    small-group-removal block), but ``refit_list = []`` here, so no
+    group is ever flagged. The disabled removal block also no longer
+    references ``mindiam`` at all -- it uses a hardcoded ``15/60.``
+    (15 arcsec) even in its dead code (a commented-out line shows the
+    ``mindiam``-parameterized version that was replaced).
+
+    Parameters
+    ----------
+    ell1 : :class:`~astropy.table.Table`
+        v1.40 ellipse catalog for one region.
+    region : :class:`str`
+        Survey region, used in log messages.
+    mindiam : :class:`float`
+        Unused -- see :func:`prepare_v110_ellipse`'s Notes (and doubly
+        so here, since even the disabled dead-code path no longer
+        references it).
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``ell1`` with ``REFIT`` set to all False.
+
+    """
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
@@ -5232,7 +6069,25 @@ def prepare_v140_ellipse(ell1, region, mindiam=0.5):
 
 
 def prepare_v150_ellipse(ell1, region, mindiam=0.5):
+    """Prepare a v1.50 ellipse catalog for the next parent-building
+    stage; identical structure to :func:`prepare_v140_ellipse`, with an
+    empty VI-selected refit list.
 
+    Parameters
+    ----------
+    ell1 : :class:`~astropy.table.Table`
+        v1.50 ellipse catalog for one region.
+    region : :class:`str`
+        Survey region, used in log messages.
+    mindiam : :class:`float`
+        Unused -- see :func:`prepare_v140_ellipse`'s Notes.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``ell1`` with ``REFIT`` set to all False.
+
+    """
     from SGA.SGA import SAMPLE
     from SGA.ellipse import ELLIPSEBIT
 
@@ -5280,25 +6135,47 @@ def prepare_v150_ellipse(ell1, region, mindiam=0.5):
 
 
 def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_primary=False):
-    """Flag small group members for removal.
+    """Flag small/spurious group members for removal from the parent
+    catalog.
 
-    Removal criteria:
-    - GROUP_MULT=1: remove if (D26+D26_ERR) < mindiam
-    - GROUP_MULT>1, not interacting: remove if (D26+D26_ERR) < 20 arcsec
-    - GROUP_MULT>1, interacting: remove if much smaller than companions
-
-    Always keep:
-    - LVD sources
-    - GROUP_PRIMARY
+    Removal criteria (checked independently, then OR'd together):
+    singleton (``GROUP_MULT == 1``) with ``D26 + 5*D26_ERR < mindiam``;
+    group member (``GROUP_MULT > 1``), not flagged ``OVERLAP``/``BLENDED``,
+    with ``D26 + 5*D26_ERR`` below a fixed 20 arcsec threshold; or group
+    member that *is* flagged ``OVERLAP``/``BLENDED`` ("interacting"),
+    smaller than 20 arcsec, whose largest other group member exceeds
+    ``mindiam`` and is at least twice its own ``D26`` (i.e. likely a
+    Tractor shred of a larger companion rather than a real small
+    galaxy). LVD sources and each group's ``GROUP_PRIMARY`` are always
+    protected from removal (``protect_primary=True`` additionally
+    exempts primaries from the singleton criterion specifically, though
+    primaries are already excluded from the two group-based criteria
+    unconditionally). Logs a detailed breakdown of how many objects are
+    removed by each criterion and by group multiplicity.
 
     Parameters
     ----------
-    ell1 : Table
-        Ellipse catalog
-    mindiam : float
-        Minimum diameter for singletons (arcmin)
-    keep_one_survivor : bool
-        If True, keep the largest member if all would be removed
+    ell1 : :class:`~astropy.table.Table`
+        Ellipse catalog with ``SAMPLE``, ``GROUP_PRIMARY``, ``D26``,
+        ``D26_ERR``, ``GROUP_MULT``, ``ELLIPSEBIT``, ``GROUP_NAME``
+        columns.
+    mindiam : :class:`float`
+        Minimum diameter for singletons, and the companion-size
+        threshold for the interacting-shred criterion, arcmin.
+    keep_one_survivor : :class:`bool`
+        If True, and every member of a group would otherwise be
+        removed, un-flag the largest (``D26``-max) member so at least
+        one survives per group.
+    protect_primary : :class:`bool`
+        If True, also exempt ``GROUP_PRIMARY`` objects from the
+        singleton removal criterion (the two group-based criteria
+        already exclude primaries regardless of this flag).
+
+    Returns
+    -------
+    :class:`numpy.ndarray` of :class:`bool`
+        Boolean mask, length ``len(ell1)``, True for objects flagged for
+        removal.
 
     """
     from SGA.SGA import SAMPLE
@@ -5393,7 +6270,20 @@ def _flag_small_for_removal(ell1, mindiam=0.5, keep_one_survivor=False, protect_
 
 
 def _angular_sep_arcmin(ra1, dec1, ra2, dec2):
-    """Great-circle separation in arcmin."""
+    """Flat-sky (small-angle) approximation of the great-circle
+    separation between two points, in arcmin.
+
+    Parameters
+    ----------
+    ra1, dec1, ra2, dec2 : :class:`float`
+        Positions, degrees.
+
+    Returns
+    -------
+    :class:`float`
+        Approximate angular separation, arcmin.
+
+    """
     cosd = math.cos(0.5 * (dec1 + dec2) * DEG2RAD)
     dra = (ra1 - ra2 + 180.0) % 360.0 - 180.0
     return math.hypot(dra * cosd, dec1 - dec2) * ARCMIN_PER_DEG
@@ -5406,46 +6296,88 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
                          trunc_margin_arcsec=1.0,
                          verbose=False,
                          debug=False):
-    """
-    Restore v1.2 group assignments in p13 for groups whose v1.2 mosaics
-    are still valid. Modifies p13 in place.
+    """Restore an earlier release's group assignments in a newer parent
+    catalog for large groups whose earlier-release mosaics are still
+    valid, avoiding an expensive re-fit/re-mosaic when nothing
+    materially changed.
 
-    A v1.3 group is restored only if all three criteria pass:
-      1. No drops: none of the contributing v1.2 groups contained a dropped object
-      2. No adds:  none of the v1.3 group members are newly added objects
-      3. No truncation: every member's ellipse fits within the v1.2 mosaic boundary
+    Despite the parameter names (``p13``/``p12``/``ov_13``/``ov_12``),
+    this function is version-agnostic in practice -- it's called with
+    consecutive-release table/overlay pairs (v1.2/v1.3, v1.3/v1.4,
+    etc.) from :func:`build_parent`. For each candidate group in the
+    newer catalog (``p13``, sorted by descending diameter, restricted
+    to ``GROUP_DIAMETER >= min_diam_arcmin`` plus any ``opt_in_groups``/
+    ``opt_in_objnames`` overrides), restoration is attempted unless
+    opted in, in which case all criteria below are bypassed
+    unconditionally: (0) the earlier release's group primary must still
+    be present in the new group (otherwise the mosaic center/size may
+    no longer be valid); (1) none of the contributing earlier-release
+    groups' members were dropped via that release's ``drops.csv``
+    overlay (see :func:`load_overlays`); (2) none of the new group's
+    members are objects newly added via the newer release's
+    ``adds.csv`` overlay; (3) every member's ellipse (given its new
+    ``DIAM``/``BA``/``PA`` and offset from the earlier-release group
+    center) must fit within the earlier release's mosaic radius (via
+    :func:`SGA.SGA.get_radius_mosaic`), plus ``trunc_margin_arcsec``
+    tolerance. Groups passing all criteria (or opted in) have their
+    ``GROUP_NAME``/``GROUP_MULT``/``GROUP_RA``/``GROUP_DEC``/
+    ``GROUP_DIAMETER`` overwritten with the earlier release's values, in
+    place on ``p13``; ``GROUP_MULT``/``GROUP_PRIMARY`` are then
+    recomputed globally afterward (not per-group inside the loop) since
+    multiple new groups can collapse onto the same restored earlier
+    group name.
 
-    Opt-in overrides (opt_in_groups, opt_in_objnames) bypass all criteria.
+    Notes
+    -----
+    Locally re-imports ``math``/``numpy`` and redefines
+    ``DEG2RAD``/``ARCMIN_PER_DEG`` inside the function body; all four
+    already exist at module scope with identical values, so this is
+    redundant shadowing rather than a behavioral difference.
 
     Parameters
     ----------
-    p13 : Table
-        v1.3 parent catalog, modified in place
-    p12 : Table
-        v1.2 parent catalog, read only
+    p13 : :class:`~astropy.table.Table`
+        Newer-release parent catalog, modified in place.
+    p12 : :class:`~astropy.table.Table`
+        Earlier-release parent catalog, read only.
     ov_12, ov_13 : overlay objects
-        Loaded via load_overlays() for v1.2 and v1.3
-    min_diam_arcmin : float
-        GROUP_DIAMETER threshold for consideration (arcmin, default 0 = all groups)
-    opt_in_groups : list of str or None
-        v1.2 GROUP_NAMEs to always restore regardless of criteria
-    opt_in_objnames : list of str or None
-        OBJNAMEs whose v1.2 group should always be restored
-    trunc_margin_arcsec : float
-        Tolerance added to mosaic radius for truncation check (arcsec)
-    verbose : bool
-        Print per-group RESTORE/SKIP lines
-    debug : bool
-        Print per-member truncation details
+        Loaded via :func:`load_overlays` for the earlier and newer
+        release respectively; may be None if criteria 1/2 should be
+        skipped entirely (as done for the opt-in-only v1.5/v1.6 calls in
+        :func:`build_parent`, where ``ov_12``/``ov_13`` are passed as
+        None and every candidate group is opted in via
+        ``opt_in_groups``).
+    min_diam_arcmin : :class:`float`
+        ``GROUP_DIAMETER`` threshold, arcmin, for a group to be
+        considered at all (0 = all groups).
+    opt_in_groups : :class:`list` of :class:`str`, optional
+        Earlier-release ``GROUP_NAME``s to always restore, bypassing
+        criteria 0-3.
+    opt_in_objnames : :class:`list` of :class:`str`, optional
+        ``OBJNAME``s whose earlier-release group should always be
+        restored (resolved to group names and merged into
+        ``opt_in_groups``).
+    trunc_margin_arcsec : :class:`float`
+        Tolerance added to the earlier-release mosaic radius for the
+        truncation check (criterion 3), arcsec.
+    verbose : :class:`bool`
+        If True, log a RESTORE/SKIP line per candidate group with the
+        reason.
+    debug : :class:`bool`
+        If True, log per-member truncation-geometry details.
 
     Returns
     -------
-    p13 : Table
-        Modified in place
-    p12_sgaid_props : dict
-        SGAID -> v1.2 group props dict (for downstream truncation check)
-    n_restored : int
-        Number of v1.2 groups restored
+    p13 : :class:`~astropy.table.Table`
+        ``p13``, modified in place and returned for convenience.
+    p12_sgaid_props : :class:`dict`
+        Earlier-release SGAID -> that object's earlier-release group
+        properties (``diam``, ``mult``, ``ba``, ``ra``, ``dec``,
+        ``r_mosaic``), for any downstream truncation checks.
+    n_restored : :class:`int`
+        Number of earlier-release groups restored (opt-in and
+        criteria-based combined).
+
     """
     import math
     import numpy as np
@@ -5735,11 +6667,31 @@ def restore_large_groups(p13, p12, ov_12, ov_13,
 
 
 def harmonize_region_bits(out):
-    """Harmonize REGION bits within groups.
+    """Harmonize each group's ``REGION`` bits to only those common to
+    every member, dropping multi-member groups left with no common
+    region.
 
-    - Keep only bits common to all members
-    - Drop groups with no common bits (mult > 1 only)
-    - Singletons keep their original REGION
+    A group can end up with members whose ``REGION`` bits don't fully
+    agree (e.g. one member's coadd only succeeded in dr11-south while
+    another succeeded in both regions); this keeps only the bitwise AND
+    of ``REGION`` across each group's members. Groups where that AND is
+    zero are dropped entirely (only for ``GROUP_MULT > 1`` -- singletons
+    always keep their original ``REGION`` regardless). Logs diagnostics
+    (first 5 examples) for both stripped and dropped groups.
+
+    Parameters
+    ----------
+    out : :class:`~astropy.table.Table`
+        Catalog with ``GROUP_NAME``, ``GROUP_MULT``, ``REGION``,
+        ``OBJNAME`` columns.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        ``out`` with ``REGION`` values stripped to each group's common
+        bits, and any multi-member group with no common bit removed
+        entirely (fewer rows than the input if any groups were
+        dropped).
 
     """
     unique_groups, group_indices = np.unique(out['GROUP_NAME'], return_inverse=True)
@@ -5801,9 +6753,62 @@ def harmonize_region_bits(out):
 
 
 def read_base_ellipse(outdir, base_version, mindiam=0.5):
-    """Read the base ellipse catalogs for dr11-south and
-    dr11-north. Consolidate duplicates by OBJNAME, combining REGION
-    bits (but prefering DR11 if duplicated).
+    """Read and version-correct the dr11-south/dr11-north base ellipse
+    catalogs for a given release, consolidating duplicate objects
+    across regions.
+
+    For each region, reads
+    ``{outdir}/SGA2025-beta-{base_version}-{region}.fits`` and applies
+    version-specific corrections via an ``if/elif`` dispatch on
+    ``base_version`` (no ``else`` -- a ``base_version`` not explicitly
+    listed receives no correction and is used as read): ``'v0.40'``
+    recomputes D26 to fix a diameter bug; ``'v0.50'`` drops entire
+    groups whose largest upper-limit diameter falls below ``mindiam``;
+    ``'v0.60'`` recomputes D26 for ``SKIPTRACTOR`` sources, then runs
+    :func:`diagnose_drift`/:func:`flag_for_refit` and stores the
+    resulting ``REFIT``/``*_ORIG`` columns; ``'v0.70'``/``'v0.80'``
+    delegate to :func:`prepare_v070_ellipse`/:func:`prepare_v080_ellipse`;
+    ``'v1.0'`` just flags every object for refit; ``'v1.1'`` through
+    ``'v1.5'`` delegate to the corresponding ``prepare_v1X0_ellipse``
+    function. The per-region tables are then stacked; if any
+    ``OBJNAME`` appears in both regions, duplicates are consolidated to
+    one row per name (preferring a not-``REFIT``-flagged row, then the
+    row with more populated ``BANDS``, tie-broken toward dr11-south),
+    with the kept row's ``REGION`` set to the bitwise OR of all
+    duplicate rows' ``REGION``. The consolidated ellipse table is then
+    projected onto the parent data model (``ell_base``: ``SGAID``,
+    ``REGION``, ``OBJNAME``, ``PGC``, ``RA``, ``DEC``, ``DIAM``
+    (= ``D26``), ``DIAM_ERR``, ``BA``, ``PA``, ``MAG``, ``DIAM_REF``,
+    with re-measured ``DIAM_REF`` values prefixed by ``f'{base_version}/'``,
+    and ``SAMPLE`` reset except for the ``LVD`` bit), matched by
+    ``OBJNAME`` against the corresponding
+    ``SGA2025-beta-parent-{base_version}.fits`` (asserting the ellipse
+    and parent-base row counts match for ``base_version < 'v0.5'``, and
+    that the two always match each other after matching).
+
+    Parameters
+    ----------
+    outdir : :class:`str`
+        Directory containing the per-region beta ellipse FITS files and
+        the beta parent FITS file for ``base_version``.
+    base_version : :class:`str`
+        Release version string (e.g. ``'v1.3'``) whose ellipse output to
+        read and correct.
+    mindiam : :class:`float`
+        Minimum diameter threshold, arcmin, used by the ``'v0.50'``
+        correction branch and passed through to
+        :func:`prepare_v070_ellipse`/:func:`prepare_v080_ellipse`/
+        :func:`prepare_v1X0_ellipse`.
+
+    Returns
+    -------
+    ell : :class:`~astropy.table.Table`
+        Consolidated, version-corrected ellipse catalog (native ellipse
+        columns).
+    ell_base : :class:`~astropy.table.Table`
+        The same rows, projected onto the parent data model.
+    parent_base : :class:`~astropy.table.Table`
+        The matching rows of the ``base_version`` beta parent catalog.
 
     """
     from SGA.SGA import SAMPLE
@@ -5915,6 +6920,12 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
 
         # Precompute band counts and DR11 bit for preference
         def _nbands_val(v):
+            """Count the number of distinct characters in a ``BANDS``
+            string value (used as a rough "how many bands were fit"
+            proxy for :func:`read_base_ellipse`'s duplicate-preference
+            logic), treating unparseable/empty values as 0.
+
+            """
             try:
                 s = (v or '').strip()
             except Exception:
@@ -5925,6 +6936,24 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
         dr11_bit = REGIONBITS['dr11-south']
 
         def _prefer_idx(rows):
+            """Pick which of several duplicate-``OBJNAME`` row indices
+            to keep, for :func:`read_base_ellipse`'s cross-region
+            consolidation: prefer not-``REFIT``-flagged rows, then the
+            row(s) with the most populated ``BANDS`` (via
+            ``_nbands_val``), tie-broken toward a dr11-south row.
+
+            Parameters
+            ----------
+            rows : :class:`numpy.ndarray`
+                Row indices (into the enclosing ``ell`` table) sharing
+                the same ``OBJNAME``.
+
+            Returns
+            -------
+            :class:`int`
+                The index (from ``rows``) to keep.
+
+            """
             # First prefer unflagged (REFIT=False)
             unflagged = [i for i in rows if not ell['REFIT'][i]]
             if unflagged:
@@ -6026,19 +7055,133 @@ def read_base_ellipse(outdir, base_version, mindiam=0.5):
 
 
 def build_parent(mp=1, mindiam=0.5, overwrite=False):
+    """Top-level driver: build one release's parent catalog from the
+    previous release's ellipse-fitting output, versioned manual overlays,
+    and re-derived groups/bits, and write it to disk.
 
-    """Build a new parent catalog starting from `base_version` ellipse
-    catalog, apply versioned overlays (adds/updates/drops/flags),
-    re-derive bits, build groups, and write a single FITS output.
+    Determines the target ``parent_version`` and its ``base_version``
+    (the prior release's ellipse output to build from) via a hardcoded
+    mapping (``'v1.6'``/``'v1.5'`` -> base ``'v1.4'``; ``'v1.4'`` -> base
+    ``'v1.3'``; ``'v1.3'`` -> base ``'v1.2'``; ``'v1.2'`` -> base
+    ``'v1.1'``; ``'v1.1'`` -> base ``'v1.0'``; anything else raises
+    :class:`ValueError`) -- v1.6 intentionally reuses v1.4 as its base
+    so it comes out nearly identical to v1.5. Returns early (writing
+    nothing) if the output file already exists and ``overwrite`` is
+    False. Broad pipeline:
+
+    1. Read and version-correct the base ellipse catalogs
+       (:func:`read_base_ellipse`).
+    2. Apply a further, ``base_version``-specific restoration/cut pass
+       (a second, function-local ``if/elif`` dispatch, distinct from
+       the one inside :func:`read_base_ellipse`) -- e.g. for
+       ``'v0.22'``, restores original geometry for any object with a
+       large Tractor-driven shift, an LVD flag, group membership, or
+       >20% change in diameter/BA/PA from its parent values; for
+       ``'v0.30'``/``'v0.40'``, applies/corrects the small-diameter
+       group-diameter cut; for ``'v0.60'`` onward, restores the
+       original (``*_ORIG``) geometry for every object flagged
+       ``REFIT`` by :func:`read_base_ellipse`, and writes a
+       ``SGA2025-{next_version}-refit.fits`` list of the affected
+       objects for the next release's manual re-inspection. (See Notes
+       for a real bug in the ``'v1.0'``/``'v1.1'`` branches of this
+       dispatch.)
+    3. Apply this release's manual overlays in order: drops
+       (:func:`apply_drops`), adds (:func:`apply_adds`, restoring
+       properties from the frozen nocuts catalog), updates
+       (:func:`apply_updates_inplace`, after verifying every updated
+       ``OBJNAME`` actually exists), running a sanity-check block after
+       (see Notes -- this block is currently a no-op).
+    4. Check for any sources within 3.6 arcsec of each other (raises if
+       found -- likely-duplicate detections), then re-run the same
+       SGAID/DIAM/BA/PA sanity checks unprotected (this second copy
+       *does* actually halt the function on failure).
+    5. Repair ``REGION`` bits by cross-checking against each region's
+       archive-stage parent catalog, then re-apply any overlay
+       ``REGION``-field updates from *every* prior release's overlay
+       directory (not just the current one), and re-apply Gaia star
+       masking (:func:`add_gaia_masking`).
+    6. Build the working data model (``grp``), populate ``SAMPLE`` bits
+       (``LVD``, ``NEARSTAR``/``INSTAR`` from ``STARFDIST``, ``MCLOUDS``
+       via :func:`SGA.sky.find_in_mclouds`, ``GCLPNE`` via
+       :func:`SGA.sky.find_in_gclpne`), apply this release's
+       ``ELLIPSEMODE`` flags overlay (:func:`apply_flags_inplace`),
+       force ``NORADWEIGHT`` for ``MCLOUDS``/``GCLPNE``/``NEARSTAR``/
+       ``INSTAR`` objects (see Notes -- an acknowledged ordering
+       ``FIXME``), and derive ``FITMODE`` from ``ELLIPSEMODE``.
+    7. Sort by descending diameter and run group-finding
+       (:func:`SGA.groups.build_group_catalog` for normal objects,
+       :func:`SGA.groups.make_singleton_group` for
+       ``RESOLVED``/``FORCEPSF`` objects, which are excluded from
+       automatic grouping).
+    8. For ``parent_version`` in ``{'v1.3', 'v1.4', 'v1.5', 'v1.6'}``,
+       run a release-specific call to :func:`restore_large_groups`
+       against the immediately-prior release's parent catalog, to avoid
+       triggering expensive mosaic re-fits for groups that didn't
+       materially change (v1.5/v1.6 use a pure opt-in list of every
+       primary with ``GROUP_DIAMETER`` above a version-specific
+       threshold, with a sanity check -- including an interactive
+       ``pdb.set_trace()``, see Notes -- that every opt-in group's
+       primary survived into the new catalog).
+    9. Harmonize ``REGION`` bits within groups
+       (:func:`harmonize_region_bits`), assign ``SGAGROUP`` names and
+       check for duplicates among primaries, set the ``OVERLAP`` bit
+       (:func:`SGA.groups.set_overlap_bit`), re-run the SGAID/DIAM/BA/PA
+       sanity checks one final time, and write the output FITS file
+       plus a kd-tree index (via the ``startree`` command-line tool).
 
     Notes
     -----
-    - Assumes overlay helpers are already available in scope:
-      load_overlays, apply_drops_inplace, apply_adds_inplace,
-      apply_updates_inplace, apply_flags_inplace.
-    - Uses nocuts v0.22 only to restore properties for rows added via overlays.
-    - SGAID stability: carried from ellipse (or ROW_PARENT) when present;
-      new rows get monotonically increasing SGAID.
+    In the ``base_version == 'v1.0'`` and ``base_version == 'v1.1'``
+    branches of step 2's dispatch, the line ``base = ell_base`` is
+    mis-indented one level too deep -- inside both the ``if np.any(I):``
+    guard and the ``for col in [...]:`` loop -- so it only executes when
+    at least one object is flagged ``REFIT``. If ``np.any(I)`` is ever
+    False when building parent_version ``'v1.1'`` or ``'v1.2'``, ``base``
+    is never assigned and the function raises ``NameError`` further
+    down. The ``'v1.2'``/``'v1.3'``/``'v1.4'`` branches immediately
+    below place the equivalent line correctly (unconditionally, outside
+    both the loop and the ``if``).
+
+    The first SGAID/DIAM/BA/PA sanity-check block (right after the
+    overlay updates in step 3) is effectively dead: it's wrapped in a
+    bare ``try/except:`` whose except-handler is an unused expression
+    (computed but never logged, printed, or assigned), so any exception
+    raised there -- including a genuine sanity failure or the
+    ``v1.0``/``v1.1`` ``NameError`` above -- is silently discarded with
+    no diagnostic output. In practice this doesn't hide real failures,
+    because the identical four checks are re-run unprotected a few
+    lines later (step 4) and will raise there instead.
+
+    The ``NORADWEIGHT``-forcing step carries a ``# FIXME - this should
+    probably come after ov.flags are applied`` comment from the
+    original author, acknowledging the current ordering (before
+    ``apply_flags_inplace`` for the *next* release's flags, though after
+    it for the current release's) may not be ideal.
+
+    The step-8 sanity check for ``parent_version == 'v1.5'`` calls
+    ``pdb.set_trace()`` before raising on a failed opt-in check --
+    this will hang indefinitely in any non-interactive (batch/cluster)
+    run rather than failing cleanly.
+
+    Parameters
+    ----------
+    mp : :class:`int`
+        Number of parallel processes passed to
+        :func:`SGA.groups.build_group_catalog`.
+    mindiam : :class:`float`
+        Minimum diameter threshold, arcmin, passed to
+        :func:`read_base_ellipse` and used in several of this
+        function's own version-specific correction branches.
+    overwrite : :class:`bool`
+        If True, rebuild and overwrite the output file even if it
+        already exists.
+
+    Returns
+    -------
+    None
+        Writes ``{sga_dir()}/sample/SGA2025-beta-parent-{parent_version}.fits``
+        and its kd-tree index; returns early (also None, writing
+        nothing) if that file already exists and ``overwrite`` is False.
 
     """
     from pathlib import Path
