@@ -29,7 +29,53 @@ warnings.filterwarnings('ignore', category=AstropyDeprecationWarning,
 
 def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
                       barlabel=None, clobber=False, fullsample=None):
-    """Diagnostic QA for the output of build_multiband_mask.
+    """Build a 3x3 grid QA montage (data/model/residual rows x
+    optical/unWISE/GALEX columns) for one galaxy or group, plus a
+    standalone optical thumbnail JPEG.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Multiband cutout data for one galaxy/group, as returned by
+        :func:`SGA.SGA.read_multiband` -- must contain ``galaxy``,
+        ``opt_bands``, ``unwise_bands``, ``galex_bands``,
+        ``opt_jpg_image``, ``{opt,unwise,galex}_jpg_{image,model,resid}``,
+        ``{opt,unwise,galex}_pixscale``, and ``{opt,unwise,galex}_refband``.
+    sample : :class:`astropy.table.Table`
+        Per-object sample table for this galaxy/group (currently
+        unused in the function body; see Notes).
+    htmlgalaxydir : :class:`str`
+        Output directory for the montage PNG and thumbnail JPEG
+        (created if it does not exist).
+    barlen : :class:`float`
+        Scale-bar length, in the same pixel units as the optical
+        cutout, drawn on the top-left (data, optical) panel. Required
+        in practice despite the ``None`` default (see Notes).
+    barlabel : :class:`str`
+        Text label drawn next to the scale bar (e.g. ``"1'"``).
+    clobber : :class:`bool`
+        If True, regenerate the montage/thumbnail even if the output
+        files already exist.
+    fullsample : :class:`astropy.table.Table`, optional
+        Final public-catalog sample table, used only to look up a
+        human-readable group title (via ``GROUP_NAME`` and
+        ``GROUP_PRIMARY``) for the figure's suptitle; falls back to
+        `data`'s own galaxy name if not given or no match is found.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    `sample` is accepted but never referenced in the function body --
+    a dead parameter. If `barlen` is left as ``None`` (its default),
+    the scale-bar block (``dx = barlen / wimg.shape[0]``) raises
+    ``TypeError``, since it always executes for the first (data,
+    optical) panel; in practice the sole caller
+    (:func:`make_plots`, itself called from ``bin/SGA2025-mpi``)
+    always supplies a real `barlen` via
+    :func:`SGA.SGA.get_radius_mosaic`.
 
     """
     import matplotlib.pyplot as plt
@@ -119,7 +165,68 @@ def multiband_montage(data, sample, htmlgalaxydir, barlen=None,
 
 def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_function,
                            SGAMASKBITS, barlen=None, barlabel=None, clobber=False, fullsample=None):
-    """Diagnostic QA for the output of build_multiband_mask.
+    """Build a QA figure showing the optical maskbits and initial/final
+    ellipse geometry for every object in a group: one summary row
+    (coadded optical/unWISE/GALEX images with initial geometry
+    overlaid), followed by one row per object (masked data, model,
+    and mask-type breakdown, each with initial and final ellipses
+    overlaid).
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Multiband cutout data for one galaxy/group, as returned by
+        :func:`SGA.SGA.read_multiband` -- must contain ``galaxy``,
+        ``width``, ``opt_bands``, ``opt_images``, ``opt_maskbits``,
+        ``opt_models``, ``opt_invvar``, ``opt_pixscale``, ``opt_wcs``,
+        ``unwise_wcs``, ``galex_wcs``, per-band image/invvar arrays,
+        and ``{opt,unwise,galex}_{pixscale,refband}``.
+    ellipse : :class:`astropy.table.Table`
+        Per-object ellipse-fitting results for this group; must
+        contain ``SGAID``, ``OBJNAME``, and (when the object has no
+        match in `fullsample`) ``BX_INIT``, ``BY_INIT``, ``SMA_INIT``,
+        ``BA_INIT``, ``PA_INIT``, ``BX``, ``BY``, ``SMA_MASK``,
+        ``BA_MOMENT``, ``PA_MOMENT``.
+    htmlgalaxydir : :class:`str`
+        Output directory for the QA PNG (created if it does not
+        exist).
+    unpack_maskbits_function : callable
+        Function (in practice :func:`SGA.SGA.unpack_maskbits`) used to
+        expand the packed optical ``opt_maskbits`` bitmask array into
+        per-object boolean mask layers.
+    SGAMASKBITS : :class:`tuple`
+        3-tuple of ``(OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS)``
+        bitmask dictionaries (see :data:`SGA.SGA.OPTMASKBITS` et al.).
+        Only ``OPTMASKBITS`` is actually used (see Notes).
+    barlen : :class:`float`
+        Unused in this function's body (see Notes); accepted for a
+        calling-convention symmetric with :func:`multiband_montage`.
+    barlabel : :class:`str`
+        Unused in this function's body (see Notes).
+    clobber : :class:`bool`
+        If True, regenerate the QA figure even if the output file
+        already exists.
+    fullsample : :class:`astropy.table.Table`, optional
+        Final public-catalog sample table. When given, used both to
+        look up each object's public ``SGAID``/``RA``/``DEC``/``D26``/
+        etc. (preferring these over the raw `ellipse` geometry
+        columns) and to build a human-readable group title for the
+        figure's suptitle.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    `SGAMASKBITS` unpacks ``UNWISEMASKBITS`` and ``GALEXMASKBITS``,
+    but neither is referenced again -- only the optical maskbits are
+    decoded and displayed (the mask-type column only ever shows
+    ``opt_maskbits``-derived masks, even though the summary row
+    displays unWISE and GALEX imagery too). `barlen`/`barlabel` are
+    accepted but never used in this function (unlike the otherwise
+    parallel :func:`multiband_montage`, which does draw a scale bar)
+    -- dead parameters.
 
     """
     import numpy.ma as ma
@@ -194,7 +301,23 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
         sgaid_map = {int(s): i for i, s in enumerate(fullsample['SGAID'])}
 
     def _radec_to_opt(ra, dec):
-        """RA, DEC → opt pixel coords (0-indexed)."""
+        """Convert sky coordinates to 0-indexed optical-image pixel
+        coordinates using the enclosing scope's `opt_wcs`.
+
+        Parameters
+        ----------
+        ra : :class:`float`
+            Right ascension, in decimal degrees.
+        dec : :class:`float`
+            Declination, in decimal degrees.
+
+        Returns
+        -------
+        :class:`tuple`
+            ``(bx, by)`` 0-indexed pixel coordinates in the optical
+            image.
+
+        """
         _, bx, by = opt_wcs.wcs.radec2pixelxy(ra, dec)
         return float(bx) - 1., float(by) - 1.
 
@@ -378,8 +501,62 @@ def multiband_ellipse_mask(data, ellipse, htmlgalaxydir, unpack_maskbits_functio
 
 def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
                 apertures=REF_APERTURES, clobber=False, fullsample=None):
-    """
-    spectral energy distribution
+    """Build and write a per-galaxy spectral energy distribution (SED)
+    QA figure, plotting total (curve-of-growth) magnitude, optional
+    Tractor photometry, and aperture-photometry magnitudes as a
+    function of observed-frame wavelength, for every object in
+    `ellipse`.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-group multiband imaging metadata; must contain
+        ``'all_data_bands'`` (the list of bandpasses to plot, spanning
+        optical/unWISE/GALEX as available).
+    ellipse : :class:`astropy.table.Table`
+        Per-object ellipse-photometry catalog with ``SGANAME``,
+        ``OBJNAME``, ``SGAID``, and per-band ``COG_MTOT_{BAND}``,
+        ``COG_MTOT_ERR_{BAND}``, ``FLUX_AP{NN}_{BAND}``,
+        ``FLUX_ERR_AP{NN}_{BAND}`` columns.
+    htmlgalaxydir : :class:`str`
+        Output directory for the per-object ``{SGANAME}-sed.png``
+        figures.
+    tractor : :class:`astropy.table.Table` or array-like, optional
+        Per-object Tractor catalog(s) (one per row of `ellipse`,
+        indexable as ``tractor[iobj][0]``) providing
+        ``flux_{band}``/``flux_ivar_{band}`` attributes. If None,
+        Tractor photometry is omitted from the plot.
+    run : :class:`str`
+        Photometric system passed to :func:`SGA.util.filter_effwaves`
+        to look up per-band effective wavelengths (``'south'`` or
+        ``'north'``).
+    apertures : :class:`list`
+        Aperture radii/labels (defaults to
+        :data:`SGA.ellipse.REF_APERTURES`) used only to set the number
+        of aperture-photometry series plotted (``len(apertures)``);
+        the aperture *values* themselves are not otherwise used here.
+    clobber : :class:`bool`
+        If False, skip objects whose output PNG already exists.
+    fullsample : :class:`astropy.table.Table`, optional
+        Final public catalog, keyed by ``SGAID``, used to look up the
+        published galaxy name/SGAID for the plot title when available.
+        If None (or an object's ``SGAID`` is not found), falls back to
+        ``ellipse``'s own ``OBJNAME``/``SGAID``.
+
+    Returns
+    -------
+    None
+        One PNG figure per object is written to `htmlgalaxydir` as a
+        side effect.
+
+    Notes
+    -----
+    The nested ``_addphot`` helper plots error bars for one photometry
+    series (total, Tractor, or one aperture), splitting points into
+    lower-limit markers (``lolims=True``, no legend label) and
+    well-constrained markers (normal error bars, with legend label);
+    it closes over ``ax`` and ``bandwave`` from the enclosing scope
+    rather than taking them as arguments.
 
     """
     from copy import deepcopy
@@ -421,6 +598,36 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 
 
     def _addphot(thisphot, color, marker, alpha, label):
+        """Plot one photometry series (total, Tractor, or one
+        aperture) as error bars, splitting points into lower-limit
+        markers (no legend label) and well-constrained markers (with
+        legend label).
+
+        Parameters
+        ----------
+        thisphot : :class:`dict`
+            Per-band photometry with ``abmag``, ``abmagerr``, ``lower``
+            arrays (see `phot`, built in the enclosing scope).
+        color : color-like
+            Marker/error-bar color.
+        marker : :class:`str`
+            Matplotlib marker style.
+        alpha : :class:`float`
+            Marker/error-bar transparency.
+        label : :class:`str`
+            Legend label for the well-constrained points.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Closes over `ax` and `bandwave` from the enclosing
+        :func:`ellipse_sed` scope rather than taking them as
+        parameters.
+
+        """
         good = np.where((thisphot['abmag'] > 0.) * thisphot['lower'])[0]
         if len(good) > 0:
             ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
@@ -573,6 +780,23 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 
 
         def _frmt(value, _):
+            """Format an x-axis tick `value` (in microns) as a
+            :class:`matplotlib.ticker.FuncFormatter` callback: one
+            decimal place below 1, none at or above.
+
+            Parameters
+            ----------
+            value : :class:`float`
+                Tick value to format.
+            _ : :class:`int`
+                Tick position (unused, required by the
+                ``FuncFormatter`` callback signature).
+
+            Returns
+            -------
+            :class:`str`
+
+            """
             if value < 1:
                 return '{:.1f}'.format(value)
             else:
@@ -593,8 +817,62 @@ def ellipse_sed(data, ellipse, htmlgalaxydir, tractor=None, run='south',
 def ellipse_cog(data, ellipse, sbprofiles, region, htmlgalaxydir,
                 datasets=['opt', 'unwise', 'galex'], clobber=False,
                 fullsample=None):
-    """
-    curve of growth
+    """Build and write a per-galaxy curve-of-growth (COG) QA figure,
+    plotting cumulative aperture magnitude vs. semi-major axis for
+    each band/dataset along with the best-fitting COG model, and
+    marking the SGA moment-based and threshold-isophote size scales.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-group multiband imaging metadata; must contain
+        ``'{dataset}_bands'`` for each entry of `datasets`.
+    ellipse : :class:`astropy.table.Table`
+        Per-object ellipse-photometry catalog with ``SGANAME``,
+        ``OBJNAME``, ``SGAID``, ``SMA_MOMENT``, and per-band
+        ``COG_MTOT_{BAND}``, ``COG_MTOT_ERR_{BAND}``,
+        ``COG_DMAG_{BAND}``, ``COG_LNALPHA1_{BAND}``,
+        ``COG_LNALPHA2_{BAND}`` columns.
+    sbprofiles : :class:`list` of :class:`astropy.table.Table`
+        One surface-brightness-profile table per entry of `datasets`
+        (same ordering), each row-matched to `ellipse` and containing
+        ``SMA`` and per-band ``FLUX_{BAND}``/``FLUX_ERR_{BAND}``
+        columns.
+    region : :class:`str`
+        Survey region, passed to :func:`SGA.SGA.SGA_diameter` when a
+        published D26 is unavailable (see Notes).
+    htmlgalaxydir : :class:`str`
+        Output directory for the per-object ``{SGANAME}-cog.png``
+        figures.
+    datasets : :class:`list`
+        Ordered list of dataset keys (e.g. ``'opt'``, ``'unwise'``,
+        ``'galex'``) identifying which entries of `data` and
+        `sbprofiles` to plot; also selects the marker style
+        (``markers[idata]``) for each dataset.
+    clobber : :class:`bool`
+        If False, skip objects whose output PNG already exists.
+    fullsample : :class:`astropy.table.Table`, optional
+        Final public catalog, keyed by ``SGAID``, used to look up the
+        published galaxy name/SGAID and D26 diameter for the plot
+        title and size-scale marker. If None (or an object's ``SGAID``
+        is not found, or its published ``D26`` is not positive), falls
+        back to computing the threshold radius via
+        :func:`SGA.SGA.SGA_diameter` on the `ellipse` row itself.
+
+    Returns
+    -------
+    None
+        One PNG figure per object is written to `htmlgalaxydir` as a
+        side effect.
+
+    Notes
+    -----
+    The bare ``import matplotlib`` at the top of this function is
+    unused in the live code path -- the only reference to the
+    ``matplotlib.lines.Line2D`` type check via the bare module name is
+    in a commented-out block; the actually-used symbols
+    (``matplotlib.pyplot``, ``blended_transform_factory``,
+    ``matplotlib.lines``) are imported separately.
 
     """
     import matplotlib
@@ -790,7 +1068,79 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
                        unpack_maskbits_function, MASKBITS, REFIDCOLUMN,
                        datasets=['opt', 'unwise', 'galex'],
                        linear=False, clobber=False, fullsample=None):
-    """Surface-brightness profiles.
+    """Build the per-galaxy surface-brightness-profile QA figure: one
+    row per dataset (opt/unWISE/GALEX), with a cutout image (with
+    isophote and reference-radius apertures overplotted) in the left
+    column and the surface-brightness profile(s) vs. ``sma**0.25`` in
+    the right column.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Multiband cutout data, as returned by a ``read_multiband``-type
+        function; must contain, for each entry in `datasets`, the keys
+        ``{dataset}_images``, ``{dataset}_models``,
+        ``{dataset}_maskbits``, ``{dataset}_bands``,
+        ``{dataset}_pixscale``, ``{dataset}_wcs``, plus ``opt_wcs``,
+        ``opt_pixscale``, and ``opt_bands``.
+    ellipse : :class:`astropy.table.Table`
+        Per-galaxy ellipse-fitting results (one row per object), with
+        columns including ``SGANAME``, ``SGAID``, ``OBJNAME``, ``BX``,
+        ``BY``, ``PA_MOMENT``, ``BA_MOMENT``, ``SMA_MOMENT``.
+    sbprofiles : :class:`list`
+        Nested list of surface-brightness-profile tables, indexed as
+        ``sbprofiles[idata][iobj]``, with columns ``SMA`` and, per
+        band, ``SB_{FILT}``/``SB_ERR_{FILT}``.
+    region : :class:`str`
+        Imaging region (e.g. ``'dr11-south'``), passed to
+        :func:`SGA.SGA.SGA_diameter` when the final-catalog ``D26``
+        value is unavailable.
+    htmlgalaxydir : :class:`str`
+        Output directory for the QA PNG.
+    unpack_maskbits_function : callable
+        Function used to unpack a packed maskbits array into a
+        per-band boolean mask cube; called as
+        ``unpack_maskbits_function(data[f'{dataset}_maskbits'],
+        bands=bands, BITS=MASKBITS[idata])``.
+    MASKBITS : :class:`list`
+        Per-dataset mask-bit dictionaries, indexed as
+        ``MASKBITS[idata]`` and passed through to
+        `unpack_maskbits_function`.
+    REFIDCOLUMN : :class:`str`
+        Unused (see Notes).
+    datasets : :class:`list`
+        Dataset keys to plot, in row order. Must line up positionally
+        with the hardcoded label list ``[opt_bands, 'unWISE',
+        'GALEX']`` used for the left-column annotation (see Notes).
+    linear : :class:`bool`
+        If True, use a linear (rather than magnitude/log) y-axis scale
+        for the surface-brightness panels.
+    clobber : :class:`bool`
+        If True, regenerate the QA PNG even if it already exists.
+    fullsample : :class:`astropy.table.Table`, optional
+        Final-catalog table (indexed by ``SGAID``) used to look up the
+        adopted ``D26``/``BA``/``PA`` for the title and geometry
+        annotation and the D(26) reference aperture; when a galaxy is
+        not found (or `fullsample` is None), falls back to
+        :func:`SGA.SGA.SGA_diameter` for the reference radius and uses
+        ``OBJNAME``/``SGAID`` for the title.
+
+    Returns
+    -------
+    None
+        Writes ``{htmlgalaxydir}/{sganame}-sbprofiles.png`` for each
+        object in `ellipse`, as a side effect.
+
+    Notes
+    -----
+    `REFIDCOLUMN` is accepted but never referenced in the function
+    body -- dead parameter. The left-column dataset labels
+    (``opt_bands``, ``'unWISE'``, ``'GALEX'``) are hardcoded via
+    ``zip(datasets, [opt_bands, 'unWISE', 'GALEX'])`` rather than
+    derived from `datasets`, so passing a `datasets` list that omits,
+    reorders, or extends beyond ``['opt', 'unwise', 'galex']`` produces
+    mismatched labels (or is silently truncated by `zip`). ``nsample =
+    len(ellipse)`` is computed but never used.
 
     """
     import matplotlib.pyplot as plt
@@ -805,6 +1155,20 @@ def ellipse_sbprofiles(data, ellipse, sbprofiles, region, htmlgalaxydir,
     from SGA.qa import overplot_ellipse, get_norm, sbprofile_colors
 
     def kill_left_y(ax):
+        """Hide an axes' left y-axis (ticks, labels, and spine), used
+        to keep only the twin right-hand y-axis visible on the
+        surface-brightness panels.
+
+        Parameters
+        ----------
+        ax : :class:`matplotlib.axes.Axes`
+            Axes whose left y-axis should be hidden.
+
+        Returns
+        -------
+        None
+
+        """
         ax.yaxis.set_major_locator(ticker.NullLocator())
         ax.yaxis.set_minor_locator(ticker.NullLocator())
         ax.tick_params(axis='y', which='both', left=False, labelleft=False)
@@ -1104,7 +1468,106 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
                galex_pixscale=1.5, unwise_pixscale=2.75, skip_ellipse=False,
                skip_tractor=False, galex=True, unwise=True, barlen=None, barlabel=None,
                verbose=False, clobber=False, fullsample=None):
-    """Make QA plots.
+    """Generate the full set of per-galaxy QA plots (multiband
+    montage, ellipse mask, SED/curve-of-growth, and surface-brightness
+    profiles) for one galaxy group, by reading its multiband cutouts
+    and ellipse-fitting outputs from disk and dispatching to
+    :func:`multiband_montage`, :func:`multiband_ellipse_mask`,
+    :func:`ellipse_sed`, :func:`ellipse_cog`, and
+    :func:`ellipse_sbprofiles`.
+
+    Parameters
+    ----------
+    galaxy : :class:`str`
+        Group name, passed through to `read_multiband_function`.
+    galaxydir : :class:`str`
+        Directory containing the group's cutout and ellipse-fitting
+        FITS files.
+    htmlgalaxydir : :class:`str`
+        Output directory for the QA PNGs.
+    REFIDCOLUMN : :class:`str`
+        Reference-ID column name, passed through to
+        `read_multiband_function` and :func:`ellipse_sbprofiles`.
+    read_multiband_function : callable
+        Function used to read the multiband cutout data; called as
+        ``read_multiband_function(galaxy, galaxydir, REFIDCOLUMN,
+        bands=bands, run=run, pixscale=pixscale,
+        galex_pixscale=galex_pixscale, unwise_pixscale=unwise_pixscale,
+        unwise=unwise, galex=galex, skip_ellipse=skip_ellipse,
+        skip_tractor=skip_tractor, read_jpg=True)`` and expected to
+        return ``(data, tractor, sample, samplesrcs, err)``.
+    unpack_maskbits_function : callable
+        Passed through to :func:`multiband_ellipse_mask` and
+        :func:`ellipse_sbprofiles`.
+    SGAMASKBITS : :class:`list`
+        Per-dataset mask-bit dictionaries, passed through to
+        :func:`multiband_ellipse_mask` and :func:`ellipse_sbprofiles`.
+    APERTURES : :class:`list` or :class:`numpy.ndarray`
+        Aperture radii, passed through to :func:`ellipse_sed`.
+    region : :class:`str`
+        Imaging region (e.g. ``'dr11-south'``), passed through to
+        :func:`ellipse_cog` and :func:`ellipse_sbprofiles`.
+    run : :class:`str`
+        Photometric system (``'south'`` or ``'north'``), passed
+        through to `read_multiband_function` and :func:`ellipse_sed`.
+    mp : :class:`int`
+        Unused (see Notes).
+    bands : :class:`list`
+        Optical bandpasses to read.
+    pixscale : :class:`float`
+        Optical pixel scale, in arcsec/pixel.
+    galex_pixscale : :class:`float`
+        GALEX pixel scale, in arcsec/pixel.
+    unwise_pixscale : :class:`float`
+        unWISE pixel scale, in arcsec/pixel.
+    skip_ellipse : :class:`bool`
+        If True, generate only the multiband montage and skip all
+        ellipse-fitting-dependent QA (SED, curve-of-growth,
+        surface-brightness profiles).
+    skip_tractor : :class:`bool`
+        Passed through to `read_multiband_function`.
+    galex : :class:`bool`
+        Whether to include the GALEX dataset.
+    unwise : :class:`bool`
+        Whether to include the unWISE dataset.
+    barlen : :class:`float`, optional
+        Scale-bar length, passed through to :func:`multiband_montage`
+        and :func:`multiband_ellipse_mask`.
+    barlabel : :class:`str`, optional
+        Scale-bar label, passed through to :func:`multiband_montage`
+        and :func:`multiband_ellipse_mask`.
+    verbose : :class:`bool`
+        Unused (see Notes).
+    clobber : :class:`bool`
+        If True, regenerate QA PNGs even if they already exist;
+        passed through to all the plotting functions called here.
+    fullsample : :class:`astropy.table.Table`, optional
+        Final-catalog table, passed through to all the plotting
+        functions called here for title/geometry annotations.
+
+    Returns
+    -------
+    :class:`int`
+        Always returns 1 (success sentinel), including on several
+        early-exit paths (`skip_ellipse`, missing ellipse files); see
+        Notes.
+
+    Raises
+    ------
+    IOError
+        If the number of ellipse FITS files found does not match the
+        number of objects in `sample`.
+
+    Notes
+    -----
+    `mp` and `verbose` are accepted but never referenced in the
+    function body -- dead parameters. The `err` value returned by
+    `read_multiband_function` is never checked, so a failed read is
+    not distinguished from a successful one at this level. The return
+    value is not a real success/failure signal: both the true success
+    path and the "all ellipse files missing" early-return produce the
+    same ``return 1``, so callers cannot use it to detect that
+    ellipse-dependent plots were skipped.
 
     """
     import fitsio
@@ -1243,7 +1706,32 @@ def make_plots(galaxy, galaxydir, htmlgalaxydir, REFIDCOLUMN, read_multiband_fun
     return 1
 
 def decode_bitmask(value, bitdict):
-    """Decode a bitmask value into list of flag names."""
+    """Decode a packed bitmask integer into the list of set flag names.
+
+    Parameters
+    ----------
+    value : :class:`int`
+        Packed bitmask value.
+    bitdict : :class:`dict`
+        Mapping of flag name to bit value (e.g. :data:`SGA.SGA.SAMPLE`,
+        :data:`SGA.ellipse.ELLIPSEBIT`, or
+        :data:`SGA.ellipse.ELLIPSEMODE`).
+
+    Returns
+    -------
+    :class:`list`
+        Names of every flag in `bitdict` whose bit is set in `value`;
+        ``['None']`` if no bits are set.
+
+    Notes
+    -----
+    A near-duplicate, differently-defaulted implementation
+    (``_decode_bits``, returning ``''`` rather than ``['None']`` when
+    no bits are set, and joined into a single string) is defined as a
+    nested helper inside :func:`generate_group_html`'s Tractor
+    section, for MASKBITS/FITBITS decoding.
+
+    """
     flags = []
     for name, bit in bitdict.items():
         if value & bit:
@@ -1251,11 +1739,59 @@ def decode_bitmask(value, bitdict):
     return flags if flags else ['None']
 
 def get_raslice(ra):
-    """Get RA slice from RA in degrees."""
+    """Compute the 3-digit, zero-padded RA-slice string for a single
+    right ascension.
+
+    Parameters
+    ----------
+    ra : :class:`float`
+        Right ascension, in degrees.
+
+    Returns
+    -------
+    :class:`str`
+        3-digit zero-padded RA-slice string, e.g. ``'068'``.
+
+    Notes
+    -----
+    A separate, near-identical implementation exists at
+    :func:`SGA.io.get_raslice` (which additionally vectorizes over
+    array input and omits the ``% 360`` wrap present here). The ``%
+    360`` in this version only changes behavior for ``ra >= 360`` or
+    negative `ra`, which should not occur for valid J2000 coordinates
+    in ``[0, 360)``.
+
+    """
     return "{:03d}".format(int(ra) % 360)
 
 def get_galaxy_names(group_dir):
-    """Extract unique galaxy names from filenames in the directory."""
+    """Recover the sorted, unique set of per-galaxy SGA names present
+    in a group's output directory, by parsing its QA filenames.
+
+    Parameters
+    ----------
+    group_dir : :class:`str`
+        Path to a group's HTML output directory, expected to contain
+        files named ``SGA2025_{sganame}-{suffix}.{ext}``.
+
+    Returns
+    -------
+    :class:`list`
+        Sorted unique galaxy-name strings (the ``{sganame}`` portion
+        of each matching filename, i.e. everything before the final
+        ``-``-delimited suffix).
+
+    Notes
+    -----
+    Only matches files starting with the literal, version-specific
+    prefix ``SGA2025_J`` (via the glob pattern), then re-checks/strips
+    the broader ``SGA2025_`` prefix -- filenames not starting with
+    ``SGA2025_J`` are silently skipped by the glob itself. Relies on
+    ``rsplit('-', 1)`` to peel off the trailing suffix, so a galaxy
+    name that itself contains no ``-`` after the prefix strip is
+    dropped (``len(parts) >= 2`` check fails silently, no warning).
+
+    """
     galaxy_names = []
     for onefile in glob(os.path.join(group_dir, "SGA2025_J*")):
         stem = os.path.basename(onefile)
@@ -1268,7 +1804,35 @@ def get_galaxy_names(group_dir):
     return np.unique(galaxy_names).tolist()
 
 def get_sky_viewer_url(ra, dec, diameter, region):
-    """Generate Legacy Survey sky viewer URL."""
+    """Build a Legacy Survey sky-viewer URL centered on a group, with a
+    zoom level chosen heuristically from the group diameter.
+
+    Parameters
+    ----------
+    ra, dec : :class:`float`
+        Group center coordinates, in degrees.
+    diameter : :class:`float`
+        Group angular diameter, in arcmin; used only to set the
+        `zoom` heuristic.
+    region : :class:`str`
+        Processing region; ``'dr11-south'`` selects the
+        ``ls-dr11-south`` imaging layer, anything else (including
+        ``'dr11-north'``) selects ``ls-dr11-north``.
+
+    Returns
+    -------
+    :class:`str`
+        Fully-formed ``legacysurvey.org/viewer-dev`` URL with the
+        ``sga2025-parent`` catalog overlay enabled.
+
+    Notes
+    -----
+    `zoom` is clamped to ``[11, 16]``; a commented-out alternate
+    formula (a different clamp range and coefficient) is left in the
+    source as a dead comment, suggesting the heuristic was tuned by
+    trial and error and not finalized/cleaned up.
+
+    """
     if region == 'dr11-south':
         layer = 'ls-dr11-south'
     else:
@@ -1281,7 +1845,27 @@ def get_sky_viewer_url(ra, dec, diameter, region):
     return url
 
 def find_group_directory(htmldir, region, group_name):
-    """Find the directory for a given group using raslice from group_name."""
+    """Locate a group's HTML output directory from its name, assuming
+    the standard ``{htmldir}/{region}/{raslice}/{group_name}`` sharded
+    layout.
+
+    Parameters
+    ----------
+    htmldir : :class:`pathlib.Path`
+        Root HTML output directory.
+    region : :class:`str`
+        Processing region subdirectory name (e.g. ``'dr11-south'``).
+    group_name : :class:`str`
+        Group name; its first three characters are used directly as
+        the RA-slice subdirectory (rather than recomputing it via
+        :func:`get_raslice`).
+
+    Returns
+    -------
+    :class:`pathlib.Path` or None
+        The group directory, or None if it does not exist on disk.
+
+    """
     raslice = group_name[:3]
     group_dir = htmldir / region / raslice / group_name
     if group_dir.exists():
@@ -1289,7 +1873,64 @@ def find_group_directory(htmldir, region, group_name):
     return None
 
 def generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber=False, fulltractor=None):
-    """Generate HTML QA page for a single galaxy group."""
+    """Build and write the static HTML QA page for a single galaxy
+    group: header/thumbnail, group properties, per-object identifiers,
+    redshift/distance, multiwavelength montage image, ellipse
+    masking/geometry, optional Tractor photometry, aggregate
+    curve-of-growth/aperture photometry table, and per-galaxy
+    SED/CoG/surface-brightness figure thumbnails.
+
+    Parameters
+    ----------
+    group_data : :class:`astropy.table.Table`
+        Single-group slice of the parent sample (all rows share one
+        ``GROUP_NAME``); only its first row is consulted for
+        group-level properties (name, RA/Dec, diameter, multiplicity).
+    fullsample : :class:`astropy.table.Table`
+        Full per-region sample table, used to look up every object
+        belonging to this group (via ``GROUP_NAME``) for the
+        per-object tables.
+    htmldir : :class:`pathlib.Path`
+        Root HTML output directory.
+    region : :class:`str`
+        Processing region (e.g. ``'dr11-south'``).
+    prev_group, next_group : :class:`str` or None
+        Group names for the "Previous"/"Next" navbar links, or None to
+        omit the corresponding link.
+    clobber : :class:`bool`
+        If True, regenerate the page even if it already exists.
+    fulltractor : :class:`astropy.table.Table`, optional
+        Full per-region Tractor catalog, row-aligned with
+        `fullsample`, used to populate the optional Tractor section.
+        If None, that section is omitted entirely.
+
+    Returns
+    -------
+    :class:`bool`
+        False if the group's output directory cannot be found (logged
+        as a warning); True otherwise, including when the page already
+        exists and `clobber` is False (page is simply skipped).
+
+    Notes
+    -----
+    `fulltractor` is assumed row-aligned with `fullsample` -- both are
+    indexed with the same boolean mask
+    (``fullsample['GROUP_NAME'] == group_name``) without any
+    additional matching/validation, so if the two tables are ever
+    constructed independently or in different orders, the Tractor
+    section would silently pair the wrong rows. The per-object sort by
+    ``D26``/``DIAM_INIT`` (descending) is applied to both
+    `fullgroup_data` and `tractor_group` together, so alignment is at
+    least preserved through the sort.
+
+    A local variable named ``galaxy`` is set once from `group_data`
+    for the page title/heading (before any per-object loop), then
+    reassigned inside the "Identifiers" per-row loop as a loop-body
+    temporary reusing the same name -- harmless (the outer use already
+    happened), but a naming collision that could confuse future
+    edits.
+
+    """
     group_name = group_data['GROUP_NAME'][0]
     group_dir = find_group_directory(htmldir, region, group_name)
     if group_dir is None:
@@ -1344,13 +1985,38 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     _cols = set(fullgroup_data.colnames)
 
     def _has(col):
+        """True if `col` is a column of `fullgroup_data` (checked once
+        via the precomputed ``_cols`` set).
+
+        """
         return col in _cols
 
     def _get(row, col, default=None):
+        """Return ``row[col]`` if `col` exists in `fullgroup_data`,
+        else `default`, without raising on missing columns.
+
+        """
         return row[col] if col in _cols else default
 
     def _sf(val, zero_missing=True):
-        """Return float or None; treats 0 as missing when zero_missing=True."""
+        """Coerce `val` to a Python float, or None if it is
+        non-numeric, NaN, or (when `zero_missing`) exactly zero.
+
+        Parameters
+        ----------
+        val : any
+            Value to coerce; typically a table cell that may be
+            masked or a fill value.
+        zero_missing : :class:`bool`
+            If True, treat an exact 0.0 as missing (returns None) --
+            appropriate for columns where 0 is a fill/sentinel value
+            rather than a real measurement.
+
+        Returns
+        -------
+        :class:`float` or None
+
+        """
         try:
             v = float(val)
             if np.isnan(v):
@@ -1362,6 +2028,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             return None
 
     def _fmt_z(row, vcol, icol=''):
+        """Format a redshift value (and, if `icol` is given and its
+        inverse-variance is positive, its 1-sigma uncertainty) from
+        `row` as a display string; ``''`` if `vcol` is missing/zero.
+
+        """
         v = _sf(_get(row, vcol))
         if v is None:
             return ''
@@ -1371,6 +2042,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return f'{v:.5f}'
 
     def _fmt_dist(row, vcol, icol=''):
+        """Format a distance value (and optional uncertainty from
+        `icol`) from `row` as a display string; ``''`` if `vcol` is
+        missing, zero, or negative.
+
+        """
         v = _sf(_get(row, vcol), zero_missing=True)
         if v is None or v <= 0:
             return ''
@@ -1380,6 +2056,18 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return f'{v:.2f}'   # distance known; ivar=0 is expected in some cases
 
     def _fmt_diam(row):
+        """Format the adopted diameter and its reference string for
+        `row`, preferring ``D26``/``D26_ERR``/``D26_REF`` when present
+        and positive, else falling back to
+        ``DIAM_INIT``/``DIAM``/``INIT_REF``/``DIAM_INIT_REF``.
+
+        Returns
+        -------
+        :class:`tuple`
+            ``(diameter_string, reference_string)``, both ``''`` if no
+            diameter is available.
+
+        """
         if _has('D26'):
             d = _sf(_get(row, 'D26'), zero_missing=True)
             if d is not None and d > 0:
@@ -1396,6 +2084,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return '', ''
 
     def _fmt_mag_cog(row, band):
+        """Format the total curve-of-growth magnitude (and
+        uncertainty, if available) for `band` from `row`; ``''`` if
+        ``COG_MTOT_{band}`` is missing or non-positive.
+
+        """
         m = _sf(_get(row, f'COG_MTOT_{band}'), zero_missing=True)
         if m is None or m <= 0:
             return ''
@@ -1405,6 +2098,11 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return f'{m:.3f}'
 
     def _fmt_mag_ap(row, ap, band):
+        """Convert the aperture flux ``FLUX_AP{ap:02d}_{band}`` from
+        `row` to an AB magnitude (and propagated uncertainty, if
+        available); ``''`` if the flux is missing or non-positive.
+
+        """
         f = _sf(_get(row, f'FLUX_AP{ap:02d}_{band}'), zero_missing=True)
         if f is None or f <= 0:
             return ''
@@ -1415,8 +2113,22 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return f'{mag:.3f}'
 
     def _th(*cells):
-        """Build a <tr> of <th> cells. A cell may be a plain string or a
-        (text, colspan, rowspan) tuple; omit trailing 1s."""
+        """Build one HTML ``<tr>`` of ``<th>`` header cells.
+
+        Parameters
+        ----------
+        *cells : :class:`str` or :class:`tuple`
+            Each cell is either a plain header-text string, or a
+            ``(text, colspan)`` or ``(text, colspan, rowspan)`` tuple;
+            a trailing span of exactly 1 is omitted from the emitted
+            HTML.
+
+        Returns
+        -------
+        :class:`str`
+            One indented ``<tr>...</tr>`` HTML line.
+
+        """
         parts = []
         for c in cells:
             if isinstance(c, tuple):
@@ -1429,13 +2141,25 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         return '        <tr>' + ''.join(parts) + '</tr>'
 
     def _td(*cells):
+        """Build one HTML ``<tr>`` of plain ``<td>`` data cells from
+        `cells`, in order.
+
+        """
         return '        <tr>' + ''.join(f'<td>{c}</td>' for c in cells) + '</tr>'
 
     def _ned_link(name):
+        """Wrap `name` in an HTML link to its NED by-name query page,
+        URL-encoding ``+`` and spaces.
+
+        """
         encoded = name.replace('+', '%2B').replace(' ', '+')
         return f"<a href='https://ned.ipac.caltech.edu/byname?objname={encoded}' target='_blank'>{name}</a>"
 
     def _pgc_link(pgc):
+        """Wrap `pgc` in an HTML link to its HyperLeda PGC catalog
+        page.
+
+        """
         return f"<a href='http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=%23{pgc}' target='_blank'>{pgc}</a>"
 
     phot_bands = ['G', 'R', 'I', 'Z', 'W1', 'W2', 'FUV', 'NUV']
@@ -1730,6 +2454,12 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
         _tcols = set(tractor_group.colnames)
 
         def _fmt_tractor_mag(trow, band):
+            """Convert Tractor's ``FLUX_{band}``/``FLUX_IVAR_{band}``
+            for `trow` to an AB magnitude with propagated
+            uncertainty; ``''`` if the flux column is absent or the
+            flux is non-positive.
+
+            """
             fc, ic = f'FLUX_{band}', f'FLUX_IVAR_{band}'
             if fc not in _tcols:
                 return ''
@@ -1744,6 +2474,13 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
             return f'{mag:.3f}'
 
         def _decode_bits(val, bits_dict):
+            """Decode a Tractor MASKBITS/FITBITS integer `val` against
+            `bits_dict` into a comma-separated flag-name string;
+            falls back to the raw integer string if `val` is nonzero
+            but no name matches (e.g. `bits_dict` is empty because
+            ``legacypipe`` was not importable).
+
+            """
             v = int(val)
             if v == 0:
                 return ''
@@ -1869,7 +2606,40 @@ def generate_group_html(group_data, fullsample, htmldir, region, prev_group, nex
     return True
 
 def generate_group_html_wrapper(args):
-    """Wrapper for multiprocessing."""
+    """Unpack a single argument tuple and call :func:`generate_group_html`
+    for one group -- the top-level callable required by
+    ``multiprocessing.Pool.map`` (which cannot pickle/pass keyword
+    arguments or bound closures).
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        9-tuple ``(idx, group_name, sample, fullsample, fulltractor,
+        htmldir, region, all_groups, clobber)`` as built by
+        :func:`make_html`'s multiprocessing branch: `idx` is
+        `group_name`'s position in `all_groups` (used to look up the
+        previous/next group for HTML nav links), `sample` is the full
+        primary-galaxy table, `fullsample`/`fulltractor` are passed
+        straight through, and `htmldir`/`region`/`clobber` configure
+        the output location and overwrite behavior.
+
+    Returns
+    -------
+    Return value of :func:`generate_group_html` for this group.
+
+    Notes
+    -----
+    Selects this group's rows via ``sample[sample['GROUP_NAME'] ==
+    group_name]``, an O(N) boolean-mask scan over the *entire* sample
+    table, for every one of the ``mp`` worker calls -- unlike
+    :func:`make_html`'s ``mp == 1`` code path, which pre-builds an
+    O(1) lookup index once via :func:`_build_group_index`. For large
+    regions (dr11-south has ~150k groups) this makes the
+    multiprocessing path do O(N x G) work in total where the serial
+    path does O(N + G); it is also handed a copy of the full `sample`
+    table via the pickled `args` tuple for every one of the G calls.
+
+    """
     idx, group_name, sample, fullsample, fulltractor, htmldir, region, all_groups, clobber = args
     group_data = sample[sample['GROUP_NAME'] == group_name]
     prev_group = all_groups[idx - 1] if idx > 0 else None
@@ -1877,10 +2647,79 @@ def generate_group_html_wrapper(args):
     return generate_group_html(group_data, fullsample, htmldir, region, prev_group, next_group, clobber, fulltractor=fulltractor)
 
 def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_bits):
-    """Return the complete index HTML string for one region."""
+    """Build the complete, self-contained ``index-{region}.html`` document:
+    a client-side-filterable/sortable/paginated gallery table of all
+    groups in `region`, driven entirely by JavaScript against the
+    companion ``groups-{region}.json`` payload written by
+    :func:`generate_index`.
+
+    Parameters
+    ----------
+    region : :class:`str`
+        Region name (e.g. ``'dr11-south'``), used in the page title,
+        the JS ``REGION`` variable, and to fetch
+        ``'groups-{region}.json'`` (a path relative to the HTML file's
+        own location).
+    count : :class:`int`
+        Total number of groups in `region`, shown in the page
+        subtitle.
+    sample_bits : :class:`dict`
+        Mapping of ``SAMPLE`` bit name to integer value (see
+        :data:`SGA.SGA.SAMPLE`), rendered as one row of toggle
+        buttons and embedded as a JS lookup object.
+    ellipsemode_bits : :class:`dict`
+        Mapping of ``ELLIPSEMODE`` bit name to integer value (see
+        :data:`SGA.ellipse.ELLIPSEMODE`), rendered the same way.
+    ellipsebit_bits : :class:`dict`
+        Mapping of ``ELLIPSEBIT`` bit name to integer value (see
+        :data:`SGA.ellipse.ELLIPSEBIT`), rendered as two rows of
+        toggle buttons (split roughly in half) plus embedded JS
+        lookup object.
+
+    Returns
+    -------
+    :class:`str`
+        The full HTML document text; the caller (:func:`generate_index`)
+        is responsible for writing it to disk.
+
+    Notes
+    -----
+    The client-side ``getSkyUrl`` JS helper picks the Legacy Survey
+    viewer layer with ``(REGION === 'dr11-south') ? 'ls-dr11-south' :
+    'ls-dr11-north'`` -- any region other than exactly
+    ``'dr11-south'`` (including ``'dr9-north'``, ``'dr9-south'``,
+    ``'dr10-south'``) falls through to the ``'ls-dr11-north'`` layer,
+    which is only correct for ``'dr11-north'``. All literal JS/CSS
+    braces in the returned template are doubled (``{{``/``}}``) to
+    survive the trailing ``.format(...)`` call; only the eight named
+    placeholders listed above are real substitutions.
+
+    """
     # Pre-compute fragments that contain { } so they don't need double-bracing inside the
     # main format string.
     def _btn_row(bits, css_cls, toggle_fn, descs=None):
+        """Render one row of toggle ``<button>`` elements for a bit dictionary.
+
+        Parameters
+        ----------
+        bits : :class:`dict`
+            Mapping of bit name to integer value; one button per entry.
+        css_cls : :class:`str`
+            CSS class applied to every button (e.g. ``'hbtn-sample'``).
+        toggle_fn : :class:`str`
+            Name of the client-side JS function invoked (with the bit
+            value) on click, e.g. ``'toggleSample'``.
+        descs : :class:`dict`, optional
+            Mapping of bit name to a human-readable tooltip string
+            (shown via the button's ``data-tooltip`` attribute);
+            entries not present here get an empty tooltip.
+
+        Returns
+        -------
+        :class:`str`
+            Concatenated HTML for all buttons in `bits`.
+
+        """
         return ''.join(
             '<button class="hbtn {css}" onclick="{fn}({v})" data-bit="{v}" data-tooltip="{tip}">{k}</button>'.format(
                 css=css_cls, fn=toggle_fn, k=k, v=v,
@@ -1888,6 +2727,19 @@ def _build_index_html(region, count, sample_bits, ellipsemode_bits, ellipsebit_b
             for k, v in bits.items()
         )
     def _bits_js(bits):
+        """Render a bit-name dictionary as a JavaScript object literal.
+
+        Parameters
+        ----------
+        bits : :class:`dict`
+            Mapping of bit name to integer value.
+
+        Returns
+        -------
+        :class:`str`
+            JS object-literal source, e.g. ``"{'LVD': 1, 'MCLOUDS': 2}"``.
+
+        """
         return '{' + ', '.join("'{}': {}".format(k, v) for k, v in bits.items()) + '}'
 
     _sample_descs = {
@@ -2423,10 +3275,22 @@ fetch('groups-{region}.json')
 
 
 def _build_group_index(tbl):
-    """Return a dict mapping GROUP_NAME string → integer row-index array.
+    """Build an O(1)-lookup index from ``GROUP_NAME`` to row indices,
+    to avoid repeated O(N) boolean-mask scans (``tbl[tbl['col'] ==
+    val]``) when looking up the same table by group many times in a
+    loop.
 
-    Builds in O(N) so per-group lookups inside loops are O(1) instead of the
-    O(N) boolean-mask scan that astropy performs for ``tbl[tbl['col'] == val]``.
+    Parameters
+    ----------
+    tbl : :class:`astropy.table.Table`
+        Table with a ``GROUP_NAME`` column (one row per galaxy).
+
+    Returns
+    -------
+    :class:`dict`
+        Mapping of ``str(GROUP_NAME)`` to a :class:`numpy.ndarray` of
+        integer row indices into `tbl` for that group.
+
     """
     from collections import defaultdict
     raw = defaultdict(list)
@@ -2436,7 +3300,50 @@ def _build_group_index(tbl):
 
 
 def generate_index(htmldir, region, sample, fullsample=None):
-    """Generate a JS-driven index-{region}.html and companion groups-{region}.json."""
+    """Generate the JS-driven gallery index for one region: write
+    ``groups-{region}.json`` (one record per group, primary-galaxy
+    properties plus OR-combined bitmasks across all group members)
+    and ``index-{region}.html`` (built by :func:`_build_index_html`).
+
+    Parameters
+    ----------
+    htmldir : :class:`pathlib.Path`
+        Base HTML output directory; both output files are written
+        directly here.
+    region : :class:`str`
+        Region name (e.g. ``'dr11-south'``), used in both output
+        filenames and passed through to :func:`_build_index_html`.
+    sample : :class:`astropy.table.Table`
+        Primary-galaxy table (one row per group), used for group-level
+        columns (``GROUP_RA``, ``GROUP_DEC``, ``GROUP_DIAMETER``,
+        ``GROUP_MULT``, and optionally ``D26``/``Z``/``DIST``/``SAMPLE``/
+        ``GROUP_PRIMARY``/``ALTNAMES`` when present).
+    fullsample : :class:`astropy.table.Table`, optional
+        Full per-galaxy table (all group members, not just primaries);
+        when it carries ``SAMPLE``/``ELLIPSEMODE``/``ELLIPSEBIT``
+        columns (and a ``GROUP_NAME`` column), those bitmasks are
+        OR-reduced across every member of each group instead of using
+        only the primary galaxy's value. Without `fullsample` (or if
+        it lacks these columns), ``ELLIPSEMODE``/``ELLIPSEBIT`` in the
+        JSON payload default to 0 for every group, and ``SAMPLE``
+        falls back to OR-reducing across `sample` alone (or to 0 if
+        `sample` also lacks a ``SAMPLE`` column).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Groups whose HTML output directory doesn't exist
+    (:func:`find_group_directory` returns None) are silently skipped
+    from the index. The per-group thumbnail existence check
+    (``has_thumb``) does one ``Path.exists()`` filesystem call per
+    group. The nested ``_or`` closure is redefined on every iteration
+    of the (potentially ~150k-group) loop, a minor but repeated
+    overhead.
+
+    """
     import json
     from SGA.SGA import SAMPLE as SAMPLE_BITS
 
@@ -2461,7 +3368,28 @@ def generate_index(htmldir, region, sample, fullsample=None):
     _fs_idx     = _build_group_index(fullsample) if need_fs else {}
 
     def _nullable(val, decimals, zero_missing=True):
-        """Return rounded float or None for missing/NaN/zero values."""
+        """Round `val` to `decimals` places, or return None if it is
+        missing/non-numeric/NaN (or exactly zero, when `zero_missing`).
+
+        Parameters
+        ----------
+        val : any
+            Value to coerce to float and round; typically a table
+            cell that may be masked or a fill value.
+        decimals : :class:`int`
+            Number of decimal places to round to.
+        zero_missing : :class:`bool`
+            If True, treat an exact 0.0 as missing (returns None) --
+            appropriate for columns where 0 is a fill/sentinel value
+            rather than a real measurement.
+
+        Returns
+        -------
+        :class:`float` or None
+            Rounded value, or None if `val` could not be interpreted
+            as a finite (and, if `zero_missing`, nonzero) float.
+
+        """
         try:
             v = float(val)
             if np.isnan(v) or (zero_missing and v == 0.0):
@@ -2508,6 +3436,26 @@ def generate_index(htmldir, region, sample, fullsample=None):
         fs_grp   = fullsample[_fs_rows] if _fs_rows is not None else None
 
         def _or(col, fs_flag, arr):
+            """Append the bitwise-OR of `col` across this group's members
+            (from `fullsample`, if available) to `arr`; append 0 otherwise.
+
+            Parameters
+            ----------
+            col : :class:`str`
+                Column name in `fullsample` to OR-reduce (e.g.
+                ``'ELLIPSEMODE'``).
+            fs_flag : :class:`bool`
+                Whether `fullsample` actually has this column (and a
+                matching group of rows); if False, appends 0 without
+                touching `fullsample`.
+            arr : :class:`list`
+                List to append the resulting integer to, in place.
+
+            Returns
+            -------
+            None
+
+            """
             if fs_flag and fs_grp is not None and len(fs_grp) > 0:
                 arr.append(int(np.bitwise_or.reduce(fs_grp[col].astype(np.int32))))
             else:
@@ -2562,26 +3510,57 @@ def generate_index(htmldir, region, sample, fullsample=None):
 
 
 def make_html(sample, fullsample, fulltractor=None, htmldir=None, region='dr11-south', mp=1, clobber=False):
-    """
-    Generate HTML QA pages for SGA galaxy groups.
+    """Generate per-group HTML QA pages and the region-wide gallery
+    index for SGA galaxy groups: the top-level entry point for this
+    module, called from ``bin/SGA2025-mpi``'s ``--htmlindex`` stage.
 
-    Parameters:
-    -----------
-    sample : astropy.table.Table
-        Table containing GROUP_PRIMARY galaxies only
-    fullsample : astropy.table.Table
-        Table containing all galaxies (including non-primary group members)
-    fulltractor : astropy.table.Table, optional
-        Tractor catalog (from read_sga_sample(tractor=True)); adds a Tractor table
-        to each group page when provided
-    htmldir : str
-        Base HTML directory (default: $SGA_HTML_DIR)
-    region : str
-        Region name (default: dr11-south)
-    mp : int
-        Number of processes for multiprocessing (default: 1)
-    clobber : bool
-        Overwrite existing HTML files (default: False)
+    Parameters
+    ----------
+    sample : :class:`astropy.table.Table`
+        Primary-galaxy table (one row per group).
+    fullsample : :class:`astropy.table.Table`
+        Full per-galaxy table (all group members), passed through to
+        :func:`generate_group_html`/:func:`generate_index` for
+        per-member details and OR-combined bitmasks.
+    fulltractor : :class:`astropy.table.Table`, optional
+        Tractor catalog (e.g. from ``read_sga_sample(tractor=True)``);
+        when given, adds a Tractor table to each group page.
+    htmldir : :class:`str` or :class:`pathlib.Path`, optional
+        Base HTML output directory. Defaults to the ``SGA_HTML_DIR``
+        environment variable; raises if neither is set.
+    region : :class:`str`
+        Region name (e.g. ``'dr11-south'``).
+    mp : :class:`int`
+        Number of worker processes. If 1, groups are processed
+        serially using a pre-built :func:`_build_group_index` lookup
+        (fast path); if greater than 1, uses
+        ``multiprocessing.Pool.map`` over
+        :func:`generate_group_html_wrapper` (see its Notes for a
+        per-call lookup-cost caveat).
+    clobber : :class:`bool`
+        If True, regenerate per-group HTML pages that already exist
+        (passed through to :func:`generate_group_html`).
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    ValueError
+        If `htmldir` is not given and the ``SGA_HTML_DIR`` environment
+        variable is not set.
+
+    Notes
+    -----
+    Only groups whose output directory already exists
+    (:func:`find_group_directory` returns non-None) are processed;
+    groups with no directory are silently dropped from
+    `valid_groups` and never get an HTML page or an index entry.
+    :func:`generate_index` is always called at the end (unconditionally,
+    regardless of ``mp`` or how many groups were actually
+    (re)generated), so the JSON/HTML index stays complete even on a
+    partial ``--htmlindex`` run.
 
     """
     if htmldir is None:
