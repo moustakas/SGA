@@ -31,36 +31,83 @@ warnings.filterwarnings(
 
 
 def clear_calibration_cache():
-    """Clear the in-memory calibration cache."""
+    """Clear the in-memory calibration cache populated by
+    :func:`load_calibration`.
+
+    Returns
+    -------
+    None
+
+    """
     _CALIB_CACHE.clear()
 
 
 def _as_float(col):
-    """Return numpy float array from an astropy Column."""
+    """Coerce an astropy Column (or array-like) to a plain
+    :class:`numpy.ndarray` of :class:`float`.
+
+    Parameters
+    ----------
+    col : :class:`~astropy.table.Column` or array-like
+        Input column or array.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Float array with the same values.
+
+    """
     if hasattr(col, 'value'):
         return np.asarray(col.value, dtype=float)
     return np.asarray(col, dtype=float)
 
 
 def _channel_key(th, band):
-    """Return channel key string, e.g. 'r26', 'g24'."""
+    """Build a channel key string from a threshold and band, e.g.
+    ``'r26'``, ``'g24'``.
+
+    Parameters
+    ----------
+    th : :class:`int` or :class:`float`
+        Surface-brightness isophotal threshold (e.g. 26).
+    band : :class:`str`
+        Band letter (any case; lower-cased in the key).
+
+    Returns
+    -------
+    :class:`str`
+        ``f'{band.lower()}{th}'``.
+
+    """
     return f"{band.lower()}{th}"
 
 
 def _collect_channels_from_table(tbl):
-    """Extract per-channel arrays (linear radii in arcsec) and their errors.
+    """Extract per-channel isophotal-radius arrays (linear, arcsec) and
+    their errors from an ellipse catalog table.
 
     Zeros and non-finite values are treated as missing (set to NaN).
-    Includes an extra channel 'moment' from column 'SMA_MOMENT' if present.
+    Includes an extra channel ``'moment'`` from column ``SMA_MOMENT`` if
+    present.
+
+    Parameters
+    ----------
+    tbl : :class:`~astropy.table.Table`
+        Input table with ``R{TH}_{BAND}``/``R{TH}_ERR_{BAND}`` columns
+        for each threshold in ``SBTHRESH`` and band in ``BANDS``, and
+        optionally ``SMA_MOMENT``.
 
     Returns
     -------
-    table : dict
-        Channel name -> array of radii (arcsec)
-    sigma : dict
-        Channel name -> array of 1-sigma errors or None
-    N : int
-        Number of rows in input table
+    table : :class:`dict`
+        Channel name (e.g. ``'r26'``, ``'moment'``) -> array of radii,
+        arcsec.
+    sigma : :class:`dict`
+        Channel name -> array of 1-sigma errors, or None if the
+        corresponding ``*_ERR_*`` column is absent.
+    N : :class:`int`
+        Number of rows in ``tbl``.
+
     """
     N = len(tbl)
     table = {}
@@ -93,7 +140,36 @@ def _collect_channels_from_table(tbl):
 
 @dataclass
 class ChannelCalib:
-    """Calibration coefficients for a single channel."""
+    """Calibration coefficients for a single channel, fit by
+    :func:`_fit_channel_bisector_robust` via :func:`calibrate_from_table`.
+
+    The model is ``log(R26) = a + b * log(R_channel) + c . covariates``,
+    with intrinsic scatter ``tau`` (log-space).
+
+    Attributes
+    ----------
+    name : :class:`str`
+        Channel key, e.g. ``'r26'``, ``'g24'``, ``'moment'``.
+    a : :class:`float`
+        Fitted intercept.
+    b : :class:`float`
+        Fitted slope.
+    tau : :class:`float`
+        Intrinsic (log-space) scatter, beyond measurement error.
+    covar_names : :class:`list`
+        Names of the covariates in ``c``, if any. Always empty in the
+        SGA-2025 production calibration (no covariates have been used
+        to date) -- see the Notes in :func:`calibrate_from_table` for
+        what it would take to actually enable this.
+    c : :class:`numpy.ndarray`
+        Covariate coefficients. Always empty in the SGA-2025 production
+        calibration (see :func:`calibrate_from_table`), so
+        ``covars_row`` is never actually required by :func:`_infer_one`.
+    sigma_obs_default : :class:`float`
+        Default (log-space) measurement uncertainty used when an object
+        has no per-object error for this channel.
+
+    """
     name: str
     a: float
     b: float
@@ -105,17 +181,41 @@ class ChannelCalib:
 
 @dataclass
 class Calibration:
-    """Container for all channel calibrations."""
+    """Container for all channel calibrations, as loaded/saved by
+    :func:`load_calibration`/:func:`save_calibration`.
+
+    Attributes
+    ----------
+    channels : :class:`dict`
+        Channel name -> :class:`ChannelCalib`.
+    target_name : :class:`str`
+        Name of the target (anchor) channel the others are calibrated
+        against; always ``'r26'`` in the current pipeline.
+
+    """
     channels: dict
     target_name: str = "r26"
 
 
 def save_calibration(cal, path):
-    """Write calibration to TSV file.
+    """Write a :class:`Calibration` to a tab-separated text file.
 
-    Columns: name, a, b, tau, sigma_obs_default, covar_names, c_json
+    One row per channel, columns ``name``, ``a``, ``b``, ``tau``,
+    ``sigma_obs_default``, ``covar_names`` (JSON list), ``c_json`` (JSON
+    list of covariate coefficients). The model is
+    ``log(R26_R) = a + b * log(R_channel)``.
 
-    The model is: log(R26_R) = a + b * log(R_channel)
+    Parameters
+    ----------
+    cal : :class:`Calibration`
+        Calibration to write.
+    path : :class:`str`
+        Output file path.
+
+    Returns
+    -------
+    None
+
     """
     rows = ["\t".join(["name", "a", "b", "tau", "sigma_obs_default", "covar_names", "c_json"])]
     for ch in cal.channels.values():
@@ -133,9 +233,26 @@ def save_calibration(cal, path):
 
 
 def load_calibration(path=None):
-    """Load calibration from TSV file with caching.
+    """Load a :class:`Calibration` from a tab-separated text file (see
+    :func:`save_calibration`), caching by absolute path.
 
-    If path is None, uses the packaged default under SGA/data/SGA2025.
+    Parameters
+    ----------
+    path : :class:`str`, optional
+        Calibration file to read. If None, uses the packaged default at
+        ``SGA/data/SGA2025/r26-calibration-coeff.tsv``.
+
+    Returns
+    -------
+    :class:`Calibration`
+        Loaded (or cached) calibration.
+
+    Raises
+    ------
+    ValueError
+        If the file's header doesn't start with ``'name'`` (malformed
+        calibration file).
+
     """
     if path is None:
         path = resources.files("SGA").joinpath("data/SGA2025/r26-calibration-coeff.tsv")
@@ -170,7 +287,25 @@ def load_calibration(path=None):
 
 
 def _to_log_and_sigma(r, sigma_r):
-    """Convert linear radius and error to log-space."""
+    """Convert a linear radius and its error to log-space.
+
+    Parameters
+    ----------
+    r : :class:`numpy.ndarray`
+        Linear radius, arcsec.
+    sigma_r : :class:`numpy.ndarray` or None
+        1-sigma linear uncertainty on ``r``; if None, no error is
+        propagated.
+
+    Returns
+    -------
+    y : :class:`numpy.ndarray`
+        ``log(r)``.
+    sigma_y : :class:`numpy.ndarray` or None
+        ``sigma_r / r`` (first-order log-space error propagation), or
+        None if ``sigma_r`` is None.
+
+    """
     y = np.log(r)
     if sigma_r is None:
         return y, None
@@ -178,7 +313,20 @@ def _to_log_and_sigma(r, sigma_r):
 
 
 def _channel_threshold(name):
-    """Return isophotal threshold (23, 24, 25, 26) or None for non-isophotal."""
+    """Return a channel's isophotal surface-brightness threshold.
+
+    Parameters
+    ----------
+    name : :class:`str`
+        Channel key, e.g. ``'r26'``, ``'g24'``, ``'moment'``.
+
+    Returns
+    -------
+    :class:`int` or None
+        Threshold (23, 24, 25, or 26), or None for non-isophotal
+        channels (e.g. ``'moment'``).
+
+    """
     if name == "moment":
         return None
     if name == "r26":
@@ -190,7 +338,23 @@ def _channel_threshold(name):
 
 
 def _hierarchy_rank(name):
-    """Rank channels for display ordering. Lower rank = earlier in grid."""
+    """Rank a channel for display ordering in
+    :func:`_plot_calibration_diagnostics` (lower rank = earlier in the
+    panel grid): ``'moment'`` first, then isophotal thresholds 23-26 in
+    order, then anything else last.
+
+    Parameters
+    ----------
+    name : :class:`str`
+        Channel key.
+
+    Returns
+    -------
+    :class:`int`
+        Sort rank; 0 for ``'moment'``, 1-4 for thresholds 23-26, 99
+        otherwise.
+
+    """
     if name == "moment":
         return 0
     th = _channel_threshold(name)
@@ -206,7 +370,34 @@ def _hierarchy_rank(name):
 
 
 def _plot_calibration_diagnostics(plot_data, cal, calib_path):
-    """Make multi-panel diagnostic plot of channel vs R26_R with fits."""
+    """Build a multi-panel diagnostic figure of each channel's linear
+    radius vs. R26_R, with its fitted calibration curve overlaid.
+
+    One panel per channel present in both ``plot_data`` and
+    ``cal.channels``, ordered by :func:`_hierarchy_rank` (ties broken by
+    descending total scatter). Each panel shows the raw scatter, the
+    fitted ``R26_R = exp(a + b*log(R_channel))`` curve, and a legend
+    with the fit coefficients and total scatter
+    (``sqrt(tau**2 + sigma_obs_default**2)``). Written to
+    ``{calib_path with .tsv replaced by .png}``. No-op if ``plot_data``
+    is empty or no channels overlap with ``cal.channels``.
+
+    Parameters
+    ----------
+    plot_data : :class:`dict`
+        Channel name -> ``{'x': array, 'y': array}`` of linear radius
+        (channel) and R26_R values, as built by :func:`calibrate_from_table`.
+    cal : :class:`Calibration`
+        Fitted calibration providing each channel's coefficients.
+    calib_path : :class:`str`
+        Path of the calibration TSV file; the output PNG is written
+        alongside it with the same basename.
+
+    Returns
+    -------
+    None
+
+    """
     if not plot_data:
         return
 
@@ -286,11 +477,28 @@ def _plot_calibration_diagnostics(plot_data, cal, calib_path):
 
 
 def _compute_bisector(xx, yy, eps=1e-12):
-    """Compute least-squares bisector fit for y = a + b*x.
+    """Compute a least-squares bisector fit for ``y = a + b*x``.
 
-    Uses the Isobe+ 1990 bisector method: average of Y|X and X|Y regressions.
+    Uses the Isobe et al. 1990 bisector method: fits the ordinary
+    least-squares regressions of ``y`` on ``x`` and of ``x`` on ``y``,
+    then takes the line bisecting the two slopes in angle space.
 
-    Returns (a, b) intercept and slope.
+    Parameters
+    ----------
+    xx, yy : :class:`numpy.ndarray`
+        Data to fit, same length.
+    eps : :class:`float`
+        Numerical floor used when the ``x`` on ``y`` slope is
+        near-degenerate (``|denom| < eps``), in which case the
+        intersection point falls back to the sample means.
+
+    Returns
+    -------
+    a : :class:`float`
+        Bisector intercept.
+    b : :class:`float`
+        Bisector slope.
+
     """
     A1 = np.column_stack([np.ones_like(xx), xx])
     coef1 = np.linalg.lstsq(A1, yy, rcond=None)[0]
@@ -325,12 +533,61 @@ def _compute_bisector(xx, yy, eps=1e-12):
 
 def _fit_channel_bisector_robust(x_log, sx_log, y_log, sy_log, Z,
                                   r26_min_anchor=15.0, clip_sigma=3.0, max_iter=5):
-    """Robust symmetric fit for y = a + b*x in log-space.
+    """Robust symmetric fit for ``y = a + b*x`` in log-space, with
+    iterative sigma-clipping.
 
-    Uses least-squares bisector with iterative sigma clipping on orthogonal
-    residuals. Covariates Z are currently ignored.
+    Fits the bisector (:func:`_compute_bisector`) between ``x_log`` and
+    ``y_log``, restricted to points with ``y_log >= log(r26_min_anchor)``
+    if given; iteratively re-fits after clipping points whose orthogonal
+    residual exceeds ``clip_sigma`` robust-sigma (MAD-based), up to
+    ``max_iter`` times or until the clip mask stops changing. Falls back
+    to ordinary least squares if fewer than 3 points survive clipping.
+    The intrinsic scatter ``tau`` is estimated by subtracting the mean
+    measurement variance (from ``sx_log``/``sy_log``) from the total
+    residual scatter, floored at 0; the default per-object uncertainty
+    ``sigma_obs_default`` falls back to the median ``sx_log`` (if
+    available) or an inflated residual scale otherwise.
 
-    Returns (beta, tau, sigma_obs_default) where beta = [a, b].
+    Notes
+    -----
+    ``Z`` is accepted but not yet referenced anywhere in this function's
+    body. Covariate support is scaffolded through the calling API
+    (:func:`calibrate_from_table`'s ``covariates``/``covariate_names``
+    parameters) but the covariate term of the fit is not yet
+    implemented here -- adding it is future work, not a bug to fix; see
+    the Notes in :func:`calibrate_from_table` for the full picture and
+    confirmation that no SGA-2025 production calibration has used
+    covariates to date.
+
+    Parameters
+    ----------
+    x_log, y_log : :class:`numpy.ndarray`
+        Log-space channel and anchor (R26) values.
+    sx_log, sy_log : :class:`numpy.ndarray` or None
+        Log-space 1-sigma uncertainties on ``x_log``/``y_log``; either
+        may be None.
+    Z : :class:`numpy.ndarray` or None
+        Unused (see Notes).
+    r26_min_anchor : :class:`float`, optional
+        Minimum anchor value (linear arcsec) below which points are
+        excluded from the fit; disabled if None or <= 0.
+    clip_sigma : :class:`float`
+        Sigma-clipping threshold on orthogonal residuals, in robust
+        (MAD-based) sigma units.
+    max_iter : :class:`int`
+        Maximum number of sigma-clipping iterations.
+
+    Returns
+    -------
+    beta : :class:`numpy.ndarray`
+        ``[a, b]`` bisector fit coefficients; ``[0., 1.]`` if fewer than
+        3 finite (and, if applicable, anchor-cut) points are available.
+    tau : :class:`float`
+        Estimated intrinsic (log-space) scatter, floored at 0.
+    sigma_obs_default : :class:`float`
+        Default log-space measurement uncertainty for objects missing a
+        per-object error in this channel.
+
     """
     eps = 1e-12
 
@@ -422,41 +679,74 @@ def calibrate_from_table(tbl, calib_path, covariates=None, covariate_names=None,
     """Fit R26 calibration coefficients from a table of isophotal radii.
 
     Uses objects with valid R26_R measurements as anchors to establish the
-    relationship log(R26) = a + b*log(R_channel) for each photometric channel.
-    Fitting uses robust bisector regression (Isobe+ 1990) with iterative
-    sigma-clipping to reject outliers.
+    relationship ``log(R26) = a + b*log(R_channel)`` for each photometric
+    channel. Fitting uses robust bisector regression (Isobe et al. 1990)
+    with iterative sigma-clipping to reject outliers (see
+    :func:`_fit_channel_bisector_robust`). Writes the resulting
+    :class:`Calibration` to ``calib_path`` (:func:`save_calibration`) and
+    a diagnostic figure alongside it (:func:`_plot_calibration_diagnostics`).
 
     Parameters
     ----------
-    tbl : astropy.table.Table
-        Input table with columns R{TH}_{BAND} and R{TH}_ERR_{BAND} for each
-        threshold (23, 24, 25, 26) and band (G, R, I, Z). Must include R26_R
-        and R26_ERR_R for anchor selection. May include SMA_MOMENT.
-    calib_path : str
+    tbl : :class:`~astropy.table.Table`
+        Input table with columns ``R{TH}_{BAND}`` and
+        ``R{TH}_ERR_{BAND}`` for each threshold (23, 24, 25, 26) and band
+        (G, R, I, Z). Must include ``R26_R`` and ``R26_ERR_R`` for anchor
+        selection. May include ``SMA_MOMENT``.
+    calib_path : :class:`str`
         Output path for the TSV calibration file.
-    covariates : ndarray, optional
-        Additional covariates for the fit (not currently used).
-    covariate_names : list of str, optional
-        Names for the covariates.
-    r26_min_anchor : float, optional
+    covariates : :class:`numpy.ndarray`, optional
+        Additional covariates for the fit. Accepted but not actually
+        applied -- see Notes.
+    covariate_names : :class:`list` of :class:`str`, optional
+        Names for the covariates; stored on each resulting
+        :class:`ChannelCalib` but otherwise unused (see Notes).
+    r26_min_anchor : :class:`float`, optional
         Minimum R26_R radius (arcsec) for anchor selection. Objects with
         smaller R26 are excluded from calibration. Default 10 arcsec.
 
     Returns
     -------
-    Calibration
+    :class:`Calibration`
         Calibration object containing fitted coefficients for each channel.
 
     Notes
     -----
-    The calibration model is:
+    The calibration model is::
+
         log(R26) = a + b * log(R_channel) + tau * N(0,1)
 
-    where tau is the intrinsic scatter. For each channel, the output includes:
-        a, b : regression coefficients
-        tau : intrinsic scatter in log-space
-        sigma_obs_default : default measurement uncertainty for objects
-            missing per-object errors
+    where ``tau`` is the intrinsic scatter. For each channel, the output
+    includes ``a``, ``b`` (regression coefficients), ``tau`` (intrinsic
+    scatter in log-space), and ``sigma_obs_default`` (default measurement
+    uncertainty for objects missing per-object errors).
+
+    The ``covariates``/``covariate_names`` parameters are scaffolding
+    for a possible future extension of the model to
+    ``log(R26) = a + b*log(R_channel) + c . covariates`` (e.g. to
+    absorb an inclination- or surface-brightness-dependent term into
+    the channel calibration). That extension is not yet implemented: a
+    local ``Z`` array is computed from ``covariates`` but the call to
+    :func:`_fit_channel_bisector_robust` always passes ``Z=None``
+    regardless, and that function's own ``Z`` parameter is unused in
+    its body in any case. As a result ``beta`` from the fit only ever
+    has 2 elements (``a``, ``b``), so every :class:`ChannelCalib.c`
+    produced here is an empty array, and the covariate term in
+    :func:`_infer_one` is correspondingly never exercised.
+
+    Confirmed unused in the SGA-2025 production pipeline: neither
+    ``archive/bin-SGA2025/SGA2025-calibrate-r26`` (the calibration
+    driver script) nor :func:`SGA.SGA.SGA_diameter` (the production
+    caller of :func:`infer_best_r26`) ever passes ``covariates``, and
+    every row of the shipped
+    ``py/SGA/data/SGA2025/r26-calibration-coeff.tsv`` has
+    ``covar_names = []``/``c_json = []``. To actually use covariates,
+    the fit in :func:`_fit_channel_bisector_robust` would need a real
+    multivariate regression against ``Z`` (currently it only performs
+    the univariate bisector fit); the plumbing for storing/applying the
+    resulting coefficients is already in place in
+    :class:`ChannelCalib`/:func:`_infer_one`.
+
     """
     table, sigma, N = _collect_channels_from_table(tbl)
 
@@ -527,12 +817,56 @@ def calibrate_from_table(tbl, calib_path, covariates=None, covariate_names=None,
 
 def _infer_one(measurements, sigmas, cal, var_floor_log=1e-4, covars_row=None,
                include_direct_r26=True):
-    """Combine channels to infer log(R_r26) for a single object.
+    """Combine calibrated channel estimates to infer ``log(R26)`` for a
+    single object.
 
-    Uses inverse-variance weighting of calibrated channel estimates.
-    Falls back to 'moment' channel only if no isophotal channels available.
+    If ``include_direct_r26`` and a valid direct ``'r26'`` measurement
+    with a valid error is available, includes it directly (not run
+    through a channel calibration). Otherwise, identifies the deepest
+    available isophotal threshold and applies each calibrated channel
+    at that threshold (see :func:`ChannelCalib`) to predict
+    ``log(R26)``, propagating measurement error and adding the
+    channel's intrinsic scatter ``tau`` in quadrature. Falls back to
+    non-threshold channels (e.g. ``'moment'``) only if no isophotal
+    channel estimate could be formed. Combines all resulting estimates
+    by inverse-variance weighting.
 
-    Returns (y_hat, sigma_y, weight_dict).
+    Parameters
+    ----------
+    measurements : :class:`dict`
+        Channel name -> linear radius (arcsec) for this object, as
+        extracted from :func:`_collect_channels_from_table` (single-row
+        slice).
+    sigmas : :class:`dict`
+        Channel name -> linear 1-sigma error (arcsec), or None.
+    cal : :class:`Calibration`
+        Calibration providing each channel's coefficients.
+    var_floor_log : :class:`float`
+        Minimum log-space variance floor applied to every channel
+        estimate (including the direct ``'r26'`` term), to prevent a
+        single near-zero-error measurement from dominating the
+        inverse-variance combination.
+    covars_row : :class:`numpy.ndarray`, optional
+        Covariate vector for this object, required only if a channel's
+        ``ChannelCalib.c`` is non-empty (in the current pipeline this
+        never happens -- see the Notes in :func:`calibrate_from_table`
+        -- so this parameter has no practical effect today).
+    include_direct_r26 : :class:`bool`
+        If True, include the direct ``'r26'`` measurement (when valid)
+        in the inverse-variance combination alongside calibrated
+        estimates from other channels.
+
+    Returns
+    -------
+    y_hat : :class:`float`
+        Inverse-variance-weighted estimate of ``log(R26)``; ``numpy.nan``
+        if no channel estimate could be formed.
+    sigma_y : :class:`float`
+        1-sigma uncertainty on ``y_hat``; ``numpy.nan`` if no estimate.
+    w_dict : :class:`dict`
+        Channel name -> inverse-variance weight used in the combination;
+        empty if no estimate.
+
     """
     y_list, v_list, w_dict = [], [], {}
 
@@ -557,6 +891,15 @@ def _infer_one(measurements, sigmas, cal, var_floor_log=1e-4, covars_row=None,
             w_dict["r26"] = w
 
     def _add_channel(name):
+        """Apply channel ``name``'s calibration to ``measurements``/
+        ``sigmas`` and append the resulting ``log(R26)`` estimate (with
+        its variance) to the enclosing ``y_list``/``v_list``/``w_dict``,
+        for :func:`_infer_one`.
+
+        No-op if the channel's measurement is missing, non-finite, or
+        non-positive.
+
+        """
         ch = cal.channels[name]
         x_lin = measurements[name]
         if not np.isfinite(x_lin) or x_lin <= 0.0:
@@ -628,22 +971,32 @@ def infer_best_r26(tbl, calib_path=None, covariates=None, add_columns=False,
                    include_direct_r26=True):
     """Infer D26 diameters by applying calibration to available channels.
 
-    For each object, applies the calibration model log(R26) = a + b*log(R_channel)
-    to all available channels at the deepest isophotal threshold, then combines
+    For each object, applies the calibration model
+    ``log(R26) = a + b*log(R_channel)`` to all available channels at the
+    deepest isophotal threshold (see :func:`_infer_one`), then combines
     estimates using inverse-variance weighting.
 
     Parameters
     ----------
-    tbl : astropy.table.Table
-        Input table with columns R{TH}_{BAND} and optionally R{TH}_ERR_{BAND}.
-        May include SMA_MOMENT as a fallback channel.
-    calib_path : str, optional
+    tbl : :class:`~astropy.table.Table`
+        Input table with columns ``R{TH}_{BAND}`` and optionally
+        ``R{TH}_ERR_{BAND}``. May include ``SMA_MOMENT`` as a fallback
+        channel.
+    calib_path : :class:`str`, optional
         Path to calibration TSV file. If None, uses the packaged default.
-    covariates : ndarray, optional
-        Covariate values if the calibration includes covariates.
-    add_columns : bool, optional
-        If True, add D26, D26_ERR, D26_REF, D26_WEIGHT columns to tbl.
-    include_direct_r26 : bool, optional
+    covariates : :class:`numpy.ndarray`, optional
+        Covariate values, for a calibration fit with covariates (see the
+        Notes in :func:`calibrate_from_table`). Raises
+        :class:`ValueError` if the calibration expects covariates
+        (``ChannelCalib.c`` non-empty for any channel) and none are
+        given here; in practice this check never triggers against the
+        SGA-2025 production calibration, since covariate fitting is not
+        yet implemented in :func:`calibrate_from_table` (no shipped
+        calibration populates ``c``).
+    add_columns : :class:`bool`, optional
+        If True, add ``D26``, ``D26_ERR``, ``D26_REF``, ``D26_WEIGHT``
+        columns to ``tbl``.
+    include_direct_r26 : :class:`bool`, optional
         If True (default) and R26_R is available with valid errors, include
         the direct R26_R measurement in the inverse-variance weighted
         combination alongside calibrated estimates from other bands (i26, z26,
@@ -651,23 +1004,32 @@ def infer_best_r26(tbl, calib_path=None, covariates=None, add_columns=False,
 
     Returns
     -------
-    D26 : ndarray
+    D26 : :class:`numpy.ndarray`
         Inferred diameter at 26 mag/arcsec^2 in arcmin.
-    D26_ERR : ndarray
+    D26_ERR : :class:`numpy.ndarray`
         1-sigma uncertainty on D26 in arcmin.
-    D26_REF : ndarray
+    D26_REF : :class:`numpy.ndarray`
         Channel name that contributed highest weight for each object.
-    D26_WEIGHT : ndarray
+    D26_WEIGHT : :class:`numpy.ndarray`
         Weight of the highest-contributing channel.
+
+    Raises
+    ------
+    ValueError
+        If the calibration expects covariates but ``covariates`` is None
+        (see above; not reachable with calibrations from
+        :func:`calibrate_from_table`).
 
     Notes
     -----
     Channel selection logic:
-    1. Identify the deepest available isophotal threshold for each object
-    2. Use only channels at that threshold (e.g., if r25 exists but r26 doesn't,
-       use all *25 channels but not *24 or *23)
-    3. If no isophotal channels are available, fall back to 'moment' channel
-    4. Combine estimates via inverse-variance weighting
+
+    1. Identify the deepest available isophotal threshold for each object.
+    2. Use only channels at that threshold (e.g., if r25 exists but r26
+       doesn't, use all *25 channels but not *24 or *23).
+    3. If no isophotal channels are available, fall back to the
+       ``'moment'`` channel.
+    4. Combine estimates via inverse-variance weighting.
 
     The variance for each channel estimate includes both measurement error
     (propagated through the calibration slope) and intrinsic scatter (tau).

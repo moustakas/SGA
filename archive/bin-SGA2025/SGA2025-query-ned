@@ -1,27 +1,50 @@
 #!/usr/bin/env python
 
-"""Query NED with an external SGA2025 sample.
+"""Query NED (NASA/IPAC Extragalactic Database) in bulk for a set of
+external catalogs (HyperLeda, NED-LVS, LVD), by object name or by sky
+position, and gather/clean the results into the ``NEDbyname-*``/
+``NEDbycoord-*`` FITS files consumed by ``SGA.parent.build_parent_nocuts``.
 
-SGA2025-query-ned --catalog HyperLeda-galaxies --query-byname
-SGA2025-query-ned --catalog HyperLeda-galaxies --gather-byname
-SGA2025-query-ned --catalog HyperLeda-galaxies-coords --query-bycoord
-SGA2025-query-ned --catalog HyperLeda-galaxies-coords --gather-bycoord
+Two-step workflow per catalog: ``--query-*`` submits batched web
+queries to NED and caches the raw responses to disk; ``--gather-*``
+parses those cached responses, applies catalog-specific cleanup, and
+writes the final FITS output. Re-running ``--query-*`` skips any query
+file that already exists (unless ``--overwrite``), so it is safe to
+interrupt and resume. The ``-coords`` catalog variants are a *second*
+pass, run after the byname pass, to positionally resolve objects whose
+name NED could not recognize.
 
-SGA2025-query-ned --catalog HyperLeda-multiples --query-byname
-SGA2025-query-ned --catalog HyperLeda-multiples --gather-byname
-SGA2025-query-ned --catalog HyperLeda-multiples-coords --query-bycoord
-SGA2025-query-ned --catalog HyperLeda-multiples-coords --gather-bycoord
+Example invocations, in the order they were actually run for SGA-2025::
 
-SGA2025-query-ned --catalog HyperLeda-noobjtype --query-byname
-SGA2025-query-ned --catalog HyperLeda-noobjtype --gather-byname
-SGA2025-query-ned --catalog HyperLeda-noobjtype-coords --query-bycoord
-SGA2025-query-ned --catalog HyperLeda-noobjtype-coords --gather-bycoord
+    SGA2025-query-ned --catalog HyperLeda-galaxies --query-byname
+    SGA2025-query-ned --catalog HyperLeda-galaxies --gather-byname
+    SGA2025-query-ned --catalog HyperLeda-galaxies-coords --query-bycoord
+    SGA2025-query-ned --catalog HyperLeda-galaxies-coords --gather-bycoord
 
-SGA2025-query-ned --catalog LVD --query-byname
-SGA2025-query-ned --catalog LVD --gather-byname
+    SGA2025-query-ned --catalog HyperLeda-multiples --query-byname
+    SGA2025-query-ned --catalog HyperLeda-multiples --gather-byname
+    SGA2025-query-ned --catalog HyperLeda-multiples-coords --query-bycoord
+    SGA2025-query-ned --catalog HyperLeda-multiples-coords --gather-bycoord
 
-SGA2025-query-ned --catalog NEDLVS --query-byname
-SGA2025-query-ned --catalog NEDLVS --gather-byname
+    SGA2025-query-ned --catalog HyperLeda-noobjtype --query-byname
+    SGA2025-query-ned --catalog HyperLeda-noobjtype --gather-byname
+    SGA2025-query-ned --catalog HyperLeda-noobjtype-coords --query-bycoord
+    SGA2025-query-ned --catalog HyperLeda-noobjtype-coords --gather-bycoord
+
+    SGA2025-query-ned --catalog LVD --query-byname
+    SGA2025-query-ned --catalog LVD --gather-byname
+
+    SGA2025-query-ned --catalog NEDLVS --query-byname
+    SGA2025-query-ned --catalog NEDLVS --gather-byname
+
+Notes
+-----
+``main()``'s ``--catalog`` choices include ``'custom-external'``, but
+:func:`read_catalog`'s dispatch has no matching branch for it -- it
+falls through to the ``case _: raise NotImplementedError`` default.
+Selecting ``--catalog custom-external`` is accepted by argparse but
+always fails at runtime; it appears the custom-external catalog was
+never actually queried against NED via this script.
 
 """
 import os, re, time, pdb
@@ -52,7 +75,35 @@ from SGA.parent import parent_datamodel
 
 
 def readone_byname(queryfile):
-    """Read one file.
+    """Parse one cached NED "query by object name" (``gmd``) response
+    file into a table.
+
+    NED's bulk-query response is a fixed-width, ``|``-delimited text
+    format with a 17-line header and 4-line footer; a handful of known
+    stray ``|`` characters inside specific objects' free-text notes
+    (hardcoded by ``PGC`` name, e.g. PGC006041, PGC2822076) are patched
+    before splitting each row on ``|``. Returns an empty table if NED's
+    "no input names recognized" message is present.
+
+    Parameters
+    ----------
+    queryfile : :class:`str`
+        Path to a cached NED byname query response file.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Parsed response with ``OBJNAME``, ``OBJNAME_NED``, ``OBJTYPE``,
+        ``OBJECT_NOTE``, ``ESSENTIAL_NOTE``, ``RA``, ``DEC``, ``Z``,
+        ``MORPH``, ``BASIC_MORPH``, and per-source-catalog
+        magnitude/diameter/axis-ratio/PA columns (SDSS, RC3, 2MASS,
+        ESO); empty if NED recognized no input names.
+
+    Raises
+    ------
+    ValueError
+        If a row's field count doesn't match the expected column count,
+        or a numeric field fails to parse.
 
     """
     skip_head = 17
@@ -190,7 +241,45 @@ def readone_byname(queryfile):
 
 
 def readone_bycoord(queryfile, maxsep=3.):
-    """Read one file.
+    """Parse one cached NED "query by coordinates" (``nnd``) response
+    file into a table.
+
+    Same fixed-width, ``|``-delimited parsing approach as
+    :func:`readone_byname`, but position queries additionally return
+    ``INPUT_POSITION``/``SEPARATION`` columns (one row per NED match
+    within ``maxsep`` of each queried position -- an input position
+    with no match gets no row at all). Rows with a blank
+    ``INPUT_POSITION`` (a NED formatting quirk where the value is only
+    printed once per group of matches) are back-filled from the
+    preceding row. After parsing, drops rows where the actual
+    NED-vs-input coordinate separation exceeds ``maxsep * 1.1`` -- a
+    defensive check for a NED behavior where a formally "duplicate"
+    input position is dropped but subsequent, unrelated positions still
+    get a match with a stale/incorrect ``INPUT_POSITION`` echoed back
+    (see the inline example, ``WISEA J022352.66-000937.8``).
+
+    Parameters
+    ----------
+    queryfile : :class:`str`
+        Path to a cached NED bycoord query response file.
+    maxsep : :class:`float`
+        Search radius used for the original query, arcsec; also used
+        (with a 10% margin) to sanity-check returned separations.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Parsed response with ``INPUT_POSITION``, ``INPUT_RA``,
+        ``INPUT_DEC``, ``SEPARATION``, ``OBJNAME_NED``, ``OBJTYPE``,
+        ``OBJECT_NOTE``, ``ESSENTIAL_NOTE``, ``RA``, ``DEC``, plus the
+        same per-source-catalog columns as :func:`readone_byname`;
+        empty if NED found no matches for any input position.
+
+    Raises
+    ------
+    ValueError
+        If a row's field count doesn't match the expected column count,
+        or a numeric field fails to parse.
 
     """
     skip_head = 17
@@ -362,7 +451,30 @@ def readone_bycoord(queryfile, maxsep=3.):
 
 
 def build_url_byname(objnames, linebreak='%0D%0A'):
+    """Build a NED "Gateway to the Multi-object Data service" (``gmd``)
+    bulk query URL for a batch of object names.
 
+    Requests cross-IDs, position, object type, redshift, and basic
+    magnitude/size/morphology data, restricted to a fixed set of source
+    catalogs (SDSS, RC3, 2MASS via the ``gphotoms_CON``/``diamdat_CON``
+    codes).
+
+    Parameters
+    ----------
+    objnames : array-like of :class:`str`
+        Object names to query (should already be NED-friendly, see
+        :func:`SGA.external.nedfriendly_hyperleda`/
+        :func:`SGA.external.nedfriendly_lvd`).
+    linebreak : :class:`str`
+        URL-encoded line-break sequence used to separate names in the
+        query payload.
+
+    Returns
+    -------
+    :class:`str`
+        The complete query URL.
+
+    """
     from urllib.parse import quote # make the galaxy name http-safe
 
     uplist = '+' + ''.join([f'{quote(obj)}{linebreak}' for obj in objnames])
@@ -379,7 +491,29 @@ def build_url_byname(objnames, linebreak='%0D%0A'):
 
 
 def build_url_bycoord(ras, decs, linebreak='%0D%0A', sep=3.):
+    """Build a NED "Nearest-Neighbor by coordinates" (``nnd``) bulk
+    query URL for a batch of sky positions.
 
+    Same data request as :func:`build_url_byname` (cross-IDs, position,
+    object type, redshift, basic photometry/size/morphology), but
+    searching by position within ``sep`` arcsec instead of by name.
+
+    Parameters
+    ----------
+    ras, decs : array-like of :class:`float`
+        Query positions, degrees.
+    linebreak : :class:`str`
+        URL-encoded line-break sequence used to separate positions in
+        the query payload.
+    sep : :class:`float`
+        Search radius, arcsec.
+
+    Returns
+    -------
+    :class:`str`
+        The complete query URL.
+
+    """
     uplist = '+' + ''.join([f'{np.round(ra, 10)}+{np.round(dec, 10)}{linebreak}' for ra, dec in zip(ras, decs)])
 
     url = f'https://ned.ipac.caltech.edu/cgi-bin/nnd?uplist={uplist}&sr_arcsec={sep}&delimiter=bar&NO_LINKS=1' + \
@@ -393,7 +527,36 @@ def build_url_bycoord(ras, decs, linebreak='%0D%0A', sep=3.):
 
 
 def read_catalog(catalog):
-    """Read a catalog.
+    """Read the external catalog to be queried against NED, resolving
+    which variant (byname or the coords-only-for-unresolved-names
+    follow-up) is requested.
+
+    For each ``*-coords`` variant, first reads the full source catalog,
+    then reads the corresponding already-gathered ``NEDbyname-*`` FITS
+    output and restricts to the subset of rows *not* successfully
+    resolved by name (excluding ``OBJECT_NOTE != ''`` rows, i.e. NED
+    duplicate-match warnings, from the "resolved" set) -- these are the
+    objects worth re-querying by position.
+
+    Parameters
+    ----------
+    catalog : :class:`str`
+        Catalog identifier (case-insensitive), one of
+        ``'hyperleda-galaxies'``, ``'hyperleda-galaxies-coords'``,
+        ``'hyperleda-multiples'``, ``'hyperleda-multiples-coords'``,
+        ``'hyperleda-noobjtype'``, ``'hyperleda-noobjtype-coords'``,
+        ``'nedlvs'``, ``'lvd'``. Note: ``'custom-external'`` is accepted
+        by the CLI (see module Notes) but has no branch here.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        The catalog (or coords-only subset) to query.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``catalog`` doesn't match any known case.
 
     """
     match catalog.lower():
@@ -472,7 +635,53 @@ def read_catalog(catalog):
 
 
 def query_ned(catalog, maxsep=3., byname=True, bycoord=False, overwrite=False):
-    """Query NED either by name or by coordinates.
+    """Submit batched bulk queries to NED, either by object name or by
+    coordinates, caching each response to disk.
+
+    Splits ``catalog`` (via :func:`read_catalog`) into RA-slice
+    subdirectories (via :func:`SGA.SGA.get_raslice`) and, within each
+    slice, into batches of 250 objects per query (NED's practical
+    per-request limit); writes each batch's raw response to
+    ``{sga_dir()}/parent/external/{nedbyname,nedbycoord}-{catalog}/{raslice}/raslice{raslice}-query{N:05d}.txt``,
+    with a per-slice log recording each query file and its URL. Skips
+    any query file that already exists unless ``overwrite``. For
+    byname queries, first converts object names to NED-friendly form
+    (:func:`SGA.external.nedfriendly_hyperleda` for the HyperLeda
+    catalogs, :func:`SGA.external.nedfriendly_lvd` for LVD). If a batch
+    is too large for NED's server (HTTP 414), automatically splits it
+    in half and retries each half separately (see Notes for a bug in
+    the non-414 error path).
+
+    Notes
+    -----
+    On any HTTP error other than 414, the code does
+    ``raise HTTPError(f'Problem with {queryfile}')`` -- but
+    ``urllib.error.HTTPError.__init__`` requires positional
+    ``(url, code, msg, hdrs, fp)`` arguments, not a single string. This
+    raises ``TypeError`` (missing required arguments) instead of the
+    intended ``HTTPError``, masking the actual query failure with an
+    unrelated error.
+
+    Parameters
+    ----------
+    catalog : :class:`str`
+        Catalog identifier, passed to :func:`read_catalog`.
+    maxsep : :class:`float`
+        Search radius, arcsec, for coordinate queries (passed to
+        :func:`build_url_bycoord`); unused for name queries.
+    byname : :class:`bool`
+        If True, query by object name.
+    bycoord : :class:`bool`
+        If True, query by coordinates. Exactly one of ``byname``/
+        ``bycoord`` should be True (whichever is checked first, i.e.
+        ``byname``, wins if both are set).
+    overwrite : :class:`bool`
+        If True, re-run and overwrite any already-cached query files.
+
+    Returns
+    -------
+    None
+        All results are written to disk as a side effect.
 
     """
     cat = read_catalog(catalog)
@@ -578,7 +787,83 @@ def query_ned(catalog, maxsep=3., byname=True, bycoord=False, overwrite=False):
 
 
 def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
-    """Gather the NED query results (either by name or by coordinates).
+    """Parse and merge every cached NED query response for a catalog,
+    apply catalog-specific cleanup, and write the final cross-match
+    FITS file.
+
+    Reads every cached query file under
+    ``{sga_dir()}/parent/external/{nedbyname,nedbycoord}-{catalog}/``
+    (via :func:`readone_byname`/:func:`readone_bycoord`) and stacks them
+    into one table, then applies cleanup specific to ``catalog``
+    (mutually exclusive ``if`` blocks -- only one ever matches, since
+    ``catalog`` is a single string):
+
+    - ``'lvd'``: drops NED "not recognized" rows, matches back to the
+      LVD catalog by (NED-friendly) name, and restores each row's
+      original ``ROW``.
+    - ``'nedlvs'``: matches back to NED-LVS by name and restores
+      ``ROW``; separately writes a ``NEDLVS-resolve-issues.fits``
+      diagnostic of the ~135 objects with a NED resolve issue
+      (duplicate or unrecognized name), then drops those from the main
+      output.
+    - ``'hyperleda-galaxies'``/``'hyperleda-multiples'``/
+      ``'hyperleda-noobjtype'``: drops unrecognized names and NED
+      duplicate-match warnings, reverses the NED-friendly name mangling
+      (:func:`SGA.external.nedfriendly_hyperleda` with ``reverse=True``),
+      hand-corrects one known-bad NED coordinate match
+      (``2MASX J03294710-2901511``, galaxies variant only), and restores
+      ``ALTNAMES``/``PGC``/``ROW`` by matching back to the source
+      catalog by name.
+    - ``'hyperleda-galaxies-coords'``/``'hyperleda-multiples-coords'``/
+      ``'hyperleda-noobjtype-coords'``: deduplicates the input catalog
+      by rounded coordinates (some HyperLeda entries share identical
+      positions with different properties); resolves NED's
+      one-input-position-to-many-candidate-matches ambiguity by
+      building "basic" geometry for every candidate
+      (:func:`SGA.geometry.get_basic_geometry`) and running
+      :func:`SGA.sky.resolve_close` (twice, for the galaxies variant,
+      to catch groups that merge together on the second pass) to pick
+      one match per position; matches the survivors back to the input
+      catalog by rounded coordinate string. The galaxies variant also
+      hand-drops one specific bad cross-match
+      (``WISEA J235146.58+243459.9``, incorrectly matched to
+      Andromeda VI, which is separately recovered via NED-LVS/LVD).
+
+    Writes the cleaned table to
+    ``{sga_dir()}/parent/external/NED{byname,bycoord}-{catalog}_{version}.fits``.
+
+    Notes
+    -----
+    Each ``*-coords`` branch contains a disabled (``if False:``)
+    alternative duplicate-resolution approach, including a locally
+    defined ``dup_indices`` helper, that predates the current
+    ``get_basic_geometry`` + ``resolve_close`` approach; left in place
+    as dead code rather than removed.
+
+    Parameters
+    ----------
+    catalog : :class:`str`
+        Catalog identifier, passed to :func:`read_catalog`.
+    maxsep : :class:`float`
+        Search radius, arcsec, passed to :func:`readone_bycoord` (bycoord
+        queries only).
+    byname : :class:`bool`
+        If True, gather byname query results.
+    bycoord : :class:`bool`
+        If True, gather bycoord query results (``catalog`` must have a
+        ``'coords'`` suffix in its name, or this raises
+        :class:`ValueError`).
+
+    Returns
+    -------
+    None
+        Writes the merged, cleaned catalog to disk as a side effect.
+
+    Raises
+    ------
+    ValueError
+        If ``bycoord=True`` but ``catalog`` doesn't have a ``'coords'``
+        suffix.
 
     """
     cat = read_catalog(catalog)
@@ -808,6 +1093,11 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
 
             # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
             def dup_indices(records_array):
+                """Group indices of repeated elements in an array (dead code; see
+                :func:`gather_query`'s Notes). From
+                https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array.
+
+                """
                 # creates an array of indices, sorted by unique element
                 idx_sort = np.argsort(records_array)
                 # sorts records array so all unique elements are together
@@ -912,6 +1202,11 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
 
             # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
             def dup_indices(records_array):
+                """Group indices of repeated elements in an array (dead code; see
+                :func:`gather_query`'s Notes). From
+                https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array.
+
+                """
                 # creates an array of indices, sorted by unique element
                 idx_sort = np.argsort(records_array)
                 # sorts records array so all unique elements are together
@@ -1022,7 +1317,15 @@ def gather_query(catalog, maxsep=3., byname=True, bycoord=False):
 
 
 def main():
-    """Main wrapper.
+    """Command-line entry point: parse arguments and dispatch to
+    :func:`query_ned` and/or :func:`gather_query`.
+
+    See the module docstring's Notes for a caveat on the
+    ``--catalog custom-external`` choice.
+
+    Returns
+    -------
+    None
 
     """
     import argparse

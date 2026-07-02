@@ -13,6 +13,17 @@ those changes propagate everywhere.
 
 This needs to be in its own file to prevent circular imports with other code.
 
+Notes
+-----
+The ``from SGA.logger import LOGFMT`` statement below is a self-import
+(this *is* ``SGA.logger``) -- it works because ``LOGFMT`` is already
+defined earlier in this same module by the time this line executes
+(Python registers a module in ``sys.modules`` before finishing its
+execution, so a self-import can see names already bound above it), but
+it's redundant (``LOGFMT`` is already in scope without it) and fragile
+to reordering; likely a copy-paste artifact from code that originated
+in a different module.
+
 """
 import sys, logging
 
@@ -26,9 +37,31 @@ from SGA.logger import LOGFMT  # your formatter
 
 
 def hook_legacypipe_and_root(fh, debug=False):
-    """
-    Attach `fh` to legacypipe loggers AND the root logger.
-    Ensures runbrick's basicConfig(stream=stdout) can't add a console handler.
+    """Attach a file handler to the ``legacypipe``/``legacypipe.runbrick``
+    loggers and the root logger, so their output is captured to the
+    same log file as SGA's own logger.
+
+    Adds ``fh`` to the root logger *before* legacypipe's ``runbrick``
+    has a chance to call ``logging.basicConfig(stream=stdout)`` (which
+    is a no-op once the root logger already has a handler), preventing
+    a duplicate console stream. Also routes Python's ``warnings``
+    module output to ``fh``, and stops the ``legacypipe`` loggers from
+    propagating to the root logger (to avoid double-logging once both
+    have ``fh`` attached). Unless ``debug``, removes any pre-existing
+    console (``StreamHandler``) handlers from both the root and
+    legacypipe loggers, so their output only goes to the file.
+
+    Parameters
+    ----------
+    fh : :class:`logging.FileHandler`
+        File handler to attach.
+    debug : :class:`bool`
+        If True, leave any existing console handlers in place (so
+        legacypipe/root output still also appears on the console).
+
+    Returns
+    -------
+    None
 
     """
     # 1) Root: add file handler first so basicConfig is a no-op
@@ -64,7 +97,28 @@ def hook_legacypipe_and_root(fh, debug=False):
 
 
 def unhook_legacypipe_and_root(fh, restore_console=True, debug=False):
-    """Detach `fh` from legacypipe and root; optionally restore a root console handler."""
+    """Detach a file handler from the ``legacypipe``/``py.warnings``/root
+    loggers (undoing :func:`hook_legacypipe_and_root`), optionally
+    restoring a plain console handler on the root logger.
+
+    Parameters
+    ----------
+    fh : :class:`logging.FileHandler`
+        File handler to detach.
+    restore_console : :class:`bool`
+        If True and the root logger has no remaining console
+        (``StreamHandler``) handler, add a fresh one (level DEBUG if
+        ``debug``, else INFO), so non-SGA log output becomes visible on
+        the console again.
+    debug : :class:`bool`
+        Level to use for the restored console handler, if any (see
+        ``restore_console``).
+
+    Returns
+    -------
+    None
+
+    """
     pyw = logging.getLogger('py.warnings')
     if fh in pyw.handlers:
         pyw.removeHandler(fh)
@@ -89,6 +143,35 @@ def unhook_legacypipe_and_root(fh, restore_console=True, debug=False):
 
 
 def setup_logging(logfile, debug=False):
+    """(Re)configure the SGA singleton logger (:data:`log`) to write to
+    a file instead of (or in addition to) the console, and capture
+    ``legacypipe``/Python-``warnings`` output into the same file.
+
+    Removes any existing ``FileHandler``s from :data:`log` first. If
+    ``debug``, leaves console (``StreamHandler``) output in place, bumps
+    it to DEBUG level, and returns without creating a file handler
+    (console-only debug mode). Otherwise, creates a new ``FileHandler``
+    on ``logfile`` (INFO level), attaches it to :data:`log`, hooks it
+    into the legacypipe/root loggers (:func:`hook_legacypipe_and_root`)
+    so ``runbrick`` output lands in the same file, removes
+    :data:`log`'s own console handlers (file-only mode), and routes
+    Python ``warnings`` to the file too.
+
+    Parameters
+    ----------
+    logfile : :class:`str`
+        Path to the log file to create (opened in write/truncate mode).
+    debug : :class:`bool`
+        If True, keep logging to the console at DEBUG level instead of
+        setting up file logging.
+
+    Returns
+    -------
+    :class:`logging.FileHandler` or None
+        The created file handler, or None if ``debug`` (no file handler
+        created).
+
+    """
     # remove any existing FileHandlers
     for h in list(log.handlers):
         if isinstance(h, logging.FileHandler):
@@ -124,17 +207,33 @@ def setup_logging(logfile, debug=False):
 
 
 def getSgaLogger():
-    """Create a logging object unique to the SGA.  Configure it to
-    send its log messages to stdout and to format them identically to
-    the DESIUtil defaults.
+    """Create (or retrieve) the singleton logger unique to SGA,
+    configured to send its log messages to stdout and formatted
+    identically to the DESIUtil defaults.
 
-    Note that every call to this function returns the *same*
-    log object, so will reset its properties including log level.
-    Hence, it should really only be called once at the start
-    of the program, as we do here, to create a singleton
-    log object.
+    Every call to this function returns the *same* underlying
+    ``logging.Logger`` object (Python's ``logging.getLogger('SGA')``
+    is itself a singleton by name), and resets its level and
+    propagation setting each time. It should really only be called
+    once at the start of the program, as is done here at module import
+    time to create the module-level :data:`log` singleton.
 
-    Returns a log object with default level INFO.
+    Notes
+    -----
+    Despite this docstring's earlier claim of "default level INFO",
+    the logger itself is actually set to DEBUG (``log.setLevel(logging.DEBUG)``,
+    "allow everything; handlers decide what to write") -- the effective
+    filtering happens at the handler level (e.g. via
+    :func:`setup_logging`'s file handler, set to INFO), not on the
+    logger itself.
+
+    Returns
+    -------
+    :class:`logging.Logger`
+        The ``'SGA'`` logger, with a stdout ``StreamHandler`` attached
+        (only added the first time, if none exists yet), level DEBUG,
+        and ``propagate=False`` (to avoid duplicate messages via the
+        root logger).
 
     """
     log = logging.getLogger('SGA')

@@ -10,7 +10,27 @@ import numpy as np
 
 
 def viewer_inspect(cat, galaxycolname='GALAXY'):
-    """Write a little catalog that can be uploaded to the viewer.
+    """Write a small FITS catalog of names and coordinates that can be
+    uploaded to the Legacy Survey viewer's "Load Catalog" tool for
+    visual inspection.
+
+    Parameters
+    ----------
+    cat : :class:`astropy.table.Table`
+        Catalog with, at minimum, columns `galaxycolname`, ``RA``, and
+        ``DEC``.
+    galaxycolname : :class:`str`
+        Name of the column in `cat` to rename to ``NAME`` in the
+        output catalog.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Always writes to ``$HOME/tmp/viewer.fits``, overwriting any
+    existing file; the output path is not configurable.
 
     """
     out = cat[galaxycolname, 'RA', 'DEC']
@@ -21,8 +41,35 @@ def viewer_inspect(cat, galaxycolname='GALAXY'):
 
 
 def imagetool_inspect(cat, group=False):
-    """Write a little catalog that can be uploaded to
-    https://yymao.github.io/decals-image-list-tool/
+    """Write a small whitespace-delimited catalog of names and
+    coordinates that can be uploaded to the DECaLS image-list tool
+    (https://yymao.github.io/decals-image-list-tool/) for visual
+    inspection.
+
+    Parameters
+    ----------
+    cat : :class:`astropy.table.Table`
+        Catalog to write out. If `group` is False, must contain
+        ``RA``, ``DEC``, and either ``GALAXY`` or ``NAME`` (used for
+        the object name); if the chosen name column has empty
+        entries, falls back to ``ALTNAME`` (with spaces stripped), or
+        finally the literal string ``'galaxy'``. If `group` is True,
+        must instead contain ``GROUP_NAME``, ``GROUP_RA``, and
+        ``GROUP_DEC``.
+    group : :class:`bool`
+        If True, write group-level columns (``GROUP_NAME``,
+        ``GROUP_RA``, ``GROUP_DEC``) instead of per-galaxy columns.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Always writes to ``$HOME/tmp/inspect.txt``, overwriting any
+    existing file; the output path is not configurable. When `group`
+    is True, the empty-name fallback to ``ALTNAME`` is skipped
+    (``ALTNAME`` is a per-galaxy, not per-group, column).
 
     """
     if group:
@@ -49,9 +96,43 @@ def imagetool_inspect(cat, group=False):
 
 
 def simple_wcs(onegal, radius=None, factor=1.0, pixscale=0.262, zcolumn='Z'):
-    '''Build a simple WCS object for a single galaxy.
+    '''Build a simple tangent-plane (TAN) WCS centered on a single
+    galaxy.
 
-    radius in pixels
+    Parameters
+    ----------
+    onegal : :class:`astropy.table.Row` or similar
+        Single-object record with ``RA``, ``DEC`` and, optionally,
+        `zcolumn`.
+    radius : :class:`float`, optional
+        Half-width of the desired image footprint, in pixels. If not
+        given and `zcolumn` is present in `onegal`, computed from the
+        redshift (see Notes); otherwise defaults to 100 pixels.
+    factor : :class:`float`
+        Multiplicative scale factor applied to (twice) `radius` to
+        set the final image diameter.
+    pixscale : :class:`float`
+        Pixel scale, in arcsec/pixel.
+    zcolumn : :class:`str`
+        Name of the redshift column in `onegal` used to derive
+        `radius` when `radius` is not given.
+
+    Returns
+    -------
+    :class:`astrometry.util.util.Tan`
+        WCS object centered on `onegal`'s coordinates, with image
+        dimensions ``diam x diam`` pixels.
+
+    Notes
+    -----
+    The `radius`-from-redshift branch calls a function
+    ``cutout_radius_kpc`` that is not defined or imported anywhere in
+    this module (nor anywhere else in the package) -- if `radius` is
+    left as ``None`` and `zcolumn` is present in `onegal`, this raises
+    ``NameError``. This function also appears unused elsewhere in the
+    codebase; :func:`SGA.sky.simple_wcs` is a separate, actively-used
+    implementation of the same idea.
+
     '''
     from astrometry.util.util import Tan
 
@@ -69,7 +150,27 @@ def simple_wcs(onegal, radius=None, factor=1.0, pixscale=0.262, zcolumn='Z'):
 
 
 def ccdwcs(ccd):
-    '''Build a simple WCS object for a single CCD table.'''
+    '''Build a tangent-plane (TAN) WCS object from a single CCD's
+    header keywords.
+
+    Parameters
+    ----------
+    ccd : object
+        Single-CCD record exposing ``width``, ``height``, ``crval1``,
+        ``crval2``, ``crpix1``, ``crpix2``, ``cd1_1``, ``cd1_2``,
+        ``cd2_1``, ``cd2_2`` attributes (e.g. a row from a CCDs
+        table).
+
+    Returns
+    -------
+    W : :class:`int`
+        CCD width, in pixels.
+    H : :class:`int`
+        CCD height, in pixels.
+    ccdwcs : :class:`astrometry.util.util.Tan`
+        WCS object built from `ccd`'s header keywords.
+
+    '''
     from astrometry.util.util import Tan
 
     W, H = ccd.width, ccd.height
@@ -80,21 +181,88 @@ def ccdwcs(ccd):
 
 
 def arcsec2kpc(redshift, cosmo=None):
-    """Compute and return the scale factor to convert a physical axis in arcseconds
-    to kpc.
+    """Compute the scale factor to convert a physical axis in
+    arcseconds to kpc, at a given redshift.
+
+    Parameters
+    ----------
+    redshift : :class:`float` or array-like
+        Redshift(s) at which to evaluate the angular-diameter-distance
+        based conversion.
+    cosmo : :class:`astropy.cosmology.FLRW`, optional
+        Cosmology to use. Must be supplied by the caller; there is no
+        internal default (see Notes).
+
+    Returns
+    -------
+    :class:`float` or array-like
+        Conversion factor, in kpc/arcsec, such that a physical size
+        in arcsec times this factor gives the size in kpc.
+
+    Notes
+    -----
+    Despite the ``cosmo=None`` default, this function does not
+    construct a fallback cosmology -- the line that once did so
+    (``cosmo = cosmology()``) is commented out, and no cosmology
+    helper by that name is imported in this module. If called without
+    an explicit `cosmo`, ``cosmo.arcsec_per_kpc_proper(...)`` raises
+    ``AttributeError`` on the ``None`` default. At least one call site
+    (``SGA.qa``) invokes this function without passing `cosmo`.
 
     """
-    #cosmo = cosmology()
     return 1 / cosmo.arcsec_per_kpc_proper(redshift).value # [kpc/arcsec]
 
 
 def statsinbins(xx, yy, binsize=0.1, minpts=10, xmin=None, xmax=None):
-    """Compute various statistics in running bins along the x-axis.
+    """Compute per-bin statistics (mean, median, standard deviation,
+    25th/75th percentiles) of `yy` in fixed-width bins along `xx`.
+
+    Parameters
+    ----------
+    xx : array-like
+        Independent-variable values used to assign bins.
+    yy : array-like
+        Dependent-variable values to summarize within each bin.
+    binsize : :class:`float`
+        Bin width, in the same units as `xx`; used only to set the
+        number of bins (``nbin``), not the bin edges themselves (see
+        Notes).
+    minpts : :class:`int`
+        Minimum number of points a bin must contain to be kept in the
+        output.
+    xmin : :class:`float`, optional
+        Lower edge of the binning range. Defaults to ``xx.min()``.
+    xmax : :class:`float`, optional
+        Upper edge of the binning range. Defaults to ``xx.max()``.
+
+    Returns
+    -------
+    :class:`numpy.ndarray` or None
+        Structured array with fields ``xmean``, ``xmedian``, ``xbin``,
+        ``npts``, ``ymedian``, ``ymean``, ``ystd``, ``y25``, ``y75``,
+        restricted to bins with ``npts > minpts``. Returns None if no
+        bin meets that threshold.
+
+    Notes
+    -----
+    ``nbin`` is computed from ``(nanmax(xx) - nanmin(xx)) / binsize``
+    (i.e. always spans the full data range of `xx`), but the actual
+    bin edges (``_xbin = np.linspace(xmin, xmax, nbin)``) span
+    `xmin`/`xmax` instead -- if `xmin`/`xmax` are supplied and differ
+    from `xx`'s true range, `binsize` no longer accurately describes
+    the resulting bin width. ``npts`` per bin is computed via
+    ``np.count_nonzero(yy[these])``, which counts nonzero *values* of
+    `yy` in the bin, not the number of points in the bin -- a bin
+    containing only ``yy == 0`` entries is reported as ``npts == 0``
+    and dropped by the `minpts` cut. A dead ``if False:`` branch
+    (roughly half the function body) duplicates the live per-bin
+    logic using ``scipy.stats.binned_statistic`` instead of
+    ``np.digitize``; it is unreachable and appears to be an earlier,
+    abandoned implementation.
 
     """
     from scipy.stats import binned_statistic
 
-    # Need an exception if there are fewer than three arguments.
     if xmin == None:
         xmin = xx.min()
     if xmax == None:
@@ -107,18 +275,23 @@ def statsinbins(xx, yy, binsize=0.1, minpts=10, xmin=None, xmax=None):
 
     if False:
         def median(x):
+            """Dead code (unreachable ``if False:`` branch); nan-safe median."""
             return np.nanmedian(x)
 
         def mean(x):
+            """Dead code (unreachable ``if False:`` branch); nan-safe mean."""
             return np.nanmean(x)
 
         def std(x):
+            """Dead code (unreachable ``if False:`` branch); nan-safe standard deviation."""
             return np.nanstd(x)
 
         def q25(x):
+            """Dead code (unreachable ``if False:`` branch); nan-safe 25th percentile."""
             return np.nanpercentile(x, 25)
 
         def q75(x):
+            """Dead code (unreachable ``if False:`` branch); nan-safe 75th percentile."""
             return np.nanpercentile(x, 75)
 
         ystat, bin_edges, _ = binned_statistic(xx, yy, bins=nbin, statistic='median')

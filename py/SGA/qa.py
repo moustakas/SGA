@@ -41,10 +41,35 @@ cols = ['OBJNAME', 'OBJNAME_NED', 'OBJNAME_HYPERLEDA', 'MORPH', 'DIAM_LIT', 'DIA
 
 
 def to_skyviewer_table(cat, diamcol='DIAM'):
-    """
-    Convert SGA catalog to sky viewer format with spatially-cycled colors.
+    """Convert an SGA catalog into the minimal column set expected by
+    the sky-viewer tool, assigning each object a color that cycles
+    spatially (on an ~arcmin scale) so nearby groups/objects are
+    visually distinguishable.
 
-    Colors cycle on ~arcmin scale to distinguish nearby groups.
+    Parameters
+    ----------
+    cat : :class:`astropy.table.Table`
+        Input catalog. Must contain ``OBJNAME``, ``RA``, ``DEC``,
+        `diamcol`, ``BA``, ``PA``; if ``GROUP_RA``/``GROUP_DEC`` are
+        present, those are used for the spatial color-binning instead
+        of ``RA``/``DEC`` (see Notes).
+    diamcol : :class:`str`
+        Name of the diameter column (in arcmin) to convert to a
+        viewer radius (arcsec).
+
+    Returns
+    -------
+    :class:`astropy.table.Table`
+        Table with columns ``name``, ``ra``, ``dec``, ``radius``
+        (arcsec), ``abRatio``, ``posAngle``, ``color``.
+
+    Notes
+    -----
+    When ``GROUP_RA``/``GROUP_DEC`` are present, every member of a
+    group is binned (and thus colored) using the *group* center
+    rather than its own individual position, so all members of one
+    group share a color even though the output table still reports
+    each object's individual ``ra``/``dec``.
 
     """
     # Larger color palette (20-24 colors)
@@ -79,7 +104,40 @@ def to_skyviewer_table(cat, diamcol='DIAM'):
 
 
 def plot_style(font_scale=1.2, paper=False, talk=True):
+    """Configure global seaborn/matplotlib plotting style (font, style
+    context, color palette) for figure generation.
 
+    Parameters
+    ----------
+    font_scale : :class:`float`
+        Scaling factor applied to all font sizes.
+    paper : :class:`bool`
+        If True, use a "paper" context (smaller fonts, ``deep``
+        palette, ``text.usetex`` disabled). Overridden by `talk` if
+        both are True (see Notes).
+    talk : :class:`bool`
+        If True, use a "talk" context (larger fonts, ``deep``
+        palette). Defaults to True, so `paper` has no effect unless
+        `talk` is explicitly set to False (see Notes).
+
+    Returns
+    -------
+    sns : module
+        The configured :mod:`seaborn` module (for convenience, so
+        callers don't need a separate import).
+    colors : :class:`list`
+        The current seaborn color palette, as a list of RGB tuples.
+
+    Notes
+    -----
+    `paper` and `talk` are not mutually exclusive in the code -- if
+    both are True, the `talk` block runs second and silently
+    overrides every setting `paper` made (both set `context`/`palette`
+    to overlapping but not identical values). Since `talk` defaults to
+    True, passing only `paper=True` (without also passing
+    `talk=False`) silently has no effect.
+
+    """
     import seaborn as sns
     rc = {'font.family': 'serif'}#, 'text.usetex': True}
     #rc = {'font.family': 'serif', 'text.usetex': True,
@@ -106,7 +164,15 @@ def plot_style(font_scale=1.2, paper=False, talk=True):
 
 
 def notebook_style():
-    """Apply clean matplotlib style settings for use in Jupyter notebooks."""
+    """Apply a clean set of :data:`matplotlib.rcParams` (figure size,
+    tick direction, font family, DPI) suited for inline display in
+    Jupyter notebooks.
+
+    Returns
+    -------
+    None
+
+    """
     plt.rcParams.update({
         'figure.figsize':  [8., 6.],
         'axes.labelsize':  14,
@@ -125,36 +191,41 @@ def notebook_style():
 def sdss_rgb(imgs, bands, scales=None, m=0.03, Q=20, mnmx=None, clip=True):
     """Convert a list of band images to an RGB array using an arcsinh stretch.
 
-    Default scaling matches the Legacy Survey viewer:
-        g → Blue  (plane 2, scale 6.0)
-        r → Green (plane 1, scale 3.4)
-        i → Red   (plane 0, scale 3.0)
-        z → Red   (plane 0, scale 2.2)
+    Default scaling matches the Legacy Survey viewer::
 
-    For ['g', 'r', 'i', 'z'] a band-mixing scheme is used so that all four
-    bands contribute to all three colour channels.  For any other combination
-    (e.g. ['g', 'r', 'z']) each band maps to a single plane.
+        g -> Blue  (plane 2, scale 6.0)
+        r -> Green (plane 1, scale 3.4)
+        i -> Red   (plane 0, scale 3.0)
+        z -> Red   (plane 0, scale 2.2)
+
+    For ``['g', 'r', 'i', 'z']`` a band-mixing scheme is used so that
+    all four bands contribute to all three color channels. For any
+    other combination (e.g. ``['g', 'r', 'z']``) each band maps to a
+    single plane.
 
     Parameters
     ----------
-    imgs : list of 2-D array
-        Per-band image arrays in the same order as `bands`.
-    bands : list of str
-        Band names from {'g', 'r', 'i', 'z'}.
-    scales : dict, optional
-        Override per-band (plane, scale) tuples.
-    m : float
-        Additive offset applied before arcsinh stretch (default 0.03).
-    Q : float or None
-        Arcsinh softening parameter (default 20).  Set to None to skip.
-    mnmx : (float, float), optional
-        Manual (min, max) linear clip instead of arcsinh normalisation.
-    clip : bool
-        Clip output to [0, 1] (default True).
+    imgs : :class:`list` of :class:`numpy.ndarray`
+        Per-band 2-D image arrays, in the same order as `bands`.
+    bands : :class:`list` of :class:`str`
+        Band names, from ``{'g', 'r', 'i', 'z'}``.
+    scales : :class:`dict`, optional
+        Override per-band ``(plane, scale)`` tuples.
+    m : :class:`float`
+        Additive offset applied before the arcsinh stretch.
+    Q : :class:`float` or None
+        Arcsinh softening parameter. Set to None to skip the stretch
+        entirely (linear scaling only).
+    mnmx : :class:`tuple`, optional
+        Manual ``(min, max)`` linear clip range, used instead of the
+        arcsinh/percentile-style normalization.
+    clip : :class:`bool`
+        If True, clip the output to ``[0, 1]``.
 
     Returns
     -------
-    rgb : (H, W, 3) float32 array
+    :class:`numpy.ndarray`
+        ``(H, W, 3)`` float32 RGB array.
 
     """
     _scales = dict(g=(2, 6.0), r=(1, 3.4), i=(0, 3.0), z=(0, 2.2))
@@ -207,7 +278,16 @@ def sdss_rgb(imgs, bands, scales=None, m=0.03, Q=20, mnmx=None, clip=True):
 
 
 def sbprofile_colors():
-    """Return per-band surface brightness profile colors.
+    """Return the standard per-band color mapping used for surface
+    brightness profile plots (optical grz/i + GALEX FUV/NUV + unWISE
+    W1-W4).
+
+    Returns
+    -------
+    :class:`dict`
+        Mapping of band name (``'g'``, ``'r'``, ``'i'``, ``'z'``,
+        ``'FUV'``, ``'NUV'``, ``'W1'``-``'W4'``) to an RGB color
+        tuple.
 
     """
     import seaborn as sns
@@ -226,6 +306,45 @@ def sbprofile_colors():
 
 def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
              n_samples=1000):
+    """Build an asinh-stretch, percentile-clipped image normalization
+    for display.
+
+    Parameters
+    ----------
+    img : :class:`numpy.ndarray`
+        Image array to normalize (used only to set the value range;
+        not modified).
+    a : :class:`float`
+        Asinh stretch softening parameter, passed to
+        :class:`astropy.visualization.AsinhStretch`.
+    contrast : :class:`float`
+        Unused (see Notes).
+    percentile : :class:`float`
+        Percentile interval (e.g. 95 -> [2.5, 97.5]) used to set the
+        normalization's clip limits, via
+        :class:`astropy.visualization.PercentileInterval`.
+    n_samples : :class:`int`
+        Number of samples used by
+        :class:`astropy.visualization.PercentileInterval` to estimate
+        the percentile range.
+
+    Returns
+    -------
+    :class:`astropy.visualization.ImageNormalize`
+        Normalization object combining the percentile interval and
+        asinh stretch, suitable for passing as ``norm=`` to
+        :func:`matplotlib.pyplot.imshow`.
+
+    Notes
+    -----
+    `contrast` is accepted but never used in the live code path -- it
+    was only referenced in a now-commented-out
+    :class:`astropy.visualization.ZScaleInterval` alternative
+    (``interval = ZScaleInterval(contrast=contrast, ...)``), which has
+    been replaced by :class:`astropy.visualization.PercentileInterval`
+    but the unused parameter was never removed.
+
+    """
     #from astropy.visualization import simple_norm
     from astropy.visualization import (AsinhStretch, ImageNormalize,
                                        PercentileInterval)
@@ -242,8 +361,42 @@ def get_norm(img, a=0.9, contrast=0.25, percentile=95.,
 
 
 def matched_norm(data, model, a=0.9, percentile=95.):
-    # expects a masked array for data!
+    """Build a shared asinh-stretch normalization from the combined
+    value range of a data image and its model, so both can be
+    displayed on the same color scale for direct comparison.
 
+    Parameters
+    ----------
+    data : :class:`numpy.ma.MaskedArray`
+        Data image; must be a masked array (its mask is used to
+        exclude invalid/missing pixels from the percentile
+        calculation -- see Notes).
+    model : :class:`numpy.ndarray`
+        Model image (not required to be masked).
+    a : :class:`float`
+        Asinh stretch softening parameter.
+    percentile : :class:`float`
+        Percentile interval used to set the clip limits, computed
+        jointly over the unmasked `data` values and all of `model`.
+
+    Returns
+    -------
+    S : :class:`astropy.visualization.AsinhStretch`
+        The stretch function itself (callable), returned separately
+        so the caller can apply the identical stretch to other
+        arrays (e.g. both `data` and `model` individually).
+    norm : :class:`matplotlib.colors.Normalize`
+        Linear normalization over the *stretched* value range, to be
+        applied after calling `S` on an array.
+
+    Notes
+    -----
+    `data` is required to be a :class:`numpy.ma.MaskedArray` --
+    ``data.mask`` is accessed unconditionally, so passing a plain
+    :class:`numpy.ndarray` raises ``AttributeError``. `model` has no
+    such requirement and is used in full (unmasked).
+
+    """
     import matplotlib.colors as mcolors
     from astropy.visualization import AsinhStretch, PercentileInterval
 
@@ -268,41 +421,70 @@ def overplot_ellipse(major_axis_arcsec, ba, pa, x0, y0,
                      linewidth=1, alpha=1.0, clip=True,
                      jpeg=False, draw_majorminor_axes=True,
                      label=None):
-    """
-    Draw an ellipse with astronomical position angle on either a
+    """Draw an ellipse with astronomical position angle on either a
     numpy image (y-axis up) or a JPEG/PNG image (y-axis down).
 
     Parameters
     ----------
-    major_axis_arcsec : float
+    major_axis_arcsec : :class:`float`
         Total major-axis length in arcseconds.
-    ba : float
+    ba : :class:`float`
         Minor-to-major axis ratio (b/a).
-    pa : float
+    pa : :class:`float`
         Position angle of the major axis in degrees, measured
         counter-clockwise from +y (North) toward +x (East).
-    x0, y0 : float
+    x0, y0 : :class:`float`
         Center coordinates in pixel units (zero-indexed).
-    height_pixels : int, optional
-        Height of the image in pixels; required if jpeg=True.
-    ax : matplotlib.axes.Axes, optional
-        Axes on which to draw. Defaults to current axes.
-    pixscale : float, default=0.262
+    height_pixels : :class:`int`, optional
+        Height of the image in pixels; required if `jpeg` is True.
+    ax : :class:`matplotlib.axes.Axes`, optional
+        Axes on which to draw. Defaults to the current axes.
+    pixscale : :class:`float`
         Pixel scale in arcsec/pixel.
-    jpeg : bool, default=False
-        If True, image y-axis is inverted (origin upper). y0 will
-        be flipped using height_pixels.
-    draw_majorminor_axes : bool, default=True
-        Whether to draw lines along the major and minor axes.
-    label : str, optional
-        Label for the ellipse (for legends).
+    color : color-like
+        Edge color for the ellipse and axis lines.
+    linestyle : :class:`str`
+        Line style for the ellipse and axis lines.
+    linewidth : :class:`float`
+        Ellipse edge line width (axis lines are drawn at a fixed
+        width of 1, independent of this parameter -- see Notes).
+    alpha : :class:`float`
+        Ellipse transparency (axis lines are always drawn fully
+        opaque -- see Notes).
+    clip : :class:`bool`
+        Whether the ellipse patch is clipped to the axes box
+        (``clip_on``).
+    jpeg : :class:`bool`
+        If True, treat the image as having an inverted (origin
+        upper) y-axis: `y0` is flipped using `height_pixels`, and the
+        position-angle-to-Matplotlib-angle conversion changes sign
+        (see Notes).
+    draw_majorminor_axes : :class:`bool`
+        Whether to also draw line segments along the major and minor
+        axes.
+    label : :class:`str`, optional
+        Label for the ellipse patch (for legends).
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    ValueError
+        If `jpeg` is True and `height_pixels` is not given.
 
     Notes
     -----
-    This implementation uses:
-      ellipse_angle = 90 - pa
-    converting the astronomical PA (CCW from +y) into the
-    Matplotlib Ellipse `angle` (CCW from +x).
+    The astronomical-PA-to-Matplotlib-angle conversion differs by
+    branch: ``ellipse_angle = 90 - pa`` when `jpeg` is True (inverted
+    y-axis), but ``ellipse_angle = pa - 90`` when `jpeg` is False
+    (numpy image, y-axis up) -- both are correct for their respective
+    coordinate conventions, but note the sign/offset is not simply
+    negated between the two branches. `linewidth` and `alpha` control
+    only the main ellipse patch; the optional major/minor axis line
+    segments are always drawn with ``lw=1`` and full opacity,
+    regardless of these parameters.
 
     """
     from matplotlib.patches import Ellipse
@@ -358,10 +540,98 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
                 pngsuffix=None, objname=None, racenter=None, deccenter=None,
                 layers=None, add_title=True, width_arcmin=2., pngdir='.', jpgdir='.',
                 clip=False, verbose=False, overwrite_viewer=False, overwrite=False):
-    """Build QA which shows all the objects in a ~little patch of sky.
+    """Build a QA figure showing one primary object and any nearby
+    catalog matches (`group`) overlaid on a Legacy Survey/unWISE
+    cutout, with arrows/labels pointing to each match and its
+    NED/HyperLeda/LVD cross-match position when it differs from the
+    adopted position.
 
-    primary - parent-style catalog
-    group (optional) - parent-style catalog with additional systems in the field
+    Downloads (or reuses a cached) cutout JPEG by trying, in order,
+    ``ls-dr9``, ``ls-dr11-early`` (dev viewer), ``ls-dr10``, then
+    ``unwise-neo7``, stopping at the first non-empty image.
+
+    Parameters
+    ----------
+    primary : :class:`astropy.table.Table` or :class:`astropy.table.Row`, optional
+        Single-row parent-style catalog entry for the object the
+        cutout is centered on. Required unless `group` is given (in
+        which case ``group[0]`` is used as `primary`).
+    group : :class:`astropy.table.Table`, optional
+        Parent-style catalog of every object to annotate in the field
+        (including `primary`); must contain ``OBJNAME``, ``OBJTYPE``,
+        ``DIAM_LIT``, ``PGC``, ``DIAM_HYPERLEDA``, `racol`, `deccol`,
+        and ``RA_HYPERLEDA``/``DEC_HYPERLEDA``,
+        ``RA_NED``/``DEC_NED``, ``RA_LVD``/``DEC_LVD`` (each using
+        ``-99.`` as a missing-value sentinel). Defaults to a
+        single-row table built from `primary` if not given.
+    racol, deccol : :class:`str`
+        Column names in `group` for the adopted RA/Dec used to
+        position each object's marker.
+    suffix : :class:`str`
+        Suffix used when checking for/writing the cached cutout JPEG
+        filename (``{outname}-{suffix}-{layer}.jpeg``).
+    pngsuffix : :class:`str`, optional
+        Suffix used for the output PNG filename
+        (``{outname}-{pngsuffix}.png``). Defaults to `suffix`.
+    objname : :class:`str`, optional
+        Object name used to build the output filenames and (if
+        `add_title`) the figure title. Defaults to `primary['OBJNAME']`.
+    racenter, deccenter : :class:`float`, optional
+        Cutout center coordinates. Defaults to `primary[racol]`/
+        `primary[deccol]` (see Notes for a partial-default edge case).
+    layers : any, optional
+        Unused (see Notes).
+    add_title : :class:`bool`
+        If True, set the axes title to the object name and coordinates.
+    width_arcmin : :class:`float`
+        Cutout field of view, in arcmin.
+    pngdir : :class:`str`
+        Output directory for the QA PNG.
+    jpgdir : :class:`str`
+        Cache directory for the downloaded cutout JPEG.
+    clip : :class:`bool`
+        Passed to matplotlib's `clip_on`/`annotation_clip` for the
+        per-object markers/arrows/labels, controlling whether
+        off-cutout annotations are drawn.
+    verbose : :class:`bool`
+        If True, print the input `group` table (restricted to the
+        module-level ``cols`` column list) before plotting.
+    overwrite_viewer : :class:`bool`
+        If True, re-download the cutout JPEG even if a cached copy
+        exists, and implies `overwrite` (see Notes).
+    overwrite : :class:`bool`
+        If True, regenerate the output PNG even if it already exists.
+
+    Returns
+    -------
+    :class:`str` or None
+        Path to the written PNG file, or None if the PNG already
+        existed and `overwrite` is False (in which case nothing is
+        written).
+
+    Raises
+    ------
+    ValueError
+        If neither `primary` nor `group` is given.
+
+    Notes
+    -----
+    The `layers` parameter is accepted but immediately overridden --
+    the function unconditionally sets its own local ``layers =
+    ['ls-dr9', 'ls-dr11-early', 'ls-dr10', 'unwise-neo7']`` (and a
+    matching ``surveys`` list) a few lines into the body, so any
+    caller-supplied value has no effect. ``overwrite_viewer=True``
+    forces ``overwrite = True`` as a side effect, so the two flags are
+    not independent despite appearing as separate parameters. If only
+    one of `racenter`/`deccenter` is given (not both, not neither),
+    the ``if racenter is None and deccenter is None:`` guard is False
+    and neither is populated from `primary`, leaving the omitted one
+    as `None` and causing a downstream `TypeError`/`ValueError` when
+    it reaches WCS/pixel-coordinate arithmetic. `verbose` prints
+    ``group[cols]`` using ``cols``, a module-level constant list
+    defined near the top of this file (not a local or parameter) --
+    not a bug, but easy to miss when reading this function in
+    isolation.
 
     """
     import matplotlib.image as mpimg
@@ -378,6 +648,30 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
         pngsuffix = suffix
 
     def get_wcs(racenter, deccenter, width_arcmin=2., survey='ls'):
+        """Build a tangent-plane (TAN) WCS for a cutout centered on
+        `racenter`/`deccenter`, sized for a given survey's pixel scale.
+
+        Parameters
+        ----------
+        racenter, deccenter : :class:`float`
+            Cutout center coordinates, in degrees.
+        width_arcmin : :class:`float`
+            Desired field of view, in arcmin.
+        survey : :class:`str`
+            Either ``'ls'`` (0.262 arcsec/pixel) or ``'unwise'``
+            (2.75 arcsec/pixel); looked up in a small internal
+            ``pix`` dictionary. Any other value raises `KeyError`.
+
+        Returns
+        -------
+        wcs : :class:`astropy.wcs.WCS`
+            WCS for the cutout.
+        width : :class:`int`
+            Cutout width/height, in pixels (square).
+        pixscale : :class:`float`
+            Pixel scale used, in arcsec/pixel.
+
+        """
         pix = {'ls': 0.262, 'unwise': 2.75}
         pixscale = pix[survey]
         width = int(60. * width_arcmin / pixscale)
@@ -401,6 +695,27 @@ def qa_skypatch(primary=None, group=None, racol='RA', deccol='DEC', suffix='grou
 
 
     def get_url(racenter, deccenter, width, layer, dev=False):
+        """Build a Legacy Survey ``jpeg-cutout`` API URL for a given
+        center, size, and imaging layer.
+
+        Parameters
+        ----------
+        racenter, deccenter : :class:`float`
+            Cutout center coordinates, in degrees.
+        width : :class:`int`
+            Cutout width/height, in pixels (square).
+        layer : :class:`str`
+            Legacy Survey imaging layer name (e.g. ``'ls-dr10'``).
+        dev : :class:`bool`
+            If True, use the ``viewer-dev`` endpoint instead of the
+            production ``viewer`` endpoint.
+
+        Returns
+        -------
+        :class:`str`
+            Fully-formed cutout URL.
+
+        """
         if dev:
             viewer = 'viewer-dev'
         else:
@@ -556,7 +871,69 @@ def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=1, nrow=1,
                        pngdir='.', pdffile='multipage-skypatch.pdf', clip=True,
                        verbose=False, overwrite_viewer=False, overwrite=True,
                        cleanup=False):
-    """Call qa_skypatch on a table of sources.
+    """Call :func:`qa_skypatch` for every object in `primaries`
+    (optionally cross-matched against a companion catalog `cat`), then
+    assemble the resulting per-object PNGs into a single multi-page,
+    multi-panel PDF.
+
+    Parameters
+    ----------
+    primaries : :class:`astropy.table.Table`
+        Table of objects to build one :func:`qa_skypatch` figure for
+        each; must contain ``OBJNAME``, ``OBJTYPE``, ``RA``, ``DEC``.
+    cat : :class:`astropy.table.Table`, optional
+        Catalog to spatially cross-match against each row of
+        `primaries` (via ``astrometry.libkd.spherematch.match_radec``,
+        radius `width_arcsec`); matches become that object's `group`
+        argument to :func:`qa_skypatch`. If not given, each object is
+        plotted with no companions (``group=None``).
+    width_arcsec : :class:`float`
+        Cross-match radius (and, converted to arcmin, the
+        :func:`qa_skypatch` cutout field of view), in arcsec.
+    ncol, nrow : :class:`int`
+        Grid layout (columns, rows) of QA panels per PDF page.
+    add_title : :class:`bool`
+        Passed through to :func:`qa_skypatch`.
+    layers : any, optional
+        Unused (see Notes).
+    pngsuffix : :class:`str`
+        Passed through to :func:`qa_skypatch` as its `pngsuffix`.
+    jpgdir : :class:`str`
+        Passed through to :func:`qa_skypatch`; created if missing.
+    pngdir : :class:`str`
+        Passed through to :func:`qa_skypatch`; created if missing.
+    pdffile : :class:`str`
+        Output multi-page PDF path.
+    clip : :class:`bool`
+        Passed through to :func:`qa_skypatch`.
+    verbose : :class:`bool`
+        Passed through to :func:`qa_skypatch`; also prints a blank
+        line after each object.
+    overwrite_viewer : :class:`bool`
+        Passed through to :func:`qa_skypatch`.
+    overwrite : :class:`bool`
+        Passed through to :func:`qa_skypatch`.
+    cleanup : :class:`bool`
+        If True, delete the individual per-object PNGs (and, if
+        `pngdir` happens to also satisfy ``os.path.isfile``, attempt
+        to ``shutil.rmtree`` it -- see Notes) after the PDF is
+        written.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    The `layers` parameter is accepted but never passed to
+    :func:`qa_skypatch` (whose own `layers` parameter is itself dead;
+    see its Notes) -- doubly unused. The `cleanup` block's final
+    check, ``if os.path.isfile(pngdir): shutil.rmtree(pngdir)``, tests
+    `pngdir` (a directory path) with ``os.path.isfile``, which is only
+    True for a *file*, not a directory -- as written this branch can
+    never fire for a normal directory `pngdir`, so the `pngdir` tree
+    itself is never actually removed even when `cleanup` is True
+    (only the individual PNGs are).
 
     """
     from matplotlib.backends.backend_pdf import PdfPages
@@ -635,9 +1012,51 @@ def multipage_skypatch(primaries, cat=None, width_arcsec=75., ncol=1, nrow=1,
 
 def addbar_to_png(jpgfile, barlen, barlabel, imtype, pngfile, scaledfont=True,
                   pixscalefactor=1.0, fntsize=20, imtype_fntsize=20):
-    """Support routine for routines in html.
+    """Annotate a JPEG cutout with a scale bar (with label) and/or an
+    image-type label, and write the result out as a PNG. Support
+    routine used by :mod:`SGA.html`.
 
-    fntsize - only used if scaledfont=False
+    Parameters
+    ----------
+    jpgfile : :class:`str`
+        Path to the input JPEG image.
+    barlen : :class:`float` or None
+        Scale-bar length, in pixels (scaled by `pixscalefactor`). If
+        falsy (e.g. 0 or None), no scale bar/label is drawn.
+    barlabel : :class:`str`
+        Text label drawn centered under the scale bar.
+    imtype : :class:`str` or None
+        Image-type text label (e.g. ``'model'``) drawn in the
+        lower-left corner. If falsy, no label is drawn.
+    pngfile : :class:`str`
+        Output PNG path.
+    scaledfont : :class:`bool`
+        If True, derive `fntsize`/`imtype_fntsize` from the image
+        width (overriding whatever was passed in); if False, use the
+        given `fntsize`/`imtype_fntsize` values as-is.
+    pixscalefactor : :class:`float`
+        Scale factor applied to `barlen` and (when `scaledfont`) to
+        the derived font sizes -- used to keep the bar/label
+        proportionally sized across images with different pixel
+        scales.
+    fntsize : :class:`int`
+        Font size for the scale-bar label. Only used as given if
+        `scaledfont` is False.
+    imtype_fntsize : :class:`int`
+        Font size for the `imtype` label. Only used as given if
+        `scaledfont` is False.
+
+    Returns
+    -------
+    :class:`str`
+        `pngfile` (echoed back for convenience/chaining).
+
+    Notes
+    -----
+    Uses the module-level ``fonttype`` (``SGA/data/Georgia.ttf``,
+    defined near the top of this file) for both labels; there is no
+    per-call font override.
+
     """
     from PIL import Image, ImageDraw, ImageFont
 
@@ -680,11 +1099,66 @@ def addbar_to_png(jpgfile, barlen, barlabel, imtype, pngfile, scaledfont=True,
 
 
 def qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=False, png=None):
-    """For the SGA, display the maskbits image with some additional information
-    about the catalog.
+    """Build a 3-panel QA figure for one brick/group's maskbits: the
+    color mosaic, the raw maskbits image, and a source-scatter panel,
+    with each fitted galaxy's R(26) and (if available) HyperLeda
+    isophotal ellipses overplotted on all three.
 
-    colorblind-friendly colors are from
-    https://twitter.com/rachel_kurchin/status/1229567059694170115
+    Parameters
+    ----------
+    mask : :class:`numpy.ndarray`
+        2D maskbits image to display in the middle panel.
+    tractor : :class:`astropy.table.Table`
+        Tractor catalog for the brick/group, with ``BX``, ``BY``,
+        ``RA``, ``DEC``, ``FLUX_R`` columns; sources are scattered on
+        the third panel, scaled in size by ``FLUX_R`` for objects
+        that fall inside each fitted galaxy's ellipse.
+    ellipsefitall : :class:`list`
+        List of per-galaxy ellipse-fitting result dicts, each with
+        ``ra_moment``, ``dec_moment``, ``pa_moment``, ``eps_moment``,
+        ``x0_moment``, ``y0_moment``, ``refpixscale``, and, optionally,
+        ``d25_leda``/``ba_leda``/``pa_leda`` (see Notes).
+    colorimg : :class:`PIL.Image.Image`
+        Color mosaic image (e.g. grz JPEG) to display in the first
+        panel and to draw ellipse overlays onto in-place via
+        :func:`draw_ellipse_on_png`.
+    largegalaxy : :class:`bool`
+        Unused (see Notes).
+    png : :class:`str`, optional
+        Output filename. If given, the figure is written to disk and
+        closed; otherwise it is shown interactively.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Colorblind-friendly colors are from
+    https://twitter.com/rachel_kurchin/status/1229567059694170115 .
+    This function cannot currently run: its ``from SGA.ellipse import
+    is_in_ellipse`` import (used to select Tractor sources inside each
+    galaxy's ellipse) fails immediately, since no function named
+    ``is_in_ellipse`` is defined anywhere in :mod:`SGA.ellipse` or
+    :mod:`SGA.geometry` (the closest equivalent is
+    :func:`SGA.geometry.in_ellipse_mask`, with a different signature).
+    Separately, the per-galaxy loop calls ``_get_diameter(ellipsefit)``,
+    which is also not defined or imported anywhere in this module --
+    the only trace of it is a commented-out
+    ``#from legacyhalos.SGA import _get_diameter``, indicating this
+    function predates the SGA/legacyhalos split and was never ported.
+    `largegalaxy` is accepted but never referenced in the function
+    body. The HyperLeda-ellipse block has a further, independent bug:
+    the ``if igal == 0: ellaper.plot(..., label='Hyperleda')`` block
+    (plotting in red) is indented one level shallower than the
+    ``if 'd25_leda' in ellipsefit.keys():`` check above it, so it
+    executes unconditionally for every galaxy, not just those with
+    HyperLeda geometry -- for a galaxy lacking ``d25_leda``, `ellaper`
+    is left over from the earlier R(26) computation, so the R(26)
+    ellipse gets silently redrawn a second time in red, mislabeled as
+    "Hyperleda". This function is not called anywhere else in the
+    package (no callers in ``py/``, ``bin/``, or ``archive/``); a
+    similarly named script exists at ``science/SGA2020/SGA2020-figures``.
 
     """
     from photutils import EllipticalAperture
@@ -820,6 +1294,39 @@ def qa_maskbits(mask, tractor, ellipsefitall, colorimg, largegalaxy=False, png=N
 
 # adapted from https://github.com/desihub/desiutil/blob/5735fdc34c4e77c7fda84c92c32b9ac41158b8e1/py/desiutil/plots.py#L735-L857
 def ar_sky_cbar(ax, sc, label, extend=None, mloc=None):
+    """Add a horizontal colorbar below a sky-map axes, styled to match
+    `desiutil.plots`-based figures (bottom-anchored ticks, zero-forced
+    lower limit).
+
+    Parameters
+    ----------
+    ax : :class:`matplotlib.axes.Axes`
+        Axes to attach the colorbar to.
+    sc : :class:`matplotlib.cm.ScalarMappable`
+        Mappable (e.g. the return value of ``ax.scatter``/``imshow``)
+        that defines the colorbar's data range and colormap.
+    label : :class:`str`
+        Colorbar label.
+    extend : :class:`str`, optional
+        Passed to :func:`matplotlib.pyplot.colorbar`'s ``extend``
+        keyword (e.g. ``'min'``, ``'max'``, ``'both'``) to draw
+        pointed end caps.
+    mloc : :class:`float`, optional
+        If given, spacing (in data units) for
+        :class:`matplotlib.ticker.MultipleLocator` major ticks on the
+        colorbar axis, overriding the default tick locator.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Adapted from ``desiutil.plots`` (see the comment above this
+    function for the source URL). Not called anywhere else in this
+    package.
+
+    """
     cbar = plt.colorbar(sc, ax=ax, location='bottom',
                         orientation="horizontal",
                         spacing="proportional",
@@ -885,7 +1392,7 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
         Draw a colorbar below the map when True.
     label : :class:`str`, optional
         Label to display under the colorbar.  Ignored unless colorbar is ``True``.
-    ax : :class:`~matplotlib.axes.Axes`, optional
+    ax : :class:`matplotlib.axes.Axes`, optional
         Axes to use for drawing this map, or create default axes using
         :func:`init_sky` when ``None``.
     return_grid_data : :class:`bool`, optional
@@ -893,9 +1400,20 @@ def plot_sky_binned(ra, dec, weights=None, data=None, plot_type='grid',
 
     Returns
     -------
-    :class:`~matplotlib.axes.Axes` or (ax, grid_data)
+    :class:`matplotlib.axes.Axes` or (ax, grid_data)
         The axis object used for the plot, and the grid_data if
         `return_grid_data` is ``True``.
+
+    Notes
+    -----
+    Adapted from ``desiutil.plots.plot_sky_binned``. The ``plot_type
+    == 'grid'`` branch calls a function ``plot_grid_map`` that is
+    never imported or defined anywhere in this module (only
+    ``plot_type == 'healpix'``'s counterpart, :func:`plot_healpix_map`,
+    is defined here) -- passing ``plot_type='grid'`` (the default)
+    always raises ``NameError``. Not called anywhere else in this
+    package.
+
     """
     from desiutil.plots import prepare_data
 
@@ -1026,14 +1544,26 @@ def plot_healpix_map(data, nest=False, cmap='viridis', colorbar=True,
         Draw a colorbar below the map when ``True``.
     label : :class:`str`, optional
         Label to display under the colorbar.  Ignored unless colorbar is ``True``.
-    ax : :class:`~matplotlib.axes.Axes`, optional
+    ax : :class:`matplotlib.axes.Axes`, optional
         Axes to use for drawing this map, or create default axes using
         :func:`init_sky` when ``None``.
 
     Returns
     -------
-    :class:`~matplotlib.axes.Axes`
+    :class:`matplotlib.axes.Axes`
         The axis object used for the plot.
+
+    Notes
+    -----
+    Adapted from ``desiutil.plots.plot_healpix_map``. Calls
+    ``init_sky(**kwargs)`` when `ax` is None, but ``init_sky`` is not
+    imported anywhere in this function or module -- only imported
+    locally inside other functions (:func:`fig_sky`,
+    ``qa_binned_radec``). Calling this function (or
+    :func:`plot_sky_binned` with ``plot_type='healpix'``) without
+    explicitly passing `ax` raises ``NameError``. Not called anywhere
+    else in this package.
+
     """
     import healpy as hp
     from desiutil.plots import prepare_data
@@ -1110,7 +1640,57 @@ def plot_healpix_map(data, nest=False, cmap='viridis', colorbar=True,
 
 def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
             max_bin_area=10, mloc=10, pngfile=None):
+    """Build a Mollweide-projection sky-density map of a catalog,
+    binned into HEALPix cells via :func:`plot_sky_binned` and rendered
+    with a colorbar (:func:`ar_sky_cbar`).
 
+    Parameters
+    ----------
+    S : :class:`astropy.table.Table`
+        Catalog to plot; must contain `racolumn` and `deccolumn`.
+    racolumn : :class:`str`
+        Name of the right ascension column, in degrees.
+    deccolumn : :class:`str`
+        Name of the declination column, in degrees.
+    clip_lo : :class:`float`
+        Lower clipping value for the binned density (passed to
+        :func:`plot_sky_binned`).
+    clip_hi : :class:`float`
+        Upper clipping value for the binned density (passed to
+        :func:`plot_sky_binned`).
+    max_bin_area : :class:`float`
+        Maximum HEALPix bin area, in deg2 (passed to
+        :func:`plot_sky_binned`).
+    mloc : :class:`int`
+        Minor-tick locator spacing for the colorbar (passed to
+        :func:`ar_sky_cbar`).
+    pngfile : :class:`str`, optional
+        Output PNG path. If not given, the figure is built but never
+        written to disk or returned (see Notes).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    If `pngfile` is not given, the function has no way to return or
+    display the figure it built -- both the ``fig``/``ax`` objects
+    and the printed density statistics (min/median/mean/std/max, via
+    a bare ``print()`` call) are the only observable output, and the
+    figure itself is silently discarded (never closed either, in that
+    case -- only the `pngfile` branch calls ``plt.close(fig)``). The
+    nested helpers ``plot_des``, ``plot_gp_ep``, and
+    ``custom_plot_sky_circles`` (DES footprint, Galactic/ecliptic
+    plane, and custom sky-circle overlays) are all fully implemented
+    but never invoked -- every call site is commented out in the
+    function body -- making them dead code in the current version.
+    The commented-out ``from desiutil.plots import ...,
+    plot_sky_binned`` at the top confirms this module intentionally
+    shadows/replaces desiutil's version with its own
+    :func:`SGA.qa.plot_sky_binned`.
+
+    """
     import seaborn as sns
     import healpy as hp
     from astropy.coordinates import SkyCoord
@@ -1124,6 +1704,30 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
     # AR DES
     def plot_des(ax, desfn=None, **kwargs):
+        """Overplot the DES footprint boundary on a sky-projection axes.
+
+        Parameters
+        ----------
+        ax : :class:`matplotlib.axes.Axes`
+            Sky-projection axes (as returned by
+            ``desiutil.plots.init_sky``), exposing ``projection_ra``/
+            ``projection_dec``.
+        desfn : :class:`str`, optional
+            Path to a two-column (RA, Dec) DES footprint text file.
+            Defaults to ``$DESI_ROOT/survey/observations/misc/des_footprint.txt``.
+        **kwargs
+            Passed to ``ax.plot``.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Dead code in the current version of :func:`fig_sky` -- never
+        called (see :func:`fig_sky`'s Notes).
+
+        """
         if desfn is None:
             desfn = os.path.join(os.getenv("DESI_ROOT"), "survey", "observations", "misc", "des_footprint.txt")
         ras, decs = np.loadtxt(desfn, unpack=True)
@@ -1131,8 +1735,30 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
     # AR galactic, ecliptic plane
     def plot_gp_ep(ax, frame, npt=1000, **kwargs):
-        """
-        frame: "galactic" or "barycentricmeanecliptic"
+        """Overplot a Galactic- or ecliptic-plane great circle on a
+        sky-projection axes.
+
+        Parameters
+        ----------
+        ax : :class:`matplotlib.axes.Axes`
+            Sky-projection axes, exposing ``projection_ra``/
+            ``projection_dec``.
+        frame : :class:`str`
+            Coordinate frame to draw, e.g. ``"galactic"`` or
+            ``"barycentricmeanecliptic"``.
+        npt : :class:`int`
+            Number of points used to sample the great circle.
+        **kwargs
+            Passed to ``ax.plot``.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Dead code in the current version of :func:`fig_sky` -- never
+        called (see :func:`fig_sky`'s Notes).
 
         """
         cs =  SkyCoord(
@@ -1145,9 +1771,34 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
         _ = ax.plot(ax.projection_ra(ras[ii]), ax.projection_dec(decs[ii]), **kwargs)
 
     def custom_plot_sky_circles(ax, ra_center, dec_center, field_of_view, **kwargs):
-        """
-        similar to desiutil.plots.plot_sky_circles
-        but with propagating **kwargs
+        """Draw filled circles of fixed angular size on a
+        sky-projection axes, correctly handling the RA wraparound at
+        the projection edge.
+
+        Similar to ``desiutil.plots.plot_sky_circles`` but propagates
+        `**kwargs` through to the fill call.
+
+        Parameters
+        ----------
+        ax : :class:`matplotlib.axes.Axes`
+            Sky-projection axes, exposing ``_ra_center``,
+            ``projection_ra``/``projection_dec``.
+        ra_center, dec_center : :class:`float` or array-like
+            Circle center coordinate(s), in degrees.
+        field_of_view : :class:`float`
+            Circle diameter, in degrees (declination-corrected in RA).
+        **kwargs
+            Passed to ``ax.fill``.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Dead code in the current version of :func:`fig_sky` -- never
+        called (see :func:`fig_sky`'s Notes).
+
         """
         if (isinstance(ra_center, int) | isinstance(ra_center, float)):
             ra_center, dec_center = np.array([ra_center]), np.array([dec_center])
@@ -1231,7 +1882,47 @@ def fig_sky(S, racolumn='RA', deccolumn='DEC', clip_lo=0., clip_hi=50.,
 
 
 def fig_size_mag(sample, nocuts=False, pngfile=None):
-    """D(25) vs mag from the parent sample and D(25) histogram.
+    """Build a two-panel diameter-vs-magnitude QA figure: a 2D
+    density/contour plot of log-diameter vs. apparent magnitude
+    (``corner.hist2d``), optionally split by literature reference
+    when `nocuts` is True.
+
+    Parameters
+    ----------
+    sample : :class:`astropy.table.Table`
+        Parent-sample catalog. If `nocuts`, must contain
+        ``DIAM_LIT_REF``, ``DIAM_LIT``, ``MAG_LIT`` (one contour set
+        per unique ``DIAM_LIT_REF`` value, ``-99.`` treated as
+        missing); otherwise must contain ``MAG`` and ``DIAM``
+        (``DIAM > 0`` required).
+    nocuts : :class:`bool`
+        If True, plot the uncut literature sample split by reference
+        catalog; if False, plot the final adopted ``MAG``/``DIAM``
+        columns as a single contour set.
+    pngfile : :class:`str`, optional
+        Output PNG path. If not given, the figure is built but never
+        written to disk (see Notes).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Unconditionally calls ``pdb.set_trace()`` as its last statement,
+    after the `pngfile` save block -- this drops into an interactive
+    debugger on *every* call, including non-interactive/batch
+    invocations. The sole caller (:func:`SGA.parent.qa_parent`, called
+    from ``archive/bin-SGA2025/SGA2025-build-parent --qa-parent``)
+    would hang waiting for debugger input in a batch/SLURM context. A
+    second axes (``ax2``, built via ``fig.add_gridspec(1, 2, ...)`` as
+    a diameter histogram panel) is created and given a shared y-axis
+    with `ax1`, but nothing is ever plotted into it in the live code
+    path -- the histogram-plotting code is entirely commented out, so
+    `ax2` renders as a blank panel occupying roughly a third of the
+    figure width. Large blocks of alternate (HyperLeda-based) plotting
+    logic are commented out rather than removed, suggesting a partial,
+    unfinished refactor away from an SGA-2020-style "leda" branch.
 
     """
     import corner
@@ -1268,6 +1959,23 @@ def fig_size_mag(sample, nocuts=False, pngfile=None):
 
     @ticker.FuncFormatter
     def major_formatter(x, pos):
+        """Format a log10(diameter) axis tick `x` as a linear-diameter
+        label (one decimal place below 1 arcmin, none at or above),
+        for use as a :class:`matplotlib.ticker.FuncFormatter`.
+
+        Parameters
+        ----------
+        x : :class:`float`
+            Tick value, in log10(arcmin).
+        pos : :class:`int`
+            Tick position (unused, required by the formatter
+            callback signature).
+
+        Returns
+        -------
+        :class:`str`
+
+        """
         if x >= 0:
             return '{:.0f}'.format(10**x)
         else:
@@ -1362,19 +2070,52 @@ def fig_size_mag(sample, nocuts=False, pngfile=None):
 
 def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
                         pixscale, color='#3388ff', linewidth=3):
-    """Draw an ellipse on a color image read using PIL. See ``qa.draw_ellipse``
-       for a more recent implementation which works with matplotlib.
+    """Draw an ellipse overlay directly onto a color image opened with
+    PIL (in place).
 
-       Example:
-           x0 - xcen
-           y0 - im.size[1] - ycen
-           ba - minor-to-major axis ratio
-           pa - astronomical (MGE) position angle (CCW from y-axis)
-           major_axis_diameter_arcsec - major-axis diameter [arcsec]
-           pixscale - pixel scale [arcsec/pixel]
+    See :func:`SGA.qa.draw_ellipse` for a more recent implementation
+    that works with matplotlib instead.
 
-           with Image.open('image.jpg') as im:
-               draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec, pixscale)
+    Parameters
+    ----------
+    im : :class:`PIL.Image.Image`
+        Color image to draw on, modified in place via ``im.paste``.
+    x0 : :class:`float`
+        Ellipse center, x pixel coordinate.
+    y0 : :class:`float`
+        Ellipse center, y pixel coordinate (PIL's origin is top-left,
+        so this is typically ``im.size[1] - ycen`` for a
+        bottom-left-origin ``ycen``).
+    ba : :class:`float`
+        Minor-to-major axis ratio.
+    pa : :class:`float`
+        Astronomical (MGE) position angle, in degrees, counterclockwise
+        from the y-axis.
+    major_axis_diameter_arcsec : :class:`float`
+        Major-axis diameter, in arcsec.
+    pixscale : :class:`float`
+        Pixel scale, in arcsec/pixel.
+    color : :class:`str`
+        Ellipse outline color (hex or PIL color name).
+    linewidth : :class:`int`
+        Ellipse outline width, in pixels.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Not called anywhere in the active SGA-2025 codebase; the
+    similarly-named ``legacyhalos.qa.draw_ellipse_on_png`` (a
+    different package, used by ``science/SGA2020/SGA2020-figures``)
+    is a separate function despite the shared name.
+
+    Examples
+    --------
+    >>> with Image.open('image.jpg') as im:
+    ...     draw_ellipse_on_png(im, x0, y0, ba, pa,
+    ...                          major_axis_diameter_arcsec, pixscale)
 
     """
     from PIL import Image, ImageDraw, ImageFont
@@ -1399,6 +2140,30 @@ def draw_ellipse_on_png(im, x0, y0, ba, pa, major_axis_diameter_arcsec,
 
 
 def qa_binned_radec(cat, nside=64, png=None):
+    """Build a HEALPix-binned sky-density map of a catalog, weighted
+    by the inverse DESI tiling pixel-coverage fraction.
+
+    Parameters
+    ----------
+    cat : :class:`astropy.table.Table`
+        Catalog with lowercase ``ra``/``dec`` columns, in degrees.
+    nside : :class:`int`
+        HEALPix ``NSIDE`` resolution parameter.
+    png : :class:`str`, optional
+        Output PNG path. If not given, the figure is built but never
+        written to disk or returned.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Not called anywhere in the active SGA-2025 codebase. Depends on
+    ``desimodel`` (footprint/pixel-weight lookup), a DESI-specific
+    package not otherwise used elsewhere in this module.
+
+    """
     import warnings
     import healpy as hp
     import desimodel.io
@@ -1430,7 +2195,43 @@ def qa_binned_radec(cat, nside=64, png=None):
 
 def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
                               verbose=True):
-    """Montage the multiwavelength coadds into a nice QAplot."""
+    """Build two multiwavelength montage QA PNGs for one galaxy via
+    ImageMagick's ``montage`` command-line tool: a 3x1 data-only
+    montage (GALEX, Legacy Survey, unWISE) and a 3x3
+    data/model/residual montage.
+
+    Parameters
+    ----------
+    galaxy : :class:`str`
+        Galaxy name, used to build input/output filenames.
+    galaxydir : :class:`str`
+        Directory containing the per-band JPEG cutouts (expects files
+        named ``{galaxy}-{suffix}.jpg`` for each of the hardcoded
+        `suffix` values).
+    htmlgalaxydir : :class:`str`
+        Output directory for the montage PNGs.
+    clobber : :class:`bool`
+        If True, regenerate a montage even if its output file already
+        exists.
+    verbose : :class:`bool`
+        If True, print the output filename before writing it.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Silently skips (without raising) a montage whose required input
+    JPEGs are not all present -- only a ``print()`` warning per
+    missing file, no exception or log entry. Shells out to the
+    external ``montage`` binary (ImageMagick) via ``subprocess.call``;
+    if it is not installed or not on ``PATH``, this fails with a bare
+    ``FileNotFoundError`` rather than a descriptive error. Not called
+    anywhere in the active SGA-2025 codebase (appears to predate the
+    current :func:`SGA.html.multiband_montage`-based QA pipeline).
+
+    """
 
     # Show the data (GALEX, LS, unWISE from left to right).
     montagefile = os.path.join(htmlgalaxydir, '{}-multiwavelength-data.png'.format(galaxy))
@@ -1484,7 +2285,52 @@ def qa_multiwavelength_coadds(galaxy, galaxydir, htmlgalaxydir, clobber=False,
 
 
 def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
-    """Plot up the multiwavelength SED.
+    """Plot the multiwavelength (GALEX/optical/unWISE) spectral energy
+    distribution for one galaxy: total curve-of-growth magnitude,
+    magnitude within R(25), and (optionally) Tractor photometry, vs.
+    observed-frame wavelength.
+
+    Parameters
+    ----------
+    ellipsefit : :class:`dict`
+        Ellipse-fitting results for one galaxy (SGA-2020-era data
+        model), with keys ``success``, ``sma_r``, ``bands``,
+        ``refband``, ``ra_moment``, ``dec_moment``, and per-band
+        ``cog_mtot_{filt}``, ``flux_sb25_{filt}``,
+        ``flux_ivar_sb25_{filt}``. May optionally have ``redshift``.
+    tractor : :class:`dict` or :class:`astropy.table.Row`, optional
+        Tractor photometry with per-band ``flux_{filt}``/
+        ``flux_ivar_{filt}`` keys/columns. If None, Tractor points are
+        omitted from the plot.
+    png : :class:`str`, optional
+        Output PNG path. If None, the figure is displayed interactively
+        (``plt.show()``) instead of being saved.
+    verbose : :class:`bool`
+        Unused (see Notes).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Broken: calls an undefined function ``_sbprofile_colors`` (note
+    the leading underscore -- the actually-defined function in this
+    module is :func:`sbprofile_colors`, with no leading underscore and
+    a different, no-argument signature) -- always raises ``NameError``.
+    Separately, if ``'redshift' in ellipsefit.keys()``, this function
+    also references an undefined name ``cosmo`` (``SGA.misc.arcsec2kpc(
+    redshift, cosmo=cosmo)``) -- also always raises ``NameError`` on
+    that code path. `verbose` is accepted but never referenced in the
+    function body. This function, along with the five others in this
+    docstring batch (:func:`ellipse_sbprofile`,
+    :func:`display_ellipse_sbprofile`, :func:`display_ellipsefit`,
+    :func:`qa_curveofgrowth`, :func:`display_multiband`), is not called
+    anywhere else in the codebase and duplicates functionality now
+    provided by ``SGA.html``'s SGA-2025 QA functions (e.g.
+    :func:`SGA.html.ellipse_sed`) -- it appears to be orphaned
+    SGA-2020-era code, left in place but unreachable in the current
+    pipeline.
 
     """
     from copy import deepcopy
@@ -1576,6 +2422,35 @@ def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
     #print(phot['tractor']['abmag'])
 
     def _addphot(thisphot, color, marker, alpha, label):
+        """Plot one photometry series as error bars, splitting points
+        into lower-limit markers (no legend label) and well-constrained
+        markers (with legend label).
+
+        Parameters
+        ----------
+        thisphot : :class:`dict`
+            Per-band photometry with ``abmag``, ``abmagerr``, ``lower``
+            arrays (see `phot`, built in the enclosing scope).
+        color : color-like
+            Marker/error-bar color.
+        marker : :class:`str`
+            Matplotlib marker style.
+        alpha : :class:`float`
+            Marker/error-bar transparency.
+        label : :class:`str`
+            Legend label for the well-constrained points.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Closes over `ax` and `bandwave` from the enclosing
+        :func:`qa_multiwavelength_sed` scope rather than taking them
+        as parameters.
+
+        """
         good = np.where((thisphot['abmag'] > 0) * (thisphot['lower'] == True))[0]
         if len(good) > 0:
             ax.errorbar(bandwave[good]/1e4, thisphot['abmag'][good], yerr=thisphot['abmagerr'][good],
@@ -1645,6 +2520,23 @@ def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
     ax.legend(loc='lower right')
 
     def _frmt(value, _):
+        """Format an x-axis tick `value` (in microns) as a
+        :class:`matplotlib.ticker.FuncFormatter` callback: one decimal
+        place below 1, none at or above.
+
+        Parameters
+        ----------
+        value : :class:`float`
+            Tick value to format.
+        _ : :class:`int`
+            Tick position (unused, required by the ``FuncFormatter``
+            callback signature).
+
+        Returns
+        -------
+        :class:`str`
+
+        """
         if value < 1:
             return '{:.1f}'.format(value)
         else:
@@ -1671,8 +2563,36 @@ def qa_multiwavelength_sed(ellipsefit, tractor=None, png=None, verbose=True):
 
 
 def ellipse_sbprofile(ellipsefit, minerr=0.0):
-    """Convert ellipse-fitting results to a magnitude, color, and surface brightness
-    profiles.
+    """Convert isophote-fitting results into surface-brightness,
+    color, and semi-major-axis profiles for one galaxy.
+
+    Parameters
+    ----------
+    ellipsefit : :class:`dict`
+        Ellipse-fitting results (SGA-2020-era data model) with keys
+        ``band``, ``refband``, ``pixscale``, ``redshift``, per-band
+        ``psfsigma_{filt}``, ``{filt}`` (a
+        :class:`photutils.isophote.IsophoteList`-like object with
+        ``intens``/``int_err`` arrays), and ``r`` (the reference-band
+        isophote list, for ``sma``).
+    minerr : :class:`float`
+        Minimum surface-brightness uncertainty floor, in mag/arcsec2,
+        added in quadrature to the propagated photometric error.
+
+    Returns
+    -------
+    :class:`dict`
+        Profile dictionary with ``sma`` (arcsec), ``redshift``,
+        ``minerr``, ``smaunit``, per-band ``mu_{filt}``/
+        ``mu_{filt}_err`` (surface brightness, mag/arcsec2), and (when
+        the relevant bands are present) ``gr``/``gr_err``,
+        ``rz``/``rz_err``, ``ri``/``ri_err`` color profiles.
+
+    Notes
+    -----
+    Not called anywhere in the codebase outside this module (only
+    from the similarly-orphaned :func:`display_ellipse_sbprofile`);
+    see the orphaned-code note in :func:`qa_multiwavelength_sed`.
 
     """
     band, refband = ellipsefit['band'], ellipsefit['refband']
@@ -1723,7 +2643,51 @@ def ellipse_sbprofile(ellipsefit, minerr=0.0):
 
 def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
                               smascale=None, png=None, verbose=True):
-    """Display the multiwavelength surface brightness profile.
+    """Plot the multiwavelength surface-brightness and color profiles
+    for one galaxy, optionally overlaid with a sky-variance estimate.
+
+    Parameters
+    ----------
+    ellipsefit : :class:`dict`
+        Ellipse-fitting results, as consumed by
+        :func:`ellipse_sbprofile`; also needs ``success``.
+    skyellipsefit : :class:`dict`
+        Optional sky-annulus ellipse-fitting results with ``sma`` and
+        per-band flux arrays, used to overplot a dashed sky-variance
+        curve (via ``astropy.stats.mad_std``). Empty dict (falsy) by
+        default, which skips the sky overlay entirely.
+    minerr : :class:`float`
+        Minimum surface-brightness uncertainty floor, passed to
+        :func:`ellipse_sbprofile`.
+    smascale : :class:`float`, optional
+        Arcsec-to-kpc conversion factor for the twin top x-axis. If
+        None, computed via ``SGA.misc.arcsec2kpc(redshift)`` (see
+        Notes).
+    png : :class:`str`, optional
+        Output PNG path. If None, the figure is displayed interactively.
+    verbose : :class:`bool`
+        If True, print the output path when writing `png`.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Broken: calls an undefined function ``_sbprofile_colors()`` (see
+    the same anomaly in :func:`qa_multiwavelength_sed`) -- always
+    raises ``NameError`` before any plotting happens. Even with a
+    correct name, the call site does ``colors = _sbprofile_colors()``
+    followed by ``next(colors)`` in a loop, but the analogous,
+    actually-defined :func:`sbprofile_colors` returns a plain
+    :class:`dict`, not an iterator -- ``next()`` on a dict raises
+    ``TypeError``, so this call pattern would still be broken even if
+    the name were fixed. If `smascale` is left as `None` (default),
+    computes it via ``SGA.misc.arcsec2kpc(redshift)`` without a
+    `cosmo` argument, which itself always raises ``AttributeError``
+    (see the ``misc.py`` docstring sweep's note on
+    :func:`SGA.misc.arcsec2kpc`). See also the general orphaned-code
+    note in :func:`qa_multiwavelength_sed`.
 
     """
     import astropy.stats
@@ -1872,7 +2836,43 @@ def display_ellipse_sbprofile(ellipsefit, skyellipsefit={}, minerr=0.0,
 
 
 def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
-    """Display the isophote fitting results."""
+    """Plot the raw isophote-fitting diagnostics (ellipticity, position
+    angle, and x/y center) vs. semi-major axis for the reference band.
+
+    Parameters
+    ----------
+    ellipsefit : :class:`dict`
+        Ellipse-fitting results with ``success``, ``band``,
+        ``refband``, ``pixscale``, ``redshift``, and a reference-band
+        isophote-list object exposing ``sma``, ``stop_code``, ``eps``/
+        ``ellip_err``, ``pa``/``pa_err``, ``x0``/``x0_err``, ``y0``/
+        ``y0_err``.
+    xlog : :class:`bool`
+        If True, use a log-scaled x-axis (semi-major axis) on all four
+        panels.
+    png : :class:`str`, optional
+        Output PNG path. If None, the figure is displayed interactively.
+    verbose : :class:`bool`
+        If True, print the output path when writing `png`.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Broken: references ``legacyhalos.misc.arcsec2kpc`` -- the
+    ``legacyhalos`` module (an ancestor/sibling package this codebase
+    evolved from) is never imported anywhere in this file, so this
+    always raises ``NameError`` when ``ellipsefit['success']`` is
+    True. Also uses ``sns.color_palette()`` (line ``colors =
+    iter(sns.color_palette())``) without importing ``seaborn as sns``
+    locally or at module level (other functions in this module import
+    it locally, but this one does not) -- an independent ``NameError``
+    that would fire even before the ``legacyhalos`` one. See also the
+    general orphaned-code note in :func:`qa_multiwavelength_sed`.
+
+    """
 
     from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 
@@ -1984,7 +2984,40 @@ def display_ellipsefit(ellipsefit, xlog=False, png=None, verbose=True):
 
 
 def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
-    """Plot up the curve of growth versus semi-major axis.
+    """Plot the cumulative (curve-of-growth) brightness vs. semi-major
+    axis for each band.
+
+    Parameters
+    ----------
+    ellipsefit : :class:`dict`
+        Ellipse-fitting results with ``band``, ``refband``,
+        ``redshift``, and per-band ``apphot_sma_{filt}``/
+        ``apphot_mag_{filt}`` (despite the name, the latter holds flux,
+        not magnitude -- see Notes) arrays.
+    png : :class:`str`, optional
+        Output PNG path. If given, the figure is saved (but, unlike
+        its sibling functions in this module, never closed or shown
+        otherwise -- see Notes).
+    verbose : :class:`bool`
+        Unused (see Notes).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    `verbose` is accepted but never referenced in the function body.
+    Calls ``SGA.misc.arcsec2kpc(redshift)`` without a `cosmo`
+    argument, which always raises ``AttributeError`` (see
+    :func:`SGA.misc.arcsec2kpc`'s docstring). The
+    ``apphot_mag_{filt}`` key is treated as a flux (``mag = 22.5 -
+    2.5*np.log10(flux[good])``) despite its name. Unlike the other
+    ``png``-writing functions in this module, if `png` is given the
+    figure is saved but the function neither calls ``plt.close(fig)``
+    nor prints a "Writing" message -- a minor inconsistency with the
+    rest of the module's convention. See also the general
+    orphaned-code note in :func:`qa_multiwavelength_sed`.
 
     """
     fig, ax = plt.subplots(figsize=(9, 7))
@@ -2037,10 +3070,65 @@ def qa_curveofgrowth(ellipsefit, png=None, verbose=True):
 def display_multiband(data, geometry=None, mgefit=None, ellipsefit=None, indx=None,
                       magrange=10, inchperband=3, contours=False, png=None,
                       verbose=True, vertical=False):
-    """Display the multi-band images and, optionally, the isophotal fits based on
-    either MGE and/or Ellipse.
+    """Display multiband cutout images with optional MGE- and/or
+    ellipse-fit isophote overlays.
 
-    vertical -- for talks...
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-band cutout data with ``band`` (list of filter names) and
+        per-band ``{filt}_masked`` image arrays.
+    geometry : :class:`photutils.isophote.EllipseGeometry`, optional
+        Single elliptical-aperture geometry to overplot on every
+        panel, if `ellipsefit` is not given.
+    mgefit : :class:`dict`, optional
+        Per-band MGE (Multi-Gaussian Expansion) fit results with
+        ``{filt}.sol``, ``xpeak``, ``ypeak``, ``pa`` keys; if given,
+        overplots MGE isophote contours (requires the external ``mge``
+        package).
+    ellipsefit : :class:`dict`, optional
+        Ellipse-fitting results; if ``ellipsefit['success']``, overplots
+        a subsample of fitted isophotes per band, else falls back to a
+        single elliptical aperture from ``ellipsefit['geometry']``.
+    indx : :class:`numpy.ndarray`, optional
+        Boolean mask selecting which isophotes to consider from
+        `ellipsefit`; defaults to all isophotes in the first band with
+        `ellipsefit` results (and is silently *reused* across
+        subsequent bands' loops without being recomputed, since it's
+        only initialized once via ``if indx is None``).
+    magrange : :class:`float`
+        Number of magnitudes below the peak surface brightness spanned
+        by the (0.5-mag-per-step) MGE contour levels.
+    inchperband : :class:`float`
+        Per-band figure size scaling, in inches.
+    contours : :class:`bool`
+        Unused (see Notes).
+    png : :class:`str`, optional
+        Output PNG path. If None, the figure is displayed interactively.
+    verbose : :class:`bool`
+        If True, print the output path when writing `png`.
+    vertical : :class:`bool`
+        If True, stack band panels vertically instead of horizontally
+        (intended for talk slides, per an inline comment).
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    `contours` is accepted but never referenced in the function body.
+    Uses the legacy import form ``from photutils import
+    EllipticalAperture`` (twice, in the `geometry`/`ellipsefit`-fallback
+    branches) rather than ``from photutils.aperture import
+    EllipticalAperture`` used elsewhere in this codebase (e.g.
+    ``SGA.ellipse``, ``SGA.html``) -- this form was removed in
+    photutils >= 0.7, so these branches will raise ``ImportError``
+    under the environment's current photutils version if exercised.
+    The `mgefit` branch imports from an external ``mge`` package
+    (``mge.mge_print_contours``) not listed among this project's
+    dependencies. See also the general orphaned-code note in
+    :func:`qa_multiwavelength_sed`.
 
     """
     from astropy.visualization import AsinhStretch as Stretch

@@ -16,7 +16,22 @@ from SGA.logger import log
 
 
 def altnames_hyperleda(cat):
-    """Retrieve the alternate name for the HyperLeda catalog.
+    """Pick one preferred alternate name per object from HyperLeda's
+    comma-separated ``ALTNAMES`` column.
+
+    Prefers the first 2MASS/2MASX-prefixed name if one exists in the
+    list; otherwise falls back to the first name listed.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        HyperLeda catalog with an ``ALTNAMES`` column (comma-separated
+        string per row).
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        One alternate name per row.
 
     """
     altname = []
@@ -40,6 +55,29 @@ def nedfriendly_hyperleda(old, reverse=False):
       http://atlas.obs-hp.fr/hyperleda/ledacat.cgi?o=PGC%2026269
       https://ned.ipac.caltech.edu/byname?objname=PGC+26269
 
+    Currently the only transformation applied is a ``'SDSSJ'`` <->
+    ``'SDSS J'`` spacing fix (see Notes).
+
+    Notes
+    -----
+    A commented-out block below the active code shows an earlier,
+    unused approach that would have renamed low-PGC-number objects to
+    ``f'PGC{num:06d}'`` form; that path is not active.
+
+    Parameters
+    ----------
+    old : :class:`numpy.ndarray` of :class:`str`
+        Names to transform.
+    reverse : :class:`bool`
+        If True, convert ``'SDSS J'`` -> ``'SDSSJ'`` (undo the default
+        transformation); if False (default), convert ``'SDSSJ'`` ->
+        ``'SDSS J'``.
+
+    Returns
+    -------
+    :class:`numpy.ndarray` of :class:`str`
+        Transformed names.
+
     """
     if reverse:
         return np.char.replace(old, 'SDSS J', 'SDSSJ') # ???
@@ -54,11 +92,51 @@ def nedfriendly_hyperleda(old, reverse=False):
 
 
 def version_hyperleda_noobjtype():
+    """Return the HyperLeda "no object type" export's version/timestamp
+    string, used to name its cached files.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     return 'meandata_noobjtype_1739457147'
 
 
 def read_hyperleda_noobjtype(rank=0, rows=None):
-    """Read the HyperLeda_noobjtype catalog.
+    """Read HyperLeda's "no object type" export (objects with
+    ``OBJTYPE`` unset), building the cached FITS file from the raw
+    HyperLeda text export on first use.
+
+    If ``{sga_dir()}/parent/external/HyperLeda_{version}.fits`` doesn't
+    exist yet, parses the corresponding ``.txt`` HyperLeda export
+    (fixed header/data offsets specific to this export's version),
+    renames ``hl_names(pgc)`` -> ``ALTNAMES`` and all columns to
+    uppercase, converts ``AL2000``/``DE2000`` -> ``RA``/``DEC`` (RA
+    from hours to decimal degrees), drops the (rare) rows with NaN
+    coordinates, trims ``ALTNAMES`` to the first 3 non-primary names,
+    sorts by PGC number, and writes the FITS cache.
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (the MPI
+        rank is only ever used in a commented-out log line) -- dead in
+        practice, unlike :func:`read_wxsc`'s ``rank``, which is
+        genuinely used in its log messages.
+    rows : array-like, optional
+        Row indices to read from the cached FITS file.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        HyperLeda "no object type" catalog, with a ``ROW`` column.
+
+    Raises
+    ------
+    ValueError
+        If the current version string's text-parsing offsets are not
+        recognized.
 
     """
     version = version_hyperleda_noobjtype()
@@ -121,11 +199,48 @@ def read_hyperleda_noobjtype(rank=0, rows=None):
 
 
 def version_hyperleda_multiples():
+    """Return the HyperLeda "multiples" export's version/timestamp
+    string, used to name its cached files.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     return 'meandata_multiples_1727885775'
 
 
 def read_hyperleda_multiples(rank=0, rows=None):
-    """Read the HyperLeda_multiples catalog.
+    """Read HyperLeda's "multiples" export (objects flagged as part of
+    a multiple system, ``OBJTYPE`` in ``{'M', 'M2', 'M3', '?'}``),
+    building the cached FITS file from the raw HyperLeda text export on
+    first use.
+
+    Same parsing/caching pattern as
+    :func:`read_hyperleda_noobjtype` -- fixed header/data offsets for
+    this export's version, rename ``hl_names(pgc)`` -> ``ALTNAMES`` and
+    columns to uppercase, ``AL2000``/``DE2000`` -> ``RA``/``DEC`` (hours
+    to degrees), trim ``ALTNAMES`` to the first 3 non-primary names,
+    sort by PGC, cache to FITS.
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (dead; see
+        :func:`read_hyperleda_noobjtype`'s Notes).
+    rows : array-like, optional
+        Row indices to read from the cached FITS file.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        HyperLeda "multiples" catalog, with a ``ROW`` column.
+
+    Raises
+    ------
+    ValueError
+        If the current version string's text-parsing offsets are not
+        recognized.
 
     """
     version = version_hyperleda_multiples()
@@ -186,17 +301,51 @@ def read_hyperleda_multiples(rank=0, rows=None):
 
 
 def version_hyperleda_galaxies():
+    """Return the HyperLeda "galaxies" export's ('G'/'g' object type)
+    version/timestamp string, used to name its cached files.
+
+    Two earlier versions (``'meandata_1718379336'``,
+    ``'meandata_1720804662'``) are preserved as comments; the current
+    active version is ``'meandata_galaxies_1725482144'``.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     #return 'meandata_1718379336'
     #return 'meandata_1720804662'
     return 'meandata_galaxies_1725482144'
 
 
 def read_hyperleda_galaxies(rank=0, rows=None):
-    """Read the HyperLeda 'G' and 'g' catalog.
+    """Read HyperLeda's "galaxies" export (``OBJTYPE`` in ``{'G', 'g'}``),
+    building the cached FITS file from the raw HyperLeda text export on
+    first use.
 
-    Feedback for Dmitry:
+    Same parsing/caching pattern as :func:`read_hyperleda_noobjtype`,
+    with version-specific header/data offsets for three known export
+    versions (only ``'meandata_galaxies_1720804662'`` and
+    ``'meandata_galaxies_1725482144'`` rename ``hl_names(pgc)`` ->
+    ``ALTNAMES``). Additionally drops 87 duplicated ``OBJNAME`` entries
+    (identical or mildly differing in redshift/B-mag/PA across
+    duplicates), keeping only the first occurrence of each name without
+    attempting to merge/average them -- flagged in the original
+    development notes as feedback to report upstream to HyperLeda's
+    maintainer (Dmitry).
 
-    * 87 duplicated entries (see below)
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (dead; see
+        :func:`read_hyperleda_noobjtype`'s Notes).
+    rows : array-like, optional
+        Row indices to read from the cached FITS file.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        HyperLeda "galaxies" catalog, with a ``ROW`` column.
 
     """
     version = version_hyperleda_galaxies()
@@ -288,11 +437,49 @@ def read_hyperleda_galaxies(rank=0, rows=None):
 
 
 def version_hyperleda():
+    """Return the combined HyperLeda catalog's version string, used to
+    name its cached file.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     return 'meandata_v1.0'
 
 
 def read_hyperleda(rank=0, rows=None):
-    """Read the complete (galaxies + multiples) HyperLeda catalog.
+    """Read the complete HyperLeda catalog, combining the galaxies,
+    multiples, and no-object-type exports into one table, building the
+    cached FITS file on first use.
+
+    Reads :func:`read_hyperleda_galaxies`, :func:`read_hyperleda_multiples`
+    (dropping ``OBJTYPE == '?'`` rows, since those are already covered
+    by the no-object-type export), and :func:`read_hyperleda_noobjtype`;
+    renames each source's ``ROW`` to ``ROW_GALAXIES``/``ROW_MULTIPLES``/
+    ``ROW_NOOBJTYPE`` respectively, vertically stacks them (filling
+    missing cross-source row indices with -99), re-sorts by PGC number,
+    and assigns a fresh combined ``ROW``.
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (dead; see
+        :func:`read_hyperleda_noobjtype`'s Notes); passed through to
+        the three source-read calls, where it is likewise dead.
+    rows : array-like, optional
+        Row indices to read from the cached FITS file. Also passed
+        (confusingly) to the three source-read calls when the cache
+        doesn't exist yet, restricting *their* row ranges before
+        stacking -- so a non-None ``rows`` on a first-ever call
+        produces a cache built from only those rows, not the full
+        catalog.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Combined HyperLeda catalog, with ``ROW``, ``ROW_GALAXIES``,
+        ``ROW_MULTIPLES``, ``ROW_NOOBJTYPE`` columns.
 
     """
     version = version_hyperleda()
@@ -334,19 +521,42 @@ def read_hyperleda(rank=0, rows=None):
 
 
 def nedfriendly_lvd(old):
-    """Rename some of the LVD names to be NED-friendly.
+    """Rename some of the LVD (Local Volume Database) names to be
+    NED-friendly, via a large hand-curated lookup table (e.g. "Canes
+    Venatici I" -> "CVn I dSph").
 
-    E.g., Canes Venatici I is CVn I dSph
+    Looks up each name in ``old`` in a hardcoded ``{LVD name: NED
+    name}`` dict (~700 entries, generated once by cross-matching against
+    NED and hand-editing; a handful of entries are commented out where
+    no NED counterpart exists, e.g. Aquarius III) and replaces it where
+    found; names not in the dict are left unchanged.
 
-    from SGA.io import read_lvd ; lvd = read_lvd() ; lvd = lvd[np.argsort(np.char.lower(lvd['OBJNAME']))]
-    ned = Table(fitsio.read('NEDbyname-LVD_v1.0.2.fits'))
+    Notes
+    -----
+    Regeneration recipe, to rebuild the dict from a fresh NED byname
+    cross-match::
 
-    for gal in lvd['OBJNAME'].value:
-        nedgal = ned[gal == ned['OBJNAME']]['OBJNAME_NED']
-        if len(nedgal) > 0:
-            _ = print(f"        '{gal}': '{nedgal[0]}',")
-        else:
-            _ = print(f"        '{gal}': '',")
+        from SGA.io import read_lvd
+        lvd = read_lvd()
+        lvd = lvd[np.argsort(np.char.lower(lvd['OBJNAME']))]
+        ned = Table(fitsio.read('NEDbyname-LVD_v1.0.2.fits'))
+        for gal in lvd['OBJNAME'].value:
+            nedgal = ned[gal == ned['OBJNAME']]['OBJNAME_NED']
+            if len(nedgal) > 0:
+                print(f"        '{gal}': '{nedgal[0]}',")
+            else:
+                print(f"        '{gal}': '',")
+
+    Parameters
+    ----------
+    old : :class:`numpy.ndarray` of :class:`str`
+        LVD object names.
+
+    Returns
+    -------
+    :class:`numpy.ndarray` of :class:`str`
+        Names with any dictionary matches replaced by their NED-friendly
+        equivalent; same length as ``old``.
 
     """
     ned = {
@@ -1084,6 +1294,16 @@ def nedfriendly_lvd(old):
 
 
 def version_lvd():
+    """Return the LVD catalog's version string, used to name its cached
+    file. Two earlier versions (``'dwarf-all-b685634'``, ``'v1.0.2'``)
+    are preserved as comments; the current active version is
+    ``'v1.0.5'``.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     #ver = 'dwarf-all-b685634'
     #ver = 'v1.0.2'
     ver = 'v1.0.5'
@@ -1091,7 +1311,41 @@ def version_lvd():
 
 
 def read_lvd(rank=0, rows=None, overwrite=False, verbose=True):
-    """Read the Local Volume Database (LVD) dwarf-galaxy catalog.
+    """Read the Local Volume Database (LVD) dwarf-galaxy catalog,
+    building the cached FITS file from the raw ``LVD_dwarf_all_*.csv``
+    export on first use.
+
+    If the cache doesn't exist (or ``overwrite=True``): reads the raw
+    CSV, applies a handful of hardcoded per-object coordinate/geometry
+    corrections specific to the current version (e.g. fixing bad RA/Dec
+    for ``'AGC 198606'``, ``'NGC 1042'``, ``'KK 166'``, etc. -- errors
+    caught by hand in the upstream LVD export), drops the Sagittarius
+    dwarf and any row with ``confirmed_real == 0``, and writes the FITS
+    cache. Every call (cached or not) then: uppercases column names,
+    renames ``NAME`` -> ``OBJNAME``, sorts by ``OBJNAME``, and assigns
+    ``PGC`` numbers via a second large hardcoded ``{OBJNAME: PGC}``
+    lookup dict (~700 entries; ``0`` means confirmed not in HyperLeda,
+    ``-1`` means not yet checked, entries absent from the dict are left
+    at ``-1``), and sets ``GALAXY = OBJNAME``.
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (dead; see
+        :func:`read_hyperleda_noobjtype`'s Notes).
+    rows : array-like, optional
+        Row indices to read from the cached FITS file.
+    overwrite : :class:`bool`
+        If True, rebuild the FITS cache from the raw CSV even if it
+        already exists.
+    verbose : :class:`bool`
+        If True, log the number of objects read.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        LVD catalog, with ``ROW``, ``OBJNAME``, ``PGC``, ``GALAXY``
+        columns among others.
 
     """
     version = version_lvd()
@@ -1877,12 +2131,31 @@ def read_lvd(rank=0, rows=None, overwrite=False, verbose=True):
 
 
 def version_dr910():
+    """Return the DR9/DR10 supplemental catalog's version string, used
+    to name its cached file.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     ver = 'v1.0'
     return ver
 
 
 def read_dr910(rows=None):
-    """Read the supplemental catalog generated by parse-dr9-dr10
+    """Read the DR9/DR10 supplemental catalog generated by
+    ``parse-dr9-dr10``.
+
+    Parameters
+    ----------
+    rows : array-like, optional
+        Row indices to read.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        DR9/DR10 supplemental catalog, with a ``ROW`` column.
 
     """
     version = version_dr910()
@@ -1894,12 +2167,46 @@ def read_dr910(rows=None):
 
 
 def version_custom_external():
+    """Return the custom-external catalog's version string, used to
+    name its cached file.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     ver = 'v1.0'
     return ver
 
 
 def read_custom_external(rank=0, rows=None, overwrite=False):
-    """Read the custom external catalog.
+    """Read the hand-curated "custom external" catalog (one-off objects
+    not covered by HyperLeda/NED-LVS/LVD), building the cached FITS
+    file from the packaged CSV on first use.
+
+    If the cache doesn't exist (or ``overwrite=True``): reads
+    ``SGA/data/SGA2025/custom-external_{version}.csv``, fills masked
+    string columns with empty strings, casts ``diam``/``ba``/``pa``/
+    ``mag`` to float32, uppercases column names, wraps ``PA`` into
+    [0, 180), and writes the FITS cache. Every call then sorts by
+    ``OBJNAME`` and sets ``GALAXY = OBJNAME``.
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (dead; see
+        :func:`read_hyperleda_noobjtype`'s Notes).
+    rows : array-like, optional
+        Row indices to read from the cached FITS file.
+    overwrite : :class:`bool`
+        If True, rebuild the FITS cache from the CSV even if it already
+        exists.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Custom external catalog, with ``ROW``, ``OBJNAME``, ``GALAXY``
+        columns among others.
 
     """
     version = version_custom_external()
@@ -1937,11 +2244,36 @@ def read_custom_external(rank=0, rows=None, overwrite=False):
 
 
 def version_nedlvs():
+    """Return the NED-LVS (NED Local Volume Sample) catalog's version
+    string, used to name its cached file.
+
+    Returns
+    -------
+    :class:`str`
+
+    """
     return '20210922_v2'
 
 
 def read_nedlvs(rank=0, rows=None):
-    """Read the NED-LVS catalog.
+    """Read the NED-LVS (NED Local Volume Sample) catalog.
+
+    Reads the pre-built FITS file directly (no raw-text parsing/caching
+    step, unlike the HyperLeda/LVD readers), uppercases column names,
+    and sets ``GALAXY = OBJNAME``.
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (dead; see
+        :func:`read_hyperleda_noobjtype`'s Notes).
+    rows : array-like, optional
+        Row indices to read.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        NED-LVS catalog, with ``ROW``, ``GALAXY`` columns among others.
 
     """
     nedlvsfile = os.path.join(sga_dir(), 'parent', 'external', f'NEDLVS_{version_nedlvs()}.fits')
@@ -1957,7 +2289,33 @@ def read_nedlvs(rank=0, rows=None):
 
 
 def read_sga2020(rank=0, rows=None, columns=None, region=None):
-    """Read the SGA-2020 catalog.
+    """Read the SGA-2020 catalog, either the full external catalog or a
+    pre-filtered per-region footprint file.
+
+    If ``region`` is given, reads
+    ``{sga_dir()}/parent/SGA2020-{region}.fits`` (produced by
+    ``SGA2025-build-parent --in-footprint --sga2020``) with no ``ROW``
+    column added. Otherwise reads the full external catalog's
+    ``ELLIPSE`` extension and adds a fresh ``ROW`` column -- these two
+    paths are asymmetric (only the no-``region`` path gets ``ROW``).
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        Accepted but not referenced in this function's body (dead; see
+        :func:`read_hyperleda_noobjtype`'s Notes).
+    rows : array-like, optional
+        Row indices to read.
+    columns : :class:`list` of :class:`str`, optional
+        Restrict to these columns.
+    region : :class:`str`, optional
+        Survey region (e.g. ``'dr11-south'``); if given, reads the
+        pre-filtered per-region file instead of the full catalog.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        SGA-2020 catalog (with ``ROW`` only when ``region`` is None).
 
     """
     # Region files generated with SGA2025-build-parent --in-footprint --sga2020
@@ -1975,7 +2333,33 @@ def read_sga2020(rank=0, rows=None, columns=None, region=None):
 
 
 def read_wxsc(rank=0):
-    """Read the WXSC catalog.
+    """Read the WXSC (WISE Extended Source Catalog) IPAC table and trim
+    it to unique objects, by position and then by NED name.
+
+    Unlike most other ``read_*`` functions in this module, ``rank`` is
+    genuinely used here (in every log message, not just a commented-out
+    one). Deduplicates first by exact (RA, Dec) string match, then
+    further by ``NED_name`` (logged as a warning, since collapsing by
+    name can silently merge genuinely distinct positions that share a
+    NED cross-match).
+
+    Notes
+    -----
+    ``u``/``c`` (unique RA/Dec strings and their counts) are computed
+    but never used outside a commented-out diagnostic block below --
+    the actual deduplication uses a second, separate
+    ``numpy.unique(..., return_index=True)`` call.
+
+    Parameters
+    ----------
+    rank : :class:`int`
+        MPI rank, included in every log message.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        WXSC catalog, deduplicated, with ``ROW``, ``GALAXY`` (=
+        ``WXSCNAME``) columns among others (all columns uppercased).
 
     """
     wxscfile = os.path.join(sga_dir(), 'parent', 'external', 'WXSC_Riso_W1mag_24Jun024.tbl') # 'WXSC_Riso_1arcmin_10Jun2024.tbl')
@@ -2009,20 +2393,82 @@ def read_wxsc(rank=0):
 
 def read_wisesize_sample(cat, fullcat=None, catfile=None, region='dr9-north',
                          cutoutdir='.'):
-    """Read the zooniverse VI sample.
+    """Select the WISESize Zooniverse visual-inspection sample from a
+    parent catalog, per the WISESize team's requested selection cuts.
 
-        87. < RA < 300.
-        -10. < DEC < 85.
-        0.002 < z < 0.025
-        W3 or NUV SNR > 20.   (for this, I divided  'Lum_W3'/'Lum_W3_unc' and 'Lum_NUV'/'Lum_NUV_unc', respectively)
-        diameter > 15. arcsec OR -99., as we are including objects which do not have size measurements in your nedgeometry catalog
-        Lastly, we removed VFS galaxies, since we already have access to those postage stamps
+    Requested cuts (from the WISESize collaborators): 87 < RA < 300;
+    -10 < Dec < 85; 0.002 < z < 0.025; W3 or NUV S/N > 20 (``Lum_W3``/
+    ``Lum_W3_unc`` and ``Lum_NUV``/``Lum_NUV_unc``, respectively, though
+    the *implemented* threshold is actually ``snrmin = 3`` -- see Notes);
+    diameter > 15 arcsec OR no size measurement available (``-99``);
+    VFS (Virgo Filament Survey) galaxies excluded, since postage stamps
+    for those already exist elsewhere. Restricts ``cat`` to the ``grz``
+    optical footprint, matches to NED-LVS (via ``ROW_NEDLVS``) for
+    redshift and W3/NUV luminosities, applies the RA/Dec/redshift/S-N
+    cuts, computes diameters via :func:`SGA.geometry.choose_geometry`
+    for the size cut, and (if ``fullcat`` is given) also trims it to
+    diameter > 15 arcsec. If ``catfile`` is given and the output file
+    doesn't already exist, also writes the matching rows of the
+    original processed catalog (matched by ``ROW_PARENT``) to
+    ``{cutoutdir}/zooniverse-{project}-{region}.fits``.
+
+    Notes
+    -----
+    This function unconditionally references a bare name ``project`` in
+    the output-filename f-string (``f'zooniverse-{project}-{region}.fits'``),
+    but ``project`` is not a parameter of this function and is not
+    defined anywhere at module scope. As written, **every call to this
+    function raises `NameError` when it reaches that line** (which
+    happens unconditionally, right after the SNR cut, regardless of
+    ``catfile``/``fullcat``) -- this function cannot currently complete
+    successfully. The docstring's "30 arcsec" ``mindiam`` local variable
+    also doesn't match the "15 arcsec" cut described in the requested
+    criteria above (30 is what's actually applied to ``cat``; 15 is only
+    applied to the separate ``fullcat`` trim).
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Parent catalog to select from; needs ``FILTERS``, ``ROW_NEDLVS``,
+        ``RA``, ``DEC``, and geometry columns for
+        :func:`SGA.geometry.choose_geometry`.
+    fullcat : :class:`~astropy.table.Table`, optional
+        Full (group-member-inclusive) catalog, similarly trimmed by a
+        15 arcsec diameter cut if given.
+    catfile : :class:`str`, optional
+        Path to the original processed catalog to extract matching rows
+        from, by ``ROW_PARENT``.
+    region : :class:`str`
+        Survey region label, used only in the output filename.
+    cutoutdir : :class:`str`
+        Output directory for the written FITS file.
+
+    Returns
+    -------
+    cat : :class:`~astropy.table.Table`
+        Selected sample.
+    fullcat : :class:`~astropy.table.Table` or None
+        Trimmed full catalog, or None if not given.
 
     """
     from SGA.util import match
     from SGA.geometry import choose_geometry
 
     def get_snr(flux, ferr):
+        """Compute a signal-to-noise ratio array, 0 where the flux or
+        error is non-finite or the error is non-positive.
+
+        Parameters
+        ----------
+        flux, ferr : :class:`numpy.ndarray`
+            Flux (or luminosity) values and their errors.
+
+        Returns
+        -------
+        :class:`numpy.ndarray`
+            ``flux / ferr`` where defined, else 0.
+
+        """
         snr = np.zeros(len(flux))
         J = np.isfinite(flux) * np.isfinite(ferr) * (ferr > 0.)
         snr[J] = flux[J] / ferr[J]
@@ -2101,11 +2547,79 @@ def read_wisesize_sample(cat, fullcat=None, catfile=None, region='dr9-north',
 
 def read_zooniverse_sample(cat, fullcat=None, catfile=None, region='dr9-north',
                            cutoutdir='.', project='project1'):
-    """Read the zooniverse VI sample.
+    """Intended entry point for reading a Zooniverse visual-inspection
+    sample; currently a complete no-op.
+
+    Notes
+    -----
+    This function's body consists of only this docstring -- there is no
+    other code, so calling it does nothing and implicitly returns None,
+    regardless of arguments. All the logic one would expect here (e.g.
+    dispatching to :func:`read_wisesize_sample` for
+    ``project == 'project1'``) instead lives in the separate top-level
+    function :func:`_read_zooniverse_sample`, which appears to have been
+    intended as this function's actual implementation but was left
+    disconnected -- ``read_zooniverse_sample`` never calls it.
+    :func:`_read_zooniverse_sample` is itself broken
+    (see its docstring) even if called directly. This looks like an
+    incomplete refactor rather than an intentional design.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Unused (function body is empty).
+    fullcat : :class:`~astropy.table.Table`, optional
+        Unused.
+    catfile : :class:`str`, optional
+        Unused.
+    region : :class:`str`
+        Unused.
+    cutoutdir : :class:`str`
+        Unused.
+    project : :class:`str`
+        Unused.
+
+    Returns
+    -------
+    None
 
     """
 def _read_zooniverse_sample(cat):
+    """Intended implementation of the Zooniverse-sample dispatch logic
+    (by ``project``); currently broken and unreachable from
+    :func:`read_zooniverse_sample`.
 
+    Notes
+    -----
+    This function references ``project``, ``fullcat``, ``catfile``,
+    ``region``, and ``cutoutdir`` as bare names in its body, but its
+    signature only accepts ``cat`` -- none of those names are
+    parameters, closure variables (this is a top-level function, not
+    nested), or module-level globals. Calling this function with just
+    ``cat``, as its signature implies, raises ``NameError`` on the first
+    line that references any of them (``if project == 'project1':``).
+    It is also never actually called anywhere in this module --
+    :func:`read_zooniverse_sample`, which shares a name suggesting it
+    should call this, does not. The commented-out "project0" block above
+    the live code shows an earlier, alternative selection (diameter and
+    ``RESOLVED``-based cut) that predates the current
+    :func:`read_wisesize_sample`-based "project1" approach.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Intended to be the parent catalog to select from (per the
+        ``project1`` branch's call to :func:`read_wisesize_sample`), but
+        the function cannot currently be called successfully -- see
+        Notes.
+
+    Returns
+    -------
+    Intended to mirror :func:`read_wisesize_sample`'s
+    ``(cat, fullcat)`` return for the ``project1`` branch, but
+    unreachable in practice -- see Notes.
+
+    """
     # project0
     ## analyze the Zooniverse sample; toss out by STARFDIST?
     #diam, _, _, _ = choose_geometry(cat, mindiam=0.)

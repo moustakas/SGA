@@ -1,21 +1,58 @@
 #!/usr/bin/env python
 """Parse the DR9/DR10 catalog of "large" (Tractor) galaxies produced
-by DJS by looping over all sweep catalogs.
+by DJS (D. Schlegel) by looping over all sweep catalogs, into the
+``dr910-supplement`` FITS file read by
+``SGA.external.read_dr910``/used as an input source in
+``SGA.parent.build_parent_nocuts`` (stage 8).
 
-See /global/cfs/cdirs/cosmo/work/users/djschleg/sga/README for
-details.
+See ``/global/cfs/cdirs/cosmo/work/users/djschleg/sga/README`` for
+details on how the input ``biggals-dr9.fits``/``biggals-dr10.fits``
+files were produced.
 
-Read 245,706 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/biggals-dr9.fits
-Read 522,607 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/biggals-dr10.fits
-Trimming 202,044/768,313 ref_cat!="" and NOBS_[GRZ]>0 objects from the combined catalog.
-Resolving 181,304 duplicates.
-Unique catalog has 475,316 objects
-Read 1,154,637 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits
-Trimming 13,881/475,316 objects which match version=v1.0 parent catalog.
-Trimming 416,646/461,435 objects with FITBITS>0
-Trimming 582/44,789 objects with -1<g-r<2 and -2<r-z<2.5
-Wrote /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/dr910-supplement-v1.0.png
-Wrote 44,207 objects to /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/dr910-supplement-v1.0.fits
+Pipeline: (1) reads both DR9/DR10 "biggals" FITS files (a fixed column
+subset); (2) stacks them and cuts to sources with no reference-catalog
+match (``REF_CAT`` blank, i.e. not already a Gaia/SGA/other reference
+source), 3-band coverage, per-band S/N > 1 in g/r/z, and >1 exposure in
+at least one band; (3) resolves DR9/DR10 duplicate detections of the
+same object via ``SGA.SGA.sga2025_name`` (precise to ~3.5 arcsec) --
+exact pairs ("doubles") are resolved by sorting on ``NOBS`` and keeping
+every second (higher-``NOBS``) entry, while 3+-way duplicates are
+resolved by explicit per-group ``argmax(NOBS)``; (4) positionally
+matches (10 arcsec) against the current archive-stage parent catalog
+and drops anything already present there; (5) cuts to ``FITBITS == 0``
+(clean Tractor fits) and a g-r/r-z color box (roughly stellar-locus,
+to reject clearly non-galaxy sources) with implied per-band magnitude
+limits; (6) re-reads the full (unrestricted-column) rows for the
+surviving objects from the original DR9/DR10 files, adds ``SGANAME``/
+``DESINAME`` identifier columns; (7) writes a 3-panel QA figure
+(sky coverage, r-mag vs. size, r-z vs. g-r color-color) and the final
+FITS supplement.
+
+Notes
+-----
+``from SGA.parent import parent_version`` fails with ``ImportError`` --
+no function named ``parent_version`` exists anywhere in ``SGA.parent``
+or ``SGA.SGA`` (the real catalog-version function is
+``SGA.SGA.SGA_version``). This script cannot currently run past its
+import statements. Even if the import were fixed, the line
+``version = parent_version(archive=True)`` is immediately followed by
+``version = 'v1.0'``, unconditionally overwriting it -- so the call's
+result was already discarded/dead before the import even became a
+problem.
+
+Reference run (SGA-2025, version v1.0), for provenance:
+
+    Read 245,706 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/biggals-dr9.fits
+    Read 522,607 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/biggals-dr10.fits
+    Trimming 202,044/768,313 ref_cat!="" and NOBS_[GRZ]>0 objects from the combined catalog.
+    Resolving 181,304 duplicates.
+    Unique catalog has 475,316 objects
+    Read 1,154,637 objects from /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/SGA2025-parent-archive-v1.0.fits
+    Trimming 13,881/475,316 objects which match version=v1.0 parent catalog.
+    Trimming 416,646/461,435 objects with FITBITS>0
+    Trimming 582/44,789 objects with -1<g-r<2 and -2<r-z<2.5
+    Wrote /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/dr910-supplement-v1.0.png
+    Wrote 44,207 objects to /global/cfs/cdirs/desicollab/users/ioannis/SGA/2025/parent/external/dr910-supplement-v1.0.fits
 
 """
 import os, pdb

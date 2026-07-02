@@ -17,6 +17,28 @@ VEGA2AB = {'W1': 2.699, 'W2': 3.339, 'W3': 5.174, 'W4': 6.620}
 
 
 def set_legacysurvey_dir(region='dr11-south', rank=None):
+    """Set the ``$LEGACY_SURVEY_DIR`` environment variable for a given
+    survey region, derived from ``$LEGACY_SURVEY_BASEDIR``.
+
+    Parameters
+    ----------
+    region : :class:`str`
+        Survey region (e.g. ``'dr11-south'``); mapped to its data
+        release subdirectory (``'dr9'``, ``'dr10'``, or ``'dr11'``).
+    rank : :class:`int`, optional
+        MPI rank, for logging; if given, only rank 0 logs the change
+        (though every rank still sets the environment variable).
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    EnvironmentError
+        If ``$LEGACY_SURVEY_BASEDIR`` is not set.
+
+    """
     if not 'LEGACY_SURVEY_BASEDIR' in os.environ:
         msg = 'Mandatory LEGACY_SURVEY_BASEDIR environment variable not set!'
         log.critical(msg)
@@ -39,6 +61,21 @@ def set_legacysurvey_dir(region='dr11-south', rank=None):
 
 
 def get_raslice(ra):
+    """Build the 3-digit, zero-padded RA-slice directory name used to
+    shard per-object data directories (e.g. ``'068'`` for RA=68.x).
+
+    Parameters
+    ----------
+    ra : :class:`float` or array-like
+        Right ascension, degrees.
+
+    Returns
+    -------
+    :class:`str` or :class:`numpy.ndarray`
+        3-digit zero-padded integer RA string(s); scalar if ``ra`` was
+        scalar.
+
+    """
     if np.isscalar(ra):
         return f'{int(ra):03d}'
     else:
@@ -46,6 +83,23 @@ def get_raslice(ra):
 
 
 def radec_to_groupname(ra, dec, prefix=''):
+    """Build a disk-friendly group name from a sky position, at coarse
+    (36 arcsec / 0.01 degree) precision.
+
+    Parameters
+    ----------
+    ra, dec : :class:`float` or array-like
+        Right ascension and declination, degrees.
+    prefix : :class:`str`
+        String prepended to each name (e.g. ``'SGA2025_'``).
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Group name(s), formatted ``f'{prefix}{100*ra:05d}{sign}{100*|dec|:04d}'``
+        with ``sign`` = ``'m'``/``'p'`` for negative/non-negative ``dec``.
+
+    """
     # 36-arcsec precision (0.01 degrees)
     group_name = []
     for ra1, dec1 in zip(np.atleast_1d(ra), np.atleast_1d(dec)):
@@ -65,18 +119,24 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025',
 
     Parameters
     ----------
-    target_ra: array of :class:`~numpy.float64`
+    target_ra : array of :class:`~numpy.float64`
         Right ascension in degrees of target object(s). Can be float, double,
         or array/list of floats or doubles.
-    target_dec: array of :class:`~numpy.float64`
+    target_dec : array of :class:`~numpy.float64`
         Declination in degrees of target object(s). Can be float, double,
         or array/list of floats or doubles.
-    precision: :class:`int`
+    prefix : :class:`str`
+        String prepended to each name before the ``' J'`` marker, e.g.
+        ``'SGA2025'`` -> ``'SGA2025 JHHH.HHHH+DD.DDDD'``.
+    precision : :class:`int`
         Number of decimal places in final naming convention.
+    unixsafe : :class:`bool`
+        If True, replace spaces in the output names with underscores,
+        for filesystem-safe names.
 
     Returns
     -------
-    array of :class:`str`
+    :class:`numpy.ndarray` of :class:`str`
         Names referring to the input target RA and DEC's. Array is the
         same length as the input arrays.
 
@@ -142,15 +202,19 @@ def radec_to_name(target_ra, target_dec, prefix='SGA2025',
 
 
 def backup_filename(filename):
-    """rename filename to next available filename.N
+    """Rename a file to the next available ``filename.N`` backup name.
 
-    Args:
-        filename (str): full path to filename
+    Parameters
+    ----------
+    filename : :class:`str`
+        Full path to the file to back up.
 
-    Returns:
-        New filename.N, or filename if original file didn't already exist
-
-    if filename=='/dev/null' or filename doesn't exist, just return filename
+    Returns
+    -------
+    :class:`str`
+        The new ``filename.N`` path the file was renamed to, or
+        ``filename`` unchanged if it is ``'/dev/null'`` or doesn't
+        already exist (no rename performed).
 
     """
     if filename == '/dev/null' or not os.path.exists(filename):
@@ -170,14 +234,37 @@ def backup_filename(filename):
 
 
 def read_survey_bricks(survey, brickname=None, custom=False):
-    """Read the sample of bricks corresponding to the given the run.
+    """Read the legacypipe brick catalog for a survey, or build a
+    single custom-brick placeholder.
 
-    Currently, we read the full-sky set of bricks, but this should really be
-    reduced down to the set of bricks with data.
+    Currently reads the full-sky set of bricks (or a single named
+    brick), but this should really be reduced down to the set of bricks
+    with data.
+
+    Parameters
+    ----------
+    survey : legacypipe survey object
+        Provides ``get_bricks``/``get_bricks_by_name``; unused if
+        ``custom=True``.
+    brickname : :class:`str`, optional
+        If given (and ``custom=False``), read only this named brick
+        instead of the full brick list.
+    custom : :class:`bool`
+        If True, ignore ``survey``/``brickname`` and instead build a
+        single hardcoded test brick (``RA=15.8232``, ``DEC=-4.6630``,
+        ``WIDTH=600``), for testing purposes.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Brick catalog with uppercase column names.
 
     """
     def _toTable(_bricks):
-        # convert to an astropy Table
+        """Convert a legacypipe brick recarray/``fits_table`` to an
+        astropy Table with uppercase column names.
+
+        """
         _bricks = _bricks.to_dict()
         bricks = Table()
         for key in _bricks.keys():
@@ -204,12 +291,51 @@ def read_survey_bricks(survey, brickname=None, custom=False):
 
 
 def _missing_files_one(args):
-    """Wrapper for the multiprocessing."""
+    """Unpack an argument tuple and call :func:`missing_files_one`;
+    multiprocessing worker for :func:`SGA.SGA.missing_files`.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments matching :func:`missing_files_one`'s
+        signature.
+
+    Returns
+    -------
+    See :func:`missing_files_one`.
+
+    """
     return missing_files_one(*args)
 
 
 def missing_files_one(checkfile, dependsfile, overwrite):
-    """Simple support script for missing_files."""
+    """Classify a single object's processing status for
+    :func:`SGA.SGA.missing_files`, by checking for its marker files.
+
+    Parameters
+    ----------
+    checkfile : :class:`str`
+        Path to this stage's ``*.isdone`` (or similar) completion marker
+        file.
+    dependsfile : :class:`str` or None
+        Path to the marker file this stage depends on completing first;
+        if None, no dependency is checked.
+    overwrite : :class:`bool`
+        If True, treat the object as ``'todo'`` even if ``checkfile``
+        already exists (and clear any existing failure marker).
+
+    Returns
+    -------
+    :class:`str`
+        ``'done'`` if ``checkfile`` exists and ``overwrite`` is False
+        (regardless of whether ``dependsfile`` exists -- an inconsistent
+        state is still reported as done, not flagged); ``'fail'`` if a
+        ``{checkfile[:-6]}isfail`` marker exists and ``overwrite`` is
+        False (only checked when ``checkfile`` ends in ``'.isdone'``);
+        ``'wait'`` if ``dependsfile`` is given and doesn't exist yet;
+        otherwise ``'todo'``.
+
+    """
     from pathlib import Path
 
     # If already done and not overwriting
@@ -239,7 +365,30 @@ def missing_files_one(checkfile, dependsfile, overwrite):
 
 
 def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
-    """Simple wrapper to read an input catalog.
+    """Read a FITS catalog extension into an astropy Table, logging a
+    warning (and returning None) rather than raising if the file is
+    missing.
+
+    Parameters
+    ----------
+    catfile : :class:`str`
+        Path to the FITS catalog.
+    ext : :class:`int` or :class:`str`
+        FITS extension to read.
+    columns : :class:`list` of :class:`str`, optional
+        Restrict to these columns.
+    rows : array-like, optional
+        Restrict to these row indices.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table` or None
+        The catalog, or None if ``catfile`` doesn't exist.
+
+    Raises
+    ------
+    IOError
+        If ``catfile`` exists but fails to read.
 
     """
     if not os.path.isfile(catfile):
@@ -257,11 +406,57 @@ def read_fits_catalog(catfile, ext=1, columns=None, rows=None):
 
 
 def _read_image_data(data, filt2imfile, read_jpg=False, skip_tractor=False, verbose=False):
-    """Helper function for the project-specific read_multiband method.
+    """Read per-band images, inverse-variance, PSFs, and (optionally)
+    JPEG previews into ``data``, and build an initial per-band pixel
+    mask and sky sigma estimate.
 
-    Read the multi-band images and inverse variance images and pack them into a
-    dictionary. Also create an initial pixel-level mask and handle images with
-    different pixel scales (e.g., GALEX and WISE images).
+    Helper for :func:`SGA.SGA.read_multiband`. For each band in
+    ``data['all_data_bands']``: reads the image/invvar FITS (and model
+    FITS, if present in ``filt2imfile``); for the optical, GALEX, and
+    unWISE reference bands, also builds and stores that imaging set's
+    WCS (and header, and JPEG previews if ``read_jpg``); converts
+    unWISE images from Vega to AB nanomaggies (``VEGA2AB``); reads and
+    normalizes the pixelized PSF, if present; builds a per-band boolean
+    mask (invvar <= 0, OR'd with the Tractor ``allmask`` for optical
+    bands unless ``skip_tractor``, OR'd with a resized ``wisemask`` for
+    W1/W2, then binary-dilated by 2 iterations); for optical bands,
+    robustly estimates the sky sigma via source detection/segmentation
+    (``photutils.segmentation``) rather than trusting the Tractor model
+    (which can be poor for e.g. UGC 05688); and zeros the invvar of
+    masked pixels. Deletes ``data['wisemask']`` at the end if present.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-band image data and metadata dict being assembled (see
+        :func:`SGA.SGA.build_multiband_mask` for the full key set),
+        already populated with ``all_data_bands``, ``opt_bands``,
+        ``unwise_bands``, ``opt_refband``, ``galex_refband``,
+        ``unwise_refband``, ``galaxydir``, ``galaxy``, and (unless
+        ``skip_tractor``) per-band ``allmask_{filt}`` and ``wisemask``
+        entries. Updated in place (and returned) with ``width``,
+        ``{opt,galex,unwise}_hdr``/``_wcs`` (for the reference bands),
+        optional ``{opt,galex,unwise}_jpg_{image,model,resid}``, and
+        per-band ``data[filt]`` (image), ``{filt}_invvar``,
+        ``{filt}_mask``, ``{filt}_psf``, and (optical only)
+        ``{filt}_skysigma``.
+    filt2imfile : :class:`dict`
+        Band name -> dict of file paths, with keys ``'image'``,
+        ``'invvar'``, and optionally ``'model'``/``'psf'``.
+    read_jpg : :class:`bool`
+        If True, also read the image/model/resid JPEG previews for each
+        reference band's imaging set.
+    skip_tractor : :class:`bool`
+        If True, skip incorporating the Tractor ``allmask`` into the
+        optical mask (``data[f'allmask_{filt}']`` is assumed absent).
+    verbose : :class:`bool`
+        If True, log each file as it's read.
+
+    Returns
+    -------
+    :class:`dict`
+        The input ``data``, updated in place and returned for
+        convenience.
 
     """
     from matplotlib.image import imread
@@ -468,15 +663,33 @@ _TRACTOR_BAND_PREFIX_UNITS = {
 
 
 def table_to_fitsio(tbl):
-    """
-    Convert an Astropy Table/QTable into (data, names, units) for fitsio.write().
-    Units are written verbatim to TUNITn (non-standard allowed).
+    """Convert an astropy Table/QTable into ``(data, names, units)`` for
+    ``fitsio.write()``.
 
-    Unit resolution order for each column:
-      1. Explicit astropy unit on the column (normalised: nmgy/nanomaggy → nanomaggies).
-      2. Exact match in _TRACTOR_EXACT_UNITS (case-insensitive).
-      3. Band-suffix match: strip the trailing '_<token>' and look up the prefix
-         in _TRACTOR_BAND_PREFIX_UNITS (handles flux_g, psfdepth_r, lc_flux_W1, …).
+    Units are written verbatim to ``TUNITn`` (non-standard allowed).
+    Unit resolution order for each column: (1) an explicit astropy unit
+    on the column, if present (normalized: ``nmgy``/``nanomaggy`` ->
+    ``nanomaggies``); (2) an exact, case-insensitive match in
+    ``_TRACTOR_EXACT_UNITS``; (3) a band-suffix match -- strip the
+    trailing ``'_<token>'`` and look up the prefix in
+    ``_TRACTOR_BAND_PREFIX_UNITS`` (handles ``flux_g``, ``psfdepth_r``,
+    ``lc_flux_W1``, etc.); otherwise an empty unit string.
+
+    Parameters
+    ----------
+    tbl : :class:`~astropy.table.Table` or :class:`~astropy.table.QTable`
+        Table to convert.
+
+    Returns
+    -------
+    data : :class:`list` of :class:`numpy.ndarray`
+        Column arrays (``.value`` for ``Quantity``/masked columns, else
+        ``numpy.asarray``), in ``tbl``'s column order.
+    names : :class:`list` of :class:`str`
+        Column names, same order as ``data``.
+    units : :class:`list` of :class:`str`
+        Resolved unit string per column (possibly empty), same order.
+
     """
     names = list(tbl.colnames)
     data  = [tbl[name].value if hasattr(tbl[name], 'value') else np.asarray(tbl[name])
@@ -510,25 +723,29 @@ def table_to_fitsio(tbl):
 
 
 def make_header(src_hdr, keys, extname=None, bunit=None, extra=None):
-    """
-    Build a FITSHDR copying specific keys from an existing fitsio FITSHDR.
+    """Build a ``fitsio.FITSHDR`` by copying specific keys from an
+    existing header, plus optional extra cards.
 
     Parameters
     ----------
-    src_hdr : fitsio.FITSHDR or None
-        Source header to copy from (can be None).
-    keys : iterable of str
-        Keyword names to copy (if present) with their values and comments.
-    extname : str, optional
-        Set/override EXTNAME.
-    bunit : str, optional
-        Set/override BUNIT (free-form text ok in fitsio).
-    extra : dict, optional
-        Extra cards to add. Values can be scalar, or (value, comment) tuples.
+    src_hdr : :class:`~fitsio.FITSHDR` or None
+        Source header to copy from (can be None, in which case only
+        ``extra``/``bunit``/``extname`` populate the result).
+    keys : iterable of :class:`str`
+        Keyword names to copy (if present in ``src_hdr``) with their
+        values and comments.
+    extname : :class:`str`, optional
+        Set/override ``EXTNAME``.
+    bunit : :class:`str`, optional
+        Set/override ``BUNIT`` (free-form text OK in fitsio).
+    extra : :class:`dict`, optional
+        Extra cards to add. Values can be scalar, or ``(value, comment)``
+        tuples.
 
     Returns
     -------
-    hdr : fitsio.FITSHDR
+    :class:`~fitsio.FITSHDR`
+        The constructed header.
 
     """
     hdr = fitsio.FITSHDR()
@@ -555,7 +772,60 @@ def make_header(src_hdr, keys, extname=None, bunit=None, extra=None):
 
 def write_ellipsefit(data, sample, datasets, results, sbprofiles,
                      MASKBITS, verbose=False):
-    """Write out the ellipse and sbprofiles catalogs.
+    """Write per-object ellipse-fitting output FITS files, one per
+    galaxy per imaging dataset.
+
+    For each dataset (``'opt'``, ``'unwise'``, ``'galex'``) and each
+    object in ``sample``, writes
+    ``{galaxydir}/{sganame}-ellipse-{suffix}.fits`` with four
+    extensions: ``MODELS`` (subtracted source models, nanomaggies),
+    ``MASKBITS`` (packed mask bitmask, with per-bit definitions recorded
+    as header comments), ``ELLIPSE`` (the fit results table -- for
+    ``'opt'``, joined with the object's sample row first), and
+    ``SBPROFILES`` (the per-radius surface-brightness profile table).
+    Any pre-existing ``*-ellipse-{suffix}.fits`` files in ``galaxydir``
+    are removed first. Files are written atomically (via a ``.tmp``
+    suffix then ``os.rename``) with FITS checksums.
+
+    Notes
+    -----
+    The ``if 'BANDS' in models_extra.keys():`` check is always False --
+    at that point in the loop ``models_extra`` has only just been
+    initialized with ``'PIXSCALE'``/``'PHOTSYS'`` keys, so ``'BANDS'``
+    is never present yet. As a result the ``if`` branch (which would
+    store ``bands`` as a raw list/array header value) is dead code; the
+    ``else`` branch (storing it as a comma-joined string) always runs.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-band image data and metadata for the group mosaic (see
+        :func:`SGA.SGA.build_multiband_mask`); needs ``REFIDCOLUMN``,
+        ``all_bands``, ``galaxydir``, and per-dataset
+        ``{dataset}_{pixscale,hdr,bands,models,maskbits}``.
+    sample : :class:`~astropy.table.Table`
+        One row per object; needs ``SGANAME`` and every column joined
+        into the ``'opt'`` dataset's ``ELLIPSE`` extension.
+    datasets : :class:`list` of :class:`str`
+        Imaging datasets to write (e.g. ``['opt', 'unwise', 'galex']``).
+    results : :class:`list` of :class:`list` of :class:`~astropy.table.Table`
+        Per-dataset, per-object ellipse-fitting result tables, indexed
+        ``results[idata][iobj]`` (as returned by
+        :func:`SGA.ellipse.wrap_multifit`).
+    sbprofiles : :class:`list` of :class:`list` of :class:`~astropy.table.Table`
+        Per-dataset, per-object surface-brightness profile tables,
+        indexed ``sbprofiles[idata][iobj]``.
+    MASKBITS : :class:`list` of :class:`dict`
+        Per-dataset bit-value dictionaries, indexed to match ``datasets``,
+        used to write the ``MASKBITS`` header's bit definitions.
+    verbose : :class:`bool`
+        Accepted but not referenced in this function's body -- dead
+        parameter.
+
+    Returns
+    -------
+    :class:`int`
+        Always ``1``.
 
     """
     from glob import glob
@@ -665,6 +935,31 @@ def write_ellipsefit(data, sample, datasets, results, sbprofiles,
 
 
 def empty_tractor(cat=None):
+    """Build an empty (zero-filled) Tractor-catalog data model row, or
+    zero out an existing Tractor table.
+
+    Used to synthesize placeholder Tractor rows for SGA sources with no
+    real Tractor match (see e.g. :func:`SGA.SGA._create_mock_tractor_sga`).
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`, optional
+        If given, zero every column of this table in place (boolean
+        columns are set True, e.g. ``brick_primary``; all others
+        multiplied by 0) and return it, instead of building a fresh
+        one-row table from the hardcoded data model.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        If ``cat`` is None: a single-row table with the full DR11
+        Tractor column set (``ls_id_dr11``, ``brickid``, photometry,
+        Gaia astrometry, shapes, etc.), each column zero-filled at its
+        native dtype/shape (including multi-element columns like
+        ``dchisq``/``apflux_*``). If ``cat`` is given: ``cat`` itself,
+        zeroed in place.
+
+    """
     if cat is not None:
         for col in cat.colnames:
             if cat[col].dtype == bool:

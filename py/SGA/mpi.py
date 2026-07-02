@@ -13,6 +13,32 @@ from SGA.logger import log
 
 
 def mpi_args():
+    """Define and parse the command-line interface for the
+    ``bin/SGA2025-mpi`` processing driver.
+
+    Covers pipeline-stage selection (``--coadds``, ``--customsky``,
+    ``--ellipse``, ``--htmlplots``, ``--htmlindex``,
+    ``--build-refcat``, ``--build-catalog``, ``--count-masked-pixels``,
+    ``--parse-tractor-logs``), sample filtering (``--first``/``--last``,
+    ``--galaxylist``, ``--mindiam``/``--maxdiam``,
+    ``--minmult``/``--maxmult``, ``--region``, ``--lvd``,
+    ``--wisesize``, ``--public-release``, ``--test-bricks``),
+    processing/fitting options (pixel scales, ellipse-fitting
+    Monte Carlo parameters, geometry-selection overrides
+    ``--fixgeo``/``--tractorgeo``, source-masking flags), and
+    run-control flags (``--force``, ``--clobber``, ``--debug``,
+    ``--verbose``, ``--mp``, ``--ngpu``).
+
+    Returns
+    -------
+    :class:`argparse.Namespace`
+        Parsed command-line arguments; every attribute name matches
+        the corresponding flag's ``dest`` (equal to the flag name with
+        dashes replaced by underscores, unless a flag explicitly sets
+        ``dest=`` to invert its sense, e.g. ``--no-unwise`` ->
+        ``args.unwise``).
+
+    """
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -105,18 +131,29 @@ def mpi_args():
 
 
 def weighted_partition(weights, n):
-    '''
-    Partition `weights` into `n` groups with approximately same sum(weights)
+    '''Partition `weights` into `n` groups with approximately the same
+    sum of weights, via a greedy largest-first assignment (each item,
+    from heaviest to lightest, goes to whichever group currently has
+    the smallest running sum).
 
-    Args:
-        weights: array-like weights
-        n: number of groups
+    Parameters
+    ----------
+    weights : array-like
+        Weight of each item to partition.
+    n : :class:`int`
+        Number of groups.
 
-    Returns list of lists of indices of weights for each group
+    Returns
+    -------
+    :class:`list`
+        List of `n` lists, each containing the integer indices (into
+        `weights`) of the items assigned to that group.
 
-    Notes:
-        compared to `dist_discrete_all`, this function allows non-contiguous
-        items to be grouped together which allows better balancing.
+    Notes
+    -----
+    Compared to `dist_discrete_all`, this function allows
+    non-contiguous items to be grouped together, which allows better
+    load balancing.
 
     '''
     #- sumweights will track the sum of the weights that have been assigned
@@ -143,30 +180,42 @@ def weighted_partition(weights, n):
 
 def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
                     small_bricks_first=True):
-    """
-    Partition tasks into `size` buckets with ~equal total weight, then
-    sort each bucket so smaller bricks are processed first.
+    """Partition tasks into `size` buckets with ~equal total weight
+    (via greedy longest-processing-time-first / LPT scheduling), then
+    sort each bucket so smaller (or larger) bricks are processed
+    first.
 
     Parameters
     ----------
     diameter : array-like
         Brick diameters (arcmin) for all items.
-    itodo : array-like of int or None, optional
-        Indices to schedule (default: all items).
-    size : int, optional
-        Number of MPI ranks (default: 1).
-    p : float, optional
-        Exponent for weight model: weight = diameter**p (default: 2.0).
-    verbose : bool, optional
-        If True, print a load-balance summary.
+    itodo : array-like of :class:`int`, optional
+        Indices to schedule. Defaults to all items.
+    size : :class:`int`
+        Number of MPI ranks.
+    p : :class:`float`
+        Exponent for the weight model: ``weight = diameter**p``.
+    verbose : :class:`bool`
+        If True, print (or, for the ``size == 1`` branch, log) a
+        load-balance summary.
+    small_bricks_first : :class:`bool`
+        If True, sort each rank's indices ascending by diameter
+        (smallest first); if False, descending (largest first).
 
     Returns
     -------
-    todo_indices : list of np.ndarray
-        One array of indices per rank. Each array is sorted ascending
-        by diameter so each rank does small bricks first.
-    loads : np.ndarray
+    todo_indices : :class:`list` of :class:`numpy.ndarray`
+        One array of indices per rank, sorted per `small_bricks_first`.
+    loads : :class:`numpy.ndarray`
         Total weight per rank.
+
+    Notes
+    -----
+    The ``size == 1`` branch logs its load-balance summary via
+    :data:`SGA.logger.log` (``log.info``), while the general
+    (``size > 1``) branch uses a bare ``print()`` instead -- an
+    inconsistency in how `verbose` output is routed depending on
+    `size`.
 
     """
     import heapq
@@ -242,21 +291,36 @@ def distribute_work(diameter, itodo=None, size=1, p=2.0, verbose=False,
 
 
 def parse_tractor_log(logfile):
-    """
-    Extract key metrics from a Tractor log file.
+    """Extract key metrics from a Tractor (``legacypipe``/coadds) log
+    file, by regex-parsing its stdout for group name, mosaic width,
+    CCD/source/blob counts, checkpoint recovery, and runtime.
 
-    If some fields are missing from the main log (e.g., due to checkpoint recovery),
-    falls back to reading the first rotated log (-coadds_log.0).
+    If some fields (``nccd``, ``nsources``, ``nblob``) are missing
+    from the main log after a checkpoint recovery, falls back to
+    reading the rotated logs (``-coadds_log.0``, ``.1``, ...) in order
+    until they are found.
 
     Parameters
     ----------
-    logfile : str or Path
-        Path to log file (or base path without log file)
+    logfile : :class:`str` or :class:`pathlib.Path`
+        Path to the log file.
 
     Returns
     -------
-    dict
-        Parsed metrics: group_name, width, nccd, nblob, nsources, runtime, nattempts, ncheckpoint
+    :class:`dict`
+        Parsed metrics: ``group_name``, ``width``, ``nccd``, ``nblob``,
+        ``nsources``, ``runtime`` (minutes), ``nattempts``,
+        ``ncheckpoint``. If `logfile` does not exist, all numeric
+        fields are set to 0/0.0 and ``group_name`` is recovered from
+        the path itself (via a ``{ra}{p,m}{dec}`` regex match), if
+        possible.
+
+    Notes
+    -----
+    A field left unmatched by any regex (e.g. because the
+    corresponding log line was never written) remains ``None`` in the
+    returned dict rather than a numeric placeholder -- callers should
+    check for `None`, not just falsiness, since 0 is a valid count.
 
     """
     import re
@@ -266,16 +330,30 @@ def parse_tractor_log(logfile):
 
 
     def count_attempts(logfile):
-        """
-        Count number of fitting attempts by finding rotated log files.
+        """Count the number of fitting attempts by finding rotated log
+        files.
 
-        Pattern: base-coadds.log with rotations as base-coadds_log.0, base-coadds_log.1, etc.
-        The .0 file is the first/original attempt.
+        Pattern: ``base-coadds.log`` with rotations as
+        ``base-coadds_log.0``, ``base-coadds_log.1``, etc. The ``.0``
+        file is the first/original attempt.
+
+        Parameters
+        ----------
+        logfile : :class:`str` or :class:`pathlib.Path`
+            Path to the (possibly rotated) log file.
 
         Returns
         -------
-        int
-            Number of attempts (1 if only base log exists, 2+ if rotated logs exist)
+        :class:`int`
+            Number of attempts (1 if only the base log exists, 2+ if
+            rotated logs also exist).
+
+        Notes
+        -----
+        The glob pattern built here (``base_pattern``) is identical
+        for the ``'-coadds_log'`` and fallback branches (both produce
+        ``logstr + '.*'``), making the ``elif logstr.endswith(
+        '-coadds_log'):`` branch redundant with the final ``else:``.
 
         """
         logfile = Path(logfile)

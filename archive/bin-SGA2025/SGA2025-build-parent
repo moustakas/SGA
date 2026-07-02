@@ -1,50 +1,106 @@
 #!/usr/bin/env python
 
-"""Code to build the parent SGA2025 sample based on a combination of
-internal and external catalogs.
+"""Command-line driver for building the SGA-2025 parent sample from a
+combination of internal (Tractor/CCD footprint) and external
+(HyperLeda/NED-LVS/LVD/SGA-2020/custom) catalogs, by dispatching to the
+corresponding stage function in ``SGA.parent``.
 
-salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
-SGA2025-shifter
-source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
+Each flag below runs one pipeline stage, invoked in this order for a
+full build (see also ``archive/bin-SGA2025/README.md``'s "Build the
+Parent Sample" section, though note its example commands use stale
+flag names -- see Notes):
 
-SGA2025-build-parent --nocuts [--overwrite]
-SGA2025-build-parent --vicuts [--overwrite]
-SGA2025-build-parent --archive [--overwrite]
-SGA2025-build-parent --in-footprint --region=dr9-north
-SGA2025-build-parent --in-footprint --region=dr11-south
-SGA2025-build-parent --parent --mp=32 [--reset-sgaid] [--overwrite]
-SGA2025-build-parent --qa-parent
+- ``--nocuts`` -> ``SGA.parent.build_parent_nocuts`` (merge external
+  catalogs, no cuts)
+- ``--vicuts`` -> ``SGA.parent.build_parent_vicuts`` (apply VI-driven
+  cleanup)
+- ``--archive`` -> ``SGA.parent.build_parent_archive`` (apply SSL/
+  photometry cuts)
+- ``--in-footprint --region=<region>`` -> ``SGA.parent.in_footprint``
+  (match to the region's CCD footprint; run once per region, under MPI
+  for large regions)
+- ``--parent`` -> ``SGA.parent.build_parent`` (build the final parent
+  catalog and run group-finding)
+- ``--qa-parent`` / ``--qa-footprint`` -> ``SGA.parent.qa_parent`` /
+  ``SGA.parent.qa_footprint`` (QA figures)
 
-salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
-srun --ntasks=64 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \
-  SGA2025-build-parent --in-footprint --region=dr11-south
+Notes
+-----
+``README.md``'s example commands (``--build-parent-nocuts``,
+``--build-parent-vicuts``, ``--build-parent-archive``,
+``--build-parent``) do not match this script's actual argparse flags
+(``--nocuts``, ``--vicuts``, ``--archive``, ``--parent``, no
+``--build-parent-`` prefix) -- running the README's commands as
+literally written fails with an unrecognized-argument error. This
+script's own embedded usage examples below use the correct flag names.
 
-cp ~/SGA2025/sample/SGA2025-beta-parent-refcat-v1.6.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
-cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-north.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
-cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-south.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
-chgrp cosmo /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
-chmod g-w /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
+Typical interactive NERSC session::
 
-pushd /global/cfs/cdirs/cosmo/webapp/viewer-dev/data/sga2025
+    salloc -N 1 -C cpu -A m3592 -t 04:00:00 --qos interactive
+    SGA2025-shifter
+    source /global/homes/i/ioannis/code/SGA/bin/SGA2025/SGA2025-env
 
-cp ~/SGA2025/sample/SGA2025-beta-parent-v1.6.kd.fits .
-rm SGA2025-parent-latest.kd.fits
-ln -s SGA2025-beta-parent-v1.6.kd.fits SGA2025-parent-latest.kd.fits
+    SGA2025-build-parent --nocuts [--overwrite]
+    SGA2025-build-parent --vicuts [--overwrite]
+    SGA2025-build-parent --archive [--overwrite]
+    SGA2025-build-parent --in-footprint --region=dr9-north
+    SGA2025-build-parent --in-footprint --region=dr11-south
+    SGA2025-build-parent --parent --mp=32 [--reset-sgaid] [--overwrite]
+    SGA2025-build-parent --qa-parent
 
-cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-north.kd.fits .
-rm SGA2025-ellipse-north-latest.kd.fits
-ln -s SGA2025-ellipse-v1.6-dr11-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
+Multi-node MPI run for a bigger footprint match::
 
-cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-south.kd.fits .
-rm SGA2025-ellipse-south-latest.kd.fits
-ln -s SGA2025-ellipse-v1.6-dr11-south.kd.fits SGA2025-ellipse-south-latest.kd.fits
+    salloc -N 2 -C cpu -A m3592 -t 04:00:00 --qos interactive --image=docker:legacysurvey/sga:0.3
+    srun --ntasks=64 shifter --env-file=$CFS/desicollab/users/ioannis/SGA/2025/scripts/SGA2025-shifter-env.sh \\
+      SGA2025-build-parent --in-footprint --region=dr11-south
 
-chgrp cosmo *.fits ; chmod g-w *.fits
+Deploying a finished release's output catalogs to the public/viewer
+areas (reference commands from the v1.6 release, for provenance -- not
+automated by this script)::
 
+    cp ~/SGA2025/sample/SGA2025-beta-parent-refcat-v1.6.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
+    cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-north.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
+    cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-south.kd.fits /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/
+    chgrp cosmo /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
+    chmod g-w /global/cfs/cdirs/cosmo/work/legacysurvey/sga/2025/*.fits
+
+    pushd /global/cfs/cdirs/cosmo/webapp/viewer-dev/data/sga2025
+
+    cp ~/SGA2025/sample/SGA2025-beta-parent-v1.6.kd.fits .
+    rm SGA2025-parent-latest.kd.fits
+    ln -s SGA2025-beta-parent-v1.6.kd.fits SGA2025-parent-latest.kd.fits
+
+    cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-north.kd.fits .
+    rm SGA2025-ellipse-north-latest.kd.fits
+    ln -s SGA2025-ellipse-v1.6-dr11-north.kd.fits SGA2025-ellipse-north-latest.kd.fits
+
+    cp ~/SGA2025/sample/SGA2025-ellipse-v1.6-dr11-south.kd.fits .
+    rm SGA2025-ellipse-south-latest.kd.fits
+    ln -s SGA2025-ellipse-v1.6-dr11-south.kd.fits SGA2025-ellipse-south-latest.kd.fits
+
+    chgrp cosmo *.fits ; chmod g-w *.fits
 
 """
 def main():
-    """Main wrapper.
+    """Command-line entry point: parse arguments and dispatch to the
+    requested ``SGA.parent`` build/QA stage(s).
+
+    Each ``if args.<flag>:`` block is independent and non-exclusive --
+    multiple stage flags can be passed in one invocation and will run
+    sequentially in the order checked here (``nocuts``, ``vicuts``,
+    ``archive``, ``in_footprint``, ``parent``, ``qa_footprint``,
+    ``qa_parent``), though in practice each stage is normally run as a
+    separate invocation (see the module docstring's example session).
+    ``--in-footprint`` always initializes an MPI communicator
+    (``mpi4py.util.pkl5.Intracomm``) and calls
+    ``SGA.parent.in_footprint`` under it, even when run as a
+    single-process job. ``--qa-parent`` always builds both the sky and
+    size-magnitude QA figures (``SGA.parent.qa_parent(nocuts=False,
+    size_mag=True, sky=True)``); there is no flag to select just one.
+
+    Returns
+    -------
+    None
 
     """
     import argparse
