@@ -2085,7 +2085,38 @@ def _update_masks(brightstarmask, gaiamask, refmask, galmask,
 
 
 def qa_multiband_mask(data, sample, htmlgalaxydir):
-    """Diagnostic QA for the output of build_multiband_mask.
+    """Build a diagnostic QA figure for the output of
+    :func:`build_multiband_mask`.
+
+    The top row shows the inverse-variance-weighted coadd of each imaging
+    set (optical, unWISE, GALEX) with every object's initial ellipse
+    geometry overlaid. Each subsequent row shows one object's masked
+    image, subtracted model, and mask-bit overlay (bright stars, Gaia
+    stars, neighboring galaxies, other SGA sources), with both the
+    initial and final (moment-derived) ellipse geometry drawn for
+    comparison. The figure is written to
+    ``{htmlgalaxydir}/qa-ellipsemask-{data['galaxy']}.png``.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-band image data and metadata for the group mosaic, as
+        returned by :func:`build_multiband_mask` (``opt_bands``,
+        ``opt_images``, ``opt_maskbits``, ``opt_models``, ``opt_invvar``,
+        ``opt_pixscale``, ``opt_wcs``, ``opt_refband``, and the analogous
+        ``unwise_*``/``galex_*`` entries, plus ``width`` and ``galaxy``).
+    sample : :class:`~astropy.table.Table`
+        One row per SGA galaxy in this group, with both the initial
+        (``BX_INIT``, ``BY_INIT``, ``SMA_INIT``, ``BA_INIT``, ``PA_INIT``)
+        and final (``BX``, ``BY``, ``SMA_MOMENT``, ``BA_MOMENT``,
+        ``PA_MOMENT``) ellipse geometry columns, plus ``OBJNAME`` and the
+        group's reference ID column.
+    htmlgalaxydir : :class:`str`
+        Output directory for the QA figure.
+
+    Returns
+    -------
+    None
 
     """
     import matplotlib.pyplot as plt
@@ -2797,6 +2828,9 @@ def _build_reference_core_mask(iobj, refindx, sample, samplesrcs, geo_final,
 
 
 def _prerender_one(args):
+    """Render a single source's Tractor model patch; multiprocessing worker for :func:`prerender_patches`.
+
+    """
     filt, isrc, src, wcs, psf, shape = args
     from tractor import Image, Tractor
     from tractor.basics import LinearPhotoCal
@@ -4473,8 +4507,99 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
                    galex_pixscale=1.5, unwise_pixscale=2.75,
                    galex=True, unwise=True, verbose=False, read_jpg=False,
                    skip_ellipse=False, skip_tractor=False):
-    """Read the multi-band images (converted to surface brightness) in
-    preparation for ellipse-fitting.
+    """Read the per-object imaging, masks, and group sample/Tractor
+    catalogs from a coadd directory, in preparation for ellipse-fitting
+    (or QA).
+
+    Resolves per-band filenames from the ``{galaxydir}/{galaxy}-{imtype}-{filt}.fits[.fz]``
+    naming convention (falling back to the non-``.fz`` name for e.g.
+    RESOLVED mosaics), determines which bands have complete data
+    products, reads the Tractor catalog and ``MASKBITS`` image (building
+    the bright-star mask from the ``BRIGHT``/``MEDIUM``/``CLUSTER``
+    bits), reads the per-group sample catalog and matches each object to
+    its Tractor source via ``_read_sample``, and -- unless
+    ``skip_ellipse`` -- delegates the per-pixel image/invvar/model/PSF
+    reading to :func:`SGA.io._read_image_data`. When ``skip_ellipse`` is
+    True (RESOLVED or otherwise not ellipse-fit objects), Tractor,
+    maskbits, and model/PSF reading are skipped entirely; only the
+    reference-band images are read (to recover the WCS/header), and the
+    sample's ``BX``/``BY``/``RA``/``DEC``/geometry columns are populated
+    directly from their ``*_INIT`` values rather than being left for
+    :func:`build_multiband_mask` to fill in. Also builds a Gaia/Tycho
+    bright-star "core" mask (unless ``skip_ellipse``) and computes
+    per-band Milky Way dust transmission for every sample object.
+
+    Parameters
+    ----------
+    galaxy : :class:`str`
+        Galaxy or group name; the filename prefix for every per-object
+        data product in ``galaxydir``.
+    galaxydir : :class:`str`
+        Directory containing the coadd-stage FITS products for this
+        object/group (images, models, invvar, PSFs, Tractor catalog,
+        maskbits, and sample catalog).
+    REFIDCOLUMN : :class:`str`
+        Column name in the sample catalog holding each object's
+        reference ID, matched against ``tractor.ref_id``.
+    bands : :class:`list` of :class:`str`
+        Optical bands to read.
+    sort_by_flux : :class:`bool`
+        If True, sort ``sample`` (and ``samplesrcs``) by descending
+        ``OPTFLUX``; if False, sort by descending ``SMA_INIT``.
+    run : :class:`str`
+        legacypipe survey run name (e.g. ``'south'``), passed to
+        ``legacypipe.runs.get_survey`` when building the bright-star core
+        mask and to :func:`SGA.util.mwdust_transmission`.
+    pixscale : :class:`float`
+        Optical pixel scale, arcsec/pixel.
+    galex_pixscale : :class:`float`
+        GALEX pixel scale, arcsec/pixel.
+    unwise_pixscale : :class:`float`
+        unWISE pixel scale, arcsec/pixel.
+    galex : :class:`bool`
+        If True, include the GALEX FUV/NUV imaging set.
+    unwise : :class:`bool`
+        If True, include the unWISE W1-W4 imaging set.
+    verbose : :class:`bool`
+        Passed through to :func:`SGA.io._read_image_data`.
+    read_jpg : :class:`bool`
+        If True, also read the image/model/resid JPEG previews for each
+        imaging set (optical, GALEX, unWISE).
+    skip_ellipse : :class:`bool`
+        If True, treat this as a RESOLVED (or otherwise not
+        ellipse-fit) object: skip Tractor, maskbits, and model/PSF
+        reading, read only the reference-band images, and populate
+        geometry columns from the initial values.
+    skip_tractor : :class:`bool`
+        If True, skip the Tractor catalog and model/PSF file reading,
+        but still read images and inverse variance.
+
+    Returns
+    -------
+    data : :class:`dict`
+        Per-band image data and metadata (see :func:`build_multiband_mask`
+        for the full key set); ``{}`` if a required data product is
+        missing or the Tractor catalog has no usable sources.
+    tractor : :class:`~astropy.table.Table` or None
+        Full Tractor catalog for the mosaic footprint, or None if
+        ``skip_ellipse``/``skip_tractor`` or on early failure.
+    sample : :class:`~astropy.table.Table` or None
+        Per-group sample catalog, augmented with initial geometry,
+        Tractor-matched flux/position columns, and placeholder moment/
+        ``ELLIPSEBIT`` columns; None on early failure.
+    samplesrcs : :class:`list` of :class:`~astropy.table.Table` or None
+        Tractor row matched to each object in ``sample`` (see
+        ``_read_sample``); None on early failure.
+    err : :class:`int`
+        Status code. Initialized to 1 ("assume success") and left
+        unchanged on the normal return path. Two failure paths return
+        early with ``(data, tractor, sample, samplesrcs)`` all null/empty:
+        ``err=0`` when one or more (but not all) of a band's expected
+        data products is missing, and ``err=1`` when the Tractor catalog
+        has zero rows or zero ``brick_primary`` rows. Note ``err=1``
+        therefore denotes both the normal-success case and one of the
+        two failure cases -- callers should check whether ``data`` is
+        empty rather than relying on ``err`` alone to detect failure.
 
     """
     import fitsio
@@ -4493,8 +4618,57 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
 
 
     def _read_sample(opt_refband, tractor):
-        # Read the sample catalog from custom_coadds and find each source
-        # in the Tractor catalog.
+        """Read the group's sample catalog and match each object to its
+        Tractor source.
+
+        Reads ``{galaxydir}/{galaxy}-sample.fits``, renames the
+        ``RA``/``DEC``/``DIAM``/``PA``/``BA``/``MAG``/``DIAM_REF``
+        columns to their ``*_INIT`` counterparts, adds ``SMA_INIT``
+        (radius in arcsec, half of ``DIAM_INIT`` in arcmin converted to
+        arcsec), and computes each object's initial pixel position
+        (``BX_INIT``, ``BY_INIT``) from a WCS built from the optical
+        reference-band image. Adds placeholder columns
+        (``OPTFLUX``, ``FRACFLUX``, ``BANDS``, ``SGANAME``, ``RA``,
+        ``DEC``, ``BX``, ``BY``, ``SMA_MASK``, ``SMA_MOMENT``,
+        ``BA_MOMENT``, ``PA_MOMENT``, ``RA_TRACTOR``, ``DEC_TRACTOR``,
+        ``ELLIPSEBIT``) to be filled in later by
+        :func:`build_multiband_mask`. If ``tractor`` is given, matches
+        each sample row's ``REFIDCOLUMN`` value against
+        ``tractor.ref_id`` (restricted to ``tractor.ref_cat in (REFCAT,
+        'LG')``), flagging unmatched rows with
+        ``ELLIPSEBIT['NOTRACTOR']`` and PSF/DUP-typed matches with
+        ``ELLIPSEBIT['TRACTORPSF']``, and populates ``OPTFLUX``,
+        ``FRACFLUX`` (both the max across ``opt_bands``), and
+        ``RA_TRACTOR``/``DEC_TRACTOR`` from the matched source; if
+        ``tractor`` is None, every row is flagged
+        ``ELLIPSEBIT['SKIPTRACTOR']`` and ``samplesrcs`` is filled with
+        None. Sorts the table (and ``samplesrcs``) by descending
+        ``OPTFLUX`` or ``SMA_INIT`` depending on the enclosing
+        ``sort_by_flux``, adds empty per-band ``PSFSIZE_*``/``PSFDEPTH_*``
+        columns, and populates them via ``_get_psfsize_and_depth`` when
+        ``tractor`` is not None.
+
+        Parameters
+        ----------
+        opt_refband : :class:`str`
+            Optical reference band; its image file supplies the WCS used
+            to compute ``BX_INIT``/``BY_INIT``.
+        tractor : :class:`~astropy.table.Table` or None
+            Full Tractor catalog for the mosaic footprint to match
+            against, or None to skip Tractor matching entirely.
+
+        Returns
+        -------
+        sample : :class:`~astropy.table.Table`
+            Sample catalog, augmented and sorted as described above.
+        samplesrcs : :class:`list` of :class:`~astropy.table.Table` or None
+            Tractor row matched to each object in ``sample``
+            (index-aligned), or None where unmatched or ``tractor`` was
+            None.
+        tractor : :class:`~astropy.table.Table` or None
+            The input ``tractor``, returned unchanged for convenience.
+
+        """
         samplefile = os.path.join(galaxydir, f'{galaxy}-{filt2imfile["sample"]}.fits')
         sample = Table(fitsio.read(samplefile))#, columns=cols))
         log.info(f'Read {len(sample)} source(s) from {samplefile}')
