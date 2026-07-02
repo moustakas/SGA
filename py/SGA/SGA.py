@@ -503,19 +503,28 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
                          minmult, maxmult, test_bricks=test_bricks)
 
 
-def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
+def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
                     galaxylist=None, first=None, last=None, no_groups=False,
                     minmult=None, maxmult=None, lvd=False, version=None, beta=False,
                     verbose=False):
-    """Read the final SGA2025 catalog for a given survey region.
+    """Read the final SGA2025 catalog.
+
+    By default (region=None, beta=False) this reads the single merged,
+    deduplicated catalog SGA2025-{version}.fits written by
+    SGA2025-build-catalog, which combines dr11-south and dr11-north. Pass
+    an explicit region ('dr11-south' or 'dr11-north') to instead read one
+    of the (also-written, non-deduplicated) per-region files.
 
     Returns the ELLIPSE extension by default, or the row-matched TRACTOR
     extension when tractor=True.
 
     Parameters
     ----------
-    region : str
-        Survey region ('dr11-south' or 'dr11-north').
+    region : str, optional
+        Survey region ('dr11-south' or 'dr11-north'). If None (default)
+        and beta=False, reads the merged catalog with no region filtering.
+        Required when beta=True -- raises ValueError if omitted, since
+        there is no merged beta catalog.
     tractor : bool
         If True, return the TRACTOR extension instead of ELLIPSE.
     mindiam, maxdiam : float
@@ -533,7 +542,8 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
     version : str, optional
         Catalog version string; defaults to the current release version.
     beta : bool
-        If True (default), read the beta release file.
+        If True, read the per-region beta (pre-release) ellipse catalog
+        instead of the final catalog; requires region. Default False.
     verbose : bool
         If True, log additional diagnostic messages.
 
@@ -546,6 +556,9 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
 
     """
     if beta:
+        if region is None:
+            raise ValueError('region is required when beta=True '
+                             '(no merged beta catalog exists)')
         if version is None:
             version = SGA_version()
         samplefile = os.path.join(sga_dir(), 'sample', f'SGA2025-beta-{version}-{region}.fits')
@@ -553,7 +566,10 @@ def read_sga_sample(region='dr11-south', tractor=False, mindiam=0., maxdiam=1e3,
     else:
         if version is None:
             version = SGA_version(catalog=True)
-        samplefile = os.path.join(sga_public_dir(), f'SGA2025-{region}-{version}.fits')
+        if region is None:
+            samplefile = os.path.join(sga_public_dir(), f'SGA2025-{version}.fits')
+        else:
+            samplefile = os.path.join(sga_public_dir(), f'SGA2025-{region}-{version}.fits')
         ext = 'SGA2025'
 
     # Row selection always runs on ELLIPSE (which has the group/region/sample columns).
