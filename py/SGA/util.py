@@ -23,6 +23,22 @@ F32MAX = np.finfo(np.float32).max
 
 
 def get_dt(t0):
+    """Compute an elapsed time since `t0`, in human-friendly units.
+
+    Parameters
+    ----------
+    t0 : :class:`float`
+        Start time, as returned by :func:`time.time`.
+
+    Returns
+    -------
+    dt : :class:`float`
+        Elapsed time since `t0`, in `unit`.
+    unit : :class:`str`
+        Either ``'seconds'`` (if the elapsed time is 60 seconds or
+        less) or ``'minutes'`` (otherwise).
+
+    """
     dt = time() - t0
     if dt > 60.:
         dt /= 60.
@@ -33,7 +49,32 @@ def get_dt(t0):
 
 
 def filter_effwaves(run='south'):
-    """Return the effective wavelengths of the standard LS filters.
+    """Return the effective wavelengths of the standard Legacy Survey
+    (grz), GALEX (FUV/NUV), and unWISE (W1-W4) filters.
+
+    Parameters
+    ----------
+    run : :class:`str`
+        Photometric system to use for the optical (grz) effective
+        wavelengths: ``'south'`` (DECam) or ``'north'`` (BASS+MzLS).
+        Any other value silently leaves ``g``, ``r``, ``z`` out of the
+        returned dictionary (see Notes).
+
+    Returns
+    -------
+    :class:`dict`
+        Mapping of filter name to effective wavelength, in Angstroms.
+        Always includes ``FUV``, ``NUV``, ``W1``-``W4``, and ``i``
+        (DECam only -- there is no ``i``-band in the BASS+MzLS
+        ``'north'`` system, but the key is present regardless of
+        `run`); includes ``g``, ``r``, ``z`` only when `run` is
+        ``'south'`` or ``'north'``.
+
+    Notes
+    -----
+    Unlike :func:`mwdust_transmission`, an unrecognized `run` does not
+    raise -- it silently returns a dictionary missing ``g``, ``r``,
+    ``z``.
 
     """
     weff = {
@@ -62,20 +103,37 @@ def filter_effwaves(run='south'):
 
 
 def mwdust_transmission(ebv=0., band='r', run='south'):
-    """Convert SFD E(B-V) value to dust transmission 0-1 given the
-    bandpass.
+    """Convert an SFD E(B-V) value to a Milky Way dust transmission
+    fraction, given the bandpass.
 
-    Args:
-        ebv (float or array-like): SFD E(B-V) value(s)
-        band (str): Bandpass name, e.g., 'r'.
-        run (str): Photometric system (e.g., 'south').
+    Parameters
+    ----------
+    ebv : :class:`float` or array-like
+        SFD E(B-V) value(s).
+    band : :class:`str`
+        Bandpass name, e.g., ``'r'``. Must be one of ``FUV``, ``NUV``,
+        ``W1``-``W4``, or (for ``run='south'``/``'north'``) ``g``,
+        ``r``, ``i``, ``z``.
+    run : :class:`str`
+        Photometric system: ``'south'`` (DECam) or ``'north'``
+        (BASS+MzLS).
 
-    Returns:
-        Scalar or array (same as ebv input), Milky Way dust
-        transmission 0-1.
+    Returns
+    -------
+    :class:`float` or array-like
+        Milky Way dust transmission, 0-1 (same shape as `ebv`).
 
-    Notes:
-        Based on `desiutil.dust.mwdust_transmission`.
+    Raises
+    ------
+    ValueError
+        If `run` is not ``'south'`` or ``'north'``, or if `band` is
+        not a recognized bandpass.
+
+    Notes
+    -----
+    Based on ``desiutil.dust.mwdust_transmission``. Unlike
+    :func:`filter_effwaves`, an unrecognized `run` raises instead of
+    silently omitting bands.
 
     """
     k_X = {
@@ -121,10 +179,25 @@ def mwdust_transmission(ebv=0., band='r', run='south'):
 
 
 def var2ivar(var, sigma=False):
-    """Simple function to safely turn a variance into an inverse
-    variance.
+    """Safely convert a variance (or standard deviation) into an
+    inverse variance, avoiding division by zero.
 
-    if sigma=True then assume that `var` is a standard deviation
+    Parameters
+    ----------
+    var : array-like
+        Variance values, or standard-deviation values if `sigma` is
+        True.
+    sigma : :class:`bool`
+        If True, treat `var` as a standard deviation (``ivar = 1 /
+        var**2``) rather than a variance (``ivar = 1 / var``).
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Inverse-variance array, same shape as `var`. Entries where
+        `var` is at or below a tiny numerical floor (``TINY`` or, if
+        `sigma`, ``SQTINY``) are set to zero rather than dividing by
+        (near-)zero.
 
     """
     ivar = np.zeros_like(var)
@@ -143,7 +216,46 @@ def var2ivar(var, sigma=False):
 
 
 def ivar2var(ivar, clip=0., sigma=False, allmasked_ok=False):
-    """Safely convert an inverse variance to a variance.
+    """Safely convert an inverse variance to a variance (or standard
+    deviation), avoiding division by zero.
+
+    Parameters
+    ----------
+    ivar : array-like
+        Inverse-variance values.
+    clip : :class:`float`
+        Threshold below which `ivar` values are treated as masked
+        (``ivar > clip`` defines the "good" mask). If no values pass
+        this threshold, retries with a threshold of exactly zero
+        before giving up (see Notes).
+    sigma : :class:`bool`
+        If True, return the standard deviation (``sqrt(var)``) instead
+        of the variance.
+    allmasked_ok : :class:`bool`
+        If True, allow every value to be masked (returns an all-zero
+        `var` and an all-False `goodmask`) instead of raising.
+
+    Returns
+    -------
+    var : :class:`numpy.ndarray`
+        Variance (or standard deviation, if `sigma`) array, same shape
+        as `ivar`; zero wherever ``goodmask`` is False.
+    goodmask : :class:`numpy.ndarray`
+        Boolean array, True where `ivar` passed the `clip` (or
+        zero-floor) threshold.
+
+    Raises
+    ------
+    ValueError
+        If every value is masked (``ivar <= clip`` and ``ivar <= 0``
+        everywhere) and `allmasked_ok` is False.
+
+    Notes
+    -----
+    If `clip` is nonzero and masks out every element, this function
+    silently retries with a threshold of exactly zero before raising
+    -- so a nonzero `clip` is only a soft preference, not a hard
+    floor, when it would otherwise mask the entire array.
 
     """
     var = np.zeros_like(ivar)
@@ -168,9 +280,9 @@ def match_to(A, B, check_for_dups=True):
 
     Parameters
     ----------
-    A : :class:`~numpy.ndarray` or `list`
+    A : :class:`numpy.ndarray` or `list`
         Array of integers to match TO.
-    B : :class:`~numpy.ndarray` or `list`
+    B : :class:`numpy.ndarray` or `list`
         Array of integers matched to `A`
     check_for_dups : :class:`bool`, optional, defaults to ``True``
         If ``True`` trigger an exception if there are duplicates in
@@ -180,7 +292,7 @@ def match_to(A, B, check_for_dups=True):
 
     Returns
     -------
-    :class:`~numpy.ndarray`
+    :class:`numpy.ndarray`
         The integer indexes in A that B matches to.
 
     Notes
@@ -203,9 +315,9 @@ def match(A, B, check_for_dups=True):
 
     Parameters
     ----------
-    A : :class:`~numpy.ndarray` or `list`
+    A : :class:`numpy.ndarray` or `list`
         An array of integers.
-    B : :class:`~numpy.ndarray` or `list`
+    B : :class:`numpy.ndarray` or `list`
         An array of integers.
     check_for_dups : :class:`bool`, optional, defaults to ``True``
         If ``True`` trigger an exception if there are duplicates in
@@ -215,9 +327,9 @@ def match(A, B, check_for_dups=True):
 
     Returns
     -------
-    :class:`~numpy.ndarray`
+    :class:`numpy.ndarray`
         The integer indexes in A that match to B.
-    :class:`~numpy.ndarray`
+    :class:`numpy.ndarray`
         The integer indexes in B that match to A.
 
     Notes
@@ -260,7 +372,33 @@ def match(A, B, check_for_dups=True):
 
 
 def find_csv_badline(fname):
+    """Locate and print the offending line of a malformed CSV file, by
+    attempting to read it as an Astropy table and parsing the row
+    number out of the resulting error message.
 
+    Parameters
+    ----------
+    fname : :class:`str`
+        Path to the CSV file to diagnose.
+
+    Returns
+    -------
+    None
+        Prints the offending line number and its contents to stdout
+        as a side effect; does not return the line itself.
+
+    Notes
+    -----
+    Broken: this function uses ``Table`` and ``ascii`` (for
+    ``ascii.InconsistentTableError``) without importing either --
+    neither ``astropy.table.Table`` nor ``astropy.io.ascii`` is
+    imported anywhere in this module. Calling this function always
+    raises ``NameError`` (on ``Table`` in the ``try`` block, or on
+    ``ascii`` while evaluating the ``except`` clause, whichever is
+    reached first). It is also not called anywhere else in the
+    codebase.
+
+    """
     try:
         t = Table.read(fname, format='csv', comment='#')
     except ascii.InconsistentTableError as e:
