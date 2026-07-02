@@ -2,7 +2,10 @@
 SGA.geometry
 ============
 
-Geometry (mostly ellipse-based) function.
+Geometry (mostly ellipse-based) functions: light-weighted moment
+ellipse fitting, elliptical apertures/masks and overlap testing,
+Tractor ellipticity conversion, and literature-catalog geometry
+selection/merging.
 
 """
 import pdb
@@ -13,8 +16,37 @@ from SGA.logger import log
 
 
 class EllipseProperties:
-    """
-    Fit an ellipse to the flux distribution of the largest labelled blob in a 2D image.
+    """Fit an ellipse to the flux distribution of the largest labelled
+    blob in a 2D image, via light-weighted (optionally radially
+    weighted) second moments.
+
+    Call :meth:`fit` to perform the fit; results are stored as instance
+    attributes (``x0``, ``y0``, ``a``, ``ba``, ``pa``, etc.) rather than
+    returned separately, though :meth:`fit` also returns ``self`` for
+    convenience. :meth:`plot` visualizes the fitted blob and ellipse.
+
+    Attributes
+    ----------
+    x0, y0 : :class:`float`
+        Fitted (or fixed) center, in pixel coordinates.
+    ba : :class:`float`
+        Fitted axis ratio, b/a.
+    pa : :class:`float`
+        Fitted position angle, degrees, astronomical convention (East of
+        North), in [0, 180).
+    a : :class:`float`
+        Adopted semi-major axis (``a_rms`` or ``a_percentile``,
+        depending on ``method``), pixels.
+    a_rms : :class:`float`
+        Semi-major axis from the second-moment (RMS) method, pixels.
+    a_percentile : :class:`float`
+        Semi-major axis enclosing a given flux percentile, pixels.
+    labels : :class:`numpy.ndarray` or None
+        Unused placeholder (never set by :meth:`fit`, which uses a local
+        variable of the same name internally instead).
+    blob_mask : :class:`numpy.ndarray`
+        Boolean mask of the largest contiguous blob used for the fit.
+
     """
 
     def __init__(self):
@@ -30,6 +62,29 @@ class EllipseProperties:
 
     @staticmethod
     def elliptical_radius(x, y, x0, y0, a, ba=1.0, pa_deg=0.0):
+        """Compute the elliptical radius of point(s) relative to a
+        given ellipse (1.0 = on the ellipse boundary).
+
+        Parameters
+        ----------
+        x, y : array-like
+            Point coordinates to evaluate.
+        x0, y0 : :class:`float`
+            Ellipse center.
+        a : :class:`float`
+            Semi-major axis.
+        ba : :class:`float`
+            Axis ratio, b/a.
+        pa_deg : :class:`float`
+            Position angle, degrees.
+
+        Returns
+        -------
+        :class:`numpy.ndarray`
+            Elliptical radius; < 1 inside the ellipse, 1 on the
+            boundary, > 1 outside.
+
+        """
         b = a * ba
         theta = np.deg2rad(pa_deg)
 
@@ -45,21 +100,67 @@ class EllipseProperties:
     def fit(self, image, mask=None, method='percentile', percentile=0.95,
             radial_power=0.7, x0y0=None, input_ba_pa=None, smooth_sigma=1.0,
             use_radial_weight=True):
-        """
-        Label and smooth the image, then select the largest contiguous blob
-        and compute ellipse properties using second moments.
+        """Label and smooth the image, then select the largest contiguous
+        blob and compute ellipse properties using flux-weighted second
+        moments.
+
+        Smooths ``image`` (Gaussian, ``smooth_sigma``), finds the
+        largest contiguous blob of positive (and, if given,
+        ``mask``-passing) pixels, and computes a flux-weighted centroid
+        (unless ``x0y0`` fixes it). If ``input_ba_pa`` is given, solves
+        only for a single scale factor ``a`` under that fixed
+        axis-ratio/PA (used when the shape should be held at an input,
+        e.g. Tractor, value); otherwise diagonalizes the flux-weighted
+        inertia tensor to get the semi-major axis, axis ratio, and
+        position angle directly. In either case, also computes an
+        independent shape-agnostic ``a_percentile`` (the radius
+        enclosing the given flux ``percentile``), and ``method``
+        selects which of ``a_rms``/``a_percentile`` becomes the adopted
+        ``a``. All results are stored on ``self``; on any failure
+        (no good pixels, no blobs, too few pixels, degenerate fixed-shape
+        solution), falls back to a zeroed/degenerate geometry (``a=0``,
+        ``ba=1``, ``pa=0``) with a logged warning, rather than raising.
 
         Parameters
         ----------
-        image : 2D ndarray
-        mask  : 2D bool array or None
-            True = usable pixels. Used as a veto on blob detection.
-        method : {'percentile','rms'}
-        percentile : float
-        use_radial_weight : bool
-            If True, second moments are weighted by flux * r^2.
-        input_ba_pa : 2D float array or None
-            Input geometry, e.g., from Tractor.
+        image : :class:`numpy.ndarray`
+            2D image to fit.
+        mask : :class:`numpy.ndarray`, optional
+            2D boolean array, True = usable pixels; vetoes blob
+            detection where False. If None, only ``image > 0`` is used.
+        method : {'percentile', 'rms'}
+            Which semi-major-axis estimate becomes the adopted ``a``.
+        percentile : :class:`float`
+            Cumulative flux fraction defining ``a_percentile`` (radial,
+            shape-agnostic).
+        radial_power : :class:`float`
+            Exponent of the radial weighting applied to the flux when
+            ``use_radial_weight`` is True (down-weights the core,
+            emphasizing outer isophotes in the second-moment
+            calculation).
+        x0y0 : :class:`tuple`, optional
+            ``(x0, y0)`` to hold the center fixed at, instead of solving
+            for the flux-weighted centroid.
+        input_ba_pa : :class:`tuple`, optional
+            ``(ba, pa)`` to hold the shape fixed at (e.g. from Tractor),
+            solving only for the overall scale ``a``. If the resulting
+            fixed-shape scale is implausibly small relative to
+            ``a_percentile`` (< 10%), falls back to ``a_percentile``
+            instead, on the assumption the input shape is mismatched to
+            the actual flux distribution.
+        smooth_sigma : :class:`float`
+            Gaussian smoothing sigma, pixels, applied before blob
+            detection; disabled if 0/None.
+        use_radial_weight : :class:`bool`
+            If True, second moments are weighted by ``flux * r**radial_power``
+            instead of flux alone.
+
+        Returns
+        -------
+        :class:`EllipseProperties`
+            ``self``, with ``x0``, ``y0``, ``a``, ``a_rms``,
+            ``a_percentile``, ``ba``, ``pa``, and ``blob_mask``
+            populated.
 
         """
         from scipy import ndimage
@@ -252,24 +353,28 @@ class EllipseProperties:
 
     def plot(self, image=None, ax=None, imshow_kwargs=None,
              ellipse_kwargs=None, blob_outline_kwargs=None):
-        """
-        Display the provided image (or blob mask) with the outline of the selected largest blob
-        and overlay the fitted ellipse.
+        """Display the provided image (or blob mask) with the outline of
+        the selected largest blob and overlay the fitted ellipse.
 
         Parameters
         ----------
-        image : 2D ndarray, optional
-            Image to display. If None, uses the blob mask.
-        ax : matplotlib.axes.Axes, optional
-            Ax for plotting. If None, a new figure/axes is created.
-        imshow_kwargs : dict, optional
-            Passed to ax.imshow (e.g., cmap, origin).
-        ellipse_kwargs : dict, optional
-            Passed to the Ellipse patch (e.g., edgecolor).
+        image : :class:`numpy.ndarray`, optional
+            Image to display. If None, uses ``self.blob_mask``.
+        ax : :class:`~matplotlib.axes.Axes`, optional
+            Axes to plot into. If None, a new figure/axes is created.
+        imshow_kwargs : :class:`dict`, optional
+            Passed to ``ax.imshow`` (e.g. ``cmap``, ``origin``).
+        ellipse_kwargs : :class:`dict`, optional
+            Passed to the :class:`~matplotlib.patches.Ellipse` patch
+            (e.g. ``edgecolor``).
+        blob_outline_kwargs : :class:`dict`, optional
+            Passed to ``ax.contour`` when outlining ``self.blob_mask``
+            (e.g. ``colors``, ``linewidths``).
 
         Returns
         -------
-        ax : matplotlib.axes.Axes
+        :class:`~matplotlib.axes.Axes`
+            The axes plotted into.
 
         """
         import matplotlib.pyplot as plt
@@ -301,32 +406,31 @@ class EllipseProperties:
 
 
 def in_ellipse_mask(xcen, ycen, semia, semib, pa, x, y):
-    """Simple elliptical mask using astronomical PA convention.
+    """Test whether points fall inside an ellipse, using the
+    astronomical position-angle convention.
 
     Parameters
     ----------
-    xcen, ycen : float
+    xcen, ycen : :class:`float`
         Center of the ellipse.
-    semia, semib : float
-        Semi-major and semi-minor axes lengths in pixels.
-    pa : float
+    semia, semib : :class:`float`
+        Semi-major and semi-minor axes lengths, in pixels.
+    pa : :class:`float`
         Position angle in degrees, measured CCW from the +y (north) axis.
     x, y : array-like
         Coordinates to test.
 
     Returns
     -------
-    mask : ndarray of bool
+    :class:`numpy.ndarray` of :class:`bool`
         True for points inside or on the ellipse.
 
-    Note
-    ----
+    Notes
+    -----
+    If generating a mask for an image of size ``size``, ``x`` and ``y``
+    should be defined as::
 
-    If generating an image of size `size, `x` and `y` should be
-    defined as:
-        ```
         xgrid, ygrid = np.meshgrid(np.arange(size), np.arange(size), indexing='xy')
-        ```
 
     """
     # convert PA to radians
@@ -344,11 +448,42 @@ def in_ellipse_mask(xcen, ycen, semia, semib, pa, x, y):
 
 def ellipses_overlap(bx, by, sma, ba, pa, refbx, refby, refsma,
                      refba, refpa, ntheta=64):
-    """
-    Return True if two ellipses plausibly overlap by sampling points.
+    """Test whether two ellipses plausibly overlap, by sampling points on
+    each boundary.
 
-    Ellipse i:  center (bx,by), semimajor sma, semiminor sma*ba, PA=pa (deg)
-    Ellipse j:  center (refbx,refby), semimajor refsma, semiminor refsma*refba, PA=refpa
+    Checks four conditions (any True means overlap): each ellipse's
+    center falls inside the other; or ``ntheta`` boundary-sampled points
+    of either ellipse fall inside the other (via :func:`in_ellipse_mask`).
+    This is a fast, sampling-based approximation -- it can miss a very
+    thin sliver of true overlap between two similarly-oriented
+    ellipses, but is robust for the elliptical apertures used elsewhere
+    in this pipeline.
+
+    Parameters
+    ----------
+    bx, by : :class:`float`
+        Center of ellipse 1, pixels.
+    sma : :class:`float`
+        Semi-major axis of ellipse 1, pixels.
+    ba : :class:`float`
+        Axis ratio (b/a) of ellipse 1.
+    pa : :class:`float`
+        Position angle of ellipse 1, degrees (astronomical convention).
+    refbx, refby : :class:`float`
+        Center of ellipse 2, pixels.
+    refsma : :class:`float`
+        Semi-major axis of ellipse 2, pixels.
+    refba : :class:`float`
+        Axis ratio (b/a) of ellipse 2.
+    refpa : :class:`float`
+        Position angle of ellipse 2, degrees.
+    ntheta : :class:`int`
+        Number of boundary points sampled per ellipse.
+
+    Returns
+    -------
+    :class:`bool`
+        True if the ellipses plausibly overlap.
 
     """
     semib  = sma * ba
@@ -393,11 +528,30 @@ def ellipses_overlap(bx, by, sma, ba, pa, refbx, refby, refsma,
 
 
 def get_tractor_ellipse(r50, e1, e2):
-    """Convert Tractor epsilon1, epsilon2 values to ellipticity and position angle.
+    """Convert a Tractor half-light radius and ellipticity components to
+    a diameter, axis ratio, and position angle.
 
-    Taken in part from tractor.ellipses.EllipseE.
+    Taken in part from ``tractor.ellipses.EllipseE``. The returned
+    diameter inflates the light-weighted ``r50`` by a factor of 2.4
+    (2x radius-to-diameter, x1.2 to extrapolate beyond the half-light
+    radius) as an approximate initial guess for the object's full
+    extent.
 
-    r50 in arcsec
+    Parameters
+    ----------
+    r50 : :class:`float`
+        Tractor half-light radius, arcsec.
+    e1, e2 : :class:`float`
+        Tractor ellipticity components.
+
+    Returns
+    -------
+    diam : :class:`float`
+        Approximate full diameter, same units as ``r50``.
+    ba : :class:`float`
+        Axis ratio, b/a.
+    pa : :class:`float`
+        Position angle, degrees, astronomical convention, in [0, 180).
 
     """
     e = np.hypot(e1, e2)
@@ -416,10 +570,65 @@ def get_tractor_ellipse(r50, e1, e2):
 
 
 def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
-    """From a catalog containing magnitudes, diameters, position angles, and
-    ellipticities, return a "basic" value for each property.
+    """From a catalog containing magnitudes, diameters, position angles,
+    and ellipticities from one or more literature sources, derive a
+    single "basic" (best-available) value for each property, per
+    object, along with which source it came from.
 
-    Priority order: RC3, TWOMASS, SDSS, ESO, NED/BASIC
+    Which strategy is used is determined by which columns are present
+    in ``cat`` (checked in order, first match wins -- these are treated
+    as mutually exclusive catalog types, not merged):
+
+    1. ``LOGD25`` present -> HyperLeda-derived catalog: diameter from
+       ``LOGD25``, axis ratio from ``LOGR25``, PA and B-band magnitude
+       (``BT``) taken directly.
+    2. ``D26`` present -> SGA2020-derived catalog: diameter/BA/PA/mag
+       taken directly from the SGA2020 columns.
+    3. ``RHALF`` present -> LVD-derived catalog: diameter from
+       ``RHALF`` (half-light radius, inflated x2.4 to full diameter),
+       BA from ``1 - ELLIPTICITY``, PA and V-band magnitude
+       (``APPARENT_MAGNITUDE_V``) taken directly.
+    4. ``SHAPE_R`` present -> DR9/DR10 Tractor-derived catalog:
+       diameter/BA/PA from Tractor's ``SHAPE_R``/``SHAPE_E1``/``SHAPE_E2``
+       (via :func:`get_tractor_ellipse`), r-band magnitude from
+       ``FLUX_R``.
+    5. ``DIAM`` present -> already-basic/custom catalog: columns taken
+       directly (``DIAM``, ``BA``, ``PA``, ``MAG``, ``MAG_BAND``).
+    6. Otherwise -> NED-assembled catalog: for magnitude, merges
+       ``SDSS``/``TWOMASS``/``RC3`` columns; for diameter/BA/PA, merges
+       ``ESO``/``SDSS``/``TWOMASS``/``RC3`` columns. Each property is
+       filled from every available reference in turn (later references
+       in the loop overwrite earlier ones for objects with more than one
+       valid source), which produces an *effective* per-property
+       priority order of RC3 > TWOMASS > SDSS > ESO (highest priority
+       is checked *last* so it wins the overwrite) -- non-obvious from
+       the code, since nothing explicitly says "prefer RC3". Any value
+       still missing after that is backfilled from the catalog's
+       ``BASIC_*`` columns (``BASIC_MAG`` and V-band; ``BASIC_DMAJOR``/
+       ``BASIC_DMINOR`` for diameter/BA), the lowest-priority fallback.
+
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Input catalog; which columns are present determines which
+        strategy above is used.
+    galaxy_column : :class:`str`
+        Column in ``cat`` to copy into the output ``GALAXY`` column.
+    verbose : :class:`bool`
+        If True, log the number of objects with a valid magnitude and
+        diameter.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        One row per object in ``cat``, with ``GALAXY`` plus, depending
+        on the strategy used, columns named
+        ``{MAG,DIAM,BA,PA}_{REF}``/``{MAG,DIAM,BA,PA}_{REF}_REF``/
+        ``BAND_{REF}`` (for the HyperLeda/SGA2020/LVD/DR9-10 strategies,
+        ``REF`` being that source's name) or
+        ``{MAG,DIAM,BA,PA}_LIT``/``{MAG,DIAM,BA,PA}_LIT_REF``/
+        ``BAND_LIT`` (for the custom/NED strategies). Missing values are
+        ``-99.``/``''`` as appropriate.
 
     """
     nobj = len(cat)
@@ -693,9 +902,39 @@ def get_basic_geometry(cat, galaxy_column='OBJNAME', verbose=False):
 
 
 def parse_geometry(cat, ref, mindiam=152*0.262):
-    """Parse a specific set of elliptical geometry.
+    """Extract one named source's diameter/BA/PA geometry from a
+    :func:`get_basic_geometry`-style catalog.
 
-    ref - choose from among SGA2020, HYPERLEDA, RC3, LVD, SMUDGes, or LIT
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Catalog with ``DIAM_{ref}``/``BA_{ref}``/``PA_{ref}`` columns
+        for the requested ``ref`` (arcmin for diameter).
+    ref : :class:`str`
+        Which source to extract. Only ``'SGA2020'``, ``'HYPERLEDA'``,
+        and ``'LIT'`` are actually implemented as branches -- despite
+        what the name might suggest, there are no separate ``'RC3'``,
+        ``'LVD'``, or ``'SMUDGes'`` branches (those are just possible
+        values *within* ``DIAM_LIT_REF`` when ``ref='LIT'``, set
+        upstream by :func:`get_basic_geometry`/:func:`choose_geometry`).
+        Passing any other value silently returns all-missing results
+        (``diam=-99``, ``ba=1``, ``pa=0``, ``outref=''``) for every
+        object, with no warning or error.
+    mindiam : :class:`float`
+        Accepted but unused -- the code that would apply it as a
+        diameter floor is commented out in the function body.
+
+    Returns
+    -------
+    diam : :class:`float` or :class:`numpy.ndarray`
+        Diameter, arcsec (``-99.`` where missing); scalar if
+        ``len(cat) == 1``.
+    ba : :class:`float` or :class:`numpy.ndarray`
+        Axis ratio, b/a (default ``1.`` where missing).
+    pa : :class:`float` or :class:`numpy.ndarray`
+        Position angle, degrees (default ``0.`` where missing).
+    outref : :class:`str` or :class:`numpy.ndarray`
+        Source reference string for each object (``''`` where missing).
 
     """
     nobj = len(cat)
@@ -742,15 +981,72 @@ def parse_geometry(cat, ref, mindiam=152*0.262):
 
 
 def choose_geometry(cat, mindiam=152*0.262, get_mag=False):
-    """Choose an object's geometry, selecting between the
-    NED-assembled (literature) values (DIAM, BA, PA), values from the
-    SGA2020 (DIAM_SGA2020, BA_SGA2020, PA_SGA2020), and HyperLeda's
-    values (DIAM_HYPERLEDA, BA_HYPERLEDA, PA_HYPERLEDA).
+    """Choose an object's final parent-sample geometry, selecting
+    between the NED-assembled (literature) values (``DIAM``, ``BA``,
+    ``PA``), the SGA2020 values (``DIAM_SGA2020``, ``BA_SGA2020``,
+    ``PA_SGA2020``), and HyperLeda's values (``DIAM_HYPERLEDA``,
+    ``BA_HYPERLEDA``, ``PA_HYPERLEDA``).
 
-    mindiam is ~40 arcsec
+    If ``cat`` already has plain ``DIAM``/``BA``/``PA`` columns (i.e. is
+    already a single-geometry parent catalog), those are returned
+    directly with ``ref='parent'`` for every object -- see Notes for a
+    caveat on this path when ``get_mag=True``. Otherwise, per object:
+    LVD-sourced literature values (``DIAM_LIT_REF == 'LVD'``) are always
+    preferred first, since they were visually determined and inspected;
+    then, among SGA2020/HyperLeda/literature, the source with the
+    *largest* diameter is preferred, provided diameter, BA, *and* PA
+    are all valid for that source (falling back to a second pass that
+    only requires a valid diameter if no source has all three); within
+    the literature source, ``DIAM_LIT_REF`` values of ``'SMUDGes'``,
+    ``'LVD'``, or ``'RC3'`` are surfaced as the reported ``ref`` in
+    place of the generic ``'LIT'`` label. Objects with no valid
+    diameter from any source get ``ref='NONE'`` and are floored at
+    ``mindiam``; all diameters below ``mindiam`` (~40 arcsec, in
+    ``mindiam``'s default) are floored there too. BA is clipped to
+    [0.1, 1.0] and PA wrapped to [0, 180).
 
-    Default values of BA and PA are 1.0 and 0.0.
-    Default value of mag is 18.
+    Parameters
+    ----------
+    cat : :class:`~astropy.table.Table`
+        Catalog with either plain ``DIAM``/``BA``/``PA`` columns, or the
+        ``DIAM_{SGA2020,HYPERLEDA,LIT}``/``BA_{...}``/``PA_{...}``/
+        ``DIAM_LIT_REF`` columns produced by :func:`get_basic_geometry`.
+    mindiam : :class:`float`
+        Minimum diameter floor, arcsec (default ~40 arcsec, i.e.
+        ``152 * 0.262`` pixels at the optical pixel scale).
+    get_mag : :class:`bool`
+        If True, also select and return a magnitude/band (see Notes for
+        the early-return-path caveat).
+
+    Returns
+    -------
+    diam : :class:`numpy.ndarray`
+        Diameter, arcsec (arcmin x 60 from the source columns).
+    ba : :class:`numpy.ndarray`
+        Axis ratio, b/a, clipped to [0.1, 1.0].
+    pa : :class:`numpy.ndarray`
+        Position angle, degrees, wrapped to [0, 180).
+    ref : :class:`numpy.ndarray`
+        Source reference string per object (``'LVD'``, ``'SGA2020'``,
+        ``'HYPERLEDA'``, ``'LIT'``/``'SMUDGes'``/``'RC3'``, ``'NONE'``,
+        or ``'parent'``).
+    mag : :class:`numpy.ndarray`, only if ``get_mag=True``
+        Magnitude, defaulting to 18.0 where missing or outside (0, 25].
+    band : :class:`numpy.ndarray`, only if ``get_mag=True``
+        Band letter corresponding to ``mag``.
+
+    Notes
+    -----
+    In the early-return (plain ``DIAM``/``BA``/``PA`` columns) path,
+    ``if 'MAG' in cat.colnames and 'BAND':`` is checked -- since the
+    string literal ``'BAND'`` is always truthy, this condition is
+    effectively just ``'MAG' in cat.colnames`` regardless of whether a
+    ``'BAND'`` column actually exists, so ``cat['BAND'].value`` can
+    raise ``KeyError`` if ``'MAG'`` is present without ``'BAND'``.
+    Separately, if ``get_mag=True`` and ``'MAG'`` is *not* in
+    ``cat.colnames``, ``mag``/``band`` are never assigned before the
+    ``return diam, ba, pa, ref, mag, band`` statement, raising
+    ``UnboundLocalError``. Neither case is guarded against.
 
     """
     # Is this a parent catalog with only one set of geometry
