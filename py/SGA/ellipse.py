@@ -63,6 +63,26 @@ REF_APERTURES = [0.5, 1., 1.25, 1.5, 2., 3.] # multiples of SMA_MOMENT
 
 
 def to_float32_safe_mapping(d):
+    """Clip and cast every value in a mapping to a FITS-safe
+    :class:`numpy.float32`.
+
+    Non-finite values (NaN/inf) become ``float32(nan)``; finite values
+    outside the representable ``float32`` range are clipped to the
+    ``float32`` min/max rather than overflowing to inf.
+
+    Parameters
+    ----------
+    d : :class:`dict`
+        Mapping of key to numeric value (any type castable to
+        :class:`float`).
+
+    Returns
+    -------
+    :class:`dict`
+        Same keys, each value cast to :class:`numpy.float32` as described
+        above.
+
+    """
     finfo = np.finfo(np.float32)
     out = {}
     for k, v in d.items():
@@ -75,6 +95,23 @@ def to_float32_safe_mapping(d):
 
 
 def to_float32_safe_scalar(x):
+    """Clip and cast a single scalar to a FITS-safe :class:`numpy.float32`.
+
+    Returns ``float32(nan)`` if ``x`` is not castable to :class:`float`,
+    is non-finite, or falls outside the representable ``float32`` range
+    (rather than overflowing to inf).
+
+    Parameters
+    ----------
+    x : scalar
+        Value to cast (any type castable to :class:`float`).
+
+    Returns
+    -------
+    :class:`numpy.float32`
+        The clipped/cast value, or ``float32(nan)`` if unrepresentable.
+
+    """
     import math
 
     try:
@@ -96,23 +133,38 @@ def to_float32_safe_scalar(x):
 
 
 def cog_model(radius, mtot, dmag, lnalpha1, lnalpha2, r0=10.):
-    """
-    Curve-of-growth model in magnitudes.
+    """Evaluate the curve-of-growth magnitude model at a set of radii.
 
-        m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
+    ``m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))``
+
+    As ``r -> infinity``, ``m(r) -> mtot``, the asymptotic total
+    magnitude; as ``r -> 0``, ``m(r) -> mtot + dmag``, the (fainter)
+    innermost-aperture magnitude. Evaluated in log-space with clipping
+    to avoid float overflow in the exponential.
 
     Parameters
     ----------
-    radius   : array-like
-    mtot     : float         # asymptotic total magnitude
-    dmag     : float         # positive amplitude (~ inner mag - mtot)
-    lnalpha1 : float         # log(alpha1), alpha1 = exp(lnalpha1) > 0
-    lnalpha2 : float         # log(alpha2), alpha2 = exp(lnalpha2) > 0
-    r0       : float         # scale radius
+    radius : array-like
+        Semi-major axis (or radius) at which to evaluate the model, same
+        units as ``r0``.
+    mtot : :class:`float`
+        Asymptotic total magnitude (the value ``m(r)`` approaches as
+        ``r -> infinity``).
+    dmag : :class:`float`
+        Positive amplitude, approximately ``m(0) - mtot``.
+    lnalpha1 : :class:`float`
+        ``log(alpha1)``, where ``alpha1 = exp(lnalpha1) > 0`` sets the
+        curve's normalization at ``r0``.
+    lnalpha2 : :class:`float`
+        ``log(alpha2)``, where ``alpha2 = exp(lnalpha2) > 0`` sets the
+        power-law steepness of the curve.
+    r0 : :class:`float`
+        Scale radius, same units as ``radius``.
 
     Returns
     -------
-    model magnitudes at 'radius'.
+    :class:`numpy.ndarray`
+        Model magnitude(s) at ``radius``.
 
     """
     r = np.asarray(radius, float)
@@ -136,26 +188,89 @@ def cog_model(radius, mtot, dmag, lnalpha1, lnalpha2, r0=10.):
 def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
             bounds=None, robust=True, minerr=0.02, f_scale=1.,
             debug=False):
-    """
-    Fit (mtot, dmag, lnalpha1, lnalpha2) in:
+    """Fit the curve-of-growth magnitude model (see :func:`cog_model`) to
+    a curve-of-growth (aperture flux vs. semi-major axis) measurement.
 
-        m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
+    Converts flux to magnitudes, optionally weights by flux-derived
+    magnitude errors (with an ``minerr`` floor added in quadrature), and
+    fits ``(mtot, dmag, lnalpha1, lnalpha2)`` via
+    :func:`scipy.optimize.least_squares` with an analytic Jacobian,
+    optionally using a robust (``'soft_l1'``) loss. Initial guesses are
+    computed automatically (from the faint/bright ends of the profile and
+    a pivot at the geometric-mean radius) unless ``p0`` is given.
+    Parameter uncertainties are the sqrt-diagonal of the covariance
+    matrix estimated from ``(J^T J)^{-1}`` scaled by the reduced
+    chi-square. Returns empty results (``{}, {}, None, 0., ndof``) if
+    fewer than 5 usable points remain, the covariance is singular or has
+    non-positive variances, or any fitted parameter/uncertainty is
+    non-finite.
+
+    Notes
+    -----
+    ``debug`` is accepted but not referenced anywhere in this function's
+    body -- dead parameter.
+
+    Parameters
+    ----------
+    sma_arcsec : :class:`numpy.ndarray`
+        Semi-major axis of each aperture, in arcsec.
+    flux : :class:`numpy.ndarray`
+        Enclosed flux at each ``sma_arcsec`` (same length), in linear
+        (e.g. nanomaggy) units; converted internally to AB magnitude via
+        ``22.5 - 2.5*log10(flux)``.
+    ferr : :class:`numpy.ndarray`, optional
+        1-sigma flux uncertainty at each point, same length as ``flux``.
+        If given, used to build magnitude weights (with the ``minerr``
+        floor); if None, the fit is unweighted.
+    r0 : :class:`float`
+        Scale radius passed to :func:`cog_model`, arcsec.
+    p0 : :class:`tuple`, optional
+        Initial guess ``(mtot, dmag, lnalpha1, lnalpha2)``; computed
+        automatically from the data if not given.
+    ndrop : :class:`int`
+        Number of innermost points to exclude from the fit (e.g. where
+        the PSF dominates, especially for GALEX/unWISE).
+    bounds : :class:`tuple`, optional
+        ``((mtot_lo, dmag_lo, lnalpha1_lo, lnalpha2_lo), (mtot_hi, ...))``
+        parameter bounds; computed automatically from the magnitude range
+        of the data if not given.
+    robust : :class:`bool`
+        If True, use a ``'soft_l1'`` robust loss in the least-squares fit
+        (down-weights outliers); if False, use ordinary least squares.
+    minerr : :class:`float`
+        Magnitude-error floor added in quadrature to the flux-derived
+        weights, to prevent near-zero errors from dominating the fit.
+    f_scale : :class:`float`
+        Scale parameter for the robust loss function, passed to
+        :func:`scipy.optimize.least_squares`.
+    debug : :class:`bool`
+        Unused (see Notes).
 
     Returns
     -------
-    popt : dict
-        {'mtot','dmag','lnalpha1','lnalpha2'}
-    perr : dict
-        1σ uncertainties for the same keys (approximate; from (JᵀJ)^(-1) scaled by χ²/ndof)
-    cov  : ndarray or None
-        Covariance matrix for (mtot, dmag, lnalpha1, lnalpha2)
-    chi2 : float
-        Classical χ² = Σ[(m_model - m_data)/σ_m]^2 (unweighted if apferr is None)
-    ndof : int
-        Degrees of freedom = N - 4 (clamped to ≥1)
+    popt : :class:`dict`
+        Best-fit parameters, keys ``'mtot'``, ``'dmag'``, ``'lnalpha1'``,
+        ``'lnalpha2'`` (:class:`numpy.float32`); empty dict on failure.
+    perr : :class:`dict`
+        Approximate 1-sigma uncertainties for the same keys, from
+        ``(J^T J)^{-1}`` scaled by ``chi2/ndof``; empty dict on failure.
+    cov : :class:`numpy.ndarray` or None
+        4x4 covariance matrix for ``(mtot, dmag, lnalpha1, lnalpha2)``;
+        None on failure.
+    chi2 : :class:`float`
+        Classical chi-square, ``sum(((model - data)/weight)**2)``
+        (unweighted if ``ferr`` is None); ``0.`` on failure.
+    ndof : :class:`int`
+        Degrees of freedom, ``max(1, npoints - 4)``; ``0`` if fewer than
+        5 usable points were available to attempt a fit.
 
     """
     def initial_guesses(sma, mags, r0, bounds, eps=1e-6):
+        """Estimate initial ``(mtot, dmag, lnalpha1, lnalpha2)`` for
+        :func:`fit_cog` from the shape of the input profile, clipped into
+        ``bounds``.
+
+        """
         # bounds order: (mtot, dmag, lnalpha1, lnalpha2)
         (mt_lb, dm_lb, lnA1_lb, lnA2_lb), (mt_ub, dm_ub, lnA1_ub, lnA2_ub) = bounds
 
@@ -192,6 +307,11 @@ def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
 
 
     def residuals(p):
+        """Weighted residuals of :func:`cog_model` against the observed
+        magnitudes, for :func:`scipy.optimize.least_squares` in
+        :func:`fit_cog`.
+
+        """
         mt, dm, lnA1, lnA2 = p
         A2 = np.exp(lnA2)
 
@@ -210,6 +330,11 @@ def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
 
 
     def jacobian(p):
+        """Analytic Jacobian of ``residuals`` with respect to
+        ``(mtot, dmag, lnalpha1, lnalpha2)``, for
+        :func:`scipy.optimize.least_squares` in :func:`fit_cog`.
+
+        """
         mt, dm, lnA1, lnA2 = p
         A2 = np.exp(lnA2)
 
@@ -322,21 +447,33 @@ def fit_cog(sma_arcsec, flux, ferr=None, r0=10., p0=None, ndrop=0,
 
 
 def radius_for_fraction(f, dmag, lnalpha1, lnalpha2, r0=10.):
-    """
-    Invert m(r) = mtot + dmag * (1 - exp(-exp(lnalpha1) * (r/r0)^(-exp(lnalpha2))))
-    to get the semi-major axis r_f enclosing flux fraction f (0<f<1).
+    """Invert the curve-of-growth model (see :func:`cog_model`) to find
+    the semi-major axis enclosing a given flux fraction.
 
     Parameters
     ----------
-    f        : float in (0,1)   # enclosed flux fraction (e.g., 0.5 for half-light)
-    dmag     : float            # amplitude (> 0)
-    lnalpha1 : float            # log(alpha1)
-    lnalpha2 : float            # log(alpha2)
-    r0       : float            # scale radius (same units as desired r)
+    f : :class:`float`
+        Enclosed flux fraction in (0, 1), e.g. 0.5 for the half-light
+        radius.
+    dmag : :class:`float`
+        Curve-of-growth amplitude (> 0), as in :func:`cog_model`.
+    lnalpha1 : :class:`float`
+        ``log(alpha1)``, as in :func:`cog_model`.
+    lnalpha2 : :class:`float`
+        ``log(alpha2)``, as in :func:`cog_model`.
+    r0 : :class:`float`
+        Scale radius; the returned radius is in the same units.
 
     Returns
     -------
-    r_f : float
+    :class:`float`
+        Semi-major axis ``r_f`` enclosing flux fraction ``f``.
+
+    Raises
+    ------
+    ValueError
+        If ``f`` is not in (0, 1), or if ``dmag`` is too small to reach
+        flux fraction ``f`` (i.e. ``dmag <= -2.5*log10(f)``).
 
     """
     if not (0.0 < f < 1.0):
@@ -354,21 +491,40 @@ def radius_for_fraction(f, dmag, lnalpha1, lnalpha2, r0=10.):
 
 
 def radius_fraction_uncertainty(f, params, cov, r0=10., var_r0=None):
-    """
-    Error propagation for r_f with analytic derivatives under the new parameterization.
+    """Propagate curve-of-growth parameter uncertainties to the
+    uncertainty on the radius enclosing flux fraction ``f`` (see
+    :func:`radius_for_fraction`), via analytic derivatives.
 
     Parameters
     ----------
-    f      : float in (0,1)
-    params : sequence (mtot, dmag, lnalpha1, lnalpha2)
-    cov    : (4,4) covariance matrix for (mtot, dmag, lnalpha1, lnalpha2)
-    r0     : float   # scale radius
-    var_r0 : float or None   # optional variance of r0 (assumed independent)
+    f : :class:`float`
+        Enclosed flux fraction in (0, 1).
+    params : sequence of :class:`float`
+        ``(mtot, dmag, lnalpha1, lnalpha2)``; ``mtot`` is accepted for
+        positional consistency with :func:`fit_cog`'s ``popt`` ordering
+        but is not used in this calculation (``r_f`` does not depend on
+        ``mtot``).
+    cov : :class:`numpy.ndarray`
+        4x4 covariance matrix for ``(mtot, dmag, lnalpha1, lnalpha2)``,
+        e.g. from :func:`fit_cog`.
+    r0 : :class:`float`
+        Scale radius, as in :func:`radius_for_fraction`.
+    var_r0 : :class:`float`, optional
+        Variance of ``r0`` itself, if it should be propagated as an
+        independent source of uncertainty; ignored if None.
 
     Returns
     -------
-    r_f    : float
-    sigma_r: float
+    r_f : :class:`numpy.float32`
+        Semi-major axis enclosing flux fraction ``f``.
+    sigma_r : :class:`numpy.float32`
+        Propagated 1-sigma uncertainty on ``r_f``.
+
+    Raises
+    ------
+    ValueError
+        If ``dmag`` is too small to reach flux fraction ``f`` (same
+        condition as :func:`radius_for_fraction`).
 
     """
     mtot, dmag, lnA1, lnA2 = map(float, params)  # mtot unused, but kept for ordering
@@ -414,20 +570,88 @@ def radius_fraction_uncertainty(f, params, cov, r0=10., var_r0=None):
 
 
 def half_light_radius(params, r0=10.):
+    """Half-light (50% flux) radius from curve-of-growth parameters; a
+    thin wrapper around :func:`radius_for_fraction` with ``f=0.5``.
+
+    Parameters
+    ----------
+    params : sequence of :class:`float`
+        ``(mtot, dmag, lnalpha1, lnalpha2)``; ``mtot`` is unused.
+    r0 : :class:`float`
+        Scale radius, as in :func:`radius_for_fraction`.
+
+    Returns
+    -------
+    :class:`float`
+        Half-light semi-major axis.
+
+    """
     _, dmag, lnA1, lnA2 = params
     return radius_for_fraction(0.5, dmag, lnA1, lnA2, r0=r0)
 
 
 def half_light_radius_with_uncertainty(params, cov, r0=10., var_r0=None):
+    """Half-light radius and its uncertainty; a thin wrapper around
+    :func:`radius_fraction_uncertainty` with ``f=0.5``.
+
+    Parameters
+    ----------
+    params : sequence of :class:`float`
+        ``(mtot, dmag, lnalpha1, lnalpha2)``.
+    cov : :class:`numpy.ndarray`
+        4x4 covariance matrix, as in :func:`radius_fraction_uncertainty`.
+    r0 : :class:`float`
+        Scale radius.
+    var_r0 : :class:`float`, optional
+        Variance of ``r0``, if it should be propagated.
+
+    Returns
+    -------
+    r_f : :class:`numpy.float32`
+        Half-light semi-major axis.
+    sigma_r : :class:`numpy.float32`
+        Propagated 1-sigma uncertainty.
+
+    """
     return radius_fraction_uncertainty(0.5, params, cov, r0=r0, var_r0=var_r0)
 
 
 def _integrate_isophot_one(args):
-    """Wrapper function for the multiprocessing."""
+    """Unpack an argument tuple and call :func:`integrate_isophot_one`;
+    multiprocessing worker.
+
+    Parameters
+    ----------
+    args : :class:`tuple`
+        Positional arguments matching :func:`integrate_isophot_one`'s
+        signature.
+
+    Returns
+    -------
+    See :func:`integrate_isophot_one`.
+
+    """
     return integrate_isophot_one(*args)
 
 
 def _boxcar(y, w):
+    """Apply a simple centered moving-average (boxcar) smoothing to a
+    1-D array.
+
+    Parameters
+    ----------
+    y : :class:`numpy.ndarray`
+        Input array to smooth.
+    w : :class:`int` or None
+        Window width; forced to the next odd integer if even. If None or
+        ``< 2``, ``y`` is returned unchanged.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Smoothed array, same length as ``y`` (``mode='same'`` convolution).
+
+    """
     if w is None or w < 2:
         return y
     w = int(w)
@@ -439,11 +663,32 @@ def _boxcar(y, w):
 
 
 def _outer_isophotal_radius(a, mu, mu_iso, smooth_win=None):
-    """
-    Single-pass outer crossing on a single (a, mu) profile.
-    - Assumes a increasing.
-    - Enforces non-decreasing mu with radius via running max.
-    - Returns np.nan if level is outside data range.
+    """Find the single outer crossing radius where a surface-brightness
+    profile reaches a target isophote level.
+
+    Assumes ``a`` is increasing. Applies optional boxcar smoothing (see
+    :func:`_boxcar`), enforces a non-decreasing envelope in ``mu`` via a
+    running maximum (surface brightness must get fainter outward), and
+    linearly interpolates the radius at which the envelope crosses
+    ``mu_iso``.
+
+    Parameters
+    ----------
+    a : :class:`numpy.ndarray`
+        Semi-major axis values, increasing.
+    mu : :class:`numpy.ndarray`
+        Surface brightness profile, mag/arcsec^2, same length as ``a``.
+    mu_iso : :class:`float`
+        Target isophote level, mag/arcsec^2.
+    smooth_win : :class:`int`, optional
+        Boxcar smoothing window passed to :func:`_boxcar`.
+
+    Returns
+    -------
+    :class:`float`
+        Interpolated crossing radius, same units as ``a``; ``numpy.nan``
+        if ``mu_iso`` falls outside the range spanned by the (smoothed,
+        monotonized) profile.
 
     """
     # optional light smoothing
@@ -464,30 +709,89 @@ def _outer_isophotal_radius(a, mu, mu_iso, smooth_win=None):
 
 
 def isophotal_radius_mc(
-    a,                # semi-major axis array
-    mu,               # surface brightness [mag/arcsec^2]
-    mu_err,           # 1σ uncertainties (same shape as mu)
-    mu_iso,           # target isophote (e.g., 25.0)
+    a,
+    mu,
+    mu_err,
+    mu_iso,
     nmonte=50,
-    sky_sigma=None,   # optional global sky mag error (additive, per draw)
-    smooth_win=3,     # odd window for gentle pre-smoothing; set None/1 to disable
+    sky_sigma=None,
+    smooth_win=3,
     random_state=None,
     return_samples=False):
+    """Monte Carlo isophotal radius at a target surface-brightness level,
+    with uncertainty from resampling the profile.
 
-    """
-    Monte Carlo isophotal radius with a monotone outer envelope.
+    Sorts and sanitizes the input profile, then (if ``nmonte > 0``) draws
+    ``nmonte`` noisy realizations of ``mu`` (per-point Gaussian noise from
+    ``mu_err``, plus an optional shared per-draw offset from
+    ``sky_sigma``), finds the outer isophote crossing radius for each
+    realization via :func:`_outer_isophotal_radius`, and summarizes the
+    successful draws by their median and interquartile range. If
+    ``nmonte <= 0``, instead evaluates a single crossing on the nominal
+    (noiseless) profile with no uncertainty quantification (see Notes).
+    Also flags whether the *nominal* profile is a lower limit (never
+    reaches ``mu_iso`` at large radius) or upper limit (already fainter
+    than ``mu_iso`` at the innermost point).
+
+    Notes
+    -----
+    Despite the "16th/84th percentiles" phrasing in earlier versions of
+    this docstring, the code actually uses the 25th/75th percentiles
+    (interquartile range) with ``sigma = (p75 - p25) / 1.349`` (the
+    Gaussian IQR-to-sigma conversion factor, consistent with 25/75 rather
+    than 16/84). When ``nmonte <= 0`` and a valid crossing is found on
+    the nominal profile, ``a_iso_err``/``a_lo``/``a_hi`` are all
+    hardcoded to ``0.`` -- no uncertainty is estimated in that mode
+    (marked in the source with an explicit "no uncertainty??" comment
+    from the original author).
+
+    Parameters
+    ----------
+    a : :class:`numpy.ndarray`
+        Semi-major axis array.
+    mu : :class:`numpy.ndarray`
+        Surface brightness profile, mag/arcsec^2, same length as ``a``.
+    mu_err : :class:`numpy.ndarray`
+        1-sigma uncertainty on ``mu``, same shape.
+    mu_iso : :class:`float`
+        Target isophote level, mag/arcsec^2 (e.g. 25.0).
+    nmonte : :class:`int`
+        Number of Monte Carlo draws; if ``<= 0``, evaluate only the
+        nominal profile (see Notes).
+    sky_sigma : :class:`float`, optional
+        Additional global sky-magnitude uncertainty, applied as a single
+        shared offset per MC draw (not per point).
+    smooth_win : :class:`int`
+        Boxcar smoothing window (odd; see :func:`_boxcar`) applied before
+        computing each draw's envelope crossing; None or 1 disables
+        smoothing.
+    random_state : :class:`int` or :class:`numpy.random.Generator`, optional
+        Seed or generator passed to :func:`numpy.random.default_rng`.
+    return_samples : :class:`bool`
+        If True, include the array of successful per-draw radii in the
+        output under the ``'samples'`` key.
 
     Returns
     -------
-    out : dict with keys
-        'a_iso'         : median isophotal radius [same units as a]
-        'a_lo','a_hi'   : 16th/84th percentiles
-        'success_rate'  : fraction of MC draws with a valid crossing
-        'n_success'     : number of valid draws
-        'nmonte'       : total draws
-        'lower_limit'   : True if even the *nominal* profile never reaches mu_iso outward
-        'upper_limit'   : True if the nominal profile is already fainter than mu_iso at innermost bin
-        'samples'       : (optional) array of successful radii
+    :class:`dict`
+        With keys ``'a_iso'`` (median isophotal radius, same units as
+        ``a``), ``'a_iso_err'`` (robust sigma from the IQR, see Notes),
+        ``'a_lo'``/``'a_hi'`` (25th/75th percentiles, see Notes),
+        ``'success_rate'`` (fraction of MC draws with a valid crossing),
+        ``'n_success'`` (number of valid draws), ``'nmonte'`` (total
+        draws requested), ``'lower_limit'`` (bool, True if the nominal
+        profile never reaches ``mu_iso`` outward), ``'upper_limit'``
+        (bool, True if the nominal profile is already fainter than
+        ``mu_iso`` at the innermost point), and, if
+        ``return_samples=True``, ``'samples'`` (the per-draw radii
+        array). ``'a_iso'``/``'a_iso_err'``/``'a_lo'``/``'a_hi'`` are all
+        ``numpy.nan`` if no draw produced a valid crossing.
+
+    Raises
+    ------
+    ValueError
+        If fewer than two finite points remain in the input profile.
+
     """
     rng = np.random.default_rng(random_state)
 
@@ -566,11 +870,60 @@ def isophotal_radius_mc(
 
 def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
                           integrmode, sclip, nclip, measure_sb):
-    """Integrate the ellipse profile at a single semi-major axis (in
-    pixels).
+    """Integrate the ellipse profile (surface brightness and/or aperture
+    photometry) at a single semi-major axis.
 
-    theta in radians, CCW from the x-axis
-    mask - True=masked pixel
+    Elliptical aperture photometry (``flux``, ``ferr``, ``fracmasked``)
+    is always computed (via :class:`photutils.aperture.EllipticalAperture`),
+    except at ``sma == 0`` where it is set to zero as a placeholder.
+    Surface-brightness isophote sampling/fitting (via
+    :class:`photutils.isophote.EllipseSample`/:class:`~photutils.isophote.Isophote`,
+    or the central-pixel special case via
+    :class:`~photutils.isophote.sample.CentralEllipseSample`/
+    :class:`~photutils.isophote.fitter.CentralEllipseFitter` at
+    ``sma == 0``) is only performed when ``measure_sb`` is True; ``iso``
+    is None otherwise.
+
+    Parameters
+    ----------
+    mimg : :class:`numpy.ma.MaskedArray`
+        Masked image to sample/integrate.
+    sig : :class:`numpy.ndarray`
+        Per-pixel uncertainty (sigma) image, same shape as ``mimg``.
+    msk : :class:`numpy.ndarray`
+        Boolean mask, same shape as ``mimg``; True = masked pixel.
+    sma : :class:`float`
+        Semi-major axis, in pixels; ``0.`` selects the central-pixel
+        special case.
+    theta : :class:`float`
+        Position angle, in radians, counterclockwise from the x-axis.
+    eps : :class:`float`
+        Ellipticity, ``1 - b/a``.
+    x0, y0 : :class:`float`
+        Ellipse center, in pixel coordinates.
+    integrmode : :class:`str`
+        Pixel-integration mode passed to
+        :class:`photutils.isophote.EllipseSample`
+        (e.g. ``'bilinear'``, ``'mean'``, ``'median'``).
+    sclip : :class:`float`
+        Sigma-clipping threshold for the isophote sample.
+    nclip : :class:`int`
+        Number of sigma-clipping iterations for the isophote sample.
+    measure_sb : :class:`bool`
+        If True, also build and fit an isophote sample for surface
+        brightness (see above); if False, only aperture photometry is
+        computed and ``iso`` is None.
+
+    Returns
+    -------
+    iso : :class:`~photutils.isophote.Isophote` or None
+        Fitted isophote sample, or None if ``measure_sb`` is False.
+    flux : :class:`numpy.float32`
+        Aperture flux within the ellipse at ``sma``.
+    ferr : :class:`numpy.float32`
+        Aperture flux uncertainty.
+    fracmasked : :class:`numpy.float32`
+        Fraction of the aperture's area falling on masked pixels.
 
     """
     from photutils.isophote import EllipseSample, Isophote
@@ -624,7 +977,32 @@ def integrate_isophot_one(mimg, sig, msk, sma, theta, eps, x0, y0,
 
 
 def logspaced_integers(limit, n):
-    #https://stackoverflow.com/questions/12418234/logarithmically-spaced-integers
+    """Generate ``n`` monotonically increasing, log-spaced, unique
+    0-indexed integers spanning ``[0, limit-1]``.
+
+    Iteratively grows a geometric sequence from 1 toward ``limit``; when
+    the geometric step would round to a repeated integer, it is instead
+    forced to increment by 1 and the growth ratio for the remaining terms
+    is recomputed so the sequence still reaches ``limit``. Adapted from
+    https://stackoverflow.com/questions/12418234/logarithmically-spaced-integers.
+    Used to select a small, outward-densifying subset of indices (e.g.
+    aperture or isophote steps) out of a larger linear range.
+
+    Parameters
+    ----------
+    limit : :class:`int`
+        Upper bound (1-indexed) of the range to span; the returned
+        (0-indexed) values reach up to approximately ``limit - 1``.
+    n : :class:`int`
+        Number of integers to return.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Length-``n`` array of increasing integers (dtype ``int``),
+        0-indexed, log-spaced (denser at the low end).
+
+    """
     result = [1]
     if n > 1:  # just a check to avoid ZeroDivisionError
         ratio = (float(limit)/result[-1]) ** (1.0/(n-len(result)))
@@ -647,6 +1025,28 @@ def logspaced_integers(limit, n):
 
 
 def sbprofiles_datamodel(sma, bands):
+    """Build an empty per-radius surface-brightness profile table.
+
+    One row per input semi-major-axis value; for each band, adds
+    zero-filled ``SB_{filt}``/``SB_ERR_{filt}`` (surface brightness) and
+    ``FLUX_{filt}``/``FLUX_ERR_{filt}`` (aperture flux) columns, plus a
+    ``FMASKED_{filt}`` column initialized to 1 (fully masked) as a
+    placeholder until populated by the caller.
+
+    Parameters
+    ----------
+    sma : :class:`numpy.ndarray`
+        Semi-major-axis sampling grid, in arcsec (one row per value).
+    bands : :class:`list` of :class:`str`
+        Bands to add columns for (upper-cased in the column names).
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Table with ``len(sma)`` rows: ``SMA`` plus per-band ``SB_*``,
+        ``SB_ERR_*``, ``FLUX_*``, ``FLUX_ERR_*``, ``FMASKED_*`` columns.
+
+    """
     import astropy.units as u
     from astropy.table import Table, Column
     nsma = len(sma)
@@ -673,6 +1073,42 @@ def sbprofiles_datamodel(sma, bands):
 
 
 def results_datamodel(obj, bands, dataset, sma_apertures_arcsec, sbthresh):
+    """Build an empty single-row summary-results table for one object.
+
+    Seeded with ``obj``'s ``SGAID``/``SGAGROUP``, then adds per-band
+    ``GINI_{filt}``; curve-of-growth fit parameters and errors
+    (``COG_MTOT``, ``COG_DMAG``, ``COG_LNALPHA1``, ``COG_LNALPHA2``,
+    ``COG_CHI2``, ``COG_NDOF``, ``SMA50``, each per band, with
+    ``_ERR`` counterparts except ``CHI2``/``NDOF``); aperture photometry
+    at each radius in ``sma_apertures_arcsec`` (``SMA_AP##``,
+    ``FLUX_AP##_{filt}``, ``FLUX_ERR_AP##_{filt}``,
+    ``FMASKED_AP##_{filt}``, the latter initialized to 1); and, only
+    when ``dataset == 'opt'``, isophotal radii at each threshold in
+    ``sbthresh`` (``R{thresh}_{filt}``, ``R{thresh}_ERR_{filt}``).
+
+    Parameters
+    ----------
+    obj : :class:`~astropy.table.Table` row
+        Object row supplying ``SGAID``/``SGAGROUP`` for the output table.
+    bands : :class:`list` of :class:`str`
+        Bands to add columns for (upper-cased in the column names).
+    dataset : :class:`str`
+        Imaging dataset name; isophotal-radius columns are only added
+        when this is ``'opt'``.
+    sma_apertures_arcsec : array-like
+        Aperture semi-major-axis radii, in arcsec, defining the
+        ``SMA_AP##``/``FLUX_AP##_*`` columns.
+    sbthresh : array-like
+        Surface-brightness thresholds (mag/arcsec^2) defining the
+        isophotal-radius columns; unused when ``dataset != 'opt'``.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Single-row, zero-filled results table with the column set
+        described above.
+
+    """
     import astropy.units as u
     from astropy.table import Table, Column
 
@@ -741,12 +1177,114 @@ def multifit(obj, images, sigimages, masks, sma_array, dataset='opt',
              allbands=None, integrmode='median', nclip=3, sclip=3,
              seed=42, sbthresh=REF_SBTHRESH, sma_apertures_arcsec=None,
              debug=False):
-    """Multi-band ellipse-fitting, broadly based on--
+    """Fit elliptical-isophote surface-brightness profiles and
+    curve-of-growth photometry for one object, across one imaging
+    dataset's bands.
+
+    Broadly based on the photutils isophote-fitting examples --
     https://github.com/astropy/photutils-datasets/blob/master/notebooks/isophote/isophote_example4.ipynb
     https://photutils.readthedocs.io/en/latest/user_guide/isophote.html
 
-    sma_array in pixels
-    sma_apertures_pix in pixels
+    For each band: computes the Gini coefficient within the moment
+    ellipse; measures elliptical-aperture photometry at every radius in
+    ``sma_array`` (via :func:`integrate_isophot_one`, in parallel across
+    ``mp`` workers if requested) to build the per-radius flux and
+    surface-brightness profile; fits the curve-of-growth model
+    (:func:`fit_cog`) anchored at the object's moment semi-major axis;
+    derives the half-light radius and its uncertainty
+    (:func:`half_light_radius_with_uncertainty`); performs aperture
+    photometry at the fixed reference apertures in
+    ``sma_apertures_arcsec``; and, only for ``dataset == 'opt'``, derives
+    isophotal radii at each threshold in ``sbthresh`` via Monte Carlo
+    (:func:`isophotal_radius_mc`).
+
+    Notes
+    -----
+    ``opt_pixscale`` is accepted but never referenced in this function's
+    body -- only ``pixscale`` is used for every pixel/arcsec conversion.
+    ``debug`` is also effectively dead: immediately after the docstring
+    the local variable ``debug`` is unconditionally reset to ``False``
+    (``debug = False``, shadowing the parameter), so the diagnostic
+    matplotlib plotting blocks guarded by ``if debug:`` never execute
+    regardless of the value passed in by the caller.
+
+    Parameters
+    ----------
+    obj : :class:`~astropy.table.Table` row
+        Object's sample row; must supply ``BX``, ``BY``, ``PA_MOMENT``,
+        ``BA_MOMENT``, ``SMA_MOMENT``, ``SGAID``, ``SGAGROUP``.
+    images : :class:`numpy.ndarray`
+        Surface-brightness images for this object/dataset, shape
+        ``(nband, width, width)``.
+    sigimages : :class:`numpy.ndarray`
+        Per-pixel uncertainty images, same shape as ``images``.
+    masks : :class:`numpy.ndarray`
+        Boolean per-band pixel mask (True = masked), same shape as
+        ``images``.
+    sma_array : :class:`numpy.ndarray`
+        Semi-major-axis sampling grid, in pixels (e.g. from
+        :func:`build_sma_opt`/:func:`build_sma_band`), at which the
+        surface-brightness profile is measured.
+    dataset : :class:`str`
+        Imaging dataset name (``'opt'``, ``'unwise'``, ``'galex'``);
+        only ``'opt'`` triggers isophotal-radius computation.
+    bands : :class:`list` of :class:`str`
+        Bands to fit; must align with the leading axis of ``images``/
+        ``sigimages``/``masks``.
+    opt_wcs : WCS
+        Optical reference-band WCS, used with :func:`SGA.sky.map_bxby`
+        to transform the object's optical ``(BX, BY)`` into this
+        dataset's pixel frame.
+    wcs : WCS
+        This dataset's WCS.
+    opt_pixscale : :class:`float`
+        Unused (see Notes).
+    pixscale : :class:`float`
+        This dataset's pixel scale, arcsec/pixel; used for all
+        pixel/arcsec conversions.
+    mp : :class:`int`
+        Number of multiprocessing workers for the per-radius isophote
+        integration.
+    nmonte : :class:`int`
+        Number of Monte Carlo trials passed to
+        :func:`isophotal_radius_mc`.
+    allbands : :class:`list` of :class:`str`, optional
+        Full band set defining the output tables' column set (see
+        :func:`results_datamodel`/:func:`sbprofiles_datamodel`); defaults
+        to ``bands``. If it includes bands beyond ``bands``, those
+        columns exist in the output but are never populated (the fit
+        loop only iterates over ``bands``) -- by design, for producing a
+        fixed-width table when merging results with other band subsets.
+    integrmode : :class:`str`
+        Isophote integration mode passed to
+        :func:`integrate_isophot_one` (photutils convention, e.g.
+        ``'median'``).
+    nclip, sclip : :class:`int`
+        Sigma-clipping iteration count and threshold passed to
+        :func:`integrate_isophot_one`.
+    seed : :class:`int`
+        Random seed (``random_state``) passed to
+        :func:`isophotal_radius_mc`.
+    sbthresh : array-like
+        Surface-brightness thresholds (mag/arcsec^2) for isophotal-radius
+        computation; only used when ``dataset == 'opt'``.
+    sma_apertures_arcsec : array-like
+        Fixed reference aperture radii, in arcsec, for the
+        ``FLUX_AP##_*`` columns.
+    debug : :class:`bool`
+        Unused (see Notes).
+
+    Returns
+    -------
+    results : :class:`~astropy.table.Table`
+        Single-row summary table (see :func:`results_datamodel`),
+        populated with Gini coefficients, curve-of-growth parameters and
+        errors, half-light radii, reference-aperture photometry, and
+        (for ``dataset == 'opt'``) isophotal radii.
+    sbprofiles : :class:`~astropy.table.Table`
+        Per-radius surface-brightness profile table (see
+        :func:`sbprofiles_datamodel`), populated with flux and surface
+        brightness at each ``sma_array`` value.
 
     """
     import multiprocessing
@@ -951,7 +1489,50 @@ def build_sma_band(
     min_pixels_per_annulus=150, # min target-band pixels per annulus
     a_min_tgt_px=None,   # optional start radius in target pixels (e.g., 0.5*PSF FWHM)
     a_max_tgt_px=None):  # optional stop radius in target pixels
+    """Rescale an optical-band semi-major-axis edge grid onto another
+    imaging dataset's (coarser) pixel scale, thinning it so each
+    retained annulus has adequate width and area.
 
+    Converts ``opt_sma_array`` (optical pixels) to arcsec, then to
+    candidate edges in the target band's pixels, optionally clamps to
+    ``[a_min_tgt_px, a_max_tgt_px]``, and greedily keeps a candidate
+    edge only if it is both at least ``min_step_pixels`` beyond the
+    previously kept edge and encloses an annulus area (assuming axis
+    ratio ``ba``) of at least ``min_pixels_per_annulus`` -- since a grid
+    fine enough for the optical pixel scale would otherwise be
+    oversampled (too few pixels per annulus) at a coarser IR/UV pixel
+    scale.
+
+    Parameters
+    ----------
+    opt_sma_array : array-like
+        Semi-major-axis edges from the optical-band grid (e.g. from
+        :func:`build_sma_opt`), in optical pixels.
+    opt_pixscale : :class:`float`
+        Optical pixel scale, arcsec/pixel.
+    pixscale : :class:`float`
+        Target band's pixel scale, arcsec/pixel (e.g. 1.5 for GALEX,
+        2.75 for unWISE).
+    ba : :class:`float`
+        Axis ratio b/a, used in the annulus-area constraint.
+    min_step_pixels : :class:`float`
+        Minimum retained radial step, in target-band pixels.
+    min_pixels_per_annulus : :class:`float`
+        Minimum annulus area, in target-band pixels (assuming axis ratio
+        ``ba``), required to keep a candidate edge.
+    a_min_tgt_px : :class:`float`, optional
+        Discard candidate edges below this radius, in target pixels
+        (e.g. a fraction of the PSF FWHM).
+    a_max_tgt_px : :class:`float`, optional
+        Discard candidate edges above this radius, in target pixels.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Thinned semi-major-axis edges, in target-band pixels, strictly
+        increasing.
+
+    """
     # 1) put optical edges in arcsec (common currency)
     a_edges_arcsec = np.asarray(opt_sma_array, float) * opt_pixscale
 
@@ -993,21 +1574,62 @@ def build_sma_band(
 def build_sma_opt(s95_pix, ba=1.0, amax_factor=2.0, amax_pix=None,
                   psf_fwhm_pix=None, inner_step_pix=1.0, frac_step=0.15,
                   min_pixels_per_annulus=150, transition_mult=1.5):
-    """
-    Build a semi-major-axis array for elliptical isophotes.
+    """Build a semi-major-axis edge array for elliptical isophote fitting
+    in the optical bands.
+
+    Steps outward from a starting radius near the PSF core to a stop
+    radius using two regimes: fixed linear steps of ``inner_step_pix``
+    while ``a < a_transition`` (to resolve the inner profile finely near
+    the PSF), then multiplicative steps ``a_next = a * (1 + frac_step)``
+    beyond the transition radius (efficient log-like spacing at large
+    radii). At each step, the step is enlarged if needed so the
+    resulting annulus encloses at least ``min_pixels_per_annulus``
+    pixels (assuming axis ratio ``ba``).
+
+    Parameters
+    ----------
+    s95_pix : :class:`float`
+        Characteristic object radius, in pixels (e.g. an r95-type
+        radius), used to set the default stop radius via
+        ``amax_factor`` when ``amax_pix`` is not given.
+    ba : :class:`float`
+        Axis ratio b/a, used in the minimum-annulus-area constraint.
+    amax_factor : :class:`float`
+        Multiplicative factor applied to ``s95_pix`` for the default
+        stop radius.
+    amax_pix : :class:`float`, optional
+        Explicit stop radius, in pixels, overriding
+        ``amax_factor * s95_pix``.
+    psf_fwhm_pix : :class:`float`, optional
+        PSF FWHM, in pixels. Sets the starting radius (half the FWHM,
+        floored at 1 pixel) and the core-to-fractional transition
+        radius (``transition_mult * psf_fwhm_pix``). If None, falls back
+        to fixed defaults (start at 1 pixel, transition at 5 pixels).
+    inner_step_pix : :class:`float`
+        Fixed linear step size, in pixels, used in the core
+        (``a < a_transition``) regime.
+    frac_step : :class:`float`
+        Fractional step size used in the outer regime,
+        ``a_next = a * (1 + frac_step)``.
+    min_pixels_per_annulus : :class:`float`
+        Minimum annulus area, in pixels (assuming axis ratio ``ba``),
+        enforced by enlarging the step if needed; disabled if 0/None.
+    transition_mult : :class:`float`
+        Multiple of ``psf_fwhm_pix`` defining the core-to-fractional
+        transition radius.
 
     Returns
     -------
-    a_edges : (N,) ndarray
-        Semi-major axis edges (pixels), strictly increasing.
-    info : dict of ndarrays
-        Per-annulus diagnostics (length N-1):
-          - 'a_in', 'a_out', 'delta_a'
-          - 'core_step' (bool): linear-core step?
-          - 'frac_step' (bool): fractional step proposal?
-          - 'area_limited' (bool): min-area constraint enlarged step?
-          - 'a_transition' (scalar): core→fractional switch radius
-          - 'a_stop' (scalar): stop radius
+    a_edges : :class:`numpy.ndarray`
+        Semi-major-axis edges, in pixels, strictly increasing.
+    info : :class:`dict` of :class:`numpy.ndarray`
+        Per-annulus diagnostics (length ``len(a_edges) - 1``):
+        ``'a_in'``, ``'a_out'``, ``'delta_a'`` (annulus bounds and
+        width), ``'core_step'`` (bool, linear-core step),
+        ``'frac_step'`` (bool, fractional-step proposal),
+        ``'area_limited'`` (bool, step enlarged by the minimum-area
+        constraint), plus the scalars ``'a_transition'`` (core to
+        fractional switch radius) and ``'a_stop'`` (stop radius).
 
     """
     # outer limit
@@ -1075,7 +1697,19 @@ def build_sma_opt(s95_pix, ba=1.0, amax_factor=2.0, amax_pix=None,
 
 
 def qa_sma_grid():
-    """Figure to show the derived sma grid.
+    """Plot diagnostics of a semi-major-axis grid built by
+    :func:`build_sma_opt`.
+
+    Notes
+    -----
+    Currently broken: calls ``build_sma_grid(...)``, a function name
+    that does not exist anywhere in this module (the function is named
+    :func:`build_sma_opt`). Calling ``qa_sma_grid()`` raises
+    ``NameError``; this appears to be stale from a prior rename.
+
+    Returns
+    -------
+    None
 
     """
     import matplotlib.pyplot as plt
@@ -1110,7 +1744,69 @@ def qa_sma_grid():
 def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
                   MASKBITS, REFIDCOLUMN, datasets=['opt', 'unwise', 'galex'],
                   linear=False, htmlgalaxydir=None):
-    """Simple QA.
+    """Build a per-object QA figure comparing each dataset's masked image
+    (with fitted isophotes overlaid) to its surface-brightness profile.
+
+    For every object in ``sample``, makes one row per imaging dataset:
+    the left column shows the coadded, mask-excluded image with every
+    fitted isophote (from ``sbprofiles``) and the reference (moment)
+    ellipse overlaid; the right column shows the per-band surface
+    brightness profile (always in mag/arcsec^2, computed from
+    ``sbprofiles``' ``SB_*``/``SB_ERR_*`` columns) against
+    ``SMA**0.25``, with the reference semi-major axis marked. One PNG is
+    written per object to
+    ``{htmlgalaxydir}/qa-ellipsefit-{SGANAME}.png``.
+
+    Notes
+    -----
+    Despite its name, ``linear`` does not switch the profile panel
+    between linear-flux and magnitude units -- the plotted quantity
+    (``mu``) is always ``22.5 - 2.5*log10(SB)`` (a magnitude)
+    regardless of this flag. ``linear=True`` only changes the y-axis
+    limit calculation: it skips the extra +/-(0.75, 0.5) mag margin and
+    the hard 13-34 mag clamp applied when ``linear=False``, and instead
+    uses the raw min/max of the plotted magnitudes as axis limits.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-band image data and metadata for the group mosaic, as
+        produced by ``read_multiband``/:func:`SGA.SGA.build_multiband_mask`
+        (``opt_wcs``, ``opt_pixscale``, ``opt_bands``, and per-dataset
+        ``{dataset}_images``/``{dataset}_models``/``{dataset}_maskbits``/
+        ``{dataset}_bands``/``{dataset}_pixscale``/``{dataset}_wcs``).
+    sample : :class:`~astropy.table.Table`
+        One row per object (``SGANAME``, ``OBJNAME``, ``BX``, ``BY``,
+        ``PA_MOMENT``, ``BA_MOMENT``, ``SMA_MOMENT``, and
+        ``REFIDCOLUMN``).
+    results : :class:`list` of :class:`list` of :class:`~astropy.table.Table`
+        Per-dataset, per-object ellipse-fitting result tables, indexed
+        ``results[idata][iobj]`` (as returned by :func:`wrap_multifit`).
+    sbprofiles : :class:`list` of :class:`list` of :class:`~astropy.table.Table`
+        Per-dataset, per-object surface-brightness profile tables
+        (``SMA``, ``SB_{filt}``, ``SB_ERR_{filt}`` columns), indexed
+        ``sbprofiles[idata][iobj]`` (as returned by :func:`wrap_multifit`).
+    unpack_maskbits_function : callable
+        Function with the signature of :func:`SGA.SGA.unpack_maskbits`,
+        used to unpack each dataset's packed maskbits image into a
+        per-band boolean mask.
+    MASKBITS : :class:`list` of :class:`dict`
+        Per-dataset bit-value dictionaries, indexed to match ``datasets``,
+        passed to ``unpack_maskbits_function``.
+    REFIDCOLUMN : :class:`str`
+        Column name in ``sample`` holding each object's reference ID,
+        used in the figure title.
+    datasets : :class:`list` of :class:`str`
+        Imaging datasets to plot, one row each, in order.
+    linear : :class:`bool`
+        See Notes -- does not switch plotted units, only affects axis
+        limit padding/clamping.
+    htmlgalaxydir : :class:`str`, optional
+        Output directory for the QA figures.
+
+    Returns
+    -------
+    None
 
     """
     import matplotlib.pyplot as plt
@@ -1124,6 +1820,10 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
 
 
     def kill_left_y(ax):
+        """Hide the left y-axis of a matplotlib axes (used to pair a
+        twin axis showing the same data with different labeling).
+
+        """
         ax.yaxis.set_major_locator(ticker.NullLocator())
         ax.yaxis.set_minor_locator(ticker.NullLocator())
         ax.tick_params(axis='y', which='both', left=False, labelleft=False)
@@ -1335,10 +2035,69 @@ def qa_ellipsefit(data, sample, results, sbprofiles, unpack_maskbits_function,
 def wrap_multifit(data, sample, datasets, unpack_maskbits_function,
                   sbthresh, apertures, SGAMASKBITS, mp=1, nmonte=50,
                   seed=42, debug=False):
-    """Simple wrapper on multifit.
+    """Loop :func:`multifit` over every object and imaging dataset for a
+    group, building the semi-major-axis sampling grid for each dataset
+    along the way.
 
-    Iterate on objects then datasets (even though some work is
-    duplicated).
+    Iterates objects in the outer loop and datasets in the inner loop
+    (so some work, e.g. unpacking per-dataset masks, is repeated per
+    object rather than shared across objects). For the ``'opt'``
+    dataset, builds the pixel-space SMA array via :func:`build_sma_opt`
+    from the object's moment geometry; for every other dataset, builds
+    it via :func:`build_sma_band`, rescaled from the optical SMA array.
+
+    Notes
+    -----
+    ``datasets`` must include ``'opt'`` first: the ``ba``,
+    ``opt_sma_array_pix``, and ``sma_apertures_arcsec`` locals are only
+    assigned inside the ``dataset == 'opt'`` branch, then reused
+    unconditionally by every other dataset's branch. Every current call
+    site passes ``'opt'`` first, so this ordering dependency is latent
+    rather than actually triggered, but it is not enforced or checked
+    here.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Per-band image data and metadata for the group mosaic (see
+        :func:`SGA.SGA.build_multiband_mask`).
+    sample : :class:`~astropy.table.Table`
+        One row per object (``REFIDCOLUMN`` value, ``BA_MOMENT``,
+        ``SMA_MOMENT``).
+    datasets : :class:`list` of :class:`str`
+        Imaging datasets to fit, in order; must start with ``'opt'``
+        (see Notes).
+    unpack_maskbits_function : callable
+        Function with the signature of :func:`SGA.SGA.unpack_maskbits`,
+        used to unpack each dataset's packed maskbits image into a
+        per-band boolean mask.
+    sbthresh : :class:`list` of :class:`float`
+        Surface brightness thresholds (mag/arcsec^2), passed to
+        :func:`multifit`.
+    apertures : :class:`list` of :class:`float`
+        Multiples of the moment semi-major axis defining the reference
+        curve-of-growth apertures, passed to :func:`multifit`.
+    SGAMASKBITS : :class:`list` of :class:`dict`
+        Per-dataset bit-value dictionaries, indexed to match ``datasets``,
+        passed to ``unpack_maskbits_function``.
+    mp : :class:`int`
+        Number of multiprocessing workers, passed to :func:`multifit`.
+    nmonte : :class:`int`
+        Number of Monte Carlo realizations for uncertainty estimation,
+        passed to :func:`multifit`.
+    seed : :class:`int`
+        Random seed, passed to :func:`multifit`.
+    debug : :class:`bool`
+        If True, enable debug-mode diagnostics in :func:`multifit`.
+
+    Returns
+    -------
+    results : :class:`list` of :class:`list` of :class:`~astropy.table.Table`
+        Per-dataset, per-object ellipse-fitting result tables, indexed
+        ``results[idata][iobj]``.
+    sbprofiles : :class:`list` of :class:`list` of :class:`~astropy.table.Table`
+        Per-dataset, per-object surface-brightness profile tables,
+        indexed ``sbprofiles[idata][iobj]``.
 
     """
     REFIDCOLUMN = data['REFIDCOLUMN']
@@ -1429,8 +2188,140 @@ def ellipsefit_multiband(galaxy, galaxydir, REFIDCOLUMN, read_multiband_function
                          verbose=False, skip_tractor=False, skip_ellipse=False, nowrite=False,
                          ignore_galaxy_sources=False, clobber=False, qaplot=False,
                          htmlgalaxydir=None):
-    """Top-level wrapper script to do ellipse-fitting on all galaxies
-    in a given group or coadd.
+    """Top-level driver: read the imaging, build masks, and ellipse-fit
+    every galaxy in a group or coadd.
+
+    Reads the group's imaging and catalogs via ``read_multiband_function``
+    (e.g. :func:`SGA.SGA.read_multiband`), returning early if there are no
+    CCDs touching the brick or the read fails. Unless ``skip_ellipse``,
+    runs a two-pass fit: (1) build an aggressive initial mask via
+    :func:`SGA.SGA.build_multiband_mask` (``FMAJOR_geo=0.01``,
+    ``mask_minor_galaxies=True``) and, unless every object already has
+    fixed geometry, fit the optical band only via :func:`wrap_multifit`
+    (``nmonte=0``) to get a first-pass R(26) estimate per object via
+    :func:`SGA.SGA.SGA_diameter`, merging it into ``SMA_MASK``; (2)
+    rebuild the mask with the refined per-object geometry
+    (``FMAJOR_final=0.1``, ``mask_minor_galaxies=False``) and run the
+    full multi-dataset fit via :func:`wrap_multifit` with the requested
+    ``nmonte``. Logs a final isophotal-radius summary per object via
+    :func:`SGA.SGA.SGA_diameter`, optionally makes a QA figure via
+    :func:`qa_ellipsefit`, and (unless ``nowrite``) writes the results
+    via ``SGA.io.write_ellipsefit``.
+
+    When ``skip_ellipse`` is True (RESOLVED or otherwise not
+    ellipse-fit objects), no masking or fitting is performed; ``results``
+    is instead populated directly from ``results_datamodel`` (empty/
+    placeholder values) and ``sbprofiles`` from empty tables, so the
+    output data model is still well-formed.
+
+    Notes
+    -----
+    ``clobber`` is accepted but never referenced in this function's
+    body -- clobber/skip-if-done checking is evidently handled upstream
+    (e.g. via ``SGA.SGA.missing_files`` in ``bin/SGA2025-mpi``) before
+    this function is called. Return-code convention mirrors
+    :func:`SGA.SGA.read_multiband`'s ``err``: 0 signals a failure that
+    should abort processing for this galaxy, while 1 signals either
+    genuine success or one of two "nothing to do" early-return cases (no
+    CCDs touching the brick; an entirely empty Tractor catalog after
+    masking) -- callers should not treat ``err == 1`` alone as proof that
+    fitting actually happened.
+
+    Parameters
+    ----------
+    galaxy : :class:`str`
+        Galaxy or group name; the filename prefix for this object's data
+        products.
+    galaxydir : :class:`str`
+        Directory containing this object's coadd-stage data products.
+    REFIDCOLUMN : :class:`str`
+        Column name in the sample catalog holding each object's
+        reference ID.
+    read_multiband_function : callable
+        Function with the signature of :func:`SGA.SGA.read_multiband`,
+        used to read the imaging and catalogs.
+    unpack_maskbits_function : callable
+        Function with the signature of :func:`SGA.SGA.unpack_maskbits`,
+        passed through to :func:`wrap_multifit` and :func:`qa_ellipsefit`.
+    SGAMASKBITS : :class:`list` of :class:`dict`
+        Per-dataset bit-value dictionaries (one per entry of the
+        internally-built ``datasets`` list); length must equal
+        ``len(datasets)``.
+    region : :class:`str`
+        Survey region, passed to :func:`SGA.SGA.SGA_diameter` for
+        region-specific data-quality handling.
+    run : :class:`str`
+        legacypipe survey run name, passed to ``read_multiband_function``.
+    mp : :class:`int`
+        Number of multiprocessing workers, passed to
+        :func:`SGA.SGA.build_multiband_mask` and :func:`wrap_multifit`.
+    bands : :class:`list` of :class:`str`
+        Optical bands to read and fit.
+    pixscale : :class:`float`
+        Optical pixel scale, arcsec/pixel.
+    galex_pixscale : :class:`float`
+        GALEX pixel scale, arcsec/pixel.
+    unwise_pixscale : :class:`float`
+        unWISE pixel scale, arcsec/pixel.
+    mask_nearby : :class:`list` of :class:`dict`, optional
+        Extra ellipses to always mask, passed through to
+        :func:`SGA.SGA.build_multiband_mask`.
+    galex : :class:`bool`
+        If True, include the GALEX FUV/NUV imaging set in ``datasets``.
+    unwise : :class:`bool`
+        If True, include the unWISE W1-W4 imaging set in ``datasets``.
+    use_tractor_position : :class:`bool`
+        Passed through to :func:`SGA.SGA.build_multiband_mask`.
+    fixgeo : :class:`bool`
+        If True, force fixed geometry for every object; also skips the
+        first-pass optical-only fit.
+    tractorgeo : :class:`bool`
+        If True, force Tractor geometry for every object; also skips the
+        first-pass optical-only fit.
+    use_radial_weight : :class:`bool`
+        Passed through to :func:`SGA.SGA.build_multiband_mask`.
+    sbthresh : :class:`list` of :class:`float`
+        Surface brightness thresholds (mag/arcsec^2) for isophotal radii.
+    apertures : :class:`list` of :class:`float`
+        Multiples of the moment semi-major axis defining the reference
+        curve-of-growth apertures.
+    update_geometry : :class:`bool`
+        If True, let the final mask/fit pass re-iterate the geometry
+        (``niter_geometry=1`` with ``input_geo_initial=None``); if
+        False, freeze the geometry at the values derived from the
+        first-pass fit (``input_geo_initial`` built explicitly per
+        object) before the final mask/fit pass.
+    nmonte : :class:`int`
+        Number of Monte Carlo realizations for uncertainty estimation in
+        the final fit (the first-pass optical-only fit always uses
+        ``nmonte=0``).
+    seed : :class:`int`
+        Random seed for the Monte Carlo realizations.
+    verbose : :class:`bool`
+        Passed through to ``read_multiband_function`` and
+        ``SGA.io.write_ellipsefit``.
+    skip_tractor : :class:`bool`
+        Passed through to ``read_multiband_function``.
+    skip_ellipse : :class:`bool`
+        If True, skip masking/fitting entirely and populate a
+        placeholder data model instead (see above).
+    nowrite : :class:`bool`
+        If True, skip writing the output files via
+        ``SGA.io.write_ellipsefit``.
+    ignore_galaxy_sources : :class:`bool`
+        Passed through to :func:`SGA.SGA.build_multiband_mask`; also
+        forces the first-pass optical-only fit to be skipped.
+    clobber : :class:`bool`
+        Unused (see Notes).
+    qaplot : :class:`bool`
+        If True, generate the QA figure via :func:`qa_ellipsefit`.
+    htmlgalaxydir : :class:`str`, optional
+        Output directory for QA figures.
+
+    Returns
+    -------
+    :class:`int`
+        Status code; see Notes for the 0/1 convention and its caveats.
 
     """
     from astropy.table import Table, vstack
