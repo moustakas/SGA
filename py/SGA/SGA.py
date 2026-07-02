@@ -77,6 +77,30 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False,
     the release version. The final merged catalog (SGA2025-build-catalog
     output) has its own independent version.
 
+    Parameters
+    ----------
+    vicuts : :class:`bool`
+        If True, return the version for the intermediate "VI cuts"
+        catalog.
+    nocuts : :class:`bool`
+        If True, return the version for the intermediate "no cuts"
+        catalog.
+    archive : :class:`bool`
+        If True, return the version for the intermediate archive
+        catalog.
+    parent : :class:`bool`
+        Accepted for caller clarity but has no effect on the returned
+        value -- the parent catalog shares the same default release
+        version returned when no flag is set.
+    catalog : :class:`bool`
+        If True, return the version for the final merged catalog
+        (``SGA2025-build-catalog`` output).
+
+    Returns
+    -------
+    :class:`str`
+        Version string, e.g. ``'v0.10'``, ``'v1.0'``, or ``'v1.6'``.
+
     """
     if nocuts or vicuts or archive:
         return 'v0.10'
@@ -86,6 +110,14 @@ def SGA_version(vicuts=False, nocuts=False, archive=False, parent=False,
 
 
 def sga_dir():
+    """Return the absolute path of the ``$SGA_DIR`` working directory.
+
+    Raises
+    ------
+    EnvironmentError
+        If the ``SGA_DIR`` environment variable is not set.
+
+    """
     if 'SGA_DIR' not in os.environ:
         msg = 'Required ${SGA_DIR} environment variable not set.'
         log.critical(msg)
@@ -94,6 +126,15 @@ def sga_dir():
 
 
 def sga_public_dir():
+    """Return the absolute path of the ``$SGA_PUBLIC_DIR`` directory
+    (final public catalogs).
+
+    Raises
+    ------
+    EnvironmentError
+        If the ``SGA_PUBLIC_DIR`` environment variable is not set.
+
+    """
     if 'SGA_PUBLIC_DIR' not in os.environ:
         msg = 'Required ${SGA_PUBLIC_DIR} environment variable not set.'
         log.critical(msg)
@@ -102,6 +143,14 @@ def sga_public_dir():
 
 
 def sga_data_dir():
+    """Return the absolute path of the ``$SGA_DATA_DIR`` directory.
+
+    Raises
+    ------
+    EnvironmentError
+        If the ``SGA_DATA_DIR`` environment variable is not set.
+
+    """
     if 'SGA_DATA_DIR' not in os.environ:
         msg = 'Required ${SGA_DATA_DIR} environment variable not set.'
         log.critical(msg)
@@ -110,6 +159,14 @@ def sga_data_dir():
 
 
 def sga_html_dir():
+    """Return the absolute path of the ``$SGA_HTML_DIR`` directory.
+
+    Raises
+    ------
+    EnvironmentError
+        If the ``SGA_HTML_DIR`` environment variable is not set.
+
+    """
     if 'SGA_HTML_DIR' not in os.environ:
         msg = 'Required ${SGA_HTML_DIR} environment variable not set.'
         log.critical(msg)
@@ -118,7 +175,32 @@ def sga_html_dir():
 
 
 def sga2025_name(ra, dec, group_name=False, unixsafe=False):
-    # simple wrapper on radec_to_name with precision=3
+    """Build a disk-friendly SGA2025 object or group name from a sky
+    position.
+
+    Thin wrapper around :func:`SGA.io.radec_to_name` (object names, 3.6
+    arcsec / 0.001 deg precision) or :func:`SGA.io.radec_to_groupname`
+    (group names, 36 arcsec / 0.01 deg precision).
+
+    Parameters
+    ----------
+    ra, dec : :class:`float` or array-like
+        Right ascension and declination in degrees.
+    group_name : :class:`bool`
+        If True, build a coarser-precision group name via
+        :func:`SGA.io.radec_to_groupname` instead of an object name.
+    unixsafe : :class:`bool`
+        If True, build a filesystem-safe name. Only honored when
+        ``group_name=False``; :func:`SGA.io.radec_to_groupname` has no
+        ``unixsafe`` option, so this is silently ignored when
+        ``group_name=True``.
+
+    Returns
+    -------
+    :class:`str` or :class:`numpy.ndarray`
+        SGA2025-prefixed name(s), scalar if the input was scalar.
+
+    """
     from SGA.io import radec_to_name, radec_to_groupname
     if group_name:
         # 36-arcsec precision (0.01 degrees)
@@ -131,7 +213,47 @@ def sga2025_name(ra, dec, group_name=False, unixsafe=False):
 
 def get_galaxy_galaxydir(sample, region='dr11-south', group=True,
                          datadir=None, htmldir=None, html=False):
-    """Retrieve the galaxy name and the (nested) directory.
+    """Compute each object's (or group's) name and nested data directory.
+
+    Builds the RA-sliced directory path
+    ``{datadir}/{region}/{raslice}/{name}`` (and, if ``html=True``, the
+    parallel HTML directory) used throughout the pipeline to locate
+    per-object/group data products. When ``group=True``, the name and RA
+    are taken from the ``SGAGROUP``/``GROUP_RA``/``GROUP_NAME`` columns;
+    when ``group=False``, the name is instead derived from each object's
+    own ``RA``/``DEC`` via :func:`sga2025_name`.
+
+    Parameters
+    ----------
+    sample : :class:`~astropy.table.Table` or :class:`~astropy.table.Row`
+        One or more objects to resolve; converted to a
+        :class:`~astropy.table.Table` internally, so (unlike
+        :func:`missing_files`, which explicitly rejects one) a single
+        :class:`~astropy.table.Row` is also accepted here.
+    region : :class:`str`
+        Survey region subdirectory (e.g. ``'dr11-south'``).
+    group : :class:`bool`
+        If True, resolve by group (``SGAGROUP``/``GROUP_RA``/
+        ``GROUP_NAME`` columns); if False, resolve per-object from
+        ``RA``/``DEC``.
+    datadir : :class:`str`, optional
+        Data root directory; defaults to :func:`sga_data_dir`.
+    htmldir : :class:`str`, optional
+        HTML root directory; defaults to :func:`sga_html_dir`. Only used
+        when ``html=True``.
+    html : :class:`bool`
+        If True, also compute and return the parallel HTML output
+        directory.
+
+    Returns
+    -------
+    galaxy : :class:`str` or :class:`numpy.ndarray`
+        Object or group name(s); scalar if ``sample`` has one row.
+    galaxydir : :class:`str` or :class:`numpy.ndarray`
+        Nested data directory path(s), same shape as ``galaxy``.
+    htmlgalaxydir : :class:`str` or :class:`numpy.ndarray`
+        Nested HTML directory path(s), same shape as ``galaxy``; only
+        returned when ``html=True``.
 
     """
     from SGA.io import get_raslice
@@ -407,7 +529,36 @@ def missing_files(sample=None, bricks=None, region='dr11-south',
 
 
 def _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult):
-    """Return row indices satisfying diameter and group-membership cuts."""
+    """Return row indices of ``info`` satisfying diameter and
+    group-membership cuts.
+
+    Parameters
+    ----------
+    info : :class:`~astropy.table.Table` or :class:`numpy.ndarray`
+        Structured array/table with (depending on ``no_groups``) either
+        ``diam_col``, or ``GROUP_DIAMETER``/``GROUP_PRIMARY`` (and
+        ``GROUP_MULT`` if ``minmult``/``maxmult`` is given) columns.
+    no_groups : :class:`bool`
+        If True, select on ``info[diam_col]`` directly and skip the
+        ``GROUP_PRIMARY``/``GROUP_MULT`` cuts entirely. If False, select
+        on the hardcoded ``GROUP_DIAMETER``/``GROUP_PRIMARY`` columns
+        instead -- ``diam_col`` is not used in this branch.
+    diam_col : :class:`str`
+        Diameter column name to cut on; only used when
+        ``no_groups=True``.
+    mindiam, maxdiam : :class:`float`
+        Minimum and maximum diameter, in the same units as the diameter
+        column (arcmin).
+    minmult, maxmult : :class:`int` or None
+        Minimum/maximum ``GROUP_MULT``; ignored when ``no_groups=True``
+        or when None.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Integer row indices into ``info`` satisfying all cuts.
+
+    """
     if no_groups:
         return np.where((info[diam_col] >= mindiam) * (info[diam_col] < maxdiam))[0]
     I = ((info['GROUP_DIAMETER'] >= mindiam) *
@@ -423,7 +574,59 @@ def _select_rows(info, no_groups, diam_col, mindiam, maxdiam, minmult, maxmult):
 def _read_catalog(samplefile, ext, diam_col, first, last, galaxylist, verbose,
                   no_groups, lvd, region, mindiam, maxdiam, minmult, maxmult,
                   test_bricks=False):
-    """Read and filter one SGA FITS extension; shared by read_sample and read_sga_sample."""
+    """Read and filter one SGA FITS extension; shared implementation for
+    :func:`read_sample` and :func:`read_sga_sample`.
+
+    Applies cuts in sequence -- diameter/group (via :func:`_select_rows`),
+    region, test bricks, LVD, galaxy list, then index range -- returning
+    early with empty tables as soon as any cut leaves zero rows.
+
+    Parameters
+    ----------
+    samplefile : :class:`str`
+        Path to the FITS catalog to read.
+    ext : :class:`str` or :class:`int`
+        FITS extension holding the primary (diameter-cut) rows.
+    diam_col : :class:`str`
+        Diameter column name; only used when ``no_groups=True`` (see
+        :func:`_select_rows`).
+    first, last : :class:`int`, optional
+        Slice the (already-cut) primary-object list to indices
+        ``[first, last)``.
+    galaxylist : :class:`str`, optional
+        Comma-separated identifiers to select. Matched against
+        ``GROUP_NAME`` first, then ``SGAID``, then ``OBJNAME``.
+    verbose : :class:`bool`
+        Accepted but unused -- not referenced anywhere in this
+        function's body; logging here runs unconditionally.
+    no_groups : :class:`bool`
+        If True, treat each row independently rather than by group (see
+        :func:`_select_rows`); also short-circuits every subsequent
+        ``fullsample`` update to just mirror ``sample``.
+    lvd : :class:`bool`
+        If True, restrict to groups containing at least one Local
+        Volume Database member (``SAMPLE`` bit ``LVD``), then further
+        restrict ``sample`` to that subset's ``GROUP_PRIMARY`` rows.
+    region : :class:`str`, optional
+        Survey region; if not None, restrict to rows with the
+        corresponding ``SGA.coadds.REGIONBITS`` bit set in ``REGION``.
+    mindiam, maxdiam : :class:`float`
+        Minimum and maximum diameter cut, passed to :func:`_select_rows`.
+    minmult, maxmult : :class:`int`, optional
+        Minimum/maximum ``GROUP_MULT``, passed to :func:`_select_rows`.
+    test_bricks : :class:`bool`
+        If True, further restrict to objects whose brick name (computed
+        from ``GROUP_RA``/``GROUP_DEC``) is in the DR11 test-brick list.
+
+    Returns
+    -------
+    sample : :class:`~astropy.table.Table`
+        Primary objects satisfying all selection criteria.
+    fullsample : :class:`~astropy.table.Table`
+        All group members whose group has at least one object in
+        ``sample`` (identical to ``sample`` when ``no_groups=True``).
+
+    """
     if not os.path.isfile(samplefile):
         msg = f'Sample file {samplefile} not found.'
         log.critical(msg)
@@ -535,37 +738,38 @@ def read_sample(first=None, last=None, galaxylist=None, verbose=False,
 
     Parameters
     ----------
-    first, last : int, optional
+    first, last : :class:`int`, optional
         Select a contiguous slice [first, last) of the primary-object list.
-    galaxylist : str, optional
+    galaxylist : :class:`str`, optional
         Comma-separated identifiers to select. Matched against GROUP_NAME
         first, then SGAID, then OBJNAME.
-    verbose : bool
+    verbose : :class:`bool`
         If True, log additional diagnostic messages.
-    no_groups : bool
+    no_groups : :class:`bool`
         If True, treat each galaxy independently rather than by group.
-    lvd : bool
+    lvd : :class:`bool`
         If True, restrict to the Local Volume Database resolved dwarf subsample.
-    version : str, optional
+    version : :class:`str`, optional
         Catalog version string. Defaults to the current release version via
         SGA_version().
-    test_bricks : bool
+    test_bricks : :class:`bool`
         If True, restrict to objects in the DR11 test brick list (pipeline use).
-    region : str
+    region : :class:`str`
         Survey region ('dr11-south' or 'dr11-north').
-    mindiam, maxdiam : float
+    mindiam, maxdiam : :class:`float`
         Minimum and maximum GROUP_DIAMETER in arcmin.
-    minmult, maxmult : int, optional
+    minmult, maxmult : :class:`int`, optional
         Minimum/maximum number of group members. Ignored when no_groups=True.
-    beta : bool
+    beta : :class:`bool`
         If True (default), read the beta release file.
 
     Returns
     -------
-    sample : astropy.table.Table
+    sample : :class:`~astropy.table.Table`
         GROUP_PRIMARY objects satisfying all selection criteria.
-    fullsample : astropy.table.Table
+    fullsample : :class:`~astropy.table.Table`
         All group members whose group has at least one object in sample.
+
     """
     if version is None:
         version = SGA_version(parent=True)
@@ -596,38 +800,38 @@ def read_sga_sample(region=None, tractor=False, mindiam=0., maxdiam=1e3,
 
     Parameters
     ----------
-    region : str, optional
+    region : :class:`str`, optional
         Survey region ('dr11-south' or 'dr11-north'). If None (default)
         and beta=False, reads the merged catalog with no region filtering.
         Required when beta=True -- raises ValueError if omitted, since
         there is no merged beta catalog.
-    tractor : bool
+    tractor : :class:`bool`
         If True, return the TRACTOR extension instead of ELLIPSE.
-    mindiam, maxdiam : float
+    mindiam, maxdiam : :class:`float`
         Minimum and maximum GROUP_DIAMETER in arcmin.
-    galaxylist : str, optional
+    galaxylist : :class:`str`, optional
         Comma-separated GROUP_NAME, SGAID, or OBJNAME values to select.
-    first, last : int, optional
+    first, last : :class:`int`, optional
         Slice the primary-object list to indices [first, last).
-    no_groups : bool
+    no_groups : :class:`bool`
         If True, treat each galaxy independently rather than by group.
-    minmult, maxmult : int, optional
+    minmult, maxmult : :class:`int`, optional
         Minimum/maximum number of group members to include.
-    lvd : bool
+    lvd : :class:`bool`
         If True, restrict to the Local Volume Database dwarf subsample.
-    version : str, optional
+    version : :class:`str`, optional
         Catalog version string; defaults to the current release version.
-    beta : bool
+    beta : :class:`bool`
         If True, read the per-region beta (pre-release) ellipse catalog
         instead of the final catalog; requires region. Default False.
-    verbose : bool
+    verbose : :class:`bool`
         If True, log additional diagnostic messages.
 
     Returns
     -------
-    sample : astropy.table.Table
+    sample : :class:`~astropy.table.Table`
         GROUP_PRIMARY objects satisfying the selection criteria.
-    fullsample : astropy.table.Table
+    fullsample : :class:`~astropy.table.Table`
         All group members whose group has at least one object in sample.
 
     """
@@ -670,31 +874,33 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
 
     Parameters
     ----------
-    ellipse : astropy.table.Table
-        Table with isophotal radii (R{TH}_{BAND} columns), ELLIPSEMODE, and SMA_MOMENT.
-    region : str
-        Survey region ('dr9-north', 'dr9-south', 'dr9-south-ngc5128', etc.).
-        Required to handle region-specific data quality issues.
-    radius_arcsec : bool, optional
+    ellipse : :class:`~astropy.table.Table`
+        Table with isophotal radii (``R{TH}_{BAND}`` columns), ``ELLIPSEMODE``,
+        and ``SMA_MOMENT``.
+    region : :class:`str`
+        Survey region (``'dr9-north'``, ``'dr9-south'``, ``'dr9-south-ngc5128'``,
+        etc.). Required to handle region-specific data quality issues.
+    radius_arcsec : :class:`bool`, optional
         If True, return radius in arcsec instead of diameter in arcmin.
-    censor_all_zband : bool, optional
-        If True and region is 'dr9-north', censor all z-band profiles. If False
-        (default), only censor z-band for rows that have valid isophotal radii
-        in other bands (g, r, i), preserving z-band as fallback when it's the
-        only available measurement.
-    verbose : bool, optional
+    censor_all_zband : :class:`bool`, optional
+        If True and ``region`` is ``'dr9-north'``, censor all z-band profiles.
+        If False (default), only censor z-band for rows that have valid
+        isophotal radii in other bands (g, r, i), preserving z-band as
+        fallback when it's the only available measurement.
+    verbose : :class:`bool`, optional
         If True, print per-object diagnostic output showing available radii
         and the resulting D26.
 
     Returns
     -------
-    d26 : ndarray
-        D26 diameter in arcmin (or R26 radius in arcsec if radius_arcsec=True).
-    d26_err : ndarray
+    d26 : :class:`numpy.ndarray`
+        D26 diameter in arcmin (or R26 radius in arcsec if ``radius_arcsec=True``).
+    d26_err : :class:`numpy.ndarray`
         1-sigma uncertainty.
-    d26_ref : ndarray
-        Channel that contributed highest weight ('r26', 'g25', 'mom', 'fix', etc.).
-    d26_weight : ndarray
+    d26_ref : :class:`numpy.ndarray`
+        Channel that contributed highest weight (``'r26'``, ``'g25'``,
+        ``'mom'``, ``'fix'``, etc.).
+    d26_weight : :class:`numpy.ndarray`
         Weight of the highest-contributing channel.
 
     """
@@ -823,22 +1029,25 @@ def SGA_diameter(ellipse, region, radius_arcsec=False, censor_all_zband=False,
 
 
 def _lmc_smc_diameter(ellipse, mask):
-    """Compute diameter for LMC/SMC sources using deepest uncensored isophote.
+    """Compute diameter for LMC/SMC sources using the deepest uncensored
+    isophote.
 
     Uses the r-band radius at the deepest available threshold directly,
-    falling back to i, z, g bands in that order. No calibration extrapolation
-    is applied since the profiles are affected by stellar crowding.
+    falling back to i, z, g bands in that order. No calibration
+    extrapolation is applied since the profiles are affected by stellar
+    crowding.
 
     Parameters
     ----------
-    ellipse : Table
-        Ellipse table (after censoring flattened isophotes).
-    mask : ndarray
+    ellipse : :class:`~astropy.table.Table`
+        Ellipse table (after censoring flattened isophotes via
+        :func:`_censor_flattened_isophotes`).
+    mask : :class:`numpy.ndarray`
         Boolean mask of LMC/SMC sources.
 
     Returns
     -------
-    d26, d26_err, d26_ref, d26_weight : ndarrays
+    d26, d26_err, d26_ref, d26_weight : :class:`numpy.ndarray`
         Diameter (arcmin), error, reference channel, and weight.
 
     """
@@ -891,21 +1100,28 @@ def _lmc_smc_diameter(ellipse, mask):
 
 
 def _censor_flattened_isophotes(ellipse, mask, min_bands_fail=2):
-    """Censor isophotes where errors grow faster than radii.
+    """Censor isophotes where errors grow faster than radii, in place.
 
     For LMC/SMC sources, surface brightness profiles can flatten due to
-    unresolved stellar backgrounds. This manifests as errors growing faster
-    than radii between adjacent thresholds. When detected, we censor the
-    fainter isophote to prevent unreliable extrapolation.
+    unresolved stellar backgrounds. This manifests as errors growing
+    faster than radii between adjacent thresholds. When detected, the
+    fainter isophote is censored (set to NaN) to prevent unreliable
+    extrapolation.
 
     Parameters
     ----------
-    ellipse : Table
-        Ellipse table (modified in place).
-    mask : ndarray
-        Boolean mask of rows to check (e.g., LMC/SMC sources).
-    min_bands_fail : int
-        Minimum number of bands that must fail the heuristic to censor.
+    ellipse : :class:`~astropy.table.Table`
+        Ellipse table, modified in place.
+    mask : :class:`numpy.ndarray`
+        Boolean mask of rows to check (e.g. LMC/SMC sources).
+    min_bands_fail : :class:`int`
+        Minimum number of bands that must fail the heuristic (error ratio
+        exceeding radius ratio between a threshold pair) to censor that
+        threshold.
+
+    Returns
+    -------
+    None
 
     """
     bands = ['G', 'R', 'I', 'Z']
@@ -966,27 +1182,30 @@ def SGA_geometry(ellipse, region, radius_arcsec=False):
 
     Parameters
     ----------
-    ellipse : astropy.table.Table
-        Table with isophotal radii, BA_MOMENT, PA_MOMENT, ELLIPSEMODE, and SMA_MOMENT.
-    region : str
-        Survey region ('dr9-north', 'dr9-south', etc.). Passed to SGA_diameter
-        to handle region-specific data quality issues.
-    radius_arcsec : bool, optional
+    ellipse : :class:`~astropy.table.Table`
+        Table with isophotal radii, ``BA_MOMENT``, ``PA_MOMENT``,
+        ``ELLIPSEMODE``, and ``SMA_MOMENT``.
+    region : :class:`str`
+        Survey region (``'dr9-north'``, ``'dr9-south'``, etc.). Passed to
+        :func:`SGA_diameter` to handle region-specific data quality issues.
+    radius_arcsec : :class:`bool`, optional
         If True, return radius in arcsec instead of diameter in arcmin.
 
     Returns
     -------
-    diam : ndarray
-        D26 diameter in arcmin (or R26 radius in arcsec if radius_arcsec=True).
-    ba : ndarray
+    diam : :class:`numpy.ndarray`
+        D26 diameter in arcmin (or R26 radius in arcsec if ``radius_arcsec=True``).
+    ba : :class:`numpy.ndarray`
         Axis ratio (b/a) from moment analysis.
-    pa : ndarray
-        Position angle in degrees (astronomical convention) from moment analysis.
-    diam_err : ndarray
+    pa : :class:`numpy.ndarray`
+        Position angle in degrees (astronomical convention) from moment
+        analysis.
+    diam_err : :class:`numpy.ndarray`
         1-sigma uncertainty on diameter.
-    diam_ref : ndarray
-        Channel that contributed highest weight ('r26', 'g25', 'mom', 'fix', etc.).
-    diam_weight : ndarray
+    diam_ref : :class:`numpy.ndarray`
+        Channel that contributed highest weight (``'r26'``, ``'g25'``,
+        ``'mom'``, ``'fix'``, etc.).
+    diam_weight : :class:`numpy.ndarray`
         Weight of the highest-contributing channel.
 
     """
@@ -998,6 +1217,47 @@ def SGA_geometry(ellipse, region, radius_arcsec=False):
 
 
 def SGA_datamodel(ellipse, bands, all_bands, copy=True):
+    """Build an empty table with the full SGA-2025 ellipse-catalog data
+    model, optionally populated from an existing ellipse table.
+
+    Defines every output column (identifying/group columns, initial and
+    final geometry, PSF size/depth, per-band Milky Way transmission and
+    Gini coefficient, curve-of-growth parameters (``COG_MTOT``,
+    ``COG_DMAG``, ``COG_LNALPHA1``, ``COG_LNALPHA2``, ``COG_CHI2``,
+    ``COG_NDOF``, ``SMA50``) with per-band error columns, aperture
+    photometry (``SMA_AP##``, ``FLUX_AP##_{filt}``,
+    ``FLUX_ERR_AP##_{filt}``, ``FMASKED_AP##_{filt}`` for each of
+    ``APERTURES``), isophotal radii (``R{thresh}_{filt}``,
+    ``R{thresh}_ERR_{filt}`` for each of ``SBTHRESH``), and the final
+    diameter columns ``D26``/``D26_ERR``/``D26_REF``/``BA``/``PA``) with
+    its dtype and unit, and allocates a zero-filled table with
+    ``len(ellipse)`` rows.
+
+    Parameters
+    ----------
+    ellipse : :class:`~astropy.table.Table`
+        Input table; only its length is used to size the output unless
+        ``copy=True``, in which case matching columns are copied from it.
+    bands : :class:`list` of :class:`str`
+        Optical bands used for the isophotal-radius columns.
+    all_bands : :class:`list` of :class:`str`
+        Full band set (optical + infrared) used for the Milky Way
+        transmission, Gini, curve-of-growth, and aperture-photometry
+        columns.
+    copy : :class:`bool`
+        If True, copy every column in the output data model that also
+        exists in ``ellipse``. Any NaN or masked value in a copied
+        numeric column is zeroed out (with a warning logged and the
+        affected ``GROUP_NAME`` values printed) rather than propagated.
+
+    Returns
+    -------
+    out : :class:`~astropy.table.Table`
+        Table with ``len(ellipse)`` rows and the full SGA-2025 ellipse
+        data-model column set, zero-filled except where populated from
+        ``ellipse`` (when ``copy=True``).
+
+    """
     import astropy.units as u
     from astropy.table import Column, MaskedColumn
 
@@ -1128,9 +1388,23 @@ def SGA_datamodel(ellipse, bands, all_bands, copy=True):
 
 
 def _create_mock_ellipse_from_sample(grpsample):
-    """Create mock ellipse catalog from parent sample when processing failed.
+    """Create a mock ellipse catalog directly from the parent sample, for
+    a group whose ellipse-fitting outputs are missing or invalid.
 
-    Sets SKIPTRACTOR bit, FIXGEO fitmode, and populates geometry from initial values.
+    Sets ``ELLIPSEBIT['SKIPTRACTOR']`` and ``FITMODE['FIXGEO']`` on every
+    row, and populates the geometry columns (``RA``/``DEC``/``SMA_MOMENT``/
+    ``BA_MOMENT``/``PA_MOMENT`` and their ``*_INIT`` counterparts) directly
+    from the sample's initial values rather than from a fit.
+
+    Parameters
+    ----------
+    grpsample : :class:`~astropy.table.Table`
+        Parent-sample rows for one group.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Mock ellipse catalog, one row per input object.
 
     """
     from SGA.ellipse import ELLIPSEBIT, FITMODE
@@ -1170,7 +1444,22 @@ def _create_mock_ellipse_from_sample(grpsample):
 
 
 def _create_mock_tractor_sga(refids):
-    """Create mock Tractor catalog entries for SKIPTRACTOR/NOTRACTOR sources."""
+    """Create empty Tractor catalog rows for SGA sources with no Tractor
+    match (``SKIPTRACTOR``/``NOTRACTOR``), one per reference ID.
+
+    Parameters
+    ----------
+    refids : :class:`numpy.ndarray` or scalar
+        Reference ID(s) (``SGAID``) to create mock entries for.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        One ``SGA.io.empty_tractor()`` row per ID in ``refids``, with
+        ``ref_cat`` set to ``REFCAT`` and ``ref_id`` set to the
+        corresponding reference ID; empty table if ``refids`` is empty.
+
+    """
     from SGA.io import empty_tractor
 
     refids = np.atleast_1d(refids)
@@ -1189,7 +1478,36 @@ def _create_mock_tractor_sga(refids):
 
 
 def _build_tractor_sga_entries(tractor, ellipse):
-    """Build mock Tractor entries for SGA sources not in Tractor catalog."""
+    """Build mock Tractor entries for SGA sources that have no
+    counterpart in the Tractor catalog.
+
+    For every row in ``ellipse`` without exactly one matching
+    (``ref_id``, ``ref_cat``) row in ``tractor``, asserts that
+    ``ELLIPSEBIT['NOTRACTOR']`` is already set, sets
+    ``FITMODE['FIXGEO']`` on that row of ``ellipse`` (in place), and
+    builds a mock Tractor entry for it via
+    :func:`_create_mock_tractor_sga`.
+
+    Parameters
+    ----------
+    tractor : :class:`~astropy.table.Table`
+        Tractor catalog to check for existing matches.
+    ellipse : :class:`~astropy.table.Table`
+        Ellipse catalog for this group, modified in place (``FITMODE``
+        bit set on unmatched rows).
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        Mock Tractor rows for the unmatched sources; empty table if every
+        source in ``ellipse`` already has a Tractor match.
+
+    Raises
+    ------
+    IOError
+        If more than one Tractor row matches the same SGA reference ID.
+
+    """
     from SGA.ellipse import ELLIPSEBIT, FITMODE
 
     tractor_sga_list = []
@@ -1227,9 +1545,33 @@ def _build_tractor_sga_entries(tractor, ellipse):
 
 
 def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
-    """Read and join ellipse catalogs across datasets.
+    """Read and column-join the per-object ellipse-fitting output tables
+    for one group, across imaging datasets.
 
-    Returns None if no ellipse files found or on read error.
+    Finds every ``*-ellipse-{opt_bands}.fits`` file in ``gdir`` (one per
+    SGA object in the group), and for each, reads and column-joins the
+    ``ELLIPSE`` extension from every ``{sganame}-ellipse-{dataset}.fits``
+    file in ``datasets`` (e.g. optical and unWISE), then stacks the
+    per-object tables into one table for the group.
+
+    Parameters
+    ----------
+    gdir : :class:`str`
+        Group directory to search for ellipse output files.
+    datasets : :class:`list` of :class:`str`
+        Dataset suffixes to join per object (e.g. ``opt_bands`` and an
+        infrared dataset name).
+    opt_bands : :class:`str`
+        Optical band-combination string used to glob for per-object
+        ellipse files (e.g. ``'grz'``).
+    grpsample : :class:`~astropy.table.Table`
+        Unused in the current implementation.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table` or None
+        Stacked ellipse catalog for the group, or None if no ellipse
+        files are found or a file fails to read.
 
     """
     import fitsio
@@ -1268,9 +1610,38 @@ def _read_ellipse_catalogs(gdir, datasets, opt_bands, grpsample):
 
 
 def _read_ellipse_optical_maskbits(gdir, datasets, opt_bands, grpsample):
-    """Read and join ellipse catalogs across datasets.
+    """Read and stack the per-object optical ``MASKBITS`` mask images for
+    one group.
 
-    Returns None if no ellipse files found or on read error.
+    Finds every ``*-ellipse-{opt_bands}.fits`` file in ``gdir`` and reads
+    the ``MASKBITS`` extension of each object's
+    ``{sganame}-ellipse-{dataset}.fits`` file, stacking them along a
+    leading object axis. Optical-only: raises if more than one dataset is
+    given.
+
+    Parameters
+    ----------
+    gdir : :class:`str`
+        Group directory to search for ellipse output files.
+    datasets : :class:`list` of :class:`str`
+        Must contain exactly one dataset (the optical dataset name).
+    opt_bands : :class:`str`
+        Optical band-combination string used to glob for per-object
+        ellipse files (e.g. ``'grz'``).
+    grpsample : :class:`~astropy.table.Table`
+        Unused in the current implementation.
+
+    Returns
+    -------
+    :class:`numpy.ndarray` or None
+        Stacked ``MASKBITS`` images, shape ``(nobj, width, width)``, or
+        None if no ellipse files are found, a file fails to read, or a
+        shape mismatch is encountered.
+
+    Raises
+    ------
+    ValueError
+        If ``datasets`` contains more than one entry.
 
     """
     import fitsio
@@ -1309,14 +1680,47 @@ def _read_ellipse_optical_maskbits(gdir, datasets, opt_bands, grpsample):
 
 
 def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
-    """Read Tractor catalog and extract SGA source entries.
+    """Read the group's Tractor catalog and extract the sources relevant
+    to its SGA objects.
+
+    If no Tractor file exists, delegates to
+    :func:`_handle_missing_tractor_file`. Otherwise, reads the Tractor
+    catalog, keeps sources that are ``brick_primary``, not type ``'DUP'``,
+    and either fall inside an SGA ellipse (via
+    :func:`_sources_in_ellipses`) or are themselves SGA sources
+    (``ref_cat == REFCAT``); validates the result against the
+    ``SGA.io.empty_tractor`` data model, drops any leftover
+    time-resolved unWISE light-curve columns, removes SGA sources
+    belonging to a different group, and builds mock entries (via
+    :func:`_build_tractor_sga_entries`) for any SGA object with no
+    Tractor match.
+
+    Parameters
+    ----------
+    gdir : :class:`str`
+        Group directory containing ``{grp}-tractor.fits``.
+    grp : :class:`str`
+        Group name, used to build the Tractor filename.
+    ellipse : :class:`~astropy.table.Table`
+        Ellipse catalog for this group; passed through to
+        :func:`_sources_in_ellipses` and :func:`_build_tractor_sga_entries`,
+        and (via :func:`_handle_missing_tractor_file`) may be modified in
+        place if the Tractor file is missing.
+    refid_array : :class:`numpy.ndarray`
+        Unused in the current implementation (object-level SGA matching
+        is instead done inside :func:`_build_tractor_sga_entries` and
+        :func:`_handle_missing_tractor_file`).
+    region : :class:`str`
+        Survey region, passed to :func:`_sources_in_ellipses` (via
+        :func:`SGA_geometry`) for region-specific diameter handling.
 
     Returns
     -------
-    tractor : Table
-        All relevant Tractor sources (SGA + sources within ellipses)
-    tractor_sga : Table
-        Mock entries for SGA sources without Tractor matches
+    tractor : :class:`~astropy.table.Table`
+        All relevant Tractor sources (SGA sources plus sources within any
+        SGA ellipse), including mock entries for unmatched SGA objects.
+    tractor_sga : :class:`~astropy.table.Table`
+        The mock entries alone, for SGA sources without a Tractor match.
 
     """
     import fitsio
@@ -1377,7 +1781,36 @@ def _read_tractor_catalog(gdir, grp, ellipse, refid_array, region):
 
 
 def _handle_missing_tractor_file(ellipse):
-    """Handle cases where Tractor file doesn't exist."""
+    """Build mock Tractor entries for a group with no Tractor catalog
+    file on disk.
+
+    Valid only for two cases: a single RESOLVED object (``FIXGEO`` is
+    already set upstream in the parent sample) or a group where every
+    object carries ``ELLIPSEBIT['SKIPTRACTOR']`` (in which case
+    ``FITMODE['FIXGEO']`` is set on those rows, in place). Any other
+    combination is treated as an unexpected pipeline state.
+
+    Parameters
+    ----------
+    ellipse : :class:`~astropy.table.Table`
+        Ellipse catalog for this group; modified in place when the
+        ``SKIPTRACTOR`` case sets ``FITMODE``.
+
+    Returns
+    -------
+    tractor : :class:`~astropy.table.Table`
+        Always empty.
+    tractor_sga : :class:`~astropy.table.Table`
+        Mock Tractor entries for every object in ``ellipse`` (see
+        :func:`_create_mock_tractor_sga`).
+
+    Raises
+    ------
+    ValueError
+        If neither the single-RESOLVED-object nor the all-SKIPTRACTOR
+        case applies.
+
+    """
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE, FITMODE
 
     # RESOLVED sources don't have Tractor catalogs (FIXGEO already set in parent)
@@ -1396,7 +1829,28 @@ def _handle_missing_tractor_file(ellipse):
 
 
 def _sources_in_ellipses(refs, ellipse, region):
-    """Return boolean mask of refs that fall inside any SGA ellipse."""
+    """Flag which Tractor sources fall inside any of a group's SGA
+    ellipses.
+
+    Parameters
+    ----------
+    refs : :class:`numpy.ndarray`
+        Structured array (or similar) of Tractor sources with ``ra``/
+        ``dec`` fields.
+    ellipse : :class:`~astropy.table.Table`
+        Ellipse catalog for the group; its geometry is computed via
+        :func:`SGA_geometry`.
+    region : :class:`str`
+        Survey region, passed to :func:`SGA_geometry` for
+        region-specific diameter handling.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Boolean mask, length ``len(refs)``, True where a source falls
+        inside at least one object's ellipse in ``ellipse``.
+
+    """
     from SGA.sky import in_ellipse_mask_sky
 
     isin = np.zeros(len(refs), bool)
@@ -1412,12 +1866,67 @@ def _sources_in_ellipses(refs, ellipse, region):
 
 
 def safe_vstack(tables):
+    """Vertically stack a list of tables, silently skipping any that are
+    None or empty.
+
+    Parameters
+    ----------
+    tables : :class:`list` of :class:`~astropy.table.Table` or None
+        Tables to stack; entries that are None or length-zero are
+        dropped before stacking.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        The stacked table, or an empty :class:`~astropy.table.Table` if
+        every input was None or empty.
+
+    """
     nonempty = [t for t in tables if t is not None and len(t) > 0]
     return vstack(nonempty) if nonempty else Table()
 
 
 def build_catalog_one(datadir, region, datasets, opt_bands, grpsample, no_groups):
-    """Gather ellipse-fitting results for a single group."""
+    """Gather the per-group ellipse-fitting and Tractor results for one
+    SGA group, falling back to placeholder rows when processing hasn't
+    completed successfully.
+
+    Falls back to a mock ellipse/Tractor pair (via
+    :func:`_create_mock_ellipse_from_sample`/:func:`_create_mock_tractor_sga`)
+    in three cases: the group's coadd directory doesn't exist yet, its
+    ellipse-catalog files are missing or unreadable, or the ellipse
+    catalog's reference IDs don't match the input sample (logged as a
+    warning for each affected object). Otherwise reads the group's
+    ellipse catalogs and Tractor catalog and appends the SGA-source
+    Tractor rows to the full Tractor catalog.
+
+    Parameters
+    ----------
+    datadir : :class:`str`
+        Root data directory containing the per-region coadd output.
+    region : :class:`str`
+        Survey region (e.g. ``'dr11-south'``).
+    datasets : :class:`list` of :class:`str`
+        Imaging datasets to read ellipse catalogs for (e.g. the
+        concatenated optical bands string plus ``'unwise'``/``'galex'``).
+    opt_bands : :class:`str`
+        Concatenated optical band letters (e.g. ``'griz'``).
+    grpsample : :class:`~astropy.table.Table`
+        Sample rows belonging to this group.
+    no_groups : :class:`bool`
+        If True, treat each galaxy independently rather than by group
+        when resolving the coadd directory.
+
+    Returns
+    -------
+    ellipse : :class:`~astropy.table.Table`
+        Per-object ellipse-fitting results for this group (mock rows if
+        processing hasn't completed).
+    tractor : :class:`~astropy.table.Table`
+        Tractor catalog for this group's footprint, including the SGA
+        sources (mock rows if processing hasn't completed).
+
+    """
     import fitsio
     from glob import glob
 
@@ -1471,12 +1980,91 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
                   region='dr11-south', version=None, test_bricks=False, galex=True,
                   unwise=True, wisesize=False, no_groups=False, datadir=None,
                   verbose=False, clobber=False):
-    """Build the final catalog.
+    """Build the beta SGA ellipse+Tractor catalog for a region, in parallel
+    across MPI ranks, from per-group ellipse-fitting results.
 
-    FIXME - combine the north and south
+    Processing runs in two phases. First, group indices are partitioned
+    by RA slice (``get_raslice`` on ``GROUP_RA``); for each not-yet-written
+    slice, rank 0 distributes its groups across ranks 1..size-1 (if
+    running with MPI and ``size > 1``; otherwise everything runs
+    serially on rank 0), each rank gathers results via
+    :func:`build_catalog_one`, and rank 0 writes a per-slice FITS file
+    (``ELLIPSE``/``TRACTOR`` extensions) to
+    ``{datadir}/{region}/{outprefix}-{raslice}.fits``. Second (rank 0
+    only, after an MPI barrier), all per-slice files are read back and
+    stacked, the ellipse table is reorganized via :func:`SGA_datamodel`
+    and its final geometry recomputed via :func:`SGA_geometry`
+    (``D26``/``BA``/``PA``/``D26_ERR``/``D26_REF``), the SGA-source
+    Tractor rows are matched and separated from the rest of the Tractor
+    catalog, and two output files are written: ``outfile`` (raw
+    ``ELLIPSE``+``TRACTOR`` extensions) and ``outfile_ellipse`` (a single
+    flat table merging SGA and non-SGA Tractor sources with harmonized
+    columns and ``FITMODE`` bits assigned -- ``FREEZE`` for any object
+    that didn't already get ``FIXGEO``/``RESOLVED`` set in
+    :func:`build_catalog_one`), plus a kd-tree-indexed copy of
+    ``outfile_ellipse`` via the nested ``write_kdfile``.
 
-    NB: When combining north-south catalogs, need to look at OBJNAME;
-    SGANAME may not be the same!
+    Notes
+    -----
+    ``verbose`` is accepted but not referenced anywhere in this
+    function's body. Per-RA-slice intermediate files are skipped
+    whenever they already exist on disk with no ``clobber`` check --
+    only the final ``outfile``/``outfile_ellipse`` write respects
+    ``clobber`` -- so re-running with ``clobber=True`` after a partial
+    prior run reuses stale per-slice files rather than recomputing them.
+    In the non-``test_bricks`` branch, the (currently unused, its write
+    call is commented out) ``kdoutfile`` variable is set to the same
+    filename as ``outfile`` rather than a distinct ``.kd.fits`` name.
+
+    Parameters
+    ----------
+    sample : :class:`~astropy.table.Table`
+        Group-level sample driving RA-slice iteration (``GROUP_RA``,
+        ``GROUP_NAME``).
+    fullsample : :class:`~astropy.table.Table`
+        Full per-object sample, used to build each group's row subset
+        (``grpsample``) by matching ``GROUP_NAME``.
+    comm : MPI communicator, optional
+        If given, distributes per-RA-slice group processing across
+        ranks; if None, runs serially on a single process.
+    bands : :class:`list` of :class:`str`
+        Optical bands included in the output datamodel.
+    region : :class:`str`
+        Survey region (e.g. ``'dr11-south'``); used in output filenames
+        and directory paths.
+    version : :class:`str`, optional
+        Catalog version string; defaults to :func:`SGA_version`.
+    test_bricks : :class:`bool`
+        If True, use the fixed ``'testbricks-v0.60'`` version and a
+        region-independent output filename convention, for pipeline
+        testing on the DR11 test-brick subset.
+    galex : :class:`bool`
+        If True, include the GALEX FUV/NUV bands in the output datamodel.
+    unwise : :class:`bool`
+        If True, include the unWISE W1-W4 bands in the output datamodel.
+    wisesize : :class:`bool`
+        If True, use the ``'SGA2025-wisesize'`` output filename prefix
+        instead of ``'SGA2025'`` (a variant catalog build).
+    no_groups : :class:`bool`
+        If True, treat each galaxy independently rather than by group
+        when resolving each group's coadd directory.
+    datadir : :class:`str`, optional
+        Root data directory containing per-region coadd output and
+        per-RA-slice intermediate files.
+    verbose : :class:`bool`
+        Unused (see Notes).
+    clobber : :class:`bool`
+        If True, allow overwriting an existing final ``outfile``/
+        ``outfile_ellipse`` (see Notes for the per-slice-file caveat).
+
+    Returns
+    -------
+    None
+        Writes ``outfile``, ``outfile_ellipse``, and the kd-tree index of
+        ``outfile_ellipse`` to ``{sga_dir()}/sample/``; returns early
+        (also None) if the final ``outfile`` already exists and
+        ``clobber`` is False, or if no per-slice ellipse catalogs were
+        found to stack.
 
     """
     from glob import glob
@@ -1489,7 +2077,21 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
 
     def write_kdfile(outfile, kdoutfile):
-        # KD version
+        """Build a kd-tree-indexed copy of a FITS catalog via the
+        astrometry.net ``startree`` and ``modhead`` command-line tools.
+
+        Parameters
+        ----------
+        outfile : :class:`str`
+            Input FITS catalog to index.
+        kdoutfile : :class:`str`
+            Output kd-tree FITS file.
+
+        Returns
+        -------
+        None
+
+        """
         cmd1 = f'startree -i {outfile} -o {kdoutfile} -T -P -k -n stars'
         cmd2 = f'modhead {kdoutfile} VER {REFCAT}-ellipse'
         _ = os.system(cmd1)
@@ -1796,7 +2398,45 @@ def build_catalog(sample, fullsample, comm=None, bands=['g', 'r', 'i', 'z'],
 
 def count_masked_pixels_one(datadir, region, datasets, opt_bands, grpsample,
                             unpack_maskbits_function, SGAMASKBITS):
-    """Gather ellipse-fitting results for a single group."""
+    """Compute the fraction of each object's initial elliptical aperture
+    masked out by a neighboring galaxy, for one SGA group.
+
+    Reads the group's ellipse catalogs and optical ``MASKBITS`` image,
+    unpacks the neighboring-galaxy mask via ``unpack_maskbits_function``,
+    and for each object measures the fraction of pixels within its
+    initial (``*_INIT``) elliptical aperture flagged by the galaxy mask.
+    Objects with zero masked fraction are dropped from the output.
+
+    Parameters
+    ----------
+    datadir : :class:`str`
+        Root data directory containing the per-region coadd output.
+    region : :class:`str`
+        Survey region (e.g. ``'dr11-south'``).
+    datasets : :class:`list` of :class:`str`
+        Imaging datasets to read ellipse catalogs for.
+    opt_bands : :class:`str`
+        Concatenated optical band letters (e.g. ``'griz'``).
+    grpsample : :class:`~astropy.table.Table`
+        Sample rows belonging to this group.
+    unpack_maskbits_function : callable
+        Function with the signature of :func:`unpack_maskbits`, used to
+        unpack the packed optical maskbits image into per-band and
+        per-object-type boolean masks.
+    SGAMASKBITS : :class:`tuple`
+        ``(OPTMASKBITS, UNWISEMASKBITS, GALEXMASKBITS)`` bit-value
+        dictionaries; only the optical entry is used here.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        One row per object with ``FRAC > 0`` masked by a neighboring
+        galaxy, with identifying columns (``OBJNAME``, ``SGAID``,
+        ``SGANAME``, ``SGAGROUP``, ``RA``, ``DEC``, ``DIAM``, ``BA``,
+        ``PA``, group columns) plus ``FRAC``; empty if the group's
+        directory or ellipse catalogs are missing.
+
+    """
     import fitsio
     from glob import glob
     from SGA.ellipse import ELLIPSEBIT, ELLIPSEMODE
@@ -1855,7 +2495,52 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
                         SGAMASKBITS, bands=['g', 'r', 'i', 'z'], comm=None,
                         region='dr11-south', version=None, datadir=None,
                         clobber=False):
-    """Count masked pixels (one-time script).
+    """Compute and write the per-object masked-pixel-fraction QA catalog
+    for a region, in parallel across MPI ranks.
+
+    Structurally similar to :func:`build_catalog`: group indices are
+    partitioned by RA slice, and for each slice rank 0 distributes its
+    groups across ranks 1..size-1 (or runs serially if ``comm`` is None
+    or ``size == 1``); each rank calls :func:`count_masked_pixels_one`
+    per group and combines its results with :func:`safe_vstack`. Unlike
+    :func:`build_catalog`, no per-slice intermediate files are written --
+    each rank's stacked results are sent directly to rank 0 and
+    accumulated in memory across all slices, then written once at the
+    end to a single-extension FITS table.
+
+    Parameters
+    ----------
+    sample : :class:`~astropy.table.Table`
+        Group-level sample driving RA-slice iteration (``GROUP_RA``,
+        ``GROUP_NAME``).
+    fullsample : :class:`~astropy.table.Table`
+        Full per-object sample, used to build each group's row subset
+        (``grpsample``) by matching ``GROUP_NAME``.
+    unpack_maskbits_function : callable
+        Passed through to :func:`count_masked_pixels_one`.
+    SGAMASKBITS : :class:`tuple`
+        Passed through to :func:`count_masked_pixels_one`.
+    bands : :class:`list` of :class:`str`
+        Optical bands used to build the ellipse-catalog dataset list.
+    comm : MPI communicator, optional
+        If given, distributes per-RA-slice group processing across
+        ranks; if None, runs serially on a single process.
+    region : :class:`str`
+        Survey region (e.g. ``'dr11-south'``); used in the output
+        filename.
+    version : :class:`str`, optional
+        Catalog version string; defaults to :func:`SGA_version`.
+    datadir : :class:`str`, optional
+        Root data directory containing the per-region coadd output.
+    clobber : :class:`bool`
+        If True, allow overwriting an existing output file.
+
+    Returns
+    -------
+    None
+        Writes ``{sga_dir()}/sample/masked-pixels-{version}-{region}.fits``;
+        returns early (also None) if that file already exists and
+        ``clobber`` is False.
 
     """
     from glob import glob
@@ -1974,9 +2659,50 @@ def count_masked_pixels(sample, fullsample, unpack_maskbits_function,
 
 
 def _get_psfsize_and_depth(sample, tractor, bands, pixscale, incenter=False):
-    """Support function for read_multiband. Compute the average PSF
-    size (in arcsec) and depth (in 5-sigma AB mags) in each bandpass
-    based on the Tractor catalog.
+    """Compute the median per-band PSF size and 5-sigma point-source depth
+    from a Tractor catalog, and store them on the sample table.
+
+    For each band, takes the median of the Tractor catalog's per-source
+    ``psfsize_{filt}``/``psfdepth_{filt}`` columns (restricted to
+    positive values, and optionally to sources near the field center),
+    converts depth to AB magnitude, and writes the result to
+    ``sample['PSFSIZE_{FILT}']``/``sample['PSFDEPTH_{FILT}']`` (a single
+    value, broadcast to every row of ``sample``). The source
+    ``psfsize_*``/``psfdepth_*`` columns are deleted from ``tractor``
+    after being consumed. Bands with no ``psfsize_*``/``psfdepth_*``
+    column, or no positive measurements, are left at their existing
+    (placeholder) value with a logged message.
+
+    Notes
+    -----
+    ``pixscale`` is currently used only to compute a per-band
+    ``psfsigma`` (PSF sigma in pixels) that is immediately discarded --
+    never stored, returned, or logged -- so this parameter has no
+    observable effect on the function's output today.
+
+    Parameters
+    ----------
+    sample : :class:`~astropy.table.Table`
+        Sample table to write the ``PSFSIZE_*``/``PSFDEPTH_*`` columns
+        onto; must already have these columns present.
+    tractor : :class:`~astropy.table.Table`
+        Tractor catalog with per-source ``psfsize_{filt}``/
+        ``psfdepth_{filt}`` columns; modified in place (columns deleted
+        as they're consumed).
+    bands : :class:`list` of :class:`str`
+        Bands to process.
+    pixscale : :class:`float`
+        Pixel scale in arcsec/pixel (see Notes).
+    incenter : :class:`bool`
+        If True, restrict the median to Tractor sources within the
+        central 20% (by pixel coordinate range) of the field instead of
+        using all sources.
+
+    Returns
+    -------
+    :class:`~astropy.table.Table`
+        The input ``sample``, updated in place and returned for
+        convenience.
 
     """
     # Optionally choose sources in the center of the field.
@@ -3422,6 +4148,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
         """
         def _table_geometry(table):
+            """Read geometry from a sample table row (see :func:`get_geometry`).
+
+            """
             # Prefer fully-updated geometry if present
             if table['SMA_MOMENT'] > 0.:
                 bx, by = table['BX'], table['BY']
@@ -3458,6 +4187,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
         def _tractor_geometry(tractor):
+            """Read geometry from a Tractor source (see :func:`get_geometry`).
+
+            """
             from SGA.geometry import get_tractor_ellipse
             (bx, by) = tractor.bx, tractor.by
             sma = tractor.shape_r / pixscale # [pixels]
@@ -3466,6 +4198,9 @@ def build_multiband_mask(data, tractor, sample, samplesrcs, niter_geometry=2,
 
 
         def _props_geometry(props):
+            """Read geometry from a fitted ellipse (see :func:`get_geometry`).
+
+            """
             if use_tractor_position and ref_tractor is not None:
                 bx, by = ref_tractor.bx[0], ref_tractor.by[0]
             else:
@@ -5188,42 +5923,6 @@ def read_multiband(galaxy, galaxydir, REFIDCOLUMN, bands=['g', 'r', 'i', 'z'],
     return data, tractor, sample, samplesrcs, err
 
 
-def _get_radius_mosaic(diam, multiplicity=1, mindiam=0.5,
-                      pixscale=0.262, get_barlen=False):
-    """Get the mosaic radius.
-
-    diam, mindiam in arcmin
-
-    """
-    if diam < mindiam:
-        diam = mindiam # arcmin
-
-    radius_mosaic_arcsec = 60. * diam / 2. # [arcsec]
-    if multiplicity == 1:
-        if diam > 10.:
-            radius_mosaic_arcsec *= 1.
-        elif diam > 3. and diam <= 10:
-            radius_mosaic_arcsec *= 1.1
-        elif diam > 1. and diam <= 3.:
-            radius_mosaic_arcsec *= 1.3
-        else:
-            radius_mosaic_arcsec *= 1.5
-
-    if get_barlen:
-        if radius_mosaic_arcsec > 6. * 60.: # [>6] arcmin
-            barlabel = '2 arcmin'
-            barlen = np.ceil(120. / pixscale).astype(int) # [pixels]
-        elif (radius_mosaic_arcsec > 3. * 60.) & (radius_mosaic_arcsec < 6. * 60.): # [3-6] arcmin
-            barlabel = '1 arcmin'
-            barlen = np.ceil(60. / pixscale).astype(int) # [pixels]
-        else:
-            barlabel = '30 arcsec'
-            barlen = np.ceil(30. / pixscale).astype(int) # [pixels]
-        return radius_mosaic_arcsec, barlen, barlabel
-    else:
-        return radius_mosaic_arcsec
-
-
 def get_radius_mosaic(diam_arcmin,
                       multiplicity=1,
                       q_primary=None,      # BA of the primary; if None, no ellipticity inflation
@@ -5239,36 +5938,46 @@ def get_radius_mosaic(diam_arcmin,
                       # ellipticity inflation f_q = 1 + eta*(1 - q)
                       eta=0.3,
                       get_barlen=False):
-    """Compute a mosaic radius (arcsec) from a group diameter
-    (arcmin), using smooth, size-aware inflation and optional BA-based
-    padding. The final radius is rounded up to an integer number of
-    pixels.
+    """Compute a mosaic radius (arcsec) from a group diameter (arcmin),
+    using smooth, size-aware inflation and optional BA-based padding.
+    The final radius is rounded up to an integer number of pixels.
 
     Parameters
     ----------
-    diam_arcmin : float
+    diam_arcmin : :class:`float`
         Group diameter in arcmin (for singles, this is the object diam).
-    multiplicity : int, default 1
+    multiplicity : :class:`int`
         Group multiplicity; >1 triggers the group-inflation rule.
-    q_primary : float or None, default None
+    q_primary : :class:`float` or None
         Axis ratio b/a of the primary. If None, skip ellipticity inflation.
-    mindiam_arcmin : float, default 0.5
+    mindiam_arcmin : :class:`float`
         Minimum diameter allowed (arcmin).
-    pixscale : float, default 0.262
+    pixscale : :class:`float`
         Pixel scale in arcsec/pixel.
-    single_A, single_d0, single_beta : floats
-        Parameters of the single-object inflation curve.
-    mult_slope : float, default 0.06
+    single_A, single_d0, single_beta : :class:`float`
+        Parameters of the single-object inflation curve,
+        ``f_single(d) = 1 + A / [1 + (d/d0)^beta]``.
+    mult_slope : :class:`float`
         Per-companion inflation for groups.
-    mult_cap : float, default 1.30
-        Maximum inflation for groups (set to a large value to effectively disable).
-    eta : float, default 0.3
-        Strength of BA inflation; f_q = 1 + eta*(1 - q).
+    mult_cap : :class:`float`
+        Maximum inflation for groups (set to a large value to effectively
+        disable), ``f_mult(m) = min(1 + slope*(m-1), cap)``.
+    eta : :class:`float`
+        Strength of BA inflation, ``f_q = 1 + eta*(1 - q)``.
+    get_barlen : :class:`bool`
+        If True, also return a scale-bar length and label sized to the
+        computed radius.
 
     Returns
     -------
-    float
+    r_arcsec : :class:`float`
         Mosaic radius in arcsec, rounded up to a whole number of pixels.
+    barlen : :class:`int`, only if ``get_barlen=True``
+        Scale-bar length in pixels (2 arcmin, 1 arcmin, or 30 arcsec,
+        chosen by the mosaic size).
+    barlabel : :class:`str`, only if ``get_barlen=True``
+        Human-readable label for ``barlen`` (``'2 arcmin'``,
+        ``'1 arcmin'``, or ``'30 arcsec'``).
 
     """
     from math import ceil
